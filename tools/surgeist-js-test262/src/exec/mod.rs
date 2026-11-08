@@ -288,7 +288,10 @@ impl Test {
                         Err(err) => return (false, format!("Uncaught {err}")),
                     };
 
-                    let promise = module.load_link_evaluate(context.access());
+                    let promise = match module.load_link_evaluate(context.access()) {
+                        Ok(promise) => promise,
+                        Err(err) => return (false, format!("Uncaught {err}")),
+                    };
 
                     if let Err(err) = context.run_jobs() {
                         return (false, format!("Uncaught {err}"));
@@ -391,7 +394,10 @@ impl Test {
                     Err(err) => return (false, format!("Uncaught {err}")),
                 };
 
-                let promise = module.load(context.access());
+                let promise = match module.load(context.access()) {
+                    Ok(promise) => promise,
+                    Err(err) => return (false, format!("Uncaught {err}")),
+                };
 
                 if let Err(err) = context.run_jobs() {
                     return (false, format!("Uncaught {err}"));
@@ -438,7 +444,10 @@ impl Test {
                         Err(err) => return (false, format!("Uncaught {err}")),
                     };
 
-                    let promise = module.load(context.access());
+                    let promise = match module.load(context.access()) {
+                        Ok(promise) => promise,
+                        Err(err) => return (false, format!("Uncaught {err}")),
+                    };
 
                     if let Err(err) = context.run_jobs() {
                         return (false, format!("Uncaught {err}"));

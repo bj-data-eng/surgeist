@@ -110,7 +110,7 @@ fn boa_module() {
 
     let result = module
         .load_link_evaluate(context.access())
-        .await_blocking(context.access());
+        .and_then(|promise| promise.await_blocking(context.access()));
 
     if let Err(e) = result {
         panic!("error: {e:?}\n{e}");

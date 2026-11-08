@@ -898,7 +898,7 @@ mod tests {
             context.access(),
         )
         .unwrap();
-        let loaded = module.load(context.access());
+        let loaded = module.load(context.access()).unwrap();
         context.run_jobs().unwrap();
         assert_eq!(
             loaded.state(),
@@ -946,7 +946,7 @@ mod tests {
             context.access(),
         )
         .unwrap();
-        let loaded = module.load(context.access());
+        let loaded = module.load(context.access()).unwrap();
         context.run_jobs().unwrap();
         assert_eq!(
             loaded.state(),

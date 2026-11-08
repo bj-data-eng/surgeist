@@ -1,13 +1,15 @@
 #![allow(unused_crate_dependencies)]
 
 use std::{
-    future::Future,
     panic::{AssertUnwindSafe, catch_unwind},
-    pin::Pin,
     task::{Context as TaskContext, Waker},
 };
 
-use surgeist_js::{Context, JsValue, NativeFunction, Source, job::NativeAsyncJob, js_string};
+use surgeist_js::{
+    Context, JsValue, NativeFunction, Source,
+    job::{ContextTask, JobStep, NativeAsyncJob},
+    js_string,
+};
 
 #[test]
 fn realm_free_async_job_unwind_releases_nested_guest_frames_before_reentry() {
@@ -35,15 +37,22 @@ fn realm_free_async_job_unwind_releases_nested_guest_frames_before_reentry() {
         .unwrap();
     let baseline_frames = context.stack_trace().count();
     assert_eq!(baseline_frames, 0);
-    let job = NativeAsyncJob::new(async |host| {
-        host.with(|mut access| access.eval(Source::from_bytes("panicWrapper()")))
+    let mut job = NativeAsyncJob::new(|_| {
+        Ok(ContextTask::from_poll(|_, host| {
+            std::task::Poll::Ready(
+                host.with(|mut access| access.eval(Source::from_bytes("panicWrapper()"))),
+            )
+        }))
     });
 
     let panic = catch_unwind(AssertUnwindSafe(|| {
         let holder = context.host_access();
-        let mut future = job.call(&holder);
         let mut task_context = TaskContext::from_waker(Waker::noop());
-        Pin::new(&mut future).poll(&mut task_context)
+        assert!(matches!(
+            job.run_step(&mut task_context, &holder),
+            JobStep::Prepared
+        ));
+        job.run_step(&mut task_context, &holder)
     }))
     .expect_err("the nested native panic must propagate outside the job future and holder");
     assert_eq!(

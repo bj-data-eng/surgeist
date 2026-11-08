@@ -503,7 +503,7 @@ fn open_module_conversion_exports_a_protected_reentrant_native_function() {
             let module =
                 vec![(js_string!("answer"), exported)].into_js_module(access.reborrow())?;
             module
-                .load_link_evaluate(access.reborrow())
+                .load_link_evaluate(access.reborrow())?
                 .await_blocking(access.reborrow())?;
             let answer = module
                 .get_value(js_string!("answer"), access.reborrow())?

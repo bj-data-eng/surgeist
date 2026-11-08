@@ -128,8 +128,6 @@ time.workspace = true
 hashbrown.workspace = true
 either = { workspace = true, optional = true }
 static_assertions.workspace = true
-dynify = { workspace = true, features = ["macros"] }
-futures-concurrency.workspace = true
 oneshot = { workspace = true, features = ["async"] }
 async-channel.workspace = true
 

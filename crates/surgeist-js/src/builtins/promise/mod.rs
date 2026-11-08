@@ -1,5 +1,6 @@
 //! Boa's implementation of ECMAScript's global `Promise` object.
 
+pub(crate) mod native_settlement;
 #[cfg(test)]
 mod tests;
 
@@ -76,6 +77,7 @@ impl PromiseState {
 pub struct Promise {
     state: StoredPromiseState,
     handled: bool,
+    native_settlement: Option<native_settlement::AssociationEdge>,
 }
 
 #[derive(Debug, HeapTrace)]
@@ -158,6 +160,19 @@ macro_rules! if_abrupt_reject_promise {
 
 pub(crate) use if_abrupt_reject_promise;
 
+impl ResolvingFunctions {
+    pub(crate) fn associate_job(
+        &self,
+        observer: &crate::job::JobObserver,
+        context: &mut Context,
+    ) -> JsResult<()> {
+        if let Some(promise) = Promise::native_handler_target(&self.resolve) {
+            Promise::ensure_native_association(&promise, context)?.bind_job(observer, false)?;
+        }
+        Ok(())
+    }
+}
+
 /// The internal `PromiseCapability` data type.
 ///
 /// More information:
@@ -212,6 +227,8 @@ impl NativeCapture for PromiseCapability {
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-promisereaction-records
 struct ReactionRecord {
+    native_result_target: Option<JsObject<Promise>>,
+    native_target: Option<JsObject<Promise>>,
     /// The `[[Capability]]` field.
     promise_capability: Option<PromiseCapability>,
 
@@ -225,6 +242,8 @@ struct ReactionRecord {
 impl ReactionRecord {
     fn to_stored(&self) -> StoredReactionRecord {
         StoredReactionRecord {
+            native_result_target: self.native_result_target.as_ref().map(JsObject::edge),
+            native_target: self.native_target.as_ref().map(JsObject::edge),
             promise_capability: self
                 .promise_capability
                 .as_ref()
@@ -237,6 +256,8 @@ impl ReactionRecord {
 
 #[derive(HeapTrace)]
 struct StoredReactionRecord {
+    native_result_target: Option<ObjectEdge>,
+    native_target: Option<ObjectEdge>,
     promise_capability: Option<StoredPromiseCapability>,
     #[heap_trace(skip)]
     reaction_type: ReactionType,
@@ -246,6 +267,24 @@ struct StoredReactionRecord {
 impl StoredReactionRecord {
     fn to_reaction(&self) -> ReactionRecord {
         ReactionRecord {
+            native_result_target: self
+                .native_result_target
+                .clone()
+                .map(JsObject::from_inner)
+                .map(|value| {
+                    value
+                        .downcast::<Promise>()
+                        .expect("reaction target is a promise")
+                }),
+            native_target: self
+                .native_target
+                .clone()
+                .map(JsObject::from_inner)
+                .map(|value| {
+                    value
+                        .downcast::<Promise>()
+                        .expect("reaction target is a promise")
+                }),
             promise_capability: self
                 .promise_capability
                 .as_ref()
@@ -321,6 +360,31 @@ impl NativeCapture for CombinatorElementCaptures {
 }
 
 impl PromiseCapability {
+    pub(crate) fn associate_primary_job(
+        &self,
+        observer: &crate::job::JobObserver,
+        context: &mut Context,
+    ) -> JsResult<()> {
+        let promise = self
+            .promise
+            .clone()
+            .downcast::<Promise>()
+            .expect("intrinsic promise capability");
+        Promise::ensure_native_association(&promise, context)?.bind_job(observer, true)
+    }
+    pub(crate) fn associate_required_job(
+        &self,
+        observer: &crate::job::JobObserver,
+        context: &mut Context,
+    ) -> JsResult<()> {
+        let promise = self
+            .promise
+            .clone()
+            .downcast::<Promise>()
+            .expect("intrinsic promise capability");
+        Promise::ensure_native_association(&promise, context)?.bind_job(observer, false)
+    }
+
     pub(crate) fn stored(&self) -> StoredPromiseCapability {
         StoredPromiseCapability {
             promise: self.promise.edge(),
@@ -571,6 +635,54 @@ impl BuiltInConstructor for Promise {
 }
 
 impl Promise {
+    pub(crate) fn native_association(
+        promise: &JsObject<Self>,
+    ) -> Option<Rooted<native_settlement::Association>> {
+        promise
+            .borrow()
+            .data()
+            .native_settlement
+            .as_ref()
+            .map(native_settlement::AssociationEdge::root)
+    }
+    pub(crate) fn ensure_native_association(
+        promise: &JsObject<Self>,
+        context: &Context,
+    ) -> JsResult<Rooted<native_settlement::Association>> {
+        context.check_execution_stop()?;
+        promise.check_runtime(context.runtime())?;
+        if let Some(association) = Self::native_association(promise) {
+            return Ok(association);
+        }
+        let pending = matches!(
+            promise.borrow().data().state,
+            StoredPromiseState::Pending { .. }
+        );
+        let association = native_settlement::Association::new(context)?;
+        promise.borrow_mut().data_mut().native_settlement =
+            Some(native_settlement::Association::edge(&association));
+        if !pending {
+            association.settle();
+        }
+        Ok(association)
+    }
+    fn prepare_native_handoff(
+        promise: &JsObject<Self>,
+        observer: &crate::job::JobObserver,
+    ) -> JsResult<Option<native_settlement::PreparedHandoff>> {
+        Self::native_association(promise)
+            .map(|owner| native_settlement::Association::prepare_handoff(&owner, observer))
+            .transpose()
+    }
+    fn native_handler_target(function: &JsFunction) -> Option<JsObject<Self>> {
+        function
+            .downcast_ref::<crate::native_function::NativeFunctionObject>()?
+            .f
+            .resolution_target()?
+            .downcast::<Self>()
+            .ok()
+    }
+
     /// Creates a new, pending `Promise`.
     pub(crate) fn new() -> Self {
         Self {
@@ -579,6 +691,7 @@ impl Promise {
                 reject_reactions: Vec::new(),
             },
             handled: false,
+            native_settlement: None,
         }
     }
 
@@ -2268,6 +2381,11 @@ impl Promise {
         // 4. Let resultCapability be ? NewPromiseCapability(C).
         let result_capability = PromiseCapability::new(&c, context)?;
         let result_promise = result_capability.promise.clone();
+        if Self::native_association(promise).is_some()
+            && let Ok(result) = result_promise.clone().downcast::<Self>()
+        {
+            Self::ensure_native_association(&result, context)?;
+        }
 
         // 5. Return PerformPromiseThen(promise, onFulfilled, onRejected, resultCapability).
         Self::perform_promise_then(
@@ -2288,14 +2406,74 @@ impl Promise {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-performpromisethen
     pub(crate) fn perform_promise_then(
-        promise: &JsObject<Promise>,
+        promise: &JsObject<Self>,
         on_fulfilled: Option<JsFunction>,
         on_rejected: Option<JsFunction>,
         result_capability: Option<PromiseCapability>,
         context: &mut Context,
     ) -> JsResult<()> {
+        let target = on_fulfilled
+            .as_ref()
+            .and_then(Self::native_handler_target)
+            .or_else(|| on_rejected.as_ref().and_then(Self::native_handler_target))
+            .or_else(|| {
+                result_capability
+                    .as_ref()
+                    .and_then(|cap| cap.promise.clone().downcast::<Self>().ok())
+            });
+        let target = target.filter(|target| Self::native_association(target).is_some());
+        Self::perform_promise_then_target(
+            promise,
+            on_fulfilled,
+            on_rejected,
+            result_capability,
+            target,
+            context,
+        )
+    }
+    pub(crate) fn perform_promise_then_with_native_target(
+        promise: &JsObject<Self>,
+        on_fulfilled: Option<JsFunction>,
+        on_rejected: Option<JsFunction>,
+        result_capability: Option<PromiseCapability>,
+        target: &PromiseCapability,
+        context: &mut Context,
+    ) -> JsResult<()> {
+        let target = target
+            .promise
+            .clone()
+            .downcast::<Self>()
+            .expect("native target is an intrinsic promise");
+        Self::ensure_native_association(&target, context)?;
+        Self::perform_promise_then_target(
+            promise,
+            on_fulfilled,
+            on_rejected,
+            result_capability,
+            Some(target),
+            context,
+        )
+    }
+    fn perform_promise_then_target(
+        promise: &JsObject<Promise>,
+        on_fulfilled: Option<JsFunction>,
+        on_rejected: Option<JsFunction>,
+        result_capability: Option<PromiseCapability>,
+        native_target: Option<JsObject<Self>>,
+        context: &mut Context,
+    ) -> JsResult<()> {
         // 1. Assert: IsPromise(promise) is true.
         promise.check_runtime(context.runtime())?;
+
+        if native_target.is_some() {
+            Self::ensure_native_association(promise, context)?;
+            if let Some(result) = result_capability
+                .as_ref()
+                .and_then(|cap| cap.promise.clone().downcast::<Self>().ok())
+            {
+                Self::ensure_native_association(&result, context)?;
+            }
+        }
 
         // 2. If resultCapability is not present, then
         //   a. Set resultCapability to undefined.
@@ -2312,14 +2490,27 @@ impl Promise {
         // 5. If IsCallable(onRejected) is false, then
         //   a. Let onRejectedJobCallback be empty.
         // Argument already asserts this.
+        context.check_execution_stop()?;
         let on_rejected_job_callback = on_rejected
             // 6. Else,
             //   a. Let onRejectedJobCallback be HostMakeJobCallback(onRejected).
             .map(|f| JobCallback::from_host(f, context))
             .transpose()?;
 
+        context.check_execution_stop()?;
+        let native_result_target = result_capability
+            .as_ref()
+            .and_then(|cap| cap.promise.clone().downcast::<Self>().ok())
+            .filter(|target| Self::native_association(target).is_some())
+            .filter(|target| {
+                native_target
+                    .as_ref()
+                    .is_none_or(|primary| primary.identity() != target.identity())
+            });
         // 7. Let fulfillReaction be the PromiseReaction { [[Capability]]: resultCapability, [[Type]]: Fulfill, [[Handler]]: onFulfilledJobCallback }.
         let fulfill_reaction = ReactionRecord {
+            native_result_target: native_result_target.clone(),
+            native_target: native_target.clone(),
             promise_capability: result_capability.clone(),
             reaction_type: ReactionType::Fulfill,
             handler: on_fulfilled_job_callback,
@@ -2327,6 +2518,8 @@ impl Promise {
 
         // 8. Let rejectReaction be the PromiseReaction { [[Capability]]: resultCapability, [[Type]]: Reject, [[Handler]]: onRejectedJobCallback }.
         let reject_reaction = ReactionRecord {
+            native_result_target,
+            native_target,
             promise_capability: result_capability,
             reaction_type: ReactionType::Reject,
             handler: on_rejected_job_callback,
@@ -2338,74 +2531,122 @@ impl Promise {
             (promise.state(), promise.handled)
         };
 
+        let mut dependency_handoffs = [None, None];
+        if matches!(state, PromiseState::Pending)
+            && let Some(source) = Self::native_association(promise)
+        {
+            for (slot, target) in dependency_handoffs.iter_mut().zip([
+                fulfill_reaction.native_target.as_ref(),
+                fulfill_reaction.native_result_target.as_ref(),
+            ]) {
+                if let Some(target) = target
+                    && promise.identity() != target.identity()
+                {
+                    let target = Self::ensure_native_association(target, context)?;
+                    *slot = Some(native_settlement::Association::prepare_follow(
+                        &target, &source,
+                    )?);
+                }
+            }
+        }
         // Validate the exact stored pair before changing the promise or invoking an executor.
         let reactions = (fulfill_reaction.to_stored(), reject_reaction.to_stored());
         let heap = context.runtime().heap.clone();
-        heap.with_pending_edges(reactions, |(stored_fulfill, stored_reject)| {
-            match state {
-                // 9. If promise.[[PromiseState]] is pending, then
-                PromiseState::Pending => {
-                    let mut promise = promise.borrow_mut();
-                    let StoredPromiseState::Pending {
-                        fulfill_reactions,
-                        reject_reactions,
-                    } = &mut promise.data_mut().state
-                    else {
-                        unreachable!("promise is pending");
-                    };
+        let notifications = heap
+            .with_pending_edges(reactions, |(stored_fulfill, stored_reject)| {
+                let mut notifications = [None, None];
+                match state {
+                    // 9. If promise.[[PromiseState]] is pending, then
+                    PromiseState::Pending => {
+                        let mut promise = promise.borrow_mut();
+                        let StoredPromiseState::Pending {
+                            fulfill_reactions,
+                            reject_reactions,
+                        } = &mut promise.data_mut().state
+                        else {
+                            unreachable!("promise is pending");
+                        };
 
-                    //   a. Append fulfillReaction as the last element of the List that is promise.[[PromiseFulfillReactions]].
-                    fulfill_reactions.push(stored_fulfill);
+                        //   a. Append fulfillReaction as the last element of the List that is promise.[[PromiseFulfillReactions]].
+                        fulfill_reactions
+                            .try_reserve(1)
+                            .map_err(|_| crate::error::EngineResourceError::Allocation)?;
+                        reject_reactions
+                            .try_reserve(1)
+                            .map_err(|_| crate::error::EngineResourceError::Allocation)?;
+                        for (slot, prepared) in
+                            notifications.iter_mut().zip(dependency_handoffs.iter_mut())
+                        {
+                            *slot = prepared
+                                .take()
+                                .map(native_settlement::PreparedHandoff::commit);
+                        }
+                        fulfill_reactions.push(stored_fulfill);
 
-                    //   b. Append rejectReaction as the last element of the List that is promise.[[PromiseRejectReactions]].
-                    reject_reactions.push(stored_reject);
-                }
-
-                // 10. Else if promise.[[PromiseState]] is fulfilled, then
-                //   a. Let value be promise.[[PromiseResult]].
-                PromiseState::Fulfilled(value) => {
-                    //   b. Let fulfillJob be NewPromiseReactionJob(fulfillReaction, value).
-                    let fulfill_job = new_promise_reaction_job(fulfill_reaction, value, context);
-
-                    //   c. Perform HostEnqueuePromiseJob(fulfillJob.[[Job]], fulfillJob.[[Realm]]).
-                    context
-                        .job_executor()
-                        .enqueue_job(fulfill_job.into(), context.access());
-                }
-
-                // 11. Else,
-                //   a. Assert: The value of promise.[[PromiseState]] is rejected.
-                //   b. Let reason be promise.[[PromiseResult]].
-                PromiseState::Rejected(reason) => {
-                    //   c. If promise.[[PromiseIsHandled]] is false, perform HostPromiseRejectionTracker(promise, "handle").
-                    if !handled {
-                        context.host_hooks().promise_rejection_tracker(
-                            promise,
-                            OperationType::Handle,
-                            context.access(),
-                        );
+                        //   b. Append rejectReaction as the last element of the List that is promise.[[PromiseRejectReactions]].
+                        reject_reactions.push(stored_reject);
                     }
 
-                    //   d. Let rejectJob be NewPromiseReactionJob(rejectReaction, reason).
-                    let reject_job = new_promise_reaction_job(reject_reaction, reason, context);
+                    // 10. Else if promise.[[PromiseState]] is fulfilled, then
+                    //   a. Let value be promise.[[PromiseResult]].
+                    PromiseState::Fulfilled(value) => {
+                        //   b. Let fulfillJob be NewPromiseReactionJob(fulfillReaction, value).
+                        let mut fulfill_job =
+                            new_promise_reaction_job(fulfill_reaction, value, context)?;
+                        fulfill_job.commit();
+                        notifications = fulfill_job.notifications;
+                        let fulfill_job = fulfill_job.job;
 
-                    //   e. Perform HostEnqueuePromiseJob(rejectJob.[[Job]], rejectJob.[[Realm]]).
-                    context
-                        .job_executor()
-                        .enqueue_job(reject_job.into(), context.access());
+                        //   c. Perform HostEnqueuePromiseJob(fulfillJob.[[Job]], fulfillJob.[[Realm]]).
+                        context
+                            .job_executor()
+                            .enqueue_job(fulfill_job.into(), context.access());
+                    }
+
+                    // 11. Else,
+                    //   a. Assert: The value of promise.[[PromiseState]] is rejected.
+                    //   b. Let reason be promise.[[PromiseResult]].
+                    PromiseState::Rejected(reason) => {
+                        //   c. If promise.[[PromiseIsHandled]] is false, perform HostPromiseRejectionTracker(promise, "handle").
+                        if !handled {
+                            context.host_hooks().promise_rejection_tracker(
+                                promise,
+                                OperationType::Handle,
+                                context.access(),
+                            );
+                        }
+
+                        //   d. Let rejectJob be NewPromiseReactionJob(rejectReaction, reason).
+                        let mut reject_job =
+                            new_promise_reaction_job(reject_reaction, reason, context)?;
+                        reject_job.commit();
+                        notifications = reject_job.notifications;
+                        let reject_job = reject_job.job;
+
+                        //   e. Perform HostEnqueuePromiseJob(rejectJob.[[Job]], rejectJob.[[Realm]]).
+                        context
+                            .job_executor()
+                            .enqueue_job(reject_job.into(), context.access());
+                    }
                 }
-            }
 
-            // 12. Set promise.[[PromiseIsHandled]] to true.
-            promise.borrow_mut().data_mut().handled = true;
+                // 12. Set promise.[[PromiseIsHandled]] to true.
+                promise.borrow_mut().data_mut().handled = true;
 
-            // 13. If resultCapability is undefined, then
-            //   a. Return undefined.
-            // 14. Else,
-            //   a. Return resultCapability.[[Promise]].
-            // skipped because we can already access the promise from `result_capability`
-        })
-        .map_err(|error| JsNativeError::typ().with_message(error.to_string()).into())
+                // 13. If resultCapability is undefined, then
+                //   a. Return undefined.
+                // 14. Else,
+                //   a. Return resultCapability.[[Promise]].
+                // skipped because we can already access the promise from `result_capability`
+                Ok::<_, JsError>(notifications)
+            })
+            .map_err(|error| {
+                JsError::from(JsNativeError::typ().with_message(error.to_string()))
+            })??;
+        for association in notifications.into_iter().flatten() {
+            association.notify();
+        }
+        Ok(())
     }
 
     /// `GetPromiseResolve ( promiseConstructor )`
@@ -2443,6 +2684,26 @@ impl Promise {
         promise: &JsObject<Promise>,
         context: &mut Context,
     ) -> ResolvingFunctions {
+        fn run_resolution(
+            promise: &JsObject<Promise>,
+            context: &mut Context,
+            run: impl FnOnce(&mut Context) -> JsResult<JsValue>,
+        ) -> JsResult<JsValue> {
+            let attempt = Promise::native_association(promise).map(|owner| {
+                let lease = owner.resolution_lease();
+                (owner, lease)
+            });
+            let result = run(context);
+            let result = context.check_execution_stop().and(result);
+            if result
+                .as_ref()
+                .is_err_and(|error| error.as_engine().is_some())
+                && let Some((owner, lease)) = attempt
+            {
+                owner.interrupt_resolution(lease);
+            }
+            result
+        }
         fn take_target(slot: &RefCell<Option<ObjectEdge>>) -> Option<JsObject<Promise>> {
             let mut slot = slot.borrow_mut();
             let promise = JsObject::from_inner(slot.as_ref()?.clone())
@@ -2465,22 +2726,45 @@ impl Promise {
         ///  - [ECMAScript reference][spec]
         ///
         /// [spec]: https://tc39.es/ecma262/#sec-triggerpromisereactions
-        fn trigger_promise_reactions(
+        fn prepare_promise_reactions(
             reactions: Vec<ReactionRecord>,
+            source: &JsObject<Promise>,
             argument: &JsValue,
             context: &mut Context,
-        ) {
-            // 1. For each element reaction of reactions, do
-            for reaction in reactions {
-                // a. Let job be NewPromiseReactionJob(reaction, argument).
-                let job = new_promise_reaction_job(reaction, argument.clone(), context);
-
-                // b. Perform HostEnqueuePromiseJob(job.[[Job]], job.[[Realm]]).
+        ) -> JsResult<Vec<PreparedReactionJob>> {
+            let mut jobs = Vec::new();
+            let prepared = (|| {
+                jobs.try_reserve(reactions.len())
+                    .map_err(|_| crate::error::EngineResourceError::Allocation)?;
+                for reaction in reactions {
+                    jobs.push(new_promise_reaction_job(
+                        reaction,
+                        argument.clone(),
+                        context,
+                    )?);
+                }
+                Ok::<_, JsError>(())
+            })();
+            if let Err(error) = prepared {
+                // The source resolving capability has already been consumed.
+                // Its accepted native-target pairs cannot silently wait forever.
+                if let Some(association) = Promise::native_association(source) {
+                    association.retire_pending(crate::job::JobRetirement::Interrupted);
+                }
+                return Err(error);
+            }
+            Ok(jobs)
+        }
+        fn trigger_promise_reactions(jobs: Vec<PreparedReactionJob>, context: &mut Context) {
+            for prepared in jobs {
+                for association in prepared.notifications.into_iter().flatten() {
+                    association.notify();
+                }
+                let job = prepared.job;
                 context
                     .job_executor()
                     .enqueue_job(job.into(), context.access());
             }
-            // 2. Return unused.
         }
 
         /// `FulfillPromise ( promise, value )`
@@ -2496,7 +2780,12 @@ impl Promise {
         /// # Panics
         ///
         /// Panics if `Promise` is not pending.
-        fn fulfill_promise(promise: &JsObject<Promise>, value: JsValue, context: &mut Context) {
+        fn fulfill_promise(
+            promise: &JsObject<Promise>,
+            value: JsValue,
+            context: &mut Context,
+        ) -> JsResult<()> {
+            context.check_execution_stop()?;
             // Root all reactions before clearing the pending state. Enqueueing the first
             // job can run host code while the remaining reactions still await enqueueing.
             let reactions = {
@@ -2513,6 +2802,10 @@ impl Promise {
                     .collect()
             };
 
+            let mut jobs = prepare_promise_reactions(reactions, promise, &value, context)?;
+            for job in &mut jobs {
+                job.commit();
+            }
             // 3–6. Store the result, clear both reaction lists, and mark the promise fulfilled.
             let pending = std::mem::replace(
                 &mut promise.borrow_mut().data_mut().state,
@@ -2520,8 +2813,12 @@ impl Promise {
             );
 
             // 7. Perform TriggerPromiseReactions(reactions, value).
-            trigger_promise_reactions(reactions, &value, context);
+            if let Some(association) = Promise::native_association(promise) {
+                association.settle();
+            }
+            trigger_promise_reactions(jobs, context);
             drop(pending);
+            Ok(())
         }
 
         /// `RejectPromise ( promise, reason )`
@@ -2537,7 +2834,12 @@ impl Promise {
         /// # Panics
         ///
         /// Panics if `Promise` is not pending.
-        fn reject_promise(promise: &JsObject<Promise>, reason: JsValue, context: &mut Context) {
+        fn reject_promise(
+            promise: &JsObject<Promise>,
+            reason: JsValue,
+            context: &mut Context,
+        ) -> JsResult<()> {
+            context.check_execution_stop()?;
             let (reactions, handled) = {
                 let promise = promise.borrow();
                 let promise = promise.data();
@@ -2556,11 +2858,19 @@ impl Promise {
                 (reactions, promise.handled)
             };
 
+            let mut jobs = prepare_promise_reactions(reactions, promise, &reason, context)?;
+            for job in &mut jobs {
+                job.commit();
+            }
             // 3–6. Store the reason, clear both reaction lists, and mark the promise rejected.
             let pending = std::mem::replace(
                 &mut promise.borrow_mut().data_mut().state,
                 StoredPromiseState::Rejected(reason.clone().into_stored()),
             );
+
+            if let Some(association) = Promise::native_association(promise) {
+                association.settle();
+            }
 
             // 7. If promise.[[PromiseIsHandled]] is false, perform HostPromiseRejectionTracker(promise, "reject").
             if !handled {
@@ -2572,8 +2882,9 @@ impl Promise {
             }
 
             // 8. Perform TriggerPromiseReactions(reactions, reason).
-            trigger_promise_reactions(reactions, &reason, context);
+            trigger_promise_reactions(jobs, context);
             drop(pending);
+            Ok(())
         }
 
         // 1. Let alreadyResolved be the Record { [[Value]]: false }.
@@ -2584,6 +2895,7 @@ impl Promise {
             .heap
             .allocate(RefCell::new(Some(promise.edge())))
             .expect("the promise belongs to the resolving function's heap");
+        let native_target = promise.clone();
 
         // 2. Let stepsResolve be the algorithm steps defined in Promise Resolve Functions.
         // 3. Let lengthResolve be the number of non-optional parameters of the function definition in Promise Resolve Functions.
@@ -2604,87 +2916,110 @@ impl Promise {
                         return Ok(JsValue::undefined());
                     };
 
-                    let resolution = args.get_or_undefined(0);
+                    run_resolution(&promise, context, |context| {
+                        let resolution = args.get_or_undefined(0);
 
-                    // 7. If SameValue(resolution, promise) is true, then
-                    if JsValue::same_value(resolution, &promise.clone().into()) {
-                        //   a. Let selfResolutionError be a newly created TypeError object.
-                        let self_resolution_error = JsNativeError::typ()
-                            .with_message("SameValue(resolution, promise) is true")
-                            .into_opaque(context.access())?;
+                        // 7. If SameValue(resolution, promise) is true, then
+                        if JsValue::same_value(resolution, &promise.clone().into()) {
+                            //   a. Let selfResolutionError be a newly created TypeError object.
+                            let self_resolution_error = JsNativeError::typ()
+                                .with_message("SameValue(resolution, promise) is true")
+                                .into_opaque(context.access())?;
 
-                        //   b. Perform RejectPromise(promise, selfResolutionError).
-                        reject_promise(&promise, self_resolution_error.into(), context);
+                            //   b. Perform RejectPromise(promise, selfResolutionError).
+                            reject_promise(&promise, self_resolution_error.into(), context)?;
 
-                        //   c. Return undefined.
-                        return Ok(JsValue::undefined());
-                    }
+                            //   c. Return undefined.
+                            return Ok(JsValue::undefined());
+                        }
 
-                    let Some(then) = resolution.as_object() else {
-                        // 8. If Type(resolution) is not Object, then
-                        //   a. Perform FulfillPromise(promise, resolution).
-                        fulfill_promise(&promise, resolution.clone(), context);
-
-                        //   b. Return undefined.
-                        return Ok(JsValue::undefined());
-                    };
-
-                    // 9. Let then be Completion(Get(resolution, "then")).
-                    let then_action = match then.get(js_string!("then"), context.access()) {
-                        // 10. If then is an abrupt completion, then
-                        Err(e) => {
-                            //   a. Perform RejectPromise(promise, then.[[Value]]).
-                            reject_promise(&promise, e.into_opaque(context.access())?, context);
+                        let Some(then) = resolution.as_object() else {
+                            // 8. If Type(resolution) is not Object, then
+                            //   a. Perform FulfillPromise(promise, resolution).
+                            fulfill_promise(&promise, resolution.clone(), context)?;
 
                             //   b. Return undefined.
                             return Ok(JsValue::undefined());
-                        }
-                        // 11. Let thenAction be then.[[Value]].
-                        Ok(then) => then,
-                    };
+                        };
 
-                    // 12. If IsCallable(thenAction) is false, then
-                    let Some(then_action) =
-                        then_action.as_object().and_then(JsFunction::from_object)
-                    else {
-                        // a. Perform FulfillPromise(promise, resolution).
-                        fulfill_promise(&promise, resolution.clone(), context);
-
-                        //   b. Return undefined.
-                        return Ok(JsValue::undefined());
-                    };
-
-                    // 13. Let thenJobCallback be HostMakeJobCallback(thenAction).
-                    let result =
-                        JobCallback::from_host(then_action, context).and_then(|callback| {
-                            let heap = context.runtime().heap.clone();
-                            heap.with_pending_edges(callback.to_stored(), |_| {
-                                // 14. Let job be NewPromiseResolveThenableJob(promise, resolution, thenJobCallback).
-                                let job = new_promise_resolve_thenable_job(
-                                    promise.clone(),
-                                    resolution.clone(),
-                                    callback,
+                        // 9. Let then be Completion(Get(resolution, "then")).
+                        let then_completion = then.get(js_string!("then"), context.access());
+                        context.check_execution_stop()?;
+                        let then_action = match then_completion {
+                            // 10. If then is an abrupt completion, then
+                            Err(e) => {
+                                //   a. Perform RejectPromise(promise, then.[[Value]]).
+                                reject_promise(
+                                    &promise,
+                                    e.into_opaque(context.access())?,
                                     context,
-                                );
+                                )?;
 
-                                // 15. Perform HostEnqueuePromiseJob(job.[[Job]], job.[[Realm]]).
-                                context
-                                    .job_executor()
-                                    .enqueue_job(job.into(), context.access());
-                            })
-                            .map_err(|error| {
-                                JsNativeError::typ().with_message(error.to_string()).into()
-                            })
-                        });
-                    if let Err(error) = result {
-                        reject_promise(&promise, error.into_opaque(context.access())?, context);
-                    }
+                                //   b. Return undefined.
+                                return Ok(JsValue::undefined());
+                            }
+                            // 11. Let thenAction be then.[[Value]].
+                            Ok(then) => then,
+                        };
 
-                    // 16. Return undefined.
-                    Ok(JsValue::undefined())
+                        // 12. If IsCallable(thenAction) is false, then
+                        let Some(then_action) =
+                            then_action.as_object().and_then(JsFunction::from_object)
+                        else {
+                            // a. Perform FulfillPromise(promise, resolution).
+                            fulfill_promise(&promise, resolution.clone(), context)?;
+
+                            //   b. Return undefined.
+                            return Ok(JsValue::undefined());
+                        };
+
+                        // 13. Let thenJobCallback be HostMakeJobCallback(thenAction).
+                        let result =
+                            JobCallback::from_host(then_action, context).and_then(|callback| {
+                                context.check_execution_stop()?;
+                                let heap = context.runtime().heap.clone();
+                                heap.with_pending_edges(callback.to_stored(), |_| {
+                                    // 14. Let job be NewPromiseResolveThenableJob(promise, resolution, thenJobCallback).
+                                    let (job, handoff) = new_promise_resolve_thenable_job(
+                                        promise.clone(),
+                                        resolution.clone(),
+                                        callback,
+                                        context,
+                                    )?;
+
+                                    let notification =
+                                        handoff.map(native_settlement::PreparedHandoff::commit);
+                                    // 15. Perform HostEnqueuePromiseJob(job.[[Job]], job.[[Realm]]).
+                                    context
+                                        .job_executor()
+                                        .enqueue_job(job.into(), context.access());
+                                    if let Some(association) = notification {
+                                        association.notify();
+                                    }
+                                    Ok(())
+                                })
+                                .map_err(|error| {
+                                    JsError::from(
+                                        JsNativeError::typ().with_message(error.to_string()),
+                                    )
+                                })?
+                            });
+                        if let Err(error) = result {
+                            context.check_execution_stop()?;
+                            reject_promise(
+                                &promise,
+                                error.into_opaque(context.access())?,
+                                context,
+                            )?;
+                        }
+
+                        // 16. Return undefined.
+                        Ok(JsValue::undefined())
+                    })
                 },
                 promise.clone(),
-            ),
+            )
+            .with_resolution_target(&native_target),
         )
         .name("")
         .length(1)
@@ -2713,14 +3048,17 @@ impl Promise {
                         return Ok(JsValue::undefined());
                     };
 
-                    // 7. Perform RejectPromise(promise, reason).
-                    reject_promise(&promise, args.get_or_undefined(0).clone(), context);
+                    run_resolution(&promise, context, |context| {
+                        // 7. Perform RejectPromise(promise, reason).
+                        reject_promise(&promise, args.get_or_undefined(0).clone(), context)?;
 
-                    // 8. Return undefined.
-                    Ok(JsValue::undefined())
+                        // 8. Return undefined.
+                        Ok(JsValue::undefined())
+                    })
                 },
                 promise,
-            ),
+            )
+            .with_resolution_target(&native_target),
         )
         .name("")
         .length(1)
@@ -2737,11 +3075,26 @@ impl Promise {
 ///  - [ECMAScript reference][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-newpromisereactionjob
+struct PreparedReactionJob {
+    job: PromiseJob,
+    handoffs: [Option<native_settlement::PreparedHandoff>; 2],
+    notifications: [Option<Rooted<native_settlement::Association>>; 2],
+}
+impl PreparedReactionJob {
+    fn commit(&mut self) {
+        for (notification, handoff) in self.notifications.iter_mut().zip(self.handoffs.iter_mut()) {
+            *notification = handoff
+                .take()
+                .map(native_settlement::PreparedHandoff::commit);
+        }
+    }
+}
+
 fn new_promise_reaction_job(
     mut reaction: ReactionRecord,
     argument: JsValue,
     context: &mut Context,
-) -> PromiseJob {
+) -> JsResult<PreparedReactionJob> {
     // Inverting order since `job` captures `reaction` by value.
 
     // 2. Let handlerRealm be null.
@@ -2758,6 +3111,8 @@ fn new_promise_reaction_job(
         .unwrap_or_else(|| context.realm().clone());
 
     // 1. Let job be a new Job Abstract Closure with no parameters that captures reaction and argument and performs the following steps when called:
+    let native_result_target = reaction.native_result_target.clone();
+    let native_target = reaction.native_target.clone();
     let job = move |context: crate::ContextAccess<'_>| {
         let context = context.into_owner();
         //   a. Let promiseCapability be reaction.[[Capability]].
@@ -2787,6 +3142,7 @@ fn new_promise_reaction_job(
             ),
         };
 
+        context.check_execution_stop()?;
         match promise_capability {
             None => {
                 // f. If promiseCapability is undefined, return empty for a normal completion.
@@ -2819,7 +3175,21 @@ fn new_promise_reaction_job(
     };
 
     // 4. Return the Record { [[Job]]: job, [[Realm]]: handlerRealm }.
-    PromiseJob::with_realm(job, realm)
+    let job = PromiseJob::with_realm(job, realm);
+    let mut handoffs = [None, None];
+    for (slot, target) in handoffs
+        .iter_mut()
+        .zip([native_target, native_result_target])
+    {
+        if let Some(target) = target {
+            *slot = Promise::prepare_native_handoff(&target, &job.observer())?;
+        }
+    }
+    Ok(PreparedReactionJob {
+        job,
+        handoffs,
+        notifications: [None, None],
+    })
 }
 
 /// More information:
@@ -2831,7 +3201,11 @@ fn new_promise_resolve_thenable_job(
     thenable: JsValue,
     then: JobCallback,
     context: &mut Context,
-) -> PromiseJob {
+) -> JsResult<(PromiseJob, Option<native_settlement::PreparedHandoff>)> {
+    // This job owns pending settlement even before a native bridge adopts its
+    // receiver. Prepare custody now so later observers inherit the real job.
+    Promise::ensure_native_association(&promise_to_resolve, context)?;
+
     // Inverting order since `job` captures variables by value.
 
     // 2. Let getThenRealmResult be Completion(GetFunctionRealm(then.[[Callback]])).
@@ -2844,6 +3218,7 @@ fn new_promise_resolve_thenable_job(
         .unwrap_or_else(|_| context.realm().clone());
 
     // 1. Let job be a new Job Abstract Closure with no parameters that captures promiseToResolve, thenable, and then and performs the following steps when called:
+    let native_target = promise_to_resolve.clone();
     let job = move |context: crate::ContextAccess<'_>| {
         let context = context.into_owner();
         //    a. Let resolvingFunctions be CreateResolvingFunctions(promiseToResolve).
@@ -2859,6 +3234,7 @@ fn new_promise_resolve_thenable_job(
             context,
         );
 
+        context.check_execution_stop()?;
         //    c. If thenCallResult is an abrupt completion, then
         if let Err(value) = then_call_result {
             let value = value.into_opaque(context.access())?;
@@ -2875,7 +3251,9 @@ fn new_promise_resolve_thenable_job(
     };
 
     // 6. Return the Record { [[Job]]: job, [[Realm]]: thenRealm }.
-    PromiseJob::with_realm(job, realm)
+    let job = PromiseJob::with_realm(job, realm);
+    let handoff = Promise::prepare_native_handoff(&native_target, &job.observer())?;
+    Ok((job, handoff))
 }
 
 #[cfg(feature = "experimental")]

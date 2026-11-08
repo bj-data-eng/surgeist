@@ -28,7 +28,7 @@ fn load_module_and_test(module_loader: &Rc<EmbeddedModuleLoader>) {
         context.access(),
     )
     .expect("failed to parse module");
-    let promise = module.load_link_evaluate(context.access());
+    let promise = module.load_link_evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
 
     match promise.state() {

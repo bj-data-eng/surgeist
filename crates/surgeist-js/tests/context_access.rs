@@ -899,7 +899,7 @@ fn parsed_module_lifecycle_and_exports_compose_through_one_scoped_access() {
         let module = Module::parse(Source::from_bytes(
             "export const answer = 42; export function read() { return answer; } globalThis.moduleCommitted = 7;",
         ), None, access.reborrow())?;
-        let loaded = module.load(access.reborrow());
+        let loaded = module.load(access.reborrow())?;
         access.run_jobs()?;
         assert_eq!(loaded.state(), PromiseState::Fulfilled(JsValue::undefined()));
         module.link(access.reborrow())?;
@@ -929,7 +929,7 @@ fn json_and_value_default_modules_evaluate_and_expose_their_authored_exports() {
     let mut owner = Context::default();
     let mut access = owner.access();
     let value_module = Module::from_value_as_default(JsValue::new(42), access.reborrow()).unwrap();
-    let completed = value_module.load_link_evaluate(access.reborrow());
+    let completed = value_module.load_link_evaluate(access.reborrow()).unwrap();
     access.run_jobs().unwrap();
     assert_eq!(
         completed.state(),
@@ -943,7 +943,7 @@ fn json_and_value_default_modules_evaluate_and_expose_their_authored_exports() {
     );
 
     let json_module = Module::parse_json(js_string!("{\"answer\":42}"), access.reborrow()).unwrap();
-    let completed = json_module.load_link_evaluate(access.reborrow());
+    let completed = json_module.load_link_evaluate(access.reborrow()).unwrap();
     access.run_jobs().unwrap();
     assert_eq!(
         completed.state(),

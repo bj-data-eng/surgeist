@@ -4,7 +4,7 @@
 //! there's no other computation running. The module defines several type of jobs:
 //! - [`PromiseJob`] for Promise related jobs.
 //! - [`TimeoutJob`] for jobs that run after a certain amount of time.
-//! - [`NativeAsyncJob`] for jobs that support [`Future`].
+//! - [`NativeAsyncJob`] for jobs that support [`std::future::Future`].
 //! - [`NativeJob`] for generic jobs that aren't related to Promises.
 //!
 //! [`JobCallback`] is an ECMAScript [`JobCallback`] record, containing an `ECMAScript` function
@@ -24,7 +24,7 @@
 //! [Job]: https://tc39.es/ecma262/#sec-jobs
 //! [JobCallback]: https://tc39.es/ecma262/#sec-jobcallback-records
 
-use crate::context::time::{JsDuration, JsInstant};
+use crate::context::time::JsDuration;
 use crate::execution::JobAction;
 use crate::sys::time;
 use crate::{
@@ -34,21 +34,46 @@ use crate::{
     realm::Realm,
 };
 use crate::{ContextAccess, HostContext};
-use futures_concurrency::future::FutureGroup;
-use futures_lite::{StreamExt, future};
-use portable_atomic::AtomicBool;
 use std::any::Any;
 use std::cell::Cell;
-use std::collections::BTreeMap;
-use std::mem;
-use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
-use std::rc::{Rc, Weak};
-use std::sync::Arc;
-use std::sync::atomic::Ordering;
-use std::task::Poll;
-use std::{cell::RefCell, collections::VecDeque, fmt::Debug, future::Future, pin::Pin};
-use surgeist_js_gc::heap::{AccessError, EdgeVisitor, ObjectId, Trace as HeapTrace};
-use surgeist_ledger::PhaseObservation;
+use std::fmt::Debug;
+use std::rc::Rc;
+use surgeist_js_gc::heap::{AccessError, EdgeVisitor, Trace as HeapTrace};
+
+mod asynchronous;
+mod identity;
+mod observer;
+mod queue;
+mod task;
+
+pub use asynchronous::{JobStep, NativeAsyncJob};
+pub use identity::ContextId;
+pub(crate) use identity::ContextLifetime;
+pub use observer::{JobObserver, JobRetirement, JobStatus, JobWait};
+pub(crate) use observer::{RetirementRegistration, RetirementRelay};
+pub(crate) use queue::RuntimeJobQueues;
+pub use queue::SimpleJobExecutor;
+pub use task::ContextTask;
+
+/// Custody-preserving result of a consuming synchronous job entry.
+#[must_use = "retain the returned deferred job or explicitly dispose it"]
+#[derive(Debug)]
+pub enum JobCall<J> {
+    /// The original uncalled job and its before-action refusal.
+    Deferred { job: J, error: crate::JsError },
+    /// An admitted invocation completed and moved its result to this caller.
+    Complete(JsResult<JsValue>),
+}
+
+/// Result of one invocation of a reusable job callback.
+#[must_use = "inspect whether the reusable callback was invoked or deferred"]
+#[derive(Debug)]
+pub enum JobInvocation {
+    /// No callback ran; the reusable callback remains unchanged.
+    Deferred(crate::JsError),
+    /// The admitted callback returned this result.
+    Complete(JsResult<JsValue>),
+}
 
 pub use crate::builtins::finalization_registry::FinalizationRegistryCleanupJob;
 
@@ -62,41 +87,50 @@ pub use crate::builtins::finalization_registry::FinalizationRegistryCleanupJob;
 /// [`Atomics.waitAsync`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Atomics/waitAsync
 pub struct NativeJob {
     #[allow(clippy::type_complexity)]
-    f: Box<dyn for<'call> FnOnce(ContextAccess<'call>) -> JsResult<JsValue>>,
+    f: Option<Box<dyn for<'call> FnOnce(ContextAccess<'call>) -> JsResult<JsValue>>>,
+    observer: JobObserver,
     realm: Option<Realm>,
 }
 
 /// Owns invocation cleanup and the optional realm boundary of native jobs.
+fn admit_native_job(context: &mut Context, realm: Option<&Realm>) -> JsResult<()> {
+    context.check_execution_stop()?;
+    if let Some(realm) = realm {
+        context.check_realm(realm)?;
+    }
+    context.admit_job_action(JobAction::Invocation)
+}
+
 fn invoke_native_job(
     context: &mut Context,
     realm: Option<Realm>,
     call: impl for<'call> FnOnce(ContextAccess<'call>) -> JsResult<JsValue>,
 ) -> JsResult<JsValue> {
-    context.check_execution_stop()?;
-    if let Some(realm) = &realm {
-        context.check_realm(realm)?;
-    }
-    context.admit_job_action(JobAction::Invocation)?;
     let checkpoint = context.vm.call_checkpoint();
     let previous_realm = realm.map(|realm| context.enter_realm(realm)).transpose()?;
     let observation = context.begin_execution_phase(JobAction::Invocation.phase());
     let mut active = context.guard(move |context| {
-        // An unwinding callback may leave a child frame on top. Release its
-        // invocation state before restoring the actual entry caller's realm.
         context.vm.restore_call(checkpoint);
         if let Some(mut realm) = previous_realm {
-            // Entry has already validated that both realms belong to this runtime.
             context.swap_realm(&mut realm);
         }
         context.end_execution_phase(observation);
     });
     active.note_execution_effect();
     let result = call(active.access());
-    // A host callback can swallow an inner error. Its accepted effects remain,
-    // but neither success nor another error can replace the retained host stop.
     drop(active);
     context.check_execution_stop()?;
     result
+}
+
+impl Drop for NativeJob {
+    fn drop(&mut self) {
+        self.observer.retire(if self.f.is_some() {
+            JobRetirement::Dropped
+        } else {
+            JobRetirement::Interrupted
+        });
+    }
 }
 
 impl Debug for NativeJob {
@@ -112,7 +146,8 @@ impl NativeJob {
         F: for<'call> FnOnce(ContextAccess<'call>) -> JsResult<JsValue> + 'static,
     {
         Self {
-            f: Box::new(f),
+            f: Some(Box::new(f)),
+            observer: JobObserver::new(),
             realm: None,
         }
     }
@@ -123,7 +158,8 @@ impl NativeJob {
         F: for<'call> FnOnce(ContextAccess<'call>) -> JsResult<JsValue> + 'static,
     {
         Self {
-            f: Box::new(f),
+            f: Some(Box::new(f)),
+            observer: JobObserver::new(),
             realm: Some(realm),
         }
     }
@@ -144,9 +180,30 @@ impl NativeJob {
     /// callback's result. Invocation-owned VM state is released on return or unwind.
     /// An explicit execution realm is restored after that cleanup; a job without
     /// one preserves a callback's deliberate realm change.
-    pub fn call(self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+    ///
+    /// Before-action refusal returns [`JobCall::Deferred`] with this original
+    /// uncalled wrapper. [`JobCall::Complete`] owns the admitted invocation result.
+    pub fn call(mut self, context: ContextAccess<'_>) -> JobCall<Self> {
         let context = context.into_owner();
-        invoke_native_job(context, self.realm, self.f)
+        if let Err(error) = admit_native_job(context, self.realm.as_ref()) {
+            return JobCall::Deferred { job: self, error };
+        }
+        let call = self.f.take().expect("native job callback runs once");
+        let result = invoke_native_job(context, self.realm.take(), call);
+        if result
+            .as_ref()
+            .is_err_and(|error| error.as_engine().is_some())
+        {
+            self.observer.retire(JobRetirement::Interrupted);
+        } else {
+            self.observer.complete();
+        }
+        JobCall::Complete(result)
+    }
+
+    /// Observes this task without retaining its callback captures.
+    pub fn observer(&self) -> JobObserver {
+        self.observer.clone()
     }
 }
 
@@ -209,9 +266,14 @@ impl NativeJobFn {
     /// callback's result. Invocation-owned VM state is released on return or unwind.
     /// An explicit execution realm is restored after that cleanup; a job without
     /// one preserves a callback's deliberate realm change.
-    pub fn call(&self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+    ///
+    /// A deferred entry runs no callback; this reusable callback remains available.
+    pub fn call(&self, context: ContextAccess<'_>) -> JobInvocation {
         let context = context.into_owner();
-        invoke_native_job(context, self.realm.clone(), &self.f)
+        if let Err(error) = admit_native_job(context, self.realm.as_ref()) {
+            return JobInvocation::Deferred(error);
+        }
+        JobInvocation::Complete(invoke_native_job(context, self.realm.clone(), &self.f))
     }
 }
 
@@ -330,14 +392,30 @@ impl TimeoutJob {
     ///
     /// If the native job has an execution realm defined, this sets the running execution
     /// context to the realm's before calling the inner closure, and resets it after execution.
-    pub fn call(mut self, context: ContextAccess<'_>) -> JsResult<JsValue> {
-        let context = context.into_owner();
-        let result = self.job.take().map_or_else(
-            || Ok(JsValue::undefined()),
-            |job| job.call(context.access()),
-        );
-        self.cancellation_token.revoke();
-        result
+    ///
+    /// Before-action refusal returns [`JobCall::Deferred`] with this original
+    /// uncalled wrapper. [`JobCall::Complete`] owns the admitted invocation result.
+    pub fn call(mut self, context: ContextAccess<'_>) -> JobCall<Self> {
+        match self
+            .job
+            .take()
+            .expect("timeout owns native job")
+            .call(context)
+        {
+            JobCall::Deferred { job, error } => {
+                self.job = Some(job);
+                JobCall::Deferred { job: self, error }
+            }
+            JobCall::Complete(result) => JobCall::Complete(result),
+        }
+    }
+
+    /// Observes the timeout callback's disposition.
+    pub fn observer(&self) -> JobObserver {
+        self.job
+            .as_ref()
+            .expect("timeout owns native job")
+            .observer()
     }
 
     /// Returns the timeout value in milliseconds since epoch.
@@ -421,7 +499,9 @@ impl IntervalJob {
     ///
     /// If the interval job has an execution realm defined, this sets the running execution
     /// context to the realm's before calling the inner closure, and resets it after execution.
-    pub fn call(&self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+    ///
+    /// A deferred entry runs no callback; this reusable callback remains available.
+    pub fn call(&self, context: ContextAccess<'_>) -> JobInvocation {
         let context = context.into_owner();
         self.job.call(context.access())
     }
@@ -482,248 +562,22 @@ impl GenericJob {
 
     /// Calls the `GenericJob` with the specified [`Context`], setting the execution
     /// context to the job's realm before calling the inner closure, and resets it after execution.
-    pub fn call(self, context: ContextAccess<'_>) -> JsResult<JsValue> {
-        let context = context.into_owner();
-        self.0.call(context.access())
-    }
-}
-
-/// The [`Future`] job returned by a [`NativeAsyncJob`] operation.
-pub type BoxedFuture<'a> = Pin<Box<dyn Future<Output = JsResult<JsValue>> + 'a>>;
-
-/// An ECMAScript [Job] that can be run asynchronously.
-///
-/// This is an additional type of job that is not defined by the specification, enabling running `Future` tasks
-/// created by ECMAScript code in an easier way.
-#[allow(clippy::type_complexity)]
-pub struct NativeAsyncJob {
-    f: Box<dyn for<'a, 'owner> FnOnce(&'a HostContext<'owner>) -> BoxedFuture<'a>>,
-    realm: Option<Realm>,
-}
-
-impl Debug for NativeAsyncJob {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NativeAsyncJob")
-            .field("f", &"Closure")
-            .finish()
-    }
-}
-
-impl NativeAsyncJob {
-    /// Creates a new `NativeAsyncJob` from an async closure.
-    pub fn new<F>(f: F) -> Self
-    where
-        F: AsyncFnOnce(&HostContext<'_>) -> JsResult<JsValue> + 'static,
-    {
-        Self {
-            f: Box::new(move |ctx| Box::pin(async move { f(ctx).await })),
-            realm: None,
-        }
-    }
-
-    /// Creates a new `NativeAsyncJob` from an async closure and an execution realm.
-    pub fn with_realm<F>(f: F, realm: Realm) -> Self
-    where
-        F: AsyncFnOnce(&HostContext<'_>) -> JsResult<JsValue> + 'static,
-    {
-        Self {
-            f: Box::new(move |ctx| Box::pin(async move { f(ctx).await })),
-            realm: Some(realm),
-        }
-    }
-
-    /// Gets a reference to the execution realm of the job.
-    #[must_use]
-    pub const fn realm(&self) -> Option<&Realm> {
-        self.realm.as_ref()
-    }
-
-    /// Calls the native async job with the specified [`Context`].
     ///
-    /// # Note
-    ///
-    /// If the native async job has an execution realm defined, this sets the running execution
-    /// context to the realm's before calling the inner closure, and resets it after execution.
-    pub fn call<'a, 'owner>(
-        self,
-        context: &'a HostContext<'owner>,
-    ) -> impl Future<Output = JsResult<JsValue>> + Unpin + use<'a, 'owner> {
-        let realm = self.realm;
-        let prepared = in_job_action(context, realm.as_ref(), JobAction::Preparation, || {
-            (self.f)(context)
-        });
-        let mut state = match prepared {
-            Ok(future) => AsyncJobState::Running(future),
-            Err(error) => AsyncJobState::Failed(error),
-        };
-        std::future::poll_fn(move |cx| {
-            match &state {
-                AsyncJobState::Failed(error) => return Poll::Ready(Err(error.clone())),
-                AsyncJobState::Complete => panic!("a completed job cannot be polled"),
-                AsyncJobState::Running(_) => {}
-            }
-            let action = match AsyncJobActionGuard::begin(context, realm.as_ref(), JobAction::Poll)
-            {
-                Ok(action) => action,
-                Err(refusal) => {
-                    // Admission holds no lease here. Even an external competing
-                    // lease cannot prevent disposal of the refused inner work.
-                    drop(mem::replace(
-                        &mut state,
-                        AsyncJobState::Failed(refusal.clone()),
-                    ));
-                    return Poll::Ready(Err(refusal));
-                }
-            };
-            let mut action = action;
-            let polled = catch_unwind(AssertUnwindSafe(|| {
-                let AsyncJobState::Running(future) = &mut state else {
-                    unreachable!("only a running job enters a poll action")
-                };
-                future.as_mut().poll(cx)
-            }));
-            let mut result = match polled {
-                Ok(result) => result,
-                Err(payload) => {
-                    // A caught native panic cannot leave poisoned inner work
-                    // retained in an otherwise reusable outer future.
-                    drop(mem::replace(&mut state, AsyncJobState::Complete));
-                    drop(action);
-                    resume_unwind(payload)
-                }
-            };
-            let stopped = action.restore_and_check().err();
-            if result.is_ready() || stopped.is_some() {
-                // Captures may run opaque host destructors. Keep the action's
-                // observation open, but release every engine-owned lease first.
-                drop(mem::replace(&mut state, AsyncJobState::Complete));
-            }
-            let stopped = action.check_stop().err().or(stopped);
-            if let Some(stop) = stopped {
-                drop(result);
-                result = Poll::Ready(Err(stop));
-            }
-            if let Err(stop) = action.finish() {
-                drop(result);
-                result = Poll::Ready(Err(stop));
-            }
-            if let Poll::Ready(Err(ref refusal)) = result {
-                state = AsyncJobState::Failed(refusal.clone());
-            }
-            result
-        })
-    }
-}
-
-enum AsyncJobState<'future> {
-    Running(BoxedFuture<'future>),
-    Failed(crate::JsError),
-    Complete,
-}
-
-// Each guard exists for one admitted synchronous action only. Neither the
-// holder's access nor a borrowed Ledger phase spans host code or Pending.
-struct AsyncJobActionGuard<'holder, 'owner> {
-    context: &'holder HostContext<'owner>,
-    cleanup: Option<(crate::vm::CallCheckpoint, Option<Realm>)>,
-    observation: Option<PhaseObservation>,
-}
-
-impl<'holder, 'owner> AsyncJobActionGuard<'holder, 'owner> {
-    fn begin(
-        context: &'holder HostContext<'owner>,
-        realm: Option<&Realm>,
-        action: JobAction,
-    ) -> JsResult<Self> {
-        let (cleanup, observation) = context.with(|access| {
-            let owner = access.into_owner();
-            owner.check_execution_stop()?;
-            if let Some(realm) = realm {
-                owner.check_realm(realm)?;
-            }
-            owner.admit_job_action(action)?;
-            let checkpoint = owner.vm.call_checkpoint();
-            let previous_realm = realm
-                .map(|realm| owner.enter_realm(realm.clone()))
-                .transpose()?;
-            let observation = owner.begin_execution_phase(action.phase());
-            if matches!(action, JobAction::Poll) {
-                owner.note_execution_effect();
-            }
-            Ok(((checkpoint, previous_realm), observation))
-        })?;
-        Ok(Self {
-            context,
-            cleanup: Some(cleanup),
-            observation,
-        })
-    }
-}
-
-impl AsyncJobActionGuard<'_, '_> {
-    fn restore_and_check(&mut self) -> JsResult<()> {
-        self.context.with(|access| {
-            let owner = access.into_owner();
-            self.restore(owner);
-            owner.check_execution_stop()
-        })
-    }
-
-    fn restore(&mut self, owner: &mut Context) {
-        if let Some((checkpoint, previous_realm)) = self.cleanup.take() {
-            owner.vm.restore_call(checkpoint);
-            if let Some(mut previous_realm) = previous_realm {
-                owner.swap_realm(&mut previous_realm);
-            }
+    /// A deferred entry returns the original wrapper without consuming its callback.
+    pub fn call(self, context: ContextAccess<'_>) -> JobCall<Self> {
+        match self.0.call(context) {
+            JobCall::Deferred { job, error } => JobCall::Deferred {
+                job: Self(job),
+                error,
+            },
+            JobCall::Complete(result) => JobCall::Complete(result),
         }
     }
 
-    fn check_stop(&self) -> JsResult<()> {
-        self.context
-            .with(|access| access.into_owner().check_execution_stop())
+    /// Observes this callback's disposition.
+    pub fn observer(&self) -> JobObserver {
+        self.0.observer()
     }
-
-    fn finish(mut self) -> JsResult<()> {
-        self.context.with(|access| {
-            let owner = access.into_owner();
-            self.restore(owner);
-            owner.end_execution_phase(self.observation.take());
-            owner.check_execution_stop()
-        })
-    }
-}
-
-impl Drop for AsyncJobActionGuard<'_, '_> {
-    fn drop(&mut self) {
-        if self.cleanup.is_none() && self.observation.is_none() {
-            return;
-        }
-        self.context
-            .with(|access| {
-                let owner = access.into_owner();
-                self.restore(owner);
-                owner.end_execution_phase(self.observation.take());
-                Ok(())
-            })
-            .expect("host callbacks release short leases before action cleanup");
-    }
-}
-
-fn in_job_action<R>(
-    context: &HostContext<'_>,
-    realm: Option<&Realm>,
-    action: JobAction,
-    run: impl FnOnce() -> R,
-) -> JsResult<R> {
-    let mut guard = AsyncJobActionGuard::begin(context, realm, action)?;
-    let result = run();
-    if let Err(stop) = guard.restore_and_check() {
-        // Dispose a newly created future before closing its preparation phase.
-        drop(result);
-        return Err(guard.finish().err().unwrap_or(stop));
-    }
-    guard.finish()?;
-    Ok(result)
 }
 
 /// An ECMAScript [Job Abstract Closure] executing code related to [`Promise`] objects.
@@ -784,9 +638,21 @@ impl PromiseJob {
     ///
     /// If the job has an execution realm defined, this sets the running execution
     /// context to the realm's before calling the inner closure, and resets it after execution.
-    pub fn call(self, context: ContextAccess<'_>) -> JsResult<JsValue> {
-        let context = context.into_owner();
-        self.0.call(context.access())
+    ///
+    /// A deferred entry returns the original wrapper without consuming its callback.
+    pub fn call(self, context: ContextAccess<'_>) -> JobCall<Self> {
+        match self.0.call(context) {
+            JobCall::Deferred { job, error } => JobCall::Deferred {
+                job: Self(job),
+                error,
+            },
+            JobCall::Complete(result) => JobCall::Complete(result),
+        }
+    }
+
+    /// Observes this callback's disposition.
+    pub fn observer(&self) -> JobObserver {
+        self.0.observer()
     }
 }
 
@@ -943,7 +809,7 @@ pub enum Job {
     ///
     /// See [`PromiseJob`] for more information.
     PromiseJob(PromiseJob),
-    /// A [`Future`]-related job.
+    /// A [`std::future::Future`]-related job.
     ///
     /// See [`NativeAsyncJob`] for more information.
     AsyncJob(NativeAsyncJob),
@@ -1069,280 +935,6 @@ impl JobExecutor for IdleJobExecutor {
     fn enqueue_job(self: Rc<Self>, _: Job, _: ContextAccess<'_>) {}
 
     fn run_jobs(self: Rc<Self>, _: ContextAccess<'_>) -> JsResult<()> {
-        Ok(())
-    }
-}
-
-#[derive(Debug)]
-enum ClockJob {
-    Timeout(TimeoutJob),
-    Interval(IntervalJob),
-}
-
-impl ClockJob {
-    fn cancelled(&self) -> bool {
-        match self {
-            ClockJob::Timeout(t) => t.cancelled(),
-            ClockJob::Interval(i) => i.cancelled(),
-        }
-    }
-}
-
-#[derive(Default)]
-pub(crate) struct RuntimeJobQueues {
-    promise_jobs: RefCell<VecDeque<PromiseJob>>,
-    async_jobs: RefCell<VecDeque<NativeAsyncJob>>,
-    finalization_registry_subscriptions: RefCell<VecDeque<FinalizationRegistryCleanupJob>>,
-    clock_jobs: RefCell<BTreeMap<JsInstant, Vec<ClockJob>>>,
-    generic_jobs: RefCell<VecDeque<GenericJob>>,
-}
-
-impl RuntimeJobQueues {
-    fn clear(&self) {
-        // Dropping job captures can call back into the executor.
-        let promise_jobs = self.promise_jobs.take();
-        let async_jobs = self.async_jobs.take();
-        let clock_jobs = self.clock_jobs.take();
-        let generic_jobs = self.generic_jobs.take();
-        drop((promise_jobs, async_jobs, clock_jobs, generic_jobs));
-    }
-
-    fn is_empty(&self) -> bool {
-        self.promise_jobs.borrow().is_empty()
-            && self.async_jobs.borrow().is_empty()
-            && self.generic_jobs.borrow().is_empty()
-            && self.clock_jobs.borrow().is_empty()
-    }
-
-    fn take_ready_cleanup(&self) -> Option<NativeJob> {
-        let mut subscriptions = self.finalization_registry_subscriptions.borrow_mut();
-        for _ in 0..subscriptions.len() {
-            let subscription = subscriptions
-                .pop_front()
-                .expect("one subscription per iteration");
-            match subscription.try_take() {
-                Poll::Pending => subscriptions.push_back(subscription),
-                Poll::Ready(Some(job)) => {
-                    subscriptions.push_back(subscription);
-                    return Some(job);
-                }
-                Poll::Ready(None) => {}
-            }
-        }
-        None
-    }
-}
-
-/// A simple FIFO executor that bails on the first error.
-///
-/// Jobs are queued by runtime. Contexts sharing both a runtime and this executor
-/// can run each other's jobs. Independent runtimes have independent queues.
-/// Dropping the last attached context discards its runtime's remaining jobs.
-///
-/// This is the default job executor for the [`Context`]. To disable running
-/// promise jobs, see [`IdleJobExecutor`].
-#[derive(Default)]
-pub struct SimpleJobExecutor {
-    queues: RefCell<Vec<(ObjectId, Weak<RuntimeJobQueues>)>>,
-    stop: Arc<AtomicBool>,
-}
-
-impl Debug for SimpleJobExecutor {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("SimpleJobExecutor").finish_non_exhaustive()
-    }
-}
-
-impl SimpleJobExecutor {
-    /// Creates a new `SimpleJobExecutor`.
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Gets the cancellation token for this executor.
-    ///
-    /// Setting the signal to `true` exits the event loop that observes it and
-    /// discards that runtime's ordinary queued jobs. Finalization registry
-    /// subscriptions remain available for later runs.
-    pub fn get_cancellation_token(&self) -> Arc<AtomicBool> {
-        Arc::clone(&self.stop)
-    }
-
-    pub(crate) fn attach_context(&self, context: &mut Context) -> Rc<RuntimeJobQueues> {
-        let queues = self.queues_for(context);
-        context.retain_simple_job_queue(&queues);
-        queues
-    }
-
-    fn queues_for(&self, context: &Context) -> Rc<RuntimeJobQueues> {
-        // A realm identity names its heap without retaining the realm or runtime.
-        let identity = context.realm().identity();
-        let mut queues = self.queues.borrow_mut();
-        if let Some(jobs) = queues
-            .iter()
-            .find(|(key, _)| key.same_heap(identity))
-            .and_then(|(_, jobs)| jobs.upgrade())
-        {
-            return jobs;
-        }
-        queues.retain(|(_, jobs)| jobs.strong_count() != 0);
-        let jobs = Rc::new(RuntimeJobQueues::default());
-        queues.push((identity, Rc::downgrade(&jobs)));
-        jobs
-    }
-}
-
-impl Drop for SimpleJobExecutor {
-    fn drop(&mut self) {
-        // A context can attach through a direct call without owning the executor.
-        let queues = mem::take(self.queues.get_mut());
-        for (_, jobs) in queues {
-            if let Some(jobs) = jobs.upgrade() {
-                jobs.clear();
-                drop(jobs.finalization_registry_subscriptions.take());
-            }
-        }
-    }
-}
-
-impl JobExecutor for SimpleJobExecutor {
-    fn enqueue_job(self: Rc<Self>, job: Job, context: ContextAccess<'_>) {
-        let context = context.into_owner();
-        let queues = self.attach_context(context);
-        match job {
-            Job::PromiseJob(p) => queues.promise_jobs.borrow_mut().push_back(p),
-            Job::AsyncJob(a) => queues.async_jobs.borrow_mut().push_back(a),
-            Job::TimeoutJob(t) => {
-                let now = context.clock().now();
-                queues
-                    .clock_jobs
-                    .borrow_mut()
-                    .entry(now + t.timeout())
-                    .or_default()
-                    .push(ClockJob::Timeout(t));
-            }
-            Job::IntervalJob(i) => {
-                let now = context.clock().now();
-                queues
-                    .clock_jobs
-                    .borrow_mut()
-                    .entry(now + i.interval())
-                    .or_default()
-                    .push(ClockJob::Interval(i));
-            }
-            Job::GenericJob(g) => queues.generic_jobs.borrow_mut().push_back(g),
-            Job::FinalizationRegistryCleanupJob(subscription) => {
-                queues
-                    .finalization_registry_subscriptions
-                    .borrow_mut()
-                    .push_back(subscription);
-            }
-        }
-    }
-
-    fn run_jobs(self: Rc<Self>, context: ContextAccess<'_>) -> JsResult<()> {
-        future::block_on(self.run_jobs_async(&context.into_host_access()))
-    }
-
-    async fn run_jobs_async(self: Rc<Self>, context: &HostContext<'_>) -> JsResult<()>
-    where
-        Self: Sized,
-    {
-        let queues = context.with(|access| Ok(self.attach_context(access.into_owner())))?;
-        let mut group = FutureGroup::new();
-        loop {
-            if self.stop.load(Ordering::Relaxed) && self.stop.swap(false, Ordering::Relaxed) {
-                queues.clear();
-                return Ok(());
-            }
-
-            for job in queues.async_jobs.take() {
-                group.insert(job.call(context));
-            }
-
-            // Dispatch all past-due timeout jobs before the termination check.
-            {
-                let clock = context.with(|access| Ok(access.into_owner().clock_handle()))?;
-                let now = clock.now();
-                let jobs_to_run = {
-                    let mut timeout_jobs = queues.clock_jobs.borrow_mut();
-                    let mut jobs_to_keep = timeout_jobs.split_off(&now);
-                    jobs_to_keep.retain(|_, jobs| {
-                        jobs.retain(|job| !job.cancelled());
-                        !jobs.is_empty()
-                    });
-                    mem::replace(&mut *timeout_jobs, jobs_to_keep)
-                };
-
-                for jobs in jobs_to_run.into_values() {
-                    for job in jobs {
-                        if !job.cancelled() {
-                            match job {
-                                ClockJob::Timeout(job) => {
-                                    if let Err(err) = context.with(|access| job.call(access)) {
-                                        queues.clear();
-                                        return Err(err);
-                                    }
-                                }
-                                ClockJob::Interval(job) => {
-                                    let clock = context
-                                        .with(|access| Ok(access.into_owner().clock_handle()))?;
-                                    let now = clock.now();
-                                    if let Err(err) = context.with(|access| job.call(access)) {
-                                        queues.clear();
-                                        return Err(err);
-                                    }
-                                    queues
-                                        .clock_jobs
-                                        .borrow_mut()
-                                        .entry(now + job.interval())
-                                        .or_default()
-                                        .push(ClockJob::Interval(job));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if queues.is_empty() && group.is_empty() {
-                let Some(job) = queues.take_ready_cleanup() else {
-                    break;
-                };
-                if let Err(err) = context.with(|access| job.call(access)) {
-                    queues.clear();
-                    return Err(err);
-                }
-            }
-
-            if let Some(Err(err)) = future::poll_once(group.next()).await.flatten() {
-                queues.clear();
-                return Err(err);
-            }
-
-            let jobs = queues.promise_jobs.take();
-            for job in jobs {
-                if let Err(err) = context.with(|access| job.call(access)) {
-                    queues.clear();
-                    return Err(err);
-                }
-            }
-
-            let jobs = queues.generic_jobs.take();
-            for job in jobs {
-                if let Err(err) = context.with(|access| job.call(access)) {
-                    queues.clear();
-                    return Err(err);
-                }
-            }
-            context.with(|mut access| {
-                access.clear_kept_objects();
-                Ok(())
-            })?;
-            future::yield_now().await;
-        }
-
         Ok(())
     }
 }

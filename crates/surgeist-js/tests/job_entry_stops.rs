@@ -2,8 +2,6 @@
 
 use std::{
     cell::{Cell, RefCell},
-    future::Future,
-    pin::Pin,
     rc::Rc,
     task::{Context as TaskContext, Poll, Waker},
 };
@@ -12,29 +10,11 @@ use surgeist_js::{
     Context, JsValue, Source,
     error::{EngineError, RuntimeLimitError},
     execution::ExecutionOptions,
-    job::{NativeAsyncJob, SimpleJobExecutor},
+    job::{ContextTask, JobStep, NativeAsyncJob, SimpleJobExecutor},
 };
 
 fn instruction_stop() -> EngineError {
     EngineError::RuntimeLimit(RuntimeLimitError::Instruction { limit: 0 })
-}
-
-fn poll<F: Future + Unpin>(future: &mut F) -> Poll<F::Output> {
-    Pin::new(future).poll(&mut TaskContext::from_waker(Waker::noop()))
-}
-
-async fn yield_once() {
-    let mut yielded = false;
-    std::future::poll_fn(move |cx| {
-        if yielded {
-            Poll::Ready(())
-        } else {
-            yielded = true;
-            cx.waker().wake_by_ref();
-            Poll::Pending
-        }
-    })
-    .await;
 }
 
 #[test]
@@ -46,9 +26,9 @@ fn queued_async_job_refuses_callback_entry_after_a_retained_instruction_stop() {
     let callbacks = Rc::new(Cell::new(0));
     let entered = callbacks.clone();
     context.enqueue_job(
-        NativeAsyncJob::new(async move |_| {
+        NativeAsyncJob::new(move |_| {
             entered.set(entered.get() + 1);
-            Ok(JsValue::new(42))
+            Ok(ContextTask::from_future(async { Ok(JsValue::new(42)) }))
         })
         .into(),
     );
@@ -96,12 +76,20 @@ fn pending_async_job_refuses_its_next_poll_after_an_external_retained_stop() {
     let continued = Rc::new(Cell::new(0));
     let callback_entered = entered.clone();
     let callback_continued = continued.clone();
-    let job = NativeAsyncJob::with_realm(
-        async move |_| {
-            callback_entered.set(callback_entered.get() + 1);
-            yield_once().await;
-            callback_continued.set(callback_continued.get() + 1);
-            Ok(JsValue::new(42))
+    let mut job = NativeAsyncJob::with_realm(
+        move |_| {
+            let mut first = true;
+            Ok(ContextTask::from_poll(move |cx, _| {
+                if first {
+                    first = false;
+                    callback_entered.set(callback_entered.get() + 1);
+                    cx.waker().wake_by_ref();
+                    Poll::Pending
+                } else {
+                    callback_continued.set(callback_continued.get() + 1);
+                    Poll::Ready(Ok(JsValue::new(42)))
+                }
+            }))
         },
         selected,
     );
@@ -109,8 +97,9 @@ fn pending_async_job_refuses_its_next_poll_after_an_external_retained_stop() {
     let outcome = context
         .with_execution(ExecutionOptions::new(0), |access| {
             let holder = access.into_host_access();
-            let mut future = job.call(&holder);
-            assert!(poll(&mut future).is_pending());
+            let mut cx = TaskContext::from_waker(Waker::noop());
+            assert!(matches!(job.run_step(&mut cx, &holder), JobStep::Prepared));
+            assert!(matches!(job.run_step(&mut cx, &holder), JobStep::Pending));
             assert_eq!(entered.get(), 1);
             assert_eq!(continued.get(), 0);
             // This is host code outside the pending job, using the same active
@@ -119,7 +108,7 @@ fn pending_async_job_refuses_its_next_poll_after_an_external_retained_stop() {
                 .with(|mut access| access.eval(Source::from_bytes("0")))
                 .unwrap_err();
             assert_eq!(stopped.as_engine(), Some(&instruction_stop()));
-            *actual_poll.borrow_mut() = Some(poll(&mut future));
+            *actual_poll.borrow_mut() = Some(job.run_step(&mut cx, &holder));
             Ok(())
         })
         .unwrap();
@@ -132,7 +121,7 @@ fn pending_async_job_refuses_its_next_poll_after_an_external_retained_stop() {
         .into_inner()
         .expect("the host must actually request the next engine-owned job poll");
     let stopped = match &polled {
-        Poll::Ready(Err(error)) => error.as_engine(),
+        JobStep::Deferred(error) => error.as_engine(),
         _ => None,
     };
     assert_eq!(

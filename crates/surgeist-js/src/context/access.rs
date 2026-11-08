@@ -75,6 +75,11 @@ impl Context {
 }
 
 impl<'owner> ContextAccess<'owner> {
+    /// Returns the stable identity of this access's exact owned Context.
+    pub fn id(&self) -> crate::job::ContextId {
+        self.owner.id()
+    }
+
     /// Grants a shorter exclusive borrow of the same context.
     #[inline]
     pub fn reborrow(&mut self) -> ContextAccess<'_> {

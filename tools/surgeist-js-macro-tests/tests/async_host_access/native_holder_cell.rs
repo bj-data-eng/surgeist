@@ -1,10 +1,13 @@
 use std::cell::RefCell;
 
-use surgeist_js::{Context, HostContext, JsValue, NativeFunction, job::BoxedFuture};
+use std::task::Poll;
+use surgeist_js::{Context, ContextAccess, JsResult, JsValue, NativeFunction, job::ContextTask};
 
-fn callback<'a>(_: &'a JsValue, _: &'a [JsValue], host: &'a HostContext<'_>) -> BoxedFuture<'a> {
-    let _owner_cell: &RefCell<&mut Context> = host;
-    Box::pin(async { Ok(JsValue::undefined()) })
+fn callback(_: JsValue, _: Vec<JsValue>, _: ContextAccess<'_>) -> JsResult<ContextTask<JsValue>> {
+    Ok(ContextTask::from_poll(|_, host| {
+        let _owner_cell: &RefCell<&mut Context> = host;
+        Poll::Ready(Ok(JsValue::undefined()))
+    }))
 }
 
 fn main() {

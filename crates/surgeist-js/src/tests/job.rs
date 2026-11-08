@@ -5,7 +5,7 @@ use futures_lite::future;
 use crate::{
     JsValue, TestAction,
     context::{ContextBuilder, time::FixedClock},
-    job::{GenericJob, JobExecutor, NativeAsyncJob, SimpleJobExecutor},
+    job::{ContextTask, GenericJob, JobExecutor, NativeAsyncJob, SimpleJobExecutor},
     run_test_actions_with,
 };
 
@@ -28,10 +28,12 @@ fn test_async_job_not_blocking_event_loop() {
             // an async job that will consistently yield to the executor.
             ctx.with(|mut access| {
                 access.enqueue_job(
-                    NativeAsyncJob::new(async |_| {
-                        loop {
-                            future::yield_now().await;
-                        }
+                    NativeAsyncJob::new(|_| {
+                        Ok(ContextTask::from_future(async {
+                            loop {
+                                future::yield_now().await;
+                            }
+                        }))
                     })
                     .into(),
                 );

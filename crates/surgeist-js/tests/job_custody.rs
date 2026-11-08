@@ -14,8 +14,8 @@ use surgeist_js::{
     error::{EngineError, RuntimeLimitError},
     execution::ExecutionOptions,
     job::{
-        GenericJob, JobExecutor, NativeAsyncJob, NativeJob, PromiseJob, SimpleJobExecutor,
-        TimeoutJob,
+        ContextTask, GenericJob, JobExecutor, NativeAsyncJob, NativeJob, PromiseJob,
+        SimpleJobExecutor, TimeoutJob,
     },
 };
 
@@ -174,8 +174,14 @@ fn unrelated_pending_future_survives_another_jobs_stop_and_resumes_without_resta
     let callback_state = state.clone();
     let tag = String::from("accepted future payload");
     context.enqueue_job(
-        NativeAsyncJob::new(async move |_| AcceptedFuture::new(callback_state, tag, (40, 2)).await)
-            .into(),
+        NativeAsyncJob::new(move |_| {
+            Ok(ContextTask::from_future(AcceptedFuture::new(
+                callback_state,
+                tag,
+                (40, 2),
+            )))
+        })
+        .into(),
     );
     let refusal_entries = Rc::new(Cell::new(0));
     let callback_entries = refusal_entries.clone();
@@ -252,13 +258,12 @@ fn dropping_a_pending_drain_preserves_the_started_future_for_the_next_drain() {
     let state = Rc::new(PendingState::default());
     let callback_state = state.clone();
     context.enqueue_job(
-        NativeAsyncJob::new(async move |_| {
-            AcceptedFuture::new(
+        NativeAsyncJob::new(move |_| {
+            Ok(ContextTask::from_future(AcceptedFuture::new(
                 callback_state,
                 String::from("accepted temporary-drain payload"),
                 (40, 2),
-            )
-            .await
+            )))
         })
         .into(),
     );

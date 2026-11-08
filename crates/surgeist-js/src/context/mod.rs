@@ -3,6 +3,7 @@
 use std::any::Any;
 use std::{cell::Cell, path::Path, rc::Rc};
 
+pub use crate::job::ContextId;
 pub use access::ContextAccess;
 pub use hooks::{DefaultHooks, HostHooks};
 pub use host::HostContext;
@@ -28,7 +29,6 @@ use timezone_provider::{experimental_tzif::ZeroCompiledTzdbProvider, provider::T
 
 use crate::job::Job;
 use crate::js_error;
-use crate::module::DynModuleLoader;
 use crate::vm::{CodeBlock, RuntimeLimits};
 use crate::{
     HostDefined, JsNativeError, JsResult, JsString, JsValue, Source, builtins,
@@ -159,16 +159,27 @@ pub struct Context {
     clock: Rc<dyn Clock>,
 
     job_executor: Rc<dyn JobExecutor>,
+    job_lifetime: Rc<crate::job::ContextLifetime>,
 
     // Active contexts own their built-in executor queues.
     simple_job_queues: Vec<Rc<RuntimeJobQueues>>,
 
-    module_loader: Rc<dyn DynModuleLoader>,
+    module_loader: Rc<dyn ModuleLoader>,
 
     optimizer_options: OptimizerOptions,
     root_shape: RootShape,
 
     data: HostDefined<dyn Any>,
+}
+
+impl Drop for Context {
+    fn drop(&mut self) {
+        let identity = self.id();
+        self.job_lifetime.retire();
+        for queue in &self.simple_job_queues {
+            queue.retire_owner(&identity);
+        }
+    }
 }
 
 impl std::fmt::Debug for Context {
@@ -885,6 +896,15 @@ impl Context {
 // ==== Private API ====
 
 impl Context {
+    pub(crate) fn job_lifetime(&self) -> Rc<crate::job::ContextLifetime> {
+        self.job_lifetime.clone()
+    }
+
+    /// Returns this exact Context instance's stable diagnostic identity.
+    pub fn id(&self) -> ContextId {
+        self.job_lifetime.id()
+    }
+
     pub(crate) fn retain_simple_job_queue(&mut self, queue: &Rc<RuntimeJobQueues>) {
         if !self
             .simple_job_queues
@@ -904,7 +924,7 @@ impl Context {
     }
 
     /// Gets the current module loader.
-    pub(crate) fn module_loader(&self) -> Rc<dyn DynModuleLoader> {
+    pub(crate) fn module_loader(&self) -> Rc<dyn ModuleLoader> {
         self.module_loader.clone()
     }
 
@@ -1225,7 +1245,7 @@ pub struct ContextBuilder {
     host_hooks: Option<Rc<dyn HostHooks>>,
     clock: Option<Rc<dyn Clock>>,
     job_executor: Option<Rc<dyn JobExecutor>>,
-    module_loader: Option<Rc<dyn DynModuleLoader>>,
+    module_loader: Option<Rc<dyn ModuleLoader>>,
     can_block: bool,
     #[cfg(feature = "intl")]
     icu: Option<icu::IntlProvider>,
@@ -1410,7 +1430,7 @@ impl ContextBuilder {
         let realm = Realm::create(host_hooks.as_ref(), &root_shape)?;
         let vm = Vm::new(realm);
 
-        let module_loader: Rc<dyn DynModuleLoader> = if let Some(loader) = self.module_loader {
+        let module_loader: Rc<dyn ModuleLoader> = if let Some(loader) = self.module_loader {
             loader
         } else if let Ok(loader) = SimpleModuleLoader::new(Path::new(".")) {
             Rc::new(loader)
@@ -1453,6 +1473,7 @@ impl ContextBuilder {
             host_hooks,
             clock,
             job_executor,
+            job_lifetime: crate::job::ContextLifetime::new(),
             simple_job_queues: Vec::new(),
             module_loader,
             optimizer_options: OptimizerOptions::OPTIMIZE_ALL,

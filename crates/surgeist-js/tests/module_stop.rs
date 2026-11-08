@@ -8,10 +8,10 @@ use std::{
 };
 
 use surgeist_js::{
-    Context, HostContext, JsError, JsNativeError, JsObject, JsResult, JsValue, Module, Source,
+    Context, JsError, JsNativeError, JsObject, JsValue, Module, Source,
     error::{EngineError, RuntimeLimitError},
     execution::ExecutionOptions,
-    job::SimpleJobExecutor,
+    job::{ContextTask, SimpleJobExecutor},
     js_string,
     module::{ModuleLoader, ModuleRequest, Referrer},
     object::builtins::JsPromise,
@@ -24,50 +24,40 @@ struct StoppingLoader {
     returned_saved_error: Cell<bool>,
 }
 
-async fn yield_once() {
-    let mut yielded = false;
-    std::future::poll_fn(move |cx| {
-        if yielded {
-            Poll::Ready(())
-        } else {
-            yielded = true;
-            cx.waker().wake_by_ref();
-            Poll::Pending
-        }
-    })
-    .await;
-}
-
 impl ModuleLoader for StoppingLoader {
-    async fn load_imported_module(
+    fn load_imported_module(
         self: Rc<Self>,
         _: Referrer,
         request: ModuleRequest,
-        host: &HostContext<'_>,
-    ) -> JsResult<Module> {
+    ) -> ContextTask<Module> {
         assert_eq!(request.specifier(), &js_string!("dependency"));
-        self.called.set(true);
-        // Resume the actual loader continuation before causing the stop. Yielding
-        // afterward could make a later poll reject before the returned error.
-        yield_once().await;
-        let stopped = host
-            .with(|mut access| access.eval(Source::from_bytes("0")))
-            .unwrap_err();
-        assert_eq!(
-            stopped.as_engine(),
-            Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
-                limit: 0
-            }))
-        );
-        self.observed_stop.set(true);
-        let error = self
-            .saved_error
-            .borrow()
-            .as_ref()
-            .expect("saved guest throw staged before loading")
-            .clone();
-        self.returned_saved_error.set(true);
-        Err(error)
+        let mut first = true;
+        ContextTask::from_poll(move |cx, host| {
+            if first {
+                first = false;
+                self.called.set(true);
+                cx.waker().wake_by_ref();
+                return Poll::Pending;
+            }
+            let stopped = host
+                .with(|mut access| access.eval(Source::from_bytes("0")))
+                .unwrap_err();
+            assert_eq!(
+                stopped.as_engine(),
+                Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
+                    limit: 0
+                }))
+            );
+            self.observed_stop.set(true);
+            let error = self
+                .saved_error
+                .borrow()
+                .as_ref()
+                .expect("saved guest throw staged before loading")
+                .clone();
+            self.returned_saved_error.set(true);
+            Poll::Ready(Err(error))
+        })
     }
 }
 
@@ -147,6 +137,7 @@ fn assert_retained_stop_precedes_loader_error_materialization(dynamic: bool) {
         )
         .unwrap()
         .load(context.access())
+        .unwrap()
     };
     context
         .global_object()

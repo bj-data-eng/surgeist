@@ -200,8 +200,6 @@ futures-lite = "2.6.1"
 test-case = "3.3.1"
 rstest = "0.26.1"
 url = "2.5.8"
-futures-concurrency = "7.7.1"
-dynify = "0.1.2"
 temp-env = "0.3.6"
 strum = { version = "0.28", features = ["derive"] }
 async-channel = "2.5.0"

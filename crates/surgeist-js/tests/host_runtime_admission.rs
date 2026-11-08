@@ -14,7 +14,7 @@ use surgeist_js::{
     },
     context::HostHooks,
     error::{EngineError, PanicError},
-    job::{JobExecutor, NativeAsyncJob, SimpleJobExecutor},
+    job::{ContextTask, JobExecutor, NativeAsyncJob, SimpleJobExecutor},
     js_string,
     object::FunctionObjectBuilder,
     object::builtins::{JsArray, JsArrayBuffer, JsSharedArrayBuffer, JsTypedArray, JsUint8Array},
@@ -367,9 +367,9 @@ fn dropping_a_direct_executor_releases_job_captures() {
     let dropped = Rc::new(Cell::new(false));
     let probe = Probe(dropped.clone());
     Rc::new(SimpleJobExecutor::new()).enqueue_job(
-        NativeAsyncJob::new(async move |_| {
+        NativeAsyncJob::new(move |_| {
             drop(probe);
-            Ok(JsValue::undefined())
+            Ok(ContextTask::from_future(async { Ok(JsValue::undefined()) }))
         })
         .into(),
         context.access(),

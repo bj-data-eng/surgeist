@@ -21,7 +21,7 @@ fn subdirectories() {
 
     let source = Source::from_bytes(b"export { file1 } from 'file1.js';");
     let module = surgeist_js::Module::parse(source, None, context.access()).unwrap();
-    let result = module.load_link_evaluate(context.access());
+    let result = module.load_link_evaluate(context.access()).unwrap();
 
     context.run_jobs().unwrap();
     match result.state() {
@@ -66,7 +66,7 @@ fn json_import_attributes_are_part_of_the_cache_key() {
     ",
     );
     let module = surgeist_js::Module::parse(source, None, context.access()).unwrap();
-    let result = module.load_link_evaluate(context.access());
+    let result = module.load_link_evaluate(context.access()).unwrap();
 
     context.run_jobs().unwrap();
     assert_eq!(

@@ -1,22 +1,22 @@
 //! A Rust API wrapper for Boa's promise Builtin ECMAScript Object
 
 use super::{JsArray, JsFunction};
+use crate::ContextAccess;
+#[cfg(feature = "experimental")]
+use crate::JsArgs;
+use crate::builtins::promise::native_settlement::{SettlementStatus, SettlementWait};
 use crate::value::TryIntoJs;
-use crate::{ContextAccess, HostContext};
 use crate::{
-    JsArgs, JsError, JsExpect, JsNativeError, JsResult, JsValue, NativeFunction,
+    JsError, JsExpect, JsNativeError, JsResult, JsValue, NativeFunction,
     builtins::{
         Promise,
         promise::{PromiseState, ResolvingFunctions},
     },
-    error::StoredJsError,
-    job::NativeAsyncJob,
+    job::{ContextTask, NativeAsyncJob},
     object::JsObject,
-    value::{StoredValue, TryFromJs},
+    value::TryFromJs,
 };
-use std::cell::RefCell;
 use std::{future::Future, pin::Pin, task};
-use surgeist_js_gc::heap::{Rooted, Trace as HeapTrace};
 
 /// An ECMAScript [promise] object.
 ///
@@ -291,14 +291,14 @@ impl JsPromise {
     /// # use surgeist_js::{
     /// #    object::builtins::JsPromise,
     /// #    builtins::promise::PromiseState,
-    /// #    Context, HostContext, JsResult, JsValue
+    /// #    Context, JsResult, JsValue
     /// # };
-    /// async fn f(_: &HostContext<'_>) -> JsResult<JsValue> {
+    /// async fn f() -> JsResult<JsValue> {
     ///     Ok(JsValue::null())
     /// }
     /// let context = &mut Context::default();
     ///
-    /// let promise = JsPromise::from_async_fn(f, context.access());
+    /// let promise = JsPromise::from_task(|_| Ok(surgeist_js::job::ContextTask::from_future(f())), context.access()).unwrap();
     ///
     /// context.run_jobs();
     ///
@@ -306,46 +306,57 @@ impl JsPromise {
     /// ```
     ///
     /// [async_fn]: crate::native_function::NativeFunction::from_async_fn
-    pub fn from_async_fn<F>(f: F, context: ContextAccess<'_>) -> Self
+    /// Returns a native error if settlement-observer preparation cannot complete.
+    /// The factory runs only after its job's preparation is admitted.
+    pub fn from_task<F>(factory: F, context: ContextAccess<'_>) -> JsResult<Self>
     where
-        F: AsyncFnOnce(&HostContext<'_>) -> JsResult<JsValue> + 'static,
+        F: for<'call> FnOnce(ContextAccess<'call>) -> JsResult<ContextTask<JsValue>> + 'static,
     {
         let context = context.into_owner();
+        context.check_execution_stop()?;
         let (promise, resolvers) = Self::new_pending(context.access());
+        let association = Promise::ensure_native_association(&promise.inner, context)?;
         let realm = context.realm().clone();
-
-        context.enqueue_job(
-            NativeAsyncJob::with_realm(
-                async move |context| {
-                    let result = f(context).await;
-
-                    context.with(|access| {
+        let job = NativeAsyncJob::with_realm(
+            move |access| {
+                let mut task = match factory(access) {
+                    Ok(task) => task,
+                    Err(error) if error.as_engine().is_some() => return Err(error),
+                    Err(error) => ContextTask::from_future(std::future::ready(Err(error))),
+                };
+                let mut resolvers = Some(resolvers);
+                Ok(ContextTask::from_poll(move |cx, host| {
+                    let result = match task.poll(cx, host) {
+                        task::Poll::Pending => return task::Poll::Pending,
+                        task::Poll::Ready(result) => result,
+                    };
+                    let resolvers = resolvers.take().expect("promise task completes once");
+                    task::Poll::Ready(host.with(|access| {
                         let context = access.into_owner();
                         context.check_execution_stop()?;
                         match context.runtime().admit_callback_result(result) {
-                            Ok(v) => resolvers.resolve.call(
+                            Ok(value) => resolvers.resolve.call(
                                 &JsValue::undefined(),
-                                &[v],
+                                &[value],
                                 context.access(),
                             ),
-                            Err(e) => {
-                                if !e.is_catchable() {
-                                    return Err(e);
-                                }
-                                let e = e.into_opaque(context.access())?;
-                                resolvers
-                                    .reject
-                                    .call(&JsValue::undefined(), &[e], context.access())
+                            Err(error) => {
+                                let value = error.into_opaque(context.access())?;
+                                resolvers.reject.call(
+                                    &JsValue::undefined(),
+                                    &[value],
+                                    context.access(),
+                                )
                             }
                         }
-                    })
-                },
-                realm,
-            )
-            .into(),
+                    }))
+                }))
+            },
+            realm,
         );
-
-        promise
+        association.bind_job(&job.observer(), true)?;
+        context.enqueue_job(job.into());
+        Ok(promise)
     }
 
     /// Creates a new `JsPromise` from a `Result<T, JsError>`, where `T` is the fulfilled value of
@@ -1109,75 +1120,27 @@ impl JsPromise {
     /// # Ok(())
     /// # }
     /// ```
+    /// Native-associated work retirement completes this future with
+    /// `EngineError::JobRetired`; it does not reject the guest promise.
+    /// An already published guest settlement takes precedence.
     pub fn into_js_future(self, context: ContextAccess<'_>) -> JsResult<JsFuture> {
         let context = context.into_owner();
-        // Mostly based from:
-        // https://docs.rs/wasm-bindgen-futures/0.4.37/src/wasm_bindgen_futures/lib.rs.html#109-168
+        self.inner.check_runtime(context.runtime())?;
+        let association = Promise::ensure_native_association(&self.inner, context)?;
+        let native_wait = association.signal().wait()?;
 
-        fn finish(state: &RefCell<Inner>, result: FutureResult) {
-            let task = {
-                let mut state = state.borrow_mut();
+        // Keep the ordinary species/host-hook/handled registration. Native
+        // observation itself follows P, independently of these delivery jobs.
+        let resolve = NativeFunction::from_builtin(|_, _, _| Ok(JsValue::undefined()))
+            .to_js_function(context.realm())?;
+        let reject = NativeFunction::from_builtin(|_, _, _| Ok(JsValue::undefined()))
+            .to_js_function(context.realm())?;
+        drop(self.then(Some(resolve), Some(reject), context.access())?);
 
-                // The engine ensures both `resolve` and `reject` are called only once,
-                // and only one of them.
-                debug_assert!(state.result.is_none());
-
-                // Store the received value into the state shared by the resolving functions
-                // and the `JsFuture` itself. This will be accessed when the executor polls
-                // the `JsFuture` again.
-                state.result = Some(result);
-                state.task.take()
-            };
-
-            // `task` could be `None` if the `JsPromise` was already fulfilled before polling
-            // the `JsFuture`.
-            if let Some(task) = task {
-                task.wake();
-            }
-        }
-
-        let state = context
-            .runtime()
-            .heap
-            .allocate(RefCell::new(Inner {
-                result: None,
-                task: None,
-            }))
-            .expect("a pending future has no object edges");
-
-        let resolve = {
-            let state = state.clone();
-
-            NativeFunction::from_builtin_with_captures(
-                |_, args, state, _| {
-                    let value = args.get_or_undefined(0).clone().into_stored();
-                    finish(state, FutureResult::Fulfilled(value));
-                    Ok(JsValue::undefined())
-                },
-                state,
-            )
-        };
-
-        let reject = {
-            let state = state.clone();
-
-            NativeFunction::from_builtin_with_captures(
-                |_, args, state, _| {
-                    let err = JsError::from_opaque(args.get_or_undefined(0).clone());
-                    finish(state, FutureResult::Rejected(err.into_stored()));
-                    Ok(JsValue::undefined())
-                },
-                state,
-            )
-        };
-
-        drop(self.then(
-            Some(resolve.to_js_function(context.realm())?),
-            Some(reject.to_js_function(context.realm())?),
-            context.access(),
-        )?);
-
-        Ok(JsFuture { inner: state })
+        Ok(JsFuture {
+            promise: self,
+            native_wait,
+        })
     }
 
     /// Run jobs until this promise is resolved or rejected. This could
@@ -1257,6 +1220,11 @@ impl JsPromise {
         loop {
             match self.state() {
                 PromiseState::Pending => {
+                    if let Some(association) = Promise::native_association(&self.inner)
+                        && let SettlementStatus::Retired(reason) = association.signal().status()
+                    {
+                        return Err(crate::error::EngineError::JobRetired(reason).into());
+                    }
                     context.run_jobs()?;
                 }
                 PromiseState::Fulfilled(f) => break Ok(f),
@@ -1418,7 +1386,8 @@ impl TryIntoJs for JsPromise {
 ///
 /// The only way to construct an instance of `JsFuture` is by calling [`JsPromise::into_js_future`].
 pub struct JsFuture {
-    inner: Rooted<RefCell<Inner>>,
+    promise: JsPromise,
+    native_wait: SettlementWait,
 }
 
 impl std::fmt::Debug for JsFuture {
@@ -1427,37 +1396,39 @@ impl std::fmt::Debug for JsFuture {
     }
 }
 
-#[derive(HeapTrace)]
-struct Inner {
-    result: Option<FutureResult>,
-    #[heap_trace(skip)]
-    task: Option<task::Waker>,
-}
-
-#[derive(HeapTrace)]
-enum FutureResult {
-    Fulfilled(StoredValue),
-    Rejected(StoredJsError),
-}
-
-// Taken from:
-// https://docs.rs/wasm-bindgen-futures/0.4.37/src/wasm_bindgen_futures/lib.rs.html#171-187
 impl Future for JsFuture {
     type Output = JsResult<JsValue>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> task::Poll<Self::Output> {
-        let mut inner = self.inner.borrow_mut();
-
-        if let Some(result) = &inner.result {
-            let result = match result {
-                FutureResult::Fulfilled(value) => Ok(value.to_value()),
-                FutureResult::Rejected(err) => Err(err.to_error()),
-            };
-            inner.result = None;
-            return task::Poll::Ready(result);
+        fn settled(promise: &JsPromise) -> Option<JsResult<JsValue>> {
+            match promise.state() {
+                PromiseState::Pending => None,
+                PromiseState::Fulfilled(value) => Some(Ok(value)),
+                PromiseState::Rejected(value) => Some(Err(JsError::from_opaque(value))),
+            }
         }
 
-        inner.task = Some(cx.waker().clone());
-        task::Poll::Pending
+        let this = self.get_mut();
+        if let Some(result) = settled(&this.promise) {
+            return task::Poll::Ready(result);
+        }
+        let status = match this.native_wait.poll(cx) {
+            task::Poll::Pending => return task::Poll::Pending,
+            task::Poll::Ready(status) => status,
+        };
+        // Waker registration can reenter host code. Published settlement still
+        // wins if that reentry settled P while the native signal was observed.
+        if let Some(result) = settled(&this.promise) {
+            return task::Poll::Ready(result);
+        }
+        match status {
+            SettlementStatus::Retired(reason) => {
+                task::Poll::Ready(Err(crate::error::EngineError::JobRetired(reason).into()))
+            }
+            SettlementStatus::Settled => {
+                unreachable!("native settlement follows guest publication")
+            }
+            SettlementStatus::Pending => task::Poll::Pending,
+        }
     }
 }
