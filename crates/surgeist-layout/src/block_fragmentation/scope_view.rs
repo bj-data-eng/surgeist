@@ -30,6 +30,7 @@ impl<'a, Tree: LayoutTree> ScopeView<'a, Tree> {
             let mut style = tree.node_input(entry.node).clone();
             if entry.atomic_owner.is_none()
                 && let Some(local) = &local
+                && !(own.contents && own.owner == index && key.closing.is_some())
             {
                 if local.start < range.start
                     || resumed == Some(local.start)
@@ -42,7 +43,9 @@ impl<'a, Tree: LayoutTree> ScopeView<'a, Tree> {
                     super::source::clear_edge(&mut style.padding, axes.block_end());
                     super::source::clear_edge(&mut style.border, axes.block_end());
                 }
-                if local.start < range.start && local.end > range.start {
+                if (local.start < range.start || resumed == Some(local.start))
+                    && local.end > range.start
+                {
                     super::source::clear_margin(&mut style.margin, axes.block_start());
                 }
                 if local.start < range.end && local.end > range.end {
@@ -162,14 +165,27 @@ pub(super) struct ViewKey {
     pub(super) resumed: Option<usize>,
     pub(super) opening: bool,
     pub(super) closing: Option<bool>,
+    pub(super) trimmed: TrimContextId,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) struct TrimContextId(usize);
+impl TrimContextId {
+    pub(super) const EMPTY: Self = Self(0);
+}
+enum TrimContext {
+    Empty,
+    Edges(Vec<(usize, PhysicalSide)>),
+    Join(TrimContextId, TrimContextId),
 }
 pub(super) struct Views {
     entries: Vec<ViewKey>,
+    trims: Vec<TrimContext>,
 }
 impl Views {
     pub(super) fn new() -> Self {
         Self {
             entries: Vec::new(),
+            trims: vec![TrimContext::Empty],
         }
     }
     pub(super) fn issue(
@@ -186,5 +202,55 @@ impl Views {
     }
     pub(super) fn get(&self, id: crate::engine::block_scope::SourceViewId) -> Option<&ViewKey> {
         self.entries.get(id.0.checked_sub(1)?)
+    }
+    pub(super) fn trim_edges(&self, id: TrimContextId) -> Vec<(usize, PhysicalSide)> {
+        let mut pending = vec![id];
+        let mut edges = Vec::new();
+        while let Some(id) = pending.pop() {
+            match &self.trims[id.0] {
+                TrimContext::Empty => {}
+                TrimContext::Edges(local) => edges.extend(local.iter().copied()),
+                TrimContext::Join(left, right) => {
+                    pending.push(*left);
+                    pending.push(*right);
+                }
+            }
+        }
+        edges
+    }
+    /// Local differences are retained once; inherited contexts are flat arena
+    /// references. Expanded descendant lists exist only while applying a view.
+    pub(super) fn extend_trims(
+        &mut self,
+        base: TrimContextId,
+        mut local: Vec<(usize, PhysicalSide)>,
+    ) -> Result<TrimContextId, ()> {
+        let inherited = self.trim_edges(base);
+        local.retain(|edge| !inherited.contains(edge));
+        if local.is_empty() {
+            return Ok(base);
+        }
+        let leaf = if let Some(index) = self
+            .trims
+            .iter()
+            .position(|context| matches!(context, TrimContext::Edges(edges) if *edges == local))
+        {
+            TrimContextId(index)
+        } else {
+            self.trims.try_reserve(1).map_err(|_| ())?;
+            let id = TrimContextId(self.trims.len());
+            self.trims.push(TrimContext::Edges(local));
+            id
+        };
+        if base == TrimContextId::EMPTY {
+            return Ok(leaf);
+        }
+        if let Some(index) = self.trims.iter().position(|context| matches!(context, TrimContext::Join(left, right) if *left == base && *right == leaf)) {
+            return Ok(TrimContextId(index));
+        }
+        self.trims.try_reserve(1).map_err(|_| ())?;
+        let id = TrimContextId(self.trims.len());
+        self.trims.push(TrimContext::Join(base, leaf));
+        Ok(id)
     }
 }

@@ -52,6 +52,13 @@ pub(crate) fn accepted_inline_basis<Node: Copy + Eq, S: LayoutScalar, M>(
     })
 }
 
+pub(super) fn qualified_path_inline_basis<Node, S: LayoutScalar>(
+    binding: ContentInsetBinding<Node, S>,
+    inline: S,
+) -> AcceptedContentInsetReceipt<Node, S> {
+    AcceptedContentInsetReceipt { binding, inline }
+}
+
 impl<Node: Copy + Eq, S: LayoutScalar> AcceptedContentInsetReceipt<Node, S> {
     /// `selected` has already crossed the relative-position conflict reducer.
     pub(super) fn selected_basis<M>(

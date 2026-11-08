@@ -213,6 +213,12 @@ impl LegalityFacts {
         self.controls.merge(other.controls);
         self.ancestors.merge(other.ancestors);
     }
+    fn interior(self) -> Self {
+        Self {
+            ancestors: self.ancestors,
+            ..Self::default()
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -237,6 +243,34 @@ impl<S: LayoutScalar> SelectedPolicyOf<S> {
     ) -> Self {
         let mut facts = self.facts;
         facts.merge(LegalityFacts::capture(parent, available));
+        Self {
+            origin: Arc::clone(&self.origin),
+            facts,
+        }
+    }
+    pub(super) fn project_accepted(&self, parent: &Self) -> Self {
+        let mut facts = self.facts;
+        facts.merge(parent.facts);
+        Self {
+            origin: Arc::clone(&self.origin),
+            facts,
+        }
+    }
+    pub(super) fn project_interior(
+        &self,
+        parent: &FragmentationOpportunityOf<S>,
+        available: FragmentationBreakKinds,
+    ) -> Self {
+        let mut facts = self.facts;
+        facts.merge(LegalityFacts::capture(parent, available).interior());
+        Self {
+            origin: Arc::clone(&self.origin),
+            facts,
+        }
+    }
+    pub(super) fn project_accepted_interior(&self, parent: &Self) -> Self {
+        let mut facts = self.facts;
+        facts.merge(parent.facts.interior());
         Self {
             origin: Arc::clone(&self.origin),
             facts,
@@ -276,6 +310,39 @@ pub(super) fn legal_projected<S: LayoutScalar>(
 ) -> bool {
     let mut facts = selected.facts;
     facts.merge(LegalityFacts::capture(parent, available));
+    legal_view(selected.origin.kind, facts, crossed, stage)
+}
+
+pub(super) fn legal_projected_accepted<S: LayoutScalar>(
+    selected: &SelectedPolicyOf<S>,
+    parent: &SelectedPolicyOf<S>,
+    crossed: FragmentationBreakKinds,
+    stage: FragmentationStage,
+) -> bool {
+    let mut facts = selected.facts;
+    facts.merge(parent.facts);
+    legal_view(selected.origin.kind, facts, crossed, stage)
+}
+
+pub(super) fn legal_projected_interior<S: LayoutScalar>(
+    selected: &SelectedPolicyOf<S>,
+    parent: &FragmentationOpportunityOf<S>,
+    crossed: FragmentationBreakKinds,
+    available: FragmentationBreakKinds,
+    stage: FragmentationStage,
+) -> bool {
+    let mut facts = selected.facts;
+    facts.merge(LegalityFacts::capture(parent, available).interior());
+    legal_view(selected.origin.kind, facts, crossed, stage)
+}
+pub(super) fn legal_projected_accepted_interior<S: LayoutScalar>(
+    selected: &SelectedPolicyOf<S>,
+    parent: &SelectedPolicyOf<S>,
+    crossed: FragmentationBreakKinds,
+    stage: FragmentationStage,
+) -> bool {
+    let mut facts = selected.facts;
+    facts.merge(parent.facts.interior());
     legal_view(selected.origin.kind, facts, crossed, stage)
 }
 

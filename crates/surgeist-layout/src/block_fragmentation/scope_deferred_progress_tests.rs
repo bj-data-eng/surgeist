@@ -2,6 +2,9 @@
 use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 
+#[path = "scope_deferred_relocation_tests.rs"]
+mod relocation_tests;
+
 fn scalar<S: LayoutScalar>(value: f64) -> S {
     S::from_f64(value)
 }
@@ -17,11 +20,19 @@ fn block<S: LayoutScalar>(height: Option<f64>) -> NodeInputOf<S> {
 }
 
 fn deferred_after_zero_extent<S: LayoutScalar>(capped: bool) {
+    deferred_after_zero_extent_with_before::<S>(capped, FragmentationBreak::Auto);
+}
+
+fn deferred_after_zero_extent_with_before<S: LayoutScalar>(
+    capped: bool,
+    before: FragmentationBreak,
+) {
     // Frame0 is exhausted by prefix100. A0 still has Atomic extent1 and
     // belongs there. B150 cannot fit there, so it begins in frame1 and
     // overflows its80 height as one indivisible box. Tail10 then starts at
     // frame2 y0. No break is forced and maximum200 is never exhausted.
     let mut owner = block::<S>(None);
+    owner.break_before = before;
     if capped {
         owner.max_size.height = MaxSizeOf::px(scalar(200.0));
     }
@@ -100,7 +111,6 @@ fn deferred_after_zero_extent<S: LayoutScalar>(capped: bool) {
         target: bound.target_basis(),
         template: request,
         intrinsics: Rc::new(RefCell::new(Vec::new())),
-        progress: Rc::new(RefCell::new(Default::default())),
     };
     let driver = Driver::new(&environment, &scopes).unwrap();
     let retained_records = driver.records.clone();
@@ -115,7 +125,12 @@ fn deferred_after_zero_extent<S: LayoutScalar>(capped: bool) {
                     let scope = &scopes.scopes[record.scope.0];
                     scope.contents && scopes.source.nodes[scope.owner].node == 2
                 })
-                .unwrap();
+                .unwrap_or_else(|| {
+                    panic!(
+                        "completed child receipt missing; parent error: {:?}",
+                        result.as_ref().err()
+                    )
+                });
             let deferred = &child.report.report().breaks[0];
             assert_eq!(deferred.reason, FragmentationBreakReason::Deferred);
             assert_eq!(deferred.stage, FragmentationStage::Strict);
@@ -167,6 +182,70 @@ fn deferred_after_zero_extent<S: LayoutScalar>(capped: bool) {
         result.unwrap_or_else(|error| panic!("Deferred after A0 capped={capped}: {error:?}"));
     let records = resolved.records.borrow();
     let root = records[resolved.root.0].as_ref().unwrap();
+    if capped {
+        let (receipt, child) = records
+            .iter()
+            .enumerate()
+            .find_map(|(index, record)| {
+                let record = record.as_ref()?;
+                let scope = &scopes.scopes[record.scope.0];
+                (scope.contents && scopes.source.nodes[scope.owner].node == 2)
+                    .then_some((ReceiptId(index), record))
+            })
+            .unwrap();
+        let binding = root
+            .bindings
+            .borrow()
+            .iter()
+            .find(|binding| binding.owner == 1)
+            .copied()
+            .unwrap();
+        assert_eq!(binding.receipt, receipt);
+        let placement = child.placement.as_ref().unwrap();
+        assert_eq!(placement.query.fragmentainer_index, 0);
+        assert_eq!(placement.origin.block, scalar(100.0));
+        assert_eq!(placement.outside, scalar(100.0));
+        // Frame1's final replay occurs after the scheduler has consumed
+        // PrincipalEnd. It must adopt the same completed child, not rebind it
+        // to the continuation's width60/origin0 and discard its accepted A0.
+        for accepted in &root.frames[..2] {
+            assert_eq!(
+                accepted
+                    .receipts
+                    .iter()
+                    .filter(|&&id| id == receipt)
+                    .count(),
+                1
+            );
+        }
+        assert!(!root.frames[2].receipts.contains(&receipt));
+        assert_eq!(root.frames[0].selection.partial, Some(1));
+        assert_eq!(root.frames[1].selection.range, 1..3);
+        let adopted = root.frames[1]
+            .projections
+            .iter()
+            .filter(|(node, _)| *node == 2)
+            .map(|(_, projection)| *projection)
+            .collect::<Vec<_>>();
+        assert_eq!(adopted.len(), 1);
+        let cache = child.principals.borrow();
+        let actual = cache
+            .iter()
+            .find(|cached| cached.production == adopted[0])
+            .unwrap();
+        assert_eq!(actual.key.frame, 1);
+        assert!(actual.key.body && actual.key.closing);
+        assert_eq!(actual.key.window, child.window_id(1));
+        let bodies = resolved.productions.borrow();
+        let actual_b = bodies[actual.production.0]
+            .packet
+            .bodies
+            .iter()
+            .filter(|body| body.node == 4)
+            .collect::<Vec<_>>();
+        assert_eq!(actual_b.len(), 1);
+        assert_eq!(actual_b[0].output.size.height, scalar(150.0));
+    }
     assert_eq!(
         root.frames
             .iter()
@@ -246,3 +325,23 @@ fn scope_deferred_after_zero_extent_capped_f32() {
 fn scope_deferred_after_zero_extent_capped_f64() {
     deferred_after_zero_extent::<f64>(true);
 }
+
+#[test]
+fn scope_deferred_before_owner_avoid_uncapped_f32() {
+    deferred_after_zero_extent_with_before::<f32>(false, FragmentationBreak::AvoidPage);
+}
+#[test]
+fn scope_deferred_before_owner_avoid_uncapped_f64() {
+    deferred_after_zero_extent_with_before::<f64>(false, FragmentationBreak::AvoidPage);
+}
+#[test]
+fn scope_deferred_before_owner_avoid_capped_f32() {
+    deferred_after_zero_extent_with_before::<f32>(true, FragmentationBreak::AvoidPage);
+}
+#[test]
+fn scope_deferred_before_owner_avoid_capped_f64() {
+    deferred_after_zero_extent_with_before::<f64>(true, FragmentationBreak::AvoidPage);
+}
+
+#[path = "scope_margin_window_tests.rs"]
+mod margin_window_tests;

@@ -60,7 +60,11 @@ pub(super) fn capped<S: LayoutScalar>(
 ) -> Result<bool, crate::sizing::resolve::SizingResolutionError<S>> {
     let own = FlowAxes::new(style.writing_mode, style.direction);
     Ok(own.block_axis() == axes.block_axis()
-        && !super::source::unsupported_continuation(style, axes, super::source::ContinuationProfile::Maximum)?)
+        && !super::source::unsupported_continuation(
+            style,
+            axes,
+            super::source::ContinuationProfile::Maximum,
+        )?)
 }
 
 impl<Node: Copy + Eq> Scopes<Node> {
@@ -147,10 +151,14 @@ impl<Node: Copy + Eq> Scopes<Node> {
                         let minimum = axes
                             .logical_size(tree.node_input(entry.node).min_size.clone())
                             .block;
-                        let end = !super::source::unsupported_continuation(tree.node_input(entry.node), axes,
-                                super::source::ContinuationProfile::Minimum)
-                                .map_err(|error| crate::error::sizing_resolution_error(entry.node, error))?
-                            && !minimum.is_auto()
+                        let end = !super::source::unsupported_continuation(
+                            tree.node_input(entry.node),
+                            axes,
+                            super::source::ContinuationProfile::Minimum,
+                        )
+                        .map_err(|error| {
+                            crate::error::sizing_resolution_error(entry.node, error)
+                        })? && !minimum.is_auto()
                             && crate::block::fragment_minimum::absolute(
                                 &minimum,
                                 axes.block_axis(),

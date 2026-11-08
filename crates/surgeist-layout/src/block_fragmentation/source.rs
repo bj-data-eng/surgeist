@@ -1,8 +1,8 @@
 use crate::{
     Display, FlowAxes, FragmentationBreakControl, FragmentationBreakInside, FragmentationRole,
-    LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInputViewOf, LayoutOperation,
-    LayoutResultOf, LayoutScalar, LayoutTree, LayoutUnsupportedCapability, LengthAutoOf, LengthOf,
-    NodeInputOf, Position, SourceIndex, Traverse,
+    LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutOperation, LayoutResultOf,
+    LayoutScalar, LayoutTree, LayoutUnsupportedCapability, LengthAutoOf, LengthOf, NodeInputOf,
+    Position, SourceIndex,
 };
 
 pub(super) struct SourceNode<Node> {
@@ -16,18 +16,6 @@ pub(super) struct SourceNode<Node> {
     pub(super) atomic_owner: Option<usize>,
     pub(super) hidden: bool,
 }
-#[derive(Clone, Copy, Debug)]
-pub(super) enum SourceUnit {
-    Atomic(usize),
-    End(usize),
-}
-impl SourceUnit {
-    pub(super) fn node(self) -> usize {
-        match self {
-            Self::Atomic(node) | Self::End(node) => node,
-        }
-    }
-}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum SourceKey<Node> {
     Atomic(Node),
@@ -37,7 +25,6 @@ pub(super) enum SourceKey<Node> {
 }
 pub(super) struct Inventory<Node> {
     pub(super) nodes: Vec<SourceNode<Node>>,
-    pub(super) units: Vec<SourceUnit>,
 }
 
 pub(super) fn unsupported<Node, S: LayoutScalar, M>(node: Node) -> LayoutErrorOf<Node, S, M> {
@@ -60,7 +47,7 @@ impl<Node: Copy + Eq> Inventory<Node> {
             return Err(unsupported(graph.nodes[0]));
         }
         let mut nodes: Vec<SourceNode<Node>> = Vec::new();
-        let mut units = Vec::new();
+        let mut atomic_count = 0;
         nodes.try_reserve(graph.nodes.len()).map_err(|_| {
             LayoutErrorOf::new(
                 LayoutErrorSiteOf::Node(graph.nodes[0]),
@@ -122,10 +109,10 @@ impl<Node: Copy + Eq> Inventory<Node> {
             let first = if let Some(owner) = inherited {
                 nodes[owner].first
             } else {
-                units.len()
+                atomic_count
             };
             if atomic == Some(index) {
-                units.push(SourceUnit::Atomic(index));
+                atomic_count += 1;
             }
             nodes.push(SourceNode {
                 node,
@@ -149,67 +136,7 @@ impl<Node: Copy + Eq> Inventory<Node> {
                     .unwrap_or(nodes[index].first);
             }
         }
-        Ok(Self { nodes, units })
-    }
-
-    pub(super) fn install_ends(&mut self, minima: &[Node]) {
-        self.units.clear();
-        let mut pending = vec![(0, false)];
-        while let Some((index, closing)) = pending.pop() {
-            if closing {
-                if minima.contains(&self.nodes[index].node) {
-                    self.units.push(SourceUnit::End(index));
-                }
-                self.nodes[index].end = self.units.len();
-                continue;
-            }
-            self.nodes[index].first = self.units.len();
-            if self.nodes[index].atomic_owner == Some(index) {
-                self.units.push(SourceUnit::Atomic(index));
-                self.nodes[index].end = self.units.len();
-            } else {
-                pending.push((index, true));
-                pending.extend(
-                    self.nodes[index]
-                        .children
-                        .iter()
-                        .rev()
-                        .map(|&child| (child, false)),
-                );
-            }
-        }
-        for index in 0..self.nodes.len() {
-            if let Some(owner) = self.nodes[index]
-                .atomic_owner
-                .filter(|&owner| owner != index)
-            {
-                self.nodes[index].first = self.nodes[owner].first;
-                self.nodes[index].end = self.nodes[owner].end;
-            }
-        }
-    }
-
-    pub(super) fn validate_continuation<Tree: LayoutTree<Node = Node>>(
-        &self,
-        tree: &Tree,
-        range: &std::ops::Range<usize>,
-        axes: FlowAxes,
-    ) -> LayoutResultOf<Node, (), Tree::Scalar, Tree::MeasureError> {
-        for entry in &self.nodes {
-            let continuing = entry.first < range.end
-                && entry.end > range.start
-                && (range.start > entry.first || range.end < entry.end);
-            if !continuing || entry.atomic_owner.is_some() {
-                continue;
-            }
-            let style = tree.node_input(entry.node);
-            if unsupported_continuation(style, axes, ContinuationProfile::Minimum)
-                .map_err(|error| crate::error::sizing_resolution_error(entry.node, error))?
-            {
-                return Err(unsupported(entry.node));
-            }
-        }
-        Ok(())
+        Ok(Self { nodes })
     }
 
     pub(super) fn controls<Tree: LayoutTree<Node = Node>>(
@@ -301,110 +228,6 @@ pub(super) fn clear_margin<S: LayoutScalar>(
     }
 }
 
-pub(super) struct WindowTree<'a, Tree: LayoutTree> {
-    pub(super) tree: &'a Tree,
-    pub(super) inventory: &'a Inventory<Tree::Node>,
-    styles: Vec<NodeInputOf<Tree::Scalar>>,
-    children: Vec<Vec<Tree::Node>>,
-}
-impl<'a, Tree: LayoutTree> WindowTree<'a, Tree> {
-    pub(super) fn new(
-        tree: &'a Tree,
-        inventory: &'a Inventory<Tree::Node>,
-        range: std::ops::Range<usize>,
-        axes: FlowAxes,
-        trimmed: &[crate::block::fragment_margins::MarginOwner<Tree::Node>],
-        partial_end: Option<usize>,
-    ) -> Self {
-        let mut styles = Vec::with_capacity(inventory.nodes.len());
-        let mut children = Vec::with_capacity(inventory.nodes.len());
-        for entry in &inventory.nodes {
-            let mut style = tree.node_input(entry.node).clone();
-            if entry.atomic_owner.is_none() {
-                if entry.first < range.start {
-                    clear_edge(&mut style.padding, axes.block_start());
-                    clear_edge(&mut style.border, axes.block_start());
-                }
-                if entry.end > range.end || partial_end.is_some_and(|unit| entry.end == unit + 1) {
-                    clear_edge(&mut style.padding, axes.block_end());
-                    clear_edge(&mut style.border, axes.block_end());
-                }
-            }
-            if entry.first < range.start && entry.end > range.start {
-                clear_margin(&mut style.margin, axes.block_start());
-            }
-            if entry.first < range.end && entry.end > range.end {
-                clear_margin(&mut style.margin, axes.block_end());
-            }
-            for owner in trimmed.iter().filter(|owner| owner.node == entry.node) {
-                clear_margin(&mut style.margin, owner.side);
-            }
-            children.push(
-                entry
-                    .children
-                    .iter()
-                    .copied()
-                    .filter(|&child| {
-                        inventory.nodes[child].first < range.end
-                            && inventory.nodes[child].end > range.start
-                    })
-                    .map(|child| inventory.nodes[child].node)
-                    .collect(),
-            );
-            styles.push(style);
-        }
-        Self {
-            tree,
-            inventory,
-            styles,
-            children,
-        }
-    }
-    fn index(&self, node: Tree::Node) -> usize {
-        self.inventory
-            .nodes
-            .iter()
-            .position(|entry| entry.node == node)
-            .expect("window traversal only uses actual discovered source nodes")
-    }
-}
-impl<Tree: LayoutTree> Traverse for WindowTree<'_, Tree> {
-    type Node = Tree::Node;
-    type Scalar = Tree::Scalar;
-    type Children<'a>
-        = std::iter::Copied<std::slice::Iter<'a, Self::Node>>
-    where
-        Self: 'a;
-    fn children(&self, node: Self::Node) -> Self::Children<'_> {
-        self.children[self.index(node)].iter().copied()
-    }
-    fn child_count(&self, node: Self::Node) -> usize {
-        self.children[self.index(node)].len()
-    }
-    fn child(&self, node: Self::Node, index: usize) -> Self::Node {
-        self.children[self.index(node)][index]
-    }
-}
-impl<Tree: LayoutTree> LayoutTree for WindowTree<'_, Tree> {
-    type MeasureError = Tree::MeasureError;
-    fn node_input(&self, node: Self::Node) -> &NodeInputOf<Self::Scalar> {
-        &self.styles[self.index(node)]
-    }
-    fn layout_input(&self, node: Self::Node) -> LayoutInputViewOf<'_, Self::Scalar> {
-        LayoutInputViewOf::Box(self.node_input(node))
-    }
-    fn has_leaf_measurement(&self, node: Self::Node) -> bool {
-        self.tree.has_leaf_measurement(node)
-    }
-    fn measure_leaf(
-        &self,
-        node: Self::Node,
-        input: crate::LeafMeasureInputOf<Self::Scalar>,
-    ) -> Option<Result<crate::Size<Self::Scalar>, Self::MeasureError>> {
-        self.tree.measure_leaf(node, input)
-    }
-}
-
 fn preferred_intrinsic<S: LayoutScalar>(value: &crate::PreferredSizeOf<S>) -> bool {
     use crate::sizing::{PreferredSizeCalcBasis as B, PreferredSizeView as V};
     match value.view() {
@@ -474,33 +297,34 @@ pub(super) fn unsupported_continuation<S: LayoutScalar>(
         ContinuationProfile::Minimum => maximum == crate::MaxSizeOf::NONE,
         ContinuationProfile::Maximum => matches!(
             crate::sizing::resolve::fixed_fallback_maximum(
-                &maximum, crate::SizingAlgorithm::Block, own_axes.block_axis(), None,
+                &maximum,
+                crate::SizingAlgorithm::Block,
+                own_axes.block_axis(),
+                None,
             )?,
             crate::sizing::resolve::FixedFallbackSource::Fixed(_)
         ),
     };
     let inset_limit = matches!(profile, ContinuationProfile::Maximum) || !minimum.is_auto();
     Ok((!minimum.is_auto()
-            && !crate::block::fragment_minimum::absolute(&minimum, own_axes.block_axis())?)
+        && !crate::block::fragment_minimum::absolute(&minimum, own_axes.block_axis())?)
         || !maximum_supported
         || style.aspect_ratio.is_some()
-        || (inset_limit && crate::block::fragment_minimum::basis_dependent_border_box(style, own_axes))
+        || (inset_limit
+            && crate::block::fragment_minimum::basis_dependent_border_box(style, own_axes))
         || (preferred_intrinsic(&own_axes.logical_size(style.size.clone()).inline)
-            && !own_axes.logical_size(style.size.clone()).inline.is_min_content()
-            && !own_axes.logical_size(style.size.clone()).inline.is_max_content())
+            && !own_axes
+                .logical_size(style.size.clone())
+                .inline
+                .is_min_content()
+            && !own_axes
+                .logical_size(style.size.clone())
+                .inline
+                .is_max_content())
         || minimum_intrinsic(&own_axes.logical_size(style.min_size.clone()).inline)
         || maximum_intrinsic(&own_axes.logical_size(style.max_size.clone()).inline)
         || style.overflow.x() != crate::Overflow::Visible
         || style.overflow.y() != crate::Overflow::Visible
         || (own_axes.block_axis() == axes.block_axis()
             && own_axes.block_start() != axes.block_start()))
-}
-
-pub(super) fn has_size_constraints<S: LayoutScalar>(
-    style: &NodeInputOf<S>,
-    axes: FlowAxes,
-) -> bool {
-    axes.logical_size(style.min_size.clone()).block != crate::MinSizeOf::AUTO
-        || axes.logical_size(style.max_size.clone()).block != crate::MaxSizeOf::NONE
-        || style.aspect_ratio.is_some()
 }

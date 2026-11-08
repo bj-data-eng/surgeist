@@ -1378,7 +1378,7 @@ fn ordinary_ancestor_tree<S: LayoutScalar>(nested: bool, child_height: f64) -> (
     }
 }
 
-fn continuing_ordinary_ancestors_refuse_maximum_and_ratio_limits<S: LayoutScalar>() {
+fn continuing_absolute_maxima_have_geometry_while_ratios_refuse<S: LayoutScalar>() {
     for nested in [false, true] {
         for constraint in [BlockConstraint::Maximum, BlockConstraint::Ratio] {
             let (mut tree, subject) = ordinary_ancestor_tree::<S>(nested, 30.0);
@@ -1387,6 +1387,37 @@ fn continuing_ordinary_ancestors_refuse_maximum_and_ratio_limits<S: LayoutScalar
             // so it also has an actual continuation, not merely a trial.
             constrain_block(&mut tree.inputs[subject], constraint, 1.0, 1000.0);
             let request = unequal(LayoutSourceBasis::fresh());
+            if matches!(constraint, BlockConstraint::Maximum) {
+                let batch =
+                    compute(&tree, 0, &request).expect("absolute maximum supports continuation");
+                for node in [0, subject] {
+                    let chain = fragments(&batch, node);
+                    assert_eq!(chain.len(), 2);
+                    for (index, (width, height)) in
+                        [(100.0, 50.0), (60.0, 30.0)].into_iter().enumerate()
+                    {
+                        assert_fragment(&chain[index], (width, height));
+                        assert_eq!(
+                            chain[index].fragmentainer(),
+                            Some(batch.fragmentainers()[index].id())
+                        );
+                        assert_eq!(chain[index].unrounded().location, Point::ZERO);
+                        assert_eq!(chain[index].final_geometry().location, Point::ZERO);
+                    }
+                }
+                let owners = fragments(&batch, subject);
+                for (index, node) in if nested { [2, 3] } else { [1, 2] }.into_iter().enumerate() {
+                    minimum_progress_child(
+                        &batch,
+                        node,
+                        index,
+                        owners[index].id(),
+                        (0.0, 0.0),
+                        (if index == 0 { 100.0 } else { 60.0 }, 30.0),
+                    );
+                }
+                continue;
+            }
             let error = compute(&tree, 0, &request).unwrap_err();
             assert!(
                 matches!(
@@ -1402,9 +1433,9 @@ fn continuing_ordinary_ancestors_refuse_maximum_and_ratio_limits<S: LayoutScalar
     }
 }
 scalars!(
-    continuing_ordinary_ancestors_refuse_maximum_and_ratio_limits,
-    continuing_ordinary_ancestors_refuse_maximum_and_ratio_limits_f32,
-    continuing_ordinary_ancestors_refuse_maximum_and_ratio_limits_f64
+    continuing_absolute_maxima_have_geometry_while_ratios_refuse,
+    continuing_absolute_maxima_have_geometry_while_ratios_refuse_f32,
+    continuing_absolute_maxima_have_geometry_while_ratios_refuse_f64
 );
 
 fn continuing_ordinary_ancestors_refuse_nonvisible_overflow<S: LayoutScalar>() {
@@ -1835,9 +1866,17 @@ scalars!(
 );
 
 fn margin_boundary_case<S: LayoutScalar>(separator: u8) {
+    margin_boundary_cap_case::<S>(separator, false);
+}
+fn margin_boundary_cap_case<S: LayoutScalar>(separator: u8, capped: bool) {
     // Both actual break kinds are computed before checking either result.
     let batches = [false, true].map(|forced| {
         let mut wrapper = block::<S>(None, None);
+        if capped {
+            wrapper.max_size.height =
+                MaxSizeOf::value(LengthPercentageOf::px(S::from_f64(1000.0)).unwrap());
+        }
+
         let edge = LengthOf::value(LengthPercentageOf::px(S::from_f64(10.0)).unwrap());
         match separator {
             1 => wrapper.padding.bottom = edge,
@@ -5340,6 +5379,13 @@ fn maximum_progress_axis_request<S: LayoutScalar>(
     vertical: bool,
     whole: bool,
 ) -> LayoutBoundRequestOf<S> {
+    maximum_progress_axis_request_origin(vertical, whole, Point::ZERO)
+}
+fn maximum_progress_axis_request_origin<S: LayoutScalar>(
+    vertical: bool,
+    whole: bool,
+    origin: Point<S>,
+) -> LayoutBoundRequestOf<S> {
     let axes = FlowAxes::new(
         if vertical {
             WritingMode::VerticalRl
@@ -5379,7 +5425,9 @@ fn maximum_progress_axis_request<S: LayoutScalar>(
         .enumerate()
         .map(|(index, (inline, block))| {
             let (width, height) = physical(inline, block);
-            frame(width, height, index == 0)
+            let mut result = frame(width, height, index == 0);
+            result.origin = origin;
+            result
         })
         .collect();
     LayoutBoundRequestOf::block_fragmentation(
@@ -5505,21 +5553,14 @@ fn maximum_progress_axis_carrier_case<S: LayoutScalar>(vertical: bool) {
             );
         }
     }
-    for index in 0..3 {
+    for (index, root) in roots.iter().enumerate() {
         let x = if vertical {
             if index == 0 { -10.0 } else { -30.0 }
         } else {
             0.0
         };
-        minimum_progress_child(
-            &batch,
-            index + 1,
-            index,
-            roots[index].id(),
-            (x, 0.0),
-            child_size,
-        );
-        maximum_progress_children(&batch, roots[index].id(), &[single(&batch, index + 1).id()]);
+        minimum_progress_child(&batch, index + 1, index, root.id(), (x, 0.0), child_size);
+        maximum_progress_children(&batch, root.id(), &[single(&batch, index + 1).id()]);
     }
     maximum_progress_unique_fragments(&batch);
     batch.apply_to(&mut sink).unwrap();
@@ -6643,9 +6684,448 @@ fn maximum_progress_selected_block_percentage_requires_actual_basis<S: LayoutSca
             axis: PhysicalAxis::Vertical,
         }
     );
+    let previous = sink.state.clone();
+    let commits = sink.commits;
+    for input in &mut tree.inputs[1..] {
+        input.inset.top = LengthAutoOf::value(
+            LengthPercentageOf::from_coefficients(S::from_f64(4.0), S::from_f64(0.1)).unwrap(),
+        );
+    }
+    let mixed = compute(&tree, 0, &request).unwrap_err();
+    assert_eq!(mixed.operation(), LayoutOperation::ValueResolution);
+    assert_eq!(mixed.site(), error.site());
+    assert!(matches!(
+        mixed.kind(),
+        LayoutErrorKindOf::MissingContext(LayoutMissingContext::RequiredBasis)
+    ));
+    assert_eq!(sink.state, previous);
+    assert_eq!(sink.commits, commits);
 }
 scalars!(
     maximum_progress_selected_block_percentage_requires_actual_basis,
     maximum_progress_selected_block_percentage_requires_actual_basis_f32,
     maximum_progress_selected_block_percentage_requires_actual_basis_f64
+);
+
+fn maximum_progress_nonbinding_scope_transports_actual_margin_contributors<S: LayoutScalar>() {
+    for separator in 0..4 {
+        margin_boundary_cap_case::<S>(separator, true);
+    }
+}
+scalars!(
+    maximum_progress_nonbinding_scope_transports_actual_margin_contributors,
+    maximum_progress_nonbinding_scope_transports_actual_margin_contributors_f32,
+    maximum_progress_nonbinding_scope_transports_actual_margin_contributors_f64
+);
+
+fn maximum_progress_zero_principal_settles_positive_natural_content<S: LayoutScalar>() {
+    // The principal's measured content basis is zero. Natural content150 and
+    // frame200 deliberately differ. The absolute4 operand also proves that
+    // visual settlement executes rather than leaving the normal location.
+    for absolute in [0.0, 4.0] {
+        let mut child = block::<S>(None, Some(150.0));
+        child.inset.top = LengthAutoOf::value(
+            LengthPercentageOf::from_coefficients(S::from_f64(absolute), S::from_f64(0.1)).unwrap(),
+        );
+        let tree = Tree::new(
+            vec![maximum_progress_cap(0.0), block(None, Some(0.0)), child],
+            vec![vec![1, 2], vec![], vec![]],
+        );
+        let request = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 200.0, true)]);
+        let batch = compute(&tree, 0, &request)
+            .expect("actual zero principal has a full measured inset basis");
+        assert_eq!(batch.fragmentainers().len(), 1);
+        assert_packet(
+            single(&batch, 0).unrounded_output(),
+            (0.0, 0.0),
+            (100.0, 0.0),
+        );
+        let child = single(&batch, 2);
+        assert_packet(child.unrounded_output(), (0.0, absolute), (100.0, 150.0));
+        assert_packet(child.final_output(), (0.0, absolute), (100.0, 150.0));
+        maximum_progress_children(
+            &batch,
+            single(&batch, 0).id(),
+            &[single(&batch, 1).id(), child.id()],
+        );
+    }
+}
+scalars!(
+    maximum_progress_zero_principal_settles_positive_natural_content,
+    maximum_progress_zero_principal_settles_positive_natural_content_f32,
+    maximum_progress_zero_principal_settles_positive_natural_content_f64
+);
+
+fn maximum_progress_unowned_ancestor_case<S: LayoutScalar>(case: u8) {
+    let mut root_input = block::<S>(None, None);
+    let mut wrapper_input = block::<S>(Some(40.0), None);
+    wrapper_input.margin.left = LengthAutoOf::AUTO;
+    wrapper_input.margin.right = LengthAutoOf::AUTO;
+    let edge = LengthOf::value(LengthPercentageOf::px(S::from_f64(5.0)).unwrap());
+    wrapper_input.padding.left = edge;
+    wrapper_input.padding.right = edge;
+    let percentage = |fraction| {
+        LengthAutoOf::value(
+            LengthPercentageOf::from_percent_fraction(S::from_f64(fraction)).unwrap(),
+        )
+    };
+    let absolute = |value| LengthAutoOf::value(LengthPercentageOf::px(S::from_f64(value)).unwrap());
+    let mut owner_input = maximum_progress_cap::<S>(20.0);
+    let mut expected_u = (10.0, 0.0);
+    let mut expected_w = 5.0;
+    match case {
+        1 => {
+            wrapper_input.inset.left = percentage(0.1);
+            expected_u.0 += 6.0;
+        }
+        2 => {
+            wrapper_input.inset.left = absolute(4.0);
+            expected_u.0 += 4.0;
+        }
+        3 => wrapper_input.inset.top = percentage(0.0),
+        4 => {
+            wrapper_input.inset.top = absolute(4.0);
+            wrapper_input.inset.bottom = percentage(0.1);
+            expected_u.1 = 4.0;
+        }
+        5 => {
+            wrapper_input.inset.left = percentage(0.1);
+            wrapper_input.inset.right = absolute(3.0);
+            expected_u.0 -= 3.0;
+        }
+        6 => {
+            wrapper_input.inset.left = LengthAutoOf::value(
+                LengthPercentageOf::from_coefficients(S::from_f64(4.0), S::from_f64(0.1)).unwrap(),
+            );
+            expected_u.0 += 10.0;
+        }
+        7 => {
+            root_input.padding.left =
+                LengthOf::value(LengthPercentageOf::px(S::from_f64(10.0)).unwrap());
+            root_input.padding.right = root_input.padding.left;
+            root_input.scrollbar_gutter = ScrollbarGutter::StableBothEdges;
+            root_input.scrollbar_width = ScrollbarWidthOf::try_new(S::from_f64(4.0)).unwrap();
+            wrapper_input.inset.left = percentage(0.1);
+            expected_u.0 += 4.0;
+        }
+        8 => {
+            wrapper_input.inset.left = percentage(0.125);
+            expected_u.0 += 7.5;
+        }
+        9 => {
+            wrapper_input.size.width = PreferredSizeOf::AUTO;
+            owner_input.size.width = px(30.0);
+            owner_input.margin.left = LengthAutoOf::AUTO;
+            owner_input.margin.right = LengthAutoOf::AUTO;
+            wrapper_input.inset.left = percentage(0.1);
+            expected_u.0 = 6.0;
+            expected_w = 15.0;
+        }
+        10 | 11 => {
+            wrapper_input.inset.top = percentage(0.1);
+            expected_u.1 = 9.0;
+        }
+        _ => {}
+    }
+    let mut last = block::<S>(if case == 8 { Some(30.5) } else { None }, Some(30.0));
+    last.break_before = FragmentationBreak::Page;
+    let mut tree = Tree::new(
+        vec![
+            root_input,
+            wrapper_input,
+            owner_input,
+            block(None, Some(30.0)),
+            last,
+            block(None, Some(90.0)),
+        ],
+        vec![
+            if case == 11 { vec![1, 5] } else { vec![1] },
+            vec![2],
+            vec![3, 4],
+            vec![],
+            vec![],
+            vec![],
+        ],
+    );
+    for input in &mut tree.inputs {
+        input.direction = Direction::Rtl;
+    }
+    if case == 8 {
+        for input in &mut tree.inputs[2..] {
+            input.direction = Direction::Ltr;
+        }
+    }
+    let origin = if case == 8 {
+        Point::new(S::from_f64(0.25), S::ZERO)
+    } else {
+        Point::ZERO
+    };
+    let request = maximum_progress_axis_request_origin(false, false, origin);
+    if case == 10 || case == 12 || case == 13 {
+        tree.inputs[1].inset.top = LengthAutoOf::AUTO;
+        let prior_request = maximum_progress_axis_request(false, false);
+        let prior = compute(&tree, 0, &prior_request).unwrap();
+        let mut sink = Sink::new(6);
+        sink.authorize(0, &prior_request);
+        prior.apply_to(&mut sink).unwrap();
+        let previous = sink.state.clone();
+        let commits = sink.commits;
+        if case == 10 {
+            tree.inputs[1].inset.top = percentage(0.1);
+        } else if case == 12 {
+            tree.inputs[1].aspect_ratio = AspectRatioOf::new(S::from_f64(2.0));
+        } else {
+            tree.inputs[0].overflow =
+                ComputedOverflow::try_new(Overflow::Auto, Overflow::Auto).unwrap();
+            tree.inputs[0].scrollbar_gutter = ScrollbarGutter::StableBothEdges;
+            tree.inputs[0].scrollbar_width = ScrollbarWidthOf::try_new(S::from_f64(4.0)).unwrap();
+        }
+        sink.authorize(0, &request);
+        let error = compute(&tree, 0, &request).unwrap_err();
+        if case == 10 {
+            assert_eq!(error.operation(), LayoutOperation::ValueResolution);
+            assert_eq!(
+                error.site(),
+                LayoutErrorSiteOf::FragmentContainingBlock {
+                    container: 0,
+                    subject: 1,
+                    fragmentainer_index: 1,
+                    axis: PhysicalAxis::Vertical
+                }
+            );
+            assert!(matches!(
+                error.kind(),
+                LayoutErrorKindOf::MissingContext(LayoutMissingContext::RequiredBasis)
+            ));
+        } else {
+            assert_eq!(
+                error.site(),
+                LayoutErrorSiteOf::Node(if case == 12 { 1 } else { 0 })
+            );
+            assert!(matches!(
+                error.kind(),
+                LayoutErrorKindOf::UnsupportedCapability(
+                    LayoutUnsupportedCapability::BlockFragmentationProfile
+                )
+            ));
+        }
+        assert_eq!(sink.state, previous);
+        assert_eq!(sink.commits, commits);
+        return;
+    }
+    let batch = compute(&tree, 0, &request)
+        .unwrap_or_else(|error| panic!("implicit ancestor case{case}: {error:?}"));
+    let roots = fragments(&batch, 0);
+    let wrappers = fragments(&batch, 1);
+    let owners = fragments(&batch, 2);
+    for chain in [&roots, &wrappers, &owners] {
+        assert_eq!(chain.len(), 2);
+    }
+    if case == 7 {
+        for geometry in [roots[0].unrounded(), roots[0].final_geometry()] {
+            assert_eq!(
+                geometry.size,
+                Size::new(S::from_f64(100.0), S::from_f64(20.0))
+            );
+            assert_eq!(
+                geometry.padding,
+                Edges {
+                    left: S::from_f64(10.0),
+                    right: S::from_f64(10.0),
+                    top: S::ZERO,
+                    bottom: S::ZERO
+                }
+            );
+            assert_eq!(geometry.border, Edges::all(S::ZERO));
+            assert_eq!(geometry.margin, Edges::all(S::ZERO));
+        }
+    } else {
+        assert_fragment(&roots[0], (100.0, if case == 11 { 50.0 } else { 20.0 }));
+    }
+    assert_eq!(roots[0].unrounded().location, Point::ZERO);
+    if case == 11 {
+        assert_fragment(&roots[1], (60.0, 90.0));
+        assert_packet(
+            single(&batch, 5).unrounded_output(),
+            (0.0, 0.0),
+            (60.0, 90.0),
+        );
+    } else {
+        assert_eq!(
+            roots[1].overflow_only().unwrap().unrounded().origin,
+            Point::ZERO
+        );
+    }
+    let wrapper = wrappers[1].overflow_only().unwrap();
+    assert_eq!(
+        wrapper.unrounded().origin,
+        Point::new(S::from_f64(expected_u.0), S::from_f64(expected_u.1))
+    );
+    assert_eq!(
+        owners[1].overflow_only().unwrap().unrounded().origin,
+        Point::new(S::from_f64(expected_w), S::ZERO)
+    );
+    if case == 8 {
+        assert_eq!(wrapper.final_geometry().origin.x, S::from_f64(18.0));
+        let child = single(&batch, 4);
+        assert_eq!(child.unrounded_output().location.x, S::ZERO);
+        assert_eq!(child.unrounded_output().size.width, S::from_f64(30.5));
+        // Visual22.75/end53.25 gives30. The internal composed-path test
+        // independently retains normal15.25/end45.75 and canonical width31.
+        assert_eq!(child.final_output().size.width, S::from_f64(30.0));
+    } else {
+        minimum_progress_child(&batch, 4, 1, owners[1].id(), (0.0, 0.0), (30.0, 30.0));
+    }
+    minimum_progress_child(&batch, 3, 0, owners[0].id(), (0.0, 0.0), (30.0, 30.0));
+    if case == 9 {
+        assert_eq!(owners[0].unrounded().location.x, S::from_f64(35.0));
+    }
+    maximum_progress_children(&batch, wrappers[1].id(), &[owners[1].id()]);
+    maximum_progress_children(&batch, owners[1].id(), &[single(&batch, 4).id()]);
+    if case != 11 {
+        maximum_progress_children(&batch, roots[1].id(), &[wrappers[1].id()]);
+    }
+    maximum_progress_unique_fragments(&batch);
+}
+fn maximum_progress_unowned_ancestors_keep_source_inline_carrier_context<S: LayoutScalar>() {
+    maximum_progress_unowned_ancestor_case::<S>(0);
+}
+fn maximum_progress_implicit_carrier_inline_receipts_preserve_axis_authority<S: LayoutScalar>() {
+    for case in 1..=13 {
+        maximum_progress_unowned_ancestor_case::<S>(case);
+    }
+}
+
+scalars!(
+    maximum_progress_unowned_ancestors_keep_source_inline_carrier_context,
+    maximum_progress_unowned_ancestors_keep_source_inline_carrier_context_f32,
+    maximum_progress_unowned_ancestors_keep_source_inline_carrier_context_f64
+);
+
+scalars!(
+    maximum_progress_implicit_carrier_inline_receipts_preserve_axis_authority,
+    maximum_progress_implicit_carrier_inline_receipts_preserve_axis_authority_f32,
+    maximum_progress_implicit_carrier_inline_receipts_preserve_axis_authority_f64
+);
+
+fn maximum_progress_opening_margin_case<S: LayoutScalar>(without_prefix: bool) {
+    let mut root_input = block::<S>(None, None);
+    let margin = if without_prefix { 99.0 } else { 10.0 };
+    if without_prefix {
+        root_input.padding.top = LengthOf::value(LengthPercentageOf::px(S::from_f64(1.0)).unwrap());
+    }
+    let mut owner = maximum_progress_cap::<S>(200.0);
+    owner.margin.top = LengthAutoOf::value(LengthPercentageOf::px(S::from_f64(margin)).unwrap());
+    let tree = Tree::new(
+        vec![
+            root_input,
+            block(None, Some(90.0)),
+            owner,
+            block(None, Some(0.0)),
+            block(None, Some(150.0)),
+            block(None, Some(10.0)),
+        ],
+        vec![
+            if without_prefix {
+                vec![2, 5]
+            } else {
+                vec![1, 2, 5]
+            },
+            vec![],
+            vec![3, 4],
+            vec![],
+            vec![],
+            vec![],
+        ],
+    );
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![
+            frame(100.0, 100.0, true),
+            frame(60.0, 80.0, false),
+            frame(80.0, 60.0, false),
+        ],
+    );
+    let batch = compute(&tree, 0, &request)
+        .expect("opening margin survives an interior retained child transition");
+    let roots = fragments(&batch, 0);
+    let owners = fragments(&batch, 2);
+    assert_eq!(roots.len(), 3);
+    assert_eq!(owners.len(), 2);
+    for (index, (width, height)) in [(100.0, 100.0), (60.0, 150.0), (80.0, 10.0)]
+        .into_iter()
+        .enumerate()
+    {
+        for geometry in [roots[index].unrounded(), roots[index].final_geometry()] {
+            assert_eq!(geometry.location, Point::ZERO);
+            assert_eq!(
+                geometry.size,
+                Size::new(S::from_f64(width), S::from_f64(height))
+            );
+            assert_eq!(
+                geometry.padding.top,
+                if without_prefix && index == 0 {
+                    S::ONE
+                } else {
+                    S::ZERO
+                }
+            );
+        }
+    }
+    for (index, (width, height, y)) in [(100.0, 0.0, 100.0), (60.0, 150.0, 0.0)]
+        .into_iter()
+        .enumerate()
+    {
+        for geometry in [owners[index].unrounded(), owners[index].final_geometry()] {
+            assert_eq!(geometry.location, Point::new(S::ZERO, S::from_f64(y)));
+            assert_eq!(
+                geometry.size,
+                Size::new(S::from_f64(width), S::from_f64(height))
+            );
+            assert_eq!(
+                geometry.margin.top,
+                if index == 0 {
+                    S::from_f64(margin)
+                } else {
+                    S::ZERO
+                }
+            );
+        }
+        assert_eq!(
+            owners[index].fragmentainer(),
+            Some(batch.fragmentainers()[index].id())
+        );
+    }
+    minimum_progress_child(&batch, 3, 0, owners[0].id(), (0.0, 0.0), (100.0, 0.0));
+    minimum_progress_child(&batch, 4, 1, owners[1].id(), (0.0, 0.0), (60.0, 150.0));
+    minimum_progress_child(
+        &batch,
+        5,
+        if without_prefix { 1 } else { 2 },
+        roots[2].id(),
+        (0.0, 0.0),
+        (80.0, 10.0),
+    );
+    if without_prefix {
+        assert!(batch.node_layout(1).is_none());
+    } else {
+        minimum_progress_child(&batch, 1, 0, roots[0].id(), (0.0, 0.0), (100.0, 90.0));
+    }
+    maximum_progress_unique_fragments(&batch);
+}
+fn maximum_progress_opening_margin_prefix<S: LayoutScalar>() {
+    maximum_progress_opening_margin_case::<S>(false);
+}
+fn maximum_progress_opening_margin_no_prefix<S: LayoutScalar>() {
+    maximum_progress_opening_margin_case::<S>(true);
+}
+scalars!(
+    maximum_progress_opening_margin_prefix,
+    maximum_progress_opening_margin_prefix_f32,
+    maximum_progress_opening_margin_prefix_f64
+);
+scalars!(
+    maximum_progress_opening_margin_no_prefix,
+    maximum_progress_opening_margin_no_prefix_f32,
+    maximum_progress_opening_margin_no_prefix_f64
 );

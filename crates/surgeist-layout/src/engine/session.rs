@@ -254,14 +254,6 @@ where
         self.fragment_intrinsics = Some(context);
     }
 
-    pub(super) fn take_fragment_margins(
-        &mut self,
-    ) -> crate::block::fragment_margins::State<Tree::Node> {
-        self.fragment_margins
-            .take()
-            .expect("native frame installs margin custody")
-    }
-
     pub(super) fn install_wrapping(
         &mut self,
         wrapping: std::sync::Arc<crate::inline_wrapping::WrappingContext<Tree::Node>>,
@@ -1446,6 +1438,12 @@ where
                     .find(|ready| ready.entry == entry && ready.view == dispatch.view)
                     .copied();
                 if let Some(ready) = ready {
+                    if let Some(projection) = ready.projection {
+                        self.fragment_margins
+                            .as_mut()
+                            .expect("bound Block retains margins")
+                            .bind(node, projection);
+                    }
                     let adoption = super::block_scope::Adoption {
                         receipt: ready.id,
                         projection: ready.projection,

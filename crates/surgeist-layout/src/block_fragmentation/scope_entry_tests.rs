@@ -77,7 +77,6 @@ fn with_tree<
         target: bound.target_basis(),
         template: request,
         intrinsics: Rc::new(RefCell::new(Vec::new())),
-        progress: Rc::new(RefCell::new(Default::default())),
     };
     let driver = Driver::new(&environment, &scopes).unwrap();
     run(&driver);
@@ -405,6 +404,7 @@ fn trimmed_margin_body<S: LayoutScalar>() {
                 resumed: None,
                 opening: true,
                 closing: None,
+                trimmed: TrimContextId::EMPTY,
             },
             driver.environment.axes,
             &[crate::block::fragment_margins::MarginOwner {

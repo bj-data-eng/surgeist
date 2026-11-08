@@ -24,9 +24,19 @@ pub(super) struct QualificationUse<Node, S: LayoutScalar> {
     target: Node,
     frame: usize,
 }
-pub(super) struct ReplayBodies<Node, S: LayoutScalar> {
-    pub(super) bodies: Vec<crate::engine::block_scope::Body<Node, S>>,
-    pub(super) children: Vec<PrincipalProjectionId>,
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum ProductionInput<S: LayoutScalar> {
+    Root(LayoutRootRequestOf<S>),
+    Content(ComputeInputOf<S>),
+}
+pub(super) struct Production<Node, S: LayoutScalar> {
+    pub(super) receipt: ReceiptId,
+    pub(super) scope: ScopeId,
+    pub(super) view: SourceViewId,
+    pub(super) projection: Option<(ProjectionKey, crate::block::scope::Pending<Node, S>)>,
+    pub(super) packet: Packet<Node, S>,
+    pub(super) input: ProductionInput<S>,
+    pub(super) carrier: Option<crate::block::carrier::PerformedPath<Node, S>>,
 }
 pub(super) struct ResolvedEntry<Node, S: LayoutScalar> {
     pub(super) placement: Placement<Node, S>,
@@ -253,6 +263,12 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
             let Some(pending) = caller.entry else {
                 continue;
             };
+            if caller.node != pending.node || caller.input != pending.input {
+                return Err(self
+                    .environment
+                    .failure(BlockFragmentationFailure::InvalidSource)
+                    .into());
+            }
             let own = FlowAxes::new(
                 self.environment
                     .capture
@@ -458,36 +474,35 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
 
 fn child_packets<Node: Copy + Eq, S: LayoutScalar>(
     packet: &Packet<Node, S>,
-) -> Option<Vec<PrincipalProjectionId>> {
+) -> Option<Vec<ProductionId>> {
     if packet.receipts.len() != packet.projections.len() {
         return None;
     }
     Some(packet.projections.iter().map(|(_, id)| *id).collect())
 }
-impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
-    pub(super) fn retain_bodies(
-        &self,
-        packet: &mut Packet<Tree::Node, Tree::Scalar>,
-    ) -> ScopeResult<Tree, PrincipalProjectionId> {
-        let children = child_packets(packet).ok_or_else(|| {
-            self.environment
-                .failure(BlockFragmentationFailure::InvalidSource)
-        })?;
-        let mut arena = self.bodies.borrow_mut();
-        arena.try_reserve(1).map_err(|_| {
-            LayoutErrorOf::new(
-                LayoutErrorSiteOf::Node(self.environment.capture.root),
-                LayoutOperation::RootLayout,
-                LayoutErrorKindOf::Allocation,
-            )
-        })?;
-        let id = PrincipalProjectionId(arena.len());
-        arena.push(ReplayBodies {
-            bodies: std::mem::take(&mut packet.bodies),
-            children,
-        });
-        Ok(id)
+pub(super) fn retain_production<Node: Copy + Eq, S: LayoutScalar, M>(
+    arena: &ProductionArena<Node, S>,
+    production: Production<Node, S>,
+    root: Node,
+) -> LayoutResultOf<Node, ProductionId, S, M> {
+    if child_packets(&production.packet).is_none() {
+        return Err(LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(root),
+            LayoutOperation::RootLayout,
+            LayoutErrorKindOf::BlockFragmentation(BlockFragmentationFailure::InvalidSource),
+        ));
     }
+    let mut arena = arena.borrow_mut();
+    arena.try_reserve(1).map_err(|_| {
+        LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(root),
+            LayoutOperation::RootLayout,
+            LayoutErrorKindOf::Allocation,
+        )
+    })?;
+    let id = ProductionId(arena.len());
+    arena.push(production);
+    Ok(id)
 }
 impl<Tree: LayoutTree> Provider<'_, '_, '_, Tree> {
     pub(super) fn validate_qualifications(
@@ -498,7 +513,7 @@ impl<Tree: LayoutTree> Provider<'_, '_, '_, Tree> {
     ) -> ScopeResult<Tree, ()> {
         let uses = self.qualification_uses.borrow();
         let qualifications = self.qualifications.borrow();
-        let bodies = self.bodies.borrow();
+        let bodies = self.productions.borrow();
         for used in uses.iter().filter(|used| used.frame == frame) {
             let target = self
                 .scopes
@@ -558,8 +573,8 @@ impl<Tree: LayoutTree> Provider<'_, '_, '_, Tree> {
                     .get(id.0)
                     .ok_or_else(|| self.failure(BlockFragmentationFailure::InvalidSource))?;
                 actual
-                    .try_reserve(body.bodies.len())
-                    .and_then(|_| pending.try_reserve(body.children.len()))
+                    .try_reserve(body.packet.bodies.len())
+                    .and_then(|_| pending.try_reserve(body.packet.projections.len()))
                     .map_err(|_| {
                         LayoutErrorOf::new(
                             LayoutErrorSiteOf::Node(used.pending.node),
@@ -567,8 +582,8 @@ impl<Tree: LayoutTree> Provider<'_, '_, '_, Tree> {
                             LayoutErrorKindOf::Allocation,
                         )
                     })?;
-                actual.extend(body.bodies.iter());
-                pending.extend(body.children.iter().copied());
+                actual.extend(body.packet.bodies.iter());
+                pending.extend(body.packet.projections.iter().map(|(_, id)| *id));
             }
             for expected in &qualified.data.packet.bodies {
                 let mut ancestor = self

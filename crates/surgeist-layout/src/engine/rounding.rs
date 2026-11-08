@@ -29,30 +29,6 @@ where
     )
 }
 
-pub(super) fn round_fragment_layout<Tree, M>(
-    tree: &mut Tree,
-    root: <Tree as Traverse>::Node,
-    origin: Point<Tree::Scalar>,
-) -> LayoutResultOf<<Tree as Traverse>::Node, (), <Tree as Traverse>::Scalar, M>
-where
-    Tree: Round<M>,
-{
-    let rounded = Point::new(
-        round_layout_coordinate(origin.x),
-        round_layout_coordinate(origin.y),
-    );
-    round_layout_inner(
-        tree,
-        root,
-        RoundingFrames {
-            visual: origin,
-            normal: origin,
-            named: NamedRoundingContext::ROOT.descend(origin, rounded),
-            fragment_coordinates: true,
-        },
-    )
-}
-
 #[derive(Clone, Copy)]
 struct RoundingFrames<S: LayoutScalar> {
     visual: Point<S>,
@@ -80,6 +56,7 @@ impl<S: LayoutScalar> FragmentAnchor<S> {
     pub(crate) fn overflow(
         self,
         geometry: crate::OverflowFragmentGeometryOf<S>,
+        normal: Point<S>,
     ) -> Result<(crate::OverflowFragmentGeometryOf<S>, Self), crate::ScrollRectErrorOf<S>> {
         let raw = geometry.origin;
         let cumulative = Point::new(self.0.visual.x + raw.x, self.0.visual.y + raw.y);
@@ -93,7 +70,7 @@ impl<S: LayoutScalar> FragmentAnchor<S> {
         )?;
         let anchor = Self(RoundingFrames {
             visual: cumulative,
-            normal: Point::new(self.0.normal.x + raw.x, self.0.normal.y + raw.y),
+            normal: Point::new(self.0.normal.x + normal.x, self.0.normal.y + normal.y),
             named: self.0.named.descend(raw, origin),
             fragment_coordinates: true,
         });

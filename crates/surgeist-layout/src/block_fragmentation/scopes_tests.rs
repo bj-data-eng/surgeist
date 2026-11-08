@@ -62,7 +62,7 @@ fn partition<S: LayoutScalar>() {
     );
     assert_eq!(keys(2), [SourceKey::Atomic(4), SourceKey::BoxEnd(3)]);
     let real: Vec<_> = (0..3)
-        .flat_map(|scope| keys(scope))
+        .flat_map(keys)
         .filter_map(|key| {
             if let SourceKey::Atomic(node) = key {
                 Some(node)

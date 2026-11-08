@@ -1,5 +1,9 @@
+use super::scheduler::ScopeRegistrationError;
 use super::*;
 use std::cell::Cell;
+
+#[path = "scope_retained_tests.rs"]
+mod retained_tests;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum Key {
@@ -40,7 +44,14 @@ impl<S: LayoutScalar> FragmentationProvider<S> for DeferralChild {
                 block_size: number(head),
             },
             fallback: FragmentationFallback::Unsliceable,
-            opportunities: Vec::new(),
+            opportunities: vec![FragmentationOpportunityOf {
+                cut: FragmentationCutOf::Source(query.position),
+                block_offset: S::ZERO,
+                kind: FragmentationOpportunityKindOf::Sibling,
+                before: Vec::new(),
+                after: Vec::new(),
+                ancestors: Vec::new(),
+            }],
             cloned_block_start: S::ZERO,
             cloned_block_end: S::ZERO,
             emergency_slice: None,
@@ -208,8 +219,10 @@ fn initial_deferred_placement<S: LayoutScalar>(prefix: bool, avoid: bool) {
             deferred_child::<S>(30.0, 0, false),
             vec![ScopeProjectionOf {
                 child_break_index: 0,
-                cut: FragmentationCutOf::Source(owner),
+                endpoint: ScopeEndpointOf::Advance(FragmentationCutOf::Source(owner)),
                 block_offset: number(30.0),
+
+                normal_end: number(30.0),
             }],
             Vec::new(),
         )
@@ -305,8 +318,10 @@ fn later_deferral_after_cap<S: LayoutScalar>() {
             completed_child.clone(),
             vec![ScopeProjectionOf {
                 child_break_index: 0,
-                cut: FragmentationCutOf::Source(position(0)),
+                endpoint: ScopeEndpointOf::Advance(FragmentationCutOf::Source(position(0))),
                 block_offset: number(30.0),
+
+                normal_end: number(30.0),
             }],
             Vec::new()
         ),
@@ -321,8 +336,10 @@ fn later_deferral_after_cap<S: LayoutScalar>() {
             deferred_child::<S>(30.0, 0, false),
             vec![ScopeProjectionOf {
                 child_break_index: 0,
-                cut: FragmentationCutOf::Source(position(0)),
+                endpoint: ScopeEndpointOf::Advance(FragmentationCutOf::Source(position(0))),
                 block_offset: S::ZERO,
+
+                normal_end: S::ZERO,
             }],
             Vec::new()
         ),
@@ -366,8 +383,10 @@ fn raw_force_precedes_initial_placement<S: LayoutScalar>() {
             deferred_child::<S>(30.0, 0, false),
             vec![ScopeProjectionOf {
                 child_break_index: 0,
-                cut: FragmentationCutOf::Source(position(0)),
+                endpoint: ScopeEndpointOf::Advance(FragmentationCutOf::Source(position(0))),
                 block_offset: number(30.0),
+
+                normal_end: number(30.0),
             }],
             Vec::new(),
         )
@@ -501,8 +520,10 @@ fn head_execution<S: LayoutScalar>(
             } else {
                 vec![ScopeProjectionOf {
                     child_break_index: 0,
-                    cut,
+                    endpoint: ScopeEndpointOf::Advance(cut),
                     block_offset: offset,
+
+                    normal_end: offset,
                 }]
             },
             vec![ScopeHeadProjectionOf {
@@ -1392,7 +1413,7 @@ impl<S: LayoutScalar> ParentProvider<S> {
     fn projection(&self, child_break_index: usize) -> ScopeProjectionOf<S> {
         ScopeProjectionOf {
             child_break_index,
-            cut: if self.source_cut {
+            endpoint: ScopeEndpointOf::Advance(if self.source_cut {
                 FragmentationCutOf::Source(position(1))
             } else {
                 FragmentationCutOf::Graphical {
@@ -1402,8 +1423,10 @@ impl<S: LayoutScalar> ParentProvider<S> {
                         extent: number(self.extent),
                     },
                 }
-            },
+            }),
             block_offset: number(self.initial_used + self.first_extent),
+
+            normal_end: number(self.initial_used + self.first_extent),
         }
     }
 }
@@ -1432,7 +1455,7 @@ impl<S: LayoutScalar> FragmentationProvider<S> for ParentProvider<S> {
                 let remaining = self.extent - consumed;
                 let opportunities = if consumed == 0.0 {
                     vec![FragmentationOpportunityOf {
-                        cut: self.projection(0).cut,
+                        cut: self.projection(0).endpoint.checkpoint(),
                         block_offset: number(self.first_extent),
                         kind: FragmentationOpportunityKindOf::ContentEdge {
                             gap: number(self.gap),
@@ -2102,3 +2125,6 @@ fn failed_adoption_replays_without_consuming_scope_force_f32() {
 fn failed_adoption_replays_without_consuming_scope_force_f64() {
     feedback_rollback::<f64>();
 }
+
+#[path = "scope_offered_policy_tests.rs"]
+mod offered_policy_tests;

@@ -2,6 +2,9 @@
 use super::*;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 
+#[path = "scope_zero_force_sites_tests.rs"]
+mod force_sites_tests;
+
 fn number<S: LayoutScalar>(value: f64) -> S {
     S::from_f64(value)
 }
@@ -53,7 +56,7 @@ fn replay_uncapped<S: LayoutScalar>(
         environment,
         scopes,
         scope: completed.scope,
-        placement: completed.placement.as_ref(),
+        placement: completed.placement,
         progress: Rc::new(RefCell::new(Progress {
             minima: Vec::new(),
             active: None,
@@ -76,10 +79,10 @@ fn replay_uncapped<S: LayoutScalar>(
         discovery: Rc::new(RefCell::new(None)),
         rebind_generation: 0,
         trial_selection: Rc::new(RefCell::new(None)),
-        views: Rc::new(RefCell::new(Views::new())),
+        views: resolved.views.clone(),
         qualifications: Rc::new(RefCell::new(Vec::new())),
         qualification_uses: Rc::new(RefCell::new(Vec::new())),
-        bodies: Rc::new(RefCell::new(Vec::new())),
+        productions: resolved.productions.clone(),
     };
     provider
         .trial(
@@ -91,7 +94,7 @@ fn replay_uncapped<S: LayoutScalar>(
         .expect("accepted uncapped source window replays through Block")
 }
 
-fn zero_extent_force_case<S: LayoutScalar>(repeated: bool, capped: bool) {
+fn zero_extent_force_case<S: LayoutScalar>(repeated: bool, capped: bool, terminal_inset: bool) {
     // Repeated: prefix100, W(A0, B0/Page, C0/Page), tail10. The prefix
     // exhausts frame0; W has real source there but no remaining height to fill.
     // Terminal: W(A30, B0/Page), tail10. The first force fills W to100;
@@ -105,6 +108,11 @@ fn zero_extent_force_case<S: LayoutScalar>(repeated: bool, capped: bool) {
         }
         let mut second = block::<S>(Some(0.0));
         second.break_before = FragmentationBreak::Page;
+        if terminal_inset {
+            second.inset.top = LengthAutoOf::value(
+                LengthPercentageOf::from_coefficients(number(4.0), number(0.1)).unwrap(),
+            );
+        }
         let mut third = block::<S>(Some(0.0));
         third.break_before = FragmentationBreak::Page;
         let tree = PublicLayoutTreeOf::new()
@@ -186,7 +194,6 @@ fn zero_extent_force_case<S: LayoutScalar>(repeated: bool, capped: bool) {
             target: bound.target_basis(),
             template: request,
             intrinsics: Rc::new(RefCell::new(Vec::new())),
-            progress: Rc::new(RefCell::new(Default::default())),
         };
         let resolved = Driver::new(&environment, &scopes)
             .unwrap()
@@ -276,7 +283,7 @@ fn zero_extent_force_case<S: LayoutScalar>(repeated: bool, capped: bool) {
                     .pieces
                     .iter()
                     .flat_map(|piece| &piece.coverage)
-                    .all(|coverage| !matches!(coverage.key, SourceKey::Atomic(3 | 4 | 5)))
+                    .all(|coverage| !matches!(coverage.key, SourceKey::Atomic(3..=5)))
             );
             let timeline = content.timeline.as_ref().unwrap();
             assert_eq!(
@@ -301,25 +308,77 @@ fn zero_extent_force_case<S: LayoutScalar>(repeated: bool, capped: bool) {
                     .unwrap();
                 let key = ProjectionKey {
                     frame,
+                    window: content.window_id(frame),
                     body: parent_selection.range.start <= owner,
                     closing: frame + 1 == heights.len()
                         && parent_selection.range.end > owner + 1
                         && parent_selection.partial != Some(owner),
                 };
-                let cached = content.principals.borrow();
-                let actual: Vec<_> = cached
+                let adopted: Vec<_> = principal.frames[frame]
+                    .projections
                     .iter()
-                    .filter(|principal| principal.key == key)
+                    .filter(|(node, _)| *node == 2)
+                    .map(|(_, id)| *id)
                     .collect();
-                assert!(
-                    !actual.is_empty(),
-                    "actual principal in zero-content frame{frame}"
+                assert_eq!(
+                    adopted.len(),
+                    1,
+                    "one actual owner projection in frame{frame}"
                 );
-                for principal in actual {
+                let arena = resolved.productions.borrow();
+                let production = &arena[adopted[0].0];
+                assert_eq!(production.receipt, principal.frames[frame].receipts[0]);
+                assert_eq!(production.projection.as_ref().unwrap().0, key);
+                let actual_view = resolved.views.borrow();
+                let actual_view = actual_view.get(production.view).unwrap();
+                assert_eq!(actual_view.scope, content.scope);
+                assert_eq!(actual_view.frame, frame);
+                assert_eq!(
+                    actual_view.range,
+                    content.frames[key.window.unwrap().0].selection.range
+                );
+                let actual = production
+                    .packet
+                    .bodies
+                    .iter()
+                    .find(|body| body.node == 2)
+                    .unwrap();
+                assert_eq!(
+                    actual.output.size,
+                    Size::new(number(dimensions[frame].0), number(height))
+                );
+                for &(leaf, leaf_frame, leaf_height) in &leaves {
+                    if ![3, 4, 5].contains(&leaf) {
+                        continue;
+                    }
+                    let actual: Vec<_> = production
+                        .packet
+                        .entries
+                        .iter()
+                        .filter(|entry| entry.node() == leaf)
+                        .collect();
                     assert_eq!(
-                        principal.output.size,
-                        Size::new(number(dimensions[frame].0), number(height))
+                        actual.len(),
+                        usize::from(leaf_frame == frame),
+                        "actual performed leaf{leaf} in adopted frame{frame}"
                     );
+                    if let Some(actual) = actual.first() {
+                        assert_eq!(
+                            actual.output().size,
+                            Size::new(number(dimensions[frame].0), number(leaf_height))
+                        );
+                        assert_eq!(
+                            actual.output().location,
+                            Point::new(
+                                S::ZERO,
+                                if terminal_inset && leaf == 4 {
+                                    number(4.0)
+                                } else {
+                                    S::ZERO
+                                }
+                            )
+                        );
+                    }
                 }
             }
             let expected_root: &[f64] = if repeated {
@@ -366,43 +425,108 @@ fn zero_extent_force_case<S: LayoutScalar>(repeated: bool, capped: bool) {
                         output.size,
                         Size::new(number(dimensions[frame].0), number(leaf_height))
                     );
-                    assert_eq!(output.location, Point::ZERO);
+                    assert_eq!(
+                        output.location,
+                        Point::new(
+                            S::ZERO,
+                            if terminal_inset && leaf == 4 {
+                                number(4.0)
+                            } else {
+                                S::ZERO
+                            }
+                        )
+                    );
                 }
             }
         }
+        drop(records);
+        let batch = output::assemble_resolved(&environment, &scopes, resolved, Vec::new())
+            .expect("the same adopted zero-window packets compose into final output");
+        let owners = batch.node_layout(2).unwrap().fragments().unwrap();
+        assert_eq!(owners.len(), heights.len());
+        for (index, &height) in heights.iter().enumerate() {
+            let pair = owners[index].principal_box().unwrap();
+            assert_eq!(pair.unrounded().size.height, number(height));
+            assert_eq!(pair.final_geometry().size.height, number(height));
+            assert_eq!(
+                owners[index].fragmentainer(),
+                Some(batch.fragmentainers()[index].id())
+            );
+        }
+        for &(leaf, frame, height) in &leaves {
+            let actual = batch.node_layout(leaf).unwrap().single_box().unwrap();
+            assert_eq!(
+                batch.fragment(actual.id()).unwrap().fragmentainer(),
+                Some(batch.fragmentainers()[frame].id())
+            );
+            assert_eq!(actual.unrounded_output().size.height, number(height));
+            assert_eq!(actual.final_output().size.height, number(height));
+            if terminal_inset && leaf == 4 {
+                assert_eq!(
+                    actual.unrounded_output().location,
+                    Point::new(S::ZERO, number(4.0))
+                );
+                assert_eq!(
+                    actual.final_output().location,
+                    Point::new(S::ZERO, number(4.0))
+                );
+                let crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal } =
+                    actual.unrounded_entry().geometry_state()
+                else {
+                    panic!("actual terminal output retains its measured normal phase");
+                };
+                assert_eq!(measured_normal.location, Point::ZERO);
+            }
+        }
+        let tail = batch.node_layout(6).unwrap().single_box().unwrap();
+        assert_eq!(tail.unrounded_output().location, Point::ZERO);
+        assert_eq!(tail.final_output().location, Point::ZERO);
     }
 }
 
 #[test]
 fn scope_zero_progress_before_repeated_forces_preserves_actual_principals_uncapped_f32() {
-    zero_extent_force_case::<f32>(true, false);
+    zero_extent_force_case::<f32>(true, false, false);
 }
 #[test]
 fn scope_zero_progress_before_repeated_forces_preserves_actual_principals_uncapped_f64() {
-    zero_extent_force_case::<f64>(true, false);
+    zero_extent_force_case::<f64>(true, false, false);
 }
 #[test]
 fn scope_zero_progress_terminal_source_child_preserves_its_forced_frame_uncapped_f32() {
-    zero_extent_force_case::<f32>(false, false);
+    zero_extent_force_case::<f32>(false, false, false);
 }
 #[test]
 fn scope_zero_progress_terminal_source_child_preserves_its_forced_frame_uncapped_f64() {
-    zero_extent_force_case::<f64>(false, false);
+    zero_extent_force_case::<f64>(false, false, false);
 }
 
 #[test]
 fn scope_zero_progress_before_repeated_forces_preserves_actual_principals_capped_f32() {
-    zero_extent_force_case::<f32>(true, true);
+    zero_extent_force_case::<f32>(true, true, false);
 }
 #[test]
 fn scope_zero_progress_before_repeated_forces_preserves_actual_principals_capped_f64() {
-    zero_extent_force_case::<f64>(true, true);
+    zero_extent_force_case::<f64>(true, true, false);
 }
 #[test]
 fn scope_zero_progress_terminal_source_child_preserves_its_forced_frame_capped_f32() {
-    zero_extent_force_case::<f32>(false, true);
+    zero_extent_force_case::<f32>(false, true, false);
 }
 #[test]
 fn scope_zero_progress_terminal_source_child_preserves_its_forced_frame_capped_f64() {
-    zero_extent_force_case::<f64>(false, true);
+    zero_extent_force_case::<f64>(false, true, false);
+}
+
+#[test]
+fn scope_zero_terminal_window_settles_mixed_inset_after_owner_consumption_f32() {
+    for capped in [false, true] {
+        zero_extent_force_case::<f32>(false, capped, true);
+    }
+}
+#[test]
+fn scope_zero_terminal_window_settles_mixed_inset_after_owner_consumption_f64() {
+    for capped in [false, true] {
+        zero_extent_force_case::<f64>(false, capped, true);
+    }
 }

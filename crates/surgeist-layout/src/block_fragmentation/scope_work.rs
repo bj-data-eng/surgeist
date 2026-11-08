@@ -63,6 +63,7 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
             timeline,
             principals: RefCell::new(Vec::new()),
             bindings: work.bindings,
+            overflow: RefCell::new(Vec::new()),
         }))
     }
 
@@ -75,6 +76,7 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
     ) -> ProjectionKey {
         ProjectionKey {
             frame,
+            window: completed.window_id(frame),
             body: selection.range.start <= owner,
             closing: selection.range.end > owner + 1
                 && selection.partial != Some(owner)
@@ -119,11 +121,15 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
             return Ok((
                 vec![ScopeProjectionOf {
                     child_break_index: index,
-                    cut: FragmentationCutOf::Source(FragmentationPosition {
-                        occurrence: owner,
-                        offset: 0,
-                    }),
+                    endpoint: ScopeEndpointOf::Advance(FragmentationCutOf::Source(
+                        FragmentationPosition {
+                            occurrence: owner,
+                            offset: 0,
+                        },
+                    )),
                     block_offset: placement.outside,
+
+                    normal_end: placement.outside,
                 }],
                 Vec::new(),
             ));
@@ -141,6 +147,10 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
                 )
             })?;
         let mut consumed = Tree::Scalar::ZERO;
+        let mut previous = FragmentationCutOf::Source(FragmentationPosition {
+            occurrence: owner,
+            offset: 0,
+        });
         for span in &timeline.spans {
             consumed = consumed + span.opening + span.content;
             let origin = if span.frame == placement.query.fragmentainer_index {
@@ -149,7 +159,12 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
                 Tree::Scalar::ZERO
             };
             let end = completed.span_end(span);
-            let cut = if consumed < timeline.body_extent {
+            let cut = if consumed == Tree::Scalar::ZERO {
+                FragmentationCutOf::Source(FragmentationPosition {
+                    occurrence: owner,
+                    offset: 0,
+                })
+            } else if consumed < timeline.body_extent {
                 FragmentationCutOf::Graphical {
                     anchor: FragmentationPosition {
                         occurrence: owner,
@@ -166,8 +181,7 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
                     offset: 0,
                 })
             };
-            if span.remaining > Tree::Scalar::ZERO
-                && consumed < timeline.body_extent
+            if timeline.spans.iter().any(|later| later.frame > span.frame)
                 && let Some((index, _)) = report
                     .breaks
                     .iter()
@@ -176,9 +190,16 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
             {
                 projections.push(ScopeProjectionOf {
                     child_break_index: index,
-                    cut,
+                    endpoint: if cut == previous {
+                        ScopeEndpointOf::Retain(cut)
+                    } else {
+                        ScopeEndpointOf::Advance(cut)
+                    },
                     block_offset: end,
+
+                    normal_end: origin + span.opening + span.content,
                 });
+                previous = cut;
             }
             for (index, piece) in report
                 .pieces
@@ -329,20 +350,25 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
                 self.environment
                     .failure(BlockFragmentationFailure::InvalidSource)
             })?;
-            let participated = query.position.occurrence > owner
-                || query.position.occurrence == owner && query.graphical_progress.is_some();
+            let record = self
+                .records
+                .borrow()
+                .get(binding.receipt.0)
+                .and_then(Option::as_ref)
+                .cloned()
+                .ok_or_else(|| {
+                    self.environment
+                        .failure(BlockFragmentationFailure::InvalidSource)
+                })?;
+            let participated = work.execution.scope_participated(
+                FragmentationPosition {
+                    occurrence: owner,
+                    offset: 0,
+                },
+                &record.report,
+            );
             if !participated {
                 let resolved = self.resolve_entry(work, query, &preparation.request)?;
-                let record = self
-                    .records
-                    .borrow()
-                    .get(binding.receipt.0)
-                    .and_then(Option::as_ref)
-                    .cloned()
-                    .ok_or_else(|| {
-                        self.environment
-                            .failure(BlockFragmentationFailure::InvalidSource)
-                    })?;
                 let same = record.placement.as_ref().is_some_and(|old| {
                     old.query.fragmentainer_index == preparation.frame
                         && old.origin == resolved.placement.origin
@@ -464,11 +490,11 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
         if let Some(ticket) = preparation.ticket.take() {
             let (projections, heads) = self.projections(owner, &completed)?;
             let initial_deferred = projections.iter().any(|projection| {
-                projection.cut
-                    == FragmentationCutOf::Source(FragmentationPosition {
+                projection.endpoint
+                    == ScopeEndpointOf::Advance(FragmentationCutOf::Source(FragmentationPosition {
                         occurrence: owner,
                         offset: 0,
-                    })
+                    }))
             });
             bindings.borrow_mut().try_reserve(1).map_err(|_| {
                 LayoutErrorOf::new(
@@ -504,10 +530,9 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
             preparation.request.view,
         )?;
         let mut ready = ready.borrow_mut();
-        if let Some(slot) = ready
-            .iter_mut()
-            .find(|slot| slot.entry.node == issued.entry.node)
-        {
+        if let Some(slot) = ready.iter_mut().find(|slot| {
+            slot.id == issued.id && slot.view == issued.view && slot.entry == issued.entry
+        }) {
             *slot = issued;
         } else {
             ready.try_reserve(1).map_err(|_| {
@@ -526,6 +551,8 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
 pub(super) struct ResolvedScopes<Node, S: LayoutScalar> {
     pub(super) root: ReceiptId,
     pub(super) records: Records<Node, S>,
+    pub(super) productions: ProductionArena<Node, S>,
+    pub(super) views: Rc<RefCell<Views>>,
 }
 impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
     fn push_preparation(
@@ -594,34 +621,58 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
                     Err(ComputeStop::Layout(error)) => return Err(error),
                 }
             }
-            let dispatch = self.dispatch(&self.stack[current]);
-            let result = {
-                let work = &mut self.stack[current];
-                let mut provider = Provider {
-                    environment: self.environment,
-                    scopes: self.scopes,
-                    scope: work.scope,
-                    placement: work.placement.as_ref(),
-                    progress: work.progress.clone(),
-                    dispatch,
-                    query: work.query.clone(),
-                    bindings: work.bindings.clone(),
-                    records: self.records.clone(),
-                    discovery: work.discovery.clone(),
-                    rebind_generation: work.rebind_generation,
-                    trial_selection: work.trial_selection.clone(),
-                    views: self.views.clone(),
-                    qualifications: self.qualifications.clone(),
-                    qualification_uses: work.qualifications.clone(),
-                    bodies: self.bodies.clone(),
-                };
-                let observer = provider.observer();
-                work.execution
-                    .poll(&mut provider, &mut |event| observer.commit(event))
-            };
+            let mut provider = self.provider(&self.stack[current]);
+            let observer = provider.observer();
+            let result = self.stack[current]
+                .execution
+                .poll(&mut provider, &mut |event| observer.commit(event));
             match result {
                 Ok(false) => {}
                 Ok(true) => {
+                    if current == 0 {
+                        match self.complete_overflow(current) {
+                            Ok(()) => {}
+                            Err(ComputeStop::NeedScope(id)) => {
+                                let (receipt, view) = self
+                                    .requests
+                                    .borrow()
+                                    .peek(id)
+                                    .map(|request| (request.scope, request.view))
+                                    .ok_or_else(|| {
+                                        self.environment
+                                            .failure(BlockFragmentationFailure::InvalidSource)
+                                    })?;
+                                let frame = self
+                                    .views
+                                    .borrow()
+                                    .get(view)
+                                    .map(|view| view.frame)
+                                    .ok_or_else(|| {
+                                        self.environment
+                                            .failure(BlockFragmentationFailure::InvalidSource)
+                                    })?;
+                                let selection = self
+                                    .records
+                                    .borrow()
+                                    .get(receipt.0)
+                                    .and_then(Option::as_ref)
+                                    .and_then(|record| {
+                                        record
+                                            .frames
+                                            .iter()
+                                            .find(|accepted| accepted.frame == frame)
+                                    })
+                                    .map(|accepted| accepted.selection.clone())
+                                    .ok_or_else(|| {
+                                        self.environment
+                                            .failure(BlockFragmentationFailure::InvalidSource)
+                                    })?;
+                                self.push_preparation(current, id, frame, selection)?;
+                                continue;
+                            }
+                            Err(ComputeStop::Layout(error)) => return Err(error),
+                        }
+                    }
                     let work = self
                         .stack
                         .pop()
@@ -633,6 +684,8 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
                         return Ok(ResolvedScopes {
                             root: id,
                             records: self.records,
+                            productions: self.productions,
+                            views: self.views,
                         });
                     }
                 }

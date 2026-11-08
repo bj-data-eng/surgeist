@@ -79,7 +79,6 @@ fn principal_and_content<S: LayoutScalar>() {
         target: bound.target_basis(),
         template: request,
         intrinsics: Rc::new(RefCell::new(Vec::new())),
-        progress: Rc::new(RefCell::new(Default::default())),
     };
     let resolved = Driver::new(&environment, &scopes).unwrap().run().unwrap();
     let records = resolved.records.borrow();
@@ -232,7 +231,6 @@ fn cross_progression<S: LayoutScalar>(forced: bool) {
             target: bound.target_basis(),
             template: request,
             intrinsics: Rc::new(RefCell::new(Vec::new())),
-            progress: Rc::new(RefCell::new(Default::default())),
         };
         let result = Driver::new(&environment, &scopes).unwrap().run();
         if forced {

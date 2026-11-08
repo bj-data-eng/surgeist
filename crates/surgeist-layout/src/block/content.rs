@@ -32,14 +32,14 @@ pub(crate) struct Context<S: LayoutScalar> {
 }
 
 impl<S: LayoutScalar> Context<S> {
+    pub(super) fn input(&self) -> ComputeInputOf<S> {
+        self.input
+    }
     pub(crate) fn axes(&self) -> crate::FlowAxes {
         self.constants.flow_axes
     }
     pub(crate) fn opening(&self) -> S {
         self.constants.logical_content_box_inset().block_start
-    }
-    pub(crate) fn closing(&self) -> S {
-        self.constants.logical_content_box_inset().block_end
     }
     pub(crate) fn original_closing(&self) -> S {
         self.original_insets.block_end
@@ -135,9 +135,6 @@ pub(crate) struct Receipt<Node, S: LayoutScalar> {
     pub(super) flow: in_flow::InFlowResult<Node, S>,
     pub(crate) block_extent: S,
     pub(crate) occupied: S,
-    pub(crate) start: CollapsibleMarginOf<S>,
-    pub(crate) end: CollapsibleMarginOf<S>,
-    pub(crate) through: bool,
     pub(crate) participated: bool,
     pub(crate) bounds: Option<crate::ScrollRectOf<S>>,
 }
@@ -146,22 +143,14 @@ pub(crate) struct Receipt<Node, S: LayoutScalar> {
 pub(crate) struct Facts<S: LayoutScalar> {
     pub(crate) block_extent: S,
     pub(crate) occupied: S,
-    pub(crate) start: CollapsibleMarginOf<S>,
-    pub(crate) end: CollapsibleMarginOf<S>,
-    pub(crate) through: bool,
     pub(crate) participated: bool,
-    pub(crate) bounds: Option<crate::ScrollRectOf<S>>,
 }
 impl<Node, S: LayoutScalar> Receipt<Node, S> {
     pub(crate) fn facts(&self) -> Facts<S> {
         Facts {
             block_extent: self.block_extent,
             occupied: self.occupied,
-            start: self.start,
-            end: self.end,
-            through: self.through,
             participated: self.participated,
-            bounds: self.bounds,
         }
     }
 }
@@ -286,9 +275,6 @@ where
     }
     let block_extent = flow.content_end(constants, float_context::Role::Owner);
     let block_extent = (block_extent - projection.content_origin).max(Tree::Scalar::ZERO);
-    let start = flow.top_margin(constants);
-    let end = flow.bottom_margin(constants);
-    let through = constants.can_collapse_through && flow.all_in_flow_children_can_collapse_through;
     let bounds = flow
         .contributions
         .geometry
@@ -305,9 +291,6 @@ where
         occupied: flow.occupied_block_end,
         flow,
         block_extent,
-        start,
-        end,
-        through,
         bounds,
     })
 }

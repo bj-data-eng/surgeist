@@ -86,9 +86,18 @@ fn content<S: LayoutScalar>() {
         )
         .unwrap();
         assert_eq!(receipt.block_extent, S::from_f64(30.0));
-        assert!(!receipt.through);
-        assert_eq!(receipt.start.resolve(), S::ZERO);
-        assert_eq!(receipt.end.resolve(), S::ZERO);
+        assert!(
+            !(context.constants.can_collapse_through
+                && receipt.flow.all_in_flow_children_can_collapse_through)
+        );
+        assert_eq!(
+            receipt.flow.top_margin(&context.constants).resolve(),
+            S::ZERO
+        );
+        assert_eq!(
+            receipt.flow.bottom_margin(&context.constants).resolve(),
+            S::ZERO
+        );
         assert!(session.staged_unrounded(0).is_err());
         let actual = session.staged_unrounded(1).unwrap().output();
         assert_eq!(

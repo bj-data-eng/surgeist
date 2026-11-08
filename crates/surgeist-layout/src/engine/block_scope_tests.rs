@@ -101,7 +101,7 @@ fn suspension<S: LayoutScalar>() {
     let ready = Ready {
         id: ReceiptId(7),
         view: super::SourceViewId(0),
-        projection: Some(super::PrincipalProjectionId(11)),
+        projection: Some(super::ProductionId(11)),
         entry: request,
         output: principal,
     };
@@ -127,7 +127,7 @@ fn suspension<S: LayoutScalar>() {
     assert!(accepted.staged_unrounded(3).is_err());
     let adopted = accepted.block_packet().unwrap();
     assert_eq!(adopted.receipts, [ReceiptId(7)]);
-    assert_eq!(adopted.projections, [(2, super::PrincipalProjectionId(11))]);
+    assert_eq!(adopted.projections, [(2, super::ProductionId(11))]);
 
     let mut stale = ready;
     stale.entry.cursor = stale.entry.cursor + S::ONE;

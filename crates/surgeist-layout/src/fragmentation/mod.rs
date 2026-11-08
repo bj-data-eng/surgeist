@@ -13,8 +13,8 @@ pub use input::*;
 pub use output::*;
 pub use scheduler::resolve_fragmentation;
 pub(crate) use scheduler::{
-    AcceptedStep, CompletedExecution, Execution, ScopeHeadProjectionOf, ScopeProjectionOf,
-    ScopeRegistrationError, ScopeTicket, resolve_with_feedback,
+    AcceptedStep, CompletedExecution, Execution, ScopeEndpointOf, ScopeHeadProjectionOf,
+    ScopeProjectionOf, ScopeTicket,
 };
 
 /// Tests contextual applicability through the same force-policy owner used by

@@ -48,6 +48,15 @@ pub(crate) enum ChildRequest<Node, S: LayoutScalar> {
 }
 
 impl<Node: Copy, S: LayoutScalar> Pending<Node, S> {
+    /// Parent-local origin of a continuation carrying content without a
+    /// principal. The continuation has no block extent or opening margin.
+    pub(crate) fn overflow_origin(self, inline_outer: S, reference: Size<S>) -> Point<S> {
+        self.axes.physical_point(
+            LogicalPointOf::new(self.inline_offset, S::ZERO),
+            LogicalSizeOf::new(inline_outer, S::ZERO),
+            reference,
+        )
+    }
     pub(crate) fn resolve<M>(
         self,
         reported_start: entry::StartFact<S>,
@@ -82,6 +91,62 @@ impl<Node: Copy, S: LayoutScalar> Pending<Node, S> {
             reported_start,
         })
     }
+}
+
+/// Reuse the ordinary inline placement reducer for a carrier in a parent with
+/// no principal. Preparing its coordinate origin grants no measured block basis.
+pub(crate) fn carrier_origin<'input, Tree, M>(
+    tree: &mut Tree,
+    parent: Tree::Node,
+    node: Tree::Node,
+    input: ComputeInputOf<Tree::Scalar>,
+    context: content::Context<Tree::Scalar>,
+) -> LayoutResultOf<Tree::Node, Point<Tree::Scalar>, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let constants = &context.constants;
+    let style = BlockChildProjection::from_node(tree.node_input(node));
+    let mut first = false;
+    let prepared = in_flow::prepare_child(
+        tree,
+        node,
+        &style,
+        constants,
+        in_flow::ChildSizingContext {
+            inner_size: constants
+                .flow_axes
+                .physical_size(constants.logical_node_inner_size()),
+            request: constants.sizing_request,
+            run_mode: RunMode::PerformLayout,
+            axis: RequestedAxis::Both,
+            first_in_flow: &mut first,
+        },
+    )?;
+    let reference = context
+        .axes()
+        .physical_size(LogicalSizeOf::new(context.inline_outer, Tree::Scalar::ZERO));
+    let pending = prepare(
+        tree,
+        parent,
+        Ordinary {
+            node,
+            input,
+            entry: None,
+        },
+        &style,
+        constants,
+        &prepared,
+        ParentEntry {
+            reference,
+            cursor: Tree::Scalar::ZERO,
+            occupied: Tree::Scalar::ZERO,
+            active: CollapsibleMarginOf::ZERO,
+            top: CollapsibleMarginOf::ZERO,
+            first: false,
+        },
+    )?;
+    Ok(pending.overflow_origin(pending.inline_outer, reference))
 }
 
 pub(super) struct ParentEntry<S: LayoutScalar> {

@@ -19,7 +19,7 @@ pub(super) struct SceneOutput<Node, S: LayoutScalar> {
 #[derive(Clone, Copy)]
 enum Geometry<S: LayoutScalar> {
     Entry { packet: usize, entry: usize },
-    Overflow(OverflowFragmentGeometryOf<S>),
+    Overflow(OverflowFragmentGeometryOf<S>, Point<S>),
 }
 struct Node<S: LayoutScalar> {
     source: usize,
@@ -60,7 +60,14 @@ impl<'a, 'capture, 'tree, Tree: LayoutTree> Scene<'a, 'capture, 'tree, Tree> {
     pub(super) fn new(
         environment: &'a NativeProvider<'capture, 'tree, Tree>,
         mut packets: Vec<ScopePacket<Tree::Node, Tree::Scalar>>,
-        mut carrier_origin: impl FnMut(usize, usize) -> NativeResult<Tree, Point<Tree::Scalar>>,
+        mut carrier_origin: impl FnMut(
+            usize,
+            usize,
+            Option<LayoutOutputEntryOf<Tree::Node, Tree::Scalar>>,
+        ) -> NativeResult<
+            Tree,
+            crate::block::carrier::Origin<Tree::Scalar>,
+        >,
     ) -> NativeResult<Tree, Self> {
         let mut nodes = Vec::new();
         let mut lookup = BTreeMap::new();
@@ -209,37 +216,64 @@ impl<'a, 'capture, 'tree, Tree: LayoutTree> Scene<'a, 'capture, 'tree, Tree> {
                         continue;
                     }
                     None => {
-                        if environment.inventory.nodes[parent_source].hidden
-                            || environment.inventory.nodes[parent_source]
-                                .atomic_owner
-                                .is_some()
-                        {
-                            return Err(
-                                environment.failure(BlockFragmentationFailure::InvalidSource)
-                            );
+                        let mut missing = Vec::new();
+                        let mut ancestor = Some(parent_source);
+                        while let Some(source) = ancestor {
+                            if scene.lookup.contains_key(&(frame, source)) {
+                                break;
+                            }
+                            if environment.inventory.nodes[source].hidden
+                                || environment.inventory.nodes[source].atomic_owner.is_some()
+                            {
+                                return Err(
+                                    environment.failure(BlockFragmentationFailure::InvalidSource)
+                                );
+                            }
+                            missing.try_reserve(1).map_err(|_| scene.allocation())?;
+                            missing.push(source);
+                            ancestor = environment.inventory.nodes[source].parent;
                         }
-                        let origin = carrier_origin(parent_source, frame)?;
-                        if !finite_point(origin) {
-                            return Err(scene.failure());
+                        scene
+                            .nodes
+                            .try_reserve(missing.len())
+                            .map_err(|_| scene.allocation())?;
+                        // Receiving paths settle from the outer owner inward.
+                        // Local offsets retain their separate normal/visual facts.
+                        for source in missing.into_iter().rev() {
+                            let receiving = environment.inventory.nodes[source]
+                                .parent
+                                .and_then(|parent| scene.lookup.get(&(frame, parent)))
+                                .and_then(|&parent| match scene.nodes[parent].geometry {
+                                    Geometry::Entry { packet, entry } => {
+                                        Some(scene.packets[packet].packet.entries[entry])
+                                    }
+                                    Geometry::Overflow(_, _) => None,
+                                });
+                            let origin = carrier_origin(source, frame, receiving)?;
+                            if !finite_point(origin.normal) || !finite_point(origin.visual) {
+                                return Err(scene.failure());
+                            }
+                            let empty = ScrollRectOf::try_new(Point::ZERO, Size::ZERO)
+                                .map_err(|_| scene.failure())?;
+                            let index = scene.nodes.len();
+                            scene.nodes.push(Node {
+                                source,
+                                frame,
+                                parent: None,
+                                children: Vec::new(),
+                                anchor: None,
+                                graphical: None,
+                                geometry: Geometry::Overflow(
+                                    OverflowFragmentGeometryOf {
+                                        origin: origin.visual,
+                                        content_bounds: empty,
+                                    },
+                                    origin.normal,
+                                ),
+                            });
+                            scene.lookup.insert((frame, source), index);
                         }
-                        let empty = ScrollRectOf::try_new(Point::ZERO, Size::ZERO)
-                            .map_err(|_| scene.failure())?;
-                        let parent = scene.nodes.len();
-                        scene.nodes.try_reserve(1).map_err(|_| scene.allocation())?;
-                        scene.nodes.push(Node {
-                            source: parent_source,
-                            frame,
-                            parent: None,
-                            children: Vec::new(),
-                            anchor: None,
-                            graphical: None,
-                            geometry: Geometry::Overflow(OverflowFragmentGeometryOf {
-                                origin,
-                                content_bounds: empty,
-                            }),
-                        });
-                        scene.lookup.insert((frame, parent_source), parent);
-                        parent
+                        scene.lookup[&(frame, parent_source)]
                     }
                 };
                 scene.nodes[parent]
@@ -287,7 +321,7 @@ impl<'a, 'capture, 'tree, Tree: LayoutTree> Scene<'a, 'capture, 'tree, Tree> {
                             .include_in_flow_geometry(output.location, output.margin, geometry)
                             .map_err(|_| self.failure())?;
                     }
-                    Geometry::Overflow(geometry) => {
+                    Geometry::Overflow(geometry, _) => {
                         let bounds = ScrollRectOf::try_new(
                             Point::new(
                                 geometry.origin.x + geometry.content_bounds.origin().x,
@@ -329,9 +363,9 @@ impl<'a, 'capture, 'tree, Tree: LayoutTree> Scene<'a, 'capture, 'tree, Tree> {
                             output,
                         );
                 }
-                Geometry::Overflow(mut geometry) => {
+                Geometry::Overflow(mut geometry, normal) => {
                     geometry.content_bounds = bounds;
-                    self.nodes[index].geometry = Geometry::Overflow(geometry);
+                    self.nodes[index].geometry = Geometry::Overflow(geometry, normal);
                 }
             }
         }
@@ -383,7 +417,7 @@ impl<'a, 'capture, 'tree, Tree: LayoutTree> Scene<'a, 'capture, 'tree, Tree> {
             .try_reserve(nodes.len().saturating_add(pending.len()))
             .map_err(|_| allocation())?;
         for (index, node) in nodes.iter().enumerate() {
-            if matches!(node.geometry, Geometry::Overflow(_)) {
+            if matches!(node.geometry, Geometry::Overflow(_, _)) {
                 match node.parent {
                     Some(parent) => {
                         waiting[parent].try_reserve(1).map_err(|_| allocation())?;
@@ -411,7 +445,7 @@ impl<'a, 'capture, 'tree, Tree: LayoutTree> Scene<'a, 'capture, 'tree, Tree> {
                     .parent
                     .filter(|&parent| match nodes[parent].geometry {
                         Geometry::Entry { packet: owner, .. } => owner != packet,
-                        Geometry::Overflow(_) => true,
+                        Geometry::Overflow(_, _) => true,
                     });
                 if let Some(parent) = external
                     && !parents.contains(&parent)
@@ -447,10 +481,11 @@ impl<'a, 'capture, 'tree, Tree: LayoutTree> Scene<'a, 'capture, 'tree, Tree> {
                             |parent| nodes[parent].anchor,
                         )
                         .ok_or_else(failure)?;
-                    let Geometry::Overflow(raw) = node.geometry else {
+                    let Geometry::Overflow(raw, normal) = node.geometry else {
                         return Err(failure());
                     };
-                    let (final_geometry, anchor) = ancestor.overflow(raw).map_err(|_| failure())?;
+                    let (final_geometry, anchor) =
+                        ancestor.overflow(raw, normal).map_err(|_| failure())?;
                     overflow[index] = Some(OverflowGeometryPairOf {
                         unrounded: raw,
                         final_geometry,
@@ -573,7 +608,7 @@ impl<'a, 'capture, 'tree, Tree: LayoutTree> Scene<'a, 'capture, 'tree, Tree> {
                 Geometry::Entry { .. } => {
                     FragmentPayloadOf::ActualBox(paired[index].take().ok_or_else(failure)?)
                 }
-                Geometry::Overflow(_) => {
+                Geometry::Overflow(_, _) => {
                     FragmentPayloadOf::OverflowOnly(overflow[index].take().ok_or_else(failure)?)
                 }
             };
@@ -708,6 +743,12 @@ mod tests {
     use super::*;
     use crate::test_support::layout_tree::PublicLayoutTreeOf;
 
+    fn unshifted<S: LayoutScalar>(point: Point<S>) -> crate::block::carrier::Origin<S> {
+        crate::block::carrier::Origin {
+            normal: point,
+            visual: point,
+        }
+    }
     fn n<S: LayoutScalar>(value: f64) -> S {
         S::from_f64(value)
     }
@@ -804,7 +845,6 @@ mod tests {
             target: bound.target_basis(),
             template: request,
             intrinsics: Rc::new(RefCell::new(Vec::new())),
-            progress: Rc::new(RefCell::new(Default::default())),
         };
         run(&environment);
     }
@@ -974,7 +1014,7 @@ mod tests {
             child.packet.clears.push(LayoutCacheClearEntry::new(2));
             parent.packet.receipts.push(ReceiptId(8));
             parent.packet.clears.push(LayoutCacheClearEntry::new(1));
-            let result = Scene::new(environment, vec![child, parent], |_, _| {
+            let result = Scene::new(environment, vec![child, parent], |_, _, _| {
                 panic!("existing actual ancestor must be reused")
             })
             .unwrap()
@@ -1039,9 +1079,9 @@ mod tests {
                 .unwrap()
                 .output();
             let child = select(produce(environment, &[0, 1, 2], 1), &[2]);
-            let result = Scene::new(environment, vec![child, parent], |source, frame| {
+            let result = Scene::new(environment, vec![child, parent], |source, frame, _| {
                 assert_eq!((environment.inventory.nodes[source].node, frame), (1, 1));
-                Ok(p(1.25, 2.25))
+                Ok(unshifted(p(1.25, 2.25)))
             })
             .unwrap()
             .round()
@@ -1089,12 +1129,12 @@ mod tests {
     fn nested_carriers_share_the_actual_rounding_chain<S: LayoutScalar>() {
         with_environment(&tree::<S>(), |environment| {
             let child = select(produce(environment, &[0, 1, 2], 1), &[2]);
-            let result = Scene::new(environment, vec![child], |source, _| {
-                Ok(match environment.inventory.nodes[source].node {
+            let result = Scene::new(environment, vec![child], |source, _, _| {
+                Ok(unshifted(match environment.inventory.nodes[source].node {
                     0 => p(0.25, 0.25),
                     1 => p(1.25, 2.25),
                     _ => panic!("only missing ancestors need origins"),
-                })
+                }))
             })
             .unwrap()
             .round()
@@ -1137,9 +1177,9 @@ mod tests {
         with_environment(&tree, |environment| {
             let parent = produce(environment, &[0], 0);
             let child = select(produce(environment, &[0, 1, 2], 0), &[2]);
-            let scene = Scene::new(environment, vec![parent, child], |source, frame| {
+            let scene = Scene::new(environment, vec![parent, child], |source, frame, _| {
                 assert_eq!((environment.inventory.nodes[source].node, frame), (1, 0));
-                Ok(Point::ZERO)
+                Ok(unshifted(Point::ZERO))
             })
             .unwrap()
             .round()
@@ -1185,6 +1225,7 @@ mod tests {
                     complete: true,
                     principal_content: None,
                     accepted: None,
+                    carrier: None,
                     binding: crate::engine::BlockFrameBinding {
                         allocations: Vec::new(),
                         intrinsics: environment.intrinsics(bounds).unwrap(),
@@ -1214,7 +1255,7 @@ mod tests {
             let mut principal = produce(environment, &[0], 0);
             let original = principal.packet.entries[0];
             principal.packet.receipts.push(ReceiptId(8));
-            let scene = Scene::new(environment, vec![empty, principal], |_, _| {
+            let scene = Scene::new(environment, vec![empty, principal], |_, _, _| {
                 panic!("empty production cannot create an ancestor appearance")
             })
             .unwrap()
@@ -1249,9 +1290,9 @@ mod tests {
             let scene = Scene::new(
                 environment,
                 vec![child1, parent1, child0, parent0],
-                |source, frame| {
+                |source, frame, _| {
                     assert_eq!((environment.inventory.nodes[source].node, frame), (1, 1));
-                    Ok(p(1.25, 2.25))
+                    Ok(unshifted(p(1.25, 2.25)))
                 },
             )
             .unwrap()
@@ -1452,7 +1493,7 @@ mod tests {
                 .iter()
                 .find(|entry| entry.node() == 2)
                 .unwrap();
-            let scene = Scene::new(environment, vec![packet], |_, _| {
+            let scene = Scene::new(environment, vec![packet], |_, _, _| {
                 panic!("a complete atomic subtree needs no carrier")
             })
             .unwrap()
@@ -1470,14 +1511,17 @@ mod tests {
             );
             let parent_packet = select(produce(environment, &[0, 1, 2], 0), &[0, 1]);
             let child_packet = select(produce(environment, &[0, 1, 2], 0), &[2]);
-            let error = match Scene::new(environment, vec![parent_packet, child_packet], |_, _| {
-                panic!("split atomic custody is rejected before origins")
-            }) {
-                Ok(_) => {
-                    panic!("an atomic owner and descendant cannot be rounded as separate packets")
-                }
-                Err(error) => error,
-            };
+            let error =
+                match Scene::new(environment, vec![parent_packet, child_packet], |_, _, _| {
+                    panic!("split atomic custody is rejected before origins")
+                }) {
+                    Ok(_) => {
+                        panic!(
+                            "an atomic owner and descendant cannot be rounded as separate packets"
+                        )
+                    }
+                    Err(error) => error,
+                };
             assert!(matches!(
                 error.kind(),
                 LayoutErrorKindOf::BlockFragmentation(BlockFragmentationFailure::InvalidSource)
@@ -1534,7 +1578,7 @@ mod tests {
                 } else {
                     vec![first]
                 };
-                let error = match Scene::new(environment, packets, |_, _| {
+                let error = match Scene::new(environment, packets, |_, _, _| {
                     panic!("bad binding is rejected before origins")
                 }) {
                     Ok(_) => panic!("malformed binding must fail"),
@@ -1546,7 +1590,9 @@ mod tests {
                 ));
             }
             let child = select(produce(environment, &[0, 1, 2], 0), &[2]);
-            let error = match Scene::new(environment, vec![child], |_, _| Ok(p(f64::NAN, 0.0))) {
+            let error = match Scene::new(environment, vec![child], |_, _, _| {
+                Ok(unshifted(p(f64::NAN, 0.0)))
+            }) {
                 Ok(_) => panic!("nonfinite issued origin must fail"),
                 Err(error) => error,
             };
@@ -1571,7 +1617,7 @@ mod tests {
                 .map(|pair| pair.final_entry)
                 .collect();
             assert!(
-                Scene::new(environment, vec![canonical], |_, _| panic!(
+                Scene::new(environment, vec![canonical], |_, _, _| panic!(
                     "wrong phase has no origin demand"
                 ))
                 .is_err()

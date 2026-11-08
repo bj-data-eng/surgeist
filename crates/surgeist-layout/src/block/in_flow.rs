@@ -1006,6 +1006,18 @@ where
             active_margin,
             top_margin_set,
         );
+        if let (Some(flow), Some((top, _)), Some(state)) = (
+            &fragment_margins,
+            margin_groups,
+            tree.fragment_margin_state(),
+        ) {
+            let group = if start.exposes_child {
+                flow.active
+            } else {
+                state.join(flow.active, top)
+            };
+            state.record_entry(child, constants.flow_axes, group);
+        }
         if is_collapsing_first_margin {
             if start.exposes_child {
                 top_margin = top_margin.collapse_with(top_margin_set);

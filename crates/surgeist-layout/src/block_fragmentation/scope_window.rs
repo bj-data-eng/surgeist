@@ -133,7 +133,7 @@ impl<Tree: LayoutTree> FragmentationProvider<Tree::Scalar> for Provider<'_, '_, 
                     .map_or(
                         (
                             start,
-                            query.graphical_progress.map(|_| start),
+                            self.resumed_owner(query),
                             query.start_provenance,
                             query.graphical_progress,
                         ),
@@ -195,6 +195,22 @@ impl<Tree: LayoutTree> FragmentationProvider<Tree::Scalar> for Provider<'_, '_, 
 }
 
 impl<Tree: LayoutTree> Provider<'_, '_, '_, Tree> {
+    fn resumed_owner(&self, query: FragmentationQueryOf<Tree::Scalar>) -> Option<usize> {
+        if query.graphical_progress.is_some() {
+            return Some(query.position.occurrence);
+        }
+        self.bindings.borrow().iter().find_map(|binding| {
+            (binding.owner == query.position.occurrence
+                && binding.frame < query.fragmentainer_index
+                && self.progress.borrow().completed.iter().any(|accepted| {
+                    accepted.frame < query.fragmentainer_index
+                        && accepted.selection.partial == Some(binding.owner)
+                        && accepted.receipts.contains(&binding.receipt)
+                }))
+            .then_some(binding.owner)
+        })
+    }
+
     fn discovery_limit(
         &self,
         query: FragmentationQueryOf<Tree::Scalar>,
@@ -486,7 +502,12 @@ impl<Tree: LayoutTree> Provider<'_, '_, '_, Tree> {
                 consumed = consumed + span.opening + span.content;
                 if span.frame != query.fragmentainer_index
                     || span.remaining == Tree::Scalar::ZERO
+                    || consumed <= Tree::Scalar::ZERO
                     || consumed >= timeline.body_extent
+                    || binding.owner == query.position.occurrence
+                        && query
+                            .graphical_progress
+                            .is_some_and(|old| consumed <= old.consumed)
                 {
                     continue;
                 }
@@ -605,10 +626,31 @@ impl<Tree: LayoutTree> Provider<'_, '_, '_, Tree> {
                     selection = Some(Selection {
                         range: piece.start.occurrence..end,
                         partial,
-                        resumed: query.graphical_progress.map(|_| query.position.occurrence),
+                        resumed: self.resumed_owner(query),
                         provenance: piece.start_provenance,
                         begin: query.graphical_progress,
                         cut,
+                    })
+                }
+            }
+        }
+        for appearance in event.appearances {
+            let checkpoint = appearance.checkpoint.source_position();
+            let end = (appearance.owner.occurrence + 1).max(checkpoint.occurrence + 1);
+            match &mut selection {
+                Some(selection) => {
+                    selection.range.end = end;
+                    selection.partial = Some(end - 1);
+                    selection.cut = appearance.checkpoint;
+                }
+                None => {
+                    selection = Some(Selection {
+                        range: query.position.occurrence..end,
+                        partial: Some(end - 1),
+                        resumed: self.resumed_owner(query),
+                        provenance: query.start_provenance,
+                        begin: query.graphical_progress,
+                        cut: appearance.checkpoint,
                     })
                 }
             }
@@ -617,8 +659,75 @@ impl<Tree: LayoutTree> Provider<'_, '_, '_, Tree> {
         let Some(selection) = selection else {
             return Ok(());
         };
+        let actual_cut = match event.graphical_progress {
+            Some(progress) => FragmentationCutOf::Graphical {
+                anchor: event.position,
+                progress,
+            },
+            None => FragmentationCutOf::Source(event.position),
+        };
+        if selection.cut != actual_cut {
+            return Err(self
+                .failure(BlockFragmentationFailure::InvalidSource)
+                .into());
+        }
+        for (index, source) in self.scopes.source.nodes.iter().enumerate() {
+            let Some(local) = self.scopes.range(self.scope, index) else {
+                continue;
+            };
+            let continuing = local.start < selection.range.end
+                && local.end > selection.range.start
+                && (local.start < selection.range.start
+                    || local.end > selection.range.end
+                    || selection.partial.is_some_and(|unit| local.end == unit + 1));
+            if !continuing || source.atomic_owner.is_some() || self.scopes.owned[index].is_some() {
+                continue;
+            }
+            if super::super::super::source::unsupported_continuation(
+                self.environment.capture.tree.node_input(source.node),
+                self.environment.axes,
+                super::super::super::source::ContinuationProfile::Minimum,
+            )
+            .map_err(|error| crate::error::sizing_resolution_error(source.node, error))?
+            {
+                return Err(unsupported(source.node).into());
+            }
+        }
         let minima = self.minimum_snapshot(event.from_frame)?;
         let mut produced = self.measure(&selection, event.from_frame, &minima)?;
+        for (node, start) in self.positions(&produced, event.from_frame)? {
+            let index = self
+                .scopes
+                .source
+                .nodes
+                .iter()
+                .position(|source| source.node == node)
+                .ok_or_else(|| self.failure(BlockFragmentationFailure::InvalidSource))?;
+            if self.scopes.source.nodes[index].atomic_owner.is_some()
+                || self.scopes.owned[index].is_some()
+                || minima.iter().any(|(key, _)| *key == node)
+            {
+                continue;
+            }
+            let style = self.environment.capture.tree.node_input(node);
+            let axes = self.environment.axes;
+            let constrained = axes.logical_size(style.min_size.clone()).block != MinSizeOf::AUTO
+                || axes.logical_size(style.max_size.clone()).block != MaxSizeOf::NONE
+                || style.aspect_ratio.is_some();
+            let available = (axes
+                .logical_size(self.environment.frames[event.from_frame].size)
+                .block
+                .max(Tree::Scalar::ONE)
+                - start)
+                .max(Tree::Scalar::ZERO);
+            if constrained
+                && produced
+                    .output(node)
+                    .is_some_and(|output| axes.logical_size(output.size).block > available)
+            {
+                return Err(unsupported(node).into());
+            }
+        }
         let leaving = event.from_frame != event.to_frame;
         let scope = &self.scopes.scopes[self.scope.0];
         let complete = selection.range.end == scope.units.len() && selection.partial.is_none();
@@ -718,6 +827,18 @@ impl<Tree: LayoutTree> Provider<'_, '_, '_, Tree> {
                 Tree::Scalar::ZERO,
             )?;
         }
+        if !event.appearances.is_empty() {
+            let peak = self.extent(&produced, &selection, event.from_frame, &minima)?;
+            if event
+                .appearances
+                .iter()
+                .any(|site| site.normal_end > site.occupied_end || site.occupied_end > peak)
+            {
+                return Err(self
+                    .failure(BlockFragmentationFailure::InvalidGeometry)
+                    .into());
+            }
+        }
         let summary = if let Some(content) = &produced.content {
             let participates = content.facts.participated || complete;
             let opening = if participates {
@@ -797,7 +918,8 @@ impl<Tree: LayoutTree> Provider<'_, '_, '_, Tree> {
         if leaving || event.flow_complete {
             self.validate_qualifications(&produced.packet, &selection, event.from_frame)?;
         }
-        let receipts = produced.packet.receipts;
+        let receipts = produced.packet.receipts.clone();
+        let projections = produced.packet.projections.clone();
         // No mode accounting changes until every actual production and numeric
         // check above has succeeded, including a possible scope suspension.
         let mut progress = self.progress.borrow_mut();
@@ -810,6 +932,23 @@ impl<Tree: LayoutTree> Provider<'_, '_, '_, Tree> {
                 )
             })?;
         }
+        let production = if leaving || event.flow_complete {
+            Some(entry::retain_production::<_, _, Tree::MeasureError>(
+                &self.productions,
+                entry::Production {
+                    receipt: self.dispatch.scope,
+                    scope: self.scope,
+                    view: produced.view,
+                    projection: None,
+                    input: produced.input,
+                    carrier: None,
+                    packet: produced.packet,
+                },
+                self.root(),
+            )?)
+        } else {
+            None
+        };
         progress.minima = spent;
         progress.tails = tails;
         if leaving || event.flow_complete {
@@ -822,6 +961,8 @@ impl<Tree: LayoutTree> Provider<'_, '_, '_, Tree> {
                 allocations,
                 summary,
                 receipts,
+                projections,
+                production: production.expect("completed frame retained its production"),
             });
             progress.active = None;
         } else {
@@ -1102,8 +1243,7 @@ mod provider_tests {
             Vec::new(),
         )
         .unwrap();
-        let mut inventory = Inventory::new(tree, &capture.graph, axes).unwrap();
-        inventory.install_ends(&[0]);
+        let inventory = Inventory::new(tree, &capture.graph, axes).unwrap();
         let scopes = Scopes::new(inventory, tree, axes).unwrap();
         let environment = NativeProvider {
             capture: &capture,
@@ -1114,7 +1254,6 @@ mod provider_tests {
             target: bound.target_basis(),
             template: root,
             intrinsics: Rc::new(RefCell::new(Vec::new())),
-            progress: Rc::new(RefCell::new(Default::default())),
         };
         let progress = Rc::new(RefCell::new(Progress {
             minima: vec![(0, S::ZERO)],
@@ -1155,7 +1294,7 @@ mod provider_tests {
             views: Rc::new(RefCell::new(Views::new())),
             qualifications: Rc::new(RefCell::new(Vec::new())),
             qualification_uses: Rc::new(RefCell::new(Vec::new())),
-            bodies: Rc::new(RefCell::new(Vec::new())),
+            productions: Rc::new(RefCell::new(Vec::new())),
         };
         run(&mut provider);
     }
@@ -1299,6 +1438,7 @@ mod provider_tests {
             pieces: &[piece],
             breaks: &[],
             flow_complete: complete,
+            appearances: &[],
         })
     }
     /// Mirror Native's principal-cache reissuance, without consuming another

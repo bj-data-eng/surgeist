@@ -105,16 +105,16 @@ pub(crate) struct Request<Node, S: LayoutScalar> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct ReceiptId(pub(crate) usize);
 
-/// Source-window and exact principal-projection identities belong to one
-/// native operation, independently of semantic source units or box geometry.
+/// Source windows and performed productions belong to one native operation,
+/// independently of semantic source units or the presence of principal geometry.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) struct SourceViewId(pub(crate) usize);
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct PrincipalProjectionId(pub(crate) usize);
+pub(crate) struct ProductionId(pub(crate) usize);
 #[derive(Clone, Copy)]
 pub(crate) struct Adoption {
     pub(crate) receipt: ReceiptId,
-    pub(crate) projection: Option<PrincipalProjectionId>,
+    pub(crate) projection: Option<ProductionId>,
 }
 
 /// One Block-produced principal result bound to its exact placement request.
@@ -122,7 +122,7 @@ pub(crate) struct Adoption {
 pub(crate) struct Ready<Node, S: LayoutScalar> {
     pub(crate) id: ReceiptId,
     pub(crate) view: SourceViewId,
-    pub(crate) projection: Option<PrincipalProjectionId>,
+    pub(crate) projection: Option<ProductionId>,
     pub(crate) entry: crate::block::scope::Pending<Node, S>,
     pub(crate) output: crate::ComputeOutputOf<S>,
 }
@@ -143,7 +143,7 @@ pub(crate) struct Packet<Node, S: LayoutScalar> {
     pub(crate) entries: Vec<crate::LayoutOutputEntryOf<Node, S>>,
     pub(crate) margins: crate::block::fragment_margins::State<Node>,
     pub(crate) bodies: Vec<Body<Node, S>>,
-    pub(crate) projections: Vec<(Node, PrincipalProjectionId)>,
+    pub(crate) projections: Vec<(Node, ProductionId)>,
     pub(crate) receipts: Vec<ReceiptId>,
     pub(crate) clears: Vec<crate::LayoutCacheClearEntry<Node>>,
 }

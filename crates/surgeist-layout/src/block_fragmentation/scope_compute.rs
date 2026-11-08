@@ -1,23 +1,30 @@
 //! Native scope preparation over scheduler-owned executions.
 #[path = "scope_entry.rs"]
 mod entry;
+#[path = "scope_margins.rs"]
+mod margins;
+#[path = "scope_output.rs"]
+mod output;
 #[path = "scope_scene.rs"]
 mod scene;
 #[path = "scope_window.rs"]
 mod window;
 #[path = "scope_work.rs"]
 mod work;
-use super::super::scope_view::{ScopeView, ViewKey, Views};
+use super::super::scope_view::{ScopeView, TrimContextId, ViewKey, Views};
 use super::super::scopes::{ScopeId, Scopes, Unit};
 use super::super::source::{Inventory, SourceKey, unsupported};
 use super::{IntrinsicContext, MinimumSnapshot, NativeProvider, NativeResult};
 use crate::engine::block_scope::{
-    ComputeResult, ComputeStop, Dispatch, Packet, PrincipalProjectionId, Ready, ReceiptId,
-    Requests, SourceViewId,
+    ComputeResult, ComputeStop, Dispatch, Packet, ProductionId, Ready, ReceiptId, Requests,
+    SourceViewId,
 };
-use crate::fragmentation::{CompletedExecution, Execution, ScopeProjectionOf, ScopeTicket};
+use crate::fragmentation::{
+    CompletedExecution, Execution, ScopeEndpointOf, ScopeProjectionOf, ScopeTicket,
+};
 use crate::*;
-use entry::{QualificationUse, QualifiedBody, ReplayBodies};
+use entry::{Production, ProductionInput, QualificationUse, QualifiedBody};
+pub(super) use output::compute;
 use std::cell::{Cell, RefCell};
 use std::ops::Range;
 use std::rc::Rc;
@@ -42,10 +49,11 @@ struct Selection<S: LayoutScalar> {
 struct ContentFrame<S: LayoutScalar> {
     context: crate::block::content::Context<S>,
     facts: crate::block::content::Facts<S>,
-    principal: Option<ComputeOutputOf<S>>,
 }
 struct Produced<Node, S: LayoutScalar> {
     packet: Packet<Node, S>,
+    view: SourceViewId,
+    input: ProductionInput<S>,
     content: Option<ContentFrame<S>>,
     reference: S,
 }
@@ -64,6 +72,8 @@ struct AcceptedFrame<Node, S: LayoutScalar> {
     allocations: Vec<super::super::FragmentBoxAllocation<Node, S>>,
     summary: Option<crate::block::content::AcceptedContent<S>>,
     receipts: Vec<ReceiptId>,
+    projections: Vec<(Node, ProductionId)>,
+    production: ProductionId,
 }
 struct ActiveFrame<Node, S: LayoutScalar> {
     frame: usize,
@@ -77,6 +87,7 @@ struct Progress<Node, S: LayoutScalar> {
     tails: Vec<Option<S>>,
     opened: bool,
 }
+#[derive(Clone, Copy)]
 struct Placement<Node, S: LayoutScalar> {
     query: FragmentationQueryOf<S>,
     entry: crate::block::scope::Placement<Node, S>,
@@ -99,13 +110,13 @@ struct Work<Node, S: LayoutScalar> {
     preparations: Vec<work::Preparation<Node, S>>,
     qualifications: QualificationUses<Node, S>,
 }
-struct CachedPrincipal<Node, S: LayoutScalar> {
+struct CachedPrincipal<S: LayoutScalar> {
     key: ProjectionKey,
     input: ComputeInputOf<S>,
     inline_outer: S,
     output: ComputeOutputOf<S>,
-    entry: crate::block::scope::Pending<Node, S>,
-    bodies: PrincipalProjectionId,
+    production: ProductionId,
+    inherited_trims: TrimContextId,
 }
 struct Completed<Node, S: LayoutScalar> {
     scope: ScopeId,
@@ -114,11 +125,18 @@ struct Completed<Node, S: LayoutScalar> {
     frames: Vec<AcceptedFrame<Node, S>>,
     ready: Rc<RefCell<Vec<Ready<Node, S>>>>,
     timeline: Option<crate::block::content::PrincipalTimeline<S>>,
-    principals: RefCell<Vec<CachedPrincipal<Node, S>>>,
+    principals: RefCell<Vec<CachedPrincipal<S>>>,
     bindings: Rc<RefCell<Vec<Binding>>>,
+    overflow: RefCell<Vec<(AcceptedContentWindowId, ProductionId)>>,
 }
 
 impl<Node, S: LayoutScalar> Completed<Node, S> {
+    fn window_id(&self, frame: usize) -> Option<AcceptedContentWindowId> {
+        self.frames
+            .iter()
+            .position(|accepted| accepted.frame == frame)
+            .map(AcceptedContentWindowId)
+    }
     fn span_end(&self, span: &crate::block::content::PrincipalSpan<S>) -> S {
         let initial = self
             .placement
@@ -138,9 +156,14 @@ struct Binding {
     initial_deferred: bool,
     projection: Option<ProjectionKey>,
 }
+/// Index into one completed child receipt's immutable accepted-frame arena.
+/// Geometry roles do not decide whether this content was accepted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AcceptedContentWindowId(usize);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct ProjectionKey {
     frame: usize,
+    window: Option<AcceptedContentWindowId>,
     body: bool,
     closing: bool,
 }
@@ -148,7 +171,7 @@ struct ProjectionKey {
 type DiscoveryState<Node, S> = Rc<RefCell<Option<window::Discovery<Node, S>>>>;
 type QualificationArena<Node, S> = Rc<RefCell<Vec<QualifiedBody<Node, S>>>>;
 type QualificationUses<Node, S> = Rc<RefCell<Vec<QualificationUse<Node, S>>>>;
-type PrincipalBodyArena<Node, S> = Rc<RefCell<Vec<ReplayBodies<Node, S>>>>;
+type ProductionArena<Node, S> = Rc<RefCell<Vec<Production<Node, S>>>>;
 type ScopeRequests<Node, S> = Rc<RefCell<Requests<crate::engine::block_scope::Request<Node, S>>>>;
 type CompletedReceipt<Tree> = Arc<Completed<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>>;
 type NormalBlockPositions<Tree> = Vec<(<Tree as Traverse>::Node, <Tree as Traverse>::Scalar)>;
@@ -159,7 +182,7 @@ struct Provider<'a, 'capture, 'tree, Tree: LayoutTree> {
     environment: &'a NativeProvider<'capture, 'tree, Tree>,
     scopes: &'a Scopes<Tree::Node>,
     scope: ScopeId,
-    placement: Option<&'a Placement<Tree::Node, Tree::Scalar>>,
+    placement: Option<Placement<Tree::Node, Tree::Scalar>>,
     progress: Rc<RefCell<Progress<Tree::Node, Tree::Scalar>>>,
     dispatch: Dispatch<Tree::Node, Tree::Scalar>,
     query: Rc<Cell<Option<FragmentationQueryOf<Tree::Scalar>>>>,
@@ -171,7 +194,7 @@ struct Provider<'a, 'capture, 'tree, Tree: LayoutTree> {
     views: Rc<RefCell<Views>>,
     qualifications: QualificationArena<Tree::Node, Tree::Scalar>,
     qualification_uses: QualificationUses<Tree::Node, Tree::Scalar>,
-    bodies: PrincipalBodyArena<Tree::Node, Tree::Scalar>,
+    productions: ProductionArena<Tree::Node, Tree::Scalar>,
 }
 impl<Tree: LayoutTree> Provider<'_, '_, '_, Tree> {
     fn root(&self) -> Tree::Node {
@@ -221,6 +244,50 @@ impl<Tree: LayoutTree> Provider<'_, '_, '_, Tree> {
         allocations: Vec<super::super::FragmentBoxAllocation<Tree::Node, Tree::Scalar>>,
         reference: Tree::Scalar,
     ) -> ScopeResult<Tree, Produced<Tree::Node, Tree::Scalar>> {
+        let produced = self.trial_with_trims(
+            selection,
+            frame,
+            allocations.clone(),
+            reference,
+            TrimContextId::EMPTY,
+        )?;
+        let views = self.views.borrow();
+        let view = views
+            .get(produced.view)
+            .ok_or_else(|| self.failure(BlockFragmentationFailure::InvalidSource))?;
+        let trimmed = margins::trimmed::<_, _, Tree::MeasureError>(
+            self.scopes,
+            view,
+            selection.provenance,
+            &produced.packet,
+            &self.productions.borrow(),
+            &views,
+        )?;
+        drop(views);
+        if trimmed.is_empty() {
+            return Ok(produced);
+        }
+        let trimmed = self
+            .views
+            .borrow_mut()
+            .extend_trims(TrimContextId::EMPTY, trimmed)
+            .map_err(|_| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(self.root()),
+                    LayoutOperation::RootLayout,
+                    LayoutErrorKindOf::Allocation,
+                )
+            })?;
+        self.trial_with_trims(selection, frame, allocations, reference, trimmed)
+    }
+    fn trial_with_trims(
+        &self,
+        selection: &Selection<Tree::Scalar>,
+        frame: usize,
+        allocations: Vec<super::super::FragmentBoxAllocation<Tree::Node, Tree::Scalar>>,
+        reference: Tree::Scalar,
+        trimmed: TrimContextId,
+    ) -> ScopeResult<Tree, Produced<Tree::Node, Tree::Scalar>> {
         *self.trial_selection.borrow_mut() = Some(selection.clone());
         for binding in self.bindings.borrow_mut().iter_mut() {
             if binding.initial_deferred || binding.owner >= selection.range.end {
@@ -239,6 +306,7 @@ impl<Tree: LayoutTree> Provider<'_, '_, '_, Tree> {
                 .ok_or_else(|| self.failure(BlockFragmentationFailure::InvalidSource))?;
             let key = ProjectionKey {
                 frame,
+                window: record.window_id(frame),
                 body: selection.range.start <= binding.owner,
                 closing: selection.range.end > binding.owner + 1
                     && selection.partial != Some(binding.owner)
@@ -248,20 +316,32 @@ impl<Tree: LayoutTree> Provider<'_, '_, '_, Tree> {
                         .is_some_and(|span| span.frame <= frame),
             };
             if binding.projection != Some(key) {
+                // Another exact parent view may still need this immutable child
+                // receipt. A geometry-role change does not invalidate that view;
+                // a placement rebind discards every preparation instead.
                 let node = self.scopes.source.nodes
                     [self.scopes.scopes[self.scope.0].units[binding.owner].node()]
                 .node;
                 self.dispatch
                     .ready
                     .borrow_mut()
-                    .retain(|ready| ready.entry.node != node);
+                    .retain(|ready| ready.entry.node != node || ready.id == binding.receipt);
                 binding.projection = Some(key);
             }
         }
         let bounds = *self.environment.frames.get(frame).ok_or_else(|| {
             self.failure(BlockFragmentationFailure::MissingFragmentainer { index: frame })
         })?;
-        let opening = !self.progress.borrow().opened;
+        let opening = {
+            let progress = self.progress.borrow();
+            !progress.opened
+                || !progress.completed.iter().any(|accepted| {
+                    accepted.frame < frame
+                        && accepted
+                            .summary
+                            .is_some_and(|summary| summary.participated || summary.complete)
+                })
+        };
         let view_key = ViewKey {
             scope: self.scope,
             frame,
@@ -270,15 +350,20 @@ impl<Tree: LayoutTree> Provider<'_, '_, '_, Tree> {
             resumed: selection.resumed,
             opening,
             closing: None,
+            trimmed,
         };
         let mut dispatch = self.dispatch.clone();
         dispatch.view = self.view_id(&view_key)?;
+        let performed_view = dispatch.view;
         let view = ScopeView::new(
             self.environment.capture.tree,
             self.scopes,
             &view_key,
             self.environment.axes,
-            &[],
+            &margins::owners(
+                self.scopes,
+                &self.views.borrow().trim_edges(view_key.trimmed),
+            ),
         );
         let intrinsics = self.context(frame)?;
         let root = self.root();
@@ -297,6 +382,7 @@ impl<Tree: LayoutTree> Provider<'_, '_, '_, Tree> {
                         && selection.partial.is_none(),
                     principal_content: None,
                     accepted: None,
+                    carrier: None,
                     binding: crate::engine::BlockFrameBinding {
                         allocations,
                         intrinsics,
@@ -306,10 +392,11 @@ impl<Tree: LayoutTree> Provider<'_, '_, '_, Tree> {
             )?;
             Ok(Produced {
                 packet: output.packet,
+                view: performed_view,
+                input: ProductionInput::Content(input),
                 content: Some(ContentFrame {
                     context: output.context,
                     facts: output.facts,
-                    principal: output.principal,
                 }),
                 reference,
             })
@@ -330,6 +417,8 @@ impl<Tree: LayoutTree> Provider<'_, '_, '_, Tree> {
             )?;
             Ok(Produced {
                 packet,
+                view: performed_view,
+                input: ProductionInput::Root(self.environment.request(bounds)),
                 content: None,
                 reference,
             })
@@ -679,7 +768,7 @@ impl<'a, 'capture, 'tree, Tree: LayoutTree> Provider<'a, 'capture, 'tree, Tree> 
             views: self.views.clone(),
             qualifications: self.qualifications.clone(),
             qualification_uses: self.qualification_uses.clone(),
-            bodies: self.bodies.clone(),
+            productions: self.productions.clone(),
         }
     }
 }
@@ -696,7 +785,7 @@ struct Driver<'a, 'capture, 'tree, Tree: LayoutTree> {
     stack: Vec<Work<Tree::Node, Tree::Scalar>>,
     views: Rc<RefCell<Views>>,
     qualifications: QualificationArena<Tree::Node, Tree::Scalar>,
-    bodies: PrincipalBodyArena<Tree::Node, Tree::Scalar>,
+    productions: ProductionArena<Tree::Node, Tree::Scalar>,
 }
 
 impl<'a, 'capture, 'tree, Tree: LayoutTree> Driver<'a, 'capture, 'tree, Tree> {
@@ -704,6 +793,9 @@ impl<'a, 'capture, 'tree, Tree: LayoutTree> Driver<'a, 'capture, 'tree, Tree> {
         environment: &'a NativeProvider<'capture, 'tree, Tree>,
         scopes: &'a Scopes<Tree::Node>,
     ) -> NativeResult<Tree, Self> {
+        scopes
+            .validate()
+            .map_err(|_| unsupported(environment.capture.root))?;
         let first = environment.frames.first().copied().ok_or_else(|| {
             environment.failure(BlockFragmentationFailure::MissingFragmentainer { index: 0 })
         })?;
@@ -748,7 +840,7 @@ impl<'a, 'capture, 'tree, Tree: LayoutTree> Driver<'a, 'capture, 'tree, Tree> {
             stack: vec![work],
             views: Rc::new(RefCell::new(Views::new())),
             qualifications: Rc::new(RefCell::new(Vec::new())),
-            bodies: Rc::new(RefCell::new(Vec::new())),
+            productions: Rc::new(RefCell::new(Vec::new())),
         })
     }
     fn dispatch(
@@ -765,15 +857,15 @@ impl<'a, 'capture, 'tree, Tree: LayoutTree> Driver<'a, 'capture, 'tree, Tree> {
             requests: self.requests.clone(),
         }
     }
-    fn provider<'work>(
-        &'work self,
-        work: &'work Work<Tree::Node, Tree::Scalar>,
-    ) -> Provider<'work, 'capture, 'tree, Tree> {
+    fn provider(
+        &self,
+        work: &Work<Tree::Node, Tree::Scalar>,
+    ) -> Provider<'a, 'capture, 'tree, Tree> {
         Provider {
             environment: self.environment,
             scopes: self.scopes,
             scope: work.scope,
-            placement: work.placement.as_ref(),
+            placement: work.placement,
             progress: work.progress.clone(),
             dispatch: self.dispatch(work),
             query: work.query.clone(),
@@ -785,7 +877,7 @@ impl<'a, 'capture, 'tree, Tree: LayoutTree> Driver<'a, 'capture, 'tree, Tree> {
             views: self.views.clone(),
             qualifications: self.qualifications.clone(),
             qualification_uses: work.qualifications.clone(),
-            bodies: self.bodies.clone(),
+            productions: self.productions.clone(),
         }
     }
     fn map_error(
@@ -825,8 +917,18 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
         key: ProjectionKey,
         parent_view: SourceViewId,
     ) -> ScopeResult<Tree, Ready<Tree::Node, Tree::Scalar>> {
+        let inherited_trims = self
+            .views
+            .borrow()
+            .get(parent_view)
+            .map(|view| view.trimmed)
+            .ok_or_else(|| {
+                self.environment
+                    .failure(BlockFragmentationFailure::InvalidSource)
+            })?;
         if let Some(cached) = completed.principals.borrow().iter().find(|cached| {
             cached.key == key
+                && cached.inherited_trims == inherited_trims
                 && cached.input == pending.input
                 && cached.inline_outer == pending.inline_outer
         }) {
@@ -835,7 +937,7 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
             return Ok(Ready {
                 id: receipt,
                 view: parent_view,
-                projection: Some(cached.bodies),
+                projection: Some(cached.production),
                 entry: pending,
                 output: cached.output,
             });
@@ -853,11 +955,14 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
                 .failure(BlockFragmentationFailure::InvalidSource)
                 .into());
         }
-        let accepted = completed
-            .frames
-            .iter()
-            .find(|frame| frame.frame == key.frame);
-        let selection = if key.body {
+        let accepted = key.window.and_then(|id| completed.frames.get(id.0));
+        if accepted.is_some_and(|accepted| accepted.frame != key.frame) {
+            return Err(self
+                .environment
+                .failure(BlockFragmentationFailure::InvalidSource)
+                .into());
+        }
+        let selection = if key.window.is_some() {
             accepted
                 .map(|frame| frame.selection.clone())
                 .ok_or_else(|| {
@@ -887,90 +992,140 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
         } else {
             Tree::Scalar::ZERO
         };
-        let view_key = ViewKey {
-            scope: completed.scope,
-            frame: key.frame,
-            range: selection.range.clone(),
-            partial: selection.partial,
-            resumed: selection.resumed,
-            opening,
-            closing: Some(key.closing),
-        };
-        let view = ScopeView::new(
-            self.environment.capture.tree,
-            self.scopes,
-            &view_key,
-            self.environment.axes,
-            &[],
-        );
-        let frame = *self.environment.frames.get(key.frame).ok_or_else(|| {
-            self.environment
-                .failure(BlockFragmentationFailure::MissingFragmentainer { index: key.frame })
-        })?;
-        let view_id = self.views.borrow_mut().issue(view_key).map_err(|_| {
-            LayoutErrorOf::new(
-                LayoutErrorSiteOf::Node(root),
-                LayoutOperation::RootLayout,
-                LayoutErrorKindOf::Allocation,
-            )
-        })?;
-        let dispatch = Dispatch {
-            scope: receipt,
-            view: view_id,
-            target: self.environment.target.clone(),
-            owners: self.owners.clone(),
-            paths: self.paths.clone(),
-            ready: completed.ready.clone(),
-            requests: self.requests.clone(),
-        };
-        let intrinsics = self.environment.intrinsics(frame)?;
-        let (_, context) = crate::engine::qualify_block_scope_entry(
-            self.environment.capture.tree,
-            crate::engine::BlockScopeEntryRequest {
-                pending,
-                binding: crate::engine::BlockFrameBinding {
-                    allocations: Vec::new(),
-                    intrinsics: intrinsics.clone(),
-                    dispatch: dispatch.clone(),
-                },
-            },
-        )?;
-        let reference =
-            body + if opening {
-                context.opening()
-            } else {
-                Tree::Scalar::ZERO
-            } + if key.closing {
-                context.original_closing()
-            } else {
-                Tree::Scalar::ZERO
-            };
-        let allocation = accepted
-            .map(|frame| frame.allocations.clone())
-            .unwrap_or_default();
-        let mut produced = crate::engine::compute_block_content_frame(
-            &view,
-            crate::engine::BlockContentFrameRequest {
-                root,
-                input: pending.input,
-                original: self.environment.capture.tree.node_input(root),
-                reference,
+        let mut trimmed = inherited_trims;
+        let (produced, view_id) = loop {
+            let view_key = ViewKey {
+                scope: completed.scope,
+                frame: key.frame,
+                range: selection.range.clone(),
+                partial: selection.partial,
+                resumed: selection.resumed,
                 opening,
-                complete: selection.range.end == source_scope.units.len()
-                    && selection.partial.is_none(),
-                principal_content: Some(body),
-                accepted: None,
-                binding: crate::engine::BlockFrameBinding {
-                    allocations: allocation,
-                    intrinsics,
-                    dispatch,
+                closing: Some(key.closing),
+                trimmed,
+            };
+            let view = ScopeView::new(
+                self.environment.capture.tree,
+                self.scopes,
+                &view_key,
+                self.environment.axes,
+                &margins::owners(
+                    self.scopes,
+                    &self.views.borrow().trim_edges(view_key.trimmed),
+                ),
+            );
+            let frame = *self.environment.frames.get(key.frame).ok_or_else(|| {
+                self.environment
+                    .failure(BlockFragmentationFailure::MissingFragmentainer { index: key.frame })
+            })?;
+            let view_id = self.views.borrow_mut().issue(view_key).map_err(|_| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(root),
+                    LayoutOperation::RootLayout,
+                    LayoutErrorKindOf::Allocation,
+                )
+            })?;
+            let dispatch = Dispatch {
+                scope: receipt,
+                view: view_id,
+                target: self.environment.target.clone(),
+                owners: self.owners.clone(),
+                paths: self.paths.clone(),
+                ready: completed.ready.clone(),
+                requests: self.requests.clone(),
+            };
+            let intrinsics = self.environment.intrinsics(frame)?;
+            let (_, context) = crate::engine::qualify_block_scope_entry(
+                self.environment.capture.tree,
+                crate::engine::BlockScopeEntryRequest {
+                    pending,
+                    binding: crate::engine::BlockFrameBinding {
+                        allocations: Vec::new(),
+                        intrinsics: intrinsics.clone(),
+                        dispatch: dispatch.clone(),
+                    },
                 },
-            },
-        )?;
+            )?;
+            let reference =
+                body + if opening {
+                    context.opening()
+                } else {
+                    Tree::Scalar::ZERO
+                } + if key.closing {
+                    context.original_closing()
+                } else {
+                    Tree::Scalar::ZERO
+                };
+            let allocation = accepted
+                .map(|frame| frame.allocations.clone())
+                .unwrap_or_default();
+            let produced = crate::engine::compute_block_content_frame(
+                &view,
+                crate::engine::BlockContentFrameRequest {
+                    root,
+                    input: pending.input,
+                    original: self.environment.capture.tree.node_input(root),
+                    reference,
+                    opening,
+                    complete: selection.range.end == source_scope.units.len()
+                        && selection.partial.is_none(),
+                    principal_content: Some(body),
+                    accepted: None,
+                    carrier: None,
+                    binding: crate::engine::BlockFrameBinding {
+                        allocations: allocation,
+                        intrinsics,
+                        dispatch,
+                    },
+                },
+            )?;
+            let views = self.views.borrow();
+            let performed = views.get(view_id).ok_or_else(|| {
+                self.environment
+                    .failure(BlockFragmentationFailure::InvalidSource)
+            })?;
+            let own_trims = margins::trimmed::<_, _, Tree::MeasureError>(
+                self.scopes,
+                performed,
+                selection.provenance,
+                &produced.packet,
+                &self.productions.borrow(),
+                &views,
+            )?;
+            drop(views);
+            let next = self
+                .views
+                .borrow_mut()
+                .extend_trims(trimmed, own_trims)
+                .map_err(|_| {
+                    LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(root),
+                        LayoutOperation::RootLayout,
+                        LayoutErrorKindOf::Allocation,
+                    )
+                })?;
+            if next != trimmed {
+                trimmed = next;
+                continue;
+            }
+            break (produced, view_id);
+        };
         let output = produced
             .principal
             .expect("a principal request runs the Block materializer");
-        let bodies = self.retain_bodies(&mut produced.packet)?;
+        let production = entry::retain_production::<_, _, Tree::MeasureError>(
+            &self.productions,
+            entry::Production {
+                receipt,
+                scope: completed.scope,
+                view: view_id,
+                projection: Some((key, pending)),
+                input: ProductionInput::Content(pending.input),
+                carrier: None,
+                packet: produced.packet,
+            },
+            root,
+        )?;
         let mut cache = completed.principals.borrow_mut();
         cache.try_reserve(1).map_err(|_| {
             LayoutErrorOf::new(
@@ -984,13 +1139,13 @@ impl<Tree: LayoutTree> Driver<'_, '_, '_, Tree> {
             input: pending.input,
             inline_outer: pending.inline_outer,
             output,
-            entry: pending,
-            bodies,
+            production,
+            inherited_trims,
         });
         Ok(Ready {
             id: receipt,
             view: parent_view,
-            projection: Some(bodies),
+            projection: Some(production),
             entry: pending,
             output,
         })

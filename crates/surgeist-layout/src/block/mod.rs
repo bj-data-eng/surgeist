@@ -37,6 +37,7 @@ use super::{LengthOf, NodeInputOf, WritingMode};
 
 mod absolute;
 pub(crate) mod baseline_frame;
+pub(crate) mod carrier;
 pub(crate) mod content;
 pub(crate) mod content_insets;
 pub(crate) mod entry;
