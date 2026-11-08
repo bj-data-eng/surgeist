@@ -31,10 +31,11 @@ and identifies its local modification with a reference to this record.
 `src/vello_engine/mod.rs` is Surgeist-owned composition that wires the derived
 private phases together, so it deliberately carries no upstream source header.
 
-## Radial qualification shader correspondence
+## Field qualification shader correspondence
 
-The repeating-gradient native capacity check in
-`src/encode/repeating_gradient.rs` adapts the concentric circular setup from
+The repeating-gradient native capacity checks in
+`src/encode/repeating_gradient.rs` adapt linear endpoint projection and the
+concentric circular setup from
 `vello_shaders` 0.9.0, `shader/draw_leaf.wgsl`, to qualify scalar field arithmetic
 before encoding. It computes conservative bounds over the actual device target;
 it neither produces pixels nor replaces the GPU rasterizer. The upstream source

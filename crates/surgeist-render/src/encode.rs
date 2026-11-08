@@ -859,9 +859,17 @@ fn push_vello_layer(
     }
 }
 
+// Keep the solved local map and its intended device field in one state.
+// Recomposition can itself lose phase before native narrowing.
+#[derive(Clone, Copy)]
+struct BrushTransform {
+    local: kurbo::Affine,
+    reference_device: kurbo::Affine,
+}
+
 pub(crate) struct FrameBrush {
     brush: peniko::Brush,
-    transform: Option<kurbo::Affine>,
+    transform: Option<BrushTransform>,
     _hold: Option<Hold>,
     _payload: Option<crate::accounting::CpuImport>,
 }
@@ -895,7 +903,10 @@ impl FrameBrush {
         })
     }
     pub(crate) const fn transform(&self) -> Option<kurbo::Affine> {
-        self.transform
+        match self.transform {
+            Some(transform) => Some(transform.local),
+            None => None,
+        }
     }
     pub(crate) fn native_glyph_transform(
         &self,
@@ -903,7 +914,7 @@ impl FrameBrush {
         target_extent: PhysicalSize,
         account: &Account,
     ) -> Result<Option<vello_encoding::Transform>> {
-        let Some(local) = self.transform else {
+        let Some(brush_transform) = self.transform else {
             return Ok(None);
         };
         let account = account.at(RenderPhase::GradientPrepare);
@@ -916,7 +927,7 @@ impl FrameBrush {
                 _ => None,
             };
             repeating_gradient::native_glyph_transform(
-                local,
+                brush_transform,
                 transform,
                 radial_start,
                 target_extent,
@@ -1012,7 +1023,7 @@ fn prepare_gradient(gradient: &Gradient, account: &Account) -> Result<FrameBrush
 fn gradient_with_stops(
     mut output: peniko::Gradient,
     stops: AccountedVec<peniko::ColorStop>,
-    transform: Option<kurbo::Affine>,
+    transform: Option<BrushTransform>,
 ) -> Result<FrameBrush> {
     let (stops, hold) = stops.into_parts();
     // SmallVec::from_vec moves an existing heap allocation; an inline result

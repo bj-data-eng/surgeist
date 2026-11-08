@@ -89,18 +89,19 @@ own repetition and averaging requirements.
 Unit native patterns and brush transforms retain period/phase before narrowing.
 Actual period construction collapse is distinct from a small positive period;
 other unrepresentable required native geometry produces a typed diagnostic.
-Native glyph encoding checks its actual separately narrowed transform product.
-Radial admission also bounds native circular-field arithmetic over the actual
-target's integer sample rectangle. Both phase granularity and the conservative
-arithmetic error bound must fit within one existing native ramp interval. The
-certificate encloses the permitted setup operations under the
+Repeating-field qualification compares the realized linear or radial field with its
+intended device-space reference over the actual target's integer sample rectangle.
+The linear reference is retained before local compensation; native glyph encoding
+checks the actual separately narrowed transform product against that reference.
+Both phase granularity and conservative arithmetic error must fit within one
+existing native ramp interval. The certificate encloses permitted operations under
 [published shader accuracy rules](https://www.w3.org/TR/2026/CRD-WGSL-20261106/#floating-point-accuracy),
-including division domains and subnormal flushing. Native circular sampling
-explicitly selects zero for zero/subnormal squared norms and evaluates its
-square root on a normal positive argument; the certificate includes this lost
-norm. A resolved cycle that exceeds that numerical capacity returns typed invalid input
-before publication; it does not select the small-period average. This conservative
-native policy can reject patterns whose individual samples happen to look valid.
+including division domains and subnormal flushing. Circular sampling selects zero
+for zero/subnormal squared norms and evaluates its square root on a normal positive
+argument; the certificate includes this lost norm. A resolved cycle that exceeds
+numerical capacity returns typed invalid input before publication, preserving
+successful pixels and statistics. This conservative policy can reject individual
+samples that happen to look valid.
 Solid fallback needs no unused pattern backing. Repeating paint works through
 the existing fill, stroke and text paint consumers, preserving glyph/run-local
 coordinates. Graph captures use the output grid for this source, so a mask or
