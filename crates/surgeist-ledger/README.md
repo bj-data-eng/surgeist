@@ -28,9 +28,11 @@ Use a separate elapsed-time or process-memory measurement for those quantities.
 ## Profile an operation
 
 Select a mode at setup. Summary mode counts admissions and ended phase
-invocations, including phases ended by unwinding or cancellation. Turn on timing
-to measure elapsed time for the operation and inclusive time for each invocation. Overlapping invocations at the same scope
-can contribute more total time than the operation elapsed.
+invocations. Borrowed and shared phase helpers also complete on unwinding or
+cancellation; detached observations require an explicit end. Turn on timing to
+measure elapsed time for the operation and inclusive time for each invocation.
+Overlapping invocations at the same scope can contribute more total time than
+the operation elapsed.
 
 Detailed mode retains selected accepted items, first-failed items of refused
 batches, and phase completions up to its configured event limit. An atomic batch
@@ -70,7 +72,9 @@ available independently of its terminal display adapter.
 
 Run the release-mode profiling comparison with
 `cargo bench --offline --locked -j 1 -p surgeist-ledger --bench profiling`.
-The fixture times identical nested admissions with one phase per 32 batches.
+The fixture compares borrowed `with_phase` and detached begin/end observations
+around identical nested admissions, with one phase per 32 batches. Both styles
+use the same six profiling modes and 11 rounds, rotating their execution order.
 Its observer capacity column counts reserved report records and events, excluding
 the operation ledger, allocator metadata, and process memory.
 
@@ -85,8 +89,43 @@ ends on completion, unwinding, or cancellation. Dropping an unpolled future
 does not create a phase. The callback can admit work and run nested phases through
 its borrowed `Phase`; the crate does not supply an executor.
 
-After dropping a pending phase, the caller can release admitted resources and
-inspect `snapshot()` on the same operation. A snapshot returns an independent,
+Use `begin_phase` and `end_phase` when a callback or individual async poll must
+run without retaining a mutable ledger borrow. The opaque `PhaseObservation`
+holds its originating scope and optional start time. It does not borrow the
+operation, allocate a registry entry or acquire a resource. Nested and
+overlapping observations may end in any order; each contributes its own
+inclusive interval.
+
+```rust
+use surgeist_ledger::{Change, Limits, Operation, ProfileMode, Work};
+
+let mut operation = Operation::<1, 0>::with_profile(
+    "callback", Limits::unlimited(), 1,
+    ProfileMode::Summary { timing: true },
+)?;
+let root = operation.root();
+let observation = operation.begin_phase(root)?;
+// The operation remains available while the observation is unfinished.
+operation.apply(root, Change::Work(Work::new(0).unwrap(), 3))?;
+operation.end_phase(observation).expect("observation belongs to this operation");
+let report = operation.finish().expect("summary enabled");
+assert_eq!(report.scopes[0].phases, 1);
+assert_eq!(report.scopes[0].usage.work(Work::new(0).unwrap()), 3);
+# Ok::<(), surgeist_ledger::Error<1, 0>>(())
+```
+
+Detached observations complete only through explicit `end_phase`. Dropping an
+unfinished observation discards it without a clock read or phase completion;
+finishing or dropping its operation does not manufacture an end. A consumer
+that needs completion on return, unwinding or cancellation owns that guard.
+The existing borrowed and shared phase helpers retain their automatic completion
+behavior. Ending on a foreign operation returns the original unfinished marker,
+without reading a clock or changing observations, so it can be retried on its
+owner. A marker begun before `share()` remains valid, and any cloned participant
+of that shared owner can end it.
+
+After dropping a pending borrowed async phase, the caller can release admitted
+resources and inspect `snapshot()` on the same operation. A snapshot returns an independent,
 fallibly allocated copy of the retained profile without consuming or resetting
 the operation. Profiling off returns no report. Operation elapsed time includes
 the interval up to the snapshot, while phase summaries include only ended
