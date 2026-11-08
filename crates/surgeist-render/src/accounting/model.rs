@@ -263,9 +263,17 @@ impl RenderWork {
             || self.supported_for(RenderAttemptKind::Background)
             || self.supported_for(RenderAttemptKind::Clip)
             || self.supported_for(RenderAttemptKind::BoxDecoration)
+            || self.supported_for(RenderAttemptKind::PaintGradient)
     }
     pub(crate) const fn supported_for(self, kind: RenderAttemptKind) -> bool {
         match kind {
+            RenderAttemptKind::PaintGradient => {
+                cfg!(feature = "render-paint")
+                    && matches!(
+                        self,
+                        Self::PaintVisits | Self::GradientStopVisits | Self::CoordinateVisits
+                    )
+            }
             RenderAttemptKind::Readback => matches!(
                 self,
                 Self::ReadbackCopies
@@ -944,6 +952,8 @@ pub enum RenderAttemptKind {
     BoxDecoration,
     /// Whole placed Text-layout preparation.
     TextLayout,
+    /// Standalone native Paint geometry/used-stop consumption.
+    PaintGradient,
 }
 /// Semantic terminal outcome, separate from last-successful frame statistics.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

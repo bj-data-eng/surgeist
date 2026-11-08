@@ -85,6 +85,7 @@ enum ApiProfile {
     Default,
     CssCorpus,
     RenderText,
+    RenderPaint,
 }
 
 impl ApiTarget {
@@ -119,11 +120,21 @@ impl ApiTarget {
         }
     }
 
+    fn render_paint(root: PathBuf, artifact: PathBuf) -> Self {
+        Self {
+            name: "surgeist-render".to_owned(),
+            root,
+            artifact,
+            profile: ApiProfile::RenderPaint,
+        }
+    }
+
     fn audit_name(&self) -> String {
         match self.profile {
             ApiProfile::Default => self.name.clone(),
             ApiProfile::CssCorpus => format!("{} [css-corpus]", self.name),
             ApiProfile::RenderText => format!("{} [render-text]", self.name),
+            ApiProfile::RenderPaint => format!("{} [render-paint]", self.name),
         }
     }
 
@@ -193,6 +204,10 @@ pub fn discover_targets(root: &Path) -> Result<Vec<ApiTarget>, String> {
                 crate_targets.push(ApiTarget::render_text(
                     path.clone(),
                     root.join("api/crates/surgeist-render.render-text.txt"),
+                ));
+                crate_targets.push(ApiTarget::render_paint(
+                    path.clone(),
+                    root.join("api/crates/surgeist-render.render-paint.txt"),
                 ));
             }
             crate_targets.push(ApiTarget::new(name, path, artifact));
@@ -303,6 +318,7 @@ pub fn generate_target_artifact(target: &ApiTarget) -> Result<String, String> {
         ApiProfile::Default => builder,
         ApiProfile::CssCorpus => builder.no_default_features(true).features(["css-corpus"]),
         ApiProfile::RenderText => builder.no_default_features(true).features(["render-text"]),
+        ApiProfile::RenderPaint => builder.no_default_features(true).features(["render-paint"]),
     };
     let rustdoc_json = builder
         .build()
@@ -801,7 +817,10 @@ mod tests {
             .join("api/crates/surgeist-render.render-paint.txt");
         let default_artifact = std::fs::read_to_string(&default_path).unwrap();
         let text_artifact = std::fs::read_to_string(&text_path).unwrap();
-        assert!(paint_path.is_file(), "Render selection must generate its Paint adapter audit");
+        assert!(
+            paint_path.is_file(),
+            "Render selection must generate its Paint adapter audit"
+        );
         let paint_artifact = std::fs::read_to_string(&paint_path).unwrap();
         assert!(default_artifact.starts_with("# surgeist-render public API\n"));
         assert!(text_artifact.starts_with("# surgeist-render [render-text] public API\n"));
@@ -851,7 +870,10 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(error, "stale API artifacts: surgeist-render [render-paint]");
-        assert!(!paint_path.exists(), "check must not recreate the missing audit");
+        assert!(
+            !paint_path.exists(),
+            "check must not recreate the missing audit"
+        );
         assert_eq!(std::fs::read_to_string(&text_path).unwrap(), text_artifact);
     }
 

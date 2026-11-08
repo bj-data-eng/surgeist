@@ -298,8 +298,7 @@ fn build_account(
         history: None,
         custody_open: Arc::new(AtomicBool::new(true)),
         first_refusal: Arc::new(Mutex::new(None)),
-        #[cfg(feature = "render-text")]
-        layout: kind == RenderAttemptKind::TextLayout,
+        kind,
     };
     Ok((account, checkpoint))
 }
@@ -339,8 +338,7 @@ pub(crate) struct Account {
     history: Option<HistoryObserver>,
     custody_open: Arc<AtomicBool>,
     first_refusal: Arc<Mutex<Option<RenderRefusal>>>,
-    #[cfg(feature = "render-text")]
-    layout: bool,
+    kind: RenderAttemptKind,
 }
 
 /// Lends one pinned future without moving its inline state into Ledger's
@@ -380,7 +378,7 @@ impl Account {
     #[cfg(feature = "render-text")]
     pub(crate) fn glyph(&self) -> Self {
         Self {
-            layout: false,
+            kind: RenderAttemptKind::GlyphRun,
             ..self.at(RenderPhase::GlyphPrepare)
         }
     }
@@ -614,8 +612,12 @@ impl Account {
         AccountedVec::new(self, count, RenderResource::ScratchCpuBytes)
     }
     pub(crate) fn allocation_error(&self, resource: RenderResource) -> Error {
+        #[cfg(feature = "render-paint")]
+        if self.is_paint_gradient() {
+            return crate::PaintGradientError::Allocation { resource }.into();
+        }
         #[cfg(feature = "render-text")]
-        if self.layout {
+        if self.kind == RenderAttemptKind::TextLayout {
             return crate::TextLayoutError::Allocation {
                 resource: if resource == RenderResource::ScratchCpuBytes {
                     crate::TextLayoutResource::ScratchBytes
@@ -633,6 +635,17 @@ impl Account {
             },
         }
         .into()
+    }
+    pub(crate) fn capacity_error(&self, resource: RenderResource) -> Error {
+        #[cfg(feature = "render-paint")]
+        if self.is_paint_gradient() {
+            return crate::PaintGradientError::CapacityOverflow { resource }.into();
+        }
+        let _ = resource;
+        GlyphPreparationError::CapacityOverflow.into()
+    }
+    pub(crate) fn is_paint_gradient(&self) -> bool {
+        cfg!(feature = "render-paint") && self.kind == RenderAttemptKind::PaintGradient
     }
     fn error(&self, error: LedgerError) -> Error {
         let LedgerError::Refused(r) = error else {
@@ -678,7 +691,8 @@ impl Account {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .get_or_insert(refusal);
-        if phase != RenderPhase::Attempt
+        if !self.is_paint_gradient()
+            && phase != RenderPhase::Attempt
             && let RenderRefusalReason::Limit { limit } = reason
             && let Some(required) = r
                 .current
@@ -687,7 +701,7 @@ impl Account {
             && let Ok(limit) = usize::try_from(limit)
         {
             #[cfg(feature = "render-text")]
-            if self.layout {
+            if self.kind == RenderAttemptKind::TextLayout {
                 use crate::TextLayoutResource as T;
                 let resource = match quantity {
                     RenderQuantity::Work(RenderWork::GlyphInputs) => Some(T::Glyphs),

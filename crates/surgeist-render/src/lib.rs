@@ -45,6 +45,8 @@ mod gpu_transaction;
 mod image;
 mod layer;
 mod paint;
+#[cfg(feature = "render-paint")]
+mod paint_gradient;
 mod pass;
 mod readback;
 #[cfg(test)]
@@ -103,6 +105,10 @@ pub use layer::{
 pub use paint::{
     Color, Gradient, GradientStop, NormalizedPaintLayer, Paint, PaintColor, PaintColorSpace,
     RepeatingGradient, RepeatingGradientStop,
+};
+#[cfg(feature = "render-paint")]
+pub use paint_gradient::{
+    PaintGradientError, prepare_repeating_linear_gradient, prepare_repeating_radial_gradient,
 };
 pub use renderer::{Antialiasing, EffectQualityPolicy, Options, Renderer, ResourceCacheBudget};
 pub use scene::{Scene, SceneSummary};

@@ -1,7 +1,9 @@
 use super::{
     Account, CpuAccount, CpuHold, CpuImport, PreparationHold, RenderAccountingError, RenderResource,
 };
-use crate::{GlyphPreparationError, Result};
+#[cfg(test)]
+use crate::GlyphPreparationError;
+use crate::Result;
 use std::ops::{Deref, DerefMut};
 
 /// Stack custody for an owned value and the backing/import leases it consumes.
@@ -346,13 +348,15 @@ pub(crate) enum StorageAccount {
 impl StorageAccount {
     pub(crate) fn capacity_error(&self, resource: RenderResource) -> crate::Error {
         match self {
-            Self::Preparation(_) => GlyphPreparationError::CapacityOverflow.into(),
+            Self::Preparation(account) => account.capacity_error(resource),
             Self::Renderer(account) => account.capacity_error(resource),
         }
     }
     pub(crate) fn bytes<T>(&self, count: usize, resource: RenderResource) -> Result<usize> {
         match self {
-            Self::Preparation(_) => super::bytes::<T>(count),
+            Self::Preparation(account) => count
+                .checked_mul(std::mem::size_of::<T>())
+                .ok_or_else(|| account.capacity_error(resource)),
             Self::Renderer(account) => account.sized::<T>(count, resource),
         }
     }

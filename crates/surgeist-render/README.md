@@ -21,6 +21,12 @@ stop positions and choose a solid premultiplied-sRGBA average when the final
 device resolution cannot resolve a cycle. [Gradient paints](docs/reference.md#gradient-paints)
 describe period, phase, transform and accounting behavior.
 
+With `render-paint`, `prepare_repeating_linear_gradient` and
+`prepare_repeating_radial_gradient` consume Paint's native geometry and used
+stops through a `RenderAccountingContext`. They return an owned repeating field
+for the normal scene commands. The [native Paint consumer](docs/reference.md#native-paint-consumer)
+defines positive-geometry support, unit conversion and typed refusals.
+
 `FontData` accepts raw OpenType, collections, WOFF and WOFF2 through
 `surgeist-font`. `FontData::prepare_glyph_run` admits immutable glyph resources
 without a GPU.

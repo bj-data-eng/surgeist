@@ -68,12 +68,13 @@ CSS corpus API. The companion `surgeist-generator.css-corpus.txt` artifact uses
 diagnostic identify it as `surgeist-generator [css-corpus]`; the browser feature
 is disabled for this profile.
 
-Use `--check --crate surgeist-render` to check both its default API and its
-optional Text adapter API. The companion `surgeist-render.render-text.txt`
-artifact uses `--no-default-features --features render-text`; its listing,
-header and stale diagnostic identify it as `surgeist-render [render-text]`.
-Generation with `--crate surgeist-render` and selection with `--all` include both
-artifacts. Other Render features are not requested by this named profile.
+Use `--check --crate surgeist-render` to check its default API and optional
+Text and Paint adapter APIs. The companions `surgeist-render.render-text.txt`
+and `surgeist-render.render-paint.txt` each use `--no-default-features` with only
+their matching `render-text` or `render-paint` feature. Listings, headers and
+stale diagnostics identify them as `surgeist-render [render-text]` and
+`surgeist-render [render-paint]`. Generation with `--crate surgeist-render` and
+selection with `--all` include all three artifacts.
 
 ### Check The API Tool
 
@@ -95,7 +96,7 @@ nested output; retain offline mode and one build job for nested rustdoc commands
 
 ```sh
 env -u CARGO_TARGET_DIR CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo test --offline -j 1 --manifest-path api/generator/Cargo.toml --lib tests::css_corpus_audit_uses_only_requested_features_and_reports_its_missing_artifact -- --ignored --exact
-env -u CARGO_TARGET_DIR CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo test --offline -j 1 --manifest-path api/generator/Cargo.toml --lib tests::render_text_audit_uses_only_requested_features_and_reports_its_missing_artifact -- --ignored --exact
+env -u CARGO_TARGET_DIR CARGO_BUILD_JOBS=1 CARGO_NET_OFFLINE=true cargo test --offline -j 1 --manifest-path api/generator/Cargo.toml --lib tests::render_adapter_audits_use_only_requested_features_and_report_missing_artifacts -- --ignored --exact
 ```
 
 ## Refresh Audits After An Authorized Source Change

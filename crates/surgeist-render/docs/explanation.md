@@ -18,6 +18,10 @@ browser-host integration, generated API audit artifacts and workspace wiring.
 Each consumer owns its direct adapter: Render's optional `render-text` integration
 borrows an actual immutable Text layout and owns the resulting scene resources.
 It does not choose lines, clone the snapshot or invent captured-fragment identity.
+The optional `render-paint` consumer similarly uses Paint's resolved gradient
+geometry and stops. Paint retains geometry and position fixup; Render converts
+their units into its existing repeating field and owns its output backing.
+The opt-in dependency keeps Layout and Text out of this default Render path.
 This workspace crate owns its source API and focused verification. Root artifacts
 are generated and updated by the root tool; the crate carries no generated copies.
 
