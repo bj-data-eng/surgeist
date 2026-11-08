@@ -987,13 +987,26 @@ fn gradient_brush(gradient: &Gradient, account: &Account) -> Result<FrameBrush> 
 }
 
 fn prepare_gradient(gradient: &Gradient, account: &Account) -> Result<FrameBrush> {
-    let mut stops = account.temporary(gradient.stops().len())?;
-    for stop in gradient.stops() {
+    let leading = gradient.native_leading_stop(Some(account))?;
+    let count = gradient
+        .stops()
+        .len()
+        .checked_add(usize::from(leading.is_some()))
+        .ok_or_else(|| {
+            account
+                .storage()
+                .capacity_error(RenderResource::ScratchCpuBytes)
+        })?;
+    let mut stops = account.temporary(count)?;
+    // The preflight above inspects one existing record only for multistop
+    // fields. This walk materializes every actual native record, including the
+    // leading endpoint, into backing whose actual capacity is already admitted.
+    for stop in leading.iter().chain(gradient.stops()) {
         account.work(RenderWork::GradientStopVisits, 1)?;
-        stops.push(peniko::ColorStop::from((
+        stops.push_reserved(peniko::ColorStop::from((
             stop.offset(),
             peniko::Color::from(stop.color()),
-        )))?;
+        )));
     }
     account.work(
         RenderWork::CoordinateVisits,
@@ -1170,6 +1183,132 @@ pub(crate) fn image_transform(size: Size, rect: Rect, fit: ImageFit) -> Result<k
     };
     Ok(kurbo::Affine::translate((tx, ty))
         * kurbo::Affine::scale_non_uniform(fit_scale_x, fit_scale_y))
+}
+
+#[cfg(test)]
+mod ordinary_gradient_accounting_tests {
+    use super::*;
+    use crate::accounting::RenderAttemptKind;
+
+    fn gradient(offsets: &[f32]) -> Gradient {
+        Gradient::try_linear(
+            Point::new(0.0, 0.0),
+            Point::new(8.0, 0.0),
+            offsets
+                .iter()
+                .map(|offset| GradientStop::try_new(*offset, Color::BLACK).unwrap())
+                .collect(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn native_record_work_distinguishes_metadata_preflight_and_materialization() {
+        // One stop needs no first-record preflight. Multistop fields inspect
+        // that first record once, then materialize every supplied/native record.
+        for (offsets, visits, coordinates, native_count) in [
+            (vec![0.5], 1, 4, 1),
+            (vec![0.0, 1.0], 3, 5, 2),
+            (vec![0.5, 1.0], 4, 5, 3),
+        ] {
+            let mut context = RenderAccountingContext::default();
+            context
+                .run(
+                    RenderAttemptKind::Frame,
+                    RenderPhase::GradientPrepare,
+                    |account| {
+                        let brush = prepare_gradient(&gradient(&offsets), account)?;
+                        let peniko::BrushRef::Gradient(native) = brush.as_ref() else {
+                            panic!("gradient brush");
+                        };
+                        assert_eq!(native.stops.len(), native_count);
+                        Ok(())
+                    },
+                )
+                .unwrap();
+            let usage = context.last_attempt().unwrap().usage();
+            assert_eq!(usage.work(RenderWork::GradientStopVisits), visits);
+            assert_eq!(usage.work(RenderWork::CoordinateVisits), coordinates);
+            assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        }
+    }
+
+    #[test]
+    fn leading_endpoint_backing_stays_guarded_through_heap_smallvec_handoff() {
+        let gradient = gradient(&[0.5, 0.6, 0.7, 0.8, 1.0]);
+        let mut context = RenderAccountingContext::default();
+        let bytes = context
+            .run(
+                RenderAttemptKind::Frame,
+                RenderPhase::GradientPrepare,
+                |account| {
+                    let brush = prepare_gradient(&gradient, account)?;
+                    let peniko::BrushRef::Gradient(native) = brush.as_ref() else {
+                        panic!("gradient brush");
+                    };
+                    assert_eq!(native.stops.len(), 6);
+                    // More than four records stays heap-backed. Observe actual capacity,
+                    // rather than treating requested length as allocator capacity.
+                    Ok((native.stops.capacity() * std::mem::size_of::<peniko::ColorStop>()) as u64)
+                },
+            )
+            .unwrap();
+        let usage = context.last_attempt().unwrap().usage();
+        assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), bytes);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(usage.work(RenderWork::GradientStopVisits), 7);
+        assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
+    }
+
+    #[test]
+    fn preflight_and_materialization_refusals_preserve_their_actual_prefix() {
+        let gradient = gradient(&[0.5, 1.0]);
+        for (limits, stops, coordinates, allocated) in [
+            (
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::GradientStopVisits, 0)
+                    .unwrap(),
+                0,
+                0,
+                false,
+            ),
+            (
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::CoordinateVisits, 0)
+                    .unwrap(),
+                1,
+                0,
+                false,
+            ),
+            (
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::GradientStopVisits, 1)
+                    .unwrap(),
+                1,
+                1,
+                true,
+            ),
+            (RenderLimits::new().with_scratch_bytes(0), 1, 1, false),
+        ] {
+            let mut context =
+                RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+            let error = context
+                .run(
+                    RenderAttemptKind::Frame,
+                    RenderPhase::GradientPrepare,
+                    |account| prepare_gradient(&gradient, account).map(drop),
+                )
+                .unwrap_err();
+            assert!(error.accounting_diagnostic().is_some());
+            let report = context.last_attempt().unwrap();
+            assert_eq!(report.refusal().unwrap().phase(), RenderPhase::Attempt);
+            let usage = report.usage();
+            assert_eq!(usage.work(RenderWork::GradientStopVisits), stops);
+            assert_eq!(usage.work(RenderWork::CoordinateVisits), coordinates);
+            assert_eq!(usage.peak(RenderResource::ScratchCpuBytes) > 0, allocated);
+            assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        }
+    }
 }
 
 #[cfg(test)]

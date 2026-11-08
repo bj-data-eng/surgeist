@@ -458,17 +458,43 @@ impl GradientStop {
     }
 }
 
+impl Gradient {
+    /// The native ramp starts its first color at zero. Anchor that same color
+    /// there when a multistop Pad field has a positive first supplied offset.
+    /// A single stop already selects the native solid path, even for coincident
+    /// linear endpoints, so its offset is deliberately not inspected here.
+    pub(crate) fn native_leading_stop(
+        &self,
+        account: Option<&crate::accounting::Account>,
+    ) -> Result<Option<GradientStop>> {
+        if self.stops().len() < 2 {
+            return Ok(None);
+        }
+        if let Some(account) = account {
+            account.work(crate::accounting::RenderWork::GradientStopVisits, 1)?;
+        }
+        let first = self.stops()[0];
+        if let Some(account) = account {
+            account.work(crate::accounting::RenderWork::CoordinateVisits, 1)?;
+        }
+        Ok((first.offset > 0.0).then_some(GradientStop {
+            offset: 0.0,
+            color: first.color,
+        }))
+    }
+}
+
 /// Lowers the validated gradient to Peniko, converting logical `f64` geometry to `f32`.
 impl From<Gradient> for peniko::Gradient {
     fn from(gradient: Gradient) -> Self {
-        let stops: Vec<_> = match gradient.kind() {
-            GradientKind::Linear { stops, .. }
-            | GradientKind::Radial { stops, .. }
-            | GradientKind::Sweep { stops, .. } => stops
-                .iter()
-                .map(|stop| (stop.offset, peniko::Color::from(stop.color)))
-                .collect(),
-        };
+        let leading = gradient
+            .native_leading_stop(None)
+            .expect("without an account, native leading-stop inspection cannot refuse");
+        let stops: Vec<_> = leading
+            .iter()
+            .chain(gradient.stops())
+            .map(|stop| (stop.offset, peniko::Color::from(stop.color)))
+            .collect();
 
         match gradient.kind {
             GradientKind::Linear { start, end, .. } => peniko::Gradient::new_linear(

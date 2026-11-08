@@ -261,4 +261,157 @@ mod gpu {
             }
         }
     }
+
+    #[test]
+    fn leading_native_record_work_refusal_preserves_publication_and_allows_zero_first_retry() {
+        use surgeist_render::{
+            RenderAccountingError, RenderAccountingOptions, RenderAttemptStatus, RenderLimits,
+            RenderPhase, RenderProfile, RenderQuantity, RenderRefusalReason, RenderWork,
+        };
+
+        let bounds = rect(0.0, 0.0, 8.0, 4.0);
+        let mut positive_first = Scene::new();
+        positive_first.fill(bounds, gradient(Field::Linear, red(1.0)));
+        let accounting =
+            RenderAccountingOptions::new().with_profile(RenderProfile::Summary { timing: false });
+        let mut unrestricted = pollster::block_on(Renderer::new(
+            Options::default().with_accounting(accounting),
+        ))
+        .unwrap();
+        let mut unrestricted_surface =
+            pollster::block_on(unrestricted.create_headless(Size::try_new(8.0, 4.0).unwrap(), 1.0))
+                .unwrap();
+        pollster::block_on(unrestricted.render(
+            &mut unrestricted_surface,
+            &positive_first,
+            Parameters::default(),
+        ))
+        .unwrap();
+        let full_report = unrestricted.take_last_attempt().unwrap();
+        assert_eq!(full_report.status(), RenderAttemptStatus::Succeeded);
+        assert_eq!(full_report.cleanup_fault(), None);
+        let full_attempt = full_report.attempt().unwrap();
+        let prepared_visits = full_attempt
+            .phase_usage(RenderPhase::GradientPrepare)
+            .work(RenderWork::GradientStopVisits);
+        // Two supplied records need one first-record preflight and three
+        // actual native records: the leading endpoint plus both supplied stops.
+        assert_eq!(prepared_visits, 1 + 3);
+        let total_visits = full_attempt.usage().work(RenderWork::GradientStopVisits);
+        let cap = total_visits - 1;
+        drop(unrestricted_surface);
+        drop(unrestricted);
+
+        let limits = RenderLimits::new()
+            .with_work_limit(RenderWork::GradientStopVisits, cap)
+            .unwrap();
+        let mut renderer = pollster::block_on(Renderer::new(
+            Options::default().with_accounting(accounting.with_limits(limits)),
+        ))
+        .unwrap();
+        let mut surface =
+            pollster::block_on(renderer.create_headless(Size::try_new(8.0, 4.0).unwrap(), 1.0))
+                .unwrap();
+        let mut solid = Scene::new();
+        solid.fill(bounds, Color::try_rgba(0.0, 1.0, 0.0, 1.0).unwrap());
+        let successful_stats =
+            pollster::block_on(renderer.render(&mut surface, &solid, Parameters::default()))
+                .unwrap();
+        let before = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+        assert_rgba(
+            pixel(&before, 2, 2),
+            [0, 255, 0, 255],
+            0,
+            "solid publication before refusal",
+        );
+
+        let error = pollster::block_on(renderer.render(
+            &mut surface,
+            &positive_first,
+            Parameters::default(),
+        ))
+        .unwrap_err();
+        let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic() else {
+            panic!("expected a named gradient-stop work refusal")
+        };
+        assert_eq!(
+            refusal.quantity(),
+            RenderQuantity::Work(RenderWork::GradientStopVisits)
+        );
+        assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: cap });
+        assert_eq!(renderer.stats(), successful_stats);
+        let refused_report = renderer.take_last_attempt().unwrap();
+        assert_eq!(refused_report.status(), RenderAttemptStatus::Refused);
+        assert_eq!(refused_report.cleanup_fault(), None);
+        let refused_attempt = refused_report.attempt().unwrap();
+        assert_eq!(refused_attempt.refusal(), Some(refusal));
+        let accepted = refused_attempt.usage().work(RenderWork::GradientStopVisits);
+        assert!(accepted > 0 && accepted <= cap);
+        assert_eq!(refused_attempt.usage().work(RenderWork::Submissions), 0);
+        assert_eq!(
+            pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+            before
+        );
+        assert_eq!(renderer.stats(), successful_stats);
+
+        // Starting at zero needs no leading native endpoint. With all other
+        // scene inputs held equal, that removes one record from materialization
+        // and the encoder's separate visit, permitting a fresh publication.
+        let zero_first = Gradient::try_linear(
+            point(0.0, 0.0),
+            point(8.0, 0.0),
+            vec![
+                GradientStop::try_new(0.0, red(1.0)).unwrap(),
+                GradientStop::try_new(1.0, blue()).unwrap(),
+            ],
+        )
+        .unwrap();
+        let mut retry = Scene::new();
+        retry.fill(bounds, zero_first);
+        pollster::block_on(renderer.render(&mut surface, &retry, Parameters::default())).unwrap();
+        let retry_report = renderer.take_last_attempt().unwrap();
+        assert_eq!(retry_report.status(), RenderAttemptStatus::Succeeded);
+        assert_eq!(retry_report.cleanup_fault(), None);
+        let retry_attempt = retry_report.attempt().unwrap();
+        assert_eq!(
+            retry_attempt.usage().work(RenderWork::GradientStopVisits),
+            total_visits - 2
+        );
+        assert_eq!(
+            retry_attempt
+                .phase_usage(RenderPhase::GradientPrepare)
+                .work(RenderWork::GradientStopVisits),
+            prepared_visits - 1
+        );
+        // Encode includes GradientPrepare. Removing that child's work exposes
+        // the native encoder's independently charged three/two-record walk.
+        assert_eq!(
+            full_attempt
+                .phase_usage(RenderPhase::Encode)
+                .work(RenderWork::GradientStopVisits)
+                - prepared_visits,
+            3
+        );
+        assert_eq!(
+            retry_attempt
+                .phase_usage(RenderPhase::Encode)
+                .work(RenderWork::GradientStopVisits)
+                - (prepared_visits - 1),
+            2
+        );
+        let after = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+        assert_ne!(after, before);
+        assert_rgba(
+            pixel(&after, 2, 2),
+            [191, 0, 64, 255],
+            2,
+            "zero-first retry quarter",
+        );
+        assert_rgba(
+            pixel(&after, 6, 2),
+            [64, 0, 191, 255],
+            2,
+            "zero-first retry three-quarter",
+        );
+    }
 }
