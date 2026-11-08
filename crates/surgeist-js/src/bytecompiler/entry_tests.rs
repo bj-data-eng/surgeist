@@ -189,7 +189,7 @@ fn origin(report: &ExecutionReport, name: &str) -> u64 {
         .find(|scope| scope.parent == Some(phase.scope) && scope.name == name)
         .unwrap()
         .usage
-        .work(Work::<30>::new(26).unwrap())
+        .work(Work::<31>::new(26).unwrap())
 }
 
 fn assert_compilation_attribution(report: &ExecutionReport) {
@@ -199,14 +199,14 @@ fn assert_compilation_attribution(report: &ExecutionReport) {
         .iter()
         .find(|scope| scope.name == "bytecode-compilation")
         .unwrap();
-    let compiler = Work::<30>::new(26).unwrap();
+    let compiler = Work::<31>::new(26).unwrap();
     assert_eq!(phase.usage.work(compiler), report.compiler_work());
     assert_eq!(
         profile.scopes[0].usage.work(compiler),
         report.compiler_work()
     );
     for index in [12, 13, 14, 24, 26] {
-        let dimension = Work::<30>::new(index).unwrap();
+        let dimension = Work::<31>::new(index).unwrap();
         let attributed: u64 = profile
             .scopes
             .iter()

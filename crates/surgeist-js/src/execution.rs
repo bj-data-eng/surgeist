@@ -19,7 +19,9 @@
 //! The `job-prepare`, `job-invoke` and `job-poll` phases observe admitted
 //! synchronous job actions and their owned cleanup. Native job preparation now
 //! dispatches its owned-task factory and therefore marks possible effects. No job observation spans
-//! Pending. Host future internals are opaque; these timings do not certify their work.
+//! Pending. `generator-request` observes each admitted request algorithm through
+//! its synchronous return and cleanup, including promise preparation, without
+//! spanning suspension. Host future internals are opaque; these timings do not certify their work.
 
 use std::time::Duration;
 
@@ -51,36 +53,37 @@ use crate::{
 
 pub use surgeist_ledger::{EventFilter, ProfileMode};
 
-const INSTRUCTION: Work<30> = Work::new(0).unwrap();
-const SOURCE_READ: Work<30> = Work::new(1).unwrap();
-const SOURCE_CONSUMPTION: Work<30> = Work::new(2).unwrap();
-const SOURCE_RETENTION: Work<30> = Work::new(3).unwrap();
-const LEXER_LOOKAHEAD: Work<30> = Work::new(4).unwrap();
-const LEXER_DISPATCH: Work<30> = Work::new(5).unwrap();
-const TOKEN_PROBE: Work<30> = Work::new(6).unwrap();
-const TOKEN_ADVANCE: Work<30> = Work::new(7).unwrap();
-const GRAMMAR_DISPATCH: Work<30> = Work::new(8).unwrap();
-const EARLY_ERROR_VISIT: Work<30> = Work::new(9).unwrap();
-const LABEL_LOOKUP: Work<30> = Work::new(10).unwrap();
-const DIRECT_EVAL_VISIT: Work<30> = Work::new(11).unwrap();
-const NAME_VISIT: Work<30> = Work::new(12).unwrap();
-const NAME_RECORD: Work<30> = Work::new(13).unwrap();
-const NAME_COMPARISON: Work<30> = Work::new(14).unwrap();
-const INTERNER_BYTES: Work<30> = Work::new(15).unwrap();
-const INTERNER_UTF16: Work<30> = Work::new(16).unwrap();
-const INTERNER_INDEX: Work<30> = Work::new(17).unwrap();
-const INTERNER_CAPACITY: Work<30> = Work::new(18).unwrap();
-const INTERNER_RELOCATION: Work<30> = Work::new(19).unwrap();
-const DIAGNOSTIC_INPUT: Work<30> = Work::new(20).unwrap();
-const DIAGNOSTIC_OUTPUT: Work<30> = Work::new(21).unwrap();
-const TEMPLATE_INPUT: Work<30> = Work::new(22).unwrap();
-const TEMPLATE_OUTPUT: Work<30> = Work::new(23).unwrap();
-const SCOPE_WORK: Work<30> = Work::new(24).unwrap();
-const OPTIMIZER_WORK: Work<30> = Work::new(25).unwrap();
-const COMPILER_WORK: Work<30> = Work::new(26).unwrap();
-const JOB_PREPARATION: Work<30> = Work::new(27).unwrap();
-const JOB_INVOCATION: Work<30> = Work::new(28).unwrap();
-const JOB_POLL: Work<30> = Work::new(29).unwrap();
+const INSTRUCTION: Work<31> = Work::new(0).unwrap();
+const SOURCE_READ: Work<31> = Work::new(1).unwrap();
+const SOURCE_CONSUMPTION: Work<31> = Work::new(2).unwrap();
+const SOURCE_RETENTION: Work<31> = Work::new(3).unwrap();
+const LEXER_LOOKAHEAD: Work<31> = Work::new(4).unwrap();
+const LEXER_DISPATCH: Work<31> = Work::new(5).unwrap();
+const TOKEN_PROBE: Work<31> = Work::new(6).unwrap();
+const TOKEN_ADVANCE: Work<31> = Work::new(7).unwrap();
+const GRAMMAR_DISPATCH: Work<31> = Work::new(8).unwrap();
+const EARLY_ERROR_VISIT: Work<31> = Work::new(9).unwrap();
+const LABEL_LOOKUP: Work<31> = Work::new(10).unwrap();
+const DIRECT_EVAL_VISIT: Work<31> = Work::new(11).unwrap();
+const NAME_VISIT: Work<31> = Work::new(12).unwrap();
+const NAME_RECORD: Work<31> = Work::new(13).unwrap();
+const NAME_COMPARISON: Work<31> = Work::new(14).unwrap();
+const INTERNER_BYTES: Work<31> = Work::new(15).unwrap();
+const INTERNER_UTF16: Work<31> = Work::new(16).unwrap();
+const INTERNER_INDEX: Work<31> = Work::new(17).unwrap();
+const INTERNER_CAPACITY: Work<31> = Work::new(18).unwrap();
+const INTERNER_RELOCATION: Work<31> = Work::new(19).unwrap();
+const DIAGNOSTIC_INPUT: Work<31> = Work::new(20).unwrap();
+const DIAGNOSTIC_OUTPUT: Work<31> = Work::new(21).unwrap();
+const TEMPLATE_INPUT: Work<31> = Work::new(22).unwrap();
+const TEMPLATE_OUTPUT: Work<31> = Work::new(23).unwrap();
+const SCOPE_WORK: Work<31> = Work::new(24).unwrap();
+const OPTIMIZER_WORK: Work<31> = Work::new(25).unwrap();
+const COMPILER_WORK: Work<31> = Work::new(26).unwrap();
+const JOB_PREPARATION: Work<31> = Work::new(27).unwrap();
+const JOB_INVOCATION: Work<31> = Work::new(28).unwrap();
+const JOB_POLL: Work<31> = Work::new(29).unwrap();
+const GENERATOR_REQUEST: Work<31> = Work::new(30).unwrap();
 const OPTIMIZER_ORIGINS: [&str; 21] = [
     "optimizer-visit",
     "optimizer-iteration",
@@ -139,7 +142,8 @@ const COMPILER_ORIGINS: [&str; 32] = [
     "compiler-environment-probe",
 ];
 // Root, frontend + four sources, three scope phases + 36 origins, optimizer
-// + 21 origins, 32 compiler origins, three lifetime/VM scopes and three job scopes.
+// + 21 origins, 32 compiler origins, three lifetime/VM scopes, three job scopes
+// and one generator scope.
 const FIXED_SCOPES: usize = 1
     + 1
     + 4
@@ -148,7 +152,7 @@ const FIXED_SCOPES: usize = 1
     + 1
     + OPTIMIZER_ORIGINS.len()
     + COMPILER_ORIGINS.len()
-    + 6;
+    + 7;
 const SCOPE_ORIGINS: [&str; 12] = [
     "scope-node",
     "scope-probe",
@@ -163,7 +167,7 @@ const SCOPE_ORIGINS: [&str; 12] = [
     "scope-publication",
     "scope-context-validation",
 ];
-type ExecutionLedger = Operation<30, 0>;
+type ExecutionLedger = Operation<31, 0>;
 
 // The shared producer offsets retain the existing optimizer origin order.
 fn string_charge(work: StringWork) -> (usize, u64) {
@@ -188,7 +192,7 @@ fn primitive_charge(work: PrimitiveWork) -> (usize, u64) {
     }
 }
 
-fn compiler_charge(work: CompilerWork) -> (usize, Work<30>, u64) {
+fn compiler_charge(work: CompilerWork) -> (usize, Work<31>, u64) {
     let (origin, units) = match work {
         CompilerWork::Visit => (0, 1),
         CompilerWork::Search => (1, 1),
@@ -246,10 +250,10 @@ fn scope_charge(work: ScopeWork) -> (usize, u64) {
 }
 
 fn charge_interner(
-    phase: &mut Phase<'_, 30, 0>,
+    phase: &mut Phase<'_, 31, 0>,
     scope: Scope,
     work: InternerWork,
-) -> Result<(), LedgerError<30, 0>> {
+) -> Result<(), LedgerError<31, 0>> {
     match work {
         InternerWork::Hash { encoding, units }
         | InternerWork::Compare { encoding, units }
@@ -316,6 +320,7 @@ pub struct ExecutionOptions {
     job_preparation_limit: u64,
     job_invocation_limit: u64,
     job_poll_limit: u64,
+    generator_request_limit: u64,
     source_read_limit: u64,
     source_consumption_limit: u64,
     source_retention_limit: u64,
@@ -355,6 +360,7 @@ impl ExecutionOptions {
             job_preparation_limit: u64::MAX,
             job_invocation_limit: u64::MAX,
             job_poll_limit: u64::MAX,
+            generator_request_limit: u64::MAX,
             source_read_limit: u64::MAX,
             source_consumption_limit: u64::MAX,
             source_retention_limit: u64::MAX,
@@ -408,6 +414,21 @@ impl ExecutionOptions {
     #[must_use]
     pub const fn with_job_poll_limit(mut self, limit: u64) -> Self {
         self.job_poll_limit = limit;
+        self
+    }
+
+    /// Caps attempted synchronous and asynchronous generator requests.
+    ///
+    /// One unit admits one `next`, `return` or `throw` request before receiver
+    /// validation or promise preparation, including completed generators and
+    /// requests that subsequently fail validation. Refusal preserves the
+    /// generator's state and queue. VM instructions and native job actions
+    /// retain their separate limits.
+    /// This cap does not bound continuation payload copies, queue or drain work,
+    /// or completion publication.
+    #[must_use]
+    pub const fn with_generator_request_limit(mut self, limit: u64) -> Self {
+        self.generator_request_limit = limit;
         self
     }
 
@@ -655,6 +676,7 @@ pub(crate) enum ExecutionPhase {
     JobPreparation,
     JobInvocation,
     JobPoll,
+    GeneratorRequest,
 }
 
 #[derive(Clone, Copy)]
@@ -677,11 +699,12 @@ impl JobAction {
 pub(crate) struct Execution {
     ledger: ExecutionLedger,
     prepared_report: PreparedReport,
-    execution_phases: [Scope; 6],
+    execution_phases: [Scope; 7],
     instruction_limit: u64,
     job_preparation_limit: u64,
     job_invocation_limit: u64,
     job_poll_limit: u64,
+    generator_request_limit: u64,
     source_read_limit: u64,
     source_consumption_limit: u64,
     source_retention_limit: u64,
@@ -758,6 +781,7 @@ impl Execution {
                 options.job_preparation_limit,
                 options.job_invocation_limit,
                 options.job_poll_limit,
+                options.generator_request_limit,
             ],
             [],
         );
@@ -830,7 +854,7 @@ impl Execution {
                 )
                 .map_err(Self::setup_error)?;
         }
-        let mut execution_phases = [ledger.root(); 6];
+        let mut execution_phases = [ledger.root(); 7];
         for (slot, name) in execution_phases.iter_mut().zip([
             "execution-lifetime",
             "vm-active",
@@ -838,6 +862,7 @@ impl Execution {
             "job-prepare",
             "job-invoke",
             "job-poll",
+            "generator-request",
         ]) {
             *slot = ledger
                 .child(
@@ -856,6 +881,7 @@ impl Execution {
             job_preparation_limit: options.job_preparation_limit,
             job_invocation_limit: options.job_invocation_limit,
             job_poll_limit: options.job_poll_limit,
+            generator_request_limit: options.generator_request_limit,
             source_read_limit: options.source_read_limit,
             source_consumption_limit: options.source_consumption_limit,
             source_retention_limit: options.source_retention_limit,
@@ -899,7 +925,7 @@ impl Execution {
         })
     }
 
-    fn setup_error(error: LedgerError<30, 0>) -> ExecutionSetupError {
+    fn setup_error(error: LedgerError<31, 0>) -> ExecutionSetupError {
         match error {
             LedgerError::Allocation => ExecutionSetupError::Allocation,
             LedgerError::IdentityExhausted => ExecutionSetupError::IdentityExhausted,
@@ -1358,6 +1384,23 @@ impl Execution {
         }
     }
 
+    fn charge_generator_request(&mut self) -> JsResult<()> {
+        if let Some(stop) = &self.stop {
+            return Err(stop.clone());
+        }
+        match self
+            .ledger
+            .apply(self.execution_phases[6], Change::Work(GENERATOR_REQUEST, 1))
+        {
+            Ok(()) => Ok(()),
+            Err(LedgerError::Refused(_)) => Err(RuntimeLimitError::GeneratorRequest {
+                limit: self.generator_request_limit,
+            }
+            .into()),
+            Err(_) => unreachable!("generator admission uses its preallocated request scope"),
+        }
+    }
+
     /// Records an actual accepted execution event; nested work cannot clear it.
     pub(crate) fn note_effect(&mut self) {
         self.effects_started = true;
@@ -1380,7 +1423,26 @@ impl crate::Context {
         Ok(())
     }
 
-    /// Called immediately before an accepted callback or declaration mutation.
+    /// Admits one attempted request before validation or promise preparation.
+    pub(crate) fn with_generator_request<T>(
+        &mut self,
+        run: impl FnOnce(&mut Self) -> JsResult<T>,
+    ) -> JsResult<T> {
+        self.check_execution_stop()?;
+        if let Some(execution) = &mut self.execution
+            && let Err(stop) = execution.charge_generator_request()
+        {
+            execution.retain_stop(&stop);
+            return Err(stop);
+        }
+        let result = self.with_execution_phase(ExecutionPhase::GeneratorRequest, |context| {
+            context.note_execution_effect();
+            run(context)
+        });
+        self.check_execution_stop().and(result)
+    }
+
+    /// Called immediately before an accepted callback, generator request or declaration mutation.
     pub(crate) fn note_execution_effect(&mut self) {
         if let Some(execution) = &mut self.execution {
             execution.note_effect();

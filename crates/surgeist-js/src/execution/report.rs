@@ -84,6 +84,7 @@ struct ReportData {
     job_preparations: u64,
     job_invocations: u64,
     job_polls: u64,
+    generator_requests: u64,
     source_reads: u64,
     source_code_points: u64,
     retained_source_units: u64,
@@ -111,7 +112,7 @@ struct ReportData {
     optimizer_work: u64,
     compiler_work: u64,
     compiler_depth_peak: usize,
-    profile: Option<Report<30, 0>>,
+    profile: Option<Report<31, 0>>,
 }
 
 impl ExecutionReport {
@@ -126,7 +127,7 @@ impl ExecutionReport {
     }
 
     /// Whether this operation began a guest instruction, invoked a program callback,
-    /// or committed a declaration effect.
+    /// entered a generator request, or committed a declaration effect.
     ///
     /// This remains true across nested evaluation and later refusal. It does not
     /// assert that a particular property changed, or that restarting source is safe.
@@ -155,6 +156,15 @@ impl ExecutionReport {
     /// Returns the number of admitted native async job future polls.
     pub fn job_polls(&self) -> u64 {
         self.data().job_polls
+    }
+
+    /// Returns the number of admitted generator request attempts.
+    ///
+    /// Each `next`, `return` or `throw` request counts once before validation
+    /// or promise preparation, including requests against completed generators
+    /// and attempts that subsequently fail validation.
+    pub fn generator_requests(&self) -> u64 {
+        self.data().generator_requests
     }
 
     /// Returns the number of admitted source read attempts.
@@ -318,7 +328,9 @@ impl ExecutionReport {
     /// Dimensions 27–29 count native task preparation factory invocations,
     /// synchronous native job invocations and inner task polls.
     /// Their action-local phases include owned cleanup and exclude time between polls.
-    pub fn profile(&self) -> Option<&Report<30, 0>> {
+    /// Dimension 30 counts generator request attempts; `generator-request` observes
+    /// each admitted synchronous request algorithm, without spanning suspension.
+    pub fn profile(&self) -> Option<&Report<31, 0>> {
         self.data().profile.as_ref()
     }
 }
@@ -351,6 +363,7 @@ impl Execution {
             job_preparations: usage.work(super::JOB_PREPARATION),
             job_invocations: usage.work(super::JOB_INVOCATION),
             job_polls: usage.work(super::JOB_POLL),
+            generator_requests: usage.work(super::GENERATOR_REQUEST),
             source_reads: usage.work(super::SOURCE_READ),
             source_code_points: usage.work(super::SOURCE_CONSUMPTION),
             retained_source_units: usage.work(super::SOURCE_RETENTION),
