@@ -235,6 +235,16 @@ const SET_LUM_REPLACEMENT: ShaderSourceReplacement = ShaderSourceReplacement {
     failure: "internal Vello fine shader no longer has the checked SetLum helper",
 };
 
+// A live local Plus accumulator can exceed normalized RGB. Bound an ordinary
+// mixing result before backdrop-alpha modulation, preserving Plus as a separate
+// complete operation rather than changing its existing additive accumulator.
+const BLEND_RESULT_REPLACEMENT: ShaderSourceReplacement = ShaderSourceReplacement {
+    from: "let mixed = blend_mix(cb, cs, mix_mode);",
+    to: "var mixed = blend_mix(cb, cs, mix_mode);\n    if ((mode & 0xffu) != COMPOSE_PLUS) {\n        mixed = clamp(mixed, vec3<f32>(0.0), vec3<f32>(1.0));\n    }",
+    count: 1,
+    failure: "internal Vello fine shader no longer has the checked blend-result boundary",
+};
+
 #[derive(Clone, Copy)]
 struct ShaderSourceReplacement {
     from: &'static str,
@@ -254,12 +264,17 @@ fn fine_shader_source(
             shader.wgsl.code.as_ref(),
             &[
                 SET_LUM_REPLACEMENT,
+                BLEND_RESULT_REPLACEMENT,
                 MSAA8_ENDPOINT_REPLACEMENTS[0],
                 MSAA8_ENDPOINT_REPLACEMENTS[1],
             ],
         )
     } else {
-        replace_shader_code(cpu, shader.wgsl.code.as_ref(), &[SET_LUM_REPLACEMENT])
+        replace_shader_code(
+            cpu,
+            shader.wgsl.code.as_ref(),
+            &[SET_LUM_REPLACEMENT, BLEND_RESULT_REPLACEMENT],
+        )
     }
 }
 
@@ -709,12 +724,13 @@ mod cpu_tests {
             (&SHADERS.fine_msaa16, false),
         ] {
             // Exact source preservation is the adapter's artifact contract.
-            // Independent GPU fixtures own the numeric SetLum evidence.
+            // Independent GPU fixtures own the numeric blend/SetLum evidence.
             let source = fine_shader_source(&cpu, shader, msaa8).unwrap();
             let mut expected = shader
                 .wgsl
                 .code
-                .replace(SET_LUM_REPLACEMENT.from, SET_LUM_REPLACEMENT.to);
+                .replace(SET_LUM_REPLACEMENT.from, SET_LUM_REPLACEMENT.to)
+                .replace(BLEND_RESULT_REPLACEMENT.from, BLEND_RESULT_REPLACEMENT.to);
             if msaa8 {
                 expected = expected
                     .replace(
@@ -756,14 +772,15 @@ mod cpu_tests {
     fn fine_source_cardinality_mismatch_refuses_before_scratch_or_emission() {
         let owner = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
         let cpu = owner.at(RenderCpuScope::DeviceBacking);
-        for changed_source in [
-            "missing helper".to_owned(),
-            format!("{}\n{}", SET_LUM_REPLACEMENT.from, SET_LUM_REPLACEMENT.from),
-        ] {
-            let error =
-                replace_shader_code(&cpu, &changed_source, &[SET_LUM_REPLACEMENT]).unwrap_err();
-            assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
-            assert_eq!(error.message(), SET_LUM_REPLACEMENT.failure);
+        for replacement in [SET_LUM_REPLACEMENT, BLEND_RESULT_REPLACEMENT] {
+            for changed_source in [
+                "missing helper".to_owned(),
+                format!("{}\n{}", replacement.from, replacement.from),
+            ] {
+                let error = replace_shader_code(&cpu, &changed_source, &[replacement]).unwrap_err();
+                assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+                assert_eq!(error.message(), replacement.failure);
+            }
         }
         let error = replace_shader_code(
             &cpu,
