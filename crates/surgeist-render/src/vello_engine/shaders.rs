@@ -247,9 +247,10 @@ const BLEND_RESULT_REPLACEMENT: ShaderSourceReplacement = ShaderSourceReplacemen
 
 // Normal's fast path also consumes bounded B in the overlap. Keep extended
 // local Plus source outside that overlap, without division or cancellation.
+// The shared ClipOnly marker retains coverage arithmetic without a mixing step.
 const NORMAL_BLEND_REPLACEMENT: ShaderSourceReplacement = ShaderSourceReplacement {
     from: "return backdrop * (1.0 - src.a) + src;",
-    to: "let bounded_source = clamp(src.rgb, vec3<f32>(0.0), vec3<f32>(src.a));\n        let rgb = (1.0 - backdrop.a) * src.rgb\n            + backdrop.a * bounded_source\n            + (1.0 - src.a) * backdrop.rgb;\n        return vec4<f32>(rgb, src.a + backdrop.a * (1.0 - src.a));",
+    to: "if ((mode >> 8u) == MIX_CLIP) {\n            return backdrop * (1.0 - src.a) + src;\n        }\n        let bounded_source = clamp(src.rgb, vec3<f32>(0.0), vec3<f32>(src.a));\n        let rgb = (1.0 - backdrop.a) * src.rgb\n            + backdrop.a * bounded_source\n            + (1.0 - src.a) * backdrop.rgb;\n        return vec4<f32>(rgb, src.a + backdrop.a * (1.0 - src.a));",
     count: 1,
     failure: "internal Vello fine shader no longer has the checked Normal blend boundary",
 };
