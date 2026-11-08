@@ -1,5 +1,6 @@
+use crate::ContextAccess;
 use crate::{
-    Context, JsResult, JsValue,
+    JsResult, JsValue,
     error::JsNativeError,
     value::{
         JsSymbol, PreferredType,
@@ -9,7 +10,8 @@ use crate::{
 
 impl JsValue {
     /// Perform the binary `+` operator on the value and return the result.
-    pub fn add(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
+    pub fn add(&self, other: &Self, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::Add, other);
         }
@@ -24,7 +26,8 @@ impl JsValue {
     }
 
     /// Perform the binary `-` operator on the value and return the result.
-    pub fn sub(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
+    pub fn sub(&self, other: &Self, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::Sub, other);
         }
@@ -34,7 +37,8 @@ impl JsValue {
     }
 
     /// Perform the binary `*` operator on the value and return the result.
-    pub fn mul(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
+    pub fn mul(&self, other: &Self, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::Mul, other);
         }
@@ -44,7 +48,8 @@ impl JsValue {
     }
 
     /// Perform the binary `/` operator on the value and return the result.
-    pub fn div(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
+    pub fn div(&self, other: &Self, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::Div, other);
         }
@@ -54,7 +59,8 @@ impl JsValue {
     }
 
     /// Perform the binary `%` operator on the value and return the result.
-    pub fn rem(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
+    pub fn rem(&self, other: &Self, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::Rem, other);
         }
@@ -66,7 +72,8 @@ impl JsValue {
     /// Perform the binary `**` operator on the value and return the result.
     // NOTE: There are some cases in the spec where we have to compare floats
     #[allow(clippy::float_cmp)]
-    pub fn pow(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
+    pub fn pow(&self, other: &Self, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::Pow, other);
         }
@@ -76,7 +83,8 @@ impl JsValue {
     }
 
     /// Perform the binary `&` operator on the value and return the result.
-    pub fn bitand(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
+    pub fn bitand(&self, other: &Self, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::BitAnd, other);
         }
@@ -86,7 +94,8 @@ impl JsValue {
     }
 
     /// Perform the binary `|` operator on the value and return the result.
-    pub fn bitor(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
+    pub fn bitor(&self, other: &Self, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::BitOr, other);
         }
@@ -96,7 +105,8 @@ impl JsValue {
     }
 
     /// Perform the binary `^` operator on the value and return the result.
-    pub fn bitxor(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
+    pub fn bitxor(&self, other: &Self, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::BitXor, other);
         }
@@ -106,7 +116,8 @@ impl JsValue {
     }
 
     /// Perform the binary `<<` operator on the value and return the result.
-    pub fn shl(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
+    pub fn shl(&self, other: &Self, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::Shl, other);
         }
@@ -116,7 +127,8 @@ impl JsValue {
     }
 
     /// Perform the binary `>>` operator on the value and return the result.
-    pub fn shr(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
+    pub fn shr(&self, other: &Self, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::Shr, other);
         }
@@ -126,7 +138,8 @@ impl JsValue {
     }
 
     /// Perform the binary `>>>` operator on the value and return the result.
-    pub fn ushr(&self, other: &Self, context: &mut Context) -> JsResult<Self> {
+    pub fn ushr(&self, other: &Self, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::Ushr, other);
         }
@@ -141,7 +154,8 @@ impl JsValue {
     /// - [ECMAScript reference][spec]
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-instanceofoperator
-    pub fn instance_of(&self, target: &Self, context: &mut Context) -> JsResult<bool> {
+    pub fn instance_of(&self, target: &Self, context: ContextAccess<'_>) -> JsResult<bool> {
+        let context = context.into_owner();
         // 1. If Type(target) is not Object, throw a TypeError exception.
         if !target.is_object() {
             return Err(JsNativeError::typ()
@@ -163,7 +177,7 @@ impl JsValue {
             }
             None if target.is_callable() => {
                 // 5. Return ? OrdinaryHasInstance(target, V).
-                Self::ordinary_has_instance(target, self, context)
+                Self::ordinary_has_instance(target, self, context.access())
             }
             None => {
                 // 4. If IsCallable(target) is false, throw a TypeError exception.
@@ -175,7 +189,8 @@ impl JsValue {
     }
 
     /// Returns the negated value.
-    pub fn neg(&self, context: &mut Context) -> JsResult<Self> {
+    pub fn neg(&self, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         if self.is_object() {
             return Ok(Self::new(
                 self.to_numeric_number(context.access())
@@ -212,8 +227,9 @@ impl JsValue {
         &self,
         other: &Self,
         left_first: bool,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<AbstractRelation> {
+        let context = context.into_owner();
         if !self.is_object() && !other.is_object() {
             return self.primitive_relation_unmetered(other);
         }
@@ -239,8 +255,9 @@ impl JsValue {
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Less_than
     /// [spec]: https://tc39.es/ecma262/#sec-relational-operators-runtime-semantics-evaluation
     #[inline]
-    pub fn lt(&self, other: &Self, context: &mut Context) -> JsResult<bool> {
-        match self.abstract_relation(other, true, context)? {
+    pub fn lt(&self, other: &Self, context: ContextAccess<'_>) -> JsResult<bool> {
+        let context = context.into_owner();
+        match self.abstract_relation(other, true, context.access())? {
             AbstractRelation::True => Ok(true),
             AbstractRelation::False | AbstractRelation::Undefined => Ok(false),
         }
@@ -256,8 +273,9 @@ impl JsValue {
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Less_than_or_equal
     /// [spec]: https://tc39.es/ecma262/#sec-relational-operators-runtime-semantics-evaluation
     #[inline]
-    pub fn le(&self, other: &Self, context: &mut Context) -> JsResult<bool> {
-        match other.abstract_relation(self, false, context)? {
+    pub fn le(&self, other: &Self, context: ContextAccess<'_>) -> JsResult<bool> {
+        let context = context.into_owner();
+        match other.abstract_relation(self, false, context.access())? {
             AbstractRelation::False => Ok(true),
             AbstractRelation::True | AbstractRelation::Undefined => Ok(false),
         }
@@ -273,8 +291,9 @@ impl JsValue {
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Greater_than
     /// [spec]: https://tc39.es/ecma262/#sec-relational-operators-runtime-semantics-evaluation
     #[inline]
-    pub fn gt(&self, other: &Self, context: &mut Context) -> JsResult<bool> {
-        match other.abstract_relation(self, false, context)? {
+    pub fn gt(&self, other: &Self, context: ContextAccess<'_>) -> JsResult<bool> {
+        let context = context.into_owner();
+        match other.abstract_relation(self, false, context.access())? {
             AbstractRelation::True => Ok(true),
             AbstractRelation::False | AbstractRelation::Undefined => Ok(false),
         }
@@ -290,8 +309,9 @@ impl JsValue {
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/Greater_than_or_equal
     /// [spec]: https://tc39.es/ecma262/#sec-relational-operators-runtime-semantics-evaluation
     #[inline]
-    pub fn ge(&self, other: &Self, context: &mut Context) -> JsResult<bool> {
-        match self.abstract_relation(other, true, context)? {
+    pub fn ge(&self, other: &Self, context: ContextAccess<'_>) -> JsResult<bool> {
+        let context = context.into_owner();
+        match self.abstract_relation(other, true, context.access())? {
             AbstractRelation::False => Ok(true),
             AbstractRelation::True | AbstractRelation::Undefined => Ok(false),
         }

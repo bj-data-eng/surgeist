@@ -451,7 +451,7 @@ impl Atomics {
         // A host executor can reenter when an async completion is enqueued.
         let backing = buffer.borrow().data().clone();
         if ASYNC {
-            let (promise, resolvers) = JsPromise::new_pending(context);
+            let (promise, resolvers) = JsPromise::new_pending(context.access());
             let result = if access.kind == TypedArrayKind::BigInt64 {
                 futex::wait_async(
                     &backing,

@@ -32,7 +32,7 @@ fn gcd_callback() {
     let module = Module::parse(source, None, context).unwrap();
     module
         .load_link_evaluate(context)
-        .await_blocking(context)
+        .await_blocking(context.access())
         .unwrap();
 
     let js_gcd = module

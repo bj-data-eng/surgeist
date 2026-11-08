@@ -128,7 +128,7 @@ impl IteratorConstructor {
         let has_instance = JsValue::ordinary_has_instance(
             &iterator_constructor.clone().into(),
             &iterator_record.iterator().clone().into(),
-            context,
+            context.access(),
         )?;
 
         // 3. If hasInstance is true, then

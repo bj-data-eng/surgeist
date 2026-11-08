@@ -106,7 +106,7 @@ fn indexed_values_survive_collection_and_release_their_edges_on_removal() {
         let child = JsObject::with_null_proto(context.runtime());
         let weak = child.edge();
         let object = if key == 0 {
-            JsObject::from(JsArray::from_iter([child.into()], context).unwrap())
+            JsObject::from(JsArray::from_iter([child.into()], context.access()).unwrap())
         } else if key == 4 {
             let object = JsObject::with_null_proto(context.runtime());
             object

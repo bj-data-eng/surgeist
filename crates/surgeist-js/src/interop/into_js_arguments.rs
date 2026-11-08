@@ -275,7 +275,7 @@ impl<T: NativeObject> JsClass<T> {
     /// use surgeist_js::interop::{JsClass, TryFromJsArgument};
     /// use surgeist_js::object::builtins::JsArrayBuffer;
     /// let mut context = Context::default();
-    /// let this = JsValue::from(JsArrayBuffer::new(8, &mut context).unwrap());
+    /// let this = JsValue::from(JsArrayBuffer::new(8, context.access()).unwrap());
     /// let (class, _) = JsClass::<ArrayBuffer>::try_from_js_argument(&this, &[], &mut context).unwrap();
     /// let _ = class.borrow_mut();
     /// ```

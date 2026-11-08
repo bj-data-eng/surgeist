@@ -67,7 +67,11 @@ fn await_response(ctx: &mut Context) {
         .global_object()
         .get(js_str!("response"), ctx.access())
         .unwrap();
-    response.as_promise().unwrap().await_blocking(ctx).unwrap();
+    response
+        .as_promise()
+        .unwrap()
+        .await_blocking(ctx.access())
+        .unwrap();
 }
 
 #[test]

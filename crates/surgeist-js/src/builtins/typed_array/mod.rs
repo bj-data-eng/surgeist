@@ -201,7 +201,7 @@ impl<T: TypedArrayMarker> BuiltInConstructor for T {
         if let Some(using_iterator) = using_iterator {
             // a. Let values be ? IteratorToList(? GetIteratorFromMethod(firstArgument, usingIterator)).
             let values = JsValue::from(first_argument.clone())
-                .get_iterator_from_method(&using_iterator, context)?
+                .get_iterator_from_method(&using_iterator, context.access())?
                 .into_list(context)?;
 
             // b. Perform ? InitializeTypedArrayFromList(O, values).

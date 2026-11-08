@@ -7,12 +7,13 @@ use std::{
 };
 
 use surgeist_js::{
-    Context, JsValue, NativeFunction, Script, Source,
-    error::{EngineError, RuntimeLimitError},
+    Context, JsError, JsNativeError, JsNativeErrorKind, JsValue, NativeFunction, Script, Source,
+    builtins::object::OrdinaryObject,
+    error::{EngineError, ErasedEngineError, RuntimeLimitError},
     execution::{ExecutionOptions, ExecutionTermination, ProfileMode},
     js_string,
-    object::builtins::JsFunction,
-    property::{PropertyDescriptor, PropertyKey},
+    object::builtins::{JsFunction, JsUint8Array},
+    property::{Attribute, PropertyDescriptor, PropertyKey},
     value::{IntegerOrInfinity, PreferredType},
 };
 
@@ -697,4 +698,195 @@ fn same_runtime_peer_context_keeps_its_selected_budget_separate_from_a_retained_
         .unwrap();
     assert_eq!(fresh.result.unwrap(), JsValue::new(42));
     assert!(fresh.report.instructions() > 0);
+}
+
+#[test]
+fn retained_typed_array_iterator_releases_access_after_authored_values_are_consumed() {
+    let mut owner = Context::default();
+    let mut access = owner.access();
+    let array = JsUint8Array::from_iter([7_u8, 35, 42], access.reborrow()).unwrap();
+    {
+        let mut iterator = array.iter(access.reborrow());
+        assert_eq!(iterator.next(), Some(7));
+        assert_eq!(iterator.next(), Some(35));
+        assert_eq!(iterator.next(), Some(42));
+        assert_eq!(iterator.next(), None);
+    }
+    assert_eq!(
+        access.eval(Source::from_bytes("42")).unwrap(),
+        JsValue::new(42)
+    );
+}
+
+#[test]
+fn json_conversion_reuses_access_for_roundtrip_and_guest_data_properties() {
+    let mut owner = Context::default();
+    let mut access = owner.access();
+    let json =
+        serde_json::json!({ "answer": 42, "items": [7, 35], "enabled": true, "empty": null });
+    let value = JsValue::from_json(&json, access.reborrow()).unwrap();
+    assert_eq!(value.to_json(access.reborrow()).unwrap(), Some(json));
+    let guest = access.eval(Source::from_bytes("({ answer: 42 })")).unwrap();
+    assert_eq!(
+        guest.to_json(access.reborrow()).unwrap(),
+        Some(serde_json::json!({ "answer": 42 }))
+    );
+    assert_eq!(
+        access.eval(Source::from_bytes("40 + 2")).unwrap(),
+        JsValue::new(42)
+    );
+}
+
+#[test]
+fn realm_registration_uses_the_target_realm_with_same_runtime_access() {
+    let mut owner = Context::default();
+    let mut peer = Context::builder()
+        .runtime(owner.runtime().clone())
+        .build()
+        .unwrap();
+    let original_realm = owner.realm().clone();
+    let peer_realm = peer.realm().clone();
+    assert_ne!(original_realm, peer_realm);
+    {
+        let mut access = owner.access();
+        peer_realm
+            .register_property(
+                js_string!("peerValue"),
+                42,
+                Attribute::all(),
+                access.reborrow(),
+            )
+            .unwrap();
+        original_realm
+            .register_property(
+                js_string!("localValue"),
+                7,
+                Attribute::all(),
+                access.reborrow(),
+            )
+            .unwrap();
+        assert_eq!(
+            access
+                .eval(Source::from_bytes(
+                    "localValue === 7 && typeof peerValue === 'undefined'"
+                ))
+                .unwrap(),
+            JsValue::new(true)
+        );
+    }
+    assert_eq!(
+        peer.access()
+            .eval(Source::from_bytes(
+                "peerValue === 42 && typeof localValue === 'undefined'"
+            ))
+            .unwrap(),
+        JsValue::new(true)
+    );
+}
+
+#[test]
+fn arithmetic_and_abstract_equality_preserve_guest_coercion_hints_and_order() {
+    let mut owner = Context::default();
+    let mut access = owner.access();
+    let left = access.eval(Source::from_bytes(
+        "globalThis.operatorLog = []; ({ [Symbol.toPrimitive](hint) { operatorLog.push('left:' + hint); return 20; } })",
+    )).unwrap();
+    let right = access
+        .eval(Source::from_bytes(
+            "({ [Symbol.toPrimitive](hint) { operatorLog.push('right:' + hint); return 22; } })",
+        ))
+        .unwrap();
+    assert_eq!(
+        left.add(&right, access.reborrow()).unwrap(),
+        JsValue::new(42)
+    );
+    assert_eq!(
+        left.sub(&JsValue::new(13), access.reborrow()).unwrap(),
+        JsValue::new(7)
+    );
+    assert!(left.equals(&JsValue::new(20), access.reborrow()).unwrap());
+    assert_eq!(
+        access
+            .eval(Source::from_bytes("operatorLog.join(',')"))
+            .unwrap(),
+        JsValue::new(js_string!(
+            "left:default,right:default,left:number,left:default"
+        ))
+    );
+}
+
+#[test]
+fn public_object_keys_helper_and_installed_builtin_preserve_property_order() {
+    let mut owner = Context::default();
+    let mut access = owner.access();
+    let object = access
+        .eval(Source::from_bytes("({ beta: 7, 2: 35, alpha: 42 })"))
+        .unwrap();
+    let direct = OrdinaryObject::keys(
+        &JsValue::undefined(),
+        std::slice::from_ref(&object),
+        access.reborrow(),
+    )
+    .unwrap();
+    let expected = serde_json::json!(["2", "beta", "alpha"]);
+    assert_eq!(
+        direct.to_json(access.reborrow()).unwrap(),
+        Some(expected.clone())
+    );
+    let installed = access
+        .eval(Source::from_bytes("Object.keys"))
+        .unwrap()
+        .as_object()
+        .unwrap();
+    let installed = JsFunction::from_object(installed).unwrap();
+    let result = installed
+        .call(&JsValue::undefined(), &[object], access.reborrow())
+        .unwrap();
+    assert_eq!(result.to_json(access.reborrow()).unwrap(), Some(expected));
+}
+
+#[test]
+fn error_materialization_and_erasure_keep_native_details_and_exact_engine_cause() {
+    let mut owner = Context::default();
+    let mut access = owner.access();
+    let object = JsNativeError::typ()
+        .with_message("capability error")
+        .into_opaque(access.reborrow())
+        .unwrap();
+    assert_eq!(
+        object.get(js_string!("name"), access.reborrow()).unwrap(),
+        JsValue::new(js_string!("TypeError"))
+    );
+    let recovered = JsError::from_opaque(object.into())
+        .try_native(access.reborrow())
+        .unwrap();
+    assert!(matches!(recovered.kind(), JsNativeErrorKind::Type));
+    assert_eq!(recovered.message(), "capability error");
+    let rematerialized = JsError::from(recovered)
+        .into_opaque(access.reborrow())
+        .unwrap()
+        .as_object()
+        .unwrap();
+    assert_eq!(
+        rematerialized
+            .get(js_string!("message"), access.reborrow())
+            .unwrap(),
+        JsValue::new(js_string!("capability error"))
+    );
+
+    let engine = JsError::from(EngineError::ContextAccessBusy);
+    let unmaterialized = engine.into_opaque(access.reborrow()).unwrap_err();
+    assert_eq!(
+        unmaterialized.as_engine(),
+        Some(&EngineError::ContextAccessBusy)
+    );
+    let erased = unmaterialized.into_erased(access.reborrow());
+    assert_eq!(
+        erased.as_engine(),
+        Some(&ErasedEngineError::ContextAccessBusy)
+    );
+    assert_eq!(
+        access.eval(Source::from_bytes("42")).unwrap(),
+        JsValue::new(42)
+    );
 }

@@ -354,7 +354,9 @@ mod tests {
     #[test]
     fn notify_selects_waiters_in_registration_order() {
         let mut context = Context::default();
-        let backing = JsSharedArrayBuffer::new(4, &mut context).unwrap().inner();
+        let backing = JsSharedArrayBuffer::new(4, context.access())
+            .unwrap()
+            .inner();
         let (first, first_result) = oneshot::channel();
         let (second, second_result) = oneshot::channel();
         let (_first, _second) = {
@@ -404,7 +406,9 @@ mod tests {
         }
 
         let mut context = Context::default();
-        let backing = JsSharedArrayBuffer::new(4, &mut context).unwrap().inner();
+        let backing = JsSharedArrayBuffer::new(4, context.access())
+            .unwrap()
+            .inner();
         let (first, mut first_result) = oneshot::async_channel();
         let first_waker = Waker::from(Arc::new(PanickingWake));
         assert!(

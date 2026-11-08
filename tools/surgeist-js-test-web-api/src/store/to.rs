@@ -37,28 +37,28 @@ impl Decoder<'_> {
             StoredValue::BigInt(value) => Ok(JsValue::from(JsBigInt::new(value.clone()))),
             StoredValue::Object(fields) => self.object(id, fields, context),
             StoredValue::Map(entries) => {
-                let map = JsMap::new(context);
+                let map = JsMap::new(context.access());
                 self.seen.insert(id, map.clone().into());
                 for &(key, value) in entries {
                     let key = self.value(key, context)?;
                     let value = self.value(value, context)?;
-                    map.set(key, value, context)?;
+                    map.set(key, value, context.access())?;
                 }
                 Ok(JsValue::from(map))
             }
             StoredValue::Set(entries) => {
-                let set = JsSet::new(context);
+                let set = JsSet::new(context.access());
                 self.seen.insert(id, set.clone().into());
                 for &entry in entries {
                     let value = self.value(entry, context)?;
-                    set.add(value, context)?;
+                    set.add(value, context.access())?;
                 }
                 Ok(JsValue::from(set))
             }
             StoredValue::Array(items) => self.array(id, items, context),
             StoredValue::Date(timestamp) => {
-                let date = JsDate::new(context);
-                date.set_time(*timestamp, context)?;
+                let date = JsDate::new(context.access());
+                date.set_time(*timestamp, context.access())?;
                 self.seen.insert(id, date.clone().into());
                 Ok(JsValue::from(date))
             }
@@ -67,18 +67,18 @@ impl Decoder<'_> {
                 let regexp = JsRegExp::new(
                     JsString::from(source.as_str()),
                     JsString::from(flags.as_str()),
-                    context,
+                    context.access(),
                 )?;
                 self.seen.insert(id, regexp.clone().into());
                 Ok(JsValue::from(regexp))
             }
             StoredValue::ArrayBuffer(data) => {
-                let buffer = JsArrayBuffer::from_byte_block(data.clone(), context)?;
+                let buffer = JsArrayBuffer::from_byte_block(data.clone(), context.access())?;
                 self.seen.insert(id, buffer.clone().into());
                 Ok(JsValue::from(buffer))
             }
             StoredValue::SharedArrayBuffer(inner) => {
-                let buffer = JsSharedArrayBuffer::from_buffer(inner.clone(), context);
+                let buffer = JsSharedArrayBuffer::from_buffer(inner.clone(), context.access());
                 self.seen.insert(id, buffer.clone().into());
                 Ok(JsValue::from(buffer))
             }
@@ -92,7 +92,7 @@ impl Decoder<'_> {
                     buffer,
                     Some(*byte_offset),
                     Some(*byte_length),
-                    context,
+                    context.access(),
                 )?;
                 self.seen.insert(id, view.clone().into());
                 Ok(JsValue::from(view))
@@ -126,7 +126,7 @@ impl Decoder<'_> {
         items: &[Option<NodeId>],
         context: &mut Context,
     ) -> JsResult<JsValue> {
-        let array = JsArray::new(context)?;
+        let array = JsArray::new(context.access())?;
         self.seen.insert(id, array.clone().into());
 
         for (index, item) in items.iter().enumerate() {
@@ -151,7 +151,7 @@ impl Decoder<'_> {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         let buffer = self.array_buffer(buffer, context)?;
-        let array = js_typed_array_from_kind(kind, buffer, context)?;
+        let array = js_typed_array_from_kind(kind, buffer, context.access())?;
         if let Some(object) = array.as_object() {
             self.seen.insert(id, object);
         }

@@ -433,7 +433,7 @@ impl AsyncGenerator {
                 // a. Perform ! Call(promiseCapability.[[Reject]], undefined, « value »).
                 promise_capability.reject().call(
                     &JsValue::undefined(),
-                    &[e.into_opaque(context)?],
+                    &[e.into_opaque(context.access())?],
                     context.access(),
                 )?;
             }
@@ -508,7 +508,10 @@ impl AsyncGenerator {
         let (value, resume_kind) = match completion {
             CompletionRecord::Normal(val) => (val, GeneratorResumeKind::Normal),
             CompletionRecord::Return(val) => (val, GeneratorResumeKind::Return),
-            CompletionRecord::Throw(err) => (err.into_opaque(context)?, GeneratorResumeKind::Throw),
+            CompletionRecord::Throw(err) => (
+                err.into_opaque(context.access())?,
+                GeneratorResumeKind::Throw,
+            ),
         };
 
         // 3. Let callerContext be the running execution context.

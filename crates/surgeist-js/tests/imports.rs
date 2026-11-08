@@ -80,7 +80,13 @@ fn json_import_attributes_are_part_of_the_cache_key() {
         .get(js_string!("value"), context.access())
         .unwrap();
     assert_eq!(
-        JsString::from(value.to_json(&mut context).unwrap().unwrap().to_string()),
+        JsString::from(
+            value
+                .to_json(context.access())
+                .unwrap()
+                .unwrap()
+                .to_string()
+        ),
         js_string!(r#"{"ok":true}"#)
     );
 

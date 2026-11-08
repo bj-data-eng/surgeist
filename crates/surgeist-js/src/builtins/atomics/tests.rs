@@ -140,9 +140,9 @@ fn waiterlist_block_indexedposition_wake() {
         .module_loader(Rc::new(IdleModuleLoader))
         .build()
         .unwrap();
-    let buffer = JsSharedArrayBuffer::new(size_of::<i32>() * 5, context).unwrap();
+    let buffer = JsSharedArrayBuffer::new(size_of::<i32>() * 5, context.access()).unwrap();
     let inner_buffer = buffer.inner();
-    let i32a = JsInt32Array::from_shared_array_buffer(buffer.clone(), context).unwrap();
+    let i32a = JsInt32Array::from_shared_array_buffer(buffer.clone(), context.access()).unwrap();
 
     std::thread::scope(|s| {
         let mut threads = Vec::new();
@@ -154,8 +154,9 @@ fn waiterlist_block_indexedposition_wake() {
                     .module_loader(Rc::new(IdleModuleLoader))
                     .build()
                     .unwrap();
-                let buffer = JsSharedArrayBuffer::from_buffer(buffer, context);
-                let i32a = JsInt32Array::from_shared_array_buffer(buffer, context).unwrap();
+                let buffer = JsSharedArrayBuffer::from_buffer(buffer, context.access());
+                let i32a =
+                    JsInt32Array::from_shared_array_buffer(buffer, context.access()).unwrap();
 
                 Atomics::add(
                     &JsValue::undefined(),
@@ -186,7 +187,7 @@ fn waiterlist_block_indexedposition_wake() {
 
                 assert_eq!(
                     promise
-                        .await_blocking(context)
+                        .await_blocking(context.access())
                         .unwrap()
                         .to_string(context.access())
                         .unwrap()

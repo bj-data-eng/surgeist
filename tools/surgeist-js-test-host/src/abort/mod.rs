@@ -41,7 +41,7 @@ impl CancellationToken {
 fn make_abort_error(context: &mut Context) -> JsValue {
     let obj = JsNativeError::error()
         .with_message("signal is aborted without reason")
-        .into_opaque(context)
+        .into_opaque(context.access())
         .expect("the abort error contains only local data");
     obj.set(
         js_string!("name"),

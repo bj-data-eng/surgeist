@@ -159,7 +159,7 @@ fn enumerable_keys(obj: &JsObject, context: &mut Context) -> JsResult<Vec<String
     let keys_val = OrdinaryObject::keys(
         &JsValue::undefined(),
         &[JsValue::from(obj.clone())],
-        context,
+        context.access(),
     )?;
     let Some(keys_obj) = keys_val.as_object() else {
         return Err(JsError::from_native(

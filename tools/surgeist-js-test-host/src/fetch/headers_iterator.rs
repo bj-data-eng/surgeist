@@ -78,13 +78,15 @@ impl HeadersIterator {
             let value = match item_kind {
                 IterationKind::Key => key,
                 IterationKind::Value => value,
-                IterationKind::KeyAndValue => JsArray::from_iter([key, value], context)?.into(),
+                IterationKind::KeyAndValue => {
+                    JsArray::from_iter([key, value], context.access())?.into()
+                }
             };
             self.next_index += 1;
-            return create_iter_result_object(value, false, context);
+            return create_iter_result_object(value, false, context.access());
         }
 
-        create_iter_result_object(JsValue::undefined(), true, context)
+        create_iter_result_object(JsValue::undefined(), true, context.access())
     }
 
     /// Returns `this`, making the iterator itself iterable (`for...of` support).

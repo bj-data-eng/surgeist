@@ -361,7 +361,7 @@ async fn load_dyn_import(
         // 1. If moduleCompletion is an abrupt completion, then
         Err(err) => {
             // a. Perform ! Call(promiseCapability.[[Reject]], undefined, « moduleCompletion.[[Value]] »).
-            let err = err.into_opaque(&mut context.borrow_mut())?;
+            let err = err.into_opaque(context.borrow_mut().access())?;
             cap.reject()
                 .call(&JsValue::undefined(), &[err], context.borrow_mut().access())
                 .expect("default `reject` function cannot throw");
@@ -395,7 +395,7 @@ async fn load_dyn_import(
         let err = JsNativeError::syntax()
             .with_message("import.defer() and import.source() require the 'experimental' feature")
             .into();
-        let err = JsError::into_opaque(err, &mut context.borrow_mut())?;
+        let err = JsError::into_opaque(err, context.borrow_mut().access())?;
         cap.reject()
             .call(&JsValue::undefined(), &[err], context.borrow_mut().access())
             .expect("default `reject` function cannot throw");
@@ -412,7 +412,7 @@ async fn load_dyn_import(
         let err = JsNativeError::syntax()
             .with_message("source phase import is not available for this module")
             .into();
-        let err = JsError::into_opaque(err, &mut context.borrow_mut())?;
+        let err = JsError::into_opaque(err, context.borrow_mut().access())?;
         cap.reject()
             .call(&JsValue::undefined(), &[err], context.borrow_mut().access())
             .expect("default `reject` function cannot throw");
@@ -452,7 +452,7 @@ async fn load_dyn_import(
                 // b. If link is an abrupt completion, then
                 if let Err(e) = module.link(context) {
                     // i. Perform ! Call(promiseCapability.[[Reject]], undefined, « link.[[Value]] »).
-                    let e = e.into_opaque(context)?;
+                    let e = e.into_opaque(context.access())?;
                     cap.reject()
                         .call(&JsValue::undefined(), &[e], context.access())
                         .expect("default `reject` function cannot throw");
@@ -493,7 +493,7 @@ async fn load_dyn_import(
                     None,
                     context,
                 ) {
-                    let reason = error.into_opaque(context)?;
+                    let reason = error.into_opaque(context.access())?;
                     cap.reject()
                         .call(&JsValue::undefined(), &[reason], context.access())?;
                 }
@@ -515,7 +515,7 @@ async fn load_dyn_import(
         None,
         &mut context,
     ) {
-        let reason = error.into_opaque(&mut context)?;
+        let reason = error.into_opaque(context.access())?;
         cap.reject()
             .call(&JsValue::undefined(), &[reason], context.access())?;
     }
@@ -569,7 +569,7 @@ impl ImportCall {
             Ok(s) => s,
             // 7. IfAbruptRejectPromise(specifierString, promiseCapability).
             Err(err) => {
-                let err = err.into_opaque(context)?;
+                let err = err.into_opaque(context.access())?;
                 cap.reject()
                     .call(&JsValue::undefined(), &[err], context.access())?;
                 context.vm.set_register(specifier_op.into(), promise.into());
@@ -580,7 +580,7 @@ impl ImportCall {
         let request = match parse_import_attributes(specifier_str, &options, context) {
             Ok(req) => req,
             Err(err) => {
-                let err = err.into_opaque(context)?;
+                let err = err.into_opaque(context.access())?;
                 cap.reject()
                     .call(&JsValue::undefined(), &[err], context.access())?;
                 context.vm.set_register(specifier_op.into(), promise.into());

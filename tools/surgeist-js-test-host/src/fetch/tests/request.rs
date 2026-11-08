@@ -29,7 +29,11 @@ fn request_constructor() {
                 .global_object()
                 .get(js_str!("response"), ctx.access())
                 .unwrap();
-            let response = response.as_promise().unwrap().await_blocking(ctx).unwrap();
+            let response = response
+                .as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
 
             assert_eq!(
                 response

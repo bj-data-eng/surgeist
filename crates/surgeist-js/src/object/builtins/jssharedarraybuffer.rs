@@ -1,4 +1,5 @@
 //! A Rust API wrapper for Boa's `SharedArrayBuffer` Builtin ECMAScript Object
+use crate::ContextAccess;
 use crate::{
     Context, JsResult, JsValue,
     builtins::array_buffer::{SharedArrayBuffer, utils::SliceRef},
@@ -34,7 +35,8 @@ impl JsSharedArrayBuffer {
     /// Returns a JavaScript `RangeError` if the allocation fails or the target
     /// cannot provide lock-free 64-bit atomics for nonempty storage.
     #[inline]
-    pub fn new(byte_length: usize, context: &mut Context) -> JsResult<Self> {
+    pub fn new(byte_length: usize, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         let inner = SharedArrayBuffer::allocate(
             &context
                 .intrinsics()
@@ -52,7 +54,8 @@ impl JsSharedArrayBuffer {
 
     /// Creates a [`JsSharedArrayBuffer`] from a shared raw buffer.
     #[inline]
-    pub fn from_buffer(buffer: SharedArrayBuffer, context: &mut Context) -> Self {
+    pub fn from_buffer(buffer: SharedArrayBuffer, context: ContextAccess<'_>) -> Self {
+        let context = context.into_owner();
         let proto = context
             .intrinsics()
             .constructors()
@@ -100,7 +103,7 @@ impl JsSharedArrayBuffer {
     /// # use surgeist_js::{Context, JsResult, object::builtins::JsSharedArrayBuffer};
     /// # fn main() -> JsResult<()> {
     /// let context = &mut Context::default();
-    /// let sab = JsSharedArrayBuffer::new(64, context)?;
+    /// let sab = JsSharedArrayBuffer::new(64, context.access())?;
     /// let bytes = sab.to_vec();
     /// assert_eq!(bytes.len(), 64);
     /// # Ok(())
@@ -165,7 +168,7 @@ mod tests {
     fn shared_array_buffer_to_vec_roundtrip() {
         let context = &mut Context::default();
         let len = 64;
-        let sab = JsSharedArrayBuffer::new(len, context).unwrap();
+        let sab = JsSharedArrayBuffer::new(len, context.access()).unwrap();
         assert_eq!(sab.byte_length(), len);
 
         // Write a pattern at multiple indices and ensure `to_vec` observes it.
@@ -185,7 +188,7 @@ mod tests {
     #[test]
     fn shared_array_buffer_to_vec_zero_length() {
         let context = &mut Context::default();
-        let sab = JsSharedArrayBuffer::new(0, context).unwrap();
+        let sab = JsSharedArrayBuffer::new(0, context.access()).unwrap();
         assert_eq!(sab.byte_length(), 0);
 
         let bytes = sab.to_vec();

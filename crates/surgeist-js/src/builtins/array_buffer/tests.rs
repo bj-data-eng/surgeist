@@ -27,7 +27,7 @@ fn create_shared_byte_data_block() {
 fn resize() {
     run_test_actions([TestAction::inspect_context(|context| {
         let data_block = super::create_byte_data_block(100, None, context).unwrap();
-        let js_arr = JsArrayBuffer::from_byte_block(data_block, context)
+        let js_arr = JsArrayBuffer::from_byte_block(data_block, context.access())
             .unwrap()
             .with_max_byte_length(100);
         let mut arr = js_arr.borrow_mut();
@@ -44,7 +44,7 @@ fn resize() {
 fn resize_with_an_unallocatable_host_limit_preserves_bytes() {
     run_test_actions([TestAction::inspect_context(|context| {
         let bytes = super::create_byte_data_block(1, None, context).unwrap();
-        let array = JsArrayBuffer::from_byte_block(bytes, context)
+        let array = JsArrayBuffer::from_byte_block(bytes, context.access())
             .unwrap()
             .with_max_byte_length(u64::MAX);
         let mut array = array.borrow_mut();
@@ -86,7 +86,7 @@ fn allocating_buffer_edits_apply_the_host_ceiling_before_mutation() {
             .unwrap();
         let mut bytes = Vec::with_capacity(capacity);
         bytes.extend_from_slice(&[1, 2, 3, 4]);
-        let source = JsArrayBuffer::from_byte_block(bytes, &mut context)
+        let source = JsArrayBuffer::from_byte_block(bytes, context.access())
             .unwrap()
             .with_max_byte_length(16);
         context
@@ -95,7 +95,7 @@ fn allocating_buffer_edits_apply_the_host_ceiling_before_mutation() {
 
         let error = context.eval(Source::from_bytes(operation)).unwrap_err();
         assert!(matches!(
-            error.try_native(&mut context).unwrap().kind(),
+            error.try_native(context.access()).unwrap().kind(),
             JsNativeErrorKind::Range
         ));
         assert_eq!(source.data().as_deref(), Some([1, 2, 3, 4].as_slice()));
@@ -107,7 +107,7 @@ fn allocating_buffer_edits_apply_the_host_ceiling_before_mutation() {
         .unwrap();
     let mut bytes = Vec::with_capacity(8);
     bytes.extend_from_slice(&[1, 2, 3, 4]);
-    let source = JsArrayBuffer::from_byte_block(bytes, &mut context)
+    let source = JsArrayBuffer::from_byte_block(bytes, context.access())
         .unwrap()
         .with_max_byte_length(16);
     context
@@ -150,7 +150,7 @@ fn allocating_buffer_edits_revalidate_after_host_detachment() {
     ] {
         let host = Rc::new(DetachingHost::default());
         let mut context = Context::builder().host_hooks(host.clone()).build().unwrap();
-        let source = JsArrayBuffer::from_byte_block(vec![1, 2, 3, 4], &mut context)
+        let source = JsArrayBuffer::from_byte_block(vec![1, 2, 3, 4], context.access())
             .unwrap()
             .with_max_byte_length(16);
         context
@@ -160,7 +160,7 @@ fn allocating_buffer_edits_revalidate_after_host_detachment() {
 
         let error = context.eval(Source::from_bytes(operation)).unwrap_err();
         assert!(matches!(
-            error.try_native(&mut context).unwrap().kind(),
+            error.try_native(context.access()).unwrap().kind(),
             JsNativeErrorKind::Type
         ));
         assert!(source.data().is_none());

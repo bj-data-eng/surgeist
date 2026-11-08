@@ -355,7 +355,7 @@ fn test_json_module_from_str() {
         .unwrap();
 
     assert_eq!(
-        JsString::from(json.to_json(&mut context).unwrap().unwrap().to_string()),
+        JsString::from(json.to_json(context.access()).unwrap().unwrap().to_string()),
         json_string
     );
 }
@@ -427,7 +427,7 @@ fn test_json_module_dynamic_import() {
             assert_eq!(
                 JsString::from(
                     default_export
-                        .to_json(&mut context)
+                        .to_json(context.access())
                         .unwrap()
                         .unwrap()
                         .to_string()
@@ -498,7 +498,13 @@ fn test_json_module_static_import_with_attributes() {
         .unwrap();
 
     assert_eq!(
-        JsString::from(value.to_json(&mut context).unwrap().unwrap().to_string()),
+        JsString::from(
+            value
+                .to_json(context.access())
+                .unwrap()
+                .unwrap()
+                .to_string()
+        ),
         json_string
     );
 }
@@ -555,7 +561,7 @@ fn test_json_module_reexport_with_attributes() {
         .unwrap();
 
     assert_eq!(
-        JsString::from(json.to_json(&mut context).unwrap().unwrap().to_string()),
+        JsString::from(json.to_json(context.access()).unwrap().unwrap().to_string()),
         json_string
     );
 }
@@ -736,7 +742,7 @@ fn test_dynamic_import_symbol_key() {
             assert_eq!(
                 JsString::from(
                     default_export
-                        .to_json(&mut context)
+                        .to_json(context.access())
                         .unwrap()
                         .unwrap()
                         .to_string()

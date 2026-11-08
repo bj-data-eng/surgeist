@@ -236,7 +236,7 @@ impl SyntheticModule {
     ///
     /// [spec]: https://tc39.es/proposal-json-modules/#sec-smr-LoadRequestedModules
     pub(super) fn load(context: &mut Context) -> JsPromise {
-        JsPromise::resolve(JsValue::undefined(), context)
+        JsPromise::resolve(JsValue::undefined(), context.access())
             .expect("default resolve functions cannot throw and must return a promise")
     }
 
@@ -380,13 +380,14 @@ impl SyntheticModule {
     ) -> JsResult<JsPromise> {
         let (environments, codeblock) = match &*self.state.borrow() {
             ModuleStatus::Unlinked | ModuleStatus::Preparing { .. } => {
-                let (promise, ResolvingFunctions { reject, .. }) = JsPromise::new_pending(context);
+                let (promise, ResolvingFunctions { reject, .. }) =
+                    JsPromise::new_pending(context.access());
                 reject
                     .call(
                         &JsValue::undefined(),
                         &[JsNativeError::typ()
                             .with_message("cannot evaluate unlinked synthetic module")
-                            .into_opaque(context)?
+                            .into_opaque(context.access())?
                             .into()],
                         context.access(),
                     )
@@ -436,7 +437,8 @@ impl SyntheticModule {
             .js_expect("there should be a frame")?;
 
         // 13. Let pc be ! NewPromiseCapability(%Promise%).
-        let (promise, ResolvingFunctions { resolve, reject }) = JsPromise::new_pending(context);
+        let (promise, ResolvingFunctions { resolve, reject }) =
+            JsPromise::new_pending(context.access());
 
         match result {
             // 15. Perform ! pc.[[Resolve]](result).
@@ -446,7 +448,7 @@ impl SyntheticModule {
                 let error = context.runtime().admit_error(error);
                 reject.call(
                     &JsValue::undefined(),
-                    &[error.into_opaque(context)?],
+                    &[error.into_opaque(context.access())?],
                     context.access(),
                 )
             }

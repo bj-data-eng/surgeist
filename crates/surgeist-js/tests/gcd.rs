@@ -6,9 +6,9 @@
 
 // You can execute this example with `cargo run --example gcd`
 
+use std::path::PathBuf;
 use surgeist_js::{Context, Module, js_string};
 use surgeist_js_parser::Source;
-use std::path::PathBuf;
 
 #[test]
 fn gcd() {
@@ -24,7 +24,7 @@ fn gcd() {
     let module = Module::parse(source, None, context).unwrap();
     module
         .load_link_evaluate(context)
-        .await_blocking(context)
+        .await_blocking(context.access())
         .unwrap();
 
     let js_gcd = module

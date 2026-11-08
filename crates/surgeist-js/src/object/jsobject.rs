@@ -82,7 +82,7 @@ impl<T: NativeObject> ObjectRef<'_, T> {
 /// ```compile_fail
 /// use surgeist_js::{Context, object::builtins::JsArrayBuffer};
 /// let mut context = Context::default();
-/// let buffer = JsArrayBuffer::new(8, &mut context).unwrap();
+/// let buffer = JsArrayBuffer::new(8, context.access()).unwrap();
 /// let mut object = buffer.borrow_mut();
 /// let _ = object.data_mut();
 /// ```
@@ -611,7 +611,7 @@ impl JsObject {
     /// use surgeist_js::{Context, JsObject, builtins::array_buffer::ArrayBuffer};
     /// use surgeist_js::object::builtins::JsArrayBuffer;
     /// let mut context = Context::default();
-    /// let object: JsObject = JsArrayBuffer::new(8, &mut context).unwrap().into();
+    /// let object: JsObject = JsArrayBuffer::new(8, context.access()).unwrap().into();
     /// let _ = object.downcast_class_mut::<ArrayBuffer>();
     /// ```
     ///
@@ -619,7 +619,7 @@ impl JsObject {
     /// use surgeist_js::{Context, JsObject, builtins::array_buffer::ArrayBuffer};
     /// use surgeist_js::object::builtins::JsArrayBuffer;
     /// let mut context = Context::default();
-    /// let object: JsObject = JsArrayBuffer::new(8, &mut context).unwrap().into();
+    /// let object: JsObject = JsArrayBuffer::new(8, context.access()).unwrap().into();
     /// let _ = object.downcast_mut::<ArrayBuffer>();
     /// ```
     #[must_use]
@@ -696,7 +696,7 @@ impl JsObject {
     /// # fn main() -> JsResult<()> {
     /// let context = &mut Context::default();
     ///
-    /// let array = JsArray::new(context)?;
+    /// let array = JsArray::new(context.access())?;
     /// // A JsArray's inner JsObject is an array.
     /// assert!(JsObject::from(array).is_array());
     ///

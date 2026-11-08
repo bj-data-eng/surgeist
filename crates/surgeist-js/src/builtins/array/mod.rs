@@ -618,7 +618,8 @@ impl Array {
         };
 
         // c. Let iteratorRecord be ? GetIteratorFromMethod(items, usingIterator).
-        let mut iterator_record = items.get_iterator_from_method(&using_iterator, context)?;
+        let mut iterator_record =
+            items.get_iterator_from_method(&using_iterator, context.access())?;
 
         // d. Let k be 0.
         // e. Repeat,
@@ -1063,7 +1064,7 @@ impl Array {
         if let Some(func) = func.as_callable() {
             func.call(&array.into(), &[], context.access())
         } else {
-            crate::builtins::object::OrdinaryObject::to_string(&array.into(), &[], context)
+            crate::builtins::object::OrdinaryObject::to_string(&array.into(), &[], context.access())
         }
     }
 

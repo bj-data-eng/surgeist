@@ -1675,18 +1675,18 @@ mod js_value_macro {
         run_test_actions([
             TestAction::assert_with_op("[1, 2, 3]", |value, context| {
                 let v = js_value!([1, 2, 3], context).unwrap();
-                value.deep_strict_equals(&v, context).unwrap()
+                value.deep_strict_equals(&v, context.access()).unwrap()
             }),
             TestAction::assert_with_op("[1, [2], 3]", |value, context| {
                 value
-                    .deep_strict_equals(&js_value!([1, [2], 3], context).unwrap(), context)
+                    .deep_strict_equals(&js_value!([1, [2], 3], context).unwrap(), context.access())
                     .unwrap()
             }),
             TestAction::assert_with_op("[1, [2], [], [[false]], 3]", |value, context| {
                 value
                     .deep_strict_equals(
                         &js_value!([1, [2], [], [[false]], 3], context).unwrap(),
-                        context,
+                        context.access(),
                     )
                     .unwrap()
             }),
@@ -1701,7 +1701,7 @@ mod js_value_macro {
                 value
                     .deep_strict_equals(
                         &js_value!({ "hello": 1, "world": () }, context).unwrap(),
-                        context,
+                        context.access(),
                     )
                     .unwrap()
             },
@@ -1719,7 +1719,7 @@ mod js_value_macro {
                 value
                     .deep_strict_equals(
                         &js_value!({ "hello": hello, "world": world }, context).unwrap(),
-                        context,
+                        context.access(),
                     )
                     .expect("No error should happen.")
             },
@@ -1740,7 +1740,7 @@ mod js_value_macro {
                 .unwrap();
 
                 value
-                    .deep_strict_equals(&other, context)
+                    .deep_strict_equals(&other, context.access())
                     .expect("No error should happen here.")
             },
         )]);
@@ -1760,7 +1760,7 @@ mod js_value_macro {
                 .unwrap();
 
                 value
-                    .deep_strict_equals(&other, ctx)
+                    .deep_strict_equals(&other, ctx.access())
                     .expect("No error should happen here.")
             },
         )]);

@@ -246,7 +246,7 @@ impl Reflect {
             builtins::object::OrdinaryObject::get_own_property_descriptor(
                 &JsValue::undefined(),
                 args,
-                context,
+                context.access(),
             )
         } else {
             Err(JsNativeError::typ()

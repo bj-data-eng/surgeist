@@ -139,7 +139,7 @@ impl JumpIfNotLessThan {
         }
         let lhs = lhs.clone();
         let rhs = rhs.clone();
-        if !lhs.lt(&rhs, context)? {
+        if !lhs.lt(&rhs, context.access())? {
             context.vm.frame_mut().pc = u32::from(address);
         }
         Ok(())
@@ -175,7 +175,7 @@ impl JumpIfNotLessThanOrEqual {
         }
         let lhs = lhs.clone();
         let rhs = rhs.clone();
-        if !lhs.le(&rhs, context)? {
+        if !lhs.le(&rhs, context.access())? {
             context.vm.frame_mut().pc = u32::from(address);
         }
         Ok(())
@@ -211,7 +211,7 @@ impl JumpIfNotGreaterThan {
         }
         let lhs = lhs.clone();
         let rhs = rhs.clone();
-        if !lhs.gt(&rhs, context)? {
+        if !lhs.gt(&rhs, context.access())? {
             context.vm.frame_mut().pc = u32::from(address);
         }
         Ok(())
@@ -247,7 +247,7 @@ impl JumpIfNotGreaterThanOrEqual {
         }
         let lhs = lhs.clone();
         let rhs = rhs.clone();
-        if !lhs.ge(&rhs, context)? {
+        if !lhs.ge(&rhs, context.access())? {
             context.vm.frame_mut().pc = u32::from(address);
         }
         Ok(())

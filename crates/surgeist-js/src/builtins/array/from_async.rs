@@ -34,7 +34,7 @@ impl Array {
     ) -> JsResult<JsValue> {
         // 1. Let C be the this value.
         // 2. Let promiseCapability be ! NewPromiseCapability(%Promise%).
-        let (promise, resolvers) = JsPromise::new_pending(context);
+        let (promise, resolvers) = JsPromise::new_pending(context.access());
 
         let async_items = args.get_or_undefined(0);
         let mapfn = args.get_or_undefined(1);
@@ -70,13 +70,13 @@ impl Array {
                 async_items.get_method(JsSymbol::async_iterator(), context)?
             {
                 // i. Set iteratorRecord to ? GetIterator(asyncItems, async, usingAsyncIterator).
-                async_items.get_iterator_from_method(&method, context)?
+                async_items.get_iterator_from_method(&method, context.access())?
             }
             // g. Else if usingSyncIterator is not undefined, then
             else if let Some(method) = async_items.get_method(JsSymbol::iterator(), context)? {
                 // i. Set iteratorRecord to ? CreateAsyncFromSyncIterator(GetIterator(asyncItems, sync, usingSyncIterator)).
                 AsyncFromSyncIterator::create(
-                    async_items.get_iterator_from_method(&method, context)?,
+                    async_items.get_iterator_from_method(&method, context.access())?,
                     context,
                 )
             }
@@ -118,7 +118,7 @@ impl Array {
 
                 return match coroutine.call(CompletionRecord::Normal(JsValue::undefined()), context)
                 {
-                    CoroutineState::Continue(value) => JsPromise::resolve(value, context)?
+                    CoroutineState::Continue(value) => JsPromise::resolve(value, context.access())?
                         .await_native(coroutine, &resolvers.reject, context),
                     CoroutineState::Break(Err(err)) => Err(err),
                     CoroutineState::Break(Ok(())) => Ok(()),
@@ -155,7 +155,7 @@ impl Array {
             );
 
             match coroutine.call(CompletionRecord::Normal(JsValue::undefined()), context) {
-                CoroutineState::Continue(value) => JsPromise::resolve(value, context)?
+                CoroutineState::Continue(value) => JsPromise::resolve(value, context.access())?
                     .await_native(coroutine, &resolvers.reject, context),
                 CoroutineState::Break(Err(err)) => Err(err),
                 CoroutineState::Break(Ok(())) => Ok(()),
@@ -175,7 +175,7 @@ impl Array {
                 .reject
                 .call(
                     &JsValue::undefined(),
-                    &[err.into_opaque(context)?],
+                    &[err.into_opaque(context.access())?],
                     context.access(),
                 )
                 .js_expect("resolving functions cannot fail")?;
@@ -591,7 +591,7 @@ fn from_async_iterator(
                 .reject
                 .call(
                     &JsValue::undefined(),
-                    &[err.into_opaque(context).branch()?],
+                    &[err.into_opaque(context.access()).branch()?],
                     context.access(),
                 )
                 .js_expect("resolving functions cannot fail")
@@ -860,7 +860,7 @@ fn from_array_like(
                 .reject
                 .call(
                     &JsValue::undefined(),
-                    &[err.into_opaque(context).branch()?],
+                    &[err.into_opaque(context.access()).branch()?],
                     context.access(),
                 )
                 .js_expect("resolving functions cannot fail")

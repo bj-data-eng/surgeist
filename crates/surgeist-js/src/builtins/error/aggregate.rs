@@ -108,7 +108,7 @@ impl BuiltInConstructor for AggregateError {
         // 5. Let errorsList be ? IteratorToList(? GetIterator(errors, sync)).
         let errors = args.get_or_undefined(0);
         let errors_list = errors
-            .get_iterator(IteratorHint::Sync, context)?
+            .get_iterator(IteratorHint::Sync, context.access())?
             .into_list(context)?;
 
         // 6. Perform ! DefinePropertyOrThrow(O, "errors",

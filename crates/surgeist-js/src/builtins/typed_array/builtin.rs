@@ -225,7 +225,7 @@ impl BuiltinTypedArray {
         if let Some(using_iterator) = using_iterator {
             // a. Let values be ? IterableToList(source, usingIterator).
             let values = source
-                .get_iterator_from_method(&using_iterator, context)?
+                .get_iterator_from_method(&using_iterator, context.access())?
                 .into_list(context)?;
 
             // b. Let len be the number of elements in values.

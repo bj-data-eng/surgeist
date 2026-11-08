@@ -107,7 +107,9 @@ impl BuiltInConstructor for WeakSet {
             .ok_or_else(|| js_error!(TypeError: "WeakSet: 'add' is not a function"))?;
 
         // 7. Let iteratorRecord be ? GetIterator(iterable, sync).
-        let mut iterator_record = iterable.clone().get_iterator(IteratorHint::Sync, context)?;
+        let mut iterator_record = iterable
+            .clone()
+            .get_iterator(IteratorHint::Sync, context.access())?;
 
         // 8. Repeat,
         //     a. Let next be ? IteratorStepValue(iteratorRecord).

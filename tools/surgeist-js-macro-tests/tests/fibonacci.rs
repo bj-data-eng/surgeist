@@ -54,7 +54,7 @@ fn fibonacci_test() {
     let module = Module::parse(source, None, context).unwrap();
     module
         .load_link_evaluate(context)
-        .await_blocking(context)
+        .await_blocking(context.access())
         .unwrap();
 
     let fibonacci_js = module

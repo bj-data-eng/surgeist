@@ -90,7 +90,7 @@ impl Exception {
         context: &mut Context,
     ) -> ControlFlow<CompletionRecord> {
         if let Some(error) = context.vm.frame_mut().pending_exception.take() {
-            let error = match (*error).into_opaque(context) {
+            let error = match (*error).into_opaque(context.access()) {
                 Ok(e) => e,
                 Err(e) => return context.handle_error(e),
             };
@@ -127,7 +127,7 @@ impl MaybeException {
         context: &mut Context,
     ) -> JsResult<()> {
         if let Some(error) = context.vm.frame_mut().pending_exception.take() {
-            let error = (*error).into_opaque(context)?;
+            let error = (*error).into_opaque(context.access())?;
             context.vm.set_register(exception.into(), error);
             context.vm.set_register(has_exception.into(), true.into());
         } else {

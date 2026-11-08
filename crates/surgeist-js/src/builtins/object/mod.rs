@@ -16,6 +16,7 @@
 use super::{
     Array, BuiltInBuilder, BuiltInConstructor, Date, IntrinsicObject, RegExp, error::Error,
 };
+use crate::ContextAccess;
 use crate::builtins::function::arguments::{MappedArguments, UnmappedArguments};
 use crate::value::JsVariant;
 use crate::{
@@ -48,14 +49,18 @@ pub struct OrdinaryObject;
 
 impl IntrinsicObject for OrdinaryObject {
     fn init(realm: &Realm) {
-        let legacy_proto_getter = BuiltInBuilder::callable(realm, Self::legacy_proto_getter)
-            .name(js_string!("get __proto__"))
-            .build();
+        let legacy_proto_getter = BuiltInBuilder::callable(realm, |this, args, context| {
+            Self::legacy_proto_getter(this, args, context.access())
+        })
+        .name(js_string!("get __proto__"))
+        .build();
 
-        let legacy_setter_proto = BuiltInBuilder::callable(realm, Self::legacy_proto_setter)
-            .name(js_string!("set __proto__"))
-            .length(1)
-            .build();
+        let legacy_setter_proto = BuiltInBuilder::callable(realm, |this, args, context| {
+            Self::legacy_proto_setter(this, args, context.access())
+        })
+        .name(js_string!("set __proto__"))
+        .length(1)
+        .build();
 
         BuiltInBuilder::from_standard_constructor::<Self>(realm)
             .inherits(None)
@@ -65,74 +70,170 @@ impl IntrinsicObject for OrdinaryObject {
                 Some(legacy_setter_proto),
                 Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
             )
-            .method(Self::has_own_property, js_string!("hasOwnProperty"), 1)
             .method(
-                Self::property_is_enumerable,
+                |this, args, context| Self::has_own_property(this, args, context.access()),
+                js_string!("hasOwnProperty"),
+                1,
+            )
+            .method(
+                |this, args, context| Self::property_is_enumerable(this, args, context.access()),
                 js_string!("propertyIsEnumerable"),
                 1,
             )
-            .method(Self::to_string, js_string!("toString"), 0)
-            .method(Self::to_locale_string, js_string!("toLocaleString"), 0)
-            .method(Self::value_of, js_string!("valueOf"), 0)
-            .method(Self::is_prototype_of, js_string!("isPrototypeOf"), 1)
             .method(
-                Self::legacy_define_getter,
+                |this, args, context| Self::to_string(this, args, context.access()),
+                js_string!("toString"),
+                0,
+            )
+            .method(
+                |this, args, context| Self::to_locale_string(this, args, context.access()),
+                js_string!("toLocaleString"),
+                0,
+            )
+            .method(
+                |this, args, context| Self::value_of(this, args, context.access()),
+                js_string!("valueOf"),
+                0,
+            )
+            .method(
+                |this, args, context| Self::is_prototype_of(this, args, context.access()),
+                js_string!("isPrototypeOf"),
+                1,
+            )
+            .method(
+                |this, args, context| Self::legacy_define_getter(this, args, context.access()),
                 js_string!("__defineGetter__"),
                 2,
             )
             .method(
-                Self::legacy_define_setter,
+                |this, args, context| Self::legacy_define_setter(this, args, context.access()),
                 js_string!("__defineSetter__"),
                 2,
             )
             .method(
-                Self::legacy_lookup_getter,
+                |this, args, context| Self::legacy_lookup_getter(this, args, context.access()),
                 js_string!("__lookupGetter__"),
                 1,
             )
             .method(
-                Self::legacy_lookup_setter,
+                |this, args, context| Self::legacy_lookup_setter(this, args, context.access()),
                 js_string!("__lookupSetter__"),
                 1,
             )
-            .static_method(Self::create, js_string!("create"), 2)
-            .static_method(Self::set_prototype_of, js_string!("setPrototypeOf"), 2)
-            .static_method(Self::get_prototype_of, js_string!("getPrototypeOf"), 1)
-            .static_method(Self::define_property, js_string!("defineProperty"), 3)
-            .static_method(Self::define_properties, js_string!("defineProperties"), 2)
-            .static_method(Self::assign, js_string!("assign"), 2)
-            .static_method(Self::is, js_string!("is"), 2)
-            .static_method(Self::keys, js_string!("keys"), 1)
-            .static_method(Self::values, js_string!("values"), 1)
-            .static_method(Self::entries, js_string!("entries"), 1)
-            .static_method(Self::seal, js_string!("seal"), 1)
-            .static_method(Self::is_sealed, js_string!("isSealed"), 1)
-            .static_method(Self::freeze, js_string!("freeze"), 1)
-            .static_method(Self::is_frozen, js_string!("isFrozen"), 1)
-            .static_method(Self::prevent_extensions, js_string!("preventExtensions"), 1)
-            .static_method(Self::is_extensible, js_string!("isExtensible"), 1)
             .static_method(
-                Self::get_own_property_descriptor,
+                |this, args, context| Self::create(this, args, context.access()),
+                js_string!("create"),
+                2,
+            )
+            .static_method(
+                |this, args, context| Self::set_prototype_of(this, args, context.access()),
+                js_string!("setPrototypeOf"),
+                2,
+            )
+            .static_method(
+                |this, args, context| Self::get_prototype_of(this, args, context.access()),
+                js_string!("getPrototypeOf"),
+                1,
+            )
+            .static_method(
+                |this, args, context| Self::define_property(this, args, context.access()),
+                js_string!("defineProperty"),
+                3,
+            )
+            .static_method(
+                |this, args, context| Self::define_properties(this, args, context.access()),
+                js_string!("defineProperties"),
+                2,
+            )
+            .static_method(
+                |this, args, context| Self::assign(this, args, context.access()),
+                js_string!("assign"),
+                2,
+            )
+            .static_method(
+                |this, args, context| Self::is(this, args, context.access()),
+                js_string!("is"),
+                2,
+            )
+            .static_method(
+                |this, args, context| Self::keys(this, args, context.access()),
+                js_string!("keys"),
+                1,
+            )
+            .static_method(
+                |this, args, context| Self::values(this, args, context.access()),
+                js_string!("values"),
+                1,
+            )
+            .static_method(
+                |this, args, context| Self::entries(this, args, context.access()),
+                js_string!("entries"),
+                1,
+            )
+            .static_method(
+                |this, args, context| Self::seal(this, args, context.access()),
+                js_string!("seal"),
+                1,
+            )
+            .static_method(
+                |this, args, context| Self::is_sealed(this, args, context.access()),
+                js_string!("isSealed"),
+                1,
+            )
+            .static_method(
+                |this, args, context| Self::freeze(this, args, context.access()),
+                js_string!("freeze"),
+                1,
+            )
+            .static_method(
+                |this, args, context| Self::is_frozen(this, args, context.access()),
+                js_string!("isFrozen"),
+                1,
+            )
+            .static_method(
+                |this, args, context| Self::prevent_extensions(this, args, context.access()),
+                js_string!("preventExtensions"),
+                1,
+            )
+            .static_method(
+                |this, args, context| Self::is_extensible(this, args, context.access()),
+                js_string!("isExtensible"),
+                1,
+            )
+            .static_method(
+                |this, args, context| {
+                    Self::get_own_property_descriptor(this, args, context.access())
+                },
                 js_string!("getOwnPropertyDescriptor"),
                 2,
             )
             .static_method(
-                Self::get_own_property_descriptors,
+                |this, args, context| {
+                    Self::get_own_property_descriptors(this, args, context.access())
+                },
                 js_string!("getOwnPropertyDescriptors"),
                 1,
             )
             .static_method(
-                Self::get_own_property_names,
+                |this, args, context| Self::get_own_property_names(this, args, context.access()),
                 js_string!("getOwnPropertyNames"),
                 1,
             )
             .static_method(
-                Self::get_own_property_symbols,
+                |this, args, context| Self::get_own_property_symbols(this, args, context.access()),
                 js_string!("getOwnPropertySymbols"),
                 1,
             )
-            .static_method(Self::has_own, js_string!("hasOwn"), 2)
-            .static_method(Self::from_entries, js_string!("fromEntries"), 1)
+            .static_method(
+                |this, args, context| Self::has_own(this, args, context.access()),
+                js_string!("hasOwn"),
+                2,
+            )
+            .static_method(
+                |this, args, context| Self::from_entries(this, args, context.access()),
+                js_string!("fromEntries"),
+                1,
+            )
             .static_method(Self::group_by, js_string!("groupBy"), 2)
             .build();
     }
@@ -205,8 +306,9 @@ impl OrdinaryObject {
     pub fn legacy_proto_getter(
         this: &JsValue,
         _: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         // 1. Let O be ? ToObject(this value).
         let obj = this.to_object(context.access())?;
 
@@ -230,8 +332,9 @@ impl OrdinaryObject {
     pub fn legacy_proto_setter(
         this: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         // 1. Let O be ? RequireObjectCoercible(this value).
         let this = this.require_object_coercible()?;
 
@@ -273,8 +376,9 @@ impl OrdinaryObject {
     pub fn legacy_define_getter(
         this: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         let getter = args.get_or_undefined(1);
 
         // 1. Let O be ? ToObject(this value).
@@ -316,8 +420,9 @@ impl OrdinaryObject {
     pub fn legacy_define_setter(
         this: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         let setter = args.get_or_undefined(1);
 
         // 1. Let O be ? ToObject(this value).
@@ -359,8 +464,9 @@ impl OrdinaryObject {
     pub fn legacy_lookup_getter(
         this: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         // 1. Let O be ? ToObject(this value).
         let mut obj = this.to_object(context.access())?;
 
@@ -405,8 +511,9 @@ impl OrdinaryObject {
     pub fn legacy_lookup_setter(
         this: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         // 1. Let O be ? ToObject(this value).
         let mut obj = this.to_object(context.access())?;
 
@@ -449,7 +556,8 @@ impl OrdinaryObject {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-object.create
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/create
-    pub fn create(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    pub fn create(_: &JsValue, args: &[JsValue], context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         let prototype = args.get_or_undefined(0);
         let properties = args.get_or_undefined(1);
 
@@ -491,8 +599,9 @@ impl OrdinaryObject {
     pub fn get_own_property_descriptor(
         _: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         // 1. Let obj be ? ToObject(O).
         let obj = args.get_or_undefined(0).to_object(context.access())?;
 
@@ -521,8 +630,9 @@ impl OrdinaryObject {
     pub fn get_own_property_descriptors(
         _: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         // 1. Let obj be ? ToObject(O).
         let obj = args.get_or_undefined(0).to_object(context.access())?;
 
@@ -629,7 +739,7 @@ impl OrdinaryObject {
     }
 
     /// Uses the `SameValue` algorithm to check equality of objects
-    pub fn is(_: &JsValue, args: &[JsValue], _: &mut Context) -> JsResult<JsValue> {
+    pub fn is(_: &JsValue, args: &[JsValue], _: ContextAccess<'_>) -> JsResult<JsValue> {
         let x = args.get_or_undefined(0);
         let y = args.get_or_undefined(1);
 
@@ -644,8 +754,9 @@ impl OrdinaryObject {
     pub fn get_prototype_of(
         _: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         if args.is_empty() {
             return Err(js_error!(TypeError:
                 "Object.getPrototypeOf: At least 1 argument required, but only 0 passed",
@@ -669,8 +780,9 @@ impl OrdinaryObject {
     pub fn set_prototype_of(
         _: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         if args.len() < 2 {
             return Err(js_error!(TypeError:
                 "Object.setPrototypeOf: At least 2 arguments required, but only {} passed",
@@ -728,8 +840,9 @@ impl OrdinaryObject {
     pub fn is_prototype_of(
         this: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         let v = args.get_or_undefined(0);
         if !v.is_object() {
             return Ok(JsValue::new(false));
@@ -737,7 +850,7 @@ impl OrdinaryObject {
         let mut v = v.clone();
         let o = JsValue::new(this.to_object(context.access())?);
         loop {
-            v = Self::get_prototype_of(this, &[v], context)?;
+            v = Self::get_prototype_of(this, &[v], context.access())?;
             if v.is_null() {
                 return Ok(JsValue::new(false));
             }
@@ -751,8 +864,9 @@ impl OrdinaryObject {
     pub fn define_property(
         _: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         if let Some(object) = args.get_or_undefined(0).as_object() {
             let key = args
                 .get(1)
@@ -784,8 +898,9 @@ impl OrdinaryObject {
     pub fn define_properties(
         _: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         let arg = args.get_or_undefined(0);
         if let Some(obj) = arg.as_object() {
             let props = args.get_or_undefined(1);
@@ -804,7 +919,12 @@ impl OrdinaryObject {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-object.prototype.valueof
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/valueOf
-    pub fn value_of(this: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    pub fn value_of(
+        this: &JsValue,
+        _: &[JsValue],
+        context: ContextAccess<'_>,
+    ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         // 1. Return ? ToObject(this value).
         Ok(this.to_object(context.access())?.into())
     }
@@ -820,7 +940,12 @@ impl OrdinaryObject {
     /// [spec]: https://tc39.es/ecma262/#sec-object.prototype.tostring
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/toString
     #[allow(clippy::wrong_self_convention)]
-    pub fn to_string(this: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    pub fn to_string(
+        this: &JsValue,
+        _: &[JsValue],
+        context: ContextAccess<'_>,
+    ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         // 1. If the this value is undefined, return "[object Undefined]".
         if this.is_undefined() {
             return Ok(js_string!("[object Undefined]").into());
@@ -890,8 +1015,9 @@ impl OrdinaryObject {
     pub fn to_locale_string(
         this: &JsValue,
         _: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         // 1. Let O be the this value.
         // 2. Return ? Invoke(O, "toString").
         this.invoke(js_string!("toString"), &[], context)
@@ -911,8 +1037,9 @@ impl OrdinaryObject {
     pub fn has_own_property(
         this: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         // 1. Let P be ? ToPropertyKey(V).
         let key = args.get_or_undefined(0).to_property_key(context.access())?;
 
@@ -937,8 +1064,9 @@ impl OrdinaryObject {
     pub fn property_is_enumerable(
         this: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         let Some(key) = args.first() else {
             return Ok(JsValue::new(false));
         };
@@ -968,7 +1096,8 @@ impl OrdinaryObject {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-object.assign
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign
-    pub fn assign(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    pub fn assign(_: &JsValue, args: &[JsValue], context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         // 1. Let to be ? ToObject(target).
         let to = args.get_or_undefined(0).to_object(context.access())?;
 
@@ -1023,7 +1152,8 @@ impl OrdinaryObject {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-object.keys
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/keys
-    pub fn keys(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    pub fn keys(_: &JsValue, args: &[JsValue], context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         // 1. Let obj be ? ToObject(target).
         let obj = args
             .first()
@@ -1048,7 +1178,8 @@ impl OrdinaryObject {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-object.values
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/values
-    pub fn values(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    pub fn values(_: &JsValue, args: &[JsValue], context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         // 1. Let obj be ? ToObject(target).
         let obj = args
             .first()
@@ -1077,7 +1208,8 @@ impl OrdinaryObject {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-object.entries
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/entries
-    pub fn entries(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    pub fn entries(_: &JsValue, args: &[JsValue], context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         // 1. Let obj be ? ToObject(target).
         let obj = args
             .first()
@@ -1103,7 +1235,8 @@ impl OrdinaryObject {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-object.seal
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/seal
-    pub fn seal(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    pub fn seal(_: &JsValue, args: &[JsValue], context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         let o = args.get_or_undefined(0);
 
         if let Some(o) = o.as_object() {
@@ -1127,7 +1260,12 @@ impl OrdinaryObject {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-object.issealed
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/isSealed
-    pub fn is_sealed(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    pub fn is_sealed(
+        _: &JsValue,
+        args: &[JsValue],
+        context: ContextAccess<'_>,
+    ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         let o = args.get_or_undefined(0);
 
         // 1. If Type(O) is not Object, return true.
@@ -1150,7 +1288,8 @@ impl OrdinaryObject {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-object.freeze
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/freeze
-    pub fn freeze(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    pub fn freeze(_: &JsValue, args: &[JsValue], context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         let o = args.get_or_undefined(0);
 
         if let Some(o) = o.as_object() {
@@ -1174,7 +1313,12 @@ impl OrdinaryObject {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-object.isfrozen
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/isFrozen
-    pub fn is_frozen(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    pub fn is_frozen(
+        _: &JsValue,
+        args: &[JsValue],
+        context: ContextAccess<'_>,
+    ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         let o = args.get_or_undefined(0);
 
         // 1. If Type(O) is not Object, return true.
@@ -1200,8 +1344,9 @@ impl OrdinaryObject {
     pub fn prevent_extensions(
         _: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         let o = args.get_or_undefined(0);
 
         if let Some(o) = o.as_object() {
@@ -1229,8 +1374,9 @@ impl OrdinaryObject {
     pub fn is_extensible(
         _: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         let o = args.get_or_undefined(0);
         // 1. If Type(O) is not Object, return false.
         if let Some(o) = o.as_object() {
@@ -1252,8 +1398,9 @@ impl OrdinaryObject {
     pub fn get_own_property_names(
         _: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         // 1. Return ? GetOwnPropertyKeys(O, string).
         let o = args.get_or_undefined(0);
         get_own_property_keys(o, PropertyKeyType::String, context)
@@ -1270,8 +1417,9 @@ impl OrdinaryObject {
     pub fn get_own_property_symbols(
         _: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         // 1. Return ? GetOwnPropertyKeys(O, symbol).
         let o = args.get_or_undefined(0);
         get_own_property_keys(o, PropertyKeyType::Symbol, context)
@@ -1285,7 +1433,8 @@ impl OrdinaryObject {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-object.hasown
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/hasOwn
-    pub fn has_own(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    pub fn has_own(_: &JsValue, args: &[JsValue], context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         // 1. Let obj be ? ToObject(O).
         let obj = args.get_or_undefined(0).to_object(context.access())?;
 
@@ -1304,7 +1453,12 @@ impl OrdinaryObject {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-object.fromentries
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/fromEntries
-    pub fn from_entries(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    pub fn from_entries(
+        _: &JsValue,
+        args: &[JsValue],
+        context: ContextAccess<'_>,
+    ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         // 1. Perform ? RequireObjectCoercible(iterable).
         let iterable = args.get_or_undefined(0).require_object_coercible()?;
 
@@ -1381,7 +1535,7 @@ impl OrdinaryObject {
             IndexMap::default();
 
         // 4. Let iteratorRecord be ? GetIterator(items, sync).
-        let mut iterator = items.get_iterator(IteratorHint::Sync, context)?;
+        let mut iterator = items.get_iterator(IteratorHint::Sync, context.access())?;
 
         // 5. Let k be 0.
         let mut k = 0u64;

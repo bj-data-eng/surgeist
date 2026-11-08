@@ -96,7 +96,7 @@ impl Pair {
         use surgeist_js::object::builtins::JsArray;
         let arr = JsArray::from_iter(
             [JsValue::from(self.value), JsValue::from(self.value * 10)],
-            context,
+            context.access(),
         )?;
         let iter_fn = arr.get(surgeist_js::JsSymbol::iterator(), context.access())?;
         iter_fn

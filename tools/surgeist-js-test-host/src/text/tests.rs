@@ -24,7 +24,7 @@ fn encoder_js() {
                     .unwrap();
                 let array =
                     JsUint8Array::from_object(encoded.as_object().unwrap().clone()).unwrap();
-                let buffer = array.iter(context).collect::<Vec<_>>();
+                let buffer = array.iter(context.access()).collect::<Vec<_>>();
 
                 assert_eq!(buffer, b"Hello, World!");
             }),
@@ -60,7 +60,7 @@ fn encoder_js_unpaired() {
                     .unwrap();
                 let array =
                     JsUint8Array::from_object(encoded.as_object().unwrap().clone()).unwrap();
-                let buffer = array.iter(context).collect::<Vec<_>>();
+                let buffer = array.iter(context.access()).collect::<Vec<_>>();
 
                 assert_eq!(buffer, "\u{FFFD}\u{FFFD}\u{15}".as_bytes());
             }),
@@ -210,7 +210,7 @@ fn encoder_ignores_non_utf_encoding_arguments(encoding: &'static str) {
                     .unwrap();
                 let array =
                     JsUint8Array::from_object(encoded.as_object().unwrap().clone()).unwrap();
-                let buffer = array.iter(context).collect::<Vec<_>>();
+                let buffer = array.iter(context.access()).collect::<Vec<_>>();
                 assert_eq!(buffer, b"Hi");
             }),
         ],
@@ -226,7 +226,7 @@ fn decoder_bom_default_stripped(encoding: &'static str, bytes: &'static [u8]) {
     let context = &mut Context::default();
     text::register(None, context).unwrap();
 
-    let input = JsUint8Array::from_iter(bytes.iter().copied(), context).unwrap();
+    let input = JsUint8Array::from_iter(bytes.iter().copied(), context.access()).unwrap();
     context
         .register_global_property(js_str!("input"), input, Attribute::default())
         .unwrap();
@@ -259,7 +259,7 @@ fn decoder_bom_ignore_bom_true(encoding: &'static str, bytes: &'static [u8]) {
     let context = &mut Context::default();
     text::register(None, context).unwrap();
 
-    let input = JsUint8Array::from_iter(bytes.iter().copied(), context).unwrap();
+    let input = JsUint8Array::from_iter(bytes.iter().copied(), context.access()).unwrap();
     context
         .register_global_property(js_str!("input"), input, Attribute::default())
         .unwrap();
@@ -292,7 +292,7 @@ fn decoder_bom_ignore_bom_false(encoding: &'static str, bytes: &'static [u8]) {
     let context = &mut Context::default();
     text::register(None, context).unwrap();
 
-    let input = JsUint8Array::from_iter(bytes.iter().copied(), context).unwrap();
+    let input = JsUint8Array::from_iter(bytes.iter().copied(), context.access()).unwrap();
     context
         .register_global_property(js_str!("input"), input, Attribute::default())
         .unwrap();

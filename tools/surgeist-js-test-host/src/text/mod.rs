@@ -150,24 +150,24 @@ impl TextDecoder {
         let array_buffer = if let Ok(array_buffer) = JsArrayBuffer::try_from_js(&buffer, context) {
             array_buffer
         } else if let Ok(typed_array) = JsTypedArray::try_from_js(&buffer, context) {
-            let Some(obj) = typed_array.buffer(context)?.as_object() else {
+            let Some(obj) = typed_array.buffer(context.access())?.as_object() else {
                 return Err(js_error!(TypeError: "Invalid buffer backing TypedArray."));
             };
 
-            let offset = typed_array.byte_offset(context)?;
-            let length = typed_array.byte_length(context)?;
+            let offset = typed_array.byte_offset(context.access())?;
+            let length = typed_array.byte_length(context.access())?;
 
             range = Some(offset..offset + length);
 
             JsArrayBuffer::from_object(obj)?
         } else if let Ok(data_view) = JsDataView::try_from_js(&buffer, context) {
-            let Some(obj) = data_view.buffer(context)?.as_object() else {
+            let Some(obj) = data_view.buffer(context.access())?.as_object() else {
                 return Err(js_error!(TypeError: "Invalid buffer backing DataView."));
             };
 
-            let offset = usize::try_from(data_view.byte_offset(context)?)
+            let offset = usize::try_from(data_view.byte_offset(context.access())?)
                 .map_err(|_| js_error!(RangeError: "DataView offset exceeds addressable size."))?;
-            let length = usize::try_from(data_view.byte_length(context)?)
+            let length = usize::try_from(data_view.byte_length(context.access())?)
                 .map_err(|_| js_error!(RangeError: "DataView length exceeds addressable size."))?;
 
             range = Some(offset..offset + length);
@@ -244,10 +244,10 @@ impl TextEncoder {
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/API/TextEncoder/encode
     pub fn encode(&self, text: Option<JsString>, context: &mut Context) -> JsResult<JsUint8Array> {
         let Some(text) = text else {
-            return JsUint8Array::from_iter([], context);
+            return JsUint8Array::from_iter([], context.access());
         };
 
-        JsUint8Array::from_iter(encodings::utf8::encode(&text), context)
+        JsUint8Array::from_iter(encodings::utf8::encode(&text), context.access())
     }
 }
 

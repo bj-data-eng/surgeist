@@ -865,7 +865,7 @@ impl BuiltInFunctionObject {
         let arg_count = bound_args.len() as i64;
 
         // 3. Let F be ? BoundFunctionCreate(Target, thisArg, args).
-        let f = BoundFunction::create(target.clone(), this_arg, bound_args, context)?;
+        let f = BoundFunction::create(target.clone(), this_arg, bound_args, context.access())?;
 
         // 4. Let L be 0.
         let mut l = JsValue::new(0);
@@ -1020,7 +1020,10 @@ impl BuiltInFunctionObject {
     fn has_instance(this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         // 1. Let F be the this value.
         // 2. Return ? OrdinaryHasInstance(F, V).
-        Ok(JsValue::ordinary_has_instance(this, args.get_or_undefined(0), context)?.into())
+        Ok(
+            JsValue::ordinary_has_instance(this, args.get_or_undefined(0), context.access())?
+                .into(),
+        )
     }
 
     #[allow(clippy::unnecessary_wraps)]

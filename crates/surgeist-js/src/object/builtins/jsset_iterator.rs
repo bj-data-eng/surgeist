@@ -1,4 +1,5 @@
 //! A Rust API wrapper for Boa's `SetIterator` Builtin ECMAScript Object
+use crate::ContextAccess;
 use std::ops::Deref;
 
 use crate::{
@@ -25,7 +26,8 @@ impl JsSetIterator {
         }
     }
     /// Advances the `JsSetIterator` and gets the next result in the `JsSet`.
-    pub fn next(&self, context: &mut Context) -> JsResult<JsValue> {
+    pub fn next(&self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         SetIterator::next(&self.inner.clone().into(), &[JsValue::null()], context)
     }
 }

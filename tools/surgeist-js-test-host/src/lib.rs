@@ -76,7 +76,7 @@
 //!         res
 //!             .as_promise()
 //!             .expect("Should be a promise")
-//!             .await_blocking(&mut context)
+//!             .await_blocking(context.access())
 //!             .expect("Should resolve()");
 //!         println!(
 //!             "{}",
@@ -419,7 +419,7 @@ pub(crate) mod test {
                         ),
                         Err(e) => e,
                     };
-                    let native = match err.try_native(context) {
+                    let native = match err.try_native(context.access()) {
                         Ok(err) => err,
                         Err(e) => panic!(
                             "{}\nCouldn't obtain a native error: {e}",

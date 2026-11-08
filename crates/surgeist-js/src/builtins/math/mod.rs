@@ -984,7 +984,7 @@ impl Math {
         }
 
         // 2. Let iteratorRecord be ? GetIterator(items, sync).
-        let mut iterator_record = items.get_iterator(IteratorHint::Sync, context)?;
+        let mut iterator_record = items.get_iterator(IteratorHint::Sync, context.access())?;
         // 3. Let state be minus-zero.
         // 4. Let sum be 0.
         let length = if iterator_record.iterator().is_array() {

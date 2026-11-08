@@ -732,7 +732,7 @@ impl Map {
             IndexMap::default();
 
         // 4. Let iteratorRecord be ? GetIterator(items, sync).
-        let mut iterator = items.get_iterator(IteratorHint::Sync, context)?;
+        let mut iterator = items.get_iterator(IteratorHint::Sync, context.access())?;
 
         // 5. Let k be 0.
         let mut k = 0u64;
@@ -824,7 +824,7 @@ pub(crate) fn add_entries_from_iterable(
     context: &mut Context,
 ) -> JsResult<JsValue> {
     // 1. Let iteratorRecord be ? GetIterator(iterable, sync).
-    let mut iterator_record = iterable.get_iterator(IteratorHint::Sync, context)?;
+    let mut iterator_record = iterable.get_iterator(IteratorHint::Sync, context.access())?;
 
     // 2. Repeat,
     //     a. Let next be ? IteratorStepValue(iteratorRecord).

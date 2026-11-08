@@ -280,7 +280,7 @@ impl AsyncFromSyncIterator {
                         &JsValue::undefined(),
                         &[JsNativeError::typ()
                             .with_message("sync iterator does not have a throw method")
-                            .into_opaque(context)?
+                            .into_opaque(context.access())?
                             .into()],
                         context.access(),
                     )
@@ -340,13 +340,13 @@ impl AsyncFromSyncIterator {
         // use IfAbruptRejectPromise below are guaranteed not to throw.
 
         // 2. Let done be Completion(IteratorComplete(result)).
-        let done = result.complete(context);
+        let done = result.complete(context.access());
 
         // 3. IfAbruptRejectPromise(done, promiseCapability).
         let done = if_abrupt_reject_promise!(done, promise_capability, context);
 
         // 4. Let value be Completion(IteratorValue(result)).
-        let value = result.value(context);
+        let value = result.value(context.access());
 
         // 5. IfAbruptRejectPromise(value, promiseCapability).
         let value = if_abrupt_reject_promise!(value, promise_capability, context);

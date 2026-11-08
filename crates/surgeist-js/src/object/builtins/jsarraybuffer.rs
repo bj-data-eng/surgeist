@@ -1,4 +1,5 @@
 //! A Rust API wrapper for Boa's `ArrayBuffer` Builtin ECMAScript Object
+use crate::ContextAccess;
 use crate::{
     Context, JsResult, JsValue,
     builtins::array_buffer::ArrayBuffer,
@@ -45,7 +46,7 @@ impl JsArrayBuffer {
     /// # // Initialize context
     /// # let context = &mut Context::default();
     /// // Creates a blank array buffer of n bytes
-    /// let array_buffer = JsArrayBuffer::new(4, context)?;
+    /// let array_buffer = JsArrayBuffer::new(4, context.access())?;
     ///
     /// assert_eq!(
     ///     array_buffer.detach(&JsValue::undefined())?.as_slice(),
@@ -56,7 +57,8 @@ impl JsArrayBuffer {
     /// # }
     /// ```
     #[inline]
-    pub fn new(byte_length: usize, context: &mut Context) -> JsResult<Self> {
+    pub fn new(byte_length: usize, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         let inner = ArrayBuffer::allocate(
             &context
                 .intrinsics()
@@ -89,7 +91,7 @@ impl JsArrayBuffer {
     ///
     /// // Create a buffer from a chunk of data
     /// let data_block = (0..5).collect();
-    /// let array_buffer = JsArrayBuffer::from_byte_block(data_block, context)?;
+    /// let array_buffer = JsArrayBuffer::from_byte_block(data_block, context.access())?;
     ///
     /// assert_eq!(
     ///     array_buffer.detach(&JsValue::undefined())?.as_slice(),
@@ -98,7 +100,8 @@ impl JsArrayBuffer {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn from_byte_block(byte_block: Vec<u8>, context: &mut Context) -> JsResult<Self> {
+    pub fn from_byte_block(byte_block: Vec<u8>, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         let constructor = context
             .intrinsics()
             .constructors()
@@ -168,7 +171,7 @@ impl JsArrayBuffer {
     /// # let context = &mut Context::default();
     /// // Create a buffer from a chunk of data
     /// let data_block = (0..5).collect();
-    /// let array_buffer = JsArrayBuffer::from_byte_block(data_block, context)?;
+    /// let array_buffer = JsArrayBuffer::from_byte_block(data_block, context.access())?;
     ///
     /// // Take the inner buffer
     /// let buffer_length = array_buffer.byte_length();
@@ -200,7 +203,7 @@ impl JsArrayBuffer {
     /// # let context = &mut Context::default();
     /// // Create a buffer from a chunk of data
     /// let data_block = (0..5).collect();
-    /// let array_buffer = JsArrayBuffer::from_byte_block(data_block, context)?;
+    /// let array_buffer = JsArrayBuffer::from_byte_block(data_block, context.access())?;
     ///
     /// // Take the inner buffer
     /// let internal_buffer = array_buffer.detach(&JsValue::undefined())?;
@@ -246,7 +249,7 @@ impl JsArrayBuffer {
     /// # let context = &mut Context::default();
     /// // Create a buffer from a chunk of data
     /// let data_block = (0..5).collect();
-    /// let array_buffer = JsArrayBuffer::from_byte_block(data_block, context)?;
+    /// let array_buffer = JsArrayBuffer::from_byte_block(data_block, context.access())?;
     ///
     /// // Get a reference to the data.
     /// let internal_buffer = array_buffer.data();
@@ -276,7 +279,7 @@ impl JsArrayBuffer {
     /// # fn main() -> JsResult<()> {
     /// let context = &mut Context::default();
     /// let data = vec![1u8, 2, 3, 4];
-    /// let buffer = JsArrayBuffer::from_byte_block(data, context)?;
+    /// let buffer = JsArrayBuffer::from_byte_block(data, context.access())?;
     /// assert_eq!(buffer.to_vec(), Some(vec![1u8, 2, 3, 4]));
     ///
     /// buffer.detach(&JsValue::undefined())?;
@@ -304,7 +307,7 @@ impl JsArrayBuffer {
     /// # let context = &mut Context::default();
     /// // Create a buffer from a chunk of data
     /// let data_block = (0..5).collect();
-    /// let array_buffer = JsArrayBuffer::from_byte_block(data_block, context)?;
+    /// let array_buffer = JsArrayBuffer::from_byte_block(data_block, context.access())?;
     ///
     /// // Get a reference to the data.
     /// let mut internal_buffer = array_buffer
@@ -369,7 +372,7 @@ mod tests {
         let context = &mut Context::default();
 
         let data = vec![1u8, 2, 3, 4, 5];
-        let buffer = JsArrayBuffer::from_byte_block(data, context).unwrap();
+        let buffer = JsArrayBuffer::from_byte_block(data, context.access()).unwrap();
 
         assert_eq!(buffer.to_vec(), Some(vec![1u8, 2, 3, 4, 5]));
 
@@ -382,7 +385,7 @@ mod tests {
         let context = &mut Context::default();
 
         let data = Vec::new();
-        let buffer = JsArrayBuffer::from_byte_block(data, context).unwrap();
+        let buffer = JsArrayBuffer::from_byte_block(data, context.access()).unwrap();
 
         assert_eq!(buffer.to_vec(), Some(Vec::new()));
     }

@@ -39,7 +39,7 @@ fn const_item(
                     surgeist_js::js_string!( #name ),
                     surgeist_js::JsValue::from( #ident ),
                     surgeist_js::property::Attribute::all(),
-                    context,
+                    context.access(),
                 )?;
             } else {
                 context.register_global_property(
@@ -95,7 +95,7 @@ fn fn_item(
                             .to_js_function(context.realm())?
                     ),
                     surgeist_js::property::Attribute::all(),
-                    context,
+                    context.access(),
                 )?;
             } else {
                 context.register_global_property(

@@ -214,7 +214,7 @@ impl Array {
         {
             let items = items.into_iter().map(ExpandedValue::tokens);
             return Ok(quote! {
-                ::surgeist_js::object::builtins::JsArray::from_iter( [ #(#items),* ], #c_ident )
+                ::surgeist_js::object::builtins::JsArray::from_iter( [ #(#items),* ], #c_ident.access() )
             });
         }
 
@@ -229,7 +229,7 @@ impl Array {
             ::core::iter::IntoIterator::into_iter([ #(#items),* ])
                 .collect::<::surgeist_js::JsResult<::std::vec::Vec<_>>>()
                 .and_then(|#elements| {
-                    ::surgeist_js::object::builtins::JsArray::from_iter(#elements, #c_ident)
+                    ::surgeist_js::object::builtins::JsArray::from_iter(#elements, #c_ident.access())
                 })
         })
     }

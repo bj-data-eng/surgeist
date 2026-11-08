@@ -15,7 +15,7 @@ impl GetIterator {
     #[inline(always)]
     pub(crate) fn operation(value: RegisterOperand, context: &mut Context) -> JsResult<()> {
         let value = context.vm.get_register(value.into()).clone();
-        let iterator = value.get_iterator(IteratorHint::Sync, context)?;
+        let iterator = value.get_iterator(IteratorHint::Sync, context.access())?;
         context.vm.frame_mut().iterators.push(iterator);
         Ok(())
     }
@@ -38,7 +38,7 @@ impl GetAsyncIterator {
     #[inline(always)]
     pub(crate) fn operation(value: RegisterOperand, context: &mut Context) -> JsResult<()> {
         let value = context.vm.get_register(value.into()).clone();
-        let iterator = value.get_iterator(IteratorHint::Async, context)?;
+        let iterator = value.get_iterator(IteratorHint::Async, context.access())?;
         context.vm.frame_mut().iterators.push(iterator);
         Ok(())
     }

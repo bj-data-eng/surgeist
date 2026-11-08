@@ -400,7 +400,7 @@ fn register_js262_worker(
                 .as_callable()
                 .ok_or_else(|| JsNativeError::typ().with_message("argument is not callable"))?;
 
-            let buffer = JsSharedArrayBuffer::from_buffer(array, context);
+            let buffer = JsSharedArrayBuffer::from_buffer(array, context.access());
             callable.call(&JsValue::undefined(), &[buffer.into()], context.access())
         },
         AgentCapture::new(WorkerBroadcasts(RefCell::new(rx))),

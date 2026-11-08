@@ -1,4 +1,5 @@
 //! A Rust API wrapper for the `Set` Builtin ECMAScript Object
+use crate::ContextAccess;
 use std::ops::Deref;
 
 use crate::{
@@ -24,7 +25,8 @@ impl JsSet {
     /// Doesn't matches JavaScript `new Set()` as it doesn't takes an iterator
     /// similar to Rust initialization.
     #[inline]
-    pub fn new(context: &mut Context) -> Self {
+    pub fn new(context: ContextAccess<'_>) -> Self {
+        let context = context.into_owner();
         Self {
             inner: Set::create_from_data(OrderedSet::new(), context).upcast(),
         }
@@ -46,11 +48,12 @@ impl JsSet {
     /// Returns the Set object with added value.
     ///
     /// Same as JavaScript's `set.add(value)`.
-    pub fn add<T>(&self, value: T, context: &mut Context) -> JsResult<JsValue>
+    pub fn add<T>(&self, value: T, context: ContextAccess<'_>) -> JsResult<JsValue>
     where
         T: Into<JsValue>,
     {
-        self.add_items(&[value.into()], context)
+        let context = context.into_owner();
+        self.add_items(&[value.into()], context.access())
     }
 
     /// Adds slice as a single element.
@@ -58,7 +61,8 @@ impl JsSet {
     ///
     /// Same as JavaScript's `set.add(["one", "two", "three"])`
     #[inline]
-    pub fn add_items(&self, items: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    pub fn add_items(&self, items: &[JsValue], context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         Set::add(&self.inner.clone().into(), items, context)
     }
 
@@ -110,9 +114,10 @@ impl JsSet {
     ///
     /// Same as JavaScript's `set.values()`.
     #[inline]
-    pub fn values(&self, context: &mut Context) -> JsResult<JsSetIterator> {
+    pub fn values(&self, context: ContextAccess<'_>) -> JsResult<JsSetIterator> {
+        let context = context.into_owner();
         let iterator_object = Set::values(&self.inner.clone().into(), &[JsValue::null()], context)?
-            .get_iterator(IteratorHint::Sync, context)?;
+            .get_iterator(IteratorHint::Sync, context.access())?;
 
         JsSetIterator::from_object(iterator_object.iterator().clone())
     }
@@ -123,9 +128,10 @@ impl JsSet {
     ///
     /// Same as JavaScript's `set.keys()`.
     #[inline]
-    pub fn keys(&self, context: &mut Context) -> JsResult<JsSetIterator> {
+    pub fn keys(&self, context: ContextAccess<'_>) -> JsResult<JsSetIterator> {
+        let context = context.into_owner();
         let iterator_object = Set::values(&self.inner.clone().into(), &[JsValue::null()], context)?
-            .get_iterator(IteratorHint::Sync, context)?;
+            .get_iterator(IteratorHint::Sync, context.access())?;
 
         JsSetIterator::from_object(iterator_object.iterator().clone())
     }
@@ -140,8 +146,9 @@ impl JsSet {
         &self,
         callback: JsFunction,
         this_arg: JsValue,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         Set::for_each(
             &self.inner.clone().into(),
             &[callback.into(), this_arg],
@@ -172,10 +179,11 @@ impl JsSet {
     /// Utility: Creates a `JsSet` from a `<IntoIterator<Item = JsValue>` convertible object.
     ///
     /// Returns a `TypeError` if an element is an object from another runtime.
-    pub fn from_iter<I>(elements: I, context: &mut Context) -> JsResult<Self>
+    pub fn from_iter<I>(elements: I, context: ContextAccess<'_>) -> JsResult<Self>
     where
         I: IntoIterator<Item = JsValue>,
     {
+        let context = context.into_owner();
         let elements = elements.into_iter();
 
         let inner =

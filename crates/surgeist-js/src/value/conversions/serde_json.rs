@@ -1,6 +1,7 @@
 //! This module implements the conversions from and into [`serde_json::Value`].
 
 use super::JsValue;
+use crate::ContextAccess;
 use crate::{
     Context, JsResult, JsVariant,
     builtins::Array,
@@ -34,11 +35,12 @@ impl JsValue {
     /// let json: serde_json::Value = serde_json::from_str(data).unwrap();
     ///
     /// let mut context = Context::default();
-    /// let value = JsValue::from_json(&json, &mut context).unwrap();
+    /// let value = JsValue::from_json(&json, context.access()).unwrap();
     /// #
-    /// # assert_eq!(Some(json), value.to_json(&mut context).unwrap());
+    /// # assert_eq!(Some(json), value.to_json(context.access()).unwrap());
     /// ```
-    pub fn from_json(json: &Value, context: &mut Context) -> JsResult<Self> {
+    pub fn from_json(json: &Value, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         /// Biggest possible integer, as i64.
         const MAX_INT: i64 = i32::MAX as i64;
 
@@ -62,7 +64,7 @@ impl JsValue {
             Value::Array(vec) => {
                 let mut arr = Vec::with_capacity(vec.len());
                 for val in vec {
-                    arr.push(Self::from_json(val, context)?);
+                    arr.push(Self::from_json(val, context.access())?);
                 }
                 Ok(Array::create_array_from_list(arr, context).into())
             }
@@ -70,7 +72,7 @@ impl JsValue {
                 let js_obj = JsObject::with_object_proto(context.intrinsics());
                 for (key, value) in obj {
                     let property = PropertyDescriptor::builder()
-                        .value(Self::from_json(value, context)?)
+                        .value(Self::from_json(value, context.access())?)
                         .writable(true)
                         .enumerable(true)
                         .configurable(true);
@@ -107,13 +109,14 @@ impl JsValue {
     /// let json: serde_json::Value = serde_json::from_str(data).unwrap();
     ///
     /// let mut context = Context::default();
-    /// let value = JsValue::from_json(&json, &mut context).unwrap();
+    /// let value = JsValue::from_json(&json, context.access()).unwrap();
     ///
-    /// let back_to_json = value.to_json(&mut context).unwrap();
+    /// let back_to_json = value.to_json(context.access()).unwrap();
     /// #
     /// # assert_eq!(Some(json), back_to_json);
     /// ```
-    pub fn to_json(&self, context: &mut Context) -> JsResult<Option<Value>> {
+    pub fn to_json(&self, context: ContextAccess<'_>) -> JsResult<Option<Value>> {
+        let context = context.into_owner();
         let mut seen_objects = HashSet::new();
         self.to_json_inner(context, &mut seen_objects)
     }
@@ -240,7 +243,7 @@ mod tests {
             let json: serde_json::Value = serde_json::from_str(DATA).unwrap();
             assert!(json.is_object());
 
-            let value = JsValue::from_json(&json, ctx).unwrap();
+            let value = JsValue::from_json(&json, ctx.access()).unwrap();
             let obj = value.as_object().unwrap();
             assert_eq!(
                 obj.get(js_str!("name"), ctx.access()).unwrap(),
@@ -281,13 +284,16 @@ mod tests {
                 let phones = phones.as_object().unwrap();
 
                 let arr = JsArray::from_object(phones.clone()).unwrap();
-                assert_eq!(arr.at(0, ctx).unwrap(), js_str!("+44 1234567").into());
-                assert_eq!(arr.at(1, ctx).unwrap(), JsValue::from(-45_i32));
-                assert!(arr.at(2, ctx).unwrap().is_object());
-                assert_eq!(arr.at(3, ctx).unwrap(), true.into());
+                assert_eq!(
+                    arr.at(0, ctx.access()).unwrap(),
+                    js_str!("+44 1234567").into()
+                );
+                assert_eq!(arr.at(1, ctx.access()).unwrap(), JsValue::from(-45_i32));
+                assert!(arr.at(2, ctx.access()).unwrap().is_object());
+                assert_eq!(arr.at(3, ctx.access()).unwrap(), true.into());
             }
 
-            assert_eq!(Some(json), value.to_json(ctx).unwrap());
+            assert_eq!(Some(json), value.to_json(ctx.access()).unwrap());
         })]);
     }
 
@@ -295,22 +301,22 @@ mod tests {
     fn integer_ops_to_json() {
         run_test_actions([
             TestAction::assert_with_op("1000000 + 500", |v, ctx| {
-                v.to_json(ctx).unwrap() == Some(json!(1_000_500))
+                v.to_json(ctx.access()).unwrap() == Some(json!(1_000_500))
             }),
             TestAction::assert_with_op("1000000 - 500", |v, ctx| {
-                v.to_json(ctx).unwrap() == Some(json!(999_500))
+                v.to_json(ctx.access()).unwrap() == Some(json!(999_500))
             }),
             TestAction::assert_with_op("1000000 * 500", |v, ctx| {
-                v.to_json(ctx).unwrap() == Some(json!(500_000_000))
+                v.to_json(ctx.access()).unwrap() == Some(json!(500_000_000))
             }),
             TestAction::assert_with_op("1000000 / 500", |v, ctx| {
-                v.to_json(ctx).unwrap() == Some(json!(2_000))
+                v.to_json(ctx.access()).unwrap() == Some(json!(2_000))
             }),
             TestAction::assert_with_op("233894 % 500", |v, ctx| {
-                v.to_json(ctx).unwrap() == Some(json!(394))
+                v.to_json(ctx.access()).unwrap() == Some(json!(394))
             }),
             TestAction::assert_with_op("36 ** 5", |v, ctx| {
-                v.to_json(ctx).unwrap() == Some(json!(60_466_176))
+                v.to_json(ctx.access()).unwrap() == Some(json!(60_466_176))
             }),
         ]);
     }
@@ -324,7 +330,7 @@ mod tests {
 
         assert!(
             JsValue::from(obj)
-                .to_json(&mut context)
+                .to_json(context.access())
                 .unwrap_err()
                 .to_string()
                 .starts_with("TypeError: cyclic object value"),
@@ -335,7 +341,7 @@ mod tests {
     fn to_json_undefined() {
         let mut context = Context::default();
         let undefined_value = JsValue::undefined();
-        assert!(undefined_value.to_json(&mut context).unwrap().is_none());
+        assert!(undefined_value.to_json(context.access()).unwrap().is_none());
     }
 
     #[test]
@@ -358,13 +364,14 @@ mod tests {
                 )
                 .expect("should add property");
 
-            let array = JsArray::new(&mut context).expect("creating array in test must not fail");
-            array.push(2, &mut context).expect("should push");
+            let array =
+                JsArray::new(context.access()).expect("creating array in test must not fail");
+            array.push(2, context.access()).expect("should push");
             array
-                .push(JsValue::undefined(), &mut context)
+                .push(JsValue::undefined(), context.access())
                 .expect("should push");
-            array.push(3, &mut context).expect("should push");
-            array.push(inner, &mut context).expect("should push");
+            array.push(3, context.access()).expect("should push");
+            array.push(inner, context.access()).expect("should push");
 
             let outer = JsObject::with_null_proto(context.runtime());
             outer
@@ -389,7 +396,7 @@ mod tests {
                 "outer_a": 1,
                 "outer_c": [2, null, 3, { }]
             })),
-            object_with_undefined.to_json(&mut context).unwrap()
+            object_with_undefined.to_json(context.access()).unwrap()
         );
     }
 }

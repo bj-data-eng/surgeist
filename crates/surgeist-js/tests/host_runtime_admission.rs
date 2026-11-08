@@ -6,7 +6,7 @@ use std::{
 };
 
 use surgeist_js::{
-    Context, JsError, JsNativeError, JsNativeErrorKind, JsObject, JsString, JsValue,
+    Context, ContextAccess, JsError, JsNativeError, JsNativeErrorKind, JsObject, JsString, JsValue,
     NativeFunction, Source,
     builtins::{
         error::{Error, ErrorKind},
@@ -41,7 +41,7 @@ fn native_call_and_construct_keep_arguments_ordered_and_rooted_during_reentry() 
                 let nested = context.eval(Source::from_bytes("Math.max(2, 7, 3)"))?;
                 assert_eq!(nested, 7.into());
                 context.runtime().collect().unwrap();
-                Ok(JsArray::from_iter(args.iter().cloned(), context)?.into())
+                Ok(JsArray::from_iter(args.iter().cloned(), context.access())?.into())
             }),
         )
         .unwrap();
@@ -118,7 +118,7 @@ fn native_call_and_construct_restore_the_caller_after_a_callback_switches_realms
             let error = invoke(&[JsValue::undefined()]).unwrap_err();
             assert_eq!(error.as_native().unwrap().message(), "callback failed");
             let error = error
-                .into_opaque(&mut context)
+                .into_opaque(context.access())
                 .unwrap()
                 .as_object()
                 .unwrap();
@@ -293,7 +293,7 @@ fn dropping_the_last_context_removes_its_pending_atomic_waiter() {
             .job_executor(executor.clone())
             .build()
             .unwrap();
-        let buffer = JsSharedArrayBuffer::new(4, &mut waiting).unwrap();
+        let buffer = JsSharedArrayBuffer::new(4, waiting.access()).unwrap();
         let backing = buffer.inner();
         waiting
             .register_global_property(js_string!("buffer"), buffer, Attribute::all())
@@ -310,7 +310,7 @@ fn dropping_the_last_context_removes_its_pending_atomic_waiter() {
     };
 
     let mut observer = Context::builder().job_executor(executor).build().unwrap();
-    let buffer = JsSharedArrayBuffer::from_buffer(backing, &mut observer);
+    let buffer = JsSharedArrayBuffer::from_buffer(backing, observer.access());
     observer
         .register_global_property(js_string!("buffer"), buffer, Attribute::all())
         .unwrap();
@@ -489,7 +489,7 @@ fn aggregate_conversion_preserves_an_engine_member_with_a_foreign_diagnostic() {
     let diagnostic = JsError::from_opaque(foreign.global_object().into());
     let engine = EngineError::from(PanicError::new("aggregate panic").with_source(diagnostic));
     let error = JsNativeError::aggregate(vec![engine.clone().into()])
-        .into_opaque(&mut context)
+        .into_opaque(context.access())
         .unwrap_err();
     assert_eq!(error.as_engine(), Some(&engine));
 }
@@ -522,7 +522,7 @@ fn failed_aggregate_conversion_leaves_existing_error_stack_unmodified() {
 
     let engine = EngineError::from(PanicError::new("unmaterializable member"));
     let error = JsNativeError::aggregate(vec![thrown, engine.clone().into()])
-        .into_opaque(&mut context)
+        .into_opaque(context.access())
         .unwrap_err();
     assert_eq!(error.as_engine(), Some(&engine));
     assert!(
@@ -559,11 +559,11 @@ fn array_values_refuses_a_foreign_receiver_and_iterates_in_a_peer_context() {
     let mut peer = peer_context(&owner);
     let mut foreign = Context::default();
     let element: JsValue = JsObject::with_null_proto(owner.runtime()).into();
-    let array = JsArray::from_iter([element.clone()], &mut owner).unwrap();
+    let array = JsArray::from_iter([element.clone()], owner.access()).unwrap();
 
-    assert_foreign_runtime(array.values(&mut foreign).unwrap_err());
+    assert_foreign_runtime(array.values(foreign.access()).unwrap_err());
 
-    let iterator = array.values(&mut peer).unwrap();
+    let iterator = array.values(peer.access()).unwrap();
     assert_eq!(next_value(iterator, &mut peer), element);
 }
 
@@ -572,17 +572,17 @@ fn array_with_refuses_a_foreign_replacement_and_retains_a_peer_replacement() {
     let mut owner = Context::default();
     let mut peer = peer_context(&owner);
     let foreign = Context::default();
-    let array = JsArray::from_iter([1.into(), 2.into()], &mut owner).unwrap();
+    let array = JsArray::from_iter([1.into(), 2.into()], owner.access()).unwrap();
 
     let foreign_replacement = JsObject::with_null_proto(foreign.runtime());
     assert_foreign_runtime(
         array
-            .with(1, foreign_replacement.into(), &mut owner)
+            .with(1, foreign_replacement.into(), owner.access())
             .unwrap_err(),
     );
 
     let replacement: JsValue = JsObject::with_null_proto(peer.runtime()).into();
-    let copy = array.with(1, replacement.clone(), &mut peer).unwrap();
+    let copy = array.with(1, replacement.clone(), peer.access()).unwrap();
     assert_eq!(array.get(1, owner.access()).unwrap(), 2.into());
     assert_eq!(copy.get(0, peer.access()).unwrap(), 1.into());
     assert_eq!(copy.get(1, peer.access()).unwrap(), replacement);
@@ -593,26 +593,26 @@ fn typed_array_iterators_refuse_a_foreign_receiver_and_iterate_in_a_peer_context
     let mut owner = Context::default();
     let mut peer = peer_context(&owner);
     let mut foreign = Context::default();
-    let array = JsUint8Array::from_iter([19], &mut owner).unwrap();
+    let array = JsUint8Array::from_iter([19], owner.access()).unwrap();
 
     for make_iterator in [
-        JsTypedArray::entries as fn(&JsTypedArray, &mut Context) -> _,
+        JsTypedArray::entries as fn(&JsTypedArray, ContextAccess<'_>) -> _,
         JsTypedArray::keys,
         JsTypedArray::values,
         JsTypedArray::iterator,
     ] {
-        assert_foreign_runtime(make_iterator(&array, &mut foreign).unwrap_err());
+        assert_foreign_runtime(make_iterator(&array, foreign.access()).unwrap_err());
     }
 
-    let iterator = array.entries(&mut peer).unwrap();
+    let iterator = array.entries(peer.access()).unwrap();
     let entry = next_value(iterator, &mut peer).as_object().unwrap();
     assert_eq!(entry.get(0, peer.access()).unwrap(), 0.into());
     assert_eq!(entry.get(1, peer.access()).unwrap(), 19.into());
-    let iterator = array.keys(&mut peer).unwrap();
+    let iterator = array.keys(peer.access()).unwrap();
     assert_eq!(next_value(iterator, &mut peer), 0.into());
-    let iterator = array.values(&mut peer).unwrap();
+    let iterator = array.values(peer.access()).unwrap();
     assert_eq!(next_value(iterator, &mut peer), 19.into());
-    let iterator = array.iterator(&mut peer).unwrap();
+    let iterator = array.iterator(peer.access()).unwrap();
     assert_eq!(next_value(iterator, &mut peer), 19.into());
 }
 
@@ -621,14 +621,14 @@ fn typed_array_from_array_buffer_refuses_a_foreign_buffer_and_retains_a_peer_buf
     let mut owner = Context::default();
     let mut peer = peer_context(&owner);
     let mut foreign = Context::default();
-    let foreign_buffer = JsArrayBuffer::new(1, &mut foreign).unwrap();
+    let foreign_buffer = JsArrayBuffer::new(1, foreign.access()).unwrap();
     assert_foreign_runtime(
-        JsUint8Array::from_array_buffer(foreign_buffer, &mut owner).unwrap_err(),
+        JsUint8Array::from_array_buffer(foreign_buffer, owner.access()).unwrap_err(),
     );
 
-    let buffer = JsArrayBuffer::from_byte_block(vec![23], &mut peer).unwrap();
-    let view = JsUint8Array::from_array_buffer(buffer.clone(), &mut owner).unwrap();
-    assert_eq!(view.buffer(&mut owner).unwrap(), JsValue::from(buffer));
+    let buffer = JsArrayBuffer::from_byte_block(vec![23], peer.access()).unwrap();
+    let view = JsUint8Array::from_array_buffer(buffer.clone(), owner.access()).unwrap();
+    assert_eq!(view.buffer(owner.access()).unwrap(), JsValue::from(buffer));
     assert_eq!(view.get(0, owner.access()).unwrap(), 23.into());
 }
 
@@ -638,15 +638,15 @@ fn typed_array_from_shared_array_buffer_refuses_a_foreign_buffer_and_retains_a_p
     let mut peer = peer_context(&owner);
     let mut foreign = Context::default();
     // Empty shared buffers also work on targets without lock-free 64-bit atomics.
-    let foreign_buffer = JsSharedArrayBuffer::new(0, &mut foreign).unwrap();
+    let foreign_buffer = JsSharedArrayBuffer::new(0, foreign.access()).unwrap();
     assert_foreign_runtime(
-        JsUint8Array::from_shared_array_buffer(foreign_buffer, &mut owner).unwrap_err(),
+        JsUint8Array::from_shared_array_buffer(foreign_buffer, owner.access()).unwrap_err(),
     );
 
-    let buffer = JsSharedArrayBuffer::new(0, &mut peer).unwrap();
-    let view = JsUint8Array::from_shared_array_buffer(buffer.clone(), &mut owner).unwrap();
-    assert_eq!(view.buffer(&mut owner).unwrap(), JsValue::from(buffer));
-    assert_eq!(view.length(&mut owner).unwrap(), 0);
+    let buffer = JsSharedArrayBuffer::new(0, peer.access()).unwrap();
+    let view = JsUint8Array::from_shared_array_buffer(buffer.clone(), owner.access()).unwrap();
+    assert_eq!(view.buffer(owner.access()).unwrap(), JsValue::from(buffer));
+    assert_eq!(view.length(owner.access()).unwrap(), 0);
 }
 
 #[test]
@@ -656,11 +656,11 @@ fn iterator_result_refuses_a_foreign_value_without_panicking() {
     let foreign = Context::default();
     let foreign_value = JsObject::with_null_proto(foreign.runtime()).into();
     assert_foreign_runtime(
-        create_iter_result_object(foreign_value, false, &mut owner).unwrap_err(),
+        create_iter_result_object(foreign_value, false, owner.access()).unwrap_err(),
     );
 
     let value: JsValue = JsObject::with_null_proto(peer.runtime()).into();
-    let result = create_iter_result_object(value.clone(), true, &mut owner)
+    let result = create_iter_result_object(value.clone(), true, owner.access())
         .unwrap()
         .as_object()
         .unwrap();

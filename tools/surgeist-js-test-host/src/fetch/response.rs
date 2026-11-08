@@ -339,7 +339,7 @@ impl JsResponse {
     #[boa(rename = "json")]
     fn json_static(data: JsValue, init: JsValue, context: &mut Context) -> JsResult<Self> {
         // Step 1: Let bytes be the result of running serialize a JavaScript value to JSON bytes on data.
-        let json_val = data.to_json(context)?.ok_or_else(|| {
+        let json_val = data.to_json(context.access())?.ok_or_else(|| {
             JsNativeError::typ().with_message("value cannot be serialized to JSON")
         })?;
         let json_bytes = serde_json::to_vec(&json_val)
@@ -467,7 +467,7 @@ impl JsResponse {
         let body = self.body.clone();
         JsPromise::from_async_fn(
             async move |context| {
-                JsUint8Array::from_iter(body.iter().copied(), &mut context.borrow_mut())
+                JsUint8Array::from_iter(body.iter().copied(), context.borrow_mut().access())
                     .map(Into::into)
             },
             context,
@@ -493,7 +493,7 @@ impl JsResponse {
                 let json = serde_json::from_str::<serde_json::Value>(&json_string)
                     .map_err(|e| JsNativeError::syntax().with_message(e.to_string()))?;
 
-                JsValue::from_json(&json, &mut context.borrow_mut())
+                JsValue::from_json(&json, context.borrow_mut().access())
             },
             context,
         )

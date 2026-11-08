@@ -402,17 +402,17 @@ fn iterator_keeps_map_edges_live_until_the_iterator_is_unreachable() {
     use crate::{Context, JsObject, js_string, object::builtins::JsMap};
 
     let context = &mut Context::default();
-    let map = JsMap::new(context);
+    let map = JsMap::new(context.access());
     let map_edge = map.edge();
     let key = JsObject::with_null_proto(context.runtime());
     let key_edge = key.edge();
     let value = JsObject::with_null_proto(context.runtime());
     let value_edge = value.edge();
 
-    map.set(key, value, context).unwrap();
-    let iterator = map.entries(context).unwrap();
+    map.set(key, value, context.access()).unwrap();
+    let iterator = map.entries(context.access()).unwrap();
     let iterator_edge = iterator.edge();
-    map.set(js_string!("cycle"), iterator.clone(), context)
+    map.set(js_string!("cycle"), iterator.clone(), context.access())
         .unwrap();
     drop(map);
 
@@ -457,18 +457,18 @@ fn map_rejects_foreign_edges_without_replacing_an_existing_entry() {
     use crate::{Context, JsObject, Runtime, object::builtins::JsMap};
 
     let context = &mut Context::default();
-    let map = JsMap::new(context);
+    let map = JsMap::new(context.access());
     let foreign = JsObject::with_null_proto(&Runtime::default());
 
-    map.set(1, 2, context).unwrap();
-    let error = map.set(1, foreign.clone(), context).unwrap_err();
-    assert!(error.try_native(context).unwrap().is_type());
-    let error = map.set(foreign, 3, context).unwrap_err();
-    assert!(error.try_native(context).unwrap().is_type());
+    map.set(1, 2, context.access()).unwrap();
+    let error = map.set(1, foreign.clone(), context.access()).unwrap_err();
+    assert!(error.try_native(context.access()).unwrap().is_type());
+    let error = map.set(foreign, 3, context.access()).unwrap_err();
+    assert!(error.try_native(context.access()).unwrap().is_type());
 
     context.runtime().collect().unwrap();
-    assert_eq!(map.get(1, context).unwrap(), 2.into());
-    assert_eq!(map.get_size(context).unwrap(), 1.into());
+    assert_eq!(map.get(1, context.access()).unwrap(), 2.into());
+    assert_eq!(map.get_size(context.access()).unwrap(), 1.into());
 }
 
 #[test]

@@ -243,7 +243,9 @@ impl BuiltInConstructor for Set {
         })?;
 
         // 7. Let iteratorRecord be ? GetIterator(iterable, sync).
-        let mut iterator_record = iterable.clone().get_iterator(IteratorHint::Sync, context)?;
+        let mut iterator_record = iterable
+            .clone()
+            .get_iterator(IteratorHint::Sync, context.access())?;
 
         // 8. Repeat,
         //     a. Let next be ? IteratorStepValue(iteratorRecord).
@@ -629,7 +631,8 @@ impl Set {
         } else {
             // 5. Else,
             //    a. Let keysIter be ? GetIteratorFromMethod(otherRec.[[SetObject]], otherRec.[[Keys]]).
-            let mut keys_iter = other.get_iterator_from_method(&other_rec.keys, context)?;
+            let mut keys_iter =
+                other.get_iterator_from_method(&other_rec.keys, context.access())?;
 
             //    b. Let next be not-started.
             //    c. Repeat, while next is not done,
@@ -757,7 +760,7 @@ impl Set {
         }
 
         // 5. Let keysIter be ? GetIteratorFromMethod(otherRec.[[SetObject]], otherRec.[[Keys]]).
-        let mut keys_iter = other.get_iterator_from_method(&other_rec.keys, context)?;
+        let mut keys_iter = other.get_iterator_from_method(&other_rec.keys, context.access())?;
 
         // 6. Let next be not-started.
         // 7. Repeat, while next is not done,
@@ -806,7 +809,7 @@ impl Set {
         let other_rec = get_set_record(other, context)?;
 
         // 4. Let keysIter be ? GetIteratorFromMethod(otherRec.[[SetObject]], otherRec.[[Keys]]).
-        let mut keys_iter = other.get_iterator_from_method(&other_rec.keys, context)?;
+        let mut keys_iter = other.get_iterator_from_method(&other_rec.keys, context.access())?;
 
         // 5. Let resultSetData be a copy of O.[[SetData]].
         let result_set =
@@ -870,7 +873,7 @@ impl Set {
         let other_rec = get_set_record(other, context)?;
 
         // 4. Let keysIter be ? GetIteratorFromMethod(otherRec.[[SetObject]], otherRec.[[Keys]]).
-        let mut keys_iter = other.get_iterator_from_method(&other_rec.keys, context)?;
+        let mut keys_iter = other.get_iterator_from_method(&other_rec.keys, context.access())?;
 
         // 5. Let resultSetData be a copy of O.[[SetData]].
         let result_set =
@@ -965,7 +968,8 @@ impl Set {
         // 6. Else,
         } else {
             // a. Let keysIter be ? GetIteratorFromMethod(otherRec.[[SetObject]], otherRec.[[Keys]]).
-            let mut keys_iter = other.get_iterator_from_method(&other_rec.keys, context)?;
+            let mut keys_iter =
+                other.get_iterator_from_method(&other_rec.keys, context.access())?;
             // b. Let next be not-started.
             // c. Repeat, while next is not done,
             while let Some(next) = keys_iter.step_value(context)? {
@@ -1062,7 +1066,8 @@ impl Set {
         // 6. Else,
         else {
             // a. Let keysIter be ? GetIteratorFromMethod(otherRec.[[SetObject]], otherRec.[[Keys]]).
-            let mut keys_iter = other.get_iterator_from_method(&other_rec.keys, context)?;
+            let mut keys_iter =
+                other.get_iterator_from_method(&other_rec.keys, context.access())?;
             // b. Let next be not-started.
             // c. Repeat, while next is not done,
             //     i. Set next to ? IteratorStepValue(keysIter).

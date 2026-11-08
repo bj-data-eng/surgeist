@@ -1540,8 +1540,9 @@ impl JsValue {
     pub fn ordinary_has_instance(
         function: &Self,
         object: &Self,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<bool> {
+        let context = context.into_owner();
         // 1. If IsCallable(C) is false, return false.
         let Some(function) = function.as_callable() else {
             return Ok(false);
@@ -1551,7 +1552,7 @@ impl JsValue {
         if let Some(bound_function) = function.downcast_ref::<BoundFunction>() {
             // a. Let BC be C.[[BoundTargetFunction]].
             // b. Return ? InstanceofOperator(O, BC).
-            return object.instance_of(&bound_function.target_function().into(), context);
+            return object.instance_of(&bound_function.target_function().into(), context.access());
         }
 
         let Some(mut object) = object.as_object() else {

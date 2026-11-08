@@ -221,7 +221,7 @@ impl BuiltInConstructor for DateTimeFormat {
 
         // 1. If newTarget is undefined and ? OrdinaryHasInstance(%Intl.DateTimeFormat%, this) is true, then
         if new_target.is_undefined()
-            && JsValue::ordinary_has_instance(&constructor.into(), &this, context)?
+            && JsValue::ordinary_has_instance(&constructor.into(), &this, context.access())?
         {
             let fallback_symbol = context
                 .intrinsics()
@@ -1011,7 +1011,7 @@ fn unwrap_date_time_format(
         .constructors()
         .date_time_format()
         .constructor();
-    if JsValue::ordinary_has_instance(&constructor.into(), dtf, context)? {
+    if JsValue::ordinary_has_instance(&constructor.into(), dtf, context.access())? {
         let fallback_symbol = context
             .intrinsics()
             .objects()

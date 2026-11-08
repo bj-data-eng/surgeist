@@ -1,5 +1,6 @@
 //! A Rust API wrapper for the `Proxy` Builtin ECMAScript Object
 use super::JsFunction;
+use crate::ContextAccess;
 use crate::{
     Context, JsExpect, JsNativeError, JsResult, JsValue,
     builtins::Proxy,
@@ -103,7 +104,8 @@ impl JsRevocableProxy {
     /// Disables the traps of the internal `proxy` object, essentially
     /// making it unusable and throwing `TypeError`s for all the traps.
     #[inline]
-    pub fn revoke(self, context: &mut Context) -> JsResult<()> {
+    pub fn revoke(self, context: ContextAccess<'_>) -> JsResult<()> {
+        let context = context.into_owner();
         self.revoker
             .call(&JsValue::undefined(), &[], context.access())?;
         Ok(())

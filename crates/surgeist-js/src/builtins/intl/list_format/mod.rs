@@ -497,7 +497,7 @@ fn string_list_from_iterable(iterable: &JsValue, context: &mut Context) -> JsRes
     }
 
     // 2. Let iteratorRecord be ? GetIterator(iterable, sync).
-    let mut iterator = iterable.get_iterator(IteratorHint::Sync, context)?;
+    let mut iterator = iterable.get_iterator(IteratorHint::Sync, context.access())?;
 
     // 3. Let list be a new empty List.
     let mut list = Vec::new();

@@ -49,7 +49,7 @@ impl StoreRegexp {
         let code_block = context.vm.frame().code_block();
         let pattern = code_block.constant_string(pattern_index.into());
         let flags = code_block.constant_string(flags_index.into());
-        let regexp = JsRegExp::new(pattern, flags, context)?;
+        let regexp = JsRegExp::new(pattern, flags, context.access())?;
         context.vm.set_register(dst.into(), regexp.into());
         Ok(())
     }

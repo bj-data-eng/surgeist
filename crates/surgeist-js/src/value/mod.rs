@@ -499,7 +499,7 @@ impl JsValue {
     /// use surgeist_js::{Context, JsValue, object::builtins::JsPromise};
     ///
     /// let context = &mut Context::default();
-    /// let (promise, _) = JsPromise::new_pending(context);
+    /// let (promise, _) = JsPromise::new_pending(context.access());
     /// let js_value = JsValue::from(promise);
     /// assert!(js_value.is_promise());
     ///
@@ -528,7 +528,7 @@ impl JsValue {
     /// use surgeist_js::{Context, JsValue, object::builtins::JsPromise};
     ///
     /// let context = &mut Context::default();
-    /// let (promise, _) = JsPromise::new_pending(context);
+    /// let (promise, _) = JsPromise::new_pending(context.access());
     /// let js_value = JsValue::from(promise);
     /// assert!(js_value.as_promise().is_some());
     ///
@@ -549,7 +549,7 @@ impl JsValue {
     /// use surgeist_js::{Context, JsValue, js_string, object::builtins::JsRegExp};
     ///
     /// let context = &mut Context::default();
-    /// let regexp = JsRegExp::new(js_string!("abc"), js_string!("g"), context).unwrap();
+    /// let regexp = JsRegExp::new(js_string!("abc"), js_string!("g"), context.access()).unwrap();
     /// let js_value = JsValue::from(regexp);
     /// assert!(js_value.is_regexp());
     ///
@@ -570,7 +570,7 @@ impl JsValue {
     /// use surgeist_js::{Context, JsValue, js_string, object::builtins::JsRegExp};
     ///
     /// let context = &mut Context::default();
-    /// let regexp = JsRegExp::new(js_string!("abc"), js_string!("g"), context).unwrap();
+    /// let regexp = JsRegExp::new(js_string!("abc"), js_string!("g"), context.access()).unwrap();
     /// let js_value = JsValue::from(regexp);
     /// assert!(js_value.as_regexp().is_some());
     ///
@@ -1592,11 +1592,11 @@ impl JsValue {
     /// let undefined = JsValue::undefined();
     ///
     /// let defined_result = defined_value
-    ///     .map(|v| v.add(&JsValue::from(5), &mut context))
+    ///     .map(|v| v.add(&JsValue::from(5), context.access()))
     ///     .transpose()
     ///     .unwrap();
     /// let undefined_result = undefined
-    ///     .map(|v| v.add(&JsValue::from(5), &mut context))
+    ///     .map(|v| v.add(&JsValue::from(5), context.access()))
     ///     .transpose()
     ///     .unwrap();
     ///
@@ -1631,12 +1631,12 @@ impl JsValue {
     ///
     /// let defined_result = defined_value
     ///     .map_or(Ok(JsValue::new(true)), |v| {
-    ///         v.add(&JsValue::from(5), &mut context)
+    ///         v.add(&JsValue::from(5), context.access())
     ///     })
     ///     .unwrap();
     /// let undefined_result = undefined
     ///     .map_or(Ok(JsValue::new(true)), |v| {
-    ///         v.add(&JsValue::from(5), &mut context)
+    ///         v.add(&JsValue::from(5), context.access())
     ///     })
     ///     .unwrap();
     ///

@@ -1,4 +1,5 @@
 use super::{JsBigInt, JsObject, JsResult, JsValue, PreferredType};
+use crate::ContextAccess;
 #[cfg(feature = "annex-b")]
 use crate::builtins::is_html_dda::IsHTMLDDA;
 use crate::{Context, JsVariant, builtins::Number};
@@ -23,7 +24,8 @@ impl JsValue {
     ///
     /// If the value is an object/array, also compare the key-values.
     /// It uses `strict_equals()` for non-object values.
-    pub fn deep_strict_equals(&self, other: &Self, context: &mut Context) -> JsResult<bool> {
+    pub fn deep_strict_equals(&self, other: &Self, context: ContextAccess<'_>) -> JsResult<bool> {
+        let context = context.into_owner();
         self.deep_strict_equals_inner(other, &mut HashSet::new(), context)
     }
 
@@ -66,7 +68,8 @@ impl JsValue {
     ///
     /// This method is executed when doing abstract equality comparisons with the `==` operator.
     ///  For more information, check <https://tc39.es/ecma262/#sec-abstract-equality-comparison>
-    pub fn equals(&self, other: &Self, context: &mut Context) -> JsResult<bool> {
+    pub fn equals(&self, other: &Self, context: ContextAccess<'_>) -> JsResult<bool> {
+        let context = context.into_owner();
         if !self.is_object() && !other.is_object() {
             return self
                 .primitive_binary_unmetered(super::primitive::PrimitiveBinaryOp::Eq, other)
@@ -95,11 +98,13 @@ impl JsValue {
 
             // 8. If Type(x) is Boolean, return the result of the comparison ! ToNumber(x) == y.
             (JsVariant::Boolean(x), _) => {
-                return other.equals(&JsValue::new(i32::from(x)), context);
+                return other.equals(&JsValue::new(i32::from(x)), context.access());
             }
 
             // 9. If Type(y) is Boolean, return the result of the comparison x == ! ToNumber(y).
-            (_, JsVariant::Boolean(y)) => return self.equals(&JsValue::new(i32::from(y)), context),
+            (_, JsVariant::Boolean(y)) => {
+                return self.equals(&JsValue::new(i32::from(y)), context.access());
+            }
 
             // 10. If Type(x) is either String, Number, BigInt, or Symbol and Type(y) is Object, return the result
             // of the comparison x == ? ToPrimitive(y).
@@ -113,7 +118,7 @@ impl JsValue {
             ) => {
                 let primitive = self.to_primitive(context.access(), PreferredType::Default)?;
                 return Ok(primitive
-                    .equals(other, context)
+                    .equals(other, context.access())
                     .expect("should not fail according to spec"));
             }
 
@@ -129,7 +134,7 @@ impl JsValue {
             ) => {
                 let primitive = other.to_primitive(context.access(), PreferredType::Default)?;
                 return Ok(primitive
-                    .equals(self, context)
+                    .equals(self, context.access())
                     .expect("should not fail according to spec"));
             }
 
@@ -142,8 +147,9 @@ impl JsValue {
     ///
     /// This method is executed when doing abstract equality comparisons with the `!=` operator.
     /// It uses [`Self::equals`] to perform the comparison and negates the result.
-    pub fn not_equals(&self, other: &Self, context: &mut Context) -> JsResult<bool> {
-        Ok(!self.equals(other, context)?)
+    pub fn not_equals(&self, other: &Self, context: ContextAccess<'_>) -> JsResult<bool> {
+        let context = context.into_owner();
+        Ok(!self.equals(other, context.access())?)
     }
 
     /// The internal comparison abstract operation SameValue(x, y),

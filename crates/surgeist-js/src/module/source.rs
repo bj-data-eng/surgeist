@@ -585,7 +585,7 @@ impl SourceTextModule {
                     // a. Set state.[[IsLoading]] to false.
                     state.loading.set(false);
 
-                    let err = err.into_opaque(&mut context.borrow_mut())?;
+                    let err = err.into_opaque(context.borrow_mut().access())?;
 
                     // b. Perform ! Call(state.[[PromiseCapability]].[[Reject]], undefined, « moduleCompletion.[[Value]] »).
                     state
@@ -969,7 +969,7 @@ impl SourceTextModule {
                     .reject()
                     .call(
                         &JsValue::undefined(),
-                        &[err.into_opaque(context)?],
+                        &[err.into_opaque(context.access())?],
                         context.access(),
                     )
                     .js_expect("cannot fail for the default reject function")?;
@@ -1634,7 +1634,7 @@ fn async_module_execution_fulfilled(module: &Module, context: &mut Context) -> J
         if let Err(e) = result {
             // eagerly convert to an opaque error so that we can exit immediately
             // if there was an EngineError.
-            let e = &JsError::from_opaque(e.into_opaque(context)?);
+            let e = &JsError::from_opaque(e.into_opaque(context.access())?);
 
             // 1. Perform AsyncModuleExecutionRejected(m, result.[[Value]]).
             async_module_execution_rejected(module, e, context)?;
@@ -1740,7 +1740,7 @@ fn async_module_execution_rejected(
             cap.reject()
                 .call(
                     &JsValue::undefined(),
-                    &[error.clone().into_opaque(context)?],
+                    &[error.clone().into_opaque(context.access())?],
                     context.access(),
                 )
                 .js_expect("default `reject` function cannot fail")?;

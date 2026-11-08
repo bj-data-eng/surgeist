@@ -32,7 +32,7 @@ macro_rules! implement_bin_ops {
                 // Slow path: clone and use full method with type coercion.
                 let lhs = lhs.clone();
                 let rhs = rhs.clone();
-                let value = lhs.$op(&rhs, context)?;
+                let value = lhs.$op(&rhs, context.access())?;
                 context.vm.set_register(dst.into(), value.into());
                 Ok(())
             }

@@ -79,7 +79,11 @@ fn response_text() {
                 .global_object()
                 .get(js_str!("response"), ctx.access())
                 .unwrap();
-            response.as_promise().unwrap().await_blocking(ctx).unwrap();
+            response
+                .as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
         }),
     ]);
 }
@@ -113,7 +117,11 @@ fn response_json() {
                 .global_object()
                 .get(js_str!("response"), ctx.access())
                 .unwrap();
-            let response = response.as_promise().unwrap().await_blocking(ctx).unwrap();
+            let response = response
+                .as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
             assert_eq!(response.display_obj(false), "{\n    hello world: 123\n}");
         }),
     ]);
@@ -145,7 +153,11 @@ fn response_bytes() {
                 .global_object()
                 .get(js_str!("response"), ctx.access())
                 .unwrap();
-            response.as_promise().unwrap().await_blocking(ctx).unwrap();
+            response
+                .as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
         }),
     ]);
 }
@@ -180,7 +192,11 @@ fn response_getter() {
                 .global_object()
                 .get(js_str!("response"), ctx.access())
                 .unwrap();
-            response.as_promise().unwrap().await_blocking(ctx).unwrap();
+            response
+                .as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
 
             // Assertions made in JavaScript.
         }),
@@ -218,7 +234,11 @@ fn fetch_request_uses_request_signal() {
                 .global_object()
                 .get(js_str!("response"), ctx.access())
                 .unwrap();
-            let response = response.as_promise().unwrap().await_blocking(ctx).unwrap();
+            let response = response
+                .as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
             assert_eq!(
                 response.as_string().map(|s| s.to_std_string_escaped()),
                 Some("stop".into())
@@ -261,7 +281,11 @@ fn fetch_options_signal_overrides_request_signal() {
                 .global_object()
                 .get(js_str!("response"), ctx.access())
                 .unwrap();
-            let response = response.as_promise().unwrap().await_blocking(ctx).unwrap();
+            let response = response
+                .as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
             assert_eq!(
                 response.as_string().map(|s| s.to_std_string_escaped()),
                 Some("fetch stop".into())
@@ -359,7 +383,10 @@ fn response_json_static() {
         ),
         TestAction::inspect_context(|ctx| {
             let p = ctx.global_object().get(js_str!("p"), ctx.access()).unwrap();
-            p.as_promise().unwrap().await_blocking(ctx).unwrap();
+            p.as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
         }),
     ]);
 }
@@ -391,7 +418,11 @@ fn response_headers_get_combines_duplicate_values_with_comma_space() {
                 .global_object()
                 .get(js_str!("response"), ctx.access())
                 .unwrap();
-            response.as_promise().unwrap().await_blocking(ctx).unwrap();
+            response
+                .as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
         }),
     ]);
 }
@@ -423,7 +454,11 @@ fn response_clone_read_both() {
                 .global_object()
                 .get(js_str!("response"), ctx.access())
                 .unwrap();
-            response.as_promise().unwrap().await_blocking(ctx).unwrap();
+            response
+                .as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
         }),
     ]);
 }
@@ -459,7 +494,11 @@ fn response_clone_header_independence() {
                 .global_object()
                 .get(js_str!("response"), ctx.access())
                 .unwrap();
-            response.as_promise().unwrap().await_blocking(ctx).unwrap();
+            response
+                .as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
         }),
     ]);
 }
@@ -490,7 +529,11 @@ fn response_clone_preserves_status() {
                 .global_object()
                 .get(js_str!("response"), ctx.access())
                 .unwrap();
-            response.as_promise().unwrap().await_blocking(ctx).unwrap();
+            response
+                .as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
         }),
     ]);
 }

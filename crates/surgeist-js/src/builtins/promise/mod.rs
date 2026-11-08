@@ -141,7 +141,7 @@ macro_rules! if_abrupt_reject_promise {
         match $value {
             // 1. If value is an abrupt completion, then
             Err(err) => {
-                let err = err.into_opaque($context)?;
+                let err = err.into_opaque($context.access())?;
                 // a. Perform ? Call(capability.[[Reject]], undefined, « value.[[Value]] »).
                 $capability
                     .reject()
@@ -558,7 +558,7 @@ impl BuiltInConstructor for Promise {
 
         // 10. If completion is an abrupt completion, then
         if let Err(e) = completion {
-            let e = e.into_opaque(context)?;
+            let e = e.into_opaque(context.access())?;
             // a. Perform ? Call(resolvingFunctions.[[Reject]], undefined, « completion.[[Value]] »).
             resolving_functions
                 .reject
@@ -620,7 +620,7 @@ impl Promise {
         match status {
             // 5. If status is an abrupt completion, then
             Err(err) => {
-                let value = err.into_opaque(context)?;
+                let value = err.into_opaque(context.access())?;
 
                 // a. Perform ? Call(promiseCapability.[[Reject]], undefined, « status.[[Value]] »).
                 promise_capability.functions.reject.call(
@@ -712,7 +712,7 @@ impl Promise {
         // 5. Let iteratorRecord be Completion(GetIterator(iterable, sync)).
         let iterator_record = args
             .get_or_undefined(0)
-            .get_iterator(IteratorHint::Sync, context);
+            .get_iterator(IteratorHint::Sync, context.access());
 
         // 6. IfAbruptRejectPromise(iteratorRecord, promiseCapability).
         let mut iterator_record =
@@ -922,7 +922,7 @@ impl Promise {
         // 5. Let iteratorRecord be Completion(GetIterator(iterable, sync)).
         let iterator_record = args
             .get_or_undefined(0)
-            .get_iterator(IteratorHint::Sync, context);
+            .get_iterator(IteratorHint::Sync, context.access());
 
         // 6. IfAbruptRejectPromise(iteratorRecord, promiseCapability).
         let mut iterator_record =
@@ -1279,7 +1279,7 @@ impl Promise {
             // a. Let error be a newly created TypeError object.
             let error = JsNativeError::typ()
                 .with_message(format!("Promise.{name}() expects an object argument"))
-                .into_opaque(context)?;
+                .into_opaque(context.access())?;
             // b. Perform ? Call(promiseCapability.[[Reject]], undefined, « error »).
             promise_capability.functions.reject.call(
                 &JsValue::undefined(),
@@ -1639,7 +1639,7 @@ impl Promise {
         // 5. Let iteratorRecord be Completion(GetIterator(iterable, sync)).
         let iterator_record = args
             .get_or_undefined(0)
-            .get_iterator(IteratorHint::Sync, context);
+            .get_iterator(IteratorHint::Sync, context.access());
 
         // 6. IfAbruptRejectPromise(iteratorRecord, promiseCapability).
         let mut iterator_record =
@@ -1763,7 +1763,7 @@ impl Promise {
                             // c. Return ? Call(promiseCapability.[[Reject]], undefined, « error »).
                             return captures.capability.call(
                                 &JsValue::undefined(),
-                                &[error.into_opaque(context)?.into()],
+                                &[error.into_opaque(context.access())?.into()],
                                 context.access(),
                             );
                         }
@@ -1860,7 +1860,7 @@ impl Promise {
             if_abrupt_reject_promise!(promise_resolve, promise_capability, context);
 
         // 5. Let iteratorRecord be Completion(GetIterator(iterable, sync)).
-        let iterator_record = iterable.get_iterator(IteratorHint::Sync, context);
+        let iterator_record = iterable.get_iterator(IteratorHint::Sync, context.access());
 
         // 6. IfAbruptRejectPromise(iteratorRecord, promiseCapability).
         let mut iterator_record =
@@ -2609,7 +2609,7 @@ impl Promise {
                         //   a. Let selfResolutionError be a newly created TypeError object.
                         let self_resolution_error = JsNativeError::typ()
                             .with_message("SameValue(resolution, promise) is true")
-                            .into_opaque(context)?;
+                            .into_opaque(context.access())?;
 
                         //   b. Perform RejectPromise(promise, selfResolutionError).
                         reject_promise(&promise, self_resolution_error.into(), context);
@@ -2632,7 +2632,7 @@ impl Promise {
                         // 10. If then is an abrupt completion, then
                         Err(e) => {
                             //   a. Perform RejectPromise(promise, then.[[Value]]).
-                            reject_promise(&promise, e.into_opaque(context)?, context);
+                            reject_promise(&promise, e.into_opaque(context.access())?, context);
 
                             //   b. Return undefined.
                             return Ok(JsValue::undefined());
@@ -2673,7 +2673,7 @@ impl Promise {
                             })
                         });
                     if let Err(error) = result {
-                        reject_promise(&promise, error.into_opaque(context)?, context);
+                        reject_promise(&promise, error.into_opaque(context.access())?, context);
                     }
 
                     // 16. Return undefined.
@@ -2799,7 +2799,7 @@ fn new_promise_reaction_job(
                     // h. If handlerResult is an abrupt completion, then
                     Err(error) => {
                         // i. Return ? Call(promiseCapability.[[Reject]], undefined, « handlerResult.[[Value]] »).
-                        let value = error.into_opaque(context)?;
+                        let value = error.into_opaque(context.access())?;
                         reject.call(&JsValue::undefined(), &[value], context.access())
                     }
 
@@ -2855,7 +2855,7 @@ fn new_promise_resolve_thenable_job(
 
         //    c. If thenCallResult is an abrupt completion, then
         if let Err(value) = then_call_result {
-            let value = value.into_opaque(context)?;
+            let value = value.into_opaque(context.access())?;
             //    i. Return ? Call(resolvingFunctions.[[Reject]], undefined, « thenCallResult.[[Value]] »).
             return resolving_functions.reject.call(
                 &JsValue::undefined(),

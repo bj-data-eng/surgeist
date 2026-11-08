@@ -79,10 +79,10 @@ pub fn register(
 #[cfg(test)]
 pub(crate) mod test {
     use crate::register;
-    use surgeist_js::{Context, JsError, JsResult, JsValue, Source, builtins};
     use std::borrow::Cow;
     use std::path::{Path, PathBuf};
     use std::pin::Pin;
+    use surgeist_js::{Context, JsError, JsResult, JsValue, Source, builtins};
 
     /// A test action executed in a test function.
     #[allow(missing_debug_implementations)]
@@ -288,7 +288,7 @@ pub(crate) mod test {
                         ),
                         Err(e) => e,
                     };
-                    let native = match err.try_native(context) {
+                    let native = match err.try_native(context.access()) {
                         Ok(err) => err,
                         Err(e) => panic!(
                             "{}\nCouldn't obtain a native error: {e}",

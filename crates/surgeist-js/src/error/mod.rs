@@ -1,5 +1,6 @@
 //! Error-related types and conversions.
 
+use crate::ContextAccess;
 #[cfg(test)]
 mod tests;
 
@@ -628,7 +629,9 @@ impl EngineError {
             EngineError::ScopeAnalysis(error) => ErasedEngineError::ScopeAnalysis(error),
             EngineError::Panic(err) => ErasedEngineError::Panic(ErasedPanicError {
                 message: err.message,
-                source: err.source.map(|err| Box::new(err.into_erased(context))),
+                source: err
+                    .source
+                    .map(|err| Box::new(err.into_erased(context.access()))),
             }),
         }
     }
@@ -916,16 +919,17 @@ impl JsError {
     /// let context = &mut Context::default();
     /// let error: JsError =
     ///     JsNativeError::eval().with_message("invalid script").into();
-    /// let error_val = error.into_opaque(context).unwrap();
+    /// let error_val = error.into_opaque(context.access()).unwrap();
     ///
     /// assert!(error_val.as_object().unwrap().is::<Error>());
     ///
     /// let error: JsError =
     ///     EngineError::RuntimeLimit(RuntimeLimitError::Recursion).into();
     ///
-    /// assert!(error.into_opaque(context).is_err());
+    /// assert!(error.into_opaque(context.access()).is_err());
     /// ```
-    pub fn into_opaque(self, context: &mut Context) -> JsResult<JsValue> {
+    pub fn into_opaque(self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         if !self.is_catchable() {
             return Err(self);
         }
@@ -993,15 +997,16 @@ impl JsError {
     ///
     /// // create a new, opaque Error object
     /// let error: JsError = JsNativeError::typ().with_message("type error!").into();
-    /// let error_val = error.into_opaque(context).unwrap();
+    /// let error_val = error.into_opaque(context.access()).unwrap();
     ///
     /// // then, try to recover the original
-    /// let error = JsError::from_opaque(error_val).try_native(context).unwrap();
+    /// let error = JsError::from_opaque(error_val).try_native(context.access()).unwrap();
     ///
     /// assert!(matches!(error.kind(), JsNativeErrorKind::Type));
     /// assert_eq!(error.message(), "type error!");
     /// ```
-    pub fn try_native(&self, context: &mut Context) -> Result<JsNativeError, TryNativeError> {
+    pub fn try_native(&self, context: ContextAccess<'_>) -> Result<JsNativeError, TryNativeError> {
+        let context = context.into_owner();
         match &self.inner {
             Repr::Engine(e) => Err(TryNativeError::EngineError { source: e.clone() }),
             Repr::Native(e) => Ok(e.as_ref().clone()),
@@ -1188,7 +1193,7 @@ impl JsError {
     ///     .with_cause(cause)
     ///     .into();
     ///
-    /// let erased_error = native_error.into_erased(context);
+    /// let erased_error = native_error.into_erased(context.access());
     ///
     /// assert_eq!(erased_error.to_string(), "TypeError: invalid type!");
     ///
@@ -1199,8 +1204,9 @@ impl JsError {
     ///     "Symbol(error!)"
     /// );
     /// ```
-    pub fn into_erased(self, context: &mut Context) -> JsErasedError {
-        let native = match self.try_native(context) {
+    pub fn into_erased(self, context: ContextAccess<'_>) -> JsErasedError {
+        let context = context.into_owner();
+        let native = match self.try_native(context.access()) {
             Ok(native) => native,
             Err(TryNativeError::EngineError { source }) => {
                 return JsErasedError {
@@ -1221,13 +1227,13 @@ impl JsError {
             ..
         } = native;
 
-        let cause = cause.map(|err| Box::new(err.into_erased(context)));
+        let cause = cause.map(|err| Box::new(err.into_erased(context.access())));
 
         let kind = match kind {
             JsNativeErrorKind::Aggregate(errors) => JsErasedNativeErrorKind::Aggregate(
                 errors
                     .into_iter()
-                    .map(|err| err.into_erased(context))
+                    .map(|err| err.into_erased(context.access()))
                     .collect(),
             ),
             JsNativeErrorKind::Error => JsErasedNativeErrorKind::Error,
@@ -1809,7 +1815,7 @@ impl JsNativeError {
     /// let context = &mut Context::default();
     ///
     /// let error = JsNativeError::error().with_message("error!");
-    /// let error_obj = error.into_opaque(context).unwrap();
+    /// let error_obj = error.into_opaque(context.access()).unwrap();
     ///
     /// assert!(error_obj.is::<Error>());
     /// assert_eq!(
@@ -1818,7 +1824,8 @@ impl JsNativeError {
     /// )
     /// ```
     #[inline]
-    pub fn into_opaque(self, context: &mut Context) -> JsResult<JsObject> {
+    pub fn into_opaque(self, context: ContextAccess<'_>) -> JsResult<JsObject> {
+        let context = context.into_owner();
         let runtime = context.runtime();
         let mut pending = Vec::new();
         self.push_error_members(&mut pending);

@@ -1,7 +1,8 @@
+use crate::ContextAccess;
 use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use crate::{
-    Context, JsExpect, JsObject, JsResult, JsValue,
+    JsExpect, JsObject, JsResult, JsValue,
     object::{
         JsData, ObjectEdge,
         internal_methods::{
@@ -51,8 +52,9 @@ impl BoundFunction {
         target_function: JsObject,
         this: JsValue,
         args: Vec<JsValue>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsObject> {
+        let context = context.into_owner();
         // 1. Let proto be ? targetFunction.[[GetPrototypeOf]]().
         let proto = target_function.__get_prototype_of__(context)?;
 

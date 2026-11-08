@@ -163,10 +163,10 @@ where
     T: TryIntoJs,
 {
     fn try_into_js(&self, context: &mut Context) -> JsResult<JsValue> {
-        let arr = crate::object::JsArray::new(context)?;
+        let arr = crate::object::JsArray::new(context.access())?;
         for value in self {
             let value = value.try_into_js(context)?;
-            arr.push(value, context)?;
+            arr.push(value, context.access())?;
         }
         Ok(arr.into())
     }
@@ -177,8 +177,8 @@ macro_rules! impl_try_into_js_for_tuples {
         impl<$($ts: TryIntoJs,)+> TryIntoJs for ($($ts,)+) {
             fn try_into_js(&self, context: &mut Context) -> JsResult<JsValue> {
                 let ($($names,)+) = self;
-                let arr = crate::object::JsArray::new(context)?;
-                $(arr.push($names.try_into_js(context)?, context)?;)+
+                let arr = crate::object::JsArray::new(context.access())?;
+                $(arr.push($names.try_into_js(context)?, context.access())?;)+
                 Ok(arr.into())
             }
         }
@@ -208,10 +208,10 @@ where
     T: TryIntoJs,
 {
     fn try_into_js(&self, context: &mut Context) -> JsResult<JsValue> {
-        let set = crate::object::JsSet::new(context);
+        let set = crate::object::JsSet::new(context.access());
         for value in self {
             let value = value.try_into_js(context)?;
-            set.add(value, context)?;
+            set.add(value, context.access())?;
         }
         Ok(set.into())
     }
@@ -223,11 +223,11 @@ where
     V: TryIntoJs,
 {
     fn try_into_js(&self, context: &mut Context) -> JsResult<JsValue> {
-        let map = crate::object::JsMap::new(context);
+        let map = crate::object::JsMap::new(context.access());
         for (key, value) in self {
             let key = key.try_into_js(context)?;
             let value = value.try_into_js(context)?;
-            map.set(key, value, context)?;
+            map.set(key, value, context.access())?;
         }
         Ok(map.into())
     }

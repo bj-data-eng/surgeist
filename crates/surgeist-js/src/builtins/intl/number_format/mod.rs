@@ -263,7 +263,7 @@ impl BuiltInConstructor for NumberFormat {
 
         // 1. If newTarget is undefined and ? OrdinaryHasInstance(%Intl.NumberFormat%, this) is true, then
         if new_target.is_undefined()
-            && JsValue::ordinary_has_instance(&constructor.into(), &this, context)?
+            && JsValue::ordinary_has_instance(&constructor.into(), &this, context.access())?
         {
             let fallback_symbol = context
                 .intrinsics()
@@ -848,7 +848,7 @@ fn unwrap_number_format(nf: &JsValue, context: &mut Context) -> JsResult<JsObjec
         .constructors()
         .number_format()
         .constructor();
-    if JsValue::ordinary_has_instance(&constructor.into(), nf, context)? {
+    if JsValue::ordinary_has_instance(&constructor.into(), nf, context.access())? {
         let fallback_symbol = context
             .intrinsics()
             .objects()

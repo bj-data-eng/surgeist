@@ -107,7 +107,7 @@ fn boa_module() {
 
     let result = module
         .load_link_evaluate(&mut context)
-        .await_blocking(&mut context);
+        .await_blocking(context.access());
 
     if let Err(e) = result {
         panic!("error: {e:?}\n{e}");

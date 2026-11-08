@@ -115,14 +115,14 @@ impl Encoder<'_> {
             return Ok(StoredValue::SharedArrayBuffer(buffer.inner()));
         } else if let Ok(array) = JsTypedArray::from_object(object.clone()) {
             let kind = array.kind().ok_or_else(unsupported_type)?;
-            let buffer = array.buffer(context)?;
+            let buffer = array.buffer(context.access())?;
             return Ok(StoredValue::TypedArray {
                 kind,
                 buffer: self.value(&buffer, context)?,
             });
         } else if let Ok(date) = JsDate::from_object(object.clone()) {
             let timestamp = date
-                .get_time(context)?
+                .get_time(context.access())?
                 .as_number()
                 .ok_or_else(unsupported_type)?;
             return Ok(StoredValue::Date(timestamp));
@@ -130,8 +130,8 @@ impl Encoder<'_> {
             return Err(js_error!(TypeError: "Errors are not supported yet."));
         } else if let Ok(regexp) = JsRegExp::from_object(object.clone()) {
             return Ok(StoredValue::RegExp {
-                source: regexp.source(context)?,
-                flags: regexp.flags(context)?,
+                source: regexp.source(context.access())?,
+                flags: regexp.flags(context.access())?,
             });
         } else if JsDataView::from_object(object.clone()).is_ok() {
             return Err(js_error!(TypeError: "Data views are not supported yet."));
@@ -155,7 +155,8 @@ impl Encoder<'_> {
     }
 
     fn array(&mut self, array: &JsArray, context: &mut Context) -> JsResult<StoredValue> {
-        let length = usize::try_from(array.length(context)?).map_err(JsError::from_rust)?;
+        let length =
+            usize::try_from(array.length(context.access())?).map_err(JsError::from_rust)?;
         let mut items = Vec::with_capacity(length);
         for index in 0..length {
             let value = array
