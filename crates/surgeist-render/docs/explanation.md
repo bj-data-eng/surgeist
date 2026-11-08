@@ -41,11 +41,21 @@ Layer blending operates on straight color components while storage and
 composition use premultiplied contributions. The twelve separable functions
 combine corresponding channels independently; Hue, Saturation, Color and
 Luminosity combine RGB jointly. Backdrop alpha modulates the blend
-result before source-over composition; blending premultiplied components would
+result before the selected composition; blending premultiplied components would
 change partially transparent output. The [layer blending reference](reference.md#layer-blending)
 describes the supported functions and endpoint rules. The same choice survives
 direct rasterization, destination-sampling graph composites and Vello spans
 inside a graph capture.
+
+Basic Porter-Duff operations distinguish source support from the domain where
+the operation can change the parent. Empty source is meaningful to Clear, Copy
+and the other destructive choices. The graph carries a finite initialized group
+image for that source, and proves its producer, reads and lifetime even when no
+Vello capture is needed. Operation clip coverage interpolates the complete
+result with the prior parent, while masks and opacity attenuate source before
+the factors. The [composition reference](reference.md#layer-composition-and-isolation)
+defines this native domain policy and explicit isolation without moving semantic
+group creation into Render.
 
 ## Precision is an explicit policy
 

@@ -75,8 +75,8 @@ Luminosity adjustment uses exact gray, black-target and white-target identities
 before subtraction and clipping. These avoid cancellation at the range edges
 without changing the gamut equations for interior non-gray colors.
 
-`BlendMode::Plus` remains a separate additive composition choice. The layer API
-does not select arbitrary Porter-Duff operators. Background-layer blend
+`BlendMode::Plus` remains a separate local additive composition choice. It cannot
+serve as the mixing function of a basic Porter-Duff pair. Background-layer blend
 interpretation and its typed capability boundary remain separate from this
 supported layer set. `CompositingCapabilities::supports_blend_modes` describes
 the complete concrete layer choices.
@@ -88,6 +88,56 @@ Clipping, mask alpha and opacity attenuate the premultiplied source before
 composition. Both routes retain the same Ledger admission, resource custody and
 atomic publication rules as other layers. Host-observed profiling durations do
 not establish pixel-value-independent execution timing.
+
+## Layer composition and isolation
+
+`LayerComposition::try_porter_duff(operator, blend)` pairs one of the twelve
+`PorterDuffOperator` choices with a mixing function. It rejects `BlendMode::Plus`
+with typed invalid input because Plus is an entire local operation. Install the
+pair with `Layer::with_composition` and inspect it with `Layer::composition`.
+`Layer::blend` replaces the entire composition with source-over mixing or local
+Plus, including a previously selected operator. There are no independent setter
+states in which Plus also carries a basic operator.
+
+The basic operators are Clear, Copy, Destination, SourceOver, DestinationOver,
+SourceIn, DestinationIn, SourceOut, DestinationOut, SourceAtop, DestinationAtop
+and Xor. Blending first computes the joint or separable bounded `B(Cb,Cs)` on
+straight RGB, then `Cs'=(1-ab)Cs+ab*B`. The selected factors produce premultiplied
+`co=as*Fa*Cs'+ab*Fb*Cb` and `ao=as*Fa+ab*Fb`. Mixing does not change output alpha.
+Straight color has no meaningful mathematical value when `ao=0`.
+
+A basic operation runs over the finite current parent or group image in parent
+coordinates. Source samples outside source support are transparent. Masks and
+opacity attenuate that source; active operation clips instead interpolate
+`(1-t)*parent+t*operator_result`. Copy with zero source opacity therefore clears
+its operation domain, while zero clip coverage preserves the parent. Empty
+children and zero-sized source masks do not remove destructive operations.
+Source support, affected domain and result support remain distinct planning facts.
+These are resolved native execution rules; callers still own CSS, Canvas or SVG
+interpretation and group creation.
+
+Layer transforms map source content and the layer's own clip. They do not remove
+the parent image domain. A singular source transform yields transparent source;
+an unclipped destructive operation still runs. A singular own geometric clip has
+zero operation coverage. Other active parent-space clips remain applicable.
+
+`Layer::isolated` forces children to start over transparent black. Later children
+see the accumulated internal result, and the outer composition consumes that
+completed group. Default identity-looking wrappers can forward their surrounding
+parent. Retained non-source-over operators and explicitly isolated groups use the
+graph, including inside captures, with finite transparent group sources even
+when no source ink survives. Existing source-over and local Plus routes remain
+available. The graph retains sampled parent, source and replacement result as
+distinct admitted resources through their proven last uses.
+
+`CompositingCapabilities::supports_basic_porter_duff_modes` reports the twelve
+basic choices; `supports_isolated_layers` reports explicit resolved groups.
+The broad `supports_porter_duff_composite_modes` flag remains false: the pinned
+lighter equations print unbounded color and alpha sums while another clause
+requires normalized range. Existing local Plus behavior does not resolve that
+normative conflict. Root-backdrop and broad backdrop-policy boundaries remain
+separate. Ledger owns actual graph work, resource custody and optional timings;
+refusal preserves the previous complete pixels and successful statistics.
 
 ## Image sampling
 

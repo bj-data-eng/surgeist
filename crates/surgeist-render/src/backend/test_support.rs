@@ -56,7 +56,7 @@ use crate::{
     },
 };
 #[cfg(all(test, not(target_arch = "wasm32")))]
-use crate::{BlendMode, Extend, ImageQuality, Point, Rect};
+use crate::{BlendMode, Extend, ImageQuality, LayerComposition, Point, Rect};
 
 /// Test-owned exact graph ingress for real production and fixture preparation stages.
 #[must_use = "an exact test surface graph must enter its GPU transaction"]
@@ -1422,10 +1422,11 @@ pub(crate) struct CompositionMaskSamplingInputForTest {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct CompositionBlendVectorForTest {
-    pub(crate) blend: BlendMode,
+    pub(crate) composition: LayerComposition,
     pub(crate) source: [f32; 4],
     pub(crate) parent: [f32; 4],
     pub(crate) opacity: f32,
+    pub(crate) clip_alpha: Option<f32>,
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -1600,7 +1601,7 @@ pub(crate) struct CustomSpineEncodingObservationForTest {
     pub(crate) clears_full_root_once: bool,
     pub(crate) uses_exact_prepared_spatial_mapping: bool,
     pub(crate) presents_to_exact_external_output: bool,
-    pub(crate) exposes_bounded_capture_handoff: bool,
+    pub(crate) capture_handoffs_match_expected_count: bool,
     pub(crate) validates_checked_capture_completion: bool,
     pub(crate) completes_custom_passes_after_encoding: bool,
     pub(crate) parent_and_result_are_distinct: bool,
@@ -1944,9 +1945,21 @@ struct CompositionGpuVectorDrawForTest {
     layer_point: Point,
     clip_alpha: f32,
     opacity: f32,
-    blend: BlendMode,
+    composition: LayerComposition,
     quality: ImageQuality,
     extend: Extend,
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+fn validate_composition_vector_count_for_test(count: usize) -> Result<()> {
+    if count == 0 || count > 128 {
+        return Err(Error::invalid_value(
+            "composition GPU vector count",
+            count,
+            "must be between 1 and 128",
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -2260,7 +2273,7 @@ fn composition_vector_parameter_bytes(
             quality: draw.quality,
             extend: draw.extend,
             opacity: draw.opacity,
-            blend: draw.blend,
+            composition: draw.composition,
             has_clip: draw.has_clip_coverage,
             has_mask: draw.has_alpha_mask,
         },
@@ -2399,12 +2412,7 @@ fn encode_composition_gpu_vectors_for_test(
     let account = Account::for_test();
 
     let custody = ready.resources.generation().clone();
-    if draws.is_empty() {
-        return Err(Error::new(
-            BackendErrorCode::RenderFailed,
-            "composition GPU vector execution requires at least one draw",
-        ));
-    }
+    validate_composition_vector_count_for_test(draws.len())?;
     let mask_texture = composition_upload_vector_mask(ready, mask.as_ref())?;
     let mask_view = mask_texture
         .as_ref()
@@ -2611,7 +2619,7 @@ fn custom_spine_observation(
         clears_full_root_once: summary.clears_full_root_once,
         uses_exact_prepared_spatial_mapping: summary.uses_exact_prepared_spatial_mapping,
         presents_to_exact_external_output: summary.presents_to_exact_external_output,
-        exposes_bounded_capture_handoff: summary.exposes_bounded_capture_handoff
+        capture_handoffs_match_expected_count: summary.capture_handoffs_match_expected_count
             && capture_count > 0
             && captures_are_exact,
         validates_checked_capture_completion: summary.validates_checked_capture_completion,
@@ -3560,6 +3568,7 @@ impl Backend {
         requests: &LayerCompositeCacheRequestsForTest,
         input: &CompositionMaskSamplingInputForTest,
     ) -> Result<CompositionPreparedGpuVectorsForTest> {
+        validate_composition_vector_count_for_test(input.vectors.len())?;
         let working_format = self
             .device_capabilities(identity)
             .ok_or_else(|| {
@@ -3581,7 +3590,7 @@ impl Backend {
                 layer_point: vector.layer_point,
                 clip_alpha: vector.clip_alpha.unwrap_or(1.0),
                 opacity: vector.opacity,
-                blend: BlendMode::Normal,
+                composition: LayerComposition::from_blend(BlendMode::Normal),
                 quality: vector.quality,
                 extend: vector.extend,
             })
@@ -3612,6 +3621,7 @@ impl Backend {
         requests: &LayerCompositeCacheRequestsForTest,
         vectors: &[CompositionBlendVectorForTest],
     ) -> Result<CompositionPreparedGpuVectorsForTest> {
+        validate_composition_vector_count_for_test(vectors.len())?;
         let working_format = self
             .device_capabilities(identity)
             .ok_or_else(|| {
@@ -3624,19 +3634,19 @@ impl Backend {
         let draws = vectors
             .iter()
             .map(|vector| CompositionGpuVectorDrawForTest {
-                path: if vector.blend == BlendMode::Normal {
+                path: if vector.composition.is_source_over_normal() {
                     crate::shader::ShaderCompositePathKey::Normal
                 } else {
                     crate::shader::ShaderCompositePathKey::DestinationSampling
                 },
-                has_clip_coverage: false,
+                has_clip_coverage: vector.clip_alpha.is_some(),
                 has_alpha_mask: false,
                 source: vector.source,
                 parent: vector.parent,
                 layer_point: Point::new(0.5, 0.5),
-                clip_alpha: 1.0,
+                clip_alpha: vector.clip_alpha.unwrap_or(1.0),
                 opacity: vector.opacity,
-                blend: vector.blend,
+                composition: vector.composition,
                 quality: ImageQuality::Low,
                 extend: Extend::Pad,
             })
@@ -4954,7 +4964,7 @@ impl Backend {
 
         Ok(MultipleVelloCaptureEncodingObservationForTest {
             exact_capture_count: summary.capture_count == 2
-                && summary.exposes_bounded_capture_handoff,
+                && summary.capture_handoffs_match_expected_count,
             one_graph_command_encoder: summary.captures_share_one_command_encoder,
             one_gpu_transaction: same_transaction,
             one_active_vello_scope: summary.captures_share_one_active_vello_scope,

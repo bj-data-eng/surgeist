@@ -227,6 +227,7 @@ impl SemanticSourceBounds {
 pub(super) struct SemanticSourceContribution {
     pub(super) commands: RenderCommands,
     pub(super) source_bounds: SemanticSourceBounds,
+    pub(super) affected_bounds: SemanticSourceBounds,
     current_parent: SemanticSourceBounds,
 }
 
@@ -247,23 +248,32 @@ impl SemanticSourceContribution {
     ) -> Result<Self> {
         let mut contributing_commands = account.retained(commands.len())?;
         let mut source_bounds = SemanticSourceBounds::exactly_empty();
+        let mut affected_bounds = SemanticSourceBounds::exactly_empty();
         let mut current_parent = initial_parent;
         for command in commands.iter() {
             account.work(RenderWork::CommandVisits, 1)?;
             let command = command.clone();
             let prior_parent = current_parent;
-            let contribution =
-                Self::try_from_command(command, prior_parent, context, local_to_surface, account)?
-                    .try_apply_domain(domain, prior_parent)?;
+            let contribution = Self::try_from_command(
+                command,
+                prior_parent,
+                domain,
+                context,
+                local_to_surface,
+                account,
+            )?
+            .try_apply_domain(domain)?;
             current_parent = contribution.current_parent;
             if let Some(command) = contribution.command {
                 source_bounds = source_bounds.try_union(contribution.source_bounds)?;
+                affected_bounds = affected_bounds.try_union(contribution.affected_bounds)?;
                 contributing_commands.push_reserved(command);
             }
         }
         Ok(Self {
             commands: RenderCommands::new_in(contributing_commands, account)?,
             source_bounds,
+            affected_bounds,
             current_parent,
         })
     }
@@ -271,6 +281,7 @@ impl SemanticSourceContribution {
     fn try_from_command(
         command: RenderCommand,
         current_parent: SemanticSourceBounds,
+        domain: SemanticContributionDomain,
         context: FrameContext,
         local_to_surface: Transform,
         account: &Account,
@@ -295,9 +306,14 @@ impl SemanticSourceContribution {
             command @ RenderCommand::TextRun { .. } => {
                 Self::try_from_text_run(command, current_parent)
             }
-            command @ RenderCommand::Layer { .. } => {
-                Self::try_from_layer(command, current_parent, context, local_to_surface, account)
-            }
+            command @ RenderCommand::Layer { .. } => Self::try_from_layer(
+                command,
+                current_parent,
+                domain,
+                context,
+                local_to_surface,
+                account,
+            ),
             command @ (RenderCommand::Fill { .. }
             | RenderCommand::Stroke { .. }
             | RenderCommand::Shadow { .. }
@@ -344,6 +360,7 @@ impl SemanticSourceContribution {
     fn try_from_layer(
         command: RenderCommand,
         current_parent: SemanticSourceBounds,
+        domain: SemanticContributionDomain,
         context: FrameContext,
         local_to_surface: Transform,
         account: &Account,
@@ -356,10 +373,42 @@ impl SemanticSourceContribution {
             unreachable!("layer contribution helper received a non-layer command");
         };
         let layer_to_surface = layer.transform.then(local_to_surface)?;
-        let children = Self::try_from_commands(
+        let has_bounded_children = commands_have_bounded_operation(&children, account)?;
+        // Only an explicit isolated group starts against transparent black.
+        // A default transparent wrapper forwards the actual surrounding image.
+        let transparent_wrapper = !layer.explicit_isolation
+            && layer.composition.is_source_over_normal()
+            && layer.mask.is_none()
+            && layer.backdrop.is_none()
+            && (layer.opacity - 1.0).abs() < f32::EPSILON;
+        let inverse = destination_to_layer_local_mapping(layer.transform)?;
+        let child_parent = if transparent_wrapper && has_bounded_children {
+            match inverse {
+                Some(inverse) => {
+                    current_parent.try_transform(inverse.affine, "wrapper parent bounds")?
+                }
+                None => SemanticSourceBounds::exactly_empty(),
+            }
+        } else {
+            SemanticSourceBounds::exactly_empty()
+        };
+        let child_domain = match (domain, inverse) {
+            (SemanticContributionDomain::RootOutputBounded(bounds), Some(inverse)) => {
+                SemanticContributionDomain::RootOutputBounded(
+                    bounds.try_transform(inverse.affine, "child image domain")?,
+                )
+            }
+            (SemanticContributionDomain::RootOutputBounded(bounds), None) => {
+                SemanticContributionDomain::RootOutputBounded(bounds)
+            }
+            (SemanticContributionDomain::LocalUnbounded, _) => {
+                SemanticContributionDomain::LocalUnbounded
+            }
+        };
+        let mut children = Self::try_from_commands(
             children,
-            SemanticSourceBounds::exactly_empty(),
-            SemanticContributionDomain::LocalUnbounded,
+            child_parent,
+            child_domain,
             context,
             layer_to_surface,
             account,
@@ -386,24 +435,108 @@ impl SemanticSourceContribution {
             || layer.opacity <= 0.0
         {
             source_bounds = SemanticSourceBounds::exactly_empty();
+            // Keep the outer operation, but an annihilated source has no ink
+            // or resource prerequisites. Do not let later graph preflight
+            // require text bounds or native resources from this dead subtree.
+            if !layer.composition.transparent_source_preserves_parent() {
+                children.commands = RenderCommands::new_in(account.retained(0)?, account)?;
+            }
         }
         source_bounds =
             source_bounds.try_transform(layer.transform, "semantic layer source transform")?;
-        SemanticCommandContribution::try_new(
+        let affected_bounds = if !layer.composition.is_source_over() && !layer.composition.is_plus()
+        {
+            // The parent image fixes operation membership, independently of
+            // source support, opacity, masks, or the source transform's rank.
+            let mut affected = match domain {
+                SemanticContributionDomain::RootOutputBounded(bounds) => {
+                    SemanticSourceBounds::from_logical_bounds(bounds)
+                }
+                SemanticContributionDomain::LocalUnbounded => {
+                    match destination_to_layer_local_mapping(local_to_surface)? {
+                        Some(inverse) => {
+                            SemanticSourceBounds::from_logical_bounds(context.output_bounds)
+                                .try_transform(inverse.affine, "local finite operation domain")?
+                        }
+                        // A singular source mapping cannot remove the current
+                        // parent image's finite operation membership.
+                        None => SemanticSourceBounds::from_logical_bounds(context.output_bounds),
+                    }
+                }
+            };
+            if let Some(clip) = layer.clip.as_ref() {
+                affected = affected.try_intersect(
+                    SemanticSourceBounds::try_for_clip(clip, account)?
+                        .try_transform(layer.transform, "operation clip transform")?,
+                    "operation clip domain intersection",
+                )?;
+            }
+            affected
+        } else if transparent_wrapper && has_bounded_children {
+            match domain {
+                SemanticContributionDomain::RootOutputBounded(bounds) => {
+                    SemanticSourceBounds::from_logical_bounds(bounds)
+                }
+                SemanticContributionDomain::LocalUnbounded => children.affected_bounds,
+            }
+        } else {
+            source_bounds.try_union(
+                children
+                    .affected_bounds
+                    .try_transform(layer.transform, "child operation affected bounds")?,
+            )?
+        };
+        let affected_bounds = if transparent_wrapper {
+            match layer.clip.as_ref() {
+                Some(clip) => affected_bounds.try_intersect(
+                    SemanticSourceBounds::try_for_clip(clip, account)?
+                        .try_transform(layer.transform, "wrapper operation clip transform")?,
+                    "wrapper operation clip domain intersection",
+                )?,
+                None => affected_bounds,
+            }
+        } else {
+            affected_bounds
+        };
+        let no_operation = affected_bounds.is_exactly_empty()
+            || (source_bounds.is_exactly_empty()
+                && layer.composition.transparent_source_preserves_parent()
+                && !transparent_wrapper);
+        let composition = layer.composition;
+        let partially_covered = layer.clip.is_some();
+        SemanticCommandContribution::try_layer(
             RenderCommand::Layer {
                 layer,
                 children: children.commands,
             },
             source_bounds,
+            affected_bounds,
             current_parent,
+            no_operation,
+            composition,
+            partially_covered,
         )
     }
+}
+
+fn commands_have_bounded_operation(commands: &RenderCommands, account: &Account) -> Result<bool> {
+    for command in commands.iter() {
+        account.work(RenderWork::CommandVisits, 1)?;
+        if let RenderCommand::Layer { layer, children } = command
+            && ((!layer.composition.is_source_over() && !layer.composition.is_plus())
+                || commands_have_bounded_operation(children, account)?)
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 #[derive(Clone, Debug, PartialEq)]
 struct SemanticCommandContribution {
     command: Option<RenderCommand>,
     source_bounds: SemanticSourceBounds,
+    affected_bounds: SemanticSourceBounds,
     current_parent: SemanticSourceBounds,
 }
 
@@ -417,21 +550,71 @@ impl SemanticCommandContribution {
             return Ok(Self {
                 command: None,
                 source_bounds,
+                affected_bounds: source_bounds,
                 current_parent,
             });
         }
         Ok(Self {
             command: Some(command),
             source_bounds,
+            affected_bounds: source_bounds,
             current_parent: current_parent.try_union(source_bounds)?,
         })
     }
 
-    fn try_apply_domain(
-        self,
-        domain: SemanticContributionDomain,
-        prior_parent: SemanticSourceBounds,
+    fn try_layer(
+        command: RenderCommand,
+        source_bounds: SemanticSourceBounds,
+        affected_bounds: SemanticSourceBounds,
+        current_parent: SemanticSourceBounds,
+        no_operation: bool,
+        composition: crate::layer::LayerComposition,
+        partially_covered: bool,
     ) -> Result<Self> {
+        use crate::layer::PorterDuffOperator;
+        // These are support bounds, not alpha estimates. In/atop factors bound
+        // the result even when there is source ink; destructive operations are
+        // still retained through their independent affected domain.
+        let operation_result = match composition.operator() {
+            Some(PorterDuffOperator::Clear) => SemanticSourceBounds::exactly_empty(),
+            Some(
+                PorterDuffOperator::Copy
+                | PorterDuffOperator::SourceOut
+                | PorterDuffOperator::DestinationAtop,
+            ) => source_bounds,
+            Some(
+                PorterDuffOperator::Destination
+                | PorterDuffOperator::DestinationOut
+                | PorterDuffOperator::SourceAtop,
+            ) => current_parent,
+            Some(PorterDuffOperator::SourceIn | PorterDuffOperator::DestinationIn) => {
+                source_bounds.try_intersect(current_parent, "in-operator result support")?
+            }
+            Some(
+                PorterDuffOperator::SourceOver
+                | PorterDuffOperator::DestinationOver
+                | PorterDuffOperator::Xor,
+            )
+            | None => current_parent.try_union(source_bounds)?,
+        };
+        let result_support = if no_operation {
+            current_parent
+        } else if partially_covered {
+            // Fractional and nonrectangular clips preserve some prior parent;
+            // a single rectangle conservatively bounds that remainder.
+            current_parent.try_union(operation_result)?
+        } else {
+            operation_result
+        };
+        Ok(Self {
+            command: (!no_operation).then_some(command),
+            source_bounds,
+            affected_bounds,
+            current_parent: result_support,
+        })
+    }
+
+    fn try_apply_domain(self, domain: SemanticContributionDomain) -> Result<Self> {
         let SemanticContributionDomain::RootOutputBounded(output_bounds) = domain else {
             return Ok(self);
         };
@@ -440,17 +623,15 @@ impl SemanticCommandContribution {
             output_bounds,
             "root observable source output-domain intersection",
         )?;
-        let current_parent = prior_parent
-            .try_intersect(
-                output_bounds,
-                "root prior-parent output-domain intersection",
-            )?
-            .try_union(source_bounds)?
-            .try_intersect(
-                output_bounds,
-                "root current-parent output-domain intersection",
-            )?;
-        let command = if source_bounds.is_exactly_empty() {
+        let affected_bounds = self.affected_bounds.try_intersect(
+            output_bounds,
+            "root observable affected output-domain intersection",
+        )?;
+        let current_parent = self.current_parent.try_intersect(
+            output_bounds,
+            "root current-parent output-domain intersection",
+        )?;
+        let command = if affected_bounds.is_exactly_empty() {
             None
         } else {
             self.command
@@ -458,6 +639,7 @@ impl SemanticCommandContribution {
         Ok(Self {
             command,
             source_bounds,
+            affected_bounds,
             current_parent,
         })
     }
@@ -1110,5 +1292,149 @@ pub(crate) fn spatial_primitives_for_test(
                 is_empty: false,
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod operation_domain_tests {
+    use super::*;
+    use crate::{
+        BlendMode, Capabilities, Layer, LayerComposition, PorterDuffOperator, Scene, Shape,
+    };
+
+    fn contribution(layer: Layer) -> SemanticSourceContribution {
+        let account = Account::for_test();
+        let mut scene = Scene::new();
+        scene.layer(layer, |_| {});
+        let commands = scene.normalize(Capabilities::CURRENT, &account).unwrap();
+        let context =
+            FrameContext::try_new(Size::new(8.0, 6.0), 1.0, Antialiasing::Area, Color::BLACK)
+                .unwrap();
+        SemanticSourceContribution::try_from_commands(
+            commands,
+            context.initial_parent_contribution(),
+            SemanticContributionDomain::RootOutputBounded(context.output_bounds),
+            context,
+            Transform::identity(),
+            &account,
+        )
+        .unwrap()
+    }
+
+    fn selected(operator: PorterDuffOperator) -> Layer {
+        Layer::new().with_composition(
+            LayerComposition::try_porter_duff(operator, BlendMode::Normal).unwrap(),
+        )
+    }
+
+    #[test]
+    fn source_in_support_uses_the_group_backdrop_instead_of_source_ink_alone() {
+        let account = Account::for_test();
+        let context =
+            FrameContext::try_new(Size::new(8.0, 6.0), 1.0, Antialiasing::Area, Color::BLACK)
+                .unwrap();
+        for isolated in [false, true] {
+            let mut scene = Scene::new();
+            let wrapper = if isolated {
+                Layer::new().isolated()
+            } else {
+                Layer::new()
+            };
+            scene.layer(wrapper, |scene| {
+                scene.layer(selected(PorterDuffOperator::SourceIn), |scene| {
+                    scene.fill(Rect::new(2.0, 1.0, 3.0, 2.0), Color::BLACK);
+                });
+            });
+            let contribution = SemanticSourceContribution::try_from_commands(
+                scene.normalize(Capabilities::CURRENT, &account).unwrap(),
+                context.initial_parent_contribution(),
+                SemanticContributionDomain::RootOutputBounded(context.output_bounds),
+                context,
+                Transform::identity(),
+                &account,
+            )
+            .unwrap();
+            // An isolated first SourceIn has no destination support; a default
+            // wrapper forwards the opaque current image into the same child.
+            assert_eq!(contribution.source_bounds.is_exactly_empty(), isolated);
+        }
+    }
+
+    #[test]
+    fn empty_destructive_sources_retain_the_finite_parent_operation_domain() {
+        for operator in [
+            PorterDuffOperator::Clear,
+            PorterDuffOperator::Copy,
+            PorterDuffOperator::SourceIn,
+            PorterDuffOperator::DestinationIn,
+            PorterDuffOperator::SourceOut,
+            PorterDuffOperator::DestinationAtop,
+        ] {
+            let contribution = contribution(selected(operator));
+            assert!(contribution.source_bounds.is_exactly_empty());
+            assert_eq!(
+                contribution
+                    .affected_bounds
+                    .require_non_empty_for_graph("test domain")
+                    .unwrap()
+                    .unwrap()
+                    .rect(),
+                Rect::new(0.0, 0.0, 8.0, 6.0),
+            );
+            assert!(!contribution.commands.is_empty());
+        }
+    }
+
+    #[test]
+    fn singular_source_keeps_copy_domain_but_singular_own_clip_has_no_coverage() {
+        let layer = selected(PorterDuffOperator::Copy)
+            .try_transform(Transform::scale(0.0, 1.0).unwrap())
+            .unwrap();
+        let unclipped = contribution(layer.clone());
+        assert!(unclipped.source_bounds.is_exactly_empty());
+        assert_eq!(
+            unclipped
+                .affected_bounds
+                .require_non_empty_for_graph("test domain")
+                .unwrap()
+                .unwrap()
+                .rect(),
+            Rect::new(0.0, 0.0, 8.0, 6.0),
+        );
+        let clipped = contribution(
+            layer
+                .try_clip(Shape::rect(Rect::new(0.0, 0.0, 4.0, 4.0)))
+                .unwrap(),
+        );
+        assert!(clipped.affected_bounds.is_exactly_empty());
+        assert!(clipped.commands.is_empty());
+    }
+
+    #[test]
+    fn translating_an_empty_source_transforms_its_clip_and_preserves_parent_domain() {
+        let unclipped = selected(PorterDuffOperator::Copy)
+            .try_transform(Transform::translation(2.0, 1.0).unwrap())
+            .unwrap();
+        assert_eq!(
+            contribution(unclipped.clone())
+                .affected_bounds
+                .require_non_empty_for_graph("test domain")
+                .unwrap()
+                .unwrap()
+                .rect(),
+            Rect::new(0.0, 0.0, 8.0, 6.0),
+        );
+        let clipped = unclipped
+            .try_clip(Shape::rect(Rect::new(0.0, 0.0, 3.0, 2.0)))
+            .unwrap();
+        assert_eq!(
+            contribution(clipped)
+                .affected_bounds
+                .require_non_empty_for_graph("test domain")
+                .unwrap()
+                .unwrap()
+                .rect(),
+            Rect::new(2.0, 1.0, 3.0, 2.0),
+        );
     }
 }

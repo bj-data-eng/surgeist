@@ -144,6 +144,8 @@ pub(crate) enum CompositeSourceSpace {
 enum GraphSelectionRequirement {
     ResolvedAlphaMask,
     BoundedBackdrop,
+    BoundedPorterDuff,
+    ExplicitIsolation,
 }
 
 impl FramePlan {
@@ -217,6 +219,17 @@ fn collect_graph_selection_requirements(
         let RenderCommand::Layer { layer, children } = command else {
             continue;
         };
+        if !layer.composition.is_source_over()
+            && !layer.composition.is_plus()
+            && !requirements.contains(&GraphSelectionRequirement::BoundedPorterDuff)
+        {
+            requirements.push(GraphSelectionRequirement::BoundedPorterDuff)?;
+        }
+        if layer.explicit_isolation
+            && !requirements.contains(&GraphSelectionRequirement::ExplicitIsolation)
+        {
+            requirements.push(GraphSelectionRequirement::ExplicitIsolation)?;
+        }
         if layer.backdrop.is_some()
             && !requirements.contains(&GraphSelectionRequirement::BoundedBackdrop)
         {

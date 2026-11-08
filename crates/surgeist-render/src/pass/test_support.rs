@@ -1555,7 +1555,7 @@ pub(crate) fn layer_composite_cache_requests_for_test(
             else {
                 continue;
             };
-            if parameters.blend() == BlendMode::Normal {
+            if parameters.composition().is_source_over_normal() {
                 continue;
             }
             let mut normal_kind = pass.kind.clone();
@@ -1567,7 +1567,7 @@ pub(crate) fn layer_composite_cache_requests_for_test(
                 unreachable!("the cloned composition layer-composite kind must remain a layer")
             };
             let mut normal_parameters = **parameters;
-            normal_parameters.blend = BlendMode::Normal;
+            normal_parameters.composition = crate::LayerComposition::from_blend(BlendMode::Normal);
             *parameters = SharedValue::new(normal_parameters, &account.storage())?;
             let Some(keys) = runtime_pass_cache_keys(
                 &normal_kind,
@@ -5330,7 +5330,7 @@ fn observe_layer_composition(
     Some(LayerCompositionObservationForTest {
         transform: *transform,
         opacity: parameters.opacity(),
-        blend: parameters.blend(),
+        blend: parameters.composition().blend_mode(),
         has_own_clip: clip.is_some(),
         inherited_outer_clip_count: outer_clips.len(),
         inherited_outer_clip_transforms: outer_clips.iter().map(|clip| clip.transform).collect(),
@@ -5432,7 +5432,7 @@ fn base_graph_rejects_every_other_pass_kind_and_composite_payload(plan: &Lowered
         Transform::identity(),
         crate::frame::CompositeSourceSpace::LayerLocal,
         1.0,
-        BlendMode::Normal,
+        crate::LayerComposition::from_blend(BlendMode::Normal),
         false,
         None,
     ) else {

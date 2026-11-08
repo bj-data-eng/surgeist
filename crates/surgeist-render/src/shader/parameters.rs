@@ -5,7 +5,7 @@ use crate::accounting::{
 use crate::{
     Color, Error, Point, Rect, Result,
     frame::CompositeSourceSpace,
-    layer::BlendMode,
+    layer::{BlendMode, LayerComposition, PorterDuffOperator},
     pass::{
         RuntimeColorClampBoundary, RuntimeColorOperation, RuntimeColorOperationKind,
         RuntimeLayerCompositeParameters, RuntimeSpatialDescriptor,
@@ -515,7 +515,8 @@ impl BlurEdgeParameterBytes {
 /// affine translation plus zero alignment bytes `16..32`, mask rectangle
 /// `32..48`, image dimensions and pixelated lattice factors `48..64`, normalized
 /// texel-center facts `64..80`, opacity/blend/quality/extend `80..96`, and
-/// clip/mask presence and source coordinate space plus zero alignment bytes `96..112`.
+/// clip/mask presence, source coordinate space and basic operator code `96..112`.
+/// SourceOver is operator code zero; the separate local Plus mix code ignores it.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct CompositeParameterBytes([u8; 112]);
 
@@ -531,7 +532,7 @@ struct CompositeParameterFacts {
     affine: [f64; 6],
     source_space: CompositeSourceSpace,
     opacity: f32,
-    blend: BlendMode,
+    composition: LayerComposition,
     has_clip: bool,
     mask: Option<CompositeMaskParameterFacts>,
     raster_scale: f64,
@@ -569,7 +570,7 @@ impl CompositeParameterBytes {
                 affine: parameters.destination_to_layer_local().affine().as_array(),
                 source_space: parameters.source_space(),
                 opacity: parameters.opacity(),
-                blend: parameters.blend(),
+                composition: parameters.composition(),
                 has_clip: parameters.has_clip(),
                 mask,
                 raster_scale: destination.raster_scale(),
@@ -583,7 +584,7 @@ impl CompositeParameterBytes {
             affine,
             source_space,
             opacity,
-            blend,
+            composition,
             has_clip,
             mask,
             raster_scale,
@@ -683,7 +684,11 @@ impl CompositeParameterBytes {
         }
 
         write_f32(&mut bytes, 80, opacity);
-        write_u32(&mut bytes, 84, blend_parameter_code(blend));
+        write_u32(
+            &mut bytes,
+            84,
+            blend_parameter_code(composition.blend_mode()),
+        );
         write_u32(&mut bytes, 96, u32::from(has_clip));
         write_u32(
             &mut bytes,
@@ -692,6 +697,11 @@ impl CompositeParameterBytes {
                 CompositeSourceSpace::LayerLocal => 0,
                 CompositeSourceSpace::SurfaceGrid => 1,
             },
+        );
+        write_u32(
+            &mut bytes,
+            108,
+            operator_parameter_code(composition.operator()),
         );
         Ok(Self(bytes))
     }
@@ -716,7 +726,7 @@ pub(crate) struct CompositeParameterGpuVectorFactsForTest {
     pub(crate) quality: ImageQuality,
     pub(crate) extend: Extend,
     pub(crate) opacity: f32,
-    pub(crate) blend: BlendMode,
+    pub(crate) composition: LayerComposition,
     pub(crate) has_clip: bool,
     pub(crate) has_mask: bool,
 }
@@ -755,7 +765,7 @@ pub(crate) fn composite_parameter_bytes_for_gpu_vector_for_test(
             ],
             source_space: CompositeSourceSpace::LayerLocal,
             opacity: facts.opacity.clamp(0.0, 1.0),
-            blend: facts.blend,
+            composition: facts.composition,
             has_clip: facts.has_clip,
             mask,
             raster_scale: 1.0,
@@ -812,6 +822,23 @@ const fn blend_parameter_code(blend: BlendMode) -> u32 {
         BlendMode::Saturation => 14,
         BlendMode::Color => 15,
         BlendMode::Luminosity => 16,
+    }
+}
+
+const fn operator_parameter_code(operator: Option<PorterDuffOperator>) -> u32 {
+    match operator {
+        None | Some(PorterDuffOperator::SourceOver) => 0,
+        Some(PorterDuffOperator::Clear) => 1,
+        Some(PorterDuffOperator::Copy) => 2,
+        Some(PorterDuffOperator::Destination) => 3,
+        Some(PorterDuffOperator::DestinationOver) => 4,
+        Some(PorterDuffOperator::SourceIn) => 5,
+        Some(PorterDuffOperator::DestinationIn) => 6,
+        Some(PorterDuffOperator::SourceOut) => 7,
+        Some(PorterDuffOperator::DestinationOut) => 8,
+        Some(PorterDuffOperator::SourceAtop) => 9,
+        Some(PorterDuffOperator::DestinationAtop) => 10,
+        Some(PorterDuffOperator::Xor) => 11,
     }
 }
 
@@ -879,6 +906,12 @@ mod surface_grid_parameter_tests {
     fn composite_parameters_preserve_plus_and_encode_shader_mix_modes() {
         // These are Render's shader dispatch codes, independent of Peniko's codes.
         for (blend, expected_code) in [
+            (BlendMode::Normal, 0),
+            (BlendMode::Multiply, 1),
+            (BlendMode::Screen, 2),
+            (BlendMode::Overlay, 3),
+            (BlendMode::Darken, 4),
+            (BlendMode::Lighten, 5),
             (BlendMode::Plus, 6),
             (BlendMode::ColorDodge, 7),
             (BlendMode::ColorBurn, 8),
@@ -896,7 +929,7 @@ mod surface_grid_parameter_tests {
                     affine: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
                     source_space: CompositeSourceSpace::LayerLocal,
                     opacity: 1.0,
-                    blend,
+                    composition: LayerComposition::from_blend(blend),
                     has_clip: false,
                     mask: None,
                     raster_scale: 1.0,
@@ -907,6 +940,47 @@ mod surface_grid_parameter_tests {
             .into_bytes_for_test();
             let encoded_code = u32::from_le_bytes(bytes[84..88].try_into().unwrap());
             assert_eq!(encoded_code, expected_code, "{blend:?}");
+            assert_eq!(u32::from_le_bytes(bytes[108..112].try_into().unwrap()), 0);
+        }
+    }
+
+    #[test]
+    fn composite_parameters_encode_basic_operators_independently_of_the_mix_code() {
+        for (operator, expected_code) in [
+            (PorterDuffOperator::SourceOver, 0),
+            (PorterDuffOperator::Clear, 1),
+            (PorterDuffOperator::Copy, 2),
+            (PorterDuffOperator::Destination, 3),
+            (PorterDuffOperator::DestinationOver, 4),
+            (PorterDuffOperator::SourceIn, 5),
+            (PorterDuffOperator::DestinationIn, 6),
+            (PorterDuffOperator::SourceOut, 7),
+            (PorterDuffOperator::DestinationOut, 8),
+            (PorterDuffOperator::SourceAtop, 9),
+            (PorterDuffOperator::DestinationAtop, 10),
+            (PorterDuffOperator::Xor, 11),
+        ] {
+            let bytes = CompositeParameterBytes::try_from_facts(
+                CompositeParameterFacts {
+                    affine: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                    source_space: CompositeSourceSpace::SurfaceGrid,
+                    opacity: 0.625,
+                    composition: LayerComposition::try_porter_duff(operator, BlendMode::Color)
+                        .unwrap(),
+                    has_clip: true,
+                    mask: None,
+                    raster_scale: 1.0,
+                },
+                None,
+            )
+            .unwrap()
+            .into_bytes_for_test();
+            let word =
+                |offset: usize| u32::from_le_bytes(bytes[offset..offset + 4].try_into().unwrap());
+            assert_eq!(word(84), 15, "{operator:?} keeps the Color mixing code");
+            assert_eq!(word(108), expected_code, "{operator:?}");
+            assert_eq!((word(96), word(100), word(104)), (1, 0, 1));
+            assert_eq!(word(80), 0.625_f32.to_bits());
         }
     }
 
@@ -927,7 +1001,7 @@ mod surface_grid_parameter_tests {
                 affine: [0.4, 0.0, 0.0, 0.5, 0.0, 0.0],
                 source_space: CompositeSourceSpace::SurfaceGrid,
                 opacity: 1.0,
-                blend: BlendMode::Normal,
+                composition: LayerComposition::from_blend(BlendMode::Normal),
                 has_clip: false,
                 mask: Some(mask),
                 raster_scale: 1.0,
@@ -1080,7 +1154,7 @@ mod accounting_tests {
                         affine: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
                         source_space: CompositeSourceSpace::LayerLocal,
                         opacity: 1.0,
-                        blend: BlendMode::Normal,
+                        composition: LayerComposition::from_blend(BlendMode::Normal),
                         has_clip: false,
                         mask: Some(CompositeMaskParameterFacts {
                             bounds: [0.0, 0.0, 1.0, 1.0],

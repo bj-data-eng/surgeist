@@ -197,7 +197,8 @@ pub(crate) struct NormalizedLayer {
     pub(crate) clip: Option<RenderClip>,
     pub(crate) transform: Transform,
     pub(crate) opacity: f32,
-    pub(crate) blend: BlendMode,
+    pub(crate) composition: LayerComposition,
+    pub(crate) explicit_isolation: bool,
     pub(crate) mask: Option<RenderLayerMask>,
     pub(crate) backdrop: Option<SharedValue<RenderBackdropCapture>>,
     pub(crate) isolation: LayerIsolation,
@@ -406,6 +407,32 @@ impl LayerPassPlan {
             Some(bounds) => Some(bounds),
             None => commands_bounds(children, account)?,
         };
+
+        let composition = layer.composition();
+        if !composition.is_source_over() && !composition.is_plus() {
+            capabilities.ensure_supported(UnsupportedPrimitive::new(
+                PrimitiveFamily::Compositing,
+                PrimitiveOperation::BasicPorterDuffCompositeMode,
+            ))?;
+            return Ok(Self::new(
+                LayerPassRequirement::OffscreenTexture(
+                    PrimitiveOperation::BasicPorterDuffCompositeMode,
+                ),
+                LayerPassKind::OffscreenTexture,
+                bounds,
+            ));
+        }
+        if layer.is_isolated() {
+            capabilities.ensure_supported(UnsupportedPrimitive::new(
+                PrimitiveFamily::Compositing,
+                PrimitiveOperation::IsolatedLayerExecution,
+            ))?;
+            return Ok(Self::new(
+                LayerPassRequirement::OffscreenTexture(PrimitiveOperation::IsolatedLayerExecution),
+                LayerPassKind::OffscreenTexture,
+                bounds,
+            ));
+        }
 
         let has_clip = clip.is_some();
         let has_resolved_mask = layer.resolved_alpha_mask().is_some();
@@ -1102,7 +1129,8 @@ impl NormalizedLayer {
             clip,
             transform: layer.transform(),
             opacity: layer.opacity(),
-            blend: layer.blend_mode(),
+            composition: layer.composition(),
+            explicit_isolation: layer.is_isolated(),
             mask,
             backdrop,
             isolation: pass_plan.isolation(),

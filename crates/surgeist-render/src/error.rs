@@ -1048,6 +1048,10 @@ pub enum PrimitiveOperation {
     BackgroundBlendMode,
     /// Applying a Porter-Duff composite mode.
     PorterDuffCompositeMode,
+    /// Applying one of the twelve basic Porter-Duff operators.
+    BasicPorterDuffCompositeMode,
+    /// Executing an explicitly isolated resolved layer group.
+    IsolatedLayerExecution,
 }
 
 impl PrimitiveOperation {
@@ -1114,6 +1118,8 @@ impl PrimitiveOperation {
             Self::RootBackdropPolicy => "root backdrop policy",
             Self::BackgroundBlendMode => "background blend mode",
             Self::PorterDuffCompositeMode => "Porter-Duff composite mode",
+            Self::BasicPorterDuffCompositeMode => "basic Porter-Duff composite mode",
+            Self::IsolatedLayerExecution => "isolated layer execution",
         }
     }
 }

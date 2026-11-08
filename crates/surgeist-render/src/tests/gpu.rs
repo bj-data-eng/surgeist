@@ -3249,73 +3249,85 @@ fn blend_shaders_match_independent_known_vectors() {
     let parent = [0.2, 0.6, 0.32, 0.8];
     let vectors = [
         CompositionBlendVectorForTest {
-            blend: BlendMode::Normal,
+            composition: crate::LayerComposition::from_blend(BlendMode::Normal),
+            clip_alpha: None,
             source,
             parent,
             opacity: 1.25,
         },
         CompositionBlendVectorForTest {
-            blend: BlendMode::Multiply,
+            composition: crate::LayerComposition::from_blend(BlendMode::Multiply),
+            clip_alpha: None,
             source,
             parent,
             opacity: 1.0,
         },
         CompositionBlendVectorForTest {
-            blend: BlendMode::Screen,
+            composition: crate::LayerComposition::from_blend(BlendMode::Screen),
+            clip_alpha: None,
             source,
             parent,
             opacity: 1.0,
         },
         CompositionBlendVectorForTest {
-            blend: BlendMode::Overlay,
+            composition: crate::LayerComposition::from_blend(BlendMode::Overlay),
+            clip_alpha: None,
             source,
             parent,
             opacity: 1.0,
         },
         CompositionBlendVectorForTest {
-            blend: BlendMode::Darken,
+            composition: crate::LayerComposition::from_blend(BlendMode::Darken),
+            clip_alpha: None,
             source,
             parent,
             opacity: 1.0,
         },
         CompositionBlendVectorForTest {
-            blend: BlendMode::Lighten,
+            composition: crate::LayerComposition::from_blend(BlendMode::Lighten),
+            clip_alpha: None,
             source,
             parent,
             opacity: 1.0,
         },
         CompositionBlendVectorForTest {
-            blend: BlendMode::Plus,
+            composition: crate::LayerComposition::from_blend(BlendMode::Plus),
+            clip_alpha: None,
             source,
             parent,
             opacity: 1.0,
         },
         CompositionBlendVectorForTest {
-            blend: BlendMode::Plus,
+            composition: crate::LayerComposition::from_blend(BlendMode::Plus),
+            clip_alpha: None,
             source: [0.8, 0.2, 0.7, 0.8],
             parent: [0.6, 0.9, 0.4, 0.9],
             opacity: 1.0,
         },
         CompositionBlendVectorForTest {
-            blend: BlendMode::Multiply,
+            composition: crate::LayerComposition::from_blend(BlendMode::Multiply),
+            clip_alpha: None,
             source: [0.0; 4],
             parent,
             opacity: 1.0,
         },
         CompositionBlendVectorForTest {
-            blend: BlendMode::Screen,
+            composition: crate::LayerComposition::from_blend(BlendMode::Screen),
+            clip_alpha: None,
             source,
             parent: [0.0; 4],
             opacity: 1.0,
         },
         CompositionBlendVectorForTest {
-            blend: BlendMode::Overlay,
+            composition: crate::LayerComposition::from_blend(BlendMode::Overlay),
+            clip_alpha: None,
             source: [0.0; 4],
             parent: [0.0; 4],
             opacity: 1.0,
         },
         CompositionBlendVectorForTest {
-            blend: BlendMode::Normal,
+            composition: crate::LayerComposition::from_blend(BlendMode::Normal),
+            clip_alpha: None,
             source,
             parent,
             opacity: -0.25,
@@ -8723,7 +8735,7 @@ fn custom_spine_encodes_clear_canonicalize_copy_source_over_and_present_in_order
             && observed.clears_full_root_once
             && observed.uses_exact_prepared_spatial_mapping
             && observed.presents_to_exact_external_output
-            && observed.exposes_bounded_capture_handoff
+            && observed.capture_handoffs_match_expected_count
             && observed.validates_checked_capture_completion
             && observed.completes_custom_passes_after_encoding
             && observed.keeps_cache_update_provisional

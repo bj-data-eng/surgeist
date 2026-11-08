@@ -170,7 +170,8 @@ fn nonseparable_graph_shader_preserves_joint_rgb_roles_and_partial_alpha() {
     let vectors = cases
         .iter()
         .map(|case| CompositionBlendVectorForTest {
-            blend: case.mode,
+            composition: crate::LayerComposition::from_blend(case.mode),
+            clip_alpha: None,
             source: case.source,
             parent: case.backdrop,
             opacity: 1.0,

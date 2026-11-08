@@ -35,7 +35,6 @@ use crate::{
         GraphLoweringSamplingFilter, GraphLoweringSpatialDescriptor, GraphLoweringVelloCapture,
         GraphLoweringVelloSpan, GraphLoweringVelloSpanScope,
     },
-    layer::BlendMode,
     resource::{GaussianKernelKey, GaussianKernelSamplingForm, WorkingFormat},
     shader::{
         BindGroupLayoutKey, RenderPipelineKey, SamplerKey, ShaderBindingRoleKey,
@@ -648,7 +647,7 @@ fn runtime_composite(
             destination_to_layer_local,
             source_space,
             opacity,
-            blend,
+            composition,
             clip,
             outer_clips,
             clip_coverage,
@@ -676,7 +675,7 @@ fn runtime_composite(
                         destination_to_layer_local.affine(),
                         *source_space,
                         *opacity,
-                        *blend,
+                        *composition,
                         clip.is_some() || !outer_clips.is_empty(),
                         alpha_mask,
                     )?,
@@ -873,7 +872,7 @@ pub(super) fn runtime_pass_cache_keys(
     let composite_samples_parent = matches!(
         kind, RuntimePassKind::Composite(Some(RuntimeComposite {
             kind: RuntimeCompositeKind::Layer { parameters, .. }, ..
-        })) if parameters.blend() != BlendMode::Normal
+        })) if !parameters.composition().is_source_over_normal()
     );
     let mut sampled_textures = account.temporary(reads.len())?;
     let mut samplers = account.retained(reads.len())?;
@@ -983,7 +982,7 @@ fn shader_composite_key(kind: &RuntimeCompositeKind) -> ShaderCompositeKey {
             clip_coverage,
             ..
         } => ShaderCompositeKey::Layer {
-            path: if parameters.blend() == BlendMode::Normal {
+            path: if parameters.composition().is_source_over_normal() {
                 ShaderCompositePathKey::Normal
             } else {
                 ShaderCompositePathKey::DestinationSampling
