@@ -6225,3 +6225,207 @@ fn ordinary_float_adjoining_outside_processed_window_f32() {
 fn ordinary_float_adjoining_outside_processed_window_f64() {
     assert_ordinary_float_outside_processed_window::<f64>();
 }
+
+fn actual_clearance_auto_root_request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
+    let width = NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap();
+    crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::new(Some(width), None),
+        OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::new(
+        AxisSizingRequestOf::new(AvailableSpaceOf::Definite(width), SizingOperation::Normal),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+    ))
+}
+
+fn assert_actual_clearance_empty_block_without_floats<S: LayoutScalar>(clear: Clear) {
+    let px = S::from_f64;
+    for clear in [Clear::None, clear] {
+        let ordinary = NodeInputOf {
+            display: Display::Block,
+            size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+            min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+            ..NodeInputOf::default()
+        };
+        let tree = PublicBlockTree::default()
+            .with_children(0, [1, 2])
+            .with_children(1, [])
+            .with_children(2, [])
+            .with_style(
+                0,
+                NodeInputOf {
+                    border: Edges {
+                        top: LengthOf::px(px(1.0)),
+                        bottom: LengthOf::px(px(1.0)),
+                        ..Edges::all(LengthOf::ZERO)
+                    },
+                    ..ordinary.clone()
+                },
+            )
+            .with_style(
+                1,
+                NodeInputOf {
+                    clear,
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(10.0)),
+                        bottom: LengthAutoOf::px(px(5.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary.clone()
+                },
+            )
+            .with_style(
+                2,
+                NodeInputOf {
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(10.0)),
+                    ),
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(7.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary
+                },
+            );
+        let batch = compute_layout(&tree, 0, actual_clearance_auto_root_request()).unwrap();
+        let root = public_final_output(&batch, 0);
+        let empty = public_final_output(&batch, 1);
+        let following = public_final_output(&batch, 2);
+        // No float introduces clearance. The adjoining 10/5/7 margins form
+        // one 10px margin, and the empty box does not advance the flow cursor.
+        assert_eq!(
+            (
+                empty.location,
+                empty.size,
+                following.location,
+                following.size,
+                root.size
+            ),
+            (
+                Point::new(S::ZERO, px(11.0)),
+                Size::new(px(100.0), S::ZERO),
+                Point::new(S::ZERO, px(11.0)),
+                Size::new(px(100.0), px(10.0)),
+                Size::new(px(100.0), px(22.0)),
+            ),
+            "clear {clear:?}: empty/following/root geometry"
+        );
+    }
+}
+
+#[test]
+fn actual_clearance_empty_left_without_floats_f32() {
+    assert_actual_clearance_empty_block_without_floats::<f32>(Clear::Left);
+}
+#[test]
+fn actual_clearance_empty_left_without_floats_f64() {
+    assert_actual_clearance_empty_block_without_floats::<f64>(Clear::Left);
+}
+#[test]
+fn actual_clearance_empty_right_without_floats_f32() {
+    assert_actual_clearance_empty_block_without_floats::<f32>(Clear::Right);
+}
+#[test]
+fn actual_clearance_empty_right_without_floats_f64() {
+    assert_actual_clearance_empty_block_without_floats::<f64>(Clear::Right);
+}
+#[test]
+fn actual_clearance_empty_both_without_floats_f32() {
+    assert_actual_clearance_empty_block_without_floats::<f32>(Clear::Both);
+}
+#[test]
+fn actual_clearance_empty_both_without_floats_f64() {
+    assert_actual_clearance_empty_block_without_floats::<f64>(Clear::Both);
+}
+
+fn assert_actual_clearance_parent_geometry<S: LayoutScalar>(float_height: f64) {
+    let px = S::from_f64;
+    for clear in [Clear::None, Clear::Left] {
+        let ordinary = NodeInputOf {
+            display: Display::Block,
+            size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+            min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+            ..NodeInputOf::default()
+        };
+        let tree = PublicBlockTree::default()
+            .with_children(0, [1, 2])
+            .with_children(1, [])
+            .with_children(2, [3])
+            .with_children(3, [])
+            .with_style(0, ordinary.clone())
+            .with_style(
+                1,
+                NodeInputOf {
+                    float: Float::Left,
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(float_height)),
+                    ),
+                    ..ordinary.clone()
+                },
+            )
+            .with_style(2, ordinary.clone())
+            .with_style(
+                3,
+                NodeInputOf {
+                    clear,
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(10.0)),
+                    ),
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(10.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary
+                },
+            );
+        let batch = compute_layout(&tree, 0, actual_clearance_auto_root_request()).unwrap();
+        let float = public_final_output(&batch, 1);
+        assert_eq!(float.location, Point::ZERO);
+        assert_eq!(float.size, Size::new(px(100.0), px(float_height)));
+        let parent = public_final_output(&batch, 2);
+        let child = public_final_output(&batch, 3);
+        let introduced = clear == Clear::Left && float_height == 20.0;
+        // Hypothetical child border y10 already clears a 5px float. A 20px
+        // float introduces clearance, separating the child's margin from P.
+        let (parent_y, parent_height, child_y) = if introduced {
+            (0.0, 30.0, 20.0)
+        } else {
+            (10.0, 10.0, 0.0)
+        };
+        assert_eq!(
+            (parent.location, parent.size, child.location, child.size),
+            (
+                Point::new(S::ZERO, px(parent_y)),
+                Size::new(px(100.0), px(parent_height)),
+                Point::new(S::ZERO, px(child_y)),
+                Size::new(px(100.0), px(10.0)),
+            ),
+            "float height {float_height}, clear {clear:?}: parent/child geometry"
+        );
+    }
+}
+
+#[test]
+fn actual_clearance_short_float_preserves_parent_child_collapse_f32() {
+    assert_actual_clearance_parent_geometry::<f32>(5.0);
+}
+#[test]
+fn actual_clearance_short_float_preserves_parent_child_collapse_f64() {
+    assert_actual_clearance_parent_geometry::<f64>(5.0);
+}
+#[test]
+fn actual_clearance_tall_float_separates_parent_child_margin_f32() {
+    assert_actual_clearance_parent_geometry::<f32>(20.0);
+}
+#[test]
+fn actual_clearance_tall_float_separates_parent_child_margin_f64() {
+    assert_actual_clearance_parent_geometry::<f64>(20.0);
+}
