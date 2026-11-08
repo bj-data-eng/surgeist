@@ -269,7 +269,7 @@ impl DateTimeFormat {
             // a. Let F be a new built-in function object as defined in DateTime Format Functions (11.5.4).
             let bound_format = FunctionObjectBuilder::new(
                 context.realm(),
-                NativeFunction::from_fn_with_captures(
+                NativeFunction::from_builtin_with_captures(
                     |_, args, dtf, context| {
                         // 1. Let dtf be F.[[DateTimeFormat]].
                         // 2. Assert: dtf is an Object and dtf has an [[InitializedDateTimeFormat]] internal slot.

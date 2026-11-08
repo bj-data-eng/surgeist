@@ -741,7 +741,7 @@ impl Module {
     pub fn load_link_evaluate(&self, context: &mut Context) -> JsPromise {
         let result = (|| {
             self.check_runtime(context)?;
-            let link = NativeFunction::from_fn_with_captures(
+            let link = NativeFunction::from_builtin_with_captures(
                 |_, _, module, context| {
                     module.link(context)?;
                     Ok(JsValue::undefined())
@@ -749,7 +749,7 @@ impl Module {
                 self.clone(),
             )
             .to_js_function(context.realm())?;
-            let evaluate = NativeFunction::from_fn_with_captures(
+            let evaluate = NativeFunction::from_builtin_with_captures(
                 |_, _, module, context| Ok(module.evaluate(context)?.into()),
                 self.clone(),
             )

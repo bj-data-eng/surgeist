@@ -102,7 +102,7 @@ impl Await {
         // 4. Let onFulfilled be CreateBuiltinFunction(fulfilledClosure, 1, "", « »).
         let on_fulfilled = FunctionObjectBuilder::new(
             context.realm(),
-            NativeFunction::from_fn_with_captures(
+            NativeFunction::from_builtin_with_captures(
                 |_this, args, captures, context| {
                     captures.resume(
                         args.get_or_undefined(0).clone(),
@@ -122,7 +122,7 @@ impl Await {
         // 6. Let onRejected be CreateBuiltinFunction(rejectedClosure, 1, "", « »).
         let on_rejected = FunctionObjectBuilder::new(
             context.realm(),
-            NativeFunction::from_fn_with_captures(
+            NativeFunction::from_builtin_with_captures(
                 |_this, args, captures, context| {
                     captures.resume(
                         args.get_or_undefined(0).clone(),

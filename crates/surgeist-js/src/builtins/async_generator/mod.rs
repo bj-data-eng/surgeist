@@ -636,7 +636,7 @@ impl AsyncGenerator {
         // 12. Let onFulfilled be CreateBuiltinFunction(fulfilledClosure, 1, "", « »).
         let on_fulfilled = FunctionObjectBuilder::new(
             context.realm(),
-            NativeFunction::from_fn_with_captures(
+            NativeFunction::from_builtin_with_captures(
                 |_this, args, generator, context| {
                     let result = Ok(args.get_or_undefined(0).clone());
                     Self::complete_awaited_return(generator, result, context)
@@ -652,7 +652,7 @@ impl AsyncGenerator {
         // 14. Let onRejected be CreateBuiltinFunction(rejectedClosure, 1, "", « »).
         let on_rejected = FunctionObjectBuilder::new(
             context.realm(),
-            NativeFunction::from_fn_with_captures(
+            NativeFunction::from_builtin_with_captures(
                 |_this, args, generator, context| {
                     let result = Err(JsError::from_opaque(args.get_or_undefined(0).clone()));
                     Self::complete_awaited_return(generator, result, context)

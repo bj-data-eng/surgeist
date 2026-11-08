@@ -68,21 +68,52 @@ trait TraceableClosure: HeapTrace {
     fn call(&self, this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue>;
 }
 
+/// One stored/live capture boundary shared by synchronous and async callbacks.
+#[derive(HeapTrace)]
+struct CaptureStore<T: NativeCapture> {
+    stored: T::Stored,
+}
+
+impl<T: NativeCapture> CaptureStore<T> {
+    fn new(captures: &T) -> Self {
+        Self {
+            stored: captures.store(),
+        }
+    }
+
+    fn restore(&self) -> T {
+        T::restore(&self.stored)
+    }
+
+    fn root_captures(&self) -> Rc<dyn Any> {
+        Rc::new(self.restore())
+    }
+}
+
+/// Closed authority roles for synchronous captured callback bodies.
+enum CapturedCall<T> {
+    Host(fn(&JsValue, &[JsValue], &T, &mut Context) -> JsResult<JsValue>),
+    Builtin(fn(&JsValue, &[JsValue], &T, &mut Context) -> JsResult<JsValue>),
+}
+
 #[derive(HeapTrace)]
 struct Closure<T: NativeCapture> {
     #[heap_trace(skip)]
-    callback: fn(&JsValue, &[JsValue], &T, &mut Context) -> JsResult<JsValue>,
-    captures: T::Stored,
+    callback: CapturedCall<T>,
+    captures: CaptureStore<T>,
 }
 
 impl<T: NativeCapture> TraceableClosure for Closure<T> {
     fn root_captures(&self) -> Rc<dyn Any> {
-        Rc::new(T::restore(&self.captures))
+        self.captures.root_captures()
     }
 
     fn call(&self, this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
-        let captures = T::restore(&self.captures);
-        (self.callback)(this, args, &captures, context)
+        let captures = self.captures.restore();
+        match self.callback {
+            CapturedCall::Host(callback) => callback(this, args, &captures, context),
+            CapturedCall::Builtin(callback) => callback(this, args, &captures, context),
+        }
     }
 }
 
@@ -90,17 +121,17 @@ impl<T: NativeCapture> TraceableClosure for Closure<T> {
 struct AsyncClosure<T: NativeCapture> {
     #[heap_trace(skip)]
     callback: NativeAsyncFunctionWithCaptures<T>,
-    captures: T::Stored,
+    captures: CaptureStore<T>,
 }
 
 impl<T: NativeCapture> TraceableClosure for AsyncClosure<T> {
     fn root_captures(&self) -> Rc<dyn Any> {
-        Rc::new(T::restore(&self.captures))
+        self.captures.root_captures()
     }
 
     fn call(&self, this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         let callback = self.callback;
-        let captures = T::restore(&self.captures);
+        let captures = self.captures.restore();
         let this = this.clone();
         let args = args.to_vec();
         Ok(JsPromise::from_async_fn(
@@ -223,6 +254,24 @@ impl NativeFunction {
         }
     }
 
+    /// Stores a fixed engine callback body with the same capture custody as host callbacks.
+    pub(crate) fn from_builtin_with_captures<T: NativeCapture>(
+        callback: fn(&JsValue, &[JsValue], &T, &mut Context) -> JsResult<JsValue>,
+        captures: T,
+    ) -> Self {
+        Self::from_captured(CapturedCall::Builtin(callback), captures)
+    }
+
+    fn from_captured<T: NativeCapture>(callback: CapturedCall<T>, captures: T) -> Self {
+        Self {
+            inner: StoredNativeFunction(Inner::Closure(Rc::new(Closure::<T> {
+                callback,
+                captures: CaptureStore::new(&captures),
+            }))),
+            _capture_roots: Some(Rc::new(captures)),
+        }
+    }
+
     /// Creates a `NativeFunction` from a function pointer.
     #[inline]
     pub fn from_fn_ptr(function: NativeFunctionPointer) -> Self {
@@ -298,7 +347,7 @@ impl NativeFunction {
         Self {
             inner: StoredNativeFunction(Inner::Closure(Rc::new(AsyncClosure::<T> {
                 callback,
-                captures: captures.store(),
+                captures: CaptureStore::new(&captures),
             }))),
             _capture_roots: Some(Rc::new(captures)),
         }
@@ -319,13 +368,7 @@ impl NativeFunction {
         callback: fn(&JsValue, &[JsValue], &T, &mut Context) -> JsResult<JsValue>,
         captures: T,
     ) -> Self {
-        Self {
-            inner: StoredNativeFunction(Inner::Closure(Rc::new(Closure::<T> {
-                callback,
-                captures: captures.store(),
-            }))),
-            _capture_roots: Some(Rc::new(captures)),
-        }
+        Self::from_captured(CapturedCall::Host(callback), captures)
     }
 
     /// Calls this `NativeFunction`, forwarding the arguments to the corresponding function.
@@ -589,5 +632,90 @@ mod tests {
                 .unwrap(),
             JsValue::new(19)
         );
+    }
+
+    #[test]
+    fn captured_roles_share_live_roots_stored_edges_and_invocation_custody() {
+        fn captured_receiver(
+            this: &JsValue,
+            _: &[JsValue],
+            capture: &JsObject,
+            context: &mut Context,
+        ) -> JsResult<JsValue> {
+            // The invocation's restored roots survive collection and reentry.
+            context.runtime().collect().unwrap();
+            capture.set(js_string!("receiver"), this.clone(), true, context)?;
+            Ok(capture.clone().into())
+        }
+
+        for builtin in [false, true] {
+            let mut context = Context::default();
+            let capture = JsObject::with_null_proto(context.runtime());
+            let weak_capture = capture.edge();
+            let callback = if builtin {
+                NativeFunction::from_builtin_with_captures(captured_receiver, capture)
+            } else {
+                NativeFunction::from_fn_with_captures(captured_receiver, capture)
+            };
+            let stored = callback.store();
+            let restored = NativeFunction::restore(&stored);
+            drop(callback);
+
+            context.runtime().collect().unwrap();
+            assert!(weak_capture.is_live().unwrap());
+            let function = restored.to_js_function(context.realm()).unwrap();
+            context.runtime().collect().unwrap();
+            assert!(weak_capture.is_live().unwrap());
+            {
+                let value = function.call(&JsValue::new(27), &[], &mut context).unwrap();
+                let object = value.as_object().unwrap();
+                assert_eq!(object, weak_capture.upgrade().unwrap().unwrap());
+                assert_eq!(
+                    object.get(js_string!("receiver"), &mut context).unwrap(),
+                    JsValue::new(27)
+                );
+            }
+            drop(function);
+            drop(stored);
+            context.runtime().collect().unwrap();
+            assert!(!weak_capture.is_live().unwrap());
+        }
+    }
+
+    #[test]
+    fn shared_async_capture_storage_keeps_pending_job_roots_after_function_drop() {
+        use crate::builtins::promise::PromiseState;
+
+        let mut context = Context::default();
+        let capture = JsObject::with_null_proto(context.runtime());
+        let weak_capture = capture.edge();
+        let callback = NativeFunction::from_async_fn_with_captures(
+            |_, _, capture, _| Box::pin(async move { Ok(capture.clone().into()) }),
+            capture,
+        );
+        let stored = callback.store();
+        let restored = NativeFunction::restore(&stored);
+        drop(callback);
+        let promise = restored
+            .call(&JsValue::undefined(), &[], &mut context)
+            .unwrap()
+            .as_object()
+            .unwrap();
+        let promise = JsPromise::from_object(promise).unwrap();
+        drop(restored);
+        drop(stored);
+
+        context.runtime().collect().unwrap();
+        assert!(weak_capture.is_live().unwrap());
+        context.run_jobs().unwrap();
+        {
+            let PromiseState::Fulfilled(value) = promise.state() else {
+                panic!("the pending host callback must fulfill with its capture")
+            };
+            assert_eq!(value.as_object(), weak_capture.upgrade().unwrap());
+        }
+        drop(promise);
+        context.runtime().collect().unwrap();
+        assert!(!weak_capture.is_live().unwrap());
     }
 }

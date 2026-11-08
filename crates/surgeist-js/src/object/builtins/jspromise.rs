@@ -1117,7 +1117,7 @@ impl JsPromise {
         let resolve = {
             let state = state.clone();
 
-            NativeFunction::from_fn_with_captures(
+            NativeFunction::from_builtin_with_captures(
                 |_, args, state, _| {
                     let value = args.get_or_undefined(0).clone().into_stored();
                     finish(state, FutureResult::Fulfilled(value));
@@ -1130,7 +1130,7 @@ impl JsPromise {
         let reject = {
             let state = state.clone();
 
-            NativeFunction::from_fn_with_captures(
+            NativeFunction::from_builtin_with_captures(
                 |_, args, state, _| {
                     let err = JsError::from_opaque(args.get_or_undefined(0).clone());
                     finish(state, FutureResult::Rejected(err.into_stored()));
@@ -1265,7 +1265,7 @@ impl JsPromise {
             bool,
         );
         let reaction = |rejected: bool| {
-            NativeFunction::from_fn_with_captures(
+            NativeFunction::from_builtin_with_captures(
                 |_this, args, (continuation, frame, reject, rejected): &Captures, context| {
                     let mut generator = frame
                         .borrow()

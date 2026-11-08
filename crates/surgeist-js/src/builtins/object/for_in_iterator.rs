@@ -68,7 +68,7 @@ impl ForInIterator {
         .upcast();
 
         let next_method =
-            FunctionObjectBuilder::new(context.realm(), NativeFunction::from_fn_ptr(Self::next))
+            FunctionObjectBuilder::new(context.realm(), NativeFunction::from_builtin(Self::next))
                 .name(js_string!("next"))
                 .length(0)
                 .build()

@@ -234,7 +234,7 @@ impl Proxy {
         // 3. Let revoker be ! CreateBuiltinFunction(revokerClosure, 0, "", « [[RevocableProxy]] »).
         // 4. Set revoker.[[RevocableProxy]] to p.
 
-        NativeFunction::from_fn_with_captures(
+        NativeFunction::from_builtin_with_captures(
             |_, _, revocable_proxy, _| {
                 // a. Let F be the active function object.
                 // b. Let p be F.[[RevocableProxy]].

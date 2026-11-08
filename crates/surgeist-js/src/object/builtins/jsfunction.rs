@@ -142,7 +142,7 @@ impl JsFunction {
                 runtime,
                 None,
                 NativeFunctionObject {
-                    f: NativeFunction::from_fn_ptr(|_, _, _| Ok(JsValue::undefined())).stored(),
+                    f: NativeFunction::from_builtin(|_, _, _| Ok(JsValue::undefined())).stored(),
                     name: js_string!(),
                     constructor: constructor.then_some(ConstructorKind::Base),
                     realm: None,
