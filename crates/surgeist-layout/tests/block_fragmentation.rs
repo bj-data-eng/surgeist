@@ -7782,3 +7782,66 @@ scalars!(
     inline_only_and_ineligible_containment_keep_live_continuation_f32,
     inline_only_and_ineligible_containment_keep_live_continuation_f64
 );
+
+fn inline_containment_intrinsic_sizes_compose_with_live_fragmentation<S: LayoutScalar>() {
+    for preferred in [PreferredSizeOf::MIN_CONTENT, PreferredSizeOf::MAX_CONTENT] {
+        for (containment, width) in [
+            (SizeContainment::None, 80.0),
+            (SizeContainment::InlineAxis, 0.0),
+        ] {
+            let mut root = block::<S>(None, None);
+            root.size.width = preferred.clone();
+            let mut container = block::<S>(None, None);
+            container.size_containment = containment;
+            let tree = Tree::new(
+                vec![
+                    root,
+                    container,
+                    block(Some(10.0), Some(30.0)),
+                    block(Some(80.0), Some(30.0)),
+                ],
+                vec![vec![1], vec![2, 3], vec![], vec![]],
+            );
+            let request = fragmented(
+                LayoutSourceBasis::fresh(),
+                vec![frame(100.0, 50.0, true), frame(60.0, 80.0, false)],
+            );
+            let batch = compute(&tree, 0, &request).unwrap();
+            let roots = fragments(&batch, 0);
+            let containers = fragments(&batch, 1);
+            assert_eq!(roots.len(), 2);
+            assert_eq!(containers.len(), 2);
+            // The first prefix is only10 wide, but whole-source intrinsic
+            // demand is80. Inline containment removes that demand in both
+            // windows; it does not remove live block30+30 or its normal cut.
+            // Break3 §5.3 fills the first50 frame before the remaining30.
+            for (index, height) in [(0, 50.0), (1, 30.0)] {
+                assert_fragment(&roots[index], (width, height));
+                assert_fragment(&containers[index], (width, height));
+                assert_eq!(roots[index].source_children(), [(SourceIndex::new(0), 1)]);
+                assert_eq!(
+                    containers[index].coordinate_parent(),
+                    Some(&FragmentCoordinateSpace::Fragment(
+                        roots[index].id().clone()
+                    ))
+                );
+                assert_eq!(
+                    roots[index].coordinate_parent(),
+                    Some(&FragmentCoordinateSpace::Fragmentainer(
+                        batch.fragmentainers()[index].id().clone()
+                    ))
+                );
+            }
+            assert_eq!(containers[0].source_children(), [(SourceIndex::new(0), 2)]);
+            assert_eq!(containers[1].source_children(), [(SourceIndex::new(1), 3)]);
+            minimum_progress_child(&batch, 2, 0, containers[0].id(), (0.0, 0.0), (10.0, 30.0));
+            minimum_progress_child(&batch, 3, 1, containers[1].id(), (0.0, 0.0), (80.0, 30.0));
+            maximum_progress_unique_fragments(&batch);
+        }
+    }
+}
+scalars!(
+    inline_containment_intrinsic_sizes_compose_with_live_fragmentation,
+    inline_containment_intrinsic_sizes_compose_with_live_fragmentation_f32,
+    inline_containment_intrinsic_sizes_compose_with_live_fragmentation_f64
+);
