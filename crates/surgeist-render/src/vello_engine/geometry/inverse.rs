@@ -518,6 +518,29 @@ mod tests {
     }
 
     #[test]
+    fn image_center_domain_covers_permitted_upward_rounding() {
+        fn upward(exact: f64) -> f32 {
+            let nearest = exact as f32;
+            if f64::from(nearest) < exact {
+                nearest.next_up()
+            } else {
+                nearest
+            }
+        }
+        // The target guard reserves fifteen units for 16-pixel tile padding.
+        // Its last four-pixel thread starts four units before the padded edge.
+        let base = upward(f64::from(u32::MAX - 15 - 4));
+        let last_lane = upward(f64::from(base) + 3.0);
+        let image_center = upward(f64::from(last_lane) + 0.5);
+        // Both additions may select the upper adjacent binary32 result.
+        assert_eq!(image_center.to_bits(), 0x4f80_0002);
+        assert!(
+            f64::from(image_center) <= DEVICE_MAX,
+            "permitted image center {image_center} exceeds the inverse proof domain"
+        );
+    }
+
+    #[test]
     fn required_inverse_keeps_normal_identity_reflection_rotation_and_decimal_maps() {
         for source in [
             Affine::IDENTITY,
