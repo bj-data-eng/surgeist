@@ -181,6 +181,7 @@ impl JsPromise {
         let resolvers = Promise::create_resolving_functions(&promise, context);
 
         if let Err(e) = executor(&resolvers, context) {
+            context.check_execution_stop()?;
             let e = e.into_opaque(context.access())?;
             resolvers
                 .reject
