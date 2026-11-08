@@ -4,12 +4,12 @@ use super::support::{
     AHEM_FONT_BYTES, AHEM_GLYPH_X, ahem_font, graph_supported_working_formats_for_test, pixel_rgba,
 };
 use crate::{
-    Color, ErrorCode, FontData, GlyphRunLimits, GlyphSynthesis, Image, ImageBuffer, Layer, Options,
-    Paint, Parameters, Point, Rect, RenderAccountingError, RenderAccountingOptions,
-    RenderAttemptStatus, RenderLimits, RenderPhase, RenderProfile, RenderQuantity, RenderRoute,
-    RenderWork, Renderer, RepeatingGradient, RepeatingGradientStop, ResolvedLayerAlphaMask, Scene,
-    Shape, Size, Stroke, Surface, TextGlyph, TextInstance, TextPaint, TextRun, TextRunBounds,
-    Transform, resource::WorkingFormat,
+    Antialiasing, Color, ErrorCode, FontData, GlyphRunLimits, GlyphSynthesis, Gradient,
+    GradientStop, Image, ImageBuffer, Layer, Options, Paint, Parameters, Point, Rect,
+    RenderAccountingError, RenderAccountingOptions, RenderAttemptStatus, RenderLimits, RenderPhase,
+    RenderProfile, RenderQuantity, RenderRoute, RenderWork, Renderer, RepeatingGradient,
+    RepeatingGradientStop, ResolvedLayerAlphaMask, Scene, Shape, Size, Stroke, Surface, TextGlyph,
+    TextInstance, TextPaint, TextRun, TextRunBounds, Transform, resource::WorkingFormat,
 };
 
 fn rgba(r: f32, g: f32, b: f32, a: f32) -> Color {
@@ -640,12 +640,20 @@ fn repeating_profiles_preserve_every_work_dimension_pixels_and_optional_timing()
                 (4.0, rgba(0.0, 0.0, 1.0, 0.0)),
             ],
         );
-        pollster::block_on(renderer.render(
-            &mut surface,
-            &solid_scene(gradient),
-            Parameters::default(),
-        ))
-        .unwrap();
+        let mut scene = solid_scene(gradient);
+        // Exercise the resolved radial certificate as well as the scalar
+        // average: profiling must preserve its actual work and native pixels.
+        scene.fill(
+            Rect::new(3.0, 3.0, 1.0, 1.0),
+            RepeatingGradient::try_radial(
+                Point::new(0.0, 0.0),
+                16.0,
+                16.0,
+                stops(&[(0.0, red()), (1.0, blue())]),
+            )
+            .unwrap(),
+        );
+        pollster::block_on(renderer.render(&mut surface, &scene, Parameters::default())).unwrap();
         let report = renderer.take_last_attempt().unwrap();
         assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
         let attempt = report.attempt().unwrap();
@@ -659,8 +667,8 @@ fn repeating_profiles_preserve_every_work_dimension_pixels_and_optional_timing()
             attempt
                 .phase_usage(RenderPhase::Encode)
                 .work(RenderWork::GradientStopVisits),
-            gradient_work,
-            "Encode includes its gradient preparation child"
+            gradient_work + 2,
+            "Encode includes preparation and the two resolved stops serialized by its native brush"
         );
         assert!(usage.work(RenderWork::GradientStopVisits) > gradient_work);
         let work = RenderWork::ALL.map(|unit| usage.work(unit));
@@ -686,6 +694,8 @@ fn repeating_profiles_preserve_every_work_dimension_pixels_and_optional_timing()
         }
         let image = pollster::block_on(renderer.read_headless(&surface)).unwrap();
         assert_pixel(&image, 1, 1, [85, 170, 0, 96], 2);
+        // Integer (3,3) has radial phase sqrt(18)/16, giving blue ~68/255.
+        assert_pixel(&image, 3, 3, [187, 0, 68, 255], 3);
         if let Some(expected) = expected_pixels.as_ref() {
             assert_eq!(&image, expected);
         } else {
@@ -858,5 +868,67 @@ fn unrepresentable_radial_phase_is_refused_without_publishing_and_allows_valid_r
             surface.headless_publication_count_for_test(),
             publication + 2
         );
+    }
+}
+
+#[test]
+fn circular_center_and_positive_ramps_hold_for_every_antialiasing_mode() {
+    // The pinned circular setup nudges its canonical center by 2^-12.
+    // With radius 16, center 1-16*2^-12 places that setup center at integer
+    // pixel (1,1). The intended geometric phase there is sqrt(2)/4096,
+    // below half a native ramp interval, so opaque red is the pixel oracle.
+    let center = 1.0 - 16.0 / 4096.0;
+    let mut scene = Scene::new();
+    scene.fill(
+        Rect::new(0.0, 0.0, 32.0, 4.0),
+        RepeatingGradient::try_radial(
+            Point::new(center, center),
+            16.0,
+            16.0,
+            stops(&[(0.0, red()), (1.0, blue())]),
+        )
+        .unwrap(),
+    );
+    scene.fill(
+        Rect::new(0.0, 4.0, 32.0, 4.0),
+        Gradient::try_radial(
+            Point::new(center, center + 4.0),
+            16.0,
+            vec![
+                GradientStop::try_new(0.0, red()).unwrap(),
+                GradientStop::try_new(1.0, blue()).unwrap(),
+            ],
+        )
+        .unwrap(),
+    );
+    for antialiasing in [
+        Antialiasing::Area,
+        Antialiasing::Msaa8,
+        Antialiasing::Msaa16,
+    ] {
+        let mut renderer = pollster::block_on(Renderer::new(
+            Options::default().with_antialiasing(antialiasing),
+        ))
+        .unwrap();
+        let format = graph_supported_working_formats_for_test(&mut renderer)
+            .into_iter()
+            .next()
+            .unwrap();
+        let mut surface = surface(&mut renderer, 32.0, 8.0, 1.0);
+        for format in [None, Some(format)] {
+            let image = render_route(&mut renderer, &mut surface, &scene, format);
+            // At x=9 the phase is within 1/4096 of 1/2. At x=25 it is
+            // within 1/4096 of 3/2: Repeat returns the midpoint, Pad blue.
+            for (x, y, expected) in [
+                (1, 1, [255, 0, 0, 255]),
+                (9, 1, [128, 0, 128, 255]),
+                (25, 1, [128, 0, 128, 255]),
+                (1, 5, [255, 0, 0, 255]),
+                (9, 5, [128, 0, 128, 255]),
+                (25, 5, [0, 0, 255, 255]),
+            ] {
+                assert_pixel(&image, x, y, expected, 3);
+            }
+        }
     }
 }

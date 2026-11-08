@@ -255,6 +255,17 @@ const NORMAL_BLEND_REPLACEMENT: ShaderSourceReplacement = ShaderSourceReplacemen
     failure: "internal Vello fine shader no longer has the checked Normal blend boundary",
 };
 
+// WGSL sqrt inherits reciprocal/inverseSqrt accuracy, which supplies no finite
+// zero-input certificate. Evaluate only a normal positive argument and select
+// exact zero for squared lengths at most the smallest normal binary32 value.
+// Repeating circular-field admission includes this format-derived lost norm.
+const CIRCULAR_NORM_REPLACEMENT: ShaderSourceReplacement = ShaderSourceReplacement {
+    from: "t = sqrt(xx + yy) - x * r1_recip;",
+    to: "var radial_distance = 0.0;\n                        if (is_circular) {\n                            let squared_radius = xx + yy;\n                            radial_distance = select(sqrt(max(squared_radius, 0x1p-126f)), 0.0, squared_radius <= 0x1p-126f);\n                        } else {\n                            radial_distance = sqrt(xx + yy);\n                        }\n                        t = radial_distance - x * r1_recip;",
+    count: 1,
+    failure: "internal Vello fine shader no longer has the checked circular norm boundary",
+};
+
 #[derive(Clone, Copy)]
 struct ShaderSourceReplacement {
     from: &'static str,
@@ -276,6 +287,7 @@ fn fine_shader_source(
                 SET_LUM_REPLACEMENT,
                 BLEND_RESULT_REPLACEMENT,
                 NORMAL_BLEND_REPLACEMENT,
+                CIRCULAR_NORM_REPLACEMENT,
                 MSAA8_ENDPOINT_REPLACEMENTS[0],
                 MSAA8_ENDPOINT_REPLACEMENTS[1],
             ],
@@ -288,6 +300,7 @@ fn fine_shader_source(
                 SET_LUM_REPLACEMENT,
                 BLEND_RESULT_REPLACEMENT,
                 NORMAL_BLEND_REPLACEMENT,
+                CIRCULAR_NORM_REPLACEMENT,
             ],
         )
     }
@@ -746,7 +759,8 @@ mod cpu_tests {
                 .code
                 .replace(SET_LUM_REPLACEMENT.from, SET_LUM_REPLACEMENT.to)
                 .replace(BLEND_RESULT_REPLACEMENT.from, BLEND_RESULT_REPLACEMENT.to)
-                .replace(NORMAL_BLEND_REPLACEMENT.from, NORMAL_BLEND_REPLACEMENT.to);
+                .replace(NORMAL_BLEND_REPLACEMENT.from, NORMAL_BLEND_REPLACEMENT.to)
+                .replace(CIRCULAR_NORM_REPLACEMENT.from, CIRCULAR_NORM_REPLACEMENT.to);
             if msaa8 {
                 expected = expected
                     .replace(
@@ -792,6 +806,7 @@ mod cpu_tests {
             SET_LUM_REPLACEMENT,
             BLEND_RESULT_REPLACEMENT,
             NORMAL_BLEND_REPLACEMENT,
+            CIRCULAR_NORM_REPLACEMENT,
         ] {
             for changed_source in [
                 "missing helper".to_owned(),

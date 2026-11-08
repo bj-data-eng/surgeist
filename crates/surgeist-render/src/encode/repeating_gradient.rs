@@ -110,54 +110,6 @@ fn check_finite(transform: kurbo::Affine) -> Result<()> {
     }
 }
 
-/// Check the real native narrowing and inverse arithmetic. Large finite f64
-/// geometry must not silently become native infinities or a singular transform.
-/// Unit native gradient geometry keeps tiny logical radii out of Vello's fixed
-/// radial-radius epsilon; only the complete map is narrowed on outline paths.
-#[cfg(test)]
-pub(super) fn native_transform(
-    transform: kurbo::Affine,
-    account: &Account,
-) -> Result<vello_encoding::Transform> {
-    let native = narrow_transform(transform, account)?;
-    native_inverse(native, account)?;
-    Ok(native)
-}
-
-fn native_inverse(
-    native: vello_encoding::Transform,
-    account: &Account,
-) -> Result<vello_encoding::Transform> {
-    account.work(RenderWork::CoordinateVisits, 6)?;
-    let [a, b, c, d] = native.matrix;
-    let [x, y] = native.translation;
-    let determinant = a * d - b * c;
-    let inverse_determinant = 1.0 / determinant;
-    let inverse = [
-        inverse_determinant * d,
-        inverse_determinant * -b,
-        inverse_determinant * -c,
-        inverse_determinant * a,
-    ];
-    let inverse_translation = [
-        -(inverse[0] * x + inverse[2] * y),
-        -(inverse[1] * x + inverse[3] * y),
-    ];
-    if ![a, b, c, d, x, y, determinant, inverse_determinant]
-        .into_iter()
-        .chain(inverse)
-        .chain(inverse_translation)
-        .all(f32::is_finite)
-        || determinant == 0.0
-    {
-        return Err(invalid_geometry("unrepresentable native affine inverse"));
-    }
-    Ok(vello_encoding::Transform {
-        matrix: inverse,
-        translation: inverse_translation,
-    })
-}
-
 fn narrow_transform(
     transform: kurbo::Affine,
     account: &Account,
@@ -202,79 +154,384 @@ pub(super) fn native_glyph_transform(
     Ok(local)
 }
 
-// The concentric specialization below follows vello_shaders 0.9.0
-// draw_leaf.wgsl:154-222. Only its circular branch is needed: our canonical
-// centers coincide and the two native radii differ by approximately one.
+// This certificate follows only vello_shaders 0.9.0's concentric circular
+// branch. Its intervals describe all permitted WGSL results, not one CPU
+// evaluation. Arithmetic below has fixed size and never visits target pixels.
+const CIRCULAR_EPSILON: f64 = f32::EPSILON as f64;
+const CIRCULAR_MIN_NORMAL: f64 = f32::MIN_POSITIVE as f64;
+const CIRCULAR_MAX_DIVISOR: f64 = f64::from_bits(1149_u64 << 52); // 2^126.
+
+#[derive(Clone, Copy)]
+struct CircularScalar {
+    lower: f64,
+    upper: f64,
+}
+
+impl CircularScalar {
+    const ZERO: Self = Self::exact(0.0);
+    const ONE: Self = Self::exact(1.0);
+
+    const fn exact(value: f64) -> Self {
+        Self {
+            lower: value,
+            upper: value,
+        }
+    }
+
+    fn checked(lower: f64, upper: f64, account: &Account) -> Result<Self> {
+        account.work(RenderWork::CoordinateVisits, 2)?;
+        if !lower.is_finite() || !upper.is_finite() || lower > upper {
+            return Err(invalid_geometry(
+                "unbounded circular arithmetic certificate",
+            ));
+        }
+        Ok(Self { lower, upper })
+    }
+
+    fn magnitude(self, account: &Account) -> Result<f64> {
+        account.work(RenderWork::CoordinateVisits, 2)?;
+        Ok(self.lower.abs().max(self.upper.abs()))
+    }
+
+    fn neg(self, account: &Account) -> Result<Self> {
+        account.work(RenderWork::CoordinateVisits, 2)?;
+        Self::checked(-self.upper, -self.lower, account)
+    }
+
+    fn abs(self, account: &Account) -> Result<Self> {
+        account.work(RenderWork::CoordinateVisits, 2)?;
+        let lower = if self.lower <= 0.0 && self.upper >= 0.0 {
+            0.0
+        } else {
+            self.lower.abs().min(self.upper.abs())
+        };
+        Self::checked(lower, self.lower.abs().max(self.upper.abs()), account)
+    }
+
+    fn hull(self, other: Self, account: &Account) -> Result<Self> {
+        account.work(RenderWork::CoordinateVisits, 4)?;
+        Self::checked(
+            self.lower.min(other.lower),
+            self.upper.max(other.upper),
+            account,
+        )
+    }
+
+    // Include permitted input flush-to-zero. Exact zeros remain exact.
+    fn flushed(self, account: &Account) -> Result<Self> {
+        account.work(RenderWork::CoordinateVisits, 2)?;
+        if self.lower < CIRCULAR_MIN_NORMAL && self.upper > -CIRCULAR_MIN_NORMAL {
+            Self::checked(self.lower.min(0.0), self.upper.max(0.0), account)
+        } else {
+            Ok(self)
+        }
+    }
+
+    fn real_add(self, other: Self, account: &Account) -> Result<Self> {
+        account.work(RenderWork::CoordinateVisits, 4)?;
+        Self::checked(
+            (self.lower + other.lower).next_down(),
+            (self.upper + other.upper).next_up(),
+            account,
+        )
+    }
+
+    fn real_mul(self, other: Self, account: &Account) -> Result<Self> {
+        account.work(RenderWork::CoordinateVisits, 4)?;
+        let products = [
+            self.lower * other.lower,
+            self.lower * other.upper,
+            self.upper * other.lower,
+            self.upper * other.upper,
+        ];
+        account.work(RenderWork::CoordinateVisits, 8)?;
+        let lower = products
+            .into_iter()
+            .fold(f64::INFINITY, f64::min)
+            .next_down();
+        let upper = products
+            .into_iter()
+            .fold(f64::NEG_INFINITY, f64::max)
+            .next_up();
+        // Both traversals were admitted before inspecting the corner products.
+        Self::checked(lower, upper, account)
+    }
+
+    fn real_div(self, other: Self, account: &Account) -> Result<Self> {
+        account.work(RenderWork::CoordinateVisits, 4)?;
+        if other.lower <= 0.0 && other.upper >= 0.0 {
+            return Err(invalid_geometry("uncertain circular divisor"));
+        }
+        let quotients = [
+            self.lower / other.lower,
+            self.lower / other.upper,
+            self.upper / other.lower,
+            self.upper / other.upper,
+        ];
+        account.work(RenderWork::CoordinateVisits, 8)?;
+        let lower = quotients
+            .into_iter()
+            .fold(f64::INFINITY, f64::min)
+            .next_down();
+        let upper = quotients
+            .into_iter()
+            .fold(f64::NEG_INFINITY, f64::max)
+            .next_up();
+        Self::checked(lower, upper, account)
+    }
+
+    fn real_sqrt(self, account: &Account) -> Result<Self> {
+        account.work(RenderWork::CoordinateVisits, 2)?;
+        if self.lower < 0.0 {
+            return Err(invalid_geometry("uncertain circular square root"));
+        }
+        Self::checked(
+            self.lower.sqrt().next_down().max(0.0),
+            self.upper.sqrt().next_up(),
+            account,
+        )
+    }
+
+    // e is a full binary32 epsilon: WGSL permits either rounding direction.
+    // 2.5 ULP <= 2.5e*|exact result| for a normal result. One minimum-normal
+    // absolute allowance also covers subnormal rounding and output FTZ.
+    fn rounded(self, relative: f64, account: &Account) -> Result<Self> {
+        let magnitude = self.magnitude(account)?;
+        let error = ((relative * magnitude).next_up() + CIRCULAR_MIN_NORMAL).next_up();
+        let result = Self::checked(
+            (self.lower - error).next_down(),
+            (self.upper + error).next_up(),
+            account,
+        )?;
+        account.work(RenderWork::CoordinateVisits, 2)?;
+        if result.lower < -f64::from(f32::MAX) || result.upper > f64::from(f32::MAX) {
+            return Err(invalid_geometry(
+                "non-finite permitted circular intermediate",
+            ));
+        }
+        Ok(result)
+    }
+
+    fn add(self, other: Self, account: &Account) -> Result<Self> {
+        self.flushed(account)?
+            .real_add(other.flushed(account)?, account)?
+            .rounded(CIRCULAR_EPSILON, account)
+    }
+
+    fn mul(self, other: Self, account: &Account) -> Result<Self> {
+        self.flushed(account)?
+            .real_mul(other.flushed(account)?, account)?
+            .rounded(CIRCULAR_EPSILON, account)
+    }
+
+    fn div(self, other: Self, account: &Account) -> Result<Self> {
+        let numerator = self.flushed(account)?;
+        let denominator = other.flushed(account)?;
+        let absolute = denominator.abs(account)?;
+        account.work(RenderWork::CoordinateVisits, 2)?;
+        if absolute.lower < CIRCULAR_MIN_NORMAL || absolute.upper > CIRCULAR_MAX_DIVISOR {
+            return Err(invalid_geometry(
+                "circular divisor outside native accuracy domain",
+            ));
+        }
+        numerator
+            .real_div(denominator, account)?
+            .rounded(2.5 * CIRCULAR_EPSILON, account)
+    }
+
+    fn sqrt(self, account: &Account) -> Result<Self> {
+        let value = self.flushed(account)?;
+        account.work(RenderWork::CoordinateVisits, 2)?;
+        if value.lower < CIRCULAR_MIN_NORMAL {
+            return Err(invalid_geometry("uncertifiable circular setup square root"));
+        }
+        // WGSL sqrt inherits 1/inverseSqrt. Enclose the 2-ULP
+        // inverseSqrt first, then the separately rounded reciprocal.
+        let root = value.real_sqrt(account)?;
+        let inverse = Self::ONE
+            .real_div(root, account)?
+            .rounded(2.0 * CIRCULAR_EPSILON, account)?;
+        Self::ONE.div(inverse, account)
+    }
+}
+
+// A three-term sum must cover either association, including fused evaluations.
+fn circular_sum3(
+    a: CircularScalar,
+    b: CircularScalar,
+    c: CircularScalar,
+    account: &Account,
+) -> Result<CircularScalar> {
+    a.add(b, account)?
+        .add(c, account)?
+        .hull(a.add(b.add(c, account)?, account)?, account)?
+        .hull(a.add(c, account)?.add(b, account)?, account)
+}
+
+// [a,b,c,d,x,y], with the same columns as vello_encoding::Transform.
+fn circular_product(
+    left: [CircularScalar; 6],
+    right: [CircularScalar; 6],
+    account: &Account,
+) -> Result<[CircularScalar; 6]> {
+    let [a, b, c, d, x, y] = left;
+    let [aa, ab, ac, ad, ax, ay] = right;
+    Ok([
+        a.mul(aa, account)?.add(c.mul(ab, account)?, account)?,
+        b.mul(aa, account)?.add(d.mul(ab, account)?, account)?,
+        a.mul(ac, account)?.add(c.mul(ad, account)?, account)?,
+        b.mul(ac, account)?.add(d.mul(ad, account)?, account)?,
+        circular_sum3(a.mul(ax, account)?, c.mul(ay, account)?, x, account)?,
+        circular_sum3(b.mul(ax, account)?, d.mul(ay, account)?, y, account)?,
+    ])
+}
+
+fn circular_inverse(
+    transform: [CircularScalar; 6],
+    account: &Account,
+) -> Result<[CircularScalar; 6]> {
+    let [a, b, c, d, x, y] = transform;
+    let determinant = a
+        .mul(d, account)?
+        .add(b.mul(c, account)?.neg(account)?, account)?;
+    let reciprocal = CircularScalar::ONE.div(determinant, account)?;
+    let inverse = [
+        reciprocal.mul(d, account)?,
+        reciprocal.mul(b.neg(account)?, account)?,
+        reciprocal.mul(c.neg(account)?, account)?,
+        reciprocal.mul(a, account)?,
+    ];
+    Ok([
+        inverse[0],
+        inverse[1],
+        inverse[2],
+        inverse[3],
+        inverse[0]
+            .mul(x, account)?
+            .add(inverse[2].mul(y, account)?, account)?
+            .neg(account)?,
+        inverse[1]
+            .mul(x, account)?
+            .add(inverse[3].mul(y, account)?, account)?
+            .neg(account)?,
+    ])
+}
+
 fn circular_native_field(
     device: vello_encoding::Transform,
     start_radius: f64,
     account: &Account,
-) -> Result<(vello_encoding::Transform, f64)> {
-    let inverse = native_inverse(device, account)?;
-    account.work(RenderWork::CoordinateVisits, 10)?;
+) -> Result<([CircularScalar; 6], CircularScalar)> {
+    account.work(RenderWork::CoordinateVisits, 8)?;
     let start = start_radius as f32;
-    let end = start + 1.0;
-    let focal = start / (start - end);
-    let epsilon = 1.0 / (1_u32 << 12) as f32;
-    let center = (1.0 - focal) * epsilon;
-    let radius = end / (center * center + center * center).sqrt();
-    let unit = vello_encoding::Transform {
-        matrix: [0.0, -1.0, 1.0, 0.0],
-        translation: [0.0, 0.0],
-    };
-    let points = vello_encoding::Transform {
-        matrix: [-center, center, -center, -center],
-        translation: [center, center],
-    };
-    let line = native_product(unit, native_inverse(points, account)?, account)?;
-    let line = native_product(line, inverse, account)?;
-    let squared = radius * radius - 1.0;
-    let ratio = (1.0 - focal).abs() / squared;
-    let scale_x = radius * ratio;
-    let scale_y = squared.abs().sqrt() * ratio;
-    if ![focal, radius, squared, ratio, scale_x, scale_y]
-        .into_iter()
-        .all(f32::is_finite)
-        || radius <= 1.0
-    {
-        return Err(invalid_geometry("unrepresentable native circular setup"));
+    let end = start + 1.0; // These are the actual CPU-encoded native radii.
+    let native = [
+        device.matrix[0],
+        device.matrix[1],
+        device.matrix[2],
+        device.matrix[3],
+        device.translation[0],
+        device.translation[1],
+    ];
+    let inverse = circular_inverse(native.map(|v| CircularScalar::exact(f64::from(v))), account)?;
+    let start = CircularScalar::exact(f64::from(start));
+    let end = CircularScalar::exact(f64::from(end));
+    let epsilon = CircularScalar::exact(1.0 / 4096.0);
+    let difference = start.add(end.neg(account)?, account)?;
+    let absolute_difference = difference.abs(account)?;
+    account.work(RenderWork::CoordinateVisits, 3)?;
+    if absolute_difference.lower <= epsilon.upper || end.lower <= 0.0 {
+        return Err(invalid_geometry("uncertain native circular branch"));
     }
-    let field = native_product(
-        vello_encoding::Transform {
-            matrix: [scale_x, 0.0, 0.0, scale_y],
-            translation: [0.0, 0.0],
-        },
-        line,
-        account,
-    )?;
-    Ok((field, f64::from(focal)))
+    let focal = start.div(difference, account)?;
+    let one_minus_focal = CircularScalar::ONE.add(focal.neg(account)?, account)?;
+    let center = one_minus_focal.mul(epsilon, account)?;
+    let squared_center = center.mul(center, account)?;
+    let distance = squared_center.add(squared_center, account)?.sqrt(account)?;
+    let radius = end.div(distance, account)?;
+    let radius_difference = radius
+        .add(CircularScalar::ONE.neg(account)?, account)?
+        .abs(account)?;
+    account.work(RenderWork::CoordinateVisits, 3)?;
+    if radius_difference.lower <= epsilon.upper
+        || radius.lower <= 1.0
+        || one_minus_focal.lower <= 0.0
+    {
+        return Err(invalid_geometry("uncertain native circular kind"));
+    }
+    let z = CircularScalar::ZERO;
+    let one = CircularScalar::ONE;
+    let minus_one = one.neg(account)?;
+    let unit = [z, minus_one, one, z, z, z];
+    let minus_center = center.neg(account)?;
+    let points = [
+        minus_center,
+        center,
+        minus_center,
+        minus_center,
+        center,
+        center,
+    ];
+    let line = circular_product(unit, circular_inverse(points, account)?, account)?;
+    let line = circular_product(line, inverse, account)?;
+    let squared = radius.mul(radius, account)?.add(minus_one, account)?;
+    let ratio = one_minus_focal.abs(account)?.div(squared, account)?;
+    let scale_x = radius.mul(ratio, account)?;
+    let scale_y = squared.abs(account)?.sqrt(account)?.mul(ratio, account)?;
+    let field = circular_product([scale_x, z, z, scale_y, z, z], line, account)?;
+    Ok((field, focal))
 }
 
-fn native_product(
-    left: vello_encoding::Transform,
-    right: vello_encoding::Transform,
-    account: &Account,
-) -> Result<vello_encoding::Transform> {
+// Enclose the exact f64-authored inverse, including the fixed 45-degree
+// rotation. These real operations have no binary32 shader rounding allowance.
+fn circular_ideal_field(device: kurbo::Affine, account: &Account) -> Result<[CircularScalar; 6]> {
     account.work(RenderWork::CoordinateVisits, 6)?;
-    let product = left * right;
-    if product
-        .matrix
-        .into_iter()
-        .chain(product.translation)
-        .all(f32::is_finite)
-    {
-        Ok(product)
-    } else {
-        Err(invalid_geometry("unrepresentable native circular field"))
-    }
+    let [a, b, c, d, x, y] = device.as_coeffs().map(CircularScalar::exact);
+    let determinant = a
+        .real_mul(d, account)?
+        .real_add(b.real_mul(c, account)?.neg(account)?, account)?;
+    let reciprocal = CircularScalar::ONE.real_div(determinant, account)?;
+    let inverse = [
+        reciprocal.real_mul(d, account)?,
+        reciprocal.real_mul(b.neg(account)?, account)?,
+        reciprocal.real_mul(c.neg(account)?, account)?,
+        reciprocal.real_mul(a, account)?,
+    ];
+    let tx = inverse[0]
+        .real_mul(x, account)?
+        .real_add(inverse[2].real_mul(y, account)?, account)?
+        .neg(account)?;
+    let ty = inverse[1]
+        .real_mul(x, account)?
+        .real_add(inverse[3].real_mul(y, account)?, account)?
+        .neg(account)?;
+    let s = CircularScalar::exact(0.5).real_sqrt(account)?;
+    let minus_s = s.neg(account)?;
+    let rotate = |x: CircularScalar, y: CircularScalar| -> Result<[CircularScalar; 2]> {
+        Ok([
+            minus_s
+                .real_mul(x, account)?
+                .real_add(minus_s.real_mul(y, account)?, account)?,
+            s.real_mul(x, account)?
+                .real_add(minus_s.real_mul(y, account)?, account)?,
+        ])
+    };
+    let first = rotate(inverse[0], inverse[1])?;
+    let second = rotate(inverse[2], inverse[3])?;
+    let translation = rotate(tx, ty)?;
+    Ok([
+        first[0],
+        first[1],
+        second[0],
+        second[1],
+        translation[0],
+        translation[1],
+    ])
 }
 
-/// Conservative bounds over actual target integer pixel coordinates. The
-/// reverse triangle inequality bounds the effect of native field coefficients
-/// versus the ideal rotated field. Standard gamma_n bounds cover binary32
-/// affine, squared-length, square-root and final focal-addition rounding.
-/// Both that error and the final phase spacing must fit one existing 512-entry
-/// ramp interval. This is an explicit native capacity limit, not CSS semantics.
+/// Scalar bounds over the actual integer target rectangle. Setup intervals
+/// enclose permitted GPU coefficients; reverse triangle inequality then bounds
+/// their field error independently of target pixel count.
 fn qualify_radial(
     ideal_device: kurbo::Affine,
     native_device: vello_encoding::Transform,
@@ -282,55 +539,124 @@ fn qualify_radial(
     target_extent: PhysicalSize,
     account: &Account,
 ) -> Result<()> {
-    let (field, focal) = circular_native_field(native_device, start_radius, account)?;
-    account.work(RenderWork::CoordinateVisits, 24)?;
+    let (mut field, focal) = circular_native_field(native_device, start_radius, account)?;
+    // Fine arithmetic may flush a stored coefficient or focal input too.
+    for value in &mut field {
+        account.work(RenderWork::CoordinateVisits, 1)?;
+        *value = value.flushed(account)?;
+    }
+    let focal = focal.flushed(account)?;
+    account.work(RenderWork::CoordinateVisits, 2)?;
     let width = target_extent.width();
     let height = target_extent.height();
-    // Every used integer coordinate must be exactly representable in binary32.
     if width == 0 || height == 0 || width - 1 > 1 << 24 || height - 1 > 1 << 24 {
         return Err(invalid_geometry(
             "unrepresentable native target pixel coordinates",
         ));
     }
-    let x = f64::from(width - 1);
-    let y = f64::from(height - 1);
-    let inverse = ideal_device.inverse();
-    check_finite(inverse)?;
-    let s = std::f64::consts::FRAC_1_SQRT_2;
-    let ideal = kurbo::Affine::new([-s, s, -s, -s, 0.0, 0.0]) * inverse;
-    check_finite(ideal)?;
-    let actual = field.to_kurbo().as_coeffs();
-    let expected = ideal.as_coeffs();
-    let bound = |values: [f64; 6]| {
-        [
-            values[0].abs() * x + values[2].abs() * y + values[4].abs(),
-            values[1].abs() * x + values[3].abs() * y + values[5].abs(),
-        ]
+    account.work(RenderWork::CoordinateVisits, 2)?;
+    let x = CircularScalar::exact(f64::from(width - 1));
+    let y = CircularScalar::exact(f64::from(height - 1));
+    let ideal = circular_ideal_field(ideal_device, account)?;
+    let bound = |values: [CircularScalar; 6]| -> Result<[CircularScalar; 2]> {
+        let a = values[0]
+            .abs(account)?
+            .real_mul(x, account)?
+            .real_add(values[2].abs(account)?.real_mul(y, account)?, account)?
+            .real_add(values[4].abs(account)?, account)?;
+        let b = values[1]
+            .abs(account)?
+            .real_mul(x, account)?
+            .real_add(values[3].abs(account)?.real_mul(y, account)?, account)?
+            .real_add(values[5].abs(account)?, account)?;
+        Ok([a, b])
     };
-    let [qx, qy] = bound(actual);
-    let difference = std::array::from_fn(|i| actual[i] - expected[i]);
-    let [dx, dy] = bound(difference);
-    let unit_roundoff = f64::from(f32::EPSILON) * 0.5;
-    let gamma = |operations: f64| operations * unit_roundoff / (1.0 - operations * unit_roundoff);
-    let affine_error = gamma(4.0) * qx.hypot(qy);
-    let radius = qx.hypot(qy) + affine_error;
-    let norm_factor = (1.0 + gamma(3.0)).sqrt() * (1.0 + unit_roundoff);
-    let norm_error = radius * (norm_factor - 1.0);
-    let phase_bound = (focal.abs() + radius * norm_factor) * (1.0 + unit_roundoff);
-    let phase_error = dx.hypot(dy)
-        + (focal + start_radius).abs()
-        + affine_error
-        + norm_error
-        + unit_roundoff * (focal.abs() + radius * norm_factor)
-        // Glyph brushes retain native radii; their original f64 phase narrowing
-        // is bounded by one binary32 unit roundoff over the canonical [0,1].
-        + unit_roundoff;
-    let quantum = 1.0 / 511.0;
-    if !phase_bound.is_finite()
-        || !phase_error.is_finite()
-        || phase_error > quantum
-        || phase_ulp(phase_bound) > quantum
-    {
+    let norm = |values: [CircularScalar; 2]| -> Result<CircularScalar> {
+        values[0]
+            .real_mul(values[0], account)?
+            .real_add(values[1].real_mul(values[1], account)?, account)?
+            .abs(account)?
+            .real_sqrt(account)
+    };
+    let q = norm(bound(field)?)?;
+    let mut difference = [CircularScalar::ZERO; 6];
+    for i in 0..6 {
+        account.work(RenderWork::CoordinateVisits, 2)?;
+        difference[i] = field[i].real_add(ideal[i].neg(account)?, account)?;
+    }
+    let coefficient_error = norm(bound(difference)?)?;
+    let e = CircularScalar::exact(CIRCULAR_EPSILON);
+    // gamma4 covers every association of the two affine products plus xlat.
+    let gamma4 = CircularScalar::exact(4.0).real_mul(e, account)?.real_div(
+        CircularScalar::ONE.real_add(CircularScalar::exact(-4.0).real_mul(e, account)?, account)?,
+        account,
+    )?;
+    let affine_absolute = CircularScalar::exact(2.0)
+        .real_sqrt(account)?
+        .real_mul(CircularScalar::exact(4.0 * CIRCULAR_MIN_NORMAL), account)?
+        .real_mul(CircularScalar::ONE.real_add(gamma4, account)?, account)?;
+    let affine_error = gamma4
+        .real_mul(q, account)?
+        .real_add(affine_absolute, account)?;
+    let radius = q.real_add(affine_error, account)?;
+    let gamma3 = CircularScalar::exact(3.0).real_mul(e, account)?.real_div(
+        CircularScalar::ONE.real_add(CircularScalar::exact(-3.0).real_mul(e, account)?, account)?,
+        account,
+    )?;
+    // For 0<=g<1, both sqrt(1+g)-1 and 1-sqrt(1-g) are <=g.
+    // Thus 1+gamma3 bounds either direction of squared-length rounding.
+    let squared_factor = CircularScalar::ONE.real_add(gamma3, account)?;
+    let sqrt_factor = CircularScalar::ONE
+        .real_add(CircularScalar::exact(2.5).real_mul(e, account)?, account)?
+        .real_div(
+            CircularScalar::ONE
+                .real_add(CircularScalar::exact(-2.0).real_mul(e, account)?, account)?,
+            account,
+        )?;
+    let norm_factor = squared_factor.real_mul(sqrt_factor, account)?;
+    // Depends on the checked native fine adaptation in vello_engine/shaders.rs:
+    // circular sqrt evaluates max(xx+yy,m), then selects 0 when xx+yy<=m.
+    // Three squared-length FTZ losses contribute D=3m/(1-3e). In the guarded
+    // branch, r^2 <= (m+D)/(1-gamma3); the normal branch has smaller absolute
+    // loss. This bounds zero without assuming sqrt(0) has specified accuracy.
+    let squared_absolute = CircularScalar::exact(3.0 * CIRCULAR_MIN_NORMAL)
+        .real_mul(CircularScalar::ONE.real_add(gamma3, account)?, account)?;
+    let norm_absolute = squared_absolute
+        .real_add(CircularScalar::exact(CIRCULAR_MIN_NORMAL), account)?
+        .real_div(
+            CircularScalar::ONE.real_add(gamma3.neg(account)?, account)?,
+            account,
+        )?
+        .real_sqrt(account)?
+        .real_mul(sqrt_factor, account)?;
+    let norm_error = radius
+        .real_mul(
+            norm_factor.real_add(CircularScalar::exact(-1.0), account)?,
+            account,
+        )?
+        .real_add(norm_absolute, account)?;
+    let native_norm = radius
+        .real_mul(norm_factor, account)?
+        .real_add(norm_absolute, account)?;
+    let focal_magnitude = focal.abs(account)?;
+    let pre_add = focal_magnitude.real_add(native_norm, account)?;
+    let addition_error = e
+        .real_mul(pre_add, account)?
+        .real_add(CircularScalar::exact(CIRCULAR_MIN_NORMAL), account)?;
+    let phase_bound = pre_add.real_add(addition_error, account)?;
+    let focal_error = focal
+        .real_add(CircularScalar::exact(start_radius), account)?
+        .abs(account)?;
+    let phase_error = coefficient_error
+        .real_add(focal_error, account)?
+        .real_add(affine_error, account)?
+        .real_add(norm_error, account)?
+        .real_add(addition_error, account)?
+        // Glyph brushes retain the original phase narrowed to binary32.
+        .real_add(CircularScalar::exact(CIRCULAR_EPSILON), account)?;
+    account.work(RenderWork::CoordinateVisits, 2)?;
+    let quantum = (1.0_f64 / 511.0).next_down();
+    if phase_error.upper > quantum || phase_ulp(phase_bound.upper) > quantum {
         return Err(invalid_geometry(
             "insufficient native circular phase capacity",
         ));
@@ -870,6 +1196,112 @@ mod tests {
     }
 
     #[test]
+    fn circular_division_certifies_both_guaranteed_domain_endpoints() {
+        let account = Account::for_test();
+        let low = CircularScalar::exact(f64::from(f32::MIN_POSITIVE));
+        let high = CircularScalar::exact(2.0_f64.powi(126));
+        for denominator in [low, high] {
+            let quotient = CircularScalar::ONE.div(denominator, &account).unwrap();
+            let exact = 1.0 / denominator.lower;
+            assert!(quotient.lower <= exact && quotient.upper >= exact);
+        }
+        assert!(
+            CircularScalar::ONE
+                .div(CircularScalar::exact(low.lower.next_down()), &account,)
+                .is_err()
+        );
+        assert!(
+            CircularScalar::ONE
+                .div(CircularScalar::exact(high.upper.next_up()), &account,)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn circular_square_root_encloses_a_permitted_non_nearest_result() {
+        // inverseSqrt(4) may be 1/2-2^-24 (two ULP at 1/2). Its reciprocal
+        // may then be 2+3*2^-22 within the separate 2.5-ULP division allowance.
+        let allowed = 2.0 + 3.0 * 2.0_f64.powi(-22);
+        let root = CircularScalar::exact(4.0)
+            .sqrt(&Account::for_test())
+            .unwrap();
+        assert!(root.lower <= allowed && root.upper >= allowed);
+        assert!(allowed - 2.0 > 2.0 * 2.5 * 2.0_f64.powi(-24));
+    }
+
+    #[test]
+    fn radial_inverse_refuses_a_determinant_with_uncertain_native_sign() {
+        let scale = 2.0_f64.powi(26);
+        let transform = kurbo::Affine::new([
+            scale,
+            scale,
+            scale,
+            scale * (1.0 + f64::from(f32::EPSILON)),
+            0.0,
+            0.0,
+        ]);
+        let native = vello_encoding::Transform::from_kurbo(&transform);
+        let [a, b, c, d] = native.matrix;
+        assert!((a * d - b * c).is_finite());
+        assert_ne!(a * d - b * c, 0.0);
+        // Its exact smaller singular value exceeds two physical pixels, but
+        // permitted product rounding in the cancelling determinant spans zero.
+        assert!(radial_device_period(transform) > 2.0);
+        let gradient = RepeatingGradient::try_radial(
+            Point::new(0.0, 0.0),
+            1.0,
+            1.0,
+            vec![stop(0.0, Color::BLACK), stop(1.0, Color::TRANSPARENT)],
+        )
+        .unwrap();
+        let error = super::prepare(
+            &gradient,
+            transform,
+            PhysicalSize::new(2, 2),
+            &Account::for_test(),
+        )
+        .err()
+        .expect("a finite nominal inverse cannot certify an uncertain determinant");
+        assert_eq!(error.code(), ErrorCode::InvalidInput);
+        assert!(error.invalid_value_diagnostic().is_some());
+    }
+
+    #[test]
+    fn radial_certificate_refuses_coordinate_work_before_native_stop_storage() {
+        let gradient = RepeatingGradient::try_radial(
+            Point::new(0.0, 0.0),
+            16.0,
+            16.0,
+            vec![stop(0.0, Color::BLACK), stop(1.0, Color::TRANSPARENT)],
+        )
+        .unwrap();
+        let mut context = RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::CoordinateVisits, 64)
+                    .unwrap(),
+            ),
+        );
+        let error = context
+            .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                prepare(&gradient, kurbo::Affine::IDENTITY, account).map(drop)
+            })
+            .unwrap_err();
+        let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic() else {
+            panic!("the certificate must use coordinate-work admission");
+        };
+        assert_eq!(
+            refusal.quantity(),
+            RenderQuantity::Work(RenderWork::CoordinateVisits)
+        );
+        let usage = context.last_attempt().unwrap().usage();
+        assert!(usage.work(RenderWork::CoordinateVisits) > 0);
+        assert!(usage.work(RenderWork::CoordinateVisits) <= 64);
+        assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+    }
+
+    #[test]
     fn radial_native_inverse_requires_a_guaranteed_division_domain() {
         // The native determinant is exactly 2^127: finite, but outside
         // WGSL's division accuracy guarantee |denominator| <= 2^126.
@@ -1114,7 +1546,14 @@ mod tests {
             .expect("overflow must refuse");
         assert_eq!(error.code(), ErrorCode::InvalidInput);
         assert!(error.invalid_value_diagnostic().is_some());
-        assert!(native_transform(kurbo::Affine::scale(1.0e30), &Account::for_test()).is_err());
+        assert!(
+            prepare(
+                &linear(vec![stop(0.0, Color::BLACK), stop(1.0, Color::TRANSPARENT)]),
+                kurbo::Affine::scale(1.0e30),
+                &Account::for_test(),
+            )
+            .is_err()
+        );
         // Glyph paint inverts the composed native map, not either factor.
         assert!(
             native_glyph_transform(
