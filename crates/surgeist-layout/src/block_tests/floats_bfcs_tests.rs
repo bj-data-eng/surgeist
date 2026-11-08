@@ -3611,3 +3611,88 @@ fn native_relative_float_keeps_visible_border_end() {
     assert_native_relative_float_keeps_visible_border_end::<f32>();
     assert_native_relative_float_keeps_visible_border_end::<f64>();
 }
+
+fn assert_later_float_avoids_shape_margin_box<S: LayoutScalar>(width: f64, expected: Point<S>) {
+    let px = S::from_f64;
+    let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let root_size = Size::new(px(width), px(160.0));
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        axes,
+        root_size.map(|v| Some(NonNegativeFiniteOf::new(v).unwrap())),
+        OrthogonalFallbackOf::new(
+            root_size.map(|v| Some(NonNegativeFiniteOf::new(v).unwrap())),
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(root_size.map(|v| {
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(v).unwrap()),
+            SizingOperation::Normal,
+        )
+    }));
+    for exclusion in [FloatExclusion::MarginBox, FloatExclusion::Shape] {
+        let mut first = fri06_c05_shape_float_style(axes, Float::Left, 80.0, 20.0);
+        first.float_exclusion = exclusion;
+        let tree = fri06_c05_shape_tree(
+            axes,
+            ShapeProviderBehavior::Interval {
+                minimum: S::ZERO,
+                maximum: px(40.0),
+            },
+            [
+                (1, first),
+                (
+                    2,
+                    fri06_c05_margin_float_style(axes, Float::Left, 30.0, 10.0),
+                ),
+            ],
+        )
+        .with_style(
+            0,
+            NodeInputOf {
+                display: Display::Block,
+                size: root_size.map(PreferredSizeOf::px),
+                ..NodeInputOf::default()
+            },
+        );
+        let batch = compute_layout(&tree, 0, request).unwrap();
+        let first = public_final_output(&batch, 1);
+        let later = public_final_output(&batch, 2);
+        assert_eq!(public_final_output(&batch, 0).size, root_size);
+        assert_eq!(
+            (first.location, first.size),
+            (Point::ZERO, Size::new(px(80.0), px(20.0)))
+        );
+        assert_eq!(later.size, Size::new(px(30.0), px(10.0)));
+        assert_eq!(
+            later.location, expected,
+            "{exclusion:?}, root width {width}"
+        );
+        assert!(
+            later.location.x >= first.location.x + first.size.width
+                || later.location.y >= first.location.y + first.size.height,
+            "later float overlaps the earlier float margin box: {exclusion:?}, root width {width}"
+        );
+    }
+}
+
+#[test]
+fn later_float_clears_shape_margin_box_in_narrow_root_f32() {
+    assert_later_float_avoids_shape_margin_box::<f32>(100.0, Point::new(0.0, 20.0));
+}
+
+#[test]
+fn later_float_clears_shape_margin_box_in_narrow_root_f64() {
+    assert_later_float_avoids_shape_margin_box::<f64>(100.0, Point::new(0.0, 20.0));
+}
+
+#[test]
+fn later_float_stays_beside_shape_margin_box_in_wide_root_f32() {
+    assert_later_float_avoids_shape_margin_box::<f32>(140.0, Point::new(80.0, 0.0));
+}
+
+#[test]
+fn later_float_stays_beside_shape_margin_box_in_wide_root_f64() {
+    assert_later_float_avoids_shape_margin_box::<f64>(140.0, Point::new(80.0, 0.0));
+}
