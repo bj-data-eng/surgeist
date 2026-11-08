@@ -3,6 +3,7 @@
 use std::any::Any;
 use std::{cell::Cell, path::Path, rc::Rc};
 
+pub use access::ContextAccess;
 pub use hooks::{DefaultHooks, HostHooks};
 #[cfg(feature = "intl")]
 pub use icu::IcuError;
@@ -49,6 +50,7 @@ pub mod time;
 use crate::context::time::StdClock;
 pub use time::Clock;
 
+mod access;
 mod hooks;
 #[cfg(feature = "intl")]
 pub(crate) mod icu;
