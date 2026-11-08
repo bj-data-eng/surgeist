@@ -5979,3 +5979,109 @@ scalars!(
     maximum_progress_initial_child_deferral_retains_unaccepted_parent_prefix_f32,
     maximum_progress_initial_child_deferral_retains_unaccepted_parent_prefix_f64
 );
+
+fn maximum_progress_later_child_deferral_after_unsliceable_principal_head<S: LayoutScalar>() {
+    let mut tree = Tree::new(
+        vec![
+            block::<S>(None, None),
+            maximum_progress_cap(200.0),
+            block(None, Some(150.0)),
+            block(None, Some(30.0)),
+            block(None, Some(10.0)),
+        ],
+        vec![vec![1, 4], vec![2, 3], vec![], vec![], vec![]],
+    );
+    let whole_request = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 200.0, true)]);
+    let mut sink = Sink::new(5);
+    sink.authorize(0, &whole_request);
+    for control in [
+        compute_layout(&tree, 0, root_request(100.0)).unwrap(),
+        compute(&tree, 0, &whole_request).expect("whole-fit capped unsliceable-head control"),
+    ] {
+        for (node, y, height) in [
+            (0, 0.0, 190.0),
+            (1, 0.0, 180.0),
+            (2, 0.0, 150.0),
+            (3, 150.0, 30.0),
+            (4, 180.0, 10.0),
+        ] {
+            let value = single(&control, node);
+            for output in [value.unrounded_output(), value.final_output()] {
+                assert_packet(output, (0.0, y), (100.0, height));
+            }
+        }
+    }
+    let verify = |batch: &Batch<S>| {
+        assert_eq!(batch.fragmentainers().len(), 2);
+        assert_eq!(batch.node_layouts().count(), 5);
+        let roots = minimum_progress_chain(batch, 0, &[&[(0, 1)], &[(0, 1), (1, 4)]]);
+        let wrappers = minimum_progress_chain(batch, 1, &[&[(0, 2)], &[(1, 3)]]);
+        assert_fragment(&roots[0], (100.0, 150.0));
+        assert_fragment(&roots[1], (60.0, 40.0));
+        for (index, size) in [(100.0, 150.0), (60.0, 30.0)].into_iter().enumerate() {
+            assert_fragment(&wrappers[index], size);
+            assert!(wrappers[index].overflow_only().is_none());
+            assert_eq!(
+                wrappers[index].coordinate_parent(),
+                Some(&FragmentCoordinateSpace::Fragment(
+                    roots[index].id().clone()
+                ))
+            );
+            for geometry in [
+                roots[index].unrounded(),
+                roots[index].final_geometry(),
+                wrappers[index].unrounded(),
+                wrappers[index].final_geometry(),
+            ] {
+                assert_eq!(geometry.location, Point::ZERO);
+            }
+        }
+        minimum_progress_child(batch, 2, 0, wrappers[0].id(), (0.0, 0.0), (100.0, 150.0));
+        minimum_progress_child(batch, 3, 1, wrappers[1].id(), (0.0, 0.0), (60.0, 30.0));
+        minimum_progress_child(batch, 4, 1, roots[1].id(), (0.0, 30.0), (60.0, 10.0));
+        maximum_progress_children(batch, roots[0].id(), &[wrappers[0].id()]);
+        maximum_progress_children(
+            batch,
+            roots[1].id(),
+            &[wrappers[1].id(), single(batch, 4).id()],
+        );
+        maximum_progress_children(batch, wrappers[0].id(), &[single(batch, 2).id()]);
+        maximum_progress_children(batch, wrappers[1].id(), &[single(batch, 3).id()]);
+        maximum_progress_unique_fragments(batch);
+    };
+    // Establish the ordinary native policy independently: the first atomic head
+    // overflows whole 150, and only its later sibling defers to the second frame.
+    tree.inputs[1].max_size.height = block::<S>(None, None).max_size.height;
+    let uncapped_request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![frame(100.0, 100.0, true), frame(60.0, 80.0, false)],
+    );
+    sink.authorize(0, &uncapped_request);
+    let uncapped = compute(&tree, 0, &uncapped_request)
+        .expect("uncapped native unsliceable-head policy control");
+    verify(&uncapped);
+
+    tree.inputs[1].max_size.height = maximum_progress_cap::<S>(200.0).max_size.height;
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![frame(100.0, 100.0, true), frame(60.0, 80.0, false)],
+    );
+    sink.authorize(0, &request);
+    // Actual principal progress 150 +30 stays below max 200. The child Deferred
+    // must preserve that accepted 150 head without splitting it or forcing entry.
+    let batch = compute(&tree, 0, &request)
+        .expect("later before-cap child deferral retains the accepted unsliceable head");
+    verify(&batch);
+    batch.apply_to(&mut sink).unwrap();
+    for node in [2, 3, 4] {
+        assert_eq!(
+            sink.state.custody[node],
+            Some(single(&batch, node).unrounded_entry())
+        );
+    }
+}
+scalars!(
+    maximum_progress_later_child_deferral_after_unsliceable_principal_head,
+    maximum_progress_later_child_deferral_after_unsliceable_principal_head_f32,
+    maximum_progress_later_child_deferral_after_unsliceable_principal_head_f64
+);
