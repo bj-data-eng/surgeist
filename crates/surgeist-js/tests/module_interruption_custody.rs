@@ -1237,7 +1237,7 @@ fn inline_rejection_of_an_older_child_preserves_the_reason_and_never_runs_its_im
 }
 
 #[test]
-fn native_waiter_finds_the_genuine_module_cause_through_a_public_promise_follow_cycle() {
+fn native_waiter_finds_the_retained_module_cause_through_a_public_promise_follow_cycle() {
     let executor = Rc::new(ManualExecutor::default());
     let mut context = context(executor.clone());
     let (_gate, resolvers) = pending_gate(&mut context);
@@ -1305,22 +1305,22 @@ fn native_waiter_finds_the_genuine_module_cause_through_a_public_promise_follow_
         panic!("the original native waiter must expose its reachable module interruption")
     };
     assert_interruption_cause(&observed);
-    let genuine = context
+    let retained = context
         .with_execution(ExecutionOptions::new(FRESH_LIMIT), |access| {
             module.evaluate(access)
         })
         .unwrap();
-    assert_eq!(genuine.report.instructions(), 0);
-    let genuine = genuine.result.unwrap_err();
-    assert_interruption_cause(&genuine);
+    assert_eq!(retained.report.instructions(), 0);
+    let retained = retained.result.unwrap_err();
+    assert_interruption_cause(&retained);
     let Some(EngineError::ModuleInterrupted(observed)) = observed.as_engine() else {
         unreachable!()
     };
-    let Some(EngineError::ModuleInterrupted(genuine)) = genuine.as_engine() else {
+    let Some(EngineError::ModuleInterrupted(retained)) = retained.as_engine() else {
         unreachable!()
     };
-    assert_eq!(observed.identity(), genuine.identity());
-    assert_eq!(observed.cause().kind(), genuine.cause().kind());
+    assert_eq!(observed.identity(), retained.identity());
+    assert_eq!(observed.cause().kind(), retained.cause().kind());
     for promise in [&a, &b, &c, &d] {
         assert_eq!(promise.state(), PromiseState::Pending);
     }

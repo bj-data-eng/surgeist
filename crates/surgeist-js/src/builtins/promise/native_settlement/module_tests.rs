@@ -356,7 +356,7 @@ fn panicking_reentrant_module_waker_preserves_remaining_notices_and_driver_reuse
 }
 
 #[test]
-fn native_association_finds_a_genuine_module_cause_at_the_last_vertex_of_a_follow_cycle() {
+fn native_association_finds_a_retained_module_cause_at_the_last_vertex_of_a_follow_cycle() {
     use crate::{
         JsValue, Module, Source,
         error::{DiagnosticEngine, DiagnosticKind, EngineError, RuntimeLimitError},
@@ -404,18 +404,18 @@ fn native_association_finds_a_genuine_module_cause_at_the_last_vertex_of_a_follo
             .unwrap(),
         1.into()
     );
-    let genuine = context
+    let retained = context
         .with_execution(ExecutionOptions::new(4096), |access| {
             module.evaluate(access)
         })
         .unwrap();
-    assert_eq!(genuine.report.instructions(), 0);
-    let genuine = genuine.result.unwrap_err();
-    let Some(EngineError::ModuleInterrupted(genuine)) = genuine.as_engine() else {
-        panic!("fresh source evaluation must expose its genuine interruption")
+    assert_eq!(retained.report.instructions(), 0);
+    let retained = retained.result.unwrap_err();
+    let Some(EngineError::ModuleInterrupted(retained)) = retained.as_engine() else {
+        panic!("fresh source evaluation must expose its retained interruption")
     };
     assert_eq!(
-        genuine.cause().kind(),
+        retained.cause().kind(),
         DiagnosticKind::Engine(DiagnosticEngine::RuntimeLimit(
             RuntimeLimitError::Instruction { limit: LIMIT }
         ))
@@ -446,6 +446,6 @@ fn native_association_finds_a_genuine_module_cause_at_the_last_vertex_of_a_follo
     let Some(EngineError::ModuleInterrupted(discovered)) = discovered.as_engine() else {
         panic!("native observation must preserve the module interruption")
     };
-    assert_eq!(discovered.identity(), genuine.identity());
-    assert_eq!(discovered.cause().kind(), genuine.cause().kind());
+    assert_eq!(discovered.identity(), retained.identity());
+    assert_eq!(discovered.cause().kind(), retained.cause().kind());
 }

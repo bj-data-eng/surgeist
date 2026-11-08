@@ -366,10 +366,7 @@ mod continuation {
         }
 
         fn assert_pending(&mut self) {
-            assert!(
-                self.poll().is_pending(),
-                "the module is genuinely suspended"
-            );
+            assert!(self.poll().is_pending(), "the module is suspended");
             // Only a notification after this rearmed poll can establish that
             // the impending interruption woke this original native waiter.
             *self.wakes.count.lock().unwrap() = 0;
@@ -752,7 +749,7 @@ mod continuation {
         }
 
         fn finish_independent_sibling(&mut self) {
-            // This is a genuinely new settlement of still-pending required
+            // This is a new settlement of still-pending required
             // work, not an ignored second resolution of the interrupted gate.
             assert_eq!(self.sibling_gate.state(), PromiseState::Pending);
             assert_eq!(self.sibling_promise.state(), PromiseState::Pending);
