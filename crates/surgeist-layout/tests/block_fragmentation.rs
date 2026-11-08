@@ -3195,6 +3195,72 @@ scalars!(
     contained_intrinsic_sizing_keeps_both_axes_and_authored_width_f64
 );
 
+fn both_axis_size_containment_keeps_forced_descendants_in_one_box<S: LayoutScalar>() {
+    // Containment1 section 3.1 makes size-containment boxes monolithic. The
+    // container's minimum is independent of its two 20-unit content boxes.
+    for internal_force in [false, true] {
+        let mut contained = block::<S>(Some(30.0), None);
+        contained.size_containment = SizeContainment::BothAxes;
+        contained.min_size.height =
+            MinSizeOf::value(LengthPercentageOf::px(S::from_f64(40.0)).unwrap());
+        let mut last = block::<S>(Some(10.0), Some(20.0));
+        if internal_force {
+            last.break_before = FragmentationBreak::Page;
+        }
+        let tree = Tree::new(
+            vec![
+                block(None, None),
+                block(Some(10.0), Some(20.0)),
+                contained,
+                block(Some(10.0), Some(20.0)),
+                last,
+                block(Some(10.0), Some(5.0)),
+            ],
+            vec![vec![1, 2, 5], vec![], vec![3, 4], vec![], vec![], vec![]],
+        );
+        let request = fragmented(
+            LayoutSourceBasis::fresh(),
+            vec![frame(100.0, 100.0, true), frame(60.0, 100.0, false)],
+        );
+        let batch = compute(&tree, 0, &request)
+            .expect("internal forced breaks do not split a size-containment box");
+        assert!(
+            batch.node_layout(0).unwrap().single_box().is_some(),
+            "size-contained flow remains in one frame (internal force: {internal_force})"
+        );
+        let root = single(&batch, 0);
+        let container = single(&batch, 2);
+        assert_packet(root.unrounded_output(), (0.0, 0.0), (100.0, 65.0));
+        assert_packet(root.final_output(), (0.0, 0.0), (100.0, 65.0));
+        assert_packet(container.unrounded_output(), (0.0, 20.0), (30.0, 40.0));
+        assert_packet(container.final_output(), (0.0, 20.0), (30.0, 40.0));
+        assert_eq!(
+            container.coordinate_parent(),
+            Some(&FragmentCoordinateSpace::Fragment(root.id().clone()))
+        );
+        for (node, offset) in [(3, 0.0), (4, 20.0)] {
+            let child = single(&batch, node);
+            assert_packet(child.unrounded_output(), (0.0, offset), (10.0, 20.0));
+            assert_packet(child.final_output(), (0.0, offset), (10.0, 20.0));
+            assert_eq!(
+                child.coordinate_parent(),
+                Some(&FragmentCoordinateSpace::Fragment(container.id().clone()))
+            );
+        }
+        assert_packet(
+            single(&batch, 5).unrounded_output(),
+            (0.0, 60.0),
+            (10.0, 5.0),
+        );
+        assert_packet(single(&batch, 5).final_output(), (0.0, 60.0), (10.0, 5.0));
+    }
+}
+scalars!(
+    both_axis_size_containment_keeps_forced_descendants_in_one_box,
+    both_axis_size_containment_keeps_forced_descendants_in_one_box_f32,
+    both_axis_size_containment_keeps_forced_descendants_in_one_box_f64
+);
+
 fn intrinsic_preparation_preserves_anonymous_generating_context<S: LayoutScalar>() {
     for intrinsic in [false, true] {
         for preceding in [false, true] {
@@ -7488,4 +7554,231 @@ scalars!(
     native_page_side_metadata_is_demand_driven_and_page_only,
     native_page_side_metadata_is_demand_driven_and_page_only_f32,
     native_page_side_metadata_is_demand_driven_and_page_only_f64
+);
+
+fn both_axes_box<S: LayoutScalar>(width: Option<f64>, minimum: f64) -> NodeInputOf<S> {
+    let mut style = block(width, None);
+    style.size_containment = SizeContainment::BothAxes;
+    style.min_size.height = MinSizeOf::value(LengthPercentageOf::px(S::from_f64(minimum)).unwrap());
+    style
+}
+
+fn both_axes_monolithic_defers_and_preserves_outer_forces<S: LayoutScalar>() {
+    for force_edges in [false, true] {
+        let prefix = if force_edges { 20.0 } else { 60.0 };
+        let minimum = if force_edges { 40.0 } else { 60.0 };
+        let mut contained = both_axes_box::<S>(None, minimum);
+        if force_edges {
+            contained.break_before = FragmentationBreak::Page;
+            contained.break_after = FragmentationBreak::Page;
+        }
+        let mut last = block::<S>(Some(10.0), Some(20.0));
+        last.break_before = FragmentationBreak::Page;
+        let tree = Tree::new(
+            vec![
+                block(None, None),
+                block(Some(10.0), Some(prefix)),
+                contained,
+                block(Some(10.0), Some(20.0)),
+                last,
+                block(Some(10.0), Some(5.0)),
+            ],
+            vec![vec![1, 2, 5], vec![], vec![3, 4], vec![], vec![], vec![]],
+        );
+        let request = fragmented(
+            LayoutSourceBasis::fresh(),
+            vec![
+                frame(100.0, 100.0, true),
+                frame(60.0, 100.0, false),
+                frame(80.0, 100.0, false),
+            ],
+        );
+        let batch = compute(&tree, 0, &request).unwrap();
+        let roots = fragments(&batch, 0);
+        let tail_frame = if force_edges { 2 } else { 1 };
+        assert_eq!(roots.len(), tail_frame + 1);
+        assert_fragment(&roots[0], (100.0, 100.0));
+        assert_fragment(&roots[1], (60.0, if force_edges { 100.0 } else { 65.0 }));
+        if force_edges {
+            assert_fragment(&roots[2], (80.0, 5.0));
+        }
+        minimum_progress_child(&batch, 1, 0, roots[0].id(), (0.0, 0.0), (10.0, prefix));
+        minimum_progress_child(&batch, 2, 1, roots[1].id(), (0.0, 0.0), (60.0, minimum));
+        let contained = single(&batch, 2);
+        for (node, index, y) in [(3, 0, 0.0), (4, 1, 20.0)] {
+            minimum_progress_child(&batch, node, index, contained.id(), (0.0, y), (10.0, 20.0));
+        }
+        minimum_progress_child(
+            &batch,
+            5,
+            2,
+            roots[tail_frame].id(),
+            (0.0, if force_edges { 0.0 } else { minimum }),
+            (10.0, 5.0),
+        );
+        maximum_progress_unique_fragments(&batch);
+        let mut sink = Sink::new(6);
+        sink.authorize(0, &request);
+        batch.apply_to(&mut sink).unwrap();
+        assert_eq!(sink.commits, 1);
+        assert!(sink.state.custody[1..].iter().all(Option::is_some));
+    }
+}
+scalars!(
+    both_axes_monolithic_defers_and_preserves_outer_forces,
+    both_axes_monolithic_defers_and_preserves_outer_forces_f32,
+    both_axes_monolithic_defers_and_preserves_outer_forces_f64
+);
+
+fn both_axes_monolithic_whole_overflow_and_root_keep_descendants<S: LayoutScalar>() {
+    // Empty sizing supplies the principal block extent independently of live
+    // children: whole150 overflows a fresh100 frame once; children120 overflow
+    // a contained40 box; an auto root can retain a real zero-height principal.
+    for (contained_root, minimum, child_height, expected_root) in [
+        (false, 150.0, 20.0, 150.0),
+        (false, 40.0, 60.0, 40.0),
+        (true, 0.0, 20.0, 0.0),
+        (true, 60.0, 20.0, 60.0),
+    ] {
+        let mut last = block::<S>(Some(10.0), Some(child_height));
+        last.break_before = FragmentationBreak::Page;
+        let (tree, subject, first, second) = if contained_root {
+            (
+                Tree::new(
+                    vec![
+                        both_axes_box(None, minimum),
+                        block(Some(10.0), Some(child_height)),
+                        last,
+                    ],
+                    vec![vec![1, 2], vec![], vec![]],
+                ),
+                0,
+                1,
+                2,
+            )
+        } else {
+            (
+                Tree::new(
+                    vec![
+                        block(None, None),
+                        both_axes_box(Some(30.0), minimum),
+                        block(Some(10.0), Some(child_height)),
+                        last,
+                    ],
+                    vec![vec![1], vec![2, 3], vec![], vec![]],
+                ),
+                1,
+                2,
+                3,
+            )
+        };
+        let request = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 100.0, true)]);
+        let batch = compute(&tree, 0, &request).unwrap();
+        let root = single(&batch, 0);
+        for output in [root.unrounded_output(), root.final_output()] {
+            assert_packet(output, (0.0, 0.0), (100.0, expected_root));
+        }
+        let contained = single(&batch, subject);
+        let width = if contained_root { 100.0 } else { 30.0 };
+        for output in [contained.unrounded_output(), contained.final_output()] {
+            assert_packet(output, (0.0, 0.0), (width, minimum));
+            assert_eq!(
+                output
+                    .scroll_geometry
+                    .unwrap()
+                    .scrollable_overflow()
+                    .size()
+                    .height,
+                S::from_f64(minimum.max(2.0 * child_height))
+            );
+        }
+        if !contained_root {
+            assert_eq!(
+                contained.coordinate_parent(),
+                Some(&FragmentCoordinateSpace::Fragment(root.id().clone()))
+            );
+        }
+        minimum_progress_child(
+            &batch,
+            first,
+            0,
+            contained.id(),
+            (0.0, 0.0),
+            (10.0, child_height),
+        );
+        minimum_progress_child(
+            &batch,
+            second,
+            1,
+            contained.id(),
+            (0.0, child_height),
+            (10.0, child_height),
+        );
+        maximum_progress_unique_fragments(&batch);
+        let mut sink = Sink::new(tree.inputs.len());
+        sink.authorize(0, &request);
+        batch.apply_to(&mut sink).unwrap();
+        assert!(sink.state.custody.iter().all(Option::is_some));
+    }
+}
+scalars!(
+    both_axes_monolithic_whole_overflow_and_root_keep_descendants,
+    both_axes_monolithic_whole_overflow_and_root_keep_descendants_f32,
+    both_axes_monolithic_whole_overflow_and_root_keep_descendants_f64
+);
+
+fn inline_only_and_ineligible_containment_keep_live_continuation<S: LayoutScalar>() {
+    for (containment, role, table) in [
+        (SizeContainment::None, BlockGeneration::Principal, false),
+        (
+            SizeContainment::InlineAxis,
+            BlockGeneration::Principal,
+            false,
+        ),
+        (SizeContainment::BothAxes, BlockGeneration::Anonymous, false),
+        (SizeContainment::BothAxes, BlockGeneration::Principal, true),
+    ] {
+        let mut container = block::<S>(None, None);
+        container.size_containment = containment;
+        container.block_generation = role;
+        container.item_is_table = table;
+        let mut last = block::<S>(None, None);
+        last.break_before = FragmentationBreak::Page;
+        let mut tree = Tree::new(
+            vec![block(None, None), container, block(None, None), last],
+            vec![vec![1], vec![2, 3], vec![], vec![]],
+        );
+        tree.measurements[2] = Some(Measurement::Responsive);
+        tree.measurements[3] = Some(Measurement::Responsive);
+        let request = unequal(LayoutSourceBasis::fresh());
+        let batch = compute(&tree, 0, &request).unwrap();
+        let roots = fragments(&batch, 0);
+        let containers = fragments(&batch, 1);
+        assert_eq!(roots.len(), 2);
+        assert_eq!(containers.len(), 2);
+        for (index, width, height) in [(0, 100.0, 50.0), (1, 60.0, 40.0)] {
+            assert_fragment(&roots[index], (width, height));
+            assert_fragment(&containers[index], (width, height));
+            assert_eq!(
+                containers[index].coordinate_parent(),
+                Some(&FragmentCoordinateSpace::Fragment(
+                    roots[index].id().clone()
+                ))
+            );
+        }
+        minimum_progress_child(&batch, 2, 0, containers[0].id(), (0.0, 0.0), (100.0, 30.0));
+        minimum_progress_child(&batch, 3, 1, containers[1].id(), (0.0, 0.0), (60.0, 40.0));
+        assert!(
+            tree.observed
+                .borrow()
+                .iter()
+                .any(|(node, input)| *node == 3 && normal_content_width(*input, 60.0))
+        );
+        maximum_progress_unique_fragments(&batch);
+    }
+}
+scalars!(
+    inline_only_and_ineligible_containment_keep_live_continuation,
+    inline_only_and_ineligible_containment_keep_live_continuation_f32,
+    inline_only_and_ineligible_containment_keep_live_continuation_f64
 );
