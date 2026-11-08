@@ -56,6 +56,10 @@ backdrops therefore preserve the source contribution. Inputs, intermediate
 textures and readback keep their existing alpha conventions; public readback
 is straight-alpha RGBA8.
 
+Every direct raster policy bounds the mixing result before backdrop-alpha
+modulation, including capture-local groups with a live local Plus source.
+Local Plus retains its separate additive composition arithmetic.
+
 Color dodge returns zero for a zero backdrop before considering a source of
 one. Color burn returns one for a backdrop of one before considering a source
 of zero. Hard light branches on the source component at one half; overlay
