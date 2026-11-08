@@ -745,7 +745,35 @@ mod tests {
         assert_eq!(original.transform.unwrap().local, kurbo::Affine::IDENTITY);
     }
     #[test]
-    fn radial_step_refuses_when_native_fine_squared_length_can_overflow() {
+    fn radial_step_requires_finite_native_fine_arithmetic_and_can_rescale_its_basis() {
+        let account = Account::for_test();
+        let original = kurbo::Affine::scale(1.0e-18);
+        let native = field::narrow_transform(original, &account).unwrap();
+        let reference = field::RadialReference {
+            start: 0.,
+            end: 1.,
+            delta: 1.,
+        };
+        let target = PhysicalSize::new(32, 32);
+        // At device(31,0), each original rotated component is about2.192e19;
+        // its square exceeds binary32 MAX while q remains below1e30.
+        let error = field::qualify_radial(
+            original,
+            native,
+            (0., 1.),
+            reference,
+            target,
+            true,
+            &account,
+        )
+        .map_err(capacity_error)
+        .err()
+        .expect("the original native map must refuse fine overflow");
+        assert_eq!(
+            error.gradient_realization_diagnostic(),
+            Some(&Refusal::InsufficientNativeCapacity)
+        );
+
         let gradient = Gradient::try_radial(
             Point::new(0., 0.),
             1.0e-18,
@@ -756,20 +784,32 @@ mod tests {
             ],
         )
         .unwrap();
-        // At device (31,0), each rotated native component is about2.192e19;
-        // its square exceeds binary32 MAX although q≈3.1e19 remains below
-        // the1e30 threshold. Inf would select the wrong endpoint color.
-        let error = prepare(
-            &gradient,
-            kurbo::Affine::IDENTITY,
-            PhysicalSize::new(32, 32),
-            &Account::for_test(),
+        let brush = prepare(&gradient, kurbo::Affine::IDENTITY, target, &account).unwrap();
+        let solved = brush.transform.unwrap();
+        let [x, b, c, y, tx, ty] = solved.reference_device.as_coeffs();
+        assert_eq!([b, c, tx, ty], [0.; 4]);
+        assert!((1.0..2.0).contains(&x) && (1.0..2.0).contains(&y));
+        // Independent real bound for the selected concentric native setup:
+        // the nudged equal-center map has maximal norm multiplier r²/(r²-1)
+        // and center displacement sqrt(2)/4096. Unit-sized axes keep both
+        // affine components, squares, sum, root and focal addition far below
+        // binary32 MAX. The qualifier separately encloses permitted rounding.
+        let epsilon = 1.0 / 4096.0;
+        let r = 1.0 / (2.0_f64.sqrt() * epsilon);
+        let multiplier = (r * r) / (r * r - 1.0);
+        let norm_bound = (31.0_f64.hypot(31.0) / x.min(y) + 2.0_f64.sqrt() * epsilon) * multiplier;
+        assert!(norm_bound * norm_bound < f64::from(f32::MAX));
+        let scaled_threshold = 1.0e30 * (1.0e-18 / x);
+        assert!(norm_bound < scaled_threshold);
+        field::qualify_radial(
+            solved.reference_device,
+            field::narrow_transform(solved.reference_device, &account).unwrap(),
+            (0., 1.),
+            solved.radial.unwrap(),
+            target,
+            true,
+            &account,
         )
-        .err()
-        .expect("native fine overflow must be a contextual capacity refusal");
-        assert_eq!(
-            error.gradient_realization_diagnostic(),
-            Some(&Refusal::InsufficientNativeCapacity)
-        );
+        .unwrap();
     }
 }

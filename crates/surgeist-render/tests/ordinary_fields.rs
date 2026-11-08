@@ -714,3 +714,34 @@ mod paint {
         );
     }
 }
+
+#[test]
+fn tiny_radial_step_keeps_the_first_color_far_below_its_threshold() {
+    use surgeist_render::EffectQualityPolicy;
+    let red = rgba(1.0, 0.0, 0.0, 1.0);
+    let blue = rgba(0.0, 0.0, 1.0, 1.0);
+    let gradient = Gradient::try_radial(
+        point(0.0, 0.0),
+        1.0e-18,
+        1.0e-18,
+        stops(&[(1.0e30, red), (1.0e30, blue)]),
+    )
+    .unwrap();
+    let mut renderer = pollster::block_on(Renderer::new(
+        Options::default().with_effect_quality_policy(EffectQualityPolicy::AllowReducedPrecision),
+    ))
+    .unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::try_new(32.0, 16.0).unwrap(), 1.0))
+            .unwrap();
+    for graph in [false, true] {
+        let scene = field_scene(graph, |scene| {
+            scene.fill(bounds(), gradient.clone());
+        });
+        let image = read(&mut renderer, &mut surface, &scene, graph);
+        // q=hypot(31,4)/1e-18 < 3.2e19, eleven orders of magnitude
+        // below the 1e30 step. Native squared-norm overflow must not turn
+        // this first-color region into the final color.
+        assert_pixel(&image, 31, 4, [255, 0, 0, if graph { 128 } else { 255 }], 0);
+    }
+}
