@@ -66,7 +66,7 @@ fn allocating_buffer_edits_apply_the_host_ceiling_before_mutation() {
     struct Ceiling;
 
     impl HostHooks for Ceiling {
-        fn max_buffer_size(&self, _: &mut Context) -> u64 {
+        fn max_buffer_size(&self, _: crate::ContextAccess<'_>) -> u64 {
             4
         }
     }
@@ -135,7 +135,7 @@ fn allocating_buffer_edits_revalidate_after_host_detachment() {
     struct DetachingHost(RefCell<Option<JsArrayBuffer>>);
 
     impl HostHooks for DetachingHost {
-        fn max_buffer_size(&self, _: &mut Context) -> u64 {
+        fn max_buffer_size(&self, _: crate::ContextAccess<'_>) -> u64 {
             if let Some(buffer) = self.0.take() {
                 buffer.detach(&JsValue::undefined()).unwrap();
             }

@@ -638,7 +638,7 @@ impl ArrayBuffer {
             .resizable_bytes(new_byte_length)?
             .capacity();
         let limit = (new_byte_length > capacity as u64)
-            .then(|| context.host_hooks().max_buffer_size(context));
+            .then(|| context.host_hooks().max_buffer_size(context.access()));
 
         // TODO: 7. Let hostHandled be ? HostResizeArrayBuffer(O, newByteLength).
         // 8. If hostHandled is handled, return undefined.
@@ -822,7 +822,8 @@ impl ArrayBuffer {
                 .transfer_source(new_len, TO_FIXED_LENGTH)?;
             transfer_allocates(bytes.capacity(), new_len, new_max_len)
         };
-        let limit = needs_allocation.then(|| context.host_hooks().max_buffer_size(context));
+        let limit =
+            needs_allocation.then(|| context.host_hooks().max_buffer_size(context.access()));
 
         let (bytes, new_max_len) = {
             let mut source = buf.borrow_mut();
@@ -988,7 +989,10 @@ pub(crate) fn create_byte_data_block(
 
     assert!(size <= alloc_size);
 
-    check_buffer_allocation_limit(alloc_size, context.host_hooks().max_buffer_size(context))?;
+    check_buffer_allocation_limit(
+        alloc_size,
+        context.host_hooks().max_buffer_size(context.access()),
+    )?;
 
     // 1. Let db be a new Data Block value consisting of size bytes. If it is impossible to
     //    create such a Data Block, throw a RangeError exception.

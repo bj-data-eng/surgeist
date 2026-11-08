@@ -19,7 +19,7 @@ pub mod js_module {
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/API/Window/queueMicrotask
     pub fn queue_microtask(callback: JsFunction, mut context: ContextAccess<'_>) {
         context.enqueue_job(Job::from(PromiseJob::new(move |context| {
-            callback.call(&JsValue::undefined(), &[], context.access())
+            callback.call(&JsValue::undefined(), &[], context)
         })));
     }
 }

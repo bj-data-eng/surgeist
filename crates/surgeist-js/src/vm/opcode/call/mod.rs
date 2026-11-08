@@ -1,4 +1,4 @@
-use std::{cell::RefCell, mem::MaybeUninit};
+use std::mem::MaybeUninit;
 
 use dynify::Dynify;
 use surgeist_js_string::JsString;
@@ -342,186 +342,194 @@ async fn load_dyn_import(
     request: ModuleRequest,
     cap: PromiseCapability,
     phase: u32,
-    context: &RefCell<&mut Context>,
+    context: &crate::HostContext<'_>,
 ) -> JsResult<()> {
-    let loader = context.borrow().module_loader();
+    let loader = context.with(|context| Ok(context.into_owner().module_loader()))?;
     let fut = loader.load_imported_module(referrer.clone(), request.clone(), context);
     let mut stack = [MaybeUninit::<u8>::uninit(); 16];
     let mut heap = Vec::<MaybeUninit<u8>>::new();
     let result = fut.init2(&mut stack, &mut heap).await;
-    let completion = Module::admit_loader_result(result, &context.borrow());
+    context.with(|context| {
+        let context = context.into_owner();
+        let completion = Module::admit_loader_result(result, context);
 
-    // `ContinueDynamicImport ( promiseCapability, moduleCompletion )`
-    // https://tc39.es/ecma262/#sec-ContinueDynamicImport
+        // `ContinueDynamicImport ( promiseCapability, moduleCompletion )`
+        // https://tc39.es/ecma262/#sec-ContinueDynamicImport
 
-    // `FinishLoadingImportedModule ( referrer, specifier, payload, result )`
-    // https://tc39.es/ecma262/#sec-FinishLoadingImportedModule
+        // `FinishLoadingImportedModule ( referrer, specifier, payload, result )`
+        // https://tc39.es/ecma262/#sec-FinishLoadingImportedModule
 
-    let module = match completion {
-        // 1. If moduleCompletion is an abrupt completion, then
-        Err(err) => {
-            // a. Perform ! Call(promiseCapability.[[Reject]], undefined, « moduleCompletion.[[Value]] »).
-            let err = err.into_opaque(context.borrow_mut().access())?;
-            cap.reject()
-                .call(&JsValue::undefined(), &[err], context.borrow_mut().access())
-                .expect("default `reject` function cannot throw");
-
-            // b. Return unused.
-            return Ok(());
-        }
-        Ok(m) => m,
-    };
-
-    // 1. If result is a normal completion, then
-    match referrer {
-        Referrer::Module(mod_ref) => {
-            let ModuleKind::SourceText(src) = mod_ref.kind() else {
-                panic!("referrer cannot be a synthetic module");
-            };
-
-            src.insert_loaded_module(request, &module);
-        }
-        Referrer::Realm(realm) => {
-            realm.insert_loaded_module(request.specifier().clone(), &module);
-        }
-        Referrer::Script(script) => {
-            script.insert_loaded_module(request.specifier().clone(), &module);
-        }
-    }
-
-    // When the `experimental` feature is disabled, reject any non-evaluation phase.
-    #[cfg(not(feature = "experimental"))]
-    if phase != 0 {
-        let err = JsNativeError::syntax()
-            .with_message("import.defer() and import.source() require the 'experimental' feature")
-            .into();
-        let err = JsError::into_opaque(err, context.borrow_mut().access())?;
-        cap.reject()
-            .call(&JsValue::undefined(), &[err], context.borrow_mut().access())
-            .expect("default `reject` function cannot throw");
-        return Ok(());
-    }
-
-    // TODO: For source phase (phase == 2), implement GetModuleSource()
-    // 16.2.1.7.2 GetModuleSource ( )
-    // Source Text Module Record provides a GetModuleSource implementation
-    // that always returns an abrupt completion indicating that a source phase import is not available.
-    // 1. Throw a SyntaxError exception.
-    #[cfg(feature = "experimental")]
-    if phase == 2 {
-        let err = JsNativeError::syntax()
-            .with_message("source phase import is not available for this module")
-            .into();
-        let err = JsError::into_opaque(err, context.borrow_mut().access())?;
-        cap.reject()
-            .call(&JsValue::undefined(), &[err], context.borrow_mut().access())
-            .expect("default `reject` function cannot throw");
-        return Ok(());
-    }
-
-    // 2. Let module be moduleCompletion.[[Value]].
-    // 3. Let loadPromise be module.LoadRequestedModules().
-    let load = module.load(context.borrow_mut().access());
-
-    // 4. Let rejectedClosure be a new Abstract Closure with parameters (reason) that captures promiseCapability and performs the following steps when called:
-    // 5. Let onRejected be CreateBuiltinFunction(rejectedClosure, 1, "", « »).
-    let on_rejected = FunctionObjectBuilder::new(
-        context.borrow().realm(),
-        NativeFunction::from_builtin_with_captures(
-            |_, args, cap, context| {
-                //     a. Perform ! Call(promiseCapability.[[Reject]], undefined, « reason »).
+        let module = match completion {
+            // 1. If moduleCompletion is an abrupt completion, then
+            Err(err) => {
+                // a. Perform ! Call(promiseCapability.[[Reject]], undefined, « moduleCompletion.[[Value]] »).
+                let err = err.into_opaque(context.access())?;
                 cap.reject()
-                    .call(&JsValue::undefined(), args, context.access())
+                    .call(&JsValue::undefined(), &[err], context.access())
                     .expect("default `reject` function cannot throw");
 
-                //     b. Return unused.
-                Ok(JsValue::undefined())
-            },
-            cap.clone(),
-        ),
-    )
-    .build()?;
+                // b. Return unused.
+                return Ok(());
+            }
+            Ok(m) => m,
+        };
 
-    // 6. Let linkAndEvaluateClosure be a new Abstract Closure with no parameters that captures module, promiseCapability, and onRejected and performs the following steps when called:
-    // 7. Let linkAndEvaluate be CreateBuiltinFunction(linkAndEvaluateClosure, 0, "", « »).
-    let link_evaluate = FunctionObjectBuilder::new(
-        context.borrow().realm(),
-        NativeFunction::from_builtin_with_captures(
-            |_, _, (module, cap, on_rejected), context| {
-                // a. Let link be Completion(module.Link()).
-                // b. If link is an abrupt completion, then
-                if let Err(e) = module.link(context.access()) {
-                    // i. Perform ! Call(promiseCapability.[[Reject]], undefined, « link.[[Value]] »).
-                    let e = e.into_opaque(context.access())?;
-                    cap.reject()
-                        .call(&JsValue::undefined(), &[e], context.access())
-                        .expect("default `reject` function cannot throw");
-                    // ii. Return unused.
-                    return Ok(JsValue::undefined());
-                }
+        // 1. If result is a normal completion, then
+        match referrer {
+            Referrer::Module(mod_ref) => {
+                let ModuleKind::SourceText(src) = mod_ref.kind() else {
+                    panic!("referrer cannot be a synthetic module");
+                };
 
-                // c. Let evaluatePromise be module.Evaluate().
-                let evaluate = module.evaluate(context.access())?;
+                src.insert_loaded_module(request, &module);
+            }
+            Referrer::Realm(realm) => {
+                realm.insert_loaded_module(request.specifier().clone(), &module);
+            }
+            Referrer::Script(script) => {
+                script.insert_loaded_module(request.specifier().clone(), &module);
+            }
+        }
 
-                // d. Let fulfilledClosure be a new Abstract Closure with no parameters that captures module and promiseCapability and performs the following steps when called:
-                // e. Let onFulfilled be CreateBuiltinFunction(fulfilledClosure, 0, "", « »).
-                let fulfill = FunctionObjectBuilder::new(
-                    context.realm(),
-                    NativeFunction::from_builtin_with_captures(
-                        |_, _, (module, cap), context| {
-                            // i. Let namespace be GetModuleNamespace(module).
-                            let namespace = module.namespace(context.access())?;
-
-                            // ii. Perform ! Call(promiseCapability.[[Resolve]], undefined, « namespace »).
-                            cap.resolve()
-                                .call(&JsValue::undefined(), &[namespace.into()], context.access())
-                                .expect("default `resolve` function cannot throw");
-
-                            // iii. Return unused.
-                            Ok(JsValue::undefined())
-                        },
-                        (module.clone(), cap.clone()),
-                    ),
+        // When the `experimental` feature is disabled, reject any non-evaluation phase.
+        #[cfg(not(feature = "experimental"))]
+        if phase != 0 {
+            let err = JsNativeError::syntax()
+                .with_message(
+                    "import.defer() and import.source() require the 'experimental' feature",
                 )
-                .build()?;
+                .into();
+            let err = JsError::into_opaque(err, context.access())?;
+            cap.reject()
+                .call(&JsValue::undefined(), &[err], context.access())
+                .expect("default `reject` function cannot throw");
+            return Ok(());
+        }
 
-                // f. Perform PerformPromiseThen(evaluatePromise, onFulfilled, onRejected).
-                if let Err(error) = Promise::perform_promise_then(
-                    &evaluate,
-                    Some(fulfill),
-                    Some(on_rejected.clone()),
-                    None,
-                    context,
-                ) {
-                    let reason = error.into_opaque(context.access())?;
+        // TODO: For source phase (phase == 2), implement GetModuleSource()
+        // 16.2.1.7.2 GetModuleSource ( )
+        // Source Text Module Record provides a GetModuleSource implementation
+        // that always returns an abrupt completion indicating that a source phase import is not available.
+        // 1. Throw a SyntaxError exception.
+        #[cfg(feature = "experimental")]
+        if phase == 2 {
+            let err = JsNativeError::syntax()
+                .with_message("source phase import is not available for this module")
+                .into();
+            let err = JsError::into_opaque(err, context.access())?;
+            cap.reject()
+                .call(&JsValue::undefined(), &[err], context.access())
+                .expect("default `reject` function cannot throw");
+            return Ok(());
+        }
+
+        // 2. Let module be moduleCompletion.[[Value]].
+        // 3. Let loadPromise be module.LoadRequestedModules().
+        let load = module.load(context.access());
+
+        // 4. Let rejectedClosure be a new Abstract Closure with parameters (reason) that captures promiseCapability and performs the following steps when called:
+        // 5. Let onRejected be CreateBuiltinFunction(rejectedClosure, 1, "", « »).
+        let on_rejected = FunctionObjectBuilder::new(
+            context.realm(),
+            NativeFunction::from_builtin_with_captures(
+                |_, args, cap, context| {
+                    //     a. Perform ! Call(promiseCapability.[[Reject]], undefined, « reason »).
                     cap.reject()
-                        .call(&JsValue::undefined(), &[reason], context.access())?;
-                }
+                        .call(&JsValue::undefined(), args, context.access())
+                        .expect("default `reject` function cannot throw");
 
-                // g. Return unused.
-                Ok(JsValue::undefined())
-            },
-            (module.clone(), cap.clone(), on_rejected.clone()),
-        ),
-    )
-    .build()?;
+                    //     b. Return unused.
+                    Ok(JsValue::undefined())
+                },
+                cap.clone(),
+            ),
+        )
+        .build()?;
 
-    // 8. Perform PerformPromiseThen(loadPromise, linkAndEvaluate, onRejected).
-    let mut context = context.borrow_mut();
-    if let Err(error) = Promise::perform_promise_then(
-        &load,
-        Some(link_evaluate),
-        Some(on_rejected),
-        None,
-        &mut context,
-    ) {
-        let reason = error.into_opaque(context.access())?;
-        cap.reject()
-            .call(&JsValue::undefined(), &[reason], context.access())?;
-    }
+        // 6. Let linkAndEvaluateClosure be a new Abstract Closure with no parameters that captures module, promiseCapability, and onRejected and performs the following steps when called:
+        // 7. Let linkAndEvaluate be CreateBuiltinFunction(linkAndEvaluateClosure, 0, "", « »).
+        let link_evaluate = FunctionObjectBuilder::new(
+            context.realm(),
+            NativeFunction::from_builtin_with_captures(
+                |_, _, (module, cap, on_rejected), context| {
+                    // a. Let link be Completion(module.Link()).
+                    // b. If link is an abrupt completion, then
+                    if let Err(e) = module.link(context.access()) {
+                        // i. Perform ! Call(promiseCapability.[[Reject]], undefined, « link.[[Value]] »).
+                        let e = e.into_opaque(context.access())?;
+                        cap.reject()
+                            .call(&JsValue::undefined(), &[e], context.access())
+                            .expect("default `reject` function cannot throw");
+                        // ii. Return unused.
+                        return Ok(JsValue::undefined());
+                    }
 
-    // 9. Return unused.
-    Ok(())
+                    // c. Let evaluatePromise be module.Evaluate().
+                    let evaluate = module.evaluate(context.access())?;
+
+                    // d. Let fulfilledClosure be a new Abstract Closure with no parameters that captures module and promiseCapability and performs the following steps when called:
+                    // e. Let onFulfilled be CreateBuiltinFunction(fulfilledClosure, 0, "", « »).
+                    let fulfill = FunctionObjectBuilder::new(
+                        context.realm(),
+                        NativeFunction::from_builtin_with_captures(
+                            |_, _, (module, cap), context| {
+                                // i. Let namespace be GetModuleNamespace(module).
+                                let namespace = module.namespace(context.access())?;
+
+                                // ii. Perform ! Call(promiseCapability.[[Resolve]], undefined, « namespace »).
+                                cap.resolve()
+                                    .call(
+                                        &JsValue::undefined(),
+                                        &[namespace.into()],
+                                        context.access(),
+                                    )
+                                    .expect("default `resolve` function cannot throw");
+
+                                // iii. Return unused.
+                                Ok(JsValue::undefined())
+                            },
+                            (module.clone(), cap.clone()),
+                        ),
+                    )
+                    .build()?;
+
+                    // f. Perform PerformPromiseThen(evaluatePromise, onFulfilled, onRejected).
+                    if let Err(error) = Promise::perform_promise_then(
+                        &evaluate,
+                        Some(fulfill),
+                        Some(on_rejected.clone()),
+                        None,
+                        context,
+                    ) {
+                        let reason = error.into_opaque(context.access())?;
+                        cap.reject()
+                            .call(&JsValue::undefined(), &[reason], context.access())?;
+                    }
+
+                    // g. Return unused.
+                    Ok(JsValue::undefined())
+                },
+                (module.clone(), cap.clone(), on_rejected.clone()),
+            ),
+        )
+        .build()?;
+
+        // 8. Perform PerformPromiseThen(loadPromise, linkAndEvaluate, onRejected).
+        if let Err(error) = Promise::perform_promise_then(
+            &load,
+            Some(link_evaluate),
+            Some(on_rejected),
+            None,
+            context,
+        ) {
+            let reason = error.into_opaque(context.access())?;
+            cap.reject()
+                .call(&JsValue::undefined(), &[reason], context.access())?;
+        }
+
+        // 9. Return unused.
+        Ok(())
+    })
 }
 
 /// `ImportCall` implements the Opcode Operation for `Opcode::ImportCall`

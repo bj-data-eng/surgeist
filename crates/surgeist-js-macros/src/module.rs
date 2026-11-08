@@ -123,7 +123,7 @@ fn type_item(
     Ok((
         name.clone(),
         quote! {
-            m.export_named_class::< #path >(&surgeist_js::js_string!(#name), context.access())?;
+            m.export_named_class::< #path >(&surgeist_js::js_string!(#name), context.reborrow())?;
         },
         quote! {
             if let Some(ref realm) = realm {
@@ -167,6 +167,7 @@ fn module_impl_impl(_args: ModuleArguments, mut mod_: ItemMod) -> SpannedResult<
     let mut global_fn = quote! {};
     let mut module_exports = quote! {};
     let mut generics = vec![];
+    let mut exports_class = false;
 
     for item in mod_.content.map_or_else(Vec::new, |c| c.1).as_mut_slice() {
         // Check for skip attributes.
@@ -213,7 +214,10 @@ fn module_impl_impl(_args: ModuleArguments, mut mod_: ItemMod) -> SpannedResult<
                 };
                 continue;
             }
-            Item::Type(ty) => type_item(ty, class_renaming),
+            Item::Type(ty) => {
+                exports_class = true;
+                type_item(ty, class_renaming)
+            }
             _ => Err((
                 item.span(),
                 "Invalid boa_module top-level item.".to_string(),
@@ -256,6 +260,11 @@ fn module_impl_impl(_args: ModuleArguments, mut mod_: ItemMod) -> SpannedResult<
     } else {
         quote! { mut context }
     };
+    let initializer_context = if exports_class {
+        quote! { mut context }
+    } else {
+        quote! { context }
+    };
 
     let tokens = quote! {
         #(#attrs)*
@@ -277,7 +286,7 @@ fn module_impl_impl(_args: ModuleArguments, mut mod_: ItemMod) -> SpannedResult<
                 surgeist_js::Module::synthetic(
                     &[ #module_exports ],
                     surgeist_js::module::SyntheticModuleInitializer::from_fn_with_captures(
-                        |m, (), context| {
+                        |m, (), #initializer_context| {
                             #module_fn
                             Ok(())
                         },

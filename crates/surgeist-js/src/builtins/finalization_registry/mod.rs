@@ -57,6 +57,7 @@ impl FinalizationRegistryCleanupJob {
     fn cleanup_job(&self) -> NativeJob {
         let registry = self.registry.clone();
         NativeJob::new(move |context| {
+            let context = context.into_owner();
             if let Some(registry) = registry.upgrade().expect("registry heap is available") {
                 let registry = registry.downcast().expect("finalization registry");
                 FinalizationRegistry::cleanup(&registry, context)?;

@@ -1,8 +1,4 @@
-use std::{
-    cell::{Cell, RefCell},
-    pin::pin,
-    rc::Rc,
-};
+use std::{cell::Cell, pin::pin, rc::Rc};
 
 use futures_lite::future;
 
@@ -24,20 +20,24 @@ fn test_async_job_not_blocking_event_loop() {
     run_test_actions_with(
         [TestAction::inspect_context_async(async move |ctx| {
             let executor = ctx.downcast_job_executor::<SimpleJobExecutor>().unwrap();
-            let ctx = &RefCell::new(ctx);
+            let ctx = &ctx.host_access();
 
             let mut event_loop = pin!(future::poll_once(executor.run_jobs_async(ctx)));
 
             // There are no jobs in our queue. Push
             // an async job that will consistently yield to the executor.
-            ctx.borrow_mut().enqueue_job(
-                NativeAsyncJob::new(async |_| {
-                    loop {
-                        future::yield_now().await;
-                    }
-                })
-                .into(),
-            );
+            ctx.with(|mut access| {
+                access.enqueue_job(
+                    NativeAsyncJob::new(async |_| {
+                        loop {
+                            future::yield_now().await;
+                        }
+                    })
+                    .into(),
+                );
+                Ok(())
+            })
+            .unwrap();
 
             // Then, start the event loop
             assert!(event_loop.as_mut().await.is_none());
@@ -47,17 +47,21 @@ fn test_async_job_not_blocking_event_loop() {
                 let checker = checker.clone();
                 // At this point, the event loop should have yielded again to the async executor.
                 // Thus, enqueue a generic job that should resolve in the next loop.
-                let realm = ctx.borrow().realm().clone();
-                ctx.borrow_mut().enqueue_job(
-                    GenericJob::new(
-                        move |_| {
-                            checker.set(true);
-                            Ok(JsValue::undefined())
-                        },
-                        realm,
-                    )
-                    .into(),
-                );
+                let realm = ctx.with(|access| Ok(access.realm().clone())).unwrap();
+                ctx.with(|mut access| {
+                    access.enqueue_job(
+                        GenericJob::new(
+                            move |_| {
+                                checker.set(true);
+                                Ok(JsValue::undefined())
+                            },
+                            realm,
+                        )
+                        .into(),
+                    );
+                    Ok(())
+                })
+                .unwrap();
             }
 
             // Next iteration of the event loop

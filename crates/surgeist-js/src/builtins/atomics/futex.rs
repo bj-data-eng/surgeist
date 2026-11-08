@@ -267,15 +267,20 @@ pub(super) fn wait_async<E: Element + PartialEq>(
                 // job removes the registration even if the Promise is still live.
                 let mut pending = pending;
                 if let Ok(result) = receiver.await {
-                    functions.resolve.call(
-                        &JsValue::undefined(),
-                        &[result.to_js_string().into()],
-                        context.borrow_mut().access(),
-                    )?;
+                    context.with(|access| {
+                        functions.resolve.call(
+                            &JsValue::undefined(),
+                            &[result.to_js_string().into()],
+                            access,
+                        )
+                    })?;
                 }
 
                 if let Some(token) = pending.timeout.take() {
-                    token.cancel(context.borrow_mut().access());
+                    context.with(|access| {
+                        token.cancel(access);
+                        Ok(())
+                    })?;
                 }
 
                 Ok(JsValue::undefined())

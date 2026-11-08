@@ -521,7 +521,7 @@ impl BuiltInFunctionObject {
 
         context
             .host_hooks()
-            .ensure_can_compile_strings(current_realm, &param_list, &body, false, context)
+            .ensure_can_compile_strings(current_realm, &param_list, &body, false, context.access())
             .map_err(|error| context.runtime().admit_error(error))?;
 
         let mut interner = Interner::new();

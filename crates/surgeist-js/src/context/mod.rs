@@ -717,13 +717,13 @@ impl Context {
     /// Enqueues a [`Job`] on the [`JobExecutor`].
     #[inline]
     pub fn enqueue_job(&mut self, job: Job) {
-        self.job_executor().enqueue_job(job, self);
+        self.job_executor().enqueue_job(job, self.access());
     }
 
     /// Runs all the jobs with the provided job executor.
     #[inline]
     pub fn run_jobs(&mut self) -> JsResult<()> {
-        self.job_executor().run_jobs(self)
+        self.job_executor().run_jobs(self.access())
     }
 
     /// Abstract operation [`ClearKeptObjects`][clear].
@@ -797,6 +797,10 @@ impl Context {
     #[must_use]
     pub fn clock(&self) -> &dyn Clock {
         self.clock.as_ref()
+    }
+
+    pub(crate) fn clock_handle(&self) -> Rc<dyn Clock> {
+        self.clock.clone()
     }
 
     /// Gets the current job executor, or `None` if the current job executor
@@ -1528,12 +1532,16 @@ mod runtime_tests {
             _: &[JsString],
             _: &JsString,
             _: bool,
-            _: &mut Context,
+            _: crate::ContextAccess<'_>,
         ) -> JsResult<()> {
             Err(self.0.clone())
         }
 
-        fn ensure_can_add_private_element(&self, _: &JsObject, _: &mut Context) -> JsResult<()> {
+        fn ensure_can_add_private_element(
+            &self,
+            _: &JsObject,
+            _: crate::ContextAccess<'_>,
+        ) -> JsResult<()> {
             Err(self.0.clone())
         }
     }

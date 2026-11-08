@@ -445,7 +445,7 @@ fn module_harness(case: ModuleCase) -> ModuleHarness {
             let dependency = Module::synthetic(
                 &[js_string!("offset")],
                 SyntheticModuleInitializer::from_fn_with_captures(
-                    |module, (), context| {
+                    |module, (), mut context| {
                         context.eval(Source::from_bytes("dependencyRuns += 1;"))?;
                         module.set_export(&js_string!("offset"), 36.into())
                     },

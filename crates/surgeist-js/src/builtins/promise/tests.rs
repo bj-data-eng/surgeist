@@ -46,12 +46,12 @@ fn every_reaction_survives_collection_during_job_enqueue() {
     struct CollectingExecutor(Rc<SimpleJobExecutor>);
 
     impl JobExecutor for CollectingExecutor {
-        fn enqueue_job(self: Rc<Self>, job: Job, context: &mut Context) {
+        fn enqueue_job(self: Rc<Self>, job: Job, context: crate::ContextAccess<'_>) {
             context.runtime().collect().unwrap();
             self.0.clone().enqueue_job(job, context);
         }
 
-        fn run_jobs(self: Rc<Self>, context: &mut Context) -> JsResult<()> {
+        fn run_jobs(self: Rc<Self>, context: crate::ContextAccess<'_>) -> JsResult<()> {
             self.0.clone().run_jobs(context)
         }
     }
@@ -140,7 +140,11 @@ fn context_with_foreign_job_callback_data(invalid_at: usize) -> crate::Context {
     }
 
     impl HostHooks for Hooks {
-        fn make_job_callback(&self, callback: JsFunction, _: &mut Context) -> JobCallback {
+        fn make_job_callback(
+            &self,
+            callback: JsFunction,
+            _: crate::ContextAccess<'_>,
+        ) -> JobCallback {
             let call = self.call_count.get();
             self.call_count.set(call + 1);
             if call == self.invalid_at {

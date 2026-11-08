@@ -54,8 +54,7 @@ fn retained_stop_prevents_async_error_materialization_from_mutating_saved_stack(
     let promise = JsPromise::from_async_fn(
         async move |context| {
             let first = context
-                .borrow_mut()
-                .eval(Source::from_bytes("0"))
+                .with(|mut access| access.eval(Source::from_bytes("0")))
                 .unwrap_err();
             assert_eq!(
                 first.as_engine(),

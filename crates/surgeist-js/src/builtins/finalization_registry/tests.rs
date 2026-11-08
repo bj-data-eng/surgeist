@@ -169,7 +169,11 @@ fn cleanup_retains_job_callback_host_data() {
     struct Hooks;
 
     impl HostHooks for Hooks {
-        fn make_job_callback(&self, callback: JsFunction, context: &mut Context) -> JobCallback {
+        fn make_job_callback(
+            &self,
+            callback: JsFunction,
+            context: crate::ContextAccess<'_>,
+        ) -> JobCallback {
             JobCallback::new(callback, HostData(JsObject::default(context.intrinsics())))
         }
 
@@ -178,11 +182,11 @@ fn cleanup_retains_job_callback_host_data() {
             job: &JobCallback,
             this: &JsValue,
             args: &[JsValue],
-            context: &mut Context,
+            context: crate::ContextAccess<'_>,
         ) -> JsResult<JsValue> {
             let host = job.host_defined().downcast_ref::<HostData>().unwrap();
             assert!(host.0.is_ordinary());
-            job.callback().call(this, args, context.access())
+            job.callback().call(this, args, context)
         }
     }
 

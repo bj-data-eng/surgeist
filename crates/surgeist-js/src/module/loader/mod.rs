@@ -10,8 +10,8 @@ use surgeist_js_parser::Source;
 
 use crate::script::Script;
 use crate::{
-    Context, JsError, JsNativeError, JsResult, JsString, js_error, js_string, object::JsObject,
-    realm::Realm, vm::ActiveRunnable,
+    ContextAccess, HostContext, JsError, JsNativeError, JsResult, JsString, js_error, js_string,
+    object::JsObject, realm::Realm, vm::ActiveRunnable,
 };
 
 use super::Module;
@@ -42,7 +42,7 @@ pub mod embedded;
 ///         Some(Path::new("/base")),
 ///         &js_string!("../a.js"),
 ///         Some(Path::new("/base/hello/ref.js")),
-///         &mut Context::default()
+///         Context::default().access()
 ///     ),
 ///     Ok("/base/a.js".into())
 /// );
@@ -52,7 +52,7 @@ pub fn resolve_module_specifier(
     base: Option<&Path>,
     specifier: &JsString,
     referrer: Option<&Path>,
-    _context: &mut Context,
+    _context: ContextAccess<'_>,
 ) -> JsResult<PathBuf> {
     let base_path = base.map_or_else(|| PathBuf::from(""), PathBuf::from);
     let referrer_dir = referrer.and_then(|p| p.parent());
@@ -166,6 +166,10 @@ pub trait ModuleLoader: Any {
     ///   `FinishLoadingImportedModule`. (can be ignored)
     /// - Returned modules and errors must belong to the supplied context's runtime.
     ///
+    /// The context remains reserved while this future is pending. Use
+    /// [`HostContext::with`] for each synchronous engine operation, releasing the
+    /// lent capability before suspending.
+    ///
     /// [spec]: https://tc39.es/ecma262/#sec-HostLoadImportedModule
     /// [finish]: https://tc39.es/ecma262/#sec-FinishLoadingImportedModule
     #[allow(async_fn_in_trait, reason = "all our APIs are single-threaded")]
@@ -173,7 +177,7 @@ pub trait ModuleLoader: Any {
         self: Rc<Self>,
         referrer: Referrer,
         request: ModuleRequest,
-        context: &RefCell<&mut Context>,
+        context: &HostContext<'_>,
     ) -> JsResult<Module>;
 
     /// Host hooks [`HostGetImportMetaProperties ( moduleRecord )`][meta] and
@@ -193,7 +197,7 @@ pub trait ModuleLoader: Any {
         self: Rc<Self>,
         import_meta: &JsObject,
         module: &Module,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) {
     }
 }
@@ -209,7 +213,7 @@ impl ModuleLoader for IdleModuleLoader {
         self: Rc<Self>,
         _referrer: Referrer,
         _request: ModuleRequest,
-        _context: &RefCell<&mut Context>,
+        _context: &HostContext<'_>,
     ) -> impl Future<Output = JsResult<Module>> {
         std::future::ready(Err(JsNativeError::typ()
             .with_message("module resolution is disabled for this context")
@@ -267,21 +271,21 @@ impl ModuleLoader for MapModuleLoader {
         self: Rc<Self>,
         referrer: Referrer,
         request: ModuleRequest,
-        context: &RefCell<&mut Context>,
+        context: &HostContext<'_>,
     ) -> impl Future<Output = JsResult<Module>> {
-        let result = (|| {
+        let result = context.with(|mut context| {
             let path = resolve_module_specifier(
                 None,
                 request.specifier(),
                 referrer.path(),
-                &mut context.borrow_mut(),
+                context.reborrow(),
             )?;
             if let Some(module) = self.inner.borrow().get(&path) {
                 Ok(module.clone())
             } else {
                 Err(js_error!(TypeError: "Module could not be found."))
             }
-        })();
+        });
 
         async { result }
     }
@@ -381,15 +385,15 @@ impl ModuleLoader for SimpleModuleLoader {
         self: Rc<Self>,
         referrer: Referrer,
         request: ModuleRequest,
-        context: &RefCell<&mut Context>,
+        context: &HostContext<'_>,
     ) -> impl Future<Output = JsResult<Module>> {
-        let result = (|| {
+        let result = context.with(|mut context| {
             let short_path = request.specifier().to_std_string_escaped();
             let path = resolve_module_specifier(
                 Some(&self.root),
                 request.specifier(),
                 referrer.path(),
-                &mut context.borrow_mut(),
+                context.reborrow(),
             )?;
 
             if let Some(module) = self.get_with_attributes(&path, request.attributes()) {
@@ -439,7 +443,7 @@ impl ModuleLoader for SimpleModuleLoader {
                                 .with_cause(JsError::from_rust(err))
                         })?;
                         let json_string = js_string!(json_content.as_str());
-                        Module::parse_json(json_string, context.borrow_mut().access())
+                        Module::parse_json(json_string, context.reborrow())
                             .map_err(|error| parse_error("JSON module", error))?
                     }
                     other => {
@@ -458,13 +462,13 @@ impl ModuleLoader for SimpleModuleLoader {
                         .with_message(format!("could not open file `{short_path}`"))
                         .with_cause(JsError::from_rust(err))
                 })?;
-                Module::parse(source, None, context.borrow_mut().access())
+                Module::parse(source, None, context.reborrow())
                     .map_err(|error| parse_error("module", error))?
             };
 
             self.insert_with_attributes(path, request.attributes(), module.clone());
             Ok(module)
-        })();
+        });
 
         async { result }
     }
@@ -477,6 +481,7 @@ mod tests {
     use test_case::test_case;
 
     use super::*;
+    use crate::Context;
 
     // Tests on Windows and Linux are different because of the path separator and the definition
     // of absolute paths.
@@ -509,7 +514,7 @@ mod tests {
             Some(&base),
             &spec,
             ref_path.as_deref(),
-            &mut context,
+            context.access(),
         );
         assert_eq!(actual.map_err(|_| ()), expected.map(PathBuf::from));
     }
@@ -542,7 +547,7 @@ mod tests {
             None,
             &spec,
             ref_path.as_deref(),
-            &mut context,
+            context.access(),
         );
         assert_eq!(actual.map_err(|_| ()), expected.map(PathBuf::from));
     }
@@ -576,7 +581,7 @@ mod tests {
             Some(&base),
             &spec,
             ref_path.as_deref(),
-            &mut context,
+            context.access(),
         );
         assert_eq!(actual.map_err(|_| ()), expected.map(PathBuf::from));
     }

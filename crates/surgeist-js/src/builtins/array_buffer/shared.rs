@@ -551,7 +551,7 @@ pub(crate) fn create_shared_byte_data_block(
     size: u64,
     context: &mut Context,
 ) -> JsResult<SharedByteBlock> {
-    if size > context.host_hooks().max_buffer_size(context) {
+    if size > context.host_hooks().max_buffer_size(context.access()) {
         return Err(JsNativeError::range()
             .with_message(
                 "cannot allocate a buffer that exceeds the maximum buffer size".to_string(),

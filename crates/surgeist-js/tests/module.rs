@@ -1,12 +1,11 @@
 #![allow(unused_crate_dependencies, missing_docs)]
 
-use std::cell::RefCell;
 use std::future;
 use std::rc::Rc;
 
 use surgeist_js::builtins::promise::PromiseState;
 use surgeist_js::module::{ModuleLoader, Referrer};
-use surgeist_js::{Context, JsResult, JsString, Module, Source, js_string};
+use surgeist_js::{Context, HostContext, JsResult, JsString, Module, Source, js_string};
 
 #[test]
 fn dropping_a_parsed_module_preserves_shared_scope_identities() {
@@ -312,14 +311,12 @@ fn test_json_module_from_str() {
             self: Rc<Self>,
             _referrer: Referrer,
             request: surgeist_js::module::ModuleRequest,
-            context: &RefCell<&mut Context>,
+            context: &HostContext<'_>,
         ) -> impl Future<Output = JsResult<Module>> {
             assert_eq!(request.specifier().to_std_string_escaped(), "basic");
             let src = self.0.clone();
 
-            future::ready(Ok(
-                Module::parse_json(src, context.borrow_mut().access()).unwrap()
-            ))
+            future::ready(context.with(|access| Ok(Module::parse_json(src, access).unwrap())))
         }
     }
 
@@ -373,7 +370,7 @@ fn test_json_module_dynamic_import() {
             self: Rc<Self>,
             _referrer: Referrer,
             request: surgeist_js::module::ModuleRequest,
-            context: &RefCell<&mut Context>,
+            context: &HostContext<'_>,
         ) -> impl Future<Output = JsResult<Module>> {
             assert_eq!(request.specifier().to_std_string_escaped(), "basic");
 
@@ -384,9 +381,7 @@ fn test_json_module_dynamic_import() {
             assert_eq!(type_attr.to_std_string_escaped(), "json");
 
             let src = self.0.clone();
-            future::ready(Ok(
-                Module::parse_json(src, context.borrow_mut().access()).unwrap()
-            ))
+            future::ready(context.with(|access| Ok(Module::parse_json(src, access).unwrap())))
         }
     }
 
@@ -458,7 +453,7 @@ fn test_json_module_static_import_with_attributes() {
             self: Rc<Self>,
             _referrer: Referrer,
             request: surgeist_js::module::ModuleRequest,
-            context: &RefCell<&mut Context>,
+            context: &HostContext<'_>,
         ) -> impl Future<Output = JsResult<Module>> {
             assert_eq!(request.specifier().to_std_string_escaped(), "basic");
 
@@ -468,9 +463,7 @@ fn test_json_module_static_import_with_attributes() {
             assert_eq!(type_attr.to_std_string_escaped(), "json");
 
             let src = self.0.clone();
-            future::ready(Ok(
-                Module::parse_json(src, context.borrow_mut().access()).unwrap()
-            ))
+            future::ready(context.with(|access| Ok(Module::parse_json(src, access).unwrap())))
         }
     }
 
@@ -522,7 +515,7 @@ fn test_json_module_reexport_with_attributes() {
             self: Rc<Self>,
             _referrer: Referrer,
             request: surgeist_js::module::ModuleRequest,
-            context: &RefCell<&mut Context>,
+            context: &HostContext<'_>,
         ) -> impl Future<Output = JsResult<Module>> {
             assert_eq!(request.specifier().to_std_string_escaped(), "basic");
 
@@ -532,9 +525,7 @@ fn test_json_module_reexport_with_attributes() {
             assert_eq!(type_attr.to_std_string_escaped(), "json");
 
             let src = self.0.clone();
-            future::ready(Ok(
-                Module::parse_json(src, context.borrow_mut().access()).unwrap()
-            ))
+            future::ready(context.with(|access| Ok(Module::parse_json(src, access).unwrap())))
         }
     }
 
@@ -579,7 +570,7 @@ fn test_dynamic_import_invalid_options() {
             self: Rc<Self>,
             _referrer: Referrer,
             _request: surgeist_js::module::ModuleRequest,
-            _context: &RefCell<&mut Context>,
+            _context: &HostContext<'_>,
         ) -> JsResult<Module> {
             panic!("Module loading should not be triggered for invalid options");
         }
@@ -633,7 +624,7 @@ fn test_dynamic_import_non_string_attribute_value() {
             self: Rc<Self>,
             _referrer: Referrer,
             _request: surgeist_js::module::ModuleRequest,
-            _context: &RefCell<&mut Context>,
+            _context: &HostContext<'_>,
         ) -> JsResult<Module> {
             panic!("Module loading should not be triggered for invalid attribute values");
         }
@@ -691,7 +682,7 @@ fn test_dynamic_import_symbol_key() {
             self: Rc<Self>,
             _referrer: Referrer,
             request: surgeist_js::module::ModuleRequest,
-            context: &RefCell<&mut Context>,
+            context: &HostContext<'_>,
         ) -> impl Future<Output = JsResult<Module>> {
             assert_eq!(request.specifier().to_std_string_escaped(), "basic");
 
@@ -699,9 +690,7 @@ fn test_dynamic_import_symbol_key() {
             assert!(request.get_attribute("type").is_none());
 
             let src = self.0.clone();
-            future::ready(Ok(
-                Module::parse_json(src, context.borrow_mut().access()).unwrap()
-            ))
+            future::ready(context.with(|access| Ok(Module::parse_json(src, access).unwrap())))
         }
     }
 
@@ -809,7 +798,7 @@ fn a_mixed_context_graph_resolves_named_and_namespace_exports_with_attributes() 
             self: Rc<Self>,
             _referrer: Referrer,
             request: surgeist_js::module::ModuleRequest,
-            _context: &RefCell<&mut Context>,
+            _context: &HostContext<'_>,
         ) -> impl Future<Output = JsResult<Module>> {
             assert_eq!(request.specifier(), &js_string!("peer-dependency"));
             let module = match request

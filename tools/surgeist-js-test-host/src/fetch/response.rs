@@ -478,8 +478,9 @@ impl JsResponse {
         let body = self.body.clone();
         JsPromise::from_async_fn(
             async move |context| {
-                JsUint8Array::from_iter(body.iter().copied(), context.borrow_mut().access())
-                    .map(Into::into)
+                context.with(|access| {
+                    JsUint8Array::from_iter(body.iter().copied(), access).map(Into::into)
+                })
             },
             context.reborrow(),
         )
@@ -504,7 +505,7 @@ impl JsResponse {
                 let json = serde_json::from_str::<serde_json::Value>(&json_string)
                     .map_err(|e| JsNativeError::syntax().with_message(e.to_string()))?;
 
-                JsValue::from_json(&json, context.borrow_mut().access())
+                context.with(|access| JsValue::from_json(&json, access))
             },
             context.reborrow(),
         )

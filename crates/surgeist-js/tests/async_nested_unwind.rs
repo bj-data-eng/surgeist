@@ -1,7 +1,6 @@
 #![allow(unused_crate_dependencies)]
 
 use std::{
-    cell::RefCell,
     future::Future,
     panic::{AssertUnwindSafe, catch_unwind},
     pin::Pin,
@@ -40,16 +39,16 @@ fn nested_guest_panic_in_async_job_restores_frames_and_realm_before_reentry() {
     let expected_realm = selected_realm.clone();
     let job = NativeAsyncJob::with_realm(
         async move |holder| {
-            assert_eq!(holder.borrow().realm(), &expected_realm);
-            holder
-                .borrow_mut()
-                .eval(Source::from_bytes("panicWrapper()"))
+            holder.with(|mut access| {
+                assert_eq!(access.realm(), &expected_realm);
+                access.eval(Source::from_bytes("panicWrapper()"))
+            })
         },
         selected_realm.clone(),
     );
 
     let panic = {
-        let holder = RefCell::new(&mut context);
+        let holder = context.host_access();
         let mut future = job.call(&holder);
         let mut task_context = TaskContext::from_waker(Waker::noop());
         catch_unwind(AssertUnwindSafe(|| {

@@ -80,13 +80,13 @@ fn discarded_async_job_revokes_its_pending_timeout() {
     struct KeepTimeout(RefCell<Option<TimeoutJob>>);
 
     impl JobExecutor for KeepTimeout {
-        fn enqueue_job(self: Rc<Self>, job: Job, _: &mut Context) {
+        fn enqueue_job(self: Rc<Self>, job: Job, _: crate::ContextAccess<'_>) {
             if let Job::TimeoutJob(timeout) = job {
                 self.0.replace(Some(timeout));
             }
         }
 
-        fn run_jobs(self: Rc<Self>, _: &mut Context) -> JsResult<()> {
+        fn run_jobs(self: Rc<Self>, _: crate::ContextAccess<'_>) -> JsResult<()> {
             Ok(())
         }
     }

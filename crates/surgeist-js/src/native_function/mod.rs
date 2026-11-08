@@ -3,7 +3,7 @@
 //! [`NativeFunction`] is the main type of this module, providing APIs to create native callables
 //! from native Rust functions and closures.
 
-use std::{any::Any, cell::RefCell, rc::Rc};
+use std::{any::Any, rc::Rc};
 
 use surgeist_js_gc::heap::{AccessError, EdgeVisitor, Trace as HeapTrace};
 use surgeist_js_string::JsString;
@@ -12,7 +12,7 @@ use crate::job::BoxedFuture;
 use crate::object::internal_methods::InternalMethodCallContext;
 use crate::value::JsVariant;
 use crate::{
-    Context, ContextAccess, JsNativeError, JsObject, JsResult, JsValue,
+    Context, ContextAccess, HostContext, JsNativeError, JsObject, JsResult, JsValue,
     builtins::{OrdinaryObject, function::ConstructorKind},
     context::intrinsics::StandardConstructors,
     object::{
@@ -54,15 +54,11 @@ pub(crate) type BuiltinFunctionPointer =
 
 /// A native callback that returns a future borrowing its invocation inputs.
 pub type NativeAsyncFunctionPointer =
-    for<'a, 'ctx> fn(&'a JsValue, &'a [JsValue], &'a RefCell<&'ctx mut Context>) -> BoxedFuture<'a>;
+    for<'a, 'ctx> fn(&'a JsValue, &'a [JsValue], &'a HostContext<'ctx>) -> BoxedFuture<'a>;
 
 /// A native asynchronous callback whose stored state is passed explicitly.
-pub type NativeAsyncFunctionWithCaptures<T> = for<'a, 'ctx> fn(
-    &'a JsValue,
-    &'a [JsValue],
-    &'a T,
-    &'a RefCell<&'ctx mut Context>,
-) -> BoxedFuture<'a>;
+pub type NativeAsyncFunctionWithCaptures<T> =
+    for<'a, 'ctx> fn(&'a JsValue, &'a [JsValue], &'a T, &'a HostContext<'ctx>) -> BoxedFuture<'a>;
 
 trait TraceableClosure: HeapTrace {
     fn root_captures(&self) -> Rc<dyn Any>;
@@ -293,10 +289,10 @@ impl NativeFunction {
     /// # Examples
     ///
     /// ```
-    /// # use std::{any::Any, cell::RefCell, rc::Rc};
+    /// # use std::{any::Any, rc::Rc};
     /// # use surgeist_js::{
     /// #   JsValue,
-    /// #   Context,
+    /// #   Context, HostContext,
     /// #   JsResult,
     /// #   JsSymbol,
     /// #   NativeFunction,
@@ -307,11 +303,11 @@ impl NativeFunction {
     /// async fn test(
     ///     _this: &JsValue,
     ///     args: &[JsValue],
-    ///     context: &RefCell<&mut Context>,
+    ///     context: &HostContext<'_>,
     /// ) -> JsResult<JsValue> {
     ///     let arg = args.get_or_undefined(0).clone();
     ///     std::future::ready(()).await;
-    ///     let value = arg.to_u32(context.borrow_mut().access())?;
+    ///     let value = context.with(|access| arg.to_u32(access))?;
     ///     Ok(JsValue::from(value * 2))
     /// }
     /// let callback = NativeFunction::from_async_fn(

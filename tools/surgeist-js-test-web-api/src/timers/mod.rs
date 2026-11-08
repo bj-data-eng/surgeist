@@ -103,8 +103,7 @@ pub fn set_timeout(
     let rest = rest.to_vec();
 
     let job = TimeoutJob::new(
-        NativeJob::new(move |context| {
-            let mut context = context.access();
+        NativeJob::new(move |mut context| {
             let result = function_ref.call(&JsValue::undefined(), &rest, context.reborrow());
             let state = IntervalInnerState::from_context(&mut context);
             state.active_map.remove(&id);
@@ -114,8 +113,7 @@ pub fn set_timeout(
     );
     let token = job.cancellation_token().clone();
 
-    token.push_callback(move |context| {
-        let mut context = context.access();
+    token.push_callback(move |mut context| {
         let state = IntervalInnerState::from_context(&mut context);
         state.active_map.remove(&id);
     });
@@ -159,15 +157,12 @@ pub fn set_interval(
     let rest = rest.to_vec();
 
     let job = IntervalJob::new(
-        NativeJobFn::new(move |context| {
-            function_ref.call(&JsValue::undefined(), &rest, context.access())
-        }),
+        NativeJobFn::new(move |context| function_ref.call(&JsValue::undefined(), &rest, context)),
         delay,
     );
     let token = job.cancellation_token().clone();
 
-    token.push_callback(move |context| {
-        let mut context = context.access();
+    token.push_callback(move |mut context| {
         let state = IntervalInnerState::from_context(&mut context);
         state.active_map.remove(&id);
     });

@@ -1,10 +1,10 @@
 //! A Rust API wrapper for Boa's promise Builtin ECMAScript Object
 
 use super::{JsArray, JsFunction};
-use crate::ContextAccess;
 use crate::value::TryIntoJs;
+use crate::{ContextAccess, HostContext};
 use crate::{
-    Context, JsArgs, JsError, JsExpect, JsNativeError, JsResult, JsValue, NativeFunction,
+    JsArgs, JsError, JsExpect, JsNativeError, JsResult, JsValue, NativeFunction,
     builtins::{
         Promise,
         promise::{PromiseState, ResolvingFunctions},
@@ -288,13 +288,12 @@ impl JsPromise {
     ///
     /// ```
     /// use std::error::Error;
-    /// # use std::cell::RefCell;
     /// # use surgeist_js::{
     /// #    object::builtins::JsPromise,
     /// #    builtins::promise::PromiseState,
-    /// #    Context, JsResult, JsValue
+    /// #    Context, HostContext, JsResult, JsValue
     /// # };
-    /// async fn f(_: &RefCell<&mut Context>) -> JsResult<JsValue> {
+    /// async fn f(_: &HostContext<'_>) -> JsResult<JsValue> {
     ///     Ok(JsValue::null())
     /// }
     /// let context = &mut Context::default();
@@ -309,7 +308,7 @@ impl JsPromise {
     /// [async_fn]: crate::native_function::NativeFunction::from_async_fn
     pub fn from_async_fn<F>(f: F, context: ContextAccess<'_>) -> Self
     where
-        F: AsyncFnOnce(&RefCell<&mut Context>) -> JsResult<JsValue> + 'static,
+        F: AsyncFnOnce(&HostContext<'_>) -> JsResult<JsValue> + 'static,
     {
         let context = context.into_owner();
         let (promise, resolvers) = Self::new_pending(context.access());
@@ -320,21 +319,26 @@ impl JsPromise {
                 async move |context| {
                     let result = f(context).await;
 
-                    let context = &mut context.borrow_mut();
-                    context.check_execution_stop()?;
-                    match context.runtime().admit_callback_result(result) {
-                        Ok(v) => {
-                            resolvers
-                                .resolve
-                                .call(&JsValue::undefined(), &[v], context.access())
+                    context.with(|access| {
+                        let context = access.into_owner();
+                        context.check_execution_stop()?;
+                        match context.runtime().admit_callback_result(result) {
+                            Ok(v) => resolvers.resolve.call(
+                                &JsValue::undefined(),
+                                &[v],
+                                context.access(),
+                            ),
+                            Err(e) => {
+                                if !e.is_catchable() {
+                                    return Err(e);
+                                }
+                                let e = e.into_opaque(context.access())?;
+                                resolvers
+                                    .reject
+                                    .call(&JsValue::undefined(), &[e], context.access())
+                            }
                         }
-                        Err(e) => {
-                            let e = e.into_opaque(context.access())?;
-                            resolvers
-                                .reject
-                                .call(&JsValue::undefined(), &[e], context.access())
-                        }
-                    }
+                    })
                 },
                 realm,
             )
@@ -1181,11 +1185,11 @@ impl JsPromise {
     /// rejected (e.g. with a [`surgeist_js::job::JobExecutor`] that does
     /// not prioritize properly). If you need more control over how
     /// the promise handles timing out, consider using
-    /// [`Context::run_jobs`] directly.
+    /// [`crate::Context::run_jobs`] directly.
     ///
     /// Returns [`Result::Ok`] if the promise resolved, or [`Result::Err`]
     /// if the promise was rejected. If the promise was already resolved,
-    /// [`Context::run_jobs`] is guaranteed to not be executed.
+    /// [`crate::Context::run_jobs`] is guaranteed to not be executed.
     ///
     /// # Examples
     ///
@@ -1266,7 +1270,7 @@ impl JsPromise {
         &self,
         continuation: crate::native_function::NativeCoroutine,
         reject: &JsFunction,
-        context: &mut Context,
+        context: &mut crate::Context,
     ) -> JsResult<()> {
         use crate::{
             builtins::generator::{GeneratorContext, StoredGeneratorContext},

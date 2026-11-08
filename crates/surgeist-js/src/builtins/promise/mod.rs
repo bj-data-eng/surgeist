@@ -2370,7 +2370,7 @@ impl Promise {
                     //   c. Perform HostEnqueuePromiseJob(fulfillJob.[[Job]], fulfillJob.[[Realm]]).
                     context
                         .job_executor()
-                        .enqueue_job(fulfill_job.into(), context);
+                        .enqueue_job(fulfill_job.into(), context.access());
                 }
 
                 // 11. Else,
@@ -2382,7 +2382,7 @@ impl Promise {
                         context.host_hooks().promise_rejection_tracker(
                             promise,
                             OperationType::Handle,
-                            context,
+                            context.access(),
                         );
                     }
 
@@ -2392,7 +2392,7 @@ impl Promise {
                     //   e. Perform HostEnqueuePromiseJob(rejectJob.[[Job]], rejectJob.[[Realm]]).
                     context
                         .job_executor()
-                        .enqueue_job(reject_job.into(), context);
+                        .enqueue_job(reject_job.into(), context.access());
                 }
             }
 
@@ -2476,7 +2476,9 @@ impl Promise {
                 let job = new_promise_reaction_job(reaction, argument.clone(), context);
 
                 // b. Perform HostEnqueuePromiseJob(job.[[Job]], job.[[Realm]]).
-                context.job_executor().enqueue_job(job.into(), context);
+                context
+                    .job_executor()
+                    .enqueue_job(job.into(), context.access());
             }
             // 2. Return unused.
         }
@@ -2565,7 +2567,7 @@ impl Promise {
                 context.host_hooks().promise_rejection_tracker(
                     promise,
                     OperationType::Reject,
-                    context,
+                    context.access(),
                 );
             }
 
@@ -2666,7 +2668,9 @@ impl Promise {
                                 );
 
                                 // 15. Perform HostEnqueuePromiseJob(job.[[Job]], job.[[Realm]]).
-                                context.job_executor().enqueue_job(job.into(), context);
+                                context
+                                    .job_executor()
+                                    .enqueue_job(job.into(), context.access());
                             })
                             .map_err(|error| {
                                 JsNativeError::typ().with_message(error.to_string()).into()
@@ -2754,7 +2758,8 @@ fn new_promise_reaction_job(
         .unwrap_or_else(|| context.realm().clone());
 
     // 1. Let job be a new Job Abstract Closure with no parameters that captures reaction and argument and performs the following steps when called:
-    let job = move |context: &mut Context| {
+    let job = move |context: crate::ContextAccess<'_>| {
+        let context = context.into_owner();
         //   a. Let promiseCapability be reaction.[[Capability]].
         let promise_capability = reaction.promise_capability.take();
         //   b. Let type be reaction.[[Type]].
@@ -2839,7 +2844,8 @@ fn new_promise_resolve_thenable_job(
         .unwrap_or_else(|_| context.realm().clone());
 
     // 1. Let job be a new Job Abstract Closure with no parameters that captures promiseToResolve, thenable, and then and performs the following steps when called:
-    let job = move |context: &mut Context| {
+    let job = move |context: crate::ContextAccess<'_>| {
+        let context = context.into_owner();
         //    a. Let resolvingFunctions be CreateResolvingFunctions(promiseToResolve).
         let resolving_functions = Promise::create_resolving_functions(&promise_to_resolve, context);
 

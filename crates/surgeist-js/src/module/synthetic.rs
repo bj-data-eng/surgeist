@@ -24,7 +24,7 @@ use crate::{
     vm::{ActiveRunnable, CallFrame, CodeBlock, source_info::SourcePath},
 };
 
-type InitializerFn<T> = fn(&SyntheticModule, &T, &mut Context) -> JsResult<()>;
+type InitializerFn<T> = fn(&SyntheticModule, &T, ContextAccess<'_>) -> JsResult<()>;
 
 trait Initializer {
     fn store(&self) -> Box<dyn StoredInitializer>;
@@ -57,7 +57,7 @@ impl<T: NativeCapture> Initializer for Callback<T> {
 
 impl<T: NativeCapture> StoredInitializer for StoredCallback<T> {
     fn call(&self, module: &SyntheticModule, context: &mut Context) -> JsResult<()> {
-        (self.callback)(module, &T::restore(&self.captures), context)
+        (self.callback)(module, &T::restore(&self.captures), context.access())
     }
 }
 
@@ -79,6 +79,9 @@ impl std::fmt::Debug for SyntheticModuleInitializer {
 impl SyntheticModuleInitializer {
     /// Creates a callback with all stored state in its traceable captures.
     ///
+    /// The callback receives a borrowed capability for the executing context.
+    /// Reborrow it for nested operations without transferring the context owner.
+    ///
     /// ```compile_fail
     /// use surgeist_js::module::SyntheticModuleInitializer;
     ///
@@ -92,7 +95,7 @@ impl SyntheticModuleInitializer {
     /// );
     /// ```
     pub fn from_fn_with_captures<T: NativeCapture>(
-        callback: fn(&SyntheticModule, &T, &mut Context) -> JsResult<()>,
+        callback: fn(&SyntheticModule, &T, ContextAccess<'_>) -> JsResult<()>,
         captures: T,
     ) -> Self {
         Self {

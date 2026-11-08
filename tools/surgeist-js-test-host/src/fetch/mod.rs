@@ -13,7 +13,6 @@ use crate::fetch::request::{JsRequest, RequestInit};
 use crate::fetch::response::JsResponse;
 use either::Either;
 use http::{HeaderName, HeaderValue, Request as HttpRequest, Request};
-use std::cell::RefCell;
 use std::rc::Rc;
 use surgeist_js::class::Class;
 use surgeist_js::gc::heap::Trace as HeapTrace;
@@ -21,8 +20,8 @@ use surgeist_js::object::FunctionObjectBuilder;
 use surgeist_js::property::PropertyDescriptor;
 use surgeist_js::realm::Realm;
 use surgeist_js::{
-    Context, ContextAccess, JsData, JsError, JsObject, JsResult, JsString, JsSymbol, JsValue,
-    NativeObject, boa_module, js_error, js_string, native_function::NativeFunction,
+    Context, ContextAccess, HostContext, JsData, JsError, JsObject, JsResult, JsString, JsSymbol,
+    JsValue, NativeObject, boa_module, js_error, js_string, native_function::NativeFunction,
 };
 
 pub mod headers;
@@ -60,7 +59,7 @@ pub trait Fetcher: NativeObject {
         self: Rc<Self>,
         request: JsRequest,
         signal: Option<JsObject>,
-        context: &RefCell<&mut Context>,
+        context: &HostContext<'_>,
     ) -> JsResult<JsResponse>;
 }
 
@@ -110,9 +109,9 @@ fn check_abort(signal: Option<&JsObject>, mut context: ContextAccess<'_>) -> JsR
 async fn fetch_inner<T: Fetcher>(
     resource: Either<JsString, JsObject>,
     options: Option<RequestInit>,
-    context: &RefCell<&mut Context>,
+    context: &HostContext<'_>,
 ) -> JsResult<JsValue> {
-    let fetcher = get_fetcher::<T>(context.borrow_mut().access())?;
+    let fetcher = context.with(get_fetcher::<T>)?;
 
     let (options, signal) = match options {
         Some(mut opts) => {
@@ -122,7 +121,7 @@ async fn fetch_inner<T: Fetcher>(
         None => (None, None),
     };
 
-    check_abort(signal.as_ref(), context.borrow_mut().access())?;
+    context.with(|access| check_abort(signal.as_ref(), access))?;
 
     // The resource parsing is complicated, so we parse it in Rust here (instead of relying on
     // `TryFromJs` and friends).
@@ -131,9 +130,8 @@ async fn fetch_inner<T: Fetcher>(
     let request: Request<Vec<u8>> = match resource {
         Either::Left(url) => {
             let url = url.to_std_string().map_err(JsError::from_rust)?;
-            let url = fetcher
-                .resolve_uri(url, context.borrow_mut().access())
-                .map_err(JsError::from_rust)?;
+            let url = context
+                .with(|access| fetcher.resolve_uri(url, access).map_err(JsError::from_rust))?;
 
             let r = HttpRequest::get(url).body(Vec::new());
             r.map_err(JsError::from_rust)?
@@ -152,7 +150,7 @@ async fn fetch_inner<T: Fetcher>(
         }
     };
 
-    check_abort(signal.as_ref(), context.borrow_mut().access())?;
+    context.with(|access| check_abort(signal.as_ref(), access))?;
 
     let mut request = if let Some(options) = options {
         options.into_request_builder(Some(request))?
@@ -174,9 +172,9 @@ async fn fetch_inner<T: Fetcher>(
         .fetch(JsRequest::from(request), signal.clone(), context)
         .await?;
 
-    check_abort(signal.as_ref(), context.borrow_mut().access())?;
+    context.with(|access| check_abort(signal.as_ref(), access))?;
 
-    let result = Class::from_data(response, context.borrow_mut().access())?;
+    let result = context.with(|access| Class::from_data(response, access))?;
     Ok(result.into())
 }
 

@@ -372,7 +372,7 @@ fn dropping_a_direct_executor_releases_job_captures() {
             Ok(JsValue::undefined())
         })
         .into(),
-        &mut context,
+        context.access(),
     );
     assert!(dropped.get());
 }
@@ -410,7 +410,7 @@ fn dynamic_function_host_hook_receives_coerced_fragments_before_parsing() {
             parameters: &[JsString],
             body: &JsString,
             direct: bool,
-            _: &mut Context,
+            _: ContextAccess<'_>,
         ) -> surgeist_js::JsResult<()> {
             assert_eq!(parameters, &[js_string!("π"), js_string!("")]);
             assert_eq!(body, &js_string!("return @"));
@@ -452,7 +452,7 @@ fn compile_hook_engine_panic_remains_uncatchable_with_a_foreign_diagnostic() {
             _: &[JsString],
             _: &JsString,
             _: bool,
-            _: &mut Context,
+            _: ContextAccess<'_>,
         ) -> surgeist_js::JsResult<()> {
             Err(self.0.clone())
         }

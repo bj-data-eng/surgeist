@@ -1026,7 +1026,7 @@ impl JsObject {
         //    a. Perform ? HostEnsureCanAddPrivateElement(O).
         context
             .host_hooks()
-            .ensure_can_add_private_element(self, context)
+            .ensure_can_add_private_element(self, context.access())
             .map_err(|error| context.runtime().admit_error(error))?;
 
         // 2. If ? IsExtensible(O) is false, throw a TypeError exception.
@@ -1087,7 +1087,7 @@ impl JsObject {
         // a. Perform ? HostEnsureCanAddPrivateElement(O).
         context
             .host_hooks()
-            .ensure_can_add_private_element(self, context)
+            .ensure_can_add_private_element(self, context.access())
             .map_err(|error| context.runtime().admit_error(error))?;
 
         // 3. If ? IsExtensible(O) is false, throw a TypeError exception.

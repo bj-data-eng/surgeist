@@ -1784,7 +1784,7 @@ fn the_file_loader_propagates_source_stops_from_dynamic_imports() {
 }
 
 use surgeist_js::{
-    Context, JsError, JsResult, JsString, JsValue, NativeFunction, Source,
+    Context, ContextAccess, JsError, JsResult, JsString, JsValue, NativeFunction, Source,
     error::{EngineError, RuntimeLimitError},
     execution::{EventFilter, ExecutionOptions, ExecutionSetupError, ProfileMode},
     job::{Job, JobExecutor},
@@ -1929,16 +1929,16 @@ struct InlinePromiseExecutor {
 }
 
 impl JobExecutor for InlinePromiseExecutor {
-    fn enqueue_job(self: Rc<Self>, job: Job, context: &mut Context) {
+    fn enqueue_job(self: Rc<Self>, job: Job, context: ContextAccess<'_>) {
         let Job::PromiseJob(job) = job else {
             panic!("unexpected job kind");
         };
-        if let Err(error) = job.call(context.access()) {
+        if let Err(error) = job.call(context) {
             self.error.replace(Some(error));
         }
     }
 
-    fn run_jobs(self: Rc<Self>, _: &mut Context) -> JsResult<()> {
+    fn run_jobs(self: Rc<Self>, _: ContextAccess<'_>) -> JsResult<()> {
         Ok(())
     }
 }
@@ -3469,7 +3469,7 @@ mod async_operation_regressions {
                         let probe = context.get_data::<NativeJobStopProbe>().unwrap().clone();
                         probe.first_stop.replace(Some(first_stop));
                         let calls = probe.calls.clone();
-                        let callback = move |_: &mut Context| {
+                        let callback = move |_: ContextAccess<'_>| {
                             calls.set(calls.get() + 1);
                             Ok(JsValue::undefined())
                         };
@@ -3574,7 +3574,7 @@ mod async_operation_regressions {
                         .unwrap()
                         .clone();
                     let caller_realm = context.realm().clone();
-                    let callback = |context: &mut Context| {
+                    let callback = |mut context: ContextAccess<'_>| {
                         let probe = context
                             .get_data::<PostInvocationStopProbe>()
                             .unwrap()
@@ -3668,7 +3668,7 @@ mod async_operation_regressions {
         let target_realm = context.create_realm().unwrap();
         assert_ne!(target_realm, caller_realm);
         let entered_realm = target_realm.clone();
-        let callback = move |context: &mut Context| -> JsResult<JsValue> {
+        let callback = move |context: ContextAccess<'_>| -> JsResult<JsValue> {
             assert_eq!(context.realm(), &entered_realm);
             panic!("native job callback panic");
         };
@@ -3750,14 +3750,14 @@ mod async_operation_regressions {
                 .unwrap();
             context.enter_realm(caller_realm.clone()).unwrap();
             let baseline_frames = context.stack_trace().count();
-            let callback = move |context: &mut Context| {
+            let callback = move |mut context: ContextAccess<'_>| {
                 if host_function_call {
                     let function = context
                         .global_object()
-                        .get(js_string!("panicWrapper"), context.access())?;
+                        .get(js_string!("panicWrapper"), context.reborrow())?;
                     JsFunction::from_object(function.as_object().unwrap())
                         .unwrap()
-                        .call(&JsValue::undefined(), &[], context.access())
+                        .call(&JsValue::undefined(), &[], context.reborrow())
                 } else {
                     context.eval(
                         Source::from_bytes(
@@ -3848,7 +3848,7 @@ mod async_operation_regressions {
         let selected_realm = context.create_realm().unwrap();
         assert_ne!(selected_realm, caller_realm);
         let callback_realm = selected_realm.clone();
-        let callback = move |context: &mut Context| {
+        let callback = move |mut context: ContextAccess<'_>| {
             context.enter_realm(callback_realm.clone())?;
             Ok(JsValue::new(42))
         };
@@ -3917,7 +3917,7 @@ mod async_operation_regressions {
                 NativeFunction::from_fn_ptr(|_, _, mut context| {
                     let probe = context.get_data::<MovedStackProbe>().unwrap().clone();
                     let source = probe.callback_source;
-                    let callback = move |context: &mut Context| {
+                    let callback = move |mut context: ContextAccess<'_>| {
                         context.eval(
                             Source::from_bytes(source)
                                 .with_path(Path::new("owned-moved-stack-callback.js")),

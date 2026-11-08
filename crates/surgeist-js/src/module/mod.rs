@@ -1165,7 +1165,7 @@ fn module_loading_rejects_a_foreign_loader_error_in_static_and_dynamic_imports()
             self: Rc<Self>,
             _referrer: Referrer,
             _request: ModuleRequest,
-            _context: &RefCell<&mut Context>,
+            _context: &crate::HostContext<'_>,
         ) -> impl std::future::Future<Output = JsResult<Module>> {
             std::future::ready(Err(self.0.clone()))
         }
@@ -1208,7 +1208,7 @@ fn module_promises_reject_foreign_host_job_callback_data() {
     struct ForeignCallbackData(JsObject);
 
     impl HostHooks for ForeignCallbackData {
-        fn make_job_callback(&self, callback: JsFunction, _: &mut Context) -> JobCallback {
+        fn make_job_callback(&self, callback: JsFunction, _: ContextAccess<'_>) -> JobCallback {
             JobCallback::new(callback, self.0.clone())
         }
     }
