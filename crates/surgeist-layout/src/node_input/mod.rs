@@ -107,6 +107,10 @@ pub struct NodeInputOf<S: LayoutScalar = DefaultScalar> {
     pub display: Display,
     pub atomic_inline_participation: Option<AtomicInlineParticipation>,
     pub float_exclusion: FloatExclusion,
+    /// Identifies a normalized outer table wrapper.
+    ///
+    /// Selects table-specific outer sizing and alignment and establishes a
+    /// block formatting context even with [`BlockFlowContext::Normal`].
     pub item_is_table: bool,
     pub item_is_replaced: bool,
     pub item_order: ItemOrder,

@@ -2867,3 +2867,103 @@ fn inter_character_source_revision_and_late_sink_failure_preserve_completed_cach
     lane::<f32>();
     lane::<f64>();
 }
+
+#[test]
+fn table_wrapper_context_switch_invalidates_warm_cache_and_preserves_old_batches() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let root_size = Size::new(px(100.0), px(160.0));
+        let request = crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            root_size.map(|v| Some(NonNegativeFiniteOf::new(v).unwrap())),
+            OrthogonalFallbackOf::new(
+                root_size.map(|v| Some(NonNegativeFiniteOf::new(v).unwrap())),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(root_size.map(|v| {
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(v).unwrap()),
+                SizingOperation::Normal,
+            )
+        }));
+        let fixed = |width, height| NodeInputOf {
+            display: Display::Block,
+            size: Size::new(
+                PreferredSizeOf::px(px(width)),
+                PreferredSizeOf::px(px(height)),
+            ),
+            ..NodeInputOf::default()
+        };
+        let mut tree = PublicFlowTree::default()
+            .with_children(0, [2, 4])
+            .with_children(2, [3])
+            .with_children(3, [])
+            .with_children(4, [])
+            .with_style(0, fixed(100.0, 160.0))
+            .with_style(2, fixed(50.0, 10.0))
+            .with_style(
+                3,
+                NodeInputOf {
+                    float: Float::Left,
+                    ..fixed(30.0, 40.0)
+                },
+            )
+            .with_style(
+                4,
+                NodeInputOf {
+                    clear: Clear::Left,
+                    ..fixed(100.0, 10.0)
+                },
+            );
+        let cold = compute_layout(&tree, 0, request).unwrap();
+        let following = |batch: &CompletedLayoutBatchOf<u32, S>, top| {
+            let wrapper = public_flow_output(batch, 2, Phase::Unrounded);
+            assert_eq!(
+                (wrapper.location, wrapper.size),
+                (Point::ZERO, Size::new(px(50.0), px(10.0)))
+            );
+            let float = public_flow_output(batch, 3, Phase::Unrounded);
+            assert_eq!(
+                (float.location, float.size),
+                (Point::ZERO, Size::new(px(30.0), px(40.0)))
+            );
+            assert_eq!(
+                public_flow_output(batch, 4, Phase::Unrounded).location,
+                Point::new(S::ZERO, px(top))
+            );
+        };
+        following(&cold, 40.0);
+        assert!(!cold.cache_store_entries().is_empty());
+        tree.apply_cache_entries(cold.cache_store_entries());
+        assert!(!tree.caches.borrow().is_empty());
+        tree.clear_cache_inputs();
+        let warm = compute_layout(&tree, 0, request).unwrap();
+        following(&warm, 40.0);
+        assert!(!tree.cache_inputs(3).is_empty());
+
+        tree.styles.get_mut(&2).unwrap().item_is_table = true;
+        let owned = crate::compute_layout_invalidated(&tree, 0, request, &[2]).unwrap();
+        following(&owned, 10.0);
+        assert!(owned.invalidated_nodes().contains(&0));
+        assert!(owned.invalidated_nodes().contains(&2));
+        assert_eq!(
+            tree.styles[&2].block_flow_context,
+            crate::BlockFlowContext::Normal
+        );
+        following(&cold, 40.0);
+        following(&warm, 40.0);
+        tree.apply_cache_entries(owned.cache_store_entries());
+        let warm_owned = compute_layout(&tree, 0, request).unwrap();
+        following(&warm_owned, 10.0);
+
+        tree.styles.get_mut(&2).unwrap().item_is_table = false;
+        let shared = crate::compute_layout_invalidated(&tree, 0, request, &[2]).unwrap();
+        following(&shared, 40.0);
+        following(&owned, 10.0);
+        following(&warm_owned, 10.0);
+    }
+    lane::<f32>();
+    lane::<f64>();
+}

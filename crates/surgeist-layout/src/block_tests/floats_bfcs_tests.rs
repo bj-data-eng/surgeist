@@ -4195,3 +4195,632 @@ fn native_float_source_floor_uses_translated_shared_inherited_ledger() {
     lane::<f32>();
     lane::<f64>();
 }
+
+fn assert_table_border_avoids_full_width_float<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let root_size = Size::new(px(100.0), px(100.0));
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        axes,
+        root_size.map(|v| Some(NonNegativeFiniteOf::new(v).unwrap())),
+        OrthogonalFallbackOf::new(
+            root_size.map(|v| Some(NonNegativeFiniteOf::new(v).unwrap())),
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(root_size.map(|v| {
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(v).unwrap()),
+            SizingOperation::Normal,
+        )
+    }));
+    for (role, table, replaced, context, top) in [
+        (
+            "ordinary",
+            false,
+            false,
+            crate::BlockFlowContext::Normal,
+            0.0,
+        ),
+        (
+            "replaced",
+            false,
+            true,
+            crate::BlockFlowContext::Normal,
+            20.0,
+        ),
+        (
+            "independent",
+            false,
+            false,
+            crate::BlockFlowContext::Independent,
+            20.0,
+        ),
+        ("table", true, false, crate::BlockFlowContext::Normal, 20.0),
+    ] {
+        let tree = PublicBlockTree::default()
+            .with_children(0, [1, 2])
+            .with_children(1, [])
+            .with_children(2, [])
+            .with_style(
+                0,
+                NodeInputOf {
+                    display: Display::Block,
+                    size: root_size.map(PreferredSizeOf::px),
+                    ..NodeInputOf::default()
+                },
+            )
+            .with_style(
+                1,
+                fri06_c05_margin_float_style(axes, Float::Left, 100.0, 20.0),
+            )
+            .with_style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    block_flow_context: context,
+                    item_is_table: table,
+                    item_is_replaced: replaced,
+                    size: Size::new(PreferredSizeOf::px(px(50.0)), PreferredSizeOf::px(px(10.0))),
+                    ..NodeInputOf::default()
+                },
+            );
+        let input = tree.node_input(2);
+        assert_eq!(input.item_is_table, table);
+        assert_eq!(input.item_is_replaced, replaced);
+        assert_eq!(input.block_flow_context, context);
+        assert_eq!(input.float, Float::None);
+        assert_eq!(input.clear, Clear::None);
+        assert_eq!(input.overflow, ComputedOverflow::VISIBLE);
+        let batch = compute_layout(&tree, 0, request).unwrap();
+        assert_eq!(public_final_output(&batch, 0).size, root_size);
+        let floated = public_final_output(&batch, 1);
+        assert_eq!(floated.location, Point::ZERO);
+        assert_eq!(floated.size, Size::new(px(100.0), px(20.0)));
+        assert_eq!(floated.margin, Edges::ZERO);
+        let subject = public_final_output(&batch, 2);
+        assert_eq!(subject.size, Size::new(px(50.0), px(10.0)), "{role}");
+        assert_eq!(subject.margin, Edges::ZERO, "{role}");
+        assert_eq!(
+            subject.location,
+            Point::new(S::ZERO, px(top)),
+            "{role} table={table}, replaced={replaced}, context={context:?}"
+        );
+        if role != "ordinary" {
+            assert!(
+                subject.location.y >= floated.location.y + floated.size.height,
+                "{role} border box must avoid the full-width float margin box"
+            );
+        }
+    }
+}
+
+#[test]
+fn table_border_avoids_full_width_float_with_normal_context_f32() {
+    assert_table_border_avoids_full_width_float::<f32>();
+}
+
+#[test]
+fn table_border_avoids_full_width_float_with_normal_context_f64() {
+    assert_table_border_avoids_full_width_float::<f64>();
+}
+
+#[test]
+fn table_float_collision_uses_fixed_margin_boxes_in_all_flows() {
+    fn lane<S: LayoutScalar>() {
+        use crate::geometry::{LogicalEdgesOf, LogicalPointOf, LogicalSizeOf};
+        let px = S::from_f64;
+        for (writing_mode, direction) in all_writing_mode_directions() {
+            let axes = FlowAxes::new(writing_mode, direction);
+            for exclusion in [FloatExclusion::MarginBox, FloatExclusion::Shape] {
+                for (side, width, float_margin, table_margin, clear, x, y) in [
+                    (Float::Left, 100.0, 0.0, 0.0, Clear::None, 0.0, 20.0),
+                    (Float::Right, 100.0, 0.0, 0.0, Clear::None, 0.0, 20.0),
+                    (Float::Left, 40.0, 0.0, 0.0, Clear::None, 40.0, 0.0),
+                    (Float::Right, 40.0, 0.0, 0.0, Clear::None, 0.0, 0.0),
+                    (Float::Left, 40.0, 0.0, 0.0, Clear::Left, 0.0, 20.0),
+                    (Float::Right, 40.0, 0.0, 0.0, Clear::Right, 0.0, 20.0),
+                    (Float::Left, 40.0, 0.0, 5.0, Clear::None, 45.0, 0.0),
+                    (Float::Left, 30.0, 10.0, 0.0, Clear::None, 40.0, 0.0),
+                    (Float::Left, 70.0, 10.0, 0.0, Clear::None, 0.0, 20.0),
+                ] {
+                    let mut floated = fri06_c05_margin_float_style(axes, side, width, 20.0);
+                    floated.float_exclusion = exclusion;
+                    floated.margin = axes
+                        .physical_edges(LogicalEdgesOf::new(
+                            S::ZERO,
+                            px(float_margin),
+                            S::ZERO,
+                            S::ZERO,
+                        ))
+                        .map(LengthAutoOf::px);
+                    let size = LogicalSizeOf::new(px(50.0), px(10.0));
+                    let tree = fri06_c05_shape_tree(
+                        axes,
+                        ShapeProviderBehavior::Failure,
+                        [
+                            (1, floated),
+                            (
+                                2,
+                                NodeInputOf {
+                                    display: Display::Block,
+                                    writing_mode,
+                                    direction,
+                                    item_is_table: true,
+                                    block_flow_context: crate::BlockFlowContext::Normal,
+                                    size: axes.physical_size(size).map(PreferredSizeOf::px),
+                                    margin: axes
+                                        .physical_edges(LogicalEdgesOf::new(
+                                            px(table_margin),
+                                            px(table_margin),
+                                            S::ZERO,
+                                            S::ZERO,
+                                        ))
+                                        .map(LengthAutoOf::px),
+                                    clear,
+                                    ..NodeInputOf::default()
+                                },
+                            ),
+                        ],
+                    );
+                    let batch = compute_layout(&tree, 0, fri06_c05_shape_request(axes)).unwrap();
+                    let table = public_final_output(&batch, 2);
+                    assert_eq!(table.size, axes.physical_size(size));
+                    assert_eq!(
+                        table.location,
+                        fri06_c04_expected_float_location(
+                            axes,
+                            LogicalPointOf::new(px(x), px(y)),
+                            size
+                        ),
+                        "{axes:?} {exclusion:?} {side:?} width {width}+{float_margin}, table margin {table_margin}, clear {clear:?}"
+                    );
+                    assert_eq!(
+                        tree.node_input(2).block_flow_context,
+                        crate::BlockFlowContext::Normal
+                    );
+                    assert!(tree.shape_queries().is_empty());
+                }
+            }
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn table_normal_context_keeps_legacy_alignment_without_float_entries() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        for direction in [Direction::Ltr, Direction::Rtl] {
+            let axes = FlowAxes::new(WritingMode::HorizontalTb, direction);
+            for (align, x) in [
+                (TextAlign::LegacyLeft, 0.0),
+                (TextAlign::LegacyCenter, 25.0),
+                (TextAlign::LegacyRight, 50.0),
+            ] {
+                let tree = fri06_c05_shape_tree(
+                    axes,
+                    ShapeProviderBehavior::Failure,
+                    [(
+                        2,
+                        NodeInputOf {
+                            display: Display::Block,
+                            writing_mode: WritingMode::HorizontalTb,
+                            direction,
+                            item_is_table: true,
+                            size: Size::new(
+                                PreferredSizeOf::px(px(50.0)),
+                                PreferredSizeOf::px(px(10.0)),
+                            ),
+                            ..NodeInputOf::default()
+                        },
+                    )],
+                )
+                .with_style(
+                    0,
+                    NodeInputOf {
+                        display: Display::Block,
+                        writing_mode: WritingMode::HorizontalTb,
+                        direction,
+                        text_align: align,
+                        size: Size::new(
+                            PreferredSizeOf::px(px(100.0)),
+                            PreferredSizeOf::px(px(160.0)),
+                        ),
+                        ..NodeInputOf::default()
+                    },
+                );
+                let batch = compute_layout(&tree, 0, fri06_c05_shape_request(axes)).unwrap();
+                let table = public_final_output(&batch, 2);
+                assert_eq!(
+                    table.location,
+                    Point::new(px(x), S::ZERO),
+                    "{direction:?} {align:?}"
+                );
+                assert_eq!(table.size, Size::new(px(50.0), px(10.0)));
+                assert_eq!(
+                    tree.node_input(2).block_flow_context,
+                    crate::BlockFlowContext::Normal
+                );
+            }
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[derive(Clone, Copy, Debug)]
+enum TableWrapperContextCase {
+    ExternalClearance,
+    FloatHeight,
+    TopMargin,
+    BottomMargin,
+    FloatExport,
+}
+
+fn assert_table_wrapper_context<S: LayoutScalar>(case: TableWrapperContextCase) {
+    let px = S::from_f64;
+    let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let fixed = |width, height| NodeInputOf {
+        display: Display::Block,
+        size: Size::new(
+            PreferredSizeOf::px(px(width)),
+            PreferredSizeOf::px(px(height)),
+        ),
+        ..NodeInputOf::default()
+    };
+    for context in [
+        crate::BlockFlowContext::Independent,
+        crate::BlockFlowContext::Normal,
+    ] {
+        let mut table = fixed(50.0, 10.0);
+        table.item_is_table = true;
+        table.block_flow_context = context;
+        let mut child = fixed(50.0, 10.0);
+        let mut root_children = vec![2];
+        match case {
+            TableWrapperContextCase::ExternalClearance => {
+                root_children.insert(0, 1);
+                child.clear = Clear::Left;
+            }
+            TableWrapperContextCase::FloatHeight => {
+                table.size.height = PreferredSizeOf::AUTO;
+                child = fri06_c05_margin_float_style(axes, Float::Left, 30.0, 20.0);
+            }
+            TableWrapperContextCase::TopMargin => {
+                table.size.height = PreferredSizeOf::AUTO;
+                table.margin.top = LengthAutoOf::px(px(5.0));
+                child.margin.top = LengthAutoOf::px(px(20.0));
+            }
+            TableWrapperContextCase::BottomMargin => {
+                table.size.height = PreferredSizeOf::AUTO;
+                table.margin.bottom = LengthAutoOf::px(px(7.0));
+                child.margin.bottom = LengthAutoOf::px(px(30.0));
+                root_children.push(4);
+            }
+            TableWrapperContextCase::FloatExport => {
+                child = fri06_c05_margin_float_style(axes, Float::Left, 30.0, 40.0);
+                root_children.push(4);
+            }
+        }
+        let mut tree = PublicBlockTree::default()
+            .with_children(0, root_children)
+            .with_children(2, [3])
+            .with_children(3, [])
+            .with_style(0, fixed(100.0, 160.0))
+            .with_style(2, table)
+            .with_style(3, child);
+        if matches!(case, TableWrapperContextCase::ExternalClearance) {
+            tree = tree.with_children(1, []).with_style(
+                1,
+                fri06_c05_margin_float_style(axes, Float::Left, 100.0, 20.0),
+            );
+        }
+        if matches!(
+            case,
+            TableWrapperContextCase::BottomMargin | TableWrapperContextCase::FloatExport
+        ) {
+            let mut following = fixed(100.0, 10.0);
+            if matches!(case, TableWrapperContextCase::FloatExport) {
+                following.clear = Clear::Left;
+            }
+            tree = tree.with_children(4, []).with_style(4, following);
+        }
+        assert!(tree.node_input(2).item_is_table);
+        assert_eq!(tree.node_input(2).block_flow_context, context);
+        let batch = compute_layout(&tree, 0, fri06_c05_shape_request(axes)).unwrap();
+        let table = public_final_output(&batch, 2);
+        let child = public_final_output(&batch, 3);
+        let label = format!("{case:?}, {context:?}");
+        assert_eq!(table.size.width, px(50.0), "{label}");
+        match case {
+            TableWrapperContextCase::ExternalClearance => {
+                let external = public_final_output(&batch, 1);
+                assert_eq!(
+                    (external.location, external.size),
+                    (Point::ZERO, Size::new(px(100.0), px(20.0))),
+                    "{label}"
+                );
+                assert_eq!(table.size, Size::new(px(50.0), px(10.0)), "{label}");
+                assert_eq!(table.location, Point::new(S::ZERO, px(20.0)), "{label}");
+                assert_eq!(child.size, Size::new(px(50.0), px(10.0)), "{label}");
+                assert_eq!(child.margin, Edges::ZERO, "{label}");
+                assert_eq!(
+                    child.location,
+                    Point::ZERO,
+                    "parent float must not clear the wrapper's child again: {label}"
+                );
+                assert_eq!(table.location.y + child.location.y, px(20.0), "{label}");
+            }
+            TableWrapperContextCase::FloatHeight => {
+                assert_eq!(
+                    (child.location, child.size),
+                    (Point::ZERO, Size::new(px(30.0), px(20.0))),
+                    "{label}"
+                );
+                assert_eq!(table.location, Point::ZERO, "{label}");
+                assert_eq!(
+                    table.size.height,
+                    px(20.0),
+                    "wrapper owns its internal float's height: {label}"
+                );
+            }
+            TableWrapperContextCase::TopMargin => {
+                assert_eq!(child.size, Size::new(px(50.0), px(10.0)), "{label}");
+                assert_eq!(table.margin.top, px(5.0), "{label}");
+                assert_eq!(child.margin.top, px(20.0), "{label}");
+                assert_eq!(
+                    table.location,
+                    Point::new(S::ZERO, px(5.0)),
+                    "interior top margin must not escape the wrapper: {label}"
+                );
+                assert_eq!(child.location, Point::new(S::ZERO, px(20.0)), "{label}");
+                assert_eq!(table.size.height, px(30.0), "{label}");
+            }
+            TableWrapperContextCase::BottomMargin => {
+                assert_eq!(
+                    (child.location, child.size),
+                    (Point::ZERO, Size::new(px(50.0), px(10.0))),
+                    "{label}"
+                );
+                assert_eq!(table.location, Point::ZERO, "{label}");
+                assert_eq!(
+                    table.size.height,
+                    px(40.0),
+                    "interior bottom margin remains inside wrapper height: {label}"
+                );
+                assert_eq!(table.margin.bottom, px(7.0), "{label}");
+                assert_eq!(
+                    public_final_output(&batch, 4).location,
+                    Point::new(S::ZERO, px(47.0)),
+                    "outer margin remains applicable: {label}"
+                );
+            }
+            TableWrapperContextCase::FloatExport => {
+                assert_eq!(
+                    (table.location, table.size),
+                    (Point::ZERO, Size::new(px(50.0), px(10.0))),
+                    "{label}"
+                );
+                assert_eq!(
+                    (child.location, child.size),
+                    (Point::ZERO, Size::new(px(30.0), px(40.0))),
+                    "{label}"
+                );
+                assert_eq!(
+                    public_final_output(&batch, 4).size,
+                    Size::new(px(100.0), px(10.0)),
+                    "{label}"
+                );
+                assert_eq!(
+                    public_final_output(&batch, 4).location,
+                    Point::new(S::ZERO, px(10.0)),
+                    "parent clear must not see the wrapper's internal float: {label}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn table_wrapper_context_excludes_external_clearance_f32() {
+    assert_table_wrapper_context::<f32>(TableWrapperContextCase::ExternalClearance);
+}
+#[test]
+fn table_wrapper_context_excludes_external_clearance_f64() {
+    assert_table_wrapper_context::<f64>(TableWrapperContextCase::ExternalClearance);
+}
+#[test]
+fn table_wrapper_context_owns_internal_float_auto_height_f32() {
+    assert_table_wrapper_context::<f32>(TableWrapperContextCase::FloatHeight);
+}
+#[test]
+fn table_wrapper_context_owns_internal_float_auto_height_f64() {
+    assert_table_wrapper_context::<f64>(TableWrapperContextCase::FloatHeight);
+}
+#[test]
+fn table_wrapper_context_blocks_top_child_margin_f32() {
+    assert_table_wrapper_context::<f32>(TableWrapperContextCase::TopMargin);
+}
+#[test]
+fn table_wrapper_context_blocks_top_child_margin_f64() {
+    assert_table_wrapper_context::<f64>(TableWrapperContextCase::TopMargin);
+}
+#[test]
+fn table_wrapper_context_blocks_bottom_child_margin_f32() {
+    assert_table_wrapper_context::<f32>(TableWrapperContextCase::BottomMargin);
+}
+#[test]
+fn table_wrapper_context_blocks_bottom_child_margin_f64() {
+    assert_table_wrapper_context::<f64>(TableWrapperContextCase::BottomMargin);
+}
+#[test]
+fn table_wrapper_context_does_not_export_internal_float_f32() {
+    assert_table_wrapper_context::<f32>(TableWrapperContextCase::FloatExport);
+}
+#[test]
+fn table_wrapper_context_does_not_export_internal_float_f64() {
+    assert_table_wrapper_context::<f64>(TableWrapperContextCase::FloatExport);
+}
+
+#[test]
+fn table_wrapper_context_excludes_parent_floats_in_all_flows() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        for writing_mode in [
+            WritingMode::HorizontalTb,
+            WritingMode::VerticalRl,
+            WritingMode::VerticalLr,
+            WritingMode::SidewaysRl,
+            WritingMode::SidewaysLr,
+        ] {
+            for direction in [Direction::Ltr, Direction::Rtl] {
+                let axes = FlowAxes::new(writing_mode, direction);
+                let fixed = |inline, block| NodeInputOf {
+                    display: Display::Block,
+                    writing_mode,
+                    direction,
+                    size: axes
+                        .physical_size(crate::geometry::LogicalSizeOf::new(px(inline), px(block)))
+                        .map(PreferredSizeOf::px),
+                    ..NodeInputOf::default()
+                };
+                for exclusion in [FloatExclusion::MarginBox, FloatExclusion::Shape] {
+                    for atomic in [false, true] {
+                        let mut external =
+                            fri06_c05_margin_float_style(axes, Float::Left, 100.0, 20.0);
+                        external.float_exclusion = exclusion;
+                        let child = if atomic {
+                            fri06_c05_atomic_style(axes, 50.0, 10.0)
+                        } else {
+                            NodeInputOf {
+                                clear: Clear::Left,
+                                ..fixed(50.0, 10.0)
+                            }
+                        };
+                        let tree = PublicBlockTree::default()
+                            .with_children(0, [1, 2])
+                            .with_children(1, [])
+                            .with_children(2, [3])
+                            .with_children(3, [])
+                            .with_style(0, fixed(100.0, 160.0))
+                            .with_style(1, external)
+                            .with_style(
+                                2,
+                                NodeInputOf {
+                                    item_is_table: true,
+                                    block_flow_context: crate::BlockFlowContext::Normal,
+                                    ..fixed(50.0, 10.0)
+                                },
+                            )
+                            .with_style(3, child)
+                            .with_shape_provider(ShapeProviderBehavior::Failure);
+                        let batch = compute_layout(&tree, 0, fri06_c05_shape_request(axes))
+                            .expect("wrapper contents cannot demand the parent's shape");
+                        let size = crate::geometry::LogicalSizeOf::new(px(50.0), px(10.0));
+                        let table = public_final_output(&batch, 2);
+                        assert_eq!(table.size, axes.physical_size(size));
+                        assert_eq!(
+                            table.location,
+                            fri06_c04_expected_float_location(
+                                axes,
+                                crate::geometry::LogicalPointOf::new(S::ZERO, px(20.0)),
+                                size
+                            ),
+                            "{axes:?}, {exclusion:?}, atomic {atomic}"
+                        );
+                        let child = public_final_output(&batch, 3);
+                        assert_eq!(child.size, table.size);
+                        assert_eq!(child.location, Point::ZERO);
+                        assert!(tree.shape_queries().is_empty());
+                        assert_eq!(
+                            tree.node_input(2).block_flow_context,
+                            crate::BlockFlowContext::Normal
+                        );
+                    }
+                }
+            }
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn table_wrapper_context_keeps_local_shape_demand_and_error_identity() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+        let fixed = |width, height| NodeInputOf {
+            display: Display::Block,
+            size: Size::new(
+                PreferredSizeOf::px(px(width)),
+                PreferredSizeOf::px(px(height)),
+            ),
+            ..NodeInputOf::default()
+        };
+        let tree = PublicBlockTree::default()
+            .with_children(0, [1, 2])
+            .with_children(1, [])
+            .with_children(2, [3, 4])
+            .with_children(3, [])
+            .with_children(4, [])
+            .with_style(0, fixed(100.0, 160.0))
+            .with_style(
+                1,
+                fri06_c05_shape_float_style(axes, Float::Left, 100.0, 20.0),
+            )
+            .with_style(
+                2,
+                NodeInputOf {
+                    item_is_table: true,
+                    ..fixed(100.0, 20.0)
+                },
+            )
+            .with_style(
+                3,
+                fri06_c05_shape_float_style(axes, Float::Left, 60.0, 20.0),
+            )
+            .with_style(4, fri06_c05_atomic_style(axes, 40.0, 10.0))
+            .with_shape_provider(ShapeProviderBehavior::Interval {
+                minimum: S::ZERO,
+                maximum: px(20.0),
+            });
+        let batch = compute_layout(&tree, 0, fri06_c05_shape_request(axes)).unwrap();
+        assert_eq!(
+            public_final_output(&batch, 2).location,
+            Point::new(S::ZERO, px(20.0))
+        );
+        assert_eq!(public_final_output(&batch, 3).location, Point::ZERO);
+        assert_eq!(
+            public_final_output(&batch, 4).location,
+            Point::new(px(20.0), S::ZERO)
+        );
+        assert_eq!(
+            public_final_output(&batch, 4).size,
+            Size::new(px(40.0), px(10.0))
+        );
+        assert!(!tree.shape_queries().is_empty());
+        assert!(tree.shape_queries().iter().all(|(node, _)| *node == 3));
+        let tree = tree.with_shape_provider(ShapeProviderBehavior::Failure);
+        let error = compute_layout(&tree, 0, fri06_c05_shape_request(axes)).unwrap_err();
+        assert_eq!(
+            error.site(),
+            LayoutErrorSiteOf::ContainerSubject {
+                container: 2,
+                subject: 3
+            }
+        );
+        assert_eq!(error.operation(), LayoutOperation::FloatExclusionQuery);
+        assert!(matches!(error.kind(), LayoutErrorKindOf::Measurement(())));
+        // The failed recomputation cannot mutate the earlier completed batch.
+        assert_eq!(
+            public_final_output(&batch, 4).location,
+            Point::new(px(20.0), S::ZERO)
+        );
+    }
+    lane::<f32>();
+    lane::<f64>();
+}

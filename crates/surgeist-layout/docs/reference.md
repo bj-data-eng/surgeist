@@ -773,6 +773,12 @@ Independent contexts contain their own floats; ordinary shared blocks transfer
 float exclusions through the enclosing context without including those floats
 in their own auto height.
 
+An `item_is_table` node represents the normalized outer table wrapper. Its
+contents establish an independent block flow with `BlockFlowContext::Normal`;
+its outer border participates in the parent's float avoidance. Supplied
+measurements or normalized child boxes determine the outer geometry. The marker
+does not dispatch table-grid layout.
+
 Float placement and independent block sizing and collision use float margin
 boxes, including shape-backed floats. Shape intervals apply to inline wrapping;
 see the [float input contract](../src/lib.rs).

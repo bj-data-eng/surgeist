@@ -1221,6 +1221,7 @@ fn block_child_avoids_float_exclusions<S: LayoutScalar>(
         && style.float.is_none()
         && (style.block_flow_context == crate::BlockFlowContext::Independent
             || style.common.item_is_replaced
+            || style.common.item_is_table
             || matches!(
                 style.display,
                 crate::Display::Flex | crate::Display::Grid | crate::Display::GridLanes

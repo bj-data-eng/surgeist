@@ -16,6 +16,7 @@ pub(crate) fn shares_parent_context<S: LayoutScalar>(
         && style.float.is_none()
         && style.position != crate::Position::Absolute
         && !style.item_is_replaced
+        && !style.item_is_table
         && style.block_flow_context == crate::BlockFlowContext::Normal
         && !style.overflow.establishes_independent_formatting_context()
         && style.writing_mode == containing.writing_mode()
