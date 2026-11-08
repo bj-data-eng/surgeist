@@ -7,7 +7,8 @@ use crate::{
     job::{Job, JobExecutor},
     module::{ImportAttribute, ModuleRepr, metadata::Entry},
 };
-use std::mem::size_of;
+use std::{convert::Infallible, mem::size_of};
+use surgeist_js_ast::scope::{PreparedScopes, ScopeAnalysisError};
 
 #[derive(Default)]
 struct RecordingExecutor(RefCell<Vec<Job>>);
@@ -25,6 +26,19 @@ fn context(executor: Rc<RecordingExecutor>) -> Context {
     let builder = builder.instructions_remaining(1_000_000);
     builder.build().unwrap()
 }
+fn next_scope_identity(context: &Context) -> u32 {
+    // A real private proposal exposes the next canonical identity. Dropping
+    // that proposal publishes no scope or binding and spends no identity.
+    let mut scopes = PreparedScopes::new(context.realm().scope());
+    scopes
+        .with_access::<_, Infallible, ScopeAnalysisError<Infallible>>(None, |access| {
+            let root = access.root_handle()?;
+            let (_, names) = access.create_module_scope(&root, &[js_string!("identityProbe")])?;
+            Ok(names[0].unique_scope_id())
+        })
+        .unwrap()
+}
+
 fn header<T>(debits: &mut Vec<u64>) {
     debits.extend([1, u64::try_from(size_of::<T>()).unwrap()]);
 }
@@ -154,6 +168,7 @@ fn exact_constructor_and_final_publication_refusal(fixture: Fixture) {
     let total: u64 = fixture.debits().into_iter().sum();
     let executor = Rc::new(RecordingExecutor::default());
     let mut context = context(executor.clone());
+    let next_scope = next_scope_identity(&context);
     let keys = context
         .global_object()
         .own_property_keys(context.access())
@@ -180,6 +195,7 @@ fn exact_constructor_and_final_publication_refusal(fixture: Fixture) {
     assert_eq!(outcome.result.unwrap_err(), error);
     assert_eq!(outcome.report.module_metadata_work(), total - 1);
     assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(next_scope_identity(&context), next_scope);
     assert!(!outcome.report.effects_started());
     assert!(executor.0.borrow().is_empty());
     assert_eq!(
@@ -203,6 +219,7 @@ fn exact_constructor_and_final_publication_refusal(fixture: Fixture) {
     fixture.assert_module(&accepted.result.unwrap());
     assert_eq!(accepted.report.module_metadata_work(), total);
     assert_eq!(accepted.report.instructions(), 0);
+    assert_eq!(next_scope_identity(&context), next_scope);
     assert!(!accepted.report.effects_started());
     assert!(executor.0.borrow().is_empty());
     assert_eq!(
