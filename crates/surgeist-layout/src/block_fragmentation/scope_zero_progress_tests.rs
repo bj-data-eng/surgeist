@@ -169,7 +169,9 @@ fn zero_extent_force_case<S: LayoutScalar>(repeated: bool, capped: bool, termina
         let bound = LayoutBoundRequestOf::block_fragmentation(
             LayoutSourceBasis::fresh(),
             request,
-            FragmentationKind::Page,
+            FragmentationKind::Page {
+                progression: crate::PageProgression::LeftToRight,
+            },
             axes,
             frames.clone(),
         )
@@ -190,7 +192,9 @@ fn zero_extent_force_case<S: LayoutScalar>(repeated: bool, capped: bool, termina
             inventory: &scopes.source,
             frames: &frames,
             axes,
-            kind: FragmentationKind::Page,
+            kind: FragmentationKind::Page {
+                progression: crate::PageProgression::LeftToRight,
+            },
             target: bound.target_basis(),
             template: request,
             intrinsics: Rc::new(RefCell::new(Vec::new())),

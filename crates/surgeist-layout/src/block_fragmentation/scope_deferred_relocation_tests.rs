@@ -65,7 +65,9 @@ fn relocation_control<S: LayoutScalar>(capped: bool, page_before: bool) {
     let bound = LayoutBoundRequestOf::block_fragmentation(
         LayoutSourceBasis::fresh(),
         request,
-        FragmentationKind::Page,
+        FragmentationKind::Page {
+            progression: crate::PageProgression::LeftToRight,
+        },
         axes,
         frames.clone(),
     )
@@ -90,7 +92,9 @@ fn relocation_control<S: LayoutScalar>(capped: bool, page_before: bool) {
         inventory: &scopes.source,
         frames: &frames,
         axes,
-        kind: FragmentationKind::Page,
+        kind: FragmentationKind::Page {
+            progression: crate::PageProgression::LeftToRight,
+        },
         target: bound.target_basis(),
         template: request,
         intrinsics: Rc::new(RefCell::new(Vec::new())),

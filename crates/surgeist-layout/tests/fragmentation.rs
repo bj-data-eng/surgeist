@@ -91,7 +91,12 @@ fn flow<S: LayoutScalar>(
 
 fn input<S: LayoutScalar>(source: &[(u32, usize)], initial_block_offset: f64) -> Input<S> {
     FragmentationInputOf {
-        contexts: vec![context(FragmentationKind::Page, None)],
+        contexts: vec![context(
+            FragmentationKind::Page {
+                progression: PageProgression::LeftToRight,
+            },
+            None,
+        )],
         flows: vec![flow(0, source, initial_block_offset)],
     }
 }
@@ -488,17 +493,10 @@ fn latest_side_is_flow_order_not_control_vector_order<S: LayoutScalar>() {
     ];
     let mut page_frames = frames::<S>(&[80.0, 80.0, 80.0], 100.0, FragmentationBreakKinds::PAGE);
     for (frame, right) in page_frames.iter_mut().zip([true, false, true]) {
-        frame.page_side = Some(FragmentationPageSide {
-            physical: if right {
-                FragmentationPhysicalPageSide::Right
-            } else {
-                FragmentationPhysicalPageSide::Left
-            },
-            progression: if right {
-                FragmentationProgressionPageSide::Recto
-            } else {
-                FragmentationProgressionPageSide::Verso
-            },
+        frame.page_side = Some(if right {
+            FragmentationPhysicalPageSide::Right
+        } else {
+            FragmentationPhysicalPageSide::Left
         });
     }
     let mut provider = probe(vec![page_frames], move |query| {
@@ -1172,7 +1170,12 @@ scalars!(
 
 fn parallel_flows_choose_breaks_independently<S: LayoutScalar>() {
     let fixture = FragmentationInputOf {
-        contexts: vec![context(FragmentationKind::Page, None)],
+        contexts: vec![context(
+            FragmentationKind::Page {
+                progression: PageProgression::LeftToRight,
+            },
+            None,
+        )],
         flows: vec![
             flow::<S>(0, &[(51, 120)], 0.0),
             flow::<S>(0, &[(52, 150)], 0.0),
@@ -1286,7 +1289,12 @@ fn nested_forces_cross_all_required_types<S: LayoutScalar>() {
     ] {
         let fixture = FragmentationInputOf {
             contexts: vec![
-                context(FragmentationKind::Page, None),
+                context(
+                    FragmentationKind::Page {
+                        progression: PageProgression::LeftToRight,
+                    },
+                    None,
+                ),
                 context(kind, Some(0)),
             ],
             flows: vec![flow::<S>(1, &[(53, 120)], 0.0)],
@@ -1342,7 +1350,12 @@ scalars!(
 fn intervening_region_boundary_is_retained_in_crossed_types<S: LayoutScalar>() {
     let fixture = FragmentationInputOf {
         contexts: vec![
-            context(FragmentationKind::Page, None),
+            context(
+                FragmentationKind::Page {
+                    progression: PageProgression::LeftToRight,
+                },
+                None,
+            ),
             context(FragmentationKind::Region, Some(0)),
         ],
         flows: vec![flow::<S>(1, &[(66, 120)], 0.0)],
@@ -1470,7 +1483,12 @@ fn context_qualified_controls_preserve_conditional_ancestor_rule<S: LayoutScalar
     for sibling in [true, false] {
         let fixture = FragmentationInputOf {
             contexts: vec![
-                context(FragmentationKind::Page, None),
+                context(
+                    FragmentationKind::Page {
+                        progression: PageProgression::LeftToRight,
+                    },
+                    None,
+                ),
                 context(FragmentationKind::Column, Some(0)),
             ],
             flows: vec![flow::<S>(1, &[(55, 150)], 0.0)],
@@ -1682,7 +1700,12 @@ scalars!(
 
 fn late_provider_and_missing_frame_errors_return_no_prefix<S: LayoutScalar>() {
     let fixture = FragmentationInputOf {
-        contexts: vec![context(FragmentationKind::Page, None)],
+        contexts: vec![context(
+            FragmentationKind::Page {
+                progression: PageProgression::LeftToRight,
+            },
+            None,
+        )],
         flows: vec![flow::<S>(0, &[(60, 1)], 0.0), flow::<S>(0, &[(61, 1)], 0.0)],
     };
     let mut provider = probe(
@@ -2357,16 +2380,18 @@ scalars!(
 fn complete_raw_controls_combine_types_and_latest_side<S: LayoutScalar>() {
     let fixture = FragmentationInputOf {
         contexts: vec![
-            context(FragmentationKind::Page, None),
+            context(
+                FragmentationKind::Page {
+                    progression: PageProgression::LeftToRight,
+                },
+                None,
+            ),
             context(FragmentationKind::Column, Some(0)),
         ],
         flows: vec![flow::<S>(1, &[(77, 4)], 0.0)],
     };
     let mut inventory = nested_frames::<S>(FragmentationKind::Column);
-    let right = Some(FragmentationPageSide {
-        physical: FragmentationPhysicalPageSide::Right,
-        progression: FragmentationProgressionPageSide::Recto,
-    });
+    let right = Some(FragmentationPhysicalPageSide::Right);
     inventory[0][1].page_side = right;
     inventory[1][2].page_side = right;
     let mut provider = reply_probe(inventory, |query| {
@@ -3414,4 +3439,392 @@ scalars!(
     mode_head_closure_cannot_swallow_additional_positive_source,
     mode_head_closure_cannot_swallow_additional_positive_source_f32,
     mode_head_closure_cannot_swallow_additional_positive_source_f64
+);
+
+fn required_page_side_absence_identifies_context_and_frame<S: LayoutScalar>() {
+    let mut page_frames = frames::<S>(&[100.0, 60.0], 80.0, FragmentationBreakKinds::PAGE);
+    page_frames[0].page_side = Some(FragmentationPhysicalPageSide::Left);
+    assert_eq!(page_frames[1].page_side, None);
+    let mut provider = reply_probe(vec![page_frames], |query| {
+        if query.scan_after.is_none() {
+            Ok(raw_start(
+                vec![control(FragmentationBreak::Right, 1)],
+                Vec::new(),
+            ))
+        } else {
+            Ok(full_reply(20.0, position(1, 0), 20.0, Vec::new()))
+        }
+    });
+    assert_eq!(
+        resolve_fragmentation(&input::<S>(&[(185, 1)], 0.0), &mut provider),
+        Err(FragmentationError::MissingPageSide {
+            context: 0,
+            index: 1,
+        })
+    );
+    assert_eq!(provider.queries.len(), 1);
+    assert_eq!(provider.queries[0].fragmentainer_index, 0);
+}
+scalars!(
+    required_page_side_absence_identifies_context_and_frame,
+    required_page_side_absence_identifies_context_and_frame_f32,
+    required_page_side_absence_identifies_context_and_frame_f64
+);
+
+#[test]
+fn principal_used_axes_classify_every_page_progression_and_inverse_side() {
+    use Direction::{Ltr, Rtl};
+    use FragmentationLogicalPageSide::{Recto, Verso};
+    use FragmentationPhysicalPageSide::{Left, Right};
+    use PageProgression::{LeftToRight, RightToLeft};
+    use WritingMode::{HorizontalTb, SidewaysLr, SidewaysRl, VerticalLr, VerticalRl};
+    // Writing Modes4 §8.2 and Logical1 §3: expected directions and physical
+    // sides are authored independently of the classifier's implementation.
+    for (mode, direction, expected, recto, verso) in [
+        (HorizontalTb, Ltr, LeftToRight, Right, Left),
+        (HorizontalTb, Rtl, RightToLeft, Left, Right),
+        (VerticalRl, Ltr, RightToLeft, Left, Right),
+        (VerticalRl, Rtl, RightToLeft, Left, Right),
+        (SidewaysRl, Ltr, RightToLeft, Left, Right),
+        (SidewaysRl, Rtl, RightToLeft, Left, Right),
+        (VerticalLr, Ltr, LeftToRight, Right, Left),
+        (VerticalLr, Rtl, LeftToRight, Right, Left),
+        (SidewaysLr, Ltr, LeftToRight, Right, Left),
+        (SidewaysLr, Rtl, LeftToRight, Right, Left),
+    ] {
+        let actual = PageProgression::from_principal_used_axes(FlowAxes::new(mode, direction));
+        assert_eq!(actual, expected, "{mode:?}/{direction:?}");
+        assert_eq!(actual.physical_side(Recto), recto);
+        assert_eq!(actual.physical_side(Verso), verso);
+        let recto_page = actual.classify(recto);
+        assert_eq!(recto_page.physical(), recto);
+        assert_eq!(recto_page.logical(), Recto);
+        let verso_page = actual.classify(verso);
+        assert_eq!(verso_page.physical(), verso);
+        assert_eq!(verso_page.logical(), Verso);
+    }
+}
+
+fn page_frames<S: LayoutScalar>(
+    sides: &[Option<FragmentationPhysicalPageSide>],
+) -> Vec<FragmentainerOf<S>> {
+    frames::<S>(
+        &vec![100.0; sides.len()],
+        80.0,
+        FragmentationBreakKinds::PAGE,
+    )
+    .into_iter()
+    .zip(sides)
+    .map(|(mut frame, &side)| {
+        frame.page_side = side;
+        frame
+    })
+    .collect()
+}
+
+fn side_control_reply<S: LayoutScalar>(
+    query: FragmentationQueryOf<S>,
+    controls: &[FragmentationBreakControl],
+    extent: f64,
+) -> FragmentationReplyOf<S> {
+    if query.scan_after.is_none() {
+        raw_start(controls.to_vec(), Vec::new())
+    } else {
+        full_reply(extent, position(1, 0), extent, Vec::new())
+    }
+}
+
+fn page_progression_selects_logical_physical_and_latest_sides<S: LayoutScalar>() {
+    use FragmentationBreak::{Left, Recto, Right, Verso};
+    use FragmentationForcedSide as Forced;
+    use FragmentationPhysicalPageSide as Physical;
+    use PageProgression::{LeftToRight, RightToLeft};
+    // Explicit first Left overrides the default first-page convention. Start1
+    // independently exercises a nonzero frame origin and the opposite parity.
+    for (progression, value, start, target, side) in [
+        (LeftToRight, Recto, 0, 1, Forced::Recto),
+        (LeftToRight, Verso, 0, 2, Forced::Verso),
+        (RightToLeft, Recto, 0, 2, Forced::Recto),
+        (RightToLeft, Verso, 0, 1, Forced::Verso),
+        (LeftToRight, Recto, 1, 3, Forced::Recto),
+        (LeftToRight, Verso, 1, 2, Forced::Verso),
+        (RightToLeft, Recto, 1, 2, Forced::Recto),
+        (RightToLeft, Verso, 1, 3, Forced::Verso),
+        (LeftToRight, Left, 0, 2, Forced::Left),
+        (RightToLeft, Left, 0, 2, Forced::Left),
+        (LeftToRight, Right, 0, 1, Forced::Right),
+        (RightToLeft, Right, 0, 1, Forced::Right),
+    ] {
+        let mut fixture = input::<S>(&[(200, 1)], 0.0);
+        fixture.contexts[0].kind = FragmentationKind::Page { progression };
+        fixture.contexts[0].flow_axes = FlowAxes::new(WritingMode::VerticalLr, Direction::Rtl);
+        fixture.flows[0].start_fragmentainer = start;
+        let inventory = page_frames(&[
+            Some(Physical::Left),
+            Some(Physical::Right),
+            Some(Physical::Left),
+            Some(Physical::Right),
+        ]);
+        let mut provider = reply_probe(vec![inventory], |query| {
+            Ok(side_control_reply(query, &[control(value, 1)], 20.0))
+        });
+        let report = resolve_fragmentation(&fixture, &mut provider).unwrap();
+        assert_eq!(report.breaks.len(), 1);
+        let transition = &report.breaks[0];
+        assert_eq!(
+            (transition.from_fragmentainer, transition.to_fragmentainer),
+            (start, target)
+        );
+        assert_eq!(
+            transition.reason,
+            FragmentationBreakReason::Forced {
+                required: FragmentationBreakKinds::PAGE,
+                side: Some(side),
+            }
+        );
+        assert_eq!(transition.stage, FragmentationStage::Strict);
+        assert_eq!(report.pieces.len(), 1);
+        assert_eq!(report.pieces[0].fragmentainer, target);
+        assert_eq!(coverage(&report), [(200, 0, 1)]);
+    }
+    for (controls, target, side) in [
+        (
+            vec![control(Verso, 20), control(Left, 10)],
+            1,
+            Forced::Verso,
+        ),
+        (
+            vec![control(Recto, 10), control(Right, 20)],
+            1,
+            Forced::Right,
+        ),
+        (vec![control(Left, 20), control(Verso, 10)], 2, Forced::Left),
+        (
+            vec![control(Right, 10), control(Recto, 20)],
+            2,
+            Forced::Recto,
+        ),
+    ] {
+        let mut fixture = input::<S>(&[(201, 1)], 0.0);
+        fixture.contexts[0].kind = FragmentationKind::Page {
+            progression: RightToLeft,
+        };
+        let mut provider = reply_probe(
+            vec![page_frames(&[
+                Some(Physical::Left),
+                Some(Physical::Right),
+                Some(Physical::Left),
+            ])],
+            |query| Ok(side_control_reply(query, &controls, 20.0)),
+        );
+        let report = resolve_fragmentation(&fixture, &mut provider).unwrap();
+        assert_eq!(report.pieces[0].fragmentainer, target);
+        assert_eq!(
+            report.breaks[0].reason,
+            FragmentationBreakReason::Forced {
+                required: FragmentationBreakKinds::PAGE,
+                side: Some(side),
+            }
+        );
+        assert_eq!(coverage(&report), [(201, 0, 1)]);
+    }
+}
+scalars!(
+    page_progression_selects_logical_physical_and_latest_sides,
+    page_progression_selects_logical_physical_and_latest_sides_f32,
+    page_progression_selects_logical_physical_and_latest_sides_f64
+);
+
+fn nearest_page_progression_owns_nested_side_matching<S: LayoutScalar>() {
+    use FragmentationPhysicalPageSide::{Left, Right};
+    for inner_kind in [FragmentationKind::Column, FragmentationKind::Region] {
+        let mut fixture = input::<S>(&[(202, 1)], 0.0);
+        fixture.contexts = vec![
+            context(
+                FragmentationKind::Page {
+                    progression: PageProgression::LeftToRight,
+                },
+                None,
+            ),
+            context(
+                FragmentationKind::Page {
+                    progression: PageProgression::RightToLeft,
+                },
+                Some(0),
+            ),
+            FragmentationContext {
+                kind: inner_kind,
+                parent: Some(1),
+                flow_axes: FlowAxes::new(WritingMode::VerticalLr, Direction::Ltr),
+            },
+        ];
+        fixture.flows[0].context = 2;
+        let outer = page_frames(&[Some(Right), Some(Left)]);
+        let mut nearest = page_frames(&[Some(Right), Some(Left)]);
+        for (index, frame) in nearest.iter_mut().enumerate() {
+            frame.parent_fragmentainer = Some(index);
+        }
+        let mut inner = frames::<S>(&[100.0, 100.0, 100.0], 80.0, inner_kind.breaks());
+        for (frame, parent) in inner.iter_mut().zip([0, 0, 1]) {
+            frame.parent_fragmentainer = Some(parent);
+            // Child physical metadata is deliberately misleading.
+            frame.page_side = Some(Right);
+        }
+        inner[2].breaks = inner_kind.breaks().union(FragmentationBreakKinds::PAGE);
+        let mut controls = vec![control(FragmentationBreak::Recto, 2)];
+        let mut required = FragmentationBreakKinds::PAGE;
+        if inner_kind == FragmentationKind::Column {
+            controls.push(control(FragmentationBreak::Column, 1));
+            required = required.union(FragmentationBreakKinds::COLUMN);
+        }
+        let mut provider = reply_probe(vec![outer, nearest, inner], |query| {
+            Ok(side_control_reply(query, &controls, 20.0))
+        });
+        let report = resolve_fragmentation(&fixture, &mut provider).unwrap();
+        assert_eq!(report.pieces[0].fragmentainer, 2);
+        assert_eq!(
+            report.breaks[0].reason,
+            FragmentationBreakReason::Forced {
+                required,
+                side: Some(FragmentationForcedSide::Recto),
+            }
+        );
+        assert_eq!(coverage(&report), [(202, 0, 1)]);
+        provider.frames[1][1].page_side = None;
+        assert_eq!(
+            resolve_fragmentation(&fixture, &mut provider),
+            Err(FragmentationError::MissingPageSide {
+                context: 1,
+                index: 1
+            })
+        );
+    }
+}
+scalars!(
+    nearest_page_progression_owns_nested_side_matching,
+    nearest_page_progression_owns_nested_side_matching_f32,
+    nearest_page_progression_owns_nested_side_matching_f64
+);
+
+fn independent_page_contexts_keep_distinct_progression<S: LayoutScalar>() {
+    use FragmentationPhysicalPageSide::{Left, Right};
+    let fixture = FragmentationInputOf {
+        contexts: vec![
+            context(
+                FragmentationKind::Page {
+                    progression: PageProgression::LeftToRight,
+                },
+                None,
+            ),
+            context(
+                FragmentationKind::Page {
+                    progression: PageProgression::RightToLeft,
+                },
+                None,
+            ),
+        ],
+        flows: vec![flow::<S>(0, &[(203, 1)], 0.0), flow(1, &[(204, 1)], 0.0)],
+    };
+    let inventory = page_frames(&[Some(Left), Some(Right), Some(Left)]);
+    let mut provider = reply_probe(vec![inventory.clone(), inventory], |query| {
+        Ok(side_control_reply(
+            query,
+            &[control(FragmentationBreak::Recto, 1)],
+            20.0,
+        ))
+    });
+    let report = resolve_fragmentation(&fixture, &mut provider).unwrap();
+    assert_eq!(report.pieces.len(), 2);
+    assert_eq!(
+        (report.pieces[0].flow, report.pieces[0].fragmentainer),
+        (0, 1)
+    );
+    assert_eq!(
+        (report.pieces[1].flow, report.pieces[1].fragmentainer),
+        (1, 2)
+    );
+    assert_eq!(coverage(&report), [(203, 0, 1), (204, 0, 1)]);
+}
+scalars!(
+    independent_page_contexts_keep_distinct_progression,
+    independent_page_contexts_keep_distinct_progression_f32,
+    independent_page_contexts_keep_distinct_progression_f64
+);
+
+fn page_side_absence_zero_geometry_and_nonpage_applicability<S: LayoutScalar>() {
+    use FragmentationPhysicalPageSide::{Left, Right};
+    for kind in [FragmentationKind::Column, FragmentationKind::Region] {
+        let mut fixture = input::<S>(&[(205, 1)], 0.0);
+        fixture.contexts[0].kind = kind;
+        let mut provider = reply_probe(vec![page_frames(&[Some(Left)])], |query| {
+            Ok(side_control_reply(
+                query,
+                &[control(FragmentationBreak::Recto, 1)],
+                20.0,
+            ))
+        });
+        let report = resolve_fragmentation(&fixture, &mut provider).unwrap();
+        assert_eq!(report.pieces[0].fragmentainer, 0);
+        assert!(report.breaks.is_empty());
+    }
+    let mut zero = page_frames::<S>(&[None]);
+    zero[0].inline_size = S::ZERO;
+    zero[0].block_size = S::ZERO;
+    let mut provider = reply_probe(vec![zero], |_| {
+        Ok(full_reply(0.0, position(1, 0), 0.0, Vec::new()))
+    });
+    let report = resolve_fragmentation(&input::<S>(&[(206, 0)], 0.0), &mut provider).unwrap();
+    assert_eq!(coverage(&report), [(206, 0, 0)]);
+    assert_eq!(report.pieces[0].block_size, S::ZERO);
+
+    // Unknown initial side is unused by the force; its known target side and
+    // zero geometry remain independent facts. SPREAD still crosses PAGE.
+    let mut zero = page_frames::<S>(&[None, Some(Right)]);
+    for frame in &mut zero {
+        frame.inline_size = S::ZERO;
+        frame.block_size = S::ZERO;
+    }
+    zero[1].breaks = FragmentationBreakKinds::SPREAD;
+    let mut provider = reply_probe(vec![zero], |query| {
+        Ok(side_control_reply(
+            query,
+            &[control(FragmentationBreak::Recto, 1)],
+            0.0,
+        ))
+    });
+    let report = resolve_fragmentation(&input::<S>(&[(207, 0)], 0.0), &mut provider).unwrap();
+    assert_eq!(report.pieces[0].fragmentainer, 1);
+    assert_eq!(coverage(&report), [(207, 0, 0)]);
+    provider.frames[0][1].page_side = None;
+    assert_eq!(
+        resolve_fragmentation(&input::<S>(&[(207, 0)], 0.0), &mut provider),
+        Err(FragmentationError::MissingPageSide {
+            context: 0,
+            index: 1
+        })
+    );
+
+    let mut fixture = input::<S>(&[(208, 1)], 0.0);
+    fixture.contexts[0].kind = FragmentationKind::Page {
+        progression: PageProgression::RightToLeft,
+    };
+    let mut provider = reply_probe(vec![page_frames(&[Some(Left), Some(Right)])], |query| {
+        Ok(side_control_reply(
+            query,
+            &[control(FragmentationBreak::Recto, 1)],
+            20.0,
+        ))
+    });
+    assert_eq!(
+        resolve_fragmentation(&fixture, &mut provider),
+        Err(FragmentationError::MissingFragmentainer {
+            context: 0,
+            index: 2
+        })
+    );
+}
+scalars!(
+    page_side_absence_zero_geometry_and_nonpage_applicability,
+    page_side_absence_zero_geometry_and_nonpage_applicability_f32,
+    page_side_absence_zero_geometry_and_nonpage_applicability_f64
 );

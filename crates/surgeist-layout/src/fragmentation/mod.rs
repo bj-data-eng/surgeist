@@ -6,11 +6,13 @@
 
 mod input;
 mod output;
+mod page;
 mod policy;
 mod scheduler;
 mod validation;
 pub use input::*;
 pub use output::*;
+pub use page::*;
 pub use scheduler::resolve_fragmentation;
 pub(crate) use scheduler::{
     AcceptedStep, CompletedExecution, Execution, ScopeEndpointOf, ScopeHeadProjectionOf,

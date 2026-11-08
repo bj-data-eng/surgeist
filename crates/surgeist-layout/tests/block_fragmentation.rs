@@ -387,7 +387,9 @@ fn fragmented<S: LayoutScalar>(
     LayoutBoundRequestOf::block_fragmentation(
         source,
         root_request(100.0),
-        FragmentationKind::Page,
+        FragmentationKind::Page {
+            progression: PageProgression::LeftToRight,
+        },
         axes(),
         frames,
     )
@@ -655,7 +657,9 @@ fn rtl_and_orthogonal_children_keep_actual_parent_spaces<S: LayoutScalar>() {
     let request = LayoutBoundRequestOf::block_fragmentation(
         LayoutSourceBasis::fresh(),
         root_request(100.0),
-        FragmentationKind::Page,
+        FragmentationKind::Page {
+            progression: PageProgression::LeftToRight,
+        },
         rtl_axes,
         vec![frame(100.0, 50.0, true), frame(60.0, 80.0, false)],
     )
@@ -1190,7 +1194,9 @@ fn decreasing_block_axis_uses_each_fragment_parent_extent<S: LayoutScalar>() {
     let request = LayoutBoundRequestOf::block_fragmentation(
         LayoutSourceBasis::fresh(),
         root,
-        FragmentationKind::Page,
+        FragmentationKind::Page {
+            progression: PageProgression::LeftToRight,
+        },
         vertical,
         vec![frame(50.0, 100.0, true), frame(80.0, 60.0, false)],
     )
@@ -1266,7 +1272,12 @@ fn external_origins_drive_fragment_local_endpoint_rounding<S: LayoutScalar>() {
         assert_eq!(external.size(), expected.size);
         assert_eq!(external.boundary(), expected.breaks);
         assert_eq!(external.flow_axes(), axes());
-        assert_eq!(external.kind(), FragmentationKind::Page);
+        assert_eq!(
+            external.kind(),
+            FragmentationKind::Page {
+                progression: PageProgression::LeftToRight
+            }
+        );
         assert_eq!(
             external.final_origin(),
             Point::new(S::from_f64(rounded.0), S::from_f64(rounded.1))
@@ -1611,7 +1622,9 @@ fn vertical_bound_request<S: LayoutScalar>(source: LayoutSourceBasis) -> LayoutB
     LayoutBoundRequestOf::block_fragmentation(
         source,
         root,
-        FragmentationKind::Page,
+        FragmentationKind::Page {
+            progression: PageProgression::LeftToRight,
+        },
         vertical,
         vec![frame(50.0, 100.0, true), frame(80.0, 60.0, false)],
     )
@@ -1780,7 +1793,9 @@ fn fragment_fill_does_not_create_descendant_percentage_authority<S: LayoutScalar
         let request = LayoutBoundRequestOf::block_fragmentation(
             LayoutSourceBasis::fresh(),
             explicit_block_percentage_parent(),
-            FragmentationKind::Page,
+            FragmentationKind::Page {
+                progression: PageProgression::LeftToRight,
+            },
             axes(),
             vec![frame(100.0, 50.0, true), frame(60.0, 80.0, false)],
         )
@@ -1846,7 +1861,9 @@ fn fragment_fill_does_not_create_descendant_percentage_authority<S: LayoutScalar
     let request = LayoutBoundRequestOf::block_fragmentation(
         LayoutSourceBasis::fresh(),
         explicit_block_percentage_parent(),
-        FragmentationKind::Page,
+        FragmentationKind::Page {
+            progression: PageProgression::LeftToRight,
+        },
         axes(),
         vec![frame(100.0, 150.0, true)],
     )
@@ -2769,7 +2786,9 @@ fn whole_intrinsic_components_bind_first_frame_icb<S: LayoutScalar>() {
     let request = LayoutBoundRequestOf::block_fragmentation(
         LayoutSourceBasis::fresh(),
         intrinsic_icb_template(),
-        FragmentationKind::Page,
+        FragmentationKind::Page {
+            progression: PageProgression::LeftToRight,
+        },
         axes(),
         vec![frame(100.0, 50.0, true), frame(60.0, 80.0, false)],
     )
@@ -2860,7 +2879,9 @@ fn atomic_intrinsic_requests_bind_first_frame_icb<S: LayoutScalar>() {
     let request = LayoutBoundRequestOf::block_fragmentation(
         LayoutSourceBasis::fresh(),
         intrinsic_icb_template(),
-        FragmentationKind::Page,
+        FragmentationKind::Page {
+            progression: PageProgression::LeftToRight,
+        },
         axes(),
         vec![frame(100.0, 50.0, true), frame(60.0, 80.0, false)],
     )
@@ -2936,7 +2957,9 @@ fn atomic_intrinsic_requests_keep_nearest_scrollport<S: LayoutScalar>() {
     let bound = LayoutBoundRequestOf::block_fragmentation(
         LayoutSourceBasis::fresh(),
         request,
-        FragmentationKind::Page,
+        FragmentationKind::Page {
+            progression: PageProgression::LeftToRight,
+        },
         axes(),
         vec![frame(100.0, 50.0, true), frame(60.0, 80.0, false)],
     )
@@ -2974,7 +2997,9 @@ fn atomic_intrinsic_requests_keep_containing_limits<S: LayoutScalar>() {
     let bound = LayoutBoundRequestOf::block_fragmentation(
         LayoutSourceBasis::fresh(),
         intrinsic_icb_template(),
-        FragmentationKind::Page,
+        FragmentationKind::Page {
+            progression: PageProgression::LeftToRight,
+        },
         axes(),
         vec![frame(100.0, 50.0, true)],
     )
@@ -3023,7 +3048,9 @@ fn intrinsic_custody_does_not_create_block_percentage_basis<S: LayoutScalar>() {
         let bound = LayoutBoundRequestOf::block_fragmentation(
             LayoutSourceBasis::fresh(),
             explicit_block_percentage_parent(),
-            FragmentationKind::Page,
+            FragmentationKind::Page {
+                progression: PageProgression::LeftToRight,
+            },
             axes(),
             vec![frame(100.0, 50.0, true), frame(60.0, 80.0, false)],
         )
@@ -4231,7 +4258,9 @@ fn minimum_extra_qualification_vertical_minimum_uses_physical_block_axis<S: Layo
         let request = LayoutBoundRequestOf::block_fragmentation(
             LayoutSourceBasis::fresh(),
             root,
-            FragmentationKind::Page,
+            FragmentationKind::Page {
+                progression: PageProgression::LeftToRight,
+            },
             vertical,
             vec![frame(50.0, 100.0, true), frame(80.0, 60.0, false)],
         )
@@ -5433,7 +5462,9 @@ fn maximum_progress_axis_request_origin<S: LayoutScalar>(
     LayoutBoundRequestOf::block_fragmentation(
         LayoutSourceBasis::fresh(),
         root,
-        FragmentationKind::Page,
+        FragmentationKind::Page {
+            progression: PageProgression::LeftToRight,
+        },
         axes,
         frames,
     )
@@ -6335,7 +6366,9 @@ fn maximum_progress_cross_progression_whole_fit_case<S: LayoutScalar>(cap: f64, 
     let uncapped_request = LayoutBoundRequestOf::block_fragmentation(
         LayoutSourceBasis::fresh(),
         maximum_progress_cross_progression_request(200.0),
-        FragmentationKind::Page,
+        FragmentationKind::Page {
+            progression: PageProgression::LeftToRight,
+        },
         axes,
         vec![frame(200.0, 100.0, true)],
     )
@@ -6351,7 +6384,9 @@ fn maximum_progress_cross_progression_whole_fit_case<S: LayoutScalar>(cap: f64, 
     let whole_request = LayoutBoundRequestOf::block_fragmentation(
         LayoutSourceBasis::fresh(),
         maximum_progress_cross_progression_request(300.0),
-        FragmentationKind::Page,
+        FragmentationKind::Page {
+            progression: PageProgression::LeftToRight,
+        },
         axes,
         vec![frame(300.0, 100.0, true)],
     )
@@ -6364,7 +6399,9 @@ fn maximum_progress_cross_progression_whole_fit_case<S: LayoutScalar>(cap: f64, 
     let request = LayoutBoundRequestOf::block_fragmentation(
         LayoutSourceBasis::fresh(),
         maximum_progress_cross_progression_request(200.0),
-        FragmentationKind::Page,
+        FragmentationKind::Page {
+            progression: PageProgression::LeftToRight,
+        },
         axes,
         vec![frame(200.0, 100.0, true)],
     )
@@ -7128,4 +7165,327 @@ scalars!(
     maximum_progress_opening_margin_no_prefix,
     maximum_progress_opening_margin_no_prefix_f32,
     maximum_progress_opening_margin_no_prefix_f64
+);
+
+fn missing_page_side_is_semantic_failure_with_valid_geometry<S: LayoutScalar>() {
+    let mut second = block::<S>(None, Some(20.0));
+    second.break_before = FragmentationBreak::Right;
+    let mut tree = Tree::new(
+        vec![block(None, None), block(None, Some(10.0)), second],
+        vec![vec![1, 2], vec![], vec![]],
+    );
+    let mut sink = Sink::new(3);
+    let seed = compute_layout(&tree, 0, root_request(100.0)).unwrap();
+    assert!(!seed.cache_store_entries().is_empty());
+    seed.apply_to(&mut sink).unwrap();
+    sink.copy_cache_to(&mut tree);
+    assert!(tree.caches.iter().any(|cache| !cache.is_empty()));
+    assert!(tree.custody.iter().all(Option::is_some));
+    let published = sink.state.clone();
+    let caches = tree.caches.clone();
+    let custody = tree.custody.clone();
+    let members = sink.targets.published_members(0).to_vec();
+    let preparations = sink.preparations.get();
+    let commits = sink.commits;
+
+    let mut frames = vec![frame(100.0, 100.0, true), frame(60.0, 80.0, false)];
+    frames[0].page_side = Some(FragmentationPhysicalPageSide::Left);
+    frames[1].page_side = Some(FragmentationPhysicalPageSide::Right);
+    let control = fragmented(LayoutSourceBasis::fresh(), frames.clone());
+    let complete =
+        compute(&tree, 0, &control).expect("known required side admits the same geometry");
+    assert_eq!(complete.fragmentainers().len(), 2);
+    let roots = fragments(&complete, 0);
+    assert_eq!(roots.len(), 2);
+    // Break3 §5.3 fills the continuing root to the first frame's edge;
+    // its first leaf still occupies only its independently authored10px.
+    assert_fragment(&roots[0], (100.0, 100.0));
+    assert_fragment(&roots[1], (60.0, 20.0));
+    minimum_progress_child(&complete, 1, 0, roots[0].id(), (0.0, 0.0), (100.0, 10.0));
+    minimum_progress_child(&complete, 2, 1, roots[1].id(), (0.0, 0.0), (60.0, 20.0));
+
+    // Only required semantic side authority is removed. Both target frames,
+    // their finite geometry, the source and the applicable Right force remain.
+    frames[1].page_side = None;
+    let missing = fragmented(LayoutSourceBasis::fresh(), frames);
+    sink.authorize(0, &missing);
+    let error = compute(&tree, 0, &missing).unwrap_err();
+    assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
+    assert_eq!(error.operation(), LayoutOperation::RootLayout);
+    assert_eq!(sink.state, published);
+    assert_eq!(sink.preparations.get(), preparations);
+    assert_eq!(sink.commits, commits);
+    assert_eq!(sink.targets.published_members(0), members);
+    assert_eq!(sink.targets.get(0), Some(&missing.target_basis()));
+    assert_eq!(tree.caches, caches);
+    assert_eq!(tree.custody, custody);
+    assert!(matches!(
+        error.kind(),
+        LayoutErrorKindOf::BlockFragmentation(_)
+    ));
+    assert!(
+        !matches!(
+            error.kind(),
+            LayoutErrorKindOf::BlockFragmentation(BlockFragmentationFailure::InvalidGeometry)
+        ),
+        "missing page-side authority must not be classified as invalid finite geometry"
+    );
+    assert!(matches!(
+        error.kind(),
+        LayoutErrorKindOf::BlockFragmentation(BlockFragmentationFailure::MissingPageSide {
+            index: 1
+        })
+    ));
+}
+scalars!(
+    missing_page_side_is_semantic_failure_with_valid_geometry,
+    missing_page_side_is_semantic_failure_with_valid_geometry_f32,
+    missing_page_side_is_semantic_failure_with_valid_geometry_f64
+);
+
+fn rtl_page_request<S: LayoutScalar>(
+    frames: Vec<BlockFragmentainerOf<S>>,
+) -> LayoutBoundRequestOf<S> {
+    // Document principal RTL is supplied explicitly. The fragmented root and
+    // its containing axes remain horizontal LTR throughout these cases.
+    let principal = FlowAxes::new(WritingMode::HorizontalTb, Direction::Rtl);
+    LayoutBoundRequestOf::block_fragmentation(
+        LayoutSourceBasis::fresh(),
+        root_request(100.0),
+        FragmentationKind::Page {
+            progression: PageProgression::from_principal_used_axes(principal),
+        },
+        axes(),
+        frames,
+    )
+    .unwrap()
+}
+
+fn sided_native_frames<S: LayoutScalar>() -> Vec<BlockFragmentainerOf<S>> {
+    let mut frames = vec![
+        frame(100.0, 100.0, true),
+        frame(60.0, 80.0, false),
+        frame(80.0, 60.0, false),
+    ];
+    for (frame, side) in frames.iter_mut().zip([
+        FragmentationPhysicalPageSide::Right,
+        FragmentationPhysicalPageSide::Left,
+        FragmentationPhysicalPageSide::Right,
+    ]) {
+        frame.page_side = Some(side);
+    }
+    frames
+}
+
+fn assert_rtl_page_metadata<S: LayoutScalar>(batch: &Batch<S>) {
+    use FragmentationLogicalPageSide::{Recto, Verso};
+    use FragmentationPhysicalPageSide::{Left, Right};
+    assert_eq!(batch.fragmentainers().len(), 3);
+    for (frame, (physical, logical)) in
+        batch
+            .fragmentainers()
+            .iter()
+            .zip([(Right, Verso), (Left, Recto), (Right, Verso)])
+    {
+        assert_eq!(
+            frame.kind(),
+            FragmentationKind::Page {
+                progression: PageProgression::RightToLeft
+            }
+        );
+        assert_eq!(frame.flow_axes(), axes());
+        let side = frame
+            .page_side()
+            .expect("known physical side has owner classification");
+        assert_eq!(side.physical(), physical);
+        assert_eq!(side.logical(), logical);
+    }
+}
+
+fn native_principal_progression_differs_from_root_geometry<S: LayoutScalar>() {
+    for root_force in [true, false] {
+        let mut root = block::<S>(None, None);
+        let mut last = block::<S>(None, Some(20.0));
+        let tree = if root_force {
+            root.break_before = FragmentationBreak::Recto;
+            Tree::new(vec![root, last], vec![vec![1], vec![]])
+        } else {
+            last.break_before = FragmentationBreak::Verso;
+            Tree::new(
+                vec![root, block(None, Some(10.0)), last],
+                vec![vec![1, 2], vec![], vec![]],
+            )
+        };
+        let batch = compute(&tree, 0, &rtl_page_request(sided_native_frames())).unwrap();
+        assert_rtl_page_metadata(&batch);
+        if root_force {
+            // RTL recto is Left: the root's own force resumes in frame1,
+            // rather than frame2 selected by its geometric LTR axes.
+            let root = single(&batch, 0);
+            assert_eq!(
+                root.coordinate_parent(),
+                Some(&FragmentCoordinateSpace::Fragmentainer(
+                    batch.fragmentainers()[1].id().clone()
+                ))
+            );
+            assert_packet(root.unrounded_output(), (0.0, 0.0), (60.0, 20.0));
+            minimum_progress_child(&batch, 1, 0, root.id(), (0.0, 0.0), (60.0, 20.0));
+        } else {
+            // RTL verso is Right: the descendant force skips frame1.
+            let roots = fragments(&batch, 0);
+            assert_eq!(roots.len(), 2);
+            assert_fragment(&roots[0], (100.0, 100.0));
+            assert_fragment(&roots[1], (80.0, 20.0));
+            assert_eq!(
+                roots[1].coordinate_parent(),
+                Some(&FragmentCoordinateSpace::Fragmentainer(
+                    batch.fragmentainers()[2].id().clone()
+                ))
+            );
+            minimum_progress_child(&batch, 1, 0, roots[0].id(), (0.0, 0.0), (100.0, 10.0));
+            minimum_progress_child(&batch, 2, 1, roots[1].id(), (0.0, 0.0), (80.0, 20.0));
+            let mut missing = sided_native_frames();
+            missing[2].page_side = None;
+            let error = compute(&tree, 0, &rtl_page_request(missing)).unwrap_err();
+            assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
+            assert_eq!(error.operation(), LayoutOperation::RootLayout);
+            assert!(matches!(
+                error.kind(),
+                LayoutErrorKindOf::BlockFragmentation(BlockFragmentationFailure::MissingPageSide {
+                    index: 2
+                })
+            ));
+        }
+        maximum_progress_unique_fragments(&batch);
+    }
+}
+scalars!(
+    native_principal_progression_differs_from_root_geometry,
+    native_principal_progression_differs_from_root_geometry_f32,
+    native_principal_progression_differs_from_root_geometry_f64
+);
+
+fn native_owned_child_replay_keeps_explicit_page_progression<S: LayoutScalar>() {
+    for cap in [200.0, 20.0] {
+        let mut last = block::<S>(None, Some(20.0));
+        last.break_before = FragmentationBreak::Recto;
+        let tree = Tree::new(
+            vec![
+                block(None, None),
+                block(None, Some(10.0)),
+                maximum_progress_cap(cap),
+                block(None, Some(10.0)),
+                last,
+                block(None, Some(5.0)),
+            ],
+            vec![vec![1, 2, 5], vec![], vec![3, 4], vec![], vec![], vec![]],
+        );
+        let batch = compute(&tree, 0, &rtl_page_request(sided_native_frames())).unwrap();
+        assert_rtl_page_metadata(&batch);
+        let roots = fragments(&batch, 0);
+        let owner = fragments(&batch, 2);
+        assert_eq!(roots.len(), 2);
+        assert_eq!(owner.len(), 2);
+        assert_fragment(&owner[0], (100.0, if cap == 20.0 { 20.0 } else { 90.0 }));
+        if cap == 20.0 {
+            // The finite principal finishes in frame0: prefix10 + cap20 +
+            // tail5. B's forced frame1 overflow does not enlarge that box or
+            // move its following sibling out of the remaining frame0 space.
+            assert_fragment(&roots[0], (100.0, 35.0));
+            for fragment in [&roots[1], &owner[1]] {
+                let overflow = fragment.overflow_only().unwrap();
+                for geometry in [overflow.unrounded(), overflow.final_geometry()] {
+                    assert_eq!(geometry.origin, Point::ZERO);
+                    assert_eq!(
+                        geometry.content_bounds.size(),
+                        Size::new(S::from_f64(60.0), S::from_f64(20.0))
+                    );
+                }
+            }
+            minimum_progress_child(&batch, 5, 2, roots[0].id(), (0.0, 30.0), (100.0, 5.0));
+        } else {
+            assert_fragment(&roots[0], (100.0, 100.0));
+            assert_fragment(&owner[1], (60.0, 20.0));
+            assert_fragment(&roots[1], (60.0, 25.0));
+            minimum_progress_child(&batch, 5, 2, roots[1].id(), (0.0, 20.0), (60.0, 5.0));
+        }
+        minimum_progress_child(&batch, 1, 0, roots[0].id(), (0.0, 0.0), (100.0, 10.0));
+        minimum_progress_child(&batch, 3, 0, owner[0].id(), (0.0, 0.0), (100.0, 10.0));
+        minimum_progress_child(&batch, 4, 1, owner[1].id(), (0.0, 0.0), (60.0, 20.0));
+        assert_eq!(
+            roots[1].coordinate_parent(),
+            Some(&FragmentCoordinateSpace::Fragmentainer(
+                batch.fragmentainers()[1].id().clone()
+            ))
+        );
+        maximum_progress_unique_fragments(&batch);
+
+        let mut missing = sided_native_frames();
+        missing[1].page_side = None;
+        let error = compute(&tree, 0, &rtl_page_request(missing)).unwrap_err();
+        assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
+        assert_eq!(error.operation(), LayoutOperation::RootLayout);
+        assert!(matches!(
+            error.kind(),
+            LayoutErrorKindOf::BlockFragmentation(BlockFragmentationFailure::MissingPageSide {
+                index: 1
+            })
+        ));
+    }
+}
+scalars!(
+    native_owned_child_replay_keeps_explicit_page_progression,
+    native_owned_child_replay_keeps_explicit_page_progression_f32,
+    native_owned_child_replay_keeps_explicit_page_progression_f64
+);
+
+fn native_page_side_metadata_is_demand_driven_and_page_only<S: LayoutScalar>() {
+    for side in [None, Some(FragmentationPhysicalPageSide::Right)] {
+        let tree = Tree::new(
+            vec![block::<S>(None, None), block(None, Some(0.0))],
+            vec![vec![1], vec![]],
+        );
+        let mut zero = frame::<S>(0.0, 0.0, true);
+        zero.page_side = side;
+        let batch = compute(&tree, 0, &rtl_page_request(vec![zero])).unwrap();
+        assert_eq!(batch.fragmentainers().len(), 1);
+        assert_packet(single(&batch, 0).unrounded_output(), (0.0, 0.0), (0.0, 0.0));
+        let actual = batch.fragmentainers()[0].page_side();
+        match side {
+            None => assert_eq!(actual, None),
+            Some(physical) => {
+                let actual = actual.unwrap();
+                assert_eq!(actual.physical(), physical);
+                assert_eq!(actual.logical(), FragmentationLogicalPageSide::Verso);
+            }
+        }
+    }
+    for kind in [FragmentationKind::Column, FragmentationKind::Region] {
+        let mut leaf = block::<S>(None, Some(20.0));
+        leaf.break_before = FragmentationBreak::Recto;
+        let tree = Tree::new(vec![block(None, None), leaf], vec![vec![1], vec![]]);
+        let mut annotated = frame(100.0, 100.0, true);
+        annotated.page_side = Some(FragmentationPhysicalPageSide::Left);
+        let request = LayoutBoundRequestOf::block_fragmentation(
+            LayoutSourceBasis::fresh(),
+            root_request(100.0),
+            kind,
+            axes(),
+            vec![annotated],
+        )
+        .unwrap();
+        let batch = compute(&tree, 0, &request).unwrap();
+        assert_eq!(batch.fragmentainers()[0].kind(), kind);
+        assert_eq!(batch.fragmentainers()[0].page_side(), None);
+        assert_packet(
+            single(&batch, 0).unrounded_output(),
+            (0.0, 0.0),
+            (100.0, 20.0),
+        );
+    }
+}
+scalars!(
+    native_page_side_metadata_is_demand_driven_and_page_only,
+    native_page_side_metadata_is_demand_driven_and_page_only_f32,
+    native_page_side_metadata_is_demand_driven_and_page_only_f64
 );

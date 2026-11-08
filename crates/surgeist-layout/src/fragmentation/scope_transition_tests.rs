@@ -976,17 +976,10 @@ fn emergency_receipt_preserves_policy_for_embedding_f64() {
 
 fn sided_frame<S: LayoutScalar>(index: usize) -> FragmentainerOf<S> {
     FragmentainerOf {
-        page_side: Some(FragmentationPageSide {
-            physical: if index.is_multiple_of(2) {
-                FragmentationPhysicalPageSide::Left
-            } else {
-                FragmentationPhysicalPageSide::Right
-            },
-            progression: if index.is_multiple_of(2) {
-                FragmentationProgressionPageSide::Verso
-            } else {
-                FragmentationProgressionPageSide::Recto
-            },
+        page_side: Some(if index.is_multiple_of(2) {
+            FragmentationPhysicalPageSide::Left
+        } else {
+            FragmentationPhysicalPageSide::Right
         }),
         ..frame(index, 100.0)
     }
@@ -1253,7 +1246,9 @@ fn position(occurrence: usize) -> FragmentationPosition {
 }
 fn contexts() -> Vec<FragmentationContext> {
     vec![FragmentationContext {
-        kind: FragmentationKind::Page,
+        kind: FragmentationKind::Page {
+            progression: crate::PageProgression::LeftToRight,
+        },
         parent: None,
         flow_axes: crate::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
     }]

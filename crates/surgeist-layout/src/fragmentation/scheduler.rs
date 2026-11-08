@@ -949,7 +949,7 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
         let mut result = FragmentationBreakKinds::NONE;
         loop {
             let item = self.input.contexts[context];
-            result = result.union(if item.kind == FragmentationKind::Page {
+            result = result.union(if matches!(item.kind, FragmentationKind::Page { .. }) {
                 FragmentationBreakKinds::SPREAD
             } else {
                 item.kind.breaks()
@@ -1072,22 +1072,20 @@ impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, 
     ) -> Result<bool, FragmentationError<P::Error>> {
         loop {
             let frame = self.frame(context, index)?;
-            if self.input.contexts[context].kind == FragmentationKind::Page {
+            if let FragmentationKind::Page { progression } = self.input.contexts[context].kind {
                 let actual = frame
                     .page_side
                     .ok_or(FragmentationError::MissingPageSide { context, index })?;
                 return Ok(match side {
-                    FragmentationForcedSide::Left => {
-                        actual.physical == FragmentationPhysicalPageSide::Left
-                    }
+                    FragmentationForcedSide::Left => actual == FragmentationPhysicalPageSide::Left,
                     FragmentationForcedSide::Right => {
-                        actual.physical == FragmentationPhysicalPageSide::Right
+                        actual == FragmentationPhysicalPageSide::Right
                     }
                     FragmentationForcedSide::Recto => {
-                        actual.progression == FragmentationProgressionPageSide::Recto
+                        actual == progression.physical_side(FragmentationLogicalPageSide::Recto)
                     }
                     FragmentationForcedSide::Verso => {
-                        actual.progression == FragmentationProgressionPageSide::Verso
+                        actual == progression.physical_side(FragmentationLogicalPageSide::Verso)
                     }
                 });
             }

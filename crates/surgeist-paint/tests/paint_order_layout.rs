@@ -376,7 +376,9 @@ fn actual_fragmented_root_continuations_retain_exact_occurrence_geometry_and_par
     let bound = layout::LayoutBoundRequestOf::block_fragmentation(
         layout::LayoutSourceBasis::fresh(),
         root_request(),
-        layout::FragmentationKind::Page,
+        layout::FragmentationKind::Page {
+            progression: layout::PageProgression::LeftToRight,
+        },
         axes,
         vec![
             layout::BlockFragmentainerOf {

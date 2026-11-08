@@ -431,6 +431,12 @@ impl<S: LayoutScalar> LayoutFragmentainerOutputOf<S> {
     }
     #[must_use]
     pub fn page_side(&self) -> Option<crate::FragmentationPageSide> {
-        self.frame.page_side
+        match self.kind {
+            crate::FragmentationKind::Page { progression } => self
+                .frame
+                .page_side
+                .map(|physical| progression.classify(physical)),
+            crate::FragmentationKind::Column | crate::FragmentationKind::Region => None,
+        }
     }
 }

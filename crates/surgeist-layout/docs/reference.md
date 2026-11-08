@@ -1081,6 +1081,21 @@ supplies fragmentainer constraints and measures the remaining source under the
 current frame. Opportunities must describe that frame; measurements made at a
 different inline size cannot stand in for them.
 
+`FragmentationKind::Page { progression }` carries `PageProgression` separately
+from the context's geometric `flow_axes`. Its
+[classifier](../src/fragmentation/page.rs) consumes the document principal used
+axes supplied after upstream root/body propagation. Horizontal-tb follows the
+used direction; vertical-rl and sideways-rl progress right-to-left, and
+vertical-lr and sideways-lr progress left-to-right. A fragmented subtree's axes
+do not substitute for this document fact.
+
+Frame providers supply physical page side when known. Recto and verso use the
+nearest Page context's progression, while physical Left/Right controls retain
+their physical meaning. Child Column/Region axes and side annotations do not
+override that Page; page-less contexts ignore page controls. The provider owns
+the actual starting side and frame inventory. Unknown side is allowed until a
+side force requires it, when `MissingPageSide` identifies the affected frame.
+
 `FragmentationReplyOf` distinguishes raw controls at the source cursor from a
 measured window. A window ends at the original flow end or a potential control
 boundary and reports only that covered span, with an explicit measured head
@@ -1132,15 +1147,24 @@ Sources: [Block adapter](../src/block_fragmentation/mod.rs),
 [completed batches](../src/output.rs) and [sink contract](../src/tree.rs).
 
 Construct `LayoutBoundRequestOf::block_fragmentation` with a source basis, a
-standalone root request, flow axes and ordered physical `BlockFragmentainerOf`
-rectangles. Capture it with `LayoutFlowInput::try_new_bound` and compute through
-`compute_layout_with_flow`. Each frame invokes the Block and leaf producers at
+standalone root request, fragmentation kind, flow axes and ordered physical
+`BlockFragmentainerOf` rectangles. Capture it with
+`LayoutFlowInput::try_new_bound` and compute through `compute_layout_with_flow`.
+Each frame invokes the Block and leaf producers at
 its own inline size. Rejected trials are discarded; accepted source intervals
 are recomputed. Frame capacity and used fragment fill do not supply a definite
 percentage-parent basis; required missing bases retain the producer's typed
 error. Ordinary auto Block ancestors retain their actual continuation geometry.
 Atomic boxes with no internal breakpoints overflow once when they cannot fit a
 fresh frame.
+
+The bound Page kind retains its progression through root and child scopes.
+Completed frame metadata derives its physical/logical page-side pair through
+the same classifier; nonpage frames have no logical page classification.
+Missing required side authority returns
+`BlockFragmentationFailure::MissingPageSide` with its frame index, without a
+completed partial batch or cache/publication effects. Invalid geometry and
+unavailable fragmentainers remain separate errors.
 
 Break-margin trimming uses contributor groups recorded by Block's collapse
 operations. A descendant margin separated from the break by padding, border or

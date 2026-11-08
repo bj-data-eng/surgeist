@@ -1,3 +1,4 @@
+use super::page::{FragmentationPhysicalPageSide, PageProgression};
 use crate::{DefaultScalar, FlowAxes, LayoutScalar};
 
 /// Types crossed by a fragmentation boundary. Spread always includes Page.
@@ -24,34 +25,21 @@ impl FragmentationBreakKinds {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FragmentationKind {
-    Page,
+    /// Pagination with independently resolved document principal progression.
+    Page {
+        progression: PageProgression,
+    },
     Column,
     Region,
 }
 impl FragmentationKind {
     pub const fn breaks(self) -> FragmentationBreakKinds {
         match self {
-            Self::Page => FragmentationBreakKinds::PAGE,
+            Self::Page { .. } => FragmentationBreakKinds::PAGE,
             Self::Column => FragmentationBreakKinds::COLUMN,
             Self::Region => FragmentationBreakKinds::REGION,
         }
     }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FragmentationPhysicalPageSide {
-    Left,
-    Right,
-}
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FragmentationProgressionPageSide {
-    Recto,
-    Verso,
-}
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct FragmentationPageSide {
-    pub physical: FragmentationPhysicalPageSide,
-    pub progression: FragmentationProgressionPageSide,
 }
 
 /// An ordered context has one block-flow direction. Its parent, if any, is a
@@ -60,6 +48,7 @@ pub struct FragmentationPageSide {
 pub struct FragmentationContext {
     pub kind: FragmentationKind,
     pub parent: Option<usize>,
+    /// Geometric axes of this flow; these do not resolve document progression.
     pub flow_axes: FlowAxes,
 }
 
@@ -70,7 +59,9 @@ pub struct FragmentainerOf<S: LayoutScalar = DefaultScalar> {
     /// Boundary crossed on entry. Noninitial frames cross at least one type.
     pub breaks: FragmentationBreakKinds,
     pub parent_fragmentainer: Option<usize>,
-    pub page_side: Option<FragmentationPageSide>,
+    /// Actual physical page side, when known. Logical classification belongs
+    /// to the nearest Page context's explicit progression.
+    pub page_side: Option<FragmentationPhysicalPageSide>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

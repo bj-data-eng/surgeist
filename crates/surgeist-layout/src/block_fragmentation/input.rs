@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     DefaultScalar, FlowAxes, FragmentationBreakKinds, FragmentationInputError, FragmentationKind,
-    FragmentationPageSide, LayoutRootRequestOf, LayoutScalar, Point, Size,
+    FragmentationPhysicalPageSide, LayoutRootRequestOf, LayoutScalar, Point, Size,
 };
 
 #[derive(Debug)]
@@ -57,7 +57,8 @@ pub struct BlockFragmentainerOf<S: LayoutScalar = DefaultScalar> {
     pub origin: Point<S>,
     pub size: Size<S>,
     pub breaks: FragmentationBreakKinds,
-    pub page_side: Option<FragmentationPageSide>,
+    /// Actual physical side; Page progression is supplied by the bound kind.
+    pub page_side: Option<FragmentationPhysicalPageSide>,
 }
 
 #[derive(Clone, Debug)]
@@ -104,7 +105,7 @@ impl<S: LayoutScalar> LayoutBoundRequestOf<S> {
             {
                 return Err(FragmentationInputError::InvalidGeometry);
             }
-            let allowed = if kind == FragmentationKind::Page {
+            let allowed = if matches!(kind, FragmentationKind::Page { .. }) {
                 FragmentationBreakKinds::SPREAD
             } else {
                 kind.breaks()
@@ -238,6 +239,7 @@ impl<Node: Copy + Eq> Default for LayoutPublicationTargets<Node> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BlockFragmentationFailure {
     MissingFragmentainer { index: usize },
+    MissingPageSide { index: usize },
     NoProgress { occurrence: usize },
     InvalidGeometry,
     InvalidSource,

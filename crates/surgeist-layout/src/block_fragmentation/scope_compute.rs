@@ -890,6 +890,10 @@ impl<'a, 'capture, 'tree, Tree: LayoutTree> Driver<'a, 'capture, 'tree, Tree> {
                 .environment
                 .failure(BlockFragmentationFailure::MissingFragmentainer { index })
                 .into(),
+            FragmentationError::MissingPageSide { index, .. } => self
+                .environment
+                .failure(BlockFragmentationFailure::MissingPageSide { index })
+                .into(),
             FragmentationError::NoProgress { occurrence, .. } => self
                 .environment
                 .failure(BlockFragmentationFailure::NoProgress { occurrence })

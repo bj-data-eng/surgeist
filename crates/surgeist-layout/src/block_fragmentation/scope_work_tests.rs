@@ -54,7 +54,9 @@ fn principal_and_content<S: LayoutScalar>() {
     let bound = LayoutBoundRequestOf::block_fragmentation(
         LayoutSourceBasis::fresh(),
         request,
-        FragmentationKind::Page,
+        FragmentationKind::Page {
+            progression: crate::PageProgression::LeftToRight,
+        },
         axes,
         frames.to_vec(),
     )
@@ -75,7 +77,9 @@ fn principal_and_content<S: LayoutScalar>() {
         inventory: &scopes.source,
         frames: &frames,
         axes,
-        kind: FragmentationKind::Page,
+        kind: FragmentationKind::Page {
+            progression: crate::PageProgression::LeftToRight,
+        },
         target: bound.target_basis(),
         template: request,
         intrinsics: Rc::new(RefCell::new(Vec::new())),
@@ -206,7 +210,9 @@ fn cross_progression<S: LayoutScalar>(forced: bool) {
         let bound = LayoutBoundRequestOf::block_fragmentation(
             LayoutSourceBasis::fresh(),
             request,
-            FragmentationKind::Page,
+            FragmentationKind::Page {
+                progression: crate::PageProgression::LeftToRight,
+            },
             axes,
             frames.to_vec(),
         )
@@ -227,7 +233,9 @@ fn cross_progression<S: LayoutScalar>(forced: bool) {
             inventory: &scopes.source,
             frames: &frames,
             axes,
-            kind: FragmentationKind::Page,
+            kind: FragmentationKind::Page {
+                progression: crate::PageProgression::LeftToRight,
+            },
             target: bound.target_basis(),
             template: request,
             intrinsics: Rc::new(RefCell::new(Vec::new())),

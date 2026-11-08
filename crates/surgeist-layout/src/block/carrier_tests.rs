@@ -89,7 +89,9 @@ fn bound<S: LayoutScalar>() -> LayoutBoundRequestOf<S> {
     LayoutBoundRequestOf::block_fragmentation(
         LayoutSourceBasis::fresh(),
         request(100.0),
-        FragmentationKind::Page,
+        FragmentationKind::Page {
+            progression: crate::PageProgression::LeftToRight,
+        },
         axes(),
         vec![first, frame(60.0)],
     )

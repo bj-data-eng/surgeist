@@ -48,7 +48,9 @@ fn with_tree<
     let bound = LayoutBoundRequestOf::block_fragmentation(
         LayoutSourceBasis::fresh(),
         request,
-        FragmentationKind::Page,
+        FragmentationKind::Page {
+            progression: crate::PageProgression::LeftToRight,
+        },
         axes,
         frames.to_vec(),
     )
@@ -73,7 +75,9 @@ fn with_tree<
         inventory: &scopes.source,
         frames: &frames,
         axes,
-        kind: FragmentationKind::Page,
+        kind: FragmentationKind::Page {
+            progression: crate::PageProgression::LeftToRight,
+        },
         target: bound.target_basis(),
         template: request,
         intrinsics: Rc::new(RefCell::new(Vec::new())),
