@@ -15,12 +15,12 @@ use crate::{
     FontRef, Format, GpuFaultKind, Gradient, GradientStop, HitTestOwnership, Image, ImageBuffer,
     ImageFit, ImageQuality, InvalidValue, Layer, NormalizedPaintLayer, Paint, PaintColor, Path,
     PathElement, PhysicalSize, Point, PrimitiveFamily, PrimitiveOperation, Radii, Rect,
-    RenderRoute, RenderSurfaceAvailability, RepeatingGradient, RepeatingGradientStop,
-    ResolvedLayerAlphaMask, RuntimeCapabilityUnavailable, RuntimeCapabilityUnavailableReason,
-    RuntimeOperation, Scene, Shadow, ShadowList, Shape, Size, Stats, Stroke, StrokeAlign,
-    SurfaceIdentityMismatchKind, SymbolicColorPolicy, TextDecorationLine, TextDecorationLineStyle,
-    TextGlyph, TextPaint, TextRun, TextRunBounds, TextRunBoundsKind, TextShadowRun, Transform,
-    UnresolvedResource, UnresolvedResourceKind, UnsupportedPrimitive,
+    RenderRoute, RenderSurfaceAvailability, RepeatingGradient, ResolvedLayerAlphaMask,
+    RuntimeCapabilityUnavailable, RuntimeCapabilityUnavailableReason, RuntimeOperation, Scene,
+    Shadow, ShadowList, Shape, Size, Stats, Stroke, StrokeAlign, SurfaceIdentityMismatchKind,
+    SymbolicColorPolicy, TextDecorationLine, TextDecorationLineStyle, TextGlyph, TextPaint,
+    TextRun, TextRunBounds, TextRunBoundsKind, TextShadowRun, Transform, UnresolvedResource,
+    UnresolvedResourceKind, UnsupportedPrimitive,
 };
 
 use crate::{
@@ -201,7 +201,7 @@ fn gradients_expose_render_ready_geometry_and_stops() {
     )
     .unwrap();
     let radial =
-        Gradient::try_radial(Point::try_new(5.0, 6.0).unwrap(), 7.0, stops.clone()).unwrap();
+        Gradient::try_radial(Point::try_new(5.0, 6.0).unwrap(), 7.0, 7.0, stops.clone()).unwrap();
     let sweep = Gradient::try_sweep(Point::try_new(8.0, 9.0).unwrap(), stops.clone()).unwrap();
 
     assert_eq!(linear.stops(), stops.as_slice());
@@ -214,7 +214,7 @@ fn gradients_expose_render_ready_geometry_and_stops() {
     );
     assert_eq!(
         radial.radial_geometry(),
-        Some((Point::try_new(5.0, 6.0).unwrap(), 7.0))
+        Some((Point::try_new(5.0, 6.0).unwrap(), 7.0, 7.0))
     );
     assert_eq!(
         sweep.sweep_center(),
@@ -3642,7 +3642,7 @@ fn draw_value_try_constructors_reject_invalid_values() {
     assert!(Color::try_rgba(2.0, 0.0, 0.0, 1.0).is_err());
     assert!(Stroke::try_new(0.0).is_err());
     assert!(Dash::try_new(0.0, &[1.0, f64::NAN]).is_err());
-    assert!(GradientStop::try_new(1.5, Color::BLACK).is_err());
+    assert!(GradientStop::try_new(f64::INFINITY, Color::BLACK).is_err());
     assert!(
         Gradient::try_linear(
             Point::try_new(0.0, 0.0).unwrap(),
@@ -3686,7 +3686,7 @@ fn draw_value_constructors_preserve_valid_values() {
     .unwrap();
 
     assert_eq!(stroke.width(), 2.0);
-    assert_eq!(stop.offset(), 0.5);
+    assert_eq!(stop.position(), 0.5);
     assert_eq!(layer.opacity(), 0.5);
     assert_eq!(text_paint.fill(), &Paint::color(Color::BLACK));
     assert_eq!(glyph.id(), 7);
@@ -4664,9 +4664,9 @@ fn selected_color_bitmap_unsupported_instances_refuse_without_outline_substituti
 #[test]
 fn repeating_gradient_preserves_order_phase_and_equal_positions() {
     let stops = vec![
-        RepeatingGradientStop::try_new(-2.0, Color::BLACK).unwrap(),
-        RepeatingGradientStop::try_new(-2.0, Color::TRANSPARENT).unwrap(),
-        RepeatingGradientStop::try_new(3.5, Color::BLACK).unwrap(),
+        GradientStop::try_new(-2.0, Color::BLACK).unwrap(),
+        GradientStop::try_new(-2.0, Color::TRANSPARENT).unwrap(),
+        GradientStop::try_new(3.5, Color::BLACK).unwrap(),
     ];
     let start = Point::new(2.0, 4.0);
     let end = Point::new(8.0, 6.0);
@@ -4706,7 +4706,7 @@ fn repeating_gradient_preserves_order_phase_and_equal_positions() {
 
 #[test]
 fn repeating_gradient_allows_one_stop_coincident_points_and_zero_height() {
-    let stops = vec![RepeatingGradientStop::try_new(7.0, Color::BLACK).unwrap()];
+    let stops = vec![GradientStop::try_new(7.0, Color::BLACK).unwrap()];
     let center = Point::new(1.0, 2.0);
     let linear = RepeatingGradient::try_linear(center, center, stops.clone()).unwrap();
     assert_eq!(linear.linear_points(), Some((center, center)));
@@ -4717,7 +4717,7 @@ fn repeating_gradient_allows_one_stop_coincident_points_and_zero_height() {
     assert_eq!(radial.stops(), stops);
     let equal = vec![
         stops[0],
-        RepeatingGradientStop::try_new(7.0, Color::TRANSPARENT).unwrap(),
+        GradientStop::try_new(7.0, Color::TRANSPARENT).unwrap(),
     ];
     assert!(RepeatingGradient::try_radial(center, 3.0, 4.0, equal).is_ok());
 }
@@ -4727,13 +4727,13 @@ fn repeating_gradient_rejects_nonfinite_descending_overflowing_and_empty_inputs(
     let p = Point::new(0.0, 0.0);
     for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
         assert_eq!(
-            RepeatingGradientStop::try_new(value, Color::BLACK)
+            GradientStop::try_new(value, Color::BLACK)
                 .unwrap_err()
                 .code(),
             ErrorCode::InvalidInput
         );
     }
-    let stop = |position| RepeatingGradientStop::try_new(position, Color::BLACK).unwrap();
+    let stop = |position| GradientStop::try_new(position, Color::BLACK).unwrap();
     for stops in [
         vec![],
         vec![stop(2.0), stop(1.0)],
@@ -4789,8 +4789,8 @@ fn repeating_gradient_normalized_clones_retain_backing_until_final_drop() {
         .usage()
         .live(RenderResource::RetainedCpuBytes);
     let stops = vec![
-        RepeatingGradientStop::try_new(-1.0, Color::BLACK).unwrap(),
-        RepeatingGradientStop::try_new(2.0, Color::TRANSPARENT).unwrap(),
+        GradientStop::try_new(-1.0, Color::BLACK).unwrap(),
+        GradientStop::try_new(2.0, Color::TRANSPARENT).unwrap(),
     ];
     let gradient = RepeatingGradient::try_radial(Point::new(0.0, 0.0), 4.0, 2.0, stops).unwrap();
     let mut scene = Scene::new();
@@ -4803,7 +4803,7 @@ fn repeating_gradient_normalized_clones_retain_backing_until_final_drop() {
         .unwrap()
         .usage()
         .live(RenderResource::RetainedCpuBytes);
-    assert!(retained >= opening + (2 * std::mem::size_of::<RepeatingGradientStop>()) as u64);
+    assert!(retained >= opening + (2 * std::mem::size_of::<GradientStop>()) as u64);
     let clone = normalized.clone();
     drop(normalized);
     assert_eq!(

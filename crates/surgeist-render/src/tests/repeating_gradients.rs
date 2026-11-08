@@ -8,8 +8,8 @@ use crate::{
     GradientStop, Image, ImageBuffer, Layer, Options, Paint, Parameters, Point, Rect,
     RenderAccountingError, RenderAccountingOptions, RenderAttemptStatus, RenderLimits, RenderPhase,
     RenderProfile, RenderQuantity, RenderRoute, RenderWork, Renderer, RepeatingGradient,
-    RepeatingGradientStop, ResolvedLayerAlphaMask, Scene, Shape, Size, Stroke, Surface, TextGlyph,
-    TextInstance, TextPaint, TextRun, TextRunBounds, Transform, resource::WorkingFormat,
+    ResolvedLayerAlphaMask, Scene, Shape, Size, Stroke, Surface, TextGlyph, TextInstance,
+    TextPaint, TextRun, TextRunBounds, Transform, resource::WorkingFormat,
 };
 
 fn rgba(r: f32, g: f32, b: f32, a: f32) -> Color {
@@ -24,10 +24,10 @@ fn blue() -> Color {
     rgba(0.0, 0.0, 1.0, 1.0)
 }
 
-fn stops(values: &[(f64, Color)]) -> Vec<RepeatingGradientStop> {
+fn stops(values: &[(f64, Color)]) -> Vec<GradientStop> {
     values
         .iter()
-        .map(|&(position, color)| RepeatingGradientStop::try_new(position, color).unwrap())
+        .map(|&(position, color)| GradientStop::try_new(position, color).unwrap())
         .collect()
 }
 
@@ -893,6 +893,7 @@ fn circular_center_and_positive_ramps_hold_for_every_antialiasing_mode() {
         Rect::new(0.0, 4.0, 32.0, 4.0),
         Gradient::try_radial(
             Point::new(center, center + 4.0),
+            16.0,
             16.0,
             vec![
                 GradientStop::try_new(0.0, red()).unwrap(),

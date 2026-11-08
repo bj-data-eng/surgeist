@@ -50,6 +50,7 @@ struct ErrorContext {
 enum PreparationDiagnostic {
     Glyph(crate::GlyphPreparationError),
     Accounting(crate::RenderAccountingError),
+    GradientRealization(GradientRealizationError),
     #[cfg(feature = "render-paint")]
     PaintGradient(crate::PaintGradientError),
 }
@@ -388,6 +389,18 @@ impl Error {
         }
     }
 
+    /// Returns the contextual ordinary-gradient realization refusal, when present.
+    #[must_use]
+    pub const fn gradient_realization_diagnostic(&self) -> Option<&GradientRealizationError> {
+        match &self.payload {
+            ErrorPayload::Context(context) => match &context.preparation {
+                Some(PreparationDiagnostic::GradientRealization(error)) => Some(error),
+                _ => None,
+            },
+            ErrorPayload::Accounting(_) => None,
+        }
+    }
+
     /// Returns a native Paint-gradient consumer diagnostic, when present.
     #[cfg(feature = "render-paint")]
     #[must_use]
@@ -473,6 +486,43 @@ impl From<crate::GlyphPreparationError> for Error {
     }
 }
 
+impl From<GradientRealizationError> for Error {
+    fn from(value: GradientRealizationError) -> Self {
+        Self::context(ErrorContext {
+            code: ErrorCode::GradientRealization,
+            message: format!("ordinary gradient realization refused: {value:?}"),
+            source: None,
+            invalid_value: None,
+            unsupported_primitive: None,
+            unresolved_resource: None,
+            degraded_quality: None,
+            runtime_capability_unavailable: None,
+            preparation: Some(PreparationDiagnostic::GradientRealization(value)),
+            #[cfg(feature = "render-text")]
+            text_layout: None,
+        })
+    }
+}
+
+/// A valid ordinary gradient cannot be represented in the current native context.
+///
+/// These refusals describe field realization, not invalid authored CSS. Named
+/// accounting and resource limits continue to use [`crate::RenderAccountingError`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GradientRealizationError {
+    /// A required linear comparison or interpolation field has no direction.
+    DegenerateLinearField,
+    /// Required range or transformed geometry cannot be represented.
+    UnrepresentableGeometry,
+    /// A required native stop loses its source ordering or interval separation.
+    UnrepresentableStop {
+        /// Index in the owned gradient's supplied stop list.
+        stop_index: usize,
+    },
+    /// Native field arithmetic cannot meet the selected accuracy guarantee.
+    InsufficientNativeCapacity,
+}
+
 #[cfg(feature = "render-paint")]
 impl From<crate::PaintGradientError> for Error {
     fn from(value: crate::PaintGradientError) -> Self {
@@ -546,6 +596,8 @@ mod tests;
 pub enum ErrorCode {
     /// General accounting setup or named admission failure.
     Accounting,
+    /// Reports contextual ordinary-gradient representation or precision refusal.
+    GradientRealization,
     /// Reports atomic native Paint-gradient preparation failure.
     #[cfg(feature = "render-paint")]
     PaintGradient,

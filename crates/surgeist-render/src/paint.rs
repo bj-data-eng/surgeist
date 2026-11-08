@@ -1,13 +1,12 @@
 mod repeating;
 
-pub(crate) use repeating::RepeatingGradientGeometry;
-pub use repeating::{RepeatingGradient, RepeatingGradientStop};
+pub(crate) use repeating::GradientGeometry;
+pub use repeating::RepeatingGradient;
 
 use super::{
     Error, Image, Point, Result,
     validation::{
-        validate_color, validate_gradient_stops, validate_paint, validate_point,
-        validate_positive_f64,
+        validate_color, validate_finite_f64, validate_paint, validate_point, validate_positive_f64,
     },
 };
 
@@ -310,10 +309,11 @@ impl NormalizedPaintLayer {
     }
 }
 
-/// A validated logical-space linear, radial, or sweep gradient.
+/// A validated logical-space linear, elliptical radial, or full-turn sweep gradient.
 ///
-/// Every gradient contains at least one valid stop. Geometry is finite, and a
-/// radial radius is strictly positive.
+/// Linear and radial fields preserve nonempty nondecreasing finite positions,
+/// including negative and outside-unit positions. Radial axes are positive.
+/// Sweep positions remain normalized to `0..=1` in their supplied order.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Gradient {
     kind: GradientKind,
@@ -328,7 +328,8 @@ pub(crate) enum GradientKind {
     },
     Radial {
         center: Point,
-        radius: f64,
+        radius_x: f64,
+        radius_y: f64,
         stops: Vec<GradientStop>,
     },
     Sweep {
@@ -337,50 +338,92 @@ pub(crate) enum GradientKind {
     },
 }
 
+/// Establishes the list invariant shared by ordinary and repeating fields.
+/// Individual finite positions and colors are already proved by GradientStop.
+fn validate_field_stops(stops: &[GradientStop]) -> Result<()> {
+    validate_nonempty_stops(stops)?;
+    for pair in stops.windows(2) {
+        if pair[1].position < pair[0].position {
+            return Err(Error::invalid_value(
+                "gradient stop position",
+                pair[1].position,
+                "must be nondecreasing",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_nonempty_stops(stops: &[GradientStop]) -> Result<()> {
+    if stops.is_empty() {
+        let mut error = Error::invalid_value("gradient stops", "[]", "must not be empty");
+        error.replace_message("gradient stops must not be empty");
+        return Err(error);
+    }
+    Ok(())
+}
+
 impl Gradient {
-    /// Creates a linear gradient between finite logical points.
+    /// Creates an ordinary linear field between finite logical points.
     ///
-    /// Returns a typed input diagnostic for invalid points, an empty stop list,
-    /// or any invalid stop.
+    /// Empty or descending stops and nonfinite geometry return a typed input
+    /// diagnostic. Positions are preserved without a finite-span restriction.
     pub fn try_linear(start: Point, end: Point, stops: Vec<GradientStop>) -> Result<Self> {
         validate_point(start, "linear gradient start")?;
         validate_point(end, "linear gradient end")?;
-        validate_gradient_stops(&stops)?;
+        validate_field_stops(&stops)?;
         Ok(Self {
             kind: GradientKind::Linear { start, end, stops },
         })
     }
 
-    /// Creates a radial gradient in logical coordinates.
+    /// Creates an ordinary elliptical radial field around a finite center.
     ///
-    /// `radius` must be finite and greater than zero. Invalid geometry, an
-    /// empty stop list, or an invalid stop returns a typed input diagnostic.
-    pub fn try_radial(center: Point, radius: f64, stops: Vec<GradientStop>) -> Result<Self> {
+    /// Both axes must be finite and positive. Empty or descending stops return
+    /// a typed input diagnostic; no finite stop-span restriction is imposed.
+    pub fn try_radial(
+        center: Point,
+        radius_x: f64,
+        radius_y: f64,
+        stops: Vec<GradientStop>,
+    ) -> Result<Self> {
         validate_point(center, "radial gradient center")?;
-        validate_positive_f64(radius, "radial gradient radius")?;
-        validate_gradient_stops(&stops)?;
+        validate_positive_f64(radius_x, "radial gradient horizontal radius")?;
+        validate_positive_f64(radius_y, "radial gradient vertical radius")?;
+        validate_field_stops(&stops)?;
         Ok(Self {
             kind: GradientKind::Radial {
                 center,
-                radius,
+                radius_x,
+                radius_y,
                 stops,
             },
         })
     }
 
-    /// Creates a full-turn sweep gradient around a finite logical center.
+    /// Creates a full-turn sweep around a finite center.
     ///
-    /// An invalid center, empty stop list, or invalid stop returns a typed input diagnostic.
+    /// Stops must be nonempty and within `0..=1`. Their supplied order is kept,
+    /// including descending positions; invalid input returns a typed diagnostic.
     pub fn try_sweep(center: Point, stops: Vec<GradientStop>) -> Result<Self> {
         validate_point(center, "sweep gradient center")?;
-        validate_gradient_stops(&stops)?;
+        validate_nonempty_stops(&stops)?;
+        for stop in &stops {
+            if !(0.0..=1.0).contains(&stop.position) {
+                return Err(Error::invalid_value(
+                    "sweep gradient stop position",
+                    stop.position,
+                    "must be between 0 and 1",
+                ));
+            }
+        }
         Ok(Self {
             kind: GradientKind::Sweep { center, stops },
         })
     }
 
+    /// Returns all supplied stops, including coincident records.
     #[must_use]
-    /// Returns the gradient stops in their supplied order.
     pub fn stops(&self) -> &[GradientStop] {
         match &self.kind {
             GradientKind::Linear { stops, .. }
@@ -389,8 +432,8 @@ impl Gradient {
         }
     }
 
+    /// Returns the supplied linear start and end points, when linear.
     #[must_use]
-    /// Returns the start and end points for a linear gradient.
     pub const fn linear_points(&self) -> Option<(Point, Point)> {
         match &self.kind {
             GradientKind::Linear { start, end, .. } => Some((*start, *end)),
@@ -398,17 +441,22 @@ impl Gradient {
         }
     }
 
+    /// Returns the supplied center and horizontal and vertical radii, when radial.
     #[must_use]
-    /// Returns the center and logical radius for a radial gradient.
-    pub const fn radial_geometry(&self) -> Option<(Point, f64)> {
+    pub const fn radial_geometry(&self) -> Option<(Point, f64, f64)> {
         match &self.kind {
-            GradientKind::Radial { center, radius, .. } => Some((*center, *radius)),
+            GradientKind::Radial {
+                center,
+                radius_x,
+                radius_y,
+                ..
+            } => Some((*center, *radius_x, *radius_y)),
             GradientKind::Linear { .. } | GradientKind::Sweep { .. } => None,
         }
     }
 
+    /// Returns the supplied sweep center, when a sweep.
     #[must_use]
-    /// Returns the logical center for a sweep gradient.
     pub const fn sweep_center(&self) -> Option<Point> {
         match &self.kind {
             GradientKind::Sweep { center, .. } => Some(*center),
@@ -419,40 +467,73 @@ impl Gradient {
     pub(crate) const fn kind(&self) -> &GradientKind {
         &self.kind
     }
+
+    #[cfg(feature = "render-paint")]
+    pub(crate) fn from_accounted_paint(
+        geometry: GradientGeometry,
+        stops: crate::accounting::AccountedVec<GradientStop>,
+        fixed_owner: crate::accounting::Hold,
+        account: &crate::accounting::Account,
+    ) -> Result<crate::accounting::BackedValue<Self>> {
+        // Authentic Paint geometry is finite/positive. Its immutable used-stop
+        // consumer proved nonempty finite ordered quotients while filling this
+        // exact backing. Consume that proof without another validation walk.
+        let (stops, backing) = stops.into_parts();
+        let kind = match geometry {
+            GradientGeometry::Linear { start, end } => GradientKind::Linear { start, end, stops },
+            GradientGeometry::Radial {
+                center,
+                radius_x,
+                radius_y,
+            } => GradientKind::Radial {
+                center,
+                radius_x,
+                radius_y,
+                stops,
+            },
+        };
+        let gradient =
+            crate::accounting::BackedValue::new(Self { kind }, [Some(backing), Some(fixed_owner)]);
+        account.work(crate::accounting::RenderWork::PaintVisits, 1)?;
+        Ok(gradient)
+    }
 }
 
-/// A validated gradient color stop at a normalized offset.
+/// A resolved gradient stop positioned in dimensionless field units.
+///
+/// The finite position is preserved exactly, including negative and outside-unit
+/// values. Linear zero/one identify its start/end; radial zero/one identify its
+/// center/horizontal radius. Sweep construction requires normalized positions.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct GradientStop {
-    offset: f32,
+    position: f64,
     color: Color,
 }
 
 impl GradientStop {
-    /// Creates a stop at a finite offset in the inclusive range `0..=1`.
+    /// Creates a stop without clamping its finite position.
     ///
-    /// An out-of-range offset or invalid numeric-sRGB color returns
-    /// [`crate::ErrorCode::InvalidInput`].
-    pub fn try_new(offset: f32, color: Color) -> Result<Self> {
-        if !offset.is_finite() || !(0.0..=1.0).contains(&offset) {
-            return Err(super::Error::invalid_value(
-                "gradient stop offset",
-                offset,
-                "must be finite and between 0 and 1",
-            ));
-        }
-        validate_color(color, "gradient stop color")?;
-        Ok(Self { offset, color })
+    /// A nonfinite position returns [`crate::ErrorCode::InvalidInput`]. Color
+    /// already owns its finite normalized channel invariant.
+    pub fn try_new(position: f64, color: Color) -> Result<Self> {
+        validate_finite_f64(position, "gradient stop position")?;
+        Ok(Self { position, color })
     }
 
-    #[must_use]
-    /// Returns the normalized stop offset.
-    pub const fn offset(self) -> f32 {
-        self.offset
+    #[cfg(feature = "render-paint")]
+    pub(crate) const fn from_qualified_paint(position: f64, color: Color) -> Self {
+        // The consumer proved this quotient finite before storing it.
+        Self { position, color }
     }
 
+    /// Returns the supplied position in field units.
     #[must_use]
-    /// Returns the stop color.
+    pub const fn position(self) -> f64 {
+        self.position
+    }
+
+    /// Returns the supplied numeric-sRGB color.
+    #[must_use]
     pub const fn color(self) -> Color {
         self.color
     }
@@ -473,8 +554,10 @@ impl Gradient {
         account.work(crate::accounting::RenderWork::GradientStopVisits, 1)?;
         let first = self.stops()[0];
         account.work(crate::accounting::RenderWork::CoordinateVisits, 1)?;
-        Ok((first.offset > 0.0).then_some(GradientStop {
-            offset: 0.0,
+        let position = first.position;
+        account.work(crate::accounting::RenderWork::CoordinateVisits, 1)?;
+        Ok((position > 0.0).then_some(GradientStop {
+            position: 0.0,
             color: first.color,
         }))
     }
@@ -493,9 +576,15 @@ impl Gradient {
         let (stops, hold) = stops.into_parts();
         let kind = match self.kind {
             GradientKind::Linear { start, end, .. } => GradientKind::Linear { start, end, stops },
-            GradientKind::Radial { center, radius, .. } => GradientKind::Radial {
+            GradientKind::Radial {
                 center,
-                radius,
+                radius_x,
+                radius_y,
+                ..
+            } => GradientKind::Radial {
+                center,
+                radius_x,
+                radius_y,
                 stops,
             },
             GradientKind::Sweep { center, .. } => GradientKind::Sweep { center, stops },
@@ -526,5 +615,63 @@ impl Paint {
             }
         };
         Ok((Self { kind }, hold))
+    }
+}
+
+#[cfg(test)]
+mod field_model_tests {
+    use super::*;
+
+    fn stop(position: f64) -> GradientStop {
+        GradientStop::try_new(position, Color::BLACK).unwrap()
+    }
+
+    #[test]
+    fn ordinary_fields_preserve_finite_records_with_an_overflowing_span() {
+        let center = Point::new(3.0, -4.0);
+        let stops = vec![stop(-f64::MAX), stop(-1.0), stop(-1.0), stop(f64::MAX)];
+        let linear = Gradient::try_linear(center, center, stops.clone()).unwrap();
+        let radial = Gradient::try_radial(center, 2.0, 5.0, stops.clone()).unwrap();
+        assert_eq!(linear.stops(), stops);
+        assert_eq!(linear.linear_points(), Some((center, center)));
+        assert_eq!(radial.stops(), stops);
+        assert_eq!(radial.radial_geometry(), Some((center, 2.0, 5.0)));
+        assert!(RepeatingGradient::try_linear(center, center, stops).is_err());
+    }
+
+    #[test]
+    fn ordinary_fields_require_order_but_sweep_keeps_supplied_normalized_order() {
+        let p = Point::new(0.0, 0.0);
+        let descending = vec![stop(0.75), stop(0.25)];
+        assert!(Gradient::try_linear(p, p, descending.clone()).is_err());
+        assert!(Gradient::try_radial(p, 1.0, 2.0, descending.clone()).is_err());
+        assert_eq!(
+            Gradient::try_sweep(p, descending.clone()).unwrap().stops(),
+            descending
+        );
+        for position in [-f64::MIN_POSITIVE, 1.0 + f64::EPSILON] {
+            assert!(Gradient::try_sweep(p, vec![stop(position)]).is_err());
+        }
+    }
+
+    #[test]
+    fn canonical_gradient_boundaries_refuse_empty_nonfinite_and_nonpositive_inputs() {
+        let p = Point::new(0.0, 0.0);
+        assert!(Gradient::try_linear(p, p, vec![]).is_err());
+        assert!(Gradient::try_radial(p, 1.0, 1.0, vec![]).is_err());
+        assert!(Gradient::try_sweep(p, vec![]).is_err());
+        for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            assert!(GradientStop::try_new(value, Color::BLACK).is_err());
+            // Internal geometry arithmetic can produce an invalid raw Point.
+            assert!(Gradient::try_linear(Point::new(value, 0.0), p, vec![stop(0.0)]).is_err());
+            assert!(
+                Gradient::try_radial(Point::new(0.0, value), 1.0, 1.0, vec![stop(0.0)]).is_err()
+            );
+        }
+        for value in [0.0, -1.0, f64::INFINITY, f64::NAN] {
+            assert!(Gradient::try_radial(p, value, 1.0, vec![stop(0.0)]).is_err());
+            assert!(Gradient::try_radial(p, 1.0, value, vec![stop(0.0)]).is_err());
+        }
+        assert!(RepeatingGradient::try_radial(p, 1.0, 0.0, vec![stop(0.0)]).is_ok());
     }
 }

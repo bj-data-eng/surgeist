@@ -31,7 +31,7 @@ fn gradient(field: Field, first: Color) -> Gradient {
     ];
     match field {
         Field::Linear => Gradient::try_linear(point(0.0, 0.0), point(8.0, 0.0), stops),
-        Field::Radial => Gradient::try_radial(point(0.0, 4.0), 8.0, stops),
+        Field::Radial => Gradient::try_radial(point(0.0, 4.0), 8.0, 8.0, stops),
         Field::Sweep => Gradient::try_sweep(point(12.0, 4.0), stops),
     }
     .unwrap()
@@ -220,7 +220,7 @@ mod gpu {
     }
 
     #[test]
-    fn leading_native_record_work_refusal_preserves_publication_and_allows_zero_first_retry() {
+    fn native_record_work_refusal_preserves_publication_and_allows_smaller_retry() {
         use surgeist_render::{
             RenderAccountingError, RenderAccountingOptions, RenderAttemptStatus, RenderLimits,
             RenderPhase, RenderProfile, RenderQuantity, RenderRefusalReason, RenderWork,
@@ -228,7 +228,19 @@ mod gpu {
 
         let bounds = rect(0.0, 0.0, 8.0, 4.0);
         let mut positive_first = Scene::new();
-        positive_first.fill(bounds, gradient(Field::Linear, red(1.0)));
+        positive_first.fill(
+            bounds,
+            Gradient::try_linear(
+                point(0.0, 0.0),
+                point(8.0, 0.0),
+                vec![
+                    GradientStop::try_new(0.5, red(1.0)).unwrap(),
+                    GradientStop::try_new(0.75, red(1.0)).unwrap(),
+                    GradientStop::try_new(1.0, blue()).unwrap(),
+                ],
+            )
+            .unwrap(),
+        );
         let accounting =
             RenderAccountingOptions::new().with_profile(RenderProfile::Summary { timing: false });
         let mut unrestricted = pollster::block_on(Renderer::new(
@@ -251,9 +263,9 @@ mod gpu {
         let prepared_visits = full_attempt
             .phase_usage(RenderPhase::GradientPrepare)
             .work(RenderWork::GradientStopVisits);
-        // Two original endpoint inspections precede one leading preflight
-        // and three native records: the anchor plus both supplied stops.
-        assert_eq!(prepared_visits, 2 + 1 + 3);
+        // Two endpoint inspections and three actual source records are visited.
+        // Range mapping needs no synthetic leading anchor for ordinary lines.
+        assert_eq!(prepared_visits, 2 + 3);
         let total_visits = full_attempt.usage().work(RenderWork::GradientStopVisits);
         let cap = total_visits - 1;
         drop(unrestricted_surface);
@@ -311,9 +323,9 @@ mod gpu {
         );
         assert_eq!(renderer.stats(), successful_stats);
 
-        // Starting at zero needs no leading native endpoint. With all other
-        // scene inputs held equal, that removes one record from materialization
-        // and the encoder's separate visit, permitting a fresh publication.
+        // Two source records need one fewer native record than the refused
+        // three-stop paint. The lower actual work permits fresh publication;
+        // changing the first position alone no longer removes a native anchor.
         let zero_first = Gradient::try_linear(
             point(0.0, 0.0),
             point(8.0, 0.0),
@@ -330,10 +342,7 @@ mod gpu {
         assert_eq!(retry_report.status(), RenderAttemptStatus::Succeeded);
         assert_eq!(retry_report.cleanup_fault(), None);
         let retry_attempt = retry_report.attempt().unwrap();
-        assert_eq!(
-            retry_attempt.usage().work(RenderWork::GradientStopVisits),
-            total_visits - 2
-        );
+        assert!(retry_attempt.usage().work(RenderWork::GradientStopVisits) < cap);
         assert_eq!(
             retry_attempt
                 .phase_usage(RenderPhase::GradientPrepare)

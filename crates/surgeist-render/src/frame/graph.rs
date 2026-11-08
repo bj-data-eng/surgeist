@@ -2370,8 +2370,11 @@ fn commands_require_surface_grid(commands: &[RenderCommand], account: &Account) 
         account.work(RenderWork::PaintVisits, 1)?;
         Ok(match paint.kind() {
             crate::paint::PaintKind::RepeatingGradient(_) => true,
+            crate::paint::PaintKind::Gradient(gradient) => {
+                !matches!(gradient.kind(), crate::paint::GradientKind::Sweep { .. })
+            }
             crate::paint::PaintKind::Image(image) => sensitive(image),
-            crate::paint::PaintKind::Color(_) | crate::paint::PaintKind::Gradient(_) => false,
+            crate::paint::PaintKind::Color(_) => false,
         })
     }
     for command in commands {
@@ -2382,9 +2385,11 @@ fn commands_require_surface_grid(commands: &[RenderCommand], account: &Account) 
                 account.work(RenderWork::PaintVisits, 1)?;
                 match paint {
                     crate::command::RenderPaint::RepeatingGradient(_) => true,
+                    crate::command::RenderPaint::Gradient(gradient) => {
+                        !matches!(gradient.kind(), crate::paint::GradientKind::Sweep { .. })
+                    }
                     crate::command::RenderPaint::Image(image) => sensitive(image),
-                    crate::command::RenderPaint::Color(_)
-                    | crate::command::RenderPaint::Gradient(_) => false,
+                    crate::command::RenderPaint::Color(_) => false,
                 }
             }
             RenderCommand::TextRun { paint, .. } => paint_sensitive(paint.fill(), account)?,

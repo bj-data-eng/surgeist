@@ -19,7 +19,7 @@ fn rgba(r: f32, g: f32, b: f32, a: f32) -> Color {
 }
 
 fn stop(offset: f32, color: Color) -> GradientStop {
-    GradientStop::try_new(offset, color).unwrap()
+    GradientStop::try_new(f64::from(offset), color).unwrap()
 }
 
 fn renderer() -> Renderer {
@@ -125,7 +125,7 @@ fn terminal_coincident_stops_keep_the_final_supplied_color_at_and_beyond_the_end
                 ];
                 let gradient = match field {
                     Field::Linear => Gradient::try_linear(point(0.0, 0.0), point(8.0, 0.0), stops),
-                    Field::Radial => Gradient::try_radial(point(0.0, 4.0), 8.0, stops),
+                    Field::Radial => Gradient::try_radial(point(0.0, 4.0), 8.0, 8.0, stops),
                     Field::Sweep => Gradient::try_sweep(point(8.0, 4.0), stops),
                 }
                 .unwrap();

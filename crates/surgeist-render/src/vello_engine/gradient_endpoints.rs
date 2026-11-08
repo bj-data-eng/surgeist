@@ -20,16 +20,20 @@ pub(crate) struct PadEndpoints {
 
 impl PadEndpoints {
     pub(crate) fn new(first: (f32, Color), last: (f32, Color), account: &Account) -> Result<Self> {
-        // One extraction and one canonicalization per scalar. Valid normalized
-        // offsets are nonnegative, so clearing the sign only changes -0 to +0.
+        // One extraction, magnitude mask and zero comparison per scalar. Signed
+        // comparison thresholds retain their bits; only actual -0 becomes +0.
         account.work(RenderWork::CoordinateVisits, 1)?;
         let first_bits = first.0.to_bits();
         account.work(RenderWork::CoordinateVisits, 1)?;
-        let first_offset = first_bits & 0x7fff_ffff;
+        let first_magnitude = first_bits & 0x7fff_ffff;
+        account.work(RenderWork::CoordinateVisits, 1)?;
+        let first_offset = if first_magnitude == 0 { 0 } else { first_bits };
         account.work(RenderWork::CoordinateVisits, 1)?;
         let last_bits = last.0.to_bits();
         account.work(RenderWork::CoordinateVisits, 1)?;
-        let last_offset = last_bits & 0x7fff_ffff;
+        let last_magnitude = last_bits & 0x7fff_ffff;
+        account.work(RenderWork::CoordinateVisits, 1)?;
+        let last_offset = if last_magnitude == 0 { 0 } else { last_bits };
         // Each native color conversion processes exactly four scalar channels.
         account.work(RenderWork::CoordinateVisits, 4)?;
         let first_color = peniko::Color::from(first.1)
@@ -354,6 +358,34 @@ mod tests {
             last: 1.0_f32.to_bits(),
             first_color: 0xff00_00ff,
             last_color: 0xff00_ff00,
+        }
+    }
+
+    #[test]
+    fn comparison_thresholds_preserve_signed_nonzero_bits_and_canonicalize_zero() {
+        for threshold in [
+            -f32::INFINITY,
+            -1.0,
+            -f32::from_bits(1),
+            -0.0,
+            0.0,
+            f32::from_bits(1),
+            1.0,
+            f32::INFINITY,
+        ] {
+            let actual = PadEndpoints::new(
+                (threshold, Color::BLACK),
+                (threshold, Color::TRANSPARENT),
+                &Account::for_test(),
+            )
+            .unwrap();
+            let expected = if threshold == 0.0 {
+                0
+            } else {
+                threshold.to_bits()
+            };
+            assert_eq!(actual.first, expected);
+            assert_eq!(actual.last, expected);
         }
     }
 

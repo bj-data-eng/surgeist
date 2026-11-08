@@ -1,9 +1,5 @@
 use super::*;
-use super::{
-    geometry::validate_rect_maxima,
-    paint::{GradientKind, PaintKind},
-    shape::ShapeKind,
-};
+use super::{geometry::validate_rect_maxima, paint::PaintKind, shape::ShapeKind};
 use crate::accounting::{Account, RenderWork};
 
 pub(crate) fn validate_path_in(path: &Path, account: &Account) -> Result<()> {
@@ -35,39 +31,9 @@ pub(crate) fn validate_shape_in(shape: &Shape, account: &Account) -> Result<()> 
 }
 pub(crate) fn validate_paint_in(paint: &Paint, account: &Account) -> Result<()> {
     account.work(RenderWork::PaintVisits, 1)?;
-    if let PaintKind::RepeatingGradient(gradient) = paint.kind() {
-        return gradient.validate_in(Some(account));
-    }
-    let PaintKind::Gradient(gradient) = paint.kind() else {
-        return validate_paint(paint);
-    };
-    match gradient.kind() {
-        GradientKind::Linear { start, end, .. } => {
-            validate_point(*start, "linear gradient start")?;
-            validate_point(*end, "linear gradient end")?;
-        }
-        GradientKind::Radial { center, radius, .. } => {
-            validate_point(*center, "radial gradient center")?;
-            validate_positive_f64(*radius, "radial gradient radius")?;
-        }
-        GradientKind::Sweep { center, .. } => validate_point(*center, "sweep gradient center")?,
-    }
-    if gradient.stops().is_empty() {
-        return validate_gradient_stops(&[]);
-    }
-    for stop in gradient.stops() {
-        account.work(RenderWork::GradientStopVisits, 1)?;
-        if !stop.offset().is_finite() || !(0.0..=1.0).contains(&stop.offset()) {
-            return Err(Error::invalid_value(
-                "gradient stop offset",
-                stop.offset(),
-                "must be finite and between 0 and 1",
-            ));
-        }
-        validate_color(stop.color(), "gradient stop color")?;
-    }
-    Ok(())
+    validate_paint(paint)
 }
+
 pub(crate) fn validate_shadow_in(shadow: &Shadow, account: &Account) -> Result<()> {
     validate_point(shadow.offset(), "shadow offset")?;
     validate_non_negative_f64(shadow.blur(), "shadow blur")?;
@@ -176,52 +142,10 @@ pub(crate) fn validate_dash(dash: Dash) -> Result<()> {
 pub(crate) fn validate_paint(paint: &Paint) -> Result<()> {
     match paint.kind() {
         PaintKind::Color(color) => validate_color(*color, "color paint"),
-        PaintKind::Gradient(gradient) => validate_gradient(gradient),
-        PaintKind::RepeatingGradient(gradient) => gradient.validate_in(None),
+        // Canonical constructors establish the immutable gradient invariants.
+        PaintKind::Gradient(_) | PaintKind::RepeatingGradient(_) => Ok(()),
         PaintKind::Image(image) => validate_size(image.size(), "image size"),
     }
-}
-
-pub(crate) fn validate_gradient(gradient: &Gradient) -> Result<()> {
-    match gradient.kind() {
-        GradientKind::Linear { start, end, stops } => {
-            validate_point(*start, "linear gradient start")?;
-            validate_point(*end, "linear gradient end")?;
-            validate_gradient_stops(stops)
-        }
-        GradientKind::Radial {
-            center,
-            radius,
-            stops,
-        } => {
-            validate_point(*center, "radial gradient center")?;
-            validate_positive_f64(*radius, "radial gradient radius")?;
-            validate_gradient_stops(stops)
-        }
-        GradientKind::Sweep { center, stops } => {
-            validate_point(*center, "sweep gradient center")?;
-            validate_gradient_stops(stops)
-        }
-    }
-}
-
-pub(crate) fn validate_gradient_stops(stops: &[GradientStop]) -> Result<()> {
-    if stops.is_empty() {
-        let mut error = Error::invalid_value("gradient stops", "[]", "must not be empty");
-        error.replace_message("gradient stops must not be empty");
-        return Err(error);
-    }
-    for stop in stops {
-        if !stop.offset().is_finite() || !(0.0..=1.0).contains(&stop.offset()) {
-            return Err(Error::invalid_value(
-                "gradient stop offset",
-                stop.offset(),
-                "must be finite and between 0 and 1",
-            ));
-        }
-        validate_color(stop.color(), "gradient stop color")?;
-    }
-    Ok(())
 }
 
 pub(crate) fn validate_shadow(shadow: &Shadow) -> Result<()> {

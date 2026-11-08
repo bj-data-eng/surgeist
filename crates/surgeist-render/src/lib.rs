@@ -87,6 +87,7 @@ pub use capability::{
     PaintSourceCapabilities, RuntimeCapabilities, ShadowCapabilities, SurfaceCapabilities,
     SymbolicColorPolicy, TransformCoordinateSpaceCapabilities,
 };
+pub use error::GradientRealizationError;
 pub use error::{
     DegradedQuality, DegradedQualityKind, DeviceLossReason, Error, ErrorCode, GpuFaultKind,
     InvalidValue, PrimitiveFamily, PrimitiveOperation, RenderSurfaceAvailability, Result,
@@ -104,11 +105,12 @@ pub use layer::{
 };
 pub use paint::{
     Color, Gradient, GradientStop, NormalizedPaintLayer, Paint, PaintColor, PaintColorSpace,
-    RepeatingGradient, RepeatingGradientStop,
+    RepeatingGradient,
 };
 #[cfg(feature = "render-paint")]
 pub use paint_gradient::{
-    PaintGradientError, prepare_repeating_linear_gradient, prepare_repeating_radial_gradient,
+    PaintGradientError, prepare_linear_gradient, prepare_radial_gradient,
+    prepare_repeating_linear_gradient, prepare_repeating_radial_gradient,
 };
 pub use renderer::{Antialiasing, EffectQualityPolicy, Options, Renderer, ResourceCacheBudget};
 pub use scene::{Scene, SceneSummary};
