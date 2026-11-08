@@ -6361,3 +6361,282 @@ scalars!(
     maximum_progress_cross_progression_short_owner_keeps_actual_child_overflow_f32,
     maximum_progress_cross_progression_short_owner_keeps_actual_child_overflow_f64
 );
+
+fn maximum_progress_selected_inline_percentage_settles_overflow_children<S: LayoutScalar>() {
+    let mut root = maximum_progress_cap::<S>(20.0);
+    root.box_sizing = BoxSizing::ContentBox;
+    let mut relative = block::<S>(None, Some(30.0));
+    relative.position = Position::Relative;
+    relative.inset.left =
+        LengthAutoOf::value(LengthPercentageOf::from_percent_fraction(S::from_f64(0.1)).unwrap());
+    let mut tree = Tree::new(
+        vec![root, relative.clone(), relative.clone(), relative],
+        vec![vec![1, 2, 3], vec![], vec![], vec![]],
+    );
+    let continuous = compute_layout(&tree, 0, root_request(100.0)).unwrap();
+    for output in [
+        single(&continuous, 0).unrounded_output(),
+        single(&continuous, 0).final_output(),
+    ] {
+        assert_packet(output, (0.0, 0.0), (100.0, 20.0));
+    }
+    for (node, y) in [(1, 0.0), (2, 30.0), (3, 60.0)] {
+        let child = single(&continuous, node);
+        for output in [child.unrounded_output(), child.final_output()] {
+            assert_eq!(output.source_index, SourceIndex::new(node - 1));
+            assert_packet(output, (10.0, y), (100.0, 30.0));
+        }
+    }
+    let mut sink = Sink::new(4);
+    let whole_request = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 100.0, true)]);
+    sink.authorize(0, &whole_request);
+    let whole =
+        compute(&tree, 0, &whole_request).expect("whole-fit selected inline percentage control");
+    assert_eq!(whole.fragmentainers().len(), 1);
+    let whole_root = single(&whole, 0);
+    for output in [whole_root.unrounded_output(), whole_root.final_output()] {
+        assert_packet(output, (0.0, 0.0), (100.0, 20.0));
+    }
+    assert_eq!(
+        whole_root.coordinate_parent(),
+        Some(&FragmentCoordinateSpace::Fragmentainer(
+            whole.fragmentainers()[0].id().clone()
+        ))
+    );
+    for (node, y) in [(1, 0.0), (2, 30.0), (3, 60.0)] {
+        minimum_progress_child(
+            &whole,
+            node,
+            node - 1,
+            whole_root.id(),
+            (10.0, y),
+            (100.0, 30.0),
+        );
+    }
+    maximum_progress_children(
+        &whole,
+        whole_root.id(),
+        &[
+            single(&whole, 1).id(),
+            single(&whole, 2).id(),
+            single(&whole, 3).id(),
+        ],
+    );
+
+    // Position 3 §3.1 selects only the corresponding inline-axis percentage:
+    // each accepted width supplies 10%, hence 10,6,8. No block percentage exists.
+    tree.inputs[0].max_size.height = block::<S>(None, None).max_size.height;
+    let uncapped_request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![
+            frame(100.0, 30.0, true),
+            frame(60.0, 30.0, false),
+            frame(80.0, 30.0, false),
+        ],
+    );
+    sink.authorize(0, &uncapped_request);
+    let uncapped = compute(&tree, 0, &uncapped_request)
+        .expect("uncapped varying-frame selected inline percentage control");
+    let controls = minimum_progress_chain(&uncapped, 0, &[&[(0, 1)], &[(1, 2)], &[(2, 3)]]);
+    for (index, width, x) in [(0, 100.0, 10.0), (1, 60.0, 6.0), (2, 80.0, 8.0)] {
+        assert_fragment(&controls[index], (width, 30.0));
+        assert_eq!(controls[index].unrounded().location, Point::ZERO);
+        assert_eq!(controls[index].final_geometry().location, Point::ZERO);
+        minimum_progress_child(
+            &uncapped,
+            index + 1,
+            index,
+            controls[index].id(),
+            (x, 0.0),
+            (width, 30.0),
+        );
+        maximum_progress_children(
+            &uncapped,
+            controls[index].id(),
+            &[single(&uncapped, index + 1).id()],
+        );
+    }
+    tree.inputs[0].max_size.height = maximum_progress_cap::<S>(20.0).max_size.height;
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![
+            frame(100.0, 30.0, true),
+            frame(60.0, 30.0, false),
+            frame(80.0, 30.0, false),
+        ],
+    );
+    sink.authorize(0, &request);
+    let batch = compute(&tree, 0, &request)
+        .expect("overflow-only content retains the actual selected inline percentage basis");
+    assert_eq!(batch.fragmentainers().len(), 3);
+    assert_eq!(batch.node_layouts().count(), 4);
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(1, 2)], &[(2, 3)]]);
+    assert_fragment(&roots[0], (100.0, 20.0));
+    assert_eq!(roots[0].unrounded().location, Point::ZERO);
+    assert_eq!(roots[0].final_geometry().location, Point::ZERO);
+    for (index, width, x) in [(0, 100.0, 10.0), (1, 60.0, 6.0), (2, 80.0, 8.0)] {
+        minimum_progress_child(
+            &batch,
+            index + 1,
+            index,
+            roots[index].id(),
+            (x, 0.0),
+            (width, 30.0),
+        );
+        maximum_progress_children(&batch, roots[index].id(), &[single(&batch, index + 1).id()]);
+        if index > 0 {
+            assert!(roots[index].principal_box().is_none());
+            assert!(matches!(
+                roots[index].payload(),
+                FragmentPayloadOf::OverflowOnly(_)
+            ));
+            let overflow = roots[index].overflow_only().unwrap();
+            // Descendant visual bounds have no principal-container seed. Their
+            // origin includes the settled shift, while their child size stays 30.
+            for geometry in [overflow.unrounded(), overflow.final_geometry()] {
+                assert_eq!(geometry.origin, Point::ZERO);
+                assert_eq!(
+                    geometry.content_bounds.origin(),
+                    Point::new(S::from_f64(x), S::ZERO)
+                );
+                assert_eq!(
+                    geometry.content_bounds.size(),
+                    Size::new(S::from_f64(width), S::from_f64(30.0))
+                );
+            }
+        }
+    }
+    maximum_progress_unique_fragments(&batch);
+    batch.apply_to(&mut sink).unwrap();
+    assert_eq!(sink.state.custody[0], None);
+    for node in [1, 2, 3] {
+        assert_eq!(
+            sink.state.custody[node],
+            Some(single(&batch, node).unrounded_entry())
+        );
+    }
+}
+scalars!(
+    maximum_progress_selected_inline_percentage_settles_overflow_children,
+    maximum_progress_selected_inline_percentage_settles_overflow_children_f32,
+    maximum_progress_selected_inline_percentage_settles_overflow_children_f64
+);
+
+fn maximum_progress_selected_block_percentage_requires_actual_basis<S: LayoutScalar>() {
+    let mut root = maximum_progress_cap::<S>(20.0);
+    root.box_sizing = BoxSizing::ContentBox;
+    let mut relative = block::<S>(None, Some(30.0));
+    relative.position = Position::Relative;
+    relative.inset.top =
+        LengthAutoOf::value(LengthPercentageOf::from_percent_fraction(S::from_f64(0.1)).unwrap());
+    let mut tree = Tree::new(
+        vec![root, relative.clone(), relative.clone(), relative],
+        vec![vec![1, 2, 3], vec![], vec![], vec![]],
+    );
+    let continuous = compute_layout(&tree, 0, root_request(100.0)).unwrap();
+    for output in [
+        single(&continuous, 0).unrounded_output(),
+        single(&continuous, 0).final_output(),
+    ] {
+        assert_packet(output, (0.0, 0.0), (100.0, 20.0));
+    }
+    // The ordinary measured content box is 20 high, so each top 10% is 2;
+    // relative displacement leaves the normal child positions 0,30,60 intact.
+    for (node, y) in [(1, 2.0), (2, 32.0), (3, 62.0)] {
+        let child = single(&continuous, node);
+        for output in [child.unrounded_output(), child.final_output()] {
+            assert_eq!(output.source_index, SourceIndex::new(node - 1));
+            assert_packet(output, (0.0, y), (100.0, 30.0));
+        }
+    }
+    let mut sink = Sink::new(4);
+    let whole_request = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 100.0, true)]);
+    sink.authorize(0, &whole_request);
+    let whole = compute(&tree, 0, &whole_request)
+        .expect("whole-fit selected block percentage has actual measured basis");
+    assert_eq!(whole.fragmentainers().len(), 1);
+    let whole_root = single(&whole, 0);
+    for output in [whole_root.unrounded_output(), whole_root.final_output()] {
+        assert_packet(output, (0.0, 0.0), (100.0, 20.0));
+    }
+    for (node, y) in [(1, 2.0), (2, 32.0), (3, 62.0)] {
+        minimum_progress_child(
+            &whole,
+            node,
+            node - 1,
+            whole_root.id(),
+            (0.0, y),
+            (100.0, 30.0),
+        );
+    }
+    maximum_progress_children(
+        &whole,
+        whole_root.id(),
+        &[
+            single(&whole, 1).id(),
+            single(&whole, 2).id(),
+            single(&whole, 3).id(),
+        ],
+    );
+    whole.apply_to(&mut sink).unwrap();
+
+    tree.inputs[0].max_size.height = block::<S>(None, None).max_size.height;
+    let uncapped_request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![
+            frame(100.0, 30.0, true),
+            frame(60.0, 30.0, false),
+            frame(80.0, 30.0, false),
+        ],
+    );
+    sink.authorize(0, &uncapped_request);
+    let uncapped = compute(&tree, 0, &uncapped_request)
+        .expect("uncapped varying-frame block percentage has an actual box in each frame");
+    let controls = minimum_progress_chain(&uncapped, 0, &[&[(0, 1)], &[(1, 2)], &[(2, 3)]]);
+    for (index, width) in [(0, 100.0), (1, 60.0), (2, 80.0)] {
+        assert_fragment(&controls[index], (width, 30.0));
+        assert_eq!(controls[index].unrounded().location, Point::ZERO);
+        assert_eq!(controls[index].final_geometry().location, Point::ZERO);
+        minimum_progress_child(
+            &uncapped,
+            index + 1,
+            index,
+            controls[index].id(),
+            (0.0, 3.0),
+            (width, 30.0),
+        );
+        maximum_progress_children(
+            &uncapped,
+            controls[index].id(),
+            &[single(&uncapped, index + 1).id()],
+        );
+    }
+    tree.inputs[0].max_size.height = maximum_progress_cap::<S>(20.0).max_size.height;
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![
+            frame(100.0, 30.0, true),
+            frame(60.0, 30.0, false),
+            frame(80.0, 30.0, false),
+        ],
+    );
+    sink.authorize(0, &request);
+    // The first actual principal content box supplies 20 for the first child's
+    // offset 2. A later overflow carrier has no block box from which to resolve
+    // the selected top percentage; neither frame height nor overflow is a basis.
+    let error = compute(&tree, 0, &request).unwrap_err();
+    assert_eq!(
+        error.operation(),
+        LayoutOperation::ValueResolution,
+        "{error:?}"
+    );
+    assert!(matches!(
+        error.kind(),
+        LayoutErrorKindOf::MissingContext(LayoutMissingContext::RequiredBasis)
+    ));
+}
+scalars!(
+    maximum_progress_selected_block_percentage_requires_actual_basis,
+    maximum_progress_selected_block_percentage_requires_actual_basis_f32,
+    maximum_progress_selected_block_percentage_requires_actual_basis_f64
+);
