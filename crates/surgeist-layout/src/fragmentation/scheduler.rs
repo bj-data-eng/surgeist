@@ -1,5 +1,6 @@
 use super::{policy, validation, *};
 use crate::LayoutScalar;
+use std::sync::Arc;
 
 /// Schedule all independent flows or return a typed failure without a prefix.
 /// Source positions are caller-owned exact units. Only the mode provider may
@@ -35,26 +36,490 @@ where
     P: FragmentationProvider<S>,
     F: FnMut(AcceptedStep<'_, K, S>) -> Result<(), P::Error>,
 {
-    validation::input(input).map_err(FragmentationError::InvalidInput)?;
-    Engine {
-        input,
-        provider,
-        feedback,
-        report: FragmentationReportOf {
-            pieces: Vec::new(),
-            breaks: Vec::new(),
-            fragmentainers: Vec::new(),
-        },
-    }
-    .run()
+    let mut execution =
+        Execution::new(Arc::new(input.clone())).map_err(FragmentationError::InvalidInput)?;
+    let mut feedback = feedback;
+    while !execution.poll(provider, &mut feedback)? {}
+    Ok(execution.finish().into_report())
 }
 
-struct Engine<'a, K, S: LayoutScalar, P, F> {
+#[derive(Debug)]
+struct ExecutionIdentity;
+
+/// A scheduler-certified initial preparation point, never a public resume token.
+pub(crate) struct ScopeTicket<S: LayoutScalar> {
+    execution: Arc<ExecutionIdentity>,
+    generation: usize,
+    query: FragmentationQueryOf<S>,
+    owner: FragmentationPosition,
+    principal_end: FragmentationPosition,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ScopeRegistrationError {
+    StalePlacement,
+    InvalidOwner,
+    InvalidProjection,
+    Allocation,
+}
+
+/// Block's geometric projection of an actual selected child transition.
+/// The offset is an occupied-prefix coordinate in that fragmentainer, not a
+/// distance from a coalesced parent query's changing source cursor.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ScopeProjectionOf<S: LayoutScalar> {
+    pub(crate) child_break_index: usize,
+    pub(crate) cut: FragmentationCutOf<S>,
+    pub(crate) block_offset: S,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ScopeHeadProjectionOf<S: LayoutScalar> {
+    pub(crate) child_piece_index: usize,
+    pub(crate) cut: FragmentationCutOf<S>,
+    pub(crate) block_offset: S,
+}
+
+/// Complete scheduler evidence; consumers can read but cannot mint its report.
+pub(crate) struct CompletedExecution<K, S: LayoutScalar> {
+    input: Arc<FragmentationInputOf<K, S>>,
+    report: FragmentationReportOf<K, S>,
+    qualified_heads: Vec<bool>,
+    selected_forces: Vec<Option<policy::Force>>,
+    selected_origins: Vec<Option<policy::SelectedPolicyOf<S>>>,
+}
+impl<K, S: LayoutScalar> CompletedExecution<K, S> {
+    pub(crate) fn report(&self) -> &FragmentationReportOf<K, S> {
+        &self.report
+    }
+    /// Read Engine-issued indivisibility evidence for this report's piece.
+    /// A graphical kind alone does not qualify a piece as an accepted head.
+    pub(crate) fn head_qualified(&self, piece_index: usize) -> bool {
+        self.qualified_heads
+            .get(piece_index)
+            .copied()
+            .unwrap_or(false)
+    }
+    pub(crate) fn into_report(self) -> FragmentationReportOf<K, S> {
+        self.report
+    }
+}
+
+struct RegisteredScope<K, S: LayoutScalar> {
+    flow: usize,
+    initial_frame: usize,
+    owner: FragmentationPosition,
+    principal_end: FragmentationPosition,
+    child: Arc<CompletedExecution<K, S>>,
+    projections: Vec<ScopeProjectionOf<S>>,
+    heads: Vec<ScopeHeadProjectionOf<S>>,
+    applied: Vec<bool>,
+    active: bool,
+    retired: bool,
+}
+
+/// Only state actually changed by this unpublished step needs rollback.
+enum ScopeUndo {
+    Lifecycle {
+        scope: usize,
+        active: bool,
+        retired: bool,
+    },
+    Applied {
+        scope: usize,
+        projection: usize,
+        previous: bool,
+    },
+}
+impl ScopeUndo {
+    fn restore<K, S: LayoutScalar>(journal: &mut Vec<Self>, scopes: &mut [RegisteredScope<K, S>]) {
+        while let Some(change) = journal.pop() {
+            match change {
+                Self::Lifecycle {
+                    scope,
+                    active,
+                    retired,
+                } => {
+                    scopes[scope].active = active;
+                    scopes[scope].retired = retired;
+                }
+                Self::Applied {
+                    scope,
+                    projection,
+                    previous,
+                } => {
+                    scopes[scope].applied[projection] = previous;
+                }
+            }
+        }
+    }
+}
+
+/// Invocation-owned scheduling state. A failed provider preparation leaves the
+/// current step unaccepted so an internal scope driver can satisfy its request
+/// and replay against the same immutable input.
+pub(crate) struct Execution<K, S: LayoutScalar> {
+    input: Arc<FragmentationInputOf<K, S>>,
+    report: FragmentationReportOf<K, S>,
+    qualified_heads: Vec<bool>,
+    selected_forces: Vec<Option<policy::Force>>,
+    selected_origins: Vec<Option<policy::SelectedPolicyOf<S>>>,
+    flow: usize,
+    state: Option<State<S>>,
+    identity: Arc<ExecutionIdentity>,
+    generation: usize,
+    paused_query: Option<FragmentationQueryOf<S>>,
+    scopes: Vec<RegisteredScope<K, S>>,
+}
+impl<K: Clone + Eq, S: LayoutScalar> Execution<K, S> {
+    pub(crate) fn new(
+        input: Arc<FragmentationInputOf<K, S>>,
+    ) -> Result<Self, FragmentationInputError> {
+        validation::input(&input)?;
+        Ok(Self {
+            input,
+            report: FragmentationReportOf {
+                pieces: Vec::new(),
+                breaks: Vec::new(),
+                fragmentainers: Vec::new(),
+            },
+            qualified_heads: Vec::new(),
+            selected_forces: Vec::new(),
+            selected_origins: Vec::new(),
+            flow: 0,
+            state: None,
+            identity: Arc::new(ExecutionIdentity),
+            generation: 0,
+            paused_query: None,
+            scopes: Vec::new(),
+        })
+    }
+    pub(crate) fn scope_ticket(
+        &self,
+        query: FragmentationQueryOf<S>,
+        owner: FragmentationPosition,
+        principal_end: FragmentationPosition,
+    ) -> Result<ScopeTicket<S>, ScopeRegistrationError> {
+        if self.paused_query != Some(query) {
+            return Err(ScopeRegistrationError::StalePlacement);
+        }
+        let flow = &self.input.flows[query.flow];
+        if owner.offset != 0
+            || principal_end.offset != 0
+            || owner < query.position
+            || owner.occurrence.checked_add(1) != Some(principal_end.occurrence)
+            || [owner, principal_end].iter().any(|position| {
+                flow.occurrences
+                    .get(position.occurrence)
+                    .is_none_or(|item| item.source_extent != 0 || item.monolithic)
+            })
+        {
+            return Err(ScopeRegistrationError::InvalidOwner);
+        }
+        Ok(ScopeTicket {
+            execution: self.identity.clone(),
+            generation: self.generation,
+            query,
+            owner,
+            principal_end,
+        })
+    }
+
+    pub(crate) fn register_scope(
+        &mut self,
+        ticket: ScopeTicket<S>,
+        child: Arc<CompletedExecution<K, S>>,
+        projections: Vec<ScopeProjectionOf<S>>,
+        heads: Vec<ScopeHeadProjectionOf<S>>,
+    ) -> Result<(), ScopeRegistrationError> {
+        if !Arc::ptr_eq(&self.identity, &ticket.execution)
+            || self.generation != ticket.generation
+            || self.paused_query != Some(ticket.query)
+        {
+            return Err(ScopeRegistrationError::StalePlacement);
+        }
+        let replacement = self.scopes.iter().position(|scope| {
+            !scope.retired && scope.flow == ticket.query.flow && scope.owner == ticket.owner
+        });
+        if replacement.is_some_and(|index| self.scopes[index].active) {
+            return Err(ScopeRegistrationError::InvalidOwner);
+        }
+        if child.input.contexts != self.input.contexts {
+            return Err(ScopeRegistrationError::InvalidProjection);
+        }
+        let mut previous: Option<&ScopeProjectionOf<S>> = None;
+        let mut extent = None;
+        let mut child_flow = None;
+        for (index, head) in heads.iter().enumerate() {
+            let Some(piece) = child.report.pieces.get(head.child_piece_index) else {
+                return Err(ScopeRegistrationError::InvalidProjection);
+            };
+            let flow = &child.input.flows[piece.flow];
+            if !validation::nonnegative(head.block_offset)
+                || piece.context != ticket.query.context
+                || piece.fragmentainer < ticket.query.fragmentainer_index
+                || flow.context != ticket.query.context
+                || flow.start_fragmentainer != ticket.query.fragmentainer_index
+                || child_flow.is_some_and(|old| old != piece.flow)
+                || heads[..index].iter().any(|old| {
+                    old.child_piece_index == head.child_piece_index || old.cut == head.cut
+                })
+            {
+                return Err(ScopeRegistrationError::InvalidProjection);
+            }
+            child_flow = Some(piece.flow);
+            match head.cut {
+                FragmentationCutOf::Source(position) if position == ticket.principal_end => {}
+                FragmentationCutOf::Graphical { anchor, progress }
+                    if anchor == ticket.owner
+                        && validation::nonnegative(progress.consumed)
+                        && validation::nonnegative(progress.extent)
+                        && progress.consumed > S::ZERO
+                        && progress.consumed < progress.extent
+                        && extent.is_none_or(|old| old == progress.extent) =>
+                {
+                    extent = Some(progress.extent);
+                }
+                _ => return Err(ScopeRegistrationError::InvalidProjection),
+            }
+        }
+        for projection in &projections {
+            let Some(selected) = child.report.breaks.get(projection.child_break_index) else {
+                return Err(ScopeRegistrationError::InvalidProjection);
+            };
+            if !validation::nonnegative(projection.block_offset)
+                || selected.context != ticket.query.context
+                || selected.from_fragmentainer < ticket.query.fragmentainer_index
+                || selected.to_fragmentainer <= selected.from_fragmentainer
+                || child_flow.is_some_and(|flow| flow != selected.flow)
+                || previous.is_some_and(|old| {
+                    old.child_break_index >= projection.child_break_index
+                        || cut_order(old.cut, projection.cut) != core::cmp::Ordering::Less
+                })
+            {
+                return Err(ScopeRegistrationError::InvalidProjection);
+            }
+            child_flow = Some(selected.flow);
+            let flow = &child.input.flows[selected.flow];
+            if flow.context != ticket.query.context
+                || flow.start_fragmentainer != ticket.query.fragmentainer_index
+            {
+                return Err(ScopeRegistrationError::InvalidProjection);
+            }
+            let deferred = matches!(selected.reason, FragmentationBreakReason::Deferred);
+            let initial_deferral =
+                deferred && projection.cut == FragmentationCutOf::Source(ticket.owner);
+            if initial_deferral
+                && (projection.cut != FragmentationCutOf::Source(ticket.owner)
+                    || projection.block_offset <= S::ZERO
+                    || (ticket.owner == ticket.query.position
+                        && projection.block_offset != ticket.query.used_block_offset)
+                    || flow.initial_block_offset <= S::ZERO
+                    || selected.position
+                        != (FragmentationPosition {
+                            occurrence: 0,
+                            offset: 0,
+                        })
+                    || selected.from_fragmentainer != flow.start_fragmentainer
+                    || selected.stage != FragmentationStage::Strict
+                    || child.report.breaks[..projection.child_break_index]
+                        .iter()
+                        .any(|record| record.flow == selected.flow)
+                    || child.report.pieces.iter().any(|piece| {
+                        piece.flow == selected.flow
+                            && piece.fragmentainer <= selected.from_fragmentainer
+                    }))
+            {
+                return Err(ScopeRegistrationError::InvalidProjection);
+            }
+            if deferred
+                && !initial_deferral
+                && !heads.iter().any(|head| {
+                    let piece = &child.report.pieces[head.child_piece_index];
+                    head.cut == projection.cut
+                        && head.block_offset == projection.block_offset
+                        && piece.flow == selected.flow
+                        && piece.context == selected.context
+                        && piece.fragmentainer == selected.from_fragmentainer
+                        && piece.end == selected.position
+                })
+            {
+                return Err(ScopeRegistrationError::InvalidProjection);
+            }
+            match projection.cut {
+                FragmentationCutOf::Source(position)
+                    if initial_deferral && position == ticket.owner => {}
+                FragmentationCutOf::Source(position) if position == ticket.principal_end => {}
+                FragmentationCutOf::Graphical { anchor, progress }
+                    if anchor == ticket.owner
+                        && validation::nonnegative(progress.consumed)
+                        && validation::nonnegative(progress.extent)
+                        && progress.consumed > S::ZERO
+                        && progress.consumed < progress.extent
+                        && extent.is_none_or(|old| old == progress.extent) =>
+                {
+                    extent = Some(progress.extent);
+                }
+                _ => return Err(ScopeRegistrationError::InvalidProjection),
+            }
+            previous = Some(projection);
+        }
+        if (!projections.is_empty() || !heads.is_empty())
+            && !child.report.fragmentainers.iter().any(|frame| {
+                frame.context == ticket.query.context
+                    && frame.index == ticket.query.fragmentainer_index
+                    && frame.frame == ticket.query.fragmentainer
+            })
+        {
+            return Err(ScopeRegistrationError::InvalidProjection);
+        }
+        let mut applied = Vec::new();
+        applied
+            .try_reserve(projections.len())
+            .map_err(|_| ScopeRegistrationError::Allocation)?;
+        applied.resize(projections.len(), false);
+        if replacement.is_none() {
+            self.scopes
+                .try_reserve(1)
+                .map_err(|_| ScopeRegistrationError::Allocation)?;
+        }
+        let prepared = RegisteredScope {
+            flow: ticket.query.flow,
+            initial_frame: ticket.query.fragmentainer_index,
+            owner: ticket.owner,
+            principal_end: ticket.principal_end,
+            child,
+            projections,
+            heads,
+            applied,
+            active: false,
+            retired: false,
+        };
+        if let Some(index) = replacement {
+            self.scopes[index] = prepared;
+        } else {
+            self.scopes.push(prepared);
+        }
+        Ok(())
+    }
+    pub(crate) fn poll<P, F>(
+        &mut self,
+        provider: &mut P,
+        feedback: &mut F,
+    ) -> Result<bool, FragmentationError<P::Error>>
+    where
+        P: FragmentationProvider<S>,
+        F: FnMut(AcceptedStep<'_, K, S>) -> Result<(), P::Error>,
+    {
+        while self.flow < self.input.flows.len() {
+            let input = &self.input.flows[self.flow];
+            let mut state = self.state.clone().unwrap_or(State {
+                flow: self.flow,
+                frame: input.start_fragmentainer,
+                position: FragmentationPosition {
+                    occurrence: 0,
+                    offset: 0,
+                },
+                used: input.initial_block_offset,
+                graphical: None,
+                forced_applied: None,
+                start_provenance: FragmentationStart::FlowStart,
+            });
+            let end = FragmentationPosition {
+                occurrence: input.occurrences.len(),
+                offset: 0,
+            };
+            if state.position == end {
+                self.flow += 1;
+                self.state = None;
+                continue;
+            }
+            let from_frame = state.frame;
+            let first_piece = self.report.pieces.len();
+            let first_break = self.report.breaks.len();
+            let next_generation = self
+                .generation
+                .checked_add(1)
+                .ok_or(FragmentationError::Arithmetic { flow: self.flow })?;
+            let mut scope_undo = Vec::new();
+            self.paused_query = None;
+            let result = Engine {
+                input: &self.input,
+                provider,
+                report: &mut self.report,
+                qualified_heads: &mut self.qualified_heads,
+                selected_forces: &mut self.selected_forces,
+                selected_origins: &mut self.selected_origins,
+                paused_query: &mut self.paused_query,
+                scopes: &mut self.scopes,
+                scope_undo: &mut scope_undo,
+            }
+            .step(&mut state);
+            if let Err(error) = result {
+                ScopeUndo::restore(&mut scope_undo, &mut self.scopes);
+                self.report.pieces.truncate(first_piece);
+                self.qualified_heads.truncate(first_piece);
+                self.report.breaks.truncate(first_break);
+                self.selected_forces.truncate(first_break);
+                self.selected_origins.truncate(first_break);
+                return Err(error);
+            }
+            let accepted = feedback(AcceptedStep {
+                flow: self.flow,
+                from_frame,
+                to_frame: state.frame,
+                position: state.position,
+                graphical_progress: state.graphical,
+                pieces: &self.report.pieces[first_piece..],
+                breaks: &self.report.breaks[first_break..],
+                flow_complete: state.position == end,
+            });
+            if let Err(error) = accepted {
+                ScopeUndo::restore(&mut scope_undo, &mut self.scopes);
+                self.report.pieces.truncate(first_piece);
+                self.qualified_heads.truncate(first_piece);
+                self.report.breaks.truncate(first_break);
+                self.selected_forces.truncate(first_break);
+                self.selected_origins.truncate(first_break);
+                return Err(FragmentationError::Provider(error));
+            }
+            self.state = Some(state);
+            self.generation = next_generation;
+            // No scope index escapes this step. After feedback succeeds the
+            // journal can no longer roll back, and obsolete payloads can drop.
+            drop(scope_undo);
+            self.scopes.retain(|scope| !scope.retired);
+            return Ok(false);
+        }
+        Ok(true)
+    }
+    pub(crate) fn finish(self) -> CompletedExecution<K, S> {
+        assert!(
+            self.flow == self.input.flows.len(),
+            "only a completed execution produces a report"
+        );
+        CompletedExecution {
+            input: self.input,
+            report: self.report,
+            qualified_heads: self.qualified_heads,
+            selected_forces: self.selected_forces,
+            selected_origins: self.selected_origins,
+        }
+    }
+}
+
+struct Engine<'a, K, S: LayoutScalar, P> {
     input: &'a FragmentationInputOf<K, S>,
     provider: &'a mut P,
-    feedback: F,
-    report: FragmentationReportOf<K, S>,
+    report: &'a mut FragmentationReportOf<K, S>,
+    qualified_heads: &'a mut Vec<bool>,
+    selected_forces: &'a mut Vec<Option<policy::Force>>,
+    selected_origins: &'a mut Vec<Option<policy::SelectedPolicyOf<S>>>,
+    paused_query: &'a mut Option<FragmentationQueryOf<S>>,
+    scopes: &'a mut [RegisteredScope<K, S>],
+    scope_undo: &'a mut Vec<ScopeUndo>,
 }
+#[derive(Clone)]
 struct State<S: LayoutScalar> {
     flow: usize,
     frame: usize,
@@ -66,6 +531,7 @@ struct State<S: LayoutScalar> {
 }
 enum Queried<S: LayoutScalar> {
     ControlAtStart(policy::Force),
+    PlacementDeferred,
     Measured(FragmentationWindowOf<S>, S),
 }
 struct Accepted<S: LayoutScalar> {
@@ -75,6 +541,51 @@ struct Accepted<S: LayoutScalar> {
     edges: (S, S),
     stage: FragmentationStage,
     kind: FragmentationPieceKindOf<S>,
+}
+
+#[derive(Clone, Copy)]
+struct ForcedCut<S: LayoutScalar> {
+    cut: FragmentationCutOf<S>,
+    body: S,
+    force: policy::Force,
+    floor: FragmentationStage,
+    receipt: Option<(usize, usize)>,
+}
+impl<S: LayoutScalar> ForcedCut<S> {
+    fn reason(self) -> FragmentationBreakReason {
+        FragmentationBreakReason::Forced {
+            required: self.force.required,
+            side: self.force.side,
+        }
+    }
+}
+
+struct CertifiedHead<S: LayoutScalar> {
+    cut: FragmentationCutOf<S>,
+    body: S,
+    qualified: bool,
+}
+
+fn current_cut<S: LayoutScalar>(state: &State<S>) -> FragmentationCutOf<S> {
+    state
+        .graphical
+        .map_or(FragmentationCutOf::Source(state.position), |progress| {
+            FragmentationCutOf::Graphical {
+                anchor: state.position,
+                progress,
+            }
+        })
+}
+
+fn stage_rank(stage: FragmentationStage) -> u8 {
+    match stage {
+        FragmentationStage::Strict => 0,
+        FragmentationStage::RelaxLineCounts => 1,
+        FragmentationStage::RelaxAvoidance => 2,
+        FragmentationStage::TruncateBlockEnd => 3,
+        FragmentationStage::TruncateBlockStart => 4,
+        FragmentationStage::Emergency => 5,
+    }
 }
 
 fn cut_order<S: LayoutScalar>(
@@ -155,45 +666,49 @@ fn same_candidate<S: LayoutScalar>(
     true
 }
 
-impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>, F> Engine<'_, K, S, P, F>
-where
-    F: FnMut(AcceptedStep<'_, K, S>) -> Result<(), P::Error>,
-{
-    fn run(mut self) -> Result<FragmentationReportOf<K, S>, FragmentationError<P::Error>> {
-        for flow in 0..self.input.flows.len() {
-            let input = &self.input.flows[flow];
-            let mut state = State {
-                flow,
-                frame: input.start_fragmentainer,
-                position: FragmentationPosition {
-                    occurrence: 0,
-                    offset: 0,
-                },
-                used: input.initial_block_offset,
-                graphical: None,
-                forced_applied: None,
-                start_provenance: FragmentationStart::FlowStart,
-            };
-            while state.position != self.end(flow) {
-                let from_frame = state.frame;
-                let first_piece = self.report.pieces.len();
-                let first_break = self.report.breaks.len();
-                self.step(&mut state)?;
-                let flow_complete = state.position == self.end(flow);
-                (self.feedback)(AcceptedStep {
-                    flow,
-                    from_frame,
-                    to_frame: state.frame,
-                    position: state.position,
-                    graphical_progress: state.graphical,
-                    pieces: &self.report.pieces[first_piece..],
-                    breaks: &self.report.breaks[first_break..],
-                    flow_complete,
-                })
-                .map_err(FragmentationError::Provider)?;
-            }
+impl<K: Clone + Eq, S: LayoutScalar, P: FragmentationProvider<S>> Engine<'_, K, S, P> {
+    fn scope_lifecycle(
+        &mut self,
+        index: usize,
+        active: bool,
+        retired: bool,
+    ) -> Result<(), FragmentationError<P::Error>> {
+        let scope = &self.scopes[index];
+        if scope.active == active && scope.retired == retired {
+            return Ok(());
         }
-        Ok(self.report)
+        self.scope_undo
+            .try_reserve(1)
+            .map_err(|_| FragmentationError::Allocation)?;
+        self.scope_undo.push(ScopeUndo::Lifecycle {
+            scope: index,
+            active: scope.active,
+            retired: scope.retired,
+        });
+        self.scopes[index].active = active;
+        self.scopes[index].retired = retired;
+        Ok(())
+    }
+
+    fn scope_application(
+        &mut self,
+        scope: usize,
+        projection: usize,
+    ) -> Result<(), FragmentationError<P::Error>> {
+        let previous = self.scopes[scope].applied[projection];
+        if previous {
+            return Ok(());
+        }
+        self.scope_undo
+            .try_reserve(1)
+            .map_err(|_| FragmentationError::Allocation)?;
+        self.scope_undo.push(ScopeUndo::Applied {
+            scope,
+            projection,
+            previous,
+        });
+        self.scopes[scope].applied[projection] = true;
+        Ok(())
     }
 
     fn end(&self, flow: usize) -> FragmentationPosition {
@@ -376,6 +891,29 @@ where
         reason: FragmentationBreakReason,
         stage: FragmentationStage,
     ) -> Result<(), FragmentationError<P::Error>> {
+        self.advance_record(state, reason, stage, None)
+    }
+
+    fn advance_record(
+        &mut self,
+        state: &mut State<S>,
+        reason: FragmentationBreakReason,
+        stage: FragmentationStage,
+        force: Option<policy::Force>,
+    ) -> Result<(), FragmentationError<P::Error>> {
+        let provenance_matches = match (reason, force) {
+            (FragmentationBreakReason::Forced { required, side }, Some(force)) => {
+                required == force.required && side == force.side
+            }
+            (FragmentationBreakReason::Forced { .. }, None) => false,
+            (_, None) => true,
+            (_, Some(_)) => false,
+        };
+        if !provenance_matches {
+            return Err(FragmentationError::InvalidInput(
+                FragmentationInputError::InvalidBoundary,
+            ));
+        }
         let from = state.frame;
         let context = self.context(state);
         let mut crossed = FragmentationBreakKinds::NONE;
@@ -400,10 +938,25 @@ where
                 break;
             }
         }
+        for index in 0..self.scopes.len() {
+            let scope = &self.scopes[index];
+            if scope.flow != state.flow || scope.active || scope.retired {
+                continue;
+            }
+            // A candidate child was prepared for an owner not yet accepted.
+            // A parent relocation requires a fresh preparation and ticket.
+            self.scope_lifecycle(index, false, true)?;
+        }
         state.used = S::ZERO;
         state.start_provenance = FragmentationStart::AfterBreak(reason);
         self.report
             .breaks
+            .try_reserve(1)
+            .map_err(|_| FragmentationError::Allocation)?;
+        self.selected_forces
+            .try_reserve(1)
+            .map_err(|_| FragmentationError::Allocation)?;
+        self.selected_origins
             .try_reserve(1)
             .map_err(|_| FragmentationError::Allocation)?;
         self.report.breaks.push(FragmentationBreakRecord {
@@ -416,6 +969,8 @@ where
             reason,
             stage,
         });
+        self.selected_forces.push(force);
+        self.selected_origins.push(None);
         Ok(())
     }
 
@@ -445,11 +1000,14 @@ where
                 scan_after,
                 start_provenance: state.start_provenance,
             };
-            match self
-                .provider
-                .layout(query)
-                .map_err(FragmentationError::Provider)?
-            {
+            let reply = match self.provider.layout(query) {
+                Ok(reply) => reply,
+                Err(error) => {
+                    *self.paused_query = Some(query);
+                    return Err(FragmentationError::Provider(error));
+                }
+            };
+            match reply {
                 FragmentationReplyOf::ControlAtStart(controls) => {
                     if scan_after.is_some() {
                         return Err(FragmentationError::NoProgress {
@@ -470,6 +1028,12 @@ where
                     {
                         return Ok(Queried::ControlAtStart(force));
                     }
+                    if stage == FragmentationStage::Strict
+                        && state.used > S::ZERO
+                        && self.placement_limit(state) == Some(state.position)
+                    {
+                        return Ok(Queried::PlacementDeferred);
+                    }
                     scan_after = Some(state.position);
                 }
                 FragmentationReplyOf::Measured(mut window) => {
@@ -479,6 +1043,7 @@ where
                         &mut window,
                     )
                     .map_err(FragmentationError::InvalidInput)?;
+                    self.validate_scope_window(state, &window, covered_end)?;
                     if scan_after.is_some_and(|previous| covered_end <= previous) {
                         return Err(FragmentationError::NoProgress {
                             flow: state.flow,
@@ -524,13 +1089,25 @@ where
                     }
                     let force = self.first_force(state, &window);
                     if scan_after.is_some_and(|bound| {
-                        force.is_some_and(|(position, _, _)| position <= bound)
+                        force.is_some_and(|force| {
+                            cut_order(force.cut, FragmentationCutOf::Source(bound))
+                                != core::cmp::Ordering::Greater
+                        })
                     }) {
                         return Err(FragmentationError::InvalidInput(
                             FragmentationInputError::InvalidWindow,
                         ));
                     }
-                    if matches!(window.end, FragmentationWindowEnd::FlowEnd) || force.is_some() {
+                    if matches!(window.end, FragmentationWindowEnd::FlowEnd)
+                        || force.is_some()
+                        || self.pending_cut_limit(state).is_some_and(|limit| {
+                            cut_order(limit, FragmentationCutOf::Source(covered_end))
+                                != core::cmp::Ordering::Greater
+                        })
+                        || self
+                            .placement_limit(state)
+                            .is_some_and(|limit| limit <= covered_end)
+                    {
                         return Ok(Queried::Measured(window, available));
                     }
                     // A rejected terminal control authorizes discovery only.
@@ -565,8 +1142,9 @@ where
         &self,
         state: &State<S>,
         window: &FragmentationWindowOf<S>,
-    ) -> Option<(FragmentationPosition, S, policy::Force)> {
+    ) -> Option<ForcedCut<S>> {
         let available = self.available_kinds(self.context(state));
+        let pending_limit = self.pending_cut_limit(state);
         let mut result: Option<(FragmentationPosition, S, policy::Force)> = None;
         for opportunity in &window.opportunities {
             if !matches!(opportunity.cut, FragmentationCutOf::Source(_)) {
@@ -575,6 +1153,9 @@ where
             if opportunity.cut.source_position() == self.end(state.flow)
                 || state.forced_applied == Some(opportunity.cut.source_position())
                 || !self.usable(state, opportunity)
+                || pending_limit.is_some_and(|limit| {
+                    cut_order(opportunity.cut, limit) == core::cmp::Ordering::Greater
+                })
             {
                 continue;
             }
@@ -595,16 +1176,559 @@ where
                 }
             }
         }
+        let mut result = result.map(|(position, body, force)| ForcedCut {
+            cut: FragmentationCutOf::Source(position),
+            body,
+            force,
+            floor: FragmentationStage::Strict,
+            receipt: None,
+        });
+        let covered_end = match window.end {
+            FragmentationWindowEnd::FlowEnd => self.end(state.flow),
+            FragmentationWindowEnd::PotentialControl(position) => position,
+        };
+        for (scope_index, scope) in self.scopes.iter().enumerate() {
+            if scope.flow != state.flow
+                || scope.retired
+                || (!scope.active && state.frame != scope.initial_frame)
+            {
+                continue;
+            }
+            for (projection_index, projection) in scope.projections.iter().enumerate() {
+                let selected = &scope.child.report.breaks[projection.child_break_index];
+                if scope.applied[projection_index]
+                    || pending_limit.is_some_and(|limit| {
+                        cut_order(projection.cut, limit) == core::cmp::Ordering::Greater
+                    })
+                    || selected.from_fragmentainer != state.frame
+                    || !matches!(selected.reason, FragmentationBreakReason::Forced { .. })
+                    || projection.cut.source_position() < state.position
+                    || projection.cut.source_position() > covered_end
+                    || matches!(projection.cut, FragmentationCutOf::Graphical { anchor, .. } if anchor == covered_end)
+                    || projection.block_offset < state.used
+                    || projection.block_offset - state.used > window.block_size
+                    || matches!(projection.cut, FragmentationCutOf::Graphical { anchor, progress }
+                        if anchor == state.position && state.graphical.is_some_and(|old|
+                            old.extent != progress.extent || old.consumed >= progress.consumed))
+                {
+                    continue;
+                }
+                let child_force = scope.child.selected_forces[projection.child_break_index]
+                    .expect("advance_record retains provenance for every selected Forced break");
+                if result.is_some_and(|old| {
+                    cut_order(projection.cut, old.cut) == core::cmp::Ordering::Equal
+                }) {
+                    let old = result.as_mut().expect("the matching forced cut exists");
+                    old.force.merge(child_force);
+                    old.body = projection.block_offset - state.used;
+                    if stage_rank(selected.stage) > stage_rank(old.floor) {
+                        old.floor = selected.stage;
+                    }
+                    old.receipt = Some((scope_index, projection_index));
+                } else if result.is_none_or(|old| {
+                    cut_order(projection.cut, old.cut) == core::cmp::Ordering::Less
+                }) {
+                    result = Some(ForcedCut {
+                        cut: projection.cut,
+                        body: projection.block_offset - state.used,
+                        force: child_force,
+                        floor: selected.stage,
+                        receipt: Some((scope_index, projection_index)),
+                    });
+                }
+            }
+        }
         result
     }
     fn pending_head_force(
         &self,
         state: &State<S>,
         window: &FragmentationWindowOf<S>,
-    ) -> Option<(FragmentationPosition, S, policy::Force)> {
+    ) -> Option<ForcedCut<S>> {
         self.first_force(state, window)
-            .filter(|(position, _, _)| *position < window.head.end)
+            .filter(|force| force.cut.source_position() < window.head.end)
     }
+
+    fn projected_transition(
+        &self,
+        state: &State<S>,
+        cut: FragmentationCutOf<S>,
+    ) -> Option<(usize, usize)> {
+        self.scopes
+            .iter()
+            .enumerate()
+            .find_map(|(scope_index, scope)| {
+                if scope.flow != state.flow || scope.retired {
+                    return None;
+                }
+                scope
+                    .projections
+                    .iter()
+                    .enumerate()
+                    .find_map(|(index, projection)| {
+                        let selected = &scope.child.report.breaks[projection.child_break_index];
+                        (!scope.applied[index]
+                            && projection.cut == cut
+                            && !matches!(selected.reason, FragmentationBreakReason::Deferred)
+                            && selected.from_fragmentainer == state.frame)
+                            .then_some((scope_index, index))
+                    })
+            })
+    }
+
+    fn placement_limit(&self, state: &State<S>) -> Option<FragmentationPosition> {
+        self.scopes
+            .iter()
+            .filter(|scope| {
+                scope.flow == state.flow
+                    && !scope.active
+                    && !scope.retired
+                    && scope.initial_frame == state.frame
+            })
+            .filter_map(|scope| {
+                scope
+                    .projections
+                    .iter()
+                    .any(|projection| {
+                        projection.cut == FragmentationCutOf::Source(scope.owner)
+                            && matches!(
+                                scope.child.report.breaks[projection.child_break_index].reason,
+                                FragmentationBreakReason::Deferred
+                            )
+                    })
+                    .then_some(scope.owner)
+            })
+            .min()
+    }
+
+    fn deferred_transition(&self, state: &State<S>) -> Option<(usize, usize)> {
+        let cut = current_cut(state);
+        self.scopes
+            .iter()
+            .enumerate()
+            .find_map(|(scope_index, scope)| {
+                if scope.flow != state.flow || !scope.active || scope.retired {
+                    return None;
+                }
+                scope
+                    .projections
+                    .iter()
+                    .enumerate()
+                    .find_map(|(index, projection)| {
+                        let selected = &scope.child.report.breaks[projection.child_break_index];
+                        (!scope.applied[index]
+                            && projection.cut == cut
+                            && projection.block_offset == state.used
+                            && selected.from_fragmentainer == state.frame
+                            && matches!(selected.reason, FragmentationBreakReason::Deferred))
+                        .then_some((scope_index, index))
+                    })
+            })
+    }
+
+    fn certified_head(
+        &self,
+        state: &State<S>,
+        window: &FragmentationWindowOf<S>,
+    ) -> Option<CertifiedHead<S>> {
+        let current = current_cut(state);
+        self.scopes
+            .iter()
+            .filter(|scope| scope.flow == state.flow && !scope.retired)
+            .flat_map(|scope| {
+                scope.heads.iter().filter_map(move |head| {
+                    let piece = &scope.child.report.pieces[head.child_piece_index];
+                    (piece.fragmentainer == state.frame
+                        && cut_order(current, head.cut) == core::cmp::Ordering::Less
+                        && cut_order(head.cut, FragmentationCutOf::Source(window.head.end))
+                            != core::cmp::Ordering::Greater
+                        && head.block_offset >= state.used)
+                        .then_some(CertifiedHead {
+                            cut: head.cut,
+                            body: head.block_offset - state.used,
+                            qualified: scope.child.qualified_heads[head.child_piece_index],
+                        })
+                })
+            })
+            .min_by(|a, b| cut_order(a.cut, b.cut))
+    }
+
+    fn validate_scope_window(
+        &self,
+        state: &State<S>,
+        window: &FragmentationWindowOf<S>,
+        covered_end: FragmentationPosition,
+    ) -> Result<(), FragmentationError<P::Error>> {
+        for scope in self
+            .scopes
+            .iter()
+            .filter(|scope| scope.flow == state.flow && !scope.retired)
+        {
+            for (index, projection) in scope.projections.iter().enumerate() {
+                let selected = &scope.child.report.breaks[projection.child_break_index];
+                if scope.applied[index]
+                    || selected.from_fragmentainer != state.frame
+                    || projection.cut.source_position() > covered_end
+                    || matches!(projection.cut, FragmentationCutOf::Graphical { anchor, .. } if anchor == covered_end)
+                {
+                    continue;
+                }
+                if projection.cut.source_position() < state.position
+                    || projection.block_offset < state.used
+                    || projection.block_offset - state.used > window.block_size
+                    || (projection.cut == FragmentationCutOf::Source(state.position)
+                        && projection.block_offset != state.used)
+                    || (projection.cut == FragmentationCutOf::Source(covered_end)
+                        && projection.block_offset - state.used != window.block_size)
+                    || window.opportunities.iter().any(|opportunity| {
+                        opportunity.cut == projection.cut
+                            && opportunity.block_offset != projection.block_offset - state.used
+                    })
+                {
+                    return Err(FragmentationError::InvalidInput(
+                        FragmentationInputError::InvalidWindow,
+                    ));
+                }
+                if matches!(selected.reason, FragmentationBreakReason::Deferred)
+                    && projection.cut == FragmentationCutOf::Source(scope.owner)
+                    && projection.cut.source_position() > state.position
+                    && !window.opportunities.iter().any(|opportunity| {
+                        opportunity.cut == projection.cut
+                            && opportunity.block_offset == projection.block_offset - state.used
+                    })
+                {
+                    return Err(FragmentationError::InvalidInput(
+                        FragmentationInputError::InvalidWindow,
+                    ));
+                }
+                if let FragmentationCutOf::Graphical { anchor, progress } = projection.cut
+                    && anchor == state.position
+                    && state.graphical.is_some_and(|old| {
+                        old.extent != progress.extent
+                            || old.consumed > progress.consumed
+                            || (old.consumed == progress.consumed
+                                && !matches!(selected.reason, FragmentationBreakReason::Deferred))
+                    })
+                {
+                    return Err(FragmentationError::InvalidInput(
+                        FragmentationInputError::InvalidSlice,
+                    ));
+                }
+            }
+            for head in &scope.heads {
+                let piece = &scope.child.report.pieces[head.child_piece_index];
+                if piece.fragmentainer != state.frame
+                    || cut_order(head.cut, current_cut(state)) != core::cmp::Ordering::Greater
+                    || head.cut.source_position() > covered_end
+                {
+                    continue;
+                }
+                let child_frame = scope
+                    .child
+                    .report
+                    .fragmentainers
+                    .iter()
+                    .find(|frame| frame.context == piece.context && frame.index == state.frame);
+                let actual_frame = self
+                    .report
+                    .fragmentainers
+                    .iter()
+                    .find(|frame| frame.context == piece.context && frame.index == state.frame);
+                if head.block_offset < state.used
+                    || head.block_offset - state.used > window.block_size
+                    || child_frame.is_none()
+                    || child_frame != actual_frame
+                {
+                    return Err(FragmentationError::InvalidInput(
+                        FragmentationInputError::InvalidWindow,
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn pending_projection_before(&self, state: &State<S>, cut: FragmentationCutOf<S>) -> bool {
+        self.scopes.iter().any(|scope| {
+            scope.flow == state.flow
+                && !scope.retired
+                && scope
+                    .projections
+                    .iter()
+                    .enumerate()
+                    .any(|(index, projection)| {
+                        !scope.applied[index]
+                            && cut_order(projection.cut, cut) == core::cmp::Ordering::Less
+                    })
+        })
+    }
+
+    fn pending_cut_limit(&self, state: &State<S>) -> Option<FragmentationCutOf<S>> {
+        self.scopes
+            .iter()
+            .filter(|scope| scope.flow == state.flow && !scope.retired)
+            .flat_map(|scope| {
+                scope
+                    .projections
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, projection)| {
+                        (!scope.applied[index]).then_some(projection.cut)
+                    })
+            })
+            .min_by(|a, b| cut_order(*a, *b))
+    }
+
+    fn stage_allows_projection(
+        &self,
+        state: &State<S>,
+        cut: FragmentationCutOf<S>,
+        stage: FragmentationStage,
+    ) -> bool {
+        self.projected_transition(state, cut)
+            .is_none_or(|(scope, index)| {
+                let scope = &self.scopes[scope];
+                stage_rank(stage)
+                    >= stage_rank(
+                        scope.child.report.breaks[scope.projections[index].child_break_index].stage,
+                    )
+            })
+    }
+
+    fn projected_origin(
+        &self,
+        state: &State<S>,
+        cut: FragmentationCutOf<S>,
+    ) -> Option<&policy::SelectedPolicyOf<S>> {
+        let (scope, index) = self.projected_transition(state, cut)?;
+        let scope = &self.scopes[scope];
+        scope.child.selected_origins[scope.projections[index].child_break_index].as_ref()
+    }
+
+    fn advance_selected(
+        &mut self,
+        state: &mut State<S>,
+        reason: FragmentationBreakReason,
+        stage: FragmentationStage,
+        receipt: Option<(usize, usize)>,
+        force: Option<policy::Force>,
+    ) -> Result<(), FragmentationError<P::Error>> {
+        self.advance_record(state, reason, stage, force)?;
+        if let Some((scope, projection)) = receipt {
+            let registered = &self.scopes[scope];
+            let selected = &registered.child.report.breaks
+                [registered.projections[projection].child_break_index];
+            let actual = self
+                .report
+                .breaks
+                .last()
+                .expect("advance recorded its transition");
+            let reason_compatible = match (actual.reason, selected.reason) {
+                (
+                    FragmentationBreakReason::Forced {
+                        required: actual, ..
+                    },
+                    FragmentationBreakReason::Forced {
+                        required: child, ..
+                    },
+                ) => actual.contains(child),
+                _ => actual.reason == selected.reason,
+            };
+            if actual.context != selected.context
+                || actual.from_fragmentainer != selected.from_fragmentainer
+                || actual.to_fragmentainer != selected.to_fragmentainer
+                || actual.crossed != selected.crossed
+                || !reason_compatible
+                || stage_rank(actual.stage) < stage_rank(selected.stage)
+                || [selected.from_fragmentainer, selected.to_fragmentainer]
+                    .iter()
+                    .any(|&index| {
+                        let child = registered.child.report.fragmentainers.iter().find(|frame| {
+                            frame.context == selected.context && frame.index == index
+                        });
+                        let parent = self.report.fragmentainers.iter().find(|frame| {
+                            frame.context == selected.context && frame.index == index
+                        });
+                        child.is_none() || parent.is_none() || child != parent
+                    })
+            {
+                return Err(FragmentationError::InvalidInput(
+                    FragmentationInputError::InvalidBoundary,
+                ));
+            }
+            // Every successful adoption of this exact selected transition
+            // carries its policy custody, including emergency acceptance.
+            // A normal selection subsequently adds its current parent facts.
+            let inherited = registered.child.selected_origins
+                [registered.projections[projection].child_break_index]
+                .clone();
+            *self
+                .selected_origins
+                .last_mut()
+                .expect("advance recorded its policy slot") = inherited;
+            self.scope_application(scope, projection)?;
+        }
+        Ok(())
+    }
+
+    fn accept_forced(
+        &mut self,
+        state: &mut State<S>,
+        forced: ForcedCut<S>,
+        edges: (S, S),
+        stage: FragmentationStage,
+        overflow: bool,
+    ) -> Result<(), FragmentationError<P::Error>> {
+        let (coverage_end, consumed_end, kind, graphical) = match forced.cut {
+            FragmentationCutOf::Source(position) => {
+                let kind = if let Some(progress) = state.graphical {
+                    FragmentationPieceKindOf::GraphicalSlice {
+                        anchor: state.position,
+                        coverage: FragmentationGraphicalCoverageOf {
+                            start: progress.consumed,
+                            end: progress.extent,
+                            extent: progress.extent,
+                        },
+                    }
+                } else if overflow {
+                    FragmentationPieceKindOf::UnsliceableOverflow
+                } else {
+                    FragmentationPieceKindOf::Content
+                };
+                (position, position, kind, None)
+            }
+            FragmentationCutOf::Graphical { anchor, progress } => {
+                let start = if anchor == state.position {
+                    state.graphical.map_or(S::ZERO, |old| old.consumed)
+                } else {
+                    S::ZERO
+                };
+                (
+                    FragmentationPosition {
+                        occurrence: anchor.occurrence + 1,
+                        offset: 0,
+                    },
+                    anchor,
+                    FragmentationPieceKindOf::GraphicalSlice {
+                        anchor,
+                        coverage: FragmentationGraphicalCoverageOf {
+                            start,
+                            end: progress.consumed,
+                            extent: progress.extent,
+                        },
+                    },
+                    Some(progress),
+                )
+            }
+        };
+        if coverage_end > state.position {
+            self.accept(
+                state,
+                Accepted {
+                    coverage_end,
+                    consumed_end,
+                    body: forced.body,
+                    edges,
+                    stage,
+                    kind,
+                },
+            )?;
+        } else if forced.body != S::ZERO {
+            return Err(FragmentationError::InvalidInput(
+                FragmentationInputError::InvalidWindow,
+            ));
+        }
+        state.graphical = graphical;
+        if let FragmentationCutOf::Source(position) = forced.cut {
+            state.forced_applied = Some(position);
+        }
+        self.advance_selected(
+            state,
+            forced.reason(),
+            stage,
+            forced.receipt,
+            Some(forced.force),
+        )
+    }
+
+    fn accept_certified_head(
+        &mut self,
+        state: &mut State<S>,
+        head: CertifiedHead<S>,
+        available: S,
+        force: Option<ForcedCut<S>>,
+    ) -> Result<(), FragmentationError<P::Error>> {
+        if head.body > available && !head.qualified {
+            return Err(FragmentationError::InvalidInput(
+                FragmentationInputError::InvalidSlice,
+            ));
+        }
+        if let Some(force) = force.filter(|force| force.cut == head.cut) {
+            self.accept_forced(
+                state,
+                force,
+                (S::ZERO, S::ZERO),
+                FragmentationStage::Emergency,
+                head.body > available,
+            )?;
+        } else {
+            let (coverage_end, consumed_end, kind, graphical) = match head.cut {
+                FragmentationCutOf::Source(position) => (
+                    position,
+                    position,
+                    if head.body > available {
+                        FragmentationPieceKindOf::UnsliceableOverflow
+                    } else {
+                        FragmentationPieceKindOf::Content
+                    },
+                    None,
+                ),
+                FragmentationCutOf::Graphical { anchor, progress } => {
+                    let start = if anchor == state.position {
+                        state.graphical.map_or(S::ZERO, |old| old.consumed)
+                    } else {
+                        S::ZERO
+                    };
+                    (
+                        FragmentationPosition {
+                            occurrence: anchor.occurrence + 1,
+                            offset: 0,
+                        },
+                        anchor,
+                        FragmentationPieceKindOf::GraphicalSlice {
+                            anchor,
+                            coverage: FragmentationGraphicalCoverageOf {
+                                start,
+                                end: progress.consumed,
+                                extent: progress.extent,
+                            },
+                        },
+                        Some(progress),
+                    )
+                }
+            };
+            self.accept(
+                state,
+                Accepted {
+                    coverage_end,
+                    consumed_end,
+                    body: head.body,
+                    edges: (S::ZERO, S::ZERO),
+                    stage: FragmentationStage::Emergency,
+                    kind,
+                },
+            )?;
+            state.graphical = graphical;
+        }
+        if head.qualified {
+            *self
+                .qualified_heads
+                .last_mut()
+                .expect("the certified endpoint accepted one head") = true;
+        }
+        Ok(())
+    }
+
     fn accept(
         &mut self,
         state: &mut State<S>,
@@ -617,6 +1741,27 @@ where
                 flow: state.flow,
                 occurrence: start.occurrence,
             });
+        }
+        let accepted_cut = match accepted.kind {
+            FragmentationPieceKindOf::GraphicalSlice { anchor, coverage }
+                if coverage.end < coverage.extent =>
+            {
+                FragmentationCutOf::Graphical {
+                    anchor,
+                    progress: FragmentationGraphicalProgressOf {
+                        consumed: coverage.end,
+                        extent: coverage.extent,
+                    },
+                }
+            }
+            _ => FragmentationCutOf::Source(accepted.consumed_end),
+        };
+        if self.pending_projection_before(state, accepted_cut)
+            || !self.stage_allows_projection(state, accepted_cut, accepted.stage)
+        {
+            return Err(FragmentationError::InvalidInput(
+                FragmentationInputError::InvalidSlice,
+            ));
         }
         let flow = &self.input.flows[state.flow];
         let mut coverage = Vec::new();
@@ -655,6 +1800,9 @@ where
             .pieces
             .try_reserve(1)
             .map_err(|_| FragmentationError::Allocation)?;
+        self.qualified_heads
+            .try_reserve(1)
+            .map_err(|_| FragmentationError::Allocation)?;
         self.report.pieces.push(FragmentationPieceOf {
             flow: state.flow,
             context: flow.context,
@@ -670,6 +1818,19 @@ where
             stage: accepted.stage,
             kind: accepted.kind,
         });
+        self.qualified_heads.push(matches!(
+            accepted.kind,
+            FragmentationPieceKindOf::UnsliceableOverflow
+        ));
+        for index in 0..self.scopes.len() {
+            let scope = &self.scopes[index];
+            if scope.flow != state.flow || scope.retired {
+                continue;
+            }
+            let active = scope.active || (start <= scope.owner && end > scope.owner);
+            let retired = accepted.consumed_end.occurrence > scope.principal_end.occurrence;
+            self.scope_lifecycle(index, active, retired)?;
+        }
         state.position = accepted.consumed_end;
         state.used = used;
         state.start_provenance = FragmentationStart::InFrame;
@@ -694,32 +1855,45 @@ where
                         ));
                     }
                     state.forced_applied = Some(state.position);
-                    return self.advance(
+                    return self.advance_record(
                         state,
                         FragmentationBreakReason::Forced {
                             required: force.required,
                             side: force.side,
                         },
                         stage,
+                        Some(force),
                     );
                 }
+                Queried::PlacementDeferred => {
+                    return self.advance(state, FragmentationBreakReason::Deferred, stage);
+                }
             };
+            if state.graphical.is_some()
+                && state.used
+                    > self
+                        .frame(self.context(state), state.frame)?
+                        .block_size
+                        .max(S::ONE)
+            {
+                let receipt = self.deferred_transition(state);
+                return self.advance_selected(
+                    state,
+                    FragmentationBreakReason::Deferred,
+                    stage,
+                    receipt,
+                    None,
+                );
+            }
             if state.graphical.is_some() {
                 return self.graphical(state, window, available, stage);
             }
             let force = self.first_force(state, &window);
-            if let Some((position, _, force)) = force
-                && position == state.position
+            if let Some(force) = force
+                && force.cut == FragmentationCutOf::Source(state.position)
+                && stage_rank(stage) >= stage_rank(force.floor)
             {
-                state.forced_applied = Some(position);
-                return self.advance(
-                    state,
-                    FragmentationBreakReason::Forced {
-                        required: force.required,
-                        side: force.side,
-                    },
-                    stage,
-                );
+                return self.accept_forced(state, force, (S::ZERO, S::ZERO), stage, false);
             }
             if state.used
                 > self
@@ -727,10 +1901,21 @@ where
                     .block_size
                     .max(S::ONE)
             {
-                return self.advance(state, FragmentationBreakReason::Deferred, stage);
+                let receipt = self.deferred_transition(state);
+                return self.advance_selected(
+                    state,
+                    FragmentationBreakReason::Deferred,
+                    stage,
+                    receipt,
+                    None,
+                );
             }
             if matches!(window.end, FragmentationWindowEnd::FlowEnd)
                 && force.is_none()
+                && !self.pending_projection_before(
+                    state,
+                    FragmentationCutOf::Source(self.end(state.flow)),
+                )
                 && let Some(edges) = policy::edges(&window, window.block_size, available, stage)
             {
                 return self.accept(
@@ -745,36 +1930,18 @@ where
                     },
                 );
             }
-            if let Some((position, body, forced)) = force
-                && let Some(edges) = policy::edges(&window, body, available, stage)
+            if let Some(forced) = force
+                && stage_rank(stage) >= stage_rank(forced.floor)
+                && let Some(edges) = policy::edges(&window, forced.body, available, stage)
             {
-                self.accept(
-                    state,
-                    Accepted {
-                        coverage_end: position,
-                        consumed_end: position,
-                        body,
-                        edges,
-                        stage,
-                        kind: FragmentationPieceKindOf::Content,
-                    },
-                )?;
-                state.forced_applied = Some(position);
-                return self.advance(
-                    state,
-                    FragmentationBreakReason::Forced {
-                        required: forced.required,
-                        side: forced.side,
-                    },
-                    stage,
-                );
+                return self.accept_forced(state, forced, edges, stage, false);
             }
             if self.select_cut(state, &window, available, stage)? {
                 return Ok(());
             }
             // Ordered zero-size boxes make source progress without an empty slice.
             if window.head.block_size == S::ZERO
-                && force.is_none_or(|(position, _, _)| position >= window.head.end)
+                && force.is_none_or(|force| force.cut.source_position() >= window.head.end)
                 && let Some(edges) = policy::edges(&window, S::ZERO, available, stage)
             {
                 return self.accept(
@@ -790,7 +1957,14 @@ where
                 );
             }
             if stage == FragmentationStage::Strict && state.used > S::ZERO {
-                return self.advance(state, FragmentationBreakReason::Deferred, stage);
+                let receipt = self.deferred_transition(state);
+                return self.advance_selected(
+                    state,
+                    FragmentationBreakReason::Deferred,
+                    stage,
+                    receipt,
+                    None,
+                );
             }
             if stage == FragmentationStage::Emergency {
                 return self.emergency(state, window, available);
@@ -807,13 +1981,24 @@ where
         stage: FragmentationStage,
     ) -> Result<bool, FragmentationError<P::Error>> {
         let force = self.first_force(state, window);
+        let placement_limit = self.placement_limit(state);
+        let pending_limit = self.pending_cut_limit(state);
         let candidate = |item: &&FragmentationOpportunityOf<S>| {
             let position = item.cut.source_position();
             (position > state.position || matches!(item.cut, FragmentationCutOf::Graphical { .. }))
                 && item.block_offset > S::ZERO
                 && position < self.end(state.flow)
                 && self.usable(state, item)
-                && force.is_none_or(|forced| position < forced.0)
+                && placement_limit.is_none_or(|limit| {
+                    cut_order(item.cut, FragmentationCutOf::Source(limit))
+                        != core::cmp::Ordering::Greater
+                })
+                && pending_limit
+                    .is_none_or(|limit| cut_order(item.cut, limit) != core::cmp::Ordering::Greater)
+                && force.is_none_or(|forced| {
+                    cut_order(item.cut, forced.cut) == core::cmp::Ordering::Less
+                })
+                && self.stage_allows_projection(state, item.cut, stage)
                 && policy::edges(window, item.block_offset, available, stage).is_some()
         };
         let candidates = window
@@ -832,12 +2017,13 @@ where
         let selected = candidates
             .into_iter()
             .filter(|item| {
-                policy::legal(
-                    item,
-                    crossed,
-                    self.available_kinds(self.context(state)),
-                    stage,
-                )
+                let available = self.available_kinds(self.context(state));
+                match self.projected_origin(state, item.cut) {
+                    Some(origin) => {
+                        policy::legal_projected(origin, item, crossed, available, stage)
+                    }
+                    None => policy::legal(item, crossed, available, stage),
+                }
             })
             .max_by(|a, b| {
                 a.block_offset
@@ -847,6 +2033,14 @@ where
             });
         let Some(selected) = selected else {
             return Ok(false);
+        };
+        // Nested scopes share the original receipt and fold only bounded
+        // cumulative legality facts. No prior ancestor vectors are copied.
+        let available_kinds = self.available_kinds(self.context(state));
+        let origin = match self.projected_origin(state, selected.cut) {
+            Some(origin) => origin.project(selected, available_kinds),
+            None => policy::SelectedPolicyOf::capture(selected, available_kinds)
+                .map_err(|_| FragmentationError::Allocation)?,
         };
         let edges = policy::edges(window, selected.block_offset, available, stage).ok_or(
             FragmentationError::InvalidInput(FragmentationInputError::InvalidWindow),
@@ -879,6 +2073,7 @@ where
                 )
             }
         };
+        let receipt = self.projected_transition(state, selected.cut);
         self.accept(
             state,
             Accepted {
@@ -891,7 +2086,17 @@ where
             },
         )?;
         state.graphical = graphical;
-        self.advance(state, FragmentationBreakReason::Unforced, stage)?;
+        self.advance_selected(
+            state,
+            FragmentationBreakReason::Unforced,
+            stage,
+            receipt,
+            None,
+        )?;
+        *self
+            .selected_origins
+            .last_mut()
+            .expect("selection recorded its transition") = Some(origin);
         Ok(true)
     }
 
@@ -902,36 +2107,31 @@ where
         available: S,
     ) -> Result<(), FragmentationError<P::Error>> {
         let pending = self.pending_head_force(state, &window);
-        if let Some((position, body, force)) = pending
+        if let Some(force) = pending
             && window.fallback == FragmentationFallback::Unsliceable
         {
-            self.accept(
+            return self.accept_forced(
                 state,
-                Accepted {
-                    coverage_end: position,
-                    consumed_end: position,
-                    body,
-                    edges: (S::ZERO, S::ZERO),
-                    stage: FragmentationStage::Emergency,
-                    kind: FragmentationPieceKindOf::UnsliceableOverflow,
-                },
-            )?;
-            state.forced_applied = Some(position);
-            return self.advance(
-                state,
-                FragmentationBreakReason::Forced {
-                    required: force.required,
-                    side: force.side,
-                },
+                force,
+                (S::ZERO, S::ZERO),
                 FragmentationStage::Emergency,
+                true,
             );
+        }
+        if let Some(head) = self.certified_head(state, &window) {
+            let force = self.first_force(state, &window);
+            return self.accept_certified_head(state, head, available, force);
         }
         if pending.is_some() && window.head.block_size <= available {
             return Err(FragmentationError::InvalidInput(
                 FragmentationInputError::InvalidSlice,
             ));
         }
-        if window.head.block_size <= available {
+        if window.head.block_size <= available
+            && self
+                .projected_transition(state, FragmentationCutOf::Source(window.head.end))
+                .is_none()
+        {
             return self.accept(
                 state,
                 Accepted {
@@ -971,8 +2171,9 @@ where
                     });
                 }
                 if end > window.head.end
-                    || pending.is_some_and(|(position, body, _)| {
-                        end > position || (end == position && block_size != body)
+                    || pending.is_some_and(|force| {
+                        end > force.cut.source_position()
+                            || (end == force.cut.source_position() && block_size != force.body)
                     })
                     || (end == window.head.end && block_size != window.head.block_size)
                     || !validation::nonnegative(block_size)
@@ -985,6 +2186,7 @@ where
                         FragmentationInputError::InvalidSlice,
                     ));
                 }
+                let receipt = self.projected_transition(state, FragmentationCutOf::Source(end));
                 self.accept(
                     state,
                     Accepted {
@@ -996,11 +2198,13 @@ where
                         kind: FragmentationPieceKindOf::Content,
                     },
                 )?;
-                if end.offset != 0 {
-                    self.advance(
+                if end.offset != 0 || receipt.is_some() {
+                    self.advance_selected(
                         state,
                         FragmentationBreakReason::Unforced,
                         FragmentationStage::Emergency,
+                        receipt,
+                        None,
                     )?;
                 }
                 Ok(())
@@ -1023,18 +2227,45 @@ where
         let progress = state.graphical.ok_or(FragmentationError::InvalidInput(
             FragmentationInputError::InvalidSlice,
         ))?;
-        let force = self.pending_head_force(state, window);
-        if force.is_some_and(|(position, _, _)| position < Self::anchor_end(state)) {
+        let force = self.first_force(state, window).filter(|force| {
+            force.cut.source_position() < window.head.end
+                || (force.receipt.is_some()
+                    && force.cut == FragmentationCutOf::Source(window.head.end))
+        });
+        if let Some(force) = force
+            && force.receipt.is_some()
+        {
+            if stage_rank(stage) < stage_rank(force.floor) {
+                return Ok(false);
+            }
+            let edges = match policy::edges(window, force.body, available, stage) {
+                Some(edges) => edges,
+                None if overflow => (S::ZERO, S::ZERO),
+                None => return Ok(false),
+            };
+            self.accept_forced(state, force, edges, stage, overflow)?;
+            return Ok(true);
+        }
+        if force.is_some_and(|force| force.cut.source_position() < Self::anchor_end(state)) {
             // Graphical coverage cannot discharge a semantic cut inside its
             // anchor. A source force after the anchor is an ordinary boundary.
             return Err(FragmentationError::InvalidInput(
                 FragmentationInputError::InvalidSlice,
             ));
         }
-        let (end, body) = force.as_ref().map_or(
-            (window.head.end, window.head.block_size),
-            |(position, body, _)| (*position, *body),
-        );
+        if force.is_none()
+            && (self.pending_projection_before(state, FragmentationCutOf::Source(window.head.end))
+                || self
+                    .projected_transition(state, FragmentationCutOf::Source(window.head.end))
+                    .is_some())
+        {
+            return Ok(false);
+        }
+        let (end, body) = force
+            .as_ref()
+            .map_or((window.head.end, window.head.block_size), |force| {
+                (force.cut.source_position(), force.body)
+            });
         let edges = match policy::edges(window, body, available, stage) {
             Some(edges) => edges,
             None if overflow => (S::ZERO, S::ZERO),
@@ -1059,15 +2290,15 @@ where
             },
         )?;
         state.graphical = None;
-        if let Some((position, _, forced)) = force {
+        if let Some(forced) = force {
+            let position = forced.cut.source_position();
             state.forced_applied = Some(position);
-            self.advance(
+            self.advance_selected(
                 state,
-                FragmentationBreakReason::Forced {
-                    required: forced.required,
-                    side: forced.side,
-                },
+                forced.reason(),
                 stage,
+                forced.receipt,
+                Some(forced.force),
             )?;
         }
         Ok(true)
@@ -1086,7 +2317,14 @@ where
             return Ok(());
         }
         if state.used > S::ZERO {
-            return self.advance(state, FragmentationBreakReason::Deferred, stage);
+            let receipt = self.deferred_transition(state);
+            return self.advance_selected(
+                state,
+                FragmentationBreakReason::Deferred,
+                stage,
+                receipt,
+                None,
+            );
         }
         for next_stage in [
             FragmentationStage::RelaxLineCounts,
@@ -1097,7 +2335,7 @@ where
         ] {
             let (next, available) = match self.query(state, next_stage)? {
                 Queried::Measured(window, available) => (window, available),
-                Queried::ControlAtStart(_) => {
+                Queried::ControlAtStart(_) | Queried::PlacementDeferred => {
                     return Err(FragmentationError::InvalidInput(
                         FragmentationInputError::InvalidSlice,
                     ));
@@ -1110,9 +2348,17 @@ where
                 return Ok(());
             }
             if next_stage == FragmentationStage::Emergency {
+                if let Some(head) = self.certified_head(state, &next) {
+                    let force = self.first_force(state, &next);
+                    return self.accept_certified_head(state, head, available, force);
+                }
                 if next.fallback == FragmentationFallback::Unsliceable {
-                    self.finish_graphical_head(state, &next, available, next_stage, true)?;
-                    return Ok(());
+                    if self.finish_graphical_head(state, &next, available, next_stage, true)? {
+                        return Ok(());
+                    }
+                    return Err(FragmentationError::InvalidInput(
+                        FragmentationInputError::InvalidSlice,
+                    ));
                 }
                 let Some(FragmentationEmergencySliceOf::Graphical {
                     end,
@@ -1139,10 +2385,9 @@ where
         // Incomplete graphical progress can precede a source force beyond the
         // anchor. Completion must use the ordinary forced-boundary path, and
         // graphical coverage cannot discharge a force inside its own anchor.
-        if self
-            .pending_head_force(state, window)
-            .is_some_and(|(position, _, _)| position < Self::anchor_end(state) || end >= extent)
-        {
+        if self.pending_head_force(state, window).is_some_and(|force| {
+            force.cut.source_position() < Self::anchor_end(state) || end >= extent
+        }) {
             return Err(FragmentationError::InvalidInput(
                 FragmentationInputError::InvalidSlice,
             ));
@@ -1170,6 +2415,16 @@ where
                 FragmentationInputError::InvalidSlice,
             ));
         }
+        let receipt = self.projected_transition(
+            state,
+            FragmentationCutOf::Graphical {
+                anchor: state.position,
+                progress: FragmentationGraphicalProgressOf {
+                    consumed: end,
+                    extent,
+                },
+            },
+        );
         self.accept(
             state,
             Accepted {
@@ -1197,10 +2452,12 @@ where
                 consumed: end,
                 extent,
             });
-            self.advance(
+            self.advance_selected(
                 state,
                 FragmentationBreakReason::Unforced,
                 FragmentationStage::Emergency,
+                receipt,
+                None,
             )?;
         } else {
             state.graphical = None;
@@ -1212,3 +2469,7 @@ where
 #[cfg(test)]
 #[path = "feedback_tests.rs"]
 mod feedback_tests;
+
+#[cfg(test)]
+#[path = "scope_transition_tests.rs"]
+mod scope_transition_tests;
