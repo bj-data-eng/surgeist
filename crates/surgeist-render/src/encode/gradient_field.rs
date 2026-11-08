@@ -626,6 +626,9 @@ pub(super) fn qualify_linear(
     let fine_error = gamma6.real_mul(q, account)?.real_add(absolute, account)?;
     let phase_error = setup_error.real_add(fine_error, account)?;
     let phase_bound = q.real_add(fine_error, account)?;
+    // A comparison field also requires finite fine-stage arithmetic. Infinite
+    // raw coordinates would otherwise choose an unrelated endpoint color.
+    finite_fine_bound(phase_bound, account)?;
     let quantum = scalar(account, || 1.0_f64 / 511.0)?;
     let quantum = scalar(account, || quantum.next_down())?;
     if !comparison_only
@@ -726,6 +729,13 @@ pub(super) fn qualify_radial(
     // loss. This bounds zero without assuming sqrt(0) has specified accuracy.
     let squared_absolute = ShaderScalar::exact(3.0 * SHADER_MIN_NORMAL)
         .real_mul(ShaderScalar::ONE.real_add(gamma3, account)?, account)?;
+    // The guarded native sqrt still evaluates xx+yy first. Bound every square
+    // and either sum association before accepting the circular fine branch.
+    let squared_bound = radius
+        .real_mul(radius, account)?
+        .real_mul(squared_factor, account)?
+        .real_add(squared_absolute, account)?;
+    finite_fine_bound(squared_bound, account)?;
     let norm_absolute = squared_absolute
         .real_add(ShaderScalar::exact(SHADER_MIN_NORMAL), account)?
         .real_div(
@@ -749,6 +759,9 @@ pub(super) fn qualify_radial(
         .real_mul(pre_add, account)?
         .real_add(ShaderScalar::exact(SHADER_MIN_NORMAL), account)?;
     let phase_bound = pre_add.real_add(addition_error, account)?;
+    // A comparison field also requires finite fine-stage arithmetic. Infinite
+    // raw coordinates would otherwise choose an unrelated endpoint color.
+    finite_fine_bound(phase_bound, account)?;
     let focal_error = focal
         .real_add(
             ShaderScalar::exact(scalar(account, || reference.start / reference.delta)?),
@@ -770,6 +783,16 @@ pub(super) fn qualify_radial(
     {
         return Err(invalid_geometry(
             "insufficient native circular phase capacity",
+        ));
+    }
+    Ok(())
+}
+
+fn finite_fine_bound(bound: ShaderScalar, account: &Account) -> Result<()> {
+    const MAX: f64 = f32::MAX as f64;
+    if scalar(account, || bound.upper > MAX)? {
+        return Err(invalid_geometry(
+            "non-finite permitted gradient fine intermediate",
         ));
     }
     Ok(())
