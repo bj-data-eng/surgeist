@@ -698,7 +698,7 @@ fn dropping_or_polling_pending_jobs_inside_a_real_lease_is_safe_in_every_profile
                                 if poll_while_busy {
                                     let Poll::Ready(Err(error)) = poll(&mut future) else {
                                         panic!(
-                                            "a genuine competing lease must reject the next poll"
+                                            "an active competing lease must reject the next poll"
                                         )
                                     };
                                     assert_eq!(
