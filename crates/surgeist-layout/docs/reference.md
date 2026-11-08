@@ -1180,8 +1180,21 @@ Border-box conversion uses the original full padding and border. Each fragment
 counts content after removing only its retained slice insets. Continuing
 border-box minima require block insets independent of percentage bases.
 
-A continuing non-atomic container with a block maximum, a context-dependent
-minimum, an aspect ratio, non-visible overflow, opposite block progression on
+Absolute block maxima bound principal content progress, including fragmentation
+fill. A natural terminal fragment does not grow to consume an unused maximum.
+The original minimum takes precedence over a smaller maximum. Border-box maxima
+use the original full padding and border; continuing border-box maxima require
+block insets independent of percentage bases.
+
+After the principal box reaches its maximum, visible descendant content retains
+a separate fragmentation schedule. Its occupied extent and later forced breaks
+do not advance following siblings beyond the principal endpoint. Original Slice
+opening and closing edges remain principal-box obligations, including pending
+closing padding and border. A parent placement change discards the affected
+child trial before recomputation.
+
+A continuing non-atomic container with a context-dependent block bound,
+an aspect ratio, non-visible overflow, opposite block progression on
 the same physical axis or unsupported intrinsic inline sizing returns
 `LayoutUnsupportedCapability::BlockFragmentationProfile`. A box with unsupported
 constraints also refuses if its used extent exceeds the available extent, even
@@ -1204,8 +1217,27 @@ geometry. `FragmentPayloadOf::ActualBox` exposes principal geometry through
 `overflow_only`, with no principal edges, baselines or scroll box. An actual
 zero-sized box remains an actual-box payload. Principal and overflow continuations
 share the same result-scoped identity and node fragment collection. Native Block
-currently produces only actual boxes; overflow carriers require later production
-support.
+retains overflow-only ancestor carriers when later descendant fragments require
+coordinate ancestry after the principal box has ended. Their origins and content
+bounds use the actual frame and containing context. Child source progress can
+require another actual principal fragment without increasing the enclosing
+principal endpoint.
+
+Relative visual insets consume only their selected axis. An actual principal
+supplies its measured containing size to children accepted in that frame,
+including zero block size and content beyond its maximum. Without an actual
+principal, accepted Block inline extents supply inline percentage bases. Implicit
+ancestor carriers use the target frame's normal inline placement and containing
+inline sizes, qualified by adoption of their descendant content. Relative
+displacement reaches descendants once through coordinate ancestry and does not
+change normal flow or cap consumption.
+
+A selected block percentage without an accepted containing-size basis returns
+`MissingContext(RequiredBasis)` at value resolution, identifying the affected
+child, containing owner, frame and axis. Absolute offsets, zero coefficients,
+ignored opposing percentages and independently measured inner containing boxes
+retain their ordinary behavior. The unavailable overflow-only block-axis basis
+remains tracked in [#1010](https://github.com/bj-data-eng/surgeist/issues/1010).
 
 `LayoutSourceBasis` is the host's promise that captured inputs, topology and all
 consulted measurement/binding environments remain unchanged. It does not inspect
