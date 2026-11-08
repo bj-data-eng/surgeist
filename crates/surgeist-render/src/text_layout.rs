@@ -12,7 +12,7 @@ use crate::{
     Color, Error, FontData, GlyphRunLimits, GlyphSynthesis, Layer, NormalizedCoordinate, Paint,
     PreparedGlyphRun, Result, Scene, Shape, TextGlyph, TextInstance, TextPaint, Transform,
     scene::Command,
-    text::{qualify_bounds_placement, qualify_glyph_placement},
+    text::{qualify_preparation_bounds, qualify_preparation_placement},
 };
 
 /// Whole-invocation bounds for a placed Text-layout scene.
@@ -319,10 +319,10 @@ fn prepare_inner<'a>(
             .prepare_glyph_run_inner(&instance, &glyphs, &glyph_account, 0)
             .map_err(|e| TextLayoutError::render(location, e))?;
         let placement_account = account.at(RenderPhase::Qualify);
-        qualify_glyph_placement(
+        qualify_preparation_placement(
             kurbo::Affine::new(run_transform.as_array()),
             &outline,
-            Some(&placement_account),
+            &placement_account,
         )
         .map_err(|e| TextLayoutError::render(location, e))?;
         let paint = TextPaint::try_fill(Paint::from(
@@ -416,8 +416,12 @@ fn preflight(layout: &Layout, placement: Transform, account: &Account) -> Result
         let location = TextLayoutLocation::Decoration { decoration: index };
         let rect =
             decoration_rect(decoration.rect()).map_err(|e| TextLayoutError::render(location, e))?;
-        qualify_bounds_placement(kurbo::Affine::new(placement.as_array()), Some(rect))
-            .map_err(|e| TextLayoutError::render(location, e))?;
+        qualify_preparation_bounds(
+            kurbo::Affine::new(placement.as_array()),
+            Some(rect),
+            account,
+        )
+        .map_err(|e| TextLayoutError::render(location, e))?;
         color(decoration.brush()).map_err(|e| TextLayoutError::render(location, e))?;
     }
     Ok(Counts {

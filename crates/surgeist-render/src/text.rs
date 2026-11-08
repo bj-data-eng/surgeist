@@ -8,13 +8,13 @@ use surgeist_font::{DecodeLimits, FontFace, FontResource};
 
 mod prepared;
 pub(crate) use prepared::GlyphPaint;
-#[cfg(feature = "render-text")]
-pub(crate) use prepared::qualify_bounds_placement;
-pub(crate) use prepared::qualify_placement as qualify_glyph_placement;
+pub(crate) use prepared::qualify_receiving_placement;
 pub use prepared::{
     GlyphCapability, GlyphNumericPhase, GlyphPreparationError, GlyphResource, GlyphRunLimits,
     GlyphSynthesis, NormalizedCoordinate, PreparedGlyphRun, TextInstance, VariationTable,
 };
+#[cfg(feature = "render-text")]
+pub(crate) use prepared::{qualify_preparation_bounds, qualify_preparation_placement};
 
 /// An opaque caller-defined font identity used by authored text runs.
 ///

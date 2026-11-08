@@ -9,6 +9,11 @@ It requires a compatible GPU; browser execution and application/window lifecycle
 belong to the integrating host. The current style-facing exports and intended
 crate boundary are described in the [architecture guide](docs/explanation.md).
 
+Native geometry limits produce a typed contextual refusal before publication.
+The [receiving contract](docs/reference.md#native-geometry-realization) describes
+coordinate, segment and transform qualification and preserves prior pixels and
+statistics when a required representation cannot qualify.
+
 Layers support all sixteen standard numeric-sRGB mixing functions, twelve basic
 Porter-Duff operators and explicit isolated groups. New non-source-over operators
 use the GPU graph; source-over mixing retains both routes and the existing local

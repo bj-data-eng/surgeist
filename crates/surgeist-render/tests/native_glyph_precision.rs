@@ -198,3 +198,113 @@ fn direct_nonempty_glyph_survives_tiny_provider_scale_or_refuses_atomically() {
 fn graph_nonempty_glyph_survives_tiny_provider_scale_or_refuses_atomically() {
     check_native_glyph_precision(true);
 }
+
+#[test]
+fn tiny_nonempty_native_glyph_has_typed_atomic_refusal_on_both_routes() {
+    let mut renderer = pollster::block_on(Renderer::new(
+        Options::default()
+            .with_effect_quality_policy(EffectQualityPolicy::AllowReducedPrecision)
+            .with_accounting(
+                RenderAccountingOptions::new()
+                    .with_profile(RenderProfile::Summary { timing: false }),
+            ),
+    ))
+    .unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::try_new(32.0, 16.0).unwrap(), 1.0))
+            .unwrap();
+    let red = Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap();
+    let blue = Color::try_rgba(0.0, 0.0, 1.0, 1.0).unwrap();
+    for graph in [false, true] {
+        let route = if graph {
+            RenderRoute::GpuGraph
+        } else {
+            RenderRoute::DirectVello
+        };
+        let alpha = if graph { 128 } else { 255 };
+        let calibration = scene(graph, |scene| {
+            scene.fill(bounds(), red);
+        });
+        let calibrated =
+            pollster::block_on(renderer.render(&mut surface, &calibration, Parameters::default()))
+                .unwrap();
+        assert_eq!(calibrated.route, Some(route));
+        let red_image = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+        assert_interior(&red_image, [255, 0, 0, alpha], "typed red calibration");
+        let baseline = scene(graph, |scene| {
+            scene.fill(bounds(), blue);
+        });
+        let successful =
+            pollster::block_on(renderer.render(&mut surface, &baseline, Parameters::default()))
+                .unwrap();
+        assert_eq!(successful.route, Some(route));
+        let before = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+        assert_interior(&before, [0, 0, 255, alpha], "typed prior blue publication");
+
+        let tiny = tiny_nonempty_glyph_scene(graph, red);
+        let error = pollster::block_on(renderer.render(&mut surface, &tiny, Parameters::default()))
+            .unwrap_err();
+        assert_eq!(
+            error.code(),
+            surgeist_render::ErrorCode::GeometryRealization
+        );
+        assert_eq!(
+            error.geometry_realization_diagnostic(),
+            Some(
+                &surgeist_render::GeometryRealizationError::UnrepresentableGlyph { glyph_index: 0 }
+            )
+        );
+        assert!(error.invalid_value_diagnostic().is_none());
+        assert!(error.unsupported_primitive().is_none());
+        assert!(error.unresolved_resource_diagnostic().is_none());
+        assert!(error.degraded_quality_diagnostic().is_none());
+        assert!(error.runtime_capability_unavailable_diagnostic().is_none());
+        assert!(error.accounting_diagnostic().is_none());
+        assert!(error.gradient_realization_diagnostic().is_none());
+        assert!(error.gradient_hint_diagnostic().is_none());
+        assert!(error.glyph_preparation_diagnostic().is_none());
+        #[cfg(feature = "render-paint")]
+        assert!(error.paint_gradient_diagnostic().is_none());
+        #[cfg(feature = "render-text")]
+        assert!(error.text_layout_diagnostic().is_none());
+        assert_eq!(renderer.stats(), successful);
+        assert_eq!(
+            pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+            before
+        );
+        let report = renderer.take_last_attempt().unwrap();
+        assert_eq!(
+            report.status(),
+            RenderAttemptStatus::Failed(surgeist_render::ErrorCode::GeometryRealization)
+        );
+        assert_eq!(report.cleanup_fault(), None);
+        assert_eq!(
+            report
+                .attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::Submissions),
+            0
+        );
+
+        let retry =
+            pollster::block_on(renderer.render(&mut surface, &calibration, Parameters::default()))
+                .unwrap();
+        assert_eq!(retry.route, Some(route));
+        assert_eq!(
+            pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+            red_image
+        );
+        let retry_report = renderer.take_last_attempt().unwrap();
+        assert_eq!(retry_report.status(), RenderAttemptStatus::Succeeded);
+        assert_eq!(retry_report.cleanup_fault(), None);
+        assert!(
+            retry_report
+                .attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::Submissions)
+                > 0
+        );
+    }
+}
