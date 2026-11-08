@@ -802,7 +802,7 @@ fn push_vello_layer(
     } else {
         scene.push_layer(
             fill,
-            vello_blend(layer.blend),
+            vello_composition(layer.composition)?,
             layer.opacity.clamp(0.0, 1.0),
             transform,
             shape,
@@ -955,6 +955,16 @@ fn vello_stroke(stroke: &RenderStroke, account: &Account) -> Result<FrameStroke>
     })
 }
 
+fn vello_composition(composition: LayerComposition) -> Result<peniko::BlendMode> {
+    if !composition.is_source_over() && !composition.is_plus() {
+        return Err(Error::new(
+            BackendErrorCode::RenderFailed,
+            "a selected non-source-over operation reached the direct raster encoder",
+        ));
+    }
+    Ok(vello_blend(composition.blend_mode()))
+}
+
 fn vello_blend(blend: BlendMode) -> peniko::BlendMode {
     match blend {
         BlendMode::Normal => peniko::Mix::Normal.into(),
@@ -1027,6 +1037,32 @@ pub(crate) fn image_transform(size: Size, rect: Rect, fit: ImageFit) -> Result<k
     };
     Ok(kurbo::Affine::translate((tx, ty))
         * kurbo::Affine::scale_non_uniform(fit_scale_x, fit_scale_y))
+}
+
+#[cfg(test)]
+mod composition_admission_tests {
+    use super::*;
+
+    #[test]
+    fn direct_raster_admits_source_over_and_plus_but_rejects_selected_operators() {
+        let source_over =
+            LayerComposition::try_porter_duff(PorterDuffOperator::SourceOver, BlendMode::Color)
+                .unwrap();
+        assert_eq!(
+            vello_composition(source_over).unwrap(),
+            peniko::Mix::Color.into()
+        );
+        assert_eq!(
+            vello_composition(LayerComposition::from_blend(BlendMode::Plus)).unwrap(),
+            peniko::Compose::Plus.into(),
+        );
+        let copy =
+            LayerComposition::try_porter_duff(PorterDuffOperator::Copy, BlendMode::Normal).unwrap();
+        assert_eq!(
+            vello_composition(copy).unwrap_err().code(),
+            ErrorCode::RenderFailed
+        );
+    }
 }
 
 #[cfg(test)]

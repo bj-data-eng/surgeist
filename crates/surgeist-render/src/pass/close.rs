@@ -21,7 +21,7 @@ use super::model::{
     runtime_affine_is_finite_and_non_singular,
 };
 use crate::{
-    BackendErrorCode, BlendMode, Color, Error, Format, PhysicalSize, Point, Result, Transform,
+    BackendErrorCode, Color, Error, Format, PhysicalSize, Point, Result, Transform,
     command::RenderClip,
     renderer::Antialiasing,
     resource::WorkingFormat,
@@ -530,7 +530,7 @@ impl ClosedExecutableGraphFacts {
         let exact = (|| -> bool {
             if self.working_format != plan.working_format
                 || self.output_format != plan.output_format
-                || self.captures.is_empty()
+                || (self.captures.is_empty() && self.layer_compositions.is_empty())
             {
                 return false;
             }
@@ -1695,7 +1695,7 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
                         || proof_nodes(&self.layer_compositions, self.proof)
                             .any(|layer| layer.clip_coverage == Some(capture.target()))
                 });
-            if self.captures.is_empty()
+            if (self.captures.is_empty() && self.layer_compositions.is_empty())
                 || self.contexts.len() != 1
                 || !clip_coverages_are_exact
                 || self.expected_resources.len() != self.plan.resources.len()
@@ -1809,6 +1809,24 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             contains_captured_source: false,
         });
         self.advance(1)
+    }
+
+    fn initialized_context_source(
+        &self,
+        context: ExecutableCompositionContext,
+    ) -> Option<&'plan RuntimeResourceRequest> {
+        let source = self.resources.get(&context.current).copied()?;
+        // The traversal creates an uncaptured source context only after proving
+        // a transparent isolation clear. Bind it to that exact resource and
+        // producer, rather than treating absence of source ink as absence of work.
+        (context.contains_captured_source
+            || base_graph_resource_has_fixed_facts(
+                source,
+                RuntimeResourceRole::IsolationWorkingImage,
+                RuntimeResourceFormat::Working(self.plan.working_format),
+                RuntimeResourceProducer::Pass(context.producer),
+            ))
+        .then_some(source)
     }
 
     fn visit_span_capture(&mut self, pass: &RuntimePass, work: &RuntimeVelloCapture) -> Option<()> {
@@ -2111,8 +2129,8 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             2 => Some(self.contexts.pop()?),
             _ => return None,
         };
-        if foreground.is_some_and(|context| !context.contains_captured_source) {
-            return None;
+        if let Some(context) = foreground {
+            self.initialized_context_source(context)?;
         }
         let parent = *self.contexts.first()?;
         let copied = self.validate_backdrop_copy(copy, parent)?;
@@ -2372,11 +2390,8 @@ impl<'plan, 'proof> ClosedGraphTraversal<'plan, 'proof> {
             return None;
         }
         let source_context = self.contexts.pop()?;
-        if !source_context.contains_captured_source {
-            return None;
-        }
         let parent = *self.contexts.last()?;
-        let source = self.resources.get(&source_context.current).copied()?;
+        let source = self.initialized_context_source(source_context)?;
         let layer = validate_closed_composite(
             pass,
             parent,
@@ -2446,7 +2461,9 @@ impl LoweredGraphPlan {
         &self,
         account: &Account,
     ) -> Result<Option<ClosedExecutableGraphFacts>> {
-        if !matches!(self.output_format, Format::Rgba8 | Format::Bgra8) || self.passes.len() < 5 {
+        // Root clear, finite empty-group clear, composition and presentation
+        // form the smallest executable graph; every pass is still proved below.
+        if !matches!(self.output_format, Format::Rgba8 | Format::Bgra8) || self.passes.len() < 4 {
             return Ok(None);
         }
         let proof = ProofContext::new(account);
@@ -3140,6 +3157,118 @@ mod repeated_proof_accounting_tests {
         let mut backing = account.retained(values.len()).unwrap();
         backing.extend_from_slice(values).unwrap();
         SharedValue::from_accounted(backing, &account.storage()).unwrap()
+    }
+
+    fn empty_source_plan() -> LoweredGraphPlan {
+        let account = Account::for_test();
+        let mut scene = crate::Scene::new();
+        scene.layer(
+            crate::Layer::new().with_composition(
+                crate::LayerComposition::try_porter_duff(
+                    crate::PorterDuffOperator::Clear,
+                    crate::BlendMode::Normal,
+                )
+                .unwrap(),
+            ),
+            |_| {},
+        );
+        let commands = scene
+            .normalize(crate::Capabilities::CURRENT, &account)
+            .unwrap();
+        let context = crate::frame::FrameContext::try_new(
+            crate::Size::new(2.0, 2.0),
+            1.0,
+            Antialiasing::Area,
+            Color::BLACK,
+        )
+        .unwrap();
+        let crate::frame::FramePlan::GpuGraph(graph) =
+            commands.plan_for(context, &account).unwrap()
+        else {
+            panic!("Clear requires its finite operation graph");
+        };
+        LoweredGraphPlan::try_lower_validated_graph(
+            &graph,
+            WorkingFormat::HighPrecision,
+            Format::Rgba8,
+            &crate::backend::DeviceCapabilities::from_test_facts(true, true, 4096),
+            &account,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn empty_source_execution_requires_transparent_initialization_and_exact_custody() {
+        let plan = empty_source_plan();
+        let account = Account::for_test();
+        assert!(
+            ClosedExecutableGraph::try_from_lowered(plan.clone(), &account)
+                .unwrap()
+                .is_ok()
+        );
+        for alteration in 0..4 {
+            let mut changed = plan.clone();
+            match alteration {
+                0 => {
+                    let mut passes = changed.passes.to_vec();
+                    let color = passes
+                        .iter_mut()
+                        .find_map(|pass| match &mut pass.kind {
+                            RuntimePassKind::ClearRoot {
+                                initialization: RuntimeInitialization::Transparent,
+                                color,
+                            } => Some(color),
+                            _ => None,
+                        })
+                        .unwrap();
+                    *color = Color::BLACK;
+                    changed.passes = shared(&passes);
+                }
+                1 | 2 => {
+                    let mut resources = changed.resources.to_vec();
+                    let source = resources
+                        .iter_mut()
+                        .find(|resource| {
+                            resource.role == RuntimeResourceRole::IsolationWorkingImage
+                        })
+                        .unwrap();
+                    if alteration == 1 {
+                        source.producer = RuntimeResourceProducer::Pass(changed.passes[0].id);
+                    } else {
+                        source.last_use = changed.final_present;
+                    }
+                    changed.resources = shared(&resources);
+                }
+                _ => {
+                    let mut passes = changed.passes.to_vec();
+                    let composite = passes
+                        .iter_mut()
+                        .find(|pass| matches!(pass.kind, RuntimePassKind::Composite(_)))
+                        .unwrap();
+                    let mut reads = composite.reads.to_vec();
+                    let source = reads
+                        .iter_mut()
+                        .find(|read| read.role == RuntimeReadRole::CompositeSource)
+                        .unwrap();
+                    source.sampling_edge = RuntimeSamplingEdge::ClampToExtent;
+                    source.sampler_key = SamplerKey::new(
+                        shader_binding_role(source.role),
+                        RuntimeResourceFormat::Working(WorkingFormat::HighPrecision).shader_key(),
+                        ShaderSamplingFilterKey::Linear,
+                        shader_sampling_edge(source.sampling_edge),
+                        None,
+                    );
+                    composite.reads = shared(&reads);
+                    changed.passes = shared(&passes);
+                }
+            }
+            assert!(
+                ClosedExecutableGraph::try_from_lowered(changed, &account)
+                    .unwrap()
+                    .is_err(),
+                "empty-source alteration {alteration} must fail its execution proof"
+            );
+        }
     }
 
     fn resource_entries(
@@ -3885,7 +4014,7 @@ fn runtime_composite_is_backdrop_inner(composite: &RuntimeComposite) -> bool {
     *transform == Transform::identity()
         && parameters.destination_to_layer_local().affine() == Transform::identity()
         && parameters.opacity() == 1.0
-        && parameters.blend() == BlendMode::Normal
+        && parameters.composition().is_source_over_normal()
         && outer_clips.is_empty()
         && parameters.alpha_mask().is_none()
 }
@@ -3931,7 +4060,9 @@ fn validate_closed_composite_with_parent_reads(
                 || pass.reads.len() != 2
                 || !matches!(
                     source.role,
-                    RuntimeResourceRole::FilterIntermediate | RuntimeResourceRole::CompositeResult
+                    RuntimeResourceRole::FilterIntermediate
+                        | RuntimeResourceRole::CompositeResult
+                        | RuntimeResourceRole::IsolationWorkingImage
                 )
             {
                 return None;
@@ -4132,13 +4263,15 @@ fn closed_composite_source_is_valid(
     (requires_isolated_source
         && matches!(
             source.role,
-            RuntimeResourceRole::CompositeResult | RuntimeResourceRole::FilterIntermediate
+            RuntimeResourceRole::CompositeResult
+                | RuntimeResourceRole::FilterIntermediate
+                | RuntimeResourceRole::IsolationWorkingImage
         ))
         || (!requires_isolated_source
             && source.role == RuntimeResourceRole::FilterIntermediate
             && *layer.transform == Transform::identity()
             && layer.parameters.opacity() == 1.0
-            && layer.parameters.blend() == BlendMode::Normal
+            && layer.parameters.composition().is_source_over_normal()
             && layer.clip.is_none()
             && !layer.outer_clips.is_empty()
             && layer.parameters.alpha_mask().is_none())

@@ -306,6 +306,19 @@ pub surgeist_render::PathElement::CubicTo(surgeist_render::Point, surgeist_rende
 pub surgeist_render::PathElement::LineTo(surgeist_render::Point)
 pub surgeist_render::PathElement::MoveTo(surgeist_render::Point)
 pub surgeist_render::PathElement::QuadTo(surgeist_render::Point, surgeist_render::Point)
+pub enum surgeist_render::PorterDuffOperator
+pub surgeist_render::PorterDuffOperator::Clear
+pub surgeist_render::PorterDuffOperator::Copy
+pub surgeist_render::PorterDuffOperator::Destination
+pub surgeist_render::PorterDuffOperator::DestinationAtop
+pub surgeist_render::PorterDuffOperator::DestinationIn
+pub surgeist_render::PorterDuffOperator::DestinationOut
+pub surgeist_render::PorterDuffOperator::DestinationOver
+pub surgeist_render::PorterDuffOperator::SourceAtop
+pub surgeist_render::PorterDuffOperator::SourceIn
+pub surgeist_render::PorterDuffOperator::SourceOut
+pub surgeist_render::PorterDuffOperator::SourceOver
+pub surgeist_render::PorterDuffOperator::Xor
 pub enum surgeist_render::PositionComponentKind
 pub surgeist_render::PositionComponentKind::EdgeOffset(surgeist_render::PositionEdge)
 pub surgeist_render::PositionComponentKind::Length
@@ -341,6 +354,7 @@ pub surgeist_render::PrimitiveOperation::BackdropIsolationComposition
 pub surgeist_render::PrimitiveOperation::BackgroundBlendMode
 pub surgeist_render::PrimitiveOperation::BackgroundRepeatRound
 pub surgeist_render::PrimitiveOperation::BackgroundRepeatSpace
+pub surgeist_render::PrimitiveOperation::BasicPorterDuffCompositeMode
 pub surgeist_render::PrimitiveOperation::BorderGrooveStyle
 pub surgeist_render::PrimitiveOperation::BorderInsetStyle
 pub surgeist_render::PrimitiveOperation::BorderOutsetStyle
@@ -366,6 +380,7 @@ pub surgeist_render::PrimitiveOperation::ImageOrientationConversion
 pub surgeist_render::PrimitiveOperation::ImagePassExecution
 pub surgeist_render::PrimitiveOperation::InsetBoxShadow
 pub surgeist_render::PrimitiveOperation::InsideOutsidePathStrokeAlignment
+pub surgeist_render::PrimitiveOperation::IsolatedLayerExecution
 pub surgeist_render::PrimitiveOperation::LayerFilter
 pub surgeist_render::PrimitiveOperation::LayerFilterExecution
 pub surgeist_render::PrimitiveOperation::LayerMask
@@ -957,7 +972,9 @@ pub fn surgeist_render::Color::default() -> Self
 pub struct surgeist_render::CompositingCapabilities
 impl surgeist_render::CompositingCapabilities
 pub const fn surgeist_render::CompositingCapabilities::supports_background_blend_modes(self) -> bool
+pub const fn surgeist_render::CompositingCapabilities::supports_basic_porter_duff_modes(self) -> bool
 pub const fn surgeist_render::CompositingCapabilities::supports_blend_modes(self) -> bool
+pub const fn surgeist_render::CompositingCapabilities::supports_isolated_layers(self) -> bool
 pub const fn surgeist_render::CompositingCapabilities::supports_layer_opacity(self) -> bool
 pub const fn surgeist_render::CompositingCapabilities::supports_porter_duff_composite_modes(self) -> bool
 pub const fn surgeist_render::CompositingCapabilities::supports_root_backdrop_policy(self) -> bool
@@ -1207,7 +1224,10 @@ pub const fn surgeist_render::Layer::blend(self, blend: surgeist_render::BlendMo
 pub const fn surgeist_render::Layer::blend_mode(&self) -> surgeist_render::BlendMode
 pub fn surgeist_render::Layer::clip(&self) -> core::option::Option<&surgeist_render::Shape>
 pub fn surgeist_render::Layer::clip_input(&self) -> core::option::Option<&surgeist_render::ClipInput>
+pub const fn surgeist_render::Layer::composition(&self) -> surgeist_render::LayerComposition
 pub const fn surgeist_render::Layer::filter(&self) -> core::option::Option<surgeist_render::Filter>
+pub const fn surgeist_render::Layer::is_isolated(&self) -> bool
+pub const fn surgeist_render::Layer::isolated(self) -> Self
 pub fn surgeist_render::Layer::mask(&self) -> core::option::Option<&surgeist_render::Shape>
 pub fn surgeist_render::Layer::new() -> Self
 pub const fn surgeist_render::Layer::opacity(&self) -> f32
@@ -1220,9 +1240,17 @@ pub fn surgeist_render::Layer::try_filter(self, filter: surgeist_render::Filter)
 pub fn surgeist_render::Layer::try_mask(self, mask: surgeist_render::Shape) -> surgeist_render::Result<Self>
 pub fn surgeist_render::Layer::try_opacity(self, opacity: f32) -> surgeist_render::Result<Self>
 pub fn surgeist_render::Layer::try_transform(self, transform: surgeist_render::Transform) -> surgeist_render::Result<Self>
+pub const fn surgeist_render::Layer::with_composition(self, composition: surgeist_render::LayerComposition) -> Self
 pub fn surgeist_render::Layer::with_resolved_alpha_mask(self, alpha_mask: surgeist_render::ResolvedLayerAlphaMask) -> Self
 impl core::default::Default for surgeist_render::Layer
 pub fn surgeist_render::Layer::default() -> Self
+pub struct surgeist_render::LayerComposition
+impl surgeist_render::LayerComposition
+pub const fn surgeist_render::LayerComposition::blend_mode(self) -> surgeist_render::BlendMode
+pub const fn surgeist_render::LayerComposition::operator(self) -> core::option::Option<surgeist_render::PorterDuffOperator>
+pub fn surgeist_render::LayerComposition::try_porter_duff(operator: surgeist_render::PorterDuffOperator, blend: surgeist_render::BlendMode) -> surgeist_render::Result<Self>
+impl core::default::Default for surgeist_render::LayerComposition
+pub fn surgeist_render::LayerComposition::default() -> Self
 pub struct surgeist_render::MaskClipCapabilities
 impl surgeist_render::MaskClipCapabilities
 pub const fn surgeist_render::MaskClipCapabilities::supports_clip_reference_execution(self) -> bool

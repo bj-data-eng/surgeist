@@ -11,13 +11,16 @@ use super::{
 ///
 /// A layer can carry one clip, one authored or resolved mask, one foreground
 /// filter, one backdrop-filter input, a finite logical transform, a finite
-/// opacity, and a blend mode. The default is an unmodified normal layer.
+/// opacity, and a complete composition operation. Explicit isolation starts the
+/// group's children against transparent black. The default is an unmodified
+/// normal layer.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Layer {
     clip: Option<ClipInput>,
     transform: Transform,
     opacity: f32,
-    blend: BlendMode,
+    composition: LayerComposition,
+    isolated: bool,
     mask: Option<LayerMask>,
     filter: Option<Filter>,
     backdrop_filter: Option<Box<BackdropFilterInput>>,
@@ -96,10 +99,41 @@ impl Layer {
     }
 
     #[must_use]
-    /// Returns this layer with a different blend mode.
+    /// Replaces the complete composition with source-over blending or local Plus.
+    ///
+    /// This replaces any previously selected Porter-Duff operator.
     pub const fn blend(mut self, blend: BlendMode) -> Self {
-        self.blend = blend;
+        self.composition = LayerComposition::from_blend(blend);
         self
+    }
+
+    /// Replaces this layer's complete validated composition operation.
+    #[must_use]
+    pub const fn with_composition(mut self, composition: LayerComposition) -> Self {
+        self.composition = composition;
+        self
+    }
+
+    /// Forces children to compose against a transparent initial group backdrop.
+    ///
+    /// This is a resolved execution fact; callers decide which semantic groups
+    /// require isolation. The default layer permits transparent wrappers to flatten.
+    #[must_use]
+    pub const fn isolated(mut self) -> Self {
+        self.isolated = true;
+        self
+    }
+
+    /// Returns whether an isolated initial group backdrop was explicitly requested.
+    #[must_use]
+    pub const fn is_isolated(&self) -> bool {
+        self.isolated
+    }
+
+    /// Returns the complete composition, including its selected basic operator.
+    #[must_use]
+    pub const fn composition(&self) -> LayerComposition {
+        self.composition
     }
 
     /// Returns this layer with a finite opacity value.
@@ -178,7 +212,7 @@ impl Layer {
     #[must_use]
     /// Returns the layer's blend mode.
     pub const fn blend_mode(&self) -> BlendMode {
-        self.blend
+        self.composition.blend_mode()
     }
 }
 
@@ -233,7 +267,8 @@ impl Default for Layer {
             clip: None,
             transform: Transform::identity(),
             opacity: 1.0,
-            blend: BlendMode::Normal,
+            composition: LayerComposition::from_blend(BlendMode::Normal),
+            isolated: false,
             mask: None,
             filter: None,
             backdrop_filter: None,
@@ -246,7 +281,7 @@ impl Default for Layer {
 /// Mixing modes operate on straight numeric-sRGB components, then use
 /// source-over composition with backdrop-alpha modulation. [`Self::Plus`] is
 /// the separate additive composition choice. The default is [`Self::Normal`].
-/// Arbitrary Porter-Duff operator selection is not part of this layer API.
+/// Pair a mixing function with a basic operator through [`LayerComposition`].
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum BlendMode {
     /// Standard source-over compositing.
@@ -284,6 +319,153 @@ pub enum BlendMode {
     Luminosity,
     /// Add source and backdrop contributions using plus composition.
     Plus,
+}
+
+/// One of the twelve basic Porter-Duff region selections.
+///
+/// These operators have bounded premultiplied color and alpha for valid inputs.
+/// Normative lighter's unresolved output range is outside this set; the existing
+/// local [`BlendMode::Plus`] operation remains separately selectable.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum PorterDuffOperator {
+    /// Discard source and destination.
+    Clear,
+    /// Replace destination with source, including transparent source samples.
+    Copy,
+    /// Preserve destination.
+    Destination,
+    /// Place source over destination.
+    #[default]
+    SourceOver,
+    /// Place destination over source.
+    DestinationOver,
+    /// Keep source only where destination contributes alpha.
+    SourceIn,
+    /// Keep destination only where source contributes alpha.
+    DestinationIn,
+    /// Keep source only outside destination alpha.
+    SourceOut,
+    /// Keep destination only outside source alpha.
+    DestinationOut,
+    /// Place source atop destination, retaining destination alpha.
+    SourceAtop,
+    /// Place destination atop source, retaining source alpha.
+    DestinationAtop,
+    /// Keep the non-overlapping source and destination contributions.
+    Xor,
+}
+
+/// One validated complete layer composition operation.
+///
+/// A basic Porter-Duff operation pairs one mixing function with one operator.
+/// Local Plus is a separate complete operation, selected through [`Layer::blend`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LayerComposition {
+    kind: LayerCompositionKind,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum LayerCompositionKind {
+    Basic {
+        operator: PorterDuffOperator,
+        blend: BlendMode,
+    },
+    Plus,
+}
+
+impl LayerComposition {
+    /// Pairs a basic operator with one of the sixteen mixing functions.
+    ///
+    /// Returns [`crate::ErrorCode::InvalidInput`] for [`BlendMode::Plus`], which
+    /// is a complete operation rather than a color mixing function.
+    pub fn try_porter_duff(operator: PorterDuffOperator, blend: BlendMode) -> Result<Self> {
+        if blend == BlendMode::Plus {
+            return Err(Error::invalid_value(
+                "Porter-Duff mixing function",
+                "Plus",
+                "must be a color mixing function; Plus is a complete operation",
+            ));
+        }
+        Ok(Self {
+            kind: LayerCompositionKind::Basic { operator, blend },
+        })
+    }
+
+    /// Returns the basic operator, or `None` for the separate local Plus operation.
+    #[must_use]
+    pub const fn operator(self) -> Option<PorterDuffOperator> {
+        match self.kind {
+            LayerCompositionKind::Basic { operator, .. } => Some(operator),
+            LayerCompositionKind::Plus => None,
+        }
+    }
+
+    /// Returns the mixing function, or [`BlendMode::Plus`] for local Plus.
+    #[must_use]
+    pub const fn blend_mode(self) -> BlendMode {
+        match self.kind {
+            LayerCompositionKind::Basic { blend, .. } => blend,
+            LayerCompositionKind::Plus => BlendMode::Plus,
+        }
+    }
+
+    pub(crate) const fn from_blend(blend: BlendMode) -> Self {
+        Self {
+            kind: match blend {
+                BlendMode::Plus => LayerCompositionKind::Plus,
+                blend => LayerCompositionKind::Basic {
+                    operator: PorterDuffOperator::SourceOver,
+                    blend,
+                },
+            },
+        }
+    }
+
+    pub(crate) const fn is_plus(self) -> bool {
+        matches!(self.kind, LayerCompositionKind::Plus)
+    }
+
+    pub(crate) const fn is_source_over(self) -> bool {
+        matches!(
+            self.kind,
+            LayerCompositionKind::Basic {
+                operator: PorterDuffOperator::SourceOver,
+                ..
+            }
+        )
+    }
+
+    pub(crate) const fn is_source_over_normal(self) -> bool {
+        matches!(
+            self.kind,
+            LayerCompositionKind::Basic {
+                operator: PorterDuffOperator::SourceOver,
+                blend: BlendMode::Normal,
+            }
+        )
+    }
+
+    pub(crate) const fn transparent_source_preserves_parent(self) -> bool {
+        matches!(
+            self.kind,
+            LayerCompositionKind::Plus
+                | LayerCompositionKind::Basic {
+                    operator: PorterDuffOperator::Destination
+                        | PorterDuffOperator::SourceOver
+                        | PorterDuffOperator::DestinationOver
+                        | PorterDuffOperator::DestinationOut
+                        | PorterDuffOperator::SourceAtop
+                        | PorterDuffOperator::Xor,
+                    ..
+                }
+        )
+    }
+}
+
+impl Default for LayerComposition {
+    fn default() -> Self {
+        Self::from_blend(BlendMode::Normal)
+    }
 }
 
 /// A validated foreground Gaussian-blur request in logical units.

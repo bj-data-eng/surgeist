@@ -251,6 +251,8 @@ impl Capabilities {
             root_backdrop_policy: false,
             background_blend_modes: false,
             porter_duff_composite_modes: false,
+            basic_porter_duff_modes: true,
+            isolated_layers: true,
         },
         offscreen_pipeline: OffscreenPipelineCapabilities {
             direct_vello_opacity_isolation: true,
@@ -541,6 +543,12 @@ impl Capabilities {
             }
             PrimitiveOperation::PorterDuffCompositeMode => {
                 self.compositing.supports_porter_duff_composite_modes()
+            }
+            PrimitiveOperation::BasicPorterDuffCompositeMode => {
+                self.compositing.supports_basic_porter_duff_modes()
+            }
+            PrimitiveOperation::IsolatedLayerExecution => {
+                self.compositing.supports_isolated_layers()
             }
             _ => false,
         }
@@ -1177,6 +1185,8 @@ pub struct CompositingCapabilities {
     root_backdrop_policy: bool,
     background_blend_modes: bool,
     porter_duff_composite_modes: bool,
+    basic_porter_duff_modes: bool,
+    isolated_layers: bool,
 }
 
 impl CompositingCapabilities {
@@ -1205,10 +1215,26 @@ impl CompositingCapabilities {
         self.background_blend_modes
     }
 
-    /// Returns whether Porter-Duff composite modes are supported.
+    /// Returns whether the complete Porter-Duff set, including normative lighter,
+    /// is supported. Lighter's unresolved output-range contract is not included
+    /// in the twelve basic operators.
     #[must_use]
     pub const fn supports_porter_duff_composite_modes(self) -> bool {
         self.porter_duff_composite_modes
+    }
+
+    /// Returns whether all twelve [`crate::PorterDuffOperator`] choices execute.
+    #[must_use]
+    pub const fn supports_basic_porter_duff_modes(self) -> bool {
+        self.basic_porter_duff_modes
+    }
+
+    /// Returns whether explicitly isolated resolved layer groups execute.
+    ///
+    /// This does not interpret host or CSS rules for creating such groups.
+    #[must_use]
+    pub const fn supports_isolated_layers(self) -> bool {
+        self.isolated_layers
     }
 }
 

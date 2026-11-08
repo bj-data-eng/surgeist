@@ -446,7 +446,7 @@ pub(super) enum SemanticCompositeKind {
         destination_to_layer_local: DestinationToLayerLocalMapping,
         source_space: CompositeSourceSpace,
         opacity: f32,
-        blend: crate::layer::BlendMode,
+        composition: crate::layer::LayerComposition,
         clip: Option<SharedValue<RenderClip>>,
         outer_clips: SharedValue<Vec<SemanticOuterClip>>,
         clip_coverage: Option<SemanticResourceId>,
@@ -1496,7 +1496,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             spatial: output_spatial,
         };
         let mut source = planner
-            .plan_layer_source(commands, Transform::identity())?
+            .plan_layer_source(commands, Transform::identity(), None)?
             .ok_or_else(|| {
                 Error::invalid_value(
                     "authored filter fixture capture",
@@ -1523,7 +1523,9 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 },
                 source_space: planner.source_space(),
                 opacity: 1.0,
-                blend: crate::layer::BlendMode::Normal,
+                composition: crate::layer::LayerComposition::from_blend(
+                    crate::layer::BlendMode::Normal,
+                ),
                 clip: None,
                 outer_clips: shared_copy(&[], account)?,
                 clip_coverage: None,
@@ -1709,7 +1711,9 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 },
                 source_space: self.source_space(),
                 opacity: 1.0,
-                blend: crate::layer::BlendMode::Normal,
+                composition: crate::layer::LayerComposition::from_blend(
+                    crate::layer::BlendMode::Normal,
+                ),
                 clip: None,
                 outer_clips: state.outer_clips.clone(),
                 clip_coverage: None,
@@ -1732,6 +1736,12 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
     ) -> Result<PlannedGraphParent> {
         let layer_transform = layer.transform.then(state.capture_transform)?;
         let layer_to_surface = layer_transform.then(state.parent_to_surface)?;
+        let inverse = destination_to_layer_local_mapping(layer_to_surface)?;
+        // A singular own geometric clip has no operation coverage. A singular
+        // source without that clip remains a transparent source operation.
+        if inverse.is_none() && layer.clip.is_some() {
+            return Ok(parent);
+        }
         if layer.isolation == LayerIsolation::ClipOnly {
             let clip = layer.clip.clone().ok_or_else(|| {
                 Error::new(
@@ -1750,31 +1760,50 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
             return self.plan_commands(children, parent, child_state);
         }
         let is_transparent_wrapper = layer.clip.is_none()
+            && !layer.explicit_isolation
             && layer.mask.is_none()
             && layer.backdrop.is_none()
             && (layer.opacity - 1.0).abs() < f32::EPSILON
-            && layer.blend == crate::layer::BlendMode::Normal;
+            && layer.composition.is_source_over_normal();
         if is_transparent_wrapper {
             let mut child_state = state.clone();
             child_state.capture_transform = layer_transform;
             return self.plan_commands(children, parent, child_state);
         }
 
-        let Some(destination_to_layer_local) =
-            destination_to_layer_local_mapping(layer_to_surface)?
-        else {
-            return Ok(parent);
+        let bounded_domain = layer.explicit_isolation
+            || (!layer.composition.is_source_over() && !layer.composition.is_plus())
+            || commands_require_composition_domain(&children, self.account)?;
+        let destination_to_layer_local = match inverse {
+            Some(inverse) => inverse,
+            None if bounded_domain => DestinationToLayerLocalMapping {
+                affine: Transform::identity(),
+            },
+            None => return Ok(parent),
         };
-
-        let mut source = self.plan_layer_source(children, layer_to_surface)?;
-        if let Some(backdrop) = layer.backdrop.as_ref() {
+        let source_forced_empty = inverse.is_none()
+            || layer.opacity <= 0.0
+            || layer
+                .mask
+                .as_ref()
+                .is_some_and(crate::command::RenderLayerMask::annihilates_source);
+        let mut source = if source_forced_empty {
+            Some(self.declare_transparent_parent(parent.spatial)?.current)
+        } else {
+            self.plan_layer_source(
+                children,
+                layer_to_surface,
+                bounded_domain.then_some(parent.spatial),
+            )?
+        };
+        if let Some(backdrop) = layer.backdrop.as_ref().filter(|_| !source_forced_empty) {
             source = self.plan_backdrop_group(backdrop, source, parent, layer_to_surface)?;
         }
         let Some(source) = source else {
             return Ok(parent);
         };
 
-        let alpha_mask = match layer.mask.as_ref() {
+        let alpha_mask = match layer.mask.as_ref().filter(|_| !source_forced_empty) {
             Some(mask) => {
                 let imported = self.import_alpha_mask(mask)?;
                 Some((
@@ -1801,7 +1830,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 destination_to_layer_local,
                 source_space: self.source_space(),
                 opacity: layer.opacity,
-                blend: layer.blend,
+                composition: layer.composition,
                 clip: layer
                     .clip
                     .map(|clip| SharedValue::new(clip, &self.account.storage()))
@@ -1820,38 +1849,55 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         &mut self,
         children: RenderCommands,
         raster_transform: Transform,
+        finite_domain: Option<NonEmptyFrameSpatialPlan>,
     ) -> Result<Option<PlannedGraphResource>> {
+        let domain = match finite_domain {
+            Some(spatial) => {
+                let Some(inverse) = destination_to_layer_local_mapping(raster_transform)? else {
+                    return Ok(Some(self.declare_transparent_parent(spatial)?.current));
+                };
+                SemanticContributionDomain::RootOutputBounded(
+                    LogicalBounds::NonEmpty(spatial.logical_bounds)
+                        .try_transform(inverse.affine, "finite group source domain")?,
+                )
+            }
+            None => SemanticContributionDomain::LocalUnbounded,
+        };
         let contribution = SemanticSourceContribution::try_from_commands(
             children,
             SemanticSourceBounds::exactly_empty(),
-            SemanticContributionDomain::LocalUnbounded,
+            domain,
             self.context,
             raster_transform,
             self.account,
         )?;
-        if contribution.commands.is_empty() {
+        if contribution.commands.is_empty() && finite_domain.is_none() {
             return Ok(None);
         }
-        let Some(logical_bounds) = contribution
-            .source_bounds
-            .require_non_empty_for_graph("layer source bounds")?
-        else {
-            return Ok(None);
-        };
-        let logical_bounds = if self.source_space() == CompositeSourceSpace::SurfaceGrid {
-            let Some(bounds) = self
-                .capture_bounds_coordinate_space
-                .resolve(logical_bounds, raster_transform)?
+        let spatial = if let Some(spatial) = finite_domain {
+            spatial
+        } else {
+            let Some(logical_bounds) = contribution
+                .affected_bounds
+                .require_non_empty_for_graph("layer source bounds")?
             else {
                 return Ok(None);
             };
-            bounds
-        } else {
-            logical_bounds
-        };
-        let spatial = match self.plan_foreground_bounds(logical_bounds, raster_transform)? {
-            FrameSpatialPlan::Empty(_) => return Ok(None),
-            FrameSpatialPlan::NonEmpty(spatial) => spatial,
+            let logical_bounds = if self.source_space() == CompositeSourceSpace::SurfaceGrid {
+                let Some(bounds) = self
+                    .capture_bounds_coordinate_space
+                    .resolve(logical_bounds, raster_transform)?
+                else {
+                    return Ok(None);
+                };
+                bounds
+            } else {
+                logical_bounds
+            };
+            match self.plan_foreground_bounds(logical_bounds, raster_transform)? {
+                FrameSpatialPlan::Empty(_) => return Ok(None),
+                FrameSpatialPlan::NonEmpty(spatial) => spatial,
+            }
         };
         let source_parent = self.declare_transparent_parent(spatial)?;
         let source_parent = self.plan_commands(
@@ -1961,7 +2007,9 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 },
                 source_space: self.source_space(),
                 opacity: 1.0,
-                blend: crate::layer::BlendMode::Normal,
+                composition: crate::layer::LayerComposition::from_blend(
+                    crate::layer::BlendMode::Normal,
+                ),
                 clip: backdrop
                     .clip()
                     .map(|clip| SharedValue::new(clip.clone(), &self.account.storage()))
@@ -2346,16 +2394,36 @@ fn commands_require_surface_grid(commands: &[RenderCommand], account: &Account) 
                 requires
             }
             RenderCommand::Layer { layer, children } => {
-                layer.mask.as_ref().is_some_and(|mask| {
-                    matches!(
-                        mask.upload().rendering_hint(),
-                        Some(ImageRendering::Pixelated | ImageRendering::CrispEdges)
-                    )
-                }) || commands_require_surface_grid(children, account)?
+                layer.explicit_isolation
+                    || (!layer.composition.is_source_over() && !layer.composition.is_plus())
+                    || layer.mask.as_ref().is_some_and(|mask| {
+                        matches!(
+                            mask.upload().rendering_hint(),
+                            Some(ImageRendering::Pixelated | ImageRendering::CrispEdges)
+                        )
+                    })
+                    || commands_require_surface_grid(children, account)?
             }
             RenderCommand::Shadow { .. } => false,
         };
         if requires {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn commands_require_composition_domain(
+    commands: &[RenderCommand],
+    account: &Account,
+) -> Result<bool> {
+    for command in commands {
+        account.work(RenderWork::CommandVisits, 1)?;
+        if let RenderCommand::Layer { layer, children } = command
+            && (layer.explicit_isolation
+                || (!layer.composition.is_source_over() && !layer.composition.is_plus())
+                || commands_require_composition_domain(children, account)?)
+        {
             return Ok(true);
         }
     }
@@ -2371,10 +2439,14 @@ fn command_is_local_to_capture(
     let RenderCommand::Layer { layer, children } = command else {
         return Ok(true);
     };
-    if layer.mask.is_some() || layer.backdrop.is_some() {
+    if layer.mask.is_some()
+        || layer.backdrop.is_some()
+        || layer.explicit_isolation
+        || (!layer.composition.is_source_over() && !layer.composition.is_plus())
+    {
         return Ok(false);
     }
-    if layer.blend != crate::layer::BlendMode::Normal
+    if !layer.composition.is_source_over_normal()
         && parent_locality == CaptureParentLocality::External
     {
         return Ok(false);

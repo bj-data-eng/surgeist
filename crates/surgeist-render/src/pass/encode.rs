@@ -5,10 +5,12 @@ use crate::accounting::{
 
 use std::sync::Arc;
 
+#[cfg(test)]
+use crate::BlendMode;
+
 use super::super::{
     Color, Format, PhysicalSize, Result, Transform,
     encode::{encode_vello_clip_coverage_scene, encode_vello_scene_with_initial_transform},
-    layer::BlendMode,
     renderer::Antialiasing,
     resource::{FrameCleanup, FrameResourceScope, GaussianKernelKey, ResourceManager},
     shader::{
@@ -236,7 +238,7 @@ pub(crate) struct CustomSpineEncodingSummary {
     pub(crate) clears_full_root_once: bool,
     pub(crate) uses_exact_prepared_spatial_mapping: bool,
     pub(crate) presents_to_exact_external_output: bool,
-    pub(crate) exposes_bounded_capture_handoff: bool,
+    pub(crate) capture_handoffs_match_expected_count: bool,
     pub(crate) validates_checked_capture_completion: bool,
     pub(crate) completes_custom_passes_after_encoding: bool,
     pub(crate) parent_and_result_are_distinct: bool,
@@ -446,8 +448,8 @@ impl CustomSpineEncodingProgress {
             clears_full_root_once: self.root_clear_count == 1 && self.clears_full_root,
             uses_exact_prepared_spatial_mapping: self.exact_spatial,
             presents_to_exact_external_output: self.exact_external_output,
-            exposes_bounded_capture_handoff: self.expected_capture_count > 0
-                && self.capture_count == self.expected_capture_count
+            capture_handoffs_match_expected_count: self.capture_count
+                == self.expected_capture_count
                 && self.bounded_capture_handoffs,
             validates_checked_capture_completion: self.validated_capture_receipts
                 == self.expected_capture_count,
@@ -713,7 +715,7 @@ impl CustomSpineEncodingSummary {
             && self.clears_full_root_once
             && self.uses_exact_prepared_spatial_mapping
             && self.presents_to_exact_external_output
-            && self.exposes_bounded_capture_handoff
+            && self.capture_handoffs_match_expected_count
             && self.validates_checked_capture_completion
             && self.completes_custom_passes_after_encoding
             && self.parent_and_result_are_distinct
@@ -1777,9 +1779,9 @@ impl<'device> PreparedGraph<'device> {
                 "the custom-spine scheduler requires transaction-provisional pass objects",
             ));
         }
-        if expected_capture_count == 0 || self.next_pass != 0 {
+        if self.next_pass != 0 {
             return Err(preparation_error(
-                "the custom-spine scheduler requires one unstarted capture spine",
+                "the custom-spine scheduler requires an unstarted validated graph",
             ));
         }
         Ok(expected_capture_count)
@@ -3548,7 +3550,7 @@ impl<'device> PreparedGraph<'device> {
                 "the composition layer composite contains an absent or duplicated semantic read",
             ));
         }
-        let normal_path = parameters.blend() == BlendMode::Normal;
+        let normal_path = parameters.composition().is_source_over_normal();
         Ok(LayerCompositeSemantic {
             transform: *transform,
             parameters,
@@ -4563,9 +4565,9 @@ mod repeated_proof_accounting_tests {
                     matches!(&pass.runtime.kind, RuntimePassKind::Composite(Some(RuntimeComposite {
                         kind: RuntimeCompositeKind::Layer { parameters, clip_coverage, .. }, ..
                     })) if match mode {
-                        0 => parameters.blend() == BlendMode::Normal && parameters.alpha_mask().is_none() && clip_coverage.is_none(),
-                        1 => parameters.blend() == BlendMode::Normal && parameters.alpha_mask().is_some() && clip_coverage.is_some(),
-                        _ => parameters.blend() == BlendMode::Multiply,
+                        0 => parameters.composition().is_source_over_normal() && parameters.alpha_mask().is_none() && clip_coverage.is_none(),
+                        1 => parameters.composition().is_source_over_normal() && parameters.alpha_mask().is_some() && clip_coverage.is_some(),
+                        _ => parameters.composition().blend_mode() == BlendMode::Multiply,
                     })
                 }).unwrap();
                 let request = PreparedPassEncodingRequest::from(&prepared.plan.passes[index]);

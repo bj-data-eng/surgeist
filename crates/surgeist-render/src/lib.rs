@@ -96,7 +96,10 @@ pub use geometry::{
     Size, Transform,
 };
 pub use image::{Extend, Image, ImageBuffer, ImageFit, ImageId, ImageQuality, ImageRendering};
-pub use layer::{BlendMode, Filter, Layer, ResolvedLayerAlphaMask, Shadow, ShadowKind, ShadowList};
+pub use layer::{
+    BlendMode, Filter, Layer, LayerComposition, PorterDuffOperator, ResolvedLayerAlphaMask, Shadow,
+    ShadowKind, ShadowList,
+};
 pub use paint::{
     Color, Gradient, GradientStop, NormalizedPaintLayer, Paint, PaintColor, PaintColorSpace,
 };

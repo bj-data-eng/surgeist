@@ -1354,6 +1354,8 @@ pub(crate) enum FramePlanRouteObservation {
 pub(crate) enum FrameSelectionRequirementObservation {
     ResolvedAlphaMask,
     BoundedBackdrop,
+    BoundedPorterDuff,
+    ExplicitIsolation,
 }
 
 #[cfg(test)]
@@ -1515,6 +1517,12 @@ fn observe_graph_frame_plan(graph: GpuRenderGraph) -> FramePlanObservation {
             GraphSelectionRequirement::BoundedBackdrop => {
                 FrameSelectionRequirementObservation::BoundedBackdrop
             }
+            GraphSelectionRequirement::BoundedPorterDuff => {
+                FrameSelectionRequirementObservation::BoundedPorterDuff
+            }
+            GraphSelectionRequirement::ExplicitIsolation => {
+                FrameSelectionRequirementObservation::ExplicitIsolation
+            }
         })
         .collect();
     let resolved_alpha_mask_device_extents = graph_resolved_alpha_mask_device_extents(&graph);
@@ -1539,7 +1547,7 @@ fn observe_graph_frame_plan(graph: GpuRenderGraph) -> FramePlanObservation {
         .composites
         .iter()
         .filter_map(|composite| match &composite.kind {
-            SemanticCompositeKind::Layer { blend, .. } => Some(*blend),
+            SemanticCompositeKind::Layer { composition, .. } => Some(composition.blend_mode()),
             SemanticCompositeKind::SpanSourceOver | SemanticCompositeKind::DropShadow => None,
         })
         .collect();

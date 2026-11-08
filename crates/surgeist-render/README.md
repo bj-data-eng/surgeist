@@ -9,10 +9,12 @@ It requires a compatible GPU; browser execution and application/window lifecycle
 belong to the integrating host. The current style-facing exports and intended
 crate boundary are described in the [architecture guide](docs/explanation.md).
 
-Layers support all sixteen standard numeric-sRGB mixing functions on both GPU
-routes, with source-over composition, plus the existing additive composition
-choice. [Layer blending](docs/reference.md#layer-blending) describes alpha,
-endpoint rules and the remaining composition boundaries.
+Layers support all sixteen standard numeric-sRGB mixing functions, twelve basic
+Porter-Duff operators and explicit isolated groups. New non-source-over operators
+use the GPU graph; source-over mixing retains both routes and the existing local
+Plus operation remains distinct. [Layer blending](docs/reference.md#layer-blending)
+and [composition](docs/reference.md#layer-composition-and-isolation) describe the
+alpha, operation-domain and capability contracts.
 
 `FontData` accepts raw OpenType, collections, WOFF and WOFF2 through
 `surgeist-font`. `FontData::prepare_glyph_run` admits immutable glyph resources

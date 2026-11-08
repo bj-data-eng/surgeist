@@ -7,7 +7,7 @@ use crate::{
         CompositeSourceSpace, GraphLoweringGeneration, GraphLoweringPassId, GraphLoweringResourceId,
     },
     image::ResolvedMaskUploadDescriptor,
-    layer::BlendMode,
+    layer::LayerComposition,
     renderer::Antialiasing,
     resource::{GaussianKernelKey, WorkingFormat},
     shader::{
@@ -426,7 +426,7 @@ pub(crate) struct RuntimeLayerCompositeParameters {
     pub(super) destination_to_layer_local: RuntimeDestinationToLayerLocal,
     pub(super) source_space: CompositeSourceSpace,
     pub(super) opacity: f32,
-    pub(super) blend: BlendMode,
+    pub(super) composition: LayerComposition,
     pub(super) has_clip: bool,
     pub(super) alpha_mask: Option<RuntimeResolvedAlphaMaskComposition>,
 }
@@ -436,7 +436,7 @@ impl RuntimeLayerCompositeParameters {
         destination_to_layer_local: Transform,
         source_space: CompositeSourceSpace,
         opacity: f32,
-        blend: BlendMode,
+        composition: LayerComposition,
         has_clip: bool,
         alpha_mask: Option<RuntimeResolvedAlphaMaskComposition>,
     ) -> Result<Self> {
@@ -453,7 +453,7 @@ impl RuntimeLayerCompositeParameters {
             )?,
             source_space,
             opacity: opacity.clamp(0.0, 1.0),
-            blend,
+            composition,
             has_clip,
             alpha_mask,
         })
@@ -475,8 +475,8 @@ impl RuntimeLayerCompositeParameters {
     }
 
     #[must_use]
-    pub(crate) const fn blend(self) -> BlendMode {
-        self.blend
+    pub(crate) const fn composition(self) -> LayerComposition {
+        self.composition
     }
 
     #[must_use]

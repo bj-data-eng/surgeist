@@ -184,7 +184,8 @@ fn separable_graph_shader_preserves_guards_thresholds_and_partial_alpha() {
     let vectors = cases
         .iter()
         .map(|case| CompositionBlendVectorForTest {
-            blend: case.mode,
+            composition: crate::LayerComposition::from_blend(case.mode),
+            clip_alpha: None,
             source: case.source,
             parent: case.backdrop,
             opacity: 1.0,

@@ -4,6 +4,157 @@ use crate::{Color, Options, Parameters, Rect, Renderer, Scene, Size};
 
 #[test]
 #[cfg(not(target_arch = "wasm32"))]
+fn basic_composition_profiles_preserve_work_pixels_and_optional_timing() {
+    use crate::{BlendMode, Layer, LayerComposition, PorterDuffOperator, RenderRoute};
+
+    let mut observed_work = None;
+    let mut observed_pixels = None;
+    for profile in [
+        RenderProfile::Off,
+        RenderProfile::Summary { timing: false },
+        RenderProfile::Summary { timing: true },
+    ] {
+        let mut renderer = pollster::block_on(Renderer::new(
+            Options::default()
+                .with_accounting(RenderAccountingOptions::new().with_profile(profile)),
+        ))
+        .unwrap();
+        let mut surface =
+            pollster::block_on(renderer.create_headless(Size::new(2.0, 2.0), 1.0)).unwrap();
+        let mut scene = Scene::new();
+        scene.layer(
+            Layer::new().with_composition(
+                LayerComposition::try_porter_duff(PorterDuffOperator::Clear, BlendMode::Normal)
+                    .unwrap(),
+            ),
+            |_| {},
+        );
+        let stats = pollster::block_on(renderer.render(
+            &mut surface,
+            &scene,
+            Parameters {
+                base_color: Color::BLACK,
+                ..Parameters::default()
+            },
+        ))
+        .unwrap();
+        assert_eq!(stats.route, Some(RenderRoute::GpuGraph));
+        assert_eq!(surface.headless_publication_count_for_test(), 1);
+        let report = renderer.take_last_attempt().unwrap();
+        assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
+        let attempt = report.attempt().unwrap();
+        let usage = attempt.usage();
+        assert!(usage.work(RenderWork::GraphNodeVisits) > 0);
+        assert_eq!(usage.work(RenderWork::CompositePasses), 1);
+        assert_eq!(usage.work(RenderWork::VelloPasses), 0);
+        assert_eq!(stats.vello_passes, 0);
+        assert_eq!(usage.work(RenderWork::Submissions), 1);
+        let work = RenderWork::ALL.map(|unit| usage.work(unit));
+        if let Some(expected) = observed_work {
+            assert_eq!(work, expected, "observation must not change admitted work");
+        } else {
+            observed_work = Some(work);
+        }
+        let timed = matches!(profile, RenderProfile::Summary { timing: true });
+        assert_eq!(attempt.elapsed().is_some(), timed);
+        if !matches!(profile, RenderProfile::Off) {
+            assert!(attempt.phase_count(RenderPhase::Plan) > 0);
+            assert!(attempt.phase_count(RenderPhase::Encode) > 0);
+            assert_eq!(attempt.phase_elapsed(RenderPhase::Encode).is_some(), timed);
+        }
+        let pixels = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+        assert!(
+            pixels
+                .rgba()
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .all(|pixel| pixel[3] == 0)
+        );
+        if let Some(expected) = observed_pixels.as_ref() {
+            assert_eq!(&pixels, expected);
+        } else {
+            observed_pixels = Some(pixels);
+        }
+    }
+}
+
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
+fn refused_destructive_composition_preserves_publication_and_allows_fresh_retry() {
+    use crate::{BlendMode, Layer, LayerComposition, PorterDuffOperator};
+
+    // The baseline direct frame needs no closed-graph composition draw. Refuse
+    // the first such draw of the destructive frame before queue submission.
+    let limits = RenderLimits::new()
+        .with_work_limit(RenderWork::CompositePasses, 0)
+        .unwrap();
+    let mut renderer = pollster::block_on(Renderer::new(
+        Options::default().with_accounting(RenderAccountingOptions::new().with_limits(limits)),
+    ))
+    .unwrap();
+    let mut surface =
+        pollster::block_on(renderer.create_headless(Size::new(2.0, 2.0), 1.0)).unwrap();
+    let mut baseline = Scene::new();
+    baseline.fill(Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);
+    let successful =
+        pollster::block_on(renderer.render(&mut surface, &baseline, Parameters::default()))
+            .unwrap();
+    let before = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+    let publication = surface.headless_publication_count_for_test();
+    let mut destructive = Scene::new();
+    destructive.layer(
+        Layer::new().with_composition(
+            LayerComposition::try_porter_duff(PorterDuffOperator::Clear, BlendMode::Normal)
+                .unwrap(),
+        ),
+        |_| {},
+    );
+    let error = pollster::block_on(renderer.render(
+        &mut surface,
+        &destructive,
+        Parameters {
+            base_color: Color::BLACK,
+            ..Parameters::default()
+        },
+    ))
+    .unwrap_err();
+    assert!(
+        matches!(
+        error.accounting_diagnostic(),
+        Some(RenderAccountingError::Refused(refusal))
+            if refusal.quantity() == RenderQuantity::Work(RenderWork::CompositePasses)
+        ),
+        "the frame must reach its composition-draw admission boundary: {error:?}"
+    );
+    assert_eq!(renderer.stats(), successful);
+    assert_eq!(surface.headless_publication_count_for_test(), publication);
+    let report = renderer.take_last_attempt().unwrap();
+    assert_eq!(report.status(), RenderAttemptStatus::Refused);
+    let usage = report.attempt().unwrap().usage();
+    assert_eq!(usage.work(RenderWork::CompositePasses), 0);
+    assert_eq!(usage.work(RenderWork::Submissions), 0);
+    assert_eq!(
+        pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+        before
+    );
+    pollster::block_on(renderer.render(&mut surface, &baseline, Parameters::default())).unwrap();
+    assert_eq!(
+        surface.headless_publication_count_for_test(),
+        publication + 1
+    );
+    assert_eq!(
+        renderer.last_attempt().unwrap().status(),
+        RenderAttemptStatus::Succeeded
+    );
+    assert_eq!(
+        pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+        before
+    );
+}
+
+#[test]
+#[cfg(not(target_arch = "wasm32"))]
 fn multiple_borrowed_report_readers_preserve_last_success_and_fresh_retry_budget() {
     let limits = RenderLimits::new()
         .with_work_limit(RenderWork::CommandsEmitted, 2)
