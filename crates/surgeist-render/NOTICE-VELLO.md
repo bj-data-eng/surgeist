@@ -31,6 +31,25 @@ and identifies its local modification with a reference to this record.
 `src/vello_engine/mod.rs` is Surgeist-owned composition that wires the derived
 private phases together, so it deliberately carries no upstream source header.
 
+## Radial qualification shader correspondence
+
+The repeating-gradient native capacity check in
+`src/encode/repeating_gradient.rs` adapts the concentric circular setup from
+`vello_shaders` 0.9.0, `shader/draw_leaf.wgsl`, to qualify scalar field arithmetic
+before encoding. It computes conservative bounds over the actual device target;
+it neither produces pixels nor replaces the GPU rasterizer. The upstream source
+SHA-256 is `489cfa784f42f1c4802950cec874c6d488b286da203acd0c7dbce382a595591a`.
+The locked package checksum is
+`9dd38937516fa4b47423d9255bb5e4a65e839ec9d57c38c4af6189ce56bf46b7`.
+The upstream project is <https://github.com/linebender/vello>.
+
+That shader carries `Copyright 2022 the Vello Authors` and
+`Apache-2.0 OR MIT OR Unlicense`; the derived qualification retains this header
+and identifies the modification here. The existing Apache-2.0 and MIT texts
+below are byte-identical to this package's copies. The additional
+[Unlicense text](LICENSES/Vello-0.9.0-UNLICENSE.txt) preserves its shader-specific
+alternative unchanged.
+
 ## Omitted upstream main-crate sources
 
 | Upstream source | Rationale |

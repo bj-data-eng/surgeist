@@ -1,9 +1,15 @@
+// Copyright 2022 the Vello Authors
+// SPDX-License-Identifier: Apache-2.0 OR MIT OR Unlicense
+//
+// Modified concentric circular-field setup correspondence is documented in
+// ../../NOTICE-VELLO.md. Qualification and resolved paint policy are Render-owned.
+
 //! Per-use realization of resolved repeating fields. This is scalar paint
 //! preparation; the native raster engine still owns all pixel production.
 
 use super::{FrameBrush, gradient_with_stops};
 use crate::{
-    Color, Error, RepeatingGradient, RepeatingGradientStop, Result,
+    Color, Error, PhysicalSize, RepeatingGradient, RepeatingGradientStop, Result,
     accounting::{Account, RenderPhase, RenderWork},
     paint::RepeatingGradientGeometry,
 };
@@ -11,6 +17,7 @@ use crate::{
 pub(super) fn prepare(
     gradient: &RepeatingGradient,
     paint_to_device: kurbo::Affine,
+    target_extent: PhysicalSize,
     account: &Account,
 ) -> Result<FrameBrush> {
     let account = account.at(RenderPhase::GradientPrepare);
@@ -62,7 +69,9 @@ pub(super) fn prepare(
                 peniko::Gradient::new_linear((0.0, 0.0), (1.0, 0.0))
             }
             NativeField::Radial { start_radius } => {
-                native_transform(device, &account)?;
+                let native = narrow_transform(device, &account)?;
+                qualify_radial(device, native, start_radius, target_extent, &account)?;
+                let start_radius = start_radius as f32;
                 peniko::Gradient::new_two_point_radial(
                     (0.0, 0.0),
                     start_radius,
@@ -105,11 +114,21 @@ fn check_finite(transform: kurbo::Affine) -> Result<()> {
 /// geometry must not silently become native infinities or a singular transform.
 /// Unit native gradient geometry keeps tiny logical radii out of Vello's fixed
 /// radial-radius epsilon; only the complete map is narrowed on outline paths.
+#[cfg(test)]
 pub(super) fn native_transform(
     transform: kurbo::Affine,
     account: &Account,
 ) -> Result<vello_encoding::Transform> {
     let native = narrow_transform(transform, account)?;
+    native_inverse(native, account)?;
+    Ok(native)
+}
+
+fn native_inverse(
+    native: vello_encoding::Transform,
+    account: &Account,
+) -> Result<vello_encoding::Transform> {
+    account.work(RenderWork::CoordinateVisits, 6)?;
     let [a, b, c, d] = native.matrix;
     let [x, y] = native.translation;
     let determinant = a * d - b * c;
@@ -133,7 +152,10 @@ pub(super) fn native_transform(
     {
         return Err(invalid_geometry("unrepresentable native affine inverse"));
     }
-    Ok(native)
+    Ok(vello_encoding::Transform {
+        matrix: inverse,
+        translation: inverse_translation,
+    })
 }
 
 fn narrow_transform(
@@ -160,29 +182,174 @@ fn narrow_transform(
 pub(super) fn native_glyph_transform(
     local: kurbo::Affine,
     paint_to_device: kurbo::Affine,
-    linear: bool,
+    radial_start: Option<f64>,
+    target_extent: PhysicalSize,
     account: &Account,
 ) -> Result<vello_encoding::Transform> {
+    account.work(RenderWork::CoordinateVisits, 6)?;
+    let ideal_device = paint_to_device * local;
     let local = narrow_transform(local, account)?;
     let shape = narrow_transform(paint_to_device, account)?;
     // GlyphRun's resolver composes already-narrowed transforms. Neither factor
     // is inverted independently for the paint, so check the actual product.
     account.work(RenderWork::CoordinateVisits, 6)?;
     let composed = shape * local;
-    if linear {
-        if !check_native_linear(composed, account)? {
-            return Err(invalid_geometry("rounded-zero native glyph period"));
-        }
-    } else {
-        native_transform(composed.to_kurbo(), account)?;
+    if let Some(start_radius) = radial_start {
+        qualify_radial(ideal_device, composed, start_radius, target_extent, account)?;
+    } else if !check_native_linear(composed, account)? {
+        return Err(invalid_geometry("rounded-zero native glyph period"));
     }
     Ok(local)
+}
+
+// The concentric specialization below follows vello_shaders 0.9.0
+// draw_leaf.wgsl:154-222. Only its circular branch is needed: our canonical
+// centers coincide and the two native radii differ by approximately one.
+fn circular_native_field(
+    device: vello_encoding::Transform,
+    start_radius: f64,
+    account: &Account,
+) -> Result<(vello_encoding::Transform, f64)> {
+    let inverse = native_inverse(device, account)?;
+    account.work(RenderWork::CoordinateVisits, 10)?;
+    let start = start_radius as f32;
+    let end = start + 1.0;
+    let focal = start / (start - end);
+    let epsilon = 1.0 / (1_u32 << 12) as f32;
+    let center = (1.0 - focal) * epsilon;
+    let radius = end / (center * center + center * center).sqrt();
+    let unit = vello_encoding::Transform {
+        matrix: [0.0, -1.0, 1.0, 0.0],
+        translation: [0.0, 0.0],
+    };
+    let points = vello_encoding::Transform {
+        matrix: [-center, center, -center, -center],
+        translation: [center, center],
+    };
+    let line = native_product(unit, native_inverse(points, account)?, account)?;
+    let line = native_product(line, inverse, account)?;
+    let squared = radius * radius - 1.0;
+    let ratio = (1.0 - focal).abs() / squared;
+    let scale_x = radius * ratio;
+    let scale_y = squared.abs().sqrt() * ratio;
+    if ![focal, radius, squared, ratio, scale_x, scale_y]
+        .into_iter()
+        .all(f32::is_finite)
+        || radius <= 1.0
+    {
+        return Err(invalid_geometry("unrepresentable native circular setup"));
+    }
+    let field = native_product(
+        vello_encoding::Transform {
+            matrix: [scale_x, 0.0, 0.0, scale_y],
+            translation: [0.0, 0.0],
+        },
+        line,
+        account,
+    )?;
+    Ok((field, f64::from(focal)))
+}
+
+fn native_product(
+    left: vello_encoding::Transform,
+    right: vello_encoding::Transform,
+    account: &Account,
+) -> Result<vello_encoding::Transform> {
+    account.work(RenderWork::CoordinateVisits, 6)?;
+    let product = left * right;
+    if product
+        .matrix
+        .into_iter()
+        .chain(product.translation)
+        .all(f32::is_finite)
+    {
+        Ok(product)
+    } else {
+        Err(invalid_geometry("unrepresentable native circular field"))
+    }
+}
+
+/// Conservative bounds over actual target integer pixel coordinates. The
+/// reverse triangle inequality bounds the effect of native field coefficients
+/// versus the ideal rotated field. Standard gamma_n bounds cover binary32
+/// affine, squared-length, square-root and final focal-addition rounding.
+/// Both that error and the final phase spacing must fit one existing 512-entry
+/// ramp interval. This is an explicit native capacity limit, not CSS semantics.
+fn qualify_radial(
+    ideal_device: kurbo::Affine,
+    native_device: vello_encoding::Transform,
+    start_radius: f64,
+    target_extent: PhysicalSize,
+    account: &Account,
+) -> Result<()> {
+    let (field, focal) = circular_native_field(native_device, start_radius, account)?;
+    account.work(RenderWork::CoordinateVisits, 24)?;
+    let width = target_extent.width();
+    let height = target_extent.height();
+    // Every used integer coordinate must be exactly representable in binary32.
+    if width == 0 || height == 0 || width - 1 > 1 << 24 || height - 1 > 1 << 24 {
+        return Err(invalid_geometry(
+            "unrepresentable native target pixel coordinates",
+        ));
+    }
+    let x = f64::from(width - 1);
+    let y = f64::from(height - 1);
+    let inverse = ideal_device.inverse();
+    check_finite(inverse)?;
+    let s = std::f64::consts::FRAC_1_SQRT_2;
+    let ideal = kurbo::Affine::new([-s, s, -s, -s, 0.0, 0.0]) * inverse;
+    check_finite(ideal)?;
+    let actual = field.to_kurbo().as_coeffs();
+    let expected = ideal.as_coeffs();
+    let bound = |values: [f64; 6]| {
+        [
+            values[0].abs() * x + values[2].abs() * y + values[4].abs(),
+            values[1].abs() * x + values[3].abs() * y + values[5].abs(),
+        ]
+    };
+    let [qx, qy] = bound(actual);
+    let difference = std::array::from_fn(|i| actual[i] - expected[i]);
+    let [dx, dy] = bound(difference);
+    let unit_roundoff = f64::from(f32::EPSILON) * 0.5;
+    let gamma = |operations: f64| operations * unit_roundoff / (1.0 - operations * unit_roundoff);
+    let affine_error = gamma(4.0) * qx.hypot(qy);
+    let radius = qx.hypot(qy) + affine_error;
+    let norm_factor = (1.0 + gamma(3.0)).sqrt() * (1.0 + unit_roundoff);
+    let norm_error = radius * (norm_factor - 1.0);
+    let phase_bound = (focal.abs() + radius * norm_factor) * (1.0 + unit_roundoff);
+    let phase_error = dx.hypot(dy)
+        + (focal + start_radius).abs()
+        + affine_error
+        + norm_error
+        + unit_roundoff * (focal.abs() + radius * norm_factor)
+        // Glyph brushes retain native radii; their original f64 phase narrowing
+        // is bounded by one binary32 unit roundoff over the canonical [0,1].
+        + unit_roundoff;
+    let quantum = 1.0 / 511.0;
+    if !phase_bound.is_finite()
+        || !phase_error.is_finite()
+        || phase_error > quantum
+        || phase_ulp(phase_bound) > quantum
+    {
+        return Err(invalid_geometry(
+            "insufficient native circular phase capacity",
+        ));
+    }
+    Ok(())
+}
+
+fn phase_ulp(bound: f64) -> f64 {
+    let mut upper = bound as f32;
+    if f64::from(upper) < bound {
+        upper = upper.next_up();
+    }
+    f64::from(upper.next_up() - upper)
 }
 
 #[derive(Clone, Copy)]
 enum NativeField {
     Linear,
-    Radial { start_radius: f32 },
+    Radial { start_radius: f64 },
 }
 
 enum PeriodGeometry {
@@ -245,7 +412,7 @@ fn period_geometry(
             if y == 0.0 {
                 return Ok(PeriodGeometry::ZeroHeight);
             }
-            let radius = (phase / span) as f32;
+            let radius = phase / span;
             (
                 NativeField::Radial {
                     start_radius: radius,
@@ -455,6 +622,14 @@ mod tests {
         RenderAttemptKind, RenderLimits, RenderQuantity, RenderResource,
     };
 
+    fn prepare(
+        gradient: &RepeatingGradient,
+        transform: kurbo::Affine,
+        account: &Account,
+    ) -> Result<FrameBrush> {
+        super::prepare(gradient, transform, PhysicalSize::new(2, 2), account)
+    }
+
     fn color(r: f32, g: f32, b: f32, a: f32) -> Color {
         Color::try_rgba(r, g, b, a).unwrap()
     }
@@ -580,7 +755,8 @@ mod tests {
         let local = brush.transform().unwrap();
         let outline = vello_encoding::Transform::from_kurbo(&(transform * local));
         let glyph = vello_encoding::Transform::from_kurbo(&transform)
-            * native_glyph_transform(local, transform, true, &account).unwrap();
+            * native_glyph_transform(local, transform, None, PhysicalSize::new(2, 2), &account)
+                .unwrap();
         for native in [outline, glyph] {
             // Independently reproduce draw_leaf's transformed endpoint formula.
             let [a, b, _, _] = native.matrix;
@@ -766,7 +942,8 @@ mod tests {
             native_glyph_transform(
                 kurbo::Affine::scale(1.0e20),
                 kurbo::Affine::scale(1.0e-19),
-                true,
+                None,
+                PhysicalSize::new(2, 2),
                 &Account::for_test(),
             )
             .is_ok()
@@ -775,7 +952,8 @@ mod tests {
             native_glyph_transform(
                 kurbo::Affine::scale(1.0e50),
                 kurbo::Affine::scale(1.0e-49),
-                true,
+                None,
+                PhysicalSize::new(2, 2),
                 &Account::for_test(),
             )
             .is_err()

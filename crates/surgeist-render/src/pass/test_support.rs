@@ -5725,6 +5725,7 @@ fn bounded_capture_transform_observation(
         let encoded = super::super::encode::encode_vello_scene_with_initial_transform(
             facts.commands()?,
             facts.initial_transform(),
+            facts.target_extent(),
             &account,
         )
         .ok()?;

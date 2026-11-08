@@ -790,6 +790,7 @@ fn text_fill_paint_matches_concrete_render_paint_surface() {
         let brush = glyph_paint_brush(
             &paint,
             kurbo::Affine::IDENTITY,
+            PhysicalSize::new(2, 2),
             &crate::accounting::Account::for_test(),
         )
         .unwrap_or_else(|_| panic!("{label} should encode as a glyph brush"));
@@ -6240,6 +6241,7 @@ fn internal_vello_msaa8_mask_lut_ties_are_tile_translation_invariant() {
     let local_scene = encode_vello_scene_with_initial_transform(
         &normalized,
         initial_transform,
+        grid.extent,
         &crate::accounting::Account::for_test(),
     )
     .expect("the focused capture scene must encode");
