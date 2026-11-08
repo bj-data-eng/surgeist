@@ -5812,3 +5812,94 @@ scalars!(
     maximum_progress_original_slice_short_principal_keeps_large_child_occupancy_f32,
     maximum_progress_original_slice_short_principal_keeps_large_child_occupancy_f64
 );
+
+fn maximum_progress_interior_force_before_cap_advances_principal_flow<S: LayoutScalar>() {
+    let mut second = block::<S>(None, Some(30.0));
+    second.break_before = FragmentationBreak::Page;
+    let tree = Tree::new(
+        vec![
+            block(None, None),
+            maximum_progress_cap(200.0),
+            block(None, Some(30.0)),
+            second,
+            block(None, Some(10.0)),
+        ],
+        vec![vec![1, 4], vec![2, 3], vec![], vec![], vec![]],
+    );
+    let continuous = compute_layout(&tree, 0, root_request(100.0)).unwrap();
+    for (node, y, height) in [
+        (0, 0.0, 70.0),
+        (1, 0.0, 60.0),
+        (2, 0.0, 30.0),
+        (3, 30.0, 30.0),
+        (4, 60.0, 10.0),
+    ] {
+        let value = single(&continuous, node);
+        for output in [value.unrounded_output(), value.final_output()] {
+            assert_packet(output, (0.0, y), (100.0, height));
+        }
+    }
+    let request = fragmented(
+        LayoutSourceBasis::fresh(),
+        vec![frame(100.0, 100.0, true), frame(60.0, 80.0, false)],
+    );
+    let mut sink = Sink::new(5);
+    sink.authorize(0, &request);
+    let batch = compute(&tree, 0, &request)
+        .expect("interior Page force advances principal flow before its cap is exhausted");
+    assert_eq!(batch.fragmentainers().len(), 2);
+    assert_eq!(batch.node_layouts().count(), 5);
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(0, 1), (1, 4)]]);
+    let wrappers = minimum_progress_chain(&batch, 1, &[&[(0, 2)], &[(1, 3)]]);
+    // Break3 §4.3 moves the second child at its interior source boundary.
+    // Section 5.3 fills the first principal fragment to 100; total 130 remains
+    // below max 200, so the sibling follows the terminal principal 30 at y30.
+    assert_fragment(&roots[0], (100.0, 100.0));
+    assert_fragment(&roots[1], (60.0, 40.0));
+    for (index, size) in [(100.0, 100.0), (60.0, 30.0)].into_iter().enumerate() {
+        assert!(matches!(
+            wrappers[index].payload(),
+            FragmentPayloadOf::ActualBox(_)
+        ));
+        assert!(wrappers[index].overflow_only().is_none());
+        assert_fragment(&wrappers[index], size);
+        assert_eq!(
+            wrappers[index].coordinate_parent(),
+            Some(&FragmentCoordinateSpace::Fragment(
+                roots[index].id().clone()
+            ))
+        );
+        for geometry in [
+            roots[index].unrounded(),
+            roots[index].final_geometry(),
+            wrappers[index].unrounded(),
+            wrappers[index].final_geometry(),
+        ] {
+            assert_eq!(geometry.location, Point::ZERO);
+        }
+    }
+    minimum_progress_child(&batch, 2, 0, wrappers[0].id(), (0.0, 0.0), (100.0, 30.0));
+    minimum_progress_child(&batch, 3, 1, wrappers[1].id(), (0.0, 0.0), (60.0, 30.0));
+    minimum_progress_child(&batch, 4, 1, roots[1].id(), (0.0, 30.0), (60.0, 10.0));
+    maximum_progress_children(&batch, roots[0].id(), &[wrappers[0].id()]);
+    maximum_progress_children(
+        &batch,
+        roots[1].id(),
+        &[wrappers[1].id(), single(&batch, 4).id()],
+    );
+    maximum_progress_children(&batch, wrappers[0].id(), &[single(&batch, 2).id()]);
+    maximum_progress_children(&batch, wrappers[1].id(), &[single(&batch, 3).id()]);
+    maximum_progress_unique_fragments(&batch);
+    batch.apply_to(&mut sink).unwrap();
+    for node in [2, 3, 4] {
+        assert_eq!(
+            sink.state.custody[node],
+            Some(single(&batch, node).unrounded_entry())
+        );
+    }
+}
+scalars!(
+    maximum_progress_interior_force_before_cap_advances_principal_flow,
+    maximum_progress_interior_force_before_cap_advances_principal_flow_f32,
+    maximum_progress_interior_force_before_cap_advances_principal_flow_f64
+);
