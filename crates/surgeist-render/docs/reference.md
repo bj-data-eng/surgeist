@@ -57,6 +57,12 @@ is also available. Constructors retain nonempty, nondecreasing stop lists,
 including equal, negative and outside-unit positions; descending, nonfinite or
 overflowing spans return typed invalid input. One stop is a solid native paint.
 
+For ordinary fields with ordered normalized stops, the first color remains
+constant before a positive first offset. Native preparation anchors that color
+at zero before copying the supplied records; owned native conversion uses the
+same rule. A single stop keeps its native solid path, including for coincident
+linear endpoints.
+
 Positions are units of the supplied field: the linear start-to-end vector or
 radial ending ellipse. A linear field from zero to forty logical units with
 stops at one-quarter and one-and-one-quarter therefore repeats a forty-unit
@@ -112,6 +118,9 @@ nested capture preserves a pattern resolved by final magnification.
 repeating brush preparation and native glyph representation checks. Actual stop
 walks, coordinate work, backing, serialization and ramp resources retain their
 existing named work and lifetime owners; optional elapsed time uses Ledger.
+Ordinary multistop preparation charges its first-record preflight, one offset
+comparison and every actual native record, including a leading anchor. The
+native encoder separately charges its visit to those records under Encode.
 See [frame accounting](#frame-accounting) for inclusive phases and host timing.
 `supports_repeating_gradients` reports this concrete resolved domain. `surgeist-paint`
 retains authored gradient-box geometry, stop/hint fixup and degenerate semantic
