@@ -48,7 +48,7 @@ impl EmbeddedModuleEntry {
             };
             let path = path.to_std_string_escaped();
             let source = Source::from_reader(&mut bytes, Some(Path::new(&path)));
-            match Module::parse(source, None, context) {
+            match Module::parse(source, None, context.access()) {
                 Ok(module) => {
                     *self = Self::Module(module);
                 }

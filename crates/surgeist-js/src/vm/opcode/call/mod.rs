@@ -421,7 +421,7 @@ async fn load_dyn_import(
 
     // 2. Let module be moduleCompletion.[[Value]].
     // 3. Let loadPromise be module.LoadRequestedModules().
-    let load = module.load(&mut context.borrow_mut());
+    let load = module.load(context.borrow_mut().access());
 
     // 4. Let rejectedClosure be a new Abstract Closure with parameters (reason) that captures promiseCapability and performs the following steps when called:
     // 5. Let onRejected be CreateBuiltinFunction(rejectedClosure, 1, "", « »).
@@ -450,7 +450,7 @@ async fn load_dyn_import(
             |_, _, (module, cap, on_rejected), context| {
                 // a. Let link be Completion(module.Link()).
                 // b. If link is an abrupt completion, then
-                if let Err(e) = module.link(context) {
+                if let Err(e) = module.link(context.access()) {
                     // i. Perform ! Call(promiseCapability.[[Reject]], undefined, « link.[[Value]] »).
                     let e = e.into_opaque(context.access())?;
                     cap.reject()
@@ -461,7 +461,7 @@ async fn load_dyn_import(
                 }
 
                 // c. Let evaluatePromise be module.Evaluate().
-                let evaluate = module.evaluate(context)?;
+                let evaluate = module.evaluate(context.access())?;
 
                 // d. Let fulfilledClosure be a new Abstract Closure with no parameters that captures module and promiseCapability and performs the following steps when called:
                 // e. Let onFulfilled be CreateBuiltinFunction(fulfilledClosure, 0, "", « »).
@@ -470,7 +470,7 @@ async fn load_dyn_import(
                     NativeFunction::from_builtin_with_captures(
                         |_, _, (module, cap), context| {
                             // i. Let namespace be GetModuleNamespace(module).
-                            let namespace = module.namespace(context)?;
+                            let namespace = module.namespace(context.access())?;
 
                             // ii. Perform ! Call(promiseCapability.[[Resolve]], undefined, « namespace »).
                             cap.resolve()

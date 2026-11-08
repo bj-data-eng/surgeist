@@ -405,7 +405,7 @@ const MODULE_SOURCE: &str = "
 ";
 
 fn load(module: &Module, context: &mut Context) {
-    let loaded = module.load(context);
+    let loaded = module.load(context.access());
     context.run_jobs().unwrap();
     assert_eq!(
         loaded.state(),
@@ -422,7 +422,7 @@ fn result_module(context: &mut Context) -> Module {
         ),
         None,
         None,
-        context,
+        context.access(),
     )
     .unwrap()
 }
@@ -453,13 +453,13 @@ fn module_harness(case: ModuleCase) -> ModuleHarness {
                 ),
                 None,
                 None,
-                &mut context,
+                context.access(),
             )
             .unwrap();
             if matches!(case, ModuleCase::SourceWithCommittedDependency) {
                 load(&dependency, &mut context);
-                dependency.link(&mut context).unwrap();
-                let initialized = dependency.evaluate(&mut context).unwrap();
+                dependency.link(context.access()).unwrap();
+                let initialized = dependency.evaluate(context.access()).unwrap();
                 context.run_jobs().unwrap();
                 assert_eq!(
                     initialized.state(),
@@ -468,7 +468,7 @@ fn module_harness(case: ModuleCase) -> ModuleHarness {
             }
             assert!(loader.insert("dependency", dependency.clone()).is_none());
             let module =
-                Module::parse(Source::from_bytes(MODULE_SOURCE), None, &mut context).unwrap();
+                Module::parse(Source::from_bytes(MODULE_SOURCE), None, context.access()).unwrap();
             (module, Some(dependency))
         }
     };
@@ -479,7 +479,7 @@ fn module_harness(case: ModuleCase) -> ModuleHarness {
             0,
             NativeFunction::from_fn_with_captures(
                 |_, _, module, context| {
-                    module.link(context)?;
+                    module.link(context.access())?;
                     Ok(42.into())
                 },
                 module.clone(),
@@ -512,7 +512,7 @@ fn assert_unpublished(harness: &mut ModuleHarness) {
         if committed {
             assert_eq!(
                 dependency
-                    .get_value(js_string!("offset"), &mut harness.context)
+                    .get_value(js_string!("offset"), harness.context.access())
                     .unwrap(),
                 36.into()
             );
@@ -521,14 +521,16 @@ fn assert_unpublished(harness: &mut ModuleHarness) {
 }
 
 fn evaluate_module(module: &Module, context: &mut Context) {
-    let evaluated = module.evaluate(context).unwrap();
+    let evaluated = module.evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
     assert_eq!(
         evaluated.state(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     assert_eq!(
-        module.get_value(js_string!("result"), context).unwrap(),
+        module
+            .get_value(js_string!("result"), context.access())
+            .unwrap(),
         42.into()
     );
 }
@@ -571,13 +573,13 @@ fn source_and_synthetic_exact_one_short_and_retry_publish_only_the_admitted_grou
                 let fresh = Module::parse(
                     Source::from_bytes(MODULE_SOURCE),
                     None,
-                    &mut harness.context,
+                    harness.context.access(),
                 )
                 .unwrap();
                 load(&fresh, &mut harness.context);
                 fresh
             };
-            selected.link(&mut harness.context).unwrap();
+            selected.link(harness.context.access()).unwrap();
             evaluate_module(&selected, &mut harness.context);
             harness.snapshot.assert_existing(&harness.context);
             assert_eq!(

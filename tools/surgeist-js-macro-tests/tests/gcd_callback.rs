@@ -29,14 +29,14 @@ fn gcd_callback() {
     // Load the JavaScript code.
     let gcd_path = assets_dir.join("gcd_callback.js");
     let source = Source::from_filepath(&gcd_path).unwrap();
-    let module = Module::parse(source, None, context).unwrap();
+    let module = Module::parse(source, None, context.access()).unwrap();
     module
-        .load_link_evaluate(context)
+        .load_link_evaluate(context.access())
         .await_blocking(context.access())
         .unwrap();
 
     let js_gcd = module
-        .get_typed_fn::<(i32, i32, JsFunction), ()>(js_string!("gcd_callback"), context)
+        .get_typed_fn::<(i32, i32, JsFunction), ()>(js_string!("gcd_callback"), context.access())
         .unwrap();
 
     let function = (callback_from_js as fn(ContextData<CallbackResult>, usize))

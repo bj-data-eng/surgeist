@@ -7,8 +7,9 @@ use std::{
 };
 
 use surgeist_js::{
-    Context, JsError, JsNativeError, JsNativeErrorKind, JsValue, NativeFunction, Script, Source,
-    builtins::object::OrdinaryObject,
+    Context, JsError, JsNativeError, JsNativeErrorKind, JsValue, Module, NativeFunction, Script,
+    Source,
+    builtins::{object::OrdinaryObject, promise::PromiseState},
     error::{EngineError, ErasedEngineError, RuntimeLimitError},
     execution::{ExecutionOptions, ExecutionTermination, ProfileMode},
     js_string,
@@ -887,6 +888,117 @@ fn error_materialization_and_erasure_keep_native_details_and_exact_engine_cause(
     );
     assert_eq!(
         access.eval(Source::from_bytes("42")).unwrap(),
+        JsValue::new(42)
+    );
+}
+
+#[test]
+fn parsed_module_lifecycle_and_exports_compose_through_one_scoped_access() {
+    let mut owner = Context::default();
+    let outcome = owner.with_execution(ExecutionOptions::new(256), |mut access| {
+        let module = Module::parse(Source::from_bytes(
+            "export const answer = 42; export function read() { return answer; } globalThis.moduleCommitted = 7;",
+        ), None, access.reborrow())?;
+        let loaded = module.load(access.reborrow());
+        access.run_jobs()?;
+        assert_eq!(loaded.state(), PromiseState::Fulfilled(JsValue::undefined()));
+        module.link(access.reborrow())?;
+        let evaluated = module.evaluate(access.reborrow())?;
+        access.run_jobs()?;
+        assert_eq!(evaluated.state(), PromiseState::Fulfilled(JsValue::undefined()));
+        let namespace = module.namespace(access.reborrow())?;
+        assert_eq!(namespace.get(js_string!("answer"), access.reborrow())?, JsValue::new(42));
+        let exported = module.get_value(js_string!("answer"), access.reborrow())?;
+        let _typed = module.get_typed_fn::<(JsValue,), u32>(js_string!("read"), access.reborrow())?;
+        Ok(exported)
+    }).unwrap();
+    assert_eq!(outcome.result.unwrap(), JsValue::new(42));
+    assert!(outcome.report.instructions() > 0 && outcome.report.instructions() <= 256);
+    assert!(outcome.report.effects_started());
+    assert_eq!(
+        owner
+            .access()
+            .eval(Source::from_bytes("moduleCommitted"))
+            .unwrap(),
+        JsValue::new(7)
+    );
+}
+
+#[test]
+fn json_and_value_default_modules_evaluate_and_expose_their_authored_exports() {
+    let mut owner = Context::default();
+    let mut access = owner.access();
+    let value_module = Module::from_value_as_default(JsValue::new(42), access.reborrow()).unwrap();
+    let completed = value_module.load_link_evaluate(access.reborrow());
+    access.run_jobs().unwrap();
+    assert_eq!(
+        completed.state(),
+        PromiseState::Fulfilled(JsValue::undefined())
+    );
+    assert_eq!(
+        value_module
+            .get_value(js_string!("default"), access.reborrow())
+            .unwrap(),
+        JsValue::new(42)
+    );
+
+    let json_module = Module::parse_json(js_string!("{\"answer\":42}"), access.reborrow()).unwrap();
+    let completed = json_module.load_link_evaluate(access.reborrow());
+    access.run_jobs().unwrap();
+    assert_eq!(
+        completed.state(),
+        PromiseState::Fulfilled(JsValue::undefined())
+    );
+    let exported = json_module
+        .get_value(js_string!("default"), access.reborrow())
+        .unwrap()
+        .as_object()
+        .unwrap();
+    assert_eq!(
+        exported
+            .get(js_string!("answer"), access.reborrow())
+            .unwrap(),
+        JsValue::new(42)
+    );
+    assert_eq!(
+        access.eval(Source::from_bytes("42")).unwrap(),
+        JsValue::new(42)
+    );
+}
+
+#[test]
+fn module_parse_uses_the_selected_source_budget_before_guest_effects() {
+    let mut owner = Context::default();
+    let outcome = owner
+        .with_execution(
+            ExecutionOptions::new(64).with_source_read_limit(0),
+            |mut access| {
+                Module::parse(
+                    Source::from_bytes("globalThis.moduleStarted = 7; export const answer = 42;"),
+                    None,
+                    access.reborrow(),
+                )
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::SourceRead {
+            limit: 0
+        }))
+    );
+    assert_eq!(outcome.report.source_reads(), 0);
+    assert_eq!(outcome.report.instructions(), 0);
+    assert!(!outcome.report.effects_started());
+    assert_eq!(
+        owner
+            .access()
+            .eval(Source::from_bytes("typeof moduleStarted === 'undefined'"))
+            .unwrap(),
+        JsValue::new(true)
+    );
+    assert_eq!(
+        owner.access().eval(Source::from_bytes("42")).unwrap(),
         JsValue::new(42)
     );
 }

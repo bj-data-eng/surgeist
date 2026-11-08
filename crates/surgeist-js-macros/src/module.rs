@@ -280,7 +280,7 @@ fn module_impl_impl(_args: ModuleArguments, mut mod_: ItemMod) -> SpannedResult<
                     ),
                     None,
                     realm,
-                    context,
+                    context.access(),
                 )
             }
         }

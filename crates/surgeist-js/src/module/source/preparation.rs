@@ -858,7 +858,7 @@ mod tests {
                             .unwrap();
                     }
                 } else {
-                    let error = state.module.link(&mut state.peer).unwrap_err();
+                    let error = state.module.link(state.peer.access()).unwrap_err();
                     assert_eq!(
                         error.as_native().unwrap().message(),
                         "module linking is already in progress"
@@ -878,7 +878,7 @@ mod tests {
                 NativeFunction::from_fn_with_captures(
                     |_, _, module, context| {
                         REENTRY.with(|state| state.borrow_mut().as_mut().unwrap().armed = true);
-                        let result = module.link(context);
+                        let result = module.link(context.access());
                         REENTRY.with(|state| state.borrow_mut().as_mut().unwrap().armed = false);
                         result?;
                         Ok(JsValue::undefined())
@@ -895,10 +895,10 @@ mod tests {
         let module = Module::parse(
             Source::from_bytes("export function ready() { return 42; }"),
             None,
-            &mut context,
+            context.access(),
         )
         .unwrap();
-        let loaded = module.load(&mut context);
+        let loaded = module.load(context.access());
         context.run_jobs().unwrap();
         assert_eq!(
             loaded.state(),
@@ -931,7 +931,7 @@ mod tests {
         REENTRY.with(|state| assert!(state.borrow().as_ref().unwrap().calls > 0));
         assert!(
             module
-                .get_value(js_string!("ready"), &mut context)
+                .get_value(js_string!("ready"), context.access())
                 .unwrap()
                 .is_callable()
         );
@@ -943,10 +943,10 @@ mod tests {
         let module = Module::parse(
             Source::from_bytes("export function answer() { return callbackOwned + 1; }"),
             None,
-            &mut context,
+            context.access(),
         )
         .unwrap();
-        let loaded = module.load(&mut context);
+        let loaded = module.load(context.access());
         context.run_jobs().unwrap();
         assert_eq!(
             loaded.state(),
@@ -986,9 +986,9 @@ mod tests {
             context.eval(Source::from_bytes("callbackOwned")).unwrap(),
             41.into()
         );
-        module.link(&mut context).unwrap();
+        module.link(context.access()).unwrap();
         let answer = module
-            .get_value(js_string!("answer"), &mut context)
+            .get_value(js_string!("answer"), context.access())
             .unwrap();
         assert_eq!(
             answer

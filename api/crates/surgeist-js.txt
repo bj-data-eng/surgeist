@@ -1508,20 +1508,20 @@ impl surgeist_js::module::ModuleLoader for surgeist_js::module::MapModuleLoader
 pub fn surgeist_js::module::MapModuleLoader::load_imported_module(self: alloc::rc::Rc<Self>, referrer: surgeist_js::module::Referrer, request: surgeist_js::module::ModuleRequest, context: &core::cell::RefCell<&mut surgeist_js::context::Context>) -> impl core::future::future::Future<Output = surgeist_js::JsResult<surgeist_js::module::Module>>
 pub struct surgeist_js::module::Module
 impl surgeist_js::module::Module
-pub fn surgeist_js::module::Module::evaluate(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::object::builtins::JsPromise>
-pub fn surgeist_js::module::Module::from_value_as_default(value: surgeist_js::value::JsValue, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<Self>
-pub fn surgeist_js::module::Module::get_typed_fn<A, R>(&self, name: surgeist_js_string::JsString, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::object::builtins::TypedJsFunction<A, R>> where A: surgeist_js::object::builtins::TryIntoJsArguments, R: surgeist_js::value::TryFromJs
-pub fn surgeist_js::module::Module::get_value<K>(&self, name: K, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::JsValue> where K: core::convert::Into<surgeist_js::property::PropertyKey>
+pub fn surgeist_js::module::Module::evaluate(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::object::builtins::JsPromise>
+pub fn surgeist_js::module::Module::from_value_as_default(value: surgeist_js::value::JsValue, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<Self>
+pub fn surgeist_js::module::Module::get_typed_fn<A, R>(&self, name: surgeist_js_string::JsString, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::object::builtins::TypedJsFunction<A, R>> where A: surgeist_js::object::builtins::TryIntoJsArguments, R: surgeist_js::value::TryFromJs
+pub fn surgeist_js::module::Module::get_value<K>(&self, name: K, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::JsValue> where K: core::convert::Into<surgeist_js::property::PropertyKey>
 pub fn surgeist_js::module::Module::host_defined(&self) -> &surgeist_js::HostDefined
-pub fn surgeist_js::module::Module::link(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<()>
-pub fn surgeist_js::module::Module::load(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::object::builtins::JsPromise
-pub fn surgeist_js::module::Module::load_link_evaluate(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::object::builtins::JsPromise
-pub fn surgeist_js::module::Module::namespace(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::object::JsObject>
-pub fn surgeist_js::module::Module::parse<R: surgeist_js_parser::source::ReadChar>(src: surgeist_js_parser::source::Source<'_, R>, realm: core::option::Option<surgeist_js::realm::Realm>, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<Self>
-pub fn surgeist_js::module::Module::parse_json(json: surgeist_js_string::JsString, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<Self>
+pub fn surgeist_js::module::Module::link(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<()>
+pub fn surgeist_js::module::Module::load(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::object::builtins::JsPromise
+pub fn surgeist_js::module::Module::load_link_evaluate(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::object::builtins::JsPromise
+pub fn surgeist_js::module::Module::namespace(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::object::JsObject>
+pub fn surgeist_js::module::Module::parse<R: surgeist_js_parser::source::ReadChar>(src: surgeist_js_parser::source::Source<'_, R>, realm: core::option::Option<surgeist_js::realm::Realm>, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<Self>
+pub fn surgeist_js::module::Module::parse_json(json: surgeist_js_string::JsString, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<Self>
 pub fn surgeist_js::module::Module::path(&self) -> core::option::Option<&std::path::Path>
 pub fn surgeist_js::module::Module::realm(&self) -> surgeist_js::realm::Realm
-pub fn surgeist_js::module::Module::synthetic(export_names: &[surgeist_js_string::JsString], evaluation_steps: surgeist_js::module::SyntheticModuleInitializer, path: core::option::Option<std::path::PathBuf>, realm: core::option::Option<surgeist_js::realm::Realm>, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<Self>
+pub fn surgeist_js::module::Module::synthetic(export_names: &[surgeist_js_string::JsString], evaluation_steps: surgeist_js::module::SyntheticModuleInitializer, path: core::option::Option<std::path::PathBuf>, realm: core::option::Option<surgeist_js::realm::Realm>, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<Self>
 impl core::cmp::Eq for surgeist_js::module::Module
 impl core::cmp::PartialEq for surgeist_js::module::Module
 pub fn surgeist_js::module::Module::eq(&self, other: &Self) -> bool
@@ -3825,20 +3825,20 @@ impl<T: surgeist_js::object::NativeObject + ?core::marker::Sized> core::convert:
 pub fn surgeist_js::value::JsValue::from(object: surgeist_js::object::JsObject<T>) -> Self
 pub struct surgeist_js::prelude::Module
 impl surgeist_js::module::Module
-pub fn surgeist_js::module::Module::evaluate(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::object::builtins::JsPromise>
-pub fn surgeist_js::module::Module::from_value_as_default(value: surgeist_js::value::JsValue, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<Self>
-pub fn surgeist_js::module::Module::get_typed_fn<A, R>(&self, name: surgeist_js_string::JsString, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::object::builtins::TypedJsFunction<A, R>> where A: surgeist_js::object::builtins::TryIntoJsArguments, R: surgeist_js::value::TryFromJs
-pub fn surgeist_js::module::Module::get_value<K>(&self, name: K, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::JsValue> where K: core::convert::Into<surgeist_js::property::PropertyKey>
+pub fn surgeist_js::module::Module::evaluate(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::object::builtins::JsPromise>
+pub fn surgeist_js::module::Module::from_value_as_default(value: surgeist_js::value::JsValue, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<Self>
+pub fn surgeist_js::module::Module::get_typed_fn<A, R>(&self, name: surgeist_js_string::JsString, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::object::builtins::TypedJsFunction<A, R>> where A: surgeist_js::object::builtins::TryIntoJsArguments, R: surgeist_js::value::TryFromJs
+pub fn surgeist_js::module::Module::get_value<K>(&self, name: K, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::JsValue> where K: core::convert::Into<surgeist_js::property::PropertyKey>
 pub fn surgeist_js::module::Module::host_defined(&self) -> &surgeist_js::HostDefined
-pub fn surgeist_js::module::Module::link(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<()>
-pub fn surgeist_js::module::Module::load(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::object::builtins::JsPromise
-pub fn surgeist_js::module::Module::load_link_evaluate(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::object::builtins::JsPromise
-pub fn surgeist_js::module::Module::namespace(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::object::JsObject>
-pub fn surgeist_js::module::Module::parse<R: surgeist_js_parser::source::ReadChar>(src: surgeist_js_parser::source::Source<'_, R>, realm: core::option::Option<surgeist_js::realm::Realm>, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<Self>
-pub fn surgeist_js::module::Module::parse_json(json: surgeist_js_string::JsString, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<Self>
+pub fn surgeist_js::module::Module::link(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<()>
+pub fn surgeist_js::module::Module::load(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::object::builtins::JsPromise
+pub fn surgeist_js::module::Module::load_link_evaluate(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::object::builtins::JsPromise
+pub fn surgeist_js::module::Module::namespace(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::object::JsObject>
+pub fn surgeist_js::module::Module::parse<R: surgeist_js_parser::source::ReadChar>(src: surgeist_js_parser::source::Source<'_, R>, realm: core::option::Option<surgeist_js::realm::Realm>, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<Self>
+pub fn surgeist_js::module::Module::parse_json(json: surgeist_js_string::JsString, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<Self>
 pub fn surgeist_js::module::Module::path(&self) -> core::option::Option<&std::path::Path>
 pub fn surgeist_js::module::Module::realm(&self) -> surgeist_js::realm::Realm
-pub fn surgeist_js::module::Module::synthetic(export_names: &[surgeist_js_string::JsString], evaluation_steps: surgeist_js::module::SyntheticModuleInitializer, path: core::option::Option<std::path::PathBuf>, realm: core::option::Option<surgeist_js::realm::Realm>, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<Self>
+pub fn surgeist_js::module::Module::synthetic(export_names: &[surgeist_js_string::JsString], evaluation_steps: surgeist_js::module::SyntheticModuleInitializer, path: core::option::Option<std::path::PathBuf>, realm: core::option::Option<surgeist_js::realm::Realm>, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<Self>
 impl core::cmp::Eq for surgeist_js::module::Module
 impl core::cmp::PartialEq for surgeist_js::module::Module
 pub fn surgeist_js::module::Module::eq(&self, other: &Self) -> bool
@@ -6029,20 +6029,20 @@ impl<T: surgeist_js::object::NativeObject + ?core::marker::Sized> core::convert:
 pub fn surgeist_js::value::JsValue::from(object: surgeist_js::object::JsObject<T>) -> Self
 pub struct surgeist_js::Module
 impl surgeist_js::module::Module
-pub fn surgeist_js::module::Module::evaluate(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::object::builtins::JsPromise>
-pub fn surgeist_js::module::Module::from_value_as_default(value: surgeist_js::value::JsValue, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<Self>
-pub fn surgeist_js::module::Module::get_typed_fn<A, R>(&self, name: surgeist_js_string::JsString, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::object::builtins::TypedJsFunction<A, R>> where A: surgeist_js::object::builtins::TryIntoJsArguments, R: surgeist_js::value::TryFromJs
-pub fn surgeist_js::module::Module::get_value<K>(&self, name: K, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::JsValue> where K: core::convert::Into<surgeist_js::property::PropertyKey>
+pub fn surgeist_js::module::Module::evaluate(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::object::builtins::JsPromise>
+pub fn surgeist_js::module::Module::from_value_as_default(value: surgeist_js::value::JsValue, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<Self>
+pub fn surgeist_js::module::Module::get_typed_fn<A, R>(&self, name: surgeist_js_string::JsString, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::object::builtins::TypedJsFunction<A, R>> where A: surgeist_js::object::builtins::TryIntoJsArguments, R: surgeist_js::value::TryFromJs
+pub fn surgeist_js::module::Module::get_value<K>(&self, name: K, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::JsValue> where K: core::convert::Into<surgeist_js::property::PropertyKey>
 pub fn surgeist_js::module::Module::host_defined(&self) -> &surgeist_js::HostDefined
-pub fn surgeist_js::module::Module::link(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<()>
-pub fn surgeist_js::module::Module::load(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::object::builtins::JsPromise
-pub fn surgeist_js::module::Module::load_link_evaluate(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::object::builtins::JsPromise
-pub fn surgeist_js::module::Module::namespace(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::object::JsObject>
-pub fn surgeist_js::module::Module::parse<R: surgeist_js_parser::source::ReadChar>(src: surgeist_js_parser::source::Source<'_, R>, realm: core::option::Option<surgeist_js::realm::Realm>, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<Self>
-pub fn surgeist_js::module::Module::parse_json(json: surgeist_js_string::JsString, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<Self>
+pub fn surgeist_js::module::Module::link(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<()>
+pub fn surgeist_js::module::Module::load(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::object::builtins::JsPromise
+pub fn surgeist_js::module::Module::load_link_evaluate(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::object::builtins::JsPromise
+pub fn surgeist_js::module::Module::namespace(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::object::JsObject>
+pub fn surgeist_js::module::Module::parse<R: surgeist_js_parser::source::ReadChar>(src: surgeist_js_parser::source::Source<'_, R>, realm: core::option::Option<surgeist_js::realm::Realm>, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<Self>
+pub fn surgeist_js::module::Module::parse_json(json: surgeist_js_string::JsString, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<Self>
 pub fn surgeist_js::module::Module::path(&self) -> core::option::Option<&std::path::Path>
 pub fn surgeist_js::module::Module::realm(&self) -> surgeist_js::realm::Realm
-pub fn surgeist_js::module::Module::synthetic(export_names: &[surgeist_js_string::JsString], evaluation_steps: surgeist_js::module::SyntheticModuleInitializer, path: core::option::Option<std::path::PathBuf>, realm: core::option::Option<surgeist_js::realm::Realm>, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<Self>
+pub fn surgeist_js::module::Module::synthetic(export_names: &[surgeist_js_string::JsString], evaluation_steps: surgeist_js::module::SyntheticModuleInitializer, path: core::option::Option<std::path::PathBuf>, realm: core::option::Option<surgeist_js::realm::Realm>, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<Self>
 impl core::cmp::Eq for surgeist_js::module::Module
 impl core::cmp::PartialEq for surgeist_js::module::Module
 pub fn surgeist_js::module::Module::eq(&self, other: &Self) -> bool

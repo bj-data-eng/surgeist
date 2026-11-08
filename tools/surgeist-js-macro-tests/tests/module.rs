@@ -101,12 +101,12 @@ fn boa_module() {
             "#,
         ),
         None,
-        &mut context,
+        context.access(),
     )
     .expect("Could not load module");
 
     let result = module
-        .load_link_evaluate(&mut context)
+        .load_link_evaluate(context.access())
         .await_blocking(context.access());
 
     if let Err(e) = result {

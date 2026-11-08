@@ -48,8 +48,8 @@ use crate::bytecompiler::ToJsString;
 use crate::object::TypedJsFunction;
 use crate::spanned_source_text::SourceText;
 use crate::{
-    Context, HostDefined, JsError, JsNativeError, JsResult, JsString, JsValue, NativeFunction,
-    builtins,
+    Context, ContextAccess, HostDefined, JsError, JsNativeError, JsResult, JsString, JsValue,
+    NativeFunction, builtins,
     builtins::promise::{PromiseCapability, PromiseState},
     environments::DeclarativeEnvironmentRef,
     object::{JsObject, JsPromise, ObjectEdge},
@@ -371,8 +371,9 @@ impl Module {
     pub fn parse<R: ReadChar>(
         src: Source<'_, R>,
         realm: Option<Realm>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Self> {
+        let context = context.into_owner();
         let realm = Self::resolve_realm(realm, context)?;
         let path = src.path().map(Path::to_path_buf);
 
@@ -406,8 +407,9 @@ impl Module {
         evaluation_steps: SyntheticModuleInitializer,
         path: Option<PathBuf>,
         realm: Option<Realm>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Self> {
+        let context = context.into_owner();
         let realm = Self::resolve_realm(realm, context)?;
         let names = export_names.iter().cloned().collect();
         let synth = SyntheticModule::new(names, &evaluation_steps);
@@ -424,7 +426,8 @@ impl Module {
     /// # Errors
     ///
     /// Returns a `TypeError` if the value belongs to another runtime or the heap rejects the module.
-    pub fn from_value_as_default(value: JsValue, context: &mut Context) -> JsResult<Self> {
+    pub fn from_value_as_default(value: JsValue, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         Module::synthetic(
             &[js_string!("default")],
             SyntheticModuleInitializer::from_fn_with_captures(
@@ -436,7 +439,7 @@ impl Module {
             ),
             None,
             None,
-            context,
+            context.access(),
         )
     }
 
@@ -452,9 +455,10 @@ impl Module {
     ///
     /// # Errors
     /// This will return an error if the JSON string is invalid or cannot be converted.
-    pub fn parse_json(json: JsString, context: &mut Context) -> JsResult<Self> {
+    pub fn parse_json(json: JsString, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         let value = builtins::Json::parse(&JsValue::undefined(), &[json.into()], context)?;
-        Self::from_value_as_default(value, context)
+        Self::from_value_as_default(value, context.access())
     }
 
     /// Gets the realm of this `Module`.
@@ -494,7 +498,8 @@ impl Module {
     /// [spec]: https://tc39.es/ecma262/#table-abstract-methods-of-module-records
     #[allow(clippy::missing_panics_doc)]
     #[inline]
-    pub fn load(&self, context: &mut Context) -> JsPromise {
+    pub fn load(&self, context: ContextAccess<'_>) -> JsPromise {
+        let context = context.into_owner();
         if let Err(error) = self.check_runtime(context) {
             return JsPromise::reject(error, context.access())
                 .expect("the runtime's native rejection function is callable");
@@ -632,7 +637,8 @@ impl Module {
     /// [spec]: https://tc39.es/ecma262/#table-abstract-methods-of-module-records
     #[allow(clippy::missing_panics_doc)]
     #[inline]
-    pub fn link(&self, context: &mut Context) -> JsResult<()> {
+    pub fn link(&self, context: ContextAccess<'_>) -> JsResult<()> {
+        let context = context.into_owner();
         self.check_runtime(context)?;
         source::link(self, context)
     }
@@ -650,7 +656,8 @@ impl Module {
     ///
     /// [spec]: https://tc39.es/ecma262/#table-abstract-methods-of-module-records
     #[inline]
-    pub fn evaluate(&self, context: &mut Context) -> JsResult<JsPromise> {
+    pub fn evaluate(&self, context: ContextAccess<'_>) -> JsResult<JsPromise> {
+        let context = context.into_owner();
         self.check_runtime(context)?;
         match self.kind() {
             ModuleKind::SourceText(src) => src.evaluate(self, context),
@@ -723,11 +730,11 @@ impl Module {
     ///
     /// let source = Source::from_bytes("1 + 3");
     ///
-    /// let module = Module::parse(source, None, context).unwrap();
+    /// let module = Module::parse(source, None, context.access()).unwrap();
     ///
     /// loader.insert(Path::new("main.mjs").to_path_buf(), module.clone());
     ///
-    /// let promise = module.load_link_evaluate(context);
+    /// let promise = module.load_link_evaluate(context.access());
     ///
     /// context.run_jobs().unwrap();
     ///
@@ -738,23 +745,24 @@ impl Module {
     /// ```
     #[allow(dropping_copy_types)]
     #[inline]
-    pub fn load_link_evaluate(&self, context: &mut Context) -> JsPromise {
+    pub fn load_link_evaluate(&self, context: ContextAccess<'_>) -> JsPromise {
+        let context = context.into_owner();
         let result = (|| {
             self.check_runtime(context)?;
             let link = NativeFunction::from_builtin_with_captures(
                 |_, _, module, context| {
-                    module.link(context)?;
+                    module.link(context.access())?;
                     Ok(JsValue::undefined())
                 },
                 self.clone(),
             )
             .to_js_function(context.realm())?;
             let evaluate = NativeFunction::from_builtin_with_captures(
-                |_, _, module, context| Ok(module.evaluate(context)?.into()),
+                |_, _, module, context| Ok(module.evaluate(context.access())?.into()),
                 self.clone(),
             )
             .to_js_function(context.realm())?;
-            self.load(context)
+            self.load(context.access())
                 .then(Some(link), None, context.access())?
                 .then(Some(evaluate), None, context.access())
         })();
@@ -774,7 +782,8 @@ impl Module {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-getmodulenamespace
     /// [ns]: https://tc39.es/ecma262/#sec-module-namespace-exotic-objects
-    pub fn namespace(&self, context: &mut Context) -> JsResult<JsObject> {
+    pub fn namespace(&self, context: ContextAccess<'_>) -> JsResult<JsObject> {
+        let context = context.into_owner();
         self.check_runtime(context)?;
         // 1. Assert: If module is a Cyclic Module Record, then module.[[Status]] is not new or unlinked.
         // 2. Let namespace be module.[[Namespace]].
@@ -798,11 +807,12 @@ impl Module {
 
     /// Get an exported value from the module.
     #[inline]
-    pub fn get_value<K>(&self, name: K, context: &mut Context) -> JsResult<JsValue>
+    pub fn get_value<K>(&self, name: K, context: ContextAccess<'_>) -> JsResult<JsValue>
     where
         K: Into<PropertyKey>,
     {
-        let namespace = self.namespace(context)?;
+        let context = context.into_owner();
+        let namespace = self.namespace(context.access())?;
         namespace.get(name, context.access())
     }
 
@@ -812,13 +822,14 @@ impl Module {
     pub fn get_typed_fn<A, R>(
         &self,
         name: JsString,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<TypedJsFunction<A, R>>
     where
         A: crate::object::TryIntoJsArguments,
         R: TryFromJs,
     {
-        let func = self.get_value(name.clone(), context)?;
+        let context = context.into_owner();
+        let func = self.get_value(name.clone(), context.access())?;
         let func = func.as_function().ok_or_else(|| {
             JsNativeError::typ().with_message(format!("{name:?} is not a function"))
         })?;
@@ -877,7 +888,7 @@ impl<T: IntoIterator<Item = (JsString, NativeFunction)> + Clone> IntoJsModule fo
             ),
             None,
             None,
-            context,
+            context.access(),
         )
     }
 }
@@ -886,14 +897,14 @@ impl<T: IntoIterator<Item = (JsString, NativeFunction)> + Clone> IntoJsModule fo
 fn native_exports_do_not_root_unreachable_module_cycles() {
     let mut context = Context::default();
     let exported = JsObject::with_null_proto(context.runtime());
-    let module = Module::from_value_as_default(exported.clone().into(), &mut context).unwrap();
+    let module = Module::from_value_as_default(exported.clone().into(), context.access()).unwrap();
     let module_edge = module.edge();
     let exported_edge = exported.edge();
 
     // The module initializer retains the exported object, whose function
     // retains the same module through a native capture.
     let function = NativeFunction::from_fn_with_captures(
-        |_, _, module, context| Ok(module.namespace(context)?.into()),
+        |_, _, module, context| Ok(module.namespace(context.access())?.into()),
         module.clone(),
     )
     .to_js_function(context.realm())
@@ -920,13 +931,13 @@ fn module_execution_rejects_a_foreign_context() {
     let module = Module::parse(
         Source::from_bytes("export const value = 1;"),
         None,
-        &mut owner,
+        owner.access(),
     )
     .unwrap();
 
     for promise in [
-        module.load(&mut foreign),
-        module.load_link_evaluate(&mut foreign),
+        module.load(foreign.access()),
+        module.load_link_evaluate(foreign.access()),
     ] {
         let PromiseState::Rejected(reason) = promise.state() else {
             panic!("module execution accepted a foreign context");
@@ -938,7 +949,7 @@ fn module_execution_rejects_a_foreign_context() {
     }
     assert!(
         module
-            .link(&mut foreign)
+            .link(foreign.access())
             .unwrap_err()
             .as_native()
             .unwrap()
@@ -946,14 +957,14 @@ fn module_execution_rejects_a_foreign_context() {
     );
     assert!(
         module
-            .evaluate(&mut foreign)
+            .evaluate(foreign.access())
             .unwrap_err()
             .as_native()
             .unwrap()
             .is_type()
     );
 
-    let promise = module.load_link_evaluate(&mut owner);
+    let promise = module.load_link_evaluate(owner.access());
     owner.run_jobs().unwrap();
     assert_eq!(
         promise.state(),
@@ -977,7 +988,7 @@ fn module_construction_rejects_a_foreign_realm_before_parsing() {
     let error = Module::parse(
         Source::from_reader(UnreadableSource, None),
         Some(realm.clone()),
-        &mut owner,
+        owner.access(),
     )
     .unwrap_err();
     assert!(error.as_native().unwrap().is_type());
@@ -987,7 +998,7 @@ fn module_construction_rejects_a_foreign_realm_before_parsing() {
         SyntheticModuleInitializer::from_fn_with_captures(|_, (), _| Ok(()), ()),
         None,
         Some(realm),
-        &mut owner,
+        owner.access(),
     )
     .unwrap_err();
     assert!(error.as_native().unwrap().is_type());
@@ -999,18 +1010,20 @@ fn module_construction_rejects_a_foreign_realm_before_parsing() {
     let module = Module::parse(
         Source::from_bytes("export const value = 42;"),
         Some(peer.realm().clone()),
-        &mut owner,
+        owner.access(),
     )
     .unwrap();
     assert_eq!(module.realm(), *peer.realm());
-    let promise = module.load_link_evaluate(&mut owner);
+    let promise = module.load_link_evaluate(owner.access());
     owner.run_jobs().unwrap();
     assert_eq!(
         promise.state(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     assert_eq!(
-        module.get_value(js_string!("value"), &mut owner).unwrap(),
+        module
+            .get_value(js_string!("value"), owner.access())
+            .unwrap(),
         JsValue::from(42)
     );
 }
@@ -1022,10 +1035,10 @@ fn synthetic_module_construction_rejects_foreign_captures() {
     let object = JsObject::with_null_proto(foreign.runtime());
     let initializer =
         SyntheticModuleInitializer::from_fn_with_captures(|_, _, _| Ok(()), object.clone());
-    let error = Module::synthetic(&[], initializer, None, None, &mut owner).unwrap_err();
+    let error = Module::synthetic(&[], initializer, None, None, owner.access()).unwrap_err();
     assert!(error.as_native().unwrap().is_type());
 
-    let error = Module::from_value_as_default(object.into(), &mut owner).unwrap_err();
+    let error = Module::from_value_as_default(object.into(), owner.access()).unwrap_err();
     assert!(error.as_native().unwrap().is_type());
     owner.runtime().collect().unwrap();
 }
@@ -1038,32 +1051,34 @@ fn module_namespace_rejects_foreign_contexts_before_and_after_caching() {
         .build()
         .unwrap();
     let mut foreign = Context::default();
-    let module = Module::from_value_as_default(42.into(), &mut owner).unwrap();
-    let promise = module.load_link_evaluate(&mut owner);
+    let module = Module::from_value_as_default(42.into(), owner.access()).unwrap();
+    let promise = module.load_link_evaluate(owner.access());
     owner.run_jobs().unwrap();
     assert_eq!(
         promise.state(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
 
-    let error = module.namespace(&mut foreign).unwrap_err();
+    let error = module.namespace(foreign.access()).unwrap_err();
     assert!(error.as_native().unwrap().is_type());
     let error = module
-        .get_value(js_string!("default"), &mut foreign)
+        .get_value(js_string!("default"), foreign.access())
         .unwrap_err();
     assert!(error.as_native().unwrap().is_type());
 
-    let namespace = module.namespace(&mut peer).unwrap();
-    assert_eq!(namespace, module.namespace(&mut owner).unwrap());
+    let namespace = module.namespace(peer.access()).unwrap();
+    assert_eq!(namespace, module.namespace(owner.access()).unwrap());
     assert_eq!(
-        module.get_value(js_string!("default"), &mut peer).unwrap(),
+        module
+            .get_value(js_string!("default"), peer.access())
+            .unwrap(),
         JsValue::from(42)
     );
 
-    let error = module.namespace(&mut foreign).unwrap_err();
+    let error = module.namespace(foreign.access()).unwrap_err();
     assert!(error.as_native().unwrap().is_type());
     let error = module
-        .get_value(js_string!("default"), &mut foreign)
+        .get_value(js_string!("default"), foreign.access())
         .unwrap_err();
     assert!(error.as_native().unwrap().is_type());
 }
@@ -1073,8 +1088,8 @@ fn synthetic_module_rejects_foreign_exports_without_overwriting_the_binding() {
     let mut owner = Context::default();
     let foreign = Context::default();
     let object = JsObject::with_null_proto(foreign.runtime());
-    let module = Module::from_value_as_default(42.into(), &mut owner).unwrap();
-    let promise = module.load_link_evaluate(&mut owner);
+    let module = Module::from_value_as_default(42.into(), owner.access()).unwrap();
+    let promise = module.load_link_evaluate(owner.access());
     owner.run_jobs().unwrap();
     assert_eq!(
         promise.state(),
@@ -1090,7 +1105,7 @@ fn synthetic_module_rejects_foreign_exports_without_overwriting_the_binding() {
     owner.runtime().collect().unwrap();
     foreign.runtime().collect().unwrap();
     assert_eq!(
-        module.get_value(name, &mut owner).unwrap(),
+        module.get_value(name, owner.access()).unwrap(),
         JsValue::from(42)
     );
 }
@@ -1103,16 +1118,16 @@ fn static_module_loading_rejects_foreign_dependencies_and_allows_retry() {
         .build()
         .unwrap();
     let mut foreign = Context::default();
-    let dependency = Module::from_value_as_default(1.into(), &mut foreign).unwrap();
+    let dependency = Module::from_value_as_default(1.into(), foreign.access()).unwrap();
     loader.insert("dependency", dependency);
     let module = Module::parse(
         Source::from_bytes("export { default as value } from 'dependency';"),
         None,
-        &mut owner,
+        owner.access(),
     )
     .unwrap();
 
-    let promise = module.load(&mut owner);
+    let promise = module.load(owner.access());
     owner.run_jobs().unwrap();
     let PromiseState::Rejected(reason) = promise.state() else {
         panic!("module loading accepted a foreign dependency");
@@ -1125,16 +1140,18 @@ fn static_module_loading_rejects_foreign_dependencies_and_allows_retry() {
     );
     owner.runtime().collect().unwrap();
 
-    let dependency = Module::from_value_as_default(42.into(), &mut owner).unwrap();
+    let dependency = Module::from_value_as_default(42.into(), owner.access()).unwrap();
     loader.insert("dependency", dependency);
-    let promise = module.load_link_evaluate(&mut owner);
+    let promise = module.load_link_evaluate(owner.access());
     owner.run_jobs().unwrap();
     assert_eq!(
         promise.state(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     assert_eq!(
-        module.get_value(js_string!("value"), &mut owner).unwrap(),
+        module
+            .get_value(js_string!("value"), owner.access())
+            .unwrap(),
         JsValue::from(42)
     );
 }
@@ -1159,9 +1176,13 @@ fn module_loading_rejects_a_foreign_loader_error_in_static_and_dynamic_imports()
     let loader = Rc::new(ForeignErrorLoader(JsError::from_opaque(object.into())));
     let mut owner = Context::builder().module_loader(loader).build().unwrap();
 
-    let module =
-        Module::parse(Source::from_bytes("import 'dependency';"), None, &mut owner).unwrap();
-    let static_import = module.load(&mut owner);
+    let module = Module::parse(
+        Source::from_bytes("import 'dependency';"),
+        None,
+        owner.access(),
+    )
+    .unwrap();
+    let static_import = module.load(owner.access());
     let dynamic_import = owner
         .eval(Source::from_bytes("import('dependency')"))
         .unwrap();
@@ -1200,19 +1221,19 @@ fn module_promises_reject_foreign_host_job_callback_data() {
         .module_loader(loader.clone())
         .build()
         .unwrap();
-    let module = Module::from_value_as_default(42.into(), &mut owner).unwrap();
+    let module = Module::from_value_as_default(42.into(), owner.access()).unwrap();
     loader.insert("dependency", module.clone());
-    let load_link_evaluate = module.load_link_evaluate(&mut owner);
+    let load_link_evaluate = module.load_link_evaluate(owner.access());
     let dynamic_import = owner
         .eval(Source::from_bytes("import('dependency')"))
         .unwrap();
     let dynamic_import = JsPromise::from_object(dynamic_import.as_object().unwrap()).unwrap();
-    let async_module = Module::parse(Source::from_bytes("await 0;"), None, &mut owner).unwrap();
-    let load = async_module.load(&mut owner);
+    let async_module = Module::parse(Source::from_bytes("await 0;"), None, owner.access()).unwrap();
+    let load = async_module.load(owner.access());
     owner.run_jobs().unwrap();
     assert_eq!(load.state(), PromiseState::Fulfilled(JsValue::undefined()));
-    async_module.link(&mut owner).unwrap();
-    let async_evaluation = async_module.evaluate(&mut owner).unwrap();
+    async_module.link(owner.access()).unwrap();
+    let async_evaluation = async_module.evaluate(owner.access()).unwrap();
     owner.run_jobs().unwrap();
 
     for promise in [load_link_evaluate, dynamic_import, async_evaluation] {
@@ -1250,7 +1271,7 @@ fn synthetic_module_foreign_failures_reject_dynamic_import() {
             },
             nested,
         );
-        let module = Module::synthetic(&[], initializer, None, None, &mut context).unwrap();
+        let module = Module::synthetic(&[], initializer, None, None, context.access()).unwrap();
         loader.insert("foreign-failure", module);
 
         let import = context
@@ -1365,9 +1386,9 @@ fn into_js_module() {
             test.send(result);
         ",
     );
-    let root_module = Module::parse(source, None, &mut context).unwrap();
+    let root_module = Module::parse(source, None, context.access()).unwrap();
 
-    let promise_result = root_module.load_link_evaluate(&mut context);
+    let promise_result = root_module.load_link_evaluate(context.access());
     context.run_jobs().unwrap();
 
     // Checking if the final promise didn't return an error.
@@ -1418,9 +1439,9 @@ fn can_throw_exception() {
             }
         ",
     );
-    let root_module = Module::parse(source, None, &mut context).unwrap();
+    let root_module = Module::parse(source, None, context.access()).unwrap();
 
-    let promise_result = root_module.load_link_evaluate(&mut context);
+    let promise_result = root_module.load_link_evaluate(context.access());
     context.run_jobs().unwrap();
 
     // Checking if the final promise didn't return an error.

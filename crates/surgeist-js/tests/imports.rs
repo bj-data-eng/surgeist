@@ -20,8 +20,8 @@ fn subdirectories() {
         .unwrap();
 
     let source = Source::from_bytes(b"export { file1 } from 'file1.js';");
-    let module = surgeist_js::Module::parse(source, None, &mut context).unwrap();
-    let result = module.load_link_evaluate(&mut context);
+    let module = surgeist_js::Module::parse(source, None, context.access()).unwrap();
+    let result = module.load_link_evaluate(context.access());
 
     context.run_jobs().unwrap();
     match result.state() {
@@ -30,7 +30,7 @@ fn subdirectories() {
             assert!(v.is_undefined());
 
             let foo_value = module
-                .namespace(&mut context)
+                .namespace(context.access())
                 .unwrap()
                 .get(js_string!("file1"), context.access())
                 .unwrap()
@@ -65,8 +65,8 @@ fn json_import_attributes_are_part_of_the_cache_key() {
         export let p = import('data.json');
     ",
     );
-    let module = surgeist_js::Module::parse(source, None, &mut context).unwrap();
-    let result = module.load_link_evaluate(&mut context);
+    let module = surgeist_js::Module::parse(source, None, context.access()).unwrap();
+    let result = module.load_link_evaluate(context.access());
 
     context.run_jobs().unwrap();
     assert_eq!(
@@ -75,7 +75,7 @@ fn json_import_attributes_are_part_of_the_cache_key() {
     );
 
     let value = module
-        .namespace(&mut context)
+        .namespace(context.access())
         .unwrap()
         .get(js_string!("value"), context.access())
         .unwrap();
@@ -91,7 +91,7 @@ fn json_import_attributes_are_part_of_the_cache_key() {
     );
 
     let p = module
-        .namespace(&mut context)
+        .namespace(context.access())
         .unwrap()
         .get(js_string!("p"), context.access())
         .unwrap();

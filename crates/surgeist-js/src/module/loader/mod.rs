@@ -439,7 +439,7 @@ impl ModuleLoader for SimpleModuleLoader {
                                 .with_cause(JsError::from_rust(err))
                         })?;
                         let json_string = js_string!(json_content.as_str());
-                        Module::parse_json(json_string, &mut context.borrow_mut())
+                        Module::parse_json(json_string, context.borrow_mut().access())
                             .map_err(|error| parse_error("JSON module", error))?
                     }
                     other => {
@@ -458,7 +458,7 @@ impl ModuleLoader for SimpleModuleLoader {
                         .with_message(format!("could not open file `{short_path}`"))
                         .with_cause(JsError::from_rust(err))
                 })?;
-                Module::parse(source, None, &mut context.borrow_mut())
+                Module::parse(source, None, context.borrow_mut().access())
                     .map_err(|error| parse_error("module", error))?
             };
 

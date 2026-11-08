@@ -288,7 +288,7 @@ impl Test {
                         Err(err) => return (false, format!("Uncaught {err}")),
                     };
 
-                    let promise = module.load_link_evaluate(context);
+                    let promise = module.load_link_evaluate(context.access());
 
                     if let Err(err) = context.run_jobs() {
                         return (false, format!("Uncaught {err}"));
@@ -364,7 +364,7 @@ impl Test {
                 let context = &mut Context::default();
 
                 if self.is_module() {
-                    match Module::parse(source, None, context) {
+                    match Module::parse(source, None, context.access()) {
                         Ok(_) => (false, "ModuleItemList parsing should fail".to_owned()),
                         Err(e) => (true, format!("Uncaught {e}")),
                     }
@@ -391,7 +391,7 @@ impl Test {
                     Err(err) => return (false, format!("Uncaught {err}")),
                 };
 
-                let promise = module.load(context);
+                let promise = module.load(context.access());
 
                 if let Err(err) = context.run_jobs() {
                     return (false, format!("Uncaught {err}"));
@@ -413,7 +413,7 @@ impl Test {
                     }
                 }
 
-                if let Err(err) = module.link(context) {
+                if let Err(err) = module.link(context.access()) {
                     (
                         is_error_type(&err, error_type, context),
                         format!("Uncaught {err}"),
@@ -438,7 +438,7 @@ impl Test {
                         Err(err) => return (false, format!("Uncaught {err}")),
                     };
 
-                    let promise = module.load(context);
+                    let promise = module.load(context.access());
 
                     if let Err(err) = context.run_jobs() {
                         return (false, format!("Uncaught {err}"));
@@ -454,11 +454,11 @@ impl Test {
                         }
                     }
 
-                    if let Err(err) = module.link(context) {
+                    if let Err(err) = module.link(context.access()) {
                         return (false, format!("Uncaught {err}"));
                     }
 
-                    let promise = match module.evaluate(context) {
+                    let promise = match module.evaluate(context.access()) {
                         Ok(p) => p,
                         Err(err) => return (false, format!("Uncaught {err}")),
                     };
@@ -672,7 +672,7 @@ fn parse_module_and_register(
     path: &Path,
     context: &mut Context,
 ) -> JsResult<Module> {
-    let module = Module::parse(source, None, context)?;
+    let module = Module::parse(source, None, context.access())?;
 
     let path = path
         .canonicalize()

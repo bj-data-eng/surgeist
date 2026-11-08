@@ -17,8 +17,8 @@ fn get_backtrace_from_rejection(
     path: &str,
 ) -> Vec<ShadowEntry> {
     let source = Source::from_bytes(js_code).with_path(Path::new(path));
-    let module = Module::parse(source, None, context).unwrap();
-    let promise = module.load_link_evaluate(context);
+    let module = Module::parse(source, None, context.access()).unwrap();
+    let promise = module.load_link_evaluate(context.access());
     context.run_jobs().unwrap();
 
     match promise.state() {

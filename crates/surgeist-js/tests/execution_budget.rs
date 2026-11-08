@@ -352,9 +352,11 @@ fn parser_diagnostics_preserve_source_spellings_and_error_positions() {
         "expected one of ';' or 'line terminator', got 'A😀\\uD800é' in lexical declaration binding list at line 1, col 11"
     );
 
-    let Err(err) =
-        surgeist_js::module::Module::parse(Source::from_bytes("let π; let π;"), None, &mut context)
-    else {
+    let Err(err) = surgeist_js::module::Module::parse(
+        Source::from_bytes("let π; let π;"),
+        None,
+        context.access(),
+    ) else {
         panic!("duplicate lexical name must be rejected");
     };
     assert_eq!(
@@ -1636,7 +1638,11 @@ fn guest_parser_entry_points_share_the_outer_source_cap() {
                 0,
                 NativeFunction::from_fn_ptr(|_, _, context| {
                     let source = " ".repeat(128) + "export {}";
-                    surgeist_js::module::Module::parse(Source::from_bytes(&source), None, context)?;
+                    surgeist_js::module::Module::parse(
+                        Source::from_bytes(&source),
+                        None,
+                        context.access(),
+                    )?;
                     Ok(JsValue::undefined())
                 }),
             )
@@ -2676,14 +2682,14 @@ fn non_script_module_preparation_uses_the_operation_scope_budget() {
         let module = surgeist_js::Module::parse(
             Source::from_bytes("export const privateModule = 1;"),
             None,
-            context,
+            context.access(),
         )?;
-        let loaded = module.load(context);
+        let loaded = module.load(context.access());
         assert!(matches!(
             loaded.state(),
             surgeist_js::builtins::promise::PromiseState::Fulfilled(_)
         ));
-        module.link(context)?;
+        module.link(context.access())?;
         Ok(JsValue::new(42))
     }
     fn context(callback: NativeFunction) -> Context {
@@ -3192,8 +3198,9 @@ fn compiler_default_export_anonymous_query_charges_parenthesized_searches() {
             ")".repeat(wrappers)
         );
         let module =
-            surgeist_js::Module::parse(Source::from_bytes(&source), None, &mut context).unwrap();
-        let loaded = module.load(&mut context);
+            surgeist_js::Module::parse(Source::from_bytes(&source), None, context.access())
+                .unwrap();
+        let loaded = module.load(context.access());
         context.run_jobs().unwrap();
         assert!(matches!(
             loaded.state(),
@@ -3205,15 +3212,15 @@ fn compiler_default_export_anonymous_query_charges_parenthesized_searches() {
                 0,
                 NativeFunction::from_fn_with_captures(
                     |_, _, module: &surgeist_js::Module, context| {
-                        module.link(context)?;
-                        let evaluated = module.evaluate(context)?;
+                        module.link(context.access())?;
+                        let evaluated = module.evaluate(context.access())?;
                         context.run_jobs()?;
                         assert!(matches!(
                             evaluated.state(),
                             surgeist_js::builtins::promise::PromiseState::Fulfilled(_)
                         ));
                         let function = module
-                            .get_value(js_string!("default"), context)?
+                            .get_value(js_string!("default"), context.access())?
                             .as_object()
                             .unwrap();
                         assert_eq!(

@@ -351,7 +351,7 @@ fn module_namespace_exotic_try_get(
     } else {
         // 9. If binding.[[BindingName]] is namespace, then
         //     a. Return GetModuleNamespace(targetModule).
-        Ok(Some(target_module.namespace(context)?.into()))
+        Ok(Some(target_module.namespace(context.access())?.into()))
     }
 }
 
@@ -433,7 +433,7 @@ fn module_namespace_exotic_get(
     } else {
         // 9. If binding.[[BindingName]] is namespace, then
         //     a. Return GetModuleNamespace(targetModule).
-        Ok(target_module.namespace(context)?.into())
+        Ok(target_module.namespace(context.access())?.into())
     }
 }
 

@@ -51,14 +51,17 @@ fn fibonacci_test() {
     // Load the JavaScript code.
     let gcd_path = assets_dir.join("fibonacci.js");
     let source = Source::from_filepath(&gcd_path).unwrap();
-    let module = Module::parse(source, None, context).unwrap();
+    let module = Module::parse(source, None, context.access()).unwrap();
     module
-        .load_link_evaluate(context)
+        .load_link_evaluate(context.access())
         .await_blocking(context.access())
         .unwrap();
 
     let fibonacci_js = module
-        .get_typed_fn::<(usize, JsFunction, JsFunction), usize>(js_string!("fibonacci"), context)
+        .get_typed_fn::<(usize, JsFunction, JsFunction), usize>(
+            js_string!("fibonacci"),
+            context.access(),
+        )
         .unwrap();
 
     let fibonacci_rust = (fibonacci as RustStep)
