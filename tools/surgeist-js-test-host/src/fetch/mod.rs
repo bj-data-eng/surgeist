@@ -130,8 +130,7 @@ async fn fetch_inner<T: Fetcher>(
     let request: Request<Vec<u8>> = match resource {
         Either::Left(url) => {
             let url = url.to_std_string().map_err(JsError::from_rust)?;
-            let url = context
-                .with(|access| fetcher.resolve_uri(url, access).map_err(JsError::from_rust))?;
+            let url = context.with(|access| fetcher.resolve_uri(url, access))?;
 
             let r = HttpRequest::get(url).body(Vec::new());
             r.map_err(JsError::from_rust)?
