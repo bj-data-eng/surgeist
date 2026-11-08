@@ -870,6 +870,37 @@ mod tests {
     }
 
     #[test]
+    fn radial_native_inverse_requires_a_guaranteed_division_domain() {
+        // The native determinant is exactly 2^127: finite, but outside
+        // WGSL's division accuracy guarantee |denominator| <= 2^126.
+        // CPU evaluation's exact subnormal reciprocal is not a certificate
+        // for every permitted shader evaluation. No GPU failure is asserted.
+        let x = 2.0_f64.powi(63);
+        let y = 2.0_f64.powi(64);
+        let determinant = (x as f32) * (y as f32);
+        assert!(determinant.is_finite());
+        assert_eq!(f64::from(determinant), 2.0_f64.powi(127));
+        assert!((1.0_f32 / determinant).is_subnormal());
+        let gradient = RepeatingGradient::try_radial(
+            Point::new(0.0, 0.0),
+            x,
+            y,
+            vec![stop(0.0, Color::BLACK), stop(1.0, Color::TRANSPARENT)],
+        )
+        .unwrap();
+        let error = super::prepare(
+            &gradient,
+            kurbo::Affine::IDENTITY,
+            PhysicalSize::new(2, 1),
+            &Account::for_test(),
+        )
+        .err()
+        .expect("a native inverse outside the shader accuracy domain cannot certify phase");
+        assert_eq!(error.code(), ErrorCode::InvalidInput);
+        assert!(error.invalid_value_diagnostic().is_some());
+    }
+
+    #[test]
     fn radial_phase_capacity_covers_both_target_dimensions() {
         let gradient = RepeatingGradient::try_radial(
             Point::new(0.0, 0.0),
