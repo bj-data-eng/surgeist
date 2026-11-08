@@ -57,7 +57,16 @@ where
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LayoutErrorSiteOf<Node> {
     Node(Node),
-    ContainerSubject { container: Node, subject: Node },
+    ContainerSubject {
+        container: Node,
+        subject: Node,
+    },
+    FragmentContainingBlock {
+        container: Node,
+        subject: Node,
+        fragmentainer_index: usize,
+        axis: PhysicalAxis,
+    },
     Standalone,
 }
 

@@ -1,3 +1,4 @@
+use crate::engine::block_scope::{ComputeResult, ordinary};
 use std::collections::BTreeMap;
 
 use super::inline::{
@@ -36,6 +37,9 @@ use super::{LengthOf, NodeInputOf, WritingMode};
 
 mod absolute;
 pub(crate) mod baseline_frame;
+pub(crate) mod content;
+pub(crate) mod content_insets;
+pub(crate) mod entry;
 pub(crate) mod float_context;
 mod float_text;
 mod floats;
@@ -46,6 +50,7 @@ mod inline_run;
 mod input;
 pub(crate) mod intrinsic;
 mod relative;
+pub(crate) mod scope;
 mod scroll;
 mod sizing;
 
@@ -139,6 +144,17 @@ pub(crate) fn compute_block<'input, Tree, M>(
 where
     Tree: Compute<'input, M>,
 {
+    ordinary(compute_block_scoped(tree, node, input))
+}
+
+pub(crate) fn compute_block_scoped<'input, Tree, M>(
+    tree: &mut Tree,
+    node: <Tree as Traverse>::Node,
+    input: ComputeInputOf<Tree::Scalar>,
+) -> ComputeResult<Tree::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
     let incoming = tree
         .block_float_state()
         .and_then(|state| state.incoming(node, input));
@@ -146,7 +162,7 @@ where
         && float_context::Role::for_input(tree.node_input(node), input)
             != float_context::Role::Shared
     {
-        return Err(float_context::missing(node));
+        return Err(float_context::missing(node).into());
     }
 
     compute_block_with_optional_inherited_float_exclusions(tree, node, input, incoming)
@@ -182,7 +198,13 @@ where
     }
     let empty = compute_empty_box(node, style, |probe| {
         probe.install_fragment_minimum(minimum);
-        compute_block_inner(probe, node, empty_sizing_input(input), None, Size::NONE)
+        ordinary(compute_block_inner(
+            probe,
+            node,
+            empty_sizing_input(input),
+            None,
+            Size::NONE,
+        ))
     })?
     .output;
     let axes = crate::FlowAxes::new(style.writing_mode, style.direction);
@@ -198,7 +220,7 @@ fn compute_block_with_optional_inherited_float_exclusions<'input, Tree, M>(
     node: <Tree as Traverse>::Node,
     input: ComputeInputOf<Tree::Scalar>,
     incoming: Option<float_context::Incoming<<Tree as Traverse>::Node, Tree::Scalar>>,
-) -> LayoutResultOf<<Tree as Traverse>::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
+) -> ComputeResult<<Tree as Traverse>::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
@@ -284,7 +306,7 @@ where
                 .as_ref()
                 .is_some_and(|(ledger, _)| !ledger.is_empty())
         {
-            return Err(float_context::missing(node));
+            return Err(float_context::missing(node).into());
         }
         if let Some((ledger, inherited)) = result.floats
             && let Some(state) = tree.block_float_state()
@@ -309,7 +331,7 @@ fn compute_block_inner<'input, Tree, S, M>(
     input: ComputeInputOf<S>,
     inherited: Option<&InheritedFloatExclusions<S, <Tree as Traverse>::Node>>,
     contained_size: Size<Option<S>>,
-) -> LayoutResultOf<<Tree as Traverse>::Node, BlockResult<<Tree as Traverse>::Node, S>, S, M>
+) -> ComputeResult<<Tree as Traverse>::Node, BlockResult<<Tree as Traverse>::Node, S>, S, M>
 where
     Tree: Compute<'input, M, Scalar = S>,
     S: LayoutScalar,
@@ -386,7 +408,7 @@ where
             if let Some(content) = tree.fragment_inline_content(node, input, operation)? {
                 return Ok(content);
             }
-            let measured = layout_in_flow_children(
+            let measured = ordinary(layout_in_flow_children(
                 tree,
                 node,
                 &children,
@@ -397,8 +419,9 @@ where
                     inner_inline: None,
                     set_layout: false,
                     inherited,
+                    projection: None,
                 },
-            )?;
+            ))?;
             Ok(measured.intrinsic_inline_demand)
         })?;
     let accepted_inline_inner = constants.accepted_inline_inner(node, accepted_inline_outer)?;
@@ -430,7 +453,8 @@ where
             return Err(crate::error::sizing_resolution_error(
                 node,
                 crate::LengthResolutionStatus::InvalidNumeric { value: block }.into(),
-            ));
+            )
+            .into());
         }
         block.map(|block| {
             block
@@ -513,6 +537,7 @@ where
             set_layout: normal_pass_input.run_mode().is_perform_layout()
                 && (!needs_final_pass || measured_inset_demand),
             inherited,
+            projection: None,
         },
     )?;
     let auto_block = normal_pass.auto_block(&normal_constants, float_role);
@@ -575,6 +600,7 @@ where
                 inner_inline: logical_inner_size.inline,
                 set_layout: input.run_mode().is_perform_layout(),
                 inherited,
+                projection: None,
             },
         )?;
         (final_constants, final_pass)
@@ -606,8 +632,46 @@ where
             .max(final_constants.logical_padding_border_size().block),
     );
     let output_size = final_constants.flow_axes.physical_size(logical_output_size);
-    let top_margin = final_pass.top_margin(&final_constants);
-    let bottom_margin = final_pass.bottom_margin(&final_constants);
+    finish_flow(
+        tree,
+        node,
+        input,
+        &style,
+        &children,
+        &final_constants,
+        SizedFlow {
+            size: output_size,
+            flow: final_pass,
+        },
+    )
+}
+
+/// Final box extent paired with the actual descendant production it sizes.
+/// Ordinary layout and accepted principal materialization share this boundary.
+struct SizedFlow<Node, S: LayoutScalar> {
+    size: Size<S>,
+    flow: in_flow::InFlowResult<Node, S>,
+}
+
+fn finish_flow<'input, Tree, S, M>(
+    tree: &mut Tree,
+    node: Tree::Node,
+    input: ComputeInputOf<S>,
+    style: &BlockContainerProjection<'_, S>,
+    children: &[Tree::Node],
+    final_constants: &Constants<S>,
+    sized: SizedFlow<Tree::Node, S>,
+) -> ComputeResult<Tree::Node, BlockResult<Tree::Node, S>, S, M>
+where
+    Tree: Compute<'input, M, Scalar = S>,
+    S: LayoutScalar,
+{
+    let SizedFlow {
+        size: output_size,
+        flow: final_pass,
+    } = sized;
+    let top_margin = final_pass.top_margin(final_constants);
+    let bottom_margin = final_pass.bottom_margin(final_constants);
     let margins_can_collapse_through = final_constants.can_collapse_through
         && final_pass.all_in_flow_children_can_collapse_through;
     let block_margin_collapse = PhysicalBlockMarginCollapseOf::from_block_flow(
@@ -647,8 +711,8 @@ where
             ComputeOutputOf::<S>::from_sizes_and_baselines(output_size, Size::ZERO, baselines)
                 .with_named_baselines(named_block_baselines(
                     node,
-                    &style,
-                    &final_constants,
+                    style,
+                    final_constants,
                     output_size,
                     named_baselines,
                 )?);
@@ -668,7 +732,7 @@ where
         relative::settle_children(
             tree,
             node,
-            &children,
+            children,
             inset_basis,
             final_constants.flow_axes,
             &mut accepted_contributions,
@@ -679,7 +743,7 @@ where
                     node,
                     input.run_mode(),
                     scroll_box_projection,
-                    &final_constants,
+                    final_constants,
                     output_size,
                     accepted_contributions,
                 )
@@ -690,16 +754,16 @@ where
             &final_pass.pending_floats,
             output_size,
             inset_basis,
-            &final_constants,
+            final_constants,
             &mut contributions,
         )?;
         layout_absolute_children(
             tree,
             node,
-            &children,
+            children,
             &final_pass.static_positions,
             output_size,
-            &final_constants,
+            final_constants,
             &mut contributions.geometry,
         )?;
         let published_scroll = with_block_scroll_projections::<Tree, M, _>(
@@ -711,7 +775,7 @@ where
                     input.run_mode(),
                     scroll_box_projection,
                     scroll_target_projection,
-                    &final_constants,
+                    final_constants,
                     output_size,
                     contributions,
                 )
@@ -724,8 +788,8 @@ where
         )
         .with_named_baselines(named_block_baselines(
             node,
-            &style,
-            &final_constants,
+            style,
+            final_constants,
             output_size,
             named_baselines,
         )?);

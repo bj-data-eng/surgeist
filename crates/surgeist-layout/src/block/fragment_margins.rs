@@ -99,18 +99,24 @@ impl<Node: Copy + Eq> State<Node> {
         let Some(receipt) = self.receipts.iter().find(|entry| entry.node == node) else {
             return;
         };
+        self.collect(if start { receipt.boundary_start } else { receipt.boundary_end }, output);
+    }
+    /// Descendant contributors actually reported through this box edge. A
+    /// separating border, padding, or formatting boundary already removed its
+    /// group when the ordinary Block producer recorded the receipt.
+    pub(crate) fn reported(&self, node: Node, side: PhysicalSide, output: &mut Vec<MarginOwner<Node>>) {
+        let Some(receipt) = self.receipts.iter().find(|entry| entry.node == node) else { return; };
+        let group = if side == receipt.axes.block_start() { receipt.start }
+            else if side == receipt.axes.block_end() { receipt.end } else { None };
+        self.collect(group, output);
+    }
+    fn collect(&self, group: Option<usize>, output: &mut Vec<MarginOwner<Node>>) {
         let mut pending = Vec::new();
-        pending.extend(if start {
-            receipt.boundary_start
-        } else {
-            receipt.boundary_end
-        });
+        pending.extend(group);
         while let Some(id) = pending.pop() {
             match self.groups[id] {
                 Group::Edge(owner) => {
-                    if !output.contains(&owner) {
-                        output.push(owner);
-                    }
+                    if !output.contains(&owner) { output.push(owner); }
                 }
                 Group::Join(left, right) => {
                     pending.push(left);

@@ -61,6 +61,63 @@ struct RoundingFrames<S: LayoutScalar> {
     fragment_coordinates: bool,
 }
 
+/// Coordinate custody for another actual subtree or an overflow carrier.
+#[derive(Clone, Copy)]
+pub(crate) struct FragmentAnchor<S: LayoutScalar>(RoundingFrames<S>);
+impl<S: LayoutScalar> FragmentAnchor<S> {
+    pub(crate) fn external(origin: Point<S>) -> Self {
+        let rounded = Point::new(
+            round_layout_coordinate(origin.x),
+            round_layout_coordinate(origin.y),
+        );
+        Self(RoundingFrames {
+            visual: origin,
+            normal: origin,
+            named: NamedRoundingContext::ROOT.descend(origin, rounded),
+            fragment_coordinates: true,
+        })
+    }
+    pub(crate) fn overflow(
+        self,
+        geometry: crate::OverflowFragmentGeometryOf<S>,
+    ) -> Result<(crate::OverflowFragmentGeometryOf<S>, Self), crate::ScrollRectErrorOf<S>> {
+        let raw = geometry.origin;
+        let cumulative = Point::new(self.0.visual.x + raw.x, self.0.visual.y + raw.y);
+        let origin = Point::new(
+            round_layout_coordinate(cumulative.x) - round_layout_coordinate(self.0.visual.x),
+            round_layout_coordinate(cumulative.y) - round_layout_coordinate(self.0.visual.y),
+        );
+        let content_bounds = crate::scroll::rounding::round_canonical_source_rect(
+            geometry.content_bounds,
+            cumulative,
+        )?;
+        let anchor = Self(RoundingFrames {
+            visual: cumulative,
+            normal: Point::new(self.0.normal.x + raw.x, self.0.normal.y + raw.y),
+            named: self.0.named.descend(raw, origin),
+            fragment_coordinates: true,
+        });
+        Ok((
+            crate::OverflowFragmentGeometryOf {
+                origin,
+                content_bounds,
+            },
+            anchor,
+        ))
+    }
+}
+
+pub(crate) fn round_fragment_subtree<Tree, M>(
+    tree: &mut Tree,
+    root: Tree::Node,
+    anchor: FragmentAnchor<Tree::Scalar>,
+) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
+where
+    Tree: Round<M>,
+{
+    round_layout_inner(tree, root, anchor.0)
+}
+
 fn round_layout_inner<Tree, M>(
     tree: &mut Tree,
     node: <Tree as Traverse>::Node,
@@ -129,20 +186,18 @@ where
             )
         })?;
         tree.set_final(finalized);
+        let child_frame = RoundingFrames {
+            visual: scalar_phase,
+            normal: Point::new(
+                Tree::Scalar::from_f64(normal_origin.x - normal_origin.x.floor()),
+                Tree::Scalar::from_f64(normal_origin.y - normal_origin.y.floor()),
+            ),
+            named: named_context,
+            fragment_coordinates: ancestors.fragment_coordinates,
+        };
+        tree.record_fragment_anchor(node, FragmentAnchor(child_frame));
         for index in 0..tree.child_count(node) {
-            round_layout_inner(
-                tree,
-                tree.child(node, index),
-                RoundingFrames {
-                    visual: scalar_phase,
-                    normal: Point::new(
-                        Tree::Scalar::from_f64(normal_origin.x - normal_origin.x.floor()),
-                        Tree::Scalar::from_f64(normal_origin.y - normal_origin.y.floor()),
-                    ),
-                    named: named_context,
-                    fragment_coordinates: ancestors.fragment_coordinates,
-                },
-            )?;
+            round_layout_inner(tree, tree.child(node, index), child_frame)?;
         }
         return Ok(());
     }
@@ -268,18 +323,15 @@ where
         tree.set_final_inline_fragments(node, unrounded_fragments, final_fragments);
     }
 
+    let child_frame = RoundingFrames {
+        visual: Point::new(cumulative_x, cumulative_y),
+        normal: normal_cumulative,
+        named: named_context,
+        fragment_coordinates: ancestors.fragment_coordinates,
+    };
+    tree.record_fragment_anchor(node, FragmentAnchor(child_frame));
     for index in 0..tree.child_count(node) {
-        let child = tree.child(node, index);
-        round_layout_inner(
-            tree,
-            child,
-            RoundingFrames {
-                visual: Point::new(cumulative_x, cumulative_y),
-                normal: normal_cumulative,
-                named: named_context,
-                fragment_coordinates: ancestors.fragment_coordinates,
-            },
-        )?;
+        round_layout_inner(tree, tree.child(node, index), child_frame)?;
     }
     Ok(())
 }

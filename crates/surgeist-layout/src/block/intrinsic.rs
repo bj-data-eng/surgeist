@@ -82,7 +82,7 @@ where
 
 /// Full-source content contribution. Only an inline scalar is produced: no
 /// Normal pass, block cursor, baselines, margin-collapse state or publication.
-fn content<'input, Tree, M>(
+pub(super) fn content<'input, Tree, M>(
     tree: &mut Tree,
     node: Tree::Node,
     constants: &Constants<Tree::Scalar>,
@@ -169,7 +169,11 @@ where
     .map_or(Size::NONE, |sizing| sizing.outer);
     let constants = Constants::from_projection::<Tree, M>(tree, node, &style, input, contained)?;
     accepted_inline(tree, node, &style, &constants, input, |tree, operation| {
-        content(tree, node, &constants, input, operation)
+        if let Some(value) = tree.fragment_inline_content(node, input, operation)? {
+            Ok(value)
+        } else {
+            content(tree, node, &constants, input, operation)
+        }
     })
 }
 
