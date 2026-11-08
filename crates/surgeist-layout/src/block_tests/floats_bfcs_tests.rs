@@ -1883,7 +1883,7 @@ fn fri06_c04_float_ledger_full_span_asymmetric_opposing_and_source_order_both_sc
                 public_final_output(&batch, 4).location,
                 fri06_c04_expected_float_location(
                     flow_axes,
-                    crate::geometry::LogicalPointOf::new(scalar_value(40.0), S::ZERO,),
+                    crate::geometry::LogicalPointOf::new(scalar_value(50.0), scalar_value(20.0),),
                     crate::geometry::LogicalSizeOf::new(scalar_value(20.0), scalar_value(10.0),),
                 ),
                 "same-side source order diverged for {writing_mode:?} {direction:?}",
@@ -3919,4 +3919,279 @@ fn native_float_top_keeps_source_order_f32() {
 #[test]
 fn native_float_top_keeps_source_order_f64() {
     assert_native_float_top_keeps_source_order::<f64>();
+}
+
+#[test]
+fn native_float_source_floor_maps_sides_and_clear_in_all_flows() {
+    fn lane<S: LayoutScalar>() {
+        use crate::geometry::{LogicalPointOf, LogicalSizeOf};
+        let px = S::from_f64;
+        for (writing_mode, direction) in all_writing_mode_directions() {
+            let axes = FlowAxes::new(writing_mode, direction);
+            for exclusion in [FloatExclusion::MarginBox, FloatExclusion::Shape] {
+                for (first_side, second_side, third_side, clear, third_x, third_y) in [
+                    (
+                        Float::Left,
+                        Float::Left,
+                        Float::Left,
+                        Clear::None,
+                        30.0,
+                        20.0,
+                    ),
+                    (
+                        Float::Right,
+                        Float::Right,
+                        Float::Right,
+                        Clear::None,
+                        60.0,
+                        20.0,
+                    ),
+                    (
+                        Float::Left,
+                        Float::Right,
+                        Float::Left,
+                        Clear::None,
+                        0.0,
+                        20.0,
+                    ),
+                    (
+                        Float::Right,
+                        Float::Left,
+                        Float::Right,
+                        Clear::None,
+                        90.0,
+                        20.0,
+                    ),
+                    (
+                        Float::Left,
+                        Float::Left,
+                        Float::Left,
+                        Clear::Left,
+                        0.0,
+                        30.0,
+                    ),
+                    (
+                        Float::Right,
+                        Float::Left,
+                        Float::Right,
+                        Clear::Right,
+                        90.0,
+                        20.0,
+                    ),
+                ] {
+                    let floated = |side, width, height, clear| NodeInputOf {
+                        clear,
+                        float_exclusion: exclusion,
+                        ..fri06_c05_margin_float_style(axes, side, width, height)
+                    };
+                    let tree = fri06_c05_shape_tree(
+                        axes,
+                        ShapeProviderBehavior::Missing,
+                        [
+                            (1, floated(first_side, 80.0, 20.0, Clear::None)),
+                            (2, floated(second_side, 30.0, 10.0, Clear::None)),
+                            (3, floated(third_side, 10.0, 10.0, clear)),
+                        ],
+                    );
+                    let batch = compute_layout(&tree, 0, fri06_c05_shape_request(axes)).unwrap();
+                    let first_x = if first_side == Float::Left { 0.0 } else { 20.0 };
+                    let second_x = if second_side == Float::Left {
+                        0.0
+                    } else {
+                        70.0
+                    };
+                    for (node, x, y, w, h) in [
+                        (1, first_x, 0.0, 80.0, 20.0),
+                        (2, second_x, 20.0, 30.0, 10.0),
+                        (3, third_x, third_y, 10.0, 10.0),
+                    ] {
+                        let output = public_final_output(&batch, node);
+                        let size = LogicalSizeOf::new(px(w), px(h));
+                        assert_eq!(output.size, axes.physical_size(size));
+                        assert_eq!(
+                            output.location,
+                            fri06_c04_expected_float_location(
+                                axes,
+                                LogicalPointOf::new(px(x), px(y)),
+                                size
+                            ),
+                            "{axes:?} {exclusion:?}: {first_side:?}/{second_side:?}/{third_side:?}, clear {clear:?}, node {node}"
+                        );
+                    }
+                    assert!(tree.shape_queries().is_empty());
+                }
+            }
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn native_float_source_floor_retains_expired_zero_area_and_later_source_positions() {
+    fn lane<S: LayoutScalar>() {
+        use crate::geometry::{LogicalPointOf, LogicalSizeOf};
+        let px = S::from_f64;
+        for (writing_mode, direction) in all_writing_mode_directions() {
+            let axes = FlowAxes::new(writing_mode, direction);
+            for width in [0.0, 30.0] {
+                // The cleared float's margin top is20 and its bottom is also20.
+                // It excludes no area from the next20..30 band, but its source
+                // top still prevents a return to the first float's earlier row.
+                let tree = fri06_c05_shape_tree(
+                    axes,
+                    ShapeProviderBehavior::Missing,
+                    [
+                        (
+                            1,
+                            fri06_c05_margin_float_style(axes, Float::Left, 80.0, 20.0),
+                        ),
+                        (
+                            2,
+                            NodeInputOf {
+                                clear: Clear::Both,
+                                ..fri06_c05_margin_float_style(axes, Float::Left, width, 0.0)
+                            },
+                        ),
+                        (
+                            3,
+                            fri06_c05_margin_float_style(axes, Float::Left, 10.0, 10.0),
+                        ),
+                    ],
+                );
+                let batch = compute_layout(&tree, 0, fri06_c05_shape_request(axes)).unwrap();
+                for (node, w, h) in [(2, width, 0.0), (3, 10.0, 10.0)] {
+                    let size = LogicalSizeOf::new(px(w), px(h));
+                    let output = public_final_output(&batch, node);
+                    assert_eq!(output.size, axes.physical_size(size));
+                    assert_eq!(
+                        output.location,
+                        fri06_c04_expected_float_location(
+                            axes,
+                            LogicalPointOf::new(S::ZERO, px(20.0)),
+                            size
+                        ),
+                        "{axes:?}, width {width}, node {node}"
+                    );
+                }
+            }
+            let block = NodeInputOf {
+                display: Display::Block,
+                writing_mode,
+                direction,
+                size: axes
+                    .physical_size(LogicalSizeOf::new(px(100.0), px(40.0)))
+                    .map(PreferredSizeOf::px),
+                ..NodeInputOf::default()
+            };
+            let tree = fri06_c05_shape_tree(
+                axes,
+                ShapeProviderBehavior::Missing,
+                [
+                    (
+                        1,
+                        fri06_c05_margin_float_style(axes, Float::Left, 80.0, 20.0),
+                    ),
+                    (
+                        2,
+                        fri06_c05_margin_float_style(axes, Float::Left, 30.0, 10.0),
+                    ),
+                    (4, block),
+                    (
+                        3,
+                        fri06_c05_margin_float_style(axes, Float::Left, 10.0, 10.0),
+                    ),
+                ],
+            );
+            let batch = compute_layout(&tree, 0, fri06_c05_shape_request(axes)).unwrap();
+            // Both earlier floats have ended. Actual source position40 wins
+            // over their retained top20; floats did not advance the block cursor.
+            let size = LogicalSizeOf::new(px(10.0), px(10.0));
+            assert_eq!(
+                public_final_output(&batch, 3).location,
+                fri06_c04_expected_float_location(
+                    axes,
+                    LogicalPointOf::new(S::ZERO, px(40.0)),
+                    size
+                )
+            );
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn native_float_source_floor_uses_translated_shared_inherited_ledger() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+        let tree = fri06_c05_shape_tree(
+            axes,
+            ShapeProviderBehavior::Missing,
+            [
+                (
+                    1,
+                    fri06_c05_margin_float_style(axes, Float::Left, 80.0, 20.0),
+                ),
+                (
+                    2,
+                    fri06_c05_margin_float_style(axes, Float::Left, 30.0, 10.0),
+                ),
+                (
+                    4,
+                    NodeInputOf {
+                        display: Display::Block,
+                        block_flow_context: crate::BlockFlowContext::Normal,
+                        ..NodeInputOf::default()
+                    },
+                ),
+            ],
+        )
+        .with_children(4, [3])
+        .with_children(3, [])
+        .with_style(
+            3,
+            fri06_c05_margin_float_style(axes, Float::Left, 10.0, 10.0),
+        )
+        .with_style(
+            0,
+            NodeInputOf {
+                display: Display::Block,
+                size: Size::new(
+                    PreferredSizeOf::px(px(100.0)),
+                    PreferredSizeOf::px(px(160.0)),
+                ),
+                box_sizing: BoxSizing::BorderBox,
+                padding: Edges {
+                    top: LengthOf::px(px(10.0)),
+                    ..Edges::all(LengthOf::ZERO)
+                },
+                ..NodeInputOf::default()
+            },
+        );
+        let batch = compute_layout(&tree, 0, fri06_c05_shape_request(axes)).unwrap();
+        assert_eq!(
+            public_final_output(&batch, 1).location,
+            Point::new(S::ZERO, px(10.0))
+        );
+        assert_eq!(
+            public_final_output(&batch, 2).location,
+            Point::new(S::ZERO, px(30.0))
+        );
+        assert_eq!(
+            public_final_output(&batch, 4).location,
+            Point::new(S::ZERO, px(10.0))
+        );
+        assert_eq!(
+            public_final_output(&batch, 3).location,
+            Point::new(px(30.0), px(20.0))
+        );
+        assert_eq!(
+            public_final_output(&batch, 3).size,
+            Size::new(px(10.0), px(10.0))
+        );
+    }
+    lane::<f32>();
+    lane::<f64>();
 }
