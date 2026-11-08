@@ -142,7 +142,7 @@ impl<S: l::LayoutScalar> l::LayoutBatchSink<u32, S> for Host<S> {
             let entry = match view {
                 l::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
                 l::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
-                l::NodeLayoutRefOf::FragmentedBox(_) => {
+                l::NodeLayoutRefOf::Fragments(_) => {
                     panic!("continuous fixture unexpectedly fragmented")
                 }
             };

@@ -48,7 +48,7 @@ pub(crate) fn continuous_custody<Node: Copy + Eq, S: LayoutScalar>(
             (Phase::Final, NodeLayoutRefOf::SingleBox(value)) => value.final_entry(),
             (Phase::Unrounded, NodeLayoutRefOf::NonBox(value)) => value.unrounded_entry(),
             (Phase::Final, NodeLayoutRefOf::NonBox(value)) => value.final_entry(),
-            (_, NodeLayoutRefOf::FragmentedBox(_)) => {
+            (_, NodeLayoutRefOf::Fragments(_)) => {
                 panic!("continuous custody fixture unexpectedly fragmented")
             }
         })
@@ -125,7 +125,7 @@ pub(crate) fn observe<Node: Copy + Eq, S: LayoutScalar>(
                 margin: geometry.margin,
             }
         }
-        NodeLayoutRefOf::FragmentedBox(_) => {
+        NodeLayoutRefOf::Fragments(_) => {
             panic!("continuous observation fixture unexpectedly fragmented")
         }
     };

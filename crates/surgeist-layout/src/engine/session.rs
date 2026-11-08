@@ -54,6 +54,12 @@ where
 {
     tree: &'a Tree,
     bound: Option<crate::LayoutTargetBasis>,
+    block_scopes: Option<super::block_scope::Dispatch<Tree::Node, Tree::Scalar>>,
+    scope_receipts: Vec<(Tree::Node, super::block_scope::Adoption)>,
+    scope_ready: Vec<(Tree::Node, super::block_scope::Adoption)>,
+    block_frames: Vec<super::block_scope::Frame<Tree::Node, Tree::Scalar>>,
+    record_block_bodies: bool,
+    block_bodies: Vec<super::block_scope::Body<Tree::Node, Tree::Scalar>>,
     fragment_margins: Option<crate::block::fragment_margins::State<Tree::Node>>,
     fragment_allocations:
         Vec<crate::block_fragmentation::FragmentBoxAllocation<Tree::Node, Tree::Scalar>>,
@@ -174,6 +180,24 @@ impl<'a, Tree> ComputeSession<'a, Tree>
 where
     Tree: LayoutTree,
 {
+    pub(crate) fn install_block_scopes(
+        &mut self,
+        root: Tree::Node,
+        dispatch: super::block_scope::Dispatch<Tree::Node, Tree::Scalar>,
+    ) -> SessionResult<Tree, ()> {
+        if self.bound.as_ref() != Some(&dispatch.target) {
+            return Err(LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(root),
+                LayoutOperation::RootLayout,
+                LayoutErrorKindOf::InvalidInput(
+                    crate::LayoutInvalidInputOf::BlockFragmentationRequest,
+                ),
+            ));
+        }
+        self.block_scopes = Some(dispatch);
+        Ok(())
+    }
+
     pub(crate) fn new(tree: &'a Tree, invalidated_nodes: Vec<Tree::Node>) -> Self {
         let cache_clear_entries = invalidated_nodes
             .iter()
@@ -183,6 +207,12 @@ where
         Self {
             tree,
             bound: None,
+            block_scopes: None,
+            scope_receipts: Vec::new(),
+            scope_ready: Vec::new(),
+            block_frames: Vec::new(),
+            record_block_bodies: false,
+            block_bodies: Vec::new(),
             fragment_margins: None,
             fragment_allocations: Vec::new(),
             fragment_intrinsics: None,
@@ -222,14 +252,6 @@ where
     ) {
         assert_eq!(self.bound.as_ref(), Some(&context.target));
         self.fragment_intrinsics = Some(context);
-    }
-
-    pub(super) fn take_fragment_margins(
-        &mut self,
-    ) -> crate::block::fragment_margins::State<Tree::Node> {
-        self.fragment_margins
-            .take()
-            .expect("native frame installs margin custody")
     }
 
     pub(super) fn install_wrapping(
@@ -531,6 +553,8 @@ where
             text.scope_fragments.clear();
             text.absolute_baselines.clear();
         }
+        self.scope_receipts.clear();
+        self.scope_ready.clear();
         self.native_inline_runs.clear();
         self.native_inline_completions.clear();
         self.block_floats.reset();
@@ -539,6 +563,92 @@ where
         self.unrounded_inline_fragment_groups.clear();
         self.final_inline_fragment_groups.clear();
         self.cache_store_entries.clear();
+    }
+
+    pub(super) fn begin_content_scope(
+        &mut self,
+        node: Tree::Node,
+        input: ComputeInputOf<Tree::Scalar>,
+    ) -> SessionResult<Tree, ()> {
+        self.block_frames.try_reserve(1).map_err(|_| {
+            LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(node),
+                LayoutOperation::ChildLayout,
+                LayoutErrorKindOf::Allocation,
+            )
+        })?;
+        self.block_frames.push(super::block_scope::Frame {
+            node,
+            input,
+            entry: None,
+        });
+        Ok(())
+    }
+
+    pub(super) fn retain_block_bodies(&mut self) {
+        self.record_block_bodies = true;
+    }
+    pub(super) fn record_block_body(
+        &mut self,
+        node: Tree::Node,
+        input: ComputeInputOf<Tree::Scalar>,
+        output: ComputeOutputOf<Tree::Scalar>,
+    ) -> SessionResult<Tree, ()> {
+        if !self.record_block_bodies || !input.run_mode().is_perform_layout() {
+            return Ok(());
+        }
+        let body = super::block_scope::Body {
+            node,
+            input,
+            output,
+        };
+        if let Some(slot) = self.block_bodies.iter_mut().find(|slot| slot.node == node) {
+            *slot = body;
+        } else {
+            self.block_bodies.try_reserve(1).map_err(|_| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ChildLayout,
+                    LayoutErrorKindOf::Allocation,
+                )
+            })?;
+            self.block_bodies.push(body);
+        }
+        Ok(())
+    }
+
+    pub(super) fn block_packet(
+        self,
+    ) -> SessionResult<Tree, super::block_scope::Packet<Tree::Node, Tree::Scalar>> {
+        let mut receipts = Vec::new();
+        let mut projections = Vec::new();
+        receipts
+            .try_reserve(self.scope_receipts.len())
+            .and_then(|_| projections.try_reserve(self.scope_receipts.len()))
+            .map_err(|_| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Standalone,
+                    LayoutOperation::RootLayout,
+                    LayoutErrorKindOf::Allocation,
+                )
+            })?;
+        for (node, adoption) in self.scope_receipts {
+            receipts.push(adoption.receipt);
+            if let Some(projection) = adoption.projection {
+                projections.push((node, projection));
+            }
+        }
+        Ok(super::block_scope::Packet {
+            target: self.bound.expect("scope production is bound to a target"),
+            entries: self.unrounded_entries,
+            margins: self
+                .fragment_margins
+                .expect("bound scope has margin provenance"),
+            receipts,
+            projections,
+            clears: self.cache_clear_entries,
+            bodies: self.block_bodies,
+        })
     }
 
     pub(super) fn complete_with_text(
@@ -613,11 +723,8 @@ where
         );
         batch.target = self.bound;
         for entry in &mut batch.nodes {
-            if let crate::block_fragmentation::NodePublication::Single(value) = entry {
-                value.role = self
-                    .tree
-                    .node_input(value.final_entry.node())
-                    .block_generation;
+            if let crate::block_fragmentation::NodePublication::One(value) = entry {
+                value.role = self.tree.node_input(value.node()).block_generation;
             }
         }
         if let Some(graph) = self.flow_graph {
@@ -625,18 +732,18 @@ where
                 if graph.parents[index].len() == 1 {
                     let parent = graph.nodes[graph.parents[index][0]];
                     let id = batch.nodes.iter().find_map(|entry| match entry {
-                        crate::block_fragmentation::NodePublication::Single(value)
-                            if value.final_entry.node() == parent =>
+                        crate::block_fragmentation::NodePublication::One(value)
+                            if value.node() == parent =>
                         {
                             Some(value.id.clone())
                         }
                         _ => None,
                     });
                     if let Some(id) = id
-                        && let Some(crate::block_fragmentation::NodePublication::Single(value)) =
+                        && let Some(crate::block_fragmentation::NodePublication::One(value)) =
                             batch.nodes.iter_mut().find(|entry| entry.node() == node)
                     {
-                        value.parent = Some(crate::BoxCoordinateSpace::Box(id));
+                        value.parent = Some(crate::FragmentCoordinateSpace::Fragment(id));
                     }
                 }
             }
@@ -656,6 +763,7 @@ where
         let mut pending = vec![root];
         let mut ordered_unrounded = Vec::with_capacity(self.unrounded_entries.len());
         let mut ordered_final = Vec::with_capacity(self.final_entries.len());
+        let mut source_children = Vec::new();
         while let Some(node) = pending.pop() {
             if visited.contains(&node) {
                 continue;
@@ -668,7 +776,15 @@ where
                 ordered_final.push(entry);
             }
             let children = self.tree.children(node).collect::<Vec<_>>();
-            pending.extend(children.into_iter().rev());
+            pending.extend(children.iter().rev().copied());
+            source_children.push((
+                node,
+                children
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, child)| (crate::SourceIndex::new(index), child))
+                    .collect::<Vec<_>>(),
+            ));
         }
         assert!(
             self.unrounded_entries.is_empty() && self.final_entries.is_empty(),
@@ -676,7 +792,17 @@ where
         );
         self.unrounded_entries = ordered_unrounded;
         self.final_entries = ordered_final;
-        self.complete(root)
+        let mut batch = self.complete(root);
+        let published: Vec<_> = batch.nodes.iter().map(|entry| entry.node()).collect();
+        for (node, mut children) in source_children {
+            if let Some(crate::block_fragmentation::NodePublication::One(value)) =
+                batch.nodes.iter_mut().find(|entry| entry.node() == node)
+            {
+                children.retain(|(_, child)| published.contains(child));
+                value.children = children;
+            }
+        }
+        batch
     }
 
     fn retain_native_completion(
@@ -812,12 +938,84 @@ where
         }
     }
 
+    fn prepare_child_input(
+        &self,
+        node: Tree::Node,
+        input: ComputeInputOf<Tree::Scalar>,
+    ) -> LayoutResultOf<Tree::Node, ComputeInputOf<Tree::Scalar>, Tree::Scalar, Tree::MeasureError>
+    {
+        let input = if input.run_mode().is_perform_layout() {
+            self.fragment_allocations
+                .iter()
+                .find(|allocation| allocation.node == node)
+                .map_or(input, |allocation| {
+                    input.with_fragment_allocation(allocation.known, allocation.indefinite_axis)
+                })
+        } else {
+            input
+        };
+        let style = self.tree.node_input(node);
+        if style.block_generation == crate::BlockGeneration::Anonymous {
+            if style.display != crate::Display::Block
+                || style.position == crate::Position::Absolute
+                || !style.float.is_none()
+                || matches!(
+                    input.parent_formatting_context(),
+                    crate::ParentFormattingContext::Flex | crate::ParentFormattingContext::Grid
+                )
+            {
+                return Err(LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ChildLayout,
+                    LayoutErrorKindOf::InvalidInput(
+                        crate::LayoutInvalidInputOf::AnonymousBlockRole,
+                    ),
+                ));
+            }
+            // Hidden traversal publishes zero output independently of indentation.
+            if input.run_mode() != RunMode::PerformHiddenLayout {
+                let context = input.block_indent_context().ok_or_else(|| {
+                    LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(node),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::MissingContext(
+                            crate::LayoutMissingContext::AnonymousGeneratingBlock,
+                        ),
+                    )
+                })?;
+                if context.inherited != style.text_indent {
+                    return Err(LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(node),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::InvalidInput(
+                            crate::LayoutInvalidInputOf::AnonymousIndentMismatch,
+                        ),
+                    ));
+                }
+            }
+        }
+        Ok(input)
+    }
+
     fn compute_child_uncached(
         &mut self,
         node: Tree::Node,
         input: ComputeInputOf<Tree::Scalar>,
     ) -> LayoutResultOf<Tree::Node, ComputeOutputOf<Tree::Scalar>, Tree::Scalar, Tree::MeasureError>
     {
+        super::block_scope::ordinary(self.compute_child_uncached_scoped(node, input))
+    }
+
+    fn compute_child_uncached_scoped(
+        &mut self,
+        node: Tree::Node,
+        input: ComputeInputOf<Tree::Scalar>,
+    ) -> super::block_scope::ComputeResult<
+        Tree::Node,
+        ComputeOutputOf<Tree::Scalar>,
+        Tree::Scalar,
+        Tree::MeasureError,
+    > {
         if input.run_mode().is_perform_layout()
             && let Some(index) = self.wrapping.as_ref().and_then(|context| {
                 context
@@ -865,14 +1063,19 @@ where
                     text.formatted_end_block(node, input, anonymous, true);
                 }
             }
-            return result;
+            if let Ok(output) = &result {
+                self.record_block_body(node, input, *output)?;
+            }
+            return result.map_err(Into::into);
         }
 
         let output = match style.display.inner_display() {
-            crate::Display::Block => crate::block::compute_block(self, node, input),
-            crate::Display::Flex => crate::flex::compute_flex(self, node, input),
+            crate::Display::Block => crate::block::compute_block_scoped(self, node, input),
+            crate::Display::Flex => {
+                crate::flex::compute_flex(self, node, input).map_err(Into::into)
+            }
             crate::Display::Grid | crate::Display::GridLanes => {
-                crate::grid::compute_grid(self, node, input)
+                crate::grid::compute_grid(self, node, input).map_err(Into::into)
             }
             crate::Display::None => super::compute_hidden(
                 self,
@@ -880,7 +1083,8 @@ where
                 self.staged_source_index(node),
                 input.containing_layout_context(),
                 input.containing_auto_scrollbar_pass(),
-            ),
+            )
+            .map_err(Into::into),
             crate::Display::InlineBlock
             | crate::Display::InlineGrid
             | crate::Display::InlineGridLanes => {
@@ -904,6 +1108,7 @@ where
                 },
             )?;
         }
+        self.record_block_body(node, input, output)?;
         Ok(output)
     }
 }
@@ -1014,6 +1219,22 @@ where
     }
 
     fn set_unrounded(&mut self, mut entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>) {
+        if let Some(&(_, id)) = self
+            .scope_ready
+            .iter()
+            .find(|(node, _)| *node == entry.node())
+        {
+            if let Some((_, current)) = self
+                .scope_receipts
+                .iter_mut()
+                .find(|(node, _)| *node == entry.node())
+            {
+                *current = id;
+            } else {
+                self.scope_receipts.push((entry.node(), id));
+            }
+        }
+
         let node = entry.node();
         entry.non_box = self.publication_kind(&entry);
         if let crate::output::GeometryStateOf::OrdinaryUnrounded { measured_normal } =
@@ -1182,6 +1403,131 @@ where
         })
     }
 
+    fn block_scope_path(&self, node: Self::Node) -> bool {
+        self.block_scopes
+            .as_ref()
+            .is_some_and(|dispatch| dispatch.paths.contains(&node))
+    }
+
+    fn block_scope_child(&self, node: Self::Node) -> bool {
+        self.block_scopes
+            .as_ref()
+            .is_some_and(|dispatch| dispatch.owners.contains(&node))
+    }
+
+    fn compute_block_child(
+        &mut self,
+        request: crate::block::scope::ChildRequest<Self::Node, Self::Scalar>,
+    ) -> super::block_scope::ComputeResult<
+        Self::Node,
+        ComputeOutputOf<Self::Scalar>,
+        Self::Scalar,
+        Tree::MeasureError,
+    > {
+        match request {
+            crate::block::scope::ChildRequest::Scope(entry) => {
+                let node = entry.node;
+                let dispatch = self
+                    .block_scopes
+                    .as_ref()
+                    .expect("Block qualified a driver-owned scope");
+                let ready = dispatch
+                    .ready
+                    .borrow()
+                    .iter()
+                    .find(|ready| ready.entry == entry && ready.view == dispatch.view)
+                    .copied();
+                if let Some(ready) = ready {
+                    if let Some(projection) = ready.projection {
+                        self.fragment_margins
+                            .as_mut()
+                            .expect("bound Block retains margins")
+                            .bind(node, projection);
+                    }
+                    let adoption = super::block_scope::Adoption {
+                        receipt: ready.id,
+                        projection: ready.projection,
+                    };
+                    if let Some((_, id)) = self.scope_ready.iter_mut().find(|(key, _)| *key == node)
+                    {
+                        *id = adoption;
+                    } else {
+                        let needed = self.scope_ready.len() + 1 - self.scope_receipts.len();
+                        self.scope_ready
+                            .try_reserve(1)
+                            .and_then(|_| self.scope_receipts.try_reserve(needed))
+                            .map_err(|_| {
+                                LayoutErrorOf::new(
+                                    LayoutErrorSiteOf::Node(node),
+                                    LayoutOperation::ChildLayout,
+                                    LayoutErrorKindOf::Allocation,
+                                )
+                            })?;
+                        self.scope_ready.push((node, adoption));
+                    }
+                    self.record_block_body(node, entry.input, ready.output)?;
+                    return Ok(ready.output);
+                }
+                let request = super::block_scope::Request {
+                    scope: dispatch.scope,
+                    view: dispatch.view,
+                    entry,
+                    frames: std::mem::take(&mut self.block_frames),
+                };
+                let id = dispatch
+                    .requests
+                    .borrow_mut()
+                    .insert(request)
+                    .map_err(|_| {
+                        LayoutErrorOf::new(
+                            LayoutErrorSiteOf::Node(node),
+                            LayoutOperation::ChildLayout,
+                            LayoutErrorKindOf::Allocation,
+                        )
+                    })?;
+                Err(super::block_scope::ComputeStop::NeedScope(id))
+            }
+            crate::block::scope::ChildRequest::Ordinary(request) => {
+                if self.block_scopes.is_some()
+                    && !self.tree.has_leaf_measurement(request.node)
+                    && self.tree.node_input(request.node).display.inner_display()
+                        == crate::Display::Block
+                {
+                    let input = self.prepare_child_input(request.node, request.input)?;
+                    if input.run_mode() == RunMode::PerformHiddenLayout
+                        || self.tree.node_input(request.node).display == crate::Display::None
+                    {
+                        return self.compute_child(request.node, input).map_err(Into::into);
+                    }
+                    let depth = self.block_frames.len();
+                    self.block_frames.try_reserve(1).map_err(|_| {
+                        LayoutErrorOf::new(
+                            LayoutErrorSiteOf::Node(request.node),
+                            LayoutOperation::ChildLayout,
+                            LayoutErrorKindOf::Allocation,
+                        )
+                    })?;
+                    self.block_frames.push(super::block_scope::Frame {
+                        node: request.node,
+                        input,
+                        entry: request.entry,
+                    });
+                    let result = self.compute_child_uncached_scoped(
+                        request.node,
+                        input.with_settled_auto_scrollbars(SettledAutoScrollbarState::INITIAL),
+                    );
+                    if !matches!(result, Err(super::block_scope::ComputeStop::NeedScope(_))) {
+                        self.block_frames.truncate(depth);
+                    }
+                    result
+                } else {
+                    self.compute_child(request.node, request.input)
+                        .map_err(Into::into)
+                }
+            }
+        }
+    }
+
     fn compute_child(
         &mut self,
         node: Self::Node,
@@ -1206,56 +1552,8 @@ where
             return Ok(ComputeOutputOf::from_sizes(size, size));
         }
 
-        let input = if input.run_mode().is_perform_layout() {
-            self.fragment_allocations
-                .iter()
-                .find(|allocation| allocation.node == node)
-                .map_or(input, |allocation| {
-                    input.with_fragment_allocation(allocation.known, allocation.indefinite_axis)
-                })
-        } else {
-            input
-        };
+        let input = self.prepare_child_input(node, input)?;
         let style = self.tree.node_input(node);
-        if style.block_generation == crate::BlockGeneration::Anonymous {
-            if style.display != crate::Display::Block
-                || style.position == crate::Position::Absolute
-                || !style.float.is_none()
-                || matches!(
-                    input.parent_formatting_context(),
-                    crate::ParentFormattingContext::Flex | crate::ParentFormattingContext::Grid
-                )
-            {
-                return Err(LayoutErrorOf::new(
-                    LayoutErrorSiteOf::Node(node),
-                    LayoutOperation::ChildLayout,
-                    LayoutErrorKindOf::InvalidInput(
-                        crate::LayoutInvalidInputOf::AnonymousBlockRole,
-                    ),
-                ));
-            }
-            // Hidden traversal publishes zero output independently of indentation.
-            if input.run_mode() != RunMode::PerformHiddenLayout {
-                let context = input.block_indent_context().ok_or_else(|| {
-                    LayoutErrorOf::new(
-                        LayoutErrorSiteOf::Node(node),
-                        LayoutOperation::ChildLayout,
-                        LayoutErrorKindOf::MissingContext(
-                            crate::LayoutMissingContext::AnonymousGeneratingBlock,
-                        ),
-                    )
-                })?;
-                if context.inherited != style.text_indent {
-                    return Err(LayoutErrorOf::new(
-                        LayoutErrorSiteOf::Node(node),
-                        LayoutOperation::ChildLayout,
-                        LayoutErrorKindOf::InvalidInput(
-                            crate::LayoutInvalidInputOf::AnonymousIndentMismatch,
-                        ),
-                    ));
-                }
-            }
-        }
         if input.run_mode() == RunMode::PerformHiddenLayout || style.display == crate::Display::None
         {
             #[cfg(test)]

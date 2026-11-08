@@ -444,7 +444,7 @@ fn bases<S: LayoutScalar>() {
                 .map(|layout| match layout {
                     crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
                     crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
-                    crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                    crate::NodeLayoutRefOf::Fragments(_) => {
                         panic!("continuous fixture unexpectedly fragmented")
                     }
                 })

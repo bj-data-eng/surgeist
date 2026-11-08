@@ -44,6 +44,22 @@ pub(crate) struct CanonicalScrollGeometrySourceOf<S: LayoutScalar> {
     pub(crate) target_snap_stop: ScrollSnapStop,
 }
 
+/// Add already-qualified descendant coverage without creating a principal
+/// border box, terminal flow end, scrollbar owner or transform reference.
+pub(crate) fn include_scope_overflow<S: LayoutScalar>(
+    geometry: ScrollGeometryOf<S>,
+    bounds: ScrollRectOf<S>,
+) -> Result<(ScrollGeometryOf<S>, Size<S>), CanonicalScrollGeometryErrorOf<S>> {
+    let mut source = geometry.source;
+    source.contributions.include_descendant_bounds(bounds);
+    let geometry = canonical_scroll_geometry_from_source(source)?;
+    let content_size = source
+        .contributions
+        .content_size_from_anchor(geometry.content_box().origin())
+        .map_err(CanonicalScrollGeometryErrorOf::Contribution)?;
+    Ok((geometry, content_size))
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum CanonicalScrollRangeSeedPolicy {
     IncludeReservedGutter,

@@ -414,16 +414,24 @@ fn actual_fragmented_root_continuations_retain_exact_occurrence_geometry_and_par
     assert_eq!(continuations[1].previous(), Some(continuations[0].id()));
     assert_eq!(continuations[1].next(), None);
     assert_eq!(
-        continuations[0].final_geometry().size,
+        continuations[0]
+            .principal_box()
+            .unwrap()
+            .final_geometry()
+            .size,
         layout::Size::new(100.0, 50.0)
     );
     assert_eq!(
-        continuations[1].final_geometry().size,
+        continuations[1]
+            .principal_box()
+            .unwrap()
+            .final_geometry()
+            .size,
         layout::Size::new(60.0, 40.0)
     );
     assert_eq!(
         batch
-            .fragmentainer(continuations[1].fragmentainer())
+            .fragmentainer(continuations[1].fragmentainer().expect("external frame"))
             .unwrap()
             .origin(),
         layout::Point::new(-200.0, 0.0)
@@ -529,8 +537,9 @@ fn actual_fragmented_root_continuations_retain_exact_occurrence_geometry_and_par
             ));
             if let Some(fragment) = primitive.fragment() {
                 let id = occurrence_ids[fragment.id().get()];
-                match batch.box_instance(id).unwrap() {
-                    layout::BoxInstanceRefOf::Fragment(actual) => {
+                let actual = batch.fragment(id).unwrap();
+                match batch.node_layout(actual.node()).unwrap() {
+                    layout::NodeLayoutRefOf::Fragments(_) => {
                         let expected = if fragment.id().get() == 0 {
                             &continuations[1]
                         } else {
@@ -541,16 +550,19 @@ fn actual_fragmented_root_continuations_retain_exact_occurrence_geometry_and_par
                             actual.continuation_order(),
                             fragment.record().logical_order()
                         );
-                        assert!(ptr::eq(actual.final_geometry(), expected.final_geometry()));
+                        assert!(ptr::eq(
+                            actual.principal_box().unwrap(),
+                            expected.principal_box().unwrap()
+                        ));
                         assert_eq!(batch.fragment(actual.id()).unwrap().id(), id);
                     }
-                    layout::BoxInstanceRefOf::SingleBox(actual) => {
+                    layout::NodeLayoutRefOf::SingleBox(actual) => {
                         let node = identities[fragment.owner().id().get()];
                         assert_eq!(actual.node(), node);
                         let parent = fragment.parent().unwrap();
                         assert_eq!(
                             actual.coordinate_parent(),
-                            Some(&layout::BoxCoordinateSpace::Box(
+                            Some(&layout::FragmentCoordinateSpace::Fragment(
                                 occurrence_ids[parent.id().get()].clone()
                             ))
                         );
@@ -561,6 +573,9 @@ fn actual_fragmented_root_continuations_retain_exact_occurrence_geometry_and_par
                                 if node == 1 { 30.0 } else { 40.0 }
                             )
                         );
+                    }
+                    layout::NodeLayoutRefOf::NonBox(_) => {
+                        panic!("paint occurrence must resolve to an actual box")
                     }
                 }
             }

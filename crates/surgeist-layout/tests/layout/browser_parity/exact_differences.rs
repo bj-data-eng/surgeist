@@ -1649,7 +1649,7 @@ fn snapshot_batch(
     ) -> Result<BTreeMap<usize, Packet>> {
         let mut out = BTreeMap::new();
         for (node, view) in batch.node_layouts() {
-            if matches!(view, layout::NodeLayoutRefOf::FragmentedBox(_)) {
+            if matches!(view, layout::NodeLayoutRefOf::Fragments(_)) {
                 return Err(unsupported(
                     "/",
                     "fragmented output in continuous qualification",

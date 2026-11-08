@@ -140,7 +140,7 @@ fn definite_inline_atomic_uses_the_content_box_basis_and_production_child_constr
                 .map(|layout| match layout {
                     crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
                     crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-                    crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                    crate::NodeLayoutRefOf::Fragments(_) => {
                         panic!("continuous fixture unexpectedly fragmented")
                     }
                 })
@@ -358,7 +358,7 @@ fn assert_fractional_border_extent_agrees_with_composition<S: LayoutScalar>(half
         .map(|layout| match layout {
             crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
             crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-            crate::NodeLayoutRefOf::FragmentedBox(_) => {
+            crate::NodeLayoutRefOf::Fragments(_) => {
                 panic!("continuous fixture unexpectedly fragmented")
             }
         })

@@ -70,7 +70,7 @@ impl<S: LayoutScalar> LayoutTree for CustodyHost<S> {
                 value.unrounded_entry()
             }
             (ReturnedCustody::Final, crate::NodeLayoutRefOf::NonBox(value)) => value.final_entry(),
-            (_, crate::NodeLayoutRefOf::FragmentedBox(_)) => {
+            (_, crate::NodeLayoutRefOf::Fragments(_)) => {
                 panic!("continuous custody fixture unexpectedly fragmented")
             }
         };

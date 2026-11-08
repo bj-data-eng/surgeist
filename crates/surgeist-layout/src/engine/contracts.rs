@@ -132,6 +132,32 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
         })
     }
 
+    /// Block flow may suspend at an actual independently scheduled child scope.
+    /// Ordinary dispatch has no scope inventory and completes synchronously.
+    fn block_scope_path(&self, _node: Self::Node) -> bool {
+        false
+    }
+
+    fn block_scope_child(&self, _node: Self::Node) -> bool {
+        false
+    }
+    fn compute_block_child(
+        &mut self,
+        request: crate::block::scope::ChildRequest<Self::Node, Self::Scalar>,
+    ) -> super::block_scope::ComputeResult<Self::Node, ComputeOutputOf<Self::Scalar>, Self::Scalar, M>
+    where
+        Self: Sized,
+    {
+        match request {
+            crate::block::scope::ChildRequest::Ordinary(request) => self
+                .compute_child(request.node, request.input)
+                .map_err(Into::into),
+            crate::block::scope::ChildRequest::Scope(_) => {
+                unreachable!("scope entries require their installing driver")
+            }
+        }
+    }
+
     fn fragment_inline_content(
         &self,
         _node: Self::Node,
@@ -201,6 +227,12 @@ pub(crate) trait Round<M = core::convert::Infallible>: Traverse {
 
     fn unrounded(&self, node: Self::Node) -> UnroundedEntryResult<Self::Node, Self::Scalar, M>;
     fn set_final(&mut self, entry: LayoutOutputEntryOf<Self::Node, Self::Scalar>);
+    fn record_fragment_anchor(
+        &mut self,
+        _node: Self::Node,
+        _anchor: super::rounding::FragmentAnchor<Self::Scalar>,
+    ) {
+    }
 
     fn unrounded_inline_fragment_state(
         &self,

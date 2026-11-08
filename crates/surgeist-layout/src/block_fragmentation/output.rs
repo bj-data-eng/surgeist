@@ -8,18 +8,18 @@ use crate::{
 #[derive(Debug)]
 pub(crate) struct ResultIdentity;
 
-/// Identity of an actual box instance in exactly one completed result.
+/// Identity of a fragment in exactly one completed result.
 #[derive(Clone, Debug)]
-pub struct LayoutBoxId {
+pub struct LayoutFragmentId {
     pub(crate) result: Arc<ResultIdentity>,
     pub(crate) index: usize,
 }
-impl PartialEq for LayoutBoxId {
+impl PartialEq for LayoutFragmentId {
     fn eq(&self, other: &Self) -> bool {
         self.index == other.index && Arc::ptr_eq(&self.result, &other.result)
     }
 }
-impl Eq for LayoutBoxId {}
+impl Eq for LayoutFragmentId {}
 
 #[derive(Clone, Debug)]
 pub struct LayoutFragmentainerId {
@@ -34,9 +34,9 @@ impl PartialEq for LayoutFragmentainerId {
 impl Eq for LayoutFragmentainerId {}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum BoxCoordinateSpace {
+pub enum FragmentCoordinateSpace {
     Root,
-    Box(LayoutBoxId),
+    Fragment(LayoutFragmentId),
     Fragmentainer(LayoutFragmentainerId),
 }
 
@@ -102,25 +102,71 @@ impl<S: LayoutScalar> NonBoxGeometryOf<S> {
     }
 }
 
-/// Actual fragment geometry and accepted source children, not a singular NodeOutput.
+/// Paired principal-box geometry retaining canonical rounding custody.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct BoxGeometryPairOf<Node, S: LayoutScalar = DefaultScalar> {
+    pub(crate) unrounded: LayoutOutputEntryOf<Node, S>,
+    pub(crate) final_entry: LayoutOutputEntryOf<Node, S>,
+}
+impl<Node: Copy, S: LayoutScalar> BoxGeometryPairOf<Node, S> {
+    #[must_use]
+    pub fn unrounded(&self) -> BoxFragmentGeometryOf<S> {
+        BoxFragmentGeometryOf::from_packet(self.unrounded.output())
+    }
+    #[must_use]
+    pub fn final_geometry(&self) -> BoxFragmentGeometryOf<S> {
+        BoxFragmentGeometryOf::from_packet(self.final_entry.output())
+    }
+}
+
+/// Overflow custody in the coordinate parent's space, without a principal box.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OverflowFragmentGeometryOf<S: LayoutScalar = DefaultScalar> {
+    pub origin: Point<S>,
+    pub content_bounds: crate::ScrollRectOf<S>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct OverflowGeometryPairOf<S: LayoutScalar = DefaultScalar> {
+    pub(crate) unrounded: OverflowFragmentGeometryOf<S>,
+    pub(crate) final_geometry: OverflowFragmentGeometryOf<S>,
+}
+impl<S: LayoutScalar> OverflowGeometryPairOf<S> {
+    #[must_use]
+    pub fn unrounded(&self) -> &OverflowFragmentGeometryOf<S> {
+        &self.unrounded
+    }
+    #[must_use]
+    pub fn final_geometry(&self) -> &OverflowFragmentGeometryOf<S> {
+        &self.final_geometry
+    }
+}
+
+/// The geometry kind is shared by both rounding phases.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum FragmentPayloadOf<Node, S: LayoutScalar = DefaultScalar> {
+    ActualBox(BoxGeometryPairOf<Node, S>),
+    OverflowOnly(OverflowGeometryPairOf<S>),
+}
+
+/// A source-associated fragment and its canonical coordinate ancestry.
 #[derive(Clone, Debug)]
-pub struct BoxFragmentOutputOf<Node, S: LayoutScalar = DefaultScalar> {
-    pub(crate) id: LayoutBoxId,
+pub struct FragmentOutputOf<Node, S: LayoutScalar = DefaultScalar> {
+    pub(crate) id: LayoutFragmentId,
     pub(crate) node: Node,
     pub(crate) role: BlockGeneration,
-    pub(crate) frame: LayoutFragmentainerId,
-    pub(crate) parent: BoxCoordinateSpace,
+    pub(crate) frame: Option<LayoutFragmentainerId>,
+    pub(crate) parent: Option<FragmentCoordinateSpace>,
     pub(crate) order: usize,
-    pub(crate) previous: Option<LayoutBoxId>,
-    pub(crate) next: Option<LayoutBoxId>,
+    pub(crate) previous: Option<LayoutFragmentId>,
+    pub(crate) next: Option<LayoutFragmentId>,
     pub(crate) children: Vec<(SourceIndex, Node)>,
     pub(crate) graphical: Option<FragmentationGraphicalCoverageOf<S>>,
-    pub(crate) unrounded: BoxFragmentGeometryOf<S>,
-    pub(crate) final_geometry: BoxFragmentGeometryOf<S>,
+    pub(crate) payload: FragmentPayloadOf<Node, S>,
 }
-impl<Node: Copy, S: LayoutScalar> BoxFragmentOutputOf<Node, S> {
+impl<Node: Copy, S: LayoutScalar> FragmentOutputOf<Node, S> {
     #[must_use]
-    pub fn id(&self) -> &LayoutBoxId {
+    pub fn id(&self) -> &LayoutFragmentId {
         &self.id
     }
     #[must_use]
@@ -132,23 +178,24 @@ impl<Node: Copy, S: LayoutScalar> BoxFragmentOutputOf<Node, S> {
         self.role
     }
     #[must_use]
-    pub fn fragmentainer(&self) -> &LayoutFragmentainerId {
-        &self.frame
+    pub fn fragmentainer(&self) -> Option<&LayoutFragmentainerId> {
+        self.frame.as_ref()
     }
+    /// None when a continuous shared source node has no unique coordinate parent.
     #[must_use]
-    pub fn coordinate_parent(&self) -> &BoxCoordinateSpace {
-        &self.parent
+    pub fn coordinate_parent(&self) -> Option<&FragmentCoordinateSpace> {
+        self.parent.as_ref()
     }
     #[must_use]
     pub fn continuation_order(&self) -> usize {
         self.order
     }
     #[must_use]
-    pub fn previous(&self) -> Option<&LayoutBoxId> {
+    pub fn previous(&self) -> Option<&LayoutFragmentId> {
         self.previous.as_ref()
     }
     #[must_use]
-    pub fn next(&self) -> Option<&LayoutBoxId> {
+    pub fn next(&self) -> Option<&LayoutFragmentId> {
         self.next.as_ref()
     }
     #[must_use]
@@ -160,29 +207,32 @@ impl<Node: Copy, S: LayoutScalar> BoxFragmentOutputOf<Node, S> {
         self.graphical
     }
     #[must_use]
-    pub fn unrounded(&self) -> &BoxFragmentGeometryOf<S> {
-        &self.unrounded
+    pub fn payload(&self) -> &FragmentPayloadOf<Node, S> {
+        &self.payload
     }
     #[must_use]
-    pub fn final_geometry(&self) -> &BoxFragmentGeometryOf<S> {
-        &self.final_geometry
+    pub fn principal_box(&self) -> Option<&BoxGeometryPairOf<Node, S>> {
+        match &self.payload {
+            FragmentPayloadOf::ActualBox(value) => Some(value),
+            FragmentPayloadOf::OverflowOnly(_) => None,
+        }
+    }
+    #[must_use]
+    pub fn overflow_only(&self) -> Option<&OverflowGeometryPairOf<S>> {
+        match &self.payload {
+            FragmentPayloadOf::OverflowOnly(value) => Some(value),
+            FragmentPayloadOf::ActualBox(_) => None,
+        }
     }
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct SingleBox<Node, S: LayoutScalar> {
-    pub(crate) role: BlockGeneration,
-    pub(crate) id: LayoutBoxId,
-    pub(crate) parent: Option<BoxCoordinateSpace>,
-    pub(crate) unrounded: LayoutOutputEntryOf<Node, S>,
-    pub(crate) final_entry: LayoutOutputEntryOf<Node, S>,
-}
-#[derive(Clone, Debug)]
 pub(crate) enum NodePublication<Node, S: LayoutScalar> {
-    Single(SingleBox<Node, S>),
+    /// Exactly one occurrence; only an actual-box payload has singular box access.
+    One(FragmentOutputOf<Node, S>),
     Fragments {
         node: Node,
-        fragments: Vec<BoxFragmentOutputOf<Node, S>>,
+        fragments: Vec<FragmentOutputOf<Node, S>>,
     },
     NonBox {
         kind: NonBoxKind,
@@ -193,15 +243,25 @@ pub(crate) enum NodePublication<Node, S: LayoutScalar> {
 impl<Node: Copy, S: LayoutScalar> NodePublication<Node, S> {
     pub(crate) fn node(&self) -> Node {
         match self {
-            Self::Single(value) => value.final_entry.node(),
+            Self::One(value) => value.node(),
             Self::Fragments { node, .. } => *node,
             Self::NonBox { final_entry, .. } => final_entry.node(),
         }
     }
     pub(crate) fn view(&self) -> NodeLayoutRefOf<'_, Node, S> {
         match self {
-            Self::Single(value) => NodeLayoutRefOf::SingleBox(SingleBoxOutputRefOf(value)),
-            Self::Fragments { fragments, .. } => NodeLayoutRefOf::FragmentedBox(fragments),
+            Self::One(value) => match &value.payload {
+                FragmentPayloadOf::ActualBox(geometry) => {
+                    NodeLayoutRefOf::SingleBox(SingleBoxOutputRefOf {
+                        fragment: value,
+                        geometry,
+                    })
+                }
+                FragmentPayloadOf::OverflowOnly(_) => {
+                    NodeLayoutRefOf::Fragments(core::slice::from_ref(value))
+                }
+            },
+            Self::Fragments { fragments, .. } => NodeLayoutRefOf::Fragments(fragments),
             Self::NonBox {
                 kind,
                 unrounded,
@@ -216,40 +276,43 @@ impl<Node: Copy, S: LayoutScalar> NodePublication<Node, S> {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct SingleBoxOutputRefOf<'a, Node, S: LayoutScalar = DefaultScalar>(&'a SingleBox<Node, S>);
+pub struct SingleBoxOutputRefOf<'a, Node, S: LayoutScalar = DefaultScalar> {
+    fragment: &'a FragmentOutputOf<Node, S>,
+    geometry: &'a BoxGeometryPairOf<Node, S>,
+}
 impl<Node: Copy, S: LayoutScalar> SingleBoxOutputRefOf<'_, Node, S> {
     #[must_use]
     pub fn generated_role(&self) -> BlockGeneration {
-        self.0.role
+        self.fragment.role
     }
     #[must_use]
     pub fn node(&self) -> Node {
-        self.0.final_entry.node()
+        self.fragment.node
     }
 
     #[must_use]
-    pub fn id(&self) -> &LayoutBoxId {
-        &self.0.id
+    pub fn id(&self) -> &LayoutFragmentId {
+        &self.fragment.id
     }
     #[must_use]
-    pub fn coordinate_parent(&self) -> Option<&BoxCoordinateSpace> {
-        self.0.parent.as_ref()
+    pub fn coordinate_parent(&self) -> Option<&FragmentCoordinateSpace> {
+        self.fragment.parent.as_ref()
     }
     #[must_use]
     pub fn unrounded_entry(&self) -> LayoutOutputEntryOf<Node, S> {
-        self.0.unrounded
+        self.geometry.unrounded
     }
     #[must_use]
     pub fn final_entry(&self) -> LayoutOutputEntryOf<Node, S> {
-        self.0.final_entry
+        self.geometry.final_entry
     }
     #[must_use]
     pub fn unrounded_output(&self) -> NodeOutputOf<S> {
-        self.0.unrounded.output()
+        self.geometry.unrounded.output()
     }
     #[must_use]
     pub fn final_output(&self) -> NodeOutputOf<S> {
-        self.0.final_entry.output()
+        self.geometry.final_entry.output()
     }
 }
 
@@ -289,7 +352,7 @@ impl<Node: Copy, S: LayoutScalar> NonBoxOutputRefOf<'_, Node, S> {
 #[derive(Clone, Copy, Debug)]
 pub enum NodeLayoutRefOf<'a, Node, S: LayoutScalar = DefaultScalar> {
     SingleBox(SingleBoxOutputRefOf<'a, Node, S>),
-    FragmentedBox(&'a [BoxFragmentOutputOf<Node, S>]),
+    Fragments(&'a [FragmentOutputOf<Node, S>]),
     NonBox(NonBoxOutputRefOf<'a, Node, S>),
 }
 impl<'a, Node, S: LayoutScalar> NodeLayoutRefOf<'a, Node, S> {
@@ -302,8 +365,8 @@ impl<'a, Node, S: LayoutScalar> NodeLayoutRefOf<'a, Node, S> {
         }
     }
     #[must_use]
-    pub fn fragments(self) -> Option<&'a [BoxFragmentOutputOf<Node, S>]> {
-        if let Self::FragmentedBox(value) = self {
+    pub fn fragments(self) -> Option<&'a [FragmentOutputOf<Node, S>]> {
+        if let Self::Fragments(value) = self {
             Some(value)
         } else {
             None
@@ -322,8 +385,8 @@ impl<'a, Node, S: LayoutScalar> NodeLayoutRefOf<'a, Node, S> {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LayoutHandleError {
     WrongResult,
-    MissingBox,
-    NotFragmented,
+    MissingFragment,
+    MissingFragmentainer,
 }
 
 /// One captured external fragmentainer in this result's root coordinate space.
@@ -370,11 +433,4 @@ impl<S: LayoutScalar> LayoutFragmentainerOutputOf<S> {
     pub fn page_side(&self) -> Option<crate::FragmentationPageSide> {
         self.frame.page_side
     }
-}
-
-/// Checked view of an actual box instance, resolving either coordinate-parent kind.
-#[derive(Clone, Copy, Debug)]
-pub enum BoxInstanceRefOf<'a, Node, S: LayoutScalar = DefaultScalar> {
-    SingleBox(SingleBoxOutputRefOf<'a, Node, S>),
-    Fragment(&'a BoxFragmentOutputOf<Node, S>),
 }

@@ -210,6 +210,10 @@ impl<S: LayoutScalar> ScrollContributionAccumulatorOf<S> {
         }
     }
 
+    pub(crate) fn include_descendant_bounds(&mut self, bounds: ScrollRectOf<S>) {
+        self.include_descendant_rect(bounds);
+    }
+
     pub(crate) fn include_direct_line(&mut self, line: ScrollRectOf<S>) {
         self.include_descendant_rect(line);
     }
@@ -415,6 +419,22 @@ impl<S: LayoutScalar> ScrollContributionAccumulatorOf<S> {
             axis,
             PhysicalContributionIntervalOf::from_rect(subject, axis),
         );
+    }
+
+    /// Bounds contributed by descendants, excluding the principal container
+    /// seed. Overflow-only content has no padding-box seed of its own.
+    pub(crate) fn descendant_bounds(self) -> Result<Option<ScrollRectOf<S>>, ScrollRectErrorOf<S>> {
+        let Some(x) = self.propagatable_descendants.x else {
+            return Ok(None);
+        };
+        let Some(y) = self.propagatable_descendants.y else {
+            return Ok(None);
+        };
+        ScrollRectOf::try_new(
+            Point::new(x.minimum(), y.minimum()),
+            Size::new(x.maximum() - x.minimum(), y.maximum() - y.minimum()),
+        )
+        .map(Some)
     }
 
     pub(crate) fn complete_overflow_rect(self) -> Result<ScrollRectOf<S>, ScrollRectErrorOf<S>> {

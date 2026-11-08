@@ -1,3 +1,4 @@
+use super::scheduler::resolve_with_feedback;
 use super::*;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;

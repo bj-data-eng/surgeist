@@ -269,7 +269,7 @@ fn refusal<S: l::LayoutScalar>() {
                     match view {
                         surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
                         surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
-                        surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                        surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                             panic!("continuous fixture unexpectedly fragmented"),
                     }
                 ))
@@ -281,7 +281,7 @@ fn refusal<S: l::LayoutScalar>() {
                     match view {
                         surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.unrounded_entry(),
                         surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.unrounded_entry(),
-                        surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                        surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                             panic!("continuous fixture unexpectedly fragmented"),
                     }
                 ))
@@ -295,7 +295,7 @@ fn refusal<S: l::LayoutScalar>() {
                     match view {
                         surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
                         surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                        surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                        surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                             panic!("continuous fixture unexpectedly fragmented"),
                     }
                 ))
@@ -307,7 +307,7 @@ fn refusal<S: l::LayoutScalar>() {
                     match view {
                         surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
                         surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                        surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                        surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                             panic!("continuous fixture unexpectedly fragmented"),
                     }
                 ))
@@ -344,7 +344,7 @@ fn refusal<S: l::LayoutScalar>() {
                         match view {
                             surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
                             surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))
@@ -356,7 +356,7 @@ fn refusal<S: l::LayoutScalar>() {
                         match view {
                             surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
                             surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                            surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                            surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                                 panic!("continuous fixture unexpectedly fragmented"),
                         }
                     ))

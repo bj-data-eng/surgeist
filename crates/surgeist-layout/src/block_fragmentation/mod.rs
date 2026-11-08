@@ -1,5 +1,8 @@
 //! Source-bound Block fragmentation and atomic box publication.
 mod compute;
+mod scope_assembly;
+mod scope_view;
+mod scopes;
 mod source;
 pub(crate) use compute::compute;
 mod input;
@@ -11,10 +14,13 @@ pub use input::{
 };
 pub(crate) use input::{BoundMode, FragmentBoxAllocation};
 pub use output::{
-    BoxCoordinateSpace, BoxFragmentGeometryOf, BoxFragmentOutputOf, BoxInstanceRefOf, LayoutBoxId,
-    LayoutFragmentainerId, LayoutFragmentainerOutputOf, LayoutHandleError, NodeLayoutRefOf,
-    NonBoxGeometryOf, NonBoxKind, NonBoxOutputRefOf, SingleBoxOutputRefOf,
+    BoxFragmentGeometryOf, BoxGeometryPairOf, FragmentCoordinateSpace, FragmentOutputOf,
+    FragmentPayloadOf, LayoutFragmentId, LayoutFragmentainerId, LayoutFragmentainerOutputOf,
+    LayoutHandleError, NodeLayoutRefOf, NonBoxGeometryOf, NonBoxKind, NonBoxOutputRefOf,
+    OverflowFragmentGeometryOf, OverflowGeometryPairOf, SingleBoxOutputRefOf,
 };
-pub(crate) use output::{NodePublication, ResultIdentity, SingleBox};
+pub(crate) use output::{NodePublication, ResultIdentity};
 pub(crate) use publication::check_target;
 pub use publication::{LayoutBatchApplyError, LayoutBatchCommit, LayoutBatchPreparation};
+#[cfg(test)]
+mod result_tests;

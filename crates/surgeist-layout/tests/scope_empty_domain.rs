@@ -365,7 +365,7 @@ fn empty_captured_child_paragraph_preserves_ordinary_box_and_parent_text_layout(
                 match view {
                     surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
                     surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                    surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                         panic!("continuous fixture unexpectedly fragmented"),
                 }
             ))
@@ -377,7 +377,7 @@ fn empty_captured_child_paragraph_preserves_ordinary_box_and_parent_text_layout(
                 match view {
                     surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
                     surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                    surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                         panic!("continuous fixture unexpectedly fragmented"),
                 }
             ))

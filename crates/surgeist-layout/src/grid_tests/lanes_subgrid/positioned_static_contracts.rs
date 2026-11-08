@@ -379,7 +379,7 @@ fn assert_lanes_without_track_templates_keep_absolute_children<S: LayoutScalar>(
                 .map(|layout| match layout {
                     crate::NodeLayoutRefOf::SingleBox(value) => value.unrounded_entry(),
                     crate::NodeLayoutRefOf::NonBox(value) => value.unrounded_entry(),
-                    crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                    crate::NodeLayoutRefOf::Fragments(_) => {
                         panic!("continuous fixture unexpectedly fragmented")
                     }
                 })

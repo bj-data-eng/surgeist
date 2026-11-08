@@ -232,12 +232,13 @@ mod baseline_offset;
 mod block;
 mod block_fragmentation;
 pub use block_fragmentation::{
-    BlockFragmentainerOf, BlockFragmentationFailure, BoxCoordinateSpace, BoxFragmentGeometryOf,
-    BoxFragmentOutputOf, BoxInstanceRefOf, LayoutBatchApplyError, LayoutBatchCommit,
-    LayoutBatchPreparation, LayoutBoundRequestOf, LayoutBoxId, LayoutFragmentainerId,
-    LayoutFragmentainerOutputOf, LayoutHandleError, LayoutPublicationTargets, LayoutSourceBasis,
-    LayoutTargetBasis, NodeLayoutRefOf, NonBoxGeometryOf, NonBoxKind, NonBoxOutputRefOf,
-    SingleBoxOutputRefOf,
+    BlockFragmentainerOf, BlockFragmentationFailure, BoxFragmentGeometryOf, BoxGeometryPairOf,
+    FragmentCoordinateSpace, FragmentOutputOf, FragmentPayloadOf, LayoutBatchApplyError,
+    LayoutBatchCommit, LayoutBatchPreparation, LayoutBoundRequestOf, LayoutFragmentId,
+    LayoutFragmentainerId, LayoutFragmentainerOutputOf, LayoutHandleError,
+    LayoutPublicationTargets, LayoutSourceBasis, LayoutTargetBasis, NodeLayoutRefOf,
+    NonBoxGeometryOf, NonBoxKind, NonBoxOutputRefOf, OverflowFragmentGeometryOf,
+    OverflowGeometryPairOf, SingleBoxOutputRefOf,
 };
 mod cache;
 #[cfg(test)]

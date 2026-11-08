@@ -75,6 +75,35 @@ where
     ))
 }
 
+pub(super) fn resolve_content<'input, Tree, S, M>(
+    tree: &Tree,
+    child: Tree::Node,
+    inset: Edges<LengthAutoOf<S>>,
+    basis: &content_insets::AcceptedContentInsetReceipt<Tree::Node, S>,
+    expected: &content_insets::ContentInsetBinding<Tree::Node, S>,
+) -> LayoutResultOf<Tree::Node, Point<S>, S, M>
+where
+    Tree: Compute<'input, M, Scalar = S>,
+    S: LayoutScalar,
+{
+    let selected = select_relative_insets(inset, expected.axes);
+    let size = basis.selected_basis(child, selected, expected)?;
+    Ok(super::in_flow::relative_inset_offset(
+        selected
+            .zip_size(size, resolve_auto_optional)
+            .transpose_with_node(tree, child)?,
+        expected.axes,
+    ))
+}
+
+enum SettlementReference<'a, Node, S: LayoutScalar> {
+    Principal(MeasuredInsetBasisOf<S>),
+    Content {
+        basis: &'a content_insets::AcceptedContentInsetReceipt<Node, S>,
+        expected: &'a content_insets::ContentInsetBinding<Node, S>,
+    },
+}
+
 /// Settle only actual native percentage operands after the performed normal
 /// result is complete. Their visual contributions have not yet been unioned.
 /// Captured atomics are already sealed by the Text converter and are untouched.
@@ -83,6 +112,50 @@ pub(super) fn settle_children<'input, Tree, S, M>(
     container: Tree::Node,
     children: &[Tree::Node],
     basis: MeasuredInsetBasisOf<S>,
+    axes: crate::FlowAxes,
+    contributions: &mut scroll::BlockScrollContributions<S>,
+) -> LayoutResultOf<Tree::Node, (), S, M>
+where
+    Tree: Compute<'input, M, Scalar = S>,
+    S: LayoutScalar,
+{
+    settle_selected_children(
+        tree,
+        container,
+        children,
+        SettlementReference::Principal(basis),
+        axes,
+        contributions,
+    )
+}
+
+pub(super) fn settle_content_children<'input, Tree, S, M>(
+    tree: &mut Tree,
+    container: Tree::Node,
+    children: &[Tree::Node],
+    basis: &content_insets::AcceptedContentInsetReceipt<Tree::Node, S>,
+    expected: &content_insets::ContentInsetBinding<Tree::Node, S>,
+    contributions: &mut scroll::BlockScrollContributions<S>,
+) -> LayoutResultOf<Tree::Node, (), S, M>
+where
+    Tree: Compute<'input, M, Scalar = S>,
+    S: LayoutScalar,
+{
+    settle_selected_children(
+        tree,
+        container,
+        children,
+        SettlementReference::Content { basis, expected },
+        expected.axes,
+        contributions,
+    )
+}
+
+fn settle_selected_children<'input, Tree, S, M>(
+    tree: &mut Tree,
+    container: Tree::Node,
+    children: &[Tree::Node],
+    reference: SettlementReference<'_, Tree::Node, S>,
     axes: crate::FlowAxes,
     contributions: &mut scroll::BlockScrollContributions<S>,
 ) -> LayoutResultOf<Tree::Node, (), S, M>
@@ -115,13 +188,18 @@ where
                 ));
             }
         };
-        let offset = resolve(
-            tree,
-            child,
-            input.inset,
-            InsetReference::Accepted(Some(basis)),
-            axes,
-        )?;
+        let offset = match &reference {
+            SettlementReference::Principal(basis) => resolve(
+                tree,
+                child,
+                input.inset,
+                InsetReference::Accepted(Some(*basis)),
+                axes,
+            )?,
+            SettlementReference::Content { basis, expected } => {
+                resolve_content(tree, child, input.inset, basis, expected)?
+            }
+        };
         let mut visual = entry.output();
         visual.location = Point::new(
             crate::group_alignment::add::<S>(

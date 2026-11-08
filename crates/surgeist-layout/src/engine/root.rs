@@ -93,8 +93,48 @@ where
         input,
         align_to_parent,
     } = root_compute_input(tree, root, style, request)?;
-    let axes = input.containing_flow_axes();
     let output = tree.compute_child(root, input)?;
+    finish_root(tree, root, style, input, output, align_to_parent)
+}
+
+pub(crate) fn compute_root_scoped<'input, Tree, M>(
+    tree: &mut Tree,
+    root: Tree::Node,
+    request: crate::LayoutRootRequestOf<Tree::Scalar>,
+) -> super::block_scope::ComputeResult<Tree::Node, (), Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let style = tree.node_input(root);
+    let RootComputeInput {
+        input,
+        align_to_parent,
+    } = root_compute_input(tree, root, style, request)?;
+    let request = if tree.block_scope_child(root) {
+        crate::block::scope::ChildRequest::Scope(crate::block::scope::root(tree, root, input)?)
+    } else {
+        crate::block::scope::ChildRequest::Ordinary(crate::block::scope::Ordinary {
+            node: root,
+            input,
+            entry: None,
+        })
+    };
+    let output = tree.compute_block_child(request)?;
+    finish_root(tree, root, style, input, output, align_to_parent).map_err(Into::into)
+}
+
+pub(crate) fn finish_root<'input, Tree, M>(
+    tree: &mut Tree,
+    root: Tree::Node,
+    style: &'input NodeInputOf<Tree::Scalar>,
+    input: ComputeInputOf<Tree::Scalar>,
+    output: ComputeOutputOf<Tree::Scalar>,
+    align_to_parent: bool,
+) -> LayoutResultOf<Tree::Node, (), Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let axes = input.containing_flow_axes();
     let root_edges = resolve_root_edges(tree, root, style, axes, input.parent())?;
     let scroll_geometry = root_scroll_geometry(root, style, output, &root_edges)?;
     let location = if align_to_parent {

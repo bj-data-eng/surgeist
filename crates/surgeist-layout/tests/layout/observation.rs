@@ -52,7 +52,7 @@ pub(crate) fn observe<Node: Copy + Eq, S: l::LayoutScalar>(
     let actual_kind = match view {
         l::NodeLayoutRefOf::SingleBox(_) => Kind::Box,
         l::NodeLayoutRefOf::NonBox(view) => Kind::NonBox(view.kind()),
-        l::NodeLayoutRefOf::FragmentedBox(_) => {
+        l::NodeLayoutRefOf::Fragments(_) => {
             panic!("continuous fixture unexpectedly fragmented")
         }
     };
@@ -87,7 +87,7 @@ pub(crate) fn observe<Node: Copy + Eq, S: l::LayoutScalar>(
                 margin: geometry.margin,
             }
         }
-        l::NodeLayoutRefOf::FragmentedBox(_) => {
+        l::NodeLayoutRefOf::Fragments(_) => {
             panic!("continuous fixture unexpectedly fragmented")
         }
     }

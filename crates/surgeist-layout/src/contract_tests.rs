@@ -1993,7 +1993,7 @@ fn borrowed_input_completed_geometry_and_caches_outlive_source_in_both_scalar_la
             .map(|layout| match layout {
                 crate::NodeLayoutRefOf::SingleBox(value) => value.final_entry(),
                 crate::NodeLayoutRefOf::NonBox(value) => value.final_entry(),
-                crate::NodeLayoutRefOf::FragmentedBox(_) => {
+                crate::NodeLayoutRefOf::Fragments(_) => {
                     panic!("continuous fixture unexpectedly fragmented")
                 }
             })

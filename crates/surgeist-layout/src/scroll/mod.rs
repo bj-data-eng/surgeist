@@ -5,6 +5,7 @@ use super::{
     scalar::{canonical_zero, round_layout_coordinate},
 };
 use crate::geometry::LogicalEdgesOf;
+pub(crate) use construction::include_scope_overflow;
 
 mod anchor_selection;
 mod box_geometry;

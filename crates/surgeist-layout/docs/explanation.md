@@ -79,7 +79,8 @@ retains independent parallel flows and nested break requirements. The resulting
 schedule describes mode-supplied occurrences. The
 [native Block adapter](reference.md#native-block-fragmentation-and-publication)
 uses actual Block and leaf production at each frame width and publishes a
-source-bound box fragment graph through the completed batch. Its box-only profile
+source-bound fragment graph through the completed batch. Principal boxes and
+overflow-only ancestor carriers retain separate payloads. Its box-only profile
 refuses unsupported formatting modes; column geometry and fragmented Text
 composition are outside that profile. Publication checks the installed source
 and constraint target and replaces the root atomically, including detached

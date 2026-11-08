@@ -798,7 +798,7 @@ fn distinct_empty_paragraphs_share_their_real_empty_domain_slot_in_any_inventory
                 match view {
                     surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
                     surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                    surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                         panic!("continuous fixture unexpectedly fragmented"),
                 }
             ))
@@ -810,7 +810,7 @@ fn distinct_empty_paragraphs_share_their_real_empty_domain_slot_in_any_inventory
                 match view {
                     surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
                     surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                    surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                         panic!("continuous fixture unexpectedly fragmented"),
                 }
             ))
@@ -1085,7 +1085,7 @@ fn an_empty_paragraph_in_a_nonempty_domain_uses_its_authentic_terminal_run_slot(
                 match view {
                     surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
                     surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                    surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                         panic!("continuous fixture unexpectedly fragmented"),
                 }
             ))
@@ -1097,7 +1097,7 @@ fn an_empty_paragraph_in_a_nonempty_domain_uses_its_authentic_terminal_run_slot(
                 match view {
                     surgeist_layout::NodeLayoutRefOf::SingleBox(view) => view.final_entry(),
                     surgeist_layout::NodeLayoutRefOf::NonBox(view) => view.final_entry(),
-                    surgeist_layout::NodeLayoutRefOf::FragmentedBox(_) =>
+                    surgeist_layout::NodeLayoutRefOf::Fragments(_) =>
                         panic!("continuous fixture unexpectedly fragmented"),
                 }
             ))

@@ -68,7 +68,7 @@ pub(crate) fn rebuild_rounded_canonical_scroll_geometry<S: LayoutScalar>(
     canonical_scroll_geometry_from_source(rounded_source)
 }
 
-fn round_canonical_source_rect<S: LayoutScalar>(
+pub(crate) fn round_canonical_source_rect<S: LayoutScalar>(
     rect: ScrollRectOf<S>,
     cumulative_origin: Point<S>,
 ) -> Result<ScrollRectOf<S>, ScrollRectErrorOf<S>> {

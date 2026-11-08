@@ -1,7 +1,9 @@
+pub(crate) mod block_scope;
 pub(crate) mod containment;
 pub(crate) mod contracts;
 mod root;
 mod rounding;
+pub(crate) use rounding::FragmentAnchor;
 mod session;
 #[cfg(test)]
 pub(crate) use session::ComputeSession;
@@ -269,18 +271,6 @@ where
     run_session(session, root, request)
 }
 
-pub(crate) struct BlockFragmentFrame<Node, S: LayoutScalar> {
-    pub(crate) batch: CompletedLayoutBatchOf<Node, S>,
-    pub(crate) margins: crate::block::fragment_margins::State<Node>,
-}
-
-type BlockFragmentFrameResult<Tree> = LayoutResultOf<
-    <Tree as Traverse>::Node,
-    BlockFragmentFrame<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
-    <Tree as Traverse>::Scalar,
-    <Tree as LayoutTree>::MeasureError,
->;
-
 type FragmentIntrinsicResult<Tree> = LayoutResultOf<
     <Tree as Traverse>::Node,
     crate::block::intrinsic::FragmentContext<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
@@ -309,15 +299,324 @@ pub(crate) fn prepare_block_fragment_intrinsics<Tree: LayoutTree>(
     })
 }
 
-pub(crate) fn compute_block_fragment_frame<Tree: LayoutTree>(
+pub(crate) struct BlockContentFrame<Node, S: LayoutScalar> {
+    pub(crate) context: crate::block::content::Context<S>,
+    pub(crate) facts: crate::block::content::Facts<S>,
+    pub(crate) principal: Option<crate::ComputeOutputOf<S>>,
+    pub(crate) packet: block_scope::Packet<Node, S>,
+    pub(crate) carrier: Option<crate::block::carrier::PerformedPath<Node, S>>,
+}
+
+pub(crate) struct BlockFrameBinding<Node, S: LayoutScalar> {
+    pub(crate) allocations: Vec<crate::block_fragmentation::FragmentBoxAllocation<Node, S>>,
+    pub(crate) intrinsics: std::sync::Arc<crate::block::intrinsic::FragmentContext<Node, S>>,
+    pub(crate) dispatch: block_scope::Dispatch<Node, S>,
+}
+
+/// Issue parent-local carrier origins from the same canonical inline contexts
+/// used by actual content production, without constructing principal geometry.
+type CarrierPathResult<Tree> = LayoutResultOf<
+    <Tree as Traverse>::Node,
+    crate::block::carrier::PreparedPath<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+    <Tree as Traverse>::Scalar,
+    <Tree as LayoutTree>::MeasureError,
+>;
+pub(crate) fn prepare_block_carrier_path<Tree: LayoutTree>(
     tree: &Tree,
-    root: Tree::Node,
+    path: &[Tree::Node],
     request: LayoutRootRequestOf<Tree::Scalar>,
-    allocations: Vec<crate::block_fragmentation::FragmentBoxAllocation<Tree::Node, Tree::Scalar>>,
     frame: crate::BlockFragmentainerOf<Tree::Scalar>,
-    axes: crate::FlowAxes,
     intrinsics: std::sync::Arc<crate::block::intrinsic::FragmentContext<Tree::Node, Tree::Scalar>>,
-) -> BlockFragmentFrameResult<Tree> {
+    binding: crate::block::content_insets::ContentInsetBinding<Tree::Node, Tree::Scalar>,
+) -> CarrierPathResult<Tree> {
+    let root = path[0];
+    let mut session = session::ComputeSession::new(tree, Vec::new());
+    session.bind_fragment_frame(intrinsics.target.clone(), Vec::new());
+    session.install_fragment_intrinsics(intrinsics.clone());
+    let input = intrinsics
+        .entries
+        .iter()
+        .find(|entry| entry.node == root)
+        .map(|entry| entry.input.with_run_mode(crate::RunMode::PerformLayout))
+        .ok_or_else(|| {
+            crate::LayoutErrorOf::new(
+                crate::LayoutErrorSiteOf::Node(root),
+                crate::LayoutOperation::RootLayout,
+                crate::LayoutErrorKindOf::BlockFragmentation(
+                    crate::BlockFragmentationFailure::InvalidSource,
+                ),
+            )
+        })?;
+    let (first, mut context) = crate::block::carrier::root(&mut session, root, input, frame.size)?;
+    let mut facts = Vec::new();
+    facts.try_reserve(path.len()).map_err(|_| {
+        crate::LayoutErrorOf::new(
+            crate::LayoutErrorSiteOf::Node(root),
+            crate::LayoutOperation::RootLayout,
+            crate::LayoutErrorKindOf::Allocation,
+        )
+    })?;
+    facts.push(first);
+    for pair in path.windows(2) {
+        let input = intrinsics
+            .entries
+            .iter()
+            .find(|entry| entry.node == pair[1])
+            .map(|entry| entry.input.with_run_mode(crate::RunMode::PerformLayout))
+            .ok_or_else(|| {
+                crate::LayoutErrorOf::new(
+                    crate::LayoutErrorSiteOf::Node(pair[1]),
+                    crate::LayoutOperation::RootLayout,
+                    crate::LayoutErrorKindOf::BlockFragmentation(
+                        crate::BlockFragmentationFailure::InvalidSource,
+                    ),
+                )
+            })?;
+        let (fact, child_context) =
+            crate::block::carrier::child(&mut session, pair[0], pair[1], input, context)?;
+        facts.push(fact);
+        context = child_context;
+    }
+    crate::block::carrier::PreparedPath::new(binding, facts, request, frame, intrinsics)
+}
+
+pub(crate) fn settle_block_carrier_origin<Tree: LayoutTree>(
+    tree: &Tree,
+    path: &crate::block::carrier::AcceptedPath<Tree::Node, Tree::Scalar>,
+    production: block_scope::ProductionId,
+    binding: &crate::block::content_insets::ContentInsetBinding<Tree::Node, Tree::Scalar>,
+    node: Tree::Node,
+    principal_parent: Option<crate::LayoutOutputEntryOf<Tree::Node, Tree::Scalar>>,
+) -> LayoutResultOf<
+    Tree::Node,
+    crate::block::carrier::Origin<Tree::Scalar>,
+    Tree::Scalar,
+    Tree::MeasureError,
+> {
+    let session = session::ComputeSession::new(tree, Vec::new());
+    path.origin(&session, production, binding, node, principal_parent)
+}
+pub(crate) struct BlockScopeEntryRequest<Node, S: LayoutScalar> {
+    pub(crate) pending: crate::block::scope::Pending<Node, S>,
+    pub(crate) binding: BlockFrameBinding<Node, S>,
+}
+
+type BlockScopeEntryFacts<S> = (
+    crate::block::entry::Qualification<S>,
+    crate::block::content::Context<S>,
+);
+type EntryQualificationResult<Tree> = LayoutResultOf<
+    <Tree as Traverse>::Node,
+    BlockScopeEntryFacts<<Tree as Traverse>::Scalar>,
+    <Tree as Traverse>::Scalar,
+    <Tree as LayoutTree>::MeasureError,
+>;
+type BodyQualificationResult<Tree> = LayoutResultOf<
+    <Tree as Traverse>::Node,
+    BlockScopeBodyFrame<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+    <Tree as Traverse>::Scalar,
+    <Tree as LayoutTree>::MeasureError,
+>;
+type ContentFrameResult<Tree> = block_scope::ComputeResult<
+    <Tree as Traverse>::Node,
+    BlockContentFrame<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+    <Tree as Traverse>::Scalar,
+    <Tree as LayoutTree>::MeasureError,
+>;
+type ScopeRootFrameResult<Tree> = block_scope::ComputeResult<
+    <Tree as Traverse>::Node,
+    block_scope::Packet<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+    <Tree as Traverse>::Scalar,
+    <Tree as LayoutTree>::MeasureError,
+>;
+
+/// Qualify only the receiving-side entry margin and canonical content context.
+/// Completing an opposite-side collapse chain remains a body demand.
+pub(crate) fn qualify_block_scope_entry<Tree: LayoutTree>(
+    tree: &Tree,
+    request: BlockScopeEntryRequest<Tree::Node, Tree::Scalar>,
+) -> EntryQualificationResult<Tree> {
+    let BlockScopeEntryRequest { pending, binding } = request;
+    let mut session = session::ComputeSession::new(tree, Vec::new());
+    session.bind_fragment_frame(binding.intrinsics.target.clone(), binding.allocations);
+    session.install_fragment_intrinsics(binding.intrinsics);
+    session.install_block_scopes(pending.node, binding.dispatch)?;
+    let context = crate::block::content::prepare(
+        &mut session,
+        pending.node,
+        pending.input,
+        tree.node_input(pending.node),
+    )?;
+    let fact = crate::block::entry::qualify(
+        &mut session,
+        pending.node,
+        pending.input,
+        pending.axes.block_start(),
+    )?;
+    Ok((fact, context))
+}
+
+pub(crate) struct BlockScopeBodyFrame<Node, S: LayoutScalar> {
+    pub(crate) output: crate::ComputeOutputOf<S>,
+    pub(crate) packet: block_scope::Packet<Node, S>,
+}
+/// Non-consuming whole-body qualification uses the ordinary producer without
+/// scope interception. Native has already qualified all interior controls.
+pub(crate) fn qualify_block_scope_body<Tree: LayoutTree>(
+    tree: &Tree,
+    request: BlockScopeEntryRequest<Tree::Node, Tree::Scalar>,
+) -> BodyQualificationResult<Tree> {
+    let BlockScopeEntryRequest { pending, binding } = request;
+    let mut session = session::ComputeSession::new(tree, Vec::new());
+    session.bind_fragment_frame(binding.intrinsics.target.clone(), Vec::new());
+    session.install_fragment_intrinsics(binding.intrinsics);
+    session.retain_block_bodies();
+    let input = pending.input.with_run_mode(crate::RunMode::PerformLayout);
+    let output = block_scope::ordinary(crate::block::compute_block_scoped(
+        &mut session,
+        pending.node,
+        input,
+    ))?;
+    session.record_block_body(pending.node, input, output)?;
+    Ok(BlockScopeBodyFrame {
+        output,
+        packet: session.block_packet()?,
+    })
+}
+
+pub(crate) struct BlockContentFrameRequest<'a, Node, S: LayoutScalar> {
+    pub(crate) root: Node,
+    pub(crate) input: crate::ComputeInputOf<S>,
+    pub(crate) original: &'a crate::NodeInputOf<S>,
+    pub(crate) reference: S,
+    pub(crate) opening: bool,
+    pub(crate) complete: bool,
+    pub(crate) principal_content: Option<S>,
+    pub(crate) accepted: Option<crate::block::content_insets::ContentInsetBinding<Node, S>>,
+    pub(crate) carrier: Option<crate::block::carrier::PreparedPath<Node, S>>,
+    pub(crate) binding: BlockFrameBinding<Node, S>,
+}
+pub(crate) struct BlockScopeRootFrameRequest<Node, S: LayoutScalar> {
+    pub(crate) root: Node,
+    pub(crate) request: LayoutRootRequestOf<S>,
+    pub(crate) frame: crate::BlockFragmentainerOf<S>,
+    pub(crate) axes: crate::FlowAxes,
+    pub(crate) binding: BlockFrameBinding<Node, S>,
+}
+
+/// Execute one exact child-content query. Neither suspension nor measurement
+/// adopts child work into its parent or publishes a completed host batch.
+pub(crate) fn compute_block_content_frame<Tree: LayoutTree>(
+    tree: &Tree,
+    request: BlockContentFrameRequest<'_, Tree::Node, Tree::Scalar>,
+) -> ContentFrameResult<Tree> {
+    let BlockContentFrameRequest {
+        root,
+        input,
+        original,
+        reference,
+        opening,
+        complete,
+        principal_content,
+        accepted,
+        carrier,
+        binding,
+    } = request;
+    let (graph, invalidated) =
+        validation::validate_layout_request_with_text_graph(tree, root, &[], &[])?;
+    let wrapping = crate::inline_wrapping::WrappingContext::new(
+        tree,
+        &graph,
+        &crate::WrappingInput::default(),
+        &[],
+        |_| false,
+    )
+    .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
+    let carrier_snapshot = binding.intrinsics.clone();
+    let mut session = session::ComputeSession::new(tree, invalidated);
+    session.bind_fragment_frame(binding.intrinsics.target.clone(), binding.allocations);
+    session.install_fragment_intrinsics(binding.intrinsics);
+    session.install_block_scopes(root, binding.dispatch)?;
+    session.retain_block_bodies();
+    session.install_wrapping(std::sync::Arc::new(wrapping), &graph);
+    session.begin_content_scope(root, input)?;
+    let context = crate::block::content::prepare(&mut session, root, input, original)?;
+    let mut projection = crate::block::content::Projection {
+        block_reference: reference,
+        content_origin: if opening {
+            context.opening()
+        } else {
+            Tree::Scalar::ZERO
+        },
+    };
+    let mut receipt =
+        crate::block::content::produce(&mut session, root, &context, projection, accepted.clone())?;
+    if !receipt.participated && !complete && projection.content_origin != Tree::Scalar::ZERO {
+        projection.content_origin = Tree::Scalar::ZERO;
+        receipt = crate::block::content::produce(
+            &mut session,
+            root,
+            &context,
+            projection,
+            accepted.clone(),
+        )?;
+    }
+    if principal_content.is_none()
+        && let Some(expected) = &accepted
+    {
+        crate::block::content::settle_accepted_insets(&mut session, &mut receipt, expected)?;
+    }
+    let carrier = match carrier {
+        Some(candidate) => Some(candidate.performed(
+            &receipt,
+            context,
+            accepted.as_ref().ok_or_else(|| {
+                crate::LayoutErrorOf::new(
+                    crate::LayoutErrorSiteOf::Node(root),
+                    crate::LayoutOperation::ValueResolution,
+                    crate::LayoutErrorKindOf::MissingContext(
+                        crate::LayoutMissingContext::RequiredBasis,
+                    ),
+                )
+            })?,
+            &carrier_snapshot,
+        )?),
+        None => None,
+    };
+    let facts = receipt.facts();
+    let principal = match principal_content {
+        Some(content) => Some(crate::block::content::materialize(
+            &mut session,
+            root,
+            &context,
+            receipt,
+            content,
+        )?),
+        None => None,
+    };
+    if let Some(output) = principal {
+        session.record_block_body(root, input, output)?;
+    }
+    Ok(BlockContentFrame {
+        context,
+        facts,
+        principal,
+        carrier,
+        packet: session.block_packet()?,
+    })
+}
+
+pub(crate) fn compute_block_scope_root_frame<Tree: LayoutTree>(
+    tree: &Tree,
+    request: BlockScopeRootFrameRequest<Tree::Node, Tree::Scalar>,
+) -> ScopeRootFrameResult<Tree> {
+    let BlockScopeRootFrameRequest {
+        root,
+        request,
+        frame,
+        axes,
+        binding,
+    } = request;
     let (graph, invalidated) =
         validation::validate_layout_request_with_text_graph(tree, root, &[], &[])?;
     let wrapping = crate::inline_wrapping::WrappingContext::new(
@@ -329,17 +628,14 @@ pub(crate) fn compute_block_fragment_frame<Tree: LayoutTree>(
     )
     .map_err(|reason| crate::inline_wrapping::wrapping_error(root, reason))?;
     let mut session = session::ComputeSession::new(tree, invalidated);
-    session.bind_fragment_frame(intrinsics.target.clone(), allocations);
-    session.install_fragment_intrinsics(intrinsics);
+    session.bind_fragment_frame(binding.intrinsics.target.clone(), binding.allocations);
+    session.install_fragment_intrinsics(binding.intrinsics);
+    session.install_block_scopes(root, binding.dispatch)?;
+    session.retain_block_bodies();
     session.install_wrapping(std::sync::Arc::new(wrapping), &graph);
-    compute_root(&mut session, root, request)?;
+    root::compute_root_scoped(&mut session, root, request)?;
     root::position_fragment_root(&mut session, root, axes, frame.size)?;
-    rounding::round_fragment_layout(&mut session, root, frame.origin)?;
-    let margins = session.take_fragment_margins();
-    Ok(BlockFragmentFrame {
-        batch: session.complete_for_root(root),
-        margins,
-    })
+    Ok(session.block_packet()?)
 }
 
 fn run_session<Tree: LayoutTree>(
