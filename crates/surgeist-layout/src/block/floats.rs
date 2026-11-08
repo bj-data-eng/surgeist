@@ -251,24 +251,6 @@ pub(crate) struct FloatBand<S: LayoutScalar> {
     pub(crate) evaluated: usize,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub(super) struct BfcBandPlacement<S: LayoutScalar> {
-    pub(super) location: Point<S>,
-    pub(super) available_inline: S,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub(super) struct BfcBandCandidate<S: LayoutScalar> {
-    pub(super) block_start: S,
-    pub(super) size: Size<S>,
-    pub(super) margin: Edges<S>,
-    pub(super) clear: Clear,
-    pub(super) fallback: Point<S>,
-    /// Ordinary auto inline sizing may shrink to a float band. A replacement
-    /// instead needs a band that fits its resolved natural or authored size.
-    pub(super) inline_size_can_shrink: bool,
-}
-
 #[derive(Clone, Copy)]
 pub(super) struct ProviderBandContext<'a, Tree, Node> {
     pub(super) tree: &'a Tree,
@@ -701,12 +683,6 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         }
     }
 
-    pub(super) fn uses_only_rectangular_exclusions(&self) -> bool {
-        self.ledger
-            .iter()
-            .all(|entry| entry.exclusion == FloatExclusion::MarginBox)
-    }
-
     fn rectangular_bfc_exclusions(&self) -> impl Iterator<Item = &FloatLedgerEntry<S, Node>> {
         self.ledger.iter().filter(|entry| {
             let empty_at_edge = entry.inline_start == entry.inline_end
@@ -804,80 +780,37 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         (left, right)
     }
 
-    pub(super) fn place_bfc_block<'input, Tree, M>(
+    pub(super) fn place_bfc_block(
         &self,
-        provider: ProviderBandContext<'_, Tree, Node>,
-        candidate: BfcBandCandidate<S>,
-    ) -> LayoutResultOf<Node, BfcBandPlacement<S>, S, M>
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
-        let BfcBandCandidate {
-            block_start,
-            size,
-            margin,
-            clear,
-            fallback,
-            inline_size_can_shrink,
-        } = candidate;
-        let logical_size = self.flow_axes.logical_size(size);
-        let logical_margin = self.flow_axes.logical_edges(margin);
-        let margin_box_inline = logical_size.inline + logical_margin.inline_sum();
-        let margin_box_block = logical_size.block + logical_margin.block_sum();
-        let fallback_logical = self
-            .flow_axes
-            .logical_point(fallback, size, self.containing_size);
+        block_start: S,
+        size: LogicalSizeOf<S>,
+        margin: LogicalEdgesOf<S>,
+        clear: Clear,
+        fallback_inline: S,
+    ) -> LogicalPointOf<S> {
+        let margin_box_inline = size.inline + margin.inline_sum();
+        let margin_box_block = size.block + margin.block_sum();
         let mut candidate_block = self.clearance_block(block_start, clear);
         loop {
-            let candidate_block_end = candidate_block + margin_box_block;
-            let band = if provider.enabled {
-                self.query_provider_band(
-                    provider.tree,
-                    provider.container,
-                    candidate_block,
-                    candidate_block_end,
-                )?
-            } else {
-                self.query_physical_margin_box_collisions(candidate_block, candidate_block_end)
-            };
-            let fallback_start = fallback_logical.inline - logical_margin.inline_start;
-            let fallback_end =
-                fallback_logical.inline + logical_size.inline + logical_margin.inline_end;
-            let available_inline = (band.inline_end - band.inline_start).max(S::ZERO);
-            let required_inline = if inline_size_can_shrink {
-                logical_margin.inline_sum()
-            } else {
-                margin_box_inline
-            };
-            if required_inline <= available_inline {
-                let inline = if !inline_size_can_shrink
-                    && fallback_start >= band.inline_start
-                    && fallback_end <= band.inline_end
-                {
-                    fallback_logical.inline
-                } else {
-                    band.inline_start + logical_margin.inline_start
-                };
-                return Ok(BfcBandPlacement {
-                    location: self.flow_axes.physical_point(
-                        LogicalPointOf::new(inline, candidate_block),
-                        logical_size,
-                        self.containing_size,
-                    ),
-                    available_inline,
-                });
+            let band = self.query_physical_margin_box_collisions(
+                candidate_block,
+                candidate_block + margin_box_block,
+            );
+            let fallback_start = fallback_inline - margin.inline_start;
+            let fallback_end = fallback_inline + size.inline + margin.inline_end;
+            if margin_box_inline <= (band.inline_end - band.inline_start).max(S::ZERO) {
+                let inline =
+                    if fallback_start >= band.inline_start && fallback_end <= band.inline_end {
+                        fallback_inline
+                    } else {
+                        band.inline_start + margin.inline_start
+                    };
+                return LogicalPointOf::new(inline, candidate_block);
             }
             if let Some(next_transition) = band.next_transition {
                 candidate_block = next_transition;
             } else {
-                return Ok(BfcBandPlacement {
-                    location: self.flow_axes.physical_point(
-                        LogicalPointOf::new(fallback_logical.inline, candidate_block),
-                        logical_size,
-                        self.containing_size,
-                    ),
-                    available_inline,
-                });
+                return LogicalPointOf::new(fallback_inline, candidate_block);
             }
         }
     }

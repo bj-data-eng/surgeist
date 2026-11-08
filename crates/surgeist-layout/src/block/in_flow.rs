@@ -699,27 +699,13 @@ where
                 cursor_block + collapsed_margin
             };
             let preview_cursor_block = block_start_for(output, child_margin);
-            let preview_logical_location = LogicalPointOf::new(
-                in_flow_child_inline_offset(
-                    logical_child_size.inline,
-                    logical_child_margin,
-                    constants,
-                ),
-                preview_cursor_block,
-            );
-            let preview_fallback = constants.flow_axes.physical_point(
-                preview_logical_location,
-                logical_child_size,
-                containing_size,
-            );
             let inline_size_can_shrink =
                 parent_inline_size_can_shrink(&child_style, constants.flow_axes);
             let band_request = |tree: &Tree,
-                                available_inline,
-                                margin_sum|
+                                available_inline|
              -> ComputeResult<Tree::Node, ComputeInputOf<S>, S, M> {
                 let band_child_inline =
-                    crate::layout_math::remaining_available_extent(available_inline, margin_sum)
+                    crate::layout_math::remaining_available_extent(available_inline, S::ZERO)
                         .map_err(|error| {
                             crate::error::sizing_resolution_error(child, error.into())
                         })?;
@@ -773,13 +759,13 @@ where
                 .with_baseline_demand_from(child_input))
             };
 
-            if inline_size_can_shrink && float_exclusions.uses_only_rectangular_exclusions() {
+            if inline_size_can_shrink {
                 let mut block =
                     float_exclusions.clearance_block(preview_cursor_block, child_style.clear);
                 loop {
                     let (available_inline, next) = float_exclusions
                         .rectangular_bfc_opportunity(block, parent_logical_unresolved_margin);
-                    let request = band_request(tree, available_inline, S::ZERO)?;
+                    let request = band_request(tree, available_inline)?;
                     let packet = if request.run_mode().is_perform_layout() {
                         Some(tree.probe_float_child(
                             child,
@@ -825,28 +811,6 @@ where
                     child_input = request;
                     accepted_float_position = Some(location);
                     break;
-                }
-            } else {
-                let placement = float_exclusions.place_bfc_block(
-                    ProviderBandContext {
-                        tree,
-                        container: node,
-                        enabled: true,
-                    },
-                    BfcBandCandidate {
-                        block_start: preview_cursor_block,
-                        size: output.size,
-                        margin: child_margin,
-                        clear: child_style.clear,
-                        fallback: preview_fallback,
-                        inline_size_can_shrink,
-                    },
-                )?;
-                if inline_size_can_shrink {
-                    let margin_sum = parent_logical_unresolved_margin
-                        .map(resolved_length_auto_fallback_zero)
-                        .inline_sum();
-                    child_input = band_request(tree, placement.available_inline, margin_sum)?;
                 }
             }
 
@@ -1046,25 +1010,16 @@ where
                 .flow_axes
                 .physical_point(location, logical_child_size, containing_size)
         } else if avoids_float_exclusions {
-            let placement = float_exclusions.place_bfc_block(
-                ProviderBandContext {
-                    tree,
-                    container: node,
-                    enabled: physical_float_context,
-                },
-                BfcBandCandidate {
-                    block_start: cursor_block,
-                    size: output.size,
-                    margin: child_margin,
-                    clear: child_style.clear,
-                    fallback: fallback_location,
-                    // This is the actual computed child, not a width proposal.
-                    // A narrower band would require another child computation;
-                    // retain its used width and advance to a fitting transition.
-                    inline_size_can_shrink: false,
-                },
-            )?;
-            placement.location
+            let location = float_exclusions.place_bfc_block(
+                cursor_block,
+                logical_child_size,
+                logical_child_margin,
+                child_style.clear,
+                logical_location.inline,
+            );
+            constants
+                .flow_axes
+                .physical_point(location, logical_child_size, containing_size)
         } else if child_style.clear != Clear::None {
             let cleared_logical_location = LogicalPointOf::new(
                 logical_location.inline,

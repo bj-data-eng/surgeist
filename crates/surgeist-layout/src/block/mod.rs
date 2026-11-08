@@ -76,9 +76,7 @@ use in_flow::{
 
 #[cfg(test)]
 pub(crate) use floats::FloatLedgerSide;
-use floats::{
-    BfcBandCandidate, FloatBand, FloatIntrinsics, PendingFloat, ProviderBandContext, layout_floats,
-};
+use floats::{FloatBand, FloatIntrinsics, PendingFloat, ProviderBandContext, layout_floats};
 pub(crate) use floats::{FloatExclusions, InheritedFloatExclusions};
 
 pub(crate) fn measure_definite_inline_atomic<'input, Tree, M>(

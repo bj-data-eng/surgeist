@@ -1039,8 +1039,7 @@ fn fri06_c05_shape_flow_physical_intervals_preserve_both_logical_sides_all_flows
 }
 
 #[test]
-fn fri06_c05_shape_query_float_line_and_bfc_consumers_record_exact_candidate_once_per_pass_both_scalars()
- {
+fn fri06_c05_shape_query_float_and_line_consumers_preserve_bfc_margin_box_isolation_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         let flow_axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
         let expected_margin_box = ScrollRectOf::try_new(
@@ -1108,9 +1107,9 @@ fn fri06_c05_shape_query_float_line_and_bfc_consumers_record_exact_candidate_onc
         let bfc_batch = compute_layout(&bfc_tree, 0, fri06_c05_shape_request(flow_axes)).unwrap();
         assert_eq!(
             public_final_output(&bfc_batch, 2).location,
-            Point::new(scalar_value(40.0), S::ZERO),
+            Point::new(S::ZERO, scalar_value(20.0)),
         );
-        assert_eq!(bfc_tree.shape_queries(), vec![(1, expected), (1, expected)]);
+        assert!(bfc_tree.shape_queries().is_empty());
 
         let line_tree = fri06_c05_shape_tree(
             flow_axes,
@@ -1132,6 +1131,89 @@ fn fri06_c05_shape_query_float_line_and_bfc_consumers_record_exact_candidate_onc
 
     assert_lane::<f32>();
     assert_lane::<f64>();
+}
+
+#[test]
+fn bfc_border_avoids_shape_float_margin_boxes_without_querying_contours() {
+    fn lane<S: LayoutScalar>() {
+        use crate::geometry::{LogicalEdgesOf, LogicalPointOf, LogicalSizeOf};
+        let px = S::from_f64;
+        for (writing_mode, direction) in all_writing_mode_directions() {
+            let axes = FlowAxes::new(writing_mode, direction);
+            let (minimum, maximum) = fri06_c05_physical_inline_interval(axes, 0.0, 40.0);
+            for provider in [
+                ShapeProviderBehavior::Interval { minimum, maximum },
+                ShapeProviderBehavior::Missing,
+                ShapeProviderBehavior::Failure,
+                ShapeProviderBehavior::Empty,
+            ] {
+                // A 15-wide border fits in the 20-wide remainder; a 30-wide
+                // border must clear the float. Fixed BFC placement retains its
+                // authored margins inside the remaining margin-box band.
+                for (float_inline, float_margin, inline, margin, clear, x, y) in [
+                    (80.0, 0.0, 15.0, 0.0, Clear::None, 80.0, 0.0),
+                    (80.0, 0.0, 30.0, 0.0, Clear::None, 0.0, 20.0),
+                    (70.0, 10.0, 15.0, 5.0, Clear::None, 85.0, 0.0),
+                    (80.0, 0.0, 15.0, 0.0, Clear::Both, 0.0, 20.0),
+                ] {
+                    let mut float =
+                        fri06_c05_shape_float_style(axes, Float::Left, float_inline, 20.0);
+                    float.margin = axes
+                        .physical_edges(LogicalEdgesOf::new(
+                            S::ZERO,
+                            px(float_margin),
+                            S::ZERO,
+                            S::ZERO,
+                        ))
+                        .map(LengthAutoOf::px);
+                    let size = LogicalSizeOf::new(px(inline), px(10.0));
+                    let tree = fri06_c05_shape_tree(
+                        axes,
+                        provider.clone(),
+                        [
+                            (1, float),
+                            (
+                                2,
+                                NodeInputOf {
+                                    display: Display::Block,
+                                    writing_mode,
+                                    direction,
+                                    block_flow_context: crate::BlockFlowContext::Independent,
+                                    size: axes.physical_size(size).map(PreferredSizeOf::px),
+                                    margin: axes
+                                        .physical_edges(LogicalEdgesOf::new(
+                                            px(margin),
+                                            S::ZERO,
+                                            S::ZERO,
+                                            S::ZERO,
+                                        ))
+                                        .map(LengthAutoOf::px),
+                                    clear,
+                                    ..NodeInputOf::default()
+                                },
+                            ),
+                        ],
+                    );
+                    let batch = compute_layout(&tree, 0, fri06_c05_shape_request(axes))
+                        .expect("BFC collision needs margin boxes, not a contour provider");
+                    let bfc = public_final_output(&batch, 2);
+                    assert_eq!(bfc.size, axes.physical_size(size));
+                    assert_eq!(
+                        bfc.location,
+                        fri06_c04_expected_float_location(
+                            axes,
+                            LogicalPointOf::new(px(x), px(y)),
+                            size,
+                        ),
+                        "{writing_mode:?} {direction:?}: float {float_inline}+{float_margin}, BFC {inline}+{margin}, clear {clear:?}"
+                    );
+                    assert!(tree.shape_queries().is_empty());
+                }
+            }
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
 }
 
 #[test]
