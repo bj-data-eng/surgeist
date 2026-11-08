@@ -1177,8 +1177,6 @@ pub const fn surgeist_render::Gradient::sweep_center(&self) -> core::option::Opt
 pub fn surgeist_render::Gradient::try_linear(start: surgeist_render::Point, end: surgeist_render::Point, stops: alloc::vec::Vec<surgeist_render::GradientStop>) -> surgeist_render::Result<Self>
 pub fn surgeist_render::Gradient::try_radial(center: surgeist_render::Point, radius: f64, stops: alloc::vec::Vec<surgeist_render::GradientStop>) -> surgeist_render::Result<Self>
 pub fn surgeist_render::Gradient::try_sweep(center: surgeist_render::Point, stops: alloc::vec::Vec<surgeist_render::GradientStop>) -> surgeist_render::Result<Self>
-impl core::convert::From<surgeist_render::Gradient> for peniko::gradient::Gradient
-pub fn peniko::gradient::Gradient::from(gradient: surgeist_render::Gradient) -> Self
 impl core::convert::From<surgeist_render::Gradient> for surgeist_render::Paint
 pub fn surgeist_render::Paint::from(gradient: surgeist_render::Gradient) -> Self
 pub struct surgeist_render::GradientStop

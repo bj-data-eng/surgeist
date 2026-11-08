@@ -1,3 +1,4 @@
+#![cfg(not(target_arch = "wasm32"))]
 #![forbid(unsafe_code)]
 
 use surgeist_render::{Color, Gradient, GradientStop, Point};
@@ -44,50 +45,6 @@ fn assert_rgba(actual: [u8; 4], expected: [u8; 4], tolerance: u8, context: &str)
             .all(|(actual, expected)| actual.abs_diff(expected) <= tolerance),
         "{context}: actual {actual:?}, expected {expected:?}, tolerance {tolerance}"
     );
-}
-
-#[test]
-fn owned_native_conversion_preserves_the_leading_color_in_the_real_resolved_ramp() {
-    for field in FIELDS {
-        for (alpha, leading, midpoint) in [
-            (1.0, [255, 0, 0, 255], [128, 0, 128, 255]),
-            (0.5, [128, 0, 0, 128], [64, 0, 128, 191]),
-        ] {
-            let native: peniko::Gradient = gradient(field, red(alpha)).into();
-            let mut encoding = vello_encoding::Encoding::new();
-            encoding.encode_transform(vello_encoding::Transform::IDENTITY);
-            encoding.encode_fill_style(peniko::Fill::NonZero);
-            assert!(encoding.encode_shape(&peniko::kurbo::Rect::new(0.0, 0.0, 32.0, 8.0), true));
-            encoding.encode_brush(&native, 1.0);
-            let mut resolver = vello_encoding::Resolver::new();
-            let mut packed = Vec::new();
-            let (_, ramps, _) = resolver.resolve(&encoding, &mut packed);
-            let width = usize::try_from(ramps.width).unwrap();
-            assert!(
-                width > 1,
-                "the real backend must resolve a sampleable ramp for {field:?}"
-            );
-            let sample =
-                |index| peniko::color::PremulRgba8::from_u32(ramps.data[index]).to_u8_array();
-            // Images3 3.4.2 requires the first color before offset .5.
-            // Native samples are premultiplied bytes: alpha .5 red is 128 red.
-            assert_rgba(
-                sample((width - 1) / 4),
-                leading,
-                0,
-                &format!("{field:?} leading interval"),
-            );
-            // At t=.75 the supplied [.5,1] interval is halfway traversed.
-            // The nearest sample of the declared 512-sample ramp can differ
-            // by one byte from the exact midpoint after RGBA8 quantization.
-            assert_rgba(
-                sample(3 * (width - 1) / 4),
-                midpoint,
-                1,
-                &format!("{field:?} interval midpoint"),
-            );
-        }
-    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -294,9 +251,9 @@ mod gpu {
         let prepared_visits = full_attempt
             .phase_usage(RenderPhase::GradientPrepare)
             .work(RenderWork::GradientStopVisits);
-        // Two supplied records need one first-record preflight and three
-        // actual native records: the leading endpoint plus both supplied stops.
-        assert_eq!(prepared_visits, 1 + 3);
+        // Two original endpoint inspections precede one leading preflight
+        // and three native records: the anchor plus both supplied stops.
+        assert_eq!(prepared_visits, 2 + 1 + 3);
         let total_visits = full_attempt.usage().work(RenderWork::GradientStopVisits);
         let cap = total_visits - 1;
         drop(unrestricted_surface);

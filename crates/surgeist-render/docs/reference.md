@@ -57,11 +57,18 @@ is also available. Constructors retain nonempty, nondecreasing stop lists,
 including equal, negative and outside-unit positions; descending, nonfinite or
 overflowing spans return typed invalid input. One stop is a solid native paint.
 
-For ordinary fields with ordered normalized stops, the first color remains
-constant before a positive first offset. Native preparation anchors that color
-at zero before copying the supplied records; owned native conversion uses the
-same rule. A single stop keeps its native solid path, including for coincident
-linear endpoints.
+For ordinary fields with ordered normalized stops, native sampling selects the
+first and last supplied colors at and outside their endpoint positions. If all
+stops coincide, the field is a step: the first color applies below that position,
+and the last color applies at and above it. This equality rule is deterministic
+native policy for an infinitesimal transition. A single stop keeps its native
+solid path, including for coincident linear endpoints.
+
+Strictly between different endpoint positions, interpolation retains the native
+512-sample RGBA8 ramp. Endpoint selection compares the native computed field
+coordinate before ramp rounding; it does not establish exact real-valued geometry
+or analytic interior transitions. Submit `Gradient` through `Scene` for this
+execution contract.
 
 Positions are units of the supplied field: the linear start-to-end vector or
 radial ending ellipse. A linear field from zero to forty logical units with
@@ -118,9 +125,11 @@ nested capture preserves a pattern resolved by final magnification.
 repeating brush preparation and native glyph representation checks. Actual stop
 walks, coordinate work, backing, serialization and ramp resources retain their
 existing named work and lifetime owners; optional elapsed time uses Ledger.
-Ordinary multistop preparation charges its first-record preflight, one offset
-comparison and every actual native record, including a leading anchor. The
-native encoder separately charges its visit to those records under Encode.
+Ordinary multistop preparation charges source endpoint inspection, order checks,
+scalar/color conversion and every actual native record, including a leading
+anchor. Encode separately charges native record visits, emitted-record capture,
+final draw-stream association and descriptor/ramp serialization. Actual backing,
+row padding and upload resources retain their existing lifetime owners.
 See [frame accounting](#frame-accounting) for inclusive phases and host timing.
 `supports_repeating_gradients` reports this concrete resolved domain. `surgeist-paint`
 retains authored gradient-box geometry, stop/hint fixup and degenerate semantic

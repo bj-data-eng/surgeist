@@ -224,6 +224,7 @@ pub(super) fn prepare(
     encoding: &Encoding,
     expansions: &super::image_atlas::ImageExpansions,
     glyph_sizes: &vello_encoding::StreamOffsets,
+    endpoints: &[super::gradient_endpoints::CapturedEndpoint],
     parameters: RasterParameters,
     account: &Account,
 ) -> Result<PreparedVelloPass> {
@@ -270,6 +271,9 @@ pub(super) fn prepare(
         ));
     }
     let mut packed = packed.into_accounted()?;
+    let endpoint_texture = super::gradient_endpoints::prepare(
+        &layout, &mut packed, ramps, glyph_sizes, endpoints, account,
+    )?;
     let config = RenderConfig::new(
         &layout,
         parameters.target_extent.width(),
@@ -278,7 +282,12 @@ pub(super) fn prepare(
     );
     let mut recording = RecordingBuilder::new(account)?;
 
-    let gradient_image = if ramps.height == 0 {
+    let gradient_image = if let Some(texture) = endpoint_texture {
+        recording.upload_gradient_ramps(
+            PhysicalSize::new(super::gradient_endpoints::RAMP_WIDTH as u32, texture.height),
+            texture.texels,
+        )?
+    } else if ramps.height == 0 {
         recording.new_transient_image(ImageRole::GradientRamp, PhysicalSize::new(1, 1))?
     } else {
         let mut data = account.retained(ramps.data.len())?;

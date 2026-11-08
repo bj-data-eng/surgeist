@@ -465,54 +465,18 @@ impl Gradient {
     /// linear endpoints, so its offset is deliberately not inspected here.
     pub(crate) fn native_leading_stop(
         &self,
-        account: Option<&crate::accounting::Account>,
+        account: &crate::accounting::Account,
     ) -> Result<Option<GradientStop>> {
         if self.stops().len() < 2 {
             return Ok(None);
         }
-        if let Some(account) = account {
-            account.work(crate::accounting::RenderWork::GradientStopVisits, 1)?;
-        }
+        account.work(crate::accounting::RenderWork::GradientStopVisits, 1)?;
         let first = self.stops()[0];
-        if let Some(account) = account {
-            account.work(crate::accounting::RenderWork::CoordinateVisits, 1)?;
-        }
+        account.work(crate::accounting::RenderWork::CoordinateVisits, 1)?;
         Ok((first.offset > 0.0).then_some(GradientStop {
             offset: 0.0,
             color: first.color,
         }))
-    }
-}
-
-/// Lowers the validated gradient to Peniko, converting logical `f64` geometry to `f32`.
-impl From<Gradient> for peniko::Gradient {
-    fn from(gradient: Gradient) -> Self {
-        let leading = gradient
-            .native_leading_stop(None)
-            .expect("without an account, native leading-stop inspection cannot refuse");
-        let stops: Vec<_> = leading
-            .iter()
-            .chain(gradient.stops())
-            .map(|stop| (stop.offset, peniko::Color::from(stop.color)))
-            .collect();
-
-        match gradient.kind {
-            GradientKind::Linear { start, end, .. } => peniko::Gradient::new_linear(
-                (start.x() as f32, start.y() as f32),
-                (end.x() as f32, end.y() as f32),
-            )
-            .with_stops(stops.as_slice()),
-            GradientKind::Radial { center, radius, .. } => {
-                peniko::Gradient::new_radial((center.x() as f32, center.y() as f32), radius as f32)
-                    .with_stops(stops.as_slice())
-            }
-            GradientKind::Sweep { center, .. } => peniko::Gradient::new_sweep(
-                (center.x() as f32, center.y() as f32),
-                0.0,
-                std::f32::consts::TAU,
-            )
-            .with_stops(stops.as_slice()),
-        }
     }
 }
 

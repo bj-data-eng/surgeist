@@ -266,6 +266,36 @@ const CIRCULAR_NORM_REPLACEMENT: ShaderSourceReplacement = ShaderSourceReplaceme
     failure: "internal Vello fine shader no longer has the checked circular norm boundary",
 };
 
+// Mode 3 is a private draw-word extension, intercepted before native extension
+// or ramp lookup. Draw-leaf reads geometry after that word; coarse passes it
+// through unchanged. Other extend modes retain their exact native operations.
+const GRADIENT_ENDPOINT_REPLACEMENTS: [ShaderSourceReplacement; 4] = [
+    ShaderSourceReplacement {
+        from: "const EXTEND_PAD: u32 = 0u;",
+        to: include_str!("shaders/gradient_endpoints.wgsl"),
+        count: 1,
+        failure: "internal Vello fine shader no longer has the checked gradient helper boundary",
+    },
+    ShaderSourceReplacement {
+        from: "let x = i32(round(extend_mode_normalized(my_d, lin.extend_mode) * f32(GRADIENT_WIDTH - 1)));\n                    let fg_rgba = textureLoad(gradients, vec2(x, i32(lin.index)), 0);",
+        to: "var fg_rgba: vec4<f32>;\n                    if (lin.extend_mode == 3u) {\n                        fg_rgba = ordinary_gradient_color(my_d, lin.index);\n                    } else {\n                        let x = i32(round(extend_mode_normalized(my_d, lin.extend_mode) * f32(GRADIENT_WIDTH - 1)));\n                        fg_rgba = textureLoad(gradients, vec2(x, i32(lin.index)), 0);\n                    }",
+        count: 1,
+        failure: "internal Vello fine shader no longer has the checked linear gradient lookup",
+    },
+    ShaderSourceReplacement {
+        from: "t = extend_mode_normalized(focal_x + t_sign * t, rad.extend_mode);\n                        t = select(t, 1.0 - t, is_swapped);\n                        let x = i32(round(t * f32(GRADIENT_WIDTH - 1)));\n                        let fg_rgba = textureLoad(gradients, vec2(x, i32(rad.index)), 0);",
+        to: "var fg_rgba: vec4<f32>;\n                        if (rad.extend_mode == 3u) {\n                            let raw_t = focal_x + t_sign * t;\n                            fg_rgba = ordinary_gradient_color(select(raw_t, 1.0 - raw_t, is_swapped), rad.index);\n                        } else {\n                            t = extend_mode_normalized(focal_x + t_sign * t, rad.extend_mode);\n                            t = select(t, 1.0 - t, is_swapped);\n                            let x = i32(round(t * f32(GRADIENT_WIDTH - 1)));\n                            fg_rgba = textureLoad(gradients, vec2(x, i32(rad.index)), 0);\n                        }",
+        count: 1,
+        failure: "internal Vello fine shader no longer has the checked radial gradient lookup",
+    },
+    ShaderSourceReplacement {
+        from: "let t = extend_mode_normalized(phi, sweep.extend_mode);\n                    let ramp_x = i32(round(t * f32(GRADIENT_WIDTH - 1)));\n                    let fg_rgba = textureLoad(gradients, vec2(ramp_x, i32(sweep.index)), 0);",
+        to: "var fg_rgba: vec4<f32>;\n                    if (sweep.extend_mode == 3u) {\n                        fg_rgba = ordinary_gradient_color(phi, sweep.index);\n                    } else {\n                        let t = extend_mode_normalized(phi, sweep.extend_mode);\n                        let ramp_x = i32(round(t * f32(GRADIENT_WIDTH - 1)));\n                        fg_rgba = textureLoad(gradients, vec2(ramp_x, i32(sweep.index)), 0);\n                    }",
+        count: 1,
+        failure: "internal Vello fine shader no longer has the checked sweep gradient lookup",
+    },
+];
+
 #[derive(Clone, Copy)]
 struct ShaderSourceReplacement {
     from: &'static str,
@@ -288,6 +318,10 @@ fn fine_shader_source(
                 BLEND_RESULT_REPLACEMENT,
                 NORMAL_BLEND_REPLACEMENT,
                 CIRCULAR_NORM_REPLACEMENT,
+                GRADIENT_ENDPOINT_REPLACEMENTS[0],
+                GRADIENT_ENDPOINT_REPLACEMENTS[1],
+                GRADIENT_ENDPOINT_REPLACEMENTS[2],
+                GRADIENT_ENDPOINT_REPLACEMENTS[3],
                 MSAA8_ENDPOINT_REPLACEMENTS[0],
                 MSAA8_ENDPOINT_REPLACEMENTS[1],
             ],
@@ -301,6 +335,10 @@ fn fine_shader_source(
                 BLEND_RESULT_REPLACEMENT,
                 NORMAL_BLEND_REPLACEMENT,
                 CIRCULAR_NORM_REPLACEMENT,
+                GRADIENT_ENDPOINT_REPLACEMENTS[0],
+                GRADIENT_ENDPOINT_REPLACEMENTS[1],
+                GRADIENT_ENDPOINT_REPLACEMENTS[2],
+                GRADIENT_ENDPOINT_REPLACEMENTS[3],
             ],
         )
     }
@@ -761,6 +799,9 @@ mod cpu_tests {
                 .replace(BLEND_RESULT_REPLACEMENT.from, BLEND_RESULT_REPLACEMENT.to)
                 .replace(NORMAL_BLEND_REPLACEMENT.from, NORMAL_BLEND_REPLACEMENT.to)
                 .replace(CIRCULAR_NORM_REPLACEMENT.from, CIRCULAR_NORM_REPLACEMENT.to);
+            for replacement in GRADIENT_ENDPOINT_REPLACEMENTS {
+                expected = expected.replace(replacement.from, replacement.to);
+            }
             if msaa8 {
                 expected = expected
                     .replace(
@@ -807,6 +848,10 @@ mod cpu_tests {
             BLEND_RESULT_REPLACEMENT,
             NORMAL_BLEND_REPLACEMENT,
             CIRCULAR_NORM_REPLACEMENT,
+            GRADIENT_ENDPOINT_REPLACEMENTS[0],
+            GRADIENT_ENDPOINT_REPLACEMENTS[1],
+            GRADIENT_ENDPOINT_REPLACEMENTS[2],
+            GRADIENT_ENDPOINT_REPLACEMENTS[3],
         ] {
             for changed_source in [
                 "missing helper".to_owned(),
@@ -989,3 +1034,7 @@ mod cpu_tests {
         cpu.ensure_healthy().unwrap();
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[path = "shaders/gradient_endpoint_tests.rs"]
+mod gradient_endpoint_tests;

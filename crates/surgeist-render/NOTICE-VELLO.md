@@ -22,7 +22,7 @@ and bundled test asset alongside this adaptation record.
 | `src/vello_engine/glyph.rs` | `vello-0.9.0/src/scene.rs` | `7c225e73f56629b1b85e8e5cd296428176ec6e59a0813975e2d4123aaddd1718` | Extracts selected-glyph font, outline, COLR, bitmap, and PNG validation from scene lowering; converts malformed or unsupported inputs to typed diagnostics before external encoding and never logs-and-omits a glyph. |
 | `src/vello_engine/raster.rs` | `vello-0.9.0/src/render.rs` | `f75a73fae27085c870273b6e670f355455eea61f1d1dde9b102ab9ed2528e7ed` | Retains the coarse/fine recording schedule over `vello_encoding` while producing a WGPU-free prepared pass with symbolic target and resource intents instead of an upstream renderer graph. |
 | `src/vello_engine/recording.rs` | `vello-0.9.0/src/recording.rs` | `3c760a7c7610274443efe06c2e9a37eb71471b14a6635d9f65ce92b39de98b3c` | Recasts upstream recording proxies as private handles, resource intents, and dispatch records for the fixed raster schedule; it owns no WGPU object, polling, or submission path. |
-| `src/vello_engine/shaders.rs` | `vello-0.9.0/src/shaders.rs` | `c1392afa0ce8d33873e43a26ba79e881adb0a53e2ed92a90201fac5592a0058e` | Retains shader selection and WGSL binding metadata from external WGSL-only `vello_shaders`; creates modules and pipelines through checked WGPU error scopes rather than the trusted upstream creation path. Applies exact gray and endpoint luminosity identities and pre-composition mixing-result bounds to all fine raster shaders through checked, Ledger-accounted source adaptation, preserving separate local Plus arithmetic. Defines the zero/subnormal circular norm boundary for all fine programs through the same checked source adaptation. |
+| `src/vello_engine/shaders.rs` | `vello-0.9.0/src/shaders.rs` | `c1392afa0ce8d33873e43a26ba79e881adb0a53e2ed92a90201fac5592a0058e` | Retains shader selection and WGSL binding metadata from external WGSL-only `vello_shaders`; creates modules and pipelines through checked WGPU error scopes rather than the trusted upstream creation path. Applies exact gray and endpoint luminosity identities and pre-composition mixing-result bounds to all fine raster shaders through checked, Ledger-accounted source adaptation, preserving separate local Plus arithmetic. Defines the zero/subnormal circular norm boundary and ordinary gradient endpoint selection for all fine programs through the same checked source adaptation. |
 | `src/vello_engine/encoder.rs` | `vello-0.9.0/src/wgpu_engine.rs` | `d2bbb8151f27d7fd4ff82abaa1438e05cb45468dab36034f48e54eefba183e7c` | Realizes symbolic recordings, uploads, bind groups, and compute passes into a transaction-borrowed encoder; returns a lease and cannot submit command buffers or own a renderer. |
 | `src/vello_engine/resources.rs` | `vello-0.9.0/src/wgpu_engine.rs` | `d2bbb8151f27d7fd4ff82abaa1438e05cb45468dab36034f48e54eefba183e7c` | Replaces the upstream engine's resource ownership with checked per-device allocation and explicit lease commit, abort, and atlas-recovery state under Surgeist transaction control. |
 
@@ -56,6 +56,24 @@ norm boundary from `vello_shaders` 0.9.0 `shader/fine.wgsl`, whose source SHA-25
 `efd4a38f4a6a32518b33b497789723b8f163ada361f683c2dfa3700fe8b2d68d`.
 It retains the surrounding circular and noncircular branches and uses the same
 shader-specific license alternatives above.
+
+The ordinary gradient adaptation checks the linear, radial and sweep lookup
+boundaries in that same `fine.wgsl` source for every Area, MSAA8 and MSAA16
+program. A private mode-3 draw word selects a five-texel descriptor appended to
+the existing RGBA8 gradient texture. The Surgeist-owned helper in
+`src/vello_engine/shaders/gradient_endpoints.wgsl` loads flat addresses across
+512-wide rows, reconstructs scalar words with `pack4x8unorm`, and compares
+endpoint words as ordered binary32 representations before native Pad clamping.
+It canonicalizes signed zero without floating-point endpoint arithmetic, retains
+subnormal threshold bits, and selects the last endpoint at an all-coincident
+threshold. Radial selection restores the native swap orientation before its
+endpoint comparison. The existing coverage operation consumes the selected
+premultiplied color once. Native modes 0, 1 and 2 retain their lookup operations;
+strict interior samples retain the original ramp row and 512-sample rounding.
+NaN coordinates retain the previous native Pad lookup on that row. Selection
+is relative to the actual native computed coordinate, without changing or
+recovering earlier field arithmetic. The private native GPU probe executes this
+same helper against RGBA8 byte/scalar words, row crossings and endpoint cases.
 
 ## Omitted upstream main-crate sources
 
