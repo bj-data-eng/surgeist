@@ -722,6 +722,112 @@ fn porter_duff_annihilated_source_needs_no_text_ink_but_retains_copy() {
 }
 
 #[test]
+fn porter_duff_singular_source_discards_unresolved_ink_but_executes_copy() {
+    let (mut renderer, mut surface) = renderer_and_surface(Size::new(2.0, 2.0));
+    let formats = graph_supported_working_formats_for_test(&mut renderer);
+    let singular = Transform::scale(0.0, 1.0).unwrap();
+    for inherited in [false, true] {
+        let mut copy = Layer::new().with_composition(composition(Op::Copy, BlendMode::Normal));
+        if !inherited {
+            copy = copy.try_transform(singular).unwrap();
+        }
+        let mut scene = Scene::new();
+        let add_source = |scene: &mut Scene| {
+            scene.layer(copy, |scene| {
+                super::support::add_planning_text(scene, crate::TextRunBounds::unspecified());
+            });
+        };
+        if inherited {
+            scene.layer(Layer::new().try_transform(singular).unwrap(), add_source);
+        } else {
+            add_source(&mut scene);
+        }
+        for format in formats.iter().copied() {
+            let before = surface.headless_publication_count_for_test();
+            let stats =
+                pollster::block_on(renderer.render_with_exact_graph_working_format_for_test(
+                    &mut surface,
+                    &scene,
+                    crate::Parameters {
+                        base_color: Color::BLACK,
+                        ..crate::Parameters::default()
+                    },
+                    format,
+                ))
+                .unwrap();
+            assert_eq!(stats.route, Some(crate::RenderRoute::GpuGraph));
+            assert_eq!(stats.vello_passes, 0);
+            assert_eq!(surface.headless_publication_count_for_test(), before + 1);
+            let pixels = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+            for y in 0..2 {
+                for x in 0..2 {
+                    assert_eq!(pixel_rgba(&pixels, x, y), [0; 4], "inherited={inherited}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn porter_duff_singular_own_clip_preserves_parent_without_source_prerequisites() {
+    let bounds = Rect::new(0.0, 0.0, 2.0, 2.0);
+    let (mut renderer, mut surface) = renderer_and_surface(Size::new(2.0, 2.0));
+    let singular = Transform::scale(0.0, 1.0).unwrap();
+    for inherited in [false, true] {
+        for unspecified_text in [false, true] {
+            let mut copy = Layer::new()
+                .with_composition(composition(Op::Copy, BlendMode::Normal))
+                .try_clip(Shape::rect(bounds))
+                .unwrap();
+            if !inherited {
+                copy = copy.try_transform(singular).unwrap();
+            }
+            let add_source = |scene: &mut Scene| {
+                scene.layer(copy, |scene| {
+                    if unspecified_text {
+                        super::support::add_planning_text(
+                            scene,
+                            crate::TextRunBounds::unspecified(),
+                        );
+                    } else {
+                        scene.fill(bounds, straight_color(BLUE));
+                    }
+                });
+            };
+            let mut scene = Scene::new();
+            if inherited {
+                scene.layer(Layer::new().try_transform(singular).unwrap(), add_source);
+            } else {
+                add_source(&mut scene);
+            }
+            // No root draw: an erased operation must not leave a graph containing
+            // only root initialization and presentation outside the closed subset.
+            let before = surface.headless_publication_count_for_test();
+            pollster::block_on(renderer.render(
+                &mut surface,
+                &scene,
+                crate::Parameters {
+                    base_color: Color::BLACK,
+                    ..crate::Parameters::default()
+                },
+            ))
+            .unwrap();
+            assert_eq!(surface.headless_publication_count_for_test(), before + 1);
+            let pixels = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+            for y in 0..2 {
+                for x in 0..2 {
+                    assert_eq!(
+                        pixel_rgba(&pixels, x, y),
+                        [0, 0, 0, 255],
+                        "inherited={inherited}, text={unspecified_text}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn porter_duff_transforms_preserve_the_parent_domain_and_active_operation_clips() {
     let (mut renderer, mut surface) = renderer_and_surface(Size::new(6.0, 2.0));
     let formats = graph_supported_working_formats_for_test(&mut renderer);
