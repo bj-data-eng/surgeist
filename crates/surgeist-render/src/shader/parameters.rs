@@ -802,6 +802,12 @@ const fn blend_parameter_code(blend: BlendMode) -> u32 {
         BlendMode::Darken => 4,
         BlendMode::Lighten => 5,
         BlendMode::Plus => 6,
+        BlendMode::ColorDodge => 7,
+        BlendMode::ColorBurn => 8,
+        BlendMode::HardLight => 9,
+        BlendMode::SoftLight => 10,
+        BlendMode::Difference => 11,
+        BlendMode::Exclusion => 12,
     }
 }
 
@@ -864,6 +870,37 @@ fn narrow_raster_scale(field: &'static str, value: f64) -> Result<f32> {
 #[cfg(test)]
 mod surface_grid_parameter_tests {
     use super::*;
+
+    #[test]
+    fn composite_parameters_preserve_plus_and_encode_separable_shader_modes() {
+        // These are Render's shader dispatch codes, independent of Peniko's codes.
+        for (blend, expected_code) in [
+            (BlendMode::Plus, 6),
+            (BlendMode::ColorDodge, 7),
+            (BlendMode::ColorBurn, 8),
+            (BlendMode::HardLight, 9),
+            (BlendMode::SoftLight, 10),
+            (BlendMode::Difference, 11),
+            (BlendMode::Exclusion, 12),
+        ] {
+            let bytes = CompositeParameterBytes::try_from_facts(
+                CompositeParameterFacts {
+                    affine: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                    source_space: CompositeSourceSpace::LayerLocal,
+                    opacity: 1.0,
+                    blend,
+                    has_clip: false,
+                    mask: None,
+                    raster_scale: 1.0,
+                },
+                None,
+            )
+            .unwrap()
+            .into_bytes_for_test();
+            let encoded_code = u32::from_le_bytes(bytes[84..88].try_into().unwrap());
+            assert_eq!(encoded_code, expected_code, "{blend:?}");
+        }
+    }
 
     #[test]
     fn surface_source_mapping_keeps_mask_inverse_and_independent_pixelated_axes() {

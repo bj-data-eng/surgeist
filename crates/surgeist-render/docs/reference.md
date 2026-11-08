@@ -44,6 +44,36 @@ distinct typed diagnostics. Missing adapters, required formats, device limits,
 and surface lifecycle availability do not authorize partial frame publication.
 The [error API](../src/error.rs) defines the operation and reason payloads.
 
+## Layer blending
+
+`Layer::blend` accepts `BlendMode::{Normal, Multiply, Screen, Overlay, Darken,
+Lighten, ColorDodge, ColorBurn, HardLight, SoftLight, Difference, Exclusion}`.
+These separable functions combine corresponding straight numeric-sRGB source
+and backdrop components. The result is bounded to the component range and
+modulated by backdrop alpha before source-over composition. Transparent
+backdrops therefore preserve the source contribution. Inputs, intermediate
+textures and readback keep their existing alpha conventions; public readback
+is straight-alpha RGBA8.
+
+Color dodge returns zero for a zero backdrop before considering a source of
+one. Color burn returns one for a backdrop of one before considering a source
+of zero. Hard light branches on the source component at one half; overlay
+branches on the backdrop. Soft light uses its polynomial curve through a
+backdrop of one quarter, then its square-root curve. Each channel is independent.
+
+`BlendMode::Plus` remains a separate additive composition choice. The layer API
+does not select arbitrary Porter-Duff operators. Nonseparable blend functions,
+background-layer blend interpretation and their typed capability boundaries
+remain separate from this supported set.
+
+Effect-free layers use the direct Vello route. A resolved alpha mask or other
+supported graph requirement selects the GPU graph without changing the selected
+blend function; nested capture-local layers can still use Vello raster spans.
+Clipping, mask alpha and opacity attenuate the premultiplied source before
+composition. Both routes retain the same Ledger admission, resource custody and
+atomic publication rules as other layers. Host-observed profiling durations do
+not establish pixel-value-independent execution timing.
+
 ## Image sampling
 
 `Image::rendering` accepts an `ImageRendering` hint already selected by the

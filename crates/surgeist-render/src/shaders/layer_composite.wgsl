@@ -257,6 +257,41 @@ fn safe_straight_rgb(premultiplied: vec4<f32>) -> vec3<f32> {
     return clamp(premultiplied.rgb / premultiplied.a, vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
+fn color_dodge(source: f32, backdrop: f32) -> f32 {
+    // The backdrop guard takes precedence at (Cb, Cs) = (0, 1).
+    if (backdrop == 0.0) {
+        return 0.0;
+    }
+    if (source == 1.0) {
+        return 1.0;
+    }
+    return min(1.0, backdrop / (1.0 - source));
+}
+
+fn color_burn(source: f32, backdrop: f32) -> f32 {
+    // The backdrop guard takes precedence at (Cb, Cs) = (1, 0).
+    if (backdrop == 1.0) {
+        return 1.0;
+    }
+    if (source == 0.0) {
+        return 0.0;
+    }
+    return 1.0 - min(1.0, (1.0 - backdrop) / source);
+}
+
+fn soft_light(source: f32, backdrop: f32) -> f32 {
+    if (source <= 0.5) {
+        return backdrop - (1.0 - 2.0 * source) * backdrop * (1.0 - backdrop);
+    }
+    var d: f32;
+    if (backdrop <= 0.25) {
+        d = ((16.0 * backdrop - 12.0) * backdrop + 4.0) * backdrop;
+    } else {
+        d = sqrt(backdrop);
+    }
+    return backdrop + (2.0 * source - 1.0) * (d - backdrop);
+}
+
 fn separable_blend(source: vec3<f32>, backdrop: vec3<f32>, mode: u32) -> vec3<f32> {
     switch mode {
         case 1u: {
@@ -276,6 +311,38 @@ fn separable_blend(source: vec3<f32>, backdrop: vec3<f32>, mode: u32) -> vec3<f3
         case 5u: {
             return max(source, backdrop);
         }
+        case 7u: {
+            return vec3<f32>(
+                color_dodge(source.r, backdrop.r),
+                color_dodge(source.g, backdrop.g),
+                color_dodge(source.b, backdrop.b),
+            );
+        }
+        case 8u: {
+            return vec3<f32>(
+                color_burn(source.r, backdrop.r),
+                color_burn(source.g, backdrop.g),
+                color_burn(source.b, backdrop.b),
+            );
+        }
+        case 9u: {
+            let low = 2.0 * source * backdrop;
+            let high = 1.0 - 2.0 * (1.0 - source) * (1.0 - backdrop);
+            return select(high, low, source <= vec3<f32>(0.5));
+        }
+        case 10u: {
+            return vec3<f32>(
+                soft_light(source.r, backdrop.r),
+                soft_light(source.g, backdrop.g),
+                soft_light(source.b, backdrop.b),
+            );
+        }
+        case 11u: {
+            return abs(backdrop - source);
+        }
+        case 12u: {
+            return backdrop + source - 2.0 * backdrop * source;
+        }
         default: {
             return source;
         }
@@ -290,7 +357,11 @@ fn destination_composite(source: vec4<f32>, destination_position: vec2<f32>) -> 
 
     let source_straight = safe_straight_rgb(source);
     let backdrop_straight = safe_straight_rgb(backdrop);
-    let blended = separable_blend(source_straight, backdrop_straight, parameters.blend);
+    let blended = clamp(
+        separable_blend(source_straight, backdrop_straight, parameters.blend),
+        vec3<f32>(0.0),
+        vec3<f32>(1.0),
+    );
     let alpha = clamp(source.a + backdrop.a - source.a * backdrop.a, 0.0, 1.0);
     let premultiplied = (1.0 - backdrop.a) * source.rgb
         + (1.0 - source.a) * backdrop.rgb

@@ -3026,7 +3026,7 @@ fn composition_read_gpu_vectors_for_test(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-async fn composition_submit_and_read_gpu_vectors_for_test(
+pub(super) async fn composition_submit_and_read_gpu_vectors_for_test(
     backend: &mut Backend,
     identity: DeviceSlotIdentity,
     transaction: crate::gpu_transaction::GpuOperationTransaction,
@@ -3339,7 +3339,7 @@ fn blend_shaders_match_independent_known_vectors() {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn assert_composition_blend_gpu_vectors(
+pub(super) fn assert_composition_blend_gpu_vectors(
     mut backend: Backend,
     identity: DeviceSlotIdentity,
     requests: &crate::pass::LayerCompositeCacheRequestsForTest,
@@ -12080,7 +12080,7 @@ fn composition_composite_requests_for_test(
     .unwrap()
 }
 
-fn composition_selected_backend_and_requests_for_test() -> (
+pub(super) fn composition_selected_backend_and_requests_for_test() -> (
     Backend,
     DeviceSlotIdentity,
     crate::pass::LayerCompositeCacheRequestsForTest,

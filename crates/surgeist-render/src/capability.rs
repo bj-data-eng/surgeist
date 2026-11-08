@@ -1209,7 +1209,8 @@ impl CompositingCapabilities {
         self.background_blend_modes
     }
 
-    /// Returns whether additional mix-blend modes are supported.
+    /// Returns whether mix-blend modes beyond the public [`crate::BlendMode`] set
+    /// are supported, including nonseparable color-component modes.
     #[must_use]
     pub const fn supports_additional_mix_blend_modes(self) -> bool {
         self.additional_mix_blend_modes

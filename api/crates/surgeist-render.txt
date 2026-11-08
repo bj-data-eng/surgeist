@@ -40,13 +40,19 @@ pub surgeist_render::BackgroundSizeKind::Explicit
 pub surgeist_render::BackgroundSizeKind::Explicit::height: surgeist_render::SizeComponent
 pub surgeist_render::BackgroundSizeKind::Explicit::width: surgeist_render::SizeComponent
 pub enum surgeist_render::BlendMode
+pub surgeist_render::BlendMode::ColorBurn
+pub surgeist_render::BlendMode::ColorDodge
 pub surgeist_render::BlendMode::Darken
+pub surgeist_render::BlendMode::Difference
+pub surgeist_render::BlendMode::Exclusion
+pub surgeist_render::BlendMode::HardLight
 pub surgeist_render::BlendMode::Lighten
 pub surgeist_render::BlendMode::Multiply
 pub surgeist_render::BlendMode::Normal
 pub surgeist_render::BlendMode::Overlay
 pub surgeist_render::BlendMode::Plus
 pub surgeist_render::BlendMode::Screen
+pub surgeist_render::BlendMode::SoftLight
 pub enum surgeist_render::BorderStyle
 pub surgeist_render::BorderStyle::Dashed
 pub surgeist_render::BorderStyle::Dotted
