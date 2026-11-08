@@ -71,15 +71,7 @@ fn allocating_buffer_edits_apply_the_host_ceiling_before_mutation() {
         }
     }
 
-    for (operation, capacity) in [
-        ("source.resize(8)", 4),
-        #[cfg(feature = "experimental")]
-        ("source.transfer(8)", 4),
-        #[cfg(feature = "experimental")]
-        ("source.transferToFixedLength(8)", 4),
-        #[cfg(feature = "experimental")]
-        ("source.transferToFixedLength(6)", 16),
-    ] {
+    fn assert_refusal(operation: &str, capacity: usize) {
         let mut context = Context::builder()
             .host_hooks(Rc::new(Ceiling))
             .build()
@@ -99,6 +91,16 @@ fn allocating_buffer_edits_apply_the_host_ceiling_before_mutation() {
             JsNativeErrorKind::Range
         ));
         assert_eq!(source.data().as_deref(), Some([1, 2, 3, 4].as_slice()));
+    }
+
+    assert_refusal("source.resize(8)", 4);
+    #[cfg(feature = "experimental")]
+    for (operation, capacity) in [
+        ("source.transfer(8)", 4),
+        ("source.transferToFixedLength(8)", 4),
+        ("source.transferToFixedLength(6)", 16),
+    ] {
+        assert_refusal(operation, capacity);
     }
 
     let mut context = Context::builder()
@@ -143,11 +145,7 @@ fn allocating_buffer_edits_revalidate_after_host_detachment() {
         }
     }
 
-    for operation in [
-        "source.resize(8)",
-        #[cfg(feature = "experimental")]
-        "source.transferToFixedLength(8)",
-    ] {
+    fn assert_detached(operation: &str) {
         let host = Rc::new(DetachingHost::default());
         let mut context = Context::builder().host_hooks(host.clone()).build().unwrap();
         let source = JsArrayBuffer::from_byte_block(vec![1, 2, 3, 4], context.access())
@@ -165,6 +163,10 @@ fn allocating_buffer_edits_revalidate_after_host_detachment() {
         ));
         assert!(source.data().is_none());
     }
+
+    assert_detached("source.resize(8)");
+    #[cfg(feature = "experimental")]
+    assert_detached("source.transferToFixedLength(8)");
 }
 
 #[test]

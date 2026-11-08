@@ -1,8 +1,18 @@
 //! Error-related types and conversions.
 
 use crate::ContextAccess;
+mod diagnostic;
+use diagnostic::StoredDiagnostic;
+pub use diagnostic::{
+    Diagnostic, DiagnosticBacktrace, DiagnosticEngine, DiagnosticFrame, DiagnosticFrames,
+    DiagnosticKind, DiagnosticMembers, DiagnosticNative, DiagnosticNativeKind, DiagnosticOpaque,
+    DiagnosticStack, PanicDiagnostic,
+};
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod diagnostic_custody_tests;
 
 use crate::{
     Context, JsResult, JsString, JsValue,
@@ -20,7 +30,7 @@ use crate::{
         shadow_stack::{Backtrace, ErrorStack, ShadowEntry},
     },
 };
-use std::{borrow::Cow, error, fmt};
+use std::{borrow::Cow, error, fmt, rc::Rc};
 use surgeist_js_parser::frontend::InternerLimitKind;
 use thiserror::Error;
 
@@ -550,23 +560,27 @@ impl From<surgeist_js_parser::frontend::FrontendLimit> for RuntimeLimitError {
 #[must_use]
 pub struct PanicError {
     /// The original panic message providing context about what went wrong.
-    message: Box<str>,
-    /// The source error of this panic, if applicable.
-    source: Option<Box<JsError>>,
+    message: Rc<str>,
+    /// Immutable diagnostic topology with separate external root custody.
+    source: Option<PanicDiagnostic>,
 }
 
 impl PanicError {
     /// Creates a `PanicError` error from a panic message.
     pub fn new<S: Into<Box<str>>>(message: S) -> Self {
         PanicError {
-            message: message.into(),
+            message: Rc::from(message.into()),
             source: None,
         }
     }
 
-    /// Sets the source error of this `PanicError`.
+    /// Prepares an immutable diagnostic source and its external roots.
+    ///
+    /// Construction may allocate. Later cloning and stored Panic retention
+    /// share that prepared data. The standard error source is a
+    /// [`PanicDiagnostic`]; use [`Self::diagnostic`] for typed traversal.
     pub fn with_source<E: Into<JsError>>(mut self, source: E) -> Self {
-        self.source = Some(Box::new(source.into()));
+        self.source = Some(PanicDiagnostic::new(source.into()));
         self
     }
 
@@ -574,6 +588,16 @@ impl PanicError {
     #[must_use]
     pub fn message(&self) -> &str {
         &self.message
+    }
+
+    /// Borrows the immutable, currently visible diagnostic source.
+    ///
+    /// The standard error source is a [`PanicDiagnostic`] wrapper whose own
+    /// standard source chain ends there. Traverse this view for typed causes,
+    /// aggregate members, opaque identities and captured provenance.
+    #[must_use]
+    pub fn diagnostic(&self) -> Option<Diagnostic<'_>> {
+        self.source.as_ref().map(PanicDiagnostic::view)
     }
 }
 
@@ -670,10 +694,11 @@ impl EngineError {
             EngineError::RuntimeLimit(err) => ErasedEngineError::RuntimeLimit(err),
             EngineError::ScopeAnalysis(error) => ErasedEngineError::ScopeAnalysis(error),
             EngineError::Panic(err) => ErasedEngineError::Panic(ErasedPanicError {
-                message: err.message,
+                message: Box::from(err.message.as_ref()),
                 source: err
                     .source
-                    .map(|err| Box::new(err.into_erased(context.access()))),
+                    .as_ref()
+                    .map(|source| Box::new(source.view().erase(context))),
             }),
         }
     }
@@ -701,8 +726,8 @@ enum StoredErrorRepr {
     RuntimeLimit(#[heap_trace(skip)] RuntimeLimitError),
     Panic {
         #[heap_trace(skip)]
-        message: Box<str>,
-        source: Option<Box<StoredJsError>>,
+        message: Rc<str>,
+        source: Option<StoredDiagnostic>,
     },
     #[cfg(feature = "fuzz")]
     NoInstructionsRemain,
@@ -715,6 +740,8 @@ struct StoredNativeError {
     message: Cow<'static, str>,
     cause: Option<Box<StoredJsError>>,
     realm: Option<RealmEdge>,
+    #[heap_trace(skip)]
+    realm_identity: Option<surgeist_js_gc::heap::ObjectId>,
     #[heap_trace(skip)]
     stack: IgnoreEq<ErrorStack>,
 }
@@ -772,7 +799,7 @@ impl StoredJsError {
             StoredErrorRepr::Panic { message, source } => {
                 Repr::Engine(EngineError::Panic(PanicError {
                     message: message.clone(),
-                    source: source.as_ref().map(|error| Box::new(error.to_error())),
+                    source: source.as_ref().map(StoredDiagnostic::to_external),
                 }))
             }
             #[cfg(feature = "fuzz")]
@@ -799,9 +826,9 @@ impl JsError {
                 }
                 if !error.is_catchable() {
                     if let Repr::Engine(EngineError::Panic(panic)) = &mut error.inner
-                        && let Some(source) = panic.source.as_deref_mut()
+                        && let Some(source) = &mut panic.source
                     {
-                        source.admit_diagnostic(runtime);
+                        source.admit(runtime);
                     }
                     if first_engine.is_none() {
                         first_engine = Some(&*error);
@@ -820,29 +847,6 @@ impl JsError {
             first_refusal.map(|refusal| first_engine.map_or(refusal, Self::clone))
         };
         replacement.unwrap_or(self)
-    }
-
-    fn admit_diagnostic(&mut self, runtime: &crate::Runtime) {
-        let mut pending = vec![self];
-        while let Some(error) = pending.pop() {
-            if let Err(refusal) = error.check_runtime_owner(runtime) {
-                // Diagnostic payloads must be local without changing the panic.
-                *error = refusal;
-                continue;
-            }
-            match &mut error.inner {
-                Repr::Native(native) => {
-                    if let JsNativeErrorKind::Aggregate(errors) = &mut native.kind {
-                        pending.extend(errors.iter_mut().rev());
-                    }
-                    pending.extend(native.cause.as_deref_mut());
-                }
-                Repr::Engine(EngineError::Panic(panic)) => {
-                    pending.extend(panic.source.as_deref_mut());
-                }
-                _ => {}
-            }
-        }
     }
 
     fn check_runtime_owner(&self, runtime: &crate::Runtime) -> JsResult<()> {
@@ -888,6 +892,7 @@ impl JsError {
                 message: error.message,
                 cause: error.cause.map(|error| Box::new(error.into_stored())),
                 realm: error.realm.as_ref().map(Realm::edge),
+                realm_identity: error.realm.as_ref().map(Realm::identity),
                 stack: error.stack,
             })),
             Repr::Engine(EngineError::InvalidEntryPermit) => StoredErrorRepr::InvalidEntryPermit,
@@ -906,7 +911,7 @@ impl JsError {
             }
             Repr::Engine(EngineError::Panic(error)) => StoredErrorRepr::Panic {
                 message: error.message,
-                source: error.source.map(|error| Box::new(error.into_stored())),
+                source: error.source.map(PanicDiagnostic::into_stored),
             },
             #[cfg(feature = "fuzz")]
             Repr::Engine(EngineError::NoInstructionsRemain) => {

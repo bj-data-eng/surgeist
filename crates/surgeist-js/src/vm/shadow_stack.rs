@@ -1,4 +1,7 @@
-use std::fmt::{self, Display};
+use std::{
+    fmt::{self, Display},
+    rc::Rc,
+};
 
 use surgeist_js_string::JsString;
 use thin_vec::ThinVec;
@@ -7,12 +10,22 @@ use super::source_info::{NativeSourceInfo, SourceInfo};
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct Backtrace {
-    stack: ThinVec<ShadowEntry>,
+    stack: Option<Rc<ThinVec<ShadowEntry>>>,
 }
 
 impl Backtrace {
-    pub(crate) fn iter(&self) -> impl DoubleEndedIterator<Item = &ShadowEntry> {
-        self.stack.iter()
+    fn new(stack: ThinVec<ShadowEntry>) -> Self {
+        Self {
+            stack: (!stack.is_empty()).then(|| Rc::new(stack)),
+        }
+    }
+
+    pub(crate) fn frames(&self) -> &[ShadowEntry] {
+        self.stack.as_deref().map_or(&[], |stack| stack.as_slice())
+    }
+
+    pub(crate) fn iter(&self) -> impl DoubleEndedIterator<Item = &ShadowEntry> + ExactSizeIterator {
+        self.frames().iter()
     }
 }
 
@@ -214,7 +227,7 @@ impl ShadowStack {
             // NOTE: pc points to the next opcode, so we offset by -1 to put it within range.
             *pc = last_pc.saturating_sub(1);
         }
-        Backtrace { stack }
+        Backtrace::new(stack)
     }
 
     pub(crate) fn take_and_push(&self, n: usize, last_pc: u32, value: ShadowEntry) -> Backtrace {
@@ -233,7 +246,7 @@ impl ShadowStack {
             // NOTE: pc points to the next opcode, so we offset by -1 to put it within range.
             *pc = last_pc.saturating_sub(1);
         }
-        Backtrace { stack }
+        Backtrace::new(stack)
     }
 
     pub(crate) fn caller_position(&self, n: usize) -> Backtrace {
@@ -248,7 +261,7 @@ impl ShadowStack {
             .cloned()
             .collect::<ThinVec<_>>();
 
-        Backtrace { stack }
+        Backtrace::new(stack)
     }
 
     #[cfg(feature = "native-backtrace")]
