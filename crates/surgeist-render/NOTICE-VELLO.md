@@ -18,7 +18,7 @@ and bundled test asset alongside this adaptation record.
 
 | Local derived file | Upstream source | Pre-adaptation SHA-256 | Material adaptations |
 | --- | --- | --- | --- |
-| `src/vello_engine/scene.rs` | `vello-0.9.0/src/scene.rs` | `7c225e73f56629b1b85e8e5cd296428176ec6e59a0813975e2d4123aaddd1718` | Keeps private Vello-compatible scene lowering for the crate's commands and moves selected-glyph work behind a fallible preflight boundary; removes the public `Scene` surface and upstream font `unwrap` paths. Resolves repeating glyph brushes with the actual final paint transform and checks the separately narrowed native glyph/brush mapping before encoding. |
+| `src/vello_engine/scene.rs` | `vello-0.9.0/src/scene.rs` | `7c225e73f56629b1b85e8e5cd296428176ec6e59a0813975e2d4123aaddd1718` | Keeps private Vello-compatible scene lowering for the crate's commands and moves selected-glyph work behind a fallible preflight boundary; removes the public `Scene` surface and upstream font `unwrap` paths. Resolves gradient glyph brushes with the actual final paint transform, checks the separately narrowed native glyph/brush mapping, and captures owned analytic sampling records before encoding. |
 | `src/vello_engine/glyph.rs` | `vello-0.9.0/src/scene.rs` | `7c225e73f56629b1b85e8e5cd296428176ec6e59a0813975e2d4123aaddd1718` | Extracts selected-glyph font, outline, COLR, bitmap, and PNG validation from scene lowering; converts malformed or unsupported inputs to typed diagnostics before external encoding and never logs-and-omits a glyph. |
 | `src/vello_engine/raster.rs` | `vello-0.9.0/src/render.rs` | `f75a73fae27085c870273b6e670f355455eea61f1d1dde9b102ab9ed2528e7ed` | Retains the coarse/fine recording schedule over `vello_encoding` while producing a WGPU-free prepared pass with symbolic target and resource intents instead of an upstream renderer graph. |
 | `src/vello_engine/recording.rs` | `vello-0.9.0/src/recording.rs` | `3c760a7c7610274443efe06c2e9a37eb71471b14a6635d9f65ce92b39de98b3c` | Recasts upstream recording proxies as private handles, resource intents, and dispatch records for the fixed raster schedule; it owns no WGPU object, polling, or submission path. |
@@ -63,8 +63,10 @@ shader-specific license alternatives above.
 
 The ordinary gradient adaptation checks the linear, radial and sweep lookup
 boundaries in that same `fine.wgsl` source for every Area, MSAA8 and MSAA16
-program. A private mode-3 draw word selects a five-texel descriptor appended to
-the existing RGBA8 gradient texture. The Surgeist-owned helper in
+program. A private mode-3 draw word selects a seven-word descriptor appended to
+the existing RGBA8 gradient texture. The descriptor selects an unhinted Pad ramp
+or an analytic Pad/Repeat segment program; native ramp rows remain unchanged.
+The Surgeist-owned helper in
 `src/vello_engine/shaders/gradient_endpoints.wgsl` loads flat addresses across
 512-wide rows, reconstructs scalar words with `pack4x8unorm`, and compares
 endpoint words as ordered binary32 representations before native Pad clamping.
@@ -73,11 +75,19 @@ subnormal threshold bits, and selects the last endpoint at an all-coincident
 threshold. Radial selection restores the native swap orientation before its
 endpoint comparison. The existing coverage operation consumes the selected
 premultiplied color once. Native modes 0, 1 and 2 retain their lookup operations;
-strict interior samples retain the original ramp row and 512-sample rounding.
-NaN coordinates retain the previous native Pad lookup on that row. Selection
-is relative to the actual native computed coordinate, without changing or
+unhinted strict interior samples retain the original ramp row and 512-sample
+rounding. NaN coordinates retain the previous native Pad lookup on that row.
+Analytic programs carry one seven-word record per actual color stop: position,
+four premultiplied binary32 channels, outgoing segment kind and exponent. These
+words use the same exact-byte transport. A bounded ordered search preserves
+coincident runs before linear, power or endpoint-limit interpolation. The
+Surgeist-owned coefficient and whole-segment numerical certificate qualify the
+power arithmetic before encoding; they do not derive from an upstream color
+stop approximation. Selection is relative to the actual native computed
+coordinate, without changing or
 recovering earlier field arithmetic. The private native GPU probe executes this
-same helper against RGBA8 byte/scalar words, row crossings and endpoint cases.
+same helper against RGBA8 byte/scalar words, row crossings, endpoint cases and
+analytic segment programs.
 
 ## Omitted upstream main-crate sources
 

@@ -7,7 +7,11 @@
 //! Per-use realization of resolved repeating fields. This is scalar paint
 //! preparation; the native raster engine still owns all pixel production.
 
-use super::{BrushTransform, FrameBrush, gradient_field::*, gradient_with_stops};
+use super::{
+    BrushTransform, FrameBrush, PreparedSampling, gradient_field::*, gradient_with_stops,
+    hint_program,
+};
+use crate::vello_engine::gradient_endpoints::{PadEndpoints, ProgramExtend};
 use crate::{
     Color, Error, GradientStop, PhysicalSize, RepeatingGradient, Result,
     accounting::{Account, RenderPhase, RenderWork},
@@ -28,16 +32,17 @@ pub(super) fn prepare(
             return Ok(FrameBrush::solid(stops[0].color().into()));
         }
         account.work(RenderWork::GradientStopVisits, 2)?;
-        let first = stops[0].position();
-        let span = stops[stops.len() - 1].position() - first;
-        if span == 0.0 {
+        let first_stop = stops[0];
+        let last_stop = stops[stops.len() - 1];
+        let first = scalar(&account, || first_stop.position())?;
+        let last = scalar(&account, || last_stop.position())?;
+        let span = scalar(&account, || last - first)?;
+        if scalar(&account, || span == 0.0)? {
             return solid_average(stops, Average::Uniform, &account);
         }
         let geometry = period_geometry(gradient.geometry(), first, span, &account)?;
         let (field, local) = match geometry {
-            PeriodGeometry::RoundedZero => {
-                return solid_average(stops, Average::Uniform, &account);
-            }
+            PeriodGeometry::RoundedZero => return solid_average(stops, Average::Uniform, &account),
             PeriodGeometry::ZeroHeight => {
                 return solid_average(stops, Average::Weighted(span), &account);
             }
@@ -46,15 +51,13 @@ pub(super) fn prepare(
         let device = affine_product(paint_to_device, local, &account)?;
         check_finite(device, &account)?;
         let period = match field {
-            NativeField::Linear => linear_device_period(device),
-            NativeField::Radial { .. } => radial_device_period(device),
+            NativeField::Linear => linear_device_period(device, &account)?,
+            NativeField::Radial { .. } => radial_device_period(device, &account)?,
         };
-        if !period.is_finite() {
+        if !scalar(&account, || period.is_finite())? {
             return Err(invalid_geometry("non-finite device period"));
         }
-        // Exactly two physical pixels is resolved. A positive but unresolved
-        // cycle retains the original segment weights, including zero lengths.
-        if period < 2.0 {
+        if scalar(&account, || period < 2.0)? {
             return solid_average(stops, Average::Weighted(span), &account);
         }
         let mut brush_transform = BrushTransform {
@@ -78,46 +81,67 @@ pub(super) fn prepare(
                     false,
                     &account,
                 )?;
-                peniko::Gradient::new_linear((0.0, 0.0), (1.0, 0.0))
+                peniko::Gradient::new_linear((0., 0.), (1., 0.))
             }
             NativeField::Radial { start_radius } => {
                 let native = narrow_transform(device, &account)?;
-                let radii = (start_radius as f32, start_radius as f32 + 1.0);
+                let start = scalar(&account, || start_radius as f32)?;
+                let end = scalar(&account, || start + 1.0)?;
                 let reference = RadialReference {
                     start: start_radius,
-                    end: start_radius + 1.0,
+                    end: scalar(&account, || start_radius + 1.0)?,
                     delta: 1.0,
                 };
                 brush_transform.radial = Some(reference);
                 qualify_radial(
                     device,
                     native,
-                    radii,
+                    (start, end),
                     reference,
                     target_extent,
                     false,
                     &account,
                 )?;
-                let start_radius = start_radius as f32;
-                peniko::Gradient::new_two_point_radial(
-                    (0.0, 0.0),
-                    start_radius,
-                    (0.0, 0.0),
-                    start_radius + 1.0,
-                )
+                peniko::Gradient::new_two_point_radial((0., 0.), start, (0., 0.), end)
             }
         }
         .with_extend(peniko::Extend::Repeat);
         let mut normalized = account.temporary(stops.len())?;
+        let mut hinted = false;
         for stop in stops {
             account.work(RenderWork::GradientStopVisits, 1)?;
-            account.work(RenderWork::CoordinateVisits, 1)?;
-            normalized.push(peniko::ColorStop::from((
-                ((stop.position() - first) / span) as f32,
+            hinted |= stop.hint_after().is_some();
+            let position = scalar(&account, || stop.position())?;
+            let difference = scalar(&account, || position - first)?;
+            let quotient = scalar(&account, || difference / span)?;
+            let offset = scalar(&account, || quotient as f32)?;
+            account.work(RenderWork::CoordinateVisits, 4)?;
+            normalized.push_reserved(peniko::ColorStop::from((
+                offset,
                 peniko::Color::from(stop.color()),
-            )))?;
+            )));
         }
-        gradient_with_stops(native, normalized, Some(brush_transform))
+        let program = if hinted {
+            let endpoints =
+                PadEndpoints::new((0., first_stop.color()), (1., last_stop.color()), &account)?;
+            Some(hint_program::prepare(
+                stops,
+                &normalized,
+                |position, account| {
+                    let difference = scalar(account, || position - first)?;
+                    let quotient = scalar(account, || difference / span)?;
+                    scalar(account, || quotient as f32)
+                },
+                endpoints,
+                ProgramExtend::Repeat,
+                &account,
+            )?)
+        } else {
+            None
+        };
+        let mut output = gradient_with_stops(native, normalized, Some(brush_transform))?;
+        output.sampling = program.map(PreparedSampling::Program);
+        Ok(output)
     })
 }
 
@@ -150,25 +174,31 @@ fn period_geometry(
     span: f64,
     account: &Account,
 ) -> Result<PeriodGeometry> {
-    let phase = first.rem_euclid(span);
+    let phase = scalar(account, || first.rem_euclid(span))?;
     let (field, local) = match geometry {
         GradientGeometry::Linear { start, end } => {
             account.work(RenderWork::CoordinateVisits, 4)?;
-            let dx = end.x() - start.x();
-            let dy = end.y() - start.y();
-            let x = dx * span;
-            let y = dy * span;
-            if ![dx, dy, x, y].into_iter().all(f64::is_finite) {
-                return Err(invalid_geometry("non-finite linear period"));
+            let (sx, sy, ex, ey) = (start.x(), start.y(), end.x(), end.y());
+            let dx = scalar(account, || ex - sx)?;
+            let dy = scalar(account, || ey - sy)?;
+            let x = scalar(account, || dx * span)?;
+            let y = scalar(account, || dy * span)?;
+            for value in [dx, dy, x, y] {
+                if !scalar(account, || value.is_finite())? {
+                    return Err(invalid_geometry("non-finite linear period"));
+                }
             }
-            // These are actual f64 construction/narrowing facts, not a size
-            // epsilon or the device-resolution decision above.
-            if x == 0.0 && y == 0.0 {
+            if scalar(account, || x == 0.0)? && scalar(account, || y == 0.0)? {
                 return Ok(PeriodGeometry::RoundedZero);
             }
+            let minus_y = scalar(account, || -y)?;
+            let shift_x = scalar(account, || dx * phase)?;
+            let shift_y = scalar(account, || dy * phase)?;
+            let ox = scalar(account, || sx + shift_x)?;
+            let oy = scalar(account, || sy + shift_y)?;
             (
                 NativeField::Linear,
-                kurbo::Affine::new([x, y, -y, x, start.x() + dx * phase, start.y() + dy * phase]),
+                kurbo::Affine::new([x, y, minus_y, x, ox, oy]),
             )
         }
         GradientGeometry::Radial {
@@ -176,31 +206,32 @@ fn period_geometry(
             radius_x,
             radius_y,
         } => {
-            account.work(RenderWork::CoordinateVisits, 4)?;
-            // This selected semantic case needs no native ellipse backing or
-            // period-axis arithmetic, even when that unused product overflows.
-            if radius_y == 0.0 {
+            let radius_y = scalar(account, || radius_y)?;
+            if scalar(account, || radius_y == 0.0)? {
                 return Ok(PeriodGeometry::ZeroHeight);
             }
-            let x = radius_x * span;
-            let y = radius_y * span;
-            if ![x, y].into_iter().all(f64::is_finite) {
-                return Err(invalid_geometry("non-finite radial period"));
+            let radius_x = scalar(account, || radius_x)?;
+            let x = scalar(account, || radius_x * span)?;
+            let y = scalar(account, || radius_y * span)?;
+            for value in [x, y] {
+                if !scalar(account, || value.is_finite())? {
+                    return Err(invalid_geometry("non-finite radial period"));
+                }
             }
-            if x == 0.0 {
+            if scalar(account, || x == 0.0)? {
                 return Ok(PeriodGeometry::RoundedZero);
             }
-            // A positive height that underflows in period-axis construction is
-            // an unresolved direction, not a rounded-zero *whole* period.
-            if y == 0.0 {
+            if scalar(account, || y == 0.0)? {
                 return Ok(PeriodGeometry::ZeroHeight);
             }
-            let radius = phase / span;
+            let radius = scalar(account, || phase / span)?;
+            account.work(RenderWork::CoordinateVisits, 2)?;
+            let (cx, cy) = (center.x(), center.y());
             (
                 NativeField::Radial {
                     start_radius: radius,
                 },
-                kurbo::Affine::new([x, 0.0, 0.0, y, center.x(), center.y()]),
+                kurbo::Affine::new([x, 0., 0., y, cx, cy]),
             )
         }
     };
@@ -208,34 +239,67 @@ fn period_geometry(
     Ok(PeriodGeometry::Pattern { field, local })
 }
 
-/// The first canonical coordinate is the field phase. Its stripe spacing is
-/// 1 / |M^-T (1,0)| = |det(M)| / |M (0,1)|, rather than |M (1,0)|.
-fn linear_device_period(transform: kurbo::Affine) -> f64 {
+/// Stripe spacing is |det(M)|/|M(0,1)|, not the transformed endpoint length.
+fn linear_device_period(transform: kurbo::Affine, account: &Account) -> Result<f64> {
+    account.work(RenderWork::CoordinateVisits, 4)?;
     let [a, b, c, d, _, _] = transform.as_coeffs();
-    let scale = c.abs().max(d.abs());
-    if scale == 0.0 {
-        return 0.0;
+    let ca = scalar(account, || c.abs())?;
+    let da = scalar(account, || d.abs())?;
+    let scale = scalar(account, || ca.max(da))?;
+    if scalar(account, || scale == 0.0)? {
+        return Ok(0.0);
     }
-    let c = c / scale;
-    let d = d / scale;
-    let transverse = c.hypot(d);
-    (a * (d / transverse) - b * (c / transverse)).abs()
+    let c = scalar(account, || c / scale)?;
+    let d = scalar(account, || d / scale)?;
+    let transverse = scalar(account, || c.hypot(d))?;
+    let dx = scalar(account, || d / transverse)?;
+    let first = scalar(account, || a * dx)?;
+    let dy = scalar(account, || c / transverse)?;
+    let second = scalar(account, || b * dy)?;
+    let difference = scalar(account, || first - second)?;
+    scalar(account, || difference.abs())
 }
 
-/// Stable two-dimensional smallest singular value: |det(M)| / sigma_max.
-/// Normalize first to avoid squaring the original large or tiny axes.
-fn radial_device_period(transform: kurbo::Affine) -> f64 {
+/// Stable smallest singular value, normalized before squaring its axes.
+fn radial_device_period(transform: kurbo::Affine, account: &Account) -> Result<f64> {
+    account.work(RenderWork::CoordinateVisits, 4)?;
     let [a, b, c, d, _, _] = transform.as_coeffs();
-    let scale = a.abs().max(b.abs()).max(c.abs()).max(d.abs());
-    if scale == 0.0 {
-        return 0.0;
+    let aa = scalar(account, || a.abs())?;
+    let ba = scalar(account, || b.abs())?;
+    let ca = scalar(account, || c.abs())?;
+    let da = scalar(account, || d.abs())?;
+    let scale = scalar(account, || aa.max(ba))?;
+    let scale = scalar(account, || scale.max(ca))?;
+    let scale = scalar(account, || scale.max(da))?;
+    if scalar(account, || scale == 0.0)? {
+        return Ok(0.0);
     }
-    let [a, b, c, d] = [a / scale, b / scale, c / scale, d / scale];
-    let sum = a * a + b * b + c * c + d * d;
-    let determinant = (a * d - b * c).abs();
-    let discriminant = (sum * sum - 4.0 * determinant * determinant).max(0.0);
-    let largest = ((sum + discriminant.sqrt()) * 0.5).sqrt();
-    (determinant / largest) * scale
+    let a = scalar(account, || a / scale)?;
+    let b = scalar(account, || b / scale)?;
+    let c = scalar(account, || c / scale)?;
+    let d = scalar(account, || d / scale)?;
+    let aa = scalar(account, || a * a)?;
+    let bb = scalar(account, || b * b)?;
+    let cc = scalar(account, || c * c)?;
+    let dd = scalar(account, || d * d)?;
+    let sum = scalar(account, || aa + bb)?;
+    let sum = scalar(account, || sum + cc)?;
+    let sum = scalar(account, || sum + dd)?;
+    let ad = scalar(account, || a * d)?;
+    let bc = scalar(account, || b * c)?;
+    let det = scalar(account, || ad - bc)?;
+    let determinant = scalar(account, || det.abs())?;
+    let squared = scalar(account, || sum * sum)?;
+    let four_det = scalar(account, || 4.0 * determinant)?;
+    let product = scalar(account, || four_det * determinant)?;
+    let difference = scalar(account, || squared - product)?;
+    let discriminant = scalar(account, || difference.max(0.0))?;
+    let root = scalar(account, || discriminant.sqrt())?;
+    let sum = scalar(account, || sum + root)?;
+    let half = scalar(account, || sum * 0.5)?;
+    let largest = scalar(account, || half.sqrt())?;
+    let quotient = scalar(account, || determinant / largest)?;
+    scalar(account, || quotient * scale)
 }
 
 #[derive(Clone, Copy)]
@@ -248,42 +312,56 @@ fn solid_average(stops: &[GradientStop], rule: Average, account: &Account) -> Re
     Ok(FrameBrush::solid(average(stops, rule, account)?.into()))
 }
 
-fn premultiplied(color: Color) -> [f64; 4] {
-    let alpha = f64::from(color.a());
-    [
-        f64::from(color.r()) * alpha,
-        f64::from(color.g()) * alpha,
-        f64::from(color.b()) * alpha,
+fn premultiplied(color: Color, account: &Account) -> Result<[f64; 4]> {
+    account.work(RenderWork::CoordinateVisits, 4)?;
+    let (r, g, b, a) = (color.r(), color.g(), color.b(), color.a());
+    let alpha = scalar(account, || f64::from(a))?;
+    let r = scalar(account, || f64::from(r))?;
+    let g = scalar(account, || f64::from(g))?;
+    let b = scalar(account, || f64::from(b))?;
+    Ok([
+        scalar(account, || r * alpha)?,
+        scalar(account, || g * alpha)?,
+        scalar(account, || b * alpha)?,
         alpha,
-    ]
+    ])
 }
-
 fn average(stops: &[GradientStop], rule: Average, account: &Account) -> Result<Color> {
     let mut total = [0.0; 4];
     let mut previous = None;
+    let denominator = if matches!(rule, Average::Uniform) {
+        let intervals = scalar(account, || stops.len() - 1)?;
+        Some(scalar(account, || intervals as f64)?)
+    } else {
+        None
+    };
     for (index, stop) in stops.iter().enumerate() {
         account.work(RenderWork::GradientStopVisits, 1)?;
-        let color = premultiplied(stop.color());
+        let color = premultiplied(stop.color(), account)?;
         match rule {
             Average::Uniform => {
-                let weight = if index == 0 || index + 1 == stops.len() {
-                    0.5
-                } else {
-                    1.0
-                } / (stops.len() - 1) as f64;
+                let endpoint = index == 0 || index + 1 == stops.len();
+                let numerator = if endpoint { 0.5 } else { 1.0 };
+                let weight = scalar(account, || {
+                    numerator / denominator.expect("uniform color count")
+                })?;
                 for (total, component) in total.iter_mut().zip(color) {
-                    *total += component * weight;
+                    let weighted = scalar(account, || component * weight)?;
+                    *total = scalar(account, || *total + weighted)?;
                 }
             }
             Average::Weighted(span) => {
-                account.work(RenderWork::CoordinateVisits, 1)?;
-                let position = stop.position();
+                let position = scalar(account, || stop.position())?;
                 if let Some((previous_position, previous_color)) = previous {
-                    let weight = ((position - previous_position) / span) * 0.5;
+                    let difference = scalar(account, || position - previous_position)?;
+                    let quotient = scalar(account, || difference / span)?;
+                    let weight = scalar(account, || quotient * 0.5)?;
                     for ((total, previous), current) in
                         total.iter_mut().zip(previous_color).zip(color)
                     {
-                        *total += (previous + current) * weight;
+                        let sum = scalar(account, || previous + current)?;
+                        let weighted = scalar(account, || sum * weight)?;
+                        *total = scalar(account, || *total + weighted)?;
                     }
                 }
                 previous = Some((position, color));
@@ -291,17 +369,23 @@ fn average(stops: &[GradientStop], rule: Average, account: &Account) -> Result<C
         }
     }
     let [r, g, b, alpha] = total;
-    if alpha == 0.0 {
+    if scalar(account, || alpha == 0.0)? {
         return Ok(Color::TRANSPARENT);
     }
-    // Floating summation can exceed one by its final rounding unit. This
-    // bounds only the final color conversion, never positions or geometry.
-    Color::try_rgba(
-        (r / alpha).clamp(0.0, 1.0) as f32,
-        (g / alpha).clamp(0.0, 1.0) as f32,
-        (b / alpha).clamp(0.0, 1.0) as f32,
-        alpha.clamp(0.0, 1.0) as f32,
-    )
+    let channel = |component: f64| -> Result<f32> {
+        let straight = scalar(account, || component / alpha)?;
+        let bounded = scalar(account, || straight.clamp(0.0, 1.0))?;
+        scalar(account, || bounded as f32)
+    };
+    let r = channel(r)?;
+    let g = channel(g)?;
+    let b = channel(b)?;
+    let alpha = scalar(account, || alpha.clamp(0.0, 1.0))?;
+    let alpha = scalar(account, || alpha as f32)?;
+    // Valid source premultiplication and identical nonnegative weighted sums
+    // prove component<=alpha and finite totals. With nonzero alpha, the
+    // admitted division/clamp/narrowing above proves four finite unit channels.
+    Ok(Color::rgba(r, g, b, alpha))
 }
 
 #[cfg(test)]
@@ -318,6 +402,13 @@ mod tests {
         account: &Account,
     ) -> Result<FrameBrush> {
         super::prepare(gradient, transform, PhysicalSize::new(2, 2), account)
+    }
+
+    fn linear_device_period(transform: kurbo::Affine) -> f64 {
+        super::linear_device_period(transform, &Account::for_test()).unwrap()
+    }
+    fn radial_device_period(transform: kurbo::Affine) -> f64 {
+        super::radial_device_period(transform, &Account::for_test()).unwrap()
     }
 
     fn color(r: f32, g: f32, b: f32, a: f32) -> Color {

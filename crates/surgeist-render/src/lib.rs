@@ -87,13 +87,13 @@ pub use capability::{
     PaintSourceCapabilities, RuntimeCapabilities, ShadowCapabilities, SurfaceCapabilities,
     SymbolicColorPolicy, TransformCoordinateSpaceCapabilities,
 };
-pub use error::GradientRealizationError;
 pub use error::{
     DegradedQuality, DegradedQualityKind, DeviceLossReason, Error, ErrorCode, GpuFaultKind,
     InvalidValue, PrimitiveFamily, PrimitiveOperation, RenderSurfaceAvailability, Result,
     RuntimeCapabilityUnavailable, RuntimeCapabilityUnavailableReason, RuntimeOperation,
     SurfaceIdentityMismatchKind, UnresolvedResource, UnresolvedResourceKind, UnsupportedPrimitive,
 };
+pub use error::{GradientHintError, GradientRealizationError};
 pub use geometry::{
     CoordinateSpaceId, CoordinateSpaceKind, CoordinateSpaceTag, PhysicalSize, Point, Radii, Rect,
     Size, Transform,
@@ -104,8 +104,8 @@ pub use layer::{
     ShadowKind, ShadowList,
 };
 pub use paint::{
-    Color, Gradient, GradientStop, NormalizedPaintLayer, Paint, PaintColor, PaintColorSpace,
-    RepeatingGradient,
+    Color, Gradient, GradientHint, GradientStop, NormalizedPaintLayer, Paint, PaintColor,
+    PaintColorSpace, RepeatingGradient,
 };
 #[cfg(feature = "render-paint")]
 pub use paint_gradient::{

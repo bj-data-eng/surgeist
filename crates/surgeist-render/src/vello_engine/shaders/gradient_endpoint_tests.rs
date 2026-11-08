@@ -63,21 +63,95 @@ fn rgba8_descriptor_codec_and_endpoint_selection_execute_on_gpu() {
     let high = u32::from_le_bytes([40, 50, 60, 128]);
     let zero_first = u32::from_le_bytes([9, 8, 7, 16]);
     let zero_last = u32::from_le_bytes([3, 2, 1, 8]);
-    let final_descriptor = u32::try_from(WIDTH * HEIGHT - 5).unwrap();
+    let final_descriptor = u32::try_from(WIDTH * HEIGHT - 7).unwrap();
     let descriptors = [
-        (511_u32, [0x3e80_0000, 0x3f40_0000, row, first, last]),
-        (1022, [1, 1, row, low, high]),
-        (2047, [0x3f00_0000, 0x3f00_0000, row, low, high]),
-        (3070, [0xbf80_0000, 0xbf80_0000, row, low, high]),
-        (4094, [0x7f80_0000, 0x7f80_0000, row, low, high]),
+        (511_u32, [0, row, 0, 0x3e80_0000, 0x3f40_0000, first, last]),
+        (1022, [0, row, 0, 1, 1, low, high]),
+        (2047, [0, row, 0, 0x3f00_0000, 0x3f00_0000, low, high]),
+        (3070, [0, row, 0, 0xbf80_0000, 0xbf80_0000, low, high]),
+        (4094, [0, row, 0, 0x7f80_0000, 0x7f80_0000, low, high]),
         (
             final_descriptor,
-            [0x8000_0000, 0, row, zero_first, zero_last],
+            [0, row, 0, 0x8000_0000, 0, zero_first, zero_last],
         ),
     ];
     for &(index, words) in &descriptors {
         for (offset, word) in words.into_iter().enumerate() {
             store_word(&mut texture_bytes, index as usize + offset, word);
+        }
+    }
+    // Literal analytic fixtures: square-root Power, the two singular limits,
+    // Repeat, and a source-ordered coincident interior run. Full-f32 source
+    // premultiplication deliberately differs from the RGBA8 endpoint words.
+    let red_half = u32::from_le_bytes([128, 0, 0, 128]);
+    let blue = u32::from_le_bytes([0, 0, 255, 255]);
+    let red = u32::from_le_bytes([255, 0, 0, 255]);
+    let white = u32::MAX;
+    for (descriptor, payload, kind, segment) in [
+        (7000, 10001, 1, 1),
+        (7500, 10500, 1, 2),
+        (8000, 11000, 1, 3),
+        (8500, 11500, 2, 1),
+    ] {
+        for (offset, word) in [kind, payload, 2, 0, 1.0_f32.to_bits(), red_half, blue]
+            .into_iter()
+            .enumerate()
+        {
+            store_word(&mut texture_bytes, descriptor + offset, word);
+        }
+        for (index, (position, channels, outgoing)) in [
+            (0.0_f32, [0.5_f32, 0.0, 0.0, 0.5], segment),
+            (1.0, [0.0, 0.0, 1.0, 1.0], 0),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let words = [
+                position.to_bits(),
+                channels[0].to_bits(),
+                channels[1].to_bits(),
+                channels[2].to_bits(),
+                channels[3].to_bits(),
+                outgoing,
+                0.5_f32.to_bits(),
+            ];
+            for (offset, word) in words.into_iter().enumerate() {
+                store_word(
+                    &mut texture_bytes,
+                    payload as usize + index * 7 + offset,
+                    word,
+                );
+            }
+        }
+    }
+    for (offset, word) in [1, 12000, 4, 0, 1.0_f32.to_bits(), red, white]
+        .into_iter()
+        .enumerate()
+    {
+        store_word(&mut texture_bytes, 9000 + offset, word);
+    }
+    for (index, (position, channels)) in [
+        (0.0_f32, [1.0_f32, 0.0, 0.0, 1.0]),
+        (0.5, [0.0, 1.0, 0.0, 1.0]),
+        (0.5, [0.0, 0.0, 1.0, 1.0]),
+        (1.0, [1.0, 1.0, 1.0, 1.0]),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        for (offset, word) in [
+            position.to_bits(),
+            channels[0].to_bits(),
+            channels[1].to_bits(),
+            channels[2].to_bits(),
+            channels[3].to_bits(),
+            0,
+            0,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            store_word(&mut texture_bytes, 12000 + index * 7 + offset, word);
         }
     }
     // Each tuple contains the raw coordinate bits and independent expected
@@ -117,7 +191,7 @@ fn rgba8_descriptor_codec_and_endpoint_selection_execute_on_gpu() {
             load_word(&texture_bytes, flat as usize),
             load_word(&texture_bytes, descriptor as usize),
             load_word(&texture_bytes, descriptor as usize + 1),
-            row,
+            load_word(&texture_bytes, descriptor as usize + 2),
             color,
             key,
             raw,
@@ -139,6 +213,37 @@ fn rgba8_descriptor_codec_and_endpoint_selection_execute_on_gpu() {
         zero_last,
         0x8000_0000,
     );
+
+    for (descriptor, q, color) in [
+        (7000, 0.25_f32, u32::from_le_bytes([64, 0, 128, 191])),
+        (7000, 0.5625, u32::from_le_bytes([32, 0, 191, 223])),
+        (7000, -1.0, red_half),
+        (7000, 0.0, red_half),
+        (7000, 1.0, blue),
+        (7500, 0.0, red_half),
+        (7500, f32::from_bits(1), blue),
+        (7500, 0.5, blue),
+        (8000, 0.5, red_half),
+        (8000, f32::from_bits(1.0_f32.to_bits() - 1), red_half),
+        (8000, 1.0, blue),
+        (8500, 0.25, u32::from_le_bytes([64, 0, 128, 191])),
+        (8500, 1.25, u32::from_le_bytes([64, 0, 128, 191])),
+        (8500, -0.75, u32::from_le_bytes([64, 0, 128, 191])),
+        (8500, 1.0, red_half),
+        (9000, 0.5, blue),
+        (9000, 0.25, u32::from_le_bytes([128, 128, 0, 255])),
+        (9000, 0.75, u32::from_le_bytes([128, 128, 255, 255])),
+    ] {
+        let bits = q.to_bits();
+        let key = if bits & 0x7fff_ffff == 0 {
+            0x8000_0000
+        } else if bits & 0x8000_0000 == 0 {
+            bits ^ 0x8000_0000
+        } else {
+            !bits
+        };
+        add_case(descriptor + 6, descriptor, bits, color, key);
+    }
 
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: Some("ordinary gradient endpoint codec texture"),
@@ -284,7 +389,28 @@ fn rgba8_descriptor_codec_and_endpoint_selection_execute_on_gpu() {
         let actual = std::array::from_fn::<_, 8, _>(|channel| {
             u32::from_le_bytes(actual[channel * 4..channel * 4 + 4].try_into().unwrap())
         });
-        assert_eq!(actual, expected, "GPU endpoint descriptor probe {index}");
+        if expected[1] == 0 {
+            assert_eq!(actual, expected, "GPU endpoint descriptor probe {index}");
+        } else {
+            for channel in 0..8 {
+                if channel != 4 {
+                    assert_eq!(
+                        actual[channel], expected[channel],
+                        "program metadata {index}/{channel}"
+                    );
+                }
+            }
+            for (actual, expected) in actual[4]
+                .to_le_bytes()
+                .into_iter()
+                .zip(expected[4].to_le_bytes())
+            {
+                assert!(
+                    actual.abs_diff(expected) <= 1,
+                    "analytic program color {index}: {actual} vs {expected}"
+                );
+            }
+        }
     }
     drop(mapped);
     staging.unmap();

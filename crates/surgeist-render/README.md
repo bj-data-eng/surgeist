@@ -19,7 +19,9 @@ alpha, operation-domain and capability contracts.
 Ordinary linear and positive elliptical radial paints preserve ordered finite
 `f64` stop positions, exterior colors and coincident steps. Repeating fields
 share the stop primitive and choose a solid premultiplied-sRGBA average when
-final device resolution cannot resolve a cycle.
+final device resolution cannot resolve a cycle. Outgoing `GradientHint` values
+control analytic premultiplied interpolation; repeating averages retain the
+specified stop-only weights.
 [Gradient paints](docs/reference.md#gradient-paints) describe range, period,
 transform and accounting behavior.
 

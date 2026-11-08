@@ -136,10 +136,10 @@ impl RepeatingGradient {
     ) -> Result<BackedValue<Self>> {
         // Paint's immutable geometry and the consumer's actual quotient walk
         // prove the geometry/list domains. Only repetition's span remains.
+        account.work(RenderWork::PaintVisits, 1)?;
         let (stops, backing) = stops.into_parts();
         let gradient =
             BackedValue::new(Self { geometry, stops }, [Some(backing), Some(fixed_owner)]);
-        account.work(RenderWork::PaintVisits, 1)?;
         account.work(RenderWork::CoordinateVisits, 1)?;
         let span = positions.1 - positions.0;
         account.work(RenderWork::CoordinateVisits, 1)?;

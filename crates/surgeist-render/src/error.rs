@@ -51,6 +51,7 @@ enum PreparationDiagnostic {
     Glyph(crate::GlyphPreparationError),
     Accounting(crate::RenderAccountingError),
     GradientRealization(GradientRealizationError),
+    GradientHint(GradientHintError),
     #[cfg(feature = "render-paint")]
     PaintGradient(crate::PaintGradientError),
 }
@@ -389,7 +390,19 @@ impl Error {
         }
     }
 
-    /// Returns the contextual ordinary-gradient realization refusal, when present.
+    /// Returns an invalid outgoing-hint association or unsupported sweep hint.
+    #[must_use]
+    pub const fn gradient_hint_diagnostic(&self) -> Option<&GradientHintError> {
+        match &self.payload {
+            ErrorPayload::Context(context) => match &context.preparation {
+                Some(PreparationDiagnostic::GradientHint(error)) => Some(error),
+                _ => None,
+            },
+            ErrorPayload::Accounting(_) => None,
+        }
+    }
+
+    /// Returns the contextual gradient realization refusal, when present.
     #[must_use]
     pub const fn gradient_realization_diagnostic(&self) -> Option<&GradientRealizationError> {
         match &self.payload {
@@ -486,11 +499,40 @@ impl From<crate::GlyphPreparationError> for Error {
     }
 }
 
+impl From<GradientHintError> for Error {
+    fn from(value: GradientHintError) -> Self {
+        Self::context(ErrorContext {
+            code: ErrorCode::GradientHint,
+            message: format!("gradient hint refused: {value:?}"),
+            source: None,
+            invalid_value: None,
+            unsupported_primitive: None,
+            unresolved_resource: None,
+            degraded_quality: None,
+            runtime_capability_unavailable: None,
+            preparation: Some(PreparationDiagnostic::GradientHint(value)),
+            #[cfg(feature = "render-text")]
+            text_layout: None,
+        })
+    }
+}
+
+/// An outgoing hint does not identify a supported interval of ordered colors.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GradientHintError {
+    /// The final color stop cannot carry an outgoing interval hint.
+    TrailingHint { stop_index: usize },
+    /// The hint lies outside the inclusive interval of its adjacent colors.
+    HintOutsideInterval { stop_index: usize },
+    /// Hinted full-turn sweep interpolation is not supported.
+    UnsupportedSweep { stop_index: usize },
+}
+
 impl From<GradientRealizationError> for Error {
     fn from(value: GradientRealizationError) -> Self {
         Self::context(ErrorContext {
             code: ErrorCode::GradientRealization,
-            message: format!("ordinary gradient realization refused: {value:?}"),
+            message: format!("gradient realization refused: {value:?}"),
             source: None,
             invalid_value: None,
             unsupported_primitive: None,
@@ -504,7 +546,7 @@ impl From<GradientRealizationError> for Error {
     }
 }
 
-/// A valid ordinary gradient cannot be represented in the current native context.
+/// A valid gradient cannot be represented in the current native context.
 ///
 /// These refusals describe field realization, not invalid authored CSS. Named
 /// accounting and resource limits continue to use [`crate::RenderAccountingError`].
@@ -517,6 +559,12 @@ pub enum GradientRealizationError {
     /// A required native stop loses its source ordering or interval separation.
     UnrepresentableStop {
         /// Index in the owned gradient's supplied stop list.
+        stop_index: usize,
+    },
+    /// A required native hint control or exponent cannot be represented while
+    /// preserving its source equality and strict containment.
+    UnrepresentableHint {
+        /// Index of the outgoing interval in the owned stop list.
         stop_index: usize,
     },
     /// Native field arithmetic cannot meet the selected accuracy guarantee.
@@ -596,7 +644,9 @@ mod tests;
 pub enum ErrorCode {
     /// General accounting setup or named admission failure.
     Accounting,
-    /// Reports contextual ordinary-gradient representation or precision refusal.
+    /// Reports an invalid or unsupported outgoing gradient hint association.
+    GradientHint,
+    /// Reports contextual gradient representation or precision refusal.
     GradientRealization,
     /// Reports atomic native Paint-gradient preparation failure.
     #[cfg(feature = "render-paint")]
@@ -1343,5 +1393,30 @@ impl DegradedQualityKind {
             Self::ReducedIntermediatePrecision => "reduced intermediate precision",
             Self::UnsupportedPaintSpaceConversion => "unsupported paint-space conversion",
         }
+    }
+}
+
+#[cfg(test)]
+mod hint_error_tests {
+    use super::*;
+
+    #[test]
+    fn intrinsic_hint_and_contextual_representation_errors_keep_distinct_typed_domains() {
+        for diagnostic in [
+            GradientHintError::TrailingHint { stop_index: 2 },
+            GradientHintError::HintOutsideInterval { stop_index: 3 },
+            GradientHintError::UnsupportedSweep { stop_index: 4 },
+        ] {
+            let error = Error::from(diagnostic);
+            assert_eq!(error.code(), ErrorCode::GradientHint);
+            assert_eq!(error.gradient_hint_diagnostic(), Some(&diagnostic));
+            assert!(error.gradient_realization_diagnostic().is_none());
+            assert!(error.accounting_diagnostic().is_none());
+        }
+        let diagnostic = GradientRealizationError::UnrepresentableHint { stop_index: 5 };
+        let error = Error::from(diagnostic);
+        assert_eq!(error.code(), ErrorCode::GradientRealization);
+        assert_eq!(error.gradient_realization_diagnostic(), Some(&diagnostic));
+        assert!(error.gradient_hint_diagnostic().is_none());
     }
 }

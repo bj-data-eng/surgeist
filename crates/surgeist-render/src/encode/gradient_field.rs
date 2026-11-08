@@ -18,7 +18,7 @@ fn invalid_geometry(value: &'static str) -> Error {
 
 /// Admit each executed scalar arithmetic, comparison, or conversion before it
 /// runs. Coefficient captures are separately admitted at their owning reads.
-fn scalar<T>(account: &Account, action: impl FnOnce() -> T) -> Result<T> {
+pub(super) fn scalar<T>(account: &Account, action: impl FnOnce() -> T) -> Result<T> {
     account.work(RenderWork::CoordinateVisits, 1)?;
     Ok(action())
 }
@@ -184,7 +184,7 @@ impl ShaderScalar {
         }
     }
 
-    fn checked(lower: f64, upper: f64, account: &Account) -> Result<Self> {
+    pub(super) fn checked(lower: f64, upper: f64, account: &Account) -> Result<Self> {
         if !scalar(account, || lower.is_finite())?
             || !scalar(account, || upper.is_finite())?
             || scalar(account, || lower > upper)?
@@ -200,12 +200,12 @@ impl ShaderScalar {
         let upper = scalar(account, || self.upper.abs())?;
         scalar(account, || lower.max(upper))
     }
-    fn neg(self, account: &Account) -> Result<Self> {
+    pub(super) fn neg(self, account: &Account) -> Result<Self> {
         let lower = scalar(account, || -self.upper)?;
         let upper = scalar(account, || -self.lower)?;
         Self::checked(lower, upper, account)
     }
-    fn abs(self, account: &Account) -> Result<Self> {
+    pub(super) fn abs(self, account: &Account) -> Result<Self> {
         let lower =
             if scalar(account, || self.lower <= 0.0)? && scalar(account, || self.upper >= 0.0)? {
                 0.0
@@ -236,7 +236,7 @@ impl ShaderScalar {
             Ok(self)
         }
     }
-    fn real_add(self, other: Self, account: &Account) -> Result<Self> {
+    pub(super) fn real_add(self, other: Self, account: &Account) -> Result<Self> {
         let sum = scalar(account, || self.lower + other.lower)?;
         let lower = scalar(account, || sum.next_down())?;
         let sum = scalar(account, || self.upper + other.upper)?;
@@ -256,7 +256,7 @@ impl ShaderScalar {
         let upper = scalar(account, || upper.next_up())?;
         Self::checked(lower, upper, account)
     }
-    fn real_mul(self, other: Self, account: &Account) -> Result<Self> {
+    pub(super) fn real_mul(self, other: Self, account: &Account) -> Result<Self> {
         let products = [
             scalar(account, || self.lower * other.lower)?,
             scalar(account, || self.lower * other.upper)?,
@@ -265,7 +265,7 @@ impl ShaderScalar {
         ];
         Self::corner_bounds(products, account)
     }
-    fn real_div(self, other: Self, account: &Account) -> Result<Self> {
+    pub(super) fn real_div(self, other: Self, account: &Account) -> Result<Self> {
         if scalar(account, || other.lower <= 0.0)? && scalar(account, || other.upper >= 0.0)? {
             return Err(invalid_geometry("uncertain native gradient divisor"));
         }

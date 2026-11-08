@@ -10,9 +10,12 @@ use super::{
     *,
 };
 use crate::accounting::{Account, AccountedVec, BackedValue, Hold, RenderPhase, RenderWork};
-use crate::vello_engine::gradient_endpoints::{PadEndpoints, SceneBrush};
+use crate::vello_engine::gradient_endpoints::{
+    GradientProgram, GradientSampling, PadEndpoints, SceneBrush,
+};
 
 mod gradient_field;
+mod hint_program;
 mod ordinary_gradient;
 mod repeating_gradient;
 
@@ -881,10 +884,15 @@ struct BrushTransform {
     comparison_only: bool,
 }
 
+enum PreparedSampling {
+    PadRamp(PadEndpoints),
+    Program(hint_program::PreparedProgram),
+}
+
 pub(crate) struct FrameBrush {
     brush: peniko::Brush,
     transform: Option<BrushTransform>,
-    endpoints: Option<PadEndpoints>,
+    sampling: Option<PreparedSampling>,
     _hold: Option<Hold>,
     _payload: Option<crate::accounting::CpuImport>,
 }
@@ -904,7 +912,7 @@ impl FrameBrush {
         Self {
             brush: peniko::Brush::Solid(color),
             transform: None,
-            endpoints: None,
+            sampling: None,
             _hold: None,
             _payload: None,
         }
@@ -914,7 +922,7 @@ impl FrameBrush {
         Ok(Self {
             brush: peniko::Brush::Image(image_brush(image)),
             transform: None,
-            endpoints: None,
+            sampling: None,
             _hold: None,
             _payload: payload,
         })
@@ -953,7 +961,7 @@ impl FrameBrush {
                 &account,
             )
             .map_err(|error| {
-                if self.endpoints.is_some() {
+                if self.sampling.is_some() {
                     ordinary_gradient::capacity_error(error)
                 } else {
                     error
@@ -966,7 +974,15 @@ impl FrameBrush {
         (&self.brush).into()
     }
     pub(crate) fn scene_brush(&self) -> SceneBrush<'_> {
-        SceneBrush::new(self.as_ref(), self.endpoints)
+        let sampling = self.sampling.as_ref().map(|sampling| match sampling {
+            PreparedSampling::PadRamp(endpoints) => GradientSampling::PadRamp(*endpoints),
+            PreparedSampling::Program(program) => GradientSampling::Program(GradientProgram {
+                records: program.records.as_slice(),
+                endpoints: program.endpoints,
+                extend: program.extend,
+            }),
+        });
+        SceneBrush::new(self.as_ref(), sampling)
     }
 }
 impl std::ops::Deref for FrameBrush {
@@ -1039,34 +1055,28 @@ fn prepare_sweep_gradient(gradient: &Gradient, account: &Account) -> Result<Fram
         account.work(RenderWork::GradientStopVisits, 1)?;
         let first = supplied[0];
         let first = (
-            ordinary_gradient::scalar(account, || first.position())?,
+            gradient_field::scalar(account, || first.position())?,
             first.color(),
         );
         account.work(RenderWork::GradientStopVisits, 1)?;
         let last = supplied[supplied.len() - 1];
         let last = (
-            ordinary_gradient::scalar(account, || last.position())?,
+            gradient_field::scalar(account, || last.position())?,
             last.color(),
         );
-        let (first, last) = if ordinary_gradient::scalar(account, || first.0 == last.0)? {
+        let (first, last) = if gradient_field::scalar(account, || first.0 == last.0)? {
             step = true;
             for stop in supplied {
                 account.work(RenderWork::GradientStopVisits, 1)?;
-                let position = ordinary_gradient::scalar(account, || stop.position())?;
-                step &= ordinary_gradient::scalar(account, || position == first.0)?;
+                let position = gradient_field::scalar(account, || stop.position())?;
+                step &= gradient_field::scalar(account, || position == first.0)?;
             }
             let cutoff = ordinary_gradient::cutoff(first.0, 0, account)?;
             ((cutoff, first.1), (cutoff, last.1))
         } else {
             (
-                (
-                    ordinary_gradient::scalar(account, || first.0 as f32)?,
-                    first.1,
-                ),
-                (
-                    ordinary_gradient::scalar(account, || last.0 as f32)?,
-                    last.1,
-                ),
+                (gradient_field::scalar(account, || first.0 as f32)?, first.1),
+                (gradient_field::scalar(account, || last.0 as f32)?, last.1),
             )
         };
         Some(PadEndpoints::new(first, last, account)?)
@@ -1089,8 +1099,8 @@ fn prepare_sweep_gradient(gradient: &Gradient, account: &Account) -> Result<Fram
     // leading endpoint, into backing whose actual capacity is already admitted.
     if let Some(stop) = leading {
         account.work(RenderWork::GradientStopVisits, 1)?;
-        let position = ordinary_gradient::scalar(account, || stop.position())?;
-        let offset = ordinary_gradient::scalar(account, || position as f32)?;
+        let position = gradient_field::scalar(account, || stop.position())?;
+        let offset = gradient_field::scalar(account, || position as f32)?;
         account.work(RenderWork::CoordinateVisits, 4)?;
         stops.push_reserved(peniko::ColorStop::from((
             offset,
@@ -1101,29 +1111,29 @@ fn prepare_sweep_gradient(gradient: &Gradient, account: &Account) -> Result<Fram
     let mut ordered = true;
     for (index, stop) in supplied.iter().enumerate() {
         account.work(RenderWork::GradientStopVisits, 1)?;
-        let position = ordinary_gradient::scalar(account, || stop.position())?;
+        let position = gradient_field::scalar(account, || stop.position())?;
         let offset = if step {
             0.0
         } else {
-            ordinary_gradient::scalar(account, || position as f32)?
+            gradient_field::scalar(account, || position as f32)?
         };
         if !step
-            && ordinary_gradient::scalar(account, || position != 0.0)?
-            && ordinary_gradient::scalar(account, || offset == 0.0)?
+            && gradient_field::scalar(account, || position != 0.0)?
+            && gradient_field::scalar(account, || offset == 0.0)?
         {
             return Err(GradientRealizationError::UnrepresentableStop { stop_index: index }.into());
         }
         if let Some((previous_position, previous_offset)) = previous {
             let source_order =
-                ordinary_gradient::scalar(account, || position.partial_cmp(&previous_position))?;
+                gradient_field::scalar(account, || position.partial_cmp(&previous_position))?;
             let native_order =
-                ordinary_gradient::scalar(account, || offset.partial_cmp(&previous_offset))?;
+                gradient_field::scalar(account, || offset.partial_cmp(&previous_offset))?;
             if source_order != native_order {
                 return Err(
                     GradientRealizationError::UnrepresentableStop { stop_index: index }.into(),
                 );
             }
-            ordered &= ordinary_gradient::scalar(account, || position >= previous_position)?;
+            ordered &= gradient_field::scalar(account, || position >= previous_position)?;
         }
         previous = Some((position, offset));
         account.work(RenderWork::CoordinateVisits, 4)?;
@@ -1139,13 +1149,13 @@ fn prepare_sweep_gradient(gradient: &Gradient, account: &Account) -> Result<Fram
         }
         crate::paint::GradientKind::Sweep { center, .. } => {
             let (x, y) = (center.x(), center.y());
-            let x = ordinary_gradient::scalar(account, || x as f32)?;
-            let y = ordinary_gradient::scalar(account, || y as f32)?;
+            let x = gradient_field::scalar(account, || x as f32)?;
+            let y = gradient_field::scalar(account, || y as f32)?;
             peniko::Gradient::new_sweep((x, y), 0.0, std::f32::consts::TAU)
         }
     };
     let mut brush = gradient_with_stops(output, stops, None)?;
-    brush.endpoints = endpoints.filter(|_| ordered);
+    brush.sampling = endpoints.filter(|_| ordered).map(PreparedSampling::PadRamp);
     Ok(brush)
 }
 
@@ -1167,7 +1177,7 @@ fn gradient_with_stops(
     Ok(FrameBrush {
         brush: peniko::Brush::Gradient(output),
         transform,
-        endpoints: None,
+        sampling: None,
         _hold: hold,
         _payload: None,
     })
@@ -1378,7 +1388,7 @@ mod ordinary_gradient_accounting_tests {
         )
         .unwrap();
         let brush = prepared(&gradient, &Account::for_test()).unwrap();
-        assert!(brush.endpoints.is_none());
+        assert!(brush.sampling.is_none());
         let peniko::BrushRef::Gradient(native) = brush.as_ref() else {
             panic!("gradient");
         };
