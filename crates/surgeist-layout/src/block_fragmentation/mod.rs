@@ -1,5 +1,8 @@
 //! Source-bound Block fragmentation and atomic box publication.
 mod compute;
+mod scope_assembly;
+mod scope_view;
+mod scopes;
 mod source;
 pub(crate) use compute::compute;
 mod input;

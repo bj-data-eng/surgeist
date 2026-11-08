@@ -10,6 +10,7 @@ pub(super) struct SourceNode<Node> {
     pub(super) parent: Option<usize>,
     pub(super) children: Vec<usize>,
     pub(super) source_index: SourceIndex,
+    pub(super) role: crate::BlockGeneration,
     pub(super) first: usize,
     pub(super) end: usize,
     pub(super) atomic_owner: Option<usize>,
@@ -30,6 +31,8 @@ impl SourceUnit {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum SourceKey<Node> {
     Atomic(Node),
+    Owner(Node),
+    PrincipalEnd(Node),
     BoxEnd(Node),
 }
 pub(super) struct Inventory<Node> {
@@ -129,6 +132,7 @@ impl<Node: Copy + Eq> Inventory<Node> {
                 parent,
                 children: graph.children[index].clone(),
                 source_index,
+                role: style.block_generation,
                 first,
                 end: first + usize::from(atomic.is_some()),
                 atomic_owner: atomic,
@@ -199,7 +203,7 @@ impl<Node: Copy + Eq> Inventory<Node> {
                 continue;
             }
             let style = tree.node_input(entry.node);
-            if unsupported_continuation(style, axes)
+            if unsupported_continuation(style, axes, ContinuationProfile::Minimum)
                 .map_err(|error| crate::error::sizing_resolution_error(entry.node, error))?
             {
                 return Err(unsupported(entry.node));
@@ -274,6 +278,29 @@ impl<Node: Copy + Eq> Inventory<Node> {
 /// An immutable fragment-window projection of the actual source. Only the
 /// selected source interval and Slice edge/margin rules differ; Block still
 /// owns sizing, margin collapse, leaf invocation, placement and baseline facts.
+pub(super) fn clear_edge<S: LayoutScalar>(
+    edges: &mut crate::Edges<LengthOf<S>>,
+    side: crate::PhysicalSide,
+) {
+    match side {
+        crate::PhysicalSide::Left => edges.left = LengthOf::ZERO,
+        crate::PhysicalSide::Right => edges.right = LengthOf::ZERO,
+        crate::PhysicalSide::Top => edges.top = LengthOf::ZERO,
+        crate::PhysicalSide::Bottom => edges.bottom = LengthOf::ZERO,
+    }
+}
+pub(super) fn clear_margin<S: LayoutScalar>(
+    edges: &mut crate::Edges<LengthAutoOf<S>>,
+    side: crate::PhysicalSide,
+) {
+    match side {
+        crate::PhysicalSide::Left => edges.left = LengthAutoOf::ZERO,
+        crate::PhysicalSide::Right => edges.right = LengthAutoOf::ZERO,
+        crate::PhysicalSide::Top => edges.top = LengthAutoOf::ZERO,
+        crate::PhysicalSide::Bottom => edges.bottom = LengthAutoOf::ZERO,
+    }
+}
+
 pub(super) struct WindowTree<'a, Tree: LayoutTree> {
     pub(super) tree: &'a Tree,
     pub(super) inventory: &'a Inventory<Tree::Node>,
@@ -291,38 +318,26 @@ impl<'a, Tree: LayoutTree> WindowTree<'a, Tree> {
     ) -> Self {
         let mut styles = Vec::with_capacity(inventory.nodes.len());
         let mut children = Vec::with_capacity(inventory.nodes.len());
-        let zero_edge = |edges: &mut crate::Edges<LengthOf<Tree::Scalar>>, side| match side {
-            crate::PhysicalSide::Left => edges.left = LengthOf::ZERO,
-            crate::PhysicalSide::Right => edges.right = LengthOf::ZERO,
-            crate::PhysicalSide::Top => edges.top = LengthOf::ZERO,
-            crate::PhysicalSide::Bottom => edges.bottom = LengthOf::ZERO,
-        };
-        let zero_margin = |edges: &mut crate::Edges<LengthAutoOf<Tree::Scalar>>, side| match side {
-            crate::PhysicalSide::Left => edges.left = LengthAutoOf::ZERO,
-            crate::PhysicalSide::Right => edges.right = LengthAutoOf::ZERO,
-            crate::PhysicalSide::Top => edges.top = LengthAutoOf::ZERO,
-            crate::PhysicalSide::Bottom => edges.bottom = LengthAutoOf::ZERO,
-        };
         for entry in &inventory.nodes {
             let mut style = tree.node_input(entry.node).clone();
             if entry.atomic_owner.is_none() {
                 if entry.first < range.start {
-                    zero_edge(&mut style.padding, axes.block_start());
-                    zero_edge(&mut style.border, axes.block_start());
+                    clear_edge(&mut style.padding, axes.block_start());
+                    clear_edge(&mut style.border, axes.block_start());
                 }
                 if entry.end > range.end || partial_end.is_some_and(|unit| entry.end == unit + 1) {
-                    zero_edge(&mut style.padding, axes.block_end());
-                    zero_edge(&mut style.border, axes.block_end());
+                    clear_edge(&mut style.padding, axes.block_end());
+                    clear_edge(&mut style.border, axes.block_end());
                 }
             }
             if entry.first < range.start && entry.end > range.start {
-                zero_margin(&mut style.margin, axes.block_start());
+                clear_margin(&mut style.margin, axes.block_start());
             }
             if entry.first < range.end && entry.end > range.end {
-                zero_margin(&mut style.margin, axes.block_end());
+                clear_margin(&mut style.margin, axes.block_end());
             }
             for owner in trimmed.iter().filter(|owner| owner.node == entry.node) {
-                zero_margin(&mut style.margin, owner.side);
+                clear_margin(&mut style.margin, owner.side);
             }
             children.push(
                 entry
@@ -439,39 +454,40 @@ fn maximum_intrinsic<S: LayoutScalar>(value: &crate::MaxSizeOf<S>) -> bool {
     }
 }
 
-fn unsupported_constraints<S: LayoutScalar>(
-    style: &NodeInputOf<S>,
-    axes: FlowAxes,
-) -> Result<bool, crate::sizing::resolve::SizingResolutionError<S>> {
-    let minimum = axes.logical_size(style.min_size.clone()).block;
-    Ok((!minimum.is_auto()
-        && !crate::block::fragment_minimum::absolute(&minimum, axes.block_axis())?)
-        || axes.logical_size(style.max_size.clone()).block != crate::MaxSizeOf::NONE
-        || style.aspect_ratio.is_some())
+#[derive(Clone, Copy)]
+pub(super) enum ContinuationProfile {
+    Minimum,
+    Maximum,
 }
 
-/// Static admission to the supported continuation model. Whole-box production
-/// remains ordinary when a source is outside this boundary.
+/// Static admission to one owned continuation profile. Sources outside it
+/// retain ordinary whole-box production and are refused only if they continue.
 pub(super) fn unsupported_continuation<S: LayoutScalar>(
     style: &NodeInputOf<S>,
     axes: FlowAxes,
+    profile: ContinuationProfile,
 ) -> Result<bool, crate::sizing::resolve::SizingResolutionError<S>> {
     let own_axes = FlowAxes::new(style.writing_mode, style.direction);
-    Ok(unsupported_constraints(style, axes)?
-        || (!own_axes
-            .logical_size(style.min_size.clone())
-            .block
-            .is_auto()
-            && crate::block::fragment_minimum::basis_dependent_border_box(style, own_axes))
+    let minimum = own_axes.logical_size(style.min_size.clone()).block;
+    let maximum = own_axes.logical_size(style.max_size.clone()).block;
+    let maximum_supported = match profile {
+        ContinuationProfile::Minimum => maximum == crate::MaxSizeOf::NONE,
+        ContinuationProfile::Maximum => matches!(
+            crate::sizing::resolve::fixed_fallback_maximum(
+                &maximum, crate::SizingAlgorithm::Block, own_axes.block_axis(), None,
+            )?,
+            crate::sizing::resolve::FixedFallbackSource::Fixed(_)
+        ),
+    };
+    let inset_limit = matches!(profile, ContinuationProfile::Maximum) || !minimum.is_auto();
+    Ok((!minimum.is_auto()
+            && !crate::block::fragment_minimum::absolute(&minimum, own_axes.block_axis())?)
+        || !maximum_supported
+        || style.aspect_ratio.is_some()
+        || (inset_limit && crate::block::fragment_minimum::basis_dependent_border_box(style, own_axes))
         || (preferred_intrinsic(&own_axes.logical_size(style.size.clone()).inline)
-            && !own_axes
-                .logical_size(style.size.clone())
-                .inline
-                .is_min_content()
-            && !own_axes
-                .logical_size(style.size.clone())
-                .inline
-                .is_max_content())
+            && !own_axes.logical_size(style.size.clone()).inline.is_min_content()
+            && !own_axes.logical_size(style.size.clone()).inline.is_max_content())
         || minimum_intrinsic(&own_axes.logical_size(style.min_size.clone()).inline)
         || maximum_intrinsic(&own_axes.logical_size(style.max_size.clone()).inline)
         || style.overflow.x() != crate::Overflow::Visible

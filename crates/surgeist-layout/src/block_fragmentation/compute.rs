@@ -1,3 +1,5 @@
+#[path = "scope_compute.rs"]
+mod scoped;
 use super::source::{Inventory, SourceKey, SourceUnit, WindowTree, unsupported};
 use super::{BoundMode, FragmentBoxAllocation, NodePublication, ResultIdentity};
 use crate::geometry::LogicalSizeOf;
@@ -499,7 +501,7 @@ impl<Tree: LayoutTree> NativeProvider<'_, '_, Tree> {
                 || source.end > selection.range.end
                 || selection.partial.is_some_and(|unit| source.end == unit + 1);
             if continuing
-                && super::source::unsupported_continuation(style, self.axes)
+                && super::source::unsupported_continuation(style, self.axes, super::source::ContinuationProfile::Minimum)
                     .map_err(|error| crate::error::sizing_resolution_error(node, error))?
             {
                 return Err(unsupported(node));
@@ -964,7 +966,7 @@ pub(crate) fn compute<Tree: LayoutTree>(
         if entry.minimum.is_none() {
             continue;
         }
-        if super::source::unsupported_continuation(capture.tree.node_input(entry.node), *axes)
+        if super::source::unsupported_continuation(capture.tree.node_input(entry.node), *axes, super::source::ContinuationProfile::Minimum)
             .map_err(|error| crate::error::sizing_resolution_error(entry.node, error))?
         {
             continue;
