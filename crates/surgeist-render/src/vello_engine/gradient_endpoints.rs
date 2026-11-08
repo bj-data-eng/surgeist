@@ -171,7 +171,7 @@ impl EndpointRecords {
                 {
                     return Err(correspondence());
                 }
-                // Own a genuine independent copy before the borrowed FrameBrush
+                // Own an independent copy before the borrowed FrameBrush
                 // can drop. Partial failures release this exact real capacity.
                 let mut records = account.retained(count)?;
                 let mut previous = None;
