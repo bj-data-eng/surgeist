@@ -1,5 +1,6 @@
 //! Error-related types and conversions.
 
+use crate::ContextAccess;
 #[cfg(test)]
 mod tests;
 
@@ -55,13 +56,13 @@ use thiserror::Error;
 /// let error = js_error!("error!");
 /// assert!(error.as_opaque().is_some());
 /// assert_eq!(
-///     error.as_opaque().unwrap().to_string(context).unwrap(),
+///     error.as_opaque().unwrap().to_string(context.access()).unwrap(),
 ///     "error!"
 /// );
 ///
 /// let error = js_error!("error: {}", 5);
 /// assert_eq!(
-///     error.as_opaque().unwrap().to_string(context).unwrap(),
+///     error.as_opaque().unwrap().to_string(context.access()).unwrap(),
 ///     "error: 5"
 /// );
 ///
@@ -585,6 +586,10 @@ pub enum EngineError {
     #[error("InvalidEntryPermit: execution entry authority does not match")]
     InvalidEntryPermit,
 
+    /// The host context's access capability is already leased.
+    #[error("ContextAccessBusy: host context access is already leased")]
+    ContextAccessBusy,
+
     /// No further logical invocation identity can be represented.
     #[error("InvocationIdExhausted: invocation identity space exhausted")]
     InvocationIdExhausted,
@@ -616,6 +621,7 @@ impl EngineError {
         match self {
             EngineError::Resource(error) => ErasedEngineError::Resource(error),
             EngineError::InvalidEntryPermit => ErasedEngineError::InvalidEntryPermit,
+            EngineError::ContextAccessBusy => ErasedEngineError::ContextAccessBusy,
             EngineError::InvocationIdExhausted => ErasedEngineError::InvocationIdExhausted,
             #[cfg(feature = "fuzz")]
             EngineError::NoInstructionsRemain => ErasedEngineError::NoInstructionsRemain,
@@ -623,7 +629,9 @@ impl EngineError {
             EngineError::ScopeAnalysis(error) => ErasedEngineError::ScopeAnalysis(error),
             EngineError::Panic(err) => ErasedEngineError::Panic(ErasedPanicError {
                 message: err.message,
-                source: err.source.map(|err| Box::new(err.into_erased(context))),
+                source: err
+                    .source
+                    .map(|err| Box::new(err.into_erased(context.access()))),
             }),
         }
     }
@@ -641,6 +649,7 @@ pub(crate) struct StoredJsError {
 enum StoredErrorRepr {
     Resource(#[heap_trace(skip)] EngineResourceError),
     InvalidEntryPermit,
+    ContextAccessBusy,
     InvocationIdExhausted,
     ScopeAnalysis(#[heap_trace(skip)] surgeist_js_ast::scope::ScopeStateError),
     Opaque(StoredValue),
@@ -682,6 +691,7 @@ impl StoredJsError {
     pub(crate) fn to_error(&self) -> JsError {
         let inner = match &self.inner {
             StoredErrorRepr::InvalidEntryPermit => Repr::Engine(EngineError::InvalidEntryPermit),
+            StoredErrorRepr::ContextAccessBusy => Repr::Engine(EngineError::ContextAccessBusy),
             StoredErrorRepr::InvocationIdExhausted => {
                 Repr::Engine(EngineError::InvocationIdExhausted)
             }
@@ -729,12 +739,43 @@ impl StoredJsError {
 
 impl JsError {
     pub(crate) fn admit_runtime(mut self, runtime: &crate::Runtime) -> Self {
-        let mut pending = vec![(&mut self, false)];
-        while let Some((error, diagnostic)) = pending.pop() {
-            if let Err(refusal) = error.check_runtime_owner(runtime) {
-                if !diagnostic {
-                    return refusal;
+        let replacement = {
+            let mut first_refusal = None;
+            let mut first_engine: Option<&Self> = None;
+            let mut pending = vec![&mut self];
+            while let Some(error) = pending.pop() {
+                if first_refusal.is_none() {
+                    first_refusal = error.check_runtime_owner(runtime).err();
                 }
+                if !error.is_catchable() {
+                    if let Repr::Engine(EngineError::Panic(panic)) = &mut error.inner
+                        && let Some(source) = panic.source.as_deref_mut()
+                    {
+                        source.admit_diagnostic(runtime);
+                    }
+                    if first_engine.is_none() {
+                        first_engine = Some(&*error);
+                    }
+                    continue;
+                }
+                if let Repr::Native(native) = &mut error.inner {
+                    if let JsNativeErrorKind::Aggregate(errors) = &mut native.kind {
+                        pending.extend(errors.iter_mut().rev());
+                    }
+                    pending.extend(native.cause.as_deref_mut());
+                }
+            }
+            // Preserve local trees, but never let unrelated foreign payloads
+            // replace their first engine failure or escape with that failure.
+            first_refusal.map(|refusal| first_engine.map_or(refusal, Self::clone))
+        };
+        replacement.unwrap_or(self)
+    }
+
+    fn admit_diagnostic(&mut self, runtime: &crate::Runtime) {
+        let mut pending = vec![self];
+        while let Some(error) = pending.pop() {
+            if let Err(refusal) = error.check_runtime_owner(runtime) {
                 // Diagnostic payloads must be local without changing the panic.
                 *error = refusal;
                 continue;
@@ -742,17 +783,16 @@ impl JsError {
             match &mut error.inner {
                 Repr::Native(native) => {
                     if let JsNativeErrorKind::Aggregate(errors) = &mut native.kind {
-                        pending.extend(errors.iter_mut().rev().map(|member| (member, diagnostic)));
+                        pending.extend(errors.iter_mut().rev());
                     }
-                    pending.extend(native.cause.as_deref_mut().map(|cause| (cause, diagnostic)));
+                    pending.extend(native.cause.as_deref_mut());
                 }
                 Repr::Engine(EngineError::Panic(panic)) => {
-                    pending.extend(panic.source.as_deref_mut().map(|source| (source, true)));
+                    pending.extend(panic.source.as_deref_mut());
                 }
                 _ => {}
             }
         }
-        self
     }
 
     fn check_runtime_owner(&self, runtime: &crate::Runtime) -> JsResult<()> {
@@ -801,6 +841,7 @@ impl JsError {
                 stack: error.stack,
             })),
             Repr::Engine(EngineError::InvalidEntryPermit) => StoredErrorRepr::InvalidEntryPermit,
+            Repr::Engine(EngineError::ContextAccessBusy) => StoredErrorRepr::ContextAccessBusy,
             Repr::Engine(EngineError::InvocationIdExhausted) => {
                 StoredErrorRepr::InvocationIdExhausted
             }
@@ -908,16 +949,17 @@ impl JsError {
     /// let context = &mut Context::default();
     /// let error: JsError =
     ///     JsNativeError::eval().with_message("invalid script").into();
-    /// let error_val = error.into_opaque(context).unwrap();
+    /// let error_val = error.into_opaque(context.access()).unwrap();
     ///
     /// assert!(error_val.as_object().unwrap().is::<Error>());
     ///
     /// let error: JsError =
     ///     EngineError::RuntimeLimit(RuntimeLimitError::Recursion).into();
     ///
-    /// assert!(error.into_opaque(context).is_err());
+    /// assert!(error.into_opaque(context.access()).is_err());
     /// ```
-    pub fn into_opaque(self, context: &mut Context) -> JsResult<JsValue> {
+    pub fn into_opaque(self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         if !self.is_catchable() {
             return Err(self);
         }
@@ -985,15 +1027,16 @@ impl JsError {
     ///
     /// // create a new, opaque Error object
     /// let error: JsError = JsNativeError::typ().with_message("type error!").into();
-    /// let error_val = error.into_opaque(context).unwrap();
+    /// let error_val = error.into_opaque(context.access()).unwrap();
     ///
     /// // then, try to recover the original
-    /// let error = JsError::from_opaque(error_val).try_native(context).unwrap();
+    /// let error = JsError::from_opaque(error_val).try_native(context.access()).unwrap();
     ///
     /// assert!(matches!(error.kind(), JsNativeErrorKind::Type));
     /// assert_eq!(error.message(), "type error!");
     /// ```
-    pub fn try_native(&self, context: &mut Context) -> Result<JsNativeError, TryNativeError> {
+    pub fn try_native(&self, context: ContextAccess<'_>) -> Result<JsNativeError, TryNativeError> {
+        let context = context.into_owner();
         match &self.inner {
             Repr::Engine(e) => Err(TryNativeError::EngineError { source: e.clone() }),
             Repr::Native(e) => Ok(e.as_ref().clone()),
@@ -1041,12 +1084,12 @@ impl JsError {
                     ErrorKind::Syntax => JsNativeErrorKind::Syntax,
                     ErrorKind::Uri => JsNativeErrorKind::Uri,
                     ErrorKind::Aggregate => {
-                        let errors = obj.get(js_string!("errors"), context).map_err(|e| {
-                            TryNativeError::InaccessibleProperty {
-                                property: "errors",
-                                source: e,
-                            }
-                        })?;
+                        let errors =
+                            obj.get(js_string!("errors"), context.access())
+                                .map_err(|e| TryNativeError::InaccessibleProperty {
+                                    property: "errors",
+                                    source: e,
+                                })?;
                         let mut error_list = Vec::new();
                         match errors.as_object() {
                             Some(errors) if errors.is_array() => {
@@ -1059,7 +1102,7 @@ impl JsError {
                                 error_list.reserve(length as usize);
                                 for i in 0..length {
                                     error_list.push(Self::from_opaque(
-                                        errors.get(i, context).map_err(|e| {
+                                        errors.get(i, context.access()).map_err(|e| {
                                             TryNativeError::InvalidErrorsIndex {
                                                 index: i,
                                                 source: e,
@@ -1180,7 +1223,7 @@ impl JsError {
     ///     .with_cause(cause)
     ///     .into();
     ///
-    /// let erased_error = native_error.into_erased(context);
+    /// let erased_error = native_error.into_erased(context.access());
     ///
     /// assert_eq!(erased_error.to_string(), "TypeError: invalid type!");
     ///
@@ -1191,8 +1234,9 @@ impl JsError {
     ///     "Symbol(error!)"
     /// );
     /// ```
-    pub fn into_erased(self, context: &mut Context) -> JsErasedError {
-        let native = match self.try_native(context) {
+    pub fn into_erased(self, context: ContextAccess<'_>) -> JsErasedError {
+        let context = context.into_owner();
+        let native = match self.try_native(context.access()) {
             Ok(native) => native,
             Err(TryNativeError::EngineError { source }) => {
                 return JsErasedError {
@@ -1213,13 +1257,13 @@ impl JsError {
             ..
         } = native;
 
-        let cause = cause.map(|err| Box::new(err.into_erased(context)));
+        let cause = cause.map(|err| Box::new(err.into_erased(context.access())));
 
         let kind = match kind {
             JsNativeErrorKind::Aggregate(errors) => JsErasedNativeErrorKind::Aggregate(
                 errors
                     .into_iter()
-                    .map(|err| err.into_erased(context))
+                    .map(|err| err.into_erased(context.access()))
                     .collect(),
             ),
             JsNativeErrorKind::Error => JsErasedNativeErrorKind::Error,
@@ -1801,16 +1845,17 @@ impl JsNativeError {
     /// let context = &mut Context::default();
     ///
     /// let error = JsNativeError::error().with_message("error!");
-    /// let error_obj = error.into_opaque(context).unwrap();
+    /// let error_obj = error.into_opaque(context.access()).unwrap();
     ///
     /// assert!(error_obj.is::<Error>());
     /// assert_eq!(
-    ///     error_obj.get(js_string!("message"), context).unwrap(),
+    ///     error_obj.get(js_string!("message"), context.access()).unwrap(),
     ///     js_string!("error!").into()
     /// )
     /// ```
     #[inline]
-    pub fn into_opaque(self, context: &mut Context) -> JsResult<JsObject> {
+    pub fn into_opaque(self, context: ContextAccess<'_>) -> JsResult<JsObject> {
+        let context = context.into_owner();
         let runtime = context.runtime();
         let mut pending = Vec::new();
         self.push_error_members(&mut pending);
@@ -1884,7 +1929,7 @@ impl JsNativeError {
                     .enumerable(false)
                     .writable(true)
                     .value(errors),
-                context,
+                context.access(),
             )
             .expect("The spec guarantees this succeeds for a newly created object ");
         }
@@ -2062,6 +2107,10 @@ pub enum ErasedEngineError {
     /// An execution permit does not authorize this code or invocation.
     #[error("InvalidEntryPermit: execution entry authority does not match")]
     InvalidEntryPermit,
+
+    /// The host context's access capability is already leased.
+    #[error("ContextAccessBusy: host context access is already leased")]
+    ContextAccessBusy,
 
     /// No further logical invocation identity can be represented.
     #[error("InvocationIdExhausted: invocation identity space exhausted")]

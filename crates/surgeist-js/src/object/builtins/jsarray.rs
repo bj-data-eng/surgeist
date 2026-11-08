@@ -1,6 +1,9 @@
 //! A Rust API wrapper for Boa's `Array` Builtin ECMAScript Object
+#[cfg(test)]
+use crate::Context;
+use crate::ContextAccess;
 use crate::{
-    Context, JsExpect, JsResult, JsString, JsValue,
+    JsExpect, JsResult, JsString, JsValue,
     builtins::Array,
     error::JsNativeError,
     object::{JsFunction, JsObject},
@@ -22,7 +25,8 @@ impl JsArray {
     ///
     /// Returns a `PanicError` if creating the array fails due to an engine bug.
     #[inline]
-    pub fn new(context: &mut Context) -> JsResult<Self> {
+    pub fn new(context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         let inner = Array::array_create(0, None, context)
             .js_expect("creating an empty array with the default prototype must not fail")?;
 
@@ -35,10 +39,11 @@ impl JsArray {
     ///
     /// Returns a `TypeError` if an element is an object from a different runtime.
     /// No array is created until every element has been checked.
-    pub fn from_iter<I>(elements: I, context: &mut Context) -> JsResult<Self>
+    pub fn from_iter<I>(elements: I, context: ContextAccess<'_>) -> JsResult<Self>
     where
         I: IntoIterator<Item = JsValue>,
     {
+        let context = context.into_owner();
         let elements = elements
             .into_iter()
             .map(|value| {
@@ -69,66 +74,76 @@ impl JsArray {
     ///
     /// Same as `array.length` in JavaScript.
     #[inline]
-    pub fn length(&self, context: &mut Context) -> JsResult<u64> {
+    pub fn length(&self, context: ContextAccess<'_>) -> JsResult<u64> {
+        let context = context.into_owner();
         self.inner.length_of_array_like(context)
     }
 
     /// Check if the array is empty, i.e. the `length` is zero.
     #[inline]
-    pub fn is_empty(&self, context: &mut Context) -> JsResult<bool> {
+    pub fn is_empty(&self, context: ContextAccess<'_>) -> JsResult<bool> {
+        let context = context.into_owner();
         self.inner.length_of_array_like(context).map(|len| len == 0)
     }
 
     /// Push an element to the array.
-    pub fn push<T>(&self, value: T, context: &mut Context) -> JsResult<JsValue>
+    pub fn push<T>(&self, value: T, context: ContextAccess<'_>) -> JsResult<JsValue>
     where
         T: Into<JsValue>,
     {
-        self.push_items(&[value.into()], context)
+        let context = context.into_owner();
+        self.push_items(&[value.into()], context.access())
     }
 
     /// Pushes a slice of elements to the array.
     #[inline]
-    pub fn push_items(&self, items: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    pub fn push_items(&self, items: &[JsValue], context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         Array::push(&self.inner.clone().into(), items, context)
     }
 
     /// Pops an element from the array.
     #[inline]
-    pub fn pop(&self, context: &mut Context) -> JsResult<JsValue> {
+    pub fn pop(&self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         Array::pop(&self.inner.clone().into(), &[], context)
     }
 
     /// Calls `Array.prototype.at()`.
-    pub fn at<T>(&self, index: T, context: &mut Context) -> JsResult<JsValue>
+    pub fn at<T>(&self, index: T, context: ContextAccess<'_>) -> JsResult<JsValue>
     where
         T: Into<i64>,
     {
+        let context = context.into_owner();
         Array::at(&self.inner.clone().into(), &[index.into().into()], context)
     }
 
     /// Calls `Array.prototype.shift()`.
     #[inline]
-    pub fn shift(&self, context: &mut Context) -> JsResult<JsValue> {
+    pub fn shift(&self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         Array::shift(&self.inner.clone().into(), &[], context)
     }
 
     /// Calls `Array.prototype.unshift()`.
     #[inline]
-    pub fn unshift(&self, items: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
+    pub fn unshift(&self, items: &[JsValue], context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         Array::unshift(&self.inner.clone().into(), items, context)
     }
 
     /// Calls `Array.prototype.reverse()`.
     #[inline]
-    pub fn reverse(&self, context: &mut Context) -> JsResult<Self> {
+    pub fn reverse(&self, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         Array::reverse(&self.inner.clone().into(), &[], context)?;
         Ok(self.clone())
     }
 
     /// Calls `Array.prototype.concat()`.
     #[inline]
-    pub fn concat(&self, items: &[JsValue], context: &mut Context) -> JsResult<Self> {
+    pub fn concat(&self, items: &[JsValue], context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         let object = Array::concat(&self.inner.clone().into(), items, context)?
             .as_object()
             .js_expect("Array.prototype.concat should always return object")?;
@@ -138,7 +153,12 @@ impl JsArray {
 
     /// Calls `Array.prototype.join()`.
     #[inline]
-    pub fn join(&self, separator: Option<JsString>, context: &mut Context) -> JsResult<JsString> {
+    pub fn join(
+        &self,
+        separator: Option<JsString>,
+        context: ContextAccess<'_>,
+    ) -> JsResult<JsString> {
+        let context = context.into_owner();
         let result = Array::join(
             &self.inner.clone().into(),
             &[separator.into_or_undefined()],
@@ -156,11 +176,12 @@ impl JsArray {
         value: T,
         start: Option<u32>,
         end: Option<u32>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Self>
     where
         T: Into<JsValue>,
     {
+        let context = context.into_owner();
         Array::fill(
             &self.inner.clone().into(),
             &[
@@ -178,11 +199,12 @@ impl JsArray {
         &self,
         search_element: T,
         from_index: Option<u32>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Option<u32>>
     where
         T: Into<JsValue>,
     {
+        let context = context.into_owner();
         let index = Array::index_of(
             &self.inner.clone().into(),
             &[search_element.into(), from_index.into_or_undefined()],
@@ -204,11 +226,12 @@ impl JsArray {
         &self,
         search_element: T,
         from_index: Option<u32>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Option<u32>>
     where
         T: Into<JsValue>,
     {
+        let context = context.into_owner();
         let index = Array::last_index_of(
             &self.inner.clone().into(),
             &[search_element.into(), from_index.into_or_undefined()],
@@ -231,8 +254,9 @@ impl JsArray {
         &self,
         predicate: JsFunction,
         this_arg: Option<JsValue>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         Array::find(
             &self.inner.clone().into(),
             &[predicate.into(), this_arg.into_or_undefined()],
@@ -246,8 +270,9 @@ impl JsArray {
         &self,
         callback: JsFunction,
         this_arg: Option<JsValue>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Self> {
+        let context = context.into_owner();
         let object = Array::filter(
             &self.inner.clone().into(),
             &[callback.into(), this_arg.into_or_undefined()],
@@ -265,8 +290,9 @@ impl JsArray {
         &self,
         callback: JsFunction,
         this_arg: Option<JsValue>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Self> {
+        let context = context.into_owner();
         let object = Array::map(
             &self.inner.clone().into(),
             &[callback.into(), this_arg.into_or_undefined()],
@@ -284,8 +310,9 @@ impl JsArray {
         &self,
         callback: JsFunction,
         this_arg: Option<JsValue>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<bool> {
+        let context = context.into_owner();
         let result = Array::every(
             &self.inner.clone().into(),
             &[callback.into(), this_arg.into_or_undefined()],
@@ -303,8 +330,9 @@ impl JsArray {
         &self,
         callback: JsFunction,
         this_arg: Option<JsValue>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<bool> {
+        let context = context.into_owner();
         let result = Array::some(
             &self.inner.clone().into(),
             &[callback.into(), this_arg.into_or_undefined()],
@@ -318,7 +346,12 @@ impl JsArray {
 
     /// Calls `Array.prototype.sort()`.
     #[inline]
-    pub fn sort(&self, compare_fn: Option<JsFunction>, context: &mut Context) -> JsResult<Self> {
+    pub fn sort(
+        &self,
+        compare_fn: Option<JsFunction>,
+        context: ContextAccess<'_>,
+    ) -> JsResult<Self> {
+        let context = context.into_owner();
         Array::sort(
             &self.inner.clone().into(),
             &[compare_fn.into_or_undefined()],
@@ -334,8 +367,9 @@ impl JsArray {
         &self,
         start: Option<u32>,
         end: Option<u32>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Self> {
+        let context = context.into_owner();
         let object = Array::slice(
             &self.inner.clone().into(),
             &[start.into_or_undefined(), end.into_or_undefined()],
@@ -353,7 +387,8 @@ impl JsArray {
     ///
     /// Returns a `TypeError` if the array belongs to a different runtime.
     #[inline]
-    pub fn values(&self, context: &mut Context) -> JsResult<JsValue> {
+    pub fn values(&self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         Array::values(&self.inner.clone().into(), &[], context)
     }
 
@@ -367,18 +402,18 @@ impl JsArray {
     /// # use surgeist_js::{Context, JsValue};
     /// # use surgeist_js::object::builtins::JsArray;
     /// let context = &mut Context::default();
-    /// let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context)?;
+    /// let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context.access())?;
     ///
     /// // Insert elements at index 1 without removing
     /// let removed = array.splice(
     ///     1,
     ///     Some(0),
     ///     &[JsValue::from(10), JsValue::from(20)],
-    ///     context,
+    ///     context.access(),
     /// ).unwrap();
     ///
-    /// assert_eq!(array.length(context).unwrap(), 5);
-    /// assert_eq!(removed.length(context).unwrap(), 0);
+    /// assert_eq!(array.length(context.access()).unwrap(), 5);
+    /// assert_eq!(removed.length(context.access()).unwrap(), 0);
     /// # Ok::<_, surgeist_js::JsError>(())
     /// ```
     #[inline]
@@ -387,8 +422,9 @@ impl JsArray {
         start: u32,
         delete_count: Option<u32>,
         items: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Self> {
+        let context = context.into_owner();
         let start = JsValue::from(start);
         let delete_count = delete_count.map(JsValue::from);
         let object = Array::splice_internal(
@@ -410,8 +446,9 @@ impl JsArray {
         &self,
         callback: JsFunction,
         initial_value: Option<JsValue>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         Array::reduce(
             &self.inner.clone().into(),
             &[callback.into(), initial_value.into_or_undefined()],
@@ -425,8 +462,9 @@ impl JsArray {
         &self,
         callback: JsFunction,
         initial_value: Option<JsValue>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         Array::reduce_right(
             &self.inner.clone().into(),
             &[callback.into(), initial_value.into_or_undefined()],
@@ -436,7 +474,8 @@ impl JsArray {
 
     /// Calls `Array.prototype.toReversed`.
     #[inline]
-    pub fn to_reversed(&self, context: &mut Context) -> JsResult<Self> {
+    pub fn to_reversed(&self, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         let array = Array::to_reversed(&self.inner.clone().into(), &[], context)?;
 
         Ok(Self {
@@ -451,8 +490,9 @@ impl JsArray {
     pub fn to_sorted(
         &self,
         compare_fn: Option<JsFunction>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Self> {
+        let context = context.into_owner();
         let array = Array::to_sorted(
             &self.inner.clone().into(),
             &[compare_fn.into_or_undefined()],
@@ -472,7 +512,8 @@ impl JsArray {
     ///
     /// Returns a `TypeError` if the array or replacement object belongs to a different runtime.
     #[inline]
-    pub fn with(&self, index: u64, value: JsValue, context: &mut Context) -> JsResult<Self> {
+    pub fn with(&self, index: u64, value: JsValue, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         self.inner.check_runtime(context.runtime())?;
         context.runtime().check_value(&value)?;
         let array = Array::with(&self.inner.clone().into(), &[index.into(), value], context)?;
@@ -509,7 +550,7 @@ impl Deref for JsArray {
 }
 
 impl TryFromJs for JsArray {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object() {
             Self::from_object(o.clone())
         } else {
@@ -534,19 +575,20 @@ mod tests {
             .unwrap();
         let foreign = Context::default();
         let foreign_object = JsObject::with_null_proto(foreign.runtime());
-        let error =
-            JsArray::from_iter([JsValue::from(1), foreign_object.into()], context).unwrap_err();
+        let error = JsArray::from_iter([JsValue::from(1), foreign_object.into()], context.access())
+            .unwrap_err();
         let error = error.as_native().expect("a native runtime admission error");
         assert_eq!(error.kind(), &JsNativeErrorKind::Type);
         assert_eq!(error.message(), "object belongs to a different runtime");
 
         let peer_object = JsObject::with_null_proto(peer.runtime());
         let identity = peer_object.edge();
-        let array = JsArray::from_iter([JsValue::from(1), peer_object.into()], context).unwrap();
+        let array =
+            JsArray::from_iter([JsValue::from(1), peer_object.into()], context.access()).unwrap();
         context.runtime().collect().unwrap();
-        assert_eq!(array.length(context).unwrap(), 2);
-        assert_eq!(array.get(0, context).unwrap(), JsValue::from(1));
-        let retained = array.get(1, context).unwrap();
+        assert_eq!(array.length(context.access()).unwrap(), 2);
+        assert_eq!(array.get(0, context.access()).unwrap(), JsValue::from(1));
+        let retained = array.get(1, context.access()).unwrap();
         assert_eq!(
             retained.as_object(),
             Some(identity.upgrade().unwrap().unwrap())
@@ -556,59 +598,64 @@ mod tests {
     #[test]
     fn splice_remove() {
         let context = &mut Context::default();
-        let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context).unwrap();
+        let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context.access()).unwrap();
 
-        let removed = array.splice(1, Some(1), &[], context).unwrap();
+        let removed = array.splice(1, Some(1), &[], context.access()).unwrap();
 
-        assert_eq!(array.length(context).unwrap(), 2);
-        assert_eq!(removed.length(context).unwrap(), 1);
+        assert_eq!(array.length(context.access()).unwrap(), 2);
+        assert_eq!(removed.length(context.access()).unwrap(), 1);
     }
 
     #[test]
     fn splice_insert() {
         let context = &mut Context::default();
-        let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context).unwrap();
+        let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context.access()).unwrap();
 
         let removed = array
-            .splice(1, Some(0), &[JsValue::from(10), JsValue::from(20)], context)
+            .splice(
+                1,
+                Some(0),
+                &[JsValue::from(10), JsValue::from(20)],
+                context.access(),
+            )
             .unwrap();
 
-        assert_eq!(array.length(context).unwrap(), 5);
-        assert_eq!(removed.length(context).unwrap(), 0);
+        assert_eq!(array.length(context.access()).unwrap(), 5);
+        assert_eq!(removed.length(context.access()).unwrap(), 0);
     }
 
     #[test]
     fn splice_replace() {
         let context = &mut Context::default();
-        let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context).unwrap();
+        let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context.access()).unwrap();
 
         let removed = array
-            .splice(1, Some(1), &[JsValue::from(99)], context)
+            .splice(1, Some(1), &[JsValue::from(99)], context.access())
             .unwrap();
 
-        assert_eq!(array.length(context).unwrap(), 3);
-        assert_eq!(removed.length(context).unwrap(), 1);
+        assert_eq!(array.length(context.access()).unwrap(), 3);
+        assert_eq!(removed.length(context.access()).unwrap(), 1);
     }
 
     #[test]
     fn splice_from_start() {
         let context = &mut Context::default();
-        let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context).unwrap();
+        let array = JsArray::from_iter([1, 2, 3].map(JsValue::from), context.access()).unwrap();
 
-        let removed = array.splice(0, Some(1), &[], context).unwrap();
+        let removed = array.splice(0, Some(1), &[], context.access()).unwrap();
 
-        assert_eq!(array.length(context).unwrap(), 2);
-        assert_eq!(removed.length(context).unwrap(), 1);
+        assert_eq!(array.length(context.access()).unwrap(), 2);
+        assert_eq!(removed.length(context.access()).unwrap(), 1);
     }
 
     #[test]
     fn splice_empty_array() {
         let context = &mut Context::default();
-        let array = JsArray::new(context).unwrap();
+        let array = JsArray::new(context.access()).unwrap();
 
-        let removed = array.splice(0, Some(0), &[], context).unwrap();
+        let removed = array.splice(0, Some(0), &[], context.access()).unwrap();
 
-        assert_eq!(array.length(context).unwrap(), 0);
-        assert_eq!(removed.length(context).unwrap(), 0);
+        assert_eq!(array.length(context.access()).unwrap(), 0);
+        assert_eq!(removed.length(context.access()).unwrap(), 0);
     }
 }

@@ -12,7 +12,7 @@ use surgeist_js::gc::heap::Trace as HeapTrace;
 use surgeist_js::object::builtins::{JsPromise, JsUint8Array};
 use surgeist_js::value::{Convert, TryFromJs, TryIntoJs};
 use surgeist_js::{
-    Context, JsData, JsNativeError, JsResult, JsString, JsValue, boa_class, js_error, js_str,
+    ContextAccess, JsData, JsNativeError, JsResult, JsString, JsValue, boa_class, js_error, js_str,
     js_string,
 };
 
@@ -70,8 +70,8 @@ impl ResponseType {
 }
 
 impl TryFromJs for ResponseType {
-    fn try_from_js(value: &JsValue, context: &mut Context) -> JsResult<Self> {
-        let value_str = value.to_string(context)?;
+    fn try_from_js(value: &JsValue, mut context: ContextAccess<'_>) -> JsResult<Self> {
+        let value_str = value.to_string(context.reborrow())?;
         if value_str == js_str!("basic") {
             Ok(ResponseType::Basic)
         } else if value_str == js_str!("cors") {
@@ -91,7 +91,7 @@ impl TryFromJs for ResponseType {
 }
 
 impl TryIntoJs for ResponseType {
-    fn try_into_js(&self, _: &mut Context) -> JsResult<JsValue> {
+    fn try_into_js(&self, _: ContextAccess<'_>) -> JsResult<JsValue> {
         Ok(self.to_string().into())
     }
 }
@@ -278,14 +278,20 @@ fn initialize_response(
 /// This is a simplified implementation of the "extract a body" algorithm.
 ///
 /// See <https://fetch.spec.whatwg.org/#concept-bodyinit-extract>
-fn extract_body(val: &JsValue, context: &mut Context) -> JsResult<(Vec<u8>, Option<&'static str>)> {
+fn extract_body(
+    val: &JsValue,
+    mut context: ContextAccess<'_>,
+) -> JsResult<(Vec<u8>, Option<&'static str>)> {
     // TODO: handle other BodyInit types: Blob, ArrayBuffer, ArrayBufferView,
     //       FormData, URLSearchParams.
     // Currently only USVString is supported.
     //
     // For a USVString, the type is "text/plain;charset=UTF-8".
     // See https://fetch.spec.whatwg.org/#concept-bodyinit-extract step 6.
-    let bytes = val.to_string(context)?.to_std_string_escaped().into_bytes();
+    let bytes = val
+        .to_string(context.reborrow())?
+        .to_std_string_escaped()
+        .into_bytes();
     Ok((bytes, Some("text/plain;charset=UTF-8")))
 }
 
@@ -300,12 +306,16 @@ impl JsResponse {
 
     /// `Response.redirect(url, status)` per Fetch spec §7.4.
     #[boa(static)]
-    fn redirect(url: JsValue, status: Option<u16>, context: &mut Context) -> JsResult<Self> {
+    fn redirect(
+        url: JsValue,
+        status: Option<u16>,
+        mut context: ContextAccess<'_>,
+    ) -> JsResult<Self> {
         let status = status.unwrap_or(302);
         if !matches!(status, 301 | 302 | 303 | 307 | 308) {
             return Err(js_error!(RangeError: "Invalid redirect status: {}", status));
         }
-        let url_str = url.to_string(context)?.to_std_string_escaped();
+        let url_str = url.to_string(context.reborrow())?.to_std_string_escaped();
         http::Uri::try_from(url_str.as_str())
             .map_err(|_| js_error!(TypeError: "Invalid URL: {}", url_str))?;
 
@@ -334,9 +344,9 @@ impl JsResponse {
     /// See <https://fetch.spec.whatwg.org/#dom-response-json>
     #[boa(static)]
     #[boa(rename = "json")]
-    fn json_static(data: JsValue, init: JsValue, context: &mut Context) -> JsResult<Self> {
+    fn json_static(data: JsValue, init: JsValue, mut context: ContextAccess<'_>) -> JsResult<Self> {
         // Step 1: Let bytes be the result of running serialize a JavaScript value to JSON bytes on data.
-        let json_val = data.to_json(context)?.ok_or_else(|| {
+        let json_val = data.to_json(context.reborrow())?.ok_or_else(|| {
             JsNativeError::typ().with_message("value cannot be serialized to JSON")
         })?;
         let json_bytes = serde_json::to_vec(&json_val)
@@ -351,7 +361,7 @@ impl JsResponse {
         let options = if init.is_null_or_undefined() {
             JsResponseOptions::default()
         } else {
-            JsResponseOptions::try_from_js(&init, context)?
+            JsResponseOptions::try_from_js(&init, context.reborrow())?
         };
 
         initialize_response(&options, Some(body_with_type))
@@ -362,7 +372,11 @@ impl JsResponse {
     /// See <https://fetch.spec.whatwg.org/#dom-response> and
     /// <https://fetch.spec.whatwg.org/#initialize-a-response>
     #[boa(constructor)]
-    fn constructor(body: Option<JsValue>, init: JsValue, context: &mut Context) -> JsResult<Self> {
+    fn constructor(
+        body: Option<JsValue>,
+        init: JsValue,
+        mut context: ContextAccess<'_>,
+    ) -> JsResult<Self> {
         // Step 1-2: Set up the response and its headers (handled in initialize_response).
 
         // Step 3: Let bodyWithType be null.
@@ -370,14 +384,14 @@ impl JsResponse {
         let body_with_type: Option<(Vec<u8>, Option<&'static str>)> = match body {
             None => None,
             Some(ref val) if val.is_null_or_undefined() => None,
-            Some(val) => Some(extract_body(&val, context)?),
+            Some(val) => Some(extract_body(&val, context.reborrow())?),
         };
 
         // Step 5: Perform initialize a response given this, init, and bodyWithType.
         let options = if init.is_null_or_undefined() {
             JsResponseOptions::default()
         } else {
-            JsResponseOptions::try_from_js(&init, context)?
+            JsResponseOptions::try_from_js(&init, context.reborrow())?
         };
 
         initialize_response(&options, body_with_type)
@@ -460,29 +474,30 @@ impl JsResponse {
         }
     }
 
-    fn bytes(&self, context: &mut Context) -> JsPromise {
+    fn bytes(&self, mut context: ContextAccess<'_>) -> JsPromise {
         let body = self.body.clone();
         JsPromise::from_async_fn(
             async move |context| {
-                JsUint8Array::from_iter(body.iter().copied(), &mut context.borrow_mut())
-                    .map(Into::into)
+                context.with(|access| {
+                    JsUint8Array::from_iter(body.iter().copied(), access).map(Into::into)
+                })
             },
-            context,
+            context.reborrow(),
         )
     }
 
-    fn text(&self, context: &mut Context) -> JsPromise {
+    fn text(&self, mut context: ContextAccess<'_>) -> JsPromise {
         let body = self.body.clone();
         JsPromise::from_async_fn(
             async move |_| {
                 let body = String::from_utf8_lossy(body.as_ref());
                 Ok(JsString::from(body).into())
             },
-            context,
+            context.reborrow(),
         )
     }
 
-    fn json(&self, context: &mut Context) -> JsPromise {
+    fn json(&self, mut context: ContextAccess<'_>) -> JsPromise {
         let body = self.body.clone();
         JsPromise::from_async_fn(
             async move |context| {
@@ -490,9 +505,9 @@ impl JsResponse {
                 let json = serde_json::from_str::<serde_json::Value>(&json_string)
                     .map_err(|e| JsNativeError::syntax().with_message(e.to_string()))?;
 
-                JsValue::from_json(&json, &mut context.borrow_mut())
+                context.with(|access| JsValue::from_json(&json, access))
             },
-            context,
+            context.reborrow(),
         )
     }
 }

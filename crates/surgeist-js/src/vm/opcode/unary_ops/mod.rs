@@ -47,7 +47,7 @@ impl Pos {
             .vm
             .get_register(value.into())
             .clone()
-            .to_number(context)?
+            .to_number(context.access())?
             .into();
         context.vm.set_register(value.into(), v);
         Ok(())
@@ -74,7 +74,7 @@ impl Neg {
             .vm
             .get_register(value.into())
             .clone()
-            .to_numeric(context)?
+            .to_numeric(context.access())?
         {
             Numeric::Number(number) => context.vm.set_register(value.into(), number.neg().into()),
             Numeric::BigInt(bigint) => context
@@ -105,7 +105,7 @@ impl BitNot {
             .vm
             .get_register(value.into())
             .clone()
-            .to_numeric(context)?
+            .to_numeric(context.access())?
         {
             Numeric::Number(number) => context
                 .vm

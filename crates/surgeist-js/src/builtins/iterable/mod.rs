@@ -1,5 +1,6 @@
 //! Boa's implementation of ECMAScript's `IteratorRecord` and iterator prototype objects.
 
+use crate::ContextAccess;
 use crate::{
     Context, JsResult, JsValue,
     builtins::{BuiltInBuilder, IntrinsicObject},
@@ -214,8 +215,9 @@ impl IntrinsicObject for AsyncIterator {
 pub fn create_iter_result_object(
     value: JsValue,
     done: bool,
-    context: &mut Context,
+    context: ContextAccess<'_>,
 ) -> JsResult<JsValue> {
+    let context = context.into_owner();
     context.runtime().check_value(&value)?;
     Ok(create_iter_result_object_trusted(value, done, context))
 }
@@ -260,16 +262,17 @@ impl JsValue {
     pub fn get_iterator_from_method(
         &self,
         method: &JsObject,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<IteratorRecord> {
+        let context = context.into_owner();
         // 1. Let iterator be ? Call(method, obj).
-        let iterator = method.call(self, &[], context)?;
+        let iterator = method.call(self, &[], context.access())?;
         // 2. If iterator is not an Object, throw a TypeError exception.
         let iterator_obj = iterator.as_object().ok_or_else(|| {
             JsNativeError::typ().with_message("returned iterator is not an object")
         })?;
         // 3. Let nextMethod be ? Get(iterator, "next").
-        let next_method = iterator_obj.get(js_string!("next"), context)?;
+        let next_method = iterator_obj.get(js_string!("next"), context.access())?;
         // 4. Let iteratorRecord be the Iterator Record { [[Iterator]]: iterator, [[NextMethod]]: nextMethod, [[Done]]: false }.
         // 5. Return iteratorRecord.
         Ok(IteratorRecord::new(iterator_obj.clone(), next_method))
@@ -284,8 +287,9 @@ impl JsValue {
     pub fn get_iterator(
         &self,
         hint: IteratorHint,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<IteratorRecord> {
+        let context = context.into_owner();
         let method = match hint {
             // 1. If kind is async, then
             IteratorHint::Async => {
@@ -304,7 +308,7 @@ impl JsValue {
                             })?;
                     // iii. Let syncIteratorRecord be ? GetIteratorFromMethod(obj, syncMethod).
                     let sync_iterator_record =
-                        self.get_iterator_from_method(&sync_method, context)?;
+                        self.get_iterator_from_method(&sync_method, context.access())?;
                     // iv. Return CreateAsyncFromSyncIterator(syncIteratorRecord).
                     return Ok(AsyncFromSyncIterator::create(sync_iterator_record, context));
                 };
@@ -327,7 +331,7 @@ impl JsValue {
         })?;
 
         // 4. Return ? GetIteratorFromMethod(obj, method).
-        self.get_iterator_from_method(&method, context)
+        self.get_iterator_from_method(&method, context.access())
     }
 }
 
@@ -365,9 +369,13 @@ impl IteratorResult {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-iteratorcomplete
     #[inline]
-    pub fn complete(&self, context: &mut Context) -> JsResult<bool> {
+    pub fn complete(&self, context: ContextAccess<'_>) -> JsResult<bool> {
+        let context = context.into_owner();
         // 1. Return ToBoolean(? Get(iterResult, "done")).
-        Ok(self.object.get(js_string!("done"), context)?.to_boolean())
+        Ok(self
+            .object
+            .get(js_string!("done"), context.access())?
+            .to_boolean())
     }
 
     /// `IteratorValue ( iterResult )`
@@ -381,9 +389,10 @@ impl IteratorResult {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-iteratorvalue
     #[inline]
-    pub fn value(&self, context: &mut Context) -> JsResult<JsValue> {
+    pub fn value(&self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         // 1. Return ? Get(iterResult, "value").
-        self.object.get(js_string!("value"), context)
+        self.object.get(js_string!("value"), context.access())
     }
 }
 
@@ -492,7 +501,7 @@ impl IteratorRecord {
 
     /// Gets the current value of the `IteratorRecord`.
     pub(crate) fn value(&mut self, context: &mut Context) -> JsResult<JsValue> {
-        self.set_done_on_err(|iter| iter.last_result.value(context))
+        self.set_done_on_err(|iter| iter.last_result.value(context.access()))
     }
 
     /// Get the `[[Done]]` field of the `IteratorRecord`.
@@ -514,7 +523,7 @@ impl IteratorRecord {
             let result = IteratorResult::from_value(result)?;
             // 2. Let done be ? IteratorComplete(result).
             // 3. If done is true, return false.
-            iter.done = result.complete(context)?;
+            iter.done = result.complete(context.access())?;
 
             iter.last_result = result;
 
@@ -585,7 +594,7 @@ impl IteratorRecord {
             // 5. If done is true, then
             //     a. Set iteratorRecord.[[Done]] to true.
             //     b. Return done.
-            iter.done = result.complete(context)?;
+            iter.done = result.complete(context.access())?;
 
             iter.last_result = result;
 
@@ -672,7 +681,7 @@ impl IteratorRecord {
 
                 if let Some(r#return) = r#return {
                     // c. Set innerResult to Completion(Call(return, iterator)).
-                    r#return.call(&iterator.clone().into(), &[], context)
+                    r#return.call(&iterator.clone().into(), &[], context.access())
                 } else {
                     // b. If return is undefined, return ? completion.
                     return completion;
@@ -742,7 +751,7 @@ pub(crate) fn get_iterator_direct(
     context: &mut Context,
 ) -> JsResult<IteratorRecord> {
     // 1. Let nextMethod be ? Get(obj, "next").
-    let next_method = obj.get(js_string!("next"), context)?;
+    let next_method = obj.get(js_string!("next"), context.access())?;
     // 2. Let iteratorRecord be the Iterator Record { [[Iterator]]: obj, [[NextMethod]]: nextMethod, [[Done]]: false }.
     // 3. Return iteratorRecord.
     Ok(IteratorRecord::new(obj.clone(), next_method))
@@ -791,7 +800,7 @@ pub(crate) fn get_iterator_flattenable(
         // 4. Else,
         Some(method) => {
             // a. Let iterator be ? Call(method, obj).
-            let iterator = method.call(obj, &[], context)?;
+            let iterator = method.call(obj, &[], context.access())?;
 
             // b. If iterator is not an Object, throw a TypeError exception.
             let iterator_obj = iterator.as_object().ok_or_else(|| {

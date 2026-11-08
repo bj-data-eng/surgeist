@@ -1,7 +1,8 @@
 //! A value that can be `null` in JavaScript, but not `undefined`.
 
+use crate::ContextAccess;
 use crate::value::{TryFromJs, TryIntoJs};
-use surgeist_js::{Context, JsResult, JsValue};
+use surgeist_js::{JsResult, JsValue};
 
 #[cfg(test)]
 mod tests;
@@ -55,10 +56,10 @@ mod tests;
 /// # use surgeist_js::{Context, JsValue};
 /// # use surgeist_js::value::Nullable;
 /// # let context = &mut Context::default();
-/// let maybe_10: Nullable<u8> = JsValue::new(10).try_js_into(context).unwrap();
+/// let maybe_10: Nullable<u8> = JsValue::new(10).try_js_into(context.access()).unwrap();
 /// assert_eq!(maybe_10, Nullable::NonNull(10u8));
 ///
-/// let maybe_not: Nullable<u8> = JsValue::null().try_js_into(context).unwrap();
+/// let maybe_not: Nullable<u8> = JsValue::null().try_js_into(context.access()).unwrap();
 /// assert_eq!(maybe_not, Nullable::Null);
 /// ```
 ///
@@ -67,13 +68,13 @@ mod tests;
 /// # use surgeist_js::value::Nullable;
 /// # let context = &mut Context::default();
 /// let mut v: JsResult<Nullable<Option<u8>>> =
-///     JsValue::undefined().try_js_into(context);
+///     JsValue::undefined().try_js_into(context.access());
 /// assert_eq!(v, Ok(Nullable::NonNull(None)));
 ///
-/// v = JsValue::null().try_js_into(context);
+/// v = JsValue::null().try_js_into(context.access());
 /// assert_eq!(v, Ok(Nullable::Null));
 ///
-/// v = JsValue::from(42).try_js_into(context);
+/// v = JsValue::from(42).try_js_into(context.access());
 /// assert_eq!(v, Ok(Nullable::NonNull(Some(42))));
 /// assert_eq!(v.unwrap().flatten(), Some(42));
 /// ```
@@ -228,20 +229,20 @@ impl<T> IntoIterator for Nullable<T> {
 }
 
 impl<T: TryFromJs> TryFromJs for Nullable<T> {
-    fn try_from_js(value: &JsValue, context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, mut context: ContextAccess<'_>) -> JsResult<Self> {
         if value.is_null() {
             Ok(Nullable::Null)
         } else {
-            T::try_from_js(value, context).map(Nullable::NonNull)
+            T::try_from_js(value, context.reborrow()).map(Nullable::NonNull)
         }
     }
 }
 
 impl<T: TryIntoJs> TryIntoJs for Nullable<T> {
-    fn try_into_js(&self, context: &mut Context) -> JsResult<JsValue> {
+    fn try_into_js(&self, mut context: ContextAccess<'_>) -> JsResult<JsValue> {
         match self {
             Nullable::Null => Ok(JsValue::null()),
-            Nullable::NonNull(t) => t.try_into_js(context),
+            Nullable::NonNull(t) => t.try_into_js(context.reborrow()),
         }
     }
 }

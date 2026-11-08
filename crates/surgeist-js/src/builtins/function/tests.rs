@@ -32,7 +32,7 @@ fn native_callbacks_cannot_return_or_throw_foreign_objects() {
     .unwrap();
     for outcome in 0..3 {
         let error = function
-            .call(&JsValue::undefined(), &[outcome.into()], &mut context)
+            .call(&JsValue::undefined(), &[outcome.into()], context.access())
             .unwrap_err();
         assert!(
             error
@@ -54,7 +54,7 @@ fn native_async_job_owns_captures_after_the_function_drops() {
         capture,
     );
     let promise = callback
-        .call(&JsValue::undefined(), &[], &mut context)
+        .call(&JsValue::undefined(), &[], context.access())
         .unwrap()
         .as_object()
         .unwrap();
@@ -105,20 +105,33 @@ fn nested_native_invocation_restores_the_outer_activation() {
         .build()
         .unwrap();
     let outer = NativeFunction::from_fn_with_captures(
-        |_, _, inner, context| {
-            let active = context.active_function_object().expect("outer activation");
+        |_, _, inner, mut context| {
+            let active = context
+                .reborrow()
+                .into_owner()
+                .active_function_object()
+                .expect("outer activation");
             let realm = context.realm().clone();
             for construct in [false, true] {
                 for throws in [false, true] {
                     let args = [JsValue::from(throws)];
                     let outcome = if construct {
-                        inner.construct(&args, None, context).map(JsValue::from)
+                        inner
+                            .construct(&args, None, context.reborrow())
+                            .map(JsValue::from)
                     } else {
-                        inner.call(&JsValue::undefined(), &args, context)
+                        inner.call(&JsValue::undefined(), &args, context.reborrow())
                     };
                     assert_eq!(outcome.is_err(), throws);
                     assert!(context.realm() == &realm);
-                    assert_eq!(context.active_function_object().as_ref(), Some(&active));
+                    assert_eq!(
+                        context
+                            .reborrow()
+                            .into_owner()
+                            .active_function_object()
+                            .as_ref(),
+                        Some(&active)
+                    );
                 }
             }
             Ok(JsValue::undefined())
@@ -128,7 +141,7 @@ fn nested_native_invocation_restores_the_outer_activation() {
     .to_js_function(context.realm())
     .unwrap();
     outer
-        .call(&JsValue::undefined(), &[], context)
+        .call(&JsValue::undefined(), &[], context.access())
         .expect("outer invocation");
 }
 
@@ -264,14 +277,14 @@ fn closure_capture_clone() {
                         .writable(false)
                         .enumerable(false)
                         .configurable(false),
-                    ctx,
+                    ctx.access(),
                 )
                 .unwrap();
 
             let func = FunctionObjectBuilder::new(
                 ctx.realm(),
                 NativeFunction::from_fn_with_captures(
-                    |_, _, captures, context| {
+                    |_, _, captures, mut context| {
                         let (string, object) = &captures;
 
                         let hw = js_string!(
@@ -279,7 +292,7 @@ fn closure_capture_clone() {
                             &object
                                 .__get_own_property__(
                                     &js_string!("key").into(),
-                                    &mut context.into()
+                                    &mut context.reborrow().into_owner().into()
                                 )?
                                 .and_then(|prop| prop.value().and_then(JsValue::as_string))
                                 .ok_or_else(

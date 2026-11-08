@@ -64,14 +64,14 @@ fn buffers(criterion: &mut Criterion) {
             .expect("prepare buffer workload");
         let function = context
             .global_object()
-            .get(js_string!("run"), &mut context)
+            .get(js_string!("run"), context.access())
             .expect("load buffer workload")
             .as_callable()
             .expect("buffer workload is callable");
 
         let mut run = || {
             function
-                .call(&JsValue::undefined(), &[], &mut context)
+                .call(&JsValue::undefined(), &[], context.access())
                 .expect("execute buffer workload")
         };
         let expected = JsValue::from(workload.expected);

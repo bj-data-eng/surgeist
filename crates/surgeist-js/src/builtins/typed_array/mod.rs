@@ -141,7 +141,7 @@ impl<T: TypedArrayMarker> BuiltInConstructor for T {
             // Ensured by the let-else
 
             // ii. Let elementLength be ? ToIndex(firstArgument).
-            let element_length = first_argument.to_index(context)?;
+            let element_length = first_argument.to_index(context.access())?;
 
             // iii. Return ? AllocateTypedArray(constructorName, NewTarget, proto, elementLength).
             return BuiltinTypedArray::allocate::<T>(new_target, element_length, context)
@@ -201,7 +201,7 @@ impl<T: TypedArrayMarker> BuiltInConstructor for T {
         if let Some(using_iterator) = using_iterator {
             // a. Let values be ? IteratorToList(? GetIteratorFromMethod(firstArgument, usingIterator)).
             let values = JsValue::from(first_argument.clone())
-                .get_iterator_from_method(&using_iterator, context)?
+                .get_iterator_from_method(&using_iterator, context.access())?
                 .into_list(context)?;
 
             // b. Perform ? InitializeTypedArrayFromList(O, values).
@@ -506,29 +506,39 @@ impl TypedArrayKind {
         context: &mut Context,
     ) -> JsResult<TypedArrayElement> {
         match self {
-            TypedArrayKind::Int8 => value.to_int8(context).map(TypedArrayElement::Int8),
-            TypedArrayKind::Uint8 => value.to_uint8(context).map(TypedArrayElement::Uint8),
+            TypedArrayKind::Int8 => value.to_int8(context.access()).map(TypedArrayElement::Int8),
+            TypedArrayKind::Uint8 => value
+                .to_uint8(context.access())
+                .map(TypedArrayElement::Uint8),
             TypedArrayKind::Uint8Clamped => value
-                .to_uint8_clamp(context)
+                .to_uint8_clamp(context.access())
                 .map(|u| TypedArrayElement::Uint8Clamped(ClampedU8(u))),
-            TypedArrayKind::Int16 => value.to_int16(context).map(TypedArrayElement::Int16),
-            TypedArrayKind::Uint16 => value.to_uint16(context).map(TypedArrayElement::Uint16),
-            TypedArrayKind::Int32 => value.to_i32(context).map(TypedArrayElement::Int32),
-            TypedArrayKind::Uint32 => value.to_u32(context).map(TypedArrayElement::Uint32),
-            TypedArrayKind::BigInt64 => {
-                value.to_big_int64(context).map(TypedArrayElement::BigInt64)
-            }
+            TypedArrayKind::Int16 => value
+                .to_int16(context.access())
+                .map(TypedArrayElement::Int16),
+            TypedArrayKind::Uint16 => value
+                .to_uint16(context.access())
+                .map(TypedArrayElement::Uint16),
+            TypedArrayKind::Int32 => value.to_i32(context.access()).map(TypedArrayElement::Int32),
+            TypedArrayKind::Uint32 => value
+                .to_u32(context.access())
+                .map(TypedArrayElement::Uint32),
+            TypedArrayKind::BigInt64 => value
+                .to_big_int64(context.access())
+                .map(TypedArrayElement::BigInt64),
             TypedArrayKind::BigUint64 => value
-                .to_big_uint64(context)
+                .to_big_uint64(context.access())
                 .map(TypedArrayElement::BigUint64),
             #[cfg(feature = "float16")]
             TypedArrayKind::Float16 => value
-                .to_f16(context)
+                .to_f16(context.access())
                 .map(|f| TypedArrayElement::Float16(Float16::from(f))),
             TypedArrayKind::Float32 => value
-                .to_number(context)
+                .to_number(context.access())
                 .map(|f| TypedArrayElement::Float32(f as f32)),
-            TypedArrayKind::Float64 => value.to_number(context).map(TypedArrayElement::Float64),
+            TypedArrayKind::Float64 => value
+                .to_number(context.access())
+                .map(TypedArrayElement::Float64),
         }
     }
 

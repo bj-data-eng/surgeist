@@ -1,6 +1,7 @@
 //! A Rust API wrapper for Boa's `Generator` Builtin ECMAScript Object
+use crate::ContextAccess;
 use crate::{
-    Context, JsNativeError, JsResult, JsValue, builtins::generator::Generator, object::JsObject,
+    JsNativeError, JsResult, JsValue, builtins::generator::Generator, object::JsObject,
     value::TryFromJs,
 };
 
@@ -28,20 +29,22 @@ impl JsGenerator {
     /// Calls `Generator.prototype.next()`
     ///
     /// This method returns an object with the properties `done` and `value`
-    pub fn next<T>(&self, value: T, context: &mut Context) -> JsResult<JsValue>
+    pub fn next<T>(&self, value: T, context: ContextAccess<'_>) -> JsResult<JsValue>
     where
         T: Into<JsValue>,
     {
+        let context = context.into_owner();
         Generator::next(&self.inner.clone().into(), &[value.into()], context)
     }
 
     /// Calls `Generator.prototype.return()`
     ///
     /// This method returns the given value and finishes the generator
-    pub fn r#return<T>(&self, value: T, context: &mut Context) -> JsResult<JsValue>
+    pub fn r#return<T>(&self, value: T, context: ContextAccess<'_>) -> JsResult<JsValue>
     where
         T: Into<JsValue>,
     {
+        let context = context.into_owner();
         Generator::r#return(&self.inner.clone().into(), &[value.into()], context)
     }
 
@@ -49,10 +52,11 @@ impl JsGenerator {
     ///
     /// This method resumes the execution of a generator by throwing an error and returning an
     /// an object with the properties `done` and `value`
-    pub fn throw<T>(&self, value: T, context: &mut Context) -> JsResult<JsValue>
+    pub fn throw<T>(&self, value: T, context: ContextAccess<'_>) -> JsResult<JsValue>
     where
         T: Into<JsValue>,
     {
+        let context = context.into_owner();
         Generator::throw(&self.inner.clone().into(), &[value.into()], context)
     }
 }
@@ -81,7 +85,7 @@ impl Deref for JsGenerator {
 }
 
 impl TryFromJs for JsGenerator {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object() {
             Self::from_object(o.clone())
         } else {

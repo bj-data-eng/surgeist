@@ -2,9 +2,10 @@
 
 use super::private::IntoJsFunctionSealed;
 use super::{IntoJsFunction, IntoJsFunctionWithCaptures};
+use crate::ContextAccess;
 use crate::interop::{JsRest, TryFromJsArgument};
 use crate::native_function::NativeCapture;
-use crate::{Context, NativeFunction, TryIntoJsResult};
+use crate::{NativeFunction, TryIntoJsResult};
 use surgeist_js_gc::heap::Trace;
 
 /// Distinguishes signatures with an engine context from converted JS arguments.
@@ -87,13 +88,13 @@ macro_rules! impl_signature {
                 #[allow(unused_variables)]
                 fn into_js_function(self) -> NativeFunction {
                     NativeFunction::from_fn_with_captures(
-                        |this, args, state, $context| {
+                        |this, args, state, mut $context| {
                             let $rest = args;
                             $(
-                                let ($id, $rest) = $t::try_from_js_argument(this, $rest, $context)?;
+                                let ($id, $rest) = $t::try_from_js_argument(this, $rest, $context.reborrow())?;
                             )*
                             let result = (state.callback)($($id,)* $($argument),*);
-                            result.try_into_js_result($context)
+                            result.try_into_js_result($context.reborrow())
                         },
                         Function { callback: self },
                     )
@@ -110,13 +111,13 @@ macro_rules! impl_signature {
                 #[allow(unused_variables)]
                 fn into_js_function_with_captures(self, captures: Captures) -> NativeFunction {
                     NativeFunction::from_fn_with_captures(
-                        |this, args, state, $context| {
+                        |this, args, state, mut $context| {
                             let $rest = args;
                             $(
-                                let ($id, $rest) = $t::try_from_js_argument(this, $rest, $context)?;
+                                let ($id, $rest) = $t::try_from_js_argument(this, $rest, $context.reborrow())?;
                             )*
                             let result = (state.callback)(&state.captures, $($id,)* $($argument),*);
-                            result.try_into_js_result($context)
+                            result.try_into_js_result($context.reborrow())
                         },
                         StatefulFunction { callback: self, captures },
                     )
@@ -129,10 +130,10 @@ macro_rules! impl_signature {
 macro_rules! impl_into_js_function {
     ($($id:ident: $t:ident),*) => {
         impl_signature!(($($id:$t),*); (); (); (); rest, context);
-        impl_signature!(($($id:$t),*); (ContextArgToken); (&mut Context); (context); rest, context);
+        impl_signature!(($($id:$t),*); (ContextArgToken); (ContextAccess<'_>); (context.reborrow()); rest, context);
         impl_signature!(($($id:$t),*); (JsRest<'_>); (JsRest<'_>); (rest.into()); rest, context);
         impl_signature!(($($id:$t),*); (JsRest<'_>, ContextArgToken);
-            (JsRest<'_>, &mut Context); (rest.into(), context); rest, context);
+            (JsRest<'_>, ContextAccess<'_>); (rest.into(), context.reborrow()); rest, context);
     };
 }
 

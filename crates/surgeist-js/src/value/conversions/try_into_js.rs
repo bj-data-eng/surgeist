@@ -1,34 +1,35 @@
+use crate::ContextAccess;
 use crate::class::Class;
-use crate::{Context, JsNativeError, JsResult, JsString, JsValue};
+use crate::{JsNativeError, JsResult, JsString, JsValue};
 
 /// This trait adds a conversions from a Rust Type into [`JsValue`].
 pub trait TryIntoJs: Sized {
     /// This function tries to convert a `Self` into [`JsValue`].
-    fn try_into_js(&self, context: &mut Context) -> JsResult<JsValue>;
+    fn try_into_js(&self, context: ContextAccess<'_>) -> JsResult<JsValue>;
 }
 
 impl<T> TryIntoJs for T
 where
     T: Class + Clone,
 {
-    fn try_into_js(&self, context: &mut Context) -> JsResult<JsValue> {
-        T::from_data(self.clone(), context).map(JsValue::from)
+    fn try_into_js(&self, mut context: ContextAccess<'_>) -> JsResult<JsValue> {
+        T::from_data(self.clone(), context.reborrow()).map(JsValue::from)
     }
 }
 
 impl TryIntoJs for bool {
-    fn try_into_js(&self, _context: &mut Context) -> JsResult<JsValue> {
+    fn try_into_js(&self, _context: ContextAccess<'_>) -> JsResult<JsValue> {
         Ok(JsValue::from(*self))
     }
 }
 
 impl TryIntoJs for &str {
-    fn try_into_js(&self, _context: &mut Context) -> JsResult<JsValue> {
+    fn try_into_js(&self, _context: ContextAccess<'_>) -> JsResult<JsValue> {
         Ok(JsValue::from(JsString::from(*self)))
     }
 }
 impl TryIntoJs for String {
-    fn try_into_js(&self, _context: &mut Context) -> JsResult<JsValue> {
+    fn try_into_js(&self, _context: ContextAccess<'_>) -> JsResult<JsValue> {
         Ok(JsValue::from(JsString::from(self.as_str())))
     }
 }
@@ -36,7 +37,7 @@ impl TryIntoJs for String {
 macro_rules! impl_try_into_js_by_from {
     ($t:ty) => {
         impl TryIntoJs for $t {
-            fn try_into_js(&self, _context: &mut Context) -> JsResult<JsValue> {
+            fn try_into_js(&self, _context: ContextAccess<'_>) -> JsResult<JsValue> {
                 Ok(JsValue::from(self.clone()))
             }
         }
@@ -86,7 +87,7 @@ fn convert_safe_i64(value: i64) -> JsValue {
 }
 
 impl TryIntoJs for i64 {
-    fn try_into_js(&self, _context: &mut Context) -> JsResult<JsValue> {
+    fn try_into_js(&self, _context: ContextAccess<'_>) -> JsResult<JsValue> {
         let value = *self;
         if (MIN_SAFE_INTEGER_I64..MAX_SAFE_INTEGER_I64).contains(&value) {
             Ok(convert_safe_i64(value))
@@ -96,7 +97,7 @@ impl TryIntoJs for i64 {
     }
 }
 impl TryIntoJs for u64 {
-    fn try_into_js(&self, _context: &mut Context) -> JsResult<JsValue> {
+    fn try_into_js(&self, _context: ContextAccess<'_>) -> JsResult<JsValue> {
         let value = *self;
         if (MAX_SAFE_INTEGER_I64 as u64) < value {
             Err(err_outside_safe_range())
@@ -106,7 +107,7 @@ impl TryIntoJs for u64 {
     }
 }
 impl TryIntoJs for isize {
-    fn try_into_js(&self, _context: &mut Context) -> JsResult<JsValue> {
+    fn try_into_js(&self, _context: ContextAccess<'_>) -> JsResult<JsValue> {
         let value = *self as i64;
         if (MIN_SAFE_INTEGER_I64..MAX_SAFE_INTEGER_I64).contains(&value) {
             Ok(convert_safe_i64(value))
@@ -116,7 +117,7 @@ impl TryIntoJs for isize {
     }
 }
 impl TryIntoJs for usize {
-    fn try_into_js(&self, _context: &mut Context) -> JsResult<JsValue> {
+    fn try_into_js(&self, _context: ContextAccess<'_>) -> JsResult<JsValue> {
         let value = *self;
         if (MAX_SAFE_INTEGER_I64 as usize) < value {
             Err(err_outside_safe_range())
@@ -126,7 +127,7 @@ impl TryIntoJs for usize {
     }
 }
 impl TryIntoJs for i128 {
-    fn try_into_js(&self, _context: &mut Context) -> JsResult<JsValue> {
+    fn try_into_js(&self, _context: ContextAccess<'_>) -> JsResult<JsValue> {
         let value = *self;
         if value < i128::from(MIN_SAFE_INTEGER_I64) || i128::from(MAX_SAFE_INTEGER_I64) < value {
             Err(err_outside_safe_range())
@@ -136,7 +137,7 @@ impl TryIntoJs for i128 {
     }
 }
 impl TryIntoJs for u128 {
-    fn try_into_js(&self, _context: &mut Context) -> JsResult<JsValue> {
+    fn try_into_js(&self, _context: ContextAccess<'_>) -> JsResult<JsValue> {
         let value = *self;
         if (MAX_SAFE_INTEGER_I64 as u128) < value {
             Err(err_outside_safe_range())
@@ -150,9 +151,9 @@ impl<T> TryIntoJs for Option<T>
 where
     T: TryIntoJs,
 {
-    fn try_into_js(&self, context: &mut Context) -> JsResult<JsValue> {
+    fn try_into_js(&self, mut context: ContextAccess<'_>) -> JsResult<JsValue> {
         match self {
-            Some(x) => x.try_into_js(context),
+            Some(x) => x.try_into_js(context.reborrow()),
             None => Ok(JsValue::undefined()),
         }
     }
@@ -162,11 +163,11 @@ impl<T> TryIntoJs for Vec<T>
 where
     T: TryIntoJs,
 {
-    fn try_into_js(&self, context: &mut Context) -> JsResult<JsValue> {
-        let arr = crate::object::JsArray::new(context)?;
+    fn try_into_js(&self, mut context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let arr = crate::object::JsArray::new(context.reborrow())?;
         for value in self {
-            let value = value.try_into_js(context)?;
-            arr.push(value, context)?;
+            let value = value.try_into_js(context.reborrow())?;
+            arr.push(value, context.reborrow())?;
         }
         Ok(arr.into())
     }
@@ -175,10 +176,10 @@ where
 macro_rules! impl_try_into_js_for_tuples {
     ($($names:ident : $ts:ident),+) => {
         impl<$($ts: TryIntoJs,)+> TryIntoJs for ($($ts,)+) {
-            fn try_into_js(&self, context: &mut Context) -> JsResult<JsValue> {
+            fn try_into_js(&self, mut context: ContextAccess<'_>) -> JsResult<JsValue> {
                 let ($($names,)+) = self;
-                let arr = crate::object::JsArray::new(context)?;
-                $(arr.push($names.try_into_js(context)?, context)?;)+
+                let arr = crate::object::JsArray::new(context.reborrow())?;
+                $(arr.push($names.try_into_js(context.reborrow())?, context.reborrow())?;)+
                 Ok(arr.into())
             }
         }
@@ -198,7 +199,7 @@ impl_try_into_js_for_tuples!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H, i: 
 impl_try_into_js_for_tuples!(a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H, i: I, j: J, k: K);
 
 impl TryIntoJs for () {
-    fn try_into_js(&self, _context: &mut Context) -> JsResult<JsValue> {
+    fn try_into_js(&self, _context: ContextAccess<'_>) -> JsResult<JsValue> {
         Ok(JsValue::null())
     }
 }
@@ -207,11 +208,11 @@ impl<T, S> TryIntoJs for std::collections::HashSet<T, S>
 where
     T: TryIntoJs,
 {
-    fn try_into_js(&self, context: &mut Context) -> JsResult<JsValue> {
-        let set = crate::object::JsSet::new(context);
+    fn try_into_js(&self, mut context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let set = crate::object::JsSet::new(context.reborrow());
         for value in self {
-            let value = value.try_into_js(context)?;
-            set.add(value, context)?;
+            let value = value.try_into_js(context.reborrow())?;
+            set.add(value, context.reborrow())?;
         }
         Ok(set.into())
     }
@@ -222,12 +223,12 @@ where
     K: TryIntoJs,
     V: TryIntoJs,
 {
-    fn try_into_js(&self, context: &mut Context) -> JsResult<JsValue> {
-        let map = crate::object::JsMap::new(context);
+    fn try_into_js(&self, mut context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let map = crate::object::JsMap::new(context.reborrow());
         for (key, value) in self {
-            let key = key.try_into_js(context)?;
-            let value = value.try_into_js(context)?;
-            map.set(key, value, context)?;
+            let key = key.try_into_js(context.reborrow())?;
+            let value = value.try_into_js(context.reborrow())?;
+            map.set(key, value, context.reborrow())?;
         }
         Ok(map.into())
     }
@@ -241,7 +242,7 @@ mod try_into_js_tests {
     #[test]
     fn big_int_err() {
         fn assert<T: TryIntoJs>(int: &T, context: &mut Context) {
-            let expect_err = int.try_into_js(context);
+            let expect_err = int.try_into_js(context.access());
             assert!(expect_err.is_err());
         }
 
@@ -283,8 +284,8 @@ mod try_into_js_tests {
         #[allow(unused_assignments)]
         let mut tuple_after_transform = tuple_initial;
 
-        let js_value = tuple_initial.try_into_js(context)?;
-        tuple_after_transform = TryFromJs::try_from_js(&js_value, context)?;
+        let js_value = tuple_initial.try_into_js(context.access())?;
+        tuple_after_transform = TryFromJs::try_from_js(&js_value, context.access())?;
 
         assert_eq!(tuple_initial, tuple_after_transform);
         Ok(())
@@ -296,8 +297,8 @@ mod try_into_js_tests {
         let context = &mut context;
 
         let s_init = "String".to_string();
-        let js_value = s_init.try_into_js(context)?;
-        let s: String = TryFromJs::try_from_js(&js_value, context)?;
+        let js_value = s_init.try_into_js(context.access())?;
+        let s: String = TryFromJs::try_from_js(&js_value, context.access())?;
         assert_eq!(s_init, s);
         Ok(())
     }
@@ -308,9 +309,9 @@ mod try_into_js_tests {
         let context = &mut context;
 
         let vec_init = vec![(-4i64, 2u64), (15, 15), (32, 23)];
-        let js_value = vec_init.try_into_js(context)?;
+        let js_value = vec_init.try_into_js(context.access())?;
         println!("JsValue: {}", js_value.display());
-        let vec: Vec<(i64, u64)> = TryFromJs::try_from_js(&js_value, context)?;
+        let vec: Vec<(i64, u64)> = TryFromJs::try_from_js(&js_value, context.access())?;
         assert_eq!(vec_init, vec);
         Ok(())
     }

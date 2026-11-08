@@ -21,12 +21,12 @@ impl CopyDataProperties {
         for key in keys {
             let key = context.vm.get_register(key.into()).clone();
             excluded_keys.push(
-                key.to_property_key(context)
+                key.to_property_key(context.access())
                     .expect("key must be property key"),
             );
         }
         let object = object.as_object().expect("not an object");
-        object.copy_data_properties(&source, excluded_keys, context)?;
+        object.copy_data_properties(&source, excluded_keys, context.access())?;
         Ok(())
     }
 }

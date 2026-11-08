@@ -79,7 +79,10 @@ fn boa_module() {
         .build()
         .expect("Could not create context.");
 
-    module_loader.insert("/hello.js", hello::boa_module(None, &mut context).unwrap());
+    module_loader.insert(
+        "/hello.js",
+        hello::boa_module(None, context.access()).unwrap(),
+    );
 
     context
         .eval(Source::from_bytes(ASSERT_DECL))
@@ -101,13 +104,13 @@ fn boa_module() {
             "#,
         ),
         None,
-        &mut context,
+        context.access(),
     )
     .expect("Could not load module");
 
     let result = module
-        .load_link_evaluate(&mut context)
-        .await_blocking(&mut context);
+        .load_link_evaluate(context.access())
+        .await_blocking(context.access());
 
     if let Err(e) = result {
         panic!("error: {e:?}\n{e}");

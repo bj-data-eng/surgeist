@@ -68,7 +68,7 @@ impl ForInIterator {
         .upcast();
 
         let next_method =
-            FunctionObjectBuilder::new(context.realm(), NativeFunction::from_fn_ptr(Self::next))
+            FunctionObjectBuilder::new(context.realm(), NativeFunction::from_builtin(Self::next))
                 .name(js_string!("next"))
                 .length(0)
                 .build()
@@ -91,7 +91,7 @@ impl ForInIterator {
             .and_then(|object| object.downcast::<Self>().ok())
             .ok_or_else(|| JsNativeError::typ().with_message("`this` is not a ForInIterator"))?;
         let value = iterator.borrow().data().object.to_value();
-        let mut object = value.to_object(context)?;
+        let mut object = value.to_object(context.access())?;
         loop {
             let object_was_visited = iterator.borrow().data().object_was_visited;
             if !object_was_visited {

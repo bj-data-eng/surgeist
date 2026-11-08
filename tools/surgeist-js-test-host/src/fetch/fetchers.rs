@@ -3,11 +3,10 @@
 use crate::fetch::Fetcher;
 use crate::fetch::request::JsRequest;
 use crate::fetch::response::JsResponse;
-use std::cell::RefCell;
 use std::future;
 use std::rc::Rc;
 use surgeist_js::gc::heap::Trace as HeapTrace;
-use surgeist_js::{Context, JsData, JsObject, JsResult, js_error};
+use surgeist_js::{HostContext, JsData, JsObject, JsResult, js_error};
 
 /// Implementation of `Fetcher` which will always reject any fetch.
 #[derive(Clone, Debug, JsData, HeapTrace)]
@@ -18,7 +17,7 @@ impl Fetcher for ErrorFetcher {
         self: Rc<Self>,
         _request: JsRequest,
         _signal: Option<JsObject>,
-        _context: &RefCell<&mut Context>,
+        _context: &HostContext<'_>,
     ) -> impl Future<Output = JsResult<JsResponse>> {
         future::ready(Err(
             js_error!(ReferenceError: "ErrorFetcher used in fetch API."),
@@ -40,7 +39,7 @@ impl Fetcher for BlockingReqwestFetcher {
         self: Rc<Self>,
         request: JsRequest,
         signal: Option<JsObject>,
-        _context: &RefCell<&mut Context>,
+        _context: &HostContext<'_>,
     ) -> impl Future<Output = JsResult<JsResponse>> {
         use surgeist_js::{JsError, JsString};
 

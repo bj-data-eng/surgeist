@@ -1,8 +1,9 @@
 //! A Rust API wrapper for the `WeakMap` Builtin ECMAScript Object
+use crate::ContextAccess;
 use std::ops::Deref;
 
 use crate::{
-    Context, JsResult, JsValue,
+    JsResult, JsValue,
     builtins::weak_map::{NativeWeakMap, WeakMap},
     error::JsNativeError,
     object::JsObject,
@@ -23,7 +24,8 @@ impl JsWeakMap {
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakMap/WeakMap
     #[inline]
-    pub fn new(context: &mut Context) -> Self {
+    pub fn new(context: ContextAccess<'_>) -> Self {
+        let context = context.into_owner();
         Self {
             inner: JsObject::from_proto_and_data_with_shared_shape(
                 context.root_shape(),
@@ -42,7 +44,8 @@ impl JsWeakMap {
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakMap/get
     #[inline]
-    pub fn get(&self, key: &JsObject, context: &mut Context) -> JsResult<JsValue> {
+    pub fn get(&self, key: &JsObject, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         WeakMap::get(&self.inner.clone().into(), &[key.clone().into()], context)
     }
 
@@ -53,7 +56,13 @@ impl JsWeakMap {
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakMap/set
     #[inline]
-    pub fn set(&self, key: &JsObject, value: JsValue, context: &mut Context) -> JsResult<JsValue> {
+    pub fn set(
+        &self,
+        key: &JsObject,
+        value: JsValue,
+        context: ContextAccess<'_>,
+    ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         WeakMap::set(
             &self.inner.clone().into(),
             &[key.clone().into(), value],
@@ -68,7 +77,8 @@ impl JsWeakMap {
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakMap/has
     #[inline]
-    pub fn has(&self, key: &JsObject, context: &mut Context) -> JsResult<bool> {
+    pub fn has(&self, key: &JsObject, context: ContextAccess<'_>) -> JsResult<bool> {
+        let context = context.into_owner();
         WeakMap::has(&self.inner.clone().into(), &[key.clone().into()], context)
             .map(|v| v.as_boolean().unwrap_or(false))
     }
@@ -81,7 +91,8 @@ impl JsWeakMap {
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakMap/delete
     #[inline]
-    pub fn delete(&self, key: &JsObject, context: &mut Context) -> JsResult<bool> {
+    pub fn delete(&self, key: &JsObject, context: ContextAccess<'_>) -> JsResult<bool> {
+        let context = context.into_owner();
         WeakMap::delete(&self.inner.clone().into(), &[key.clone().into()], context)
             .map(|v| v.as_boolean().unwrap_or(false))
     }
@@ -98,8 +109,9 @@ impl JsWeakMap {
         &self,
         key: &JsObject,
         default: JsValue,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         WeakMap::get_or_insert(
             &self.inner.clone().into(),
             &[key.clone().into(), default],
@@ -119,8 +131,9 @@ impl JsWeakMap {
         &self,
         key: &JsObject,
         callback: JsValue,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         WeakMap::get_or_insert_computed(
             &self.inner.clone().into(),
             &[key.clone().into(), callback],
@@ -163,7 +176,7 @@ impl Deref for JsWeakMap {
 }
 
 impl TryFromJs for JsWeakMap {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object()
             && let Ok(weak_map) = Self::from_object(o.clone())
         {

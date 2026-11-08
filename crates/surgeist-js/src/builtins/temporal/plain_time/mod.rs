@@ -663,7 +663,7 @@ impl PlainTime {
             new_round_to.create_data_property_or_throw(
                 js_string!("smallestUnit"),
                 param_string,
-                context,
+                context.access(),
             )?;
             new_round_to
         } else {
@@ -1012,32 +1012,32 @@ pub(crate) fn to_js_partial_time_record(
     context: &mut Context,
 ) -> JsResult<JsPartialTime> {
     let hour = partial_object
-        .get(js_string!("hour"), context)?
+        .get(js_string!("hour"), context.access())?
         .map(|v| v.to_finitef64(context))
         .transpose()?;
 
     let microsecond = partial_object
-        .get(js_string!("microsecond"), context)?
+        .get(js_string!("microsecond"), context.access())?
         .map(|v| v.to_finitef64(context))
         .transpose()?;
 
     let millisecond = partial_object
-        .get(js_string!("millisecond"), context)?
+        .get(js_string!("millisecond"), context.access())?
         .map(|v| v.to_finitef64(context))
         .transpose()?;
 
     let minute = partial_object
-        .get(js_string!("minute"), context)?
+        .get(js_string!("minute"), context.access())?
         .map(|v| v.to_finitef64(context))
         .transpose()?;
 
     let nanosecond = partial_object
-        .get(js_string!("nanosecond"), context)?
+        .get(js_string!("nanosecond"), context.access())?
         .map(|v| v.to_finitef64(context))
         .transpose()?;
 
     let second = partial_object
-        .get(js_string!("second"), context)?
+        .get(js_string!("second"), context.access())?
         .map(|v| v.to_finitef64(context))
         .transpose()?;
 

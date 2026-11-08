@@ -27,7 +27,7 @@ fn create_shared_byte_data_block() {
 fn resize() {
     run_test_actions([TestAction::inspect_context(|context| {
         let data_block = super::create_byte_data_block(100, None, context).unwrap();
-        let js_arr = JsArrayBuffer::from_byte_block(data_block, context)
+        let js_arr = JsArrayBuffer::from_byte_block(data_block, context.access())
             .unwrap()
             .with_max_byte_length(100);
         let mut arr = js_arr.borrow_mut();
@@ -44,7 +44,7 @@ fn resize() {
 fn resize_with_an_unallocatable_host_limit_preserves_bytes() {
     run_test_actions([TestAction::inspect_context(|context| {
         let bytes = super::create_byte_data_block(1, None, context).unwrap();
-        let array = JsArrayBuffer::from_byte_block(bytes, context)
+        let array = JsArrayBuffer::from_byte_block(bytes, context.access())
             .unwrap()
             .with_max_byte_length(u64::MAX);
         let mut array = array.borrow_mut();
@@ -66,7 +66,7 @@ fn allocating_buffer_edits_apply_the_host_ceiling_before_mutation() {
     struct Ceiling;
 
     impl HostHooks for Ceiling {
-        fn max_buffer_size(&self, _: &mut Context) -> u64 {
+        fn max_buffer_size(&self, _: crate::ContextAccess<'_>) -> u64 {
             4
         }
     }
@@ -86,7 +86,7 @@ fn allocating_buffer_edits_apply_the_host_ceiling_before_mutation() {
             .unwrap();
         let mut bytes = Vec::with_capacity(capacity);
         bytes.extend_from_slice(&[1, 2, 3, 4]);
-        let source = JsArrayBuffer::from_byte_block(bytes, &mut context)
+        let source = JsArrayBuffer::from_byte_block(bytes, context.access())
             .unwrap()
             .with_max_byte_length(16);
         context
@@ -95,7 +95,7 @@ fn allocating_buffer_edits_apply_the_host_ceiling_before_mutation() {
 
         let error = context.eval(Source::from_bytes(operation)).unwrap_err();
         assert!(matches!(
-            error.try_native(&mut context).unwrap().kind(),
+            error.try_native(context.access()).unwrap().kind(),
             JsNativeErrorKind::Range
         ));
         assert_eq!(source.data().as_deref(), Some([1, 2, 3, 4].as_slice()));
@@ -107,7 +107,7 @@ fn allocating_buffer_edits_apply_the_host_ceiling_before_mutation() {
         .unwrap();
     let mut bytes = Vec::with_capacity(8);
     bytes.extend_from_slice(&[1, 2, 3, 4]);
-    let source = JsArrayBuffer::from_byte_block(bytes, &mut context)
+    let source = JsArrayBuffer::from_byte_block(bytes, context.access())
         .unwrap()
         .with_max_byte_length(16);
     context
@@ -135,7 +135,7 @@ fn allocating_buffer_edits_revalidate_after_host_detachment() {
     struct DetachingHost(RefCell<Option<JsArrayBuffer>>);
 
     impl HostHooks for DetachingHost {
-        fn max_buffer_size(&self, _: &mut Context) -> u64 {
+        fn max_buffer_size(&self, _: crate::ContextAccess<'_>) -> u64 {
             if let Some(buffer) = self.0.take() {
                 buffer.detach(&JsValue::undefined()).unwrap();
             }
@@ -150,7 +150,7 @@ fn allocating_buffer_edits_revalidate_after_host_detachment() {
     ] {
         let host = Rc::new(DetachingHost::default());
         let mut context = Context::builder().host_hooks(host.clone()).build().unwrap();
-        let source = JsArrayBuffer::from_byte_block(vec![1, 2, 3, 4], &mut context)
+        let source = JsArrayBuffer::from_byte_block(vec![1, 2, 3, 4], context.access())
             .unwrap()
             .with_max_byte_length(16);
         context
@@ -160,7 +160,7 @@ fn allocating_buffer_edits_revalidate_after_host_detachment() {
 
         let error = context.eval(Source::from_bytes(operation)).unwrap_err();
         assert!(matches!(
-            error.try_native(&mut context).unwrap().kind(),
+            error.try_native(context.access()).unwrap().kind(),
             JsNativeErrorKind::Type
         ));
         assert!(source.data().is_none());
@@ -328,19 +328,19 @@ fn backing_buffer_remains_live_only_while_its_view_is_live() {
             let backing_edge = backing.edge();
             let constructor = context
                 .global_object()
-                .get(view_name, context)
+                .get(view_name, context.access())
                 .unwrap()
                 .as_object()
                 .unwrap();
             let view = constructor
-                .construct(&[backing.into()], None, context)
+                .construct(&[backing.into()], None, context.access())
                 .unwrap();
 
             context.runtime().collect().unwrap();
             assert!(backing_edge.is_live().unwrap());
             {
                 let backing = view
-                    .get(js_string!("buffer"), context)
+                    .get(js_string!("buffer"), context.access())
                     .unwrap()
                     .as_object()
                     .unwrap();
@@ -353,7 +353,7 @@ fn backing_buffer_remains_live_only_while_its_view_is_live() {
                 .as_object()
                 .unwrap();
             let result = access
-                .call(&JsValue::undefined(), &[view.into()], context)
+                .call(&JsValue::undefined(), &[view.into()], context.access())
                 .unwrap();
             assert_eq!(result.as_number(), Some(173.0));
 

@@ -1,7 +1,8 @@
 //! A Rust API wrapper for the `Proxy` Builtin ECMAScript Object
 use super::JsFunction;
+use crate::ContextAccess;
 use crate::{
-    Context, JsExpect, JsNativeError, JsResult, JsValue,
+    JsExpect, JsNativeError, JsResult, JsValue,
     builtins::Proxy,
     js_string,
     native_function::{NativeFunction, NativeFunctionPointer},
@@ -70,7 +71,7 @@ impl std::ops::Deref for JsProxy {
 }
 
 impl TryFromJs for JsProxy {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object() {
             Self::from_object(o.clone())
         } else {
@@ -103,8 +104,10 @@ impl JsRevocableProxy {
     /// Disables the traps of the internal `proxy` object, essentially
     /// making it unusable and throwing `TypeError`s for all the traps.
     #[inline]
-    pub fn revoke(self, context: &mut Context) -> JsResult<()> {
-        self.revoker.call(&JsValue::undefined(), &[], context)?;
+    pub fn revoke(self, context: ContextAccess<'_>) -> JsResult<()> {
+        let context = context.into_owner();
+        self.revoker
+            .call(&JsValue::undefined(), &[], context.access())?;
         Ok(())
     }
 }
@@ -392,7 +395,8 @@ impl JsProxyBuilder {
     /// Equivalent to the `Proxy ( target, handler )` constructor, but returns a
     /// [`JsObject`] in case there's a need to manipulate the returned object
     /// inside Rust code.
-    pub fn build(self, context: &mut Context) -> JsResult<JsProxy> {
+    pub fn build(self, context: ContextAccess<'_>) -> JsResult<JsProxy> {
+        let context = context.into_owner();
         self.target.check_runtime(context.runtime())?;
         let handler = JsObject::with_object_proto(context.intrinsics());
 
@@ -401,7 +405,7 @@ impl JsProxyBuilder {
                 .length(3)
                 .build()?;
             handler
-                .create_data_property_or_throw(js_string!("apply"), f, context)
+                .create_data_property_or_throw(js_string!("apply"), f, context.access())
                 .js_expect("new object should be writable")?;
         }
         if let Some(construct) = self.construct {
@@ -410,7 +414,7 @@ impl JsProxyBuilder {
                     .length(3)
                     .build()?;
             handler
-                .create_data_property_or_throw(js_string!("construct"), f, context)
+                .create_data_property_or_throw(js_string!("construct"), f, context.access())
                 .js_expect("new object should be writable")?;
         }
         if let Some(define_property) = self.define_property {
@@ -421,7 +425,7 @@ impl JsProxyBuilder {
             .length(3)
             .build()?;
             handler
-                .create_data_property_or_throw(js_string!("defineProperty"), f, context)
+                .create_data_property_or_throw(js_string!("defineProperty"), f, context.access())
                 .js_expect("new object should be writable")?;
         }
         if let Some(delete_property) = self.delete_property {
@@ -432,7 +436,7 @@ impl JsProxyBuilder {
             .length(2)
             .build()?;
             handler
-                .create_data_property_or_throw(js_string!("deleteProperty"), f, context)
+                .create_data_property_or_throw(js_string!("deleteProperty"), f, context.access())
                 .js_expect("new object should be writable")?;
         }
         if let Some(get) = self.get {
@@ -440,7 +444,7 @@ impl JsProxyBuilder {
                 .length(3)
                 .build()?;
             handler
-                .create_data_property_or_throw(js_string!("get"), f, context)
+                .create_data_property_or_throw(js_string!("get"), f, context.access())
                 .js_expect("new object should be writable")?;
         }
         if let Some(get_own_property_descriptor) = self.get_own_property_descriptor {
@@ -451,7 +455,11 @@ impl JsProxyBuilder {
             .length(2)
             .build()?;
             handler
-                .create_data_property_or_throw(js_string!("getOwnPropertyDescriptor"), f, context)
+                .create_data_property_or_throw(
+                    js_string!("getOwnPropertyDescriptor"),
+                    f,
+                    context.access(),
+                )
                 .js_expect("new object should be writable")?;
         }
         if let Some(get_prototype_of) = self.get_prototype_of {
@@ -462,7 +470,7 @@ impl JsProxyBuilder {
             .length(1)
             .build()?;
             handler
-                .create_data_property_or_throw(js_string!("getPrototypeOf"), f, context)
+                .create_data_property_or_throw(js_string!("getPrototypeOf"), f, context.access())
                 .js_expect("new object should be writable")?;
         }
         if let Some(has) = self.has {
@@ -470,7 +478,7 @@ impl JsProxyBuilder {
                 .length(2)
                 .build()?;
             handler
-                .create_data_property_or_throw(js_string!("has"), f, context)
+                .create_data_property_or_throw(js_string!("has"), f, context.access())
                 .js_expect("new object should be writable")?;
         }
         if let Some(is_extensible) = self.is_extensible {
@@ -481,7 +489,7 @@ impl JsProxyBuilder {
             .length(1)
             .build()?;
             handler
-                .create_data_property_or_throw(js_string!("isExtensible"), f, context)
+                .create_data_property_or_throw(js_string!("isExtensible"), f, context.access())
                 .js_expect("new object should be writable")?;
         }
         if let Some(own_keys) = self.own_keys {
@@ -490,7 +498,7 @@ impl JsProxyBuilder {
                     .length(1)
                     .build()?;
             handler
-                .create_data_property_or_throw(js_string!("ownKeys"), f, context)
+                .create_data_property_or_throw(js_string!("ownKeys"), f, context.access())
                 .js_expect("new object should be writable")?;
         }
         if let Some(prevent_extensions) = self.prevent_extensions {
@@ -501,7 +509,7 @@ impl JsProxyBuilder {
             .length(1)
             .build()?;
             handler
-                .create_data_property_or_throw(js_string!("preventExtensions"), f, context)
+                .create_data_property_or_throw(js_string!("preventExtensions"), f, context.access())
                 .js_expect("new object should be writable")?;
         }
         if let Some(set) = self.set {
@@ -509,7 +517,7 @@ impl JsProxyBuilder {
                 .length(4)
                 .build()?;
             handler
-                .create_data_property_or_throw(js_string!("set"), f, context)
+                .create_data_property_or_throw(js_string!("set"), f, context.access())
                 .js_expect("new object should be writable")?;
         }
         if let Some(set_prototype_of) = self.set_prototype_of {
@@ -520,7 +528,7 @@ impl JsProxyBuilder {
             .length(2)
             .build()?;
             handler
-                .create_data_property_or_throw(js_string!("setPrototypeOf"), f, context)
+                .create_data_property_or_throw(js_string!("setPrototypeOf"), f, context.access())
                 .js_expect("new object should be writable")?;
         }
 
@@ -541,8 +549,9 @@ impl JsProxyBuilder {
     /// but returns a [`JsObject`] for the proxy and a [`JsFunction`] for the
     /// revoker in case there's a need to manipulate the returned objects
     /// inside Rust code.
-    pub fn build_revocable(self, context: &mut Context) -> JsResult<JsRevocableProxy> {
-        let proxy = self.build(context)?;
+    pub fn build_revocable(self, context: ContextAccess<'_>) -> JsResult<JsRevocableProxy> {
+        let context = context.into_owner();
+        let proxy = self.build(context.access())?;
         let revoker = Proxy::revoker(proxy.inner.clone(), context)?;
 
         Ok(JsRevocableProxy { proxy, revoker })

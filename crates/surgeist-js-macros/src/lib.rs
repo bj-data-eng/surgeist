@@ -25,8 +25,13 @@ mod value;
 
 /// Create a JavaScript value from a JSON-like literal.
 ///
-/// Array and object literals take a context and return `JsResult<JsValue>`.
+/// Array and object literals take a `ContextAccess` expression and return
+/// `JsResult<JsValue>`. Pass `owner.access()` or `access.reborrow()`. The access
+/// expression is evaluated once before the literal's fields or elements.
 /// They reject object values from another runtime. Other inputs return `JsValue`.
+/// Embedded Rust expressions retain caller control flow and cannot access the
+/// macro's private capability; prepare same-context engine values before lending
+/// access to the literal.
 #[proc_macro]
 pub fn js_value(input: TokenStream) -> TokenStream {
     value::js_value_impl(proc_macro2::TokenStream::from(input)).into()
@@ -34,8 +39,10 @@ pub fn js_value(input: TokenStream) -> TokenStream {
 
 /// Create a JavaScript object from a JSON-like literal.
 ///
-/// The macro takes a context and returns `JsResult<JsObject>`. It rejects
-/// object values from another runtime.
+/// The macro takes a `ContextAccess` expression and returns `JsResult<JsObject>`.
+/// Pass `owner.access()` or `access.reborrow()`; the expression is evaluated once.
+/// It rejects object values from another runtime. Embedded Rust expressions keep
+/// their caller bindings rather than receiving a mutable context owner alias.
 #[proc_macro]
 pub fn js_object(input: TokenStream) -> TokenStream {
     value::js_object_impl(proc_macro2::TokenStream::from(input)).into()
@@ -103,10 +110,10 @@ pub fn boa_class(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// This macro exports two functions out of the existing module (and those
 /// functions must not exist in the declared module):
 ///
-/// ## `boa_module(realm: Option<Realm>, context: &mut Context) -> JsResult<Module>`
+/// ## `boa_module(realm: Option<Realm>, context: ContextAccess<'_>) -> JsResult<Module>`
 /// Create a JavaScript module from the rust module's content.
 ///
-/// ## `boa_register(realm: Option<Realm>, context: &mut Context) -> JsResult<()>`
+/// ## `boa_register(realm: Option<Realm>, context: ContextAccess<'_>) -> JsResult<()>`
 /// Register the constants, classes and functions from the module in the global
 /// scope of the Realm (if specified) or the context (if no realm).
 #[proc_macro_attribute]
@@ -396,6 +403,11 @@ pub fn derive_try_from_js(input: TokenStream) -> TokenStream {
         Err((span, msg)) => return syn::Error::new(span, msg).to_compile_error().into(),
     };
 
+    let context_binding = if fields.named.is_empty() {
+        quote! { _context }
+    } else {
+        quote! { mut context }
+    };
     let conv = generate_conversion(fields, renaming).unwrap_or_else(to_compile_errors);
 
     let type_name = input.ident;
@@ -403,7 +415,7 @@ pub fn derive_try_from_js(input: TokenStream) -> TokenStream {
     // Build the output, possibly using quasi-quotation
     let expanded = quote! {
         impl ::surgeist_js::value::TryFromJs for #type_name {
-            fn try_from_js(value: &surgeist_js::JsValue, context: &mut surgeist_js::Context)
+            fn try_from_js(value: &surgeist_js::JsValue, #context_binding: surgeist_js::ContextAccess<'_>)
                 -> surgeist_js::JsResult<Self> {
                 let o = value.as_object().ok_or_else(|| ::surgeist_js::JsError::from(
                     ::surgeist_js::JsNativeError::typ()
@@ -478,15 +490,15 @@ fn generate_conversion(
             let #name = match props.get(&::surgeist_js::js_string!(#field_name).into()) {
                 Some(pd) => pd.value().ok_or_else(|| ::surgeist_js::JsError::from(
                         ::surgeist_js::JsNativeError::typ().with_message(#error_str)
-                    ))?.clone().try_js_into(context)?,
-                None => ::surgeist_js::JsValue::undefined().try_js_into(context)?,
+                    ))?.clone().try_js_into(context.reborrow())?,
+                None => ::surgeist_js::JsValue::undefined().try_js_into(context.reborrow())?,
             };
         });
 
         if let Some(method) = from_js_with {
             let ident = Ident::new(&method.value(), method.span());
             final_fields.push(quote! {
-                let #name = #ident(&#name, context)?;
+                let #name = #ident(&#name, context.reborrow())?;
             });
         }
     }
@@ -536,13 +548,18 @@ pub fn derive_try_into_js(input: TokenStream) -> TokenStream {
     let props = generate_obj_properties(fields, renaming)
         .map_err(|err| vec![err])
         .unwrap_or_else(to_compile_errors);
+    let context_binding = if props.is_empty() {
+        quote! { context }
+    } else {
+        quote! { mut context }
+    };
 
     let type_name = input.ident;
 
     // Build the output, possibly using quasi-quotation
     let expanded = quote! {
         impl ::surgeist_js::value::TryIntoJs for #type_name {
-            fn try_into_js(&self, context: &mut surgeist_js::Context) -> surgeist_js::JsResult<surgeist_js::JsValue> {
+            fn try_into_js(&self, #context_binding: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::JsValue> {
                 let obj = surgeist_js::JsObject::default(context.intrinsics());
                 #props
                 surgeist_js::JsResult::Ok(obj.into())
@@ -615,12 +632,12 @@ fn generate_obj_properties(
 
         let value = if let Some(into_js_with) = into_js_with {
             let into_js_with = Ident::new(&into_js_with.value(), into_js_with.span());
-            quote! { #into_js_with(&self.#name, context)? }
+            quote! { #into_js_with(&self.#name, context.reborrow())? }
         } else {
-            quote! { surgeist_js::value::TryIntoJs::try_into_js(&self.#name, context)? }
+            quote! { surgeist_js::value::TryIntoJs::try_into_js(&self.#name, context.reborrow())? }
         };
         prop_ctors.push(quote! {
-            obj.create_data_property_or_throw(surgeist_js::js_string!(#prop_key), #value, context)?;
+            obj.create_data_property_or_throw(surgeist_js::js_string!(#prop_key), #value, context.reborrow())?;
         });
     }
 

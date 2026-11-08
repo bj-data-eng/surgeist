@@ -25,10 +25,10 @@ fn load_module_and_test(module_loader: &Rc<EmbeddedModuleLoader>) {
     let module = Module::parse(
         Source::from_bytes(b"export { bar } from '/file1.js';"),
         None,
-        &mut context,
+        context.access(),
     )
     .expect("failed to parse module");
-    let promise = module.load_link_evaluate(&mut context);
+    let promise = module.load_link_evaluate(context.access());
     context.run_jobs().unwrap();
 
     match promise.state() {
@@ -40,13 +40,15 @@ fn load_module_and_test(module_loader: &Rc<EmbeddedModuleLoader>) {
             );
 
             let bar = module
-                .namespace(&mut context)
+                .namespace(context.access())
                 .unwrap()
-                .get(js_string!("bar"), &mut context)
+                .get(js_string!("bar"), context.access())
                 .unwrap()
                 .as_callable()
                 .unwrap();
-            let value = bar.call(&JsValue::undefined(), &[], &mut context).unwrap();
+            let value = bar
+                .call(&JsValue::undefined(), &[], context.access())
+                .unwrap();
             assert_eq!(
                 value.as_number(),
                 Some(6.),
@@ -56,7 +58,7 @@ fn load_module_and_test(module_loader: &Rc<EmbeddedModuleLoader>) {
         }
         PromiseState::Rejected(err) => panic!(
             "promise was not fulfilled: {:?}",
-            err.to_string(&mut context)
+            err.to_string(context.access())
         ),
         PromiseState::Pending => panic!("Promise was not settled"),
     }

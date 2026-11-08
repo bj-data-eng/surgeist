@@ -6,13 +6,14 @@
 //!
 //! A realm is represented in this implementation as a Realm struct with the fields specified from the spec.
 
+use crate::ContextAccess;
 use std::{
     any::TypeId,
     cell::{Cell, Ref, RefCell},
 };
 
 use crate::{
-    Context, HostDefined, JsNativeError, JsObject, JsResult, JsString,
+    HostDefined, JsNativeError, JsObject, JsResult, JsString,
     class::{Class, ClassConstructor},
     context::{
         HostHooks,
@@ -360,12 +361,13 @@ impl Realm {
         key: K,
         value: V,
         attribute: Attribute,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<()>
     where
         K: Into<PropertyKey>,
         V: Into<JsValue>,
     {
+        let context = context.into_owner();
         self.global_object().define_property_or_throw(
             key,
             PropertyDescriptor::builder()
@@ -373,7 +375,7 @@ impl Realm {
                 .writable(attribute.writable())
                 .enumerable(attribute.enumerable())
                 .configurable(attribute.configurable()),
-            context,
+            context.access(),
         )?;
         Ok(())
     }
@@ -472,9 +474,9 @@ mod tests {
     fn realm_host_data_retains_local_edges_and_rejects_foreign_edges() {
         let mut owner = Context::default();
         let other = Context::default();
-        let buffer = JsArrayBuffer::new(8, &mut owner).unwrap();
+        let buffer = JsArrayBuffer::new(8, owner.access()).unwrap();
         let buffer_edge = buffer.edge();
-        let view = JsDataView::from_js_array_buffer(buffer, None, None, &mut owner).unwrap();
+        let view = JsDataView::from_js_array_buffer(buffer, None, None, owner.access()).unwrap();
         let view_edge = view.edge();
         let payload = view.borrow().data().clone();
 

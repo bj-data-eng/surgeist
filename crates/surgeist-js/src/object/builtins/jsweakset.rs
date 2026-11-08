@@ -1,8 +1,9 @@
 //! A Rust API wrapper for the `WeakSet` Builtin ECMAScript Object
+use crate::ContextAccess;
 use std::ops::Deref;
 
 use crate::{
-    Context, JsResult, JsValue,
+    JsResult, JsValue,
     builtins::weak_set::{NativeWeakSet, WeakSet},
     error::JsNativeError,
     object::JsObject,
@@ -23,7 +24,8 @@ impl JsWeakSet {
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakSet/WeakSet
     #[inline]
-    pub fn new(context: &mut Context) -> Self {
+    pub fn new(context: ContextAccess<'_>) -> Self {
+        let context = context.into_owner();
         Self {
             inner: JsObject::from_proto_and_data_with_shared_shape(
                 context.root_shape(),
@@ -42,7 +44,8 @@ impl JsWeakSet {
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakSet/add
     #[inline]
-    pub fn add(&self, value: &JsObject, context: &mut Context) -> JsResult<Self> {
+    pub fn add(&self, value: &JsObject, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         WeakSet::add(&self.inner.clone().into(), &[value.clone().into()], context)?;
         Ok(self.clone())
     }
@@ -55,7 +58,8 @@ impl JsWeakSet {
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakSet/delete
     #[inline]
-    pub fn delete(&self, value: &JsObject, context: &mut Context) -> JsResult<bool> {
+    pub fn delete(&self, value: &JsObject, context: ContextAccess<'_>) -> JsResult<bool> {
+        let context = context.into_owner();
         WeakSet::delete(&self.inner.clone().into(), &[value.clone().into()], context)
             .map(|v| v.as_boolean().unwrap_or(false))
     }
@@ -67,7 +71,8 @@ impl JsWeakSet {
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakSet/has
     #[inline]
-    pub fn has(&self, value: &JsObject, context: &mut Context) -> JsResult<bool> {
+    pub fn has(&self, value: &JsObject, context: ContextAccess<'_>) -> JsResult<bool> {
+        let context = context.into_owner();
         WeakSet::has(&self.inner.clone().into(), &[value.clone().into()], context)
             .map(|v| v.as_boolean().unwrap_or(false))
     }
@@ -107,7 +112,7 @@ impl Deref for JsWeakSet {
 }
 
 impl TryFromJs for JsWeakSet {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object()
             && let Ok(weak_set) = Self::from_object(o.clone())
         {

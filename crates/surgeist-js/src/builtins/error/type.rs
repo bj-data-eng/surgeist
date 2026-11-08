@@ -93,7 +93,7 @@ impl IntrinsicObject for ThrowTypeError {
             let mut obj = obj
                 .downcast_mut::<NativeFunctionObject>()
                 .expect("`%ThrowTypeError%` must be a function");
-            obj.f = NativeFunction::from_fn_ptr(|_, _, _| {
+            obj.f = NativeFunction::from_builtin(|_, _, _| {
                 Err(JsNativeError::typ()
                     .with_message(
                         "'caller', 'callee', and 'arguments' properties may not be accessed on strict mode \

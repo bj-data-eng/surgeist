@@ -30,7 +30,7 @@ use std::{
 use surgeist_js::JsVariant;
 use surgeist_js::property::Attribute;
 use surgeist_js::{
-    Context, JsArgs, JsData, JsError, JsNativeError, JsResult, JsString, JsSymbol,
+    Context, ContextAccess, JsArgs, JsData, JsError, JsNativeError, JsResult, JsString, JsSymbol,
     gc::heap::Trace as HeapTrace,
     js_str, js_string,
     native_function::{NativeCapture, NativeFunction},
@@ -60,8 +60,13 @@ pub trait Logger: HeapTrace {
     ///
     /// # Errors
     /// Returning an error will throw an exception in JavaScript.
-    fn trace(&self, msg: String, state: &ConsoleState, context: &mut Context) -> JsResult<()> {
-        self.log(msg, state, context)?;
+    fn trace(
+        &self,
+        msg: String,
+        state: &ConsoleState,
+        mut context: ContextAccess<'_>,
+    ) -> JsResult<()> {
+        self.log(msg, state, context.reborrow())?;
 
         let stack_trace_dump = context
             .stack_trace()
@@ -70,7 +75,7 @@ pub trait Logger: HeapTrace {
             .collect::<Vec<_>>();
 
         for frame in stack_trace_dump {
-            self.log(frame, state, context)?;
+            self.log(frame, state, context.reborrow())?;
         }
 
         Ok(())
@@ -80,40 +85,50 @@ pub trait Logger: HeapTrace {
     ///
     /// # Errors
     /// Returning an error will throw an exception in JavaScript.
-    fn debug(&self, msg: String, state: &ConsoleState, context: &mut Context) -> JsResult<()> {
-        self.log(msg, state, context)
+    fn debug(
+        &self,
+        msg: String,
+        state: &ConsoleState,
+        mut context: ContextAccess<'_>,
+    ) -> JsResult<()> {
+        self.log(msg, state, context.reborrow())
     }
 
     /// Log a log message (`console.log`).
     ///
     /// # Errors
     /// Returning an error will throw an exception in JavaScript.
-    fn log(&self, msg: String, state: &ConsoleState, context: &mut Context) -> JsResult<()>;
+    fn log(&self, msg: String, state: &ConsoleState, context: ContextAccess<'_>) -> JsResult<()>;
 
     /// Log an info message (`console.info`).
     ///
     /// # Errors
     /// Returning an error will throw an exception in JavaScript.
-    fn info(&self, msg: String, state: &ConsoleState, context: &mut Context) -> JsResult<()>;
+    fn info(&self, msg: String, state: &ConsoleState, context: ContextAccess<'_>) -> JsResult<()>;
 
     /// Log a warning message (`console.warn`).
     ///
     /// # Errors
     /// Returning an error will throw an exception in JavaScript.
-    fn warn(&self, msg: String, state: &ConsoleState, context: &mut Context) -> JsResult<()>;
+    fn warn(&self, msg: String, state: &ConsoleState, context: ContextAccess<'_>) -> JsResult<()>;
 
     /// Log an error message (`console.error`).
     ///
     /// # Errors
     /// Returning an error will throw an exception in JavaScript.
-    fn error(&self, msg: String, state: &ConsoleState, context: &mut Context) -> JsResult<()>;
+    fn error(&self, msg: String, state: &ConsoleState, context: ContextAccess<'_>) -> JsResult<()>;
 
     /// Log tabular data (`console.table`). The default implementation renders
     /// the table with `comfy-table` and passes the result to [`Logger::log`].
     ///
     /// # Errors
     /// Returning an error will throw an exception in JavaScript.
-    fn table(&self, data: TableData, state: &ConsoleState, context: &mut Context) -> JsResult<()> {
+    fn table(
+        &self,
+        data: TableData,
+        state: &ConsoleState,
+        mut context: ContextAccess<'_>,
+    ) -> JsResult<()> {
         let mut table = Table::new();
         table.load_style(comfy_table::presets::UTF8_FULL);
         table.set_content_arrangement(comfy_table::ContentArrangement::Dynamic);
@@ -128,7 +143,7 @@ pub trait Logger: HeapTrace {
             table.add_row(cells);
         }
 
-        self.log(table.to_string(), state, context)
+        self.log(table.to_string(), state, context.reborrow())
     }
 }
 
@@ -142,23 +157,38 @@ pub struct DefaultLogger;
 
 impl Logger for DefaultLogger {
     #[inline]
-    fn log(&self, msg: String, state: &ConsoleState, _context: &mut Context) -> JsResult<()> {
+    fn log(&self, msg: String, state: &ConsoleState, _context: ContextAccess<'_>) -> JsResult<()> {
         let indent = state.indent();
         writeln!(std::io::stdout(), "{msg:>indent$}").map_err(JsError::from_rust)
     }
 
     #[inline]
-    fn info(&self, msg: String, state: &ConsoleState, context: &mut Context) -> JsResult<()> {
-        self.log(msg, state, context)
+    fn info(
+        &self,
+        msg: String,
+        state: &ConsoleState,
+        mut context: ContextAccess<'_>,
+    ) -> JsResult<()> {
+        self.log(msg, state, context.reborrow())
     }
 
     #[inline]
-    fn warn(&self, msg: String, state: &ConsoleState, context: &mut Context) -> JsResult<()> {
-        self.log(msg, state, context)
+    fn warn(
+        &self,
+        msg: String,
+        state: &ConsoleState,
+        mut context: ContextAccess<'_>,
+    ) -> JsResult<()> {
+        self.log(msg, state, context.reborrow())
     }
 
     #[inline]
-    fn error(&self, msg: String, state: &ConsoleState, _context: &mut Context) -> JsResult<()> {
+    fn error(
+        &self,
+        msg: String,
+        state: &ConsoleState,
+        _context: ContextAccess<'_>,
+    ) -> JsResult<()> {
         let indent = state.indent();
         writeln!(std::io::stderr(), "{msg:>indent$}").map_err(JsError::from_rust)
     }
@@ -170,29 +200,29 @@ pub struct NullLogger;
 
 impl Logger for NullLogger {
     #[inline]
-    fn log(&self, _: String, _: &ConsoleState, _: &mut Context) -> JsResult<()> {
+    fn log(&self, _: String, _: &ConsoleState, _: ContextAccess<'_>) -> JsResult<()> {
         Ok(())
     }
 
     #[inline]
-    fn info(&self, _: String, _: &ConsoleState, _: &mut Context) -> JsResult<()> {
+    fn info(&self, _: String, _: &ConsoleState, _: ContextAccess<'_>) -> JsResult<()> {
         Ok(())
     }
 
     #[inline]
-    fn warn(&self, _: String, _: &ConsoleState, _: &mut Context) -> JsResult<()> {
+    fn warn(&self, _: String, _: &ConsoleState, _: ContextAccess<'_>) -> JsResult<()> {
         Ok(())
     }
 
     #[inline]
-    fn error(&self, _: String, _: &ConsoleState, _: &mut Context) -> JsResult<()> {
+    fn error(&self, _: String, _: &ConsoleState, _: ContextAccess<'_>) -> JsResult<()> {
         Ok(())
     }
 }
 
 /// This represents the `console` formatter.
-fn formatter(data: &[JsValue], context: &mut Context) -> JsResult<String> {
-    fn to_string(value: &JsValue, _context: &mut Context) -> String {
+fn formatter(data: &[JsValue], mut context: ContextAccess<'_>) -> JsResult<String> {
+    fn to_string(value: &JsValue, _context: ContextAccess<'_>) -> String {
         match value.variant() {
             JsVariant::String(s) => s.to_std_string_escaped(),
             _ => value.display().to_string(),
@@ -201,13 +231,13 @@ fn formatter(data: &[JsValue], context: &mut Context) -> JsResult<String> {
 
     match data {
         [] => Ok(String::new()),
-        [val] => Ok(to_string(val, context)),
+        [val] => Ok(to_string(val, context.reborrow())),
         data => {
             let mut formatted = String::new();
             let mut arg_index = 1;
             let target = data
                 .get_or_undefined(0)
-                .to_string(context)?
+                .to_string(context.reborrow())?
                 .to_std_string_escaped();
             let mut chars = target.chars();
             while let Some(c) = chars.next() {
@@ -216,7 +246,10 @@ fn formatter(data: &[JsValue], context: &mut Context) -> JsResult<String> {
                     match fmt {
                         /* integer */
                         'd' | 'i' => {
-                            let arg = match data.get_or_undefined(arg_index).to_numeric(context)? {
+                            let arg = match data
+                                .get_or_undefined(arg_index)
+                                .to_numeric(context.reborrow())?
+                            {
                                 Numeric::Number(r) => (r.floor() + 0.0).to_string(),
                                 Numeric::BigInt(int) => int.to_string(),
                             };
@@ -225,7 +258,9 @@ fn formatter(data: &[JsValue], context: &mut Context) -> JsResult<String> {
                         }
                         /* float */
                         'f' => {
-                            let arg = data.get_or_undefined(arg_index).to_number(context)?;
+                            let arg = data
+                                .get_or_undefined(arg_index)
+                                .to_number(context.reborrow())?;
                             let _ = write!(formatted, "{arg:.6}");
                             arg_index += 1;
                         }
@@ -242,17 +277,20 @@ fn formatter(data: &[JsValue], context: &mut Context) -> JsResult<String> {
                             // If a JS value implements `toString()`, call it.
                             let mut written = false;
                             if let Some(obj) = arg.as_object()
-                                && let Ok(to_string) = obj.get(js_string!("toString"), context)
+                                && let Ok(to_string) =
+                                    obj.get(js_string!("toString"), context.reborrow())
                                 && let Some(to_string_fn) = to_string.as_function()
                             {
-                                let arg =
-                                    to_string_fn.call(arg, &[], context)?.to_string(context)?;
+                                let arg = to_string_fn
+                                    .call(arg, &[], context.reborrow())?
+                                    .to_string(context.reborrow())?;
                                 formatted.push_str(&arg.to_std_string_escaped());
                                 written = true;
                             }
 
                             if !written {
-                                let arg = arg.to_string(context)?.to_std_string_escaped();
+                                let arg =
+                                    arg.to_string(context.reborrow())?.to_std_string_escaped();
                                 formatted.push_str(&arg);
                             }
 
@@ -272,7 +310,7 @@ fn formatter(data: &[JsValue], context: &mut Context) -> JsResult<String> {
             /* unformatted data */
             for rest in data.iter().skip(arg_index) {
                 formatted.push(' ');
-                formatted.push_str(&to_string(rest, context));
+                formatted.push_str(&to_string(rest, context.reborrow()));
             }
 
             Ok(formatted)
@@ -343,7 +381,7 @@ impl Console {
     where
         L: Logger + 'static,
     {
-        let console = Self::init_with_logger(logger, context)?;
+        let console = Self::init_with_logger(logger, context.access())?;
         context.register_global_property(
             Self::NAME,
             console,
@@ -355,15 +393,15 @@ impl Console {
 
     /// Initializes the `console` with a special logger.
     #[allow(clippy::too_many_lines)]
-    pub fn init_with_logger<L>(logger: L, context: &mut Context) -> JsResult<JsObject>
+    pub fn init_with_logger<L>(logger: L, mut context: ContextAccess<'_>) -> JsResult<JsObject>
     where
         L: Logger + 'static,
     {
         type ConsoleMethod<L> =
-            fn(&JsValue, &[JsValue], &Console, &L, &mut Context) -> JsResult<JsValue>;
+            fn(&JsValue, &[JsValue], &Console, &L, ContextAccess<'_>) -> JsResult<JsValue>;
 
         type ConsoleMethodMut<L> =
-            fn(&JsValue, &[JsValue], &mut Console, &L, &mut Context) -> JsResult<JsValue>;
+            fn(&JsValue, &[JsValue], &mut Console, &L, ContextAccess<'_>) -> JsResult<JsValue>;
 
         #[derive(HeapTrace)]
         struct Captures<F: 'static, L: Logger> {
@@ -397,13 +435,13 @@ impl Console {
             logger: Rc<L>,
         ) -> NativeFunction {
             NativeFunction::from_fn_with_captures(
-                |this, args, captures, context| {
+                |this, args, captures, mut context| {
                     (captures.callback)(
                         this,
                         args,
                         &captures.state.borrow(),
                         &captures.logger,
-                        context,
+                        context.reborrow(),
                     )
                 },
                 Captures {
@@ -419,13 +457,13 @@ impl Console {
             logger: Rc<L>,
         ) -> NativeFunction {
             NativeFunction::from_fn_with_captures(
-                |this, args, captures, context| {
+                |this, args, captures, mut context| {
                     (captures.callback)(
                         this,
                         args,
                         &mut captures.state.borrow_mut(),
                         &captures.logger,
-                        context,
+                        context.reborrow(),
                     )
                 },
                 Captures {
@@ -442,7 +480,7 @@ impl Console {
         ObjectInitializer::with_native_data_and_proto(
             Self::default(),
             JsObject::with_object_proto(context.realm().intrinsics()),
-            context,
+            context.reborrow(),
         )
         .property(
             JsSymbol::to_string_tag(),
@@ -553,8 +591,8 @@ impl Console {
     }
 
     /// Initializes the `console` built-in object.
-    pub fn init(context: &mut Context) -> JsResult<JsObject> {
-        Self::init_with_logger(DefaultLogger, context)
+    pub fn init(mut context: ContextAccess<'_>) -> JsResult<JsObject> {
+        Self::init_with_logger(DefaultLogger, context.reborrow())
     }
 
     /// `console.assert(condition, ...data)`
@@ -573,7 +611,7 @@ impl Console {
         args: &[JsValue],
         console: &Self,
         logger: &impl Logger,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
         let assertion = args.first().is_some_and(JsValue::to_boolean);
 
@@ -590,7 +628,11 @@ impl Console {
                 args[0] = JsValue::new(concat);
             }
 
-            logger.error(formatter(&args, context)?, &console.state, context)?;
+            logger.error(
+                formatter(&args, context.reborrow())?,
+                &console.state,
+                context.reborrow(),
+            )?;
         }
 
         Ok(JsValue::undefined())
@@ -612,7 +654,7 @@ impl Console {
         _: &[JsValue],
         console: &mut Self,
         _: &impl Logger,
-        _: &mut Context,
+        _: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
         console.state.groups.clear();
         Ok(JsValue::undefined())
@@ -633,9 +675,13 @@ impl Console {
         args: &[JsValue],
         console: &Self,
         logger: &impl Logger,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
-        logger.debug(formatter(args, context)?, &console.state, context)?;
+        logger.debug(
+            formatter(args, context.reborrow())?,
+            &console.state,
+            context.reborrow(),
+        )?;
         Ok(JsValue::undefined())
     }
 
@@ -654,9 +700,13 @@ impl Console {
         args: &[JsValue],
         console: &Self,
         logger: &impl Logger,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
-        logger.error(formatter(args, context)?, &console.state, context)?;
+        logger.error(
+            formatter(args, context.reborrow())?,
+            &console.state,
+            context.reborrow(),
+        )?;
         Ok(JsValue::undefined())
     }
 
@@ -675,9 +725,13 @@ impl Console {
         args: &[JsValue],
         console: &Self,
         logger: &impl Logger,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
-        logger.info(formatter(args, context)?, &console.state, context)?;
+        logger.info(
+            formatter(args, context.reborrow())?,
+            &console.state,
+            context.reborrow(),
+        )?;
         Ok(JsValue::undefined())
     }
 
@@ -696,9 +750,13 @@ impl Console {
         args: &[JsValue],
         console: &Self,
         logger: &impl Logger,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
-        logger.log(formatter(args, context)?, &console.state, context)?;
+        logger.log(
+            formatter(args, context.reborrow())?,
+            &console.state,
+            context.reborrow(),
+        )?;
         Ok(JsValue::undefined())
     }
 
@@ -717,9 +775,14 @@ impl Console {
         args: &[JsValue],
         console: &Self,
         logger: &impl Logger,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
-        Logger::trace(logger, formatter(args, context)?, &console.state, context)?;
+        Logger::trace(
+            logger,
+            formatter(args, context.reborrow())?,
+            &console.state,
+            context.reborrow(),
+        )?;
         Ok(JsValue::undefined())
     }
 
@@ -738,9 +801,13 @@ impl Console {
         args: &[JsValue],
         console: &Self,
         logger: &impl Logger,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
-        logger.warn(formatter(args, context)?, &console.state, context)?;
+        logger.warn(
+            formatter(args, context.reborrow())?,
+            &console.state,
+            context.reborrow(),
+        )?;
         Ok(JsValue::undefined())
     }
 
@@ -759,10 +826,10 @@ impl Console {
         args: &[JsValue],
         console: &mut Self,
         logger: &impl Logger,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
         let label = match args.first() {
-            Some(value) => value.to_string(context)?,
+            Some(value) => value.to_string(context.reborrow())?,
             None => "default".into(),
         };
 
@@ -770,7 +837,7 @@ impl Console {
         let c = console.state.count_map.entry(label).or_insert(0);
         *c += 1;
 
-        logger.info(format!("{msg} {c}"), &console.state, context)?;
+        logger.info(format!("{msg} {c}"), &console.state, context.reborrow())?;
         Ok(JsValue::undefined())
     }
 
@@ -789,10 +856,10 @@ impl Console {
         args: &[JsValue],
         console: &mut Self,
         logger: &impl Logger,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
         let label = match args.first() {
-            Some(value) => value.to_string(context)?,
+            Some(value) => value.to_string(context.reborrow())?,
             None => "default".into(),
         };
 
@@ -801,7 +868,7 @@ impl Console {
         logger.warn(
             format!("countReset {}", label.to_std_string_escaped()),
             &console.state,
-            context,
+            context.reborrow(),
         )?;
 
         Ok(JsValue::undefined())
@@ -830,10 +897,10 @@ impl Console {
         args: &[JsValue],
         console: &mut Self,
         logger: &impl Logger,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
         let label = match args.first() {
-            Some(value) => value.to_string(context)?,
+            Some(value) => value.to_string(context.reborrow())?,
             None => "default".into(),
         };
 
@@ -844,7 +911,7 @@ impl Console {
             logger.warn(
                 format!("Timer '{}' already exist", label.to_std_string_escaped()),
                 &console.state,
-                context,
+                context.reborrow(),
             )?;
         }
 
@@ -866,10 +933,10 @@ impl Console {
         args: &[JsValue],
         console: &Self,
         logger: &impl Logger,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
         let label = match args.first() {
-            Some(value) => value.to_string(context)?,
+            Some(value) => value.to_string(context.reborrow())?,
             None => "default".into(),
         };
 
@@ -879,12 +946,12 @@ impl Console {
             for msg in args.iter().skip(1) {
                 concat = concat + " " + &msg.display().to_string();
             }
-            logger.log(concat, &console.state, context)?;
+            logger.log(concat, &console.state, context.reborrow())?;
         } else {
             logger.warn(
                 format!("Timer '{}' doesn't exist", label.to_std_string_escaped()),
                 &console.state,
-                context,
+                context.reborrow(),
             )?;
         }
 
@@ -906,10 +973,10 @@ impl Console {
         args: &[JsValue],
         console: &mut Self,
         logger: &impl Logger,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
         let label = match args.first() {
-            Some(value) => value.to_string(context)?,
+            Some(value) => value.to_string(context.reborrow())?,
             None => "default".into(),
         };
 
@@ -922,13 +989,13 @@ impl Console {
                     time - t
                 ),
                 &console.state,
-                context,
+                context.reborrow(),
             )?;
         } else {
             logger.warn(
                 format!("Timer '{}' doesn't exist", label.to_std_string_escaped()),
                 &console.state,
-                context,
+                context.reborrow(),
             )?;
         }
 
@@ -950,11 +1017,15 @@ impl Console {
         args: &[JsValue],
         console: &mut Self,
         logger: &impl Logger,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
-        let group_label = formatter(args, context)?;
+        let group_label = formatter(args, context.reborrow())?;
 
-        logger.info(format!("group: {group_label}"), &console.state, context)?;
+        logger.info(
+            format!("group: {group_label}"),
+            &console.state,
+            context.reborrow(),
+        )?;
         console.state.groups.push(group_label);
 
         Ok(JsValue::undefined())
@@ -975,9 +1046,15 @@ impl Console {
         args: &[JsValue],
         console: &mut Self,
         logger: &impl Logger,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
-        Console::group(&JsValue::undefined(), args, console, logger, context)
+        Console::group(
+            &JsValue::undefined(),
+            args,
+            console,
+            logger,
+            context.reborrow(),
+        )
     }
 
     /// `console.groupEnd(label)`
@@ -996,7 +1073,7 @@ impl Console {
         _: &[JsValue],
         console: &mut Self,
         _: &impl Logger,
-        _: &mut Context,
+        _: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
         console.state.groups.pop();
 
@@ -1019,12 +1096,12 @@ impl Console {
         args: &[JsValue],
         console: &Self,
         logger: &impl Logger,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
         logger.info(
             args.get_or_undefined(0).display_obj(true),
             &console.state,
-            context,
+            context.reborrow(),
         )?;
         Ok(JsValue::undefined())
     }
@@ -1046,13 +1123,19 @@ impl Console {
         args: &[JsValue],
         console: &Self,
         logger: &impl Logger,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
         let tabular_data = args.get_or_undefined(0);
 
         // Non-objects fall back to console.log.
         let Some(obj) = tabular_data.as_object() else {
-            return Self::log(&JsValue::undefined(), args, console, logger, context);
+            return Self::log(
+                &JsValue::undefined(),
+                args,
+                console,
+                logger,
+                context.reborrow(),
+            );
         };
 
         // Validate the optional `properties` argument (must be an array if present).
@@ -1074,11 +1157,19 @@ impl Console {
             _ => None,
         };
 
-        let data = table::build_table_data(&obj, properties.as_ref(), context)?;
+        let data = table::build_table_data(&obj, properties.as_ref(), context.reborrow())?;
 
         match data {
-            Some(td) => logger.table(td, &console.state, context)?,
-            None => return Self::log(&JsValue::undefined(), args, console, logger, context),
+            Some(td) => logger.table(td, &console.state, context.reborrow())?,
+            None => {
+                return Self::log(
+                    &JsValue::undefined(),
+                    args,
+                    console,
+                    logger,
+                    context.reborrow(),
+                );
+            }
         }
 
         Ok(JsValue::undefined())

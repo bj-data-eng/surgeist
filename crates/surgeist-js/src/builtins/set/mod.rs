@@ -62,11 +62,11 @@ fn get_set_record(obj: &JsValue, context: &mut Context) -> JsResult<SetRecord> {
     })?;
 
     // 2. Let rawSize be ? Get(obj, "size").
-    let raw_size = obj.get(js_string!("size"), context)?;
+    let raw_size = obj.get(js_string!("size"), context.access())?;
 
     // 3. Let numSize be ? ToNumber(rawSize).
     // 4. NOTE: If rawSize is undefined, then numSize will be NaN.
-    let num_size = raw_size.to_number(context)?;
+    let num_size = raw_size.to_number(context.access())?;
 
     // 5. If numSize is NaN, throw a TypeError exception.
     if num_size.is_nan() {
@@ -94,7 +94,7 @@ fn get_set_record(obj: &JsValue, context: &mut Context) -> JsResult<SetRecord> {
     };
 
     // 8. Let has be ? Get(obj, "has").
-    let has = obj.get(js_string!("has"), context)?;
+    let has = obj.get(js_string!("has"), context.access())?;
 
     // 9. If IsCallable(has) is false, throw a TypeError exception.
     let has = has.as_callable().ok_or_else(|| {
@@ -102,7 +102,7 @@ fn get_set_record(obj: &JsValue, context: &mut Context) -> JsResult<SetRecord> {
     })?;
 
     // 10. Let keys be ? Get(obj, "keys").
-    let keys = obj.get(js_string!("keys"), context)?;
+    let keys = obj.get(js_string!("keys"), context.access())?;
 
     // 11. If IsCallable(keys) is false, throw a TypeError exception.
     let keys = keys.as_callable().ok_or_else(|| {
@@ -235,7 +235,7 @@ impl BuiltInConstructor for Set {
         }
 
         // 5. Let adder be ? Get(set, "add").
-        let adder = set.get(js_string!("add"), context)?;
+        let adder = set.get(js_string!("add"), context.access())?;
 
         // 6. If IsCallable(adder) is false, throw a TypeError exception.
         let adder = adder.as_callable().ok_or_else(|| {
@@ -243,13 +243,15 @@ impl BuiltInConstructor for Set {
         })?;
 
         // 7. Let iteratorRecord be ? GetIterator(iterable, sync).
-        let mut iterator_record = iterable.clone().get_iterator(IteratorHint::Sync, context)?;
+        let mut iterator_record = iterable
+            .clone()
+            .get_iterator(IteratorHint::Sync, context.access())?;
 
         // 8. Repeat,
         //     a. Let next be ? IteratorStepValue(iteratorRecord).
         while let Some(next) = iterator_record.step_value(context)? {
             // c. Let status be Completion(Call(adder, set, « next »)).
-            if let Err(status) = adder.call(&set.clone().into(), &[next], context) {
+            if let Err(status) = adder.call(&set.clone().into(), &[next], context.access()) {
                 // d. IfAbruptCloseIterator(status, iteratorRecord).
                 return iterator_record.close(Err(status), context);
             }
@@ -458,7 +460,7 @@ impl Set {
                 callback_fn.call(
                     args.get_or_undefined(1),
                     &[e.clone(), e.clone(), this.clone()],
-                    context,
+                    context.access(),
                 )?;
             }
         }
@@ -611,7 +613,10 @@ impl Set {
                 // iii. If e is not empty, then
                 if let Some(e) = e {
                     // 1. Let inOther be ToBoolean(? Call(otherRec.[[Has]], otherRec.[[SetObject]], « e »)).
-                    let in_other = other_rec.has.call(other, &[e], context)?.to_boolean();
+                    let in_other = other_rec
+                        .has
+                        .call(other, &[e], context.access())?
+                        .to_boolean();
 
                     // 2. If inOther is true, return false.
                     if in_other {
@@ -626,7 +631,8 @@ impl Set {
         } else {
             // 5. Else,
             //    a. Let keysIter be ? GetIteratorFromMethod(otherRec.[[SetObject]], otherRec.[[Keys]]).
-            let mut keys_iter = other.get_iterator_from_method(&other_rec.keys, context)?;
+            let mut keys_iter =
+                other.get_iterator_from_method(&other_rec.keys, context.access())?;
 
             //    b. Let next be not-started.
             //    c. Repeat, while next is not done,
@@ -699,7 +705,10 @@ impl Set {
             // c. If e is not empty, then
             if let Some(e) = e {
                 // i. Let inOther be ToBoolean(? Call(otherRec.[[Has]], otherRec.[[SetObject]], « e »)).
-                let in_other = other_rec.has.call(other, &[e], context)?.to_boolean();
+                let in_other = other_rec
+                    .has
+                    .call(other, &[e], context.access())?
+                    .to_boolean();
 
                 // ii. If inOther is false, return false.
                 if !in_other {
@@ -751,7 +760,7 @@ impl Set {
         }
 
         // 5. Let keysIter be ? GetIteratorFromMethod(otherRec.[[SetObject]], otherRec.[[Keys]]).
-        let mut keys_iter = other.get_iterator_from_method(&other_rec.keys, context)?;
+        let mut keys_iter = other.get_iterator_from_method(&other_rec.keys, context.access())?;
 
         // 6. Let next be not-started.
         // 7. Repeat, while next is not done,
@@ -800,7 +809,7 @@ impl Set {
         let other_rec = get_set_record(other, context)?;
 
         // 4. Let keysIter be ? GetIteratorFromMethod(otherRec.[[SetObject]], otherRec.[[Keys]]).
-        let mut keys_iter = other.get_iterator_from_method(&other_rec.keys, context)?;
+        let mut keys_iter = other.get_iterator_from_method(&other_rec.keys, context.access())?;
 
         // 5. Let resultSetData be a copy of O.[[SetData]].
         let result_set =
@@ -864,7 +873,7 @@ impl Set {
         let other_rec = get_set_record(other, context)?;
 
         // 4. Let keysIter be ? GetIteratorFromMethod(otherRec.[[SetObject]], otherRec.[[Keys]]).
-        let mut keys_iter = other.get_iterator_from_method(&other_rec.keys, context)?;
+        let mut keys_iter = other.get_iterator_from_method(&other_rec.keys, context.access())?;
 
         // 5. Let resultSetData be a copy of O.[[SetData]].
         let result_set =
@@ -940,9 +949,10 @@ impl Set {
                 };
 
                 //      1. Let inOther be ToBoolean(? Call(otherRec.[[Has]], otherRec.[[SetObject]], « e »)).
-                let in_other = other_rec
-                    .has
-                    .call(other, std::slice::from_ref(&e), context)?;
+                let in_other =
+                    other_rec
+                        .has
+                        .call(other, std::slice::from_ref(&e), context.access())?;
                 //      2. If inOther is true, then
                 //         a. NOTE: It is possible for earlier calls to otherRec.[[Has]] to remove and re-add an element of O.[[SetData]], which can cause the same element to be visited twice during this iteration.
                 if in_other.to_boolean() {
@@ -958,7 +968,8 @@ impl Set {
         // 6. Else,
         } else {
             // a. Let keysIter be ? GetIteratorFromMethod(otherRec.[[SetObject]], otherRec.[[Keys]]).
-            let mut keys_iter = other.get_iterator_from_method(&other_rec.keys, context)?;
+            let mut keys_iter =
+                other.get_iterator_from_method(&other_rec.keys, context.access())?;
             // b. Let next be not-started.
             // c. Repeat, while next is not done,
             while let Some(next) = keys_iter.step_value(context)? {
@@ -1039,7 +1050,7 @@ impl Set {
                     // 1. Let inOther be ToBoolean(? Call(otherRec.[[Has]], otherRec.[[SetObject]], « e »)).
                     let in_other = other_rec
                         .has
-                        .call(other, std::slice::from_ref(&e), context)?
+                        .call(other, std::slice::from_ref(&e), context.access())?
                         .to_boolean();
                     // 2. If inOther is true, then
                     if in_other {
@@ -1055,7 +1066,8 @@ impl Set {
         // 6. Else,
         else {
             // a. Let keysIter be ? GetIteratorFromMethod(otherRec.[[SetObject]], otherRec.[[Keys]]).
-            let mut keys_iter = other.get_iterator_from_method(&other_rec.keys, context)?;
+            let mut keys_iter =
+                other.get_iterator_from_method(&other_rec.keys, context.access())?;
             // b. Let next be not-started.
             // c. Repeat, while next is not done,
             //     i. Set next to ? IteratorStepValue(keysIter).

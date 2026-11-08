@@ -106,7 +106,7 @@ fn indexed_values_survive_collection_and_release_their_edges_on_removal() {
         let child = JsObject::with_null_proto(context.runtime());
         let weak = child.edge();
         let object = if key == 0 {
-            JsObject::from(JsArray::from_iter([child.into()], context).unwrap())
+            JsObject::from(JsArray::from_iter([child.into()], context.access()).unwrap())
         } else if key == 4 {
             let object = JsObject::with_null_proto(context.runtime());
             object
@@ -117,7 +117,7 @@ fn indexed_values_survive_collection_and_release_their_edges_on_removal() {
                         .writable(true)
                         .enumerable(true)
                         .configurable(true),
-                    context,
+                    context.access(),
                 )
                 .unwrap();
             object
@@ -136,7 +136,7 @@ fn indexed_values_survive_collection_and_release_their_edges_on_removal() {
                 .define_property_or_throw(
                     key,
                     PropertyDescriptor::builder().get(getter).configurable(true),
-                    context,
+                    context.access(),
                 )
                 .unwrap();
             object
@@ -144,8 +144,12 @@ fn indexed_values_survive_collection_and_release_their_edges_on_removal() {
 
         context.runtime().collect().unwrap();
         assert!(weak.is_live().unwrap());
-        let extracted = object.get(key, context).unwrap();
-        assert!(object.delete_property_or_throw(key, context).unwrap());
+        let extracted = object.get(key, context.access()).unwrap();
+        assert!(
+            object
+                .delete_property_or_throw(key, context.access())
+                .unwrap()
+        );
         context.runtime().collect().unwrap();
         assert_eq!(
             extracted.as_object(),
@@ -204,7 +208,7 @@ fn closure_keeps_its_environment_binding_alive() {
         .unwrap();
     let weak = {
         let captured = closure
-            .call(&JsValue::undefined(), &[], context)
+            .call(&JsValue::undefined(), &[], context.access())
             .unwrap()
             .as_object()
             .unwrap();
@@ -214,7 +218,9 @@ fn closure_keeps_its_environment_binding_alive() {
     context.runtime().collect().unwrap();
     {
         let expected = weak.upgrade().unwrap().expect("closure owns its binding");
-        let captured = closure.call(&JsValue::undefined(), &[], context).unwrap();
+        let captured = closure
+            .call(&JsValue::undefined(), &[], context.access())
+            .unwrap();
         assert_eq!(captured.as_object(), Some(expected));
     }
     drop(closure);
@@ -252,16 +258,20 @@ fn native_accessor_keeps_captures_and_outcomes_during_collection() {
         let captured = JsObject::with_null_proto(context.runtime());
         let weak_capture = captured.edge();
         let getter = NativeFunction::from_fn_with_captures(
-            |this, _, (captured, throws), context| {
+            |this, _, (captured, throws), mut context| {
                 let receiver = this.as_object().expect("accessor receiver");
                 let active = {
-                    let function = context.active_function_object().expect("active getter");
+                    let function = context
+                        .reborrow()
+                        .into_owner()
+                        .active_function_object()
+                        .expect("active getter");
                     function.edge()
                 };
                 receiver
                     .prototype()
                     .expect("accessor prototype")
-                    .delete_property_or_throw(js_string!("probe"), context)?;
+                    .delete_property_or_throw(js_string!("probe"), context.reborrow())?;
 
                 let canary = {
                     let canary = JsObject::with_null_proto(context.runtime());
@@ -272,9 +282,14 @@ fn native_accessor_keeps_captures_and_outcomes_during_collection() {
                 assert!(!canary.is_live().unwrap());
                 assert!(active.is_live().unwrap());
 
-                receiver.set(js_string!("nested"), captured.clone(), true, context)?;
-                let value = receiver.get(js_string!("nested"), context)?;
-                receiver.delete_property_or_throw(js_string!("nested"), context)?;
+                receiver.set(
+                    js_string!("nested"),
+                    captured.clone(),
+                    true,
+                    context.reborrow(),
+                )?;
+                let value = receiver.get(js_string!("nested"), context.reborrow())?;
+                receiver.delete_property_or_throw(js_string!("nested"), context.reborrow())?;
                 if *throws {
                     Err(JsError::from_opaque(value))
                 } else {
@@ -293,11 +308,11 @@ fn native_accessor_keeps_captures_and_outcomes_during_collection() {
             .define_property_or_throw(
                 js_string!("probe"),
                 PropertyDescriptor::builder().get(getter).configurable(true),
-                context,
+                context.access(),
             )
             .expect("inherited accessor");
 
-        let outcome = receiver.get(js_string!("probe"), context);
+        let outcome = receiver.get(js_string!("probe"), context.access());
         let value = if throws {
             outcome
                 .expect_err("opaque exception")
@@ -313,7 +328,7 @@ fn native_accessor_keeps_captures_and_outcomes_during_collection() {
         assert_eq!(value.as_object().as_ref(), Some(&expected));
         assert!(
             receiver
-                .get(js_string!("probe"), context)
+                .get(js_string!("probe"), context.access())
                 .unwrap()
                 .is_undefined()
         );
@@ -339,11 +354,11 @@ fn property_admission_distinguishes_peer_and_foreign_runtimes() {
 
     assert!(
         object
-            .set(0, local_child.clone(), true, &mut context)
+            .set(0, local_child.clone(), true, context.access())
             .unwrap()
     );
     let error = object
-        .set(0, foreign_child.clone(), true, &mut context)
+        .set(0, foreign_child.clone(), true, context.access())
         .unwrap_err();
     assert!(
         error
@@ -361,7 +376,7 @@ fn property_admission_distinguishes_peer_and_foreign_runtimes() {
     assert!(!object.borrow_mut().set_prototype(Some(foreign_child)));
     context.runtime().collect().unwrap();
     assert_eq!(
-        object.get(0, &mut context).unwrap(),
+        object.get(0, context.access()).unwrap(),
         JsValue::from(local_child)
     );
 }
@@ -377,13 +392,14 @@ fn object_builders_reject_foreign_properties_and_prototypes() {
     let mut context = Context::default();
     let foreign = Context::default();
     let foreign_object = JsObject::with_null_proto(foreign.runtime());
-    let callback = |_: &JsValue, _: &[JsValue], _: &mut Context| Ok(JsValue::undefined());
+    let callback =
+        |_: &JsValue, _: &[JsValue], _: crate::ContextAccess<'_>| Ok(JsValue::undefined());
     let foreign_getter =
         FunctionObjectBuilder::new(foreign.realm(), NativeFunction::from_fn_ptr(callback))
             .build()
             .unwrap();
 
-    let result = ObjectInitializer::new(&mut context)
+    let result = ObjectInitializer::new(context.access())
         .property(
             js_string!("foreign"),
             foreign_object.clone(),
@@ -392,7 +408,7 @@ fn object_builders_reject_foreign_properties_and_prototypes() {
         .build();
     assert!(result.unwrap_err().as_native().unwrap().is_type());
 
-    let result = ObjectInitializer::new(&mut context)
+    let result = ObjectInitializer::new(context.access())
         .accessor(
             js_string!("foreign"),
             Some(foreign_getter),
@@ -402,14 +418,16 @@ fn object_builders_reject_foreign_properties_and_prototypes() {
         .build();
     assert!(result.unwrap_err().as_native().unwrap().is_type());
 
-    let mut builder = ConstructorBuilder::new(&mut context, NativeFunction::from_fn_ptr(callback));
+    let mut builder =
+        ConstructorBuilder::new(context.access(), NativeFunction::from_fn_ptr(callback));
     builder.static_property_descriptor(
         js_string!("foreign"),
         PropertyDescriptor::builder().value(foreign_object.clone()),
     );
     assert!(builder.build().unwrap_err().as_native().unwrap().is_type());
 
-    let mut builder = ConstructorBuilder::new(&mut context, NativeFunction::from_fn_ptr(callback));
+    let mut builder =
+        ConstructorBuilder::new(context.access(), NativeFunction::from_fn_ptr(callback));
     builder.inherit(foreign_object);
     assert!(builder.build().unwrap_err().as_native().unwrap().is_type());
 
@@ -418,13 +436,13 @@ fn object_builders_reject_foreign_properties_and_prototypes() {
         .build()
         .unwrap();
     let peer_object = JsObject::with_null_proto(peer.runtime());
-    let object = ObjectInitializer::new(&mut context)
+    let object = ObjectInitializer::new(context.access())
         .property(js_string!("peer"), peer_object.clone(), Attribute::all())
         .build()
         .unwrap();
     context.runtime().collect().unwrap();
     assert_eq!(
-        object.get(js_string!("peer"), &mut context).unwrap(),
+        object.get(js_string!("peer"), context.access()).unwrap(),
         peer_object.into()
     );
 }
@@ -454,14 +472,14 @@ fn function_builder_rejects_foreign_captures_before_publication() {
     assert!(
         !context
             .global_object()
-            .has_own_property(key, &mut context)
+            .has_own_property(key, context.access())
             .unwrap()
     );
     context.runtime().collect().unwrap();
 }
 
 #[test]
-fn object_builders_reject_a_replaced_context_from_another_runtime() {
+fn object_builders_reject_access_from_a_mismatched_runtime() {
     use crate::{
         Context, JsValue, NativeFunction,
         object::{ConstructorBuilder, ObjectInitializer},
@@ -469,16 +487,21 @@ fn object_builders_reject_a_replaced_context_from_another_runtime() {
 
     let mut context = Context::default();
     let original = context.runtime().clone();
-    let mut object = ObjectInitializer::new(&mut context);
-    *object.context() = Context::default();
+    let mut foreign_object_access = Context::default();
+    let mut object = ObjectInitializer::new(context.access());
+    // Owning-unit injection retains defensive admission for mismatched custody.
+    // Public builder getters cannot move or replace their Context owner.
+    object.context = foreign_object_access.access();
     assert!(object.build().unwrap_err().as_native().unwrap().is_type());
+    drop(object);
 
     let mut constructor = ConstructorBuilder::new(
-        &mut context,
+        foreign_object_access.access(),
         NativeFunction::from_fn_ptr(|_, _, _| Ok(JsValue::undefined())),
     );
     let second = constructor.context().runtime().clone();
-    *constructor.context() = Context::default();
+    let mut foreign_constructor_access = Context::default();
+    constructor.context = foreign_constructor_access.access();
     assert!(
         constructor
             .build()
@@ -490,7 +513,7 @@ fn object_builders_reject_a_replaced_context_from_another_runtime() {
 
     original.collect().unwrap();
     second.collect().unwrap();
-    context.runtime().collect().unwrap();
+    foreign_constructor_access.runtime().collect().unwrap();
 }
 
 #[test]
@@ -521,7 +544,7 @@ fn constructor_static_descriptor_converts_the_descriptor_before_the_key() {
 
     let mut context = Context::default();
     let mut builder = ConstructorBuilder::new(
-        &mut context,
+        context.access(),
         NativeFunction::from_fn_ptr(|_, _, _| Ok(JsValue::undefined())),
     );
     let sequence = Cell::new(0);
@@ -530,7 +553,7 @@ fn constructor_static_descriptor_converts_the_descriptor_before_the_key() {
     let constructor = builder.build().unwrap().constructor();
     assert_eq!(
         constructor
-            .get(js_string!("property"), &mut context)
+            .get(js_string!("property"), context.access())
             .unwrap(),
         true.into()
     );

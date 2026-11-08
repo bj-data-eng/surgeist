@@ -96,7 +96,7 @@ impl BuiltInConstructor for AggregateError {
         let message = args.get_or_undefined(1);
         if !message.is_undefined() {
             // a. Let msg be ? ToString(message).
-            let msg = message.to_string(context)?;
+            let msg = message.to_string(context.access())?;
 
             // b. Perform CreateNonEnumerableDataPropertyOrThrow(O, "message", msg).
             o.create_non_enumerable_data_property_or_throw(js_string!("message"), msg, context);
@@ -108,7 +108,7 @@ impl BuiltInConstructor for AggregateError {
         // 5. Let errorsList be ? IteratorToList(? GetIterator(errors, sync)).
         let errors = args.get_or_undefined(0);
         let errors_list = errors
-            .get_iterator(IteratorHint::Sync, context)?
+            .get_iterator(IteratorHint::Sync, context.access())?
             .into_list(context)?;
 
         // 6. Perform ! DefinePropertyOrThrow(O, "errors",
@@ -126,7 +126,7 @@ impl BuiltInConstructor for AggregateError {
                 .writable(true)
                 .value(Array::create_array_from_list(errors_list, context))
                 .build(),
-            context,
+            context.access(),
         )
         .js_expect("should not fail according to spec")?;
 

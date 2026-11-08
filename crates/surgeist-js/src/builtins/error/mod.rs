@@ -258,7 +258,7 @@ impl BuiltInConstructor for Error {
         let message = args.get_or_undefined(0);
         if !message.is_undefined() {
             // a. Let msg be ? ToString(message).
-            let msg = message.to_string(context)?;
+            let msg = message.to_string(context.access())?;
 
             // b. Perform CreateNonEnumerableDataPropertyOrThrow(O, "message", msg).
             o.create_non_enumerable_data_property_or_throw(js_string!("message"), msg, context);
@@ -358,7 +358,7 @@ impl Error {
         };
 
         // 5. Return ? CreateDataPropertyOrThrow(E, "stack", value).
-        e.create_data_property_or_throw(js_string!("stack"), value.clone(), context)
+        e.create_data_property_or_throw(js_string!("stack"), value.clone(), context.access())
             .map(Into::into)
     }
 
@@ -385,23 +385,23 @@ impl Error {
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not an Object"))?;
 
         // 3. Let name be ? Get(O, "name").
-        let name = o.get(js_string!("name"), context)?;
+        let name = o.get(js_string!("name"), context.access())?;
 
         // 4. If name is undefined, set name to "Error"; otherwise set name to ? ToString(name).
         let name = if name.is_undefined() {
             js_string!("Error")
         } else {
-            name.to_string(context)?
+            name.to_string(context.access())?
         };
 
         // 5. Let msg be ? Get(O, "message").
-        let msg = o.get(js_string!("message"), context)?;
+        let msg = o.get(js_string!("message"), context.access())?;
 
         // 6. If msg is undefined, set msg to the empty String; otherwise set msg to ? ToString(msg).
         let msg = if msg.is_undefined() {
             js_string!()
         } else {
-            msg.to_string(context)?
+            msg.to_string(context.access())?
         };
 
         // 7. If name is the empty String, return msg.
@@ -476,7 +476,7 @@ impl Error {
 
         let message = args.get_or_undefined(0);
         if !message.is_undefined() {
-            let msg = message.to_string(context)?;
+            let msg = message.to_string(context.access())?;
             o.create_non_enumerable_data_property_or_throw(js_string!("message"), msg, context);
         }
 

@@ -1,3 +1,4 @@
+use crate::ContextAccess;
 use std::{cell::RefCell, rc::Rc};
 
 use rustc_hash::FxHashSet;
@@ -23,7 +24,7 @@ use crate::{
     vm::{ActiveRunnable, CallFrame, CodeBlock, source_info::SourcePath},
 };
 
-type InitializerFn<T> = fn(&SyntheticModule, &T, &mut Context) -> JsResult<()>;
+type InitializerFn<T> = fn(&SyntheticModule, &T, ContextAccess<'_>) -> JsResult<()>;
 
 trait Initializer {
     fn store(&self) -> Box<dyn StoredInitializer>;
@@ -56,7 +57,7 @@ impl<T: NativeCapture> Initializer for Callback<T> {
 
 impl<T: NativeCapture> StoredInitializer for StoredCallback<T> {
     fn call(&self, module: &SyntheticModule, context: &mut Context) -> JsResult<()> {
-        (self.callback)(module, &T::restore(&self.captures), context)
+        (self.callback)(module, &T::restore(&self.captures), context.access())
     }
 }
 
@@ -78,6 +79,9 @@ impl std::fmt::Debug for SyntheticModuleInitializer {
 impl SyntheticModuleInitializer {
     /// Creates a callback with all stored state in its traceable captures.
     ///
+    /// The callback receives a borrowed capability for the executing context.
+    /// Reborrow it for nested operations without transferring the context owner.
+    ///
     /// ```compile_fail
     /// use surgeist_js::module::SyntheticModuleInitializer;
     ///
@@ -91,7 +95,7 @@ impl SyntheticModuleInitializer {
     /// );
     /// ```
     pub fn from_fn_with_captures<T: NativeCapture>(
-        callback: fn(&SyntheticModule, &T, &mut Context) -> JsResult<()>,
+        callback: fn(&SyntheticModule, &T, ContextAccess<'_>) -> JsResult<()>,
         captures: T,
     ) -> Self {
         Self {
@@ -203,8 +207,8 @@ impl SyntheticModule {
 
     /// Sets or changes the exported value for `C::NAME` in the synthetic module
     /// to the Class's constructor.
-    pub fn export_class<C: Class>(&self, context: &mut Context) -> JsResult<()> {
-        self.export_named_class::<C>(&JsString::from(C::NAME), context)
+    pub fn export_class<C: Class>(&self, mut context: ContextAccess<'_>) -> JsResult<()> {
+        self.export_named_class::<C>(&JsString::from(C::NAME), context.reborrow())
     }
 
     /// Sets or changes the exported value for `export_name` in the synthetic module
@@ -212,9 +216,9 @@ impl SyntheticModule {
     pub fn export_named_class<C: Class>(
         &self,
         export_name: &JsString,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<()> {
-        let mut class_builder = ClassBuilder::new::<C>(context);
+        let mut class_builder = ClassBuilder::new::<C>(context.reborrow());
         C::init(&mut class_builder)?;
 
         let class = class_builder.build()?;
@@ -236,7 +240,7 @@ impl SyntheticModule {
     ///
     /// [spec]: https://tc39.es/proposal-json-modules/#sec-smr-LoadRequestedModules
     pub(super) fn load(context: &mut Context) -> JsPromise {
-        JsPromise::resolve(JsValue::undefined(), context)
+        JsPromise::resolve(JsValue::undefined(), context.access())
             .expect("default resolve functions cannot throw and must return a promise")
     }
 
@@ -380,15 +384,16 @@ impl SyntheticModule {
     ) -> JsResult<JsPromise> {
         let (environments, codeblock) = match &*self.state.borrow() {
             ModuleStatus::Unlinked | ModuleStatus::Preparing { .. } => {
-                let (promise, ResolvingFunctions { reject, .. }) = JsPromise::new_pending(context);
+                let (promise, ResolvingFunctions { reject, .. }) =
+                    JsPromise::new_pending(context.access());
                 reject
                     .call(
                         &JsValue::undefined(),
                         &[JsNativeError::typ()
                             .with_message("cannot evaluate unlinked synthetic module")
-                            .into_opaque(context)?
+                            .into_opaque(context.access())?
                             .into()],
-                        context,
+                        context.access(),
                     )
                     .js_expect("native resolving functions cannot throw")?;
                 return Ok(promise);
@@ -436,18 +441,19 @@ impl SyntheticModule {
             .js_expect("there should be a frame")?;
 
         // 13. Let pc be ! NewPromiseCapability(%Promise%).
-        let (promise, ResolvingFunctions { resolve, reject }) = JsPromise::new_pending(context);
+        let (promise, ResolvingFunctions { resolve, reject }) =
+            JsPromise::new_pending(context.access());
 
         match result {
             // 15. Perform ! pc.[[Resolve]](result).
-            Ok(()) => resolve.call(&JsValue::undefined(), &[], context),
+            Ok(()) => resolve.call(&JsValue::undefined(), &[], context.access()),
             // 14. IfAbruptRejectPromise(result, pc).
             Err(error) => {
                 let error = context.runtime().admit_error(error);
                 reject.call(
                     &JsValue::undefined(),
-                    &[error.into_opaque(context)?],
-                    context,
+                    &[error.into_opaque(context.access())?],
+                    context.access(),
                 )
             }
         }

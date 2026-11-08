@@ -9,6 +9,7 @@ use crate::{
     builtins::promise::{PromiseCapability, ResolvingFunctions},
     environments::EnvironmentStack,
     error::RuntimeLimitError,
+    execution::ExecutionPhase,
     object::JsFunction,
     realm::Realm,
     script::Script,
@@ -1140,6 +1141,25 @@ impl Context {
             return CompletionRecord::Throw(error);
         }
 
+        loop {
+            match self.with_execution_phase(ExecutionPhase::VmActive, |context| {
+                context.run_async_quantum(&mut runtime_budget)
+            }) {
+                ControlFlow::Continue(()) => {}
+                ControlFlow::Break(value) => return value,
+            }
+
+            runtime_budget = budget;
+            let waiting = self.begin_execution_phase(ExecutionPhase::VmWaiting);
+            let waiting = self.guard(move |context| context.end_execution_phase(waiting));
+            yield_now().await;
+            drop(waiting);
+        }
+    }
+
+    /// Executes through completion or the existing cooperative yield boundary.
+    /// The quantum is synchronous so its active observation cannot span Pending.
+    fn run_async_quantum(&mut self, runtime_budget: &mut u32) -> ControlFlow<CompletionRecord> {
         while let Some(byte) = self
             .vm
             .frame()
@@ -1155,24 +1175,29 @@ impl Context {
                     let frame = context.vm.frame();
                     let pc = frame.pc as usize;
 
-                    OPCODE_HANDLERS_BUDGET[opcode as usize](context, pc, &mut runtime_budget)
+                    OPCODE_HANDLERS_BUDGET[opcode as usize](context, pc, runtime_budget)
                 },
                 opcode,
             ) {
                 ControlFlow::Continue(()) => {}
-                ControlFlow::Break(value) => return value,
+                ControlFlow::Break(value) => return ControlFlow::Break(value),
             }
 
-            if runtime_budget == 0 {
-                runtime_budget = budget;
-                yield_now().await;
+            if *runtime_budget == 0 {
+                return ControlFlow::Continue(());
             }
         }
 
-        CompletionRecord::Throw(JsError::from_native(JsNativeError::error()))
+        ControlFlow::Break(CompletionRecord::Throw(JsError::from_native(
+            JsNativeError::error(),
+        )))
     }
 
     pub(crate) fn run(&mut self) -> CompletionRecord {
+        self.with_execution_phase(ExecutionPhase::VmActive, Self::run_sync)
+    }
+
+    fn run_sync(&mut self) -> CompletionRecord {
         if let Err(error) = self.vm.frame().require_executable() {
             return CompletionRecord::Throw(error);
         }

@@ -535,9 +535,9 @@ impl SourceTextModule {
             request: super::ModuleRequest,
             src: Module,
             state: Rc<GraphLoadingState>,
-            context: &RefCell<&mut Context>,
+            context: &crate::HostContext<'_>,
         ) -> JsResult<()> {
-            let loader = context.borrow().module_loader();
+            let loader = context.with(|context| Ok(context.into_owner().module_loader()))?;
             let fut = loader.load_imported_module(
                 Referrer::Module(src.clone()),
                 request.clone(),
@@ -546,58 +546,62 @@ impl SourceTextModule {
             let mut stack = [MaybeUninit::<u8>::uninit(); 16];
             let mut heap = Vec::<MaybeUninit<u8>>::new();
             let result = fut.init2(&mut stack, &mut heap).await;
-            let completion = Module::admit_loader_result(result, &context.borrow());
+            context.with(|context| {
+                let context = context.into_owner();
+                context.check_execution_stop()?;
+                let completion = Module::admit_loader_result(result, context);
 
-            // FinishLoadingImportedModule ( referrer, specifier, payload, result )
-            // https://tc39.es/ecma262/#sec-FinishLoadingImportedModule
+                // FinishLoadingImportedModule ( referrer, specifier, payload, result )
+                // https://tc39.es/ecma262/#sec-FinishLoadingImportedModule
 
-            // 1. If result is a normal completion, then
-            if let Ok(loaded) = &completion {
-                let ModuleKind::SourceText(src) = src.kind() else {
-                    unreachable!("captured src must be a source text module");
-                };
-                // a. If referrer.[[LoadedModules]] contains a Record whose [[Specifier]] is specifier, then
-                // b. Else,
-                //    i. Append the Record { [[Specifier]]: specifier, [[Module]]: result.[[Value]] } to referrer.[[LoadedModules]].
-                src.insert_loaded_module(request, loaded);
-            }
-
-            // 2. If payload is a GraphLoadingState Record, then
-            //    a. Perform ContinueModuleLoading(payload, result).
-
-            // Abstract operation `ContinueModuleLoading ( state, moduleCompletion )`.
-            //
-            // https://tc39.es/ecma262/#sec-ContinueModuleLoading
-
-            // 1. If state.[[IsLoading]] is false, return unused.
-            if !state.loading.get() {
-                return Ok(());
-            }
-
-            // 2. If moduleCompletion is a normal completion, then
-            match completion {
-                Ok(m) => {
-                    // a. Perform InnerModuleLoading(state, moduleCompletion.[[Value]]).
-                    m.inner_load(&state, &mut context.borrow_mut());
+                // 1. If result is a normal completion, then
+                if let Ok(loaded) = &completion {
+                    let ModuleKind::SourceText(src) = src.kind() else {
+                        unreachable!("captured src must be a source text module");
+                    };
+                    // a. If referrer.[[LoadedModules]] contains a Record whose [[Specifier]] is specifier, then
+                    // b. Else,
+                    //    i. Append the Record { [[Specifier]]: specifier, [[Module]]: result.[[Value]] } to referrer.[[LoadedModules]].
+                    src.insert_loaded_module(request, loaded);
                 }
-                // 3. Else,
-                Err(err) => {
-                    // a. Set state.[[IsLoading]] to false.
-                    state.loading.set(false);
 
-                    let err = err.into_opaque(&mut context.borrow_mut())?;
+                // 2. If payload is a GraphLoadingState Record, then
+                //    a. Perform ContinueModuleLoading(payload, result).
 
-                    // b. Perform ! Call(state.[[PromiseCapability]].[[Reject]], undefined, « moduleCompletion.[[Value]] »).
-                    state
-                        .capability
-                        .reject()
-                        .call(&JsValue::undefined(), &[err], &mut context.borrow_mut())
-                        .js_expect("cannot fail for the default reject function")?;
+                // Abstract operation `ContinueModuleLoading ( state, moduleCompletion )`.
+                //
+                // https://tc39.es/ecma262/#sec-ContinueModuleLoading
+
+                // 1. If state.[[IsLoading]] is false, return unused.
+                if !state.loading.get() {
+                    return Ok(());
                 }
-            }
 
-            // 4. Return unused.
-            Ok(())
+                // 2. If moduleCompletion is a normal completion, then
+                match completion {
+                    Ok(m) => {
+                        // a. Perform InnerModuleLoading(state, moduleCompletion.[[Value]]).
+                        m.inner_load(&state, context);
+                    }
+                    // 3. Else,
+                    Err(err) => {
+                        // a. Set state.[[IsLoading]] to false.
+                        state.loading.set(false);
+
+                        let err = err.into_opaque(context.access())?;
+
+                        // b. Perform ! Call(state.[[PromiseCapability]].[[Reject]], undefined, « moduleCompletion.[[Value]] »).
+                        state
+                            .capability
+                            .reject()
+                            .call(&JsValue::undefined(), &[err], context.access())
+                            .js_expect("cannot fail for the default reject function")?;
+                    }
+                }
+
+                // 4. Return unused.
+                Ok(())
+            })
         }
 
         // 2. If module is a Cyclic Module Record, module.[[Status]] is new, and state.[[Visited]] does not contain
@@ -920,7 +924,7 @@ impl SourceTextModule {
                     //    ii. Perform ! Call(capability.[[Resolve]], undefined, « undefined »).
                     capability
                         .resolve()
-                        .call(&JsValue::undefined(), &[], context)
+                        .call(&JsValue::undefined(), &[], context.access())
                         .js_expect("cannot fail for the default resolve function")?;
                 }
 
@@ -967,7 +971,11 @@ impl SourceTextModule {
                 // d. Perform ! Call(capability.[[Reject]], undefined, « result.[[Value]] »).
                 capability
                     .reject()
-                    .call(&JsValue::undefined(), &[err.into_opaque(context)?], context)
+                    .call(
+                        &JsValue::undefined(),
+                        &[err.into_opaque(context.access())?],
+                        context.access(),
+                    )
                     .js_expect("cannot fail for the default reject function")?;
             }
         }
@@ -1290,7 +1298,7 @@ impl SourceTextModule {
         // 5. Let onFulfilled be CreateBuiltinFunction(fulfilledClosure, 0, "", « »).
         let on_fulfilled = FunctionObjectBuilder::new(
             context.realm(),
-            NativeFunction::from_fn_with_captures(
+            NativeFunction::from_builtin_with_captures(
                 |_, _, module, context| {
                     //     a. Perform AsyncModuleExecutionFulfilled(module).
                     async_module_execution_fulfilled(module, context)?;
@@ -1307,7 +1315,7 @@ impl SourceTextModule {
         // 7. Let onRejected be CreateBuiltinFunction(rejectedClosure, 0, "", « »).
         let on_rejected = FunctionObjectBuilder::new(
             context.realm(),
-            NativeFunction::from_fn_with_captures(
+            NativeFunction::from_builtin_with_captures(
                 |_, args, module, context| {
                     let error = JsError::from_opaque(args.get_or_undefined(0).clone());
                     // a. Perform AsyncModuleExecutionRejected(module, error).
@@ -1565,7 +1573,7 @@ fn async_module_execution_fulfilled(module: &Module, context: &mut Context) -> J
 
         // b. Perform ! Call(module.[[TopLevelCapability]].[[Resolve]], undefined, « undefined »).
         cap.resolve()
-            .call(&JsValue::undefined(), &[], context)
+            .call(&JsValue::undefined(), &[], context.access())
             .js_expect("default `resolve` function cannot fail")?;
     }
 
@@ -1630,7 +1638,7 @@ fn async_module_execution_fulfilled(module: &Module, context: &mut Context) -> J
         if let Err(e) = result {
             // eagerly convert to an opaque error so that we can exit immediately
             // if there was an EngineError.
-            let e = &JsError::from_opaque(e.into_opaque(context)?);
+            let e = &JsError::from_opaque(e.into_opaque(context.access())?);
 
             // 1. Perform AsyncModuleExecutionRejected(m, result.[[Value]]).
             async_module_execution_rejected(module, e, context)?;
@@ -1664,7 +1672,11 @@ fn async_module_execution_fulfilled(module: &Module, context: &mut Context) -> J
 
             // b. Perform ! Call(m.[[TopLevelCapability]].[[Resolve]], undefined, « undefined »).
             cap.resolve()
-                .call(&JsValue::undefined(), &[JsValue::undefined()], context)
+                .call(
+                    &JsValue::undefined(),
+                    &[JsValue::undefined()],
+                    context.access(),
+                )
                 .js_expect("default `resolve` function cannot fail")?;
         }
     }
@@ -1732,8 +1744,8 @@ fn async_module_execution_rejected(
             cap.reject()
                 .call(
                     &JsValue::undefined(),
-                    &[error.clone().into_opaque(context)?],
-                    context,
+                    &[error.clone().into_opaque(context.access())?],
+                    context.access(),
                 )
                 .js_expect("default `reject` function cannot fail")?;
         }

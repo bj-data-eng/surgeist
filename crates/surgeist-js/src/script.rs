@@ -21,7 +21,7 @@ use surgeist_js_interner::Interner;
 use surgeist_js_parser::{Source, source::ReadChar};
 
 use crate::{
-    Context, HostDefined, JsResult, JsString, JsValue, Module, SpannedSourceText,
+    Context, ContextAccess, HostDefined, JsResult, JsString, JsValue, Module, SpannedSourceText,
     bytecompiler::{
         ByteCompiler,
         control::{CompilerWork, payload_bytes},
@@ -185,8 +185,9 @@ impl Script {
     pub fn parse<R: ReadChar>(
         src: Source<'_, R>,
         realm: Option<Realm>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Self> {
+        let context = context.into_owner();
         let path = src.path().map(Path::to_path_buf);
         let realm = realm.unwrap_or_else(|| context.realm().clone());
         if !context.runtime().same_heap(&realm.runtime()) {
@@ -244,7 +245,8 @@ impl Script {
     /// realm changes before execution, preparation is refreshed and the pending
     /// cache may be replaced. Installed code retains its identity across unrelated
     /// realm changes. Returns an error if preparation is already in progress.
-    pub fn codeblock(&self, context: &mut Context) -> JsResult<Rc<CodeBlock>> {
+    pub fn codeblock(&self, context: ContextAccess<'_>) -> JsResult<Rc<CodeBlock>> {
+        let context = context.into_owner();
         self.check_context(context)?;
         let mut phase = self.take_phase(ScriptPhase::Compiling)?;
         let mut previous_realm = self.realm();
@@ -396,7 +398,8 @@ impl Script {
     /// on the context or [`JobExecutor::run_jobs`] on the provided queue to run them.
     ///
     /// [`JobExecutor::run_jobs`]: crate::job::JobExecutor::run_jobs
-    pub fn evaluate(&self, context: &mut Context) -> JsResult<JsValue> {
+    pub fn evaluate(&self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         self.prepare_run(context)?;
         let record = context.run();
 
@@ -412,7 +415,7 @@ impl Script {
     /// execution is suspended. See [`Script::evaluate_async_with_budget`] if you want to also
     /// customize this parameter.
     #[allow(clippy::future_not_send)]
-    pub async fn evaluate_async(&self, context: &mut Context) -> JsResult<JsValue> {
+    pub async fn evaluate_async(&self, context: ContextAccess<'_>) -> JsResult<JsValue> {
         self.evaluate_async_with_budget(context, 256).await
     }
 
@@ -430,9 +433,10 @@ impl Script {
     #[allow(clippy::future_not_send)]
     pub async fn evaluate_async_with_budget(
         &self,
-        context: &mut Context,
+        context: ContextAccess<'_>,
         budget: u32,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         let checkpoint = context.vm.call_checkpoint();
         let mut active = context.guard(move |context| context.vm.restore_call(checkpoint));
         self.prepare_run(&mut active)?;

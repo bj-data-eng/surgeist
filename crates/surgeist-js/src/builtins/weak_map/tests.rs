@@ -9,12 +9,14 @@ use surgeist_js_macros::js_str;
 #[test]
 fn collecting_a_weak_key_releases_its_primitive_value() {
     let context = &mut Context::default();
-    let map = JsWeakMap::new(context);
+    let map = JsWeakMap::new(context.access());
     let dead_key = JsObject::with_null_proto(context.runtime());
     let live_key = JsObject::with_null_proto(context.runtime());
     let value = js_string!("weak map value".to_owned());
-    map.set(&dead_key, value.clone().into(), context).unwrap();
-    map.set(&live_key, value.clone().into(), context).unwrap();
+    map.set(&dead_key, value.clone().into(), context.access())
+        .unwrap();
+    map.set(&live_key, value.clone().into(), context.access())
+        .unwrap();
     assert_eq!(value.refcount(), Some(3));
 
     let borrowed_map = map.borrow();
@@ -24,7 +26,7 @@ fn collecting_a_weak_key_releases_its_primitive_value() {
     assert_eq!(value.refcount(), Some(2));
     drop(borrowed_map);
     assert_eq!(
-        map.get(&live_key, context).unwrap().as_string(),
+        map.get(&live_key, context.access()).unwrap().as_string(),
         Some(value)
     );
 }
@@ -32,15 +34,15 @@ fn collecting_a_weak_key_releases_its_primitive_value() {
 #[test]
 fn object_value_lives_only_while_its_weak_key_is_reachable() {
     let context = &mut Context::default();
-    let map = JsWeakMap::new(context);
+    let map = JsWeakMap::new(context.access());
     let key = JsObject::with_null_proto(context.runtime());
     let value = JsObject::with_null_proto(context.runtime());
     let value_edge = value.edge();
-    map.set(&key, value.into(), context).unwrap();
+    map.set(&key, value.into(), context.access()).unwrap();
 
     context.runtime().heap.collect().unwrap();
     assert_eq!(
-        map.get(&key, context)
+        map.get(&key, context.access())
             .unwrap()
             .as_object()
             .unwrap()
@@ -56,7 +58,7 @@ fn object_value_lives_only_while_its_weak_key_is_reachable() {
 #[test]
 fn collection_reentered_during_key_retirement_keeps_live_ephemerons() {
     let context = &mut Context::default();
-    let map = JsWeakMap::new(context);
+    let map = JsWeakMap::new(context.access());
     let dead_key = JsObject::with_null_proto(context.runtime());
     let dead_value = JsObject::with_null_proto(context.runtime());
     let dead_value_edge = dead_value.edge();
@@ -75,8 +77,10 @@ fn collection_reentered_during_key_retirement_keeps_live_ephemerons() {
     };
     // Run nested collection before the dead key's map entry is removed.
     dead_key.observe_retirement(&reentrant_collection);
-    map.set(&dead_key, dead_value.into(), context).unwrap();
-    map.set(&live_key, live_value.into(), context).unwrap();
+    map.set(&dead_key, dead_value.into(), context.access())
+        .unwrap();
+    map.set(&live_key, live_value.into(), context.access())
+        .unwrap();
 
     drop(dead_key);
     context.runtime().collect().unwrap();
@@ -84,7 +88,7 @@ fn collection_reentered_during_key_retirement_keeps_live_ephemerons() {
     assert!(reentered.get());
     assert!(dead_value_edge.upgrade().unwrap().is_none());
     assert_eq!(
-        map.get(&live_key, context)
+        map.get(&live_key, context.access())
             .unwrap()
             .as_object()
             .unwrap()

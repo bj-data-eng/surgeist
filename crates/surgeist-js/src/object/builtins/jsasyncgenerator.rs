@@ -1,7 +1,8 @@
 //! A Rust API wrapper for Boa's `AsyncGenerator` Builtin ECMAScript Object
 use super::JsPromise;
+use crate::ContextAccess;
 use crate::{
-    Context, JsNativeError, JsResult, JsValue,
+    JsNativeError, JsResult, JsValue,
     builtins::{async_generator::AsyncGenerator, promise::PromiseCapability},
     js_error,
     object::JsObject,
@@ -36,11 +37,12 @@ impl JsAsyncGenerator {
     ///  - [MDN documentation][mdn]
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncGenerator/next
-    pub fn next<T>(&self, value: T, context: &mut Context) -> JsResult<JsPromise>
+    pub fn next<T>(&self, value: T, context: ContextAccess<'_>) -> JsResult<JsPromise>
     where
         T: Into<JsValue>,
     {
-        let (typed_promise, functions) = JsPromise::new_pending(context);
+        let context = context.into_owner();
+        let (typed_promise, functions) = JsPromise::new_pending(context.access());
         let capability = PromiseCapability {
             functions,
             promise: JsObject::clone(&typed_promise).clone().upcast(),
@@ -56,11 +58,12 @@ impl JsAsyncGenerator {
     ///  - [MDN documentation][mdn]
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncGenerator/return
-    pub fn r#return<T>(&self, value: T, context: &mut Context) -> JsResult<JsPromise>
+    pub fn r#return<T>(&self, value: T, context: ContextAccess<'_>) -> JsResult<JsPromise>
     where
         T: Into<JsValue>,
     {
-        let (typed_promise, functions) = JsPromise::new_pending(context);
+        let context = context.into_owner();
+        let (typed_promise, functions) = JsPromise::new_pending(context.access());
         let capability = PromiseCapability {
             functions,
             promise: JsObject::clone(&typed_promise).upcast(),
@@ -75,11 +78,12 @@ impl JsAsyncGenerator {
     ///  - [MDN documentation][mdn]
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/AsyncGenerator/throw
-    pub fn throw<T>(&self, value: T, context: &mut Context) -> JsResult<JsPromise>
+    pub fn throw<T>(&self, value: T, context: ContextAccess<'_>) -> JsResult<JsPromise>
     where
         T: Into<JsValue>,
     {
-        let (typed_promise, functions) = JsPromise::new_pending(context);
+        let context = context.into_owner();
+        let (typed_promise, functions) = JsPromise::new_pending(context.access());
         let capability = PromiseCapability {
             functions,
             promise: JsObject::clone(&typed_promise).clone().upcast(),
@@ -113,7 +117,7 @@ impl Deref for JsAsyncGenerator {
 }
 
 impl TryFromJs for JsAsyncGenerator {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object() {
             Self::from_object(o.clone())
         } else {

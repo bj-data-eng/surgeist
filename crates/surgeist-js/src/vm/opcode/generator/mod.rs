@@ -31,7 +31,7 @@ impl Generator {
         };
 
         let proto = this_function_object
-            .get(PROTOTYPE, context)
+            .get(PROTOTYPE, context.access())
             .ok()
             .and_then(|v| v.as_object())
             .unwrap_or_else(|| context.intrinsics().objects().generator());
@@ -78,7 +78,7 @@ impl AsyncGenerator {
         };
 
         let proto = this_function_object
-            .get(PROTOTYPE, context)
+            .get(PROTOTYPE, context.access())
             .ok()
             .and_then(|v| v.as_object())
             .unwrap_or_else(|| context.intrinsics().objects().async_generator());

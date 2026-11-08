@@ -315,7 +315,7 @@ mod tests {
                     .value(7)
                     .writable(false)
                     .configurable(false),
-                context,
+                context.access(),
             )
             .unwrap();
         let materialized = Cell::new(false);
@@ -334,7 +334,7 @@ mod tests {
         assert!(result.is_none());
         assert!(!materialized.get());
         assert_eq!(
-            object.get(js_string!("kept"), context).unwrap(),
+            object.get(js_string!("kept"), context.access()).unwrap(),
             JsValue::new(7)
         );
     }
@@ -364,13 +364,15 @@ mod tests {
         assert_eq!(calls.get(), 1);
         assert_eq!(
             object
-                .get(js_string!("answer"), context)
+                .get(js_string!("answer"), context.access())
                 .unwrap()
                 .as_object(),
             Some(function.clone())
         );
         assert_eq!(
-            function.call(&JsValue::undefined(), &[], context).unwrap(),
+            function
+                .call(&JsValue::undefined(), &[], context.access())
+                .unwrap(),
             JsValue::new(42)
         );
     }
@@ -388,7 +390,7 @@ mod tests {
                     .writable(true)
                     .enumerable(true)
                     .configurable(false),
-                context,
+                context.access(),
             )
             .unwrap();
         let replacement = native_answer(context);
@@ -414,7 +416,9 @@ mod tests {
         assert_eq!(descriptor.enumerable(), Some(true));
         assert_eq!(descriptor.configurable(), Some(false));
         assert_eq!(
-            function.call(&JsValue::undefined(), &[], context).unwrap(),
+            function
+                .call(&JsValue::undefined(), &[], context.access())
+                .unwrap(),
             JsValue::new(42)
         );
     }
@@ -512,7 +516,7 @@ mod tests {
                     .value(7)
                     .writable(false)
                     .configurable(false),
-                context,
+                context.access(),
             )
             .unwrap();
         context.execution = Some(Execution::new(ExecutionOptions::new(64)).unwrap());
@@ -581,7 +585,7 @@ mod tests {
                     assert_eq!(
                         context
                             .global_object()
-                            .get(js_string!("preparedLookups"), context)?,
+                            .get(js_string!("preparedLookups"), context.access())?,
                         JsValue::new(1)
                     );
                     materialized.set(true);
@@ -627,7 +631,7 @@ mod tests {
                     assert_eq!(
                         context
                             .global_object()
-                            .get(js_string!("preparedGetterRan"), context)?,
+                            .get(js_string!("preparedGetterRan"), context.access())?,
                         JsValue::new(true)
                     );
                     Ok(answer)
@@ -637,7 +641,9 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(
-            function.call(&JsValue::undefined(), &[], context).unwrap(),
+            function
+                .call(&JsValue::undefined(), &[], context.access())
+                .unwrap(),
             JsValue::new(42)
         );
         assert_eq!(

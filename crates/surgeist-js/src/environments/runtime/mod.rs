@@ -699,9 +699,10 @@ impl Context {
                 }
                 Environment::Object(o) => {
                     let key = locator.name().clone();
-                    if o.has_property(key.clone(), self)? {
-                        if let Some(unscopables) = o.get(JsSymbol::unscopables(), self)?.as_object()
-                            && unscopables.get(key.clone(), self)?.to_boolean()
+                    if o.has_property(key.clone(), self.access())? {
+                        if let Some(unscopables) =
+                            o.get(JsSymbol::unscopables(), self.access())?.as_object()
+                            && unscopables.get(key.clone(), self.access())?.to_boolean()
                         {
                             continue;
                         }
@@ -783,9 +784,10 @@ impl Context {
                 }
                 Environment::Object(o) => {
                     let key = locator.name().clone();
-                    if o.has_property(key.clone(), self)? {
-                        if let Some(unscopables) = o.get(JsSymbol::unscopables(), self)?.as_object()
-                            && unscopables.get(key.clone(), self)?.to_boolean()
+                    if o.has_property(key.clone(), self.access())? {
+                        if let Some(unscopables) =
+                            o.get(JsSymbol::unscopables(), self.access())?.as_object()
+                            && unscopables.get(key.clone(), self.access())?.to_boolean()
                         {
                             continue;
                         }
@@ -808,7 +810,7 @@ impl Context {
             BindingLocatorScope::GlobalObject => {
                 let key = locator.name().clone();
                 let obj = self.global_object();
-                obj.has_property(key, self)
+                obj.has_property(key, self.access())
             }
             BindingLocatorScope::GlobalDeclarative => {
                 let env = self.vm.frame().realm.environment();
@@ -818,7 +820,7 @@ impl Context {
                 Environment::Declarative(env) => Ok(env.get(locator.binding_index()).is_some()),
                 Environment::Object(obj) => {
                     let key = locator.name().clone();
-                    obj.has_property(key, self)
+                    obj.has_property(key, self.access())
                 }
             },
         }
@@ -863,7 +865,7 @@ impl Context {
                 Environment::Declarative(env) => Ok(env.get(locator.binding_index())),
                 Environment::Object(obj) => {
                     let key = locator.name().clone();
-                    obj.get(key, self).map(Some)
+                    obj.get(key, self.access()).map(Some)
                 }
             },
         }
@@ -885,7 +887,7 @@ impl Context {
             BindingLocatorScope::GlobalObject => {
                 let key = locator.name().clone();
                 let obj = self.global_object();
-                obj.set(key, value, strict, self)?;
+                obj.set(key, value, strict, self.access())?;
             }
             BindingLocatorScope::GlobalDeclarative => {
                 let env = self.vm.frame().realm.environment();
@@ -897,7 +899,7 @@ impl Context {
                 }
                 Environment::Object(obj) => {
                     let key = locator.name().clone();
-                    obj.set(key, value, strict, self)?;
+                    obj.set(key, value, strict, self.access())?;
                 }
             },
         }

@@ -7,7 +7,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use surgeist_js::gc::heap::Trace as HeapTrace;
-use surgeist_js::{Context, JsData, JsResult, JsString, js_error};
+use surgeist_js::{HostContext, JsData, JsResult, JsString, js_error};
 
 #[cfg(test)]
 mod e2e;
@@ -43,7 +43,7 @@ impl crate::fetch::Fetcher for TestFetcher {
         self: Rc<Self>,
         request: JsRequest,
         _signal: Option<surgeist_js::JsObject>,
-        _context: &RefCell<&mut Context>,
+        _context: &HostContext<'_>,
     ) -> impl Future<Output = JsResult<JsResponse>> {
         let request = request.into_inner();
         self.requests_received.borrow_mut().push(request.clone());

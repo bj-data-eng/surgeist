@@ -33,7 +33,7 @@ pub(crate) mod private {
 ///     total.0.set(total.0.get() + value);
 /// };
 /// let add = add.into_js_function_with_captures(total.clone());
-/// add.call(&JsValue::undefined(), &[JsValue::from(4)], &mut context)
+/// add.call(&JsValue::undefined(), &[JsValue::from(4)], context.access())
 ///     .unwrap();
 /// assert_eq!(total.0.get(), 4);
 /// ```
@@ -54,7 +54,7 @@ pub trait IntoJsFunctionWithCaptures<Args, Ret, Captures> {
 ///     .call(
 ///         &JsValue::undefined(),
 ///         &[JsValue::from(1), JsValue::from(2)],
-///         &mut context,
+///         context.access(),
 ///     )
 ///     .unwrap();
 /// assert_eq!(result, JsValue::new(3));

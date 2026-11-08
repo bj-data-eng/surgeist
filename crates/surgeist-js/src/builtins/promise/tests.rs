@@ -6,7 +6,7 @@ fn pending_reaction_cycle_is_reclaimed_when_its_promise_is_dropped() {
     use crate::{Context, JsObject, NativeFunction, object::builtins::JsPromise};
 
     let context = &mut Context::default();
-    let (promise, resolvers) = JsPromise::new_pending(context);
+    let (promise, resolvers) = JsPromise::new_pending(context.access());
     let handler = NativeFunction::from_fn_with_captures(
         |_, _, promise, _| Ok(promise.clone().into()),
         JsObject::from(promise.clone()),
@@ -15,7 +15,10 @@ fn pending_reaction_cycle_is_reclaimed_when_its_promise_is_dropped() {
     .unwrap();
     let promise_edge = promise.edge();
     let handler_edge = handler.edge();
-    let dependent_edge = promise.then(Some(handler), None, context).unwrap().edge();
+    let dependent_edge = promise
+        .then(Some(handler), None, context.access())
+        .unwrap()
+        .edge();
 
     drop(resolvers);
     context.runtime().collect().unwrap();
@@ -43,12 +46,12 @@ fn every_reaction_survives_collection_during_job_enqueue() {
     struct CollectingExecutor(Rc<SimpleJobExecutor>);
 
     impl JobExecutor for CollectingExecutor {
-        fn enqueue_job(self: Rc<Self>, job: Job, context: &mut Context) {
+        fn enqueue_job(self: Rc<Self>, job: Job, context: crate::ContextAccess<'_>) {
             context.runtime().collect().unwrap();
             self.0.clone().enqueue_job(job, context);
         }
 
-        fn run_jobs(self: Rc<Self>, context: &mut Context) -> JsResult<()> {
+        fn run_jobs(self: Rc<Self>, context: crate::ContextAccess<'_>) -> JsResult<()> {
             self.0.clone().run_jobs(context)
         }
     }
@@ -57,21 +60,21 @@ fn every_reaction_survives_collection_during_job_enqueue() {
         .job_executor(Rc::new(CollectingExecutor::default()))
         .build()
         .unwrap();
-    let (promise, resolvers) = JsPromise::new_pending(context);
-    let first = promise.then(None, None, context).unwrap();
+    let (promise, resolvers) = JsPromise::new_pending(context.access());
+    let first = promise.then(None, None, context.access()).unwrap();
     let captured = JsObject::with_null_proto(context.runtime());
     let captured_edge = captured.edge();
     let handler =
         NativeFunction::from_fn_with_captures(|_, _, value, _| Ok(value.clone().into()), captured)
             .to_js_function(context.realm())
             .unwrap();
-    let second = promise.then(Some(handler), None, context).unwrap();
+    let second = promise.then(Some(handler), None, context.access()).unwrap();
 
     let result = JsObject::with_null_proto(context.runtime());
     let result_edge = result.edge();
     resolvers
         .resolve
-        .call(&JsValue::undefined(), &[result.into()], context)
+        .call(&JsValue::undefined(), &[result.into()], context.access())
         .unwrap();
     drop(promise);
     drop(resolvers);
@@ -109,14 +112,18 @@ fn rust_promise_handlers_must_belong_to_the_receiving_runtime() {
         .runtime(Runtime::default())
         .build()
         .unwrap();
-    let (promise, _) = JsPromise::new_pending(context);
+    let (promise, _) = JsPromise::new_pending(context.access());
     let handler = NativeFunction::from_fn_ptr(|_, _, _| Ok(JsValue::undefined()))
         .to_js_function(foreign.realm())
         .unwrap();
 
-    assert!(promise.then(Some(handler.clone()), None, context).is_err());
-    assert!(promise.catch(handler.clone(), context).is_err());
-    assert!(promise.finally(handler, context).is_err());
+    assert!(
+        promise
+            .then(Some(handler.clone()), None, context.access())
+            .is_err()
+    );
+    assert!(promise.catch(handler.clone(), context.access()).is_err());
+    assert!(promise.finally(handler, context.access()).is_err());
     context.runtime().collect().unwrap();
 }
 
@@ -133,7 +140,11 @@ fn context_with_foreign_job_callback_data(invalid_at: usize) -> crate::Context {
     }
 
     impl HostHooks for Hooks {
-        fn make_job_callback(&self, callback: JsFunction, _: &mut Context) -> JobCallback {
+        fn make_job_callback(
+            &self,
+            callback: JsFunction,
+            _: crate::ContextAccess<'_>,
+        ) -> JobCallback {
             let call = self.call_count.get();
             self.call_count.set(call + 1);
             if call == self.invalid_at {
@@ -168,7 +179,7 @@ fn pending_promise_rejects_foreign_job_callback_data_before_installing_either_re
             promise.then(() => calls += 100, () => calls += 100);",
         ))
         .unwrap_err();
-    assert!(error.try_native(context).unwrap().is_type());
+    assert!(error.try_native(context.access()).unwrap().is_type());
     context.runtime().collect().unwrap();
 
     context
@@ -340,7 +351,7 @@ fn foreign_async_outcomes_reject_instead_of_leaving_a_pending_promise() {
     let mut context = Context::default();
     let promise = JsPromise::from_async_fn(
         async |_| Ok(JsObject::with_null_proto(&Runtime::default()).into()),
-        &mut context,
+        context.access(),
     );
     context.run_jobs().unwrap();
     assert!(promise.state().as_rejected().is_some());
@@ -355,7 +366,7 @@ fn promise_executor_error_materialization_refuses_a_foreign_nested_cause() {
     let inner = JsNativeError::range().with_cause(JsError::from_opaque(foreign.into()));
     let error = JsNativeError::error().with_cause(inner).into();
 
-    let refusal = JsPromise::new(|_, _| Err(error), context).unwrap_err();
+    let refusal = JsPromise::new(|_, _| Err(error), context.access()).unwrap_err();
     assert!(refusal.as_native().is_some_and(JsNativeError::is_type));
 }
 
@@ -368,7 +379,7 @@ fn promise_reject_error_materialization_refuses_a_foreign_nested_cause() {
     let inner = JsNativeError::range().with_cause(JsError::from_opaque(foreign.into()));
     let error = JsNativeError::error().with_cause(inner);
 
-    let refusal = JsPromise::reject(error, context).unwrap_err();
+    let refusal = JsPromise::reject(error, context.access()).unwrap_err();
     assert!(refusal.as_native().is_some_and(JsNativeError::is_type));
 }
 
@@ -380,7 +391,7 @@ fn promise_reject_error_materialization_preserves_the_original_engine_error() {
     let error = JsError::from(PanicError::new("engine failure"));
 
     assert_eq!(
-        JsPromise::reject(error.clone(), context).unwrap_err(),
+        JsPromise::reject(error.clone(), context.access()).unwrap_err(),
         error
     );
 }

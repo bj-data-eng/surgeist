@@ -2,11 +2,12 @@ use crate::fetch::request::JsRequest;
 use crate::fetch::response::JsResponse;
 use crate::test::{TestAction, run_test_actions};
 use http::Response;
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 use surgeist_js::gc::heap::Trace as HeapTrace;
-use surgeist_js::{Context, JsData, JsError, JsResult, JsString, js_error, js_str};
+use surgeist_js::{
+    Context, ContextAccess, HostContext, JsData, JsError, JsResult, JsString, js_error, js_str,
+};
 use url::Url;
 
 /// This is a special end-to-end fetcher that processes requests.
@@ -14,7 +15,7 @@ use url::Url;
 struct E2eFetcher;
 
 impl E2eFetcher {
-    fn headers(request: &JsRequest, _context: &mut Context) -> JsResult<JsResponse> {
+    fn headers(request: &JsRequest, _context: ContextAccess<'_>) -> JsResult<JsResponse> {
         let url = Url::parse(&request.uri().to_string()).map_err(JsError::from_rust)?;
         let request_query: BTreeMap<String, String> = url
             .query_pairs()
@@ -48,10 +49,10 @@ impl crate::fetch::Fetcher for E2eFetcher {
         self: Rc<Self>,
         request: JsRequest,
         _signal: Option<surgeist_js::JsObject>,
-        context: &RefCell<&mut Context>,
+        context: &HostContext<'_>,
     ) -> impl Future<Output = JsResult<JsResponse>> {
         std::future::ready(match request.uri().path() {
-            "/headers" => Self::headers(&request, &mut context.borrow_mut()),
+            "/headers" => context.with(|access| Self::headers(&request, access)),
             _ => Err(js_error!("Invalid request.")),
         })
     }
@@ -63,8 +64,15 @@ fn register(ctx: &mut Context) {
 }
 
 fn await_response(ctx: &mut Context) {
-    let response = ctx.global_object().get(js_str!("response"), ctx).unwrap();
-    response.as_promise().unwrap().await_blocking(ctx).unwrap();
+    let response = ctx
+        .global_object()
+        .get(js_str!("response"), ctx.access())
+        .unwrap();
+    response
+        .as_promise()
+        .unwrap()
+        .await_blocking(ctx.access())
+        .unwrap();
 }
 
 #[test]

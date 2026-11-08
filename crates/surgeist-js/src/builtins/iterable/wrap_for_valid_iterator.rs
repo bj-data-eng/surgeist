@@ -124,7 +124,7 @@ impl WrapForValidIterator {
                 ))
             }
             // 7. Return ? Call(returnMethod, iterator).
-            Some(return_method) => return_method.call(&iterator.into(), &[], context),
+            Some(return_method) => return_method.call(&iterator.into(), &[], context.access()),
         }
     }
 }

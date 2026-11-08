@@ -17,8 +17,8 @@ fn get_backtrace_from_rejection(
     path: &str,
 ) -> Vec<ShadowEntry> {
     let source = Source::from_bytes(js_code).with_path(Path::new(path));
-    let module = Module::parse(source, None, context).unwrap();
-    let promise = module.load_link_evaluate(context);
+    let module = Module::parse(source, None, context.access()).unwrap();
+    let promise = module.load_link_evaluate(context.access());
     context.run_jobs().unwrap();
 
     match promise.state() {
@@ -185,7 +185,7 @@ fn materialization_refuses_a_foreign_opaque_error() {
     let foreign = JsObject::with_null_proto(&Runtime::default());
     let error = JsError::from_opaque(foreign.into());
 
-    let refusal = error.into_opaque(context).unwrap_err();
+    let refusal = error.into_opaque(context.access()).unwrap_err();
     assert!(refusal.as_native().is_some_and(JsNativeError::is_type));
 }
 
@@ -197,7 +197,7 @@ fn materialization_refuses_a_foreign_cause_inside_an_aggregate() {
     let member = JsNativeError::range().with_cause(cause).into();
     let error = JsError::from_native(JsNativeError::aggregate(vec![member]));
 
-    let refusal = error.into_opaque(context).unwrap_err();
+    let refusal = error.into_opaque(context.access()).unwrap_err();
     assert!(refusal.as_native().is_some_and(JsNativeError::is_type));
 }
 
@@ -208,7 +208,7 @@ fn materialization_preserves_the_original_engine_error() {
     let cause = JsError::from_opaque(foreign.into());
     let error = JsError::from(PanicError::new("engine failure").with_source(cause));
 
-    assert_eq!(error.clone().into_opaque(context), Err(error));
+    assert_eq!(error.clone().into_opaque(context.access()), Err(error));
 }
 
 #[test]
@@ -220,13 +220,21 @@ fn materialization_preserves_a_local_aggregate_members_cause() {
         .into();
     let error = JsError::from_native(JsNativeError::aggregate(vec![member]));
 
-    let error = error.into_opaque(context).unwrap().as_object().unwrap();
-    let members = error.get(js_string!("errors"), context).unwrap();
-    let member = members.as_object().unwrap().get(0, context).unwrap();
+    let error = error
+        .into_opaque(context.access())
+        .unwrap()
+        .as_object()
+        .unwrap();
+    let members = error.get(js_string!("errors"), context.access()).unwrap();
+    let member = members
+        .as_object()
+        .unwrap()
+        .get(0, context.access())
+        .unwrap();
     let observed = member
         .as_object()
         .unwrap()
-        .get(js_string!("cause"), context);
+        .get(js_string!("cause"), context.access());
     assert_eq!(observed.unwrap(), cause.into());
 }
 
@@ -238,7 +246,7 @@ fn native_error_materialization_refuses_a_foreign_nested_cause() {
     let inner = JsNativeError::range().with_cause(cause);
     let error = JsNativeError::error().with_cause(inner);
 
-    let refusal = error.into_opaque(context).unwrap_err();
+    let refusal = error.into_opaque(context.access()).unwrap_err();
     assert!(refusal.as_native().is_some_and(JsNativeError::is_type));
 }
 
@@ -248,7 +256,10 @@ fn native_error_materialization_propagates_an_engine_error_in_an_aggregate() {
     let engine_error = JsError::from(PanicError::new("engine failure"));
     let aggregate = JsNativeError::aggregate(vec![engine_error.clone()]);
 
-    assert_eq!(aggregate.into_opaque(context).unwrap_err(), engine_error);
+    assert_eq!(
+        aggregate.into_opaque(context.access()).unwrap_err(),
+        engine_error
+    );
 }
 
 #[test]
@@ -270,9 +281,9 @@ fn scope_state_failure_stays_a_host_error_across_storage_and_erasure() {
         let restored = error.clone().into_stored().to_error();
         assert_eq!(restored, error);
         let context = &mut Context::default();
-        assert_eq!(restored.clone().into_opaque(context), Err(error));
+        assert_eq!(restored.clone().into_opaque(context.access()), Err(error));
         assert_eq!(
-            restored.into_erased(context).as_engine(),
+            restored.into_erased(context.access()).as_engine(),
             Some(&ErasedEngineError::ScopeAnalysis(failure))
         );
     }
@@ -330,7 +341,31 @@ fn invocation_authority_failures_remain_uncatchable_host_errors() {
         assert!(!error.is_catchable());
         assert_eq!(error.clone().into_stored().to_error(), error);
         let context = &mut Context::default();
-        assert_eq!(error.clone().into_opaque(context), Err(error.clone()));
-        assert_eq!(error.into_erased(context).as_engine(), Some(&erased));
+        assert_eq!(
+            error.clone().into_opaque(context.access()),
+            Err(error.clone())
+        );
+        assert_eq!(
+            error.into_erased(context.access()).as_engine(),
+            Some(&erased)
+        );
     }
+}
+
+#[test]
+fn context_access_busy_remains_uncatchable_through_storage_and_erasure() {
+    use crate::error::{EngineError, ErasedEngineError};
+
+    let error = JsError::from(EngineError::ContextAccessBusy);
+    assert!(!error.is_catchable());
+    assert_eq!(error.clone().into_stored().to_error(), error);
+    let context = &mut Context::default();
+    assert_eq!(
+        error.clone().into_opaque(context.access()),
+        Err(error.clone())
+    );
+    assert_eq!(
+        error.into_erased(context.access()).as_engine(),
+        Some(&ErasedEngineError::ContextAccessBusy)
+    );
 }

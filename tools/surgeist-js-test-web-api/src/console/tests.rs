@@ -3,19 +3,24 @@ use crate::test::{TestAction, run_test_actions, run_test_actions_with};
 use indoc::indoc;
 use std::{cell::RefCell, rc::Rc};
 use surgeist_js::gc::heap::Trace;
-use surgeist_js::{Context, JsError, JsResult, JsValue, js_string, property::Attribute};
+use surgeist_js::{
+    Context, ContextAccess, JsError, JsResult, JsValue, js_string, property::Attribute,
+};
 
 #[test]
 fn formatter_no_args_is_empty_string() {
     run_test_actions([TestAction::inspect_context(|ctx| {
-        assert_eq!(formatter(&[], ctx).unwrap(), "");
+        assert_eq!(formatter(&[], ctx.access()).unwrap(), "");
     })]);
 }
 
 #[test]
 fn formatter_empty_format_string_is_empty_string() {
     run_test_actions([TestAction::inspect_context(|ctx| {
-        assert_eq!(formatter(&[JsValue::new(js_string!())], ctx).unwrap(), "");
+        assert_eq!(
+            formatter(&[JsValue::new(js_string!())], ctx.access()).unwrap(),
+            ""
+        );
     })]);
 }
 
@@ -23,7 +28,7 @@ fn formatter_empty_format_string_is_empty_string() {
 fn formatter_format_without_args_renders_verbatim() {
     run_test_actions([TestAction::inspect_context(|ctx| {
         assert_eq!(
-            formatter(&[JsValue::new(js_string!("%d %s %% %f"))], ctx).unwrap(),
+            formatter(&[JsValue::new(js_string!("%d %s %% %f"))], ctx.access()).unwrap(),
             "%d %s %% %f"
         );
     })]);
@@ -39,7 +44,7 @@ fn formatter_empty_format_string_concatenates_rest_of_args() {
                     JsValue::new(js_string!("to powinno zostać")),
                     JsValue::new(js_string!("połączone")),
                 ],
-                ctx
+                ctx.access()
             )
             .unwrap(),
             " to powinno zostać połączone"
@@ -58,7 +63,7 @@ fn formatter_utf_8_checks() {
                     JsValue::new(1.23),
                     JsValue::new(js_string!("ł")),
                 ],
-                ctx
+                ctx.access()
             )
             .unwrap(),
             "Są takie chwile 123ą 1.23ą tułów %привет%ź"
@@ -75,7 +80,7 @@ fn formatter_trailing_format_leader_renders() {
                     JsValue::new(js_string!("%%%%%")),
                     JsValue::new(js_string!("|"))
                 ],
-                ctx
+                ctx.access()
             )
             .unwrap(),
             "%%% |"
@@ -88,7 +93,11 @@ fn formatter_trailing_format_leader_renders() {
 fn formatter_float_format_works() {
     run_test_actions([TestAction::inspect_context(|ctx| {
         assert_eq!(
-            formatter(&[JsValue::new(js_string!("%f")), JsValue::new(3.1415)], ctx).unwrap(),
+            formatter(
+                &[JsValue::new(js_string!("%f")), JsValue::new(3.1415)],
+                ctx.access()
+            )
+            .unwrap(),
             "3.141500"
         );
     })]);
@@ -97,7 +106,7 @@ fn formatter_float_format_works() {
 #[test]
 fn console_log_cyclic() {
     let mut context = Context::default();
-    let console = Console::init_with_logger(NullLogger, &mut context).unwrap();
+    let console = Console::init_with_logger(NullLogger, context.access()).unwrap();
     context
         .register_global_property(Console::NAME, console, Attribute::all())
         .unwrap();
@@ -121,21 +130,21 @@ pub(crate) struct RecordingLogger {
 }
 
 impl Logger for RecordingLogger {
-    fn log(&self, msg: String, state: &ConsoleState, _: &mut Context) -> JsResult<()> {
+    fn log(&self, msg: String, state: &ConsoleState, _: ContextAccess<'_>) -> JsResult<()> {
         use std::fmt::Write;
         let indent = state.indent();
         writeln!(self.log.borrow_mut(), "{msg:>indent$}").map_err(JsError::from_rust)
     }
 
-    fn info(&self, msg: String, state: &ConsoleState, context: &mut Context) -> JsResult<()> {
+    fn info(&self, msg: String, state: &ConsoleState, context: ContextAccess<'_>) -> JsResult<()> {
         self.log(msg, state, context)
     }
 
-    fn warn(&self, msg: String, state: &ConsoleState, context: &mut Context) -> JsResult<()> {
+    fn warn(&self, msg: String, state: &ConsoleState, context: ContextAccess<'_>) -> JsResult<()> {
         self.log(msg, state, context)
     }
 
-    fn error(&self, msg: String, state: &ConsoleState, context: &mut Context) -> JsResult<()> {
+    fn error(&self, msg: String, state: &ConsoleState, context: ContextAccess<'_>) -> JsResult<()> {
         self.log(msg, state, context)
     }
 }

@@ -180,20 +180,20 @@ impl RegExpStringIterator {
             }
 
             // iv. Let matchStr be ? ToString(? Get(match, "0")).
-            let m_str = m.get(0, context)?.to_string(context)?;
+            let m_str = m.get(0, context.access())?.to_string(context.access())?;
 
             // v. If matchStr is the empty String, then
             if m_str.is_empty() {
                 // 1. Let thisIndex be ℝ(? ToLength(? Get(R, "lastIndex"))).
                 let this_index = matcher
-                    .get(js_string!("lastIndex"), context)?
-                    .to_length(context)?;
+                    .get(js_string!("lastIndex"), context.access())?
+                    .to_length(context.access())?;
 
                 // 2. Let nextIndex be ! AdvanceStringIndex(S, thisIndex, fullUnicode).
                 let next_index = advance_string_index(string, this_index, unicode);
 
                 // 3. Perform ? Set(R, "lastIndex", 𝔽(nextIndex), true).
-                matcher.set(js_string!("lastIndex"), next_index, true, context)?;
+                matcher.set(js_string!("lastIndex"), next_index, true, context.access())?;
             }
 
             // vi. Perform ? Yield(match).

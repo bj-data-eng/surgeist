@@ -288,7 +288,7 @@ impl Test {
                         Err(err) => return (false, format!("Uncaught {err}")),
                     };
 
-                    let promise = module.load_link_evaluate(context);
+                    let promise = module.load_link_evaluate(context.access());
 
                     if let Err(err) = context.run_jobs() {
                         return (false, format!("Uncaught {err}"));
@@ -301,7 +301,7 @@ impl Test {
                         PromiseState::Fulfilled(v) => v,
                         PromiseState::Rejected(err) => {
                             let output = JsError::from_opaque(err.clone())
-                                .try_native(context)
+                                .try_native(context.access())
                                 .map_or_else(
                                     |_| format!("Uncaught {}", err.display()),
                                     |err| {
@@ -364,13 +364,13 @@ impl Test {
                 let context = &mut Context::default();
 
                 if self.is_module() {
-                    match Module::parse(source, None, context) {
+                    match Module::parse(source, None, context.access()) {
                         Ok(_) => (false, "ModuleItemList parsing should fail".to_owned()),
                         Err(e) => (true, format!("Uncaught {e}")),
                     }
                 } else {
                     context.strict(strict);
-                    match Script::parse(source, None, context) {
+                    match Script::parse(source, None, context.access()) {
                         Ok(_) => (false, "StatementList parsing should fail".to_owned()),
                         Err(e) => (true, format!("Uncaught {e}")),
                     }
@@ -391,7 +391,7 @@ impl Test {
                     Err(err) => return (false, format!("Uncaught {err}")),
                 };
 
-                let promise = module.load(context);
+                let promise = module.load(context.access());
 
                 if let Err(err) = context.run_jobs() {
                     return (false, format!("Uncaught {err}"));
@@ -413,7 +413,7 @@ impl Test {
                     }
                 }
 
-                if let Err(err) = module.link(context) {
+                if let Err(err) = module.link(context.access()) {
                     (
                         is_error_type(&err, error_type, context),
                         format!("Uncaught {err}"),
@@ -438,7 +438,7 @@ impl Test {
                         Err(err) => return (false, format!("Uncaught {err}")),
                     };
 
-                    let promise = module.load(context);
+                    let promise = module.load(context.access());
 
                     if let Err(err) = context.run_jobs() {
                         return (false, format!("Uncaught {err}"));
@@ -454,11 +454,11 @@ impl Test {
                         }
                     }
 
-                    if let Err(err) = module.link(context) {
+                    if let Err(err) = module.link(context.access()) {
                         return (false, format!("Uncaught {err}"));
                     }
 
-                    let promise = match module.evaluate(context) {
+                    let promise = match module.evaluate(context.access()) {
                         Ok(p) => p,
                         Err(err) => return (false, format!("Uncaught {err}")),
                     };
@@ -476,12 +476,12 @@ impl Test {
                     }
                 } else {
                     context.strict(strict);
-                    let script = match Script::parse(source, None, context) {
+                    let script = match Script::parse(source, None, context.access()) {
                         Ok(code) => code,
                         Err(e) => return (false, format!("Uncaught {e}")),
                     };
 
-                    match script.evaluate(context) {
+                    match script.evaluate(context.access()) {
                         Ok(_) => return (false, "Script execution should fail".to_owned()),
                         Err(e) => e,
                     }
@@ -544,12 +544,12 @@ impl Test {
         register_print_fn(&mut context, async_result.clone()).map_err(|e| e.to_string())?;
 
         // add the $262 object.
-        let _js262 = js262::register_js262(handles.clone(), console, &mut context)
+        let _js262 = js262::register_js262(handles.clone(), console, context.access())
             .map_err(|e| e.to_string())?;
 
         if console {
-            let console =
-                surgeist_js_test_host::Console::init(&mut context).map_err(|e| e.to_string())?;
+            let console = surgeist_js_test_host::Console::init(context.access())
+                .map_err(|e| e.to_string())?;
             context
                 .register_global_property(
                     surgeist_js_test_host::Console::NAME,
@@ -603,7 +603,7 @@ impl Test {
 
 /// Returns `true` if `error` is a `target_type` error.
 fn is_error_type(error: &JsError, target_type: ErrorType, context: &mut Context) -> bool {
-    if let Ok(error) = error.try_native(context) {
+    if let Ok(error) = error.try_native(context.access()) {
         match error.kind() {
             JsNativeErrorKind::Syntax if target_type == ErrorType::SyntaxError => {}
             JsNativeErrorKind::Reference if target_type == ErrorType::ReferenceError => {}
@@ -617,10 +617,10 @@ fn is_error_type(error: &JsError, target_type: ErrorType, context: &mut Context)
             .as_opaque()
             .expect("try_native cannot fail if e is not opaque")
             .as_object()
-            .and_then(|o| o.get(js_str!("constructor"), context).ok())
+            .and_then(|o| o.get(js_str!("constructor"), context.access()).ok())
             .as_ref()
             .and_then(JsValue::as_object)
-            .and_then(|o| o.get(js_str!("name"), context).ok())
+            .and_then(|o| o.get(js_str!("name"), context.access()).ok())
             .as_ref()
             .and_then(JsValue::as_string)
             .is_some_and(|s| s == target_type.as_str())
@@ -632,10 +632,10 @@ fn register_print_fn(context: &mut Context, async_result: AsyncResult) -> JsResu
     let js_function = FunctionObjectBuilder::new(
         context.realm(),
         NativeFunction::from_fn_with_captures(
-            |_, args, async_result, context| {
+            |_, args, async_result, mut context| {
                 let message = args
                     .get_or_undefined(0)
-                    .to_string(context)?
+                    .to_string(context.reborrow())?
                     .to_std_string_escaped();
                 let mut result = async_result.inner.borrow_mut();
 
@@ -672,7 +672,7 @@ fn parse_module_and_register(
     path: &Path,
     context: &mut Context,
 ) -> JsResult<Module> {
-    let module = Module::parse(source, None, context)?;
+    let module = Module::parse(source, None, context.access())?;
 
     let path = path
         .canonicalize()

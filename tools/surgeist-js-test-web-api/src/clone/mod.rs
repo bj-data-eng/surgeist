@@ -19,7 +19,7 @@ pub mod js_module {
     use super::StructuredCloneOptions;
     use crate::store::JsValueStore;
     use surgeist_js::value::TryIntoJs;
-    use surgeist_js::{Context, JsResult, JsValue};
+    use surgeist_js::{ContextAccess, JsResult, JsValue};
 
     /// The [`structuredClone()`][mdn] method of the Window interface creates a
     /// deep clone of a given value using the [structured clone algorithm][sca].
@@ -33,14 +33,14 @@ pub mod js_module {
     pub fn structured_clone(
         value: JsValue,
         options: Option<StructuredCloneOptions>,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
         let v = JsValueStore::try_from_js(
             &value,
-            context,
+            context.reborrow(),
             options.and_then(|o| o.transfer).unwrap_or_default(),
         )?;
-        v.try_into_js(context)
+        v.try_into_js(context.reborrow())
     }
 }
 
@@ -49,5 +49,5 @@ pub mod js_module {
 /// # Errors
 /// Return an error if the function is already registered.
 pub fn register(realm: Option<Realm>, context: &mut Context) -> JsResult<()> {
-    js_module::boa_register(realm, context)
+    js_module::boa_register(realm, context.access())
 }

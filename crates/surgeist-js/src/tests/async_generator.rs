@@ -2,8 +2,8 @@ use crate::{
     Context, JsValue, TestAction, builtins::promise::PromiseState, object::JsPromise,
     run_test_actions,
 };
-use surgeist_js_macros::js_str;
 use indoc::indoc;
+use surgeist_js_macros::js_str;
 
 #[track_caller]
 fn assert_promise_iter_value(
@@ -17,9 +17,9 @@ fn assert_promise_iter_value(
         panic!("promise was not fulfilled");
     };
     let o = v.as_object().unwrap();
-    let value = o.get(js_str!("value"), context).unwrap();
+    let value = o.get(js_str!("value"), context.access()).unwrap();
     let d = o
-        .get(js_str!("done"), context)
+        .get(js_str!("done"), context.access())
         .unwrap()
         .as_boolean()
         .unwrap();

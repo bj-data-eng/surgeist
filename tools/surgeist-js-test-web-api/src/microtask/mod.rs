@@ -10,14 +10,14 @@ mod tests;
 pub mod js_module {
     use surgeist_js::job::{Job, PromiseJob};
     use surgeist_js::object::builtins::JsFunction;
-    use surgeist_js::{Context, JsValue};
+    use surgeist_js::{ContextAccess, JsValue};
 
     /// The [`queueMicrotask()`][mdn] method of the `Window` interface queues a
     /// microtask to be executed at a safe time prior to control returning to
     /// the browser's event loop.
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/API/Window/queueMicrotask
-    pub fn queue_microtask(callback: JsFunction, context: &mut Context) {
+    pub fn queue_microtask(callback: JsFunction, mut context: ContextAccess<'_>) {
         context.enqueue_job(Job::from(PromiseJob::new(move |context| {
             callback.call(&JsValue::undefined(), &[], context)
         })));
@@ -29,5 +29,5 @@ pub mod js_module {
 /// # Errors
 /// Returns an error if the microtask extension cannot be registered.
 pub fn register(realm: Option<Realm>, context: &mut Context) -> JsResult<()> {
-    js_module::boa_register(realm, context)
+    js_module::boa_register(realm, context.access())
 }

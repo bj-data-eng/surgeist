@@ -190,11 +190,11 @@ impl Iterator {
         // 4. If desc is undefined, then
         if desc.is_none() {
             // a. Perform ? CreateDataPropertyOrThrow(this, p, v).
-            this_obj.create_data_property_or_throw(p, v.clone(), context)?;
+            this_obj.create_data_property_or_throw(p, v.clone(), context.access())?;
         } else {
             // 5. Else,
             //    a. Perform ? Set(this, p, v, true).
-            this_obj.set(p, v.clone(), true, context)?;
+            this_obj.set(p, v.clone(), true, context.access())?;
         }
 
         // 6. Return undefined.
@@ -223,7 +223,7 @@ impl Iterator {
         //    a. Let error be ThrowCompletion(a newly created TypeError object).
         //    b. Return ? IteratorClose(iterated, error).
         let mapper = args.get_or_undefined(0);
-        let Ok(mapper) = JsFunction::try_from_js(mapper, context) else {
+        let Ok(mapper) = JsFunction::try_from_js(mapper, context.access()) else {
             return iterated.close(
                 Err(js_error!(
                     TypeError: "Iterator.prototype.map: mapper is not callable"
@@ -264,7 +264,7 @@ impl Iterator {
         //    a. Let error be ThrowCompletion(a newly created TypeError object).
         //    b. Return ? IteratorClose(iterated, error).
         let predicate = args.get_or_undefined(0);
-        let Ok(predicate) = JsFunction::try_from_js(predicate, context) else {
+        let Ok(predicate) = JsFunction::try_from_js(predicate, context.access()) else {
             return iterated.close(
                 Err(js_error!(
                     TypeError: "Iterator.prototype.filter: predicate is not callable"
@@ -305,7 +305,8 @@ impl Iterator {
         // 4. Let numLimit be Completion(ToNumber(limit)).
         // 5. IfAbruptCloseIterator(numLimit, iterated).
         let limit = args.get_or_undefined(0);
-        let num_limit = if_abrupt_close_iterator!(limit.to_number(context), iterated, context);
+        let num_limit =
+            if_abrupt_close_iterator!(limit.to_number(context.access()), iterated, context);
 
         // 6. If numLimit is NaN, throw a RangeError exception.
         if num_limit.is_nan() {
@@ -368,7 +369,8 @@ impl Iterator {
         // 4. Let numLimit be Completion(ToNumber(limit)).
         // 5. IfAbruptCloseIterator(numLimit, iterated).
         let limit = args.get_or_undefined(0);
-        let num_limit = if_abrupt_close_iterator!(limit.to_number(context), iterated, context);
+        let num_limit =
+            if_abrupt_close_iterator!(limit.to_number(context.access()), iterated, context);
 
         // 6. If numLimit is NaN, throw a RangeError exception.
         if num_limit.is_nan() {
@@ -431,7 +433,7 @@ impl Iterator {
         //    a. Let error be ThrowCompletion(a newly created TypeError object).
         //    b. Return ? IteratorClose(iterated, error).
         let mapper = args.get_or_undefined(0);
-        let Ok(mapper) = JsFunction::try_from_js(mapper, context) else {
+        let Ok(mapper) = JsFunction::try_from_js(mapper, context.access()) else {
             return iterated.close(
                 Err(js_error!(
                     TypeError: "Iterator.prototype.flatMap: mapper is not callable"
@@ -578,7 +580,7 @@ impl Iterator {
             let result = reducer.call(
                 &JsValue::undefined(),
                 &[accumulator, value, JsValue::new(counter)],
-                context,
+                context.access(),
             );
 
             // d. IfAbruptCloseIterator(result, iterated).
@@ -659,7 +661,7 @@ impl Iterator {
             let result = func.call(
                 &JsValue::undefined(),
                 &[value, JsValue::new(counter)],
-                context,
+                context.access(),
             );
 
             // d. IfAbruptCloseIterator(result, iterated).
@@ -714,7 +716,7 @@ impl Iterator {
             let result = predicate.call(
                 &JsValue::undefined(),
                 &[value, JsValue::new(counter)],
-                context,
+                context.access(),
             );
             // d. IfAbruptCloseIterator(result, iterated).
             let result = if_abrupt_close_iterator!(result, iterated, context);
@@ -774,7 +776,7 @@ impl Iterator {
             let result = predicate.call(
                 &JsValue::undefined(),
                 &[value, JsValue::new(counter)],
-                context,
+                context.access(),
             );
             // d. IfAbruptCloseIterator(result, iterated).
             let result = if_abrupt_close_iterator!(result, iterated, context);
@@ -833,7 +835,7 @@ impl Iterator {
             let result = predicate.call(
                 &JsValue::undefined(),
                 &[value.clone(), JsValue::new(counter)],
-                context,
+                context.access(),
             );
 
             // d. IfAbruptCloseIterator(result, iterated).

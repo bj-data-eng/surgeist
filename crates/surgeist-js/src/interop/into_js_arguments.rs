@@ -1,8 +1,9 @@
+use crate::ContextAccess;
 use std::{
     cell::{Ref, RefMut},
     ops::Deref,
 };
-use surgeist_js::{Context, JsNativeError, JsObject, JsResult, JsValue, NativeObject};
+use surgeist_js::{JsNativeError, JsObject, JsResult, JsValue, NativeObject};
 use surgeist_js::{class::Class, value::TryFromJs};
 
 /// Create a Rust value from a JS argument. This trait is used to
@@ -17,7 +18,7 @@ pub trait TryFromJsArgument<'a>: Sized {
     fn try_from_js_argument(
         this: &'a JsValue,
         rest: &'a [JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<(Self, &'a [JsValue])>;
 }
 
@@ -25,11 +26,11 @@ impl<'a, T: TryFromJs> TryFromJsArgument<'a> for T {
     fn try_from_js_argument(
         _: &'a JsValue,
         rest: &'a [JsValue],
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<(Self, &'a [JsValue])> {
         match rest.split_first() {
-            Some((first, rest)) => Ok((first.try_js_into(context)?, rest)),
-            None => T::try_from_js(&JsValue::undefined(), context).map(|v| (v, rest)),
+            Some((first, rest)) => Ok((first.try_js_into(context.reborrow())?, rest)),
+            None => T::try_from_js(&JsValue::undefined(), context.reborrow()).map(|v| (v, rest)),
         }
     }
 }
@@ -43,7 +44,7 @@ impl<'a> TryFromJsArgument<'a> for Ignore {
     fn try_from_js_argument(
         _this: &'a JsValue,
         rest: &'a [JsValue],
-        _: &mut Context,
+        _: ContextAccess<'_>,
     ) -> JsResult<(Self, &'a [JsValue])> {
         Ok((Ignore, &rest[1..]))
     }
@@ -56,12 +57,12 @@ impl<'a> TryFromJsArgument<'a> for Ignore {
 ///
 /// For example,
 /// ```
-/// # use surgeist_js::{Context, JsValue, IntoJsFunction};
+/// # use surgeist_js::{Context, ContextAccess, JsValue, IntoJsFunction};
 /// # use surgeist_js::interop::JsRest;
 /// # let mut context = Context::default();
-/// let sums: fn(JsRest<'_>, &mut Context) -> i32 = |args, context| {
+/// let sums: fn(JsRest<'_>, ContextAccess<'_>) -> i32 = |args, mut context| {
 ///     args.iter()
-///         .map(|i| i.try_js_into::<i32>(context).unwrap())
+///         .map(|i| i.try_js_into::<i32>(context.reborrow()).unwrap())
 ///         .sum::<i32>()
 /// };
 /// let sums = sums.into_js_function();
@@ -70,7 +71,7 @@ impl<'a> TryFromJsArgument<'a> for Ignore {
 ///     .call(
 ///         &JsValue::undefined(),
 ///         &[JsValue::from(1), JsValue::from(2), JsValue::from(3)],
-///         &mut context,
+///         context.access(),
 ///     )
 ///     .unwrap();
 /// assert_eq!(result, JsValue::new(6));
@@ -131,10 +132,10 @@ impl<'a> IntoIterator for JsRest<'a> {
 ///
 /// For example,
 /// ```
-/// # use surgeist_js::{Context, JsValue, IntoJsFunction};
+/// # use surgeist_js::{Context, ContextAccess, JsValue, IntoJsFunction};
 /// # use surgeist_js::interop::JsAll;
 /// # let mut context = Context::default();
-/// let sums: fn(JsAll<i32>, &mut Context) -> i32 = |args, _context| {
+/// let sums: fn(JsAll<i32>, ContextAccess<'_>) -> i32 = |args, _context| {
 ///     args.iter().sum()
 /// };
 /// let sums = sums.into_js_function();
@@ -149,7 +150,7 @@ impl<'a> IntoIterator for JsRest<'a> {
 ///             JsValue::from(true),
 ///             JsValue::from(4),
 ///         ],
-///         &mut context,
+///         context.access(),
 ///     )
 ///     .unwrap();
 /// assert_eq!(result, JsValue::new(6));
@@ -191,12 +192,12 @@ impl<'a, T: TryFromJs> TryFromJsArgument<'a> for JsAll<T> {
     fn try_from_js_argument(
         _this: &'a JsValue,
         mut rest: &'a [JsValue],
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<(Self, &'a [JsValue])> {
         let mut values = Vec::new();
 
         while !rest.is_empty() {
-            match rest[0].try_js_into(context) {
+            match rest[0].try_js_into(context.reborrow()) {
                 Ok(value) => {
                     values.push(value);
                     rest = &rest[1..];
@@ -218,9 +219,9 @@ impl<'a, T: TryFromJs> TryFromJsArgument<'a> for JsThis<T> {
     fn try_from_js_argument(
         this: &'a JsValue,
         rest: &'a [JsValue],
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<(Self, &'a [JsValue])> {
-        Ok((JsThis(this.try_js_into(context)?), rest))
+        Ok((JsThis(this.try_js_into(context.reborrow())?), rest))
     }
 }
 
@@ -275,7 +276,7 @@ impl<T: NativeObject> JsClass<T> {
     /// use surgeist_js::interop::{JsClass, TryFromJsArgument};
     /// use surgeist_js::object::builtins::JsArrayBuffer;
     /// let mut context = Context::default();
-    /// let this = JsValue::from(JsArrayBuffer::new(8, &mut context).unwrap());
+    /// let this = JsValue::from(JsArrayBuffer::new(8, context.access()).unwrap());
     /// let (class, _) = JsClass::<ArrayBuffer>::try_from_js_argument(&this, &[], &mut context).unwrap();
     /// let _ = class.borrow_mut();
     /// ```
@@ -304,7 +305,7 @@ impl<'a, T: NativeObject + 'static> TryFromJsArgument<'a> for JsClass<T> {
     fn try_from_js_argument(
         this: &'a JsValue,
         rest: &'a [JsValue],
-        _context: &mut Context,
+        _context: ContextAccess<'_>,
     ) -> JsResult<(Self, &'a [JsValue])> {
         let inner = this
             .as_object()
@@ -315,7 +316,7 @@ impl<'a, T: NativeObject + 'static> TryFromJsArgument<'a> for JsClass<T> {
     }
 }
 
-/// Captures a [`ContextData`] data from the [`Context`] as a JS function argument,
+/// Captures a [`ContextData`] data from the [`crate::Context`] as a JS function argument,
 /// based on its type.
 ///
 /// The host defined type must implement [`Clone`], otherwise the borrow
@@ -339,7 +340,7 @@ impl<'a, T: NativeObject + 'static> TryFromJsArgument<'a> for JsClass<T> {
 /// let f = f.into_js_function();
 ///
 /// assert_eq!(
-///     f.call(&JsValue::undefined(), &[], &mut context),
+///     f.call(&JsValue::undefined(), &[], context.access()),
 ///     Ok(JsValue::new(124))
 /// );
 /// ```
@@ -350,7 +351,7 @@ impl<'a, T: NativeObject + Clone> TryFromJsArgument<'a> for ContextData<T> {
     fn try_from_js_argument(
         _this: &'a JsValue,
         rest: &'a [JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<(Self, &'a [JsValue])> {
         match context.get_data::<T>() {
             Some(value) => Ok((ContextData(value.clone()), rest)),

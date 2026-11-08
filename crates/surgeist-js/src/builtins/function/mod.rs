@@ -507,11 +507,11 @@ impl BuiltInFunctionObject {
             // 8. For each element arg of parameterArgs, do
             for param in params {
                 // a. Append ? ToString(arg) to parameterStrings.
-                parameters.push(param.to_string(context)?);
+                parameters.push(param.to_string(context.access())?);
             }
 
             // 9. Let bodyString be ? ToString(bodyArg).
-            let body = body.to_string(context)?;
+            let body = body.to_string(context.access())?;
 
             (body, parameters)
         } else {
@@ -521,7 +521,7 @@ impl BuiltInFunctionObject {
 
         context
             .host_hooks()
-            .ensure_can_compile_strings(current_realm, &param_list, &body, false, context)
+            .ensure_can_compile_strings(current_realm, &param_list, &body, false, context.access())
             .map_err(|error| context.runtime().admit_error(error))?;
 
         let mut interner = Interner::new();
@@ -827,7 +827,7 @@ impl BuiltInFunctionObject {
             // TODO?: 3.a. PrepareForTailCall
 
             // b. Return ? Call(func, thisArg).
-            return func.call(this_arg, &[], context);
+            return func.call(this_arg, &[], context.access());
         }
 
         // 4. Let argList be ? CreateListFromArrayLike(argArray).
@@ -837,7 +837,7 @@ impl BuiltInFunctionObject {
         // TODO?: 5. PrepareForTailCall
 
         // 6. Return ? Call(func, thisArg, argList).
-        func.call(this_arg, &arg_list, context)
+        func.call(this_arg, &arg_list, context.access())
     }
 
     /// `Function.prototype.bind ( thisArg, ...args )`
@@ -865,21 +865,21 @@ impl BuiltInFunctionObject {
         let arg_count = bound_args.len() as i64;
 
         // 3. Let F be ? BoundFunctionCreate(Target, thisArg, args).
-        let f = BoundFunction::create(target.clone(), this_arg, bound_args, context)?;
+        let f = BoundFunction::create(target.clone(), this_arg, bound_args, context.access())?;
 
         // 4. Let L be 0.
         let mut l = JsValue::new(0);
 
         // 5. Let targetHasLength be ? HasOwnProperty(Target, "length").
         // 6. If targetHasLength is true, then
-        if target.has_own_property(StaticJsStrings::LENGTH, context)? {
+        if target.has_own_property(StaticJsStrings::LENGTH, context.access())? {
             // a. Let targetLen be ? Get(Target, "length").
-            let target_len = target.get(StaticJsStrings::LENGTH, context)?;
+            let target_len = target.get(StaticJsStrings::LENGTH, context.access())?;
             // b. If Type(targetLen) is Number, then
             if target_len.is_number() {
                 // 1. Let targetLenAsInt be ! ToIntegerOrInfinity(targetLen).
                 match target_len
-                    .to_integer_or_infinity(context)
+                    .to_integer_or_infinity(context.access())
                     .js_expect("to_integer_or_infinity cannot fail for a number")?
                 {
                     // i. If targetLen is +∞𝔽, set L to +∞.
@@ -905,12 +905,12 @@ impl BuiltInFunctionObject {
                 .writable(false)
                 .enumerable(false)
                 .configurable(true),
-            context,
+            context.access(),
         )
         .js_expect("defining the `length` property for a new object should not fail")?;
 
         // 8. Let targetName be ? Get(Target, "name").
-        let target_name = target.get(js_string!("name"), context)?;
+        let target_name = target.get(js_string!("name"), context.access())?;
 
         // 9. If Type(targetName) is not String, set targetName to the empty String.
         let target_name = target_name.as_string().unwrap_or_default();
@@ -944,7 +944,7 @@ impl BuiltInFunctionObject {
         // TODO?: 3. Perform PrepareForTailCall
 
         // 4. Return ? Call(func, thisArg, args).
-        func.call(this_arg, args.get(1..).unwrap_or(&[]), context)
+        func.call(this_arg, args.get(1..).unwrap_or(&[]), context.access())
     }
 
     /// `Function.prototype.toString()`
@@ -980,11 +980,11 @@ impl BuiltInFunctionObject {
             let name = {
                 // Is there a case here where if there is no name field on a value
                 // name should default to None? Do all functions have names set?
-                let value = object.get(js_string!("name"), &mut *context)?;
+                let value = object.get(js_string!("name"), context.access())?;
                 if value.is_null_or_undefined() {
                     js_string!()
                 } else {
-                    value.to_string(context)?
+                    value.to_string(context.access())?
                 }
             };
             return Ok(
@@ -1020,7 +1020,10 @@ impl BuiltInFunctionObject {
     fn has_instance(this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         // 1. Let F be the this value.
         // 2. Return ? OrdinaryHasInstance(F, V).
-        Ok(JsValue::ordinary_has_instance(this, args.get_or_undefined(0), context)?.into())
+        Ok(
+            JsValue::ordinary_has_instance(this, args.get_or_undefined(0), context.access())?
+                .into(),
+        )
     }
 
     #[allow(clippy::unnecessary_wraps)]
@@ -1083,7 +1086,7 @@ pub(crate) fn set_function_name(
                 .writable(false)
                 .enumerable(false)
                 .configurable(true),
-            context,
+            context.access(),
         )
         .js_expect("defining the `name` property must not fail per the spec")?;
 
@@ -1198,7 +1201,7 @@ pub(crate) fn function_call(
             ThisBindingStatus::initialized(this)
         } else {
             let this: JsValue = this
-                .to_object(context)
+                .to_object(context.access())
                 .js_expect("conversion cannot fail")?
                 .into();
             context.vm.frame_mut().flags |= CallFrameFlags::THIS_VALUE_CACHED;

@@ -1146,7 +1146,7 @@ impl PlainDate {
         // 3. If item is an Object, then
         let (timezone, time) = if let Some(obj) = item.as_object() {
             // a. Let timeZoneLike be ? Get(item, "timeZone").
-            let time_zone_like = obj.get(js_string!("timeZone"), context)?;
+            let time_zone_like = obj.get(js_string!("timeZone"), context.access())?;
             // b. If timeZoneLike is undefined, then
             if time_zone_like.is_undefined() {
                 // i. Let timeZone be ? ToTemporalTimeZoneIdentifier(item).
@@ -1161,7 +1161,7 @@ impl PlainDate {
                 let tz = to_temporal_timezone_identifier(&time_zone_like, context)?;
                 // ii. Let temporalTime be ? Get(item, "plainTime").
                 let plain_time = obj
-                    .get(js_string!("plainTime"), context)?
+                    .get(js_string!("plainTime"), context.access())?
                     .map(|v| to_temporal_time(v, None, context))
                     .transpose()?;
 
@@ -1411,7 +1411,7 @@ pub(crate) fn to_calendar_fields(
     context: &mut Context,
 ) -> JsResult<CalendarFields> {
     let day = obj
-        .get(js_string!("day"), context)?
+        .get(js_string!("day"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             finite
@@ -1427,9 +1427,9 @@ pub(crate) fn to_calendar_fields(
         (None, None)
     } else {
         let era = obj
-            .get(js_string!("era"), context)?
+            .get(js_string!("era"), context.access())?
             .map(|v| {
-                let v = v.to_primitive(context, crate::value::PreferredType::String)?;
+                let v = v.to_primitive(context.access(), crate::value::PreferredType::String)?;
                 let Some(era) = v.as_string() else {
                     return Err(JsError::from(
                         JsNativeError::typ()
@@ -1442,7 +1442,7 @@ pub(crate) fn to_calendar_fields(
             })
             .transpose()?;
         let era_year = obj
-            .get(js_string!("eraYear"), context)?
+            .get(js_string!("eraYear"), context.access())?
             .map(|v| {
                 let finite = v.to_finitef64(context)?;
                 Ok::<i32, JsError>(finite.as_integer_with_truncation::<i32>())
@@ -1451,7 +1451,7 @@ pub(crate) fn to_calendar_fields(
         (era, era_year)
     };
     let month = obj
-        .get(js_string!("month"), context)?
+        .get(js_string!("month"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             finite
@@ -1460,9 +1460,9 @@ pub(crate) fn to_calendar_fields(
         })
         .transpose()?;
     let month_code = obj
-        .get(js_string!("monthCode"), context)?
+        .get(js_string!("monthCode"), context.access())?
         .map(|v| {
-            let v = v.to_primitive(context, crate::value::PreferredType::String)?;
+            let v = v.to_primitive(context.access(), crate::value::PreferredType::String)?;
             let Some(month_code) = v.as_string() else {
                 return Err(JsNativeError::typ()
                     .with_message("The monthCode field value must be a string.")
@@ -1472,7 +1472,7 @@ pub(crate) fn to_calendar_fields(
         })
         .transpose()?;
     let year = obj
-        .get(js_string!("year"), context)?
+        .get(js_string!("year"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             Ok::<i32, JsError>(finite.as_integer_with_truncation::<i32>())

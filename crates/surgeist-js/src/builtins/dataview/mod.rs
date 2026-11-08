@@ -219,7 +219,7 @@ impl BuiltInConstructor for DataView {
             .ok_or_else(|| JsNativeError::typ().with_message("buffer must be an ArrayBuffer"))?;
 
         // 3. Let offset be ? ToIndex(byteOffset).
-        let offset = args.get_or_undefined(1).to_index(context)?;
+        let offset = args.get_or_undefined(1).to_index(context.access())?;
 
         let (buf_byte_len, is_fixed_len) = {
             let buffer = buffer.as_buffer();
@@ -256,7 +256,7 @@ impl BuiltInConstructor for DataView {
         } else {
             // 9. Else,
             //     a. Let viewByteLength be ? ToIndex(byteLength).
-            let byte_len = byte_len.to_index(context)?;
+            let byte_len = byte_len.to_index(context.access())?;
 
             //     b. If offset + viewByteLength > bufferByteLength, throw a RangeError exception.
             if offset + byte_len > buf_byte_len {
@@ -461,7 +461,7 @@ impl DataView {
             .ok_or_else(|| JsNativeError::typ().with_message("`this` is not a DataView"))?;
 
         // 3. Let getIndex be ? ToIndex(requestIndex).
-        let get_index = request_index.to_index(context)?;
+        let get_index = request_index.to_index(context.access())?;
 
         // 4. Set isLittleEndian to ToBoolean(isLittleEndian).
         let is_little_endian = is_little_endian.to_boolean();
@@ -794,7 +794,7 @@ impl DataView {
             .ok_or_else(|| JsNativeError::typ().with_message("`this` is not a DataView"))?;
 
         // 3. Let getIndex be ? ToIndex(requestIndex).
-        let get_index = request_index.to_index(context)?;
+        let get_index = request_index.to_index(context.access())?;
 
         // 4. If IsBigIntElementType(type) is true, let numberValue be ? ToBigInt(value).
         // 5. Otherwise, let numberValue be ? ToNumber(value).

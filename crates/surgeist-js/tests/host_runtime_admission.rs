@@ -6,7 +6,7 @@ use std::{
 };
 
 use surgeist_js::{
-    Context, JsError, JsNativeError, JsNativeErrorKind, JsObject, JsString, JsValue,
+    Context, ContextAccess, JsError, JsNativeError, JsNativeErrorKind, JsObject, JsString, JsValue,
     NativeFunction, Source,
     builtins::{
         error::{Error, ErrorKind},
@@ -37,11 +37,11 @@ fn native_call_and_construct_keep_arguments_ordered_and_rooted_during_reentry() 
         .register_global_callable(
             js_string!("captureArguments"),
             0,
-            NativeFunction::from_fn_ptr(|_, args, context| {
+            NativeFunction::from_fn_ptr(|_, args, mut context| {
                 let nested = context.eval(Source::from_bytes("Math.max(2, 7, 3)"))?;
                 assert_eq!(nested, 7.into());
                 context.runtime().collect().unwrap();
-                Ok(JsArray::from_iter(args.iter().cloned(), context)?.into())
+                Ok(JsArray::from_iter(args.iter().cloned(), context.reborrow())?.into())
             }),
         )
         .unwrap();
@@ -83,7 +83,7 @@ fn native_call_and_construct_restore_the_caller_after_a_callback_switches_realms
         let function = FunctionObjectBuilder::new(
             target,
             NativeFunction::from_fn_with_captures(
-                |_, args, (target, destination), context| {
+                |_, args, (target, destination), mut context| {
                     assert!(context.realm() == target);
                     let object = context.global_object();
                     context.enter_realm(destination.clone())?;
@@ -105,9 +105,11 @@ fn native_call_and_construct_restore_the_caller_after_a_callback_switches_realms
         for construct in [false, true] {
             let mut invoke = |args: &[JsValue]| {
                 let result = if construct {
-                    object.construct(args, None, &mut context).map(Into::into)
+                    object
+                        .construct(args, None, context.access())
+                        .map(Into::into)
                 } else {
-                    object.call(&JsValue::undefined(), args, &mut context)
+                    object.call(&JsValue::undefined(), args, context.access())
                 };
                 assert!(context.realm() == &caller);
                 result
@@ -116,7 +118,7 @@ fn native_call_and_construct_restore_the_caller_after_a_callback_switches_realms
             let error = invoke(&[JsValue::undefined()]).unwrap_err();
             assert_eq!(error.as_native().unwrap().message(), "callback failed");
             let error = error
-                .into_opaque(&mut context)
+                .into_opaque(context.access())
                 .unwrap()
                 .as_object()
                 .unwrap();
@@ -138,12 +140,12 @@ fn a_cold_script_retains_its_literal_in_a_fresh_peer_context() {
     let script = Script::parse(
         Source::from_bytes("'surgeist-owner-literal'"),
         None,
-        &mut owner,
+        owner.access(),
     )
     .unwrap();
 
     assert_eq!(
-        script.evaluate(&mut peer).unwrap(),
+        script.evaluate(peer.access()).unwrap(),
         JsValue::from(js_string!("surgeist-owner-literal"))
     );
 }
@@ -157,13 +159,13 @@ fn a_peer_cannot_substitute_another_literal_in_a_cold_script() {
     let script = Script::parse(
         Source::from_bytes("'surgeist-owner-literal'"),
         None,
-        &mut owner,
+        owner.access(),
     )
     .unwrap();
 
     for context in [&mut peer, &mut owner] {
         assert_eq!(
-            script.evaluate(context).unwrap(),
+            script.evaluate(context.access()).unwrap(),
             JsValue::from(js_string!("surgeist-owner-literal"))
         );
     }
@@ -174,18 +176,18 @@ fn a_cached_script_reuses_code_only_within_its_runtime() {
     let mut owner = Context::default();
     let mut peer = peer_context(&owner);
     let mut foreign = Context::default();
-    let script = Script::parse(Source::from_bytes("42"), None, &mut owner).unwrap();
+    let script = Script::parse(Source::from_bytes("42"), None, owner.access()).unwrap();
 
-    let code = script.codeblock(&mut owner).unwrap();
+    let code = script.codeblock(owner.access()).unwrap();
     drop(owner);
     peer.runtime().collect().unwrap();
 
-    let error = script.codeblock(&mut foreign).unwrap_err();
+    let error = script.codeblock(foreign.access()).unwrap_err();
     let native = error.as_native().expect("a native runtime admission error");
     assert_eq!(native.kind(), &JsNativeErrorKind::Type);
     assert_eq!(native.message(), "script belongs to a different runtime");
-    assert!(Rc::ptr_eq(&code, &script.codeblock(&mut peer).unwrap()));
-    assert_eq!(script.evaluate(&mut peer).unwrap(), 42.into());
+    assert!(Rc::ptr_eq(&code, &script.codeblock(peer.access()).unwrap()));
+    assert_eq!(script.evaluate(peer.access()).unwrap(), 42.into());
 }
 
 #[test]
@@ -211,22 +213,22 @@ fn separate_contexts_parsing_in_one_realm_get_distinct_template_objects() {
     let alpha = Script::parse(
         Source::from_bytes("(parts => parts)`surgeist-alpha`"),
         None,
-        &mut owner,
+        owner.access(),
     )
     .unwrap();
     let beta = Script::parse(
         Source::from_bytes("(parts => parts)`surgeist-beta`"),
         None,
-        &mut peer,
+        peer.access(),
     )
     .unwrap();
-    let first = alpha.evaluate(&mut owner).unwrap();
-    let second = beta.evaluate(&mut peer).unwrap();
+    let first = alpha.evaluate(owner.access()).unwrap();
+    let second = beta.evaluate(peer.access()).unwrap();
     assert_ne!(first, second);
-    assert_eq!(alpha.evaluate(&mut owner).unwrap(), first);
-    assert_eq!(beta.evaluate(&mut peer).unwrap(), second);
+    assert_eq!(alpha.evaluate(owner.access()).unwrap(), first);
+    assert_eq!(beta.evaluate(peer.access()).unwrap(), second);
     assert_eq!(
-        second.as_object().unwrap().get(0, &mut peer).unwrap(),
+        second.as_object().unwrap().get(0, peer.access()).unwrap(),
         JsValue::from(js_string!("surgeist-beta"))
     );
 }
@@ -240,16 +242,16 @@ fn script_preparation_defers_explicit_realm_bindings_until_evaluation() {
     let script = Script::parse(
         Source::from_bytes("let surgeistExplicitRealmBinding = 11; surgeistExplicitRealmBinding"),
         Some(target.clone()),
-        &mut context,
+        context.access(),
     )
     .unwrap();
 
     assert!(!initial.scope().has_binding(&name));
     assert!(!target.scope().has_binding(&name));
-    script.codeblock(&mut context).unwrap();
+    script.codeblock(context.access()).unwrap();
     assert!(!initial.scope().has_binding(&name));
     assert!(!target.scope().has_binding(&name));
-    assert_eq!(script.evaluate(&mut context).unwrap(), 11.into());
+    assert_eq!(script.evaluate(context.access()).unwrap(), 11.into());
     assert!(!initial.scope().has_binding(&name));
     assert!(target.scope().has_binding(&name));
 }
@@ -291,7 +293,7 @@ fn dropping_the_last_context_removes_its_pending_atomic_waiter() {
             .job_executor(executor.clone())
             .build()
             .unwrap();
-        let buffer = JsSharedArrayBuffer::new(4, &mut waiting).unwrap();
+        let buffer = JsSharedArrayBuffer::new(4, waiting.access()).unwrap();
         let backing = buffer.inner();
         waiting
             .register_global_property(js_string!("buffer"), buffer, Attribute::all())
@@ -308,7 +310,7 @@ fn dropping_the_last_context_removes_its_pending_atomic_waiter() {
     };
 
     let mut observer = Context::builder().job_executor(executor).build().unwrap();
-    let buffer = JsSharedArrayBuffer::from_buffer(backing, &mut observer);
+    let buffer = JsSharedArrayBuffer::from_buffer(backing, observer.access());
     observer
         .register_global_property(js_string!("buffer"), buffer, Attribute::all())
         .unwrap();
@@ -370,7 +372,7 @@ fn dropping_a_direct_executor_releases_job_captures() {
             Ok(JsValue::undefined())
         })
         .into(),
-        &mut context,
+        context.access(),
     );
     assert!(dropped.get());
 }
@@ -408,7 +410,7 @@ fn dynamic_function_host_hook_receives_coerced_fragments_before_parsing() {
             parameters: &[JsString],
             body: &JsString,
             direct: bool,
-            _: &mut Context,
+            _: ContextAccess<'_>,
         ) -> surgeist_js::JsResult<()> {
             assert_eq!(parameters, &[js_string!("π"), js_string!("")]);
             assert_eq!(body, &js_string!("return @"));
@@ -450,7 +452,7 @@ fn compile_hook_engine_panic_remains_uncatchable_with_a_foreign_diagnostic() {
             _: &[JsString],
             _: &JsString,
             _: bool,
-            _: &mut Context,
+            _: ContextAccess<'_>,
         ) -> surgeist_js::JsResult<()> {
             Err(self.0.clone())
         }
@@ -487,7 +489,7 @@ fn aggregate_conversion_preserves_an_engine_member_with_a_foreign_diagnostic() {
     let diagnostic = JsError::from_opaque(foreign.global_object().into());
     let engine = EngineError::from(PanicError::new("aggregate panic").with_source(diagnostic));
     let error = JsNativeError::aggregate(vec![engine.clone().into()])
-        .into_opaque(&mut context)
+        .into_opaque(context.access())
         .unwrap_err();
     assert_eq!(error.as_engine(), Some(&engine));
 }
@@ -513,19 +515,19 @@ fn failed_aggregate_conversion_leaves_existing_error_stack_unmodified() {
         .unwrap_err();
     assert!(
         retained
-            .get(js_string!("stack"), &mut context)
+            .get(js_string!("stack"), context.access())
             .unwrap()
             .is_undefined()
     );
 
     let engine = EngineError::from(PanicError::new("unmaterializable member"));
     let error = JsNativeError::aggregate(vec![thrown, engine.clone().into()])
-        .into_opaque(&mut context)
+        .into_opaque(context.access())
         .unwrap_err();
     assert_eq!(error.as_engine(), Some(&engine));
     assert!(
         retained
-            .get(js_string!("stack"), &mut context)
+            .get(js_string!("stack"), context.access())
             .unwrap()
             .is_undefined()
     );
@@ -535,20 +537,20 @@ fn next_value(iterator: JsValue, context: &mut Context) -> JsValue {
     let next = iterator
         .as_object()
         .unwrap()
-        .get(js_string!("next"), context)
+        .get(js_string!("next"), context.access())
         .unwrap()
         .as_callable()
         .unwrap();
     let result = next
-        .call(&iterator, &[], context)
+        .call(&iterator, &[], context.access())
         .unwrap()
         .as_object()
         .unwrap();
     assert_eq!(
-        result.get(js_string!("done"), context).unwrap(),
+        result.get(js_string!("done"), context.access()).unwrap(),
         false.into()
     );
-    result.get(js_string!("value"), context).unwrap()
+    result.get(js_string!("value"), context.access()).unwrap()
 }
 
 #[test]
@@ -557,11 +559,11 @@ fn array_values_refuses_a_foreign_receiver_and_iterates_in_a_peer_context() {
     let mut peer = peer_context(&owner);
     let mut foreign = Context::default();
     let element: JsValue = JsObject::with_null_proto(owner.runtime()).into();
-    let array = JsArray::from_iter([element.clone()], &mut owner).unwrap();
+    let array = JsArray::from_iter([element.clone()], owner.access()).unwrap();
 
-    assert_foreign_runtime(array.values(&mut foreign).unwrap_err());
+    assert_foreign_runtime(array.values(foreign.access()).unwrap_err());
 
-    let iterator = array.values(&mut peer).unwrap();
+    let iterator = array.values(peer.access()).unwrap();
     assert_eq!(next_value(iterator, &mut peer), element);
 }
 
@@ -570,20 +572,20 @@ fn array_with_refuses_a_foreign_replacement_and_retains_a_peer_replacement() {
     let mut owner = Context::default();
     let mut peer = peer_context(&owner);
     let foreign = Context::default();
-    let array = JsArray::from_iter([1.into(), 2.into()], &mut owner).unwrap();
+    let array = JsArray::from_iter([1.into(), 2.into()], owner.access()).unwrap();
 
     let foreign_replacement = JsObject::with_null_proto(foreign.runtime());
     assert_foreign_runtime(
         array
-            .with(1, foreign_replacement.into(), &mut owner)
+            .with(1, foreign_replacement.into(), owner.access())
             .unwrap_err(),
     );
 
     let replacement: JsValue = JsObject::with_null_proto(peer.runtime()).into();
-    let copy = array.with(1, replacement.clone(), &mut peer).unwrap();
-    assert_eq!(array.get(1, &mut owner).unwrap(), 2.into());
-    assert_eq!(copy.get(0, &mut peer).unwrap(), 1.into());
-    assert_eq!(copy.get(1, &mut peer).unwrap(), replacement);
+    let copy = array.with(1, replacement.clone(), peer.access()).unwrap();
+    assert_eq!(array.get(1, owner.access()).unwrap(), 2.into());
+    assert_eq!(copy.get(0, peer.access()).unwrap(), 1.into());
+    assert_eq!(copy.get(1, peer.access()).unwrap(), replacement);
 }
 
 #[test]
@@ -591,26 +593,26 @@ fn typed_array_iterators_refuse_a_foreign_receiver_and_iterate_in_a_peer_context
     let mut owner = Context::default();
     let mut peer = peer_context(&owner);
     let mut foreign = Context::default();
-    let array = JsUint8Array::from_iter([19], &mut owner).unwrap();
+    let array = JsUint8Array::from_iter([19], owner.access()).unwrap();
 
     for make_iterator in [
-        JsTypedArray::entries as fn(&JsTypedArray, &mut Context) -> _,
+        JsTypedArray::entries as fn(&JsTypedArray, ContextAccess<'_>) -> _,
         JsTypedArray::keys,
         JsTypedArray::values,
         JsTypedArray::iterator,
     ] {
-        assert_foreign_runtime(make_iterator(&array, &mut foreign).unwrap_err());
+        assert_foreign_runtime(make_iterator(&array, foreign.access()).unwrap_err());
     }
 
-    let iterator = array.entries(&mut peer).unwrap();
+    let iterator = array.entries(peer.access()).unwrap();
     let entry = next_value(iterator, &mut peer).as_object().unwrap();
-    assert_eq!(entry.get(0, &mut peer).unwrap(), 0.into());
-    assert_eq!(entry.get(1, &mut peer).unwrap(), 19.into());
-    let iterator = array.keys(&mut peer).unwrap();
+    assert_eq!(entry.get(0, peer.access()).unwrap(), 0.into());
+    assert_eq!(entry.get(1, peer.access()).unwrap(), 19.into());
+    let iterator = array.keys(peer.access()).unwrap();
     assert_eq!(next_value(iterator, &mut peer), 0.into());
-    let iterator = array.values(&mut peer).unwrap();
+    let iterator = array.values(peer.access()).unwrap();
     assert_eq!(next_value(iterator, &mut peer), 19.into());
-    let iterator = array.iterator(&mut peer).unwrap();
+    let iterator = array.iterator(peer.access()).unwrap();
     assert_eq!(next_value(iterator, &mut peer), 19.into());
 }
 
@@ -619,15 +621,15 @@ fn typed_array_from_array_buffer_refuses_a_foreign_buffer_and_retains_a_peer_buf
     let mut owner = Context::default();
     let mut peer = peer_context(&owner);
     let mut foreign = Context::default();
-    let foreign_buffer = JsArrayBuffer::new(1, &mut foreign).unwrap();
+    let foreign_buffer = JsArrayBuffer::new(1, foreign.access()).unwrap();
     assert_foreign_runtime(
-        JsUint8Array::from_array_buffer(foreign_buffer, &mut owner).unwrap_err(),
+        JsUint8Array::from_array_buffer(foreign_buffer, owner.access()).unwrap_err(),
     );
 
-    let buffer = JsArrayBuffer::from_byte_block(vec![23], &mut peer).unwrap();
-    let view = JsUint8Array::from_array_buffer(buffer.clone(), &mut owner).unwrap();
-    assert_eq!(view.buffer(&mut owner).unwrap(), JsValue::from(buffer));
-    assert_eq!(view.get(0, &mut owner).unwrap(), 23.into());
+    let buffer = JsArrayBuffer::from_byte_block(vec![23], peer.access()).unwrap();
+    let view = JsUint8Array::from_array_buffer(buffer.clone(), owner.access()).unwrap();
+    assert_eq!(view.buffer(owner.access()).unwrap(), JsValue::from(buffer));
+    assert_eq!(view.get(0, owner.access()).unwrap(), 23.into());
 }
 
 #[test]
@@ -636,15 +638,15 @@ fn typed_array_from_shared_array_buffer_refuses_a_foreign_buffer_and_retains_a_p
     let mut peer = peer_context(&owner);
     let mut foreign = Context::default();
     // Empty shared buffers also work on targets without lock-free 64-bit atomics.
-    let foreign_buffer = JsSharedArrayBuffer::new(0, &mut foreign).unwrap();
+    let foreign_buffer = JsSharedArrayBuffer::new(0, foreign.access()).unwrap();
     assert_foreign_runtime(
-        JsUint8Array::from_shared_array_buffer(foreign_buffer, &mut owner).unwrap_err(),
+        JsUint8Array::from_shared_array_buffer(foreign_buffer, owner.access()).unwrap_err(),
     );
 
-    let buffer = JsSharedArrayBuffer::new(0, &mut peer).unwrap();
-    let view = JsUint8Array::from_shared_array_buffer(buffer.clone(), &mut owner).unwrap();
-    assert_eq!(view.buffer(&mut owner).unwrap(), JsValue::from(buffer));
-    assert_eq!(view.length(&mut owner).unwrap(), 0);
+    let buffer = JsSharedArrayBuffer::new(0, peer.access()).unwrap();
+    let view = JsUint8Array::from_shared_array_buffer(buffer.clone(), owner.access()).unwrap();
+    assert_eq!(view.buffer(owner.access()).unwrap(), JsValue::from(buffer));
+    assert_eq!(view.length(owner.access()).unwrap(), 0);
 }
 
 #[test]
@@ -654,17 +656,20 @@ fn iterator_result_refuses_a_foreign_value_without_panicking() {
     let foreign = Context::default();
     let foreign_value = JsObject::with_null_proto(foreign.runtime()).into();
     assert_foreign_runtime(
-        create_iter_result_object(foreign_value, false, &mut owner).unwrap_err(),
+        create_iter_result_object(foreign_value, false, owner.access()).unwrap_err(),
     );
 
     let value: JsValue = JsObject::with_null_proto(peer.runtime()).into();
-    let result = create_iter_result_object(value.clone(), true, &mut owner)
+    let result = create_iter_result_object(value.clone(), true, owner.access())
         .unwrap()
         .as_object()
         .unwrap();
-    assert_eq!(result.get(js_string!("value"), &mut owner).unwrap(), value);
     assert_eq!(
-        result.get(js_string!("done"), &mut owner).unwrap(),
+        result.get(js_string!("value"), owner.access()).unwrap(),
+        value
+    );
+    assert_eq!(
+        result.get(js_string!("done"), owner.access()).unwrap(),
         true.into()
     );
 }
@@ -676,11 +681,11 @@ fn dropping_parsed_or_compiled_scripts_preserves_the_realm_scope_identity_sequen
         let script = Script::parse(
             Source::from_bytes("(() => 42); (class {});"),
             None,
-            &mut context,
+            context.access(),
         )
         .unwrap();
         if compile {
-            script.codeblock(&mut context).unwrap();
+            script.codeblock(context.access()).unwrap();
         }
         drop(script);
 
@@ -696,29 +701,29 @@ fn pending_scripts_can_share_lexical_names_until_actual_evaluation() {
     let first = Script::parse(
         Source::from_bytes("let pending = 40; pending + 2"),
         None,
-        &mut context,
+        context.access(),
     )
     .unwrap();
     let second = Script::parse(
         Source::from_bytes("let pending = 41; pending + 1"),
         None,
-        &mut context,
+        context.access(),
     )
     .expect("independent pending scripts do not reserve each other's names");
-    let first_code = first.codeblock(&mut context).unwrap();
-    second.codeblock(&mut context).unwrap();
+    let first_code = first.codeblock(context.access()).unwrap();
+    second.codeblock(context.access()).unwrap();
     assert!(Rc::ptr_eq(
         &first_code,
-        &first.codeblock(&mut context).unwrap()
+        &first.codeblock(context.access()).unwrap()
     ));
     assert!(!context.realm().scope().has_binding(&js_string!("pending")));
 
-    assert_eq!(first.evaluate(&mut context).unwrap(), JsValue::new(42));
+    assert_eq!(first.evaluate(context.access()).unwrap(), JsValue::new(42));
     assert!(context.realm().scope().has_binding(&js_string!("pending")));
     second
-        .codeblock(&mut context)
+        .codeblock(context.access())
         .expect("compiled inspection does not instantiate declarations");
-    let conflict = second.evaluate(&mut context).unwrap_err();
+    let conflict = second.evaluate(context.access()).unwrap_err();
     assert!(conflict.as_native().is_some_and(JsNativeError::is_syntax));
 }
 
@@ -731,12 +736,12 @@ fn existing_declaration_conflicts_are_evaluation_errors_after_pure_preparation()
     let script = Script::parse(
         Source::from_bytes("let occupied = 2; occupied"),
         None,
-        &mut context,
+        context.access(),
     )
     .expect("the new script has valid syntax independently of the realm");
-    script.codeblock(&mut context).unwrap();
+    script.codeblock(context.access()).unwrap();
 
-    let conflict = script.evaluate(&mut context).unwrap_err();
+    let conflict = script.evaluate(context.access()).unwrap_err();
     assert!(conflict.as_native().is_some_and(JsNativeError::is_syntax));
     assert_eq!(
         context.eval(Source::from_bytes("occupied")).unwrap(),
@@ -747,15 +752,18 @@ fn existing_declaration_conflicts_are_evaluation_errors_after_pure_preparation()
 #[test]
 fn installed_script_cache_survives_unrelated_realm_changes() {
     let mut context = Context::default();
-    let script = Script::parse(Source::from_bytes("(() => 42)()"), None, &mut context).unwrap();
-    let code = script.codeblock(&mut context).unwrap();
-    assert_eq!(script.evaluate(&mut context).unwrap(), JsValue::new(42));
+    let script = Script::parse(Source::from_bytes("(() => 42)()"), None, context.access()).unwrap();
+    let code = script.codeblock(context.access()).unwrap();
+    assert_eq!(script.evaluate(context.access()).unwrap(), JsValue::new(42));
 
     context
         .eval(Source::from_bytes("let unrelated = 1;"))
         .unwrap();
-    assert!(Rc::ptr_eq(&code, &script.codeblock(&mut context).unwrap()));
-    assert_eq!(script.evaluate(&mut context).unwrap(), JsValue::new(42));
+    assert!(Rc::ptr_eq(
+        &code,
+        &script.codeblock(context.access()).unwrap()
+    ));
+    assert_eq!(script.evaluate(context.access()).unwrap(), JsValue::new(42));
 }
 
 #[test]
@@ -890,15 +898,23 @@ fn annex_b_compilation_does_not_create_a_global_property() {
             "{ function pendingAnnexFunction() { return 42; } } pendingAnnexFunction()",
         ),
         None,
-        &mut context,
+        context.access(),
     )
     .unwrap();
-    assert!(!global.has_own_property(name.clone(), &mut context).unwrap());
-    script.codeblock(&mut context).unwrap();
-    assert!(!global.has_own_property(name.clone(), &mut context).unwrap());
+    assert!(
+        !global
+            .has_own_property(name.clone(), context.access())
+            .unwrap()
+    );
+    script.codeblock(context.access()).unwrap();
+    assert!(
+        !global
+            .has_own_property(name.clone(), context.access())
+            .unwrap()
+    );
 
-    assert_eq!(script.evaluate(&mut context).unwrap(), JsValue::new(42));
-    assert!(global.has_own_property(name, &mut context).unwrap());
+    assert_eq!(script.evaluate(context.access()).unwrap(), JsValue::new(42));
+    assert!(global.has_own_property(name, context.access()).unwrap());
 }
 
 #[test]
@@ -907,18 +923,18 @@ fn a_stale_pending_script_rebuilds_slots_without_replacing_installed_code() {
     let script = Script::parse(
         Source::from_bytes("let pending = seed + 2; pending"),
         None,
-        &mut context,
+        context.access(),
     )
     .unwrap();
-    let before = script.codeblock(&mut context).unwrap();
+    let before = script.codeblock(context.access()).unwrap();
     context.eval(Source::from_bytes("let seed = 40;")).unwrap();
-    let refreshed = script.codeblock(&mut context).unwrap();
+    let refreshed = script.codeblock(context.access()).unwrap();
     assert!(!Rc::ptr_eq(&before, &refreshed));
     assert!(!context.realm().scope().has_binding(&js_string!("pending")));
-    assert_eq!(script.evaluate(&mut context).unwrap(), JsValue::new(42));
+    assert_eq!(script.evaluate(context.access()).unwrap(), JsValue::new(42));
     assert!(Rc::ptr_eq(
         &refreshed,
-        &script.codeblock(&mut context).unwrap()
+        &script.codeblock(context.access()).unwrap()
     ));
     assert_eq!(
         context.eval(Source::from_bytes("seed")).unwrap(),
@@ -1027,7 +1043,7 @@ fn a_host_cannot_hide_a_final_publication_conflict_from_the_outer_operation() {
     let pending_realm = peer.realm().clone();
     let mutate = FunctionObjectBuilder::new(
         &pending_realm,
-        NativeFunction::from_fn_ptr(|_, _, context| {
+        NativeFunction::from_fn_ptr(|_, _, mut context| {
             context.eval(Source::from_bytes("let callbackOwned = 1;"))
         }),
     )
@@ -1040,10 +1056,10 @@ fn a_host_cannot_hide_a_final_publication_conflict_from_the_outer_operation() {
     let pending = Script::parse(
         Source::from_bytes("function pendingPublicationFunction() { return 42; } 42"),
         None,
-        &mut peer,
+        peer.access(),
     )
     .unwrap();
-    pending.codeblock(&mut peer).unwrap();
+    pending.codeblock(peer.access()).unwrap();
     // Rust host custody retains the prepared Script without adding a JavaScript
     // callable or a new NativeCapture representation for pending code.
     context.insert_data(pending);
@@ -1051,9 +1067,9 @@ fn a_host_cannot_hide_a_final_publication_conflict_from_the_outer_operation() {
         .register_global_callable(
             js_string!("catchPublicationConflict"),
             0,
-            NativeFunction::from_fn_ptr(|_, _, context| {
+            NativeFunction::from_fn_ptr(|_, _, mut context| {
                 let pending = context.get_data::<Script>().unwrap().clone();
-                let error = pending.evaluate(context).unwrap_err();
+                let error = pending.evaluate(context.reborrow()).unwrap_err();
                 assert_eq!(
                     error.as_engine(),
                     Some(&EngineError::ScopeAnalysis(ScopeStateError::Conflict))
@@ -1090,7 +1106,7 @@ fn a_host_cannot_hide_a_final_publication_conflict_from_the_outer_operation() {
     );
     assert!(
         !global
-            .has_own_property(js_string!("pendingPublicationFunction"), &mut peer)
+            .has_own_property(js_string!("pendingPublicationFunction"), peer.access())
             .unwrap()
     );
     assert_eq!(
@@ -1130,18 +1146,18 @@ fn assert_caught_preflight_stop_keeps_preparation_private(source: &str, native_d
         .register_global_callable(
             js_string!("inspectPendingDeclaration"),
             2,
-            NativeFunction::from_fn_ptr(|_, args, context| {
+            NativeFunction::from_fn_ptr(|_, args, mut context| {
                 if args[1].as_string() != Some(js_string!("pendingAfterStop")) {
                     let reflect = context
                         .global_object()
-                        .get(js_string!("Reflect"), context)?
+                        .get(js_string!("Reflect"), context.reborrow())?
                         .as_object()
                         .unwrap();
                     let get = reflect
-                        .get(js_string!("getOwnPropertyDescriptor"), context)?
+                        .get(js_string!("getOwnPropertyDescriptor"), context.reborrow())?
                         .as_callable()
                         .unwrap();
-                    return get.call(&reflect.into(), args, context);
+                    return get.call(&reflect.into(), args, context.reborrow());
                 }
                 {
                     let first = {
@@ -1171,10 +1187,12 @@ fn assert_caught_preflight_stop_keeps_preparation_private(source: &str, native_d
         .register_global_callable(
             js_string!("observePendingDefinition"),
             3,
-            NativeFunction::from_fn_ptr(|_, args, context| {
+            NativeFunction::from_fn_ptr(|_, args, mut context| {
                 if args[1].as_string() == Some(js_string!("pendingAfterStop")) {
                     let descriptor = args[2].as_object().unwrap();
-                    let function = descriptor.get(js_string!("value"), context)?.as_object();
+                    let function = descriptor
+                        .get(js_string!("value"), context.reborrow())?
+                        .as_object();
                     context
                         .get_data::<CallbackEffects>()
                         .unwrap()
@@ -1182,9 +1200,9 @@ fn assert_caught_preflight_stop_keeps_preparation_private(source: &str, native_d
                         .replace(function);
                 } else {
                     let target = args[0].as_object().unwrap();
-                    let key = args[1].to_property_key(context)?;
-                    let descriptor = args[2].to_property_descriptor(context)?;
-                    target.define_property_or_throw(key, descriptor, context)?;
+                    let key = args[1].to_property_key(context.reborrow())?;
+                    let descriptor = args[2].to_property_descriptor(context.reborrow())?;
+                    target.define_property_or_throw(key, descriptor, context.reborrow())?;
                 }
                 Ok(JsValue::new(true))
             }),
@@ -1206,7 +1224,7 @@ fn assert_caught_preflight_stop_keeps_preparation_private(source: &str, native_d
         .unwrap();
     let target = owner
         .global_object()
-        .get(js_string!("pendingTarget"), &mut owner)
+        .get(js_string!("pendingTarget"), owner.access())
         .unwrap()
         .as_object()
         .unwrap();
@@ -1244,7 +1262,7 @@ fn assert_caught_preflight_stop_keeps_preparation_private(source: &str, native_d
     );
     assert!(
         !target
-            .has_own_property(js_string!("pendingAfterStop"), &mut context)
+            .has_own_property(js_string!("pendingAfterStop"), context.access())
             .unwrap(),
         "forwarding through a Proxy must not publish the pending function"
     );
@@ -1318,7 +1336,7 @@ fn proxy_global_with_a_guest_descriptor_trap() -> (Context, Context, JsObject) {
         .unwrap();
     let target = owner
         .global_object()
-        .get(js_string!("refusedEntryTarget"), &mut owner)
+        .get(js_string!("refusedEntryTarget"), owner.access())
         .unwrap()
         .as_object()
         .unwrap();
@@ -1370,12 +1388,16 @@ fn assert_refused_descriptor_trap_leaves_the_context_ready_for_retry(
         assert!(!outcome.report.effects_started());
         assert_eq!(outcome.report.instructions(), 0);
         assert!(!context.realm().scope().has_binding(&name));
-        assert!(!target.has_own_property(name.clone(), &mut owner).unwrap());
+        assert!(
+            !target
+                .has_own_property(name.clone(), owner.access())
+                .unwrap()
+        );
     }
     assert_eq!(
         owner
             .global_object()
-            .get(js_string!("refusedEntryTrapRuns"), &mut owner)
+            .get(js_string!("refusedEntryTrapRuns"), owner.access())
             .unwrap(),
         JsValue::new(0)
     );
@@ -1434,10 +1456,10 @@ fn assert_refused_direct_guest_entry_leaves_the_context_ready_for_retry(entry: D
     for _ in 0..3 {
         let error = match entry {
             DirectGuestEntry::Call => function
-                .call(&JsValue::undefined(), &[JsValue::new(1)], &mut context)
+                .call(&JsValue::undefined(), &[JsValue::new(1)], context.access())
                 .unwrap_err(),
             DirectGuestEntry::Construct => function
-                .construct(&[JsValue::new(1)], None, &mut context)
+                .construct(&[JsValue::new(1)], None, context.access())
                 .unwrap_err(),
         };
         assert_eq!(

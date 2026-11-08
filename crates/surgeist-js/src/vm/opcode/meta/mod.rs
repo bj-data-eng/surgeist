@@ -75,7 +75,7 @@ impl ImportMeta {
             src.set_import_meta(&import_meta);
             context
                 .module_loader()
-                .init_import_meta(&import_meta, &module, context);
+                .init_import_meta(&import_meta, &module, context.access());
             import_meta
         });
 

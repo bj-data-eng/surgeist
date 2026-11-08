@@ -216,7 +216,7 @@ fn global_binding<B: BuiltInObject>(context: &mut Context) -> JsResult<()> {
             .enumerable(attr.enumerable())
             .configurable(attr.configurable())
             .build(),
-        context,
+        context.access(),
     )?;
     Ok(())
 }
@@ -366,7 +366,7 @@ pub(crate) fn set_default_global_bindings(context: &mut Context) -> JsResult<()>
             .writable(true)
             .enumerable(false)
             .configurable(true),
-        context,
+        context.access(),
     )?;
     let restricted = PropertyDescriptor::builder()
         .writable(false)
@@ -375,17 +375,17 @@ pub(crate) fn set_default_global_bindings(context: &mut Context) -> JsResult<()>
     global_object.define_property_or_throw(
         js_string!("Infinity"),
         restricted.clone().value(f64::INFINITY),
-        context,
+        context.access(),
     )?;
     global_object.define_property_or_throw(
         js_string!("NaN"),
         restricted.clone().value(f64::NAN),
-        context,
+        context.access(),
     )?;
     global_object.define_property_or_throw(
         js_string!("undefined"),
         restricted.value(JsValue::undefined()),
-        context,
+        context.access(),
     )?;
 
     global_binding::<BuiltInFunctionObject>(context)?;

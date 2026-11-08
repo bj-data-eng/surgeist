@@ -245,7 +245,7 @@ impl Json {
             .first()
             .cloned()
             .unwrap_or_default()
-            .to_string(context)?
+            .to_string(context.access())?
             .to_std_string()
             .map_err(|e| JsNativeError::syntax().with_message(e.to_string()))?;
 
@@ -387,7 +387,7 @@ impl Json {
 
             // b. Let rootName be the empty String.
             // c. Perform ! CreateDataPropertyOrThrow(root, rootName, unfiltered).
-            root.create_data_property_or_throw(js_string!(), unfiltered, context)
+            root.create_data_property_or_throw(js_string!(), unfiltered, context.access())
                 .js_expect("CreateDataPropertyOrThrow should never throw here")?;
 
             // d. Return ? InternalizeJSONProperty(root, rootName, reviver).
@@ -419,7 +419,7 @@ impl Json {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let val be ? Get(holder, name).
-        let val = holder.get(name.clone(), context)?;
+        let val = holder.get(name.clone(), context.access())?;
 
         // 2. If Type(val) is Object, then
         if let Some(obj) = val.as_object() {
@@ -457,7 +457,7 @@ impl Json {
                     // 4. Else,
                     else {
                         // a. Perform ? CreateDataProperty(val, prop, newElement).
-                        obj.create_data_property(i, new_element, context)?;
+                        obj.create_data_property(i, new_element, context.access())?;
                     }
                 }
             }
@@ -501,7 +501,7 @@ impl Json {
                     // 3. Else,
                     else {
                         // a. Perform ? CreateDataProperty(val, P, newElement).
-                        obj.create_data_property(p, new_element, context)?;
+                        obj.create_data_property(p, new_element, context.access())?;
                     }
                 }
             }
@@ -545,7 +545,7 @@ impl Json {
                 ctx_obj.create_data_property_or_throw(
                     js_string!("source"),
                     JsValue::from(js_string!(source_text.as_str())),
-                    context,
+                    context.access(),
                 )?;
             }
         }
@@ -554,7 +554,7 @@ impl Json {
         reviver.call(
             &holder.clone().into(),
             &[name.into(), val, ctx_obj.into()],
-            context,
+            context.access(),
         )
     }
 
@@ -572,7 +572,7 @@ impl Json {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let jsonString be ? ToString(text).
-        let json_string = args.get_or_undefined(0).to_string(context)?;
+        let json_string = args.get_or_undefined(0).to_string(context.access())?;
 
         // 2. Throw a SyntaxError exception if jsonString is the empty String, or if
         //    either the first or last code unit of jsonString is any of 0x0009
@@ -619,11 +619,11 @@ impl Json {
         let obj = JsObject::from_proto_and_data(context.runtime(), None::<JsObject>, RawJson)?;
 
         // 5. Perform ! CreateDataPropertyOrThrow(obj, "rawJSON", jsonString).
-        obj.create_data_property_or_throw(js_string!("rawJSON"), json_string, context)
+        obj.create_data_property_or_throw(js_string!("rawJSON"), json_string, context.access())
             .js_expect("CreateDataPropertyOrThrow should never throw here")?;
 
         // 6. Perform ! SetIntegrityLevel(obj, frozen).
-        obj.set_integrity_level(IntegrityLevel::Frozen, context)
+        obj.set_integrity_level(IntegrityLevel::Frozen, context.access())
             .js_expect("SetIntegrityLevel should never throw here")?;
 
         // 7. Return obj.
@@ -705,7 +705,7 @@ impl Json {
                     while k < len {
                         // a. Let prop be ! ToString(𝔽(k)).
                         // b. Let v be ? Get(replacer, prop).
-                        let v = replacer_obj.get(k, context)?;
+                        let v = replacer_obj.get(k, context.access())?;
 
                         // c. Let item be undefined.
                         // d. If Type(v) is String, set item to v.
@@ -717,14 +717,14 @@ impl Json {
                             property_set.insert(s);
                         } else if v.is_number() {
                             property_set.insert(
-                                v.to_string(context)
+                                v.to_string(context.access())
                                     .js_expect("ToString cannot fail on number value")?,
                             );
                         } else if let Some(obj) = v.as_object()
                             && (obj.is::<JsString>() || obj.is::<f64>())
                         {
                             // i. If v has a [[StringData]] or [[NumberData]] internal slot, set item to ? ToString(v).
-                            property_set.insert(v.to_string(context)?);
+                            property_set.insert(v.to_string(context.access())?);
                         }
 
                         // h. Set k to k + 1.
@@ -742,12 +742,12 @@ impl Json {
             // a. If space has a [[NumberData]] internal slot, then
             if space_obj.is::<f64>() {
                 // i. Set space to ? ToNumber(space).
-                space = space.to_number(context)?.into();
+                space = space.to_number(context.access())?.into();
             }
             // b. Else if space has a [[StringData]] internal slot, then
             else if space_obj.is::<JsString>() {
                 // i. Set space to ? ToString(space).
-                space = space.to_string(context)?.into();
+                space = space.to_string(context.access())?.into();
             }
         }
 
@@ -757,7 +757,7 @@ impl Json {
             // b. Set spaceMV to min(10, spaceMV).
             // c. If spaceMV < 1, let gap be the empty String; otherwise let gap be the String value containing spaceMV occurrences of the code unit 0x0020 (SPACE).
             match space
-                .to_integer_or_infinity(context)
+                .to_integer_or_infinity(context.access())
                 .js_expect("ToIntegerOrInfinity cannot fail on number")?
             {
                 IntegerOrInfinity::PositiveInfinity => js_string!("          "),
@@ -787,7 +787,11 @@ impl Json {
 
         // 10. Perform ! CreateDataPropertyOrThrow(wrapper, the empty String, value).
         wrapper
-            .create_data_property_or_throw(js_string!(), args.get_or_undefined(0).clone(), context)
+            .create_data_property_or_throw(
+                js_string!(),
+                args.get_or_undefined(0).clone(),
+                context.access(),
+            )
             .js_expect("CreateDataPropertyOrThrow should never fail here")?;
 
         // 11. Let state be the Record { [[ReplacerFunction]]: ReplacerFunction, [[Stack]]: stack, [[Indent]]: indent, [[Gap]]: gap, [[PropertyList]]: PropertyList }.
@@ -820,7 +824,7 @@ impl Json {
         context: &mut Context,
     ) -> JsResult<Option<JsString>> {
         // 1. Let value be ? Get(holder, key).
-        let mut value = holder.get(key.clone(), context)?;
+        let mut value = holder.get(key.clone(), context.access())?;
 
         // 2. If Type(value) is Object or BigInt, then
         if value.is_object() || value.is_bigint() {
@@ -830,14 +834,18 @@ impl Json {
             // b. If IsCallable(toJSON) is true, then
             if let Some(obj) = to_json.as_callable() {
                 // i. Set value to ? Call(toJSON, value, « key »).
-                value = obj.call(&value, &[key.clone().into()], context)?;
+                value = obj.call(&value, &[key.clone().into()], context.access())?;
             }
         }
 
         // 3. If state.[[ReplacerFunction]] is not undefined, then
         if let Some(obj) = &state.replacer_function {
             // a. Set value to ? Call(state.[[ReplacerFunction]], holder, « key, value »).
-            value = obj.call(&holder.clone().into(), &[key.into(), value], context)?;
+            value = obj.call(
+                &holder.clone().into(),
+                &[key.into(), value],
+                context.access(),
+            )?;
         }
 
         // 4. If Type(value) is Object, then
@@ -845,12 +853,12 @@ impl Json {
             // a. If value has a [[NumberData]] internal slot, then
             if obj.is::<f64>() {
                 // i. Set value to ? ToNumber(value).
-                value = value.to_number(context)?.into();
+                value = value.to_number(context.access())?.into();
             }
             // b. Else if value has a [[StringData]] internal slot, then
             else if obj.is::<JsString>() {
                 // i. Set value to ? ToString(value).
-                value = value.to_string(context)?.into();
+                value = value.to_string(context.access())?.into();
             }
             // c. Else if value has a [[BooleanData]] internal slot, then
             else if let Some(boolean) = obj.downcast_ref::<bool>() {
@@ -865,7 +873,7 @@ impl Json {
             // e. Else if value has a [[IsRawJSON]] internal slot, then
             else if obj.is::<RawJson>() {
                 // i. Return the value of the "rawJSON" property of value.
-                let raw = obj.get(js_string!("rawJSON"), context)?;
+                let raw = obj.get(js_string!("rawJSON"), context.access())?;
                 return Ok(raw.as_string());
             }
         }
@@ -896,7 +904,7 @@ impl Json {
             if n.is_finite() {
                 return Ok(Some(
                     value
-                        .to_string(context)
+                        .to_string(context.access())
                         .js_expect("ToString should never fail here")?,
                 ));
             }
@@ -1044,7 +1052,7 @@ impl Json {
             match keys
                 .iter()
                 .map(|v| {
-                    v.to_string(context)
+                    v.to_string(context.access())
                         .js_expect("EnumerableOwnPropertyNames only returns strings")
                 })
                 .collect::<Result<Vec<_>, _>>()

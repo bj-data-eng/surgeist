@@ -43,7 +43,11 @@ impl Map {
                 // iii. Let mapped be Completion(Call(mapper, undefined, « value, 𝔽(counter) »)).
                 // iv. IfAbruptCloseIterator(mapped, iterated).
                 let value = if_abrupt_close_iterator!(
-                    mapper.call(&JsValue::undefined(), &[value, counter.into()], context,),
+                    mapper.call(
+                        &JsValue::undefined(),
+                        &[value, counter.into()],
+                        context.access(),
+                    ),
                     iterated,
                     context
                 );

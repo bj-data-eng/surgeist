@@ -263,7 +263,7 @@ impl BuiltInConstructor for NumberFormat {
 
         // 1. If newTarget is undefined and ? OrdinaryHasInstance(%Intl.NumberFormat%, this) is true, then
         if new_target.is_undefined()
-            && JsValue::ordinary_has_instance(&constructor.into(), &this, context)?
+            && JsValue::ordinary_has_instance(&constructor.into(), &this, context.access())?
         {
             let fallback_symbol = context
                 .intrinsics()
@@ -281,7 +281,7 @@ impl BuiltInConstructor for NumberFormat {
                     .writable(false)
                     .enumerable(false)
                     .configurable(false),
-                context,
+                context.access(),
             )?;
             // b. Return this.
             Ok(this)
@@ -414,7 +414,7 @@ impl NumberFormat {
             // <https://tc39.es/ecma402/#sec-getbooleanorstringnumberformatoption>
 
             // 1. Let value be ? Get(options, property).
-            let value = options.get(js_string!("useGrouping"), context)?;
+            let value = options.get(js_string!("useGrouping"), context.access())?;
 
             // 2. If value is undefined, return fallback.
             if value.is_undefined() {
@@ -433,7 +433,11 @@ impl NumberFormat {
             // 5. Set value to ? ToString(value).
             // 6. If stringValues does not contain value, throw a RangeError exception.
             // 7. Return value.
-            match value.to_string(context)?.to_std_string_escaped().as_str() {
+            match value
+                .to_string(context.access())?
+                .to_std_string_escaped()
+                .as_str()
+            {
                 "min2" => GroupingStrategy::Min2,
                 "auto" => GroupingStrategy::Auto,
                 "always" => GroupingStrategy::Always,
@@ -600,7 +604,7 @@ impl NumberFormat {
                 context.realm(),
                 // Number Format Functions
                 // <https://tc39.es/ecma402/#sec-number-format-functions>
-                NativeFunction::from_fn_with_captures(
+                NativeFunction::from_builtin_with_captures(
                     |_, args, nf, context| {
                         // 1. Let nf be F.[[NumberFormat]].
                         // 2. Assert: Type(nf) is Object and nf has an [[InitializedNumberFormat]] internal slot.
@@ -661,7 +665,7 @@ impl NumberFormat {
         //             1. Assert: The Conversion value of the current row is number.
         //             2. Set v to 𝔽(v).
         //         ii. Perform ! CreateDataPropertyOrThrow(options, p, v).
-        let mut options = ObjectInitializer::new(context);
+        let mut options = ObjectInitializer::new(context.access());
         options.property(
             js_string!("locale"),
             js_string!(nf.locale.to_string()),
@@ -844,7 +848,7 @@ fn unwrap_number_format(nf: &JsValue, context: &mut Context) -> JsResult<JsObjec
         .constructors()
         .number_format()
         .constructor();
-    if JsValue::ordinary_has_instance(&constructor.into(), nf, context)? {
+    if JsValue::ordinary_has_instance(&constructor.into(), nf, context.access())? {
         let fallback_symbol = context
             .intrinsics()
             .objects()
@@ -855,7 +859,7 @@ fn unwrap_number_format(nf: &JsValue, context: &mut Context) -> JsResult<JsObjec
 
         //    a. Return ? Get(nf, %Intl%.[[FallbackSymbol]]).
         if let Some(nf) = nf_o
-            .get(fallback_symbol, context)?
+            .get(fallback_symbol, context.access())?
             .as_object()
             .and_then(|o| o.downcast::<NumberFormat>().ok())
         {
@@ -876,7 +880,7 @@ pub(crate) fn to_intl_mathematical_value(
     context: &mut Context,
 ) -> JsResult<Decimal> {
     // 1. Let primValue be ? ToPrimitive(value, number).
-    let prim_value = value.to_primitive(context, PreferredType::Number)?;
+    let prim_value = value.to_primitive(context.access(), PreferredType::Number)?;
 
     // TODO: Add support in `Decimal` for infinity and NaN, which
     // should remove the returned errors.
@@ -908,7 +912,7 @@ pub(crate) fn to_intl_mathematical_value(
             // a. Let x be ? ToNumber(primValue).
             // b. If x is -0𝔽, return negative-zero.
             // c. Let str be Number::toString(x, 10).
-            let x = prim_value.to_number(context)?;
+            let x = prim_value.to_number(context.access())?;
 
             Decimal::try_from_f64(x, FloatPrecision::RoundTrip)
                 .map_err(|err| JsNativeError::range().with_message(err.to_string()).into())

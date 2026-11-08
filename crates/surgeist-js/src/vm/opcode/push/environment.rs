@@ -44,7 +44,7 @@ impl PushObjectEnvironment {
     #[inline(always)]
     pub(crate) fn operation(value: RegisterOperand, context: &mut Context) -> JsResult<()> {
         let object = context.vm.get_register(value.into()).clone();
-        let object = object.to_object(context)?;
+        let object = object.to_object(context.access())?;
         let heap = context.runtime().heap.clone();
         context
             .vm

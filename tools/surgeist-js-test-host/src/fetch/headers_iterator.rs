@@ -8,7 +8,7 @@
 use surgeist_js::gc::heap::Trace as HeapTrace;
 use surgeist_js::native_function::{CapturedObject, NativeCapture};
 use surgeist_js::{
-    Context, JsData, JsResult, JsString, JsValue, boa_class,
+    ContextAccess, JsData, JsResult, JsString, JsValue, boa_class,
     builtins::iterable::create_iter_result_object, error::JsNativeError, interop::JsClass,
     object::JsObject, object::builtins::JsArray,
 };
@@ -56,7 +56,7 @@ impl HeadersIterator {
     ///
     /// Advances the iterator and returns the next `{ value, done }` result.
     #[boa(method)]
-    fn next(&mut self, context: &mut Context) -> JsResult<JsValue> {
+    fn next(&mut self, mut context: ContextAccess<'_>) -> JsResult<JsValue> {
         let item_kind = self.iteration_kind;
 
         let headers = JsObject::<JsHeaders>::restore(&self.iterated_headers);
@@ -78,13 +78,15 @@ impl HeadersIterator {
             let value = match item_kind {
                 IterationKind::Key => key,
                 IterationKind::Value => value,
-                IterationKind::KeyAndValue => JsArray::from_iter([key, value], context)?.into(),
+                IterationKind::KeyAndValue => {
+                    JsArray::from_iter([key, value], context.reborrow())?.into()
+                }
             };
             self.next_index += 1;
-            return create_iter_result_object(value, false, context);
+            return create_iter_result_object(value, false, context.reborrow());
         }
 
-        create_iter_result_object(JsValue::undefined(), true, context)
+        create_iter_result_object(JsValue::undefined(), true, context.reborrow())
     }
 
     /// Returns `this`, making the iterator itself iterable (`for...of` support).
@@ -100,7 +102,7 @@ impl HeadersIterator {
     pub(crate) fn create_headers_iterator(
         headers: JsObject<JsHeaders>,
         kind: IterationKind,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
         let iter = Self {
             iterated_headers: headers.store(),

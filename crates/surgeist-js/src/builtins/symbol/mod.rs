@@ -219,7 +219,7 @@ impl BuiltInConstructor for Symbol {
         // 2. If description is undefined, let descString be undefined.
         // 3. Else, let descString be ? ToString(description).
         let description = match args.first() {
-            Some(value) if !value.is_undefined() => Some(value.to_string(context)?),
+            Some(value) if !value.is_undefined() => Some(value.to_string(context.access())?),
             _ => None,
         };
 
@@ -323,7 +323,7 @@ impl Symbol {
             .first()
             .cloned()
             .unwrap_or_default()
-            .to_string(context)?;
+            .to_string(context.access())?;
         // 2. For each element e of the GlobalSymbolRegistry List, do
         //     a. If SameValue(e.[[Key]], stringKey) is true, return e.[[Symbol]].
         // 3. Assert: GlobalSymbolRegistry does not currently contain an entry for stringKey.

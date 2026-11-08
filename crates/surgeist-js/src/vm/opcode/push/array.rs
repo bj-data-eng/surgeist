@@ -68,7 +68,7 @@ impl PushValueToArray {
         let len = o
             .length_of_array_like(context)
             .js_expect("should have 'length' property")?;
-        o.create_data_property_or_throw(len, value, context)
+        o.create_data_property_or_throw(len, value, context.access())
             .js_expect("should be able to create new data property")?;
         Ok(())
     }
@@ -95,7 +95,7 @@ impl PushElisionToArray {
         let len = o
             .length_of_array_like(context)
             .js_expect("arrays should always have a 'length' property")?;
-        o.set(StaticJsStrings::LENGTH, len + 1, true, context)?;
+        o.set(StaticJsStrings::LENGTH, len + 1, true, context.access())?;
         o.borrow_mut()
             .properties_mut()
             .indexed_properties

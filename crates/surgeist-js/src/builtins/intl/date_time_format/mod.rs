@@ -221,7 +221,7 @@ impl BuiltInConstructor for DateTimeFormat {
 
         // 1. If newTarget is undefined and ? OrdinaryHasInstance(%Intl.DateTimeFormat%, this) is true, then
         if new_target.is_undefined()
-            && JsValue::ordinary_has_instance(&constructor.into(), &this, context)?
+            && JsValue::ordinary_has_instance(&constructor.into(), &this, context.access())?
         {
             let fallback_symbol = context
                 .intrinsics()
@@ -241,7 +241,7 @@ impl BuiltInConstructor for DateTimeFormat {
                     .writable(false)
                     .enumerable(false)
                     .configurable(false),
-                context,
+                context.access(),
             )?;
             // b. Return this.
             Ok(this)
@@ -269,7 +269,7 @@ impl DateTimeFormat {
             // a. Let F be a new built-in function object as defined in DateTime Format Functions (11.5.4).
             let bound_format = FunctionObjectBuilder::new(
                 context.realm(),
-                NativeFunction::from_fn_with_captures(
+                NativeFunction::from_builtin_with_captures(
                     |_, args, dtf, context| {
                         // 1. Let dtf be F.[[DateTimeFormat]].
                         // 2. Assert: dtf is an Object and dtf has an [[InitializedDateTimeFormat]] internal slot.
@@ -284,7 +284,7 @@ impl DateTimeFormat {
                         } else {
                             // NOTE (nekevss) The i64 covers all MAX_SAFE_INTEGER values.
                             // a. Let x be ? ToNumber(date).
-                            date.to_number(context)?
+                            date.to_number(context.access())?
                         };
 
                         // 5. Return ? FormatDateTime(dtf, x).
@@ -374,7 +374,7 @@ impl DateTimeFormat {
             let dtf = dtf_object.borrow();
             let dtf = dtf.data();
 
-            let mut options = ObjectInitializer::new(context);
+            let mut options = ObjectInitializer::new(context.access());
             options.property(
                 js_string!("locale"),
                 js_string!(dtf.locale.to_string()),
@@ -683,7 +683,7 @@ pub(crate) fn create_date_time_format(
     // c. If hc is null, set hc to resolvedLocaleData.[[hourCycle]].
 
     // 15. Let timeZone be ? Get(options, "timeZone").
-    let time_zone = options.get(js_string!("timeZone"), context)?;
+    let time_zone = options.get(js_string!("timeZone"), context.access())?;
 
     // 16. If timeZone is undefined, then
     let time_zone = if time_zone.is_undefined() {
@@ -693,7 +693,7 @@ pub(crate) fn create_date_time_format(
     // 17. Else,
     } else {
         // a. Set timeZone to ? ToString(timeZone).
-        time_zone.to_string(context)?
+        time_zone.to_string(context.access())?
     };
     // 18. If IsTimeZoneOffsetString(timeZone) is true, then
     let time_zone_string = time_zone.to_std_string_escaped();
@@ -1011,7 +1011,7 @@ fn unwrap_date_time_format(
         .constructors()
         .date_time_format()
         .constructor();
-    if JsValue::ordinary_has_instance(&constructor.into(), dtf, context)? {
+    if JsValue::ordinary_has_instance(&constructor.into(), dtf, context.access())? {
         let fallback_symbol = context
             .intrinsics()
             .objects()
@@ -1022,7 +1022,7 @@ fn unwrap_date_time_format(
 
         //    a. Return ? Get(dtf, %Intl%.[[FallbackSymbol]]).
         if let Some(dtf) = dtf_o
-            .get(fallback_symbol, context)?
+            .get(fallback_symbol, context.access())?
             .as_object()
             .and_then(|o| o.downcast::<DateTimeFormat>().ok())
         {

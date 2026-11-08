@@ -170,7 +170,7 @@ impl AsyncGenerator {
 
             // b. Perform ! Call(promiseCapability.[[Resolve]], undefined, « iteratorResult »).
             cap.resolve()
-                .call(&JsValue::undefined(), &[iterator_result], context)?;
+                .call(&JsValue::undefined(), &[iterator_result], context.access())?;
 
             // c. Return promiseCapability.[[Promise]].
             return Ok(cap.promise);
@@ -348,7 +348,7 @@ impl AsyncGenerator {
             cap.reject().call(
                 &JsValue::undefined(),
                 slice::from_ref(&error_value),
-                context,
+                context.access(),
             )?;
 
             // b. Return promiseCapability.[[Promise]].
@@ -433,8 +433,8 @@ impl AsyncGenerator {
                 // a. Perform ! Call(promiseCapability.[[Reject]], undefined, « value »).
                 promise_capability.reject().call(
                     &JsValue::undefined(),
-                    &[e.into_opaque(context)?],
-                    context,
+                    &[e.into_opaque(context.access())?],
+                    context.access(),
                 )?;
             }
 
@@ -464,7 +464,7 @@ impl AsyncGenerator {
                 promise_capability.resolve().call(
                     &JsValue::undefined(),
                     &[iterator_result],
-                    context,
+                    context.access(),
                 )?;
             }
         }
@@ -508,7 +508,10 @@ impl AsyncGenerator {
         let (value, resume_kind) = match completion {
             CompletionRecord::Normal(val) => (val, GeneratorResumeKind::Normal),
             CompletionRecord::Return(val) => (val, GeneratorResumeKind::Return),
-            CompletionRecord::Throw(err) => (err.into_opaque(context)?, GeneratorResumeKind::Throw),
+            CompletionRecord::Throw(err) => (
+                err.into_opaque(context.access())?,
+                GeneratorResumeKind::Throw,
+            ),
         };
 
         // 3. Let callerContext be the running execution context.
@@ -636,7 +639,7 @@ impl AsyncGenerator {
         // 12. Let onFulfilled be CreateBuiltinFunction(fulfilledClosure, 1, "", « »).
         let on_fulfilled = FunctionObjectBuilder::new(
             context.realm(),
-            NativeFunction::from_fn_with_captures(
+            NativeFunction::from_builtin_with_captures(
                 |_this, args, generator, context| {
                     let result = Ok(args.get_or_undefined(0).clone());
                     Self::complete_awaited_return(generator, result, context)
@@ -652,7 +655,7 @@ impl AsyncGenerator {
         // 14. Let onRejected be CreateBuiltinFunction(rejectedClosure, 1, "", « »).
         let on_rejected = FunctionObjectBuilder::new(
             context.realm(),
-            NativeFunction::from_fn_with_captures(
+            NativeFunction::from_builtin_with_captures(
                 |_this, args, generator, context| {
                     let result = Err(JsError::from_opaque(args.get_or_undefined(0).clone()));
                     Self::complete_awaited_return(generator, result, context)

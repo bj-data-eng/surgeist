@@ -12,7 +12,7 @@ pub(crate) mod tests;
 
 use std::rc::Rc;
 use surgeist_js::{
-    Context, JsData, JsObject, JsResult, JsString, JsSymbol, JsValue,
+    Context, ContextAccess, JsData, JsObject, JsResult, JsString, JsSymbol, JsValue,
     gc::heap::Trace as HeapTrace,
     js_error, js_string,
     native_function::{NativeCapture, NativeFunction},
@@ -82,16 +82,16 @@ impl Process {
     /// Returns a `JsError` if:  
     /// - Custom process provider returns an error  
     /// - Defining the `cwd` and `env` properties on the `process` object fails  
-    pub fn init_with_provider<P>(context: &mut Context, provider: P) -> JsResult<JsObject>
+    pub fn init_with_provider<P>(mut context: ContextAccess<'_>, provider: P) -> JsResult<JsObject>
     where
         P: ProcessProvider + 'static,
     {
         let env = JsObject::default(context.intrinsics());
         for (key, value) in provider.env() {
-            env.set(key, JsValue::from(value), false, context)?;
+            env.set(key, JsValue::from(value), false, context.reborrow())?;
         }
 
-        ObjectInitializer::new(context)
+        ObjectInitializer::new(context.reborrow())
             .property(
                 JsSymbol::to_string_tag(),
                 Self::NAME,
@@ -121,7 +121,7 @@ impl Process {
     where
         P: ProcessProvider + 'static,
     {
-        let process_object = Self::init_with_provider(context, provider)?;
+        let process_object = Self::init_with_provider(context.access(), provider)?;
 
         context.register_global_property(
             js_string!(Self::NAME),
@@ -138,8 +138,8 @@ impl Process {
     ///  
     /// Returns a `JsError` if:  
     /// - Defining the `cwd` and `env` properties on the `process` object fails  
-    pub fn init(context: &mut Context) -> JsResult<JsObject> {
-        Self::init_with_provider(context, StdProcessProvider)
+    pub fn init(mut context: ContextAccess<'_>) -> JsResult<JsObject> {
+        Self::init_with_provider(context.reborrow(), StdProcessProvider)
     }
 
     /// Register the `process` object globally by the default std provider.  

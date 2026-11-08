@@ -26,7 +26,7 @@
 //!     Ok(res) => {
 //!         println!(
 //!             "{}",
-//!             res.to_string(&mut context).unwrap().to_std_string_escaped()
+//!             res.to_string(context.access()).unwrap().to_std_string_escaped()
 //!         );
 //!     }
 //!     Err(e) => {
@@ -117,7 +117,7 @@ mod tests;
 pub mod prelude {
     pub use crate::{
         bigint::JsBigInt,
-        context::Context,
+        context::{Context, ContextAccess, HostContext},
         error::{EngineError, JsError, JsNativeError, JsNativeErrorKind, RuntimeLimitError},
         host_defined::HostDefined,
         interop::{IntoJsFunction, IntoJsFunctionWithCaptures},
@@ -161,7 +161,7 @@ pub trait TryIntoJsResult {
     /// # Errors
     /// Any parsing errors that may occur during the conversion, or any
     /// error that happened during the call to a function.
-    fn try_into_js_result(self, context: &mut Context) -> JsResult<JsValue>;
+    fn try_into_js_result(self, context: ContextAccess<'_>) -> JsResult<JsValue>;
 }
 
 mod try_into_js_result_impls;
@@ -490,7 +490,7 @@ fn run_test_actions_with(actions: impl IntoIterator<Item = TestAction>, context:
                     ),
                     Err(e) => e,
                 };
-                let native = match err.try_native(context) {
+                let native = match err.try_native(context.access()) {
                     Ok(err) => err,
                     Err(e) => panic!(
                         "{}\nCouldn't obtain a native error: {e}",

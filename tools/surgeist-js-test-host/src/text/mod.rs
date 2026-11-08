@@ -7,7 +7,8 @@ use surgeist_js::object::builtins::{JsArrayBuffer, JsDataView, JsTypedArray, JsU
 use surgeist_js::realm::Realm;
 use surgeist_js::value::TryFromJs;
 use surgeist_js::{
-    Context, JsData, JsResult, JsString, JsValue, boa_class, boa_module, js_error, js_string,
+    Context, ContextAccess, JsData, JsResult, JsString, JsValue, boa_class, boa_module, js_error,
+    js_string,
 };
 
 #[cfg(test)]
@@ -141,33 +142,35 @@ impl TextDecoder {
     /// Any error that arises during decoding the specific encoding.
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/API/TextDecoder/decode
-    pub fn decode(&self, buffer: JsValue, context: &mut Context) -> JsResult<JsString> {
+    pub fn decode(&self, buffer: JsValue, mut context: ContextAccess<'_>) -> JsResult<JsString> {
         if buffer.is_undefined() {
             return Ok(js_string!(""));
         }
 
         let mut range = None;
-        let array_buffer = if let Ok(array_buffer) = JsArrayBuffer::try_from_js(&buffer, context) {
+        let array_buffer = if let Ok(array_buffer) =
+            JsArrayBuffer::try_from_js(&buffer, context.reborrow())
+        {
             array_buffer
-        } else if let Ok(typed_array) = JsTypedArray::try_from_js(&buffer, context) {
-            let Some(obj) = typed_array.buffer(context)?.as_object() else {
+        } else if let Ok(typed_array) = JsTypedArray::try_from_js(&buffer, context.reborrow()) {
+            let Some(obj) = typed_array.buffer(context.reborrow())?.as_object() else {
                 return Err(js_error!(TypeError: "Invalid buffer backing TypedArray."));
             };
 
-            let offset = typed_array.byte_offset(context)?;
-            let length = typed_array.byte_length(context)?;
+            let offset = typed_array.byte_offset(context.reborrow())?;
+            let length = typed_array.byte_length(context.reborrow())?;
 
             range = Some(offset..offset + length);
 
             JsArrayBuffer::from_object(obj)?
-        } else if let Ok(data_view) = JsDataView::try_from_js(&buffer, context) {
-            let Some(obj) = data_view.buffer(context)?.as_object() else {
+        } else if let Ok(data_view) = JsDataView::try_from_js(&buffer, context.reborrow()) {
+            let Some(obj) = data_view.buffer(context.reborrow())?.as_object() else {
                 return Err(js_error!(TypeError: "Invalid buffer backing DataView."));
             };
 
-            let offset = usize::try_from(data_view.byte_offset(context)?)
+            let offset = usize::try_from(data_view.byte_offset(context.reborrow())?)
                 .map_err(|_| js_error!(RangeError: "DataView offset exceeds addressable size."))?;
-            let length = usize::try_from(data_view.byte_length(context)?)
+            let length = usize::try_from(data_view.byte_length(context.reborrow())?)
                 .map_err(|_| js_error!(RangeError: "DataView length exceeds addressable size."))?;
 
             range = Some(offset..offset + length);
@@ -242,12 +245,16 @@ impl TextEncoder {
     /// the string itself.
     ///
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/API/TextEncoder/encode
-    pub fn encode(&self, text: Option<JsString>, context: &mut Context) -> JsResult<JsUint8Array> {
+    pub fn encode(
+        &self,
+        text: Option<JsString>,
+        mut context: ContextAccess<'_>,
+    ) -> JsResult<JsUint8Array> {
         let Some(text) = text else {
-            return JsUint8Array::from_iter([], context);
+            return JsUint8Array::from_iter([], context.reborrow());
         };
 
-        JsUint8Array::from_iter(encodings::utf8::encode(&text), context)
+        JsUint8Array::from_iter(encodings::utf8::encode(&text), context.reborrow())
     }
 }
 
@@ -263,5 +270,5 @@ pub mod js_module {
 /// # Errors
 /// This will error if the context or realm cannot register the class.
 pub fn register(realm: Option<Realm>, context: &mut Context) -> JsResult<()> {
-    js_module::boa_register(realm, context)
+    js_module::boa_register(realm, context.access())
 }

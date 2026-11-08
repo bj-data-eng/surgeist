@@ -336,13 +336,18 @@ mod tests {
         let symbol2 = JsSymbol::new(None).unwrap();
         let test_obj = JsObject::from_proto_and_data(context.runtime(), None, ()).unwrap();
         test_obj
-            .set(symbol1, js_str!("Can't see me"), false, &mut context)
+            .set(symbol1, js_str!("Can't see me"), false, context.access())
             .unwrap();
         test_obj
-            .set(js_str!("visible"), true, false, &mut context)
+            .set(js_str!("visible"), true, false, context.access())
             .unwrap();
         test_obj
-            .set(symbol2, js_str!("Still can't see me"), false, &mut context)
+            .set(
+                symbol2,
+                js_str!("Still can't see me"),
+                false,
+                context.access(),
+            )
             .unwrap();
         let values = test_obj
             .enumerable_own_property_names(crate::property::PropertyNameKind::Value, &mut context)
@@ -360,10 +365,15 @@ mod tests {
         let symbol = JsSymbol::new(None).unwrap();
         let test_obj = JsObject::with_object_proto(context.intrinsics());
         test_obj
-            .set(symbol, js_str!("This won't show up"), false, &mut context)
+            .set(
+                symbol,
+                js_str!("This won't show up"),
+                false,
+                context.access(),
+            )
             .unwrap();
         let json = test_obj
-            .try_into_js(&mut context)
+            .try_into_js(context.access())
             .expect("try_into_js() failed");
         let json_str = Json::stringify(&JsValue::from(0), &[json], &mut context)
             .expect("Json::stringify() failed")

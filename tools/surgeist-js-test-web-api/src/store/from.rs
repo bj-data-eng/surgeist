@@ -10,7 +10,9 @@ use surgeist_js::object::builtins::{
     JsTypedArray,
 };
 use surgeist_js::property::PropertyKey;
-use surgeist_js::{Context, JsError, JsObject, JsResult, JsString, JsValue, JsVariant, js_error};
+use surgeist_js::{
+    ContextAccess, JsError, JsObject, JsResult, JsString, JsValue, JsVariant, js_error,
+};
 
 /// Return true if an object is transferable.
 pub(super) fn is_transferable(object: &JsObject) -> bool {
@@ -21,14 +23,14 @@ pub(super) fn is_transferable(object: &JsObject) -> bool {
 pub(super) fn encode(
     value: &JsValue,
     transfer: &FxHashMap<ObjectId, JsObject>,
-    context: &mut Context,
+    mut context: ContextAccess<'_>,
 ) -> JsResult<StoredGraph> {
     let mut encoder = Encoder {
         transfer,
         seen: FxHashMap::default(),
         nodes: Vec::new(),
     };
-    let root = encoder.value(value, context)?;
+    let root = encoder.value(value, context.reborrow())?;
     let nodes = encoder
         .nodes
         .into_iter()
@@ -51,7 +53,7 @@ impl Encoder<'_> {
         id
     }
 
-    fn value(&mut self, value: &JsValue, context: &mut Context) -> JsResult<NodeId> {
+    fn value(&mut self, value: &JsValue, mut context: ContextAccess<'_>) -> JsResult<NodeId> {
         let node = match value.variant() {
             JsVariant::Null => StoredValue::Null,
             JsVariant::Undefined => StoredValue::Undefined,
@@ -60,13 +62,13 @@ impl Encoder<'_> {
             JsVariant::Float64(value) => StoredValue::Float(value),
             JsVariant::Integer32(value) => StoredValue::Float(f64::from(value)),
             JsVariant::BigInt(value) => StoredValue::BigInt(value.as_inner().clone()),
-            JsVariant::Object(object) => return self.object(&object, context),
+            JsVariant::Object(object) => return self.object(&object, context.reborrow()),
             JsVariant::Symbol(_) => return Err(unsupported_type()),
         };
         Ok(self.push(Some(node)))
     }
 
-    fn object(&mut self, object: &JsObject, context: &mut Context) -> JsResult<NodeId> {
+    fn object(&mut self, object: &JsObject, mut context: ContextAccess<'_>) -> JsResult<NodeId> {
         let identity = object.identity();
         if let Some((_, id)) = self.seen.get(&identity) {
             return Ok(*id);
@@ -83,28 +85,31 @@ impl Encoder<'_> {
         // Publish an ID before visiting children so back edges need no owning pointers.
         let id = self.push(None);
         self.seen.insert(identity, (object.clone(), id));
-        self.nodes[id.0] = Some(self.object_contents(object, context)?);
+        self.nodes[id.0] = Some(self.object_contents(object, context.reborrow())?);
         Ok(id)
     }
 
     fn object_contents(
         &mut self,
         object: &JsObject,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<StoredValue> {
         if let Ok(array) = JsArray::from_object(object.clone()) {
-            return self.array(&array, context);
+            return self.array(&array, context.reborrow());
         } else if let Ok(map) = JsMap::from_object(object.clone()) {
             let mut entries = Vec::new();
             map.for_each_native(|key, value| {
-                entries.push((self.value(&key, context)?, self.value(&value, context)?));
+                entries.push((
+                    self.value(&key, context.reborrow())?,
+                    self.value(&value, context.reborrow())?,
+                ));
                 Ok(())
             })?;
             return Ok(StoredValue::Map(entries));
         } else if let Ok(set) = JsSet::from_object(object.clone()) {
             let mut entries = Vec::new();
             set.for_each_native(|value| {
-                entries.push(self.value(&value, context)?);
+                entries.push(self.value(&value, context.reborrow())?);
                 Ok(())
             })?;
             return Ok(StoredValue::Set(entries));
@@ -115,14 +120,14 @@ impl Encoder<'_> {
             return Ok(StoredValue::SharedArrayBuffer(buffer.inner()));
         } else if let Ok(array) = JsTypedArray::from_object(object.clone()) {
             let kind = array.kind().ok_or_else(unsupported_type)?;
-            let buffer = array.buffer(context)?;
+            let buffer = array.buffer(context.reborrow())?;
             return Ok(StoredValue::TypedArray {
                 kind,
-                buffer: self.value(&buffer, context)?,
+                buffer: self.value(&buffer, context.reborrow())?,
             });
         } else if let Ok(date) = JsDate::from_object(object.clone()) {
             let timestamp = date
-                .get_time(context)?
+                .get_time(context.reborrow())?
                 .as_number()
                 .ok_or_else(unsupported_type)?;
             return Ok(StoredValue::Date(timestamp));
@@ -130,8 +135,8 @@ impl Encoder<'_> {
             return Err(js_error!(TypeError: "Errors are not supported yet."));
         } else if let Ok(regexp) = JsRegExp::from_object(object.clone()) {
             return Ok(StoredValue::RegExp {
-                source: regexp.source(context)?,
-                flags: regexp.flags(context)?,
+                source: regexp.source(context.reborrow())?,
+                flags: regexp.flags(context.reborrow())?,
             });
         } else if JsDataView::from_object(object.clone()).is_ok() {
             return Err(js_error!(TypeError: "Data views are not supported yet."));
@@ -140,22 +145,23 @@ impl Encoder<'_> {
         }
 
         // Keep own properties. Reconstruction supplies the destination realm's prototype.
-        let keys = object.own_property_keys(context)?;
+        let keys = object.own_property_keys(context.reborrow())?;
         let mut fields = Vec::with_capacity(keys.len());
         for key in keys {
-            let value = object.get(key.clone(), context)?;
+            let value = object.get(key.clone(), context.reborrow())?;
             let key = match key {
                 PropertyKey::String(string) => string.into(),
                 PropertyKey::Symbol(_) => return Err(unsupported_type()),
                 PropertyKey::Index(index) => JsString::from(format!("{}", index.get())).into(),
             };
-            fields.push((key, self.value(&value, context)?));
+            fields.push((key, self.value(&value, context.reborrow())?));
         }
         Ok(StoredValue::Object(fields))
     }
 
-    fn array(&mut self, array: &JsArray, context: &mut Context) -> JsResult<StoredValue> {
-        let length = usize::try_from(array.length(context)?).map_err(JsError::from_rust)?;
+    fn array(&mut self, array: &JsArray, mut context: ContextAccess<'_>) -> JsResult<StoredValue> {
+        let length =
+            usize::try_from(array.length(context.reborrow())?).map_err(JsError::from_rust)?;
         let mut items = Vec::with_capacity(length);
         for index in 0..length {
             let value = array
@@ -163,7 +169,9 @@ impl Encoder<'_> {
                 .properties()
                 .get(&index.into())
                 .and_then(|descriptor| descriptor.value().cloned());
-            let item = value.map(|value| self.value(&value, context)).transpose()?;
+            let item = value
+                .map(|value| self.value(&value, context.reborrow()))
+                .transpose()?;
             items.push(item);
         }
         Ok(StoredValue::Array(items))

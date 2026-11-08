@@ -913,7 +913,7 @@ impl Duration {
             new_round_to.create_data_property_or_throw(
                 js_string!("smallestUnit"),
                 param_string,
-                context,
+                context.access(),
             )?;
             new_round_to
         } else {
@@ -1014,7 +1014,7 @@ impl Duration {
                 total_of.create_data_property_or_throw(
                     js_string!("unit"),
                     param_string.clone(),
-                    context,
+                    context.access(),
                 )?;
                 total_of
             }
@@ -1285,7 +1285,7 @@ pub(crate) fn to_temporal_partial_duration(
     // 4. Let days be ? Get(temporalDurationLike, "days").
     // 5. If days is not undefined, set result.[[Days]] to ? ToIntegerIfIntegral(days).
     let days = unknown_object
-        .get(js_string!("days"), context)?
+        .get(js_string!("days"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             finite
@@ -1297,7 +1297,7 @@ pub(crate) fn to_temporal_partial_duration(
     // 6. Let hours be ? Get(temporalDurationLike, "hours").
     // 7. If hours is not undefined, set result.[[Hours]] to ? ToIntegerIfIntegral(hours).
     let hours = unknown_object
-        .get(js_string!("hours"), context)?
+        .get(js_string!("hours"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             finite
@@ -1309,7 +1309,7 @@ pub(crate) fn to_temporal_partial_duration(
     // 8. Let microseconds be ? Get(temporalDurationLike, "microseconds").
     // 9. If microseconds is not undefined, set result.[[Microseconds]] to ? ToIntegerIfIntegral(microseconds).
     let microseconds = unknown_object
-        .get(js_string!("microseconds"), context)?
+        .get(js_string!("microseconds"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             finite
@@ -1321,7 +1321,7 @@ pub(crate) fn to_temporal_partial_duration(
     // 10. Let milliseconds be ? Get(temporalDurationLike, "milliseconds").
     // 11. If milliseconds is not undefined, set result.[[Milliseconds]] to ? ToIntegerIfIntegral(milliseconds).
     let milliseconds = unknown_object
-        .get(js_string!("milliseconds"), context)?
+        .get(js_string!("milliseconds"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             finite
@@ -1333,7 +1333,7 @@ pub(crate) fn to_temporal_partial_duration(
     // 12. Let minutes be ? Get(temporalDurationLike, "minutes").
     // 13. If minutes is not undefined, set result.[[Minutes]] to ? ToIntegerIfIntegral(minutes).
     let minutes = unknown_object
-        .get(js_string!("minutes"), context)?
+        .get(js_string!("minutes"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             finite
@@ -1345,7 +1345,7 @@ pub(crate) fn to_temporal_partial_duration(
     // 14. Let months be ? Get(temporalDurationLike, "months").
     // 15. If months is not undefined, set result.[[Months]] to ? ToIntegerIfIntegral(months).
     let months = unknown_object
-        .get(js_string!("months"), context)?
+        .get(js_string!("months"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             finite
@@ -1357,7 +1357,7 @@ pub(crate) fn to_temporal_partial_duration(
     // 16. Let nanoseconds be ? Get(temporalDurationLike, "nanoseconds").
     // 17. If nanoseconds is not undefined, set result.[[Nanoseconds]] to ? ToIntegerIfIntegral(nanoseconds).
     let nanoseconds = unknown_object
-        .get(js_string!("nanoseconds"), context)?
+        .get(js_string!("nanoseconds"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             finite
@@ -1369,7 +1369,7 @@ pub(crate) fn to_temporal_partial_duration(
     // 18. Let seconds be ? Get(temporalDurationLike, "seconds").
     // 19. If seconds is not undefined, set result.[[Seconds]] to ? ToIntegerIfIntegral(seconds).
     let seconds = unknown_object
-        .get(js_string!("seconds"), context)?
+        .get(js_string!("seconds"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             finite
@@ -1381,7 +1381,7 @@ pub(crate) fn to_temporal_partial_duration(
     // 20. Let weeks be ? Get(temporalDurationLike, "weeks").
     // 21. If weeks is not undefined, set result.[[Weeks]] to ? ToIntegerIfIntegral(weeks).
     let weeks = unknown_object
-        .get(js_string!("weeks"), context)?
+        .get(js_string!("weeks"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             finite
@@ -1393,7 +1393,7 @@ pub(crate) fn to_temporal_partial_duration(
     // 22. Let years be ? Get(temporalDurationLike, "years").
     // 23. If years is not undefined, set result.[[Years]] to ? ToIntegerIfIntegral(years).
     let years = unknown_object
-        .get(js_string!("years"), context)?
+        .get(js_string!("years"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             finite

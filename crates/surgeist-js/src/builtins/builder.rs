@@ -1,6 +1,6 @@
 use crate::{
     JsObject, JsString, JsValue, NativeFunction, js_string,
-    native_function::{NativeFunctionObject, NativeFunctionPointer},
+    native_function::{BuiltinFunctionPointer, NativeFunctionObject},
     object::{
         CONSTRUCTOR, FunctionBinding, JsFunction, JsPrototype, PROTOTYPE,
         shape::{property_table::PropertyTableInner, slot::SlotAttributes},
@@ -48,7 +48,7 @@ impl IsConstructor for OrdinaryFunction {
 
 /// Marker for a callable object.
 pub(crate) struct Callable<Kind> {
-    function: NativeFunctionPointer,
+    function: BuiltinFunctionPointer,
     name: JsString,
     length: usize,
     kind: Kind,
@@ -103,7 +103,7 @@ impl<S: ApplyToObject + IsConstructor> ApplyToObject for Callable<S> {
             let mut function = object
                 .downcast_mut::<NativeFunctionObject>()
                 .expect("Builtin must be a function object");
-            function.f = NativeFunction::from_fn_ptr(self.function).stored();
+            function.f = NativeFunction::from_builtin(self.function).stored();
             function.constructor = S::IS_CONSTRUCTOR.then_some(ConstructorKind::Base);
             function.realm = Some(self.realm.edge());
         }
@@ -160,7 +160,7 @@ impl<'ctx> BuiltInBuilder<'ctx, OrdinaryObject> {
 
 pub(crate) struct BuiltInConstructorWithPrototype<'ctx> {
     realm: &'ctx Realm,
-    function: NativeFunctionPointer,
+    function: BuiltinFunctionPointer,
     name: JsString,
     length: usize,
 
@@ -214,7 +214,7 @@ impl BuiltInConstructorWithPrototype<'_> {
     /// Adds a new static method to the builtin object.
     pub(crate) fn static_method<B>(
         mut self,
-        function: NativeFunctionPointer,
+        function: BuiltinFunctionPointer,
         binding: B,
         length: usize,
     ) -> Self
@@ -294,7 +294,7 @@ impl BuiltInConstructorWithPrototype<'_> {
     /// Adds a new method to the constructor's prototype.
     pub(crate) fn method<B>(
         mut self,
-        function: NativeFunctionPointer,
+        function: BuiltinFunctionPointer,
         binding: B,
         length: usize,
     ) -> Self
@@ -431,7 +431,7 @@ impl BuiltInConstructorWithPrototype<'_> {
                 .constructor
                 .downcast_mut::<NativeFunctionObject>()
                 .expect("Builtin must be a function object");
-            function.f = NativeFunction::from_fn_ptr(self.function).stored();
+            function.f = NativeFunction::from_builtin(self.function).stored();
             function.constructor = Some(ConstructorKind::Base);
             function.realm = Some(self.realm.edge());
         }
@@ -460,7 +460,7 @@ impl BuiltInConstructorWithPrototype<'_> {
                 .constructor
                 .downcast_mut::<NativeFunctionObject>()
                 .expect("Builtin must be a function object");
-            function.f = NativeFunction::from_fn_ptr(self.function).stored();
+            function.f = NativeFunction::from_builtin(self.function).stored();
             function.constructor = Some(ConstructorKind::Base);
             function.realm = Some(self.realm.edge());
         }
@@ -481,7 +481,7 @@ impl BuiltInConstructorWithPrototype<'_> {
 
 pub(crate) struct BuiltInCallable<'ctx> {
     realm: &'ctx Realm,
-    function: NativeFunctionPointer,
+    function: BuiltinFunctionPointer,
     name: JsString,
     length: usize,
 }
@@ -507,7 +507,7 @@ impl BuiltInCallable<'_> {
     pub(crate) fn build(self) -> JsFunction {
         let object = self.realm.intrinsics().templates().function().create(
             NativeFunctionObject {
-                f: NativeFunction::from_fn_ptr(self.function).stored(),
+                f: NativeFunction::from_builtin(self.function).stored(),
                 name: self.name.clone(),
                 constructor: None,
                 realm: Some(self.realm.edge()),
@@ -522,7 +522,7 @@ impl BuiltInCallable<'_> {
 impl<'ctx> BuiltInBuilder<'ctx, OrdinaryObject> {
     pub(crate) fn callable(
         realm: &'ctx Realm,
-        function: NativeFunctionPointer,
+        function: BuiltinFunctionPointer,
     ) -> BuiltInCallable<'ctx> {
         BuiltInCallable {
             realm,
@@ -534,7 +534,7 @@ impl<'ctx> BuiltInBuilder<'ctx, OrdinaryObject> {
 
     pub(crate) fn callable_with_intrinsic<I: IntrinsicObject>(
         realm: &'ctx Realm,
-        function: NativeFunctionPointer,
+        function: BuiltinFunctionPointer,
     ) -> BuiltInBuilder<'ctx, Callable<OrdinaryFunction>> {
         BuiltInBuilder {
             realm,
@@ -553,7 +553,7 @@ impl<'ctx> BuiltInBuilder<'ctx, OrdinaryObject> {
     pub(crate) fn callable_with_object(
         realm: &'ctx Realm,
         object: JsObject,
-        function: NativeFunctionPointer,
+        function: BuiltinFunctionPointer,
     ) -> BuiltInBuilder<'ctx, Callable<OrdinaryFunction>> {
         BuiltInBuilder {
             realm,
@@ -617,7 +617,7 @@ impl<T> BuiltInBuilder<'_, T> {
     /// Adds a new static method to the builtin object.
     pub(crate) fn static_method<B>(
         self,
-        function: NativeFunctionPointer,
+        function: BuiltinFunctionPointer,
         binding: B,
         length: usize,
     ) -> Self
@@ -733,5 +733,24 @@ impl<FnTyp: ApplyToObject + IsConstructor> BuiltInBuilder<'_, Callable<FnTyp>> {
         self.object.set_prototype(Some(self.prototype));
 
         JsFunction::from_object_unchecked(self.object)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Context, Source, js_string};
+
+    #[test]
+    fn builtin_builders_preserve_callable_constructor_and_method_behavior() {
+        let mut context = Context::default();
+        let result = context
+            .eval(Source::from_bytes(
+                "[Array.of(1, 2).join('-'), Math.max(3, 7),
+                  Object.getPrototypeOf(new Array()) === Array.prototype,
+                  Object.getPrototypeOf(new Proxy({}, {})) === Object.prototype,
+                  Function.prototype.call.call(String, undefined, 42)] .join(',')",
+            ))
+            .unwrap();
+        assert_eq!(result, js_string!("1-2,7,true,true,42").into());
     }
 }

@@ -7,7 +7,7 @@ use std::path::Path;
 use std::rc::Rc;
 
 use surgeist_js::module::{ModuleLoader, Referrer};
-use surgeist_js::{Context, JsNativeError, JsResult, JsString, Module, Source};
+use surgeist_js::{Context, HostContext, JsNativeError, JsResult, JsString, Module, Source};
 
 /// Create a module loader that embeds files from the filesystem at build
 /// time. This is useful for bundling assets with the binary.
@@ -48,7 +48,7 @@ impl EmbeddedModuleEntry {
             };
             let path = path.to_std_string_escaped();
             let source = Source::from_reader(&mut bytes, Some(Path::new(&path)));
-            match Module::parse(source, None, context) {
+            match Module::parse(source, None, context.access()) {
                 Ok(module) => {
                     *self = Self::Module(module);
                 }
@@ -142,14 +142,14 @@ impl ModuleLoader for EmbeddedModuleLoader {
         self: Rc<Self>,
         referrer: Referrer,
         request: surgeist_js::module::ModuleRequest,
-        context: &RefCell<&mut Context>,
+        context: &HostContext<'_>,
     ) -> impl Future<Output = JsResult<Module>> {
-        let result = (|| {
+        let result = context.with(|mut context| {
             let specifier_path = surgeist_js::module::resolve_module_specifier(
                 None,
                 request.specifier(),
                 referrer.path(),
-                &mut context.borrow_mut(),
+                context.reborrow(),
             )
             .map_err(|e| {
                 JsNativeError::typ()
@@ -171,8 +171,8 @@ impl ModuleLoader for EmbeddedModuleLoader {
                 })?;
 
             let mut embedded = module.borrow_mut();
-            embedded.cache(&mut context.borrow_mut()).cloned()
-        })();
+            embedded.cache(context.into_owner()).cloned()
+        });
 
         async { result }
     }

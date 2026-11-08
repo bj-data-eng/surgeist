@@ -10,8 +10,8 @@ use surgeist_js::native_function::{CapturedObject, CapturedValue, NativeCapture}
 use surgeist_js::object::builtins::JsFunction;
 use surgeist_js::realm::Realm;
 use surgeist_js::{
-    Context, JsData, JsError, JsNativeError, JsObject, JsResult, JsString, JsValue, boa_class,
-    boa_module, js_error, js_string,
+    Context, ContextAccess, JsData, JsError, JsNativeError, JsObject, JsResult, JsString, JsValue,
+    boa_class, boa_module, js_error, js_string,
 };
 
 #[cfg(test)]
@@ -38,13 +38,18 @@ impl CancellationToken {
     }
 }
 
-fn make_abort_error(context: &mut Context) -> JsValue {
+fn make_abort_error(mut context: ContextAccess<'_>) -> JsValue {
     let obj = JsNativeError::error()
         .with_message("signal is aborted without reason")
-        .into_opaque(context)
+        .into_opaque(context.reborrow())
         .expect("the abort error contains only local data");
-    obj.set(js_string!("name"), js_string!("AbortError"), false, context)
-        .ok();
+    obj.set(
+        js_string!("name"),
+        js_string!("AbortError"),
+        false,
+        context.reborrow(),
+    )
+    .ok();
     obj.into()
 }
 
@@ -80,7 +85,7 @@ impl JsAbortSignal {
     /// # Errors
     ///
     /// Returns an error if the signal has already been aborted.
-    pub fn signal_abort(&self, reason: JsValue, context: &mut Context) -> JsResult<()> {
+    pub fn signal_abort(&self, reason: JsValue, mut context: ContextAccess<'_>) -> JsResult<()> {
         if self.aborted.get() {
             return Ok(());
         }
@@ -122,12 +127,12 @@ impl JsAbortSignal {
     }
 
     /// Returns the abort reason.
-    pub fn abort_reason(&self, context: &mut Context) -> JsValue {
+    pub fn abort_reason(&self, mut context: ContextAccess<'_>) -> JsValue {
         if !self.aborted.get() {
             return JsValue::undefined();
         }
         let reason = self.reason.borrow().as_ref().map(JsValue::restore);
-        reason.unwrap_or_else(|| make_abort_error(context))
+        reason.unwrap_or_else(|| make_abort_error(context.reborrow()))
     }
 
     /// Returns the cancellation token.
@@ -153,13 +158,13 @@ impl JsAbortSignal {
     }
 
     #[boa(getter)]
-    fn reason(&self, context: &mut Context) -> JsValue {
-        self.abort_reason(context)
+    fn reason(&self, mut context: ContextAccess<'_>) -> JsValue {
+        self.abort_reason(context.reborrow())
     }
 
-    fn throw_if_aborted(&self, context: &mut Context) -> JsResult<()> {
+    fn throw_if_aborted(&self, mut context: ContextAccess<'_>) -> JsResult<()> {
         if self.aborted.get() {
-            Err(JsError::from_opaque(self.abort_reason(context)))
+            Err(JsError::from_opaque(self.abort_reason(context.reborrow())))
         } else {
             Ok(())
         }
@@ -169,7 +174,7 @@ impl JsAbortSignal {
         &self,
         event_type: JsString,
         callback: JsFunction,
-        _context: &mut Context,
+        _context: ContextAccess<'_>,
     ) {
         {
             let listeners = self.listeners.borrow();
@@ -204,8 +209,8 @@ pub struct JsAbortController {
 #[boa(rename_all = "camelCase")]
 impl JsAbortController {
     #[boa(constructor)]
-    fn constructor(context: &mut Context) -> JsResult<Self> {
-        let signal_obj = Class::from_data(JsAbortSignal::default(), context)?;
+    fn constructor(mut context: ContextAccess<'_>) -> JsResult<Self> {
+        let signal_obj = Class::from_data(JsAbortSignal::default(), context.reborrow())?;
         Ok(Self {
             signal: signal_obj.store(),
         })
@@ -216,14 +221,14 @@ impl JsAbortController {
         JsObject::restore(&self.signal)
     }
 
-    fn abort(&self, reason: Option<JsValue>, context: &mut Context) -> JsResult<()> {
-        let abort_reason = reason.unwrap_or_else(|| make_abort_error(context));
+    fn abort(&self, reason: Option<JsValue>, mut context: ContextAccess<'_>) -> JsResult<()> {
+        let abort_reason = reason.unwrap_or_else(|| make_abort_error(context.reborrow()));
 
         let signal_obj = self.signal();
         let Some(signal) = signal_obj.downcast_ref::<JsAbortSignal>() else {
             return Err(js_error!(TypeError: "AbortController: invalid signal object"));
         };
-        signal.signal_abort(abort_reason, context)
+        signal.signal_abort(abort_reason, context.reborrow())
     }
 }
 
@@ -237,5 +242,5 @@ pub mod js_module {
 /// # Errors
 /// Returns an error if registration fails.
 pub fn register(realm: Option<Realm>, context: &mut Context) -> JsResult<()> {
-    js_module::boa_register(realm, context)
+    js_module::boa_register(realm, context.access())
 }

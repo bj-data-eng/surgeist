@@ -99,7 +99,7 @@ impl AsyncGeneratorYield {
                     GeneratorResumeKind::Return
                 }
                 CompletionRecord::Throw(err) => {
-                    let err = match err.into_opaque(context) {
+                    let err = match err.into_opaque(context.access()) {
                         Ok(e) => e,
                         Err(e) => return context.handle_error(e),
                     };

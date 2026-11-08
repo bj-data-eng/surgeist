@@ -42,7 +42,7 @@ impl StoreClassPrototype {
         // h. Else,
         } else if let Some(superclass) = superclass.as_constructor() {
             // i. Let protoParent be ? Get(superclass, "prototype").
-            let proto = superclass.get(PROTOTYPE, context)?;
+            let proto = superclass.get(PROTOTYPE, context.access())?;
 
             // ii. If protoParent is not an Object and protoParent is not null, throw a TypeError exception.
             if !proto.is_object() && !proto.is_null() {

@@ -2,8 +2,9 @@
 
 use super::{JsArray, JsFunction};
 use crate::value::TryIntoJs;
+use crate::{ContextAccess, HostContext};
 use crate::{
-    Context, JsArgs, JsError, JsExpect, JsNativeError, JsResult, JsValue, NativeFunction,
+    JsArgs, JsError, JsExpect, JsNativeError, JsResult, JsValue, NativeFunction,
     builtins::{
         Promise,
         promise::{PromiseState, ResolvingFunctions},
@@ -43,16 +44,16 @@ use surgeist_js_gc::heap::{Rooted, Trace as HeapTrace};
 /// );
 ///
 /// let promise = JsPromise::new(
-///     |resolvers, context| {
+///     |resolvers, mut context| {
 ///         let result = js_string!("hello world!").into();
 ///         resolvers.resolve.call(
 ///             &JsValue::undefined(),
 ///             &[result],
-///             context,
+///             context.reborrow(),
 ///         )?;
 ///         Ok(JsValue::undefined())
 ///     },
-///     context,
+///     context.access(),
 /// )?;
 ///
 /// let promise = promise
@@ -65,27 +66,27 @@ use surgeist_js_gc::heap::{Rooted, Trace as HeapTrace};
 ///             .to_js_function(context.realm()).unwrap(),
 ///         ),
 ///         None,
-///         context,
+///         context.access(),
 ///     )?
 ///     .catch(
 ///         NativeFunction::from_fn_ptr(|_, args, _| {
 ///             Ok(args.get_or_undefined(0).clone())
 ///         })
 ///         .to_js_function(context.realm()).unwrap(),
-///         context,
+///         context.access(),
 ///     )?
 ///     .finally(
-///         NativeFunction::from_fn_ptr(|_, _, context| {
+///         NativeFunction::from_fn_ptr(|_, _, mut context| {
 ///             context.global_object().clone().set(
 ///                 js_string!("finally"),
 ///                 JsValue::from(true),
 ///                 true,
-///                 context,
+///                 context.reborrow(),
 ///             )?;
 ///             Ok(JsValue::undefined())
 ///         })
 ///         .to_js_function(context.realm()).unwrap(),
-///         context,
+///         context.access(),
 ///     )?;
 ///
 /// context.run_jobs();
@@ -99,7 +100,7 @@ use surgeist_js_gc::heap::{Rooted, Trace as HeapTrace};
 ///     context
 ///         .global_object()
 ///         .clone()
-///         .get(js_string!("finally"), context)?,
+///         .get(js_string!("finally"), context.access())?,
 ///     JsValue::from(true)
 /// );
 ///
@@ -145,16 +146,16 @@ impl JsPromise {
     /// let context = &mut Context::default();
     ///
     /// let promise = JsPromise::new(
-    ///     |resolvers, context| {
+    ///     |resolvers, mut context| {
     ///         let result = js_string!("hello world").into();
     ///         resolvers.resolve.call(
     ///             &JsValue::undefined(),
     ///             &[result],
-    ///             context,
+    ///             context.reborrow(),
     ///         )?;
     ///         Ok(JsValue::undefined())
     ///     },
-    ///     context,
+    ///     context.access(),
     /// )?;
     ///
     /// context.run_jobs();
@@ -168,10 +169,11 @@ impl JsPromise {
     /// ```
     ///
     /// [`Promise()`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/Promise
-    pub fn new<F>(executor: F, context: &mut Context) -> JsResult<Self>
+    pub fn new<F>(executor: F, context: ContextAccess<'_>) -> JsResult<Self>
     where
-        F: FnOnce(&ResolvingFunctions, &mut Context) -> JsResult<JsValue>,
+        F: for<'call> FnOnce(&ResolvingFunctions, ContextAccess<'call>) -> JsResult<JsValue>,
     {
+        let context = context.into_owner();
         let promise = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
             context.intrinsics().constructors().promise().prototype(),
@@ -179,11 +181,12 @@ impl JsPromise {
         );
         let resolvers = Promise::create_resolving_functions(&promise, context);
 
-        if let Err(e) = executor(&resolvers, context) {
-            let e = e.into_opaque(context)?;
+        if let Err(e) = executor(&resolvers, context.access()) {
+            context.check_execution_stop()?;
+            let e = e.into_opaque(context.access())?;
             resolvers
                 .reject
-                .call(&JsValue::undefined(), &[e], context)
+                .call(&JsValue::undefined(), &[e], context.access())
                 .js_expect("default `reject` function cannot throw")?;
         }
 
@@ -208,13 +211,13 @@ impl JsPromise {
     /// # fn main() -> Result<(), Box<dyn Error>> {
     /// let context = &mut Context::default();
     ///
-    /// let (promise, resolvers) = JsPromise::new_pending(context);
+    /// let (promise, resolvers) = JsPromise::new_pending(context.access());
     ///
     /// assert_eq!(promise.state(), PromiseState::Pending);
     ///
     /// resolvers
     ///     .reject
-    ///     .call(&JsValue::undefined(), &[5.into()], context)?;
+    ///     .call(&JsValue::undefined(), &[5.into()], context.access())?;
     ///
     /// assert_eq!(promise.state(), PromiseState::Rejected(5.into()));
     ///
@@ -222,7 +225,8 @@ impl JsPromise {
     /// # }
     /// ```
     #[inline]
-    pub fn new_pending(context: &mut Context) -> (Self, ResolvingFunctions) {
+    pub fn new_pending(context: ContextAccess<'_>) -> (Self, ResolvingFunctions) {
+        let context = context.into_owner();
         let promise = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
             context.intrinsics().constructors().promise().prototype(),
@@ -284,18 +288,17 @@ impl JsPromise {
     ///
     /// ```
     /// use std::error::Error;
-    /// # use std::cell::RefCell;
     /// # use surgeist_js::{
     /// #    object::builtins::JsPromise,
     /// #    builtins::promise::PromiseState,
-    /// #    Context, JsResult, JsValue
+    /// #    Context, HostContext, JsResult, JsValue
     /// # };
-    /// async fn f(_: &RefCell<&mut Context>) -> JsResult<JsValue> {
+    /// async fn f(_: &HostContext<'_>) -> JsResult<JsValue> {
     ///     Ok(JsValue::null())
     /// }
     /// let context = &mut Context::default();
     ///
-    /// let promise = JsPromise::from_async_fn(f, context);
+    /// let promise = JsPromise::from_async_fn(f, context.access());
     ///
     /// context.run_jobs();
     ///
@@ -303,11 +306,12 @@ impl JsPromise {
     /// ```
     ///
     /// [async_fn]: crate::native_function::NativeFunction::from_async_fn
-    pub fn from_async_fn<F>(f: F, context: &mut Context) -> Self
+    pub fn from_async_fn<F>(f: F, context: ContextAccess<'_>) -> Self
     where
-        F: AsyncFnOnce(&RefCell<&mut Context>) -> JsResult<JsValue> + 'static,
+        F: AsyncFnOnce(&HostContext<'_>) -> JsResult<JsValue> + 'static,
     {
-        let (promise, resolvers) = Self::new_pending(context);
+        let context = context.into_owner();
+        let (promise, resolvers) = Self::new_pending(context.access());
         let realm = context.realm().clone();
 
         context.enqueue_job(
@@ -315,14 +319,26 @@ impl JsPromise {
                 async move |context| {
                     let result = f(context).await;
 
-                    let context = &mut context.borrow_mut();
-                    match context.runtime().admit_callback_result(result) {
-                        Ok(v) => resolvers.resolve.call(&JsValue::undefined(), &[v], context),
-                        Err(e) => {
-                            let e = e.into_opaque(context)?;
-                            resolvers.reject.call(&JsValue::undefined(), &[e], context)
+                    context.with(|access| {
+                        let context = access.into_owner();
+                        context.check_execution_stop()?;
+                        match context.runtime().admit_callback_result(result) {
+                            Ok(v) => resolvers.resolve.call(
+                                &JsValue::undefined(),
+                                &[v],
+                                context.access(),
+                            ),
+                            Err(e) => {
+                                if !e.is_catchable() {
+                                    return Err(e);
+                                }
+                                let e = e.into_opaque(context.access())?;
+                                resolvers
+                                    .reject
+                                    .call(&JsValue::undefined(), &[e], context.access())
+                            }
                         }
-                    }
+                    })
                 },
                 realm,
             )
@@ -354,13 +370,13 @@ impl JsPromise {
     ///         .ok_or(js_error!("rejected!"))
     /// }
     ///
-    /// let promise = JsPromise::from_result(do_thing(true), context)?;
+    /// let promise = JsPromise::from_result(do_thing(true), context.access())?;
     /// assert_eq!(
     ///     promise.state(),
     ///     PromiseState::Fulfilled(js_string!("resolved!").into())
     /// );
     ///
-    /// let promise = JsPromise::from_result(do_thing(false), context)?;
+    /// let promise = JsPromise::from_result(do_thing(false), context.access())?;
     /// assert_eq!(
     ///     promise.state(),
     ///     PromiseState::Rejected(js_string!("rejected!").into())
@@ -370,11 +386,12 @@ impl JsPromise {
     /// ```
     pub fn from_result<V: Into<JsValue>, E: Into<JsError>>(
         value: Result<V, E>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Self> {
+        let context = context.into_owner();
         match value {
-            Ok(v) => Self::resolve(v, context),
-            Err(e) => Self::reject(e, context),
+            Ok(v) => Self::resolve(v, context.access()),
+            Err(e) => Self::reject(e, context.access()),
         }
     }
 
@@ -398,7 +415,7 @@ impl JsPromise {
     /// # fn main() -> Result<(), Box<dyn Error>> {
     /// let context = &mut Context::default();
     ///
-    /// let promise = JsPromise::resolve(js_string!("resolved!"), context)?;
+    /// let promise = JsPromise::resolve(js_string!("resolved!"), context.access())?;
     ///
     /// assert_eq!(
     ///     promise.state(),
@@ -410,7 +427,8 @@ impl JsPromise {
     ///
     /// [`Promise.resolve()`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/resolve
     /// [thenables]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise#thenables
-    pub fn resolve<V: Into<JsValue>>(value: V, context: &mut Context) -> JsResult<Self> {
+    pub fn resolve<V: Into<JsValue>>(value: V, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         Promise::promise_resolve(
             &context.intrinsics().constructors().promise().constructor(),
             value.into(),
@@ -447,7 +465,7 @@ impl JsPromise {
     ///
     /// let promise = JsPromise::reject(
     ///     JsError::from_opaque(js_string!("oops!").into()),
-    ///     context,
+    ///     context.access(),
     /// )?;
     ///
     /// assert_eq!(
@@ -460,8 +478,9 @@ impl JsPromise {
     ///
     /// [`Promise.reject`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/reject
     /// [thenable]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise#thenables
-    pub fn reject<E: Into<JsError>>(error: E, context: &mut Context) -> JsResult<Self> {
-        let reason = error.into().into_opaque(context)?;
+    pub fn reject<E: Into<JsError>>(error: E, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
+        let reason = error.into().into_opaque(context.access())?;
         Promise::promise_reject(
             &context.intrinsics().constructors().promise().constructor(),
             reason,
@@ -485,7 +504,7 @@ impl JsPromise {
     /// # };
     /// let context = &mut Context::default();
     ///
-    /// let promise = JsPromise::new_pending(context).0;
+    /// let promise = JsPromise::new_pending(context.access()).0;
     ///
     /// assert_eq!(promise.state(), PromiseState::Pending);
     /// ```
@@ -533,27 +552,27 @@ impl JsPromise {
     /// let context = &mut Context::default();
     ///
     /// let promise = JsPromise::new(
-    ///     |resolvers, context| {
+    ///     |resolvers, mut context| {
     ///         resolvers.resolve.call(
     ///             &JsValue::undefined(),
     ///             &[255.255.into()],
-    ///             context,
+    ///             context.reborrow(),
     ///         )?;
     ///         Ok(JsValue::undefined())
     ///     },
-    ///     context,
+    ///     context.access(),
     /// )?
     /// .then(
     ///     Some(
-    ///         NativeFunction::from_fn_ptr(|_, args, context| {
+    ///         NativeFunction::from_fn_ptr(|_, args, mut context| {
     ///             args.get_or_undefined(0)
-    ///                 .to_string(context)
+    ///                 .to_string(context.reborrow())
     ///                 .map(JsValue::from)
     ///         })
     ///         .to_js_function(context.realm()).unwrap(),
     ///     ),
     ///     None,
-    ///     context,
+    ///     context.access(),
     /// )?;
     ///
     /// context.run_jobs();
@@ -573,8 +592,9 @@ impl JsPromise {
         &self,
         on_fulfilled: Option<JsFunction>,
         on_rejected: Option<JsFunction>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Self> {
+        let context = context.into_owner();
         self.inner.check_runtime(context.runtime())?;
         for handler in on_fulfilled.iter().chain(&on_rejected) {
             handler.check_runtime(context.runtime())?;
@@ -604,26 +624,26 @@ impl JsPromise {
     /// let context = &mut Context::default();
     ///
     /// let promise = JsPromise::new(
-    ///     |resolvers, context| {
+    ///     |resolvers, mut context| {
     ///         let error = JsNativeError::typ().with_message("thrown");
-    ///         let error = error.into_opaque(context)?;
+    ///         let error = error.into_opaque(context.reborrow())?;
     ///         resolvers.reject.call(
     ///             &JsValue::undefined(),
     ///             &[error.into()],
-    ///             context,
+    ///             context.reborrow(),
     ///         )?;
     ///         Ok(JsValue::undefined())
     ///     },
-    ///     context,
+    ///     context.access(),
     /// )?
     /// .catch(
-    ///     NativeFunction::from_fn_ptr(|_, args, context| {
+    ///     NativeFunction::from_fn_ptr(|_, args, mut context| {
     ///         args.get_or_undefined(0)
-    ///             .to_string(context)
+    ///             .to_string(context.reborrow())
     ///             .map(JsValue::from)
     ///     })
     ///     .to_js_function(context.realm()).unwrap(),
-    ///     context,
+    ///     context.access(),
     /// )?;
     ///
     /// context.run_jobs();
@@ -640,8 +660,9 @@ impl JsPromise {
     /// [then]: JsPromise::then
     #[inline]
     #[allow(clippy::return_self_not_must_use)] // Could just be used to add a handler on an existing promise
-    pub fn catch(&self, on_rejected: JsFunction, context: &mut Context) -> JsResult<Self> {
-        self.then(None, Some(on_rejected), context)
+    pub fn catch(&self, on_rejected: JsFunction, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
+        self.then(None, Some(on_rejected), context.access())
     }
 
     /// Schedules a callback to run when the promise is rejected.
@@ -674,30 +695,30 @@ impl JsPromise {
     /// )?;
     ///
     /// let promise = JsPromise::new(
-    ///     |resolvers, context| {
+    ///     |resolvers, mut context| {
     ///         let error = JsNativeError::typ().with_message("thrown");
-    ///         let error = error.into_opaque(context)?;
+    ///         let error = error.into_opaque(context.reborrow())?;
     ///         resolvers.reject.call(
     ///             &JsValue::undefined(),
     ///             &[error.into()],
-    ///             context,
+    ///             context.reborrow(),
     ///         )?;
     ///         Ok(JsValue::undefined())
     ///     },
-    ///     context,
+    ///     context.access(),
     /// )?
     /// .finally(
-    ///     NativeFunction::from_fn_ptr(|_, _, context| {
+    ///     NativeFunction::from_fn_ptr(|_, _, mut context| {
     ///         context.global_object().clone().set(
     ///             js_string!("finally"),
     ///             JsValue::from(true),
     ///             true,
-    ///             context,
+    ///             context.reborrow(),
     ///         )?;
     ///         Ok(JsValue::undefined())
     ///     })
     ///     .to_js_function(context.realm()).unwrap(),
-    ///     context,
+    ///     context.access(),
     /// )?;
     ///
     /// context.run_jobs();
@@ -706,7 +727,7 @@ impl JsPromise {
     ///     context
     ///         .global_object()
     ///         .clone()
-    ///         .get(js_string!("finally"), context)?,
+    ///         .get(js_string!("finally"), context.access())?,
     ///     JsValue::from(true)
     /// );
     ///
@@ -718,7 +739,8 @@ impl JsPromise {
     /// [then]: JsPromise::then
     #[inline]
     #[allow(clippy::return_self_not_must_use)] // Could just be used to add a handler on an existing promise
-    pub fn finally(&self, on_finally: JsFunction, context: &mut Context) -> JsResult<Self> {
+    pub fn finally(&self, on_finally: JsFunction, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         self.inner.check_runtime(context.runtime())?;
         on_finally.check_runtime(context.runtime())?;
 
@@ -749,20 +771,20 @@ impl JsPromise {
     ///
     /// let promise1 = JsPromise::all(
     ///     [
-    ///         JsPromise::resolve(0, context)?,
-    ///         JsPromise::resolve(2, context)?,
-    ///         JsPromise::resolve(4, context)?,
+    ///         JsPromise::resolve(0, context.access())?,
+    ///         JsPromise::resolve(2, context.access())?,
+    ///         JsPromise::resolve(4, context.access())?,
     ///     ],
-    ///     context,
+    ///     context.access(),
     /// )?;
     ///
     /// let promise2 = JsPromise::all(
     ///     [
-    ///         JsPromise::resolve(1, context)?,
-    ///         JsPromise::reject(JsNativeError::typ(), context)?,
-    ///         JsPromise::resolve(3, context)?,
+    ///         JsPromise::resolve(1, context.access())?,
+    ///         JsPromise::reject(JsNativeError::typ(), context.access())?,
+    ///         JsPromise::resolve(3, context.access())?,
     ///     ],
-    ///     context,
+    ///     context.access(),
     /// )?;
     ///
     /// context.run_jobs();
@@ -774,23 +796,25 @@ impl JsPromise {
     ///     .unwrap()
     ///     .clone();
     /// let array = JsArray::from_object(array)?;
-    /// assert_eq!(array.at(0, context)?, 0.into());
-    /// assert_eq!(array.at(1, context)?, 2.into());
-    /// assert_eq!(array.at(2, context)?, 4.into());
+    /// assert_eq!(array.at(0, context.access())?, 0.into());
+    /// assert_eq!(array.at(1, context.access())?, 2.into());
+    /// assert_eq!(array.at(2, context.access())?, 4.into());
     ///
     /// let error = promise2.state().as_rejected().unwrap().clone();
-    /// assert_eq!(error.to_string(context)?, js_string!("TypeError"));
+    /// assert_eq!(error.to_string(context.access())?, js_string!("TypeError"));
     ///
     /// # Ok(())
     /// # }
     /// ```
     ///
     /// [`Promise.all`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/all
-    pub fn all<I>(promises: I, context: &mut Context) -> JsResult<Self>
+    pub fn all<I>(promises: I, context: ContextAccess<'_>) -> JsResult<Self>
     where
         I: IntoIterator<Item = Self>,
     {
-        let promises = JsArray::from_iter(promises.into_iter().map(JsValue::from), context)?;
+        let context = context.into_owner();
+        let promises =
+            JsArray::from_iter(promises.into_iter().map(JsValue::from), context.access())?;
 
         let c = &context
             .intrinsics()
@@ -829,11 +853,11 @@ impl JsPromise {
     ///
     /// let promise = JsPromise::all_settled(
     ///     [
-    ///         JsPromise::resolve(1, context)?,
-    ///         JsPromise::reject(JsNativeError::typ(), context)?,
-    ///         JsPromise::resolve(3, context)?,
+    ///         JsPromise::resolve(1, context.access())?,
+    ///         JsPromise::reject(JsNativeError::typ(), context.access())?,
+    ///         JsPromise::resolve(3, context.access())?,
     ///     ],
-    ///     context,
+    ///     context.access(),
     /// )?;
     ///
     /// context.run_jobs();
@@ -846,40 +870,42 @@ impl JsPromise {
     ///     .clone();
     /// let array = JsArray::from_object(array)?;
     ///
-    /// let a = array.at(0, context)?.as_object().unwrap().clone();
+    /// let a = array.at(0, context.access())?.as_object().unwrap().clone();
     /// assert_eq!(
-    ///     a.get(js_string!("status"), context)?,
+    ///     a.get(js_string!("status"), context.access())?,
     ///     js_string!("fulfilled").into()
     /// );
-    /// assert_eq!(a.get(js_string!("value"), context)?, 1.into());
+    /// assert_eq!(a.get(js_string!("value"), context.access())?, 1.into());
     ///
-    /// let b = array.at(1, context)?.as_object().unwrap().clone();
+    /// let b = array.at(1, context.access())?.as_object().unwrap().clone();
     /// assert_eq!(
-    ///     b.get(js_string!("status"), context)?,
+    ///     b.get(js_string!("status"), context.access())?,
     ///     js_string!("rejected").into()
     /// );
     /// assert_eq!(
-    ///     b.get(js_string!("reason"), context)?.to_string(context)?,
+    ///     b.get(js_string!("reason"), context.access())?.to_string(context.access())?,
     ///     js_string!("TypeError")
     /// );
     ///
-    /// let c = array.at(2, context)?.as_object().unwrap().clone();
+    /// let c = array.at(2, context.access())?.as_object().unwrap().clone();
     /// assert_eq!(
-    ///     c.get(js_string!("status"), context)?,
+    ///     c.get(js_string!("status"), context.access())?,
     ///     js_string!("fulfilled").into()
     /// );
-    /// assert_eq!(c.get(js_string!("value"), context)?, 3.into());
+    /// assert_eq!(c.get(js_string!("value"), context.access())?, 3.into());
     ///
     /// # Ok(())
     /// # }
     /// ```
     ///
     /// [`Promise.allSettled`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/allSettled
-    pub fn all_settled<I>(promises: I, context: &mut Context) -> JsResult<Self>
+    pub fn all_settled<I>(promises: I, context: ContextAccess<'_>) -> JsResult<Self>
     where
         I: IntoIterator<Item = Self>,
     {
-        let promises = JsArray::from_iter(promises.into_iter().map(JsValue::from), context)?;
+        let context = context.into_owner();
+        let promises =
+            JsArray::from_iter(promises.into_iter().map(JsValue::from), context.access())?;
 
         let c = &context
             .intrinsics()
@@ -923,12 +949,12 @@ impl JsPromise {
     ///
     /// let promise = JsPromise::any(
     ///     [
-    ///         JsPromise::reject(JsNativeError::syntax(), context)?,
-    ///         JsPromise::reject(JsNativeError::typ(), context)?,
-    ///         JsPromise::resolve(js_string!("fulfilled"), context)?,
-    ///         JsPromise::reject(JsNativeError::range(), context)?,
+    ///         JsPromise::reject(JsNativeError::syntax(), context.access())?,
+    ///         JsPromise::reject(JsNativeError::typ(), context.access())?,
+    ///         JsPromise::resolve(js_string!("fulfilled"), context.access())?,
+    ///         JsPromise::reject(JsNativeError::range(), context.access())?,
     ///     ],
-    ///     context,
+    ///     context.access(),
     /// )?;
     ///
     /// context.run_jobs();
@@ -942,11 +968,13 @@ impl JsPromise {
     /// ```
     ///
     /// [`Promise.any`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/any
-    pub fn any<I>(promises: I, context: &mut Context) -> JsResult<Self>
+    pub fn any<I>(promises: I, context: ContextAccess<'_>) -> JsResult<Self>
     where
         I: IntoIterator<Item = Self>,
     {
-        let promises = JsArray::from_iter(promises.into_iter().map(JsValue::from), context)?;
+        let context = context.into_owner();
+        let promises =
+            JsArray::from_iter(promises.into_iter().map(JsValue::from), context.access())?;
 
         let c = &context
             .intrinsics()
@@ -986,22 +1014,22 @@ impl JsPromise {
     /// # fn main() -> Result<(), Box<dyn Error>> {
     /// let context = &mut Context::default();
     ///
-    /// let (a, resolvers_a) = JsPromise::new_pending(context);
-    /// let (b, resolvers_b) = JsPromise::new_pending(context);
-    /// let (c, resolvers_c) = JsPromise::new_pending(context);
+    /// let (a, resolvers_a) = JsPromise::new_pending(context.access());
+    /// let (b, resolvers_b) = JsPromise::new_pending(context.access());
+    /// let (c, resolvers_c) = JsPromise::new_pending(context.access());
     ///
-    /// let promise = JsPromise::race([a, b, c], context)?;
+    /// let promise = JsPromise::race([a, b, c], context.access())?;
     ///
     /// resolvers_b
     ///     .reject
-    ///     .call(&JsValue::undefined(), &[], context)?;
+    ///     .call(&JsValue::undefined(), &[], context.access())?;
     /// resolvers_a
     ///     .resolve
-    ///     .call(&JsValue::undefined(), &[5.into()], context)?;
+    ///     .call(&JsValue::undefined(), &[5.into()], context.access())?;
     /// resolvers_c.reject.call(
     ///     &JsValue::undefined(),
     ///     &[js_string!("c error").into()],
-    ///     context,
+    ///     context.access(),
     /// )?;
     ///
     /// context.run_jobs();
@@ -1016,11 +1044,13 @@ impl JsPromise {
     /// ```
     ///
     /// [`Promise.race`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/race
-    pub fn race<I>(promises: I, context: &mut Context) -> JsResult<Self>
+    pub fn race<I>(promises: I, context: ContextAccess<'_>) -> JsResult<Self>
     where
         I: IntoIterator<Item = Self>,
     {
-        let promises = JsArray::from_iter(promises.into_iter().map(JsValue::from), context)?;
+        let context = context.into_owner();
+        let promises =
+            JsArray::from_iter(promises.into_iter().map(JsValue::from), context.access())?;
 
         let c = &context
             .intrinsics()
@@ -1058,15 +1088,15 @@ impl JsPromise {
     /// # fn main() -> Result<(), Box<dyn Error>> {
     /// let context = &mut Context::default();
     ///
-    /// let (promise, resolvers) = JsPromise::new_pending(context);
-    /// let promise_future = promise.into_js_future(context)?;
+    /// let (promise, resolvers) = JsPromise::new_pending(context.access());
+    /// let promise_future = promise.into_js_future(context.access())?;
     ///
     /// let future1 = async move { promise_future.await };
     ///
     /// let future2 = async move {
     ///     resolvers
     ///         .resolve
-    ///         .call(&JsValue::undefined(), &[10.into()], context)?;
+    ///         .call(&JsValue::undefined(), &[10.into()], context.access())?;
     ///     context.run_jobs();
     ///     Ok::<(), JsError>(())
     /// };
@@ -1079,7 +1109,8 @@ impl JsPromise {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn into_js_future(self, context: &mut Context) -> JsResult<JsFuture> {
+    pub fn into_js_future(self, context: ContextAccess<'_>) -> JsResult<JsFuture> {
+        let context = context.into_owner();
         // Mostly based from:
         // https://docs.rs/wasm-bindgen-futures/0.4.37/src/wasm_bindgen_futures/lib.rs.html#109-168
 
@@ -1117,7 +1148,7 @@ impl JsPromise {
         let resolve = {
             let state = state.clone();
 
-            NativeFunction::from_fn_with_captures(
+            NativeFunction::from_builtin_with_captures(
                 |_, args, state, _| {
                     let value = args.get_or_undefined(0).clone().into_stored();
                     finish(state, FutureResult::Fulfilled(value));
@@ -1130,7 +1161,7 @@ impl JsPromise {
         let reject = {
             let state = state.clone();
 
-            NativeFunction::from_fn_with_captures(
+            NativeFunction::from_builtin_with_captures(
                 |_, args, state, _| {
                     let err = JsError::from_opaque(args.get_or_undefined(0).clone());
                     finish(state, FutureResult::Rejected(err.into_stored()));
@@ -1143,7 +1174,7 @@ impl JsPromise {
         drop(self.then(
             Some(resolve.to_js_function(context.realm())?),
             Some(reject.to_js_function(context.realm())?),
-            context,
+            context.access(),
         )?);
 
         Ok(JsFuture { inner: state })
@@ -1154,11 +1185,11 @@ impl JsPromise {
     /// rejected (e.g. with a [`surgeist_js::job::JobExecutor`] that does
     /// not prioritize properly). If you need more control over how
     /// the promise handles timing out, consider using
-    /// [`Context::run_jobs`] directly.
+    /// [`crate::Context::run_jobs`] directly.
     ///
     /// Returns [`Result::Ok`] if the promise resolved, or [`Result::Err`]
     /// if the promise was rejected. If the promise was already resolved,
-    /// [`Context::run_jobs`] is guaranteed to not be executed.
+    /// [`crate::Context::run_jobs`] is guaranteed to not be executed.
     ///
     /// # Examples
     ///
@@ -1169,25 +1200,25 @@ impl JsPromise {
     /// let context = &mut Context::default();
     ///
     /// let p1 = JsPromise::new(
-    ///     |fns, context| {
+    ///     |fns, mut context| {
     ///         fns.resolve
-    ///             .call(&JsValue::undefined(), &[JsValue::new(1)], context)
+    ///             .call(&JsValue::undefined(), &[JsValue::new(1)], context.reborrow())
     ///     },
-    ///     context,
+    ///     context.access(),
     /// )?;
     /// let p2 = p1.then(
     ///     Some(
-    ///         NativeFunction::from_fn_ptr(|_, args, context| {
+    ///         NativeFunction::from_fn_ptr(|_, args, mut context| {
     ///             assert_eq!(*args.get_or_undefined(0), JsValue::new(1));
     ///             Ok(JsValue::new(2))
     ///         })
     ///         .to_js_function(context.realm()).unwrap(),
     ///     ),
     ///     None,
-    ///     context,
+    ///     context.access(),
     /// )?;
     ///
-    /// assert_eq!(p2.await_blocking(context), Ok(JsValue::new(2)));
+    /// assert_eq!(p2.await_blocking(context.access()), Ok(JsValue::new(2)));
     /// # Ok(())
     /// # }
     /// ```
@@ -1200,8 +1231,8 @@ impl JsPromise {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let context = &mut Context::default();
     /// let p1 = JsPromise::new(
-    ///     |fns, context| fns.resolve.call(&JsValue::undefined(), &[], context),
-    ///     context,
+    ///     |fns, mut context| fns.resolve.call(&JsValue::undefined(), &[], context.reborrow()),
+    ///     context.access(),
     /// )?
     /// .then(
     ///     Some(
@@ -1211,17 +1242,18 @@ impl JsPromise {
     ///         .to_js_function(context.realm()).unwrap(),
     ///     ),
     ///     None,
-    ///     context,
+    ///     context.access(),
     /// )?;
-    /// let p2 = JsPromise::resolve(1, context)?;
+    /// let p2 = JsPromise::resolve(1, context.access())?;
     ///
-    /// assert_eq!(p2.await_blocking(context), Ok(JsValue::new(1)));
+    /// assert_eq!(p2.await_blocking(context.access()), Ok(JsValue::new(1)));
     /// // Uncommenting the following line would panic.
     /// // context.run_jobs();
     /// # Ok(())
     /// # }
     /// ```
-    pub fn await_blocking(&self, context: &mut Context) -> Result<JsValue, JsError> {
+    pub fn await_blocking(&self, context: ContextAccess<'_>) -> Result<JsValue, JsError> {
+        let context = context.into_owner();
         loop {
             match self.state() {
                 PromiseState::Pending => {
@@ -1238,7 +1270,7 @@ impl JsPromise {
         &self,
         continuation: crate::native_function::NativeCoroutine,
         reject: &JsFunction,
-        context: &mut Context,
+        context: &mut crate::Context,
     ) -> JsResult<()> {
         use crate::{
             builtins::generator::{GeneratorContext, StoredGeneratorContext},
@@ -1265,7 +1297,7 @@ impl JsPromise {
             bool,
         );
         let reaction = |rejected: bool| {
-            NativeFunction::from_fn_with_captures(
+            NativeFunction::from_builtin_with_captures(
                 |_this, args, (continuation, frame, reject, rejected): &Captures, context| {
                     let mut generator = frame
                         .borrow()
@@ -1281,17 +1313,18 @@ impl JsPromise {
                     };
                     let result = generator.with_attached(context, |context| {
                         match continuation.call(completion, context) {
-                            ControlFlow::Continue(value) => JsPromise::resolve(value, context)
-                                .and_then(|promise| {
+                            ControlFlow::Continue(value) => {
+                                JsPromise::resolve(value, context.access()).and_then(|promise| {
                                     promise.await_native(continuation.clone(), reject, context)
-                                }),
+                                })
+                            }
                             ControlFlow::Break(result) => result,
                         }
                     });
 
                     if let Err(error) = result {
-                        let reason = error.into_opaque(context)?;
-                        reject.call(&JsValue::undefined(), &[reason], context)?;
+                        let reason = error.into_opaque(context.access())?;
+                        reject.call(&JsValue::undefined(), &[reason], context.access())?;
                     }
                     Ok(JsValue::undefined())
                 },
@@ -1361,7 +1394,7 @@ impl std::ops::Deref for JsPromise {
 }
 
 impl TryFromJs for JsPromise {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object() {
             Self::from_object(o.clone())
         } else {
@@ -1373,7 +1406,7 @@ impl TryFromJs for JsPromise {
 }
 
 impl TryIntoJs for JsPromise {
-    fn try_into_js(&self, _: &mut Context) -> JsResult<JsValue> {
+    fn try_into_js(&self, _: ContextAccess<'_>) -> JsResult<JsValue> {
         Ok(self.clone().into())
     }
 }

@@ -271,7 +271,7 @@ impl BuiltInConstructor for Date {
                     // c. Else,
                     else {
                         // i. Let v be ? ToPrimitive(value).
-                        let v = value.to_primitive(context, PreferredType::Default)?;
+                        let v = value.to_primitive(context.access(), PreferredType::Default)?;
 
                         // ii. If v is a String, then
                         if let Some(v) = v.as_string() {
@@ -287,7 +287,7 @@ impl BuiltInConstructor for Date {
                         // iii. Else,
                         else {
                             // 1. Let tv be ? ToNumber(v).
-                            v.to_number(context)?
+                            v.to_number(context.access())?
                         }
                     };
 
@@ -303,25 +303,35 @@ impl BuiltInConstructor for Date {
 
                 // a. Assert: numberOfArgs ≥ 2.
                 // b. Let y be ? ToNumber(values[0]).
-                let y = args.get_or_undefined(0).to_number(context)?;
+                let y = args.get_or_undefined(0).to_number(context.access())?;
 
                 // c. Let m be ? ToNumber(values[1]).
-                let m = args.get_or_undefined(1).to_number(context)?;
+                let m = args.get_or_undefined(1).to_number(context.access())?;
 
                 // d. If numberOfArgs > 2, let dt be ? ToNumber(values[2]); else let dt be 1𝔽.
-                let dt = args.get(2).map_or(Ok(1.0), |n| n.to_number(context))?;
+                let dt = args
+                    .get(2)
+                    .map_or(Ok(1.0), |n| n.to_number(context.access()))?;
 
                 // e. If numberOfArgs > 3, let h be ? ToNumber(values[3]); else let h be +0𝔽.
-                let h = args.get(3).map_or(Ok(0.0), |n| n.to_number(context))?;
+                let h = args
+                    .get(3)
+                    .map_or(Ok(0.0), |n| n.to_number(context.access()))?;
 
                 // f. If numberOfArgs > 4, let min be ? ToNumber(values[4]); else let min be +0𝔽.
-                let min = args.get(4).map_or(Ok(0.0), |n| n.to_number(context))?;
+                let min = args
+                    .get(4)
+                    .map_or(Ok(0.0), |n| n.to_number(context.access()))?;
 
                 // g. If numberOfArgs > 5, let s be ? ToNumber(values[5]); else let s be +0𝔽.
-                let s = args.get(5).map_or(Ok(0.0), |n| n.to_number(context))?;
+                let s = args
+                    .get(5)
+                    .map_or(Ok(0.0), |n| n.to_number(context.access()))?;
 
                 // h. If numberOfArgs > 6, let milli be ? ToNumber(values[6]); else let milli be +0𝔽.
-                let milli = args.get(6).map_or(Ok(0.0), |n| n.to_number(context))?;
+                let milli = args
+                    .get(6)
+                    .map_or(Ok(0.0), |n| n.to_number(context.access()))?;
 
                 // i. Let yr be MakeFullYear(y).
                 let yr = make_full_year(y);
@@ -376,7 +386,7 @@ impl Date {
     /// [spec]: https://tc39.es/ecma262/#sec-date.parse
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/parse
     pub(crate) fn parse(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
-        let date = args.get_or_undefined(0).to_string(context)?;
+        let date = args.get_or_undefined(0).to_string(context.access())?;
         Ok(parse_date(&date, context.host_hooks().as_ref())
             .map_or(JsValue::from(f64::NAN), JsValue::from))
     }
@@ -393,37 +403,37 @@ impl Date {
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Date/UTC
     pub(crate) fn utc(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         // 1. Let y be ? ToNumber(year).
-        let y = args.get_or_undefined(0).to_number(context)?;
+        let y = args.get_or_undefined(0).to_number(context.access())?;
 
         // 2. If month is present, let m be ? ToNumber(month); else let m be +0𝔽.
         let m = args
             .get(1)
-            .map_or(Ok(0f64), |value| value.to_number(context))?;
+            .map_or(Ok(0f64), |value| value.to_number(context.access()))?;
 
         // 3. If date is present, let dt be ? ToNumber(date); else let dt be 1𝔽.
         let dt = args
             .get(2)
-            .map_or(Ok(1f64), |value| value.to_number(context))?;
+            .map_or(Ok(1f64), |value| value.to_number(context.access()))?;
 
         // 4. If hours is present, let h be ? ToNumber(hours); else let h be +0𝔽.
         let h = args
             .get(3)
-            .map_or(Ok(0f64), |value| value.to_number(context))?;
+            .map_or(Ok(0f64), |value| value.to_number(context.access()))?;
 
         // 5. If minutes is present, let min be ? ToNumber(minutes); else let min be +0𝔽.
         let min = args
             .get(4)
-            .map_or(Ok(0f64), |value| value.to_number(context))?;
+            .map_or(Ok(0f64), |value| value.to_number(context.access()))?;
 
         // 6. If seconds is present, let s be ? ToNumber(seconds); else let s be +0𝔽.
         let s = args
             .get(5)
-            .map_or(Ok(0f64), |value| value.to_number(context))?;
+            .map_or(Ok(0f64), |value| value.to_number(context.access()))?;
 
         // 7. If ms is present, let milli be ? ToNumber(ms); else let milli be +0𝔽.
         let milli = args
             .get(6)
-            .map_or(Ok(0f64), |value| value.to_number(context))?;
+            .map_or(Ok(0f64), |value| value.to_number(context.access()))?;
 
         // 8. Let yr be MakeFullYear(y).
         let yr = make_full_year(y);
@@ -863,7 +873,7 @@ impl Date {
         let mut t = date.borrow().data().0;
 
         // 4. Let dt be ? ToNumber(date).
-        let dt = args.get_or_undefined(0).to_number(context)?;
+        let dt = args.get_or_undefined(0).to_number(context.access())?;
 
         // 5. If t is NaN, return NaN.
         if t.is_nan() {
@@ -933,18 +943,18 @@ impl Date {
         };
 
         // 4. Let y be ? ToNumber(year).
-        let y = args.get_or_undefined(0).to_number(context)?;
+        let y = args.get_or_undefined(0).to_number(context.access())?;
 
         // 6. If month is not present, let m be MonthFromTime(t); otherwise, let m be ? ToNumber(month).
         let m = if let Some(month) = args.get(1) {
-            month.to_number(context)?
+            month.to_number(context.access())?
         } else {
             month_from_time(t).into()
         };
 
         // 7. If date is not present, let dt be DateFromTime(t); otherwise, let dt be ? ToNumber(date).
         let dt = if let Some(date) = args.get(2) {
-            date.to_number(context)?
+            date.to_number(context.access())?
         } else {
             date_from_time(t).into()
         };
@@ -993,16 +1003,25 @@ impl Date {
         let mut t = date.borrow().data().0;
 
         // 4. Let h be ? ToNumber(hour).
-        let h = args.get_or_undefined(0).to_number(context)?;
+        let h = args.get_or_undefined(0).to_number(context.access())?;
 
         // 5. If min is present, let m be ? ToNumber(min).
-        let m = args.get(1).map(|v| v.to_number(context)).transpose()?;
+        let m = args
+            .get(1)
+            .map(|v| v.to_number(context.access()))
+            .transpose()?;
 
         // 6. If sec is present, let s be ? ToNumber(sec).
-        let s = args.get(2).map(|v| v.to_number(context)).transpose()?;
+        let s = args
+            .get(2)
+            .map(|v| v.to_number(context.access()))
+            .transpose()?;
 
         // 7. If ms is present, let milli be ? ToNumber(ms).
-        let milli = args.get(3).map(|v| v.to_number(context)).transpose()?;
+        let milli = args
+            .get(3)
+            .map(|v| v.to_number(context.access()))
+            .transpose()?;
 
         // 8. If t is NaN, return NaN.
         if t.is_nan() {
@@ -1064,7 +1083,7 @@ impl Date {
         let mut t = date.borrow().data().0;
 
         // 4. Set ms to ? ToNumber(ms).
-        let ms = args.get_or_undefined(0).to_number(context)?;
+        let ms = args.get_or_undefined(0).to_number(context.access())?;
 
         // 5. If t is NaN, return NaN.
         if t.is_nan() {
@@ -1125,13 +1144,19 @@ impl Date {
         let mut t = date.borrow().data().0;
 
         // 4. Let m be ? ToNumber(min).
-        let m = args.get_or_undefined(0).to_number(context)?;
+        let m = args.get_or_undefined(0).to_number(context.access())?;
 
         // 5. If sec is present, let s be ? ToNumber(sec).
-        let s = args.get(1).map(|v| v.to_number(context)).transpose()?;
+        let s = args
+            .get(1)
+            .map(|v| v.to_number(context.access()))
+            .transpose()?;
 
         // 6. If ms is present, let milli be ? ToNumber(ms).
-        let milli = args.get(2).map(|v| v.to_number(context)).transpose()?;
+        let milli = args
+            .get(2)
+            .map(|v| v.to_number(context.access()))
+            .transpose()?;
 
         // 7. If t is NaN, return NaN.
         if t.is_nan() {
@@ -1191,10 +1216,13 @@ impl Date {
         let mut t = date.borrow().data().0;
 
         // 4. Let m be ? ToNumber(month).
-        let m = args.get_or_undefined(0).to_number(context)?;
+        let m = args.get_or_undefined(0).to_number(context.access())?;
 
         // 5. If date is present, let dt be ? ToNumber(date).
-        let dt = args.get(1).map(|v| v.to_number(context)).transpose()?;
+        let dt = args
+            .get(1)
+            .map(|v| v.to_number(context.access()))
+            .transpose()?;
 
         // 6. If t is NaN, return NaN.
         if t.is_nan() {
@@ -1253,10 +1281,13 @@ impl Date {
         let mut t = date.borrow().data().0;
 
         // 4. Let s be ? ToNumber(sec).
-        let s = args.get_or_undefined(0).to_number(context)?;
+        let s = args.get_or_undefined(0).to_number(context.access())?;
 
         // 5. If ms is present, let milli be ? ToNumber(ms).
-        let milli = args.get(1).map(|v| v.to_number(context)).transpose()?;
+        let milli = args
+            .get(1)
+            .map(|v| v.to_number(context.access()))
+            .transpose()?;
 
         // 6. If t is NaN, return NaN.
         if t.is_nan() {
@@ -1322,7 +1353,7 @@ impl Date {
         let t = date.borrow().data().0;
 
         // 4. Let y be ? ToNumber(year).
-        let y = args.get_or_undefined(0).to_number(context)?;
+        let y = args.get_or_undefined(0).to_number(context.access())?;
 
         // 5. If t is NaN, set t to +0𝔽; otherwise, set t to LocalTime(t).
         let t = if t.is_nan() {
@@ -1373,7 +1404,7 @@ impl Date {
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?;
 
         // 3. Let t be ? ToNumber(time).
-        let t = args.get_or_undefined(0).to_number(context)?;
+        let t = args.get_or_undefined(0).to_number(context.access())?;
 
         // 4. Let v be TimeClip(t).
         let v = time_clip(t);
@@ -1509,10 +1540,10 @@ impl Date {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 2. Let tv be ? ToPrimitive(O, number).
-        let tv = this.to_primitive(context, PreferredType::Number)?;
+        let tv = this.to_primitive(context.access(), PreferredType::Number)?;
 
         // 3. If Type(tv) is Number and tv is not finite, return null.
         if tv.as_number().is_some_and(|x| !f64::is_finite(x)) {
@@ -1520,7 +1551,7 @@ impl Date {
         }
 
         // 4. Return ? Invoke(O, "toISOString").
-        let func = o.get(js_string!("toISOString"), context)?;
+        let func = o.get(js_string!("toISOString"), context.access())?;
         func.call(this, &[], context)
     }
 

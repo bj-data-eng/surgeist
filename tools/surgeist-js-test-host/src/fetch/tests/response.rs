@@ -1,7 +1,7 @@
 use super::TestFetcher;
 use crate::test::{TestAction, run_test_actions};
-use surgeist_js::{Context, js_str};
 use http::{Response, Uri};
+use surgeist_js::{Context, js_str};
 
 fn register(responses: &[(&'static str, Response<Vec<u8>>)], ctx: &mut Context) {
     let mut fetcher = TestFetcher::default();
@@ -75,8 +75,15 @@ fn response_text() {
             "#,
         ),
         TestAction::inspect_context(|ctx| {
-            let response = ctx.global_object().get(js_str!("response"), ctx).unwrap();
-            response.as_promise().unwrap().await_blocking(ctx).unwrap();
+            let response = ctx
+                .global_object()
+                .get(js_str!("response"), ctx.access())
+                .unwrap();
+            response
+                .as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
         }),
     ]);
 }
@@ -106,8 +113,15 @@ fn response_json() {
             "#,
         ),
         TestAction::inspect_context(|ctx| {
-            let response = ctx.global_object().get(js_str!("response"), ctx).unwrap();
-            let response = response.as_promise().unwrap().await_blocking(ctx).unwrap();
+            let response = ctx
+                .global_object()
+                .get(js_str!("response"), ctx.access())
+                .unwrap();
+            let response = response
+                .as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
             assert_eq!(response.display_obj(false), "{\n    hello world: 123\n}");
         }),
     ]);
@@ -135,8 +149,15 @@ fn response_bytes() {
             "#,
         ),
         TestAction::inspect_context(|ctx| {
-            let response = ctx.global_object().get(js_str!("response"), ctx).unwrap();
-            response.as_promise().unwrap().await_blocking(ctx).unwrap();
+            let response = ctx
+                .global_object()
+                .get(js_str!("response"), ctx.access())
+                .unwrap();
+            response
+                .as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
         }),
     ]);
 }
@@ -167,8 +188,15 @@ fn response_getter() {
             "#,
         ),
         TestAction::inspect_context(|ctx| {
-            let response = ctx.global_object().get(js_str!("response"), ctx).unwrap();
-            response.as_promise().unwrap().await_blocking(ctx).unwrap();
+            let response = ctx
+                .global_object()
+                .get(js_str!("response"), ctx.access())
+                .unwrap();
+            response
+                .as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
 
             // Assertions made in JavaScript.
         }),
@@ -202,8 +230,15 @@ fn fetch_request_uses_request_signal() {
             "#,
         ),
         TestAction::inspect_context(|ctx| {
-            let response = ctx.global_object().get(js_str!("response"), ctx).unwrap();
-            let response = response.as_promise().unwrap().await_blocking(ctx).unwrap();
+            let response = ctx
+                .global_object()
+                .get(js_str!("response"), ctx.access())
+                .unwrap();
+            let response = response
+                .as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
             assert_eq!(
                 response.as_string().map(|s| s.to_std_string_escaped()),
                 Some("stop".into())
@@ -242,8 +277,15 @@ fn fetch_options_signal_overrides_request_signal() {
             "#,
         ),
         TestAction::inspect_context(|ctx| {
-            let response = ctx.global_object().get(js_str!("response"), ctx).unwrap();
-            let response = response.as_promise().unwrap().await_blocking(ctx).unwrap();
+            let response = ctx
+                .global_object()
+                .get(js_str!("response"), ctx.access())
+                .unwrap();
+            let response = response
+                .as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
             assert_eq!(
                 response.as_string().map(|s| s.to_std_string_escaped()),
                 Some("fetch stop".into())
@@ -340,8 +382,11 @@ fn response_json_static() {
             "#,
         ),
         TestAction::inspect_context(|ctx| {
-            let p = ctx.global_object().get(js_str!("p"), ctx).unwrap();
-            p.as_promise().unwrap().await_blocking(ctx).unwrap();
+            let p = ctx.global_object().get(js_str!("p"), ctx.access()).unwrap();
+            p.as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
         }),
     ]);
 }
@@ -369,8 +414,15 @@ fn response_headers_get_combines_duplicate_values_with_comma_space() {
             "#,
         ),
         TestAction::inspect_context(|ctx| {
-            let response = ctx.global_object().get(js_str!("response"), ctx).unwrap();
-            response.as_promise().unwrap().await_blocking(ctx).unwrap();
+            let response = ctx
+                .global_object()
+                .get(js_str!("response"), ctx.access())
+                .unwrap();
+            response
+                .as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
         }),
     ]);
 }
@@ -398,8 +450,15 @@ fn response_clone_read_both() {
             "#,
         ),
         TestAction::inspect_context(|ctx| {
-            let response = ctx.global_object().get(js_str!("response"), ctx).unwrap();
-            response.as_promise().unwrap().await_blocking(ctx).unwrap();
+            let response = ctx
+                .global_object()
+                .get(js_str!("response"), ctx.access())
+                .unwrap();
+            response
+                .as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
         }),
     ]);
 }
@@ -431,8 +490,15 @@ fn response_clone_header_independence() {
             "#,
         ),
         TestAction::inspect_context(|ctx| {
-            let response = ctx.global_object().get(js_str!("response"), ctx).unwrap();
-            response.as_promise().unwrap().await_blocking(ctx).unwrap();
+            let response = ctx
+                .global_object()
+                .get(js_str!("response"), ctx.access())
+                .unwrap();
+            response
+                .as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
         }),
     ]);
 }
@@ -459,8 +525,15 @@ fn response_clone_preserves_status() {
             "#,
         ),
         TestAction::inspect_context(|ctx| {
-            let response = ctx.global_object().get(js_str!("response"), ctx).unwrap();
-            response.as_promise().unwrap().await_blocking(ctx).unwrap();
+            let response = ctx
+                .global_object()
+                .get(js_str!("response"), ctx.access())
+                .unwrap();
+            response
+                .as_promise()
+                .unwrap()
+                .await_blocking(ctx.access())
+                .unwrap();
         }),
     ]);
 }

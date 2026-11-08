@@ -184,7 +184,7 @@ impl BuiltInConstructor for SharedArrayBuffer {
         }
 
         // 2. Let byteLength be ? ToIndex(length).
-        let byte_len = args.get_or_undefined(0).to_index(context)?;
+        let byte_len = args.get_or_undefined(0).to_index(context.access())?;
 
         // 3. Let requestedMaxByteLength be ? GetArrayBufferMaxByteLengthOption(options).
         let max_byte_len = get_max_byte_len(args.get_or_undefined(1), context)?;
@@ -318,7 +318,7 @@ impl SharedArrayBuffer {
         }
 
         // 4. Let newByteLength be ? ToIndex(newLength).
-        let new_byte_len = args.get_or_undefined(0).to_index(context)?;
+        let new_byte_len = args.get_or_undefined(0).to_index(context.access())?;
 
         // TODO: 5. Let hostHandled be ? HostGrowSharedArrayBuffer(O, newByteLength).
         // 6. If hostHandled is handled, return undefined.
@@ -429,7 +429,7 @@ impl SharedArrayBuffer {
             .species_constructor(StandardConstructors::shared_array_buffer, context)?;
 
         // 15. Let new be ? Construct(ctor, « 𝔽(newLen) »).
-        let new = ctor.construct(&[new_len.into()], Some(&ctor), context)?;
+        let new = ctor.construct(&[new_len.into()], Some(&ctor), context.access())?;
 
         {
             let buf = buf.borrow();
@@ -551,7 +551,7 @@ pub(crate) fn create_shared_byte_data_block(
     size: u64,
     context: &mut Context,
 ) -> JsResult<SharedByteBlock> {
-    if size > context.host_hooks().max_buffer_size(context) {
+    if size > context.host_hooks().max_buffer_size(context.access()) {
         return Err(JsNativeError::range()
             .with_message(
                 "cannot allocate a buffer that exceeds the maximum buffer size".to_string(),

@@ -1,5 +1,5 @@
 use crate::{
-    Context, JsResult, JsString, JsValue,
+    ContextAccess, JsResult, JsString, JsValue,
     builtins::{Promise, promise::OperationType},
     context::intrinsics::Intrinsics,
     job::JobCallback,
@@ -21,7 +21,7 @@ use time::{OffsetDateTime, UtcOffset};
 /// ```
 /// use surgeist_js::{
 ///     JsNativeError, JsResult, JsString, Source,
-///     context::{Context, ContextBuilder, HostHooks},
+///     context::{Context, ContextAccess, ContextBuilder, HostHooks},
 ///     realm::Realm,
 /// };
 /// use std::rc::Rc;
@@ -35,7 +35,7 @@ use time::{OffsetDateTime, UtcOffset};
 ///         _parameters: &[JsString],
 ///         _body: &JsString,
 ///         _direct: bool,
-///         _context: &mut Context,
+///         _context: ContextAccess<'_>,
 ///     ) -> JsResult<()> {
 ///         Err(JsNativeError::typ()
 ///             .with_message("eval calls not available")
@@ -66,7 +66,7 @@ pub trait HostHooks {
     /// - Its host data must store only live edges belonging to the current runtime.
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-hostmakejobcallback
-    fn make_job_callback(&self, callback: JsFunction, _context: &mut Context) -> JobCallback {
+    fn make_job_callback(&self, callback: JsFunction, _context: ContextAccess<'_>) -> JobCallback {
         // The default implementation of HostMakeJobCallback performs the following steps when called:
 
         // 1. Return the JobCallback Record { [[Callback]]: callback, [[HostDefined]]: empty }.
@@ -86,7 +86,7 @@ pub trait HostHooks {
         job: &JobCallback,
         this: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
         // The default implementation of HostCallJobCallback performs the following steps when called:
 
@@ -108,7 +108,7 @@ pub trait HostHooks {
         &self,
         _promise: &JsObject<Promise>,
         _operation: OperationType,
-        _context: &mut Context,
+        _context: ContextAccess<'_>,
     ) {
         // The default implementation of HostPromiseRejectionTracker is to return unused.
     }
@@ -127,7 +127,7 @@ pub trait HostHooks {
         _parameters: &[JsString],
         _body: &JsString,
         _direct: bool,
-        _context: &mut Context,
+        _context: ContextAccess<'_>,
     ) -> JsResult<()> {
         // The default implementation of HostEnsureCanCompileStrings is to return NormalCompletion(unused).
         Ok(())
@@ -141,7 +141,11 @@ pub trait HostHooks {
     ///   specific `func` as its argument, it must return the same result.
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-hosthassourcetextavailable
-    fn has_source_text_available(&self, _function: &JsFunction, _context: &mut Context) -> bool {
+    fn has_source_text_available(
+        &self,
+        _function: &JsFunction,
+        _context: ContextAccess<'_>,
+    ) -> bool {
         // The default implementation of HostHasSourceTextAvailable is to return true.
         true
     }
@@ -160,12 +164,12 @@ pub trait HostHooks {
     fn ensure_can_add_private_element(
         &self,
         _o: &JsObject,
-        _context: &mut Context,
+        _context: ContextAccess<'_>,
     ) -> JsResult<()> {
         Ok(())
     }
 
-    /// Creates the global object of a new [`Context`] from the initial intrinsics.
+    /// Creates the global object of a new [`crate::Context`] from the initial intrinsics.
     ///
     /// Equivalent to the step 7 of [`InitializeHostDefinedRealm ( )`][ihdr].
     ///
@@ -174,7 +178,7 @@ pub trait HostHooks {
         JsObject::with_object_proto(intrinsics)
     }
 
-    /// Creates the global `this` of a new [`Context`] from the initial intrinsics.
+    /// Creates the global `this` of a new [`crate::Context`] from the initial intrinsics.
     ///
     /// Equivalent to the step 8 of [`InitializeHostDefinedRealm ( )`][ihdr].
     ///
@@ -221,7 +225,7 @@ pub trait HostHooks {
     ///
     ///
     /// [specification]: https://tc39.es/ecma262/#sec-resizable-arraybuffer-guidelines
-    fn max_buffer_size(&self, _context: &mut Context) -> u64 {
+    fn max_buffer_size(&self, _context: ContextAccess<'_>) -> u64 {
         1_610_612_736 // 1.5 GiB
     }
 }

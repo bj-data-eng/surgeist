@@ -145,7 +145,7 @@ impl BuiltInConstructor for Instant {
         }
 
         // 2. Let epochNanoseconds be ? ToBigInt(epochNanoseconds).
-        let epoch_nanos = args.get_or_undefined(0).to_bigint(context)?;
+        let epoch_nanos = args.get_or_undefined(0).to_bigint(context.access())?;
 
         // 3. If ! IsValidEpochNanoseconds(epochNanoseconds) is false, throw a RangeError exception.
         // NOTE: temporal_rs::Instant asserts that the epochNanoseconds are valid.
@@ -195,7 +195,7 @@ impl Instant {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Set epochMilliseconds to ? ToNumber(epochMilliseconds).
-        let epoch_millis_f64 = args.get_or_undefined(0).to_number(context)?;
+        let epoch_millis_f64 = args.get_or_undefined(0).to_number(context.access())?;
         // NOTE: inline NumberToBigInt. It checks if the number is integral
         // 2. Set epochMilliseconds to ? NumberToBigInt(epochMilliseconds).
         if !epoch_millis_f64.is_finite() || epoch_millis_f64.fract() != 0.0 {
@@ -228,7 +228,7 @@ impl Instant {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Set epochNanoseconds to ? ToBigInt(epochNanoseconds).
-        let epoch_nanos = args.get_or_undefined(0).to_bigint(context)?;
+        let epoch_nanos = args.get_or_undefined(0).to_bigint(context.access())?;
         // 2. If IsValidEpochNanoseconds(epochNanoseconds) is false, throw a RangeError exception.
         // 3. Return ! CreateTemporalInstant(epochNanoseconds).
         let nanos = epoch_nanos.as_inner().to_i128();
@@ -515,7 +515,7 @@ impl Instant {
             new_round_to.create_data_property_or_throw(
                 js_string!("smallestUnit"),
                 param_string,
-                context,
+                context.access(),
             )?;
             new_round_to
         } else {
@@ -636,7 +636,7 @@ impl Instant {
         let smallest_unit = get_option::<Unit>(&options, js_string!("smallestUnit"), context)?;
         // NOTE: There may be an order-of-operations here due to a check on Unit groups and smallest_unit value.
         let timezone = options
-            .get(js_string!("timeZone"), context)?
+            .get(js_string!("timeZone"), context.access())?
             .map(|v| to_temporal_timezone_identifier(v, context))
             .transpose()?;
 
@@ -810,7 +810,7 @@ fn to_temporal_instant(item: &JsValue, context: &mut Context) -> JsResult<InnerI
         } else if let Some(zdt) = obj.downcast_ref::<ZonedDateTime>() {
             return Ok(zdt.inner.to_instant());
         }
-        item.to_primitive(context, PreferredType::String)?
+        item.to_primitive(context.access(), PreferredType::String)?
     } else {
         item.clone()
     };

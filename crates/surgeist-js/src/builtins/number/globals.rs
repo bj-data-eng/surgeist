@@ -26,7 +26,7 @@ use surgeist_js_string::JsStrVariant;
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/isFinite
 fn is_finite(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
     if let Some(value) = args.first() {
-        let number = value.to_number(context)?;
+        let number = value.to_number(context.access())?;
         Ok(number.is_finite().into())
     } else {
         Ok(false.into())
@@ -68,7 +68,7 @@ impl BuiltInObject for IsFinite {
 /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/isNaN
 pub(crate) fn is_nan(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
     if let Some(value) = args.first() {
-        let number = value.to_number(context)?;
+        let number = value.to_number(context.access())?;
         Ok(number.is_nan().into())
     } else {
         Ok(true.into())
@@ -167,7 +167,7 @@ pub(crate) fn parse_int(_: &JsValue, args: &[JsValue], context: &mut Context) ->
     }
 
     // 1. Let inputString be ? ToString(string).
-    let input_string = string.to_string(context)?;
+    let input_string = string.to_string(context.access())?;
 
     // 2. Let S be ! TrimString(inputString, start).
     let mut s = input_string.trim_start();
@@ -188,7 +188,7 @@ pub(crate) fn parse_int(_: &JsValue, args: &[JsValue], context: &mut Context) ->
     }
 
     // 6. Let R be ℝ(? ToInt32(radix)).
-    let r = radix.to_i32(context)?;
+    let r = radix.to_i32(context.access())?;
 
     // 7. Let stripPrefix be true.
     let mut strip_prefix = true;
@@ -318,7 +318,7 @@ pub(crate) fn parse_float(
     }
 
     // 1. Let inputString be ? ToString(string).
-    let input_string = string.to_string(context)?;
+    let input_string = string.to_string(context.access())?;
 
     // 2. Let trimmedString be ! TrimString(inputString, start).
     let trimmed_string = input_string.trim_start();

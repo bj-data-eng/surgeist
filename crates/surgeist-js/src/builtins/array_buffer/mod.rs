@@ -452,7 +452,7 @@ impl BuiltInConstructor for ArrayBuffer {
         }
 
         // 2. Let byteLength be ? ToIndex(length).
-        let byte_len = args.get_or_undefined(0).to_index(context)?;
+        let byte_len = args.get_or_undefined(0).to_index(context.access())?;
 
         // 3. Let requestedMaxByteLength be ? GetArrayBufferMaxByteLengthOption(options).
         let max_byte_len = get_max_byte_len(args.get_or_undefined(1), context)?;
@@ -629,7 +629,7 @@ impl ArrayBuffer {
         buf.borrow().data().resizable_limit()?;
 
         // 4. Let newByteLength be ? ToIndex(newLength).
-        let new_byte_length = args.get_or_undefined(0).to_index(context)?;
+        let new_byte_length = args.get_or_undefined(0).to_index(context.access())?;
 
         // 5–6. Validate the source before asking the host to admit an allocation.
         let capacity = buf
@@ -638,7 +638,7 @@ impl ArrayBuffer {
             .resizable_bytes(new_byte_length)?
             .capacity();
         let limit = (new_byte_length > capacity as u64)
-            .then(|| context.host_hooks().max_buffer_size(context));
+            .then(|| context.host_hooks().max_buffer_size(context.access()));
 
         // TODO: 7. Let hostHandled be ? HostResizeArrayBuffer(O, newByteLength).
         // 8. If hostHandled is handled, return undefined.
@@ -719,7 +719,7 @@ impl ArrayBuffer {
             .species_constructor(StandardConstructors::array_buffer, context)?;
 
         // 16. Let new be ? Construct(ctor, « 𝔽(newLen) »).
-        let new = ctor.construct(&[new_len.into()], Some(&ctor), context)?;
+        let new = ctor.construct(&[new_len.into()], Some(&ctor), context.access())?;
 
         // 17. Perform ? RequireInternalSlot(new, [[ArrayBufferData]]).
         // 18. If IsSharedArrayBuffer(new) is true, throw a TypeError exception.
@@ -812,7 +812,7 @@ impl ArrayBuffer {
         } else {
             // 4. Else,
             //     a. Let newByteLength be ? ToIndex(newLength).
-            new_length.to_index(context)?
+            new_length.to_index(context.access())?
         };
 
         let needs_allocation = {
@@ -822,7 +822,8 @@ impl ArrayBuffer {
                 .transfer_source(new_len, TO_FIXED_LENGTH)?;
             transfer_allocates(bytes.capacity(), new_len, new_max_len)
         };
-        let limit = needs_allocation.then(|| context.host_hooks().max_buffer_size(context));
+        let limit =
+            needs_allocation.then(|| context.host_hooks().max_buffer_size(context.access()));
 
         let (bytes, new_max_len) = {
             let mut source = buf.borrow_mut();
@@ -962,7 +963,7 @@ fn get_max_byte_len(options: &JsValue, context: &mut Context) -> JsResult<Option
     };
 
     // 2. Let maxByteLength be ? Get(options, "maxByteLength").
-    let max_byte_len = options.get(js_string!("maxByteLength"), context)?;
+    let max_byte_len = options.get(js_string!("maxByteLength"), context.access())?;
 
     // 3. If maxByteLength is undefined, return empty.
     if max_byte_len.is_undefined() {
@@ -970,7 +971,7 @@ fn get_max_byte_len(options: &JsValue, context: &mut Context) -> JsResult<Option
     }
 
     // 4. Return ? ToIndex(maxByteLength).
-    max_byte_len.to_index(context).map(Some)
+    max_byte_len.to_index(context.access()).map(Some)
 }
 
 /// `CreateByteDataBlock ( size )` abstract operation.
@@ -988,7 +989,10 @@ pub(crate) fn create_byte_data_block(
 
     assert!(size <= alloc_size);
 
-    check_buffer_allocation_limit(alloc_size, context.host_hooks().max_buffer_size(context))?;
+    check_buffer_allocation_limit(
+        alloc_size,
+        context.host_hooks().max_buffer_size(context.access()),
+    )?;
 
     // 1. Let db be a new Data Block value consisting of size bytes. If it is impossible to
     //    create such a Data Block, throw a RangeError exception.

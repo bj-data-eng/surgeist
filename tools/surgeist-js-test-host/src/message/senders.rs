@@ -44,16 +44,18 @@ impl OnMessageQueueSender {
         destination.enqueue_job(
             NativeAsyncJob::new(async move |ctx| {
                 while let Some(store) = receiver.next().await {
-                    let context = &mut ctx.borrow_mut();
-                    let v = store.try_into_js(context)?;
-                    let global = context.global_object();
-                    if let Some(x) = global
-                        .get(js_string!("onMessageQueue"), context)?
-                        .as_callable()
-                        .and_then(JsFunction::from_object)
-                    {
-                        x.call(&JsValue::undefined(), &[v], context)?;
-                    }
+                    ctx.with(|mut context| {
+                        let v = store.try_into_js(context.reborrow())?;
+                        let global = context.global_object();
+                        if let Some(x) = global
+                            .get(js_string!("onMessageQueue"), context.reborrow())?
+                            .as_callable()
+                            .and_then(JsFunction::from_object)
+                        {
+                            x.call(&JsValue::undefined(), &[v], context.reborrow())?;
+                        }
+                        Ok(())
+                    })?;
                 }
 
                 Ok(JsValue::undefined())

@@ -99,7 +99,7 @@ impl BuiltInConstructor for WeakSet {
         }
 
         // 5. Let adder be ? Get(set, "add").
-        let adder = weak_set.get(js_string!("add"), context)?;
+        let adder = weak_set.get(js_string!("add"), context.access())?;
 
         // 6. If IsCallable(adder) is false, throw a TypeError exception.
         let adder = adder
@@ -107,13 +107,15 @@ impl BuiltInConstructor for WeakSet {
             .ok_or_else(|| js_error!(TypeError: "WeakSet: 'add' is not a function"))?;
 
         // 7. Let iteratorRecord be ? GetIterator(iterable, sync).
-        let mut iterator_record = iterable.clone().get_iterator(IteratorHint::Sync, context)?;
+        let mut iterator_record = iterable
+            .clone()
+            .get_iterator(IteratorHint::Sync, context.access())?;
 
         // 8. Repeat,
         //     a. Let next be ? IteratorStepValue(iteratorRecord).
         while let Some(next) = iterator_record.step_value(context)? {
             //     c. Let status be Completion(Call(adder, set, « next »)).
-            if let Err(status) = adder.call(&weak_set.clone().into(), &[next], context) {
+            if let Err(status) = adder.call(&weak_set.clone().into(), &[next], context.access()) {
                 //     d. IfAbruptCloseIterator(status, iteratorRecord).
                 return iterator_record.close(Err(status), context);
             }

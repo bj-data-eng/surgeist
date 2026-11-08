@@ -94,7 +94,7 @@ impl Reflect {
                 .into());
         }
         let args = args_list.create_list_from_array_like(&[], context)?;
-        target.call(this_arg, &args, context)
+        target.call(this_arg, &args, context.access())
     }
 
     /// Calls a target function as a constructor with arguments.
@@ -133,7 +133,7 @@ impl Reflect {
 
         // 5. Return ? Construct(target, args, newTarget).
         target
-            .construct(&args, Some(&new_target), context)
+            .construct(&args, Some(&new_target), context.access())
             .map(JsValue::from)
     }
 
@@ -154,7 +154,7 @@ impl Reflect {
             .first()
             .and_then(JsValue::as_object)
             .ok_or_else(|| JsNativeError::typ().with_message("target must be an object"))?;
-        let key = args.get_or_undefined(1).to_property_key(context)?;
+        let key = args.get_or_undefined(1).to_property_key(context.access())?;
         let prop_desc: JsValue = args
             .get(2)
             .and_then(JsValue::as_object)
@@ -166,7 +166,7 @@ impl Reflect {
         target
             .__define_own_property__(
                 &key,
-                prop_desc.to_property_descriptor(context)?,
+                prop_desc.to_property_descriptor(context.access())?,
                 &mut InternalMethodPropertyContext::new(context),
             )
             .map(Into::into)
@@ -189,7 +189,7 @@ impl Reflect {
             .first()
             .and_then(JsValue::as_object)
             .ok_or_else(|| JsNativeError::typ().with_message("target must be an object"))?;
-        let key = args.get_or_undefined(1).to_property_key(context)?;
+        let key = args.get_or_undefined(1).to_property_key(context.access())?;
 
         Ok(target
             .__delete__(&key, &mut InternalMethodPropertyContext::new(context))?
@@ -211,7 +211,7 @@ impl Reflect {
             .and_then(JsValue::as_object)
             .ok_or_else(|| JsNativeError::typ().with_message("target must be an object"))?;
         // 2. Let key be ? ToPropertyKey(propertyKey).
-        let key = args.get_or_undefined(1).to_property_key(context)?;
+        let key = args.get_or_undefined(1).to_property_key(context.access())?;
         // 3. If receiver is not present, then
         // 3.a. Set receiver to target.
         let receiver = args
@@ -246,7 +246,7 @@ impl Reflect {
             builtins::object::OrdinaryObject::get_own_property_descriptor(
                 &JsValue::undefined(),
                 args,
-                context,
+                context.access(),
             )
         } else {
             Err(JsNativeError::typ()
@@ -293,7 +293,7 @@ impl Reflect {
         let key = args
             .get(1)
             .unwrap_or(&JsValue::undefined())
-            .to_property_key(context)?;
+            .to_property_key(context.access())?;
 
         Ok(target
             .__has_property__(&key, &mut InternalMethodPropertyContext::new(context))?
@@ -385,7 +385,7 @@ impl Reflect {
             .first()
             .and_then(JsValue::as_object)
             .ok_or_else(|| JsNativeError::typ().with_message("target must be an object"))?;
-        let key = args.get_or_undefined(1).to_property_key(context)?;
+        let key = args.get_or_undefined(1).to_property_key(context.access())?;
         let value = args.get_or_undefined(2);
         let receiver = args
             .get(3)

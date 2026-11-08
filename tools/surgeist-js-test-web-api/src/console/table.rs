@@ -3,10 +3,10 @@
 //! This module converts a JS value into [`TableData`] that the [`super::Logger`]
 //! backend can render however it likes (terminal box-drawing, HTML, etc.).
 
+use rustc_hash::{FxHashMap, FxHashSet};
 use surgeist_js::builtins::object::OrdinaryObject;
 use surgeist_js::object::builtins::{JsMap, JsSet};
-use surgeist_js::{Context, JsError, JsResult, JsValue, js_string, object::JsObject};
-use rustc_hash::{FxHashMap, FxHashSet};
+use surgeist_js::{ContextAccess, JsError, JsResult, JsValue, js_string, object::JsObject};
 
 /// The column name used for row indices.
 const INDEX_COL: &str = "(index)";
@@ -34,7 +34,7 @@ pub struct TableData {
 pub(super) fn build_table_data(
     obj: &JsObject,
     properties: Option<&JsObject>,
-    context: &mut Context,
+    mut context: ContextAccess<'_>,
 ) -> JsResult<Option<TableData>> {
     // Map/Set have a fixed column layout and ignore the `properties` filter,
     // matching Node.js behaviour.
@@ -43,7 +43,7 @@ pub(super) fn build_table_data(
     } else if let Ok(set) = JsSet::from_object(obj.clone()) {
         (extract_set_rows(&set)?, true)
     } else {
-        (extract_rows(obj, context)?, false)
+        (extract_rows(obj, context.reborrow())?, false)
     };
 
     if data.rows.is_empty() {
@@ -52,7 +52,7 @@ pub(super) fn build_table_data(
 
     // Only apply the properties filter to plain objects/arrays, not Map/Set.
     if !is_collection && let Some(props) = properties {
-        data.col_names = filter_columns(&data.col_names, props, context)?;
+        data.col_names = filter_columns(&data.col_names, props, context.reborrow())?;
     }
 
     Ok(Some(data))
@@ -104,25 +104,25 @@ fn extract_set_rows(set: &JsSet) -> JsResult<TableData> {
 ///
 /// Only considers enumerable own string-keyed properties, matching
 /// browser behaviour (equivalent to `Object.keys()`, e.g. excludes `length` on arrays).
-fn extract_rows(obj: &JsObject, context: &mut Context) -> JsResult<TableData> {
-    let keys = enumerable_keys(obj, context)?;
+fn extract_rows(obj: &JsObject, mut context: ContextAccess<'_>) -> JsResult<TableData> {
+    let keys = enumerable_keys(obj, context.reborrow())?;
     let mut col_names = vec![INDEX_COL.to_string()];
     let mut seen_cols: FxHashSet<String> = FxHashSet::default();
     seen_cols.insert(INDEX_COL.to_string());
     let mut rows = Vec::new();
 
     for index_str in &keys {
-        let val = obj.get(js_string!(index_str.as_str()), context)?;
+        let val = obj.get(js_string!(index_str.as_str()), context.reborrow())?;
         let mut row = FxHashMap::default();
         row.insert(INDEX_COL.to_string(), index_str.clone());
 
         if let Some(val_obj) = val.as_object() {
-            let inner_keys = enumerable_keys(&val_obj, context)?;
+            let inner_keys = enumerable_keys(&val_obj, context.reborrow())?;
             for col in &inner_keys {
                 if seen_cols.insert(col.clone()) {
                     col_names.push(col.clone());
                 }
-                let cell = val_obj.get(js_string!(col.as_str()), context)?;
+                let cell = val_obj.get(js_string!(col.as_str()), context.reborrow())?;
                 row.insert(col.clone(), display_cell_value(&cell));
             }
         } else {
@@ -155,11 +155,11 @@ fn display_cell_value(val: &JsValue) -> String {
 
 /// Returns the enumerable own string-keyed property names of `obj`,
 /// equivalent to `Object.keys(obj)`.
-fn enumerable_keys(obj: &JsObject, context: &mut Context) -> JsResult<Vec<String>> {
+fn enumerable_keys(obj: &JsObject, mut context: ContextAccess<'_>) -> JsResult<Vec<String>> {
     let keys_val = OrdinaryObject::keys(
         &JsValue::undefined(),
         &[JsValue::from(obj.clone())],
-        context,
+        context.reborrow(),
     )?;
     let Some(keys_obj) = keys_val.as_object() else {
         return Err(JsError::from_native(
@@ -167,12 +167,12 @@ fn enumerable_keys(obj: &JsObject, context: &mut Context) -> JsResult<Vec<String
         ));
     };
     let length = keys_obj
-        .get(js_string!("length"), context)?
-        .to_length(context)?;
+        .get(js_string!("length"), context.reborrow())?
+        .to_length(context.reborrow())?;
     let mut result = Vec::with_capacity(usize::try_from(length).unwrap_or(0));
     for i in 0..length {
-        let val = keys_obj.get(i, context)?;
-        result.push(val.to_string(context)?.to_std_string_escaped());
+        let val = keys_obj.get(i, context.reborrow())?;
+        result.push(val.to_string(context.reborrow())?.to_std_string_escaped());
     }
     Ok(result)
 }
@@ -186,11 +186,11 @@ fn enumerable_keys(obj: &JsObject, context: &mut Context) -> JsResult<Vec<String
 fn filter_columns(
     all_cols: &[String],
     properties: &JsObject,
-    context: &mut Context,
+    mut context: ContextAccess<'_>,
 ) -> JsResult<Vec<String>> {
     let length = properties
-        .get(js_string!("length"), context)?
-        .to_length(context)?;
+        .get(js_string!("length"), context.reborrow())?
+        .to_length(context.reborrow())?;
 
     let mut result = Vec::new();
     let mut seen = FxHashSet::default();
@@ -203,8 +203,8 @@ fn filter_columns(
 
     // Add columns in the order specified by the properties array.
     for i in 0..length {
-        let val = properties.get(i, context)?;
-        let col = val.to_string(context)?.to_std_string_escaped();
+        let val = properties.get(i, context.reborrow())?;
+        let col = val.to_string(context.reborrow())?.to_std_string_escaped();
         if seen.insert(col.clone()) {
             result.push(col);
         }

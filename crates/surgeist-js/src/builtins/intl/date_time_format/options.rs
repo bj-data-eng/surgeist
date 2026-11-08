@@ -42,7 +42,11 @@ pub(crate) enum HourCycle {
 
 impl OptionType for HourCycle {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        match value.to_string(context)?.to_std_string_escaped().as_ref() {
+        match value
+            .to_string(context.access())?
+            .to_std_string_escaped()
+            .as_ref()
+        {
             "h11" => Ok(Self::H11),
             "h12" => Ok(Self::H12),
             "h23" => Ok(Self::H23),
@@ -73,7 +77,11 @@ pub(super) enum FormatMatcher {
 
 impl OptionType for FormatMatcher {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        match value.to_string(context)?.to_std_string_escaped().as_ref() {
+        match value
+            .to_string(context.access())?
+            .to_std_string_escaped()
+            .as_ref()
+        {
             "basic" => Ok(Self::Basic),
             "best fit" => Ok(Self::BestFit),
             _ => Err(js_error!(RangeError: "unknown formatMatcher option")),
@@ -91,7 +99,11 @@ pub(super) enum DateStyle {
 
 impl OptionType for DateStyle {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        match value.to_string(context)?.to_std_string_escaped().as_ref() {
+        match value
+            .to_string(context.access())?
+            .to_std_string_escaped()
+            .as_ref()
+        {
             "full" => Ok(Self::Full),
             "long" => Ok(Self::Long),
             "medium" => Ok(Self::Medium),
@@ -111,7 +123,11 @@ pub(super) enum TimeStyle {
 
 impl OptionType for TimeStyle {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        match value.to_string(context)?.to_std_string_escaped().as_ref() {
+        match value
+            .to_string(context.access())?
+            .to_std_string_escaped()
+            .as_ref()
+        {
             "full" => Ok(Self::Full),
             "long" => Ok(Self::Long),
             "medium" => Ok(Self::Medium),
@@ -123,7 +139,7 @@ impl OptionType for TimeStyle {
 
 impl OptionType for CalendarAlgorithm {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        let s = value.to_string(context)?.to_std_string_escaped();
+        let s = value.to_string(context.access())?.to_std_string_escaped();
         Value::try_from_str(&s)
             .ok()
             .and_then(|v| CalendarAlgorithm::try_from(&v).ok())
@@ -140,7 +156,11 @@ impl OptionType for CalendarAlgorithm {
 // `HourCycle::H24`.
 impl OptionType for IcuHourCycle {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        match value.to_string(context)?.to_std_string_escaped().as_str() {
+        match value
+            .to_string(context.access())?
+            .to_std_string_escaped()
+            .as_str()
+        {
             "h11" => Ok(IcuHourCycle::H11),
             "h12" => Ok(IcuHourCycle::H12),
             "h23" => Ok(IcuHourCycle::H23),
@@ -335,7 +355,11 @@ pub(crate) enum WeekDay {
 
 impl OptionType for WeekDay {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        match value.to_string(context)?.to_std_string_escaped().as_ref() {
+        match value
+            .to_string(context.access())?
+            .to_std_string_escaped()
+            .as_ref()
+        {
             "narrow" => Ok(Self::Narrow),
             "short" => Ok(Self::Short),
             "long" => Ok(Self::Long),
@@ -373,7 +397,11 @@ impl Era {
 
 impl OptionType for Era {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        match value.to_string(context)?.to_std_string_escaped().as_ref() {
+        match value
+            .to_string(context.access())?
+            .to_std_string_escaped()
+            .as_ref()
+        {
             "narrow" => Ok(Self::Narrow),
             "short" => Ok(Self::Short),
             "long" => Ok(Self::Long),
@@ -390,7 +418,11 @@ pub(crate) enum Year {
 
 impl OptionType for Year {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        match value.to_string(context)?.to_std_string_escaped().as_ref() {
+        match value
+            .to_string(context.access())?
+            .to_std_string_escaped()
+            .as_ref()
+        {
             "2-digit" => Ok(Self::TwoDigit),
             "numeric" => Ok(Self::Numeric),
             _ => Err(js_error!(RangeError: "unknown year option")),
@@ -421,7 +453,11 @@ impl Month {
 
 impl OptionType for Month {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        match value.to_string(context)?.to_std_string_escaped().as_ref() {
+        match value
+            .to_string(context.access())?
+            .to_std_string_escaped()
+            .as_ref()
+        {
             "2-digit" => Ok(Self::TwoDigit),
             "numeric" => Ok(Self::Numeric),
             "narrow" => Ok(Self::Narrow),
@@ -440,7 +476,11 @@ pub(crate) enum Day {
 
 impl OptionType for Day {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        match value.to_string(context)?.to_std_string_escaped().as_ref() {
+        match value
+            .to_string(context.access())?
+            .to_std_string_escaped()
+            .as_ref()
+        {
             "2-digit" => Ok(Self::TwoDigit),
             "numeric" => Ok(Self::Numeric),
             _ => Err(js_error!(RangeError: "unknown day option")),
@@ -467,7 +507,11 @@ impl DayPeriod {
 
 impl OptionType for DayPeriod {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        match value.to_string(context)?.to_std_string_escaped().as_ref() {
+        match value
+            .to_string(context.access())?
+            .to_std_string_escaped()
+            .as_ref()
+        {
             "narrow" => Ok(Self::Narrow),
             "short" => Ok(Self::Short),
             "long" => Ok(Self::Long),
@@ -484,7 +528,11 @@ pub(crate) enum Hour {
 
 impl OptionType for Hour {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        match value.to_string(context)?.to_std_string_escaped().as_ref() {
+        match value
+            .to_string(context.access())?
+            .to_std_string_escaped()
+            .as_ref()
+        {
             "2-digit" => Ok(Self::TwoDigit),
             "numeric" => Ok(Self::Numeric),
             _ => Err(js_error!(RangeError: "unknown hour option")),
@@ -500,7 +548,11 @@ pub(crate) enum Minute {
 
 impl OptionType for Minute {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        match value.to_string(context)?.to_std_string_escaped().as_ref() {
+        match value
+            .to_string(context.access())?
+            .to_std_string_escaped()
+            .as_ref()
+        {
             "2-digit" => Ok(Self::TwoDigit),
             "numeric" => Ok(Self::Numeric),
             _ => Err(js_error!(RangeError: "unknown minute option")),
@@ -516,7 +568,11 @@ pub(crate) enum Second {
 
 impl OptionType for Second {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        match value.to_string(context)?.to_std_string_escaped().as_ref() {
+        match value
+            .to_string(context.access())?
+            .to_std_string_escaped()
+            .as_ref()
+        {
             "2-digit" => Ok(Self::TwoDigit),
             "numeric" => Ok(Self::Numeric),
             _ => Err(js_error!(RangeError: "unknown second option")),
@@ -572,7 +628,11 @@ pub(crate) enum TimeZoneName {
 
 impl OptionType for TimeZoneName {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        match value.to_string(context)?.to_std_string_escaped().as_ref() {
+        match value
+            .to_string(context.access())?
+            .to_std_string_escaped()
+            .as_ref()
+        {
             "short" => Ok(Self::Short),
             "long" => Ok(Self::Long),
             "shortOffset" => Ok(Self::ShortOffset),

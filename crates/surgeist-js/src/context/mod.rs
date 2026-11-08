@@ -3,7 +3,9 @@
 use std::any::Any;
 use std::{cell::Cell, path::Path, rc::Rc};
 
+pub use access::ContextAccess;
 pub use hooks::{DefaultHooks, HostHooks};
+pub use host::HostContext;
 #[cfg(feature = "intl")]
 pub use icu::IcuError;
 use intrinsics::Intrinsics;
@@ -49,7 +51,9 @@ pub mod time;
 use crate::context::time::StdClock;
 pub use time::Clock;
 
+mod access;
 mod hooks;
+mod host;
 #[cfg(feature = "intl")]
 pub(crate) mod icu;
 pub mod intrinsics;
@@ -116,7 +120,7 @@ impl Drop for ThreadBlocking {
 /// context.eval(Source::from_bytes(script)).unwrap();
 ///
 /// // Create an object that can be used in eval calls.
-/// let arg = ObjectInitializer::new(&mut context)
+/// let arg = ObjectInitializer::new(context.access())
 ///     .property(js_string!("x"), 12, Attribute::READONLY)
 ///     .build().unwrap();
 /// context
@@ -230,7 +234,7 @@ impl Context {
         if let Some(stop) = self.execution.as_ref().and_then(Execution::stop) {
             return Err(stop.clone());
         }
-        Script::parse(src, None, self)?.evaluate(self)
+        Script::parse(src, None, self.access())?.evaluate(self.access())
     }
 
     /// Evaluates a script under execution budgets with optional profiling.
@@ -243,18 +247,8 @@ impl Context {
         &mut self,
         src: Source<'_, R>,
         options: ExecutionOptions,
-    ) -> Result<ExecutionOutcome, ExecutionSetupError> {
-        if self.execution.is_some() {
-            return Err(ExecutionSetupError::AlreadyActive);
-        }
-        self.execution = Some(Execution::new(options)?);
-        let mut active = self.guard(|context| context.execution = None);
-        let result = active.eval(src);
-        let execution = active
-            .execution
-            .take()
-            .expect("the active evaluation owns the budget");
-        Ok(execution.finish(result))
+    ) -> Result<ExecutionOutcome<JsValue>, ExecutionSetupError> {
+        self.with_execution(options, |mut context| context.eval(src))
     }
 
     pub(crate) fn parse_source<R: ReadChar, T>(
@@ -479,7 +473,7 @@ impl Context {
     ///     )
     ///     .expect("property shouldn't exist");
     ///
-    /// let object = ObjectInitializer::new(&mut context)
+    /// let object = ObjectInitializer::new(context.access())
     ///     .property(js_string!("x"), 0, Attribute::all())
     ///     .property(js_string!("y"), 1, Attribute::all())
     ///     .build().unwrap();
@@ -508,7 +502,7 @@ impl Context {
                 .writable(attribute.writable())
                 .enumerable(attribute.enumerable())
                 .configurable(attribute.configurable()),
-            self,
+            self.access(),
         )?;
         Ok(())
     }
@@ -544,7 +538,7 @@ impl Context {
                 .writable(true)
                 .enumerable(false)
                 .configurable(true),
-            self,
+            self.access(),
         )?;
         Ok(())
     }
@@ -577,7 +571,7 @@ impl Context {
                 .writable(true)
                 .enumerable(false)
                 .configurable(true),
-            self,
+            self.access(),
         )?;
         Ok(())
     }
@@ -604,7 +598,7 @@ impl Context {
                 .into());
         }
 
-        let mut class_builder = ClassBuilder::new::<C>(self);
+        let mut class_builder = ClassBuilder::new::<C>(self.access());
         C::init(&mut class_builder)?;
 
         let class = class_builder.build()?;
@@ -614,8 +608,11 @@ impl Context {
             .enumerable(C::ATTRIBUTES.enumerable())
             .configurable(C::ATTRIBUTES.configurable());
 
-        self.global_object()
-            .define_property_or_throw(js_string!(C::NAME), property, self)?;
+        self.global_object().define_property_or_throw(
+            js_string!(C::NAME),
+            property,
+            self.access(),
+        )?;
         self.realm().register_class::<C>(class)?;
 
         Ok(())
@@ -646,7 +643,7 @@ impl Context {
     /// ```
     pub fn unregister_global_class<C: Class>(&mut self) -> JsResult<Option<ClassConstructor>> {
         self.global_object()
-            .delete_property_or_throw(js_string!(C::NAME), self)?;
+            .delete_property_or_throw(js_string!(C::NAME), self.access())?;
         Ok(self.realm().unregister_class::<C>())
     }
 
@@ -720,13 +717,13 @@ impl Context {
     /// Enqueues a [`Job`] on the [`JobExecutor`].
     #[inline]
     pub fn enqueue_job(&mut self, job: Job) {
-        self.job_executor().enqueue_job(job, self);
+        self.job_executor().enqueue_job(job, self.access());
     }
 
     /// Runs all the jobs with the provided job executor.
     #[inline]
     pub fn run_jobs(&mut self) -> JsResult<()> {
-        self.job_executor().run_jobs(self)
+        self.job_executor().run_jobs(self.access())
     }
 
     /// Abstract operation [`ClearKeptObjects`][clear].
@@ -800,6 +797,10 @@ impl Context {
     #[must_use]
     pub fn clock(&self) -> &dyn Clock {
         self.clock.as_ref()
+    }
+
+    pub(crate) fn clock_handle(&self) -> Rc<dyn Clock> {
+        self.clock.clone()
     }
 
     /// Gets the current job executor, or `None` if the current job executor
@@ -924,7 +925,7 @@ impl Context {
 
         // 4. If existingProp is undefined, return ? IsExtensible(globalObject).
         let Some(existing_prop) = existing_prop else {
-            return global_object.is_extensible(self);
+            return global_object.is_extensible(self.access());
         };
 
         // 5. If existingProp.[[Configurable]] is true, return true.
@@ -956,7 +957,7 @@ impl Context {
         let global_object = self.realm().global_object();
 
         // 3. Let hasProperty be ? HasOwnProperty(globalObject, N).
-        let has_property = global_object.has_own_property(name.clone(), self)?;
+        let has_property = global_object.has_own_property(name.clone(), self.access())?;
 
         // 4. If hasProperty is true, return true.
         if has_property {
@@ -964,7 +965,7 @@ impl Context {
         }
 
         // 5. Return ? IsExtensible(globalObject).
-        global_object.is_extensible(self)
+        global_object.is_extensible(self.access())
     }
 
     /// `CreateGlobalVarBinding ( N, D )`
@@ -983,10 +984,10 @@ impl Context {
         let global_object = self.realm().global_object();
 
         // 3. Let hasProperty be ? HasOwnProperty(globalObject, N).
-        let has_property = global_object.has_own_property(name.clone(), self)?;
+        let has_property = global_object.has_own_property(name.clone(), self.access())?;
 
         // 4. Let extensible be ? IsExtensible(globalObject).
-        let extensible = global_object.is_extensible(self)?;
+        let extensible = global_object.is_extensible(self.access())?;
 
         // 5. If hasProperty is false and extensible is true, then
         if !has_property && extensible {
@@ -1044,7 +1045,7 @@ impl Context {
                 .with_message(format!("cannot redefine property: {key}"))
                 .into());
         };
-        global_object.set(name, function, false, self)?;
+        global_object.set(name, function, false, self.access())?;
         Ok(())
     }
 
@@ -1531,12 +1532,16 @@ mod runtime_tests {
             _: &[JsString],
             _: &JsString,
             _: bool,
-            _: &mut Context,
+            _: crate::ContextAccess<'_>,
         ) -> JsResult<()> {
             Err(self.0.clone())
         }
 
-        fn ensure_can_add_private_element(&self, _: &JsObject, _: &mut Context) -> JsResult<()> {
+        fn ensure_can_add_private_element(
+            &self,
+            _: &JsObject,
+            _: crate::ContextAccess<'_>,
+        ) -> JsResult<()> {
             Err(self.0.clone())
         }
     }

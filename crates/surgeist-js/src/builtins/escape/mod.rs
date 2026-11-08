@@ -50,7 +50,7 @@ fn escape(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsVa
     }
 
     // 1. Set string to ? ToString(string).
-    let string = args.get_or_undefined(0).to_string(context)?;
+    let string = args.get_or_undefined(0).to_string(context.access())?;
 
     // 3. Let R be the empty String.
     let mut vec = Vec::with_capacity(string.len());
@@ -119,7 +119,7 @@ fn unescape(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<Js
     }
 
     // 1. Set string to ? ToString(string).
-    let string = args.get_or_undefined(0).to_string(context)?;
+    let string = args.get_or_undefined(0).to_string(context.access())?;
 
     // 3. Let R be the empty String.
     let mut vec = Vec::with_capacity(string.len());

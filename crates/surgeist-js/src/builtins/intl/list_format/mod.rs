@@ -389,16 +389,24 @@ impl ListFormat {
                 .create(OrdinaryObject, vec![]);
 
             // b. Perform ! CreateDataPropertyOrThrow(O, "type", part.[[Type]]).
-            o.create_data_property_or_throw(js_string!("type"), js_string!(part.typ()), context)
-                .js_expect("operation must not fail per the spec")?;
+            o.create_data_property_or_throw(
+                js_string!("type"),
+                js_string!(part.typ()),
+                context.access(),
+            )
+            .js_expect("operation must not fail per the spec")?;
 
             // c. Perform ! CreateDataPropertyOrThrow(O, "value", part.[[Value]]).
-            o.create_data_property_or_throw(js_string!("value"), js_string!(part.value()), context)
-                .js_expect("operation must not fail per the spec")?;
+            o.create_data_property_or_throw(
+                js_string!("value"),
+                js_string!(part.value()),
+                context.access(),
+            )
+            .js_expect("operation must not fail per the spec")?;
 
             // d. Perform ! CreateDataPropertyOrThrow(result, ! ToString(n), O).
             result
-                .create_data_property_or_throw(n, o, context)
+                .create_data_property_or_throw(n, o, context.access())
                 .js_expect("operation must not fail per the spec")?;
 
             // e. Increment n by 1.
@@ -446,7 +454,7 @@ impl ListFormat {
             .create_data_property_or_throw(
                 js_string!("locale"),
                 js_string!(lf.locale.to_string()),
-                context,
+                context.access(),
             )
             .js_expect("operation must not fail per the spec")?;
         options
@@ -457,7 +465,7 @@ impl ListFormat {
                     ListFormatType::Disjunction => js_string!("disjunction"),
                     ListFormatType::Unit => js_string!("unit"),
                 },
-                context,
+                context.access(),
             )
             .js_expect("operation must not fail per the spec")?;
         options
@@ -469,7 +477,7 @@ impl ListFormat {
                     ListLength::Narrow => js_string!("narrow"),
                     _ => unreachable!(),
                 },
-                context,
+                context.access(),
             )
             .js_expect("operation must not fail per the spec")?;
 
@@ -489,7 +497,7 @@ fn string_list_from_iterable(iterable: &JsValue, context: &mut Context) -> JsRes
     }
 
     // 2. Let iteratorRecord be ? GetIterator(iterable, sync).
-    let mut iterator = iterable.get_iterator(IteratorHint::Sync, context)?;
+    let mut iterator = iterable.get_iterator(IteratorHint::Sync, context.access())?;
 
     // 3. Let list be a new empty List.
     let mut list = Vec::new();

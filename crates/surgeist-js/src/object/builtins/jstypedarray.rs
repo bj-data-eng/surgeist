@@ -1,6 +1,9 @@
 //! Rust API wrappers for the `TypedArray` Builtin ECMAScript Objects
+#[cfg(test)]
+use crate::Context;
+use crate::ContextAccess;
 use crate::{
-    Context, JsExpect, JsResult, JsString, JsValue,
+    JsExpect, JsResult, JsString, JsValue,
     builtins::{
         BuiltInConstructor,
         typed_array::{BuiltinTypedArray, TypedArray, TypedArrayKind},
@@ -54,7 +57,8 @@ impl JsTypedArray {
     ///
     /// Returns an error if the length value is not a number.
     #[inline]
-    pub fn length(&self, context: &mut Context) -> JsResult<usize> {
+    pub fn length(&self, context: ContextAccess<'_>) -> JsResult<usize> {
+        let context = context.into_owner();
         Ok(
             BuiltinTypedArray::length(&self.inner.clone().into(), &[], context)?
                 .as_number()
@@ -64,15 +68,17 @@ impl JsTypedArray {
 
     /// Check if the array is empty, i.e. the `length` is zero.
     #[inline]
-    pub fn is_empty(&self, context: &mut Context) -> JsResult<bool> {
-        Ok(self.length(context)? == 0)
+    pub fn is_empty(&self, context: ContextAccess<'_>) -> JsResult<bool> {
+        let context = context.into_owner();
+        Ok(self.length(context.access())? == 0)
     }
 
     /// Calls `TypedArray.prototype.at()`.
-    pub fn at<T>(&self, index: T, context: &mut Context) -> JsResult<JsValue>
+    pub fn at<T>(&self, index: T, context: ContextAccess<'_>) -> JsResult<JsValue>
     where
         T: Into<i64>,
     {
+        let context = context.into_owner();
         BuiltinTypedArray::at(&self.inner.clone().into(), &[index.into().into()], context)
     }
 
@@ -87,17 +93,18 @@ impl JsTypedArray {
     /// # fn main() -> JsResult<()> {
     ///
     /// let context = &mut Context::default();
-    /// let array_buffer8 = JsArrayBuffer::new(8, context)?;
-    /// let array = JsUint8Array::from_array_buffer(array_buffer8, context)?;
+    /// let array_buffer8 = JsArrayBuffer::new(8, context.access())?;
+    /// let array = JsUint8Array::from_array_buffer(array_buffer8, context.access())?;
     /// assert_eq!(
-    ///     array.buffer(context)?.as_object().unwrap().get(PropertyKey::String(js_string!("byteLength")), context).unwrap(),
+    ///     array.buffer(context.access())?.as_object().unwrap().get(PropertyKey::String(js_string!("byteLength")), context.access()).unwrap(),
     ///     JsValue::new(8)
     /// );
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
-    pub fn buffer(&self, context: &mut Context) -> JsResult<JsValue> {
+    pub fn buffer(&self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         BuiltinTypedArray::buffer(&self.inner.clone().into(), &[], context)
     }
 
@@ -107,7 +114,8 @@ impl JsTypedArray {
     ///
     /// Returns an error if the byteLength value is not a number.
     #[inline]
-    pub fn byte_length(&self, context: &mut Context) -> JsResult<usize> {
+    pub fn byte_length(&self, context: ContextAccess<'_>) -> JsResult<usize> {
+        let context = context.into_owner();
         Ok(
             BuiltinTypedArray::byte_length(&self.inner.clone().into(), &[], context)?
                 .as_number()
@@ -121,7 +129,8 @@ impl JsTypedArray {
     ///
     /// Returns an error if the byteOffset value is not a number.
     #[inline]
-    pub fn byte_offset(&self, context: &mut Context) -> JsResult<usize> {
+    pub fn byte_offset(&self, context: ContextAccess<'_>) -> JsResult<usize> {
+        let context = context.into_owner();
         Ok(
             BuiltinTypedArray::byte_offset(&self.inner.clone().into(), &[], context)?
                 .as_number()
@@ -141,19 +150,20 @@ impl JsTypedArray {
     /// # fn main() -> JsResult<()> {
     ///
     /// let context = &mut Context::default();
-    /// let array = JsUint8Array::from_iter(vec![1, 2, 3, 4, 5], context)?;
+    /// let array = JsUint8Array::from_iter(vec![1, 2, 3, 4, 5], context.access())?;
     /// assert_eq!(
     ///     Err(JsNativeError::typ()
     ///         .with_message("the TypedArray constructor should never be called directly")
     ///         .into()),
-    ///     array.constructor(context)
+    ///     array.constructor(context.access())
     /// );
     ///
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
-    pub fn constructor(&self, context: &mut Context) -> JsResult<JsValue> {
+    pub fn constructor(&self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         BuiltinTypedArray::constructor(&self.inner.clone().into(), &[], context)
     }
 
@@ -169,16 +179,16 @@ impl JsTypedArray {
     /// # fn main() -> JsResult<()> {
     ///
     /// let context = &mut Context::default();
-    /// let array = JsUint8Array::from_iter(vec![1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8], context)?;
-    /// array.copy_within(3, 1, Some(3), context)?;
-    /// assert_eq!(array.get(0, context)?, JsValue::new(1.0));
-    /// assert_eq!(array.get(1, context)?, JsValue::new(2.0));
-    /// assert_eq!(array.get(2, context)?, JsValue::new(3.0));
-    /// assert_eq!(array.get(3, context)?, JsValue::new(2.0));
-    /// assert_eq!(array.get(4, context)?, JsValue::new(3.0));
-    /// assert_eq!(array.get(5, context)?, JsValue::new(6.0));
-    /// assert_eq!(array.get(6, context)?, JsValue::new(7.0));
-    /// assert_eq!(array.get(7, context)?, JsValue::new(8.0));
+    /// let array = JsUint8Array::from_iter(vec![1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8], context.access())?;
+    /// array.copy_within(3, 1, Some(3), context.access())?;
+    /// assert_eq!(array.get(0, context.access())?, JsValue::new(1.0));
+    /// assert_eq!(array.get(1, context.access())?, JsValue::new(2.0));
+    /// assert_eq!(array.get(2, context.access())?, JsValue::new(3.0));
+    /// assert_eq!(array.get(3, context.access())?, JsValue::new(2.0));
+    /// assert_eq!(array.get(4, context.access())?, JsValue::new(3.0));
+    /// assert_eq!(array.get(5, context.access())?, JsValue::new(6.0));
+    /// assert_eq!(array.get(6, context.access())?, JsValue::new(7.0));
+    /// assert_eq!(array.get(7, context.access())?, JsValue::new(8.0));
     ///
     /// # Ok(())
     /// # }
@@ -189,11 +199,12 @@ impl JsTypedArray {
         target: T,
         start: u64,
         end: Option<u64>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Self>
     where
         T: Into<JsValue>,
     {
+        let context = context.into_owner();
         let object = BuiltinTypedArray::copy_within(
             &self.inner.clone().into(),
             &[target.into(), start.into(), end.into_or_undefined()],
@@ -213,11 +224,12 @@ impl JsTypedArray {
         value: T,
         start: Option<usize>,
         end: Option<usize>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Self>
     where
         T: Into<JsValue>,
     {
+        let context = context.into_owner();
         BuiltinTypedArray::fill(
             &self.inner.clone().into(),
             &[
@@ -235,8 +247,9 @@ impl JsTypedArray {
         &self,
         predicate: JsFunction,
         this_arg: Option<JsValue>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<bool> {
+        let context = context.into_owner();
         let result = BuiltinTypedArray::every(
             &self.inner.clone().into(),
             &[predicate.into(), this_arg.into_or_undefined()],
@@ -254,8 +267,9 @@ impl JsTypedArray {
         &self,
         callback: JsFunction,
         this_arg: Option<JsValue>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<bool> {
+        let context = context.into_owner();
         let result = BuiltinTypedArray::some(
             &self.inner.clone().into(),
             &[callback.into(), this_arg.into_or_undefined()],
@@ -269,7 +283,12 @@ impl JsTypedArray {
 
     /// Calls `TypedArray.prototype.sort()`.
     #[inline]
-    pub fn sort(&self, compare_fn: Option<JsFunction>, context: &mut Context) -> JsResult<Self> {
+    pub fn sort(
+        &self,
+        compare_fn: Option<JsFunction>,
+        context: ContextAccess<'_>,
+    ) -> JsResult<Self> {
+        let context = context.into_owner();
         BuiltinTypedArray::sort(
             &self.inner.clone().into(),
             &[compare_fn.into_or_undefined()],
@@ -292,23 +311,24 @@ impl JsTypedArray {
     /// # fn main() -> JsResult<()> {
     ///
     /// let context = &mut Context::default();
-    /// let array = JsUint8Array::from_iter(vec![1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8], context)?;
-    /// let subarray2_6 = array.subarray(2, 6, context)?;
-    /// assert_eq!(subarray2_6.length(context)?, 4);
-    /// assert_eq!(subarray2_6.get(0, context)?, JsValue::new(3.0));
-    /// assert_eq!(subarray2_6.get(1, context)?, JsValue::new(4.0));
-    /// assert_eq!(subarray2_6.get(2, context)?, JsValue::new(5.0));
-    /// assert_eq!(subarray2_6.get(3, context)?, JsValue::new(6.0));
-    /// let subarray4_6 = array.subarray(-4, 6, context)?;
-    /// assert_eq!(subarray4_6.length(context)?, 2);
-    /// assert_eq!(subarray4_6.get(0, context)?, JsValue::new(5.0));
-    /// assert_eq!(subarray4_6.get(1, context)?, JsValue::new(6.0));
+    /// let array = JsUint8Array::from_iter(vec![1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8], context.access())?;
+    /// let subarray2_6 = array.subarray(2, 6, context.access())?;
+    /// assert_eq!(subarray2_6.length(context.access())?, 4);
+    /// assert_eq!(subarray2_6.get(0, context.access())?, JsValue::new(3.0));
+    /// assert_eq!(subarray2_6.get(1, context.access())?, JsValue::new(4.0));
+    /// assert_eq!(subarray2_6.get(2, context.access())?, JsValue::new(5.0));
+    /// assert_eq!(subarray2_6.get(3, context.access())?, JsValue::new(6.0));
+    /// let subarray4_6 = array.subarray(-4, 6, context.access())?;
+    /// assert_eq!(subarray4_6.length(context.access())?, 2);
+    /// assert_eq!(subarray4_6.get(0, context.access())?, JsValue::new(5.0));
+    /// assert_eq!(subarray4_6.get(1, context.access())?, JsValue::new(6.0));
     ///
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
-    pub fn subarray(&self, begin: i64, end: i64, context: &mut Context) -> JsResult<Self> {
+    pub fn subarray(&self, begin: i64, end: i64, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         let subarray = BuiltinTypedArray::subarray(
             &self.inner.clone().into(),
             &[begin.into(), end.into()],
@@ -328,8 +348,9 @@ impl JsTypedArray {
         &self,
         reserved1: Option<JsValue>,
         reserved2: Option<JsValue>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         BuiltinTypedArray::to_locale_string(
             &self.inner.clone().into(),
             &[reserved1.into_or_undefined(), reserved2.into_or_undefined()],
@@ -343,8 +364,9 @@ impl JsTypedArray {
         &self,
         callback: JsFunction,
         this_arg: Option<JsValue>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Self> {
+        let context = context.into_owner();
         let object = BuiltinTypedArray::filter(
             &self.inner.clone().into(),
             &[callback.into(), this_arg.into_or_undefined()],
@@ -364,8 +386,9 @@ impl JsTypedArray {
         &self,
         callback: JsFunction,
         this_arg: Option<JsValue>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Self> {
+        let context = context.into_owner();
         let object = BuiltinTypedArray::map(
             &self.inner.clone().into(),
             &[callback.into(), this_arg.into_or_undefined()],
@@ -385,8 +408,9 @@ impl JsTypedArray {
         &self,
         callback: JsFunction,
         initial_value: Option<JsValue>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         BuiltinTypedArray::reduce(
             &self.inner.clone().into(),
             &[callback.into(), initial_value.into_or_undefined()],
@@ -400,8 +424,9 @@ impl JsTypedArray {
         &self,
         callback: JsFunction,
         initial_value: Option<JsValue>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         BuiltinTypedArray::reduceright(
             &self.inner.clone().into(),
             &[callback.into(), initial_value.into_or_undefined()],
@@ -411,7 +436,8 @@ impl JsTypedArray {
 
     /// Calls `TypedArray.prototype.reverse()`.
     #[inline]
-    pub fn reverse(&self, context: &mut Context) -> JsResult<Self> {
+    pub fn reverse(&self, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         BuiltinTypedArray::reverse(&self.inner.clone().into(), &[], context)?;
         Ok(self.clone())
     }
@@ -428,22 +454,22 @@ impl JsTypedArray {
     /// # fn main() -> JsResult<()> {
     ///
     /// let context = &mut Context::default();
-    /// let array_buffer8 = JsArrayBuffer::new(8, context)?;
-    /// let initialized8_array = JsUint8Array::from_array_buffer(array_buffer8, context)?;
+    /// let array_buffer8 = JsArrayBuffer::new(8, context.access())?;
+    /// let initialized8_array = JsUint8Array::from_array_buffer(array_buffer8, context.access())?;
     /// initialized8_array.set_values(
-    ///   JsArray::from_iter(vec![JsValue::new(1), JsValue::new(2)], context)?.into(),
+    ///   JsArray::from_iter(vec![JsValue::new(1), JsValue::new(2)], context.access())?.into(),
     ///   Some(3),
-    ///   context,
+    ///   context.access(),
     /// )?;
-    /// assert_eq!(initialized8_array.get(0, context)?, JsValue::new(0));
-    /// assert_eq!(initialized8_array.get(1, context)?, JsValue::new(0));
-    /// assert_eq!(initialized8_array.get(2, context)?, JsValue::new(0));
-    /// assert_eq!(initialized8_array.get(3, context)?, JsValue::new(1.0));
-    /// assert_eq!(initialized8_array.get(4, context)?, JsValue::new(2.0));
-    /// assert_eq!(initialized8_array.get(5, context)?, JsValue::new(0));
-    /// assert_eq!(initialized8_array.get(6, context)?, JsValue::new(0));
-    /// assert_eq!(initialized8_array.get(7, context)?, JsValue::new(0));
-    /// assert_eq!(initialized8_array.get(8, context)?, JsValue::undefined());
+    /// assert_eq!(initialized8_array.get(0, context.access())?, JsValue::new(0));
+    /// assert_eq!(initialized8_array.get(1, context.access())?, JsValue::new(0));
+    /// assert_eq!(initialized8_array.get(2, context.access())?, JsValue::new(0));
+    /// assert_eq!(initialized8_array.get(3, context.access())?, JsValue::new(1.0));
+    /// assert_eq!(initialized8_array.get(4, context.access())?, JsValue::new(2.0));
+    /// assert_eq!(initialized8_array.get(5, context.access())?, JsValue::new(0));
+    /// assert_eq!(initialized8_array.get(6, context.access())?, JsValue::new(0));
+    /// assert_eq!(initialized8_array.get(7, context.access())?, JsValue::new(0));
+    /// assert_eq!(initialized8_array.get(8, context.access())?, JsValue::undefined());
     ///
     /// # Ok(())
     /// # }
@@ -453,8 +479,9 @@ impl JsTypedArray {
         &self,
         source: JsValue,
         offset: Option<u64>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         BuiltinTypedArray::set(
             &self.inner.clone().into(),
             &[source, offset.into_or_undefined()],
@@ -468,8 +495,9 @@ impl JsTypedArray {
         &self,
         start: Option<usize>,
         end: Option<usize>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Self> {
+        let context = context.into_owner();
         let object = BuiltinTypedArray::slice(
             &self.inner.clone().into(),
             &[start.into_or_undefined(), end.into_or_undefined()],
@@ -489,8 +517,9 @@ impl JsTypedArray {
         &self,
         predicate: JsFunction,
         this_arg: Option<JsValue>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         BuiltinTypedArray::find(
             &self.inner.clone().into(),
             &[predicate.into(), this_arg.into_or_undefined()],
@@ -511,7 +540,7 @@ impl JsTypedArray {
     /// # fn main() -> JsResult<()> {
     /// let context = &mut Context::default();
     /// let data: Vec<u8> = (0..=255).collect();
-    /// let array = JsUint8Array::from_iter(data, context)?;
+    /// let array = JsUint8Array::from_iter(data, context.access())?;
     ///
     /// let greater_than_10_predicate = FunctionObjectBuilder::new(
     ///     context.realm(),
@@ -527,7 +556,7 @@ impl JsTypedArray {
     /// )
     /// .build().unwrap();
     /// assert_eq!(
-    ///     array.find_index(greater_than_10_predicate, None, context),
+    ///     array.find_index(greater_than_10_predicate, None, context.access()),
     ///     Ok(Some(11))
     /// );
     ///
@@ -539,8 +568,9 @@ impl JsTypedArray {
         &self,
         predicate: JsFunction,
         this_arg: Option<JsValue>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Option<u64>> {
+        let context = context.into_owner();
         let index = BuiltinTypedArray::find_index(
             &self.inner.clone().into(),
             &[predicate.into(), this_arg.into_or_undefined()],
@@ -569,7 +599,7 @@ impl JsTypedArray {
     /// # fn main() -> JsResult<()> {
     /// let context = &mut Context::default();
     /// let data: Vec<u8> = (0..=255).collect();
-    /// let array = JsUint8Array::from_iter(data, context)?;
+    /// let array = JsUint8Array::from_iter(data, context.access())?;
     ///
     /// let lower_than_200_predicate = FunctionObjectBuilder::new(
     ///     context.realm(),
@@ -585,7 +615,7 @@ impl JsTypedArray {
     /// )
     /// .build().unwrap();
     /// assert_eq!(
-    ///     array.find_last(lower_than_200_predicate.clone(), None, context),
+    ///     array.find_last(lower_than_200_predicate.clone(), None, context.access()),
     ///     Ok(JsValue::new(199))
     /// );
     ///
@@ -597,8 +627,9 @@ impl JsTypedArray {
         &self,
         predicate: JsFunction,
         this_arg: Option<JsValue>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         BuiltinTypedArray::find_last(
             &self.inner.clone().into(),
             &[predicate.into(), this_arg.into_or_undefined()],
@@ -619,7 +650,7 @@ impl JsTypedArray {
     /// # fn main() -> JsResult<()> {
     /// let context = &mut Context::default();
     /// let data: Vec<u8> = (0..=255).collect();
-    /// let array = JsUint8Array::from_iter(data, context)?;
+    /// let array = JsUint8Array::from_iter(data, context.access())?;
     ///
     /// let lower_than_200_predicate = FunctionObjectBuilder::new(
     ///     context.realm(),
@@ -635,7 +666,7 @@ impl JsTypedArray {
     /// )
     /// .build().unwrap();
     /// assert_eq!(
-    ///     array.find_last(lower_than_200_predicate.clone(), None, context),
+    ///     array.find_last(lower_than_200_predicate.clone(), None, context.access()),
     ///     Ok(JsValue::new(199))
     /// );
     ///
@@ -647,8 +678,9 @@ impl JsTypedArray {
         &self,
         predicate: JsFunction,
         this_arg: Option<JsValue>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Option<u64>> {
+        let context = context.into_owner();
         let index = BuiltinTypedArray::find_last_index(
             &self.inner.clone().into(),
             &[predicate.into(), this_arg.into_or_undefined()],
@@ -683,18 +715,18 @@ impl JsTypedArray {
     /// # use surgeist_js::{JsResult, object::{builtins::JsUint8Array, FunctionObjectBuilder}, NativeFunction, JsValue, Context};
     /// # fn main() -> JsResult<()> {
     /// let context = &mut Context::default();
-    /// let array = JsUint8Array::from_iter(vec![1, 2, 3, 4, 5], context)?;
+    /// let array = JsUint8Array::from_iter(vec![1, 2, 3, 4, 5], context.access())?;
     /// let num_to_modify = Counter(Rc::new(Cell::new(0)));
     ///
     /// let js_function = FunctionObjectBuilder::new(
     ///     context.realm(),
     ///     NativeFunction::from_fn_with_captures(
-    ///         |_, args, captures, inner_context| {
+    ///         |_, args, captures, mut inner_context| {
     ///             let element = args
     ///                 .first()
     ///                 .cloned()
     ///                 .unwrap_or_default()
-    ///                 .to_uint8(inner_context)
+    ///                 .to_uint8(inner_context.reborrow())
     ///                 .expect("error at number conversion");
     ///             captures.0.set(captures.0.get() + element);
     ///             Ok(JsValue::undefined())
@@ -704,7 +736,7 @@ impl JsTypedArray {
     /// )
     /// .build().unwrap();
     ///
-    /// array.for_each(js_function, None, context)?;
+    /// array.for_each(js_function, None, context.access())?;
     /// assert_eq!(num_to_modify.0.get(), 15u8);
     ///
     /// # Ok(())
@@ -715,8 +747,9 @@ impl JsTypedArray {
         &self,
         callback: JsFunction,
         this_arg: Option<JsValue>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         BuiltinTypedArray::for_each(
             &self.inner.clone().into(),
             &[callback.into(), this_arg.into_or_undefined()],
@@ -737,12 +770,12 @@ impl JsTypedArray {
     ///
     /// let context = &mut Context::default();
     /// let data: Vec<u8> = (0..=255).collect();
-    /// let array = JsUint8Array::from_iter(data, context)?;
+    /// let array = JsUint8Array::from_iter(data, context.access())?;
     ///
-    /// assert_eq!(array.includes(JsValue::new(2), None, context), Ok(true));
-    /// let empty_array = JsUint8Array::from_iter(vec![], context)?;
+    /// assert_eq!(array.includes(JsValue::new(2), None, context.access()), Ok(true));
+    /// let empty_array = JsUint8Array::from_iter(vec![], context.access())?;
     /// assert_eq!(
-    ///     empty_array.includes(JsValue::new(2), None, context),
+    ///     empty_array.includes(JsValue::new(2), None, context.access()),
     ///     Ok(false)
     /// );
     ///
@@ -754,11 +787,12 @@ impl JsTypedArray {
         &self,
         search_element: T,
         from_index: Option<u64>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<bool>
     where
         T: Into<JsValue>,
     {
+        let context = context.into_owner();
         let result = BuiltinTypedArray::includes(
             &self.inner.clone().into(),
             &[search_element.into(), from_index.into_or_undefined()],
@@ -775,11 +809,12 @@ impl JsTypedArray {
         &self,
         search_element: T,
         from_index: Option<usize>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Option<usize>>
     where
         T: Into<JsValue>,
     {
+        let context = context.into_owner();
         let index = BuiltinTypedArray::index_of(
             &self.inner.clone().into(),
             &[search_element.into(), from_index.into_or_undefined()],
@@ -801,11 +836,12 @@ impl JsTypedArray {
         &self,
         search_element: T,
         from_index: Option<usize>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Option<usize>>
     where
         T: Into<JsValue>,
     {
+        let context = context.into_owner();
         let index = BuiltinTypedArray::last_index_of(
             &self.inner.clone().into(),
             &[search_element.into(), from_index.into_or_undefined()],
@@ -824,7 +860,12 @@ impl JsTypedArray {
 
     /// Calls `TypedArray.prototype.join()`.
     #[inline]
-    pub fn join(&self, separator: Option<JsString>, context: &mut Context) -> JsResult<JsString> {
+    pub fn join(
+        &self,
+        separator: Option<JsString>,
+        context: ContextAccess<'_>,
+    ) -> JsResult<JsString> {
+        let context = context.into_owner();
         BuiltinTypedArray::join(
             &self.inner.clone().into(),
             &[separator.into_or_undefined()],
@@ -839,7 +880,8 @@ impl JsTypedArray {
 
     /// Calls `TypedArray.prototype.toReversed ( )`.
     #[inline]
-    pub fn to_reversed(&self, context: &mut Context) -> JsResult<Self> {
+    pub fn to_reversed(&self, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         let array = BuiltinTypedArray::to_reversed(&self.inner.clone().into(), &[], context)?;
 
         Ok(Self {
@@ -854,8 +896,9 @@ impl JsTypedArray {
     pub fn to_sorted(
         &self,
         compare_fn: Option<JsFunction>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Self> {
+        let context = context.into_owner();
         let array = BuiltinTypedArray::to_sorted(
             &self.inner.clone().into(),
             &[compare_fn.into_or_undefined()],
@@ -871,7 +914,8 @@ impl JsTypedArray {
 
     /// Calls `TypedArray.prototype.with ( index, value )`.
     #[inline]
-    pub fn with(&self, index: u64, value: JsValue, context: &mut Context) -> JsResult<Self> {
+    pub fn with(&self, index: u64, value: JsValue, context: ContextAccess<'_>) -> JsResult<Self> {
+        let context = context.into_owner();
         let array =
             BuiltinTypedArray::with(&self.inner.clone().into(), &[index.into(), value], context)?;
 
@@ -888,7 +932,8 @@ impl JsTypedArray {
     ///
     /// Returns a `TypeError` if the array belongs to a different runtime or is out of bounds.
     #[inline]
-    pub fn entries(&self, context: &mut Context) -> JsResult<JsValue> {
+    pub fn entries(&self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         self.inner.check_runtime(context.runtime())?;
         BuiltinTypedArray::entries(&self.inner.clone().into(), &[], context)
     }
@@ -899,7 +944,8 @@ impl JsTypedArray {
     ///
     /// Returns a `TypeError` if the array belongs to a different runtime or is out of bounds.
     #[inline]
-    pub fn keys(&self, context: &mut Context) -> JsResult<JsValue> {
+    pub fn keys(&self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         self.inner.check_runtime(context.runtime())?;
         BuiltinTypedArray::keys(&self.inner.clone().into(), &[], context)
     }
@@ -910,7 +956,8 @@ impl JsTypedArray {
     ///
     /// Returns a `TypeError` if the array belongs to a different runtime or is out of bounds.
     #[inline]
-    pub fn values(&self, context: &mut Context) -> JsResult<JsValue> {
+    pub fn values(&self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         self.inner.check_runtime(context.runtime())?;
         BuiltinTypedArray::values(&self.inner.clone().into(), &[], context)
     }
@@ -921,13 +968,15 @@ impl JsTypedArray {
     ///
     /// Returns a `TypeError` if the array belongs to a different runtime or is out of bounds.
     #[inline]
-    pub fn iterator(&self, context: &mut Context) -> JsResult<JsValue> {
-        self.values(context)
+    pub fn iterator(&self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
+        self.values(context.access())
     }
 
     /// Calls `TypedArray.prototype.toString()`.
     #[inline]
-    pub fn to_string(&self, context: &mut Context) -> JsResult<JsString> {
+    pub fn to_string(&self, context: ContextAccess<'_>) -> JsResult<JsString> {
+        let context = context.into_owner();
         // TypedArray.prototype.toString is the same as Array.prototype.toString
         let result = crate::builtins::Array::to_string(&self.inner.clone().into(), &[], context)?;
         result
@@ -948,15 +997,16 @@ impl JsTypedArray {
     /// # fn main() -> JsResult<()> {
     ///
     /// let context = &mut Context::default();
-    /// let array = JsUint8Array::from_iter(vec![1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8], context)?;
-    /// let tag = array.to_string_tag(context)?.to_string(context)?;
+    /// let array = JsUint8Array::from_iter(vec![1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8], context.access())?;
+    /// let tag = array.to_string_tag(context.access())?.to_string(context.access())?;
     /// assert_eq!(tag, js_string!("Uint8Array"));
     ///
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
-    pub fn to_string_tag(&self, context: &mut Context) -> JsResult<JsValue> {
+    pub fn to_string_tag(&self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         BuiltinTypedArray::to_string_tag(&self.inner.clone().into(), &[], context)
     }
 }
@@ -985,7 +1035,7 @@ impl Deref for JsTypedArray {
 }
 
 impl TryFromJs for JsTypedArray {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object() {
             Self::from_object(o.clone())
         } else {
@@ -1047,8 +1097,9 @@ macro_rules! JsTypedArrayType {
             /// Returns a `TypeError` if the buffer belongs to a different runtime.
             pub fn from_array_buffer(
                 array_buffer: JsArrayBuffer,
-                context: &mut Context,
+                context: ContextAccess<'_>,
             ) -> JsResult<Self> {
+                let context = context.into_owner();
                 let new_target = context
                     .intrinsics()
                     .constructors()
@@ -1078,8 +1129,9 @@ macro_rules! JsTypedArrayType {
             /// Returns a `TypeError` if the buffer belongs to a different runtime.
             pub fn from_shared_array_buffer(
                 buffer: JsSharedArrayBuffer,
-                context: &mut Context,
+                context: ContextAccess<'_>,
             ) -> JsResult<Self> {
+                let context = context.into_owner();
                 let new_target = context
                     .intrinsics()
                     .constructors()
@@ -1103,15 +1155,16 @@ macro_rules! JsTypedArrayType {
             }
 
             /// Create the typed array from an iterator.
-            pub fn from_iter<I>(elements: I, context: &mut Context) -> JsResult<Self>
+            pub fn from_iter<I>(elements: I, context: ContextAccess<'_>) -> JsResult<Self>
             where
                 I: IntoIterator<Item = $element>,
             {
+                let context = context.into_owner();
                 let bytes = elements
                     .into_iter()
                     .flat_map(<$element>::to_ne_bytes)
                     .collect();
-                let array_buffer = JsArrayBuffer::from_byte_block(bytes, context)?;
+                let array_buffer = JsArrayBuffer::from_byte_block(bytes, context.access())?;
                 let new_target = context
                     .intrinsics()
                     .constructors()
@@ -1135,14 +1188,30 @@ macro_rules! JsTypedArrayType {
             }
 
             /// Create an iterator over the typed array's elements.
-            pub fn iter<'a>(&'a self, context: &'a mut Context) -> impl Iterator<Item = $element> + 'a {
-                let length = self.length(context).unwrap_or(0);
+            ///
+            /// The iterator reserves its context access until it is dropped.
+            /// A shorter reborrow cannot escape its access capability:
+            ///
+            /// ```compile_fail
+            /// use surgeist_js::{Context, object::builtins::JsUint8Array};
+            ///
+            /// let mut owner = Context::default();
+            /// let array = JsUint8Array::from_iter([1u8], owner.access()).unwrap();
+            /// let escaped = {
+            ///     let mut access = owner.access();
+            ///     array.iter(access.reborrow())
+            /// };
+            /// let _ = escaped.count();
+            /// ```
+            pub fn iter<'a>(&'a self, context: ContextAccess<'a>) -> impl Iterator<Item = $element> + 'a {
+                let context = context.into_owner();
+                let length = self.length(context.access()).unwrap_or(0);
                 let mut index = 0;
                 std::iter::from_fn(move || {
                     if index < length {
-                        let value = self.get(index, context).ok()?;
+                        let value = self.get(index, context.access()).ok()?;
                         index += 1;
-                        value.$value_to_elem(context).ok()
+                        value.$value_to_elem(context.access()).ok()
                     } else {
                         None
                     }
@@ -1176,7 +1245,7 @@ macro_rules! JsTypedArrayType {
         }
 
         impl TryFromJs for $name {
-            fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+            fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
                 if let Some(o) = value.as_object() {
                     Self::from_object(o.clone())
                 } else {
@@ -1216,15 +1285,15 @@ impl JsUint8Array {
     ///
     /// let context = &mut Context::default();
     /// let data: Vec<u8> = (0..=255).collect();
-    /// let array = JsUint8Array::from_iter(data.clone(), context)?;
-    /// let bytes = array.to_vec(context)?;
+    /// let array = JsUint8Array::from_iter(data.clone(), context.access())?;
+    /// let bytes = array.to_vec(context.access())?;
     /// assert_eq!(bytes, data);
     ///
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
-    pub fn to_vec(&self, _context: &mut Context) -> JsResult<Vec<u8>> {
+    pub fn to_vec(&self, _context: ContextAccess<'_>) -> JsResult<Vec<u8>> {
         let this_val = self.inner.inner.clone().into();
         let (obj, buf_byte_len) = TypedArray::validate(&this_val, Ordering::SeqCst)?;
         let vec = {
@@ -1345,33 +1414,46 @@ JsTypedArrayType!(
 pub fn js_typed_array_from_kind(
     kind: TypedArrayKind,
     inner: JsArrayBuffer,
-    context: &mut Context,
+    context: ContextAccess<'_>,
 ) -> JsResult<JsValue> {
+    let context = context.into_owner();
     match kind {
-        TypedArrayKind::Int8 => JsInt8Array::from_array_buffer(inner, context).map(Into::into),
-        TypedArrayKind::Uint8 => JsUint8Array::from_array_buffer(inner, context).map(Into::into),
-        TypedArrayKind::Uint8Clamped => {
-            JsUint8ClampedArray::from_array_buffer(inner, context).map(Into::into)
+        TypedArrayKind::Int8 => {
+            JsInt8Array::from_array_buffer(inner, context.access()).map(Into::into)
         }
-        TypedArrayKind::Int16 => JsInt16Array::from_array_buffer(inner, context).map(Into::into),
-        TypedArrayKind::Uint16 => JsUint16Array::from_array_buffer(inner, context).map(Into::into),
-        TypedArrayKind::Int32 => JsInt32Array::from_array_buffer(inner, context).map(Into::into),
-        TypedArrayKind::Uint32 => JsUint32Array::from_array_buffer(inner, context).map(Into::into),
+        TypedArrayKind::Uint8 => {
+            JsUint8Array::from_array_buffer(inner, context.access()).map(Into::into)
+        }
+        TypedArrayKind::Uint8Clamped => {
+            JsUint8ClampedArray::from_array_buffer(inner, context.access()).map(Into::into)
+        }
+        TypedArrayKind::Int16 => {
+            JsInt16Array::from_array_buffer(inner, context.access()).map(Into::into)
+        }
+        TypedArrayKind::Uint16 => {
+            JsUint16Array::from_array_buffer(inner, context.access()).map(Into::into)
+        }
+        TypedArrayKind::Int32 => {
+            JsInt32Array::from_array_buffer(inner, context.access()).map(Into::into)
+        }
+        TypedArrayKind::Uint32 => {
+            JsUint32Array::from_array_buffer(inner, context.access()).map(Into::into)
+        }
         TypedArrayKind::BigInt64 => {
-            JsBigInt64Array::from_array_buffer(inner, context).map(Into::into)
+            JsBigInt64Array::from_array_buffer(inner, context.access()).map(Into::into)
         }
         TypedArrayKind::BigUint64 => {
-            JsBigUint64Array::from_array_buffer(inner, context).map(Into::into)
+            JsBigUint64Array::from_array_buffer(inner, context.access()).map(Into::into)
         }
         #[cfg(feature = "float16")]
         TypedArrayKind::Float16 => {
-            JsFloat16Array::from_array_buffer(inner, context).map(Into::into)
+            JsFloat16Array::from_array_buffer(inner, context.access()).map(Into::into)
         }
         TypedArrayKind::Float32 => {
-            JsFloat32Array::from_array_buffer(inner, context).map(Into::into)
+            JsFloat32Array::from_array_buffer(inner, context.access()).map(Into::into)
         }
         TypedArrayKind::Float64 => {
-            JsFloat64Array::from_array_buffer(inner, context).map(Into::into)
+            JsFloat64Array::from_array_buffer(inner, context.access()).map(Into::into)
         }
     }
 }
@@ -1381,8 +1463,8 @@ fn typed_iterators_uint8() {
     let context = &mut Context::default();
     let vec = vec![1u8, 2, 3, 4, 5, 6, 7, 8];
 
-    let array = JsUint8Array::from_iter(vec.clone(), context).unwrap();
-    let vec2 = array.iter(context).collect::<Vec<_>>();
+    let array = JsUint8Array::from_iter(vec.clone(), context.access()).unwrap();
+    let vec2 = array.iter(context.access()).collect::<Vec<_>>();
     assert_eq!(vec, vec2);
 }
 
@@ -1390,8 +1472,8 @@ fn typed_iterators_uint8() {
 fn uint8_array_to_vec_roundtrip() {
     let context = &mut Context::default();
     let data: Vec<u8> = (0..=255).collect();
-    let array = JsUint8Array::from_iter(data.clone(), context).unwrap();
-    let bytes = array.to_vec(context).unwrap();
+    let array = JsUint8Array::from_iter(data.clone(), context.access()).unwrap();
+    let bytes = array.to_vec(context.access()).unwrap();
     assert_eq!(bytes, data);
 }
 
@@ -1400,8 +1482,8 @@ fn typed_iterators_uint32() {
     let context = &mut Context::default();
     let vec = vec![1u32, 2, 0xFFFF, 4, 0xFF12_3456, 6, 7, 8];
 
-    let array = JsUint32Array::from_iter(vec.clone(), context).unwrap();
-    let vec2 = array.iter(context).collect::<Vec<_>>();
+    let array = JsUint32Array::from_iter(vec.clone(), context.access()).unwrap();
+    let vec2 = array.iter(context.access()).collect::<Vec<_>>();
     assert_eq!(vec, vec2);
 }
 
@@ -1410,8 +1492,8 @@ fn typed_iterators_f32() {
     let context = &mut Context::default();
     let vec = vec![0.1f32, 0.2, 0.3, 0.4, 1.1, 9.99999];
 
-    let array = JsFloat32Array::from_iter(vec.clone(), context).unwrap();
-    let vec2 = array.iter(context).collect::<Vec<_>>();
+    let array = JsFloat32Array::from_iter(vec.clone(), context.access()).unwrap();
+    let vec2 = array.iter(context.access()).collect::<Vec<_>>();
     assert_eq!(vec, vec2);
 }
 
@@ -1419,9 +1501,9 @@ fn typed_iterators_f32() {
 fn typed_array_to_string() {
     let context = &mut Context::default();
     let vec = vec![1u8, 2, 3];
-    let array = JsUint8Array::from_iter(vec, context).unwrap();
+    let array = JsUint8Array::from_iter(vec, context.access()).unwrap();
     assert_eq!(
-        array.to_string(context).unwrap(),
+        array.to_string(context.access()).unwrap(),
         crate::js_string!("1,2,3")
     );
 }
@@ -1430,25 +1512,25 @@ fn typed_array_to_string() {
 fn typed_array_entries() {
     let context = &mut Context::default();
     let vec = vec![1u8, 2];
-    let array = JsUint8Array::from_iter(vec, context).unwrap();
-    let entries = array.entries(context).unwrap();
+    let array = JsUint8Array::from_iter(vec, context.access()).unwrap();
+    let entries = array.entries(context.access()).unwrap();
     let mut entries_vec = Vec::new();
     let next_str = crate::js_string!("next");
     loop {
         let next_fn = entries
             .as_object()
             .unwrap()
-            .get(next_str.clone(), context)
+            .get(next_str.clone(), context.access())
             .unwrap();
         let result = next_fn
             .as_object()
             .unwrap()
-            .call(&entries, &[], context)
+            .call(&entries, &[], context.access())
             .unwrap();
         if result
             .as_object()
             .unwrap()
-            .get(crate::js_string!("done"), context)
+            .get(crate::js_string!("done"), context.access())
             .unwrap()
             .to_boolean()
         {
@@ -1458,7 +1540,7 @@ fn typed_array_entries() {
             result
                 .as_object()
                 .unwrap()
-                .get(crate::js_string!("value"), context)
+                .get(crate::js_string!("value"), context.access())
                 .unwrap(),
         );
     }
@@ -1469,25 +1551,25 @@ fn typed_array_entries() {
 fn typed_array_keys() {
     let context = &mut Context::default();
     let vec = vec![1u8, 2];
-    let array = JsUint8Array::from_iter(vec, context).unwrap();
-    let keys = array.keys(context).unwrap();
+    let array = JsUint8Array::from_iter(vec, context.access()).unwrap();
+    let keys = array.keys(context.access()).unwrap();
     let mut keys_vec = Vec::new();
     let next_str = crate::js_string!("next");
     loop {
         let next_fn = keys
             .as_object()
             .unwrap()
-            .get(next_str.clone(), context)
+            .get(next_str.clone(), context.access())
             .unwrap();
         let result = next_fn
             .as_object()
             .unwrap()
-            .call(&keys, &[], context)
+            .call(&keys, &[], context.access())
             .unwrap();
         if result
             .as_object()
             .unwrap()
-            .get(crate::js_string!("done"), context)
+            .get(crate::js_string!("done"), context.access())
             .unwrap()
             .to_boolean()
         {
@@ -1497,7 +1579,7 @@ fn typed_array_keys() {
             result
                 .as_object()
                 .unwrap()
-                .get(crate::js_string!("value"), context)
+                .get(crate::js_string!("value"), context.access())
                 .unwrap(),
         );
     }
@@ -1508,25 +1590,25 @@ fn typed_array_keys() {
 fn typed_array_values() {
     let context = &mut Context::default();
     let vec = vec![1u8, 2];
-    let array = JsUint8Array::from_iter(vec, context).unwrap();
-    let values = array.values(context).unwrap();
+    let array = JsUint8Array::from_iter(vec, context.access()).unwrap();
+    let values = array.values(context.access()).unwrap();
     let mut values_vec = Vec::new();
     let next_str = crate::js_string!("next");
     loop {
         let next_fn = values
             .as_object()
             .unwrap()
-            .get(next_str.clone(), context)
+            .get(next_str.clone(), context.access())
             .unwrap();
         let result = next_fn
             .as_object()
             .unwrap()
-            .call(&values, &[], context)
+            .call(&values, &[], context.access())
             .unwrap();
         if result
             .as_object()
             .unwrap()
-            .get(crate::js_string!("done"), context)
+            .get(crate::js_string!("done"), context.access())
             .unwrap()
             .to_boolean()
         {
@@ -1536,7 +1618,7 @@ fn typed_array_values() {
             result
                 .as_object()
                 .unwrap()
-                .get(crate::js_string!("value"), context)
+                .get(crate::js_string!("value"), context.access())
                 .unwrap(),
         );
     }
@@ -1546,25 +1628,25 @@ fn typed_array_values() {
 #[test]
 fn typed_array_iterator() {
     let context = &mut Context::default();
-    let array = JsUint8Array::from_iter(vec![1u8, 2], context).unwrap();
-    let values = array.iterator(context).unwrap();
+    let array = JsUint8Array::from_iter(vec![1u8, 2], context.access()).unwrap();
+    let values = array.iterator(context.access()).unwrap();
     let mut values_vec = Vec::new();
     let next_str = crate::js_string!("next");
     loop {
         let next_fn = values
             .as_object()
             .unwrap()
-            .get(next_str.clone(), context)
+            .get(next_str.clone(), context.access())
             .unwrap();
         let result = next_fn
             .as_object()
             .unwrap()
-            .call(&values, &[], context)
+            .call(&values, &[], context.access())
             .unwrap();
         if result
             .as_object()
             .unwrap()
-            .get(crate::js_string!("done"), context)
+            .get(crate::js_string!("done"), context.access())
             .unwrap()
             .to_boolean()
         {
@@ -1574,7 +1656,7 @@ fn typed_array_iterator() {
             result
                 .as_object()
                 .unwrap()
-                .get(crate::js_string!("value"), context)
+                .get(crate::js_string!("value"), context.access())
                 .unwrap(),
         );
     }
@@ -1584,45 +1666,56 @@ fn typed_array_iterator() {
 #[test]
 fn typed_array_to_reversed() {
     let context = &mut Context::default();
-    let array = JsUint8Array::from_iter(vec![3u8, 1, 2], context).unwrap();
+    let array = JsUint8Array::from_iter(vec![3u8, 1, 2], context.access()).unwrap();
 
-    let reversed = array.to_reversed(context).unwrap();
+    let reversed = array.to_reversed(context.access()).unwrap();
 
     // New array has reversed order
-    assert_eq!(reversed.at(0i64, context).unwrap(), JsValue::new(2));
-    assert_eq!(reversed.at(1i64, context).unwrap(), JsValue::new(1));
-    assert_eq!(reversed.at(2i64, context).unwrap(), JsValue::new(3));
+    assert_eq!(
+        reversed.at(0i64, context.access()).unwrap(),
+        JsValue::new(2)
+    );
+    assert_eq!(
+        reversed.at(1i64, context.access()).unwrap(),
+        JsValue::new(1)
+    );
+    assert_eq!(
+        reversed.at(2i64, context.access()).unwrap(),
+        JsValue::new(3)
+    );
 
     // Original is unchanged
-    assert_eq!(array.at(0i64, context).unwrap(), JsValue::new(3));
-    assert_eq!(array.at(1i64, context).unwrap(), JsValue::new(1));
-    assert_eq!(array.at(2i64, context).unwrap(), JsValue::new(2));
+    assert_eq!(array.at(0i64, context.access()).unwrap(), JsValue::new(3));
+    assert_eq!(array.at(1i64, context.access()).unwrap(), JsValue::new(1));
+    assert_eq!(array.at(2i64, context.access()).unwrap(), JsValue::new(2));
 }
 
 #[test]
 fn typed_array_to_sorted() {
     let context = &mut Context::default();
-    let array = JsUint8Array::from_iter(vec![3u8, 1, 2], context).unwrap();
+    let array = JsUint8Array::from_iter(vec![3u8, 1, 2], context.access()).unwrap();
 
-    let sorted = array.to_sorted(None, context).unwrap();
+    let sorted = array.to_sorted(None, context.access()).unwrap();
 
     // New array is sorted
-    assert_eq!(sorted.at(0i64, context).unwrap(), JsValue::new(1));
-    assert_eq!(sorted.at(1i64, context).unwrap(), JsValue::new(2));
-    assert_eq!(sorted.at(2i64, context).unwrap(), JsValue::new(3));
+    assert_eq!(sorted.at(0i64, context.access()).unwrap(), JsValue::new(1));
+    assert_eq!(sorted.at(1i64, context.access()).unwrap(), JsValue::new(2));
+    assert_eq!(sorted.at(2i64, context.access()).unwrap(), JsValue::new(3));
 
     // Original is unchanged
-    assert_eq!(array.at(0i64, context).unwrap(), JsValue::new(3));
-    assert_eq!(array.at(1i64, context).unwrap(), JsValue::new(1));
-    assert_eq!(array.at(2i64, context).unwrap(), JsValue::new(2));
+    assert_eq!(array.at(0i64, context.access()).unwrap(), JsValue::new(3));
+    assert_eq!(array.at(1i64, context.access()).unwrap(), JsValue::new(1));
+    assert_eq!(array.at(2i64, context.access()).unwrap(), JsValue::new(2));
 }
 
 #[test]
 fn typed_array_to_locale_string() {
     let context = &mut Context::default();
-    let array = JsUint8Array::from_iter(vec![1u8, 2, 3], context).unwrap();
+    let array = JsUint8Array::from_iter(vec![1u8, 2, 3], context.access()).unwrap();
 
-    let result = array.to_locale_string(None, None, context).unwrap();
+    let result = array
+        .to_locale_string(None, None, context.access())
+        .unwrap();
 
     let result_str = result
         .as_string()

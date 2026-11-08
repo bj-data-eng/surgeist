@@ -267,15 +267,20 @@ pub(super) fn wait_async<E: Element + PartialEq>(
                 // job removes the registration even if the Promise is still live.
                 let mut pending = pending;
                 if let Ok(result) = receiver.await {
-                    functions.resolve.call(
-                        &JsValue::undefined(),
-                        &[result.to_js_string().into()],
-                        &mut context.borrow_mut(),
-                    )?;
+                    context.with(|access| {
+                        functions.resolve.call(
+                            &JsValue::undefined(),
+                            &[result.to_js_string().into()],
+                            access,
+                        )
+                    })?;
                 }
 
                 if let Some(token) = pending.timeout.take() {
-                    token.cancel(&mut context.borrow_mut());
+                    context.with(|access| {
+                        token.cancel(access);
+                        Ok(())
+                    })?;
                 }
 
                 Ok(JsValue::undefined())
@@ -354,7 +359,9 @@ mod tests {
     #[test]
     fn notify_selects_waiters_in_registration_order() {
         let mut context = Context::default();
-        let backing = JsSharedArrayBuffer::new(4, &mut context).unwrap().inner();
+        let backing = JsSharedArrayBuffer::new(4, context.access())
+            .unwrap()
+            .inner();
         let (first, first_result) = oneshot::channel();
         let (second, second_result) = oneshot::channel();
         let (_first, _second) = {
@@ -404,7 +411,9 @@ mod tests {
         }
 
         let mut context = Context::default();
-        let backing = JsSharedArrayBuffer::new(4, &mut context).unwrap().inner();
+        let backing = JsSharedArrayBuffer::new(4, context.access())
+            .unwrap()
+            .inner();
         let (first, mut first_result) = oneshot::async_channel();
         let first_waker = Waker::from(Arc::new(PanickingWake));
         assert!(

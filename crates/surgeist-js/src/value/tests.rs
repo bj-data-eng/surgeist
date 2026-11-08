@@ -45,8 +45,8 @@ fn get_set_field() {
         let obj = &JsObject::with_object_proto(ctx.intrinsics());
         // Create string and convert it to a Value
         let s = JsValue::new(js_str!("bar"));
-        obj.set(js_str!("foo"), s, false, ctx).unwrap();
-        obj.get(js_str!("foo"), ctx).unwrap() == JsValue::new(js_str!("bar"))
+        obj.set(js_str!("foo"), s, false, ctx.access()).unwrap();
+        obj.get(js_str!("foo"), ctx.access()).unwrap() == JsValue::new(js_str!("bar"))
     })]);
 }
 
@@ -245,7 +245,9 @@ fn float_display() {
 #[test]
 fn string_length_is_not_enumerable() {
     run_test_actions([TestAction::assert_context(|context| {
-        let object = JsValue::new(js_string!("foo")).to_object(context).unwrap();
+        let object = JsValue::new(js_string!("foo"))
+            .to_object(context.access())
+            .unwrap();
         let length_desc = object
             .__get_own_property__(
                 &PropertyKey::from(js_string!("length")),
@@ -261,7 +263,9 @@ fn string_length_is_not_enumerable() {
 fn string_length_is_in_utf16_codeunits() {
     run_test_actions([TestAction::assert_context(|context| {
         // 😀 is one Unicode code point, but 2 UTF-16 code units
-        let object = JsValue::new(js_string!("😀")).to_object(context).unwrap();
+        let object = JsValue::new(js_string!("😀"))
+            .to_object(context.access())
+            .unwrap();
 
         let length_desc = object
             .__get_own_property__(
@@ -272,7 +276,7 @@ fn string_length_is_in_utf16_codeunits() {
             .unwrap();
         length_desc
             .expect_value()
-            .to_integer_or_infinity(context)
+            .to_integer_or_infinity(context.access())
             .unwrap()
             == IntegerOrInfinity::Integer(2)
     })]);
@@ -471,49 +475,61 @@ fn display_object_indent() {
 fn to_integer_or_infinity() {
     run_test_actions([TestAction::inspect_context(|ctx| {
         assert_eq!(
-            JsValue::undefined().to_integer_or_infinity(ctx).unwrap(),
+            JsValue::undefined()
+                .to_integer_or_infinity(ctx.access())
+                .unwrap(),
             IntegerOrInfinity::Integer(0)
         );
         assert_eq!(
-            JsValue::nan().to_integer_or_infinity(ctx).unwrap(),
+            JsValue::nan().to_integer_or_infinity(ctx.access()).unwrap(),
             IntegerOrInfinity::Integer(0)
         );
         assert_eq!(
-            JsValue::new(0.0).to_integer_or_infinity(ctx).unwrap(),
+            JsValue::new(0.0)
+                .to_integer_or_infinity(ctx.access())
+                .unwrap(),
             IntegerOrInfinity::Integer(0)
         );
         assert_eq!(
-            JsValue::new(-0.0).to_integer_or_infinity(ctx).unwrap(),
+            JsValue::new(-0.0)
+                .to_integer_or_infinity(ctx.access())
+                .unwrap(),
             IntegerOrInfinity::Integer(0)
         );
         assert_eq!(
             JsValue::new(f64::INFINITY)
-                .to_integer_or_infinity(ctx)
+                .to_integer_or_infinity(ctx.access())
                 .unwrap(),
             IntegerOrInfinity::PositiveInfinity
         );
         assert_eq!(
             JsValue::new(f64::NEG_INFINITY)
-                .to_integer_or_infinity(ctx)
+                .to_integer_or_infinity(ctx.access())
                 .unwrap(),
             IntegerOrInfinity::NegativeInfinity
         );
         assert_eq!(
-            JsValue::new(10).to_integer_or_infinity(ctx).unwrap(),
+            JsValue::new(10)
+                .to_integer_or_infinity(ctx.access())
+                .unwrap(),
             IntegerOrInfinity::Integer(10)
         );
         assert_eq!(
-            JsValue::new(11.0).to_integer_or_infinity(ctx).unwrap(),
+            JsValue::new(11.0)
+                .to_integer_or_infinity(ctx.access())
+                .unwrap(),
             IntegerOrInfinity::Integer(11)
         );
         assert_eq!(
             JsValue::new(js_str!("12"))
-                .to_integer_or_infinity(ctx)
+                .to_integer_or_infinity(ctx.access())
                 .unwrap(),
             IntegerOrInfinity::Integer(12)
         );
         assert_eq!(
-            JsValue::new(true).to_integer_or_infinity(ctx).unwrap(),
+            JsValue::new(true)
+                .to_integer_or_infinity(ctx.access())
+                .unwrap(),
             IntegerOrInfinity::Integer(1)
         );
     })]);
@@ -600,30 +616,39 @@ fn object_to_property_key() {
 #[test]
 fn to_index() {
     run_test_actions([TestAction::inspect_context(|ctx| {
-        assert_eq!(JsValue::undefined().to_index(ctx).unwrap(), 0);
-        assert!(JsValue::new(-1).to_index(ctx).is_err());
+        assert_eq!(JsValue::undefined().to_index(ctx.access()).unwrap(), 0);
+        assert!(JsValue::new(-1).to_index(ctx.access()).is_err());
     })]);
 }
 
 #[test]
 fn to_length() {
     run_test_actions([TestAction::inspect_context(|ctx| {
-        assert_eq!(JsValue::new(f64::NAN).to_length(ctx).unwrap(), 0);
-        assert_eq!(JsValue::new(f64::NEG_INFINITY).to_length(ctx).unwrap(), 0);
+        assert_eq!(JsValue::new(f64::NAN).to_length(ctx.access()).unwrap(), 0);
         assert_eq!(
-            JsValue::new(f64::INFINITY).to_length(ctx).unwrap(),
+            JsValue::new(f64::NEG_INFINITY)
+                .to_length(ctx.access())
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            JsValue::new(f64::INFINITY).to_length(ctx.access()).unwrap(),
             Number::MAX_SAFE_INTEGER as u64
         );
-        assert_eq!(JsValue::new(0.0).to_length(ctx).unwrap(), 0);
-        assert_eq!(JsValue::new(-0.0).to_length(ctx).unwrap(), 0);
-        assert_eq!(JsValue::new(20.9).to_length(ctx).unwrap(), 20);
-        assert_eq!(JsValue::new(-20.9).to_length(ctx).unwrap(), 0);
+        assert_eq!(JsValue::new(0.0).to_length(ctx.access()).unwrap(), 0);
+        assert_eq!(JsValue::new(-0.0).to_length(ctx.access()).unwrap(), 0);
+        assert_eq!(JsValue::new(20.9).to_length(ctx.access()).unwrap(), 20);
+        assert_eq!(JsValue::new(-20.9).to_length(ctx.access()).unwrap(), 0);
         assert_eq!(
-            JsValue::new(100_000_000_000.0).to_length(ctx).unwrap(),
+            JsValue::new(100_000_000_000.0)
+                .to_length(ctx.access())
+                .unwrap(),
             100_000_000_000
         );
         assert_eq!(
-            JsValue::new(4_010_101_101.0).to_length(ctx).unwrap(),
+            JsValue::new(4_010_101_101.0)
+                .to_length(ctx.access())
+                .unwrap(),
             4_010_101_101
         );
     })]);
@@ -634,7 +659,7 @@ fn to_int32() {
     run_test_actions([TestAction::inspect_context(|ctx| {
         macro_rules! check_to_int32 {
             ($from:expr => $to:expr) => {
-                assert_eq!(JsValue::new($from).to_i32(ctx).unwrap(), $to);
+                assert_eq!(JsValue::new($from).to_i32(ctx.access()).unwrap(), $to);
             };
         }
 
@@ -745,12 +770,17 @@ fn to_int32() {
 #[test]
 fn to_string() {
     run_test_actions([TestAction::inspect_context(|ctx| {
-        assert_eq!(&JsValue::null().to_string(ctx).unwrap(), "null");
-        assert_eq!(&JsValue::undefined().to_string(ctx).unwrap(), "undefined");
-        assert_eq!(&JsValue::new(55).to_string(ctx).unwrap(), "55");
-        assert_eq!(&JsValue::new(55.0).to_string(ctx).unwrap(), "55");
+        assert_eq!(&JsValue::null().to_string(ctx.access()).unwrap(), "null");
         assert_eq!(
-            JsValue::new(js_str!("hello")).to_string(ctx).unwrap(),
+            &JsValue::undefined().to_string(ctx.access()).unwrap(),
+            "undefined"
+        );
+        assert_eq!(&JsValue::new(55).to_string(ctx.access()).unwrap(), "55");
+        assert_eq!(&JsValue::new(55.0).to_string(ctx.access()).unwrap(), "55");
+        assert_eq!(
+            JsValue::new(js_str!("hello"))
+                .to_string(ctx.access())
+                .unwrap(),
             js_str!("hello")
         );
     })]);
@@ -759,11 +789,11 @@ fn to_string() {
 #[test]
 fn to_bigint() {
     run_test_actions([TestAction::inspect_context(|ctx| {
-        assert!(JsValue::null().to_bigint(ctx).is_err());
-        assert!(JsValue::undefined().to_bigint(ctx).is_err());
-        assert!(JsValue::new(55).to_bigint(ctx).is_err());
-        assert!(JsValue::new(10.0).to_bigint(ctx).is_err());
-        assert!(JsValue::new(js_str!("100")).to_bigint(ctx).is_ok());
+        assert!(JsValue::null().to_bigint(ctx.access()).is_err());
+        assert!(JsValue::undefined().to_bigint(ctx.access()).is_err());
+        assert!(JsValue::new(55).to_bigint(ctx.access()).is_err());
+        assert!(JsValue::new(10.0).to_bigint(ctx.access()).is_err());
+        assert!(JsValue::new(js_str!("100")).to_bigint(ctx.access()).is_ok());
     })]);
 }
 
@@ -1534,7 +1564,10 @@ mod abstract_relational_comparison {
 
 mod js_value_macro {
     use crate::value::TryIntoJs;
-    use crate::{JsNativeErrorKind, JsObject, JsValue, TestAction, js_string, run_test_actions};
+    use crate::{
+        ContextAccess, JsNativeErrorKind, JsObject, JsValue, TestAction, js_string,
+        run_test_actions,
+    };
     use std::ops::Neg;
     use surgeist_js::{Context, JsResult, js_object, js_value};
     use surgeist_js_string::JsString;
@@ -1558,10 +1591,10 @@ mod js_value_macro {
         let foreign = Context::default();
         let object = JsObject::with_null_proto(foreign.runtime());
         let errors = [
-            js_value!([1, object.clone()], context).unwrap_err(),
-            js_value!({ key: object.clone() }, context).unwrap_err(),
-            js_object!({ key: object.clone() }, context).unwrap_err(),
-            js_object!({ key: [{ nested: [object] }] }, context).unwrap_err(),
+            js_value!([1, object.clone()], context.access()).unwrap_err(),
+            js_value!({ key: object.clone() }, context.access()).unwrap_err(),
+            js_object!({ key: object.clone() }, context.access()).unwrap_err(),
+            js_object!({ key: [{ nested: [object] }] }, context.access()).unwrap_err(),
         ];
         for error in errors {
             let error = error.as_native().expect("a native runtime admission error");
@@ -1585,10 +1618,10 @@ mod js_value_macro {
                 mark("first element", 1),
                 { inner: mark("second element", 2) },
             ],
-        }, context)?;
+        }, context.access())?;
 
         assert_eq!(order, ["value", "key", "first element", "second element"]);
-        assert_eq!(object.get(0, context)?, JsValue::from(42));
+        assert_eq!(object.get(0, context.access())?, JsValue::from(42));
         Ok(())
     }
 
@@ -1599,7 +1632,7 @@ mod js_value_macro {
         for number in 0..3 {
             let _ = js_value!([{
                 value: if number == 1 { break } else { number },
-            }], context)
+            }], context.access())
             .unwrap();
             iterations += 1;
         }
@@ -1631,9 +1664,9 @@ mod js_value_macro {
             };
 
             let array = if nested {
-                js_value!([[first(&Probe(&order))], next()], context)
+                js_value!([[first(&Probe(&order))], next()], context.access())
             } else {
-                js_value!([first(&Probe(&order)), next()], context)
+                js_value!([first(&Probe(&order)), next()], context.access())
             };
             let _ = array.unwrap();
             assert_eq!(order.into_inner(), ["first", "next", "drop"]);
@@ -1644,19 +1677,22 @@ mod js_value_macro {
     fn arrays() {
         run_test_actions([
             TestAction::assert_with_op("[1, 2, 3]", |value, context| {
-                let v = js_value!([1, 2, 3], context).unwrap();
-                value.deep_strict_equals(&v, context).unwrap()
+                let v = js_value!([1, 2, 3], context.access()).unwrap();
+                value.deep_strict_equals(&v, context.access()).unwrap()
             }),
             TestAction::assert_with_op("[1, [2], 3]", |value, context| {
                 value
-                    .deep_strict_equals(&js_value!([1, [2], 3], context).unwrap(), context)
+                    .deep_strict_equals(
+                        &js_value!([1, [2], 3], context.access()).unwrap(),
+                        context.access(),
+                    )
                     .unwrap()
             }),
             TestAction::assert_with_op("[1, [2], [], [[false]], 3]", |value, context| {
                 value
                     .deep_strict_equals(
-                        &js_value!([1, [2], [], [[false]], 3], context).unwrap(),
-                        context,
+                        &js_value!([1, [2], [], [[false]], 3], context.access()).unwrap(),
+                        context.access(),
                     )
                     .unwrap()
             }),
@@ -1670,8 +1706,8 @@ mod js_value_macro {
             |value, context| {
                 value
                     .deep_strict_equals(
-                        &js_value!({ "hello": 1, "world": () }, context).unwrap(),
-                        context,
+                        &js_value!({ "hello": 1, "world": () }, context.access()).unwrap(),
+                        context.access(),
                     )
                     .unwrap()
             },
@@ -1688,8 +1724,8 @@ mod js_value_macro {
 
                 value
                     .deep_strict_equals(
-                        &js_value!({ "hello": hello, "world": world }, context).unwrap(),
-                        context,
+                        &js_value!({ "hello": hello, "world": world }, context.access()).unwrap(),
+                        context.access(),
                     )
                     .expect("No error should happen.")
             },
@@ -1706,11 +1742,11 @@ mod js_value_macro {
                     "hello": [{ "foo": [1, []] }],
                     // Allow comments
                     "world": { "bar": bar },
-                }, context)
+                }, context.access())
                 .unwrap();
 
                 value
-                    .deep_strict_equals(&other, context)
+                    .deep_strict_equals(&other, context.access())
                     .expect("No error should happen here.")
             },
         )]);
@@ -1726,11 +1762,11 @@ mod js_value_macro {
                     "hello": [{ "foo": [1, []] }],
                     // Allow comments
                     "world": { "bar": bar },
-                }, ctx)
+                }, ctx.access())
                 .unwrap();
 
                 value
-                    .deep_strict_equals(&other, ctx)
+                    .deep_strict_equals(&other, ctx.access())
                     .expect("No error should happen here.")
             },
         )]);
@@ -1744,11 +1780,11 @@ mod js_value_macro {
         }
 
         impl TryIntoJs for Test {
-            fn try_into_js(&self, context: &mut Context) -> JsResult<JsValue> {
+            fn try_into_js(&self, mut context: ContextAccess<'_>) -> JsResult<JsValue> {
                 js_value!({
                     "fOne": self.field_1.clone(),
                     "field2": self.field_2
-                }, context)
+                }, context.reborrow())
             }
         }
 
@@ -1758,7 +1794,7 @@ mod js_value_macro {
         };
         let context = &mut Context::default();
         let o = t
-            .try_into_js(context)
+            .try_into_js(context.access())
             .expect("Failed to convert value to js.");
 
         assert_eq!(

@@ -6,7 +6,7 @@ use surgeist_js::builtins::array_buffer::SharedArrayBuffer;
 use surgeist_js::builtins::error::ErrorKind;
 use surgeist_js::builtins::typed_array::TypedArrayKind;
 use surgeist_js::value::TryIntoJs;
-use surgeist_js::{Context, JsError, JsResult, JsString, JsValue, JsVariant, js_error};
+use surgeist_js::{ContextAccess, JsError, JsResult, JsString, JsValue, JsVariant, js_error};
 
 mod from;
 mod to;
@@ -154,7 +154,7 @@ enum StoredValue {
 pub struct JsValueStore(Arc<StoredGraph>);
 
 impl TryIntoJs for JsValueStore {
-    fn try_into_js(&self, context: &mut Context) -> JsResult<JsValue> {
+    fn try_into_js(&self, context: ContextAccess<'_>) -> JsResult<JsValue> {
         to::decode(&self.0, context)
     }
 }
@@ -169,7 +169,7 @@ impl JsValueStore {
     /// Any errors related to transferring or cloning a value's inner data.
     pub fn try_from_js(
         value: &JsValue,
-        context: &mut Context,
+        context: ContextAccess<'_>,
         transfer: Vec<JsValue>,
     ) -> JsResult<Self> {
         // Verify transfer entries and retain their roots throughout traversal.
@@ -188,7 +188,7 @@ impl JsValueStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use surgeist_js::{JsObject, Source, js_string};
+    use surgeist_js::{Context, JsObject, Source, js_string};
 
     #[test]
     fn dropping_the_last_snapshot_releases_a_cycle() {
@@ -198,15 +198,15 @@ mod tests {
                 "const node = {}; node.self = node; node",
             ))
             .unwrap();
-        let snapshot = JsValueStore::try_from_js(&original, &mut context, Vec::new()).unwrap();
+        let snapshot = JsValueStore::try_from_js(&original, context.access(), Vec::new()).unwrap();
         let weak = Arc::downgrade(&snapshot.0);
         let cloned = snapshot
-            .try_into_js(&mut context)
+            .try_into_js(context.access())
             .unwrap()
             .as_object()
             .unwrap();
         let edge = cloned
-            .get(js_string!("self"), &mut context)
+            .get(js_string!("self"), context.access())
             .unwrap()
             .as_object()
             .unwrap();

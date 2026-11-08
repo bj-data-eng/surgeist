@@ -234,7 +234,7 @@ macro_rules! element {
         #[allow(clippy::redundant_closure_call)]
         impl Element for $element {
             fn from_js_value(value: &JsValue, context: &mut Context) -> JsResult<Self> {
-                $from_js(value, context)
+                $from_js(value, context.access())
             }
 
             fn to_big_endian(self) -> Self {

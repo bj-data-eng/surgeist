@@ -85,7 +85,9 @@ impl Concat {
                     };
                     let iterable: JsObject = JsObject::restore(&iterable);
                     let open_method = JsFunction::restore(&open_method);
-                    let iter = open_method.call(&iterable.into(), &[], context).branch()?;
+                    let iter = open_method
+                        .call(&iterable.into(), &[], context.access())
+                        .branch()?;
                     let Some(iter) = iter.as_object() else {
                         return CoroutineState::Break(Err(
                             js_error!(TypeError: "Iterator.concat: open method of iterable did not return an object"),

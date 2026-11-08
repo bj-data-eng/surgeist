@@ -49,19 +49,22 @@ fn script_entry(
     _: &JsValue,
     _: &[JsValue],
     (script, action): &(ScriptCapture, u32),
-    context: &mut Context,
+    mut context: crate::ContextAccess<'_>,
 ) -> JsResult<JsValue> {
     if *action == NOOP {
         return Ok(42.into());
     }
-    let first = script.0.codeblock(context)?;
+    let first = script.0.codeblock(context.reborrow())?;
     if *action == CODE_AROUND_EFFECT {
         context.eval(Source::from_bytes("let between = 41;"))?;
-        let refreshed = script.0.codeblock(context)?;
+        let refreshed = script.0.codeblock(context.reborrow())?;
         assert!(!Rc::ptr_eq(&first, &refreshed));
-        assert!(Rc::ptr_eq(&refreshed, &script.0.codeblock(context)?));
+        assert!(Rc::ptr_eq(
+            &refreshed,
+            &script.0.codeblock(context.reborrow())?
+        ));
     } else if *action == CODE_TWICE {
-        assert!(Rc::ptr_eq(&first, &script.0.codeblock(context)?));
+        assert!(Rc::ptr_eq(&first, &script.0.codeblock(context.reborrow())?));
     }
     Ok(42.into())
 }
@@ -134,7 +137,7 @@ fn seeded() -> Context {
 
 fn script_context(source: &str, action: u32) -> (Context, Script, RealmSnapshot) {
     let mut context = seeded();
-    let script = Script::parse(Source::from_bytes(source), None, &mut context).unwrap();
+    let script = Script::parse(Source::from_bytes(source), None, context.access()).unwrap();
     context
         .register_global_builtin_callable(
             js_string!("entry"),
@@ -149,7 +152,7 @@ fn script_context(source: &str, action: u32) -> (Context, Script, RealmSnapshot)
     (context, script, snapshot)
 }
 
-fn run(context: &mut Context, limit: Option<u64>) -> ExecutionOutcome {
+fn run(context: &mut Context, limit: Option<u64>) -> ExecutionOutcome<JsValue> {
     let mut options =
         ExecutionOptions::new(4096).with_profile(ProfileMode::Summary { timing: false });
     if let Some(limit) = limit {
@@ -160,7 +163,7 @@ fn run(context: &mut Context, limit: Option<u64>) -> ExecutionOutcome {
         .unwrap()
 }
 
-fn assert_stop(outcome: &ExecutionOutcome, limit: u64) {
+fn assert_stop(outcome: &ExecutionOutcome<JsValue>, limit: u64) {
     assert_eq!(
         outcome.result.as_ref().unwrap_err().as_engine(),
         Some(&EngineError::RuntimeLimit(
@@ -243,7 +246,7 @@ fn pending_script_miss_hit_stale_and_installed_cache_charge_only_actual_emission
     assert_eq!(cold.result.unwrap(), 42.into());
     assert_compilation_attribution(&cold.report);
     snapshot.assert_private(&context, 0);
-    let first = script.codeblock(&mut context).unwrap();
+    let first = script.codeblock(context.access()).unwrap();
     assert!(ActivatedCode::from_installed(first.clone()).is_err());
     let (opcodes, bytes) = encoded_work(&first);
     assert!(opcodes > 0 && bytes > 0);
@@ -259,7 +262,10 @@ fn pending_script_miss_hit_stale_and_installed_cache_charge_only_actual_emission
 
     let hit = run(&mut context, None);
     assert_eq!(hit.result.unwrap(), 42.into());
-    assert!(Rc::ptr_eq(&first, &script.codeblock(&mut context).unwrap()));
+    assert!(Rc::ptr_eq(
+        &first,
+        &script.codeblock(context.access()).unwrap()
+    ));
     assert_eq!(
         origin(&hit.report, "compiler-opcode"),
         origin(&overhead.report, "compiler-opcode")
@@ -280,7 +286,7 @@ fn pending_script_miss_hit_stale_and_installed_cache_charge_only_actual_emission
     let stale = run(&mut context, None);
     assert_eq!(stale.result.unwrap(), 42.into());
     assert_compilation_attribution(&stale.report);
-    let refreshed = script.codeblock(&mut context).unwrap();
+    let refreshed = script.codeblock(context.access()).unwrap();
     assert!(!Rc::ptr_eq(&first, &refreshed));
     let (opcodes, bytes) = encoded_work(&refreshed);
     assert_eq!(
@@ -294,8 +300,8 @@ fn pending_script_miss_hit_stale_and_installed_cache_charge_only_actual_emission
     );
     snapshot.assert_private(&context, 1);
 
-    assert_eq!(script.evaluate(&mut context).unwrap(), 42.into());
-    let installed = script.codeblock(&mut context).unwrap();
+    assert_eq!(script.evaluate(context.access()).unwrap(), 42.into());
+    let installed = script.codeblock(context.access()).unwrap();
     assert!(Rc::ptr_eq(&refreshed, &installed));
     ActivatedCode::from_installed(installed.clone()).unwrap();
     let installed_next = next_scope_identity(&context);
@@ -307,7 +313,7 @@ fn pending_script_miss_hit_stale_and_installed_cache_charge_only_actual_emission
     assert_eq!(cached.result.unwrap(), 42.into());
     assert!(Rc::ptr_eq(
         &installed,
-        &script.codeblock(&mut context).unwrap()
+        &script.codeblock(context.access()).unwrap()
     ));
     assert_eq!(
         origin(&cached.report, "compiler-opcode"),
@@ -337,9 +343,9 @@ fn pending_script_one_short_preserves_slots_and_identities_for_retained_and_fres
         assert_stop(&stopped, work - 1);
         snapshot.assert_private(&context, 0);
         let result = if retained {
-            script.codeblock(&mut context).unwrap();
+            script.codeblock(context.access()).unwrap();
             snapshot.assert_private(&context, 0);
-            script.evaluate(&mut context).unwrap()
+            script.evaluate(context.access()).unwrap()
         } else {
             context.eval(Source::from_bytes(PENDING)).unwrap()
         };
@@ -368,7 +374,7 @@ fn a_later_compiler_stop_preserves_callback_committed_bindings_and_stale_retry()
             41.into()
         );
         let result = if retained {
-            script.evaluate(&mut context).unwrap()
+            script.evaluate(context.access()).unwrap()
         } else {
             context.eval(Source::from_bytes(AFTER_CALLBACK)).unwrap()
         };
@@ -399,7 +405,7 @@ const MODULE_SOURCE: &str = "
 ";
 
 fn load(module: &Module, context: &mut Context) {
-    let loaded = module.load(context);
+    let loaded = module.load(context.access());
     context.run_jobs().unwrap();
     assert_eq!(
         loaded.state(),
@@ -416,7 +422,7 @@ fn result_module(context: &mut Context) -> Module {
         ),
         None,
         None,
-        context,
+        context.access(),
     )
     .unwrap()
 }
@@ -439,7 +445,7 @@ fn module_harness(case: ModuleCase) -> ModuleHarness {
             let dependency = Module::synthetic(
                 &[js_string!("offset")],
                 SyntheticModuleInitializer::from_fn_with_captures(
-                    |module, (), context| {
+                    |module, (), mut context| {
                         context.eval(Source::from_bytes("dependencyRuns += 1;"))?;
                         module.set_export(&js_string!("offset"), 36.into())
                     },
@@ -447,13 +453,13 @@ fn module_harness(case: ModuleCase) -> ModuleHarness {
                 ),
                 None,
                 None,
-                &mut context,
+                context.access(),
             )
             .unwrap();
             if matches!(case, ModuleCase::SourceWithCommittedDependency) {
                 load(&dependency, &mut context);
-                dependency.link(&mut context).unwrap();
-                let initialized = dependency.evaluate(&mut context).unwrap();
+                dependency.link(context.access()).unwrap();
+                let initialized = dependency.evaluate(context.access()).unwrap();
                 context.run_jobs().unwrap();
                 assert_eq!(
                     initialized.state(),
@@ -462,7 +468,7 @@ fn module_harness(case: ModuleCase) -> ModuleHarness {
             }
             assert!(loader.insert("dependency", dependency.clone()).is_none());
             let module =
-                Module::parse(Source::from_bytes(MODULE_SOURCE), None, &mut context).unwrap();
+                Module::parse(Source::from_bytes(MODULE_SOURCE), None, context.access()).unwrap();
             (module, Some(dependency))
         }
     };
@@ -472,8 +478,8 @@ fn module_harness(case: ModuleCase) -> ModuleHarness {
             js_string!("entry"),
             0,
             NativeFunction::from_fn_with_captures(
-                |_, _, module, context| {
-                    module.link(context)?;
+                |_, _, module, mut context| {
+                    module.link(context.reborrow())?;
                     Ok(42.into())
                 },
                 module.clone(),
@@ -499,14 +505,14 @@ fn assert_unpublished(harness: &mut ModuleHarness) {
         let global = harness.context.global_object().clone();
         assert_eq!(
             global
-                .get(js_string!("dependencyRuns"), &mut harness.context)
+                .get(js_string!("dependencyRuns"), harness.context.access())
                 .unwrap(),
             JsValue::new(if committed { 1 } else { 0 })
         );
         if committed {
             assert_eq!(
                 dependency
-                    .get_value(js_string!("offset"), &mut harness.context)
+                    .get_value(js_string!("offset"), harness.context.access())
                     .unwrap(),
                 36.into()
             );
@@ -515,14 +521,16 @@ fn assert_unpublished(harness: &mut ModuleHarness) {
 }
 
 fn evaluate_module(module: &Module, context: &mut Context) {
-    let evaluated = module.evaluate(context).unwrap();
+    let evaluated = module.evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
     assert_eq!(
         evaluated.state(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     assert_eq!(
-        module.get_value(js_string!("result"), context).unwrap(),
+        module
+            .get_value(js_string!("result"), context.access())
+            .unwrap(),
         42.into()
     );
 }
@@ -565,13 +573,13 @@ fn source_and_synthetic_exact_one_short_and_retry_publish_only_the_admitted_grou
                 let fresh = Module::parse(
                     Source::from_bytes(MODULE_SOURCE),
                     None,
-                    &mut harness.context,
+                    harness.context.access(),
                 )
                 .unwrap();
                 load(&fresh, &mut harness.context);
                 fresh
             };
-            selected.link(&mut harness.context).unwrap();
+            selected.link(harness.context.access()).unwrap();
             evaluate_module(&selected, &mut harness.context);
             harness.snapshot.assert_existing(&harness.context);
             assert_eq!(
@@ -582,7 +590,7 @@ fn source_and_synthetic_exact_one_short_and_retry_publish_only_the_admitted_grou
                 let global = harness.context.global_object().clone();
                 assert_eq!(
                     global
-                        .get(js_string!("dependencyRuns"), &mut harness.context)
+                        .get(js_string!("dependencyRuns"), harness.context.access())
                         .unwrap(),
                     1.into()
                 );
@@ -611,14 +619,14 @@ fn constructor_context(expression: &str) -> (Context, JsFunction, RealmSnapshot)
             js_string!("entry"),
             0,
             NativeFunction::from_fn_with_captures(
-                |_, _, constructor, context| {
+                |_, _, constructor, mut context| {
                     constructor.call(
                         &JsValue::undefined(),
                         &[
                             js_string!("value").into(),
                             js_string!("return value + 1;").into(),
                         ],
-                        context,
+                        context.reborrow(),
                     )
                 },
                 constructor.clone(),
@@ -641,15 +649,17 @@ fn fulfilled(value: JsValue, context: &mut Context) -> JsValue {
 fn verify_function(value: JsValue, family: Family, context: &mut Context) {
     let function = value.as_function().unwrap();
     assert_eq!(
-        function.get(js_string!("length"), context).unwrap(),
+        function
+            .get(js_string!("length"), context.access())
+            .unwrap(),
         1.into()
     );
     assert_eq!(
-        function.get(js_string!("name"), context).unwrap(),
+        function.get(js_string!("name"), context.access()).unwrap(),
         js_string!("anonymous").into()
     );
     let result = function
-        .call(&JsValue::undefined(), &[41.into()], context)
+        .call(&JsValue::undefined(), &[41.into()], context.access())
         .unwrap();
     match family {
         Family::Ordinary => assert_eq!(result, 42.into()),
@@ -657,19 +667,25 @@ fn verify_function(value: JsValue, family: Family, context: &mut Context) {
         Family::Generator | Family::AsyncGenerator => {
             let iterator = result.as_object().unwrap();
             let next = iterator
-                .get(js_string!("next"), context)
+                .get(js_string!("next"), context.access())
                 .unwrap()
                 .as_function()
                 .unwrap();
-            let next = next.call(&result, &[], context).unwrap();
+            let next = next.call(&result, &[], context.access()).unwrap();
             let next = if matches!(family, Family::AsyncGenerator) {
                 fulfilled(next, context)
             } else {
                 next
             };
             let next = next.as_object().unwrap();
-            assert_eq!(next.get(js_string!("value"), context).unwrap(), 42.into());
-            assert_eq!(next.get(js_string!("done"), context).unwrap(), true.into());
+            assert_eq!(
+                next.get(js_string!("value"), context.access()).unwrap(),
+                42.into()
+            );
+            assert_eq!(
+                next.get(js_string!("done"), context.access()).unwrap(),
+                true.into()
+            );
         }
     }
 }
@@ -706,7 +722,7 @@ fn all_dynamic_constructor_families_share_compiler_admission_and_fresh_retry() {
                     js_string!("value").into(),
                     js_string!("return value + 1;").into(),
                 ],
-                &mut retry,
+                retry.access(),
             )
             .unwrap();
         verify_function(fresh, family, &mut retry);
@@ -725,7 +741,7 @@ fn admitted_throw_source_maps_preserve_parentheses_and_leftmost_operand_position
         let compiled = run(&mut context, None);
         assert_eq!(compiled.result.unwrap(), 42.into());
         snapshot.assert_private(&context, 0);
-        let code = script.codeblock(&mut context).unwrap();
+        let code = script.codeblock(context.access()).unwrap();
         let throws: Vec<_> = InstructionIterator::new(&code.bytecode)
             .filter(|(_, opcode, _)| *opcode == crate::vm::opcode::Opcode::Throw)
             .collect();
@@ -768,12 +784,12 @@ fn late_source_start_visit_refusal_keeps_preparation_private_and_allows_retry() 
         let retry = if retained {
             script
         } else {
-            Script::parse(Source::from_bytes(SOURCE), None, &mut context).unwrap()
+            Script::parse(Source::from_bytes(SOURCE), None, context.access()).unwrap()
         };
-        let code = retry.codeblock(&mut context).unwrap();
+        let code = retry.codeblock(context.access()).unwrap();
         assert!(!code.bytecode.bytes.is_empty());
         snapshot.assert_private(&context, 0);
-        let thrown = retry.evaluate(&mut context).unwrap_err();
+        let thrown = retry.evaluate(context.access()).unwrap_err();
         assert_eq!(thrown.as_opaque(), Some(&JsValue::new(10)));
     }
 }

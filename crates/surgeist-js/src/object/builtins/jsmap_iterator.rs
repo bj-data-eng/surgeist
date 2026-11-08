@@ -1,6 +1,7 @@
 //! A Rust API wrapper for Boa's `MapIterator` Builtin ECMAScript Object
+use crate::ContextAccess;
 use crate::{
-    Context, JsResult, JsValue, builtins::map::MapIterator, error::JsNativeError, object::JsObject,
+    JsResult, JsValue, builtins::map::MapIterator, error::JsNativeError, object::JsObject,
     value::TryFromJs,
 };
 
@@ -26,7 +27,8 @@ impl JsMapIterator {
     }
 
     /// Advances the `JsMapIterator` and gets the next result in the `JsMap`
-    pub fn next(&self, context: &mut Context) -> JsResult<JsValue> {
+    pub fn next(&self, context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let context = context.into_owner();
         MapIterator::next(&self.inner.clone().into(), &[], context)
     }
 }
@@ -55,7 +57,7 @@ impl Deref for JsMapIterator {
 }
 
 impl TryFromJs for JsMapIterator {
-    fn try_from_js(value: &JsValue, _context: &mut Context) -> JsResult<Self> {
+    fn try_from_js(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<Self> {
         if let Some(o) = value.as_object() {
             Self::from_object(o.clone())
         } else {

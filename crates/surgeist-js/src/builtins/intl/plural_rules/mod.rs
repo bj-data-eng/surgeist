@@ -190,7 +190,7 @@ impl PluralRules {
                     .with_message("`select` can only be called on an `Intl.PluralRules` object")
             })?;
 
-        let n = args.get_or_undefined(0).to_number(context)?;
+        let n = args.get_or_undefined(0).to_number(context.access())?;
 
         Ok(plural_category_to_js_string(resolve_plural(&plural_rules, n).category).into())
     }
@@ -228,9 +228,9 @@ impl PluralRules {
         }
 
         // 4. Let x be ? ToNumber(start).
-        let x = x.to_number(context)?;
+        let x = x.to_number(context.access())?;
         // 5. Let y be ? ToNumber(end).
-        let y = y.to_number(context)?;
+        let y = y.to_number(context.access())?;
 
         // 6. Return ? ResolvePluralRange(pr, x, y).
         // ResolvePluralRange(pr, x, y)
@@ -333,7 +333,7 @@ impl PluralRules {
         //                      1. Assert: The Conversion value of the current row is number.
         //                      2. Set v to 𝔽(v).
         //               ii. Perform ! CreateDataPropertyOrThrow(options, p, v).
-        let mut options = ObjectInitializer::new(context);
+        let mut options = ObjectInitializer::new(context.access());
         options
             .property(
                 js_string!("locale"),
@@ -394,7 +394,8 @@ impl PluralRules {
                 );
         }
 
-        let plural_categories = Array::create_array_from_list(plural_categories, options.context());
+        let plural_categories =
+            Array::create_array_from_list(plural_categories, options.context().into_owner());
         options
             .property(
                 js_string!("pluralCategories"),

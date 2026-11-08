@@ -3,12 +3,11 @@
 use crate::message;
 use crate::message::senders::OnMessageQueueSender;
 use crate::test::{TestAction, run_test_actions_with};
-use surgeist_js::job::{JobExecutor, SimpleJobExecutor};
-use surgeist_js::{Context, js_string};
 use futures_lite::future;
-use std::cell::RefCell;
 use std::thread;
 use std::time::Duration;
+use surgeist_js::job::{JobExecutor, SimpleJobExecutor};
+use surgeist_js::{Context, js_string};
 
 /// Create a basic context and allow postMessage from the same context.
 #[test]
@@ -34,11 +33,12 @@ fn basic() {
             "#,
             ),
             TestAction::inspect_context(move |context| {
+                let job_executor = context
+                    .downcast_job_executor::<SimpleJobExecutor>()
+                    .expect("");
+                let host = context.host_access();
                 drop(future::block_on(future::poll_once(
-                    context
-                        .downcast_job_executor::<SimpleJobExecutor>()
-                        .expect("")
-                        .run_jobs_async(&RefCell::new(context)),
+                    job_executor.run_jobs_async(&host),
                 )));
             }),
             TestAction::run(
@@ -86,7 +86,7 @@ fn shared_multi_thread() {
 
             let global_object = context.global_object();
             if global_object
-                .get(js_string!("done"), context)
+                .get(js_string!("done"), context.access())
                 .unwrap()
                 .as_boolean()
                 == Some(true)
@@ -163,7 +163,7 @@ fn shared_array_buffer() {
 
             let global_object = context.global_object();
             if global_object
-                .get(js_string!("done"), context)
+                .get(js_string!("done"), context.access())
                 .unwrap()
                 .as_boolean()
                 == Some(true)

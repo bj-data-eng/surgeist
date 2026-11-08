@@ -80,19 +80,22 @@ fn discarded_async_job_revokes_its_pending_timeout() {
     struct KeepTimeout(RefCell<Option<TimeoutJob>>);
 
     impl JobExecutor for KeepTimeout {
-        fn enqueue_job(self: Rc<Self>, job: Job, _: &mut Context) {
+        fn enqueue_job(self: Rc<Self>, job: Job, _: crate::ContextAccess<'_>) {
             if let Job::TimeoutJob(timeout) = job {
                 self.0.replace(Some(timeout));
             }
         }
 
-        fn run_jobs(self: Rc<Self>, _: &mut Context) -> JsResult<()> {
+        fn run_jobs(self: Rc<Self>, _: crate::ContextAccess<'_>) -> JsResult<()> {
             Ok(())
         }
     }
 
     let executor = Rc::new(KeepTimeout::default());
-    let mut context = Context::builder().job_executor(executor.clone()).build().unwrap();
+    let mut context = Context::builder()
+        .job_executor(executor.clone())
+        .build()
+        .unwrap();
     let notified = context
         .eval(Source::from_bytes(
             "var view = new Int32Array(new SharedArrayBuffer(4)); \
@@ -121,7 +124,9 @@ fn shared_waiter_lists_follow_byte_offsets_across_element_widths() {
             "#,
         ),
         TestAction::assert("first.async && second.async"),
-        TestAction::assert("wrongOffset === 0 && firstNotify === 1 && secondNotify === 1 && empty === 0"),
+        TestAction::assert(
+            "wrongOffset === 0 && firstNotify === 1 && secondNotify === 1 && empty === 0",
+        ),
     ]);
 }
 
@@ -135,9 +140,9 @@ fn waiterlist_block_indexedposition_wake() {
         .module_loader(Rc::new(IdleModuleLoader))
         .build()
         .unwrap();
-    let buffer = JsSharedArrayBuffer::new(size_of::<i32>() * 5, context).unwrap();
+    let buffer = JsSharedArrayBuffer::new(size_of::<i32>() * 5, context.access()).unwrap();
     let inner_buffer = buffer.inner();
-    let i32a = JsInt32Array::from_shared_array_buffer(buffer.clone(), context).unwrap();
+    let i32a = JsInt32Array::from_shared_array_buffer(buffer.clone(), context.access()).unwrap();
 
     std::thread::scope(|s| {
         let mut threads = Vec::new();
@@ -149,8 +154,9 @@ fn waiterlist_block_indexedposition_wake() {
                     .module_loader(Rc::new(IdleModuleLoader))
                     .build()
                     .unwrap();
-                let buffer = JsSharedArrayBuffer::from_buffer(buffer, context);
-                let i32a = JsInt32Array::from_shared_array_buffer(buffer, context).unwrap();
+                let buffer = JsSharedArrayBuffer::from_buffer(buffer, context.access());
+                let i32a =
+                    JsInt32Array::from_shared_array_buffer(buffer, context.access()).unwrap();
 
                 Atomics::add(
                     &JsValue::undefined(),
@@ -173,17 +179,17 @@ fn waiterlist_block_indexedposition_wake() {
                     .unwrap()
                     .as_object()
                     .unwrap()
-                    .get(js_string!("value"), context)
+                    .get(js_string!("value"), context.access())
                     .unwrap(),
-                    context,
+                    context.access(),
                 )
                 .unwrap();
 
                 assert_eq!(
                     promise
-                        .await_blocking(context)
+                        .await_blocking(context.access())
                         .unwrap()
-                        .to_string(context)
+                        .to_string(context.access())
                         .unwrap()
                         .to_std_string_lossy(),
                     "ok"
@@ -198,7 +204,7 @@ fn waiterlist_block_indexedposition_wake() {
             context,
         )
         .unwrap()
-        .to_i32(context)
+        .to_i32(context.access())
         .unwrap()
             != NUMAGENT
         {}
@@ -212,7 +218,7 @@ fn waiterlist_block_indexedposition_wake() {
                 context,
             )
             .unwrap()
-            .to_i32(context)
+            .to_i32(context.access())
             .unwrap(),
             NUMAGENT
         );
@@ -225,7 +231,7 @@ fn waiterlist_block_indexedposition_wake() {
                     context
                 )
                 .unwrap()
-                .to_i32(context)
+                .to_i32(context.access())
                 .unwrap(),
                 0
             );
@@ -239,7 +245,7 @@ fn waiterlist_block_indexedposition_wake() {
                     context
                 )
                 .unwrap()
-                .to_i32(context)
+                .to_i32(context.access())
                 .unwrap(),
                 1
             );

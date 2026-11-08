@@ -82,8 +82,8 @@ impl In {
                 .into());
         };
         let lhs = context.vm.get_register(lhs.into()).clone();
-        let key = lhs.to_property_key(context)?;
-        let value = rhs.has_property(key, context)?;
+        let key = lhs.to_property_key(context.access())?;
+        let value = rhs.has_property(key, context.access())?;
         context.vm.set_register(dst.into(), value.into());
         Ok(())
     }

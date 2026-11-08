@@ -1,0 +1,8 @@
+error: lifetime may not live long enough
+ --> tests/async_host_access/job_lease_future_escape.rs:6:36
+  |
+6 |             host.with(|mut access| Ok(async move { access.eval(Source::from_bytes("42")) }))?;
+  |                        ----------- ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ returning this value requires that `'1` must outlive `'2`
+  |                        |         |
+  |                        |         return type of closure `Result<{async block@$DIR/tests/async_host_access/job_lease_future_escape.rs:6:39: 6:49}, JsError>` contains a lifetime `'2`
+  |                        has type `ContextAccess<'1>`

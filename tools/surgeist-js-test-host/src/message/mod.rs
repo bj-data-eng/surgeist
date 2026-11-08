@@ -12,7 +12,7 @@ use surgeist_js::gc::heap::Trace as HeapTrace;
 use surgeist_js::realm::Realm;
 use surgeist_js::value::TryFromJs;
 use surgeist_js::{
-    Context, JsData, JsResult, JsString, JsValue, NativeObject, boa_module, js_error,
+    Context, ContextAccess, JsData, JsResult, JsString, JsValue, NativeObject, boa_module, js_error,
 };
 
 #[cfg(test)]
@@ -75,7 +75,7 @@ pub struct PostMessageOptions {
 }
 
 /// Get a `MessageSender` instance from the context.
-fn get_sender<T: MessageSender>(context: &mut Context) -> JsResult<Rc<T>> {
+fn get_sender<T: MessageSender>(context: ContextAccess<'_>) -> JsResult<Rc<T>> {
     // Try fetching from the context first, then the current realm. Else fail.
     if let Some(sender) = context
         .get_data::<MessageSenderRc<T>>()
@@ -102,7 +102,7 @@ pub mod js_module {
     use crate::message::{MessageSender, PostMessageOptions, get_sender};
     use crate::store::JsValueStore;
     use surgeist_js::value::TryFromJs;
-    use surgeist_js::{Context, JsValue};
+    use surgeist_js::{ContextAccess, JsValue};
     use surgeist_js::{JsResult, js_error};
 
     /// The `postMessage` function. See [the mdn documentation][mdn].
@@ -117,13 +117,14 @@ pub mod js_module {
         message: JsValue,
         target_origin_or_options: Option<JsValue>,
         transfer: Option<Vec<JsValue>>,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<()> {
         // Build the options based on arguments.
         let (target_origin, transfer) = if let Some(target_origin_or_options) =
             target_origin_or_options
         {
-            if let Ok(options) = PostMessageOptions::try_from_js(&target_origin_or_options, context)
+            if let Ok(options) =
+                PostMessageOptions::try_from_js(&target_origin_or_options, context.reborrow())
             {
                 (options.target_origin.clone(), options.transfer.clone())
             } else if let Some(target_origin) = target_origin_or_options.as_string() {
@@ -135,8 +136,9 @@ pub mod js_module {
             (None, None)
         };
 
-        let message = JsValueStore::try_from_js(&message, context, transfer.unwrap_or_default())?;
-        let sender = get_sender::<T>(context)?;
+        let message =
+            JsValueStore::try_from_js(&message, context.reborrow(), transfer.unwrap_or_default())?;
+        let sender = get_sender::<T>(context.reborrow())?;
         sender.send(message, target_origin)
     }
 }
@@ -158,7 +160,7 @@ pub fn register<S: MessageSender>(
     } else {
         context.insert_data(MessageSenderRc(Rc::new(sender)));
     }
-    js_module::boa_register::<S>(realm, context)?;
+    js_module::boa_register::<S>(realm, context.access())?;
 
     Ok(())
 }

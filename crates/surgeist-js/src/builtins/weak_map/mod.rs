@@ -111,7 +111,7 @@ impl BuiltInConstructor for WeakMap {
         // 5. Let adder be ? Get(map, "set").
         // 6. If IsCallable(adder) is false, throw a TypeError exception.
         let adder = map
-            .get(js_string!("set"), context)?
+            .get(js_string!("set"), context.access())?
             .as_function()
             .ok_or_else(|| js_error!(TypeError: "WeakMap: 'add' is not a function"))?;
 
@@ -389,7 +389,7 @@ impl WeakMap {
         let value = callback_fn.call(
             &JsValue::undefined(),
             std::slice::from_ref(&key_value),
-            context,
+            context.access(),
         )?;
 
         // 8-10. Insert or update the entry and return value.

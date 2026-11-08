@@ -28,13 +28,17 @@ fn fresh_compilation(criterion: &mut Criterion) {
         group.bench_function(name, |bencher| {
             bencher.iter_batched_ref(
                 || {
-                    Script::parse(Source::from_bytes(&source), None, &mut context.borrow_mut())
-                        .expect("parse compiler benchmark fixture")
+                    Script::parse(
+                        Source::from_bytes(&source),
+                        None,
+                        context.borrow_mut().access(),
+                    )
+                    .expect("parse compiler benchmark fixture")
                 },
                 |script| {
                     black_box(
                         script
-                            .codeblock(&mut context.borrow_mut())
+                            .codeblock(context.borrow_mut().access())
                             .expect("compile fixture"),
                     )
                 },

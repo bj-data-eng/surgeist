@@ -14,7 +14,9 @@ use surgeist_js::gc::heap::Trace as HeapTrace;
 use surgeist_js::interop::JsClass;
 use surgeist_js::object::builtins::TypedJsFunction;
 use surgeist_js::value::{Convert, TryFromJs};
-use surgeist_js::{Context, JsData, JsObject, JsResult, JsString, JsValue, boa_class, js_error};
+use surgeist_js::{
+    ContextAccess, JsData, JsObject, JsResult, JsString, JsValue, boa_class, js_error,
+};
 
 /// A callback function for the `forEach` method.
 pub type ForEachCallback = TypedJsFunction<(JsString, JsString, JsObject), ()>;
@@ -53,8 +55,8 @@ pub struct JsHeaders {
 }
 
 impl TryFromJs for JsHeaders {
-    fn try_from_js(value: &JsValue, context: &mut Context) -> JsResult<Self> {
-        JsHeaders::constructor(value.clone(), context)
+    fn try_from_js(value: &JsValue, mut context: ContextAccess<'_>) -> JsResult<Self> {
+        JsHeaders::constructor(value.clone(), context.reborrow())
     }
 }
 
@@ -85,7 +87,7 @@ impl JsHeaders {
 #[boa(rename_all = "camelCase")]
 impl JsHeaders {
     #[boa(constructor)]
-    fn constructor(init: JsValue, context: &mut Context) -> JsResult<Self> {
+    fn constructor(init: JsValue, mut context: ContextAccess<'_>) -> JsResult<Self> {
         let headers = JsHeaders::default();
         if init.is_undefined() {
             return Ok(headers);
@@ -106,7 +108,9 @@ impl JsHeaders {
                     h.insert(key, value.clone());
                 }
             }
-        } else if let Ok(init) = Vec::<(String, Convert<String>)>::try_from_js(&init, context) {
+        } else if let Ok(init) =
+            Vec::<(String, Convert<String>)>::try_from_js(&init, context.reborrow())
+        {
             for (k, v) in init {
                 let key = to_header_name(k)?;
                 let value = to_header_value(&v.0)?;
@@ -116,7 +120,9 @@ impl JsHeaders {
                     h.insert(key, value);
                 }
             }
-        } else if let Ok(init) = BTreeMap::<String, Convert<String>>::try_from_js(&init, context) {
+        } else if let Ok(init) =
+            BTreeMap::<String, Convert<String>>::try_from_js(&init, context.reborrow())
+        {
             for (k, v) in init {
                 let key = to_header_name(k)?;
                 let value = to_header_value(&v.0)?;
@@ -164,8 +170,12 @@ impl JsHeaders {
     ///
     /// Returns an error if the headers iterator cannot be created.
     #[boa(method)]
-    pub fn entries(this: JsClass<Self>, context: &mut Context) -> JsResult<JsValue> {
-        HeadersIterator::create_headers_iterator(this.inner(), IterationKind::KeyAndValue, context)
+    pub fn entries(this: JsClass<Self>, mut context: ContextAccess<'_>) -> JsResult<JsValue> {
+        HeadersIterator::create_headers_iterator(
+            this.inner(),
+            IterationKind::KeyAndValue,
+            context.reborrow(),
+        )
     }
 
     /// Executes a provided function once for each key/value pair in the Headers object.
@@ -178,14 +188,14 @@ impl JsHeaders {
         this: JsClass<Self>,
         callback: ForEachCallback,
         this_arg: Option<JsValue>,
-        context: &mut Context,
+        mut context: ContextAccess<'_>,
     ) -> JsResult<()> {
         let object = this.inner().upcast();
         let this_arg = this_arg.unwrap_or_default();
         for (k, v) in this.clone_inner().headers.borrow().iter() {
             let k = JsString::from(k.as_str());
             let v = JsString::from(v.to_str().unwrap_or(""));
-            callback.call_with_this(&this_arg, context, (v, k, object.clone()))?;
+            callback.call_with_this(&this_arg, context.reborrow(), (v, k, object.clone()))?;
         }
         Ok(())
     }
@@ -196,8 +206,8 @@ impl JsHeaders {
     ///
     /// # Errors
     /// If the key is not valid ASCII, an error is returned.
-    pub fn get(&self, key: JsValue, context: &mut Context) -> JsResult<JsValue> {
-        let key: Convert<String> = Convert::try_from_js(&key, context)?;
+    pub fn get(&self, key: JsValue, mut context: ContextAccess<'_>) -> JsResult<JsValue> {
+        let key: Convert<String> = Convert::try_from_js(&key, context.reborrow())?;
         let name = to_header_name(key.as_ref())?;
         let value = self
             .headers
@@ -243,8 +253,12 @@ impl JsHeaders {
     ///
     /// Returns an error if the headers iterator cannot be created.
     #[boa(method)]
-    fn keys(this: JsClass<Self>, context: &mut Context) -> JsResult<JsValue> {
-        HeadersIterator::create_headers_iterator(this.inner(), IterationKind::Key, context)
+    fn keys(this: JsClass<Self>, mut context: ContextAccess<'_>) -> JsResult<JsValue> {
+        HeadersIterator::create_headers_iterator(
+            this.inner(),
+            IterationKind::Key,
+            context.reborrow(),
+        )
     }
 
     /// Sets a new value for an existing header inside a Headers object, or adds the
@@ -263,8 +277,12 @@ impl JsHeaders {
     ///
     /// Returns an error if the headers iterator cannot be created.
     #[boa(method)]
-    fn values(this: JsClass<Self>, context: &mut Context) -> JsResult<JsValue> {
-        HeadersIterator::create_headers_iterator(this.inner(), IterationKind::Value, context)
+    fn values(this: JsClass<Self>, mut context: ContextAccess<'_>) -> JsResult<JsValue> {
+        HeadersIterator::create_headers_iterator(
+            this.inner(),
+            IterationKind::Value,
+            context.reborrow(),
+        )
     }
 
     /// `[Symbol.iterator]()` is an alias for `entries()`
@@ -273,7 +291,11 @@ impl JsHeaders {
     ///
     /// Returns an error if the headers iterator cannot be created.
     #[boa(symbol = "iterator")]
-    fn symbol_iterator(this: JsClass<Self>, context: &mut Context) -> JsResult<JsValue> {
-        HeadersIterator::create_headers_iterator(this.inner(), IterationKind::KeyAndValue, context)
+    fn symbol_iterator(this: JsClass<Self>, mut context: ContextAccess<'_>) -> JsResult<JsValue> {
+        HeadersIterator::create_headers_iterator(
+            this.inner(),
+            IterationKind::KeyAndValue,
+            context.reborrow(),
+        )
     }
 }

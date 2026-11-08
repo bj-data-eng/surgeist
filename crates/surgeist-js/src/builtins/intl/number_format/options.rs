@@ -5,7 +5,6 @@ use fixed_decimal::{
     UnsignedRoundingMode,
 };
 
-use surgeist_js_macros::js_str;
 use icu_decimal::{
     DecimalFormatterPreferences, preferences::NumberingSystem, provider::DecimalSymbolsV1,
 };
@@ -16,6 +15,7 @@ use icu_provider::{
         LanguageIdentifier, extensions::unicode, preferences::LocalePreferences,
     },
 };
+use surgeist_js_macros::js_str;
 use tinystr::TinyAsciiStr;
 
 use crate::{
@@ -34,7 +34,11 @@ use crate::{
 
 impl OptionType for SignedRoundingMode {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        match value.to_string(context)?.to_std_string_escaped().as_str() {
+        match value
+            .to_string(context.access())?
+            .to_std_string_escaped()
+            .as_str()
+        {
             "expand" => Ok(Self::Unsigned(UnsignedRoundingMode::Expand)),
             "trunc" => Ok(Self::Unsigned(UnsignedRoundingMode::Trunc)),
             "halfExpand" => Ok(Self::Unsigned(UnsignedRoundingMode::HalfExpand)),
@@ -53,7 +57,7 @@ impl OptionType for SignedRoundingMode {
 
 impl OptionType for NumberingSystem {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        let s = value.to_string(context)?.to_std_string_escaped();
+        let s = value.to_string(context.access())?.to_std_string_escaped();
         Value::try_from_str(&s)
             .ok()
             .and_then(|v| NumberingSystem::try_from(v).ok())
@@ -548,13 +552,17 @@ impl DigitFormatOptions {
             get_number_option(options, js_string!("minimumIntegerDigits"), 1, 21, context)?
                 .unwrap_or(1);
         // 2. Let mnfd be ? Get(options, "minimumFractionDigits").
-        let min_float_digits = options.get(js_string!("minimumFractionDigits"), context)?;
+        let min_float_digits =
+            options.get(js_string!("minimumFractionDigits"), context.access())?;
         // 3. Let mxfd be ? Get(options, "maximumFractionDigits").
-        let max_float_digits = options.get(js_string!("maximumFractionDigits"), context)?;
+        let max_float_digits =
+            options.get(js_string!("maximumFractionDigits"), context.access())?;
         // 4. Let mnsd be ? Get(options, "minimumSignificantDigits").
-        let min_sig_digits = options.get(js_string!("minimumSignificantDigits"), context)?;
+        let min_sig_digits =
+            options.get(js_string!("minimumSignificantDigits"), context.access())?;
         // 5. Let mxsd be ? Get(options, "maximumSignificantDigits").
-        let max_sig_digits = options.get(js_string!("maximumSignificantDigits"), context)?;
+        let max_sig_digits =
+            options.get(js_string!("maximumSignificantDigits"), context.access())?;
 
         // 7. Let roundingIncrement be ? GetNumberOption(options, "roundingIncrement", 1, 5000, 1).
         // 8. If roundingIncrement is not in « 1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000 », throw a RangeError exception.
@@ -1183,7 +1191,7 @@ impl ParsableOptionType for TrailingZeroDisplay {}
 
 impl OptionType for SignDisplay {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        match value.to_string(context)?.to_std_string_escaped().as_str() {
+        match value.to_string(context.access())?.to_std_string_escaped().as_str() {
             "auto" => Ok(Self::Auto),
             "never" => Ok(Self::Never),
             "always" => Ok(Self::Always),

@@ -20,7 +20,7 @@ fn set_by_name(
 ) -> JsResult<()> {
     let value = context.vm.get_register(value.into()).clone();
 
-    let object = value_object.to_object(context)?;
+    let object = value_object.to_object(context.access())?;
 
     let ic = &context.vm.frame().code_block().ic[usize::from(index)];
 
@@ -43,7 +43,7 @@ fn set_by_name(
                 result.as_object().expect("should contain getter").call(
                     receiver,
                     std::slice::from_ref(&value),
-                    context,
+                    context.access(),
                 )?;
             }
         } else if slot.attributes.contains(SlotAttributes::PROTOTYPE) {
@@ -162,9 +162,9 @@ impl SetPropertyByValue {
         let key = context.vm.get_register(key.into()).clone();
         let receiver = context.vm.get_register(receiver.into()).clone();
         let object = context.vm.get_register(object.into()).clone();
-        let object = object.to_object(context)?;
+        let object = object.to_object(context.access())?;
 
-        let key = key.to_property_key(context)?;
+        let key = key.to_property_key(context.access())?;
 
         // Fast Path:
         'fast_path: {
@@ -232,7 +232,7 @@ impl SetPropertyGetterByName {
             .constant_string(index.into())
             .into();
 
-        let object = object.to_object(context)?;
+        let object = object.to_object(context.access())?;
         let set = object
             .__get_own_property__(&name, &mut InternalMethodPropertyContext::new(context))?
             .as_ref()
@@ -274,8 +274,8 @@ impl SetPropertyGetterByValue {
         let value = context.vm.get_register(value.into()).clone();
         let key = context.vm.get_register(key.into()).clone();
         let object = context.vm.get_register(object.into()).clone();
-        let object = object.to_object(context)?;
-        let name = key.to_property_key(context)?;
+        let object = object.to_object(context.access())?;
+        let name = key.to_property_key(context.access())?;
 
         let set = object
             .__get_own_property__(&name, &mut InternalMethodPropertyContext::new(context))?
@@ -324,7 +324,7 @@ impl SetPropertySetterByName {
             .constant_string(index.into())
             .into();
 
-        let object = object.to_object(context)?;
+        let object = object.to_object(context.access())?;
 
         let get = object
             .__get_own_property__(&name, &mut InternalMethodPropertyContext::new(context))?
@@ -368,8 +368,8 @@ impl SetPropertySetterByValue {
         let key = context.vm.get_register(key.into()).clone();
         let object = context.vm.get_register(object.into()).clone();
 
-        let object = object.to_object(context)?;
-        let name = key.to_property_key(context)?;
+        let object = object.to_object(context.access())?;
+        let name = key.to_property_key(context.access())?;
 
         let get = object
             .__get_own_property__(&name, &mut InternalMethodPropertyContext::new(context))?

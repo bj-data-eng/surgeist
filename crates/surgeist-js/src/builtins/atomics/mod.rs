@@ -158,7 +158,9 @@ impl Atomics {
     /// [spec]: https://tc39.es/ecma262/#sec-atomics.islockfree
     fn is_lock_free(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         // 1. Let n be ? ToIntegerOrInfinity(size).
-        let n = args.get_or_undefined(0).to_integer_or_infinity(context)?;
+        let n = args
+            .get_or_undefined(0)
+            .to_integer_or_infinity(context.access())?;
 
         // 2. Let AR be the Agent Record of the surrounding agent.
         Ok(match n.as_integer() {
@@ -222,10 +224,10 @@ impl Atomics {
         // bit of a hack to preserve the converted value
         // 2. If typedArray.[[ContentType]] is bigint, let v be ? ToBigInt(value).
         let converted: JsValue = if access.kind.content_type() == ContentType::BigInt {
-            value.to_bigint(context)?.into()
+            value.to_bigint(context.access())?.into()
         } else {
             // 3. Otherwise, let v be 𝔽(? ToIntegerOrInfinity(value)).
-            match value.to_integer_or_infinity(context)? {
+            match value.to_integer_or_infinity(context.access())? {
                 IntegerOrInfinity::PositiveInfinity => f64::INFINITY,
                 IntegerOrInfinity::Integer(i) => i as f64,
                 IntegerOrInfinity::NegativeInfinity => f64::NEG_INFINITY,
@@ -422,15 +424,15 @@ impl Atomics {
         // 5. Let arrayTypeName be typedArray.[[TypedArrayName]].
         let value = if access.kind == TypedArrayKind::BigInt64 {
             // 6. If typedArray.[[TypedArrayName]] is "BigInt64Array", let v be ? ToBigInt64(value).
-            value.to_big_int64(context)?
+            value.to_big_int64(context.access())?
         } else {
             // 7. Else, let v be ? ToInt32(value).
-            i64::from(value.to_i32(context)?)
+            i64::from(value.to_i32(context.access())?)
         };
 
         // 8. Let q be ? ToNumber(timeout).
         // 9. If q is either NaN or +∞𝔽, let t be +∞; else if q is -∞𝔽, let t be 0; else let t be max(ℝ(q), 0).
-        let mut timeout = timeout.to_number(context)?;
+        let mut timeout = timeout.to_number(context.access())?;
         // convert to nanoseconds to discard any excessively big timeouts.
         timeout = timeout.clamp(0.0, f64::INFINITY) * 1000.0 * 1000.0;
         let timeout = if timeout.is_nan() || timeout.is_infinite() || timeout > u64::MAX as f64 {
@@ -449,7 +451,7 @@ impl Atomics {
         // A host executor can reenter when an async completion is enqueued.
         let backing = buffer.borrow().data().clone();
         if ASYNC {
-            let (promise, resolvers) = JsPromise::new_pending(context);
+            let (promise, resolvers) = JsPromise::new_pending(context.access());
             let result = if access.kind == TypedArrayKind::BigInt64 {
                 futex::wait_async(
                     &backing,
@@ -522,7 +524,7 @@ impl Atomics {
             // 3. Else,
             //     a. Let intCount be ? ToIntegerOrInfinity(count).
             //     b. Let c be max(intCount, 0).
-            match count.to_integer_or_infinity(context)? {
+            match count.to_integer_or_infinity(context.access())? {
                 IntegerOrInfinity::PositiveInfinity => u64::MAX,
                 IntegerOrInfinity::Integer(i) => i64::max(i, 0) as u64,
                 IntegerOrInfinity::NegativeInfinity => 0,
@@ -568,7 +570,7 @@ impl Atomics {
             }
 
             // b. If ℝ(iterationNumber) < 0, throw a RangeError exception.
-            let iteration_number = iteration_number.to_number(context)? as i16;
+            let iteration_number = iteration_number.to_number(context.access())? as i16;
             if iteration_number < 0 {
                 return Err(JsNativeError::range()
                     .with_message("`iterationNumber` must be a positive integer")
@@ -684,7 +686,7 @@ fn validate_atomic_access(
     };
 
     // 2. Let accessIndex be ? ToIndex(requestIndex).
-    let access_index = request_index.to_index(context)?;
+    let access_index = request_index.to_index(context.access())?;
 
     // 3. Assert: accessIndex ≥ 0.
     //    ensured by the type.

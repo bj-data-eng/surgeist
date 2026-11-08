@@ -145,7 +145,7 @@ impl ArrayIterator {
                 context,
             )),
             PropertyNameKind::Value => {
-                let element_value = array.get(index, context)?;
+                let element_value = array.get(index, context.access())?;
                 Ok(create_iter_result_object_trusted(
                     element_value,
                     false,
@@ -153,7 +153,7 @@ impl ArrayIterator {
                 ))
             }
             PropertyNameKind::KeyAndValue => {
-                let element_value = array.get(index, context)?;
+                let element_value = array.get(index, context.access())?;
                 let result = Array::create_array_from_list([index.into(), element_value], context);
                 Ok(create_iter_result_object_trusted(
                     result.into(),

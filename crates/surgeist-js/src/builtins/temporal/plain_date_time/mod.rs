@@ -1339,7 +1339,7 @@ impl PlainDateTime {
             new_round_to.create_data_property_or_throw(
                 js_string!("smallestUnit"),
                 param_string,
-                context,
+                context.access(),
             )?;
             new_round_to
         } else {
@@ -1737,7 +1737,7 @@ fn to_date_time_fields(
     context: &mut Context,
 ) -> JsResult<DateTimeFields> {
     let day = partial_object
-        .get(js_string!("day"), context)?
+        .get(js_string!("day"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             finite
@@ -1746,7 +1746,7 @@ fn to_date_time_fields(
         })
         .transpose()?;
     let hour = partial_object
-        .get(js_string!("hour"), context)?
+        .get(js_string!("hour"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             Ok::<u8, JsError>(finite.as_integer_with_truncation::<u8>())
@@ -1760,9 +1760,9 @@ fn to_date_time_fields(
         (None, None)
     } else {
         let era = partial_object
-            .get(js_string!("era"), context)?
+            .get(js_string!("era"), context.access())?
             .map(|v| {
-                let v = v.to_primitive(context, crate::value::PreferredType::String)?;
+                let v = v.to_primitive(context.access(), crate::value::PreferredType::String)?;
                 let Some(era) = v.as_string() else {
                     return Err(JsError::from(
                         JsNativeError::typ()
@@ -1775,7 +1775,7 @@ fn to_date_time_fields(
             })
             .transpose()?;
         let era_year = partial_object
-            .get(js_string!("eraYear"), context)?
+            .get(js_string!("eraYear"), context.access())?
             .map(|v| {
                 let finite = v.to_finitef64(context)?;
                 Ok::<i32, JsError>(finite.as_integer_with_truncation::<i32>())
@@ -1784,7 +1784,7 @@ fn to_date_time_fields(
         (era, era_year)
     };
     let microsecond = partial_object
-        .get(js_string!("microsecond"), context)?
+        .get(js_string!("microsecond"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             Ok::<u16, JsError>(finite.as_integer_with_truncation::<u16>())
@@ -1792,7 +1792,7 @@ fn to_date_time_fields(
         .transpose()?;
 
     let millisecond = partial_object
-        .get(js_string!("millisecond"), context)?
+        .get(js_string!("millisecond"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             Ok::<u16, JsError>(finite.as_integer_with_truncation::<u16>())
@@ -1800,7 +1800,7 @@ fn to_date_time_fields(
         .transpose()?;
 
     let minute = partial_object
-        .get(js_string!("minute"), context)?
+        .get(js_string!("minute"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             Ok::<u8, JsError>(finite.as_integer_with_truncation::<u8>())
@@ -1808,7 +1808,7 @@ fn to_date_time_fields(
         .transpose()?;
 
     let month = partial_object
-        .get(js_string!("month"), context)?
+        .get(js_string!("month"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             finite
@@ -1818,9 +1818,9 @@ fn to_date_time_fields(
         .transpose()?;
 
     let month_code = partial_object
-        .get(js_string!("monthCode"), context)?
+        .get(js_string!("monthCode"), context.access())?
         .map(|v| {
-            let v = v.to_primitive(context, crate::value::PreferredType::String)?;
+            let v = v.to_primitive(context.access(), crate::value::PreferredType::String)?;
             let Some(month_code) = v.as_string() else {
                 return Err(JsNativeError::typ()
                     .with_message("The monthCode field value must be a string.")
@@ -1831,7 +1831,7 @@ fn to_date_time_fields(
         .transpose()?;
 
     let nanosecond = partial_object
-        .get(js_string!("nanosecond"), context)?
+        .get(js_string!("nanosecond"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             Ok::<u16, JsError>(finite.as_integer_with_truncation::<u16>())
@@ -1839,7 +1839,7 @@ fn to_date_time_fields(
         .transpose()?;
 
     let second = partial_object
-        .get(js_string!("second"), context)?
+        .get(js_string!("second"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             Ok::<u8, JsError>(finite.as_integer_with_truncation::<u8>())
@@ -1847,7 +1847,7 @@ fn to_date_time_fields(
         .transpose()?;
 
     let year = partial_object
-        .get(js_string!("year"), context)?
+        .get(js_string!("year"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             Ok::<i32, JsError>(finite.as_integer_with_truncation::<i32>())
