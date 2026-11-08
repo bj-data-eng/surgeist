@@ -180,6 +180,7 @@ fn literal_counts_and_all_exact_one_under_limits_preserve_atomic_output_and_retr
         WorkKind::GradientValidation,
         WorkKind::GradientDirection,
         WorkKind::GradientCoordinate,
+        WorkKind::GradientStopVisit,
     ] {
         assert_eq!(report.work(kind), 0);
         exact = exact.with_work_limit(kind, 0);
