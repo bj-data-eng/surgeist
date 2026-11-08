@@ -3415,3 +3415,36 @@ scalars!(
     mode_head_closure_cannot_swallow_additional_positive_source_f32,
     mode_head_closure_cannot_swallow_additional_positive_source_f64
 );
+
+fn required_page_side_absence_identifies_context_and_frame<S: LayoutScalar>() {
+    let mut page_frames = frames::<S>(&[100.0, 60.0], 80.0, FragmentationBreakKinds::PAGE);
+    page_frames[0].page_side = Some(FragmentationPageSide {
+        physical: FragmentationPhysicalPageSide::Left,
+        progression: FragmentationProgressionPageSide::Verso,
+    });
+    assert_eq!(page_frames[1].page_side, None);
+    let mut provider = reply_probe(vec![page_frames], |query| {
+        if query.scan_after.is_none() {
+            Ok(raw_start(
+                vec![control(FragmentationBreak::Right, 1)],
+                Vec::new(),
+            ))
+        } else {
+            Ok(full_reply(20.0, position(1, 0), 20.0, Vec::new()))
+        }
+    });
+    assert_eq!(
+        resolve_fragmentation(&input::<S>(&[(185, 1)], 0.0), &mut provider),
+        Err(FragmentationError::MissingPageSide {
+            context: 0,
+            index: 1,
+        })
+    );
+    assert_eq!(provider.queries.len(), 1);
+    assert_eq!(provider.queries[0].fragmentainer_index, 0);
+}
+scalars!(
+    required_page_side_absence_identifies_context_and_frame,
+    required_page_side_absence_identifies_context_and_frame_f32,
+    required_page_side_absence_identifies_context_and_frame_f64
+);

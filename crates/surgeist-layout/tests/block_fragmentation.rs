@@ -7129,3 +7129,79 @@ scalars!(
     maximum_progress_opening_margin_no_prefix_f32,
     maximum_progress_opening_margin_no_prefix_f64
 );
+
+fn missing_page_side_is_semantic_failure_with_valid_geometry<S: LayoutScalar>() {
+    let mut second = block::<S>(None, Some(20.0));
+    second.break_before = FragmentationBreak::Right;
+    let mut tree = Tree::new(
+        vec![block(None, None), block(None, Some(10.0)), second],
+        vec![vec![1, 2], vec![], vec![]],
+    );
+    let mut sink = Sink::new(3);
+    let seed = compute_layout(&tree, 0, root_request(100.0)).unwrap();
+    assert!(!seed.cache_store_entries().is_empty());
+    seed.apply_to(&mut sink).unwrap();
+    sink.copy_cache_to(&mut tree);
+    assert!(tree.caches.iter().any(|cache| !cache.is_empty()));
+    assert!(tree.custody.iter().all(Option::is_some));
+    let published = sink.state.clone();
+    let caches = tree.caches.clone();
+    let custody = tree.custody.clone();
+    let members = sink.targets.published_members(0).to_vec();
+    let preparations = sink.preparations.get();
+    let commits = sink.commits;
+
+    let mut frames = vec![frame(100.0, 100.0, true), frame(60.0, 80.0, false)];
+    frames[0].page_side = Some(FragmentationPageSide {
+        physical: FragmentationPhysicalPageSide::Left,
+        progression: FragmentationProgressionPageSide::Verso,
+    });
+    frames[1].page_side = Some(FragmentationPageSide {
+        physical: FragmentationPhysicalPageSide::Right,
+        progression: FragmentationProgressionPageSide::Recto,
+    });
+    let control = fragmented(LayoutSourceBasis::fresh(), frames.clone());
+    let complete =
+        compute(&tree, 0, &control).expect("known required side admits the same geometry");
+    assert_eq!(complete.fragmentainers().len(), 2);
+    let roots = fragments(&complete, 0);
+    assert_eq!(roots.len(), 2);
+    // Break3 §5.3 fills the continuing root to the first frame's edge;
+    // its first leaf still occupies only its independently authored10px.
+    assert_fragment(&roots[0], (100.0, 100.0));
+    assert_fragment(&roots[1], (60.0, 20.0));
+    minimum_progress_child(&complete, 1, 0, roots[0].id(), (0.0, 0.0), (100.0, 10.0));
+    minimum_progress_child(&complete, 2, 1, roots[1].id(), (0.0, 0.0), (60.0, 20.0));
+
+    // Only required semantic side authority is removed. Both target frames,
+    // their finite geometry, the source and the applicable Right force remain.
+    frames[1].page_side = None;
+    let missing = fragmented(LayoutSourceBasis::fresh(), frames);
+    sink.authorize(0, &missing);
+    let error = compute(&tree, 0, &missing).unwrap_err();
+    assert_eq!(error.site(), LayoutErrorSiteOf::Node(0));
+    assert_eq!(error.operation(), LayoutOperation::RootLayout);
+    assert_eq!(sink.state, published);
+    assert_eq!(sink.preparations.get(), preparations);
+    assert_eq!(sink.commits, commits);
+    assert_eq!(sink.targets.published_members(0), members);
+    assert_eq!(sink.targets.get(0), Some(&missing.target_basis()));
+    assert_eq!(tree.caches, caches);
+    assert_eq!(tree.custody, custody);
+    assert!(matches!(
+        error.kind(),
+        LayoutErrorKindOf::BlockFragmentation(_)
+    ));
+    assert!(
+        !matches!(
+            error.kind(),
+            LayoutErrorKindOf::BlockFragmentation(BlockFragmentationFailure::InvalidGeometry)
+        ),
+        "missing page-side authority must not be classified as invalid finite geometry"
+    );
+}
+scalars!(
+    missing_page_side_is_semantic_failure_with_valid_geometry,
+    missing_page_side_is_semantic_failure_with_valid_geometry_f32,
+    missing_page_side_is_semantic_failure_with_valid_geometry_f64
+);
