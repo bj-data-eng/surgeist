@@ -3,6 +3,7 @@
 
 mod accounting;
 mod algorithm;
+mod gradient;
 mod model;
 mod paint_order;
 
@@ -11,6 +12,10 @@ pub use accounting::{
     PaintPhase, PaintReport, PhaseReport, RefusalReason, ResourceKind, WorkKind,
 };
 pub use algorithm::{PaintOutcome, plan_stacking};
+pub use gradient::{
+    GradientGeometryError, LinearGradientDirection, LinearGradientLine, LinearGradientOutcome,
+    resolve_linear_gradient,
+};
 pub use model::{
     BoxFacts, BoxId, ChildOrder, ContextEffect, ContextView, PaintError, Participation, Position,
     StackingPlan, ZIndex,

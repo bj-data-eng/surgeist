@@ -151,10 +151,38 @@ fn literal_counts_and_all_exact_one_under_limits_preserve_atomic_output_and_retr
     // contexts, three child references and four context ranges =27. Twelve
     // draws and eight context boundaries add20 actual sequence records.
     assert_eq!(report.work(WorkKind::OutputRecord), 47);
+    // This ordering fixture exercises every ordering dimension. Gradient work
+    // belongs to its separate operation and must stay zero even with zero caps.
+    let ordering_work = [
+        WorkKind::BoxValidation,
+        WorkKind::ParentEdge,
+        WorkKind::TopologyVisit,
+        WorkKind::SiblingComparison,
+        WorkKind::MembershipVisit,
+        WorkKind::ContextComparison,
+        WorkKind::OrderMove,
+        WorkKind::OutputRecord,
+        WorkKind::PaintValidation,
+        WorkKind::FragmentVisit,
+        WorkKind::LineVisit,
+        WorkKind::InlineMemberVisit,
+        WorkKind::PrimitiveVisit,
+        WorkKind::PaintScopeVisit,
+        WorkKind::PaintOrderComparison,
+        WorkKind::DecorationComparison,
+    ];
     let mut exact = PaintLimits::unlimited();
-    for kind in WorkKind::ALL {
+    for kind in ordering_work {
         assert!(report.work(kind) > 0, "fixture must exercise {kind:?}");
         exact = exact.with_work_limit(kind, report.work(kind));
+    }
+    for kind in [
+        WorkKind::GradientValidation,
+        WorkKind::GradientDirection,
+        WorkKind::GradientCoordinate,
+    ] {
+        assert_eq!(report.work(kind), 0);
+        exact = exact.with_work_limit(kind, 0);
     }
     for kind in ResourceKind::ALL {
         exact = exact.with_resource_limit(kind, report.peak(kind));
@@ -167,7 +195,7 @@ fn literal_counts_and_all_exact_one_under_limits_preserve_atomic_output_and_retr
         ),
         expected
     );
-    for kind in WorkKind::ALL {
+    for kind in ordering_work {
         let limit = report.work(kind) - 1;
         let outcome = plan_paint_order(
             fixture.request(),

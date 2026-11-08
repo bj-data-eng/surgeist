@@ -1,11 +1,14 @@
 # surgeist-paint
 
-Paint plans resolved CSS stacking and non-table primitive order from explicit
-native facts. `plan_stacking` returns context membership and immediate child
-context order. `plan_paint_order` adds validated box/text occurrences, line
+Paint resolves linear-gradient geometry and plans CSS stacking and non-table
+primitive order from explicit native facts. `plan_stacking` returns context
+membership and immediate child context order. `plan_paint_order` adds validated
+box/text occurrences, line
 incidences and primitive records to return ordered borrowed references inside
 nested actual-context intervals. Both use the shared context algorithm and one
 Ledger operation for work admission, storage custody and optional profiling.
+`resolve_linear_gradient` uses that same accounting authority to turn a concrete
+image size and physical direction into box-local line endpoints and length.
 
 Callers retain exact source identities, geometry and appearance associations.
 The order is not a Render command stream or a complete transform/clip tree.
@@ -53,6 +56,29 @@ The [Layout composition tests](tests/paint_order_layout.rs) retain real complete
 and fragmented-root geometry. The [native inline test](tests/paint_order_native_inline.rs)
 joins finalized Text output to Layout placement and exact Paint slots. These use
 explicit native CSS paint facts and do not authenticate computed Style.
+
+For a concrete gradient box, supply its size separately from its placement:
+
+```rust
+use surgeist_layout::{Point, Size};
+use surgeist_paint::{
+    LinearGradientDirection, PaintLimits, PaintOptions, ProfileMode,
+    resolve_linear_gradient,
+};
+
+let outcome = resolve_linear_gradient(
+    Size::new(200.0, 100.0), LinearGradientDirection::Top,
+    PaintOptions::new(PaintLimits::unlimited(), ProfileMode::Off),
+);
+let line = outcome.result.unwrap();
+assert_eq!(line.start(), Point::new(100.0, 100.0));
+assert_eq!(line.end(), Point::new(100.0, 0.0));
+assert_eq!(line.length(), 100.0);
+```
+
+The [geometry explanation](docs/explanation.md#linear-gradient-geometry)
+describes corner directions and numerical limits. Authored stop/hint resolution,
+radial geometry and complete gradient scene composition remain unfinished.
 
 ## Documentation
 

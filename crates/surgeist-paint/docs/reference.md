@@ -16,16 +16,19 @@ The [public front door](../src/lib.rs) exports these surfaces:
 | `PaintOrderEvent`, `BoxView`, `LineView`, `FragmentView`, `PrimitiveView` | Actual-context boundaries and exact borrowed source-record observations. |
 | `PaintError`, `PaintInputError`, `BoxCategoryError` | Planning/accounting failures and typed input/category/unsupported-profile diagnostics. |
 | `PaintLimits`, `PaintOptions`, `PaintReport`, `PaintPhase` | Limits, clock/profiling policy and named Ledger usage access. |
+| `resolve_linear_gradient`, `LinearGradientDirection`, `LinearGradientLine`, `LinearGradientOutcome` | Concrete box-local physical line geometry, length and optional accepted-prefix report. |
+| `GradientGeometryError` | Invalid dimensions/angle or unrepresentable positive line, wrapped by `PaintError::Gradient`. |
 
 ## Accounting schema
 
-Both operations share 16 work dimensions and two byte dimensions. Actions count
+The operations share 19 work dimensions and two byte dimensions. Actions count
 algorithm work, not CPU instructions or elapsed time.
 
 | Work family | `WorkKind` dimensions |
 | --- | --- |
 | Shared stacking and output | `BoxValidation`, `ParentEdge`, `TopologyVisit`, `SiblingComparison`, `MembershipVisit`, `ContextComparison`, `OrderMove`, `OutputRecord` |
 | Paint input and sequencing | `PaintValidation`, `FragmentVisit`, `LineVisit`, `InlineMemberVisit`, `PrimitiveVisit`, `PaintScopeVisit`, `PaintOrderComparison`, `DecorationComparison` |
+| Gradient geometry | `GradientValidation`, `GradientDirection`, `GradientCoordinate` |
 
 `ResourceKind` is `ScratchBytes` or `RetainedResultBytes`.
 Fixed child phases are `validate`, `topology`, `sibling_order`, `membership`,
@@ -35,6 +38,15 @@ children under the `paint stacking` root: eight scopes in total.
 `paint order` root: nine children and ten scopes in total. It reuses stacking
 inside that single operation/report. Phase usage is inclusive; root totals and
 child attribution must not be summed together.
+
+`resolve_linear_gradient` uses gradient validation, geometry and publication
+attribution. Validation counts each input scalar or direction discriminant;
+direction work counts actual resolution actions. Coordinate work counts actual
+scalar geometry calculations and inspections, including repeated work. A successful
+operation admits one output record and the fixed `LinearGradientLine` result's
+size as retained bytes. It allocates no geometry buffer; caller input and
+Ledger's bounded observer remain outside these byte dimensions. See
+[the implementation](../src/gradient.rs) for the precise charged action units.
 
 ## Source map
 
@@ -46,6 +58,10 @@ typed input errors and borrowed order views. [Validation](../src/paint_order/val
 owns cross-table incidence; [sequencing](../src/paint_order/sequencing.rs) owns
 paint bands and recursive scope ordering. The [operation](../src/paint_order/mod.rs)
 composes these under one report.
+[Gradient geometry](../src/gradient.rs) owns physical direction resolution,
+numerical validation and the line result; its
+[public tests](../tests/linear_gradient.rs) use real Layout values and independent
+coordinate, budget and profiling expectations.
 
 [Stacking tests](../src/algorithm/tests.rs), [paint-order tests](../src/paint_order/tests.rs)
 and [accounting tests](../src/paint_order/accounting_tests.rs) supply literal order,

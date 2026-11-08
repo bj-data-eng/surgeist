@@ -33,9 +33,15 @@ pub enum WorkKind {
     PaintOrderComparison,
     /// One decoration applicator or ordering comparison.
     DecorationComparison,
+    /// One input scalar or direction-discriminant validation.
+    GradientValidation,
+    /// One direction dispatch, scalar calculation, or scalar inspection.
+    GradientDirection,
+    /// One scalar geometry calculation or inspection, including repeated checks.
+    GradientCoordinate,
 }
 impl WorkKind {
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 19] = [
         Self::BoxValidation,
         Self::ParentEdge,
         Self::TopologyVisit,
@@ -52,6 +58,9 @@ impl WorkKind {
         Self::PaintScopeVisit,
         Self::PaintOrderComparison,
         Self::DecorationComparison,
+        Self::GradientValidation,
+        Self::GradientDirection,
+        Self::GradientCoordinate,
     ];
     pub(crate) fn dimension(self) -> Work<WORK_COUNT> {
         Work::new(self as usize).expect("closed work schema")
@@ -62,18 +71,21 @@ const WORK_COUNT: usize = WorkKind::ALL.len();
 pub(crate) enum OperationKind {
     Stacking,
     PaintOrder,
+    LinearGradient,
 }
 impl OperationKind {
     fn name(&self) -> &'static str {
         match self {
             Self::Stacking => "paint stacking",
             Self::PaintOrder => "paint order",
+            Self::LinearGradient => "paint linear gradient",
         }
     }
     fn scope_limit(&self) -> usize {
         match self {
             Self::Stacking => 8,
             Self::PaintOrder => 10,
+            Self::LinearGradient => 5,
         }
     }
 }
@@ -175,6 +187,8 @@ pub enum PaintPhase {
     Cleanup,
     PaintValidation,
     PaintSequence,
+    GradientValidation,
+    GradientGeometry,
 }
 impl PaintPhase {
     fn from_name(name: &str) -> Self {
@@ -188,6 +202,8 @@ impl PaintPhase {
             "cleanup" => Self::Cleanup,
             "paint_validate" => Self::PaintValidation,
             "paint_sequence" => Self::PaintSequence,
+            "gradient_validate" => Self::GradientValidation,
+            "gradient_geometry" => Self::GradientGeometry,
             _ => Self::Operation,
         }
     }

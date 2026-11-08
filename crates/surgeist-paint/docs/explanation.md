@@ -1,5 +1,39 @@
 # Explanation
 
+## Linear-gradient geometry
+
+The image's consuming context supplies a concrete gradient-box size. Gradients
+have no natural dimensions, and a parsed gradient does not supply that size.
+`resolve_linear_gradient` consumes Layout's physical `Size<f64>` and returns
+start/end Layout points and a line length, all local to the box's top-left.
+The consumer applies placement later. The operation does not infer a particular
+Layout box, evaluate CSS numeric expressions or choose stop colors.
+
+In physical y-down coordinates, zero degrees points up and increasing angles
+rotate clockwise. Omitted direction is represented by the default bottom
+choice. Side keywords retain exact cardinal directions. The centered line has
+length `abs(W * sin(A)) + abs(H * cos(A))`; its endpoints may lie outside the
+box. For a 200 by 100 box, 45 degrees gives endpoints (25,125) and (175,-25).
+A corner keyword instead makes the line perpendicular to the diagonal joining
+its neighboring corners. Top-right gives (60,130) and (140,-30), so those
+neighboring corners both project to its midpoint. Physical directions are
+independent of writing mode. These rules follow the pinned
+[CSS Images3 linear geometry](https://www.w3.org/TR/2023/CRD-css-images-3-20231218/#linear-gradient-syntax).
+
+Finite nonnegative dimensions include zero. Only a zero projected length
+produces coincident center endpoints: a zero-width box with a vertical direction
+can still have a nonzero line. Both-zero corner input has a zero line without
+normalization by zero. Finite angles are reduced before trigonometry. Invalid
+width, height or angle has a typed diagnostic. Overflow or numerical collapse
+of a positive line returns `UnrepresentableLine`; the operation uses no
+size epsilon or device-resolution fallback. This finite f64 representation
+policy does not claim exact real arithmetic for every input.
+
+The returned length is the basis for later used stop positions. Authored
+stop/hint fixup, radial geometry and Render field composition retain their
+separate responsibilities. Geometry alone does not turn a parsed gradient into
+a complete rendered image.
+
 ## Rendering boxes and actual contexts
 
 The caller supplies the rendering tree, including generated/anonymous boxes as
