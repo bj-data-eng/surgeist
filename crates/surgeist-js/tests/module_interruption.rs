@@ -523,4 +523,350 @@ mod continuation {
         assert_eq!(cached.identity(), fixture.evaluation.identity());
         assert_eq!(effects(&mut fixture.context), 1.into());
     }
+
+    struct GraphFixture {
+        context: Context,
+        executor: Rc<ManualExecutor>,
+        loader: Rc<surgeist_js::module::MapModuleLoader>,
+    }
+
+    impl GraphFixture {
+        fn new() -> Self {
+            let executor = Rc::new(ManualExecutor::default());
+            let loader = Rc::new(surgeist_js::module::MapModuleLoader::new());
+            let builder = Context::builder()
+                .job_executor(executor.clone())
+                .module_loader(loader.clone());
+            #[cfg(feature = "fuzz")]
+            let builder = builder.instructions_remaining(1_000_000);
+            let mut context = builder.build().unwrap();
+            for name in [
+                "moduleEffects",
+                "independentEffects",
+                "parentEffects",
+                "grandEffects",
+                "importerEffects",
+            ] {
+                context
+                    .global_object()
+                    .set(js_string!(name), 0, true, context.access())
+                    .unwrap();
+            }
+            Self {
+                context,
+                executor,
+                loader,
+            }
+        }
+
+        fn insert(&mut self, name: &str, source: &str) -> Module {
+            let module = Module::parse(
+                Source::from_bytes(source).with_path(std::path::Path::new(name)),
+                None,
+                self.context.access(),
+            )
+            .unwrap();
+            assert!(self.loader.insert(name, module.clone()).is_none());
+            module
+        }
+
+        fn load_and_link(&mut self, module: &Module) {
+            let loaded = module.load(self.context.access()).unwrap();
+            for _ in 0..128 {
+                if loaded.state() != PromiseState::Pending {
+                    break;
+                }
+                let queued = self.executor.jobs.borrow_mut().pop_front();
+                let Some(Job::AsyncJob(mut job)) = queued else {
+                    panic!("the map loader must supply its actual native task: {queued:?}")
+                };
+                let host = self.context.host_access();
+                let mut task = TaskContext::from_waker(Waker::noop());
+                assert!(matches!(
+                    job.run_step(&mut task, &host),
+                    surgeist_js::job::JobStep::Prepared
+                ));
+                let surgeist_js::job::JobStep::Complete(result) = job.run_step(&mut task, &host)
+                else {
+                    panic!("the in-memory map loader returns an immediately ready result")
+                };
+                result.unwrap();
+            }
+            assert_eq!(
+                loaded.state(),
+                PromiseState::Fulfilled(JsValue::undefined())
+            );
+            module.link(self.context.access()).unwrap();
+        }
+
+        fn count(&mut self, name: &str) -> JsValue {
+            self.context
+                .global_object()
+                .get(js_string!(name), self.context.access())
+                .unwrap()
+        }
+
+        fn pending_gate(&mut self, name: &str) -> (JsPromise, ResolvingFunctions) {
+            let (gate, resolvers) = JsPromise::new_pending(self.context.access());
+            self.context
+                .global_object()
+                .set(js_string!(name), gate.clone(), true, self.context.access())
+                .unwrap();
+            (gate, resolvers)
+        }
+    }
+
+    #[test]
+    fn interrupted_static_cycle_refuses_root_and_member_aliases_but_preserves_completed_dependency()
+    {
+        let mut graph = GraphFixture::new();
+        let independent = graph.insert(
+            "independent",
+            "globalThis.independentEffects += 1; export const value = 42;",
+        );
+        let root = graph.insert(
+            "cycle-root",
+            "import 'independent'; import 'cycle-member'; globalThis.parentEffects += 1;",
+        );
+        let member = graph.insert("cycle-member", "import 'cycle-root'; globalThis.moduleEffects += 1; for (let step = 0; step < 1000; step++) {}");
+        graph.load_and_link(&root);
+        let completed = evaluate_with_fresh_budget(&independent, &mut graph.context);
+        assert_eq!(
+            completed.state(),
+            PromiseState::Fulfilled(JsValue::undefined())
+        );
+        assert_eq!(graph.count("independentEffects"), 1.into());
+        let root_alias = root.clone();
+        let member_alias = member.clone();
+        super::stop_evaluation(&root, &mut graph.context, INTERRUPTING_LIMIT);
+        assert_eq!(effects(&mut graph.context), 1.into());
+        assert_eq!(graph.count("parentEffects"), 0.into());
+        let still_completed = evaluate_with_fresh_budget(&independent, &mut graph.context);
+        assert_eq!(completed.identity(), still_completed.identity());
+        assert_eq!(graph.count("independentEffects"), 1.into());
+        let observations: Vec<_> = [&root, &root_alias, &member, &member_alias]
+            .into_iter()
+            .map(|entry| {
+                graph
+                    .context
+                    .with_execution(ExecutionOptions::new(LATER_LIMIT), |access| {
+                        entry.evaluate(access)
+                    })
+                    .unwrap()
+            })
+            .collect();
+        for observation in observations {
+            let error = observation
+                .result
+                .expect_err("every root and member alias must refuse native evaluation");
+            assert!(error.as_engine().is_some());
+            assert_eq!(observation.report.instructions(), 0);
+        }
+        assert_eq!(effects(&mut graph.context), 1.into());
+        assert_eq!(graph.count("parentEffects"), 0.into());
+    }
+
+    struct WaitingGraph {
+        graph: GraphFixture,
+        parent: Module,
+        grandparent: Module,
+        parent_promise: JsPromise,
+        grand_promise: JsPromise,
+        sibling_promise: JsPromise,
+        child_gate: JsPromise,
+        child_resolvers: ResolvingFunctions,
+        sibling_gate: JsPromise,
+        sibling_resolvers: ResolvingFunctions,
+        parent_wait: NativeWait,
+        grand_wait: NativeWait,
+    }
+
+    impl WaitingGraph {
+        fn new() -> Self {
+            let mut graph = GraphFixture::new();
+            let (child_gate, child_resolvers) = graph.pending_gate("childGate");
+            let (sibling_gate, sibling_resolvers) = graph.pending_gate("siblingGate");
+            // The child is reached only through its importers. There is no
+            // independently requested child evaluation promise or native wait.
+            graph.insert("child", "await childGate; globalThis.moduleEffects += 1; for (let step = 0; step < 1000; step++) {}");
+            let parent = graph.insert("parent", "import 'child'; globalThis.parentEffects += 1;");
+            let sibling = graph.insert(
+                "sibling",
+                "await siblingGate; globalThis.independentEffects += 1;",
+            );
+            let grandparent = graph.insert(
+                "grandparent",
+                "import 'parent'; import 'sibling'; globalThis.grandEffects += 1;",
+            );
+            graph.load_and_link(&grandparent);
+            let sibling_promise = evaluate_with_fresh_budget(&sibling, &mut graph.context);
+            let parent_promise = evaluate_with_fresh_budget(&parent, &mut graph.context);
+            let grand_promise = evaluate_with_fresh_budget(&grandparent, &mut graph.context);
+            for promise in [&sibling_promise, &parent_promise, &grand_promise] {
+                assert_eq!(promise.state(), PromiseState::Pending);
+            }
+            assert_eq!(graph.count("parentEffects"), 0.into());
+            assert_eq!(graph.count("grandEffects"), 0.into());
+            let parent_wait = NativeWait::subscribe(&parent_promise, &mut graph.context);
+            let grand_wait = NativeWait::subscribe(&grand_promise, &mut graph.context);
+            Self {
+                graph,
+                parent,
+                grandparent,
+                parent_promise,
+                grand_promise,
+                sibling_promise,
+                child_gate,
+                child_resolvers,
+                sibling_gate,
+                sibling_resolvers,
+                parent_wait,
+                grand_wait,
+            }
+        }
+
+        fn interrupt_child(&mut self) {
+            assert_eq!(self.child_gate.state(), PromiseState::Pending);
+            self.child_resolvers
+                .resolve
+                .call(
+                    &JsValue::undefined(),
+                    &[1.into()],
+                    self.graph.context.access(),
+                )
+                .unwrap();
+            self.parent_wait.assert_pending();
+            self.grand_wait.assert_pending();
+            let (direct, outcome) = self
+                .graph
+                .executor
+                .run_next(&mut self.graph.context, INTERRUPTING_LIMIT);
+            assert_instruction_stop(&direct.unwrap_err(), INTERRUPTING_LIMIT);
+            assert_instruction_stop(&outcome.result.unwrap_err(), INTERRUPTING_LIMIT);
+            assert_eq!(outcome.report.instructions(), INTERRUPTING_LIMIT);
+            assert_eq!(effects(&mut self.graph.context), 1.into());
+            assert_eq!(self.graph.count("parentEffects"), 0.into());
+            assert_eq!(self.graph.count("grandEffects"), 0.into());
+            assert_eq!(self.parent_promise.state(), PromiseState::Pending);
+            assert_eq!(self.grand_promise.state(), PromiseState::Pending);
+        }
+
+        fn finish_independent_sibling(&mut self) {
+            // This is a genuinely new settlement of still-pending required
+            // work, not an ignored second resolution of the interrupted gate.
+            assert_eq!(self.sibling_gate.state(), PromiseState::Pending);
+            assert_eq!(self.sibling_promise.state(), PromiseState::Pending);
+            self.sibling_resolvers
+                .resolve
+                .call(
+                    &JsValue::undefined(),
+                    &[2.into()],
+                    self.graph.context.access(),
+                )
+                .unwrap();
+            for _ in 0..8 {
+                if self.sibling_promise.state() != PromiseState::Pending {
+                    break;
+                }
+                let (direct, outcome) = self
+                    .graph
+                    .executor
+                    .run_next(&mut self.graph.context, LATER_LIMIT);
+                direct.unwrap();
+                outcome.result.unwrap();
+            }
+            assert_eq!(
+                self.sibling_promise.state(),
+                PromiseState::Fulfilled(JsValue::undefined())
+            );
+            assert_eq!(self.graph.count("independentEffects"), 1.into());
+            assert_eq!(self.graph.count("parentEffects"), 0.into());
+            assert_eq!(self.graph.count("grandEffects"), 0.into());
+            assert_eq!(self.parent_promise.state(), PromiseState::Pending);
+            assert_eq!(self.grand_promise.state(), PromiseState::Pending);
+        }
+    }
+
+    #[test]
+    fn interruption_wakes_transitive_waiting_parent_and_grandparent_without_a_child_native_promise()
+    {
+        let mut fixture = WaitingGraph::new();
+        fixture.interrupt_child();
+        fixture.parent_wait.assert_interrupted();
+        fixture.grand_wait.assert_interrupted();
+        assert_later_evaluation_is_terminal(&fixture.parent, &mut fixture.graph.context);
+        assert_later_evaluation_is_terminal(&fixture.grandparent, &mut fixture.graph.context);
+        assert_eq!(fixture.graph.count("parentEffects"), 0.into());
+        assert_eq!(fixture.graph.count("grandEffects"), 0.into());
+    }
+
+    #[test]
+    fn late_independent_dependency_settlement_does_not_revive_an_interrupted_importer() {
+        let mut fixture = WaitingGraph::new();
+        fixture.interrupt_child();
+        fixture.finish_independent_sibling();
+        assert_later_evaluation_is_terminal(&fixture.grandparent, &mut fixture.graph.context);
+        assert_eq!(fixture.graph.count("grandEffects"), 0.into());
+        assert_eq!(effects(&mut fixture.graph.context), 1.into());
+    }
+
+    #[test]
+    fn new_importer_of_an_interrupted_dependency_is_refused_before_its_body() {
+        let mut fixture = WaitingGraph::new();
+        fixture.interrupt_child();
+        let importer = fixture.graph.insert(
+            "new-importer",
+            "import 'parent'; globalThis.importerEffects += 1;",
+        );
+        fixture.graph.load_and_link(&importer);
+        assert_later_evaluation_is_terminal(&importer, &mut fixture.graph.context);
+        assert_eq!(fixture.graph.count("importerEffects"), 0.into());
+        assert_eq!(fixture.graph.count("parentEffects"), 0.into());
+        assert_eq!(effects(&mut fixture.graph.context), 1.into());
+    }
+
+    #[test]
+    fn late_sibling_rejection_does_not_publish_guest_rejection_for_interrupted_ancestors() {
+        let mut fixture = WaitingGraph::new();
+        fixture.interrupt_child();
+        assert_eq!(fixture.sibling_gate.state(), PromiseState::Pending);
+        assert_eq!(fixture.sibling_promise.state(), PromiseState::Pending);
+        let reason = JsValue::from(js_string!("authored late sibling rejection"));
+        fixture
+            .sibling_resolvers
+            .reject
+            .call(
+                &JsValue::undefined(),
+                std::slice::from_ref(&reason),
+                fixture.graph.context.access(),
+            )
+            .unwrap();
+        assert_eq!(
+            fixture.sibling_gate.state(),
+            PromiseState::Rejected(reason.clone())
+        );
+        for _ in 0..8 {
+            if fixture.sibling_promise.state() != PromiseState::Pending {
+                break;
+            }
+            let (direct, outcome) = fixture
+                .graph
+                .executor
+                .run_next(&mut fixture.graph.context, LATER_LIMIT);
+            direct.unwrap();
+            outcome.result.unwrap();
+        }
+        assert_eq!(
+            fixture.sibling_promise.state(),
+            PromiseState::Rejected(reason)
+        );
+        assert_eq!(fixture.parent_promise.state(), PromiseState::Pending);
+        assert_eq!(fixture.grand_promise.state(), PromiseState::Pending);
+        assert_eq!(fixture.graph.count("independentEffects"), 0.into());
+        assert_eq!(fixture.graph.count("parentEffects"), 0.into());
+        assert_eq!(fixture.graph.count("grandEffects"), 0.into());
+        assert_eq!(effects(&mut fixture.graph.context), 1.into());
+        assert_later_evaluation_is_terminal(&fixture.parent, &mut fixture.graph.context);
+        assert_later_evaluation_is_terminal(&fixture.grandparent, &mut fixture.graph.context);
+    }
 }
