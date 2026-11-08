@@ -181,7 +181,7 @@ pub(crate) fn decode_uri(
     let encoded_uri = args.get_or_undefined(0);
 
     // 1. Let uriString be ? ToString(encodedURI).
-    let uri_string = encoded_uri.to_string(context)?;
+    let uri_string = encoded_uri.to_string(context.access())?;
 
     // 2. Let reservedURISet be a String containing one instance of each code unit valid in uriReserved plus "#".
     let reserved_uri_set = is_uri_reserved_or_number_sign;
@@ -209,7 +209,7 @@ pub(crate) fn decode_uri_component(
     let encoded_uri_component = args.get_or_undefined(0);
 
     // 1. Let componentString be ? ToString(encodedURIComponent).
-    let component_string = encoded_uri_component.to_string(context)?;
+    let component_string = encoded_uri_component.to_string(context.access())?;
 
     // 2. Let reservedURIComponentSet be the empty String.
     let reserved_uri_component_set = |_: u16| false;
@@ -241,7 +241,7 @@ pub(crate) fn encode_uri(
     let uri = args.get_or_undefined(0);
 
     // 1. Let uriString be ? ToString(uri).
-    let uri_string = uri.to_string(context)?;
+    let uri_string = uri.to_string(context.access())?;
 
     // 2. Let unescapedURISet be a String containing one instance of each code unit valid in uriReserved and uriUnescaped plus "#".
     let unescaped_uri_set = is_uri_reserved_or_uri_unescaped_or_number_sign;
@@ -270,7 +270,7 @@ pub(crate) fn encode_uri_component(
     let uri_component = args.get_or_undefined(0);
 
     // 1. Let componentString be ? ToString(uriComponent).
-    let component_string = uri_component.to_string(context)?;
+    let component_string = uri_component.to_string(context.access())?;
 
     // 2. Let unescapedURIComponentSet be a String containing one instance of each code unit valid in uriUnescaped.
     let unescaped_uri_component_set = is_uri_unescaped;

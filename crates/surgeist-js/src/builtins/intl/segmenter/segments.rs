@@ -81,7 +81,7 @@ impl Segments {
         // 6. Let n be ? ToIntegerOrInfinity(index).
         let Some(n) = args
             .get_or_undefined(0)
-            .to_integer_or_infinity(context)?
+            .to_integer_or_infinity(context.access())?
             .as_integer()
             // 7. If n < 0 or n ≥ len, return undefined.
             .filter(|i| (0..len).contains(i))

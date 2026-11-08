@@ -565,7 +565,7 @@ impl ImportCall {
         let promise = cap.promise().clone();
 
         // 6. Let specifierString be Completion(ToString(specifier)).
-        let specifier_str = match specifier.to_string(context) {
+        let specifier_str = match specifier.to_string(context.access()) {
             Ok(s) => s,
             // 7. IfAbruptRejectPromise(specifierString, promiseCapability).
             Err(err) => {

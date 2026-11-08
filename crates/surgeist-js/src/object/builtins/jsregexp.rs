@@ -237,7 +237,9 @@ impl JsRegExp {
             if v.is_null() {
                 Ok(None)
             } else {
-                let obj = v.to_object(context).js_expect("value must be an array")?;
+                let obj = v
+                    .to_object(context.access())
+                    .js_expect("value must be an array")?;
                 let array = JsArray::from_object(obj)
                     .js_expect("from_object must not fail if value is an array object")?;
                 Ok(Some(array))

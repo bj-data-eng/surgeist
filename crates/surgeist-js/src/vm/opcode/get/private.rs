@@ -22,7 +22,7 @@ impl GetPrivateField {
             .code_block()
             .constant_string(index.into());
         let object = context.vm.get_register(object.into()).clone();
-        let object = object.to_object(context)?;
+        let object = object.to_object(context.access())?;
         let name = context
             .vm
             .frame()

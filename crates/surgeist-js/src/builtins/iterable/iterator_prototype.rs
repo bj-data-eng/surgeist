@@ -305,7 +305,8 @@ impl Iterator {
         // 4. Let numLimit be Completion(ToNumber(limit)).
         // 5. IfAbruptCloseIterator(numLimit, iterated).
         let limit = args.get_or_undefined(0);
-        let num_limit = if_abrupt_close_iterator!(limit.to_number(context), iterated, context);
+        let num_limit =
+            if_abrupt_close_iterator!(limit.to_number(context.access()), iterated, context);
 
         // 6. If numLimit is NaN, throw a RangeError exception.
         if num_limit.is_nan() {
@@ -368,7 +369,8 @@ impl Iterator {
         // 4. Let numLimit be Completion(ToNumber(limit)).
         // 5. IfAbruptCloseIterator(numLimit, iterated).
         let limit = args.get_or_undefined(0);
-        let num_limit = if_abrupt_close_iterator!(limit.to_number(context), iterated, context);
+        let num_limit =
+            if_abrupt_close_iterator!(limit.to_number(context.access()), iterated, context);
 
         // 6. If numLimit is NaN, throw a RangeError exception.
         if num_limit.is_nan() {

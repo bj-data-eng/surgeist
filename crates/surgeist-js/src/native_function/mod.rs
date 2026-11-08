@@ -310,7 +310,7 @@ impl NativeFunction {
     /// ) -> JsResult<JsValue> {
     ///     let arg = args.get_or_undefined(0).clone();
     ///     std::future::ready(()).await;
-    ///     let value = arg.to_u32(&mut context.borrow_mut())?;
+    ///     let value = arg.to_u32(context.borrow_mut().access())?;
     ///     Ok(JsValue::from(value * 2))
     /// }
     /// let callback = NativeFunction::from_async_fn(

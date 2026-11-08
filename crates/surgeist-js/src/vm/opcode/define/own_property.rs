@@ -25,7 +25,7 @@ impl DefineOwnPropertyByName {
             .frame()
             .code_block()
             .constant_string(index.into());
-        let object = object.to_object(context)?;
+        let object = object.to_object(context.access())?;
         object.__define_own_property__(
             &name.into(),
             PropertyDescriptor::builder()
@@ -62,8 +62,8 @@ impl DefineOwnPropertyByValue {
         let value = context.vm.get_register(value.into()).clone();
         let key = context.vm.get_register(key.into()).clone();
         let object = context.vm.get_register(object.into()).clone();
-        let object = object.to_object(context)?;
-        let key = key.to_property_key(context)?;
+        let object = object.to_object(context.access())?;
+        let key = key.to_property_key(context.access())?;
         let success = object.__define_own_property__(
             &key,
             PropertyDescriptor::builder()

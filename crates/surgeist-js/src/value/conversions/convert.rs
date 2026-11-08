@@ -63,7 +63,7 @@ macro_rules! decl_convert_to_int {
         $(
             impl TryFromJs for Convert<$ty> {
                 fn try_from_js(value: &JsValue, context: &mut Context) -> JsResult<Self> {
-                    value.to_numeric_number(context).and_then(|num| {
+                    value.to_numeric_number(context.access()).and_then(|num| {
                         if num.is_finite() {
                             if num >= f64::from(<$ty>::MAX) {
                                 Err(JsNativeError::typ()
@@ -106,7 +106,7 @@ macro_rules! decl_convert_to_float {
         $(
             impl TryFromJs for Convert<$ty> {
                 fn try_from_js(value: &JsValue, context: &mut Context) -> JsResult<Self> {
-                    value.to_numeric_number(context).and_then(|num| Ok(Convert(<$ty>::try_from(num).map_err(|_| {
+                    value.to_numeric_number(context.access()).and_then(|num| Ok(Convert(<$ty>::try_from(num).map_err(|_| {
                         JsNativeError::typ()
                             .with_message("cannot convert value to float")
                     })?)))
@@ -121,7 +121,7 @@ decl_convert_to_float!(f64);
 impl TryFromJs for Convert<String> {
     fn try_from_js(value: &JsValue, context: &mut Context) -> JsResult<Self> {
         value
-            .to_string(context)
+            .to_string(context.access())
             .and_then(|s| s.to_std_string().map_err(|_| JsNativeError::typ().into()))
             .map(Convert)
     }
@@ -129,7 +129,7 @@ impl TryFromJs for Convert<String> {
 
 impl TryFromJs for Convert<JsString> {
     fn try_from_js(value: &JsValue, context: &mut Context) -> JsResult<Self> {
-        value.to_string(context).map(Convert)
+        value.to_string(context.access()).map(Convert)
     }
 }
 

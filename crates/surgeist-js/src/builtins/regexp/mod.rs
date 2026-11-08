@@ -329,7 +329,7 @@ impl RegExp {
         let p = if pattern.is_undefined() {
             js_string!()
         } else {
-            pattern.to_string(context)?
+            pattern.to_string(context.access())?
         };
 
         // 3. If flags is undefined, let F be the empty String.
@@ -337,7 +337,7 @@ impl RegExp {
         let f = if flags.is_undefined() {
             js_string!()
         } else {
-            flags.to_string(context)?
+            flags.to_string(context.access())?
         };
 
         // 5. If F contains any code unit other than "g", "i", "m", "s", "u", "v", or "y"
@@ -998,7 +998,7 @@ impl RegExp {
             .first()
             .cloned()
             .unwrap_or_default()
-            .to_string(context)?;
+            .to_string(context.access())?;
 
         // 4. Let match be ? RegExpExec(R, string).
         let m = Self::abstract_exec(&this, arg_str, context)?;
@@ -1038,7 +1038,7 @@ impl RegExp {
             })?;
 
         // 3. Let S be ? ToString(string).
-        let arg_str = args.get_or_undefined(0).to_string(context)?;
+        let arg_str = args.get_or_undefined(0).to_string(context.access())?;
 
         // 4. Return ? RegExpBuiltinExec(R, S).
         (Self::abstract_builtin_exec(obj, &arg_str, context)?)
@@ -1109,7 +1109,7 @@ impl RegExp {
         // 2. Let lastIndex be ℝ(? ToLength(? Get(R, "lastIndex"))).
         let mut last_index = this
             .get(js_string!("lastIndex"), context)?
-            .to_length(context)?;
+            .to_length(context.access())?;
 
         // 3. Let flags be R.[[OriginalFlags]].
         let flags = &rx.original_flags;
@@ -1393,10 +1393,12 @@ impl RegExp {
         };
 
         // 3. Let S be ? ToString(string).
-        let arg_str = args.get_or_undefined(0).to_string(context)?;
+        let arg_str = args.get_or_undefined(0).to_string(context.access())?;
 
         // 4. Let flags be ? ToString(? Get(rx, "flags")).
-        let flags = rx.get(js_string!("flags"), context)?.to_string(context)?;
+        let flags = rx
+            .get(js_string!("flags"), context)?
+            .to_string(context.access())?;
 
         // 5. If flags does not contain "g", then
         if !flags.contains(b'g') {
@@ -1428,7 +1430,7 @@ impl RegExp {
             // iii. Else,
             if let Some(result) = result {
                 // 1. Let matchStr be ? ToString(? Get(result, "0")).
-                let match_str = result.get(0, context)?.to_string(context)?;
+                let match_str = result.get(0, context)?.to_string(context.access())?;
 
                 // 2. Perform ! CreateDataPropertyOrThrow(A, ! ToString(𝔽(n)), matchStr).
                 a.create_data_property_or_throw(n, match_str.clone(), context)?;
@@ -1438,7 +1440,7 @@ impl RegExp {
                     // a. Let thisIndex be ℝ(? ToLength(? Get(rx, "lastIndex"))).
                     let this_index = rx
                         .get(js_string!("lastIndex"), context)?
-                        .to_length(context)?;
+                        .to_length(context.access())?;
 
                     // b. Let nextIndex be AdvanceStringIndex(S, thisIndex, fullUnicode).
                     let next_index = advance_string_index(&arg_str, this_index, full_unicode);
@@ -1491,12 +1493,12 @@ impl RegExp {
         // 3. Let pattern be ? ToString(? Get(R, "source")).
         let pattern = regexp
             .get(js_string!("source"), context)?
-            .to_string(context)?;
+            .to_string(context.access())?;
 
         // 4. Let flags be ? ToString(? Get(R, "flags")).
         let flags = regexp
             .get(js_string!("flags"), context)?
-            .to_string(context)?;
+            .to_string(context.access())?;
 
         // 5. Let result be the string-concatenation of "/", pattern, "/", and flags.
         // 6. Return result.
@@ -1526,7 +1528,7 @@ impl RegExp {
         })?;
 
         // 3. Let S be ? ToString(string).
-        let arg_str = args.get_or_undefined(0).to_string(context)?;
+        let arg_str = args.get_or_undefined(0).to_string(context.access())?;
 
         // 4. Let C be ? SpeciesConstructor(R, %RegExp%).
         let c = regexp.species_constructor(StandardConstructors::regexp, context)?;
@@ -1534,7 +1536,7 @@ impl RegExp {
         // 5. Let flags be ? ToString(? Get(R, "flags")).
         let flags = regexp
             .get(js_string!("flags"), context)?
-            .to_string(context)?;
+            .to_string(context.access())?;
 
         // 6. Let matcher be ? Construct(C, « R, flags »).
         let matcher = c.construct(&[this.clone(), flags.clone().into()], Some(&c), context)?;
@@ -1542,7 +1544,7 @@ impl RegExp {
         // 7. Let lastIndex be ? ToLength(? Get(R, "lastIndex")).
         let last_index = regexp
             .get(js_string!("lastIndex"), context)?
-            .to_length(context)?;
+            .to_length(context.access())?;
 
         // 8. Perform ? Set(matcher, "lastIndex", lastIndex, true).
         matcher.set(js_string!("lastIndex"), last_index, true, context)?;
@@ -1597,7 +1599,7 @@ impl RegExp {
         })?;
 
         // 3. Let S be ? ToString(string).
-        let s = args.get_or_undefined(0).to_string(context)?;
+        let s = args.get_or_undefined(0).to_string(context.access())?;
 
         // 4. Let lengthS be the length of S.
         let length_s = s.len();
@@ -1612,11 +1614,13 @@ impl RegExp {
             CallableOrString::FunctionalReplace(callable)
         } else {
             // a. Set replaceValue to ? ToString(replaceValue).
-            CallableOrString::ReplaceValue(replace_value.to_string(context)?)
+            CallableOrString::ReplaceValue(replace_value.to_string(context.access())?)
         };
 
         // 7. Let flags be ? ToString(? Get(rx, "flags")).
-        let flags = rx.get(js_string!("flags"), context)?.to_string(context)?;
+        let flags = rx
+            .get(js_string!("flags"), context)?
+            .to_string(context.access())?;
 
         // 8. If flags contains "g", let global be true. Otherwise, let global be false.
         let global = flags.contains(b'g');
@@ -1664,14 +1668,14 @@ impl RegExp {
 
             //  iii. Else,
             //    1. Let matchStr be ? ToString(? Get(result, "0")).
-            let match_str = result.get(0, context)?.to_string(context)?;
+            let match_str = result.get(0, context)?.to_string(context.access())?;
 
             //    2. If matchStr is the empty String, then
             if match_str.is_empty() {
                 // a. Let thisIndex be ℝ(? ToLength(? Get(rx, "lastIndex"))).
                 let this_index = rx
                     .get(js_string!("lastIndex"), context)?
-                    .to_length(context)?;
+                    .to_length(context.access())?;
 
                 // b. Let nextIndex be AdvanceStringIndex(S, thisIndex, fullUnicode).
                 let next_index = advance_string_index(&s, this_index, full_unicode);
@@ -1704,7 +1708,7 @@ impl RegExp {
             let n_captures = std::cmp::max(result_length - 1, 0);
 
             // c. Let matched be ? ToString(? Get(result, "0")).
-            let matched = result.get(0, context)?.to_string(context)?;
+            let matched = result.get(0, context)?.to_string(context.access())?;
 
             // d. Let matchLength be the length of matched.
             let match_length = matched.len();
@@ -1712,7 +1716,7 @@ impl RegExp {
             // e. Let position be ? ToIntegerOrInfinity(? Get(result, "index")).
             let position = result
                 .get(js_string!("index"), context)?
-                .to_integer_or_infinity(context)?;
+                .to_integer_or_infinity(context.access())?;
 
             // f. Set position to the result of clamping position between 0 and lengthS.
             let position = position.clamp_finite(0, length_s as i64) as usize;
@@ -1729,7 +1733,7 @@ impl RegExp {
                 // ii. If capN is not undefined, then
                 if !cap_n.is_undefined() {
                     // 1. Set capN to ? ToString(capN).
-                    cap_n = cap_n.to_string(context)?.into();
+                    cap_n = cap_n.to_string(context.access())?.into();
                 }
 
                 // iii. Append capN to captures.
@@ -1765,14 +1769,14 @@ impl RegExp {
                         replace_value.call(&JsValue::undefined(), &replacer_args, context)?;
 
                     // iv. Let replacement be ? ToString(replValue).
-                    repl_value.to_string(context)?
+                    repl_value.to_string(context.access())?
                 }
                 // l. Else,
                 CallableOrString::ReplaceValue(ref replace_value) => {
                     // i. If namedCaptures is not undefined, then
                     if !named_captures.is_undefined() {
                         // 1. Set namedCaptures to ? ToObject(namedCaptures).
-                        named_captures = named_captures.to_object(context)?.into();
+                        named_captures = named_captures.to_object(context.access())?.into();
                     }
 
                     // ii. Let replacement be ? GetSubstitution(matched, S, position, captures, namedCaptures, replaceValue).
@@ -1840,7 +1844,7 @@ impl RegExp {
         })?;
 
         // 3. Let S be ? ToString(string).
-        let arg_str = args.get_or_undefined(0).to_string(context)?;
+        let arg_str = args.get_or_undefined(0).to_string(context.access())?;
 
         // 4. Let previousLastIndex be ? Get(rx, "lastIndex").
         let previous_last_index = rx.get(js_string!("lastIndex"), context)?;
@@ -1894,13 +1898,15 @@ impl RegExp {
         })?;
 
         // 3. Let S be ? ToString(string).
-        let arg_str = args.get_or_undefined(0).to_string(context)?;
+        let arg_str = args.get_or_undefined(0).to_string(context.access())?;
 
         // 4. Let C be ? SpeciesConstructor(rx, %RegExp%).
         let constructor = rx.species_constructor(StandardConstructors::regexp, context)?;
 
         // 5. Let flags be ? ToString(? Get(rx, "flags")).
-        let flags = rx.get(js_string!("flags"), context)?.to_string(context)?;
+        let flags = rx
+            .get(js_string!("flags"), context)?
+            .to_string(context.access())?;
 
         // 6. If flags contains "u", let unicodeMatching be true.
         // 7. Else, let unicodeMatching be false.
@@ -1932,7 +1938,7 @@ impl RegExp {
         let lim = if limit.is_undefined() {
             u32::MAX
         } else {
-            limit.to_u32(context)?
+            limit.to_u32(context.access())?
         };
 
         // 14. If lim is 0, return A.
@@ -1979,7 +1985,7 @@ impl RegExp {
                 // i. Let e be ℝ(? ToLength(? Get(splitter, "lastIndex"))).
                 let mut e = splitter
                     .get(js_string!("lastIndex"), context)?
-                    .to_length(context)?;
+                    .to_length(context.access())?;
 
                 // ii. Set e to min(e, size).
                 e = std::cmp::min(e, size);

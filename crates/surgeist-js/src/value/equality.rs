@@ -111,7 +111,7 @@ impl JsValue {
                 | JsVariant::BigInt(_)
                 | JsVariant::Symbol(_),
             ) => {
-                let primitive = self.to_primitive(context, PreferredType::Default)?;
+                let primitive = self.to_primitive(context.access(), PreferredType::Default)?;
                 return Ok(primitive
                     .equals(other, context)
                     .expect("should not fail according to spec"));
@@ -127,7 +127,7 @@ impl JsValue {
                 | JsVariant::Symbol(_),
                 JsVariant::Object(_),
             ) => {
-                let primitive = other.to_primitive(context, PreferredType::Default)?;
+                let primitive = other.to_primitive(context.access(), PreferredType::Default)?;
                 return Ok(primitive
                     .equals(self, context)
                     .expect("should not fail according to spec"));

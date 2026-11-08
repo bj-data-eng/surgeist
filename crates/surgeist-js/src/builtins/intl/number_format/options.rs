@@ -5,7 +5,6 @@ use fixed_decimal::{
     UnsignedRoundingMode,
 };
 
-use surgeist_js_macros::js_str;
 use icu_decimal::{
     DecimalFormatterPreferences, preferences::NumberingSystem, provider::DecimalSymbolsV1,
 };
@@ -16,6 +15,7 @@ use icu_provider::{
         LanguageIdentifier, extensions::unicode, preferences::LocalePreferences,
     },
 };
+use surgeist_js_macros::js_str;
 use tinystr::TinyAsciiStr;
 
 use crate::{
@@ -34,7 +34,11 @@ use crate::{
 
 impl OptionType for SignedRoundingMode {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        match value.to_string(context)?.to_std_string_escaped().as_str() {
+        match value
+            .to_string(context.access())?
+            .to_std_string_escaped()
+            .as_str()
+        {
             "expand" => Ok(Self::Unsigned(UnsignedRoundingMode::Expand)),
             "trunc" => Ok(Self::Unsigned(UnsignedRoundingMode::Trunc)),
             "halfExpand" => Ok(Self::Unsigned(UnsignedRoundingMode::HalfExpand)),
@@ -53,7 +57,7 @@ impl OptionType for SignedRoundingMode {
 
 impl OptionType for NumberingSystem {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        let s = value.to_string(context)?.to_std_string_escaped();
+        let s = value.to_string(context.access())?.to_std_string_escaped();
         Value::try_from_str(&s)
             .ok()
             .and_then(|v| NumberingSystem::try_from(v).ok())
@@ -1183,7 +1187,7 @@ impl ParsableOptionType for TrailingZeroDisplay {}
 
 impl OptionType for SignDisplay {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        match value.to_string(context)?.to_std_string_escaped().as_str() {
+        match value.to_string(context.access())?.to_std_string_escaped().as_str() {
             "auto" => Ok(Self::Auto),
             "never" => Ok(Self::Never),
             "always" => Ok(Self::Always),

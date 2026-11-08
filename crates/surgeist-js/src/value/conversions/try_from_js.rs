@@ -1,9 +1,9 @@
 //! This module contains the [`TryFromJs`] trait, and conversions to basic Rust types.
 
 use crate::{Context, JsBigInt, JsNativeError, JsObject, JsResult, JsString, JsValue, js_error};
-use surgeist_js_string::StaticJsStrings;
 use num_bigint::BigInt;
 use num_traits::AsPrimitive;
+use surgeist_js_string::StaticJsStrings;
 
 mod collections;
 mod tuples;
@@ -122,7 +122,7 @@ where
         if length.is_null_or_undefined() {
             return Err(js_error!(TypeError: "Not an array"));
         }
-        let length = length.to_length(context)?;
+        let length = length.to_length(context.access())?;
 
         let length = match usize::try_from(length) {
             Ok(length) => length,
@@ -274,8 +274,8 @@ fn integer_floating_js_value_to_integer() {
 
 #[test]
 fn value_into_vec() {
-    use surgeist_js::{TestAction, run_test_actions};
     use indoc::indoc;
+    use surgeist_js::{TestAction, run_test_actions};
 
     #[derive(Debug, PartialEq, Eq, surgeist_js_macros::TryFromJs)]
     struct TestStruct {
@@ -333,8 +333,8 @@ fn value_into_vec() {
 
 #[test]
 fn value_into_tuple() {
-    use surgeist_js::{TestAction, run_test_actions};
     use indoc::indoc;
+    use surgeist_js::{TestAction, run_test_actions};
 
     run_test_actions([
         TestAction::assert_with_op(indoc! {r#" [42, "hello", true] "#}, |value, context| {
@@ -383,8 +383,8 @@ fn value_into_tuple() {
 
 #[test]
 fn value_into_map() {
-    use surgeist_js::{TestAction, run_test_actions};
     use indoc::indoc;
+    use surgeist_js::{TestAction, run_test_actions};
 
     run_test_actions([
         TestAction::assert_with_op(indoc! {r#" ({ a: 1, b: 2, c: 3 }) "#}, |value, context| {
@@ -428,8 +428,8 @@ fn value_into_map() {
 
 #[test]
 fn js_map_into_rust_map() -> JsResult<()> {
-    use surgeist_js::Source;
     use std::collections::{BTreeMap, HashMap};
+    use surgeist_js::Source;
 
     let js_code = "new Map([['a', 1], ['b', 3], ['aboba', 42024]])";
     let mut context = Context::default();

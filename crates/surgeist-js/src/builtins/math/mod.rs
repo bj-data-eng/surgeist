@@ -114,7 +114,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToNumber(x).
-            .to_number(context)?
+            .to_number(context.access())?
             // 3. If n is -0𝔽, return +0𝔽.
             // 2. If n is NaN, return NaN.
             // 4. If n is -∞𝔽, return +∞𝔽.
@@ -136,7 +136,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToNumber(x).
-            .to_number(context)?
+            .to_number(context.access())?
             // 2. If n is NaN, n > 1𝔽, or n < -1𝔽, return NaN.
             // 3. If n is 1𝔽, return +0𝔽.
             // 4. Return an implementation-approximated value representing the result of the inverse cosine of ℝ(n).
@@ -157,7 +157,7 @@ impl Math {
         const ACOSH_LARGE_INPUT_THRESHOLD: f64 = 67_108_864.0;
 
         // 1. Let n be ? ToNumber(x).
-        let n = args.get_or_undefined(0).to_number(context)?;
+        let n = args.get_or_undefined(0).to_number(context.access())?;
         if n.is_finite() && n > ACOSH_LARGE_INPUT_THRESHOLD {
             return Ok((n.ln() + std::f64::consts::LN_2).into());
         }
@@ -181,7 +181,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToNumber(x).
-            .to_number(context)?
+            .to_number(context.access())?
             // 2. If n is NaN, n is +0𝔽, or n is -0𝔽, return n.
             // 3. If n > 1𝔽 or n < -1𝔽, return NaN.
             // 4. Return an implementation-approximated value representing the result of the inverse sine of ℝ(n).
@@ -202,7 +202,7 @@ impl Math {
         const ASINH_LARGE_INPUT_THRESHOLD: f64 = 67_108_864.0;
 
         // 1. Let n be ? ToNumber(x).
-        let n = args.get_or_undefined(0).to_number(context)?;
+        let n = args.get_or_undefined(0).to_number(context.access())?;
         if n.is_finite() && n.abs() > ASINH_LARGE_INPUT_THRESHOLD {
             return Ok((n.signum()
                 * (n.abs().ln() + std::f64::consts::LN_2 + 0.25 * n.recip() * n.recip()))
@@ -226,7 +226,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToNumber(x).
-            .to_number(context)?
+            .to_number(context.access())?
             // 2. If n is NaN, n is +0𝔽, or n is -0𝔽, return n.
             // 3. If n is +∞𝔽, return an implementation-approximated value representing π / 2.
             // 4. If n is -∞𝔽, return an implementation-approximated value representing -π / 2.
@@ -247,7 +247,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToNumber(x).
-            .to_number(context)?
+            .to_number(context.access())?
             // 2. If n is NaN, n is +0𝔽, or n is -0𝔽, return n.
             // 3. If n > 1𝔽 or n < -1𝔽, return NaN.
             // 4. If n is 1𝔽, return +∞𝔽.
@@ -267,10 +267,10 @@ impl Math {
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/atan2
     pub(crate) fn atan2(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         // 1. Let ny be ? ToNumber(y).
-        let y = args.get_or_undefined(0).to_number(context)?;
+        let y = args.get_or_undefined(0).to_number(context.access())?;
 
         // 2. Let nx be ? ToNumber(x).
-        let x = args.get_or_undefined(1).to_number(context)?;
+        let x = args.get_or_undefined(1).to_number(context.access())?;
 
         // 4. If ny is +∞𝔽, then
         // a. If nx is +∞𝔽, return an implementation-approximated value representing π / 4.
@@ -312,7 +312,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToNumber(x).
-            .to_number(context)?
+            .to_number(context.access())?
             // 2. If n is NaN, n is +0𝔽, n is -0𝔽, n is +∞𝔽, or n is -∞𝔽, return n.
             // 3. Return an implementation-approximated value representing the result of the cube root of ℝ(n).
             .cbrt()
@@ -331,7 +331,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToNumber(x).
-            .to_number(context)?
+            .to_number(context.access())?
             // 2. If n is NaN, n is +0𝔽, n is -0𝔽, n is +∞𝔽, or n is -∞𝔽, return n.
             // 3. If n < +0𝔽 and n > -1𝔽, return -0𝔽.
             // 4. If n is an integral Number, return n.
@@ -352,7 +352,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToUint32(x).
-            .to_u32(context)?
+            .to_u32(context.access())?
             // 2. Let p be the number of leading zero bits in the unsigned 32-bit binary representation of n.
             // 3. Return 𝔽(p).
             .leading_zeros()
@@ -371,7 +371,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToNumber(x).
-            .to_number(context)?
+            .to_number(context.access())?
             // 2. If n is NaN, n is +∞𝔽, or n is -∞𝔽, return NaN.
             // 3. If n is +0𝔽 or n is -0𝔽, return 1𝔽.
             // 4. Return an implementation-approximated value representing the result of the cosine of ℝ(n).
@@ -391,7 +391,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToNumber(x).
-            .to_number(context)?
+            .to_number(context.access())?
             // 2. If n is NaN, return NaN.
             // 3. If n is +∞𝔽 or n is -∞𝔽, return +∞𝔽.
             // 4. If n is +0𝔽 or n is -0𝔽, return 1𝔽.
@@ -412,7 +412,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToNumber(x).
-            .to_number(context)?
+            .to_number(context.access())?
             // 2. If n is NaN or n is +∞𝔽, return n.
             // 3. If n is +0𝔽 or n is -0𝔽, return 1𝔽.
             // 4. If n is -∞𝔽, return +0𝔽.
@@ -435,7 +435,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToNumber(x).
-            .to_number(context)?
+            .to_number(context.access())?
             // 2. If n is NaN, n is +0𝔽, n is -0𝔽, or n is +∞𝔽, return n.
             // 3. If n is -∞𝔽, return -1𝔽.
             // 4. Return an implementation-approximated value representing the result of subtracting 1 from the exponential function of ℝ(n).
@@ -455,7 +455,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToNumber(x).
-            .to_number(context)?
+            .to_number(context.access())?
             // 2. If n is NaN, n is +0𝔽, n is -0𝔽, n is +∞𝔽, or n is -∞𝔽, return n.
             // 3. If n < 1𝔽 and n > +0𝔽, return +0𝔽.
             // 4. If n is an integral Number, return n.
@@ -483,7 +483,7 @@ impl Math {
         let num = args
             .get_or_undefined(0)
             //1. Let n be ? ToNumber(x).
-            .to_number(context)?;
+            .to_number(context.access())?;
 
         // 2. If n is NaN, return NaN.
         // 3. If n is one of +0𝔽, -0𝔽, +∞𝔽, or -∞𝔽, return n.
@@ -507,7 +507,7 @@ impl Math {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let n be ? ToNumber(x).
-        let x = args.get_or_undefined(0).to_number(context)?;
+        let x = args.get_or_undefined(0).to_number(context.access())?;
 
         // 2. If n is NaN, return NaN.
         // 3. If n is one of +0𝔽, -0𝔽, +∞𝔽, or -∞𝔽, return n.
@@ -534,7 +534,7 @@ impl Math {
         // 5. For each element number of coerced, do
         let mut result = 0f64;
         for arg in args {
-            let num = arg.to_number(context)?;
+            let num = arg.to_number(context.access())?;
             // a. If number is +∞𝔽 or number is -∞𝔽, return +∞𝔽.
             // 4. Let onlyZero be true.
             // a. If number is NaN, return NaN.
@@ -557,10 +557,10 @@ impl Math {
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/imul
     pub(crate) fn imul(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         // 1. Let a be ℝ(? ToUint32(x)).
-        let x = args.get_or_undefined(0).to_u32(context)?;
+        let x = args.get_or_undefined(0).to_u32(context.access())?;
 
         // 2. Let b be ℝ(? ToUint32(y)).
-        let y = args.get_or_undefined(1).to_u32(context)?;
+        let y = args.get_or_undefined(1).to_u32(context.access())?;
 
         // 3. Let product be (a × b) modulo 2^32.
         // 4. If product ≥ 2^31, return 𝔽(product - 2^32); otherwise return 𝔽(product).
@@ -579,7 +579,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToNumber(x).
-            .to_number(context)?
+            .to_number(context.access())?
             // 2. If n is NaN or n is +∞𝔽, return n.
             // 3. If n is 1𝔽, return +0𝔽.
             // 4. If n is +0𝔽 or n is -0𝔽, return -∞𝔽.
@@ -601,7 +601,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToNumber(x).
-            .to_number(context)?
+            .to_number(context.access())?
             // 2. If n is NaN, n is +0𝔽, n is -0𝔽, or n is +∞𝔽, return n.
             // 3. If n is -1𝔽, return -∞𝔽.
             // 4. If n < -1𝔽, return NaN.
@@ -622,7 +622,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToNumber(x).
-            .to_number(context)?
+            .to_number(context.access())?
             // 2. If n is NaN or n is +∞𝔽, return n.
             // 3. If n is 1𝔽, return +0𝔽.
             // 4. If n is +0𝔽 or n is -0𝔽, return -∞𝔽.
@@ -644,7 +644,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToNumber(x).
-            .to_number(context)?
+            .to_number(context.access())?
             // 2. If n is NaN or n is +∞𝔽, return n.
             // 3. If n is 1𝔽, return +0𝔽.
             // 4. If n is +0𝔽 or n is -0𝔽, return -∞𝔽.
@@ -672,7 +672,7 @@ impl Math {
         // 4. For each element number of coerced, do
         for arg in args {
             // a. Let n be ? ToNumber(arg).
-            let num = arg.to_number(context)?;
+            let num = arg.to_number(context.access())?;
 
             highest = if highest.is_nan() {
                 continue;
@@ -710,7 +710,7 @@ impl Math {
         // 4. For each element number of coerced, do
         for arg in args {
             // a. Let n be ? ToNumber(arg).
-            let num = arg.to_number(context)?;
+            let num = arg.to_number(context.access())?;
 
             lowest = if lowest.is_nan() {
                 continue;
@@ -741,10 +741,10 @@ impl Math {
     #[allow(clippy::float_cmp)]
     pub(crate) fn pow(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         // 1. Set base to ? ToNumber(base).
-        let x = args.get_or_undefined(0).to_number(context)?;
+        let x = args.get_or_undefined(0).to_number(context.access())?;
 
         // 2. Set exponent to ? ToNumber(exponent).
-        let y = args.get_or_undefined(1).to_number(context)?;
+        let y = args.get_or_undefined(1).to_number(context.access())?;
 
         // 3. Return Number::exponentiate(base, exponent).
 
@@ -799,7 +799,7 @@ impl Math {
         let num = args
             .get_or_undefined(0)
             //1. Let n be ? ToNumber(x).
-            .to_number(context)?;
+            .to_number(context.access())?;
 
         //2. If n is NaN, +∞𝔽, -∞𝔽, or an integral Number, return n.
         //3. If n < 0.5𝔽 and n > +0𝔽, return +0𝔽.
@@ -823,7 +823,7 @@ impl Math {
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/sign
     pub(crate) fn sign(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         // 1. Let n be ? ToNumber(x).
-        let n = args.get_or_undefined(0).to_number(context)?;
+        let n = args.get_or_undefined(0).to_number(context.access())?;
 
         // 2. If n is NaN, n is +0𝔽, or n is -0𝔽, return n.
         if n == 0f64 {
@@ -846,7 +846,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToNumber(x).
-            .to_number(context)?
+            .to_number(context.access())?
             // 2. If n is NaN, n is +0𝔽, or n is -0𝔽, return n.
             // 3. If n is +∞𝔽 or n is -∞𝔽, return NaN.
             // 4. Return an implementation-approximated value representing the result of the sine of ℝ(n).
@@ -866,7 +866,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToNumber(x).
-            .to_number(context)?
+            .to_number(context.access())?
             // 2. If n is NaN, n is +0𝔽, n is -0𝔽, n is +∞𝔽, or n is -∞𝔽, return n.
             // 3. Return an implementation-approximated value representing the result of the hyperbolic sine of ℝ(n).
             .sinh()
@@ -885,7 +885,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToNumber(x).
-            .to_number(context)?
+            .to_number(context.access())?
             // 2. If n is NaN, n is +0𝔽, n is -0𝔽, or n is +∞𝔽, return n.
             // 3. If n < +0𝔽, return NaN.
             // 4. Return an implementation-approximated value representing the result of the square root of ℝ(n).
@@ -905,7 +905,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToNumber(x).
-            .to_number(context)?
+            .to_number(context.access())?
             // 2. If n is NaN, n is +0𝔽, or n is -0𝔽, return n.
             // 3. If n is +∞𝔽, or n is -∞𝔽, return NaN.
             // 4. Return an implementation-approximated value representing the result of the tangent of ℝ(n).
@@ -925,7 +925,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToNumber(x).
-            .to_number(context)?
+            .to_number(context.access())?
             // 2. If n is NaN, n is +0𝔽, or n is -0𝔽, return n.
             // 3. If n is +∞𝔽, return 1𝔽.
             // 4. If n is -∞𝔽, return -1𝔽.
@@ -946,7 +946,7 @@ impl Math {
         Ok(args
             .get_or_undefined(0)
             // 1. Let n be ? ToNumber(x).
-            .to_number(context)?
+            .to_number(context.access())?
             // 2. If n is NaN, n is +0𝔽, n is -0𝔽, n is +∞𝔽, or n is -∞𝔽, return n.
             // 3. If n < 1𝔽 and n > +0𝔽, return +0𝔽.
             // 4. If n < +0𝔽 and n > -1𝔽, return -0𝔽.

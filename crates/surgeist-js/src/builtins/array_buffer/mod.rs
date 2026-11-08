@@ -452,7 +452,7 @@ impl BuiltInConstructor for ArrayBuffer {
         }
 
         // 2. Let byteLength be ? ToIndex(length).
-        let byte_len = args.get_or_undefined(0).to_index(context)?;
+        let byte_len = args.get_or_undefined(0).to_index(context.access())?;
 
         // 3. Let requestedMaxByteLength be ? GetArrayBufferMaxByteLengthOption(options).
         let max_byte_len = get_max_byte_len(args.get_or_undefined(1), context)?;
@@ -629,7 +629,7 @@ impl ArrayBuffer {
         buf.borrow().data().resizable_limit()?;
 
         // 4. Let newByteLength be ? ToIndex(newLength).
-        let new_byte_length = args.get_or_undefined(0).to_index(context)?;
+        let new_byte_length = args.get_or_undefined(0).to_index(context.access())?;
 
         // 5–6. Validate the source before asking the host to admit an allocation.
         let capacity = buf
@@ -812,7 +812,7 @@ impl ArrayBuffer {
         } else {
             // 4. Else,
             //     a. Let newByteLength be ? ToIndex(newLength).
-            new_length.to_index(context)?
+            new_length.to_index(context.access())?
         };
 
         let needs_allocation = {
@@ -970,7 +970,7 @@ fn get_max_byte_len(options: &JsValue, context: &mut Context) -> JsResult<Option
     }
 
     // 4. Return ? ToIndex(maxByteLength).
-    max_byte_len.to_index(context).map(Some)
+    max_byte_len.to_index(context.access()).map(Some)
 }
 
 /// `CreateByteDataBlock ( size )` abstract operation.

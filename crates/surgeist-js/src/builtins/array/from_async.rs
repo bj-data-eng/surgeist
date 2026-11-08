@@ -84,7 +84,7 @@ impl Array {
             else {
                 // i. NOTE: asyncItems is neither an AsyncIterable nor an Iterable so assume it is an array-like object.
                 // ii. Let arrayLike be ! ToObject(asyncItems).
-                let array_like = async_items.to_object(context)?;
+                let array_like = async_items.to_object(context.access())?;
 
                 // iii. Let len be ? LengthOfArrayLike(arrayLike).
                 let len = array_like.length_of_array_like(context)?;

@@ -507,11 +507,11 @@ impl BuiltInFunctionObject {
             // 8. For each element arg of parameterArgs, do
             for param in params {
                 // a. Append ? ToString(arg) to parameterStrings.
-                parameters.push(param.to_string(context)?);
+                parameters.push(param.to_string(context.access())?);
             }
 
             // 9. Let bodyString be ? ToString(bodyArg).
-            let body = body.to_string(context)?;
+            let body = body.to_string(context.access())?;
 
             (body, parameters)
         } else {
@@ -879,7 +879,7 @@ impl BuiltInFunctionObject {
             if target_len.is_number() {
                 // 1. Let targetLenAsInt be ! ToIntegerOrInfinity(targetLen).
                 match target_len
-                    .to_integer_or_infinity(context)
+                    .to_integer_or_infinity(context.access())
                     .js_expect("to_integer_or_infinity cannot fail for a number")?
                 {
                     // i. If targetLen is +∞𝔽, set L to +∞.
@@ -984,7 +984,7 @@ impl BuiltInFunctionObject {
                 if value.is_null_or_undefined() {
                     js_string!()
                 } else {
-                    value.to_string(context)?
+                    value.to_string(context.access())?
                 }
             };
             return Ok(
@@ -1198,7 +1198,7 @@ pub(crate) fn function_call(
             ThisBindingStatus::initialized(this)
         } else {
             let this: JsValue = this
-                .to_object(context)
+                .to_object(context.access())
                 .js_expect("conversion cannot fail")?
                 .into();
             context.vm.frame_mut().flags |= CallFrameFlags::THIS_VALUE_CACHED;

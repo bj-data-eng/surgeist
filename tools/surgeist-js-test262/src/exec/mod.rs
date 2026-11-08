@@ -635,7 +635,7 @@ fn register_print_fn(context: &mut Context, async_result: AsyncResult) -> JsResu
             |_, args, async_result, context| {
                 let message = args
                     .get_or_undefined(0)
-                    .to_string(context)?
+                    .to_string(context.access())?
                     .to_std_string_escaped();
                 let mut result = async_result.inner.borrow_mut();
 

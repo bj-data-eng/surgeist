@@ -96,7 +96,7 @@ impl BuiltInConstructor for AggregateError {
         let message = args.get_or_undefined(1);
         if !message.is_undefined() {
             // a. Let msg be ? ToString(message).
-            let msg = message.to_string(context)?;
+            let msg = message.to_string(context.access())?;
 
             // b. Perform CreateNonEnumerableDataPropertyOrThrow(O, "message", msg).
             o.create_non_enumerable_data_property_or_throw(js_string!("message"), msg, context);

@@ -66,7 +66,7 @@ fn get_set_record(obj: &JsValue, context: &mut Context) -> JsResult<SetRecord> {
 
     // 3. Let numSize be ? ToNumber(rawSize).
     // 4. NOTE: If rawSize is undefined, then numSize will be NaN.
-    let num_size = raw_size.to_number(context)?;
+    let num_size = raw_size.to_number(context.access())?;
 
     // 5. If numSize is NaN, throw a TypeError exception.
     if num_size.is_nan() {

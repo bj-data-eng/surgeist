@@ -10,6 +10,8 @@ use surgeist_js::{
     Context, JsValue, Script, Source,
     error::{EngineError, RuntimeLimitError},
     execution::{ExecutionOptions, ExecutionTermination, ProfileMode},
+    js_string,
+    value::{IntegerOrInfinity, PreferredType},
 };
 
 #[test]
@@ -214,6 +216,175 @@ fn script_compilation_and_async_evaluation_compose_through_one_outer_access() {
     }
     assert_eq!(
         owner.eval(Source::from_bytes("accessEffect")).unwrap(),
+        JsValue::new(42)
+    );
+}
+
+#[test]
+fn sequential_value_conversions_reborrow_one_access_for_primitive_results() {
+    let mut owner = Context::default();
+    let mut access = owner.access();
+    assert_eq!(
+        JsValue::new(js_string!("42.75"))
+            .to_number(access.reborrow())
+            .unwrap(),
+        42.75
+    );
+    assert_eq!(
+        JsValue::new(-42.75)
+            .to_integer_or_infinity(access.reborrow())
+            .unwrap(),
+        IntegerOrInfinity::Integer(-42)
+    );
+    assert_eq!(
+        JsValue::new(4_294_967_297.0)
+            .to_i32(access.reborrow())
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        JsValue::new(true).to_string(access.reborrow()).unwrap(),
+        js_string!("true")
+    );
+    assert_eq!(
+        JsValue::new(js_string!("0x2a"))
+            .to_bigint(access.reborrow())
+            .unwrap()
+            .to_string_radix(10),
+        "42"
+    );
+    assert_eq!(
+        access.eval(Source::from_bytes("40 + 2")).unwrap(),
+        JsValue::new(42)
+    );
+}
+
+#[test]
+fn value_conversion_hooks_receive_ordered_hints_and_preserve_exact_thrown_value() {
+    let mut owner = Context::default();
+    let mut access = owner.access();
+    let value = access.eval(Source::from_bytes(
+        "globalThis.hints = []; ({ [Symbol.toPrimitive](hint) { hints.push(hint); return hint === 'string' ? 'answer' : 41; } })",
+    )).unwrap();
+    assert_eq!(
+        value
+            .to_primitive(access.reborrow(), PreferredType::Default)
+            .unwrap(),
+        JsValue::new(41)
+    );
+    assert_eq!(value.to_number(access.reborrow()).unwrap(), 41.0);
+    assert_eq!(
+        value.to_string(access.reborrow()).unwrap(),
+        js_string!("answer")
+    );
+    assert_eq!(
+        access.eval(Source::from_bytes("hints.join(',')")).unwrap(),
+        JsValue::new(js_string!("default,number,string"))
+    );
+
+    let throwing = access
+        .eval(Source::from_bytes(
+            "globalThis.sentinel = { token: 7 }; globalThis.throwHints = []; ({
+            [Symbol.toPrimitive](hint) { throwHints.push(hint); throw sentinel; },
+            valueOf() { globalThis.fallback = true; return 0; },
+            toString() { globalThis.fallback = true; return 'fallback'; }
+        })",
+        ))
+        .unwrap();
+    let sentinel = access.eval(Source::from_bytes("sentinel")).unwrap();
+    assert_eq!(
+        throwing
+            .to_number(access.reborrow())
+            .unwrap_err()
+            .as_opaque(),
+        Some(&sentinel)
+    );
+    assert_eq!(
+        throwing
+            .to_string(access.reborrow())
+            .unwrap_err()
+            .as_opaque(),
+        Some(&sentinel)
+    );
+    assert_eq!(
+        access
+            .eval(Source::from_bytes("throwHints.join(',')"))
+            .unwrap(),
+        JsValue::new(js_string!("number,string"))
+    );
+    assert_eq!(
+        access
+            .eval(Source::from_bytes("typeof fallback === 'undefined'"))
+            .unwrap(),
+        JsValue::new(true)
+    );
+}
+
+#[test]
+fn value_to_property_descriptor_runs_guest_getters_in_specified_order() {
+    let mut owner = Context::default();
+    let mut access = owner.access();
+    let value = access
+        .eval(Source::from_bytes(
+            "globalThis.descriptorLog = []; ({
+            get writable() { descriptorLog.push('writable'); return true; },
+            get value() { descriptorLog.push('value'); return 42; },
+            get configurable() { descriptorLog.push('configurable'); return false; },
+            get enumerable() { descriptorLog.push('enumerable'); return true; }
+        })",
+        ))
+        .unwrap();
+    let descriptor = value.to_property_descriptor(access.reborrow()).unwrap();
+    assert_eq!(descriptor.enumerable(), Some(true));
+    assert_eq!(descriptor.configurable(), Some(false));
+    assert_eq!(descriptor.value(), Some(&JsValue::new(42)));
+    assert_eq!(descriptor.writable(), Some(true));
+    assert_eq!(
+        access
+            .eval(Source::from_bytes("descriptorLog.join(',')"))
+            .unwrap(),
+        JsValue::new(js_string!("enumerable,configurable,value,writable"))
+    );
+}
+
+#[test]
+fn descriptor_getter_work_keeps_first_stop_and_skips_later_getters_and_guest_cleanup() {
+    let mut owner = Context::default();
+    let value = owner
+        .access()
+        .eval(Source::from_bytes(
+            "({
+            get enumerable() {
+                globalThis.descriptorStarted = 7;
+                try { while (true) {} } finally { globalThis.descriptorFinally = true; }
+            },
+            get configurable() { globalThis.descriptorLater = true; return true; }
+        })",
+        ))
+        .unwrap();
+    let outcome = owner
+        .with_execution(ExecutionOptions::new(64), |mut access| {
+            let first = value.to_property_descriptor(access.reborrow()).unwrap_err();
+            assert_eq!(
+                first.as_engine(),
+                Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
+                    limit: 64
+                }))
+            );
+            Ok(42_u32)
+        })
+        .unwrap();
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
+            limit: 64
+        }))
+    );
+    assert_eq!(outcome.report.instructions(), 64);
+    assert!(outcome.report.effects_started());
+    assert_eq!(owner.access().eval(Source::from_bytes("descriptorStarted === 7 && typeof descriptorLater === 'undefined' && typeof descriptorFinally === 'undefined'" )).unwrap(), JsValue::new(true));
+    assert_eq!(
+        owner.access().eval(Source::from_bytes("42")).unwrap(),
         JsValue::new(42)
     );
 }

@@ -98,7 +98,11 @@ impl ParsableOptionType for Usage {}
 
 impl OptionType for CollationCaseFirst {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        match value.to_string(context)?.to_std_string_escaped().as_str() {
+        match value
+            .to_string(context.access())?
+            .to_std_string_escaped()
+            .as_str()
+        {
             "upper" => Ok(Self::Upper),
             "lower" => Ok(Self::Lower),
             "false" => Ok(Self::False),

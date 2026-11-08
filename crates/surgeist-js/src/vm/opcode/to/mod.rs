@@ -15,7 +15,7 @@ impl ToPropertyKey {
         context: &mut Context,
     ) -> JsResult<()> {
         let value = context.vm.get_register(value.into()).clone();
-        let key = value.to_property_key(context)?;
+        let key = value.to_property_key(context.access())?;
         context.vm.set_register(dst.into(), key.into());
         Ok(())
     }

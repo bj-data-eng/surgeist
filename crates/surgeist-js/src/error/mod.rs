@@ -55,13 +55,13 @@ use thiserror::Error;
 /// let error = js_error!("error!");
 /// assert!(error.as_opaque().is_some());
 /// assert_eq!(
-///     error.as_opaque().unwrap().to_string(context).unwrap(),
+///     error.as_opaque().unwrap().to_string(context.access()).unwrap(),
 ///     "error!"
 /// );
 ///
 /// let error = js_error!("error: {}", 5);
 /// assert_eq!(
-///     error.as_opaque().unwrap().to_string(context).unwrap(),
+///     error.as_opaque().unwrap().to_string(context.access()).unwrap(),
 ///     "error: 5"
 /// );
 ///

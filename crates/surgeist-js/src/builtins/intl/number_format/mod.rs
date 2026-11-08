@@ -433,7 +433,11 @@ impl NumberFormat {
             // 5. Set value to ? ToString(value).
             // 6. If stringValues does not contain value, throw a RangeError exception.
             // 7. Return value.
-            match value.to_string(context)?.to_std_string_escaped().as_str() {
+            match value
+                .to_string(context.access())?
+                .to_std_string_escaped()
+                .as_str()
+            {
                 "min2" => GroupingStrategy::Min2,
                 "auto" => GroupingStrategy::Auto,
                 "always" => GroupingStrategy::Always,
@@ -876,7 +880,7 @@ pub(crate) fn to_intl_mathematical_value(
     context: &mut Context,
 ) -> JsResult<Decimal> {
     // 1. Let primValue be ? ToPrimitive(value, number).
-    let prim_value = value.to_primitive(context, PreferredType::Number)?;
+    let prim_value = value.to_primitive(context.access(), PreferredType::Number)?;
 
     // TODO: Add support in `Decimal` for infinity and NaN, which
     // should remove the returned errors.
@@ -908,7 +912,7 @@ pub(crate) fn to_intl_mathematical_value(
             // a. Let x be ? ToNumber(primValue).
             // b. If x is -0𝔽, return negative-zero.
             // c. Let str be Number::toString(x, 10).
-            let x = prim_value.to_number(context)?;
+            let x = prim_value.to_number(context.access())?;
 
             Decimal::try_from_f64(x, FloatPrecision::RoundTrip)
                 .map_err(|err| JsNativeError::range().with_message(err.to_string()).into())

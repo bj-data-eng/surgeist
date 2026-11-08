@@ -414,7 +414,7 @@ impl BuiltInConstructor for ZonedDateTime {
         }
         //  2. Set epochNanoseconds to ? ToBigInt(epochNanoseconds).
         //  3. If IsValidEpochNanoseconds(epochNanoseconds) is false, throw a RangeError exception.
-        let epoch_nanos = args.get_or_undefined(0).to_bigint(context)?;
+        let epoch_nanos = args.get_or_undefined(0).to_bigint(context.access())?;
 
         //  4. If timeZone is not a String, throw a TypeError exception.
         let Some(timezone_str) = args.get_or_undefined(1).as_string() else {
@@ -2057,7 +2057,7 @@ pub(crate) fn to_temporal_timezone_identifier(
 
 fn to_offset_string(value: &JsValue, context: &mut Context) -> JsResult<UtcOffset> {
     // 1. Let offset be ? ToPrimitive(argument, string).
-    let offset = value.to_primitive(context, PreferredType::String)?;
+    let offset = value.to_primitive(context.access(), PreferredType::String)?;
     // 2. If offset is not a String, throw a TypeError exception.
     let Some(offset_string) = offset.as_string() else {
         return Err(JsNativeError::typ()
@@ -2134,7 +2134,7 @@ pub(crate) fn to_zoned_date_time_fields(
         let era = partial_object
             .get(js_string!("era"), context)?
             .map(|v| {
-                let v = v.to_primitive(context, PreferredType::String)?;
+                let v = v.to_primitive(context.access(), PreferredType::String)?;
                 let Some(era) = v.as_string() else {
                     return Err(JsError::from(
                         JsNativeError::typ()
@@ -2192,7 +2192,7 @@ pub(crate) fn to_zoned_date_time_fields(
     let month_code = partial_object
         .get(js_string!("monthCode"), context)?
         .map(|v| {
-            let v = v.to_primitive(context, PreferredType::String)?;
+            let v = v.to_primitive(context.access(), PreferredType::String)?;
             let Some(month_code) = v.as_string() else {
                 return Err(JsNativeError::typ()
                     .with_message("The monthCode field value must be a string.")

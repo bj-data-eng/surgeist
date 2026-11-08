@@ -13,13 +13,13 @@ impl JsValue {
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::Add, other);
         }
-        let x = self.to_primitive(context, PreferredType::Default)?;
-        let y = other.to_primitive(context, PreferredType::Default)?;
+        let x = self.to_primitive(context.access(), PreferredType::Default)?;
+        let y = other.to_primitive(context.access(), PreferredType::Default)?;
         if x.is_string() || y.is_string() {
             return x.primitive_binary_unmetered(PrimitiveBinaryOp::Add, &y);
         }
-        let x = Self::from(x.to_numeric(context)?);
-        let y = Self::from(y.to_numeric(context)?);
+        let x = Self::from(x.to_numeric(context.access())?);
+        let y = Self::from(y.to_numeric(context.access())?);
         x.primitive_binary_unmetered(PrimitiveBinaryOp::Add, &y)
     }
 
@@ -28,8 +28,8 @@ impl JsValue {
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::Sub, other);
         }
-        let x = Self::from(self.to_numeric(context)?);
-        let y = Self::from(other.to_numeric(context)?);
+        let x = Self::from(self.to_numeric(context.access())?);
+        let y = Self::from(other.to_numeric(context.access())?);
         x.primitive_binary_unmetered(PrimitiveBinaryOp::Sub, &y)
     }
 
@@ -38,8 +38,8 @@ impl JsValue {
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::Mul, other);
         }
-        let x = Self::from(self.to_numeric(context)?);
-        let y = Self::from(other.to_numeric(context)?);
+        let x = Self::from(self.to_numeric(context.access())?);
+        let y = Self::from(other.to_numeric(context.access())?);
         x.primitive_binary_unmetered(PrimitiveBinaryOp::Mul, &y)
     }
 
@@ -48,8 +48,8 @@ impl JsValue {
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::Div, other);
         }
-        let x = Self::from(self.to_numeric(context)?);
-        let y = Self::from(other.to_numeric(context)?);
+        let x = Self::from(self.to_numeric(context.access())?);
+        let y = Self::from(other.to_numeric(context.access())?);
         x.primitive_binary_unmetered(PrimitiveBinaryOp::Div, &y)
     }
 
@@ -58,8 +58,8 @@ impl JsValue {
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::Rem, other);
         }
-        let x = Self::from(self.to_numeric(context)?);
-        let y = Self::from(other.to_numeric(context)?);
+        let x = Self::from(self.to_numeric(context.access())?);
+        let y = Self::from(other.to_numeric(context.access())?);
         x.primitive_binary_unmetered(PrimitiveBinaryOp::Rem, &y)
     }
 
@@ -70,8 +70,8 @@ impl JsValue {
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::Pow, other);
         }
-        let x = Self::from(self.to_numeric(context)?);
-        let y = Self::from(other.to_numeric(context)?);
+        let x = Self::from(self.to_numeric(context.access())?);
+        let y = Self::from(other.to_numeric(context.access())?);
         x.primitive_binary_unmetered(PrimitiveBinaryOp::Pow, &y)
     }
 
@@ -80,8 +80,8 @@ impl JsValue {
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::BitAnd, other);
         }
-        let x = Self::from(self.to_numeric(context)?);
-        let y = Self::from(other.to_numeric(context)?);
+        let x = Self::from(self.to_numeric(context.access())?);
+        let y = Self::from(other.to_numeric(context.access())?);
         x.primitive_binary_unmetered(PrimitiveBinaryOp::BitAnd, &y)
     }
 
@@ -90,8 +90,8 @@ impl JsValue {
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::BitOr, other);
         }
-        let x = Self::from(self.to_numeric(context)?);
-        let y = Self::from(other.to_numeric(context)?);
+        let x = Self::from(self.to_numeric(context.access())?);
+        let y = Self::from(other.to_numeric(context.access())?);
         x.primitive_binary_unmetered(PrimitiveBinaryOp::BitOr, &y)
     }
 
@@ -100,8 +100,8 @@ impl JsValue {
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::BitXor, other);
         }
-        let x = Self::from(self.to_numeric(context)?);
-        let y = Self::from(other.to_numeric(context)?);
+        let x = Self::from(self.to_numeric(context.access())?);
+        let y = Self::from(other.to_numeric(context.access())?);
         x.primitive_binary_unmetered(PrimitiveBinaryOp::BitXor, &y)
     }
 
@@ -110,8 +110,8 @@ impl JsValue {
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::Shl, other);
         }
-        let x = Self::from(self.to_numeric(context)?);
-        let y = Self::from(other.to_numeric(context)?);
+        let x = Self::from(self.to_numeric(context.access())?);
+        let y = Self::from(other.to_numeric(context.access())?);
         x.primitive_binary_unmetered(PrimitiveBinaryOp::Shl, &y)
     }
 
@@ -120,8 +120,8 @@ impl JsValue {
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::Shr, other);
         }
-        let x = Self::from(self.to_numeric(context)?);
-        let y = Self::from(other.to_numeric(context)?);
+        let x = Self::from(self.to_numeric(context.access())?);
+        let y = Self::from(other.to_numeric(context.access())?);
         x.primitive_binary_unmetered(PrimitiveBinaryOp::Shr, &y)
     }
 
@@ -130,8 +130,8 @@ impl JsValue {
         if !self.is_object() && !other.is_object() {
             return self.primitive_binary_unmetered(PrimitiveBinaryOp::Ushr, other);
         }
-        let x = Self::from(self.to_numeric(context)?);
-        let y = Self::from(other.to_numeric(context)?);
+        let x = Self::from(self.to_numeric(context.access())?);
+        let y = Self::from(other.to_numeric(context.access())?);
         x.primitive_binary_unmetered(PrimitiveBinaryOp::Ushr, &y)
     }
 
@@ -178,7 +178,7 @@ impl JsValue {
     pub fn neg(&self, context: &mut Context) -> JsResult<Self> {
         if self.is_object() {
             return Ok(Self::new(
-                self.to_numeric_number(context)
+                self.to_numeric_number(context.access())
                     .map_or(f64::NAN, std::ops::Neg::neg),
             ));
         }
@@ -218,12 +218,12 @@ impl JsValue {
             return self.primitive_relation_unmetered(other);
         }
         let (x, y) = if left_first {
-            let x = self.to_primitive(context, PreferredType::Number)?;
-            let y = other.to_primitive(context, PreferredType::Number)?;
+            let x = self.to_primitive(context.access(), PreferredType::Number)?;
+            let y = other.to_primitive(context.access(), PreferredType::Number)?;
             (x, y)
         } else {
-            let y = other.to_primitive(context, PreferredType::Number)?;
-            let x = self.to_primitive(context, PreferredType::Number)?;
+            let y = other.to_primitive(context.access(), PreferredType::Number)?;
+            let x = self.to_primitive(context.access(), PreferredType::Number)?;
             (x, y)
         };
         x.primitive_relation_unmetered(&y)

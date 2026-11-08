@@ -121,7 +121,7 @@ where
     }
 
     // 2. Set value to ? ToNumber(value).
-    let value = value.to_number(context)?;
+    let value = value.to_number(context.access())?;
 
     // 3. If value is NaN or less than minimum or greater than maximum, throw a RangeError exception.
     if value.is_nan() || value < minimum.into() || value > maximum.into() {
@@ -161,5 +161,5 @@ pub(super) fn coerce_options_to_object(
     }
 
     // 2. Return ? ToObject(options).
-    options.to_object(context)
+    options.to_object(context.access())
 }

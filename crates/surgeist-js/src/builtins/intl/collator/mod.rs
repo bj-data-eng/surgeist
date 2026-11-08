@@ -367,7 +367,7 @@ impl Collator {
                         // 5. Let X be ? ToString(x).
                         let x = args
                             .get_or_undefined(0)
-                            .to_string(context)?
+                            .to_string(context.access())?
                             .iter()
                             .collect::<Vec<_>>();
 
@@ -375,7 +375,7 @@ impl Collator {
                         // 6. Let Y be ? ToString(y).
                         let y = args
                             .get_or_undefined(1)
-                            .to_string(context)?
+                            .to_string(context.access())?
                             .iter()
                             .collect::<Vec<_>>();
 

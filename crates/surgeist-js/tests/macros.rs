@@ -18,7 +18,7 @@ fn try_from_js_derive() {
     }
 
     fn check_tfj_called(value: &JsValue, context: &mut Context) -> JsResult<i32> {
-        let v = value.to_i32(context)?;
+        let v = value.to_i32(context.access())?;
         Ok(v / 2)
     }
 

@@ -139,7 +139,7 @@ impl DefineClassStaticGetterByValue {
         let key = context.vm.get_register(key.into()).clone();
         let class = context.vm.get_register(class.into()).clone();
         let class = class.as_object().js_expect("class must be object")?;
-        let key = key.to_property_key(context)?;
+        let key = key.to_property_key(context.access())?;
         {
             let function_object = function
                 .as_object()
@@ -193,7 +193,7 @@ impl DefineClassGetterByValue {
         let key = context.vm.get_register(key.into()).clone();
         let class_proto = context.vm.get_register(class_proto.into()).clone();
         let class_proto = class_proto.as_object().js_expect("class must be object")?;
-        let key = key.to_property_key(context)?;
+        let key = key.to_property_key(context.access())?;
         {
             let function_object = function
                 .as_object()

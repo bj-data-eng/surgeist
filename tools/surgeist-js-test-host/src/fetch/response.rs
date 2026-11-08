@@ -71,7 +71,7 @@ impl ResponseType {
 
 impl TryFromJs for ResponseType {
     fn try_from_js(value: &JsValue, context: &mut Context) -> JsResult<Self> {
-        let value_str = value.to_string(context)?;
+        let value_str = value.to_string(context.access())?;
         if value_str == js_str!("basic") {
             Ok(ResponseType::Basic)
         } else if value_str == js_str!("cors") {
@@ -285,7 +285,10 @@ fn extract_body(val: &JsValue, context: &mut Context) -> JsResult<(Vec<u8>, Opti
     //
     // For a USVString, the type is "text/plain;charset=UTF-8".
     // See https://fetch.spec.whatwg.org/#concept-bodyinit-extract step 6.
-    let bytes = val.to_string(context)?.to_std_string_escaped().into_bytes();
+    let bytes = val
+        .to_string(context.access())?
+        .to_std_string_escaped()
+        .into_bytes();
     Ok((bytes, Some("text/plain;charset=UTF-8")))
 }
 
@@ -305,7 +308,7 @@ impl JsResponse {
         if !matches!(status, 301 | 302 | 303 | 307 | 308) {
             return Err(js_error!(RangeError: "Invalid redirect status: {}", status));
         }
-        let url_str = url.to_string(context)?.to_std_string_escaped();
+        let url_str = url.to_string(context.access())?.to_std_string_escaped();
         http::Uri::try_from(url_str.as_str())
             .map_err(|_| js_error!(TypeError: "Invalid URL: {}", url_str))?;
 

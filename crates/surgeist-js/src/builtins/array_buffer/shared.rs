@@ -184,7 +184,7 @@ impl BuiltInConstructor for SharedArrayBuffer {
         }
 
         // 2. Let byteLength be ? ToIndex(length).
-        let byte_len = args.get_or_undefined(0).to_index(context)?;
+        let byte_len = args.get_or_undefined(0).to_index(context.access())?;
 
         // 3. Let requestedMaxByteLength be ? GetArrayBufferMaxByteLengthOption(options).
         let max_byte_len = get_max_byte_len(args.get_or_undefined(1), context)?;
@@ -318,7 +318,7 @@ impl SharedArrayBuffer {
         }
 
         // 4. Let newByteLength be ? ToIndex(newLength).
-        let new_byte_len = args.get_or_undefined(0).to_index(context)?;
+        let new_byte_len = args.get_or_undefined(0).to_index(context.access())?;
 
         // TODO: 5. Let hostHandled be ? HostGrowSharedArrayBuffer(O, newByteLength).
         // 6. If hostHandled is handled, return undefined.

@@ -3646,30 +3646,30 @@ pub const fn surgeist_js::value::JsValue::null() -> Self
 pub const fn surgeist_js::value::JsValue::positive_infinity() -> Self
 pub fn surgeist_js::value::JsValue::rational(rational: f64) -> Self
 pub fn surgeist_js::value::JsValue::require_object_coercible(&self) -> surgeist_js::JsResult<&Self>
-pub fn surgeist_js::value::JsValue::to_big_int64(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<i64>
-pub fn surgeist_js::value::JsValue::to_big_uint64(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<u64>
-pub fn surgeist_js::value::JsValue::to_bigint(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::bigint::JsBigInt>
+pub fn surgeist_js::value::JsValue::to_big_int64(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<i64>
+pub fn surgeist_js::value::JsValue::to_big_uint64(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<u64>
+pub fn surgeist_js::value::JsValue::to_bigint(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::bigint::JsBigInt>
 pub fn surgeist_js::value::JsValue::to_boolean(&self) -> bool
-pub fn surgeist_js::value::JsValue::to_f16(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<float16::binary16::f16>
-pub fn surgeist_js::value::JsValue::to_f32(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<f32>
-pub fn surgeist_js::value::JsValue::to_i32(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<i32>
-pub fn surgeist_js::value::JsValue::to_index(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<u64>
-pub fn surgeist_js::value::JsValue::to_int16(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<i16>
-pub fn surgeist_js::value::JsValue::to_int8(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<i8>
-pub fn surgeist_js::value::JsValue::to_integer_or_infinity(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::IntegerOrInfinity>
-pub fn surgeist_js::value::JsValue::to_length(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<u64>
-pub fn surgeist_js::value::JsValue::to_number(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<f64>
-pub fn surgeist_js::value::JsValue::to_numeric(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::Numeric>
-pub fn surgeist_js::value::JsValue::to_numeric_number(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<f64>
-pub fn surgeist_js::value::JsValue::to_object(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::object::JsObject>
-pub fn surgeist_js::value::JsValue::to_primitive(&self, context: &mut surgeist_js::context::Context, preferred_type: surgeist_js::value::PreferredType) -> surgeist_js::JsResult<Self>
-pub fn surgeist_js::value::JsValue::to_property_descriptor(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::property::PropertyDescriptor>
-pub fn surgeist_js::value::JsValue::to_property_key(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::property::PropertyKey>
-pub fn surgeist_js::value::JsValue::to_string(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js_string::JsString>
-pub fn surgeist_js::value::JsValue::to_u32(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<u32>
-pub fn surgeist_js::value::JsValue::to_uint16(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<u16>
-pub fn surgeist_js::value::JsValue::to_uint8(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<u8>
-pub fn surgeist_js::value::JsValue::to_uint8_clamp(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<u8>
+pub fn surgeist_js::value::JsValue::to_f16(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<float16::binary16::f16>
+pub fn surgeist_js::value::JsValue::to_f32(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<f32>
+pub fn surgeist_js::value::JsValue::to_i32(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<i32>
+pub fn surgeist_js::value::JsValue::to_index(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<u64>
+pub fn surgeist_js::value::JsValue::to_int16(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<i16>
+pub fn surgeist_js::value::JsValue::to_int8(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<i8>
+pub fn surgeist_js::value::JsValue::to_integer_or_infinity(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::IntegerOrInfinity>
+pub fn surgeist_js::value::JsValue::to_length(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<u64>
+pub fn surgeist_js::value::JsValue::to_number(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<f64>
+pub fn surgeist_js::value::JsValue::to_numeric(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::Numeric>
+pub fn surgeist_js::value::JsValue::to_numeric_number(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<f64>
+pub fn surgeist_js::value::JsValue::to_object(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::object::JsObject>
+pub fn surgeist_js::value::JsValue::to_primitive(&self, context: surgeist_js::ContextAccess<'_>, preferred_type: surgeist_js::value::PreferredType) -> surgeist_js::JsResult<Self>
+pub fn surgeist_js::value::JsValue::to_property_descriptor(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::property::PropertyDescriptor>
+pub fn surgeist_js::value::JsValue::to_property_key(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::property::PropertyKey>
+pub fn surgeist_js::value::JsValue::to_string(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js_string::JsString>
+pub fn surgeist_js::value::JsValue::to_u32(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<u32>
+pub fn surgeist_js::value::JsValue::to_uint16(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<u16>
+pub fn surgeist_js::value::JsValue::to_uint8(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<u8>
+pub fn surgeist_js::value::JsValue::to_uint8_clamp(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<u8>
 pub fn surgeist_js::value::JsValue::type_of(&self) -> &'static str
 pub const fn surgeist_js::value::JsValue::undefined() -> Self
 pub fn surgeist_js::value::JsValue::variant(&self) -> surgeist_js::JsVariant
@@ -4703,30 +4703,30 @@ pub const fn surgeist_js::value::JsValue::null() -> Self
 pub const fn surgeist_js::value::JsValue::positive_infinity() -> Self
 pub fn surgeist_js::value::JsValue::rational(rational: f64) -> Self
 pub fn surgeist_js::value::JsValue::require_object_coercible(&self) -> surgeist_js::JsResult<&Self>
-pub fn surgeist_js::value::JsValue::to_big_int64(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<i64>
-pub fn surgeist_js::value::JsValue::to_big_uint64(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<u64>
-pub fn surgeist_js::value::JsValue::to_bigint(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::bigint::JsBigInt>
+pub fn surgeist_js::value::JsValue::to_big_int64(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<i64>
+pub fn surgeist_js::value::JsValue::to_big_uint64(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<u64>
+pub fn surgeist_js::value::JsValue::to_bigint(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::bigint::JsBigInt>
 pub fn surgeist_js::value::JsValue::to_boolean(&self) -> bool
-pub fn surgeist_js::value::JsValue::to_f16(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<float16::binary16::f16>
-pub fn surgeist_js::value::JsValue::to_f32(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<f32>
-pub fn surgeist_js::value::JsValue::to_i32(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<i32>
-pub fn surgeist_js::value::JsValue::to_index(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<u64>
-pub fn surgeist_js::value::JsValue::to_int16(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<i16>
-pub fn surgeist_js::value::JsValue::to_int8(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<i8>
-pub fn surgeist_js::value::JsValue::to_integer_or_infinity(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::IntegerOrInfinity>
-pub fn surgeist_js::value::JsValue::to_length(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<u64>
-pub fn surgeist_js::value::JsValue::to_number(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<f64>
-pub fn surgeist_js::value::JsValue::to_numeric(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::Numeric>
-pub fn surgeist_js::value::JsValue::to_numeric_number(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<f64>
-pub fn surgeist_js::value::JsValue::to_object(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::object::JsObject>
-pub fn surgeist_js::value::JsValue::to_primitive(&self, context: &mut surgeist_js::context::Context, preferred_type: surgeist_js::value::PreferredType) -> surgeist_js::JsResult<Self>
-pub fn surgeist_js::value::JsValue::to_property_descriptor(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::property::PropertyDescriptor>
-pub fn surgeist_js::value::JsValue::to_property_key(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::property::PropertyKey>
-pub fn surgeist_js::value::JsValue::to_string(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js_string::JsString>
-pub fn surgeist_js::value::JsValue::to_u32(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<u32>
-pub fn surgeist_js::value::JsValue::to_uint16(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<u16>
-pub fn surgeist_js::value::JsValue::to_uint8(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<u8>
-pub fn surgeist_js::value::JsValue::to_uint8_clamp(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<u8>
+pub fn surgeist_js::value::JsValue::to_f16(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<float16::binary16::f16>
+pub fn surgeist_js::value::JsValue::to_f32(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<f32>
+pub fn surgeist_js::value::JsValue::to_i32(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<i32>
+pub fn surgeist_js::value::JsValue::to_index(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<u64>
+pub fn surgeist_js::value::JsValue::to_int16(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<i16>
+pub fn surgeist_js::value::JsValue::to_int8(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<i8>
+pub fn surgeist_js::value::JsValue::to_integer_or_infinity(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::IntegerOrInfinity>
+pub fn surgeist_js::value::JsValue::to_length(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<u64>
+pub fn surgeist_js::value::JsValue::to_number(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<f64>
+pub fn surgeist_js::value::JsValue::to_numeric(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::Numeric>
+pub fn surgeist_js::value::JsValue::to_numeric_number(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<f64>
+pub fn surgeist_js::value::JsValue::to_object(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::object::JsObject>
+pub fn surgeist_js::value::JsValue::to_primitive(&self, context: surgeist_js::ContextAccess<'_>, preferred_type: surgeist_js::value::PreferredType) -> surgeist_js::JsResult<Self>
+pub fn surgeist_js::value::JsValue::to_property_descriptor(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::property::PropertyDescriptor>
+pub fn surgeist_js::value::JsValue::to_property_key(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::property::PropertyKey>
+pub fn surgeist_js::value::JsValue::to_string(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js_string::JsString>
+pub fn surgeist_js::value::JsValue::to_u32(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<u32>
+pub fn surgeist_js::value::JsValue::to_uint16(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<u16>
+pub fn surgeist_js::value::JsValue::to_uint8(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<u8>
+pub fn surgeist_js::value::JsValue::to_uint8_clamp(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<u8>
 pub fn surgeist_js::value::JsValue::type_of(&self) -> &'static str
 pub const fn surgeist_js::value::JsValue::undefined() -> Self
 pub fn surgeist_js::value::JsValue::variant(&self) -> surgeist_js::JsVariant
@@ -5850,30 +5850,30 @@ pub const fn surgeist_js::value::JsValue::null() -> Self
 pub const fn surgeist_js::value::JsValue::positive_infinity() -> Self
 pub fn surgeist_js::value::JsValue::rational(rational: f64) -> Self
 pub fn surgeist_js::value::JsValue::require_object_coercible(&self) -> surgeist_js::JsResult<&Self>
-pub fn surgeist_js::value::JsValue::to_big_int64(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<i64>
-pub fn surgeist_js::value::JsValue::to_big_uint64(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<u64>
-pub fn surgeist_js::value::JsValue::to_bigint(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::bigint::JsBigInt>
+pub fn surgeist_js::value::JsValue::to_big_int64(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<i64>
+pub fn surgeist_js::value::JsValue::to_big_uint64(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<u64>
+pub fn surgeist_js::value::JsValue::to_bigint(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::bigint::JsBigInt>
 pub fn surgeist_js::value::JsValue::to_boolean(&self) -> bool
-pub fn surgeist_js::value::JsValue::to_f16(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<float16::binary16::f16>
-pub fn surgeist_js::value::JsValue::to_f32(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<f32>
-pub fn surgeist_js::value::JsValue::to_i32(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<i32>
-pub fn surgeist_js::value::JsValue::to_index(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<u64>
-pub fn surgeist_js::value::JsValue::to_int16(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<i16>
-pub fn surgeist_js::value::JsValue::to_int8(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<i8>
-pub fn surgeist_js::value::JsValue::to_integer_or_infinity(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::IntegerOrInfinity>
-pub fn surgeist_js::value::JsValue::to_length(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<u64>
-pub fn surgeist_js::value::JsValue::to_number(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<f64>
-pub fn surgeist_js::value::JsValue::to_numeric(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::Numeric>
-pub fn surgeist_js::value::JsValue::to_numeric_number(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<f64>
-pub fn surgeist_js::value::JsValue::to_object(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::object::JsObject>
-pub fn surgeist_js::value::JsValue::to_primitive(&self, context: &mut surgeist_js::context::Context, preferred_type: surgeist_js::value::PreferredType) -> surgeist_js::JsResult<Self>
-pub fn surgeist_js::value::JsValue::to_property_descriptor(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::property::PropertyDescriptor>
-pub fn surgeist_js::value::JsValue::to_property_key(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::property::PropertyKey>
-pub fn surgeist_js::value::JsValue::to_string(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js_string::JsString>
-pub fn surgeist_js::value::JsValue::to_u32(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<u32>
-pub fn surgeist_js::value::JsValue::to_uint16(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<u16>
-pub fn surgeist_js::value::JsValue::to_uint8(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<u8>
-pub fn surgeist_js::value::JsValue::to_uint8_clamp(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<u8>
+pub fn surgeist_js::value::JsValue::to_f16(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<float16::binary16::f16>
+pub fn surgeist_js::value::JsValue::to_f32(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<f32>
+pub fn surgeist_js::value::JsValue::to_i32(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<i32>
+pub fn surgeist_js::value::JsValue::to_index(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<u64>
+pub fn surgeist_js::value::JsValue::to_int16(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<i16>
+pub fn surgeist_js::value::JsValue::to_int8(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<i8>
+pub fn surgeist_js::value::JsValue::to_integer_or_infinity(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::IntegerOrInfinity>
+pub fn surgeist_js::value::JsValue::to_length(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<u64>
+pub fn surgeist_js::value::JsValue::to_number(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<f64>
+pub fn surgeist_js::value::JsValue::to_numeric(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::Numeric>
+pub fn surgeist_js::value::JsValue::to_numeric_number(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<f64>
+pub fn surgeist_js::value::JsValue::to_object(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::object::JsObject>
+pub fn surgeist_js::value::JsValue::to_primitive(&self, context: surgeist_js::ContextAccess<'_>, preferred_type: surgeist_js::value::PreferredType) -> surgeist_js::JsResult<Self>
+pub fn surgeist_js::value::JsValue::to_property_descriptor(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::property::PropertyDescriptor>
+pub fn surgeist_js::value::JsValue::to_property_key(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::property::PropertyKey>
+pub fn surgeist_js::value::JsValue::to_string(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js_string::JsString>
+pub fn surgeist_js::value::JsValue::to_u32(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<u32>
+pub fn surgeist_js::value::JsValue::to_uint16(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<u16>
+pub fn surgeist_js::value::JsValue::to_uint8(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<u8>
+pub fn surgeist_js::value::JsValue::to_uint8_clamp(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<u8>
 pub fn surgeist_js::value::JsValue::type_of(&self) -> &'static str
 pub const fn surgeist_js::value::JsValue::undefined() -> Self
 pub fn surgeist_js::value::JsValue::variant(&self) -> surgeist_js::JsVariant

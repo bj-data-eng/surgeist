@@ -1185,8 +1185,8 @@ fn assert_caught_preflight_stop_keeps_preparation_private(source: &str, native_d
                         .replace(function);
                 } else {
                     let target = args[0].as_object().unwrap();
-                    let key = args[1].to_property_key(context)?;
-                    let descriptor = args[2].to_property_descriptor(context)?;
+                    let key = args[1].to_property_key(context.access())?;
+                    let descriptor = args[2].to_property_descriptor(context.access())?;
                     target.define_property_or_throw(key, descriptor, context)?;
                 }
                 Ok(JsValue::new(true))

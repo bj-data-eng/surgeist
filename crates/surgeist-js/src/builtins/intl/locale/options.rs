@@ -7,7 +7,7 @@ use crate::{Context, JsNativeError, builtins::options::OptionType};
 
 impl OptionType for Value {
     fn from_value(value: crate::JsValue, context: &mut Context) -> crate::JsResult<Self> {
-        let val = value.to_string(context)?.to_std_string_escaped();
+        let val = value.to_string(context.access())?.to_std_string_escaped();
 
         if val.is_empty() {
             return Err(JsNativeError::range()
@@ -34,7 +34,7 @@ impl OptionType for Value {
 impl OptionType for Language {
     fn from_value(value: crate::JsValue, context: &mut Context) -> crate::JsResult<Self> {
         value
-            .to_string(context)?
+            .to_string(context.access())?
             .to_std_string_escaped()
             .parse::<Self>()
             .map_err(|e| JsNativeError::range().with_message(e.to_string()).into())
@@ -44,7 +44,7 @@ impl OptionType for Language {
 impl OptionType for Script {
     fn from_value(value: crate::JsValue, context: &mut Context) -> crate::JsResult<Self> {
         value
-            .to_string(context)?
+            .to_string(context.access())?
             .to_std_string_escaped()
             .parse::<Self>()
             .map_err(|e| JsNativeError::range().with_message(e.to_string()).into())
@@ -54,7 +54,7 @@ impl OptionType for Script {
 impl OptionType for Region {
     fn from_value(value: crate::JsValue, context: &mut Context) -> crate::JsResult<Self> {
         value
-            .to_string(context)?
+            .to_string(context.access())?
             .to_std_string_escaped()
             .parse::<Self>()
             .map_err(|e| JsNativeError::range().with_message(e.to_string()).into())
@@ -63,7 +63,7 @@ impl OptionType for Region {
 
 impl OptionType for Variants {
     fn from_value(value: crate::JsValue, context: &mut Context) -> crate::JsResult<Self> {
-        let variants = value.to_string(context)?.to_std_string_escaped();
+        let variants = value.to_string(context.access())?.to_std_string_escaped();
         // a. If variants is the empty String, throw a RangeError exception.
         if variants.is_empty() {
             return Err(JsNativeError::range()

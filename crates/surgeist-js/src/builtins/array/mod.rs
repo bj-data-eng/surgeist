@@ -247,7 +247,7 @@ impl BuiltInConstructor for Array {
             } else {
                 // i. Let intLen be ! ToUint32(len).
                 let int_len = len
-                    .to_u32(context)
+                    .to_u32(context.access())
                     .js_expect("this ToUint32 call must not fail")?;
                 // ii. If SameValueZero(intLen, len) is false, throw a RangeError exception.
                 if !JsValue::same_value_zero(&int_len.into(), len) {
@@ -560,7 +560,7 @@ impl Array {
             // 6. NOTE: items is not an Iterable so assume it is an array-like object.
             // 7. Let arrayLike be ! ToObject(items).
             let array_like = items
-                .to_object(context)
+                .to_object(context.access())
                 .js_expect("should not fail according to spec")?;
 
             // 8. Let len be ? LengthOfArrayLike(arrayLike).
@@ -742,11 +742,13 @@ impl Array {
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/at
     pub(crate) fn at(this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         //1. let O be ? ToObject(this value)
-        let obj = this.to_object(context)?;
+        let obj = this.to_object(context.access())?;
         //2. let len be ? LengthOfArrayLike(O)
         let len = obj.length_of_array_like(context)? as i64;
         //3. let relativeIndex be ? ToIntegerOrInfinity(index)
-        let relative_index = args.get_or_undefined(0).to_integer_or_infinity(context)?;
+        let relative_index = args
+            .get_or_undefined(0)
+            .to_integer_or_infinity(context.access())?;
         let k = match relative_index {
             //4. if relativeIndex >= 0, then let k be relativeIndex
             //check if positive and if below length of array
@@ -783,7 +785,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let obj = this.to_object(context)?;
+        let obj = this.to_object(context.access())?;
         // 2. Let A be ? ArraySpeciesCreate(O, 0).
         let arr = Self::array_species_create(&obj, 0, context)?;
         // 3. Let n be 0.
@@ -864,7 +866,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
         // 2. Let len be ? LengthOfArrayLike(O).
         let mut len = o.length_of_array_like(context)?;
         // 3. Let argCount be the number of elements in items.
@@ -903,7 +905,7 @@ impl Array {
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/pop
     pub(crate) fn pop(this: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
         // 3. If len = 0, then
@@ -947,7 +949,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
         // 3. If IsCallable(callbackfn) is false, throw a TypeError exception.
@@ -991,7 +993,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
         // 3. If separator is undefined, let sep be the single-element String ",".
@@ -1000,7 +1002,7 @@ impl Array {
         let separator = if separator.is_undefined() {
             js_string!(",")
         } else {
-            separator.to_string(context)?
+            separator.to_string(context.access())?
         };
 
         // 5. Let R be the empty String.
@@ -1018,7 +1020,7 @@ impl Array {
             let next = if element.is_null_or_undefined() || &element == this {
                 js_string!()
             } else {
-                element.to_string(context)?
+                element.to_string(context.access())?
             };
             // d. Set R to the string-concatenation of R and next.
             r.push(next.clone());
@@ -1047,7 +1049,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let array be ? ToObject(this value).
-        let array = this.to_object(context)?;
+        let array = this.to_object(context.access())?;
         // 2. Let func be ? Get(array, "join").
         let func = array.get(js_string!("join"), context)?;
         // 3. If IsCallable(func) is false, set func to the intrinsic function %Object.prototype.toString%.
@@ -1077,7 +1079,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
         // 3. Let middle be floor(len / 2).
@@ -1145,7 +1147,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
@@ -1186,7 +1188,7 @@ impl Array {
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/shift
     pub(crate) fn shift(this: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
         // 3. If len = 0, then
@@ -1280,7 +1282,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
         // 3. Let argCount be the number of elements in items.
@@ -1350,7 +1352,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
         // 3. If IsCallable(callbackfn) is false, throw a TypeError exception.
@@ -1400,7 +1402,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
         // 3. If IsCallable(callbackfn) is false, throw a TypeError exception.
@@ -1447,7 +1449,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)? as i64;
@@ -1462,7 +1464,7 @@ impl Array {
             .get(1)
             .cloned()
             .unwrap_or_default()
-            .to_integer_or_infinity(context)?;
+            .to_integer_or_infinity(context.access())?;
         // 5. Assert: If fromIndex is undefined, then n is 0.
         let n = match n {
             // 6. If n is +∞, return -1𝔽.
@@ -1532,7 +1534,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)? as i64;
@@ -1544,7 +1546,7 @@ impl Array {
 
         // 4. If fromIndex is present, let n be ? ToIntegerOrInfinity(fromIndex); else let n be len - 1.
         let n = if let Some(from_index) = args.get(1) {
-            from_index.to_integer_or_infinity(context)?
+            from_index.to_integer_or_infinity(context.access())?
         } else {
             IntegerOrInfinity::Integer(len - 1)
         };
@@ -1600,7 +1602,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
@@ -1641,7 +1643,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
@@ -1680,7 +1682,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
@@ -1719,7 +1721,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
@@ -1759,7 +1761,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ToObject(this value)
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 2. Let sourceLen be LengthOfArrayLike(O)
         let source_len = o.length_of_array_like(context)?;
@@ -1772,7 +1774,7 @@ impl Array {
         } else {
             // a. Set depthNum to ? ToIntegerOrInfinity(depth).
             // b. If depthNum < 0, set depthNum to 0.
-            match depth.to_integer_or_infinity(context)? {
+            match depth.to_integer_or_infinity(context.access())? {
                 IntegerOrInfinity::Integer(value) if value >= 0 => value as u64,
                 IntegerOrInfinity::PositiveInfinity => u64::MAX,
                 _ => 0,
@@ -1816,7 +1818,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ToObject(this value)
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 2. Let sourceLen be LengthOfArrayLike(O)
         let source_len = o.length_of_array_like(context)?;
@@ -1973,7 +1975,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
@@ -2021,7 +2023,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)? as i64;
@@ -2036,7 +2038,7 @@ impl Array {
             .get(1)
             .cloned()
             .unwrap_or_default()
-            .to_integer_or_infinity(context)?;
+            .to_integer_or_infinity(context.access())?;
         // 5. Assert: If fromIndex is undefined, then n is 0.
         // 6. If n is +∞, return false.
         // 7. Else if n is -∞, set n to 0.
@@ -2098,7 +2100,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
@@ -2164,7 +2166,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let array be ? ToObject(this value).
-        let array = this.to_object(context)?;
+        let array = this.to_object(context.access())?;
         // 2. Let len be ? ToLength(? Get(array, "length")).
         let len = array.length_of_array_like(context)?;
 
@@ -2226,7 +2228,7 @@ impl Array {
                         &[locales.clone(), options.clone()],
                         context,
                     )?
-                    .to_string(context)?;
+                    .to_string(context.access())?;
 
                 // ii. Set R to the string-concatenation of R and S.
                 r.extend(s.iter());
@@ -2253,7 +2255,7 @@ impl Array {
         // 10. Else,
         else if let Some(delete_count) = delete_count {
             // a. Let dc be ? ToIntegerOrInfinity(deleteCount).
-            let dc = delete_count.to_integer_or_infinity(context)?;
+            let dc = delete_count.to_integer_or_infinity(context.access())?;
 
             // b. Let actualDeleteCount be the result of clamping dc between 0 and len - actualStart.
             let max = len - actual_start;
@@ -2299,7 +2301,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
 
@@ -2428,7 +2430,7 @@ impl Array {
     /// [spec]: https://tc39.es/ecma262/#sec-array.prototype.tospliced
     fn to_spliced(this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
@@ -2531,7 +2533,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 2. Let len be ? LengthOfArrayLike(O).
         let length = o.length_of_array_like(context)?;
@@ -2595,7 +2597,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
         // 3. If IsCallable(callbackfn) is false, throw a TypeError exception.
@@ -2715,7 +2717,7 @@ impl Array {
         };
 
         // 2. Let obj be ? ToObject(this value).
-        let obj = this.to_object(context)?;
+        let obj = this.to_object(context.access())?;
 
         // 3. Let len be ? LengthOfArrayLike(obj).
         let len = obj.length_of_array_like(context)?;
@@ -2778,7 +2780,7 @@ impl Array {
         };
 
         // 2. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 3. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
@@ -2824,7 +2826,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
@@ -2921,7 +2923,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
@@ -3015,7 +3017,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
@@ -3103,7 +3105,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 2. Return CreateArrayIterator(O, value).
         ArrayIterator::create_array_iterator(o, PropertyNameKind::Value, context)
@@ -3121,7 +3123,7 @@ impl Array {
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/values
     pub(crate) fn keys(this: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 2. Return CreateArrayIterator(O, key).
         ArrayIterator::create_array_iterator(o, PropertyNameKind::Key, context)
@@ -3143,7 +3145,7 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 2. Return CreateArrayIterator(O, key+value).
         ArrayIterator::create_array_iterator(o, PropertyNameKind::KeyAndValue, context)
@@ -3158,14 +3160,15 @@ impl Array {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let o = this.to_object(context)?;
+        let o = this.to_object(context.access())?;
 
         // 2. Let len be ? LengthOfArrayLike(O).
         let len = o.length_of_array_like(context)?;
 
         // 3. Let relativeIndex be ? ToIntegerOrInfinity(index).
-        let IntegerOrInfinity::Integer(relative_index) =
-            args.get_or_undefined(0).to_integer_or_infinity(context)?
+        let IntegerOrInfinity::Integer(relative_index) = args
+            .get_or_undefined(0)
+            .to_integer_or_infinity(context.access())?
         else {
             return Err(JsNativeError::range()
                 .with_message("invalid integer index for TypedArray operation")
@@ -3220,7 +3223,7 @@ impl Array {
         len: u64,
     ) -> JsResult<u64> {
         // 1. Let relativeStart be ? ToIntegerOrInfinity(start).
-        let relative_start = arg.to_integer_or_infinity(context)?;
+        let relative_start = arg.to_integer_or_infinity(context.access())?;
         let start = match relative_start {
             // 2. If relativeStart is -∞, let k be 0.
             IntegerOrInfinity::NegativeInfinity => 0,
@@ -3247,7 +3250,7 @@ impl Array {
             Ok(len)
         } else {
             // 1. cont, else let relativeEnd be ? ToIntegerOrInfinity(end).
-            let relative_end = value.to_integer_or_infinity(context)?;
+            let relative_end = value.to_integer_or_infinity(context.access())?;
             let end = match relative_end {
                 // 2. If relativeEnd is -∞, let final be 0.
                 IntegerOrInfinity::NegativeInfinity => 0,
@@ -3347,17 +3350,17 @@ fn compare_array_elements(
         //     a. Let v be ? ToNumber(? Call(comparefn, undefined, « x, y »)).
         let v = cmp
             .call(&JsValue::undefined(), &args, context)?
-            .to_number(context)?;
+            .to_number(context.access())?;
         //     b. If v is NaN, return +0𝔽.
         //     c. Return v.
         return Ok(v.partial_cmp(&0.0).unwrap_or(Ordering::Equal));
     }
 
     // 5. Let xString be ? ToString(x).
-    let x_str = x.to_string(context)?;
+    let x_str = x.to_string(context.access())?;
 
     // 6. Let yString be ? ToString(y).
-    let y_str = y.to_string(context)?;
+    let y_str = y.to_string(context.access())?;
 
     // 7. Let xSmaller be ! IsLessThan(xString, yString, true).
     // 8. If xSmaller is true, return -1𝔽.
@@ -3460,7 +3463,7 @@ fn array_exotic_define_own_property(
                 {
                     let old_len = borrowed_object.properties().named_slot(0);
                     drop(borrowed_object);
-                    let old_len = old_len.to_u32(context)?;
+                    let old_len = old_len.to_u32(context.access())?;
                     if new_len >= old_len {
                         if ordinary_define_own_property(obj, key, desc, context)? {
                             let mut borrowed_object = obj.borrow_mut();
@@ -3490,7 +3493,7 @@ fn array_exotic_define_own_property(
             // f. Let index be ! ToUint32(P).
             let old_len = old_len_desc
                 .expect_value()
-                .to_u32(context)
+                .to_u32(context.access())
                 .js_expect("this ToUint32 call must not fail")?;
 
             // g. If index ≥ oldLen and oldLenDesc.[[Writable]] is false, return false.
@@ -3551,10 +3554,10 @@ fn array_set_length(
     };
 
     // 3. Let newLen be ? ToUint32(Desc.[[Value]]).
-    let new_len = new_len_val.to_u32(context)?;
+    let new_len = new_len_val.to_u32(context.access())?;
 
     // 4. Let numberLen be ? ToNumber(Desc.[[Value]]).
-    let number_len = new_len_val.to_number(context)?;
+    let number_len = new_len_val.to_number(context.access())?;
 
     // 5. If SameValueZero(newLen, numberLen) is false, throw a RangeError exception.
     #[allow(clippy::float_cmp)]
@@ -3586,7 +3589,7 @@ fn array_set_length(
     let old_len = old_len_desc.expect_value();
 
     // 11. If newLen ≥ oldLen, then
-    if new_len >= old_len.to_u32(context)? {
+    if new_len >= old_len.to_u32(context.access())? {
         // a. Return OrdinaryDefineOwnProperty(A, "length", newLenDesc).
         return ordinary_define_own_property(
             obj,

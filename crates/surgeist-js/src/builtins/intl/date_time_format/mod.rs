@@ -284,7 +284,7 @@ impl DateTimeFormat {
                         } else {
                             // NOTE (nekevss) The i64 covers all MAX_SAFE_INTEGER values.
                             // a. Let x be ? ToNumber(date).
-                            date.to_number(context)?
+                            date.to_number(context.access())?
                         };
 
                         // 5. Return ? FormatDateTime(dtf, x).
@@ -693,7 +693,7 @@ pub(crate) fn create_date_time_format(
     // 17. Else,
     } else {
         // a. Set timeZone to ? ToString(timeZone).
-        time_zone.to_string(context)?
+        time_zone.to_string(context.access())?
     };
     // 18. If IsTimeZoneOffsetString(timeZone) is true, then
     let time_zone_string = time_zone.to_std_string_escaped();

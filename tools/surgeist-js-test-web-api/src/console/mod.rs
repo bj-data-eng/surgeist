@@ -207,7 +207,7 @@ fn formatter(data: &[JsValue], context: &mut Context) -> JsResult<String> {
             let mut arg_index = 1;
             let target = data
                 .get_or_undefined(0)
-                .to_string(context)?
+                .to_string(context.access())?
                 .to_std_string_escaped();
             let mut chars = target.chars();
             while let Some(c) = chars.next() {
@@ -216,7 +216,10 @@ fn formatter(data: &[JsValue], context: &mut Context) -> JsResult<String> {
                     match fmt {
                         /* integer */
                         'd' | 'i' => {
-                            let arg = match data.get_or_undefined(arg_index).to_numeric(context)? {
+                            let arg = match data
+                                .get_or_undefined(arg_index)
+                                .to_numeric(context.access())?
+                            {
                                 Numeric::Number(r) => (r.floor() + 0.0).to_string(),
                                 Numeric::BigInt(int) => int.to_string(),
                             };
@@ -225,7 +228,9 @@ fn formatter(data: &[JsValue], context: &mut Context) -> JsResult<String> {
                         }
                         /* float */
                         'f' => {
-                            let arg = data.get_or_undefined(arg_index).to_number(context)?;
+                            let arg = data
+                                .get_or_undefined(arg_index)
+                                .to_number(context.access())?;
                             let _ = write!(formatted, "{arg:.6}");
                             arg_index += 1;
                         }
@@ -245,14 +250,15 @@ fn formatter(data: &[JsValue], context: &mut Context) -> JsResult<String> {
                                 && let Ok(to_string) = obj.get(js_string!("toString"), context)
                                 && let Some(to_string_fn) = to_string.as_function()
                             {
-                                let arg =
-                                    to_string_fn.call(arg, &[], context)?.to_string(context)?;
+                                let arg = to_string_fn
+                                    .call(arg, &[], context)?
+                                    .to_string(context.access())?;
                                 formatted.push_str(&arg.to_std_string_escaped());
                                 written = true;
                             }
 
                             if !written {
-                                let arg = arg.to_string(context)?.to_std_string_escaped();
+                                let arg = arg.to_string(context.access())?.to_std_string_escaped();
                                 formatted.push_str(&arg);
                             }
 
@@ -762,7 +768,7 @@ impl Console {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         let label = match args.first() {
-            Some(value) => value.to_string(context)?,
+            Some(value) => value.to_string(context.access())?,
             None => "default".into(),
         };
 
@@ -792,7 +798,7 @@ impl Console {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         let label = match args.first() {
-            Some(value) => value.to_string(context)?,
+            Some(value) => value.to_string(context.access())?,
             None => "default".into(),
         };
 
@@ -833,7 +839,7 @@ impl Console {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         let label = match args.first() {
-            Some(value) => value.to_string(context)?,
+            Some(value) => value.to_string(context.access())?,
             None => "default".into(),
         };
 
@@ -869,7 +875,7 @@ impl Console {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         let label = match args.first() {
-            Some(value) => value.to_string(context)?,
+            Some(value) => value.to_string(context.access())?,
             None => "default".into(),
         };
 
@@ -909,7 +915,7 @@ impl Console {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         let label = match args.first() {
-            Some(value) => value.to_string(context)?,
+            Some(value) => value.to_string(context.access())?,
             None => "default".into(),
         };
 

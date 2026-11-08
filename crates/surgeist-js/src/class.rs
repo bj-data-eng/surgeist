@@ -34,7 +34,7 @@
 //!     // object.
 //!     fn data_constructor(_new_target: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<Self> {
 //!         // This is equivalent to `String(arg)`.
-//!         let kind = args.get_or_undefined(0).to_string(context)?;
+//!         let kind = args.get_or_undefined(0).to_string(context.access())?;
 //!
 //!         let animal = match kind.to_std_string_escaped().as_str() {
 //!             "cat" => Self::Cat,
@@ -52,7 +52,7 @@
 //!         args: &[JsValue],
 //!         context: &mut Context,
 //!     ) -> JsResult<()> {
-//!         let age = args.get_or_undefined(1).to_number(context)?;
+//!         let age = args.get_or_undefined(1).to_number(context.access())?;
 //!
 //!         // Roughly equivalent to `this.age = Number(age)`.
 //!         instance.clone().upcast().set(js_string!("age"), age, true, context)?;

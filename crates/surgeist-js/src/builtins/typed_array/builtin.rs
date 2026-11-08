@@ -259,7 +259,7 @@ impl BuiltinTypedArray {
         // 7. NOTE: source is not an Iterable so assume it is already an array-like object.
         // 8. Let arrayLike be ! ToObject(source).
         let array_like = source
-            .to_object(context)
+            .to_object(context.access())
             .js_expect("ToObject cannot fail here")?;
 
         // 9. Let len be ? LengthOfArrayLike(arrayLike).
@@ -370,7 +370,9 @@ impl BuiltinTypedArray {
         let len = o.borrow().data().array_length(buf_len) as i64;
 
         // 4. Let relativeIndex be ? ToIntegerOrInfinity(index).
-        let relative_index = args.get_or_undefined(0).to_integer_or_infinity(context)?;
+        let relative_index = args
+            .get_or_undefined(0)
+            .to_integer_or_infinity(context.access())?;
 
         let k = match relative_index {
             // Note: Early undefined return on infinity.
@@ -705,10 +707,10 @@ impl BuiltinTypedArray {
 
         let value: JsValue = if ta.borrow().data().kind().content_type() == ContentType::BigInt {
             // 4. If O.[[ContentType]] is BigInt, set value to ? ToBigInt(value).
-            args.get_or_undefined(0).to_bigint(context)?.into()
+            args.get_or_undefined(0).to_bigint(context.access())?.into()
         } else {
             // 5. Otherwise, set value to ? ToNumber(value).
-            args.get_or_undefined(0).to_number(context)?.into()
+            args.get_or_undefined(0).to_number(context.access())?.into()
         };
 
         // 6. Let relativeStart be ? ToIntegerOrInfinity(start).
@@ -1062,7 +1064,9 @@ impl BuiltinTypedArray {
 
         // 5. Let n be ? ToIntegerOrInfinity(fromIndex).
         // 6. Assert: If fromIndex is undefined, then n is 0.
-        let n = args.get_or_undefined(1).to_integer_or_infinity(context)?;
+        let n = args
+            .get_or_undefined(1)
+            .to_integer_or_infinity(context.access())?;
 
         let n = match n {
             // 7. If n is +∞, return false.
@@ -1126,7 +1130,9 @@ impl BuiltinTypedArray {
 
         // 5. Let n be ? ToIntegerOrInfinity(fromIndex).
         // 6. Assert: If fromIndex is undefined, then n is 0.
-        let n = args.get_or_undefined(1).to_integer_or_infinity(context)?;
+        let n = args
+            .get_or_undefined(1)
+            .to_integer_or_infinity(context.access())?;
 
         let n = match n {
             // 7. If n is +∞, return -1𝔽.
@@ -1192,7 +1198,7 @@ impl BuiltinTypedArray {
             js_string!(",")
         // 5. Else, let sep be ? ToString(separator).
         } else {
-            separator.to_string(context)?
+            separator.to_string(context.access())?
         };
 
         // 6. Let R be the empty String.
@@ -1213,7 +1219,7 @@ impl BuiltinTypedArray {
             // c. If element is undefined, let next be the empty String; otherwise, let next be ! ToString(element).
             // d. Set R to the string-concatenation of R and next.
             if !element.is_undefined() {
-                r.extend(element.to_string(context)?.iter());
+                r.extend(element.to_string(context.access())?.iter());
             }
         }
 
@@ -1263,7 +1269,7 @@ impl BuiltinTypedArray {
         let k = match args.get(1) {
             None => len,
             Some(n) => {
-                let n = n.to_integer_or_infinity(context)?;
+                let n = n.to_integer_or_infinity(context.access())?;
                 match n {
                     // 6. If n is -∞, return -1𝔽.
                     IntegerOrInfinity::NegativeInfinity => return Ok((-1).into()),
@@ -1656,7 +1662,9 @@ impl BuiltinTypedArray {
             })?;
 
         // 4. Let targetOffset be ? ToIntegerOrInfinity(offset).
-        let target_offset = args.get_or_undefined(1).to_integer_or_infinity(context)?;
+        let target_offset = args
+            .get_or_undefined(1)
+            .to_integer_or_infinity(context.access())?;
 
         // 5. If targetOffset < 0, throw a RangeError exception.
         let target_offset = match target_offset {
@@ -1928,7 +1936,7 @@ impl BuiltinTypedArray {
         };
 
         // 4. Let src be ? ToObject(source).
-        let src = source.to_object(context)?;
+        let src = source.to_object(context.access())?;
 
         // 5. Let srcLength be ? LengthOfArrayLike(src).
         let src_length = src.length_of_array_like(context)?;
@@ -2499,7 +2507,7 @@ impl BuiltinTypedArray {
                         &[locales.clone(), options.clone()],
                         context,
                     )?
-                    .to_string(context)?;
+                    .to_string(context.access())?;
 
                 r.extend(s.iter());
             }
@@ -2545,16 +2553,18 @@ impl BuiltinTypedArray {
 
         // 4. Let relativeIndex be ? ToIntegerOrInfinity(index).
         // triggers any conversion errors before throwing range errors.
-        let relative_index = args.get_or_undefined(0).to_integer_or_infinity(context)?;
+        let relative_index = args
+            .get_or_undefined(0)
+            .to_integer_or_infinity(context.access())?;
 
         let value = args.get_or_undefined(1);
 
         // 7. If O.[[ContentType]] is bigint, let numericValue be ? ToBigInt(value).
         let numeric_value: JsValue = if kind.content_type() == ContentType::BigInt {
-            value.to_bigint(context)?.into()
+            value.to_bigint(context.access())?.into()
         } else {
             // 8. Else, let numericValue be ? ToNumber(value).
-            value.to_number(context)?.into()
+            value.to_number(context.access())?.into()
         };
 
         // 9. If IsValidIntegerIndex(O, 𝔽(actualIndex)) is false, throw a RangeError exception.
@@ -2967,7 +2977,7 @@ impl BuiltinTypedArray {
         let element_size = T::ERASED.element_size();
 
         // 2. Let offset be ? ToIndex(byteOffset).
-        let offset = byte_offset.to_index(context)?;
+        let offset = byte_offset.to_index(context.access())?;
 
         // 3. If offset modulo elementSize ≠ 0, throw a RangeError exception.
         if offset % element_size != 0 {
@@ -2984,7 +2994,7 @@ impl BuiltinTypedArray {
             None
         } else {
             // a. Let newLength be ? ToIndex(length).
-            Some(length.to_index(context)?)
+            Some(length.to_index(context.access())?)
         };
 
         let buffer_byte_length = {
@@ -3121,7 +3131,7 @@ fn compare_typed_array_elements(
         // a. Let v be ? ToNumber(? Call(comparefn, undefined, « x, y »)).
         let v = compare_fn
             .call(&JsValue::undefined(), &[x.clone(), y.clone()], context)?
-            .to_number(context)?;
+            .to_number(context.access())?;
 
         // b. If v is NaN, return +0𝔽.
         if v.is_nan() {

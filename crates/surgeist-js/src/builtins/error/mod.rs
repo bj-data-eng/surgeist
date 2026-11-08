@@ -258,7 +258,7 @@ impl BuiltInConstructor for Error {
         let message = args.get_or_undefined(0);
         if !message.is_undefined() {
             // a. Let msg be ? ToString(message).
-            let msg = message.to_string(context)?;
+            let msg = message.to_string(context.access())?;
 
             // b. Perform CreateNonEnumerableDataPropertyOrThrow(O, "message", msg).
             o.create_non_enumerable_data_property_or_throw(js_string!("message"), msg, context);
@@ -391,7 +391,7 @@ impl Error {
         let name = if name.is_undefined() {
             js_string!("Error")
         } else {
-            name.to_string(context)?
+            name.to_string(context.access())?
         };
 
         // 5. Let msg be ? Get(O, "message").
@@ -401,7 +401,7 @@ impl Error {
         let msg = if msg.is_undefined() {
             js_string!()
         } else {
-            msg.to_string(context)?
+            msg.to_string(context.access())?
         };
 
         // 7. If name is the empty String, return msg.
@@ -476,7 +476,7 @@ impl Error {
 
         let message = args.get_or_undefined(0);
         if !message.is_undefined() {
-            let msg = message.to_string(context)?;
+            let msg = message.to_string(context.access())?;
             o.create_non_enumerable_data_property_or_throw(js_string!("message"), msg, context);
         }
 

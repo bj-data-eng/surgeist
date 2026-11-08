@@ -1029,7 +1029,7 @@ pub(crate) fn to_year_month_calendar_fields(
         let era = partial_object
             .get(js_string!("era"), context)?
             .map(|v| {
-                let v = v.to_primitive(context, crate::value::PreferredType::String)?;
+                let v = v.to_primitive(context.access(), crate::value::PreferredType::String)?;
                 let Some(era) = v.as_string() else {
                     return Err(JsError::from(
                         JsNativeError::typ()
@@ -1063,7 +1063,7 @@ pub(crate) fn to_year_month_calendar_fields(
     let month_code = partial_object
         .get(js_string!("monthCode"), context)?
         .map(|v| {
-            let v = v.to_primitive(context, crate::value::PreferredType::String)?;
+            let v = v.to_primitive(context.access(), crate::value::PreferredType::String)?;
             let Some(month_code) = v.as_string() else {
                 return Err(JsNativeError::typ()
                     .with_message("The monthCode field value must be a string.")

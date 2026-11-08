@@ -284,7 +284,7 @@ pub(crate) fn is_partial_temporal_object(
 
 impl JsValue {
     pub(crate) fn to_finitef64(&self, context: &mut Context) -> JsResult<FiniteF64> {
-        let number = self.to_number(context)?;
+        let number = self.to_number(context.access())?;
         let result = FiniteF64::try_from(number)?;
         Ok(result)
     }

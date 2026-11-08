@@ -689,12 +689,12 @@ impl JsObject {
         if self.is_array() {
             let length = self.borrow().properties().named_slot(0);
             // Arrays are limited to [0, 2^32 - 1].
-            return length.to_u32(context).map(u64::from);
+            return length.to_u32(context.access()).map(u64::from);
         }
 
         // 2. Return ℝ(? ToLength(? Get(obj, "length"))).
         self.get(StaticJsStrings::LENGTH, context)?
-            .to_length(context)
+            .to_length(context.access())
     }
 
     /// `7.3.22 SpeciesConstructor ( O, defaultConstructor )`
@@ -937,7 +937,7 @@ impl JsObject {
 
         // 4. Let from be ! ToObject(source).
         let from = source
-            .to_object(context)
+            .to_object(context.access())
             .expect("function ToObject should never complete abruptly here");
 
         // 5. Let keys be ? from.[[OwnPropertyKeys]]().
@@ -1362,7 +1362,7 @@ impl JsValue {
         K: Into<PropertyKey>,
     {
         // 1. Let O be ? ToObject(V).
-        let o = self.to_object(context)?;
+        let o = self.to_object(context.access())?;
 
         // 2. Return ? O.[[Get]](P, V).
 

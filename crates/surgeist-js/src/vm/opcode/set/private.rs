@@ -25,7 +25,7 @@ impl SetPrivateField {
             .constant_string(index.into());
         let value = context.vm.get_register(value.into()).clone();
         let object = context.vm.get_register(object.into()).clone();
-        let base_obj = object.to_object(context)?;
+        let base_obj = object.to_object(context.access())?;
         let name = context
             .vm
             .frame()

@@ -207,7 +207,7 @@ impl BuiltInConstructor for String {
                     .into());
             }
             // b. Let s be ? ToString(value).
-            Some(value) => value.to_string(context)?,
+            Some(value) => value.to_string(context.access())?,
             // 1. If value is not present, let s be the empty String.
             None => js_string!(),
         };
@@ -319,7 +319,7 @@ impl String {
         // 2. For each element next of codePoints, do
         for arg in args {
             // a. Let nextCP be ? ToNumber(next).
-            let nextcp = arg.to_number(context)?;
+            let nextcp = arg.to_number(context.access())?;
 
             // b. If ! IsIntegralNumber(nextCP) is false, throw a RangeError exception.
             if !Number::is_float_integer(nextcp) {
@@ -366,10 +366,12 @@ impl String {
         let number_of_substitutions = substitutions.len() as u64;
 
         // 2. Let cooked be ? ToObject(template).
-        let cooked = args.get_or_undefined(0).to_object(context)?;
+        let cooked = args.get_or_undefined(0).to_object(context.access())?;
 
         // 3. Let raw be ? ToObject(? Get(cooked, "raw")).
-        let raw = cooked.get(js_string!("raw"), context)?.to_object(context)?;
+        let raw = cooked
+            .get(js_string!("raw"), context)?
+            .to_object(context.access())?;
 
         // 4. Let literalSegments be ? LengthOfArrayLike(raw).
         let literal_segments = raw.length_of_array_like(context)?;
@@ -391,7 +393,7 @@ impl String {
             let next_key = next_index;
 
             // b. Let nextSeg be ? ToString(? Get(raw, nextKey)).
-            let next_seg = raw.get(next_key, context)?.to_string(context)?;
+            let next_seg = raw.get(next_key, context)?.to_string(context.access())?;
 
             // c. Append the code unit elements of nextSeg to the end of stringElements.
             string_elements.extend(next_seg.iter());
@@ -413,7 +415,7 @@ impl String {
             };
 
             // g. Let nextSub be ? ToString(next).
-            let next_sub = next.to_string(context)?;
+            let next_sub = next.to_string(context.access())?;
 
             // h. Append the code unit elements of nextSub to the end of stringElements.
             string_elements.extend(next_sub.iter());
@@ -441,7 +443,7 @@ impl String {
         // 2. For each element next of codeUnits, do
         for next in args {
             // a. Let nextCU be the code unit whose numeric value is ℝ(? ToUint16(next)).
-            let next_cu = next.to_uint16(context)?;
+            let next_cu = next.to_uint16(context.access())?;
 
             // b. Set result to the string-concatenation of result and nextCU.
             result.push(next_cu);
@@ -488,10 +490,12 @@ impl String {
         let this = this.require_object_coercible()?;
 
         // 2. Let S be ? ToString(O).
-        let string = this.to_string(context)?;
+        let string = this.to_string(context.access())?;
 
         // 3. Let position be ? ToIntegerOrInfinity(pos).
-        let position = args.get_or_undefined(0).to_integer_or_infinity(context)?;
+        let position = args
+            .get_or_undefined(0)
+            .to_integer_or_infinity(context.access())?;
 
         match position {
             // 4. Let size be the length of S.
@@ -521,13 +525,15 @@ impl String {
         let this = this.require_object_coercible()?;
 
         // 2. Let S be ? ToString(O).
-        let s = this.to_string(context)?;
+        let s = this.to_string(context.access())?;
 
         // 3. Let len be the length of S.
         let len = s.len() as i64;
 
         // 4. Let relativeIndex be ? ToIntegerOrInfinity(index).
-        let relative_index = args.get_or_undefined(0).to_integer_or_infinity(context)?;
+        let relative_index = args
+            .get_or_undefined(0)
+            .to_integer_or_infinity(context.access())?;
         let k = match relative_index {
             // 5. If relativeIndex ≥ 0, then
             // a. Let k be relativeIndex.
@@ -566,10 +572,12 @@ impl String {
         let this = this.require_object_coercible()?;
 
         // 2. Let S be ? ToString(O).
-        let string = this.to_string(context)?;
+        let string = this.to_string(context.access())?;
 
         // 3. Let position be ? ToIntegerOrInfinity(pos).
-        let position = args.get_or_undefined(0).to_integer_or_infinity(context)?;
+        let position = args
+            .get_or_undefined(0)
+            .to_integer_or_infinity(context.access())?;
 
         match position {
             // 4. Let size be the length of S.
@@ -609,10 +617,12 @@ impl String {
         let this = this.require_object_coercible()?;
 
         // 2. Let S be ? ToString(O).
-        let string = this.to_string(context)?;
+        let string = this.to_string(context.access())?;
 
         // 3. Let position be ? ToIntegerOrInfinity(pos).
-        let position = args.get_or_undefined(0).to_integer_or_infinity(context)?;
+        let position = args
+            .get_or_undefined(0)
+            .to_integer_or_infinity(context.access())?;
 
         let code_unit = match position {
             IntegerOrInfinity::Integer(index) => usize::try_from(index)
@@ -646,14 +656,14 @@ impl String {
         let this = this.require_object_coercible()?;
 
         // 2. Let S be ? ToString(O).
-        let mut string = this.to_string(context)?;
+        let mut string = this.to_string(context.access())?;
 
         // 3. Let R be S.
         // 4. For each element next of args, do
         for arg in args {
             // a. Let nextString be ? ToString(next).
             // b. Set R to the string-concatenation of R and nextString.
-            string = js_string!(&string, &arg.to_string(context)?);
+            string = js_string!(&string, &arg.to_string(context.access())?);
         }
 
         // 5. Return R.
@@ -680,10 +690,12 @@ impl String {
         let this = this.require_object_coercible()?;
 
         // 2. Let S be ? ToString(O).
-        let string = this.to_string(context)?;
+        let string = this.to_string(context.access())?;
 
         // 3. Let n be ? ToIntegerOrInfinity(count).
-        let n = args.get_or_undefined(0).to_integer_or_infinity(context)?;
+        let n = args
+            .get_or_undefined(0)
+            .to_integer_or_infinity(context.access())?;
 
         // 4. If n < 0 or n is +∞, throw a RangeError exception.
         let n = match n {
@@ -756,13 +768,16 @@ impl String {
         let this = this.require_object_coercible()?;
 
         // 2. Let S be ? ToString(O).
-        let string = this.to_string(context)?;
+        let string = this.to_string(context.access())?;
 
         // 3. Let len be the length of S.
         let len = string.len() as i64;
 
         // 4. Let intStart be ? ToIntegerOrInfinity(start).
-        let from = match args.get_or_undefined(0).to_integer_or_infinity(context)? {
+        let from = match args
+            .get_or_undefined(0)
+            .to_integer_or_infinity(context.access())?
+        {
             // 6. Else if intStart < 0, let from be max(len + intStart, 0).
             IntegerOrInfinity::Integer(i) if i < 0 => max(len + i, 0),
 
@@ -778,7 +793,7 @@ impl String {
         let to = match args
             .get(1)
             .filter(|end| !end.is_undefined())
-            .map(|end| end.to_integer_or_infinity(context))
+            .map(|end| end.to_integer_or_infinity(context.access()))
             .transpose()?
             .unwrap_or(IntegerOrInfinity::Integer(len))
         {
@@ -816,7 +831,7 @@ impl String {
         let this = this.require_object_coercible()?;
 
         // 2. Let S be ? ToString(O).
-        let string = this.to_string(context)?;
+        let string = this.to_string(context.access())?;
 
         let search_string = args.get_or_undefined(0);
 
@@ -829,7 +844,7 @@ impl String {
         }
 
         // 5. Let searchStr be ? ToString(searchString).
-        let search_string = search_string.to_string(context)?;
+        let search_string = search_string.to_string(context.access())?;
 
         // 6. Let len be the length of S.
         let len = string.len() as i64;
@@ -838,7 +853,7 @@ impl String {
         let pos = args
             .get_or_undefined(1)
             .map_or(Ok(IntegerOrInfinity::Integer(0)), |pos| {
-                pos.to_integer_or_infinity(context)
+                pos.to_integer_or_infinity(context.access())
             })?;
 
         // 8. Let start be the result of clamping pos between 0 and len.
@@ -886,7 +901,7 @@ impl String {
         let this = this.require_object_coercible()?;
 
         // 2. Let S be ? ToString(O).
-        let string = this.to_string(context)?;
+        let string = this.to_string(context.access())?;
 
         let search_str = match args.get_or_undefined(0) {
             // 3. Let isRegExp be ? IsRegExp(searchString).
@@ -897,7 +912,7 @@ impl String {
                 ).into());
             }
             // 5. Let searchStr be ? ToString(searchString).
-            search_string => search_string.to_string(context)?,
+            search_string => search_string.to_string(context.access())?,
         };
 
         // 6. Let len be the length of S.
@@ -906,7 +921,7 @@ impl String {
         // 7. If endPosition is undefined, let pos be len; else let pos be ? ToIntegerOrInfinity(endPosition).
         let end = match args.get_or_undefined(1) {
             end_position if end_position.is_undefined() => IntegerOrInfinity::Integer(len),
-            end_position => end_position.to_integer_or_infinity(context)?,
+            end_position => end_position.to_integer_or_infinity(context.access())?,
         };
 
         // 8. Let end be the result of clamping pos between 0 and len.
@@ -952,7 +967,7 @@ impl String {
         let this = this.require_object_coercible()?;
 
         // 2. Let S be ? ToString(O).
-        let string = this.to_string(context)?;
+        let string = this.to_string(context.access())?;
 
         let search_str = match args.get_or_undefined(0) {
             // 3. Let isRegExp be ? IsRegExp(searchString).
@@ -963,12 +978,14 @@ impl String {
                 ).into());
             }
             // 5. Let searchStr be ? ToString(searchString).
-            search_string => search_string.to_string(context)?,
+            search_string => search_string.to_string(context.access())?,
         };
 
         // 6. Let pos be ? ToIntegerOrInfinity(position).
         // 7. Assert: If position is undefined, then pos is 0.
-        let pos = args.get_or_undefined(1).to_integer_or_infinity(context)?;
+        let pos = args
+            .get_or_undefined(1)
+            .to_integer_or_infinity(context.access())?;
 
         // 8. Let len be the length of S.
         // 9. Let start be the result of clamping pos between 0 and len.
@@ -1025,10 +1042,10 @@ impl String {
         }
 
         // 3. Let string be ? ToString(O).
-        let string = o.to_string(context)?;
+        let string = o.to_string(context.access())?;
 
         // 4. Let searchString be ? ToString(searchValue).
-        let search_string = search_value.to_string(context)?;
+        let search_string = search_value.to_string(context.access())?;
 
         // 5. Let functionalReplace be IsCallable(replaceValue).
         let functional_replace = replace_value.as_callable();
@@ -1038,7 +1055,7 @@ impl String {
             CallableOrString::FunctionalReplace(callable)
         } else {
             // a. Set replaceValue to ? ToString(replaceValue).
-            CallableOrString::ReplaceValue(replace_value.to_string(context)?)
+            CallableOrString::ReplaceValue(replace_value.to_string(context.access())?)
         };
 
         // 7. Let searchLength be the length of searchString.
@@ -1063,7 +1080,7 @@ impl String {
                         &[search_string.into(), position.into(), string.clone().into()],
                         context,
                     )?
-                    .to_string(context)?
+                    .to_string(context.access())?
             }
             // 12. Else,
             CallableOrString::ReplaceValue(replace_value) => {
@@ -1132,7 +1149,7 @@ impl String {
                 flags.require_object_coercible()?;
 
                 // iii. If ? ToString(flags) does not contain "g", throw a TypeError exception.
-                if !flags.to_string(context)?.contains(b'g') {
+                if !flags.to_string(context.access())?.contains(b'g') {
                     return Err(JsNativeError::typ()
                         .with_message(
                             "String.prototype.replaceAll called with a non-global RegExp argument",
@@ -1152,10 +1169,10 @@ impl String {
         }
 
         // 3. Let string be ? ToString(O).
-        let string = o.to_string(context)?;
+        let string = o.to_string(context.access())?;
 
         // 4. Let searchString be ? ToString(searchValue).
-        let search_string = search_value.to_string(context)?;
+        let search_string = search_value.to_string(context.access())?;
 
         // 5. Let functionalReplace be IsCallable(replaceValue).
         let replace = if let Some(f) = replace_value.as_callable() {
@@ -1163,7 +1180,7 @@ impl String {
         } else {
             // 6. If functionalReplace is false, then
             // a. Set replaceValue to ? ToString(replaceValue).
-            Err(replace_value.to_string(context)?)
+            Err(replace_value.to_string(context.access())?)
         };
 
         // 7. Let searchLength be the length of searchString.
@@ -1213,7 +1230,7 @@ impl String {
                             ],
                             context,
                         )?
-                        .to_string(context)?
+                        .to_string(context.access())?
                 }
                 // i. Assert: Type(replaceValue) is String.
                 // ii. Let captures be a new empty List.
@@ -1270,14 +1287,16 @@ impl String {
         let this = this.require_object_coercible()?;
 
         // 2. Let S be ? ToString(O).
-        let string = this.to_string(context)?;
+        let string = this.to_string(context.access())?;
 
         // 3. Let searchStr be ? ToString(searchString).
-        let search_str = args.get_or_undefined(0).to_string(context)?;
+        let search_str = args.get_or_undefined(0).to_string(context.access())?;
 
         // 4. Let pos be ? ToIntegerOrInfinity(position).
         // 5. Assert: If position is undefined, then pos is 0.
-        let pos = args.get_or_undefined(1).to_integer_or_infinity(context)?;
+        let pos = args
+            .get_or_undefined(1)
+            .to_integer_or_infinity(context.access())?;
 
         // 6. Let len be the length of S.
         let len = string.len() as i64;
@@ -1309,7 +1328,7 @@ impl String {
         let o = this.require_object_coercible()?;
 
         // 2. Let S be ? ToString(O).
-        let s = o.to_string(context)?;
+        let s = o.to_string(context.access())?;
 
         // 3. Return IsStringWellFormedUnicode(S).
         for code_point in s.code_points() {
@@ -1342,21 +1361,21 @@ impl String {
         let this = this.require_object_coercible()?;
 
         // 2. Let S be ? ToString(O).
-        let string = this.to_string(context)?;
+        let string = this.to_string(context.access())?;
 
         // 3. Let searchStr be ? ToString(searchString).
-        let search_str = args.get_or_undefined(0).to_string(context)?;
+        let search_str = args.get_or_undefined(0).to_string(context.access())?;
 
         // 4. Let numPos be ? ToNumber(position).
         // 5. Assert: If position is undefined, then numPos is NaN.
-        let num_pos = args.get_or_undefined(1).to_number(context)?;
+        let num_pos = args.get_or_undefined(1).to_number(context.access())?;
 
         // 6. If numPos is NaN, let pos be +∞; otherwise, let pos be ! ToIntegerOrInfinity(numPos).
         let pos = if num_pos.is_nan() {
             IntegerOrInfinity::PositiveInfinity
         } else {
             JsValue::new(num_pos)
-                .to_integer_or_infinity(context)
+                .to_integer_or_infinity(context.access())
                 .js_expect("Already called `to_number so this must not fail.")?
         };
 
@@ -1409,10 +1428,10 @@ impl String {
         let o = this.require_object_coercible()?;
 
         // 2. Let S be ? ToString(O).
-        let s = o.to_string(context)?;
+        let s = o.to_string(context.access())?;
 
         // 3. Let thatValue be ? ToString(that).
-        let that_value = args.get_or_undefined(0).to_string(context)?;
+        let that_value = args.get_or_undefined(0).to_string(context.access())?;
 
         let cmp = {
             #[cfg(feature = "intl")]
@@ -1489,7 +1508,7 @@ impl String {
         }
 
         // 3. Let S be ? ToString(O).
-        let s = o.to_string(context)?;
+        let s = o.to_string(context.access())?;
 
         // 4. Let rx be ? RegExpCreate(regexp, undefined).
         let rx = RegExp::create(regexp, &JsValue::undefined(), context)?;
@@ -1514,10 +1533,10 @@ impl String {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let S be ? ToString(O).
-        let string = object.to_string(context)?;
+        let string = object.to_string(context.access())?;
 
         // 2. Let intMaxLength be ℝ(? ToLength(maxLength)).
-        let int_max_length = max_length.to_length(context)?;
+        let int_max_length = max_length.to_length(context.access())?;
 
         // 3. Let stringLength be the length of S.
         let string_length = string.len() as u64;
@@ -1532,7 +1551,7 @@ impl String {
             js_string!("\u{0020}")
         } else {
             // 6. Else, let filler be ? ToString(fillString).
-            fill_string.to_string(context)?
+            fill_string.to_string(context.access())?
         };
 
         // 7. If filler is the empty String, return S.
@@ -1655,7 +1674,7 @@ impl String {
         // 1. Let S be the this value.
         // 2. Return ? TrimString(S, start+end).
         let object = this.require_object_coercible()?;
-        let string = object.to_string(context)?;
+        let string = object.to_string(context.access())?;
         Ok(js_string!(string.trim()).into())
     }
 
@@ -1679,7 +1698,7 @@ impl String {
         // 1. Let S be the this value.
         // 2. Return ? TrimString(S, start).
         let object = this.require_object_coercible()?;
-        let string = object.to_string(context)?;
+        let string = object.to_string(context.access())?;
         Ok(js_string!(string.trim_start()).into())
     }
 
@@ -1703,7 +1722,7 @@ impl String {
         // 1. Let S be the this value.
         // 2. Return ? TrimString(S, end).
         let object = this.require_object_coercible()?;
-        let string = object.to_string(context)?;
+        let string = object.to_string(context.access())?;
         Ok(string.trim_end().into())
     }
 
@@ -1728,7 +1747,7 @@ impl String {
         let this = this.require_object_coercible()?;
 
         // 2. Let S be ? ToString(O).
-        let string = this.to_string(context)?;
+        let string = this.to_string(context.access())?;
 
         // 3. Let sText be ! StringToCodePoints(S).
         // 4. Let upperText be the result of toUppercase(sText), according to
@@ -1768,7 +1787,7 @@ impl String {
             let this = this.require_object_coercible()?;
 
             // 2. Let S be ? ToString(O).
-            let string = this.to_string(context)?;
+            let string = this.to_string(context.access())?;
 
             // 3. Return ? TransformCase(S, locales, lower).
 
@@ -1846,7 +1865,7 @@ impl String {
         let o = this.require_object_coercible()?;
 
         // 2. Let S be ? ToString(O).
-        let s = o.to_string(context)?;
+        let s = o.to_string(context.access())?;
 
         // 3. Let strLen be the length of S.
         // 4. Let k be 0.
@@ -1889,19 +1908,21 @@ impl String {
         let this = this.require_object_coercible()?;
 
         // 2. Let S be ? ToString(O).
-        let string = this.to_string(context)?;
+        let string = this.to_string(context.access())?;
 
         // 3. Let len be the length of S.
         let len = string.len() as i64;
 
         // 4. Let intStart be ? ToIntegerOrInfinity(start).
-        let int_start = args.get_or_undefined(0).to_integer_or_infinity(context)?;
+        let int_start = args
+            .get_or_undefined(0)
+            .to_integer_or_infinity(context.access())?;
 
         // 5. If end is undefined, let intEnd be len; else let intEnd be ? ToIntegerOrInfinity(end).
         let int_end = args
             .get_or_undefined(1)
             .map_or(Ok(IntegerOrInfinity::Integer(len)), |end| {
-                end.to_integer_or_infinity(context)
+                end.to_integer_or_infinity(context.access())
             })?;
 
         // 6. Let finalStart be the result of clamping intStart between 0 and len.
@@ -1954,17 +1975,17 @@ impl String {
         }
 
         // 3. Let S be ? ToString(O).
-        let this_str = this.to_string(context)?;
+        let this_str = this.to_string(context.access())?;
 
         // 4.  If limit is undefined, let lim be 2^32 - 1; else let lim be ℝ(? ToUint32(limit)).
         let lim = if limit.is_undefined() {
             u32::MAX
         } else {
-            limit.to_u32(context)?
+            limit.to_u32(context.access())?
         } as usize;
 
         // 5. Let R be ? ToString(separator).
-        let separator_str = separator.to_string(context)?;
+        let separator_str = separator.to_string(context.access())?;
 
         // 6. If lim = 0, return A.
         if lim == 0 {
@@ -2092,7 +2113,7 @@ impl String {
                 flags.require_object_coercible()?;
 
                 // iii. If ? ToString(flags) does not contain "g", throw a TypeError exception.
-                if !flags.to_string(context)?.contains(b'g') {
+                if !flags.to_string(context.access())?.contains(b'g') {
                     return Err(JsNativeError::typ()
                         .with_message(
                             "String.prototype.matchAll called with a non-global RegExp argument",
@@ -2109,7 +2130,7 @@ impl String {
         }
 
         // 3. Let S be ? ToString(O).
-        let s = o.to_string(context)?;
+        let s = o.to_string(context.access())?;
 
         // 4. Let rx be ? RegExpCreate(regexp, "g").
         let rx = RegExp::create(regexp, &JsValue::new(js_string!("g")), context)?;
@@ -2146,7 +2167,7 @@ impl String {
         let this = this.require_object_coercible()?;
 
         // 2. Let S be ? ToString(O).
-        let s = this.to_string(context)?;
+        let s = this.to_string(context.access())?;
 
         // 6. Let ns be the String value that is the result of normalizing S
         // into the normalization form named by f as specified in
@@ -2157,7 +2178,7 @@ impl String {
             Normalization::Nfc
         } else {
             // 4. Else, let f be ? ToString(form).
-            match first.to_string(context)? {
+            match first.to_string(context.access())? {
                 ntype if &ntype == "NFC" => Normalization::Nfc,
                 ntype if &ntype == "NFD" => Normalization::Nfd,
                 ntype if &ntype == "NFKC" => Normalization::Nfkc,
@@ -2234,7 +2255,7 @@ impl String {
         }
 
         // 3. Let string be ? ToString(O).
-        let string = o.to_string(context)?;
+        let string = o.to_string(context.access())?;
 
         // 4. Let rx be ? RegExpCreate(regexp, undefined).
         let rx = RegExp::create(regexp, &JsValue::undefined(), context)?;
@@ -2251,7 +2272,7 @@ impl String {
         // 1. Let O be ? RequireObjectCoercible(this value).
         let o = this.require_object_coercible()?;
         // 2. Let s be ? ToString(O).
-        let s = o.to_string(context)?;
+        let s = o.to_string(context.access())?;
 
         Ok(StringIterator::create_string_iterator(s, context).into())
     }
@@ -2279,14 +2300,14 @@ impl String {
         let o = this.require_object_coercible()?;
 
         // 2. Let S be ? ToString(O).
-        let s = o.to_string(context)?;
+        let s = o.to_string(context.access())?;
 
         // 3. Let size be the length of S.
         let size = s.len() as i64;
 
         // 4. Let intStart be ? ToIntegerOrInfinity(start).
         let start = args.get_or_undefined(0);
-        let int_start = start.to_integer_or_infinity(context)?;
+        let int_start = start.to_integer_or_infinity(context.access())?;
 
         let int_start = match int_start {
             // 5. If intStart is -∞, set intStart to 0.
@@ -2306,7 +2327,7 @@ impl String {
         let int_length = if length.is_undefined() {
             IntegerOrInfinity::Integer(size)
         } else {
-            length.to_integer_or_infinity(context)?
+            length.to_integer_or_infinity(context.access())?
         };
 
         // 9. Set intLength to the result of clamping intLength between 0 and size.
@@ -2343,7 +2364,7 @@ impl String {
         let str = string.require_object_coercible()?;
 
         // 2. Let S be ? ToString(str).
-        let s = str.to_string(context)?;
+        let s = str.to_string(context.access())?;
 
         // 3. Let p1 be the string-concatenation of "<" and tag.
         let mut p1 = js_string!(js_str!("<"), tag);
@@ -2351,7 +2372,7 @@ impl String {
         // 4. If attribute is not the empty String, then
         if let Some((attribute, value)) = attribute_and_value {
             // a. Let V be ? ToString(value).
-            let v = value.to_string(context)?;
+            let v = value.to_string(context.access())?;
 
             // b. Let escapedV be the String value that is the same as V except that each occurrence
             //    of the code unit 0x0022 (QUOTATION MARK) in V has been replaced with the six
@@ -2787,7 +2808,7 @@ pub(crate) fn get_substitution(
                             // iii. If capture is undefined, replace the text through > with the empty String.
                             // iv. Otherwise, replace the text through > with ? ToString(capture).
                             if !capture.is_undefined() {
-                                result.extend(capture.to_string(context)?.iter());
+                                result.extend(capture.to_string(context.access())?.iter());
                             }
                         }
                     }

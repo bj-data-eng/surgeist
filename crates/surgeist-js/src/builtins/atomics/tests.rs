@@ -92,7 +92,10 @@ fn discarded_async_job_revokes_its_pending_timeout() {
     }
 
     let executor = Rc::new(KeepTimeout::default());
-    let mut context = Context::builder().job_executor(executor.clone()).build().unwrap();
+    let mut context = Context::builder()
+        .job_executor(executor.clone())
+        .build()
+        .unwrap();
     let notified = context
         .eval(Source::from_bytes(
             "var view = new Int32Array(new SharedArrayBuffer(4)); \
@@ -121,7 +124,9 @@ fn shared_waiter_lists_follow_byte_offsets_across_element_widths() {
             "#,
         ),
         TestAction::assert("first.async && second.async"),
-        TestAction::assert("wrongOffset === 0 && firstNotify === 1 && secondNotify === 1 && empty === 0"),
+        TestAction::assert(
+            "wrongOffset === 0 && firstNotify === 1 && secondNotify === 1 && empty === 0",
+        ),
     ]);
 }
 
@@ -183,7 +188,7 @@ fn waiterlist_block_indexedposition_wake() {
                     promise
                         .await_blocking(context)
                         .unwrap()
-                        .to_string(context)
+                        .to_string(context.access())
                         .unwrap()
                         .to_std_string_lossy(),
                     "ok"
@@ -198,7 +203,7 @@ fn waiterlist_block_indexedposition_wake() {
             context,
         )
         .unwrap()
-        .to_i32(context)
+        .to_i32(context.access())
         .unwrap()
             != NUMAGENT
         {}
@@ -212,7 +217,7 @@ fn waiterlist_block_indexedposition_wake() {
                 context,
             )
             .unwrap()
-            .to_i32(context)
+            .to_i32(context.access())
             .unwrap(),
             NUMAGENT
         );
@@ -225,7 +230,7 @@ fn waiterlist_block_indexedposition_wake() {
                     context
                 )
                 .unwrap()
-                .to_i32(context)
+                .to_i32(context.access())
                 .unwrap(),
                 0
             );
@@ -239,7 +244,7 @@ fn waiterlist_block_indexedposition_wake() {
                     context
                 )
                 .unwrap()
-                .to_i32(context)
+                .to_i32(context.access())
                 .unwrap(),
                 1
             );

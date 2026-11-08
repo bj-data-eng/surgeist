@@ -19,7 +19,7 @@ impl ConcatToString {
         let mut strings = Vec::with_capacity(values.len());
         for value in values {
             let val = context.vm.get_register(value.into()).clone();
-            strings.push(val.to_string(context)?);
+            strings.push(val.to_string(context.access())?);
         }
         let s = JsString::concat_array(&strings.iter().map(JsString::as_str).collect::<Vec<_>>());
         context.vm.set_register(string.into(), s.into());

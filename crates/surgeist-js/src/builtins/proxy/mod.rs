@@ -582,7 +582,7 @@ pub(crate) fn proxy_exotic_get_own_property(
     let extensible_target = target.is_extensible(context)?;
 
     // 12. Let resultDesc be ? ToPropertyDescriptor(trapResultObj).
-    let result_desc = trap_result_obj.to_property_descriptor(context)?;
+    let result_desc = trap_result_obj.to_property_descriptor(context.access())?;
 
     // 13. Call CompletePropertyDescriptor(resultDesc).
     let result_desc = result_desc.complete_property_descriptor();

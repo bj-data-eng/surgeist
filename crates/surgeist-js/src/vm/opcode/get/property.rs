@@ -92,7 +92,7 @@ fn get_by_value<const PUSH_KEY: bool>(
     let key_value = context.vm.get_register(key.into()).clone();
     let base = context.vm.get_register(object.into()).clone();
     let object = base.base_class(context)?;
-    let key_value = key_value.to_property_key(context)?;
+    let key_value = key_value.to_property_key(context.access())?;
 
     // Fast Path
     //

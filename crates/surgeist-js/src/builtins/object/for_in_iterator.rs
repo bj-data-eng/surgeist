@@ -91,7 +91,7 @@ impl ForInIterator {
             .and_then(|object| object.downcast::<Self>().ok())
             .ok_or_else(|| JsNativeError::typ().with_message("`this` is not a ForInIterator"))?;
         let value = iterator.borrow().data().object.to_value();
-        let mut object = value.to_object(context)?;
+        let mut object = value.to_object(context.access())?;
         loop {
             let object_was_visited = iterator.borrow().data().object_was_visited;
             if !object_was_visited {

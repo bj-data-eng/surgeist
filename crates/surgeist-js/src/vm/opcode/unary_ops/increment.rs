@@ -23,7 +23,7 @@ impl Inc {
             JsVariant::Integer32(number) if number < i32::MAX => {
                 (JsValue::from(number), JsValue::from(number + 1))
             }
-            _ => match value.to_numeric(context)? {
+            _ => match value.to_numeric(context.access())? {
                 Numeric::Number(number) => (JsValue::from(number), JsValue::from(number + 1f64)),
                 Numeric::BigInt(bigint) => (
                     JsValue::from(bigint.clone()),

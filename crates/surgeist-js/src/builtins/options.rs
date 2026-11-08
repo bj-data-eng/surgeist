@@ -27,7 +27,7 @@ where
 {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
         value
-            .to_string(context)?
+            .to_string(context.access())?
             .to_std_string_escaped()
             .parse::<Self>()
             .map_err(|err| JsNativeError::range().with_message(err.to_string()).into())
@@ -107,13 +107,13 @@ impl OptionType for JsString {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
         // 6. If type is "string", then
         //      a. Set value to ? ToString(value).
-        value.to_string(context)
+        value.to_string(context.access())
     }
 }
 
 impl OptionType for f64 {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        let value = value.to_number(context)?;
+        let value = value.to_number(context.access())?;
 
         if !value.is_finite() {
             return Err(JsNativeError::range()

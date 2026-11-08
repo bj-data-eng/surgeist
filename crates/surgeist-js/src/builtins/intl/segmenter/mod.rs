@@ -309,7 +309,7 @@ impl Segmenter {
         })?;
 
         // 3. Let string be ? ToString(string).
-        let string = args.get_or_undefined(0).to_string(context)?;
+        let string = args.get_or_undefined(0).to_string(context.access())?;
 
         // 4. Return ! CreateSegmentsObject(segmenter, string).
         Ok(Segments::create(segmenter.clone(), string, context).into())

@@ -185,7 +185,7 @@ impl BuiltInConstructor for OrdinaryObject {
             Ok(JsObject::with_object_proto(context.intrinsics()).into())
         } else {
             // 3. Return ! ToObject(value).
-            value.to_object(context).map(JsValue::from)
+            value.to_object(context.access()).map(JsValue::from)
         }
     }
 }
@@ -208,7 +208,7 @@ impl OrdinaryObject {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let obj = this.to_object(context)?;
+        let obj = this.to_object(context.access())?;
 
         // 2. Return ? O.[[GetPrototypeOf]]().
         let proto = obj.__get_prototype_of__(&mut InternalMethodPropertyContext::new(context))?;
@@ -278,7 +278,7 @@ impl OrdinaryObject {
         let getter = args.get_or_undefined(1);
 
         // 1. Let O be ? ToObject(this value).
-        let obj = this.to_object(context)?;
+        let obj = this.to_object(context.access())?;
 
         // 2. If IsCallable(getter) is false, throw a TypeError exception.
         if !getter.is_callable() {
@@ -294,7 +294,7 @@ impl OrdinaryObject {
             .configurable(true);
 
         // 4. Let key be ? ToPropertyKey(P).
-        let key = args.get_or_undefined(0).to_property_key(context)?;
+        let key = args.get_or_undefined(0).to_property_key(context.access())?;
 
         // 5. Perform ? DefinePropertyOrThrow(O, key, desc).
         obj.define_property_or_throw(key, desc, context)?;
@@ -321,7 +321,7 @@ impl OrdinaryObject {
         let setter = args.get_or_undefined(1);
 
         // 1. Let O be ? ToObject(this value).
-        let obj = this.to_object(context)?;
+        let obj = this.to_object(context.access())?;
 
         // 2. If IsCallable(setter) is false, throw a TypeError exception.
         if !setter.is_callable() {
@@ -337,7 +337,7 @@ impl OrdinaryObject {
             .configurable(true);
 
         // 4. Let key be ? ToPropertyKey(P).
-        let key = args.get_or_undefined(0).to_property_key(context)?;
+        let key = args.get_or_undefined(0).to_property_key(context.access())?;
 
         // 5. Perform ? DefinePropertyOrThrow(O, key, desc).
         obj.define_property_or_throw(key, desc, context)?;
@@ -362,10 +362,10 @@ impl OrdinaryObject {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let mut obj = this.to_object(context)?;
+        let mut obj = this.to_object(context.access())?;
 
         // 2. Let key be ? ToPropertyKey(P).
-        let key = args.get_or_undefined(0).to_property_key(context)?;
+        let key = args.get_or_undefined(0).to_property_key(context.access())?;
 
         // 3. Repeat
         loop {
@@ -408,10 +408,10 @@ impl OrdinaryObject {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let O be ? ToObject(this value).
-        let mut obj = this.to_object(context)?;
+        let mut obj = this.to_object(context.access())?;
 
         // 2. Let key be ? ToPropertyKey(P).
-        let key = args.get_or_undefined(0).to_property_key(context)?;
+        let key = args.get_or_undefined(0).to_property_key(context.access())?;
 
         // 3. Repeat
         loop {
@@ -494,10 +494,10 @@ impl OrdinaryObject {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let obj be ? ToObject(O).
-        let obj = args.get_or_undefined(0).to_object(context)?;
+        let obj = args.get_or_undefined(0).to_object(context.access())?;
 
         // 2. Let key be ? ToPropertyKey(P).
-        let key = args.get_or_undefined(1).to_property_key(context)?;
+        let key = args.get_or_undefined(1).to_property_key(context.access())?;
 
         // 3. Let desc be ? obj.[[GetOwnProperty]](key).
 
@@ -524,7 +524,7 @@ impl OrdinaryObject {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let obj be ? ToObject(O).
-        let obj = args.get_or_undefined(0).to_object(context)?;
+        let obj = args.get_or_undefined(0).to_object(context.access())?;
 
         // 2. Let ownKeys be ? obj.[[OwnPropertyKeys]]().
         let own_keys =
@@ -645,7 +645,7 @@ impl OrdinaryObject {
         }
 
         // 1. Let obj be ? ToObject(O).
-        let obj = args[0].clone().to_object(context)?;
+        let obj = args[0].clone().to_object(context.access())?;
 
         // 2. Return ? obj.[[GetPrototypeOf]]().
         Ok(obj
@@ -727,7 +727,7 @@ impl OrdinaryObject {
             return Ok(JsValue::new(false));
         }
         let mut v = v.clone();
-        let o = JsValue::new(this.to_object(context)?);
+        let o = JsValue::new(this.to_object(context.access())?);
         loop {
             v = Self::get_prototype_of(this, &[v], context)?;
             if v.is_null() {
@@ -749,11 +749,11 @@ impl OrdinaryObject {
             let key = args
                 .get(1)
                 .unwrap_or(&JsValue::undefined())
-                .to_property_key(context)?;
+                .to_property_key(context.access())?;
             let desc = args
                 .get(2)
                 .unwrap_or(&JsValue::undefined())
-                .to_property_descriptor(context)?;
+                .to_property_descriptor(context.access())?;
 
             object.define_property_or_throw(key, desc, context)?;
 
@@ -798,7 +798,7 @@ impl OrdinaryObject {
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/valueOf
     pub fn value_of(this: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         // 1. Return ? ToObject(this value).
-        Ok(this.to_object(context)?.into())
+        Ok(this.to_object(context.access())?.into())
     }
 
     /// `Object.prototype.toString()`
@@ -823,7 +823,7 @@ impl OrdinaryObject {
         }
         // 3. Let O be ! ToObject(this value).
         let o = this
-            .to_object(context)
+            .to_object(context.access())
             .js_expect("toObject cannot fail here")?;
 
         //  4. Let isArray be ? IsArray(O).
@@ -906,10 +906,10 @@ impl OrdinaryObject {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let P be ? ToPropertyKey(V).
-        let key = args.get_or_undefined(0).to_property_key(context)?;
+        let key = args.get_or_undefined(0).to_property_key(context.access())?;
 
         // 2. Let O be ? ToObject(this value).
-        let object = this.to_object(context)?;
+        let object = this.to_object(context.access())?;
 
         // 3. Return ? HasOwnProperty(O, P).
         Ok(object.has_own_property(key, context)?.into())
@@ -935,10 +935,10 @@ impl OrdinaryObject {
             return Ok(JsValue::new(false));
         };
 
-        let key = key.to_property_key(context)?;
+        let key = key.to_property_key(context.access())?;
 
         let own_prop = this
-            .to_object(context)?
+            .to_object(context.access())?
             .__get_own_property__(&key, &mut InternalMethodPropertyContext::new(context))?;
 
         own_prop
@@ -962,7 +962,7 @@ impl OrdinaryObject {
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign
     pub fn assign(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         // 1. Let to be ? ToObject(target).
-        let to = args.get_or_undefined(0).to_object(context)?;
+        let to = args.get_or_undefined(0).to_object(context.access())?;
 
         // 2. If only one argument was passed, return to.
         if args.len() == 1 {
@@ -975,7 +975,7 @@ impl OrdinaryObject {
             if !source.is_null_or_undefined() {
                 // 3.a.i. Let from be ! ToObject(nextSource).
                 let from = source
-                    .to_object(context)
+                    .to_object(context.access())
                     .js_expect("this ToObject call must not fail")?;
                 // 3.a.ii. Let keys be ? from.[[OwnPropertyKeys]]().
                 let keys =
@@ -1021,7 +1021,7 @@ impl OrdinaryObject {
             .first()
             .cloned()
             .unwrap_or_default()
-            .to_object(context)?;
+            .to_object(context.access())?;
 
         // 2. Let nameList be ? EnumerableOwnPropertyNames(obj, key).
         let name_list = obj.enumerable_own_property_names(PropertyNameKind::Key, context)?;
@@ -1046,7 +1046,7 @@ impl OrdinaryObject {
             .first()
             .cloned()
             .unwrap_or_default()
-            .to_object(context)?;
+            .to_object(context.access())?;
 
         // 2. Let nameList be ? EnumerableOwnPropertyNames(obj, value).
         let name_list = obj.enumerable_own_property_names(PropertyNameKind::Value, context)?;
@@ -1075,7 +1075,7 @@ impl OrdinaryObject {
             .first()
             .cloned()
             .unwrap_or_default()
-            .to_object(context)?;
+            .to_object(context.access())?;
 
         // 2. Let nameList be ? EnumerableOwnPropertyNames(obj, key+value).
         let name_list =
@@ -1275,10 +1275,10 @@ impl OrdinaryObject {
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/hasOwn
     pub fn has_own(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         // 1. Let obj be ? ToObject(O).
-        let obj = args.get_or_undefined(0).to_object(context)?;
+        let obj = args.get_or_undefined(0).to_object(context.access())?;
 
         // 2. Let key be ? ToPropertyKey(P).
-        let key = args.get_or_undefined(1).to_property_key(context)?;
+        let key = args.get_or_undefined(1).to_property_key(context.access())?;
 
         // 3. Return ? HasOwnProperty(obj, key).
         Ok(obj.has_own_property(key, context)?.into())
@@ -1310,7 +1310,7 @@ impl OrdinaryObject {
                     let value = args.get_or_undefined(1);
 
                     // a. Let propertyKey be ? ToPropertyKey(key).
-                    let property_key = key.to_property_key(context)?;
+                    let property_key = key.to_property_key(context.access())?;
 
                     // b. Perform ! CreateDataPropertyOrThrow(obj, propertyKey, value).
                     obj.create_data_property_or_throw(property_key, value.clone(), context)?;
@@ -1399,7 +1399,7 @@ impl OrdinaryObject {
 
             // g. If keyCoercion is property, then
             //     i. Set key to Completion(ToPropertyKey(key)).
-            let key = key.to_property_key(context);
+            let key = key.to_property_key(context.access());
 
             //     ii. IfAbruptCloseIterator(key, iteratorRecord).
             let key = if_abrupt_close_iterator!(key, iterator, context);
@@ -1442,7 +1442,7 @@ fn object_define_properties(
 ) -> JsResult<()> {
     // 1. Assert: Type(O) is Object.
     // 2. Let props be ? ToObject(Properties).
-    let props = &props.to_object(context)?;
+    let props = &props.to_object(context.access())?;
 
     // 3. Let keys be ? props.[[OwnPropertyKeys]]().
     let keys = props.__own_property_keys__(&mut InternalMethodPropertyContext::new(context))?;
@@ -1463,7 +1463,7 @@ fn object_define_properties(
             let desc_obj = props.get(next_key.clone(), context)?;
 
             // ii. Let desc be ? ToPropertyDescriptor(descObj).
-            let desc = desc_obj.to_property_descriptor(context)?;
+            let desc = desc_obj.to_property_descriptor(context.access())?;
 
             // iii. Append the pair (a two element List) consisting of nextKey and desc to the end of descriptors.
             descriptors.push((next_key, desc));
@@ -1501,7 +1501,7 @@ fn get_own_property_keys(
     context: &mut Context,
 ) -> JsResult<JsValue> {
     // 1. Let obj be ? ToObject(o).
-    let obj = o.to_object(context)?;
+    let obj = o.to_object(context.access())?;
 
     // 2. Let keys be ? obj.[[OwnPropertyKeys]]().
     let keys = obj.__own_property_keys__(&mut InternalMethodPropertyContext::new(context))?;

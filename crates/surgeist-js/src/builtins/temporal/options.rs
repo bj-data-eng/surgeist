@@ -75,7 +75,7 @@ pub(crate) fn get_digits_option(options: &JsObject, context: &mut Context) -> Js
     // 3. If digitsValue is not a Number, then
     let Some(digits_number) = digits_value.as_number() else {
         // a. If ? ToString(digitsValue) is not "auto", throw a RangeError exception.
-        if digits_value.to_string(context)? != js_string!("auto") {
+        if digits_value.to_string(context.access())? != js_string!("auto") {
             return Err(JsNativeError::range()
                 .with_message("fractionalSecondDigits must be a digit or 'auto'")
                 .into());
@@ -157,7 +157,7 @@ impl ParsableOptionType for TransitionDirection {}
 
 impl OptionType for RoundingIncrement {
     fn from_value(value: JsValue, context: &mut Context) -> JsResult<Self> {
-        let value = value.to_number(context)?;
+        let value = value.to_number(context.access())?;
 
         Ok(RoundingIncrement::try_from(value)?)
     }

@@ -28,7 +28,7 @@ impl PushClassField {
         let function = context.vm.get_register(function.into()).clone();
         let is_anonymous_function = u32::from(is_anonymous_function) != 0;
 
-        let name = name.to_property_key(context)?;
+        let name = name.to_property_key(context.access())?;
         let function = function
             .as_object()
             .js_expect("field value must be function object")?;

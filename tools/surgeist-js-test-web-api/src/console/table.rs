@@ -3,10 +3,10 @@
 //! This module converts a JS value into [`TableData`] that the [`super::Logger`]
 //! backend can render however it likes (terminal box-drawing, HTML, etc.).
 
+use rustc_hash::{FxHashMap, FxHashSet};
 use surgeist_js::builtins::object::OrdinaryObject;
 use surgeist_js::object::builtins::{JsMap, JsSet};
 use surgeist_js::{Context, JsError, JsResult, JsValue, js_string, object::JsObject};
-use rustc_hash::{FxHashMap, FxHashSet};
 
 /// The column name used for row indices.
 const INDEX_COL: &str = "(index)";
@@ -168,11 +168,11 @@ fn enumerable_keys(obj: &JsObject, context: &mut Context) -> JsResult<Vec<String
     };
     let length = keys_obj
         .get(js_string!("length"), context)?
-        .to_length(context)?;
+        .to_length(context.access())?;
     let mut result = Vec::with_capacity(usize::try_from(length).unwrap_or(0));
     for i in 0..length {
         let val = keys_obj.get(i, context)?;
-        result.push(val.to_string(context)?.to_std_string_escaped());
+        result.push(val.to_string(context.access())?.to_std_string_escaped());
     }
     Ok(result)
 }
@@ -190,7 +190,7 @@ fn filter_columns(
 ) -> JsResult<Vec<String>> {
     let length = properties
         .get(js_string!("length"), context)?
-        .to_length(context)?;
+        .to_length(context.access())?;
 
     let mut result = Vec::new();
     let mut seen = FxHashSet::default();
@@ -204,7 +204,7 @@ fn filter_columns(
     // Add columns in the order specified by the properties array.
     for i in 0..length {
         let val = properties.get(i, context)?;
-        let col = val.to_string(context)?.to_std_string_escaped();
+        let col = val.to_string(context.access())?.to_std_string_escaped();
         if seen.insert(col.clone()) {
             result.push(col);
         }

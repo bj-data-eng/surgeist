@@ -213,7 +213,7 @@ fn gc(_this: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue
 
 /// The `$262.agent.sleep()` function.
 fn sleep(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
-    let ms = args.get_or_undefined(0).to_number(context)? / 1000.0;
+    let ms = args.get_or_undefined(0).to_number(context.access())? / 1000.0;
     std::thread::sleep(Duration::from_secs_f64(ms));
     Ok(JsValue::undefined())
 }
@@ -289,7 +289,7 @@ fn agent_obj(handles: WorkerHandles, console: bool, context: &mut Context) -> Js
             let state = &state.state;
             let script = args
                 .get_or_undefined(0)
-                .to_string(context)?
+                .to_string(context.access())?
                 .to_std_string()
                 .map_err(|e| JsNativeError::typ().with_message(e.to_string()))?;
 
@@ -408,7 +408,10 @@ fn register_js262_worker(
 
     let report = NativeFunction::from_fn_with_captures(
         |_, args, reports, context| {
-            let string = args.get_or_undefined(0).to_string(context)?.to_vec();
+            let string = args
+                .get_or_undefined(0)
+                .to_string(context.access())?
+                .to_vec();
             reports
                 .state
                 .0

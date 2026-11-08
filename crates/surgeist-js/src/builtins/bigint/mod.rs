@@ -94,7 +94,7 @@ impl BuiltInConstructor for BigInt {
         let value = args.get_or_undefined(0);
 
         // 2. Let prim be ? ToPrimitive(value, number).
-        let prim = value.to_primitive(context, PreferredType::Number)?;
+        let prim = value.to_primitive(context.access(), PreferredType::Number)?;
 
         // 3. If Type(prim) is Number, return ? NumberToBigInt(prim).
         if let Some(number) = prim.as_number() {
@@ -102,7 +102,7 @@ impl BuiltInConstructor for BigInt {
         }
 
         // 4. Otherwise, return ? ToBigInt(prim).
-        Ok(prim.to_bigint(context)?.into())
+        Ok(prim.to_bigint(context.access())?.into())
     }
 }
 
@@ -188,7 +188,7 @@ impl BigInt {
             return Ok(js_string!(x.to_string()).into());
         // 3. Else, let radixMV be ? ToIntegerOrInfinity(radix).
         } else {
-            radix.to_integer_or_infinity(context)?
+            radix.to_integer_or_infinity(context.access())?
         };
 
         // 4. If radixMV < 2 or radixMV > 36, throw a RangeError exception.
@@ -315,10 +315,10 @@ impl BigInt {
         let bits_arg = args.get_or_undefined(0);
         let bigint_arg = args.get_or_undefined(1);
 
-        let bits = bits_arg.to_index(context)?;
+        let bits = bits_arg.to_index(context.access())?;
         let bits = u32::try_from(bits).unwrap_or(u32::MAX);
 
-        let bigint = bigint_arg.to_bigint(context)?;
+        let bigint = bigint_arg.to_bigint(context.access())?;
 
         Ok((
             JsBigInt::mod_floor(

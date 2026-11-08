@@ -26,7 +26,7 @@
 //!     Ok(res) => {
 //!         println!(
 //!             "{}",
-//!             res.to_string(&mut context).unwrap().to_std_string_escaped()
+//!             res.to_string(context.access()).unwrap().to_std_string_escaped()
 //!         );
 //!     }
 //!     Err(e) => {

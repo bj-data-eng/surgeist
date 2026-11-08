@@ -547,7 +547,7 @@ impl JsPromise {
     ///     Some(
     ///         NativeFunction::from_fn_ptr(|_, args, context| {
     ///             args.get_or_undefined(0)
-    ///                 .to_string(context)
+    ///                 .to_string(context.access())
     ///                 .map(JsValue::from)
     ///         })
     ///         .to_js_function(context.realm()).unwrap(),
@@ -619,7 +619,7 @@ impl JsPromise {
     /// .catch(
     ///     NativeFunction::from_fn_ptr(|_, args, context| {
     ///         args.get_or_undefined(0)
-    ///             .to_string(context)
+    ///             .to_string(context.access())
     ///             .map(JsValue::from)
     ///     })
     ///     .to_js_function(context.realm()).unwrap(),
@@ -779,7 +779,7 @@ impl JsPromise {
     /// assert_eq!(array.at(2, context)?, 4.into());
     ///
     /// let error = promise2.state().as_rejected().unwrap().clone();
-    /// assert_eq!(error.to_string(context)?, js_string!("TypeError"));
+    /// assert_eq!(error.to_string(context.access())?, js_string!("TypeError"));
     ///
     /// # Ok(())
     /// # }
@@ -859,7 +859,7 @@ impl JsPromise {
     ///     js_string!("rejected").into()
     /// );
     /// assert_eq!(
-    ///     b.get(js_string!("reason"), context)?.to_string(context)?,
+    ///     b.get(js_string!("reason"), context)?.to_string(context.access())?,
     ///     js_string!("TypeError")
     /// );
     ///

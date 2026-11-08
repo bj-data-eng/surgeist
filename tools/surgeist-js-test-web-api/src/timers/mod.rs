@@ -91,7 +91,7 @@ pub fn set_timeout(
 
     // The spec converts the delay to a WebIDL `long`, which maps to `i32`.
     // Negative values are clamped to 0.
-    let delay_i32 = delay_in_msec.unwrap_or_default().to_i32(context)?;
+    let delay_i32 = delay_in_msec.unwrap_or_default().to_i32(context.access())?;
     let delay = u64::from(u32::try_from(delay_i32).unwrap_or(0));
 
     let state = IntervalInnerState::from_context(context);
@@ -143,7 +143,7 @@ pub fn set_interval(
 
     // The spec converts the delay to a WebIDL `long`, which maps to `i32`.
     // Negative values are clamped to 0.
-    let delay_i32 = delay_in_msec.unwrap_or_default().to_i32(context)?;
+    let delay_i32 = delay_in_msec.unwrap_or_default().to_i32(context.access())?;
     let delay = u64::from(u32::try_from(delay_i32).unwrap_or(0));
 
     let state = IntervalInnerState::from_context(context);
@@ -181,7 +181,7 @@ pub fn set_interval(
 /// # Errors
 /// Returns an error if the `id` argument cannot be converted to an `i32`.
 pub fn clear_timeout(id: Option<JsValue>, context: &mut Context) -> JsResult<JsValue> {
-    let id = id.unwrap_or_default().to_i32(context)?;
+    let id = id.unwrap_or_default().to_i32(context.access())?;
     if id > 0 {
         let handler_map = IntervalInnerState::from_context(context);
         if let Some(token) = handler_map.clear_interval(id.cast_unsigned()) {

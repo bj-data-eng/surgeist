@@ -694,7 +694,7 @@ impl JsTypedArray {
     ///                 .first()
     ///                 .cloned()
     ///                 .unwrap_or_default()
-    ///                 .to_uint8(inner_context)
+    ///                 .to_uint8(inner_context.access())
     ///                 .expect("error at number conversion");
     ///             captures.0.set(captures.0.get() + element);
     ///             Ok(JsValue::undefined())
@@ -949,7 +949,7 @@ impl JsTypedArray {
     ///
     /// let context = &mut Context::default();
     /// let array = JsUint8Array::from_iter(vec![1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8], context)?;
-    /// let tag = array.to_string_tag(context)?.to_string(context)?;
+    /// let tag = array.to_string_tag(context)?.to_string(context.access())?;
     /// assert_eq!(tag, js_string!("Uint8Array"));
     ///
     /// # Ok(())
@@ -1142,7 +1142,7 @@ macro_rules! JsTypedArrayType {
                     if index < length {
                         let value = self.get(index, context).ok()?;
                         index += 1;
-                        value.$value_to_elem(context).ok()
+                        value.$value_to_elem(context.access()).ok()
                     } else {
                         None
                     }

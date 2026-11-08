@@ -26,7 +26,7 @@
 //!     Ok(res) => {
 //!         println!(
 //!             "{}",
-//!             res.to_string(&mut context).unwrap().to_std_string_escaped()
+//!             res.to_string(context.access()).unwrap().to_std_string_escaped()
 //!         );
 //!     }
 //!     Err(e) => {
@@ -80,7 +80,7 @@
 //!             .expect("Should resolve()");
 //!         println!(
 //!             "{}",
-//!             res.to_string(&mut context).unwrap().to_std_string_escaped()
+//!             res.to_string(context.access()).unwrap().to_std_string_escaped()
 //!         );
 //!     }
 //!     Err(e) => {
@@ -207,10 +207,10 @@ pub fn register_extensions(
 pub(crate) mod test {
     use crate::extensions::ConsoleExtension;
     use crate::register;
-    use surgeist_js::{Context, JsError, JsResult, JsValue, Source, builtins};
     use std::borrow::Cow;
     use std::path::{Path, PathBuf};
     use std::pin::Pin;
+    use surgeist_js::{Context, JsError, JsResult, JsValue, Source, builtins};
 
     /// A test action executed in a test function.
     #[allow(missing_debug_implementations)]

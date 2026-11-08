@@ -56,7 +56,7 @@ fn load_module_and_test(module_loader: &Rc<EmbeddedModuleLoader>) {
         }
         PromiseState::Rejected(err) => panic!(
             "promise was not fulfilled: {:?}",
-            err.to_string(&mut context)
+            err.to_string(context.access())
         ),
         PromiseState::Pending => panic!("Promise was not settled"),
     }

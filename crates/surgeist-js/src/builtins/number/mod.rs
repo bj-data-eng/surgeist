@@ -118,7 +118,7 @@ impl BuiltInConstructor for Number {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         let data = match args.first() {
-            Some(value) => value.to_numeric_number(context)?,
+            Some(value) => value.to_numeric_number(context.access())?,
             None => 0.0,
         };
         if new_target.is_undefined() {
@@ -225,7 +225,7 @@ impl Number {
             None => None,
             Some(x) if x.is_undefined() => None,
             // 2. Let f be ? ToIntegerOrInfinity(fractionDigits).
-            Some(n) => Some(n.to_integer_or_infinity(context)?),
+            Some(n) => Some(n.to_integer_or_infinity(context.access())?),
         };
         // 4. If x is not finite, return ! Number::toString(x).
         if !this_num.is_finite() {
@@ -270,7 +270,9 @@ impl Number {
 
         // 2. Let f be ? ToIntegerOrInfinity(fractionDigits).
         // 3. Assert: If fractionDigits is undefined, then f is 0.
-        let precision = args.get_or_undefined(0).to_integer_or_infinity(context)?;
+        let precision = args
+            .get_or_undefined(0)
+            .to_integer_or_infinity(context.access())?;
 
         // 4, 5. If f < 0 or f > 100, throw a RangeError exception.
         let precision = precision
@@ -452,7 +454,7 @@ impl Number {
         }
 
         // 3
-        let precision = precision.to_integer_or_infinity(context)?;
+        let precision = precision.to_integer_or_infinity(context.access())?;
 
         // 4
         if !this_num.is_finite() {
@@ -697,7 +699,7 @@ impl Number {
         } else {
             // 3. Else, let radixMV be ? ToIntegerOrInfinity(radix).
             radix
-                .to_integer_or_infinity(context)?
+                .to_integer_or_infinity(context.access())?
                 .as_integer()
                 // 4. If radixNumber < 2 or radixNumber > 36, throw a RangeError exception.
                 .filter(|i| (2..=36).contains(i))

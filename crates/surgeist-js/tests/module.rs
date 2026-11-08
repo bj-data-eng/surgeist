@@ -341,7 +341,10 @@ fn test_json_module_from_str() {
             assert!(v.is_undefined());
         }
         PromiseState::Rejected(e) => {
-            panic!("Unexpected error: {:?}", e.to_string(&mut context).unwrap());
+            panic!(
+                "Unexpected error: {:?}",
+                e.to_string(context.access()).unwrap()
+            );
         }
     }
 
@@ -435,7 +438,7 @@ fn test_json_module_dynamic_import() {
         PromiseState::Rejected(e) => {
             panic!(
                 "Dynamic import failed: {:?}",
-                e.to_string(&mut context).unwrap()
+                e.to_string(context.access()).unwrap()
             );
         }
         PromiseState::Pending => panic!("Dynamic import is still pending"),
@@ -744,7 +747,7 @@ fn test_dynamic_import_symbol_key() {
         PromiseState::Rejected(e) => {
             panic!(
                 "Dynamic import failed: {:?}",
-                e.to_string(&mut context).unwrap()
+                e.to_string(context.access()).unwrap()
             );
         }
         PromiseState::Pending => panic!("Dynamic import is still pending"),

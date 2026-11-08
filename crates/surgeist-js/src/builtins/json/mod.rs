@@ -245,7 +245,7 @@ impl Json {
             .first()
             .cloned()
             .unwrap_or_default()
-            .to_string(context)?
+            .to_string(context.access())?
             .to_std_string()
             .map_err(|e| JsNativeError::syntax().with_message(e.to_string()))?;
 
@@ -572,7 +572,7 @@ impl Json {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let jsonString be ? ToString(text).
-        let json_string = args.get_or_undefined(0).to_string(context)?;
+        let json_string = args.get_or_undefined(0).to_string(context.access())?;
 
         // 2. Throw a SyntaxError exception if jsonString is the empty String, or if
         //    either the first or last code unit of jsonString is any of 0x0009
@@ -717,14 +717,14 @@ impl Json {
                             property_set.insert(s);
                         } else if v.is_number() {
                             property_set.insert(
-                                v.to_string(context)
+                                v.to_string(context.access())
                                     .js_expect("ToString cannot fail on number value")?,
                             );
                         } else if let Some(obj) = v.as_object()
                             && (obj.is::<JsString>() || obj.is::<f64>())
                         {
                             // i. If v has a [[StringData]] or [[NumberData]] internal slot, set item to ? ToString(v).
-                            property_set.insert(v.to_string(context)?);
+                            property_set.insert(v.to_string(context.access())?);
                         }
 
                         // h. Set k to k + 1.
@@ -742,12 +742,12 @@ impl Json {
             // a. If space has a [[NumberData]] internal slot, then
             if space_obj.is::<f64>() {
                 // i. Set space to ? ToNumber(space).
-                space = space.to_number(context)?.into();
+                space = space.to_number(context.access())?.into();
             }
             // b. Else if space has a [[StringData]] internal slot, then
             else if space_obj.is::<JsString>() {
                 // i. Set space to ? ToString(space).
-                space = space.to_string(context)?.into();
+                space = space.to_string(context.access())?.into();
             }
         }
 
@@ -757,7 +757,7 @@ impl Json {
             // b. Set spaceMV to min(10, spaceMV).
             // c. If spaceMV < 1, let gap be the empty String; otherwise let gap be the String value containing spaceMV occurrences of the code unit 0x0020 (SPACE).
             match space
-                .to_integer_or_infinity(context)
+                .to_integer_or_infinity(context.access())
                 .js_expect("ToIntegerOrInfinity cannot fail on number")?
             {
                 IntegerOrInfinity::PositiveInfinity => js_string!("          "),
@@ -845,12 +845,12 @@ impl Json {
             // a. If value has a [[NumberData]] internal slot, then
             if obj.is::<f64>() {
                 // i. Set value to ? ToNumber(value).
-                value = value.to_number(context)?.into();
+                value = value.to_number(context.access())?.into();
             }
             // b. Else if value has a [[StringData]] internal slot, then
             else if obj.is::<JsString>() {
                 // i. Set value to ? ToString(value).
-                value = value.to_string(context)?.into();
+                value = value.to_string(context.access())?.into();
             }
             // c. Else if value has a [[BooleanData]] internal slot, then
             else if let Some(boolean) = obj.downcast_ref::<bool>() {
@@ -896,7 +896,7 @@ impl Json {
             if n.is_finite() {
                 return Ok(Some(
                     value
-                        .to_string(context)
+                        .to_string(context.access())
                         .js_expect("ToString should never fail here")?,
                 ));
             }
@@ -1044,7 +1044,7 @@ impl Json {
             match keys
                 .iter()
                 .map(|v| {
-                    v.to_string(context)
+                    v.to_string(context.access())
                         .js_expect("EnumerableOwnPropertyNames only returns strings")
                 })
                 .collect::<Result<Vec<_>, _>>()

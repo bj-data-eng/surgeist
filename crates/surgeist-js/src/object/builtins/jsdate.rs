@@ -542,7 +542,7 @@ impl JsDate {
     pub fn new_from_parse(value: &JsValue, context: &mut Context) -> JsResult<Self> {
         let prototype = context.intrinsics().constructors().date().prototype();
         let string = value
-            .to_string(context)?
+            .to_string(context.access())?
             .to_std_string()
             .map_err(|_| JsNativeError::typ().with_message("unpaired surrogate on date string"))?;
         let t = OffsetDateTime::parse(&string, &Rfc3339)

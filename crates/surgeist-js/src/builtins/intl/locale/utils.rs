@@ -59,7 +59,7 @@ pub(crate) fn locale_from_value(tag: &JsValue, context: &mut Context) -> JsResul
 
     // iv. Else,
     // 1. Let tag be ? ToString(kValue).
-    let tag = tag.to_string(context)?.to_std_string_escaped();
+    let tag = tag.to_string(context.access())?.to_std_string_escaped();
     if tag.contains('_') {
         return Err(JsNativeError::range()
             .with_message("locale is not a structurally valid language tag")
@@ -141,7 +141,7 @@ pub(crate) fn canonicalize_locale_list(
     } else {
         // 4. Else,
         // a. Let O be ? ToObject(locales).
-        locales.to_object(context)?
+        locales.to_object(context.access())?
     };
 
     // 5. Let len be ? ToLength(? Get(O, "length")).
