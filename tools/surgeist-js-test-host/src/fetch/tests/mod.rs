@@ -7,7 +7,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use surgeist_js::gc::heap::Trace as HeapTrace;
-use surgeist_js::{HostContext, JsData, JsResult, JsString, js_error};
+use surgeist_js::job::ContextTask;
+use surgeist_js::{JsData, JsString, js_error};
 
 #[cfg(test)]
 mod e2e;
@@ -43,17 +44,16 @@ impl crate::fetch::Fetcher for TestFetcher {
         self: Rc<Self>,
         request: JsRequest,
         _signal: Option<surgeist_js::JsObject>,
-        _context: &HostContext<'_>,
-    ) -> impl Future<Output = JsResult<JsResponse>> {
-        let request = request.into_inner();
-        self.requests_received.borrow_mut().push(request.clone());
-        let url = request.uri();
-        std::future::ready(
+    ) -> ContextTask<JsResponse> {
+        ContextTask::from_future(async move {
+            let request = request.into_inner();
+            self.requests_received.borrow_mut().push(request.clone());
+            let url = request.uri();
             self.request_mapper
                 .get(url)
                 .cloned()
                 .map(|response| JsResponse::basic(JsString::from(url.to_string()), response))
-                .ok_or_else(|| js_error!("No response found for URL")),
-        )
+                .ok_or_else(|| js_error!("No response found for URL"))
+        })
     }
 }

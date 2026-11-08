@@ -2,8 +2,6 @@
 
 use std::{
     cell::RefCell,
-    future::Future,
-    pin::Pin,
     task::{Context as TaskContext, Poll, Waker},
 };
 
@@ -11,33 +9,36 @@ use surgeist_js::{
     Context, JsValue, Source,
     error::{EngineError, RuntimeLimitError},
     execution::ExecutionOptions,
-    job::NativeAsyncJob,
+    job::{ContextTask, JobStep, NativeAsyncJob},
 };
 
 fn assert_poll_returns_its_retained_stop(pending: bool) {
     let mut context = Context::default();
     let actual_poll = RefCell::new(None);
-    let job = NativeAsyncJob::new(async move |host| {
-        let stopped = host
-            .with(|mut access| access.eval(Source::from_bytes("0")))
-            .unwrap_err();
-        assert_eq!(
-            stopped.as_engine(),
-            Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
-                limit: 0
-            }))
-        );
-        if pending {
-            std::future::pending::<()>().await;
-        }
-        Ok(JsValue::new(42))
+    let mut job = NativeAsyncJob::new(move |_| {
+        Ok(ContextTask::from_poll(move |_, host| {
+            let stopped = host
+                .with(|mut access| access.eval(Source::from_bytes("0")))
+                .unwrap_err();
+            assert_eq!(
+                stopped.as_engine(),
+                Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
+                    limit: 0
+                }))
+            );
+            if pending {
+                Poll::Pending
+            } else {
+                Poll::Ready(Ok(JsValue::new(42)))
+            }
+        }))
     });
     let outcome = context
         .with_execution(ExecutionOptions::new(0), |access| {
             let host = access.into_host_access();
-            let mut future = job.call(&host);
-            *actual_poll.borrow_mut() =
-                Some(Pin::new(&mut future).poll(&mut TaskContext::from_waker(Waker::noop())));
+            let mut cx = TaskContext::from_waker(Waker::noop());
+            assert!(matches!(job.run_step(&mut cx, &host), JobStep::Prepared));
+            *actual_poll.borrow_mut() = Some(job.run_step(&mut cx, &host));
             Ok(())
         })
         .unwrap();
@@ -53,7 +54,7 @@ fn assert_poll_returns_its_retained_stop(pending: bool) {
     // poll must expose that stop, without a success or another Pending escaping.
     let actual = actual_poll.into_inner().expect("the job was polled once");
     let stopped = match &actual {
-        Poll::Ready(Err(error)) => error.as_engine(),
+        JobStep::Complete(Err(error)) => error.as_engine(),
         _ => None,
     };
     assert_eq!(

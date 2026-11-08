@@ -17,7 +17,8 @@
 //! individual async quanta; `vm-waiting` observes their cooperative scheduling
 //! waits. These are inclusive elapsed intervals, not CPU time or disjoint sums.
 //! The `job-prepare`, `job-invoke` and `job-poll` phases observe admitted
-//! synchronous job actions and their owned cleanup. No job observation spans
+//! synchronous job actions and their owned cleanup. Native job preparation now
+//! dispatches its owned-task factory and therefore marks possible effects. No job observation spans
 //! Pending. Host future internals are opaque; these timings do not certify their work.
 
 use std::time::Duration;
@@ -386,7 +387,10 @@ impl ExecutionOptions {
         }
     }
 
-    /// Caps internal future creations by native asynchronous job calls.
+    /// Caps admitted native task preparation factory invocations.
+    ///
+    /// A factory counts once even if it returns an error or unwinds. Dispatching
+    /// it marks possible effects; preparation admits no inner task poll.
     #[must_use]
     pub const fn with_job_preparation_limit(mut self, limit: u64) -> Self {
         self.job_preparation_limit = limit;

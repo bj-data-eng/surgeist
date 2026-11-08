@@ -50,7 +50,11 @@ fn native_async_job_owns_captures_after_the_function_drops() {
     let capture = JsObject::with_null_proto(context.runtime());
     let weak_capture = capture.edge();
     let callback = NativeFunction::from_async_fn_with_captures(
-        |_, _, capture, _| Box::pin(async move { Ok(capture.clone().into()) }),
+        |_, _, capture, _| {
+            Ok(crate::job::ContextTask::from_future(async move {
+                Ok(capture.into())
+            }))
+        },
         capture,
     );
     let promise = callback

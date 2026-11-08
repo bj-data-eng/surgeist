@@ -7,7 +7,7 @@ use surgeist_js::{
     builtins::promise::PromiseState,
     error::{EngineError, RuntimeLimitError},
     execution::ExecutionOptions,
-    job::SimpleJobExecutor,
+    job::{ContextTask, SimpleJobExecutor},
     js_string,
     object::builtins::JsPromise,
 };
@@ -51,23 +51,26 @@ fn retained_stop_prevents_async_error_materialization_from_mutating_saved_stack(
         stack_before
     );
 
-    let promise = JsPromise::from_async_fn(
-        async move |context| {
-            let first = context
-                .with(|mut access| access.eval(Source::from_bytes("0")))
-                .unwrap_err();
-            assert_eq!(
-                first.as_engine(),
-                Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
-                    limit: 0
-                }))
-            );
-            // Host code swallows its work stop and returns a distinct ordinary
-            // guest error whose object was already reachable before this scope.
-            Err(saved_error)
+    let promise = JsPromise::from_task(
+        move |_| {
+            Ok(ContextTask::from_poll(move |_, context| {
+                let first = context
+                    .with(|mut access| access.eval(Source::from_bytes("0")))
+                    .unwrap_err();
+                assert_eq!(
+                    first.as_engine(),
+                    Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
+                        limit: 0
+                    }))
+                );
+                // Host code swallows its work stop and returns a distinct ordinary
+                // guest error whose object was already reachable before this scope.
+                std::task::Poll::Ready(Err(saved_error.clone()))
+            }))
         },
         context.access(),
-    );
+    )
+    .unwrap();
     assert_eq!(promise.state(), PromiseState::Pending);
     let outcome = context
         .with_execution(ExecutionOptions::new(0), |mut access| access.run_jobs())

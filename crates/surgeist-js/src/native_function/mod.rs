@@ -8,11 +8,11 @@ use std::{any::Any, rc::Rc};
 use surgeist_js_gc::heap::{AccessError, EdgeVisitor, Trace as HeapTrace};
 use surgeist_js_string::JsString;
 
-use crate::job::BoxedFuture;
+use crate::job::ContextTask;
 use crate::object::internal_methods::InternalMethodCallContext;
 use crate::value::JsVariant;
 use crate::{
-    Context, ContextAccess, HostContext, JsNativeError, JsObject, JsResult, JsValue,
+    Context, ContextAccess, JsNativeError, JsObject, JsResult, JsValue,
     builtins::{OrdinaryObject, function::ConstructorKind},
     context::intrinsics::StandardConstructors,
     object::{
@@ -52,13 +52,13 @@ pub type NativeFunctionPointer =
 pub(crate) type BuiltinFunctionPointer =
     fn(&JsValue, &[JsValue], &mut Context) -> JsResult<JsValue>;
 
-/// A native callback that returns a future borrowing its invocation inputs.
+/// An owned native task factory receiving a short invocation capability.
 pub type NativeAsyncFunctionPointer =
-    for<'a, 'ctx> fn(&'a JsValue, &'a [JsValue], &'a HostContext<'ctx>) -> BoxedFuture<'a>;
+    for<'call> fn(JsValue, Vec<JsValue>, ContextAccess<'call>) -> JsResult<ContextTask<JsValue>>;
 
 /// A native asynchronous callback whose stored state is passed explicitly.
 pub type NativeAsyncFunctionWithCaptures<T> =
-    for<'a, 'ctx> fn(&'a JsValue, &'a [JsValue], &'a T, &'a HostContext<'ctx>) -> BoxedFuture<'a>;
+    for<'call> fn(JsValue, Vec<JsValue>, T, ContextAccess<'call>) -> JsResult<ContextTask<JsValue>>;
 
 trait TraceableClosure: HeapTrace {
     fn root_captures(&self) -> Rc<dyn Any>;
@@ -131,11 +131,11 @@ impl<T: NativeCapture> TraceableClosure for AsyncClosure<T> {
         let captures = self.captures.restore();
         let this = this.clone();
         let args = args.to_vec();
-        Ok(JsPromise::from_async_fn(
-            async move |context| callback(&this, &args, &captures, context).await,
+        JsPromise::from_task(
+            move |context| callback(this, args, captures, context),
             context.access(),
         )
-        .into())
+        .map(Into::into)
     }
 }
 
@@ -190,7 +190,10 @@ pub struct NativeFunction {
 
 #[derive(Clone)]
 /// Non-owning capture form of a native function.
-pub struct StoredNativeFunction(Inner);
+pub struct StoredNativeFunction(
+    Inner,
+    Option<surgeist_js_gc::heap::RecordRef<std::cell::RefCell<Option<crate::object::ObjectEdge>>>>,
+);
 
 impl NativeCapture for NativeFunction {
     type Stored = StoredNativeFunction;
@@ -204,10 +207,20 @@ impl NativeCapture for NativeFunction {
             Inner::Closure(closure) => Some(closure.root_captures()),
             Inner::Builtin(_) | Inner::PointerFn(_) | Inner::AsyncPointer(_) => None,
         };
-        Self {
+        let mut function = Self {
             inner: stored.clone(),
             _capture_roots: roots,
+        };
+        if let Some(target) = &stored.1 {
+            function._capture_roots = Some(Rc::new((
+                function._capture_roots.take(),
+                target
+                    .upgrade()
+                    .expect("resolving metadata heap available")
+                    .expect("live resolving metadata"),
+            )));
         }
+        function
     }
 }
 
@@ -221,6 +234,7 @@ enum Inner {
 
 impl HeapTrace for StoredNativeFunction {
     fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+        self.1.trace(edges)?;
         match &self.0 {
             Inner::Closure(closure) => closure.trace(edges),
             Inner::Builtin(_) | Inner::PointerFn(_) | Inner::AsyncPointer(_) => Ok(()),
@@ -242,11 +256,22 @@ impl std::fmt::Debug for NativeFunction {
 }
 
 impl NativeFunction {
+    pub(crate) fn with_resolution_target(
+        mut self,
+        target: &surgeist_js_gc::heap::Rooted<
+            std::cell::RefCell<Option<crate::object::ObjectEdge>>,
+        >,
+    ) -> Self {
+        self.inner.1 = Some(target.record_ref());
+        self._capture_roots = Some(Rc::new((self._capture_roots.take(), target.clone())));
+        self
+    }
+
     /// Keeps trusted builtin dispatch distinct from caller-supplied host callbacks.
     #[inline]
     pub(crate) fn from_builtin(function: BuiltinFunctionPointer) -> Self {
         Self {
-            inner: StoredNativeFunction(Inner::Builtin(function)),
+            inner: StoredNativeFunction(Inner::Builtin(function), None),
             _capture_roots: None,
         }
     }
@@ -261,10 +286,13 @@ impl NativeFunction {
 
     fn from_captured<T: NativeCapture>(callback: CapturedCall<T>, captures: T) -> Self {
         Self {
-            inner: StoredNativeFunction(Inner::Closure(Rc::new(Closure::<T> {
-                callback,
-                captures: CaptureStore::new(&captures),
-            }))),
+            inner: StoredNativeFunction(
+                Inner::Closure(Rc::new(Closure::<T> {
+                    callback,
+                    captures: CaptureStore::new(&captures),
+                })),
+                None,
+            ),
             _capture_roots: Some(Rc::new(captures)),
         }
     }
@@ -273,63 +301,27 @@ impl NativeFunction {
     #[inline]
     pub fn from_fn_ptr(function: NativeFunctionPointer) -> Self {
         Self {
-            inner: StoredNativeFunction(Inner::PointerFn(function)),
+            inner: StoredNativeFunction(Inner::PointerFn(function), None),
             _capture_roots: None,
         }
     }
 
-    /// Creates a `NativeFunction` from a pointer to an asynchronous callback.
-    ///
-    /// The returned `NativeFunction` will return an ECMAScript `Promise` that will be fulfilled
-    /// or rejected when the returned `Future` completes.
-    ///
-    /// To schedule a one-shot asynchronous operation, see
-    /// [`JsPromise::from_async_fn`].
-    ///
-    /// # Examples
+    /// Creates a native function whose owned task settles a JavaScript promise.
     ///
     /// ```
-    /// # use std::{any::Any, rc::Rc};
-    /// # use surgeist_js::{
-    /// #   JsValue,
-    /// #   Context, HostContext,
-    /// #   JsResult,
-    /// #   JsSymbol,
-    /// #   NativeFunction,
-    /// #   JsArgs,
-    /// #   builtins::promise::PromiseState,
-    /// #   object::builtins::JsPromise,
-    /// # };
-    /// async fn test(
-    ///     _this: &JsValue,
-    ///     args: &[JsValue],
-    ///     context: &HostContext<'_>,
-    /// ) -> JsResult<JsValue> {
-    ///     let arg = args.get_or_undefined(0).clone();
-    ///     std::future::ready(()).await;
-    ///     let value = context.with(|access| arg.to_u32(access))?;
-    ///     Ok(JsValue::from(value * 2))
-    /// }
-    /// let callback = NativeFunction::from_async_fn(
-    ///     |this, args, context| Box::pin(test(this, args, context)),
-    /// );
+    /// use surgeist_js::{Context, JsArgs, JsResult, JsValue, NativeFunction};
+    /// use surgeist_js::job::ContextTask;
+    /// let callback = NativeFunction::from_async_fn(|_, args, mut access| {
+    ///     let value = args.get_or_undefined(0).to_u32(access.reborrow())?;
+    ///     Ok(ContextTask::from_future(async move { Ok(JsValue::new(value * 2)) }))
+    /// });
     /// let mut context = Context::default();
-    /// let receiver = JsValue::undefined();
-    /// let fulfilled = callback.call(&receiver, &[JsValue::from(3)], context.access()).unwrap();
-    /// let rejected = callback.call(
-    ///     &receiver,
-    ///     &[JsValue::from(JsSymbol::iterator())],
-    ///     context.access(),
-    /// ).unwrap();
-    /// let fulfilled = JsPromise::from_object(fulfilled.as_object().unwrap()).unwrap();
-    /// let rejected = JsPromise::from_object(rejected.as_object().unwrap()).unwrap();
+    /// callback.call(&JsValue::undefined(), &[3.into()], context.access()).unwrap();
     /// context.run_jobs().unwrap();
-    /// assert_eq!(fulfilled.state(), PromiseState::Fulfilled(JsValue::from(6)));
-    /// assert!(matches!(rejected.state(), PromiseState::Rejected(_)));
     /// ```
     pub fn from_async_fn(callback: NativeAsyncFunctionPointer) -> Self {
         Self {
-            inner: StoredNativeFunction(Inner::AsyncPointer(callback)),
+            inner: StoredNativeFunction(Inner::AsyncPointer(callback), None),
             _capture_roots: None,
         }
     }
@@ -342,10 +334,13 @@ impl NativeFunction {
         captures: T,
     ) -> Self {
         Self {
-            inner: StoredNativeFunction(Inner::Closure(Rc::new(AsyncClosure::<T> {
-                callback,
-                captures: CaptureStore::new(&captures),
-            }))),
+            inner: StoredNativeFunction(
+                Inner::Closure(Rc::new(AsyncClosure::<T> {
+                    callback,
+                    captures: CaptureStore::new(&captures),
+                })),
+                None,
+            ),
             _capture_roots: Some(Rc::new(captures)),
         }
     }
@@ -403,6 +398,16 @@ impl NativeFunction {
 }
 
 impl StoredNativeFunction {
+    pub(crate) fn resolution_target(&self) -> Option<JsObject> {
+        let slot = self
+            .1
+            .as_ref()?
+            .upgrade()
+            .expect("resolving metadata heap available")
+            .expect("live resolving metadata");
+        let target = slot.borrow().clone();
+        target.map(JsObject::from_inner)
+    }
     fn call(&self, this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         match self.0 {
             Inner::Builtin(function) => function(this, args, context),
@@ -410,11 +415,11 @@ impl StoredNativeFunction {
             Inner::AsyncPointer(callback) => {
                 let this = this.clone();
                 let args = args.to_vec();
-                Ok(JsPromise::from_async_fn(
-                    async move |context| callback(&this, &args, context).await,
+                JsPromise::from_task(
+                    move |context| callback(this, args, context),
                     context.access(),
                 )
-                .into())
+                .map(Into::into)
             }
             Inner::Closure(ref c) => c.call(this, args, context),
         }
@@ -711,7 +716,7 @@ mod tests {
         let capture = JsObject::with_null_proto(context.runtime());
         let weak_capture = capture.edge();
         let callback = NativeFunction::from_async_fn_with_captures(
-            |_, _, capture, _| Box::pin(async move { Ok(capture.clone().into()) }),
+            |_, _, capture, _| Ok(ContextTask::from_future(async move { Ok(capture.into()) })),
             capture,
         );
         let stored = callback.store();

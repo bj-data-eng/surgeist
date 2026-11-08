@@ -239,9 +239,8 @@ impl SyntheticModule {
     /// Concrete method [`LoadRequestedModules ( )`][spec].
     ///
     /// [spec]: https://tc39.es/proposal-json-modules/#sec-smr-LoadRequestedModules
-    pub(super) fn load(context: &mut Context) -> JsPromise {
+    pub(super) fn load(context: &mut Context) -> JsResult<JsPromise> {
         JsPromise::resolve(JsValue::undefined(), context.access())
-            .expect("default resolve functions cannot throw and must return a promise")
     }
 
     /// Concrete method [`GetExportedNames ( [ exportStarSet ] )`][spec].

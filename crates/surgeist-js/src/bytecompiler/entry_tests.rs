@@ -405,7 +405,7 @@ const MODULE_SOURCE: &str = "
 ";
 
 fn load(module: &Module, context: &mut Context) {
-    let loaded = module.load(context.access());
+    let loaded = module.load(context.access()).unwrap();
     context.run_jobs().unwrap();
     assert_eq!(
         loaded.state(),

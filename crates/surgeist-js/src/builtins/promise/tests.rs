@@ -349,10 +349,15 @@ fn foreign_async_outcomes_reject_instead_of_leaving_a_pending_promise() {
     use crate::{Context, JsObject, Runtime, object::JsPromise};
 
     let mut context = Context::default();
-    let promise = JsPromise::from_async_fn(
-        async |_| Ok(JsObject::with_null_proto(&Runtime::default()).into()),
+    let promise = JsPromise::from_task(
+        |_| {
+            Ok(crate::job::ContextTask::from_future(async {
+                Ok(JsObject::with_null_proto(&Runtime::default()).into())
+            }))
+        },
         context.access(),
-    );
+    )
+    .unwrap();
     context.run_jobs().unwrap();
     assert!(promise.state().as_rejected().is_some());
 }

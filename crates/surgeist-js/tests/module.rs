@@ -1,11 +1,11 @@
 #![allow(unused_crate_dependencies, missing_docs)]
 
-use std::future;
 use std::rc::Rc;
 
 use surgeist_js::builtins::promise::PromiseState;
+use surgeist_js::job::ContextTask;
 use surgeist_js::module::{ModuleLoader, Referrer};
-use surgeist_js::{Context, HostContext, JsResult, JsString, Module, Source, js_string};
+use surgeist_js::{Context, JsString, Module, Source, js_string};
 
 #[test]
 fn dropping_a_parsed_module_preserves_shared_scope_identities() {
@@ -55,7 +55,7 @@ fn failed_linking_preserves_empty_synthetic_dependency_scope_identities() {
     .unwrap();
     assert!(loader.insert("empty", dependency).is_none());
     assert!(loader.insert("peer", peer).is_none());
-    let loaded = module.load(context.access());
+    let loaded = module.load(context.access()).unwrap();
     context.run_jobs().unwrap();
     assert_eq!(
         loaded.state(),
@@ -84,7 +84,7 @@ fn one_short_module_preparation_preserves_identities_and_retained_source_retry()
             context.access(),
         )
         .unwrap();
-        let loaded = module.load(context.access());
+        let loaded = module.load(context.access()).unwrap();
         context.run_jobs().unwrap();
         assert_eq!(
             loaded.state(),
@@ -159,7 +159,7 @@ fn linking_prepares_captures_without_entering_a_guest_frame() {
         context.access(),
     )
     .unwrap();
-    let loaded = module.load(context.access());
+    let loaded = module.load(context.access()).unwrap();
     context.run_jobs().unwrap();
     assert_eq!(
         loaded.state(),
@@ -214,7 +214,7 @@ fn pending_cyclic_modules_use_the_current_realm_and_preserve_top_level_await() {
     context
         .eval(Source::from_bytes("let intervening = 1;"))
         .unwrap();
-    let evaluated = root.load_link_evaluate(context.access());
+    let evaluated = root.load_link_evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
     assert_eq!(
         evaluated.state(),
@@ -277,7 +277,7 @@ fn failed_linking_preserves_an_initialized_synthetic_binding() {
     .unwrap();
     assert!(loader.insert("stable", stable.clone()).is_none());
     assert!(loader.insert("peer", peer).is_none());
-    let loaded = root.load(context.access());
+    let loaded = root.load(context.access()).unwrap();
     context.run_jobs().unwrap();
     assert_eq!(
         loaded.state(),
@@ -311,12 +311,11 @@ fn test_json_module_from_str() {
             self: Rc<Self>,
             _referrer: Referrer,
             request: surgeist_js::module::ModuleRequest,
-            context: &HostContext<'_>,
-        ) -> impl Future<Output = JsResult<Module>> {
+        ) -> ContextTask<Module> {
             assert_eq!(request.specifier().to_std_string_escaped(), "basic");
             let src = self.0.clone();
 
-            future::ready(context.with(|access| Ok(Module::parse_json(src, access).unwrap())))
+            ContextTask::from_future(async move { Ok(src) }).then(Module::parse_json)
         }
     }
 
@@ -334,7 +333,7 @@ fn test_json_module_from_str() {
     );
 
     let module = Module::parse(source, None, context.access()).unwrap();
-    let promise = module.load_link_evaluate(context.access());
+    let promise = module.load_link_evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
 
     match promise.state() {
@@ -370,8 +369,7 @@ fn test_json_module_dynamic_import() {
             self: Rc<Self>,
             _referrer: Referrer,
             request: surgeist_js::module::ModuleRequest,
-            context: &HostContext<'_>,
-        ) -> impl Future<Output = JsResult<Module>> {
+        ) -> ContextTask<Module> {
             assert_eq!(request.specifier().to_std_string_escaped(), "basic");
 
             // Verify attributes were passed correctly
@@ -381,7 +379,7 @@ fn test_json_module_dynamic_import() {
             assert_eq!(type_attr.to_std_string_escaped(), "json");
 
             let src = self.0.clone();
-            future::ready(context.with(|access| Ok(Module::parse_json(src, access).unwrap())))
+            ContextTask::from_future(async move { Ok(src) }).then(Module::parse_json)
         }
     }
 
@@ -398,7 +396,7 @@ fn test_json_module_dynamic_import() {
     );
 
     let module = Module::parse(source, None, context.access()).unwrap();
-    let promise = module.load_link_evaluate(context.access());
+    let promise = module.load_link_evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
 
     match promise.state() {
@@ -453,8 +451,7 @@ fn test_json_module_static_import_with_attributes() {
             self: Rc<Self>,
             _referrer: Referrer,
             request: surgeist_js::module::ModuleRequest,
-            context: &HostContext<'_>,
-        ) -> impl Future<Output = JsResult<Module>> {
+        ) -> ContextTask<Module> {
             assert_eq!(request.specifier().to_std_string_escaped(), "basic");
 
             let type_attr = request
@@ -463,7 +460,7 @@ fn test_json_module_static_import_with_attributes() {
             assert_eq!(type_attr.to_std_string_escaped(), "json");
 
             let src = self.0.clone();
-            future::ready(context.with(|access| Ok(Module::parse_json(src, access).unwrap())))
+            ContextTask::from_future(async move { Ok(src) }).then(Module::parse_json)
         }
     }
 
@@ -481,7 +478,7 @@ fn test_json_module_static_import_with_attributes() {
     );
 
     let module = Module::parse(source, None, context.access()).unwrap();
-    let promise = module.load_link_evaluate(context.access());
+    let promise = module.load_link_evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
 
     assert_eq!(
@@ -515,8 +512,7 @@ fn test_json_module_reexport_with_attributes() {
             self: Rc<Self>,
             _referrer: Referrer,
             request: surgeist_js::module::ModuleRequest,
-            context: &HostContext<'_>,
-        ) -> impl Future<Output = JsResult<Module>> {
+        ) -> ContextTask<Module> {
             assert_eq!(request.specifier().to_std_string_escaped(), "basic");
 
             let type_attr = request
@@ -525,7 +521,7 @@ fn test_json_module_reexport_with_attributes() {
             assert_eq!(type_attr.to_std_string_escaped(), "json");
 
             let src = self.0.clone();
-            future::ready(context.with(|access| Ok(Module::parse_json(src, access).unwrap())))
+            ContextTask::from_future(async move { Ok(src) }).then(Module::parse_json)
         }
     }
 
@@ -542,7 +538,7 @@ fn test_json_module_reexport_with_attributes() {
     );
 
     let module = Module::parse(source, None, context.access()).unwrap();
-    let promise = module.load_link_evaluate(context.access());
+    let promise = module.load_link_evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
 
     assert_eq!(
@@ -566,12 +562,11 @@ fn test_json_module_reexport_with_attributes() {
 fn test_dynamic_import_invalid_options() {
     struct TestModuleLoader;
     impl ModuleLoader for TestModuleLoader {
-        async fn load_imported_module(
+        fn load_imported_module(
             self: Rc<Self>,
             _referrer: Referrer,
             _request: surgeist_js::module::ModuleRequest,
-            _context: &HostContext<'_>,
-        ) -> JsResult<Module> {
+        ) -> ContextTask<Module> {
             panic!("Module loading should not be triggered for invalid options");
         }
     }
@@ -588,7 +583,7 @@ fn test_dynamic_import_invalid_options() {
     );
 
     let module = Module::parse(source, None, context.access()).unwrap();
-    let promise = module.load_link_evaluate(context.access());
+    let promise = module.load_link_evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
 
     match promise.state() {
@@ -620,12 +615,11 @@ fn test_dynamic_import_invalid_options() {
 fn test_dynamic_import_non_string_attribute_value() {
     struct TestModuleLoader;
     impl ModuleLoader for TestModuleLoader {
-        async fn load_imported_module(
+        fn load_imported_module(
             self: Rc<Self>,
             _referrer: Referrer,
             _request: surgeist_js::module::ModuleRequest,
-            _context: &HostContext<'_>,
-        ) -> JsResult<Module> {
+        ) -> ContextTask<Module> {
             panic!("Module loading should not be triggered for invalid attribute values");
         }
     }
@@ -642,7 +636,7 @@ fn test_dynamic_import_non_string_attribute_value() {
     );
 
     let module = Module::parse(source, None, context.access()).unwrap();
-    let promise = module.load_link_evaluate(context.access());
+    let promise = module.load_link_evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
 
     match promise.state() {
@@ -682,15 +676,14 @@ fn test_dynamic_import_symbol_key() {
             self: Rc<Self>,
             _referrer: Referrer,
             request: surgeist_js::module::ModuleRequest,
-            context: &HostContext<'_>,
-        ) -> impl Future<Output = JsResult<Module>> {
+        ) -> ContextTask<Module> {
             assert_eq!(request.specifier().to_std_string_escaped(), "basic");
 
             // Verify attributes were passed correctly (symbol key should be ignored)
             assert!(request.get_attribute("type").is_none());
 
             let src = self.0.clone();
-            future::ready(context.with(|access| Ok(Module::parse_json(src, access).unwrap())))
+            ContextTask::from_future(async move { Ok(src) }).then(Module::parse_json)
         }
     }
 
@@ -708,7 +701,7 @@ fn test_dynamic_import_symbol_key() {
     );
 
     let module = Module::parse(source, None, context.access()).unwrap();
-    let promise = module.load_link_evaluate(context.access());
+    let promise = module.load_link_evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
 
     match promise.state() {
@@ -770,7 +763,7 @@ fn a_cold_module_links_and_evaluates_in_a_peer_context() {
     drop(owner);
 
     assert_eq!(
-        module.load(peer.access()).state(),
+        module.load(peer.access()).unwrap().state(),
         PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
     );
     module.link(peer.access()).unwrap();
@@ -798,8 +791,7 @@ fn a_mixed_context_graph_resolves_named_and_namespace_exports_with_attributes() 
             self: Rc<Self>,
             _referrer: Referrer,
             request: surgeist_js::module::ModuleRequest,
-            _context: &HostContext<'_>,
-        ) -> impl Future<Output = JsResult<Module>> {
+        ) -> ContextTask<Module> {
             assert_eq!(request.specifier(), &js_string!("peer-dependency"));
             let module = match request
                 .get_attribute("kind")
@@ -811,7 +803,7 @@ fn a_mixed_context_graph_resolves_named_and_namespace_exports_with_attributes() 
                 "namespace" => self.namespace.clone(),
                 kind => panic!("unexpected import attribute {kind}"),
             };
-            future::ready(Ok(module))
+            ContextTask::from_future(async move { Ok(module) })
         }
     }
 
@@ -848,7 +840,7 @@ fn a_mixed_context_graph_resolves_named_and_namespace_exports_with_attributes() 
     )
     .unwrap();
 
-    let evaluation = root.load_link_evaluate(peer.access());
+    let evaluation = root.load_link_evaluate(peer.access()).unwrap();
     peer.run_jobs().unwrap();
     assert_eq!(
         evaluation.state(),
@@ -908,7 +900,7 @@ fn failed_cyclic_linking_reports_the_missing_export_on_retry() {
     assert!(loader.insert("cycle-child", child).is_none());
     assert!(loader.insert("cycle-peer", peer.clone()).is_none());
 
-    let loaded = root.load(context.access());
+    let loaded = root.load(context.access()).unwrap();
     context.run_jobs().unwrap();
     assert_eq!(
         loaded.state(),

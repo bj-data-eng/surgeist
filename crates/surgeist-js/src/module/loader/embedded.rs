@@ -5,9 +5,11 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::path::Path;
 use std::rc::Rc;
+use std::task::Poll;
+use surgeist_js::job::ContextTask;
 
 use surgeist_js::module::{ModuleLoader, Referrer};
-use surgeist_js::{Context, HostContext, JsNativeError, JsResult, JsString, Module, Source};
+use surgeist_js::{Context, JsNativeError, JsResult, JsString, Module, Source};
 
 /// Create a module loader that embeds files from the filesystem at build
 /// time. This is useful for bundling assets with the binary.
@@ -142,38 +144,37 @@ impl ModuleLoader for EmbeddedModuleLoader {
         self: Rc<Self>,
         referrer: Referrer,
         request: surgeist_js::module::ModuleRequest,
-        context: &HostContext<'_>,
-    ) -> impl Future<Output = JsResult<Module>> {
-        let result = context.with(|mut context| {
-            let specifier_path = surgeist_js::module::resolve_module_specifier(
-                None,
-                request.specifier(),
-                referrer.path(),
-                context.reborrow(),
-            )
-            .map_err(|e| {
-                JsNativeError::typ()
-                    .with_message(format!(
-                        "could not resolve module specifier `{}`",
-                        request.specifier().display_escaped()
-                    ))
-                    .with_cause(e)
-            })?;
-
-            let module = self
-                .map
-                .get(&JsString::from(specifier_path.to_string_lossy().as_ref()))
-                .ok_or_else(|| {
-                    JsNativeError::typ().with_message(format!(
-                        "could not find module `{}`",
-                        request.specifier().display_escaped()
-                    ))
+    ) -> ContextTask<Module> {
+        ContextTask::from_poll(move |_, context| {
+            Poll::Ready(context.with(|mut context| {
+                let specifier_path = surgeist_js::module::resolve_module_specifier(
+                    None,
+                    request.specifier(),
+                    referrer.path(),
+                    context.reborrow(),
+                )
+                .map_err(|e| {
+                    JsNativeError::typ()
+                        .with_message(format!(
+                            "could not resolve module specifier `{}`",
+                            request.specifier().display_escaped()
+                        ))
+                        .with_cause(e)
                 })?;
 
-            let mut embedded = module.borrow_mut();
-            embedded.cache(context.into_owner()).cloned()
-        });
+                let module = self
+                    .map
+                    .get(&JsString::from(specifier_path.to_string_lossy().as_ref()))
+                    .ok_or_else(|| {
+                        JsNativeError::typ().with_message(format!(
+                            "could not find module `{}`",
+                            request.specifier().display_escaped()
+                        ))
+                    })?;
 
-        async { result }
+                let mut embedded = module.borrow_mut();
+                embedded.cache(context.into_owner()).cloned()
+            }))
+        })
     }
 }

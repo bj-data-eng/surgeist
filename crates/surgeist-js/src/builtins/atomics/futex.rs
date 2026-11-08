@@ -18,7 +18,7 @@ use crate::{
         promise::ResolvingFunctions,
         typed_array::Element,
     },
-    job::{CancellationToken, NativeAsyncJob, TimeoutJob},
+    job::{CancellationToken, ContextTask, NativeAsyncJob, TimeoutJob},
     js_string,
     sys::time::{Duration, Instant},
 };
@@ -260,35 +260,31 @@ pub(super) fn wait_async<E: Element + PartialEq>(
         context.enqueue_job(job.into());
     }
 
-    context.enqueue_job(
-        NativeAsyncJob::with_realm(
-            async move |context| {
-                // The queued job owns this before its first poll. Discarding the
-                // job removes the registration even if the Promise is still live.
-                let mut pending = pending;
-                if let Ok(result) = receiver.await {
-                    context.with(|access| {
-                        functions.resolve.call(
-                            &JsValue::undefined(),
-                            &[result.to_js_string().into()],
-                            access,
-                        )
-                    })?;
+    let task_functions = functions.clone();
+    let job = NativeAsyncJob::with_realm(
+        move |_| {
+            Ok(ContextTask::from_future(async move {
+                let result = receiver.await;
+                Ok((result, pending))
+            })
+            .then(move |(result, mut pending), mut access| {
+                if let Ok(result) = result {
+                    task_functions.resolve.call(
+                        &JsValue::undefined(),
+                        &[result.to_js_string().into()],
+                        access.reborrow(),
+                    )?;
                 }
-
                 if let Some(token) = pending.timeout.take() {
-                    context.with(|access| {
-                        token.cancel(access);
-                        Ok(())
-                    })?;
+                    token.cancel(access.reborrow());
                 }
-
                 Ok(JsValue::undefined())
-            },
-            realm,
-        )
-        .into(),
+            }))
+        },
+        realm,
     );
+    functions.associate_job(&job.observer(), context)?;
+    context.enqueue_job(job.into());
 
     Ok(AtomicsWaitResult::Ok)
 }

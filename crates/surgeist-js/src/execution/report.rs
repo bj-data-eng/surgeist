@@ -139,7 +139,10 @@ impl ExecutionReport {
         self.data().instructions
     }
 
-    /// Returns the number of admitted native async job internal future creations.
+    /// Returns the number of admitted native task preparation factory invocations.
+    ///
+    /// This includes factories that return an error or unwind. Factory dispatch
+    /// marks possible effects and does not itself count as a task poll.
     pub fn job_preparations(&self) -> u64 {
         self.data().job_preparations
     }
@@ -312,7 +315,8 @@ impl ExecutionReport {
     /// Retirement and opaque kernel units are prepaid native request prices.
     /// Dimension 26 is compiler work, attributed under bytecode compilation;
     /// delegated scope and name work retain dimensions 24 and 12–14.
-    /// Dimensions 27–29 count native job preparations, invocations and polls.
+    /// Dimensions 27–29 count native task preparation factory invocations,
+    /// synchronous native job invocations and inner task polls.
     /// Their action-local phases include owned cleanup and exclude time between polls.
     pub fn profile(&self) -> Option<&Report<30, 0>> {
         self.data().profile.as_ref()

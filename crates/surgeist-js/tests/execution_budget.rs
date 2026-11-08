@@ -1787,7 +1787,7 @@ use surgeist_js::{
     Context, ContextAccess, JsError, JsResult, JsString, JsValue, NativeFunction, Source,
     error::{EngineError, RuntimeLimitError},
     execution::{EventFilter, ExecutionOptions, ExecutionSetupError, ProfileMode},
-    job::{Job, JobExecutor},
+    job::{Job, JobCall, JobExecutor, JobInvocation},
     js_string,
     property::Attribute,
 };
@@ -1926,6 +1926,7 @@ fn a_nested_legacy_stop_preserves_the_callers_pending_throw() {
 #[derive(Default)]
 struct InlinePromiseExecutor {
     error: RefCell<Option<JsError>>,
+    deferred: RefCell<Vec<Job>>,
 }
 
 impl JobExecutor for InlinePromiseExecutor {
@@ -1933,8 +1934,15 @@ impl JobExecutor for InlinePromiseExecutor {
         let Job::PromiseJob(job) = job else {
             panic!("unexpected job kind");
         };
-        if let Err(error) = job.call(context) {
-            self.error.replace(Some(error));
+        match job.call(context) {
+            JobCall::Complete(Ok(_)) => {}
+            JobCall::Complete(Err(error)) => {
+                self.error.replace(Some(error));
+            }
+            JobCall::Deferred { job, error } => {
+                self.deferred.borrow_mut().push(job.into());
+                self.error.replace(Some(error));
+            }
         }
     }
 
@@ -2694,7 +2702,7 @@ fn non_script_module_preparation_uses_the_operation_scope_budget() {
             None,
             context.reborrow(),
         )?;
-        let loaded = module.load(context.reborrow());
+        let loaded = module.load(context.reborrow())?;
         assert!(matches!(
             loaded.state(),
             surgeist_js::builtins::promise::PromiseState::Fulfilled(_)
@@ -3214,7 +3222,7 @@ fn compiler_default_export_anonymous_query_charges_parenthesized_searches() {
         let module =
             surgeist_js::Module::parse(Source::from_bytes(&source), None, context.access())
                 .unwrap();
-        let loaded = module.load(context.access());
+        let loaded = module.load(context.access()).unwrap();
         context.run_jobs().unwrap();
         assert!(matches!(
             loaded.state(),
@@ -3315,6 +3323,25 @@ fn compiler_source_position_queries_charge_the_actual_start_path() {
 }
 
 mod async_operation_regressions {
+    fn native_completed<J>(
+        call: surgeist_js::job::JobCall<J>,
+    ) -> surgeist_js::JsResult<surgeist_js::JsValue> {
+        match call {
+            surgeist_js::job::JobCall::Complete(result) => result,
+            surgeist_js::job::JobCall::Deferred { .. } => panic!("expected an admitted native job"),
+        }
+    }
+    fn reusable_completed(
+        call: surgeist_js::job::JobInvocation,
+    ) -> surgeist_js::JsResult<surgeist_js::JsValue> {
+        match call {
+            surgeist_js::job::JobInvocation::Complete(result) => result,
+            surgeist_js::job::JobInvocation::Deferred(_) => {
+                panic!("expected an admitted reusable job")
+            }
+        }
+    }
+
     use super::*;
     use surgeist_js::{
         Script,
@@ -3480,8 +3507,11 @@ mod async_operation_regressions {
                                 NativeJobFn::new(callback)
                             };
                             for _ in 0..2 {
-                                let result = job.call(context.reborrow());
-                                probe.results.borrow_mut().push(result);
+                                let JobInvocation::Deferred(error) = job.call(context.reborrow())
+                                else {
+                                    panic!("the retained stop must defer the reusable callback")
+                                };
+                                probe.results.borrow_mut().push(Err(error));
                             }
                         } else {
                             let job = if probe.with_realm {
@@ -3489,8 +3519,14 @@ mod async_operation_regressions {
                             } else {
                                 NativeJob::new(callback)
                             };
-                            let result = job.call(context.reborrow());
-                            probe.results.borrow_mut().push(result);
+                            let JobCall::Deferred {
+                                job: _uncalled,
+                                error,
+                            } = job.call(context.reborrow())
+                            else {
+                                panic!("the retained stop must return its uncalled owned job")
+                            };
+                            probe.results.borrow_mut().push(Err(error));
                         }
                         // Deliberately swallow the Rust errors, as a host caller can.
                         Ok(JsValue::undefined())
@@ -3596,11 +3632,15 @@ mod async_operation_regressions {
                         }
                     };
                     let result = if probe.reusable {
-                        NativeJobFn::with_realm(callback, probe.target_realm.clone())
-                            .call(context.reborrow())
+                        reusable_completed(
+                            NativeJobFn::with_realm(callback, probe.target_realm.clone())
+                                .call(context.reborrow()),
+                        )
                     } else {
-                        NativeJob::with_realm(callback, probe.target_realm.clone())
-                            .call(context.reborrow())
+                        native_completed(
+                            NativeJob::with_realm(callback, probe.target_realm.clone())
+                                .call(context.reborrow()),
+                        )
                     };
                     probe
                         .restored_caller_realm
@@ -3674,9 +3714,13 @@ mod async_operation_regressions {
         };
         let result = catch_unwind(AssertUnwindSafe(|| {
             if reusable {
-                NativeJobFn::with_realm(callback, target_realm).call(context.access())
+                reusable_completed(
+                    NativeJobFn::with_realm(callback, target_realm).call(context.access()),
+                )
             } else {
-                NativeJob::with_realm(callback, target_realm).call(context.access())
+                native_completed(
+                    NativeJob::with_realm(callback, target_realm).call(context.access()),
+                )
             }
         }));
         let panic = result.expect_err("the callback panic must propagate to its host caller");
@@ -3770,9 +3814,15 @@ mod async_operation_regressions {
             };
             let result = catch_unwind(AssertUnwindSafe(|| {
                 if reusable {
-                    NativeJobFn::with_realm(callback, target_realm.clone()).call(context.access())
+                    reusable_completed(
+                        NativeJobFn::with_realm(callback, target_realm.clone())
+                            .call(context.access()),
+                    )
                 } else {
-                    NativeJob::with_realm(callback, target_realm.clone()).call(context.access())
+                    native_completed(
+                        NativeJob::with_realm(callback, target_realm.clone())
+                            .call(context.access()),
+                    )
                 }
             }));
             let panic = result.expect_err("the nested callback panic must reach its host caller");
@@ -3853,9 +3903,9 @@ mod async_operation_regressions {
             Ok(JsValue::new(42))
         };
         let result = if reusable {
-            NativeJobFn::new(callback).call(context.access())
+            reusable_completed(NativeJobFn::new(callback).call(context.access()))
         } else {
-            NativeJob::new(callback).call(context.access())
+            native_completed(NativeJob::new(callback).call(context.access()))
         };
         assert_eq!(result.unwrap(), JsValue::new(42));
         assert_eq!(context.realm(), &selected_realm);
@@ -3925,9 +3975,9 @@ mod async_operation_regressions {
                     };
                     let result = catch_unwind(AssertUnwindSafe(|| {
                         if probe.reusable {
-                            NativeJobFn::new(callback).call(context.reborrow())
+                            reusable_completed(NativeJobFn::new(callback).call(context.reborrow()))
                         } else {
-                            NativeJob::new(callback).call(context.reborrow())
+                            native_completed(NativeJob::new(callback).call(context.reborrow()))
                         }
                     }));
                     let panic = result.expect_err("the nested fixture must reach panicHost");

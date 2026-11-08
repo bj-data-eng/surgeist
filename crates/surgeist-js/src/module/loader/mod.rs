@@ -2,15 +2,16 @@ use std::any::Any;
 use std::cell::RefCell;
 use std::path::{Component, Path, PathBuf};
 use std::rc::Rc;
+use std::task::Poll;
 
-use dynify::dynify;
 use rustc_hash::FxHashMap;
 
 use surgeist_js_parser::Source;
 
+use crate::job::ContextTask;
 use crate::script::Script;
 use crate::{
-    ContextAccess, HostContext, JsError, JsNativeError, JsResult, JsString, js_error, js_string,
+    ContextAccess, JsError, JsNativeError, JsResult, JsString, js_error, js_string,
     object::JsObject, realm::Realm, vm::ActiveRunnable,
 };
 
@@ -143,7 +144,6 @@ impl From<ActiveRunnable> for Referrer {
 ///
 /// This trait allows to customize the behaviour of the engine on module load requests and
 /// `import.meta` requests.
-#[dynify]
 pub trait ModuleLoader: Any {
     /// Host hook [`HostLoadImportedModule ( referrer, specifier, hostDefined, payload )`][spec].
     ///
@@ -166,19 +166,16 @@ pub trait ModuleLoader: Any {
     ///   `FinishLoadingImportedModule`. (can be ignored)
     /// - Returned modules and errors must belong to the supplied context's runtime.
     ///
-    /// The context remains reserved while this future is pending. Use
-    /// [`HostContext::with`] for each synchronous engine operation, releasing the
-    /// lent capability before suspending.
+    /// The returned task owns its pending state. Each poll receives temporary
+    /// protected context access; no context borrow may remain in the task.
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-HostLoadImportedModule
     /// [finish]: https://tc39.es/ecma262/#sec-FinishLoadingImportedModule
-    #[allow(async_fn_in_trait, reason = "all our APIs are single-threaded")]
-    async fn load_imported_module(
+    fn load_imported_module(
         self: Rc<Self>,
         referrer: Referrer,
         request: ModuleRequest,
-        context: &HostContext<'_>,
-    ) -> JsResult<Module>;
+    ) -> ContextTask<Module>;
 
     /// Host hooks [`HostGetImportMetaProperties ( moduleRecord )`][meta] and
     /// [`HostFinalizeImportMeta ( importMeta, moduleRecord )`][final].
@@ -213,11 +210,10 @@ impl ModuleLoader for IdleModuleLoader {
         self: Rc<Self>,
         _referrer: Referrer,
         _request: ModuleRequest,
-        _context: &HostContext<'_>,
-    ) -> impl Future<Output = JsResult<Module>> {
-        std::future::ready(Err(JsNativeError::typ()
+    ) -> ContextTask<Module> {
+        ContextTask::from_future(std::future::ready(Err(JsNativeError::typ()
             .with_message("module resolution is disabled for this context")
-            .into()))
+            .into())))
     }
 }
 
@@ -271,23 +267,22 @@ impl ModuleLoader for MapModuleLoader {
         self: Rc<Self>,
         referrer: Referrer,
         request: ModuleRequest,
-        context: &HostContext<'_>,
-    ) -> impl Future<Output = JsResult<Module>> {
-        let result = context.with(|mut context| {
-            let path = resolve_module_specifier(
-                None,
-                request.specifier(),
-                referrer.path(),
-                context.reborrow(),
-            )?;
-            if let Some(module) = self.inner.borrow().get(&path) {
-                Ok(module.clone())
-            } else {
-                Err(js_error!(TypeError: "Module could not be found."))
-            }
-        });
-
-        async { result }
+    ) -> ContextTask<Module> {
+        ContextTask::from_poll(move |_, context| {
+            Poll::Ready(context.with(|mut context| {
+                let path = resolve_module_specifier(
+                    None,
+                    request.specifier(),
+                    referrer.path(),
+                    context.reborrow(),
+                )?;
+                if let Some(module) = self.inner.borrow().get(&path) {
+                    Ok(module.clone())
+                } else {
+                    Err(js_error!(TypeError: "Module could not be found."))
+                }
+            }))
+        })
     }
 }
 
@@ -385,92 +380,91 @@ impl ModuleLoader for SimpleModuleLoader {
         self: Rc<Self>,
         referrer: Referrer,
         request: ModuleRequest,
-        context: &HostContext<'_>,
-    ) -> impl Future<Output = JsResult<Module>> {
-        let result = context.with(|mut context| {
-            let short_path = request.specifier().to_std_string_escaped();
-            let path = resolve_module_specifier(
-                Some(&self.root),
-                request.specifier(),
-                referrer.path(),
-                context.reborrow(),
-            )?;
+    ) -> ContextTask<Module> {
+        ContextTask::from_poll(move |_, context| {
+            Poll::Ready(context.with(|mut context| {
+                let short_path = request.specifier().to_std_string_escaped();
+                let path = resolve_module_specifier(
+                    Some(&self.root),
+                    request.specifier(),
+                    referrer.path(),
+                    context.reborrow(),
+                )?;
 
-            if let Some(module) = self.get_with_attributes(&path, request.attributes()) {
-                return Ok(module);
-            }
+                if let Some(module) = self.get_with_attributes(&path, request.attributes()) {
+                    return Ok(module);
+                }
 
-            // Check for import attribute type
-            let mut module_type = None;
-            let type_key = js_string!("type");
-            for attr in request.attributes() {
-                if attr.key() == &type_key {
-                    module_type = Some(attr.value());
-                }
-            }
-
-            if path
-                .extension()
-                .is_some_and(|ext| ext.to_string_lossy() == "json")
-            {
-                let is_json_type = module_type.is_some_and(|t| t == &js_string!("json"));
-                if !is_json_type {
-                    return Err(JsNativeError::typ()
-                        .with_message(format!(
-                            "module `{short_path}` needs an import attribute of type \"json\""
-                        ))
-                        .into());
-                }
-            }
-            let parse_error = |kind: &str, error: JsError| {
-                if error.is_catchable() {
-                    JsNativeError::syntax()
-                        .with_message(format!("could not parse {kind} `{short_path}`"))
-                        .with_cause(error)
-                        .into()
-                } else {
-                    error
-                }
-            };
-            let module = if let Some(ty) = module_type {
-                // Handle different module types based on the type attribute
-                match ty.to_std_string_escaped().as_str() {
-                    "json" => {
-                        // Load and parse as JSON module
-                        let json_content = std::fs::read_to_string(&path).map_err(|err| {
-                            JsNativeError::typ()
-                                .with_message(format!("could not open file `{short_path}`"))
-                                .with_cause(JsError::from_rust(err))
-                        })?;
-                        let json_string = js_string!(json_content.as_str());
-                        Module::parse_json(json_string, context.reborrow())
-                            .map_err(|error| parse_error("JSON module", error))?
+                // Check for import attribute type
+                let mut module_type = None;
+                let type_key = js_string!("type");
+                for attr in request.attributes() {
+                    if attr.key() == &type_key {
+                        module_type = Some(attr.value());
                     }
-                    other => {
-                        // Unknown module type
+                }
+
+                if path
+                    .extension()
+                    .is_some_and(|ext| ext.to_string_lossy() == "json")
+                {
+                    let is_json_type = module_type.is_some_and(|t| t == &js_string!("json"));
+                    if !is_json_type {
                         return Err(JsNativeError::typ()
                             .with_message(format!(
-                                "unsupported module type `{other}` for module `{short_path}`"
+                                "module `{short_path}` needs an import attribute of type \"json\""
                             ))
                             .into());
                     }
                 }
-            } else {
-                // No type attribute, load as regular JavaScript module
-                let source = Source::from_filepath(&path).map_err(|err| {
-                    JsNativeError::typ()
-                        .with_message(format!("could not open file `{short_path}`"))
-                        .with_cause(JsError::from_rust(err))
-                })?;
-                Module::parse(source, None, context.reborrow())
-                    .map_err(|error| parse_error("module", error))?
-            };
+                let parse_error = |kind: &str, error: JsError| {
+                    if error.is_catchable() {
+                        JsNativeError::syntax()
+                            .with_message(format!("could not parse {kind} `{short_path}`"))
+                            .with_cause(error)
+                            .into()
+                    } else {
+                        error
+                    }
+                };
+                let module = if let Some(ty) = module_type {
+                    // Handle different module types based on the type attribute
+                    match ty.to_std_string_escaped().as_str() {
+                        "json" => {
+                            // Load and parse as JSON module
+                            let json_content = std::fs::read_to_string(&path).map_err(|err| {
+                                JsNativeError::typ()
+                                    .with_message(format!("could not open file `{short_path}`"))
+                                    .with_cause(JsError::from_rust(err))
+                            })?;
+                            let json_string = js_string!(json_content.as_str());
+                            Module::parse_json(json_string, context.reborrow())
+                                .map_err(|error| parse_error("JSON module", error))?
+                        }
+                        other => {
+                            // Unknown module type
+                            return Err(JsNativeError::typ()
+                                .with_message(format!(
+                                    "unsupported module type `{other}` for module `{short_path}`"
+                                ))
+                                .into());
+                        }
+                    }
+                } else {
+                    // No type attribute, load as regular JavaScript module
+                    let source = Source::from_filepath(&path).map_err(|err| {
+                        JsNativeError::typ()
+                            .with_message(format!("could not open file `{short_path}`"))
+                            .with_cause(JsError::from_rust(err))
+                    })?;
+                    Module::parse(source, None, context.reborrow())
+                        .map_err(|error| parse_error("module", error))?
+                };
 
-            self.insert_with_attributes(path, request.attributes(), module.clone());
-            Ok(module)
-        });
-
-        async { result }
+                self.insert_with_attributes(path, request.attributes(), module.clone());
+                Ok(module)
+            }))
+        })
     }
 }
 

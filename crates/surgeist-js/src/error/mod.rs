@@ -453,7 +453,7 @@ pub enum RuntimeLimitError {
     /// Error for exhausting native asynchronous job preparation admission.
     #[error("reached the operation's limit of {limit} native job preparations")]
     JobPreparation {
-        /// Maximum admitted internal job future creations.
+        /// Maximum admitted native task preparation factory invocations.
         limit: u64,
     },
     /// Error for exhausting synchronous native job invocation admission.
@@ -597,6 +597,12 @@ pub enum EngineResourceError {
     Allocation,
 }
 
+impl From<EngineResourceError> for JsError {
+    fn from(error: EngineResourceError) -> Self {
+        EngineError::Resource(error).into()
+    }
+}
+
 /// Engine error that cannot be caught from within ECMAScript code.
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[allow(variant_size_differences)]
@@ -611,6 +617,16 @@ pub enum EngineError {
     /// The host context's access capability is already leased.
     #[error("ContextAccessBusy: host context access is already leased")]
     ContextAccessBusy,
+
+    /// A retained task requires another exact Context instance.
+    #[error("JobContextRequired: task requires Context {required}")]
+    JobContextRequired {
+        /// Stable diagnostic identity of the required owner, without access authority.
+        required: crate::job::ContextId,
+    },
+    /// Owned work was retired without a guest completion.
+    #[error("JobRetired: {0:?}")]
+    JobRetired(crate::job::JobRetirement),
 
     /// No further logical invocation identity can be represented.
     #[error("InvocationIdExhausted: invocation identity space exhausted")]
@@ -644,6 +660,10 @@ impl EngineError {
             EngineError::Resource(error) => ErasedEngineError::Resource(error),
             EngineError::InvalidEntryPermit => ErasedEngineError::InvalidEntryPermit,
             EngineError::ContextAccessBusy => ErasedEngineError::ContextAccessBusy,
+            EngineError::JobContextRequired { required } => {
+                ErasedEngineError::JobContextRequired { required }
+            }
+            EngineError::JobRetired(reason) => ErasedEngineError::JobRetired(reason),
             EngineError::InvocationIdExhausted => ErasedEngineError::InvocationIdExhausted,
             #[cfg(feature = "fuzz")]
             EngineError::NoInstructionsRemain => ErasedEngineError::NoInstructionsRemain,
@@ -672,6 +692,8 @@ enum StoredErrorRepr {
     Resource(#[heap_trace(skip)] EngineResourceError),
     InvalidEntryPermit,
     ContextAccessBusy,
+    JobContextRequired(#[heap_trace(skip)] crate::job::ContextId),
+    JobRetired(#[heap_trace(skip)] crate::job::JobRetirement),
     InvocationIdExhausted,
     ScopeAnalysis(#[heap_trace(skip)] surgeist_js_ast::scope::ScopeStateError),
     Opaque(StoredValue),
@@ -714,6 +736,12 @@ impl StoredJsError {
         let inner = match &self.inner {
             StoredErrorRepr::InvalidEntryPermit => Repr::Engine(EngineError::InvalidEntryPermit),
             StoredErrorRepr::ContextAccessBusy => Repr::Engine(EngineError::ContextAccessBusy),
+            StoredErrorRepr::JobContextRequired(required) => {
+                Repr::Engine(EngineError::JobContextRequired {
+                    required: required.clone(),
+                })
+            }
+            StoredErrorRepr::JobRetired(reason) => Repr::Engine(EngineError::JobRetired(*reason)),
             StoredErrorRepr::InvocationIdExhausted => {
                 Repr::Engine(EngineError::InvocationIdExhausted)
             }
@@ -864,6 +892,10 @@ impl JsError {
             })),
             Repr::Engine(EngineError::InvalidEntryPermit) => StoredErrorRepr::InvalidEntryPermit,
             Repr::Engine(EngineError::ContextAccessBusy) => StoredErrorRepr::ContextAccessBusy,
+            Repr::Engine(EngineError::JobContextRequired { required }) => {
+                StoredErrorRepr::JobContextRequired(required)
+            }
+            Repr::Engine(EngineError::JobRetired(reason)) => StoredErrorRepr::JobRetired(reason),
             Repr::Engine(EngineError::InvocationIdExhausted) => {
                 StoredErrorRepr::InvocationIdExhausted
             }
@@ -2134,6 +2166,16 @@ pub enum ErasedEngineError {
     #[error("ContextAccessBusy: host context access is already leased")]
     ContextAccessBusy,
 
+    /// A retained task requires another exact Context instance.
+    #[error("JobContextRequired: task requires Context {required}")]
+    JobContextRequired {
+        /// Stable diagnostic identity of the required owner, without access authority.
+        required: crate::job::ContextId,
+    },
+    /// Owned work was retired without a guest completion.
+    #[error("JobRetired: {0:?}")]
+    JobRetired(crate::job::JobRetirement),
+
     /// No further logical invocation identity can be represented.
     #[error("InvocationIdExhausted: invocation identity space exhausted")]
     InvocationIdExhausted,
@@ -2352,5 +2394,40 @@ impl fmt::Display for JsErasedNativeErrorKind {
             Self::RuntimeLimit => "RuntimeLimit",
         }
         .fmt(f)
+    }
+}
+
+#[cfg(test)]
+mod job_identity_storage_tests {
+    use super::{EngineError, JsError};
+    use crate::Context;
+
+    #[test]
+    fn stored_required_context_identity_survives_owner_destruction_without_rebinding() {
+        let owner = Context::default();
+        let peer = Context::default();
+        let required = owner.id();
+        assert_ne!(required, peer.id());
+        let error: JsError = EngineError::JobContextRequired {
+            required: required.clone(),
+        }
+        .into();
+        let stored = error.into_stored();
+        drop(owner);
+        for _ in 0..2 {
+            let restored = stored.to_error();
+            assert_eq!(
+                restored.as_engine(),
+                Some(&EngineError::JobContextRequired {
+                    required: required.clone()
+                })
+            );
+            assert_ne!(
+                restored.as_engine(),
+                Some(&EngineError::JobContextRequired {
+                    required: peer.id()
+                })
+            );
+        }
     }
 }

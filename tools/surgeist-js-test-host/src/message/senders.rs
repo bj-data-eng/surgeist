@@ -2,10 +2,11 @@
 
 use crate::message::MessageSender;
 use crate::store::JsValueStore;
-use futures::StreamExt;
+use futures::Stream;
 use futures::channel::mpsc::UnboundedSender;
+use std::task::Poll;
 use surgeist_js::gc::heap::Trace as HeapTrace;
-use surgeist_js::job::NativeAsyncJob;
+use surgeist_js::job::{ContextTask, JobObserver, NativeAsyncJob};
 use surgeist_js::object::builtins::JsFunction;
 use surgeist_js::value::TryIntoJs;
 use surgeist_js::{Context, JsData, JsError, JsResult, JsString, JsValue, js_string};
@@ -18,6 +19,8 @@ use surgeist_js::{Context, JsData, JsError, JsResult, JsString, JsValue, js_stri
 pub struct OnMessageQueueSender {
     #[heap_trace(skip)]
     sender: UnboundedSender<JsValueStore>,
+    #[heap_trace(skip)]
+    observer: JobObserver,
 }
 
 impl MessageSender for OnMessageQueueSender {
@@ -39,12 +42,18 @@ impl OnMessageQueueSender {
     /// array in the destination context. This type is send/sync and can be
     /// registered in any and many separate `Context` for `postMessage`.
     pub fn create(destination: &mut Context) -> Self {
-        let (sender, mut receiver) = futures::channel::mpsc::unbounded::<JsValueStore>();
+        let (sender, receiver) = futures::channel::mpsc::unbounded::<JsValueStore>();
 
-        destination.enqueue_job(
-            NativeAsyncJob::new(async move |ctx| {
-                while let Some(store) = receiver.next().await {
-                    ctx.with(|mut context| {
+        let job = NativeAsyncJob::new(move |_| {
+            let mut receiver = Box::pin(receiver);
+            Ok(ContextTask::from_poll(move |task, host| {
+                loop {
+                    let store = match receiver.as_mut().poll_next(task) {
+                        Poll::Ready(Some(store)) => store,
+                        Poll::Ready(None) => return Poll::Ready(Ok(JsValue::undefined())),
+                        Poll::Pending => return Poll::Pending,
+                    };
+                    let result = host.with(|mut context| {
                         let v = store.try_into_js(context.reborrow())?;
                         let global = context.global_object();
                         if let Some(x) = global
@@ -55,14 +64,24 @@ impl OnMessageQueueSender {
                             x.call(&JsValue::undefined(), &[v], context.reborrow())?;
                         }
                         Ok(())
-                    })?;
+                    });
+                    if let Err(error) = result {
+                        return Poll::Ready(Err(error));
+                    }
                 }
+            }))
+        });
+        let observer = job.observer();
+        destination.enqueue_job(job.into());
 
-                Ok(JsValue::undefined())
-            })
-            .into(),
-        );
+        Self { sender, observer }
+    }
 
-        Self { sender }
+    /// Observes completion, cancellation, or owner loss of the receiving task.
+    ///
+    /// This handle contains no engine access and can be used on another thread.
+    #[must_use]
+    pub fn observer(&self) -> JobObserver {
+        self.observer.clone()
     }
 }

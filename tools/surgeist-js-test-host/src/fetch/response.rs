@@ -9,6 +9,7 @@ use crate::fetch::headers::JsHeaders;
 use http::{HeaderName, HeaderValue, StatusCode};
 use std::rc::Rc;
 use surgeist_js::gc::heap::Trace as HeapTrace;
+use surgeist_js::job::ContextTask;
 use surgeist_js::object::builtins::{JsPromise, JsUint8Array};
 use surgeist_js::value::{Convert, TryFromJs, TryIntoJs};
 use surgeist_js::{
@@ -474,38 +475,45 @@ impl JsResponse {
         }
     }
 
-    fn bytes(&self, mut context: ContextAccess<'_>) -> JsPromise {
+    fn bytes(&self, mut context: ContextAccess<'_>) -> JsResult<JsPromise> {
         let body = self.body.clone();
-        JsPromise::from_async_fn(
-            async move |context| {
-                context.with(|access| {
-                    JsUint8Array::from_iter(body.iter().copied(), access).map(Into::into)
+        JsPromise::from_task(
+            move |_| {
+                Ok(
+                    ContextTask::from_future(async move { Ok(body) }).then(|body, access| {
+                        JsUint8Array::from_iter(body.iter().copied(), access).map(Into::into)
+                    }),
+                )
+            },
+            context.reborrow(),
+        )
+    }
+
+    fn text(&self, mut context: ContextAccess<'_>) -> JsResult<JsPromise> {
+        let body = self.body.clone();
+        JsPromise::from_task(
+            move |_| {
+                Ok(ContextTask::from_future(async move {
+                    let body = String::from_utf8_lossy(body.as_ref());
+                    Ok(JsString::from(body).into())
+                }))
+            },
+            context.reborrow(),
+        )
+    }
+
+    fn json(&self, mut context: ContextAccess<'_>) -> JsResult<JsPromise> {
+        let body = self.body.clone();
+        JsPromise::from_task(
+            move |_| {
+                Ok(ContextTask::from_future(async move {
+                    let json_string = String::from_utf8_lossy(body.as_ref());
+                    let json = serde_json::from_str::<serde_json::Value>(&json_string)
+                        .map_err(|e| JsNativeError::syntax().with_message(e.to_string()))?;
+
+                    Ok(json)
                 })
-            },
-            context.reborrow(),
-        )
-    }
-
-    fn text(&self, mut context: ContextAccess<'_>) -> JsPromise {
-        let body = self.body.clone();
-        JsPromise::from_async_fn(
-            async move |_| {
-                let body = String::from_utf8_lossy(body.as_ref());
-                Ok(JsString::from(body).into())
-            },
-            context.reborrow(),
-        )
-    }
-
-    fn json(&self, mut context: ContextAccess<'_>) -> JsPromise {
-        let body = self.body.clone();
-        JsPromise::from_async_fn(
-            async move |context| {
-                let json_string = String::from_utf8_lossy(body.as_ref());
-                let json = serde_json::from_str::<serde_json::Value>(&json_string)
-                    .map_err(|e| JsNativeError::syntax().with_message(e.to_string()))?;
-
-                context.with(|access| JsValue::from_json(&json, access))
+                .then(|json, access| JsValue::from_json(&json, access)))
             },
             context.reborrow(),
         )

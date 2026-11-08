@@ -1,5 +1,4 @@
 #![allow(unused_crate_dependencies)]
-
 use std::{
     cell::{Cell, RefCell},
     future::Future,
@@ -8,23 +7,32 @@ use std::{
     rc::Rc,
     task::{Context as TaskContext, Poll, Waker},
 };
-
 use surgeist_js::{
-    Context, HostContext, JsError, JsNativeError, JsResult, JsValue, Module, NativeFunction,
-    Source,
+    Context, ContextAccess, HostContext, JsError, JsNativeError, JsResult, JsValue, Module,
+    NativeFunction, Source,
     builtins::promise::PromiseState,
     error::{EngineError, PanicError, RuntimeLimitError},
     execution::{ExecutionOptions, ExecutionReceipt, ExecutionTermination},
-    job::{BoxedFuture, NativeAsyncJob, SimpleJobExecutor},
+    job::{ContextTask, JobStep, NativeAsyncJob, SimpleJobExecutor},
     js_string,
     module::{ModuleLoader, ModuleRequest, Referrer},
     object::builtins::JsPromise,
 };
-
 fn poll<F: Future + Unpin>(future: &mut F) -> Poll<F::Output> {
     Pin::new(future).poll(&mut TaskContext::from_waker(Waker::noop()))
 }
-
+fn step(job: &mut NativeAsyncJob, host: &HostContext<'_>) -> JobStep {
+    job.run_step(&mut TaskContext::from_waker(Waker::noop()), host)
+}
+fn prepared(job: &mut NativeAsyncJob, host: &HostContext<'_>) {
+    assert!(matches!(step(job, host), JobStep::Prepared));
+}
+fn completed(job: &mut NativeAsyncJob, host: &HostContext<'_>) -> JsResult<JsValue> {
+    match step(job, host) {
+        JobStep::Complete(result) => result,
+        _ => panic!("the authored task must complete in this step"),
+    }
+}
 async fn yield_once() {
     let mut yielded = false;
     std::future::poll_fn(move |cx| {
@@ -38,31 +46,30 @@ async fn yield_once() {
     })
     .await;
 }
-
 #[test]
 fn a_panicking_async_job_poll_restores_its_caller_realm() {
     let mut context = Context::default();
-    let original_realm = context.realm().clone();
-    let selected_realm = context.create_realm().unwrap();
-    assert_ne!(selected_realm, original_realm);
-    let expected_realm = selected_realm.clone();
-    let job = NativeAsyncJob::with_realm(
-        async move |context| {
-            context
-                .with(|access| {
-                    assert_eq!(access.realm(), &expected_realm);
+    let original = context.realm().clone();
+    let selected = context.create_realm().unwrap();
+    assert_ne!(selected, original);
+    let expected = selected.clone();
+    let mut job = NativeAsyncJob::with_realm(
+        move |_| {
+            Ok(ContextTask::from_poll(move |_, host| {
+                host.with(|access| {
+                    assert_eq!(access.realm(), &expected);
                     Ok(())
                 })
                 .unwrap();
-            panic!("async job poll panic");
+                panic!("async job poll panic")
+            }))
         },
-        selected_realm,
+        selected,
     );
-
     let panic = {
-        let holder = context.host_access();
-        let mut future = job.call(&holder);
-        catch_unwind(AssertUnwindSafe(|| poll(&mut future)))
+        let host = context.host_access();
+        prepared(&mut job, &host);
+        catch_unwind(AssertUnwindSafe(|| step(&mut job, &host)))
             .expect_err("the async callback panic must propagate to its host caller")
     };
     assert_eq!(panic.downcast_ref::<&str>(), Some(&"async job poll panic"));
@@ -70,58 +77,61 @@ fn a_panicking_async_job_poll_restores_its_caller_realm() {
         context.eval(Source::from_bytes("40 + 2")).unwrap(),
         JsValue::new(42)
     );
-    assert_eq!(context.realm(), &original_realm);
+    assert_eq!(context.realm(), &original);
 }
-
 #[test]
 fn interleaved_async_jobs_restore_each_selected_realm_after_pending_and_ready() {
     let mut context = Context::default();
     let original = context.realm().clone();
     let first = context.create_realm().unwrap();
     let second = context.create_realm().unwrap();
-    let make_job = |realm: surgeist_js::realm::Realm, value| {
+    let make = |realm: surgeist_js::realm::Realm, value| {
         let expected = realm.clone();
         NativeAsyncJob::with_realm(
-            async move |host| {
-                host.with(|mut access| {
-                    assert_eq!(access.realm(), &expected);
-                    assert_eq!(access.eval(Source::from_bytes("40 + 2"))?, JsValue::new(42));
-                    let busy = host.with(|_| Ok(())).unwrap_err();
-                    assert_eq!(busy.as_engine(), Some(&EngineError::ContextAccessBusy));
-                    Ok(())
-                })?;
-                yield_once().await;
-                host.with(|access| {
-                    assert_eq!(access.realm(), &expected);
-                    Ok(JsValue::new(value))
-                })
+            move |_| {
+                let mut first = true;
+                Ok(ContextTask::from_poll(move |cx, host| {
+                    host.with(|mut access| {
+                        assert_eq!(access.realm(), &expected);
+                        assert_eq!(access.eval(Source::from_bytes("40 + 2"))?, JsValue::new(42));
+                        let busy = host.with(|_| Ok(())).unwrap_err();
+                        assert_eq!(busy.as_engine(), Some(&EngineError::ContextAccessBusy));
+                        Ok(())
+                    })?;
+                    if first {
+                        first = false;
+                        cx.waker().wake_by_ref();
+                        Poll::Pending
+                    } else {
+                        Poll::Ready(Ok(JsValue::new(value)))
+                    }
+                }))
             },
             realm,
         )
     };
-    let holder = context.host_access();
-    let mut first = make_job(first, 20).call(&holder);
-    let mut second = make_job(second, 22).call(&holder);
-    // Creation and each actual poll leave the caller's realm in place.
-    let assert_restored = || {
-        holder
-            .with(|access| {
-                assert_eq!(access.realm(), &original);
-                Ok(())
-            })
-            .unwrap();
+    let host = context.host_access();
+    let mut first = make(first, 20);
+    let mut second = make(second, 22);
+    let restored = || {
+        host.with(|access| {
+            assert_eq!(access.realm(), &original);
+            Ok(())
+        })
+        .unwrap()
     };
-    assert_restored();
-    assert!(poll(&mut first).is_pending());
-    assert_restored();
-    assert!(poll(&mut second).is_pending());
-    assert_restored();
-    assert_eq!(poll(&mut first), Poll::Ready(Ok(JsValue::new(20))));
-    assert_restored();
-    assert_eq!(poll(&mut second), Poll::Ready(Ok(JsValue::new(22))));
-    assert_restored();
+    prepared(&mut first, &host);
+    prepared(&mut second, &host);
+    restored();
+    assert!(matches!(step(&mut first, &host), JobStep::Pending));
+    restored();
+    assert!(matches!(step(&mut second, &host), JobStep::Pending));
+    restored();
+    assert_eq!(completed(&mut first, &host).unwrap(), JsValue::new(20));
+    restored();
+    assert_eq!(completed(&mut second, &host).unwrap(), JsValue::new(22));
+    restored();
 }
-
 #[test]
 fn selected_realm_async_polls_preserve_a_live_guest_callers_frames_and_return() {
     let mut context = Context::default();
@@ -132,55 +142,57 @@ fn selected_realm_async_polls_preserve_a_live_guest_callers_frames_and_return() 
             0,
             NativeFunction::from_fn_with_captures(
                 |_, _, selected, access| {
-                    let caller_realm = access.realm().clone();
+                    let caller = access.realm().clone();
                     let baseline = access
                         .stack_trace()
-                        .map(|frame| frame.position())
+                        .map(|f| f.position())
                         .collect::<Vec<_>>();
-                    assert!(
-                        !baseline.is_empty(),
-                        "the native caller must have live guest frames"
-                    );
-                    let expected_realm = selected.clone();
-                    let job = NativeAsyncJob::with_realm(
-                        async move |host| {
-                            host.with(|mut access| {
-                                assert_eq!(access.realm(), &expected_realm);
-                                access.eval(Source::from_bytes("40"))
-                            })?;
-                            yield_once().await;
-                            host.with(|mut access| {
-                                assert_eq!(access.realm(), &expected_realm);
-                                access.eval(Source::from_bytes("40 + 2"))
-                            })
+                    assert!(!baseline.is_empty());
+                    let expected = selected.clone();
+                    let mut job = NativeAsyncJob::with_realm(
+                        move |_| {
+                            let mut first = true;
+                            Ok(ContextTask::from_poll(move |cx, host| {
+                                let value = host.with(|mut access| {
+                                    assert_eq!(access.realm(), &expected);
+                                    access.eval(Source::from_bytes(if first {
+                                        "40"
+                                    } else {
+                                        "40 + 2"
+                                    }))
+                                })?;
+                                if first {
+                                    first = false;
+                                    cx.waker().wake_by_ref();
+                                    Poll::Pending
+                                } else {
+                                    Poll::Ready(Ok(value))
+                                }
+                            }))
                         },
                         selected.clone(),
                     );
-                    let holder = access.into_host_access();
-                    let mut future = job.call(&holder);
-                    let assert_caller_preserved = || {
-                        holder
-                            .with(|access| {
-                                assert_eq!(access.realm(), &caller_realm);
-                                assert_eq!(
-                                    access
-                                        .stack_trace()
-                                        .map(|frame| frame.position())
-                                        .collect::<Vec<_>>(),
-                                    baseline
-                                );
-                                Ok(())
-                            })
-                            .unwrap();
+                    let host = access.into_host_access();
+                    let preserved = || {
+                        host.with(|access| {
+                            assert_eq!(access.realm(), &caller);
+                            assert_eq!(
+                                access
+                                    .stack_trace()
+                                    .map(|f| f.position())
+                                    .collect::<Vec<_>>(),
+                                baseline
+                            );
+                            Ok(())
+                        })
+                        .unwrap()
                     };
-                    assert_caller_preserved();
-                    assert!(poll(&mut future).is_pending());
-                    assert_caller_preserved();
-                    let Poll::Ready(result) = poll(&mut future) else {
-                        panic!("the second controlled poll must complete the nested job")
-                    };
-                    assert_eq!(result?, JsValue::new(42));
-                    assert_caller_preserved();
+                    prepared(&mut job, &host);
+                    preserved();
+                    assert!(matches!(step(&mut job, &host), JobStep::Pending));
+                    preserved();
+                    assert_eq!(completed(&mut job, &host)?, JsValue::new(42));
+                    preserved();
                     Ok(JsValue::new(42))
                 },
                 selected,
@@ -190,69 +202,61 @@ fn selected_realm_async_polls_preserve_a_live_guest_callers_frames_and_return() 
     assert_eq!(
         context
             .eval(Source::from_bytes(
-                "function liveCaller() { const answer = nestedJob(); return answer; } liveCaller()",
+                "function liveCaller() { const answer = nestedJob(); return answer; } liveCaller()"
             ))
             .unwrap(),
         JsValue::new(42)
     );
     assert_eq!(context.stack_trace().count(), 0);
 }
-
 #[test]
 fn selected_realm_poll_cleanup_preserves_transferred_guest_await_continuations() {
     let mut context = promise_context();
     let caller = context.realm().clone();
     let selected = context.create_realm().unwrap();
-    let expected_realm = selected.clone();
-    let job = NativeAsyncJob::with_realm(
-        async move |host| {
-            let value = host.with(|mut access| {
-                assert_eq!(access.realm(), &expected_realm);
-                access.eval(Source::from_bytes(
-                    "globalThis.acceptedValue = 0;
-                     (async function transferredContinuation() {
-                         const before = 40;
-                         const extra = { answer: 2 };
-                         await Promise.resolve(0);
-                         globalThis.acceptedValue = before + extra.answer;
-                         return acceptedValue;
-                     })()",
-                ))
-            })?;
-            let promise = JsPromise::from_object(value.as_object().unwrap())?;
-            assert_eq!(promise.state(), PromiseState::Pending);
-            yield_once().await;
-            host.with(|access| {
-                assert_eq!(access.realm(), &expected_realm);
-                Ok(())
-            })?;
-            assert_eq!(promise.state(), PromiseState::Pending);
-            Ok(promise.into())
+    let expected = selected.clone();
+    let mut job = NativeAsyncJob::with_realm(
+        move |_| {
+            let mut promise = None;
+            Ok(ContextTask::from_poll(move |cx, host| {
+                host.with(|access| {
+                    assert_eq!(access.realm(), &expected);
+                    Ok(())
+                })?;
+                if promise.is_none() {
+                    let value=host.with(|mut access|access.eval(Source::from_bytes("globalThis.acceptedValue = 0; (async function transferredContinuation() { const before = 40; const extra = { answer: 2 }; await Promise.resolve(0); globalThis.acceptedValue = before + extra.answer; return acceptedValue; })()")))?;
+                    let accepted = JsPromise::from_object(value.as_object().unwrap())?;
+                    assert_eq!(accepted.state(), PromiseState::Pending);
+                    promise = Some(accepted);
+                    cx.waker().wake_by_ref();
+                    Poll::Pending
+                } else {
+                    let accepted = promise.take().unwrap();
+                    assert_eq!(accepted.state(), PromiseState::Pending);
+                    Poll::Ready(Ok(accepted.into()))
+                }
+            }))
         },
         selected.clone(),
     );
     let promise = {
-        let holder = context.host_access();
-        let mut future = job.call(&holder);
-        assert!(poll(&mut future).is_pending());
-        holder
-            .with(|access| {
-                assert_eq!(access.realm(), &caller);
-                assert_eq!(access.stack_trace().count(), 0);
-                Ok(())
-            })
-            .unwrap();
-        let Poll::Ready(result) = poll(&mut future) else {
-            panic!("the second controlled poll must transfer the accepted promise")
-        };
-        holder
-            .with(|access| {
-                assert_eq!(access.realm(), &caller);
-                assert_eq!(access.stack_trace().count(), 0);
-                Ok(())
-            })
-            .unwrap();
-        JsPromise::from_object(result.unwrap().as_object().unwrap()).unwrap()
+        let host = context.host_access();
+        prepared(&mut job, &host);
+        assert!(matches!(step(&mut job, &host), JobStep::Pending));
+        host.with(|access| {
+            assert_eq!(access.realm(), &caller);
+            assert_eq!(access.stack_trace().count(), 0);
+            Ok(())
+        })
+        .unwrap();
+        let value = completed(&mut job, &host).unwrap();
+        host.with(|access| {
+            assert_eq!(access.realm(), &caller);
+            assert_eq!(access.stack_trace().count(), 0);
+            Ok(())
+        })
+        .unwrap();
+        JsPromise::from_object(value.as_object().unwrap()).unwrap()
     };
     assert_eq!(promise.state(), PromiseState::Pending);
     context.run_jobs().unwrap();
@@ -265,89 +269,104 @@ fn selected_realm_poll_cleanup_preserves_transferred_guest_await_continuations()
         JsValue::new(42)
     );
 }
-
 #[test]
 fn an_async_job_without_selected_realm_preserves_deliberate_changes_across_polls() {
     let mut context = Context::default();
     let selected = context.create_realm().unwrap();
     let expected = selected.clone();
-    let job = NativeAsyncJob::new(async move |host| {
-        host.with(|mut access| access.enter_realm(selected))?;
-        yield_once().await;
-        host.with(|access| {
-            assert_eq!(access.realm(), &expected);
-            Ok(JsValue::new(42))
-        })
+    let mut job = NativeAsyncJob::new(move |_| {
+        let mut first = true;
+        Ok(ContextTask::from_poll(move |cx, host| {
+            if first {
+                first = false;
+                host.with(|mut access| access.enter_realm(selected.clone()))?;
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            } else {
+                host.with(|access| {
+                    assert_eq!(access.realm(), &expected);
+                    Ok(())
+                })?;
+                Poll::Ready(Ok(JsValue::new(42)))
+            }
+        }))
     });
-    let holder = context.host_access();
-    let mut future = job.call(&holder);
-    assert!(poll(&mut future).is_pending());
-    let changed = holder.with(|access| Ok(access.realm().clone())).unwrap();
-    assert_eq!(poll(&mut future), Poll::Ready(Ok(JsValue::new(42))));
+    let host = context.host_access();
+    prepared(&mut job, &host);
+    assert!(matches!(step(&mut job, &host), JobStep::Pending));
+    let changed = host.with(|access| Ok(access.realm().clone())).unwrap();
+    assert_eq!(completed(&mut job, &host).unwrap(), JsValue::new(42));
     assert_eq!(
-        holder.with(|access| Ok(access.realm().clone())).unwrap(),
+        host.with(|access| Ok(access.realm().clone())).unwrap(),
         changed
     );
 }
-
 #[test]
 fn selected_realm_job_rejects_a_real_competing_lease_before_callback_entry() {
     let mut context = Context::default();
     let realm = context.realm().clone();
     let called = Rc::new(Cell::new(false));
-    let callback_called = called.clone();
-    let job = NativeAsyncJob::with_realm(
-        async move |_| {
-            callback_called.set(true);
-            Ok(JsValue::new(42))
+    let c = called.clone();
+    let mut job = NativeAsyncJob::with_realm(
+        move |_| {
+            c.set(true);
+            Ok(ContextTask::from_future(async { Ok(JsValue::new(42)) }))
         },
         realm,
     );
-    let holder = context.host_access();
-    holder
-        .with(|mut access| {
-            let mut future = job.call(&holder);
-            let Poll::Ready(Err(error)) = poll(&mut future) else {
-                panic!("a real competing lease must reject the job");
-            };
-            assert_eq!(error.as_engine(), Some(&EngineError::ContextAccessBusy));
-            assert!(!called.get());
-            assert_eq!(access.eval(Source::from_bytes("40 + 2"))?, JsValue::new(42));
-            Ok(())
-        })
-        .unwrap();
+    let host = context.host_access();
+    host.with(|mut access| {
+        let JobStep::Deferred(error) = step(&mut job, &host) else {
+            panic!("a competing lease must defer the factory")
+        };
+        assert_eq!(error.as_engine(), Some(&EngineError::ContextAccessBusy));
+        assert!(!called.get());
+        assert_eq!(access.eval(Source::from_bytes("40 + 2"))?, JsValue::new(42));
+        Ok(())
+    })
+    .unwrap();
     assert_eq!(
-        holder
-            .with(|mut access| access.eval(Source::from_bytes("42")))
+        host.with(|mut access| access.eval(Source::from_bytes("42")))
             .unwrap(),
         JsValue::new(42)
     );
 }
-
 #[test]
 fn rebinding_the_callers_holder_reference_keeps_the_async_jobs_original_custody() {
     let mut context = Context::default();
-    let mut independent = Context::default();
+    let mut peer = Context::default();
     let caller = context.realm().clone();
     let selected = context.create_realm().unwrap();
-    let job = NativeAsyncJob::with_realm(
-        async move |host| {
-            host.with(|mut access| access.eval(Source::from_bytes("globalThis.value = 40")))?;
-            yield_once().await;
-            host.with(|mut access| access.eval(Source::from_bytes("value + 2")))
+    let mut job = NativeAsyncJob::with_realm(
+        |_| {
+            let mut first = true;
+            Ok(ContextTask::from_poll(move |cx, host| {
+                if first {
+                    first = false;
+                    host.with(|mut access| {
+                        access.eval(Source::from_bytes("globalThis.value = 40"))
+                    })?;
+                    cx.waker().wake_by_ref();
+                    Poll::Pending
+                } else {
+                    Poll::Ready(
+                        host.with(|mut access| access.eval(Source::from_bytes("value + 2"))),
+                    )
+                }
+            }))
         },
         selected.clone(),
     );
     {
-        let holder = context.host_access();
-        let peer = independent.host_access();
-        let mut local = &holder;
-        let mut future = job.call(local);
-        local = &peer;
+        let host = context.host_access();
+        let independent = peer.host_access();
+        let mut local = &host;
+        prepared(&mut job, local);
+        local = &independent;
         local
             .with(|mut access| access.eval(Source::from_bytes("globalThis.value = 7")))
             .unwrap();
-        assert!(poll(&mut future).is_pending());
+        assert!(matches!(step(&mut job, &host), JobStep::Pending));
         assert_eq!(
             local
                 .with(|mut access| access.eval(Source::from_bytes("value")))
@@ -355,12 +374,12 @@ fn rebinding_the_callers_holder_reference_keeps_the_async_jobs_original_custody(
             JsValue::new(7)
         );
         assert_eq!(
-            holder.with(|access| Ok(access.realm().clone())).unwrap(),
+            host.with(|access| Ok(access.realm().clone())).unwrap(),
             caller
         );
-        assert_eq!(poll(&mut future), Poll::Ready(Ok(JsValue::new(42))));
+        assert_eq!(completed(&mut job, &host).unwrap(), JsValue::new(42));
         assert_eq!(
-            holder.with(|access| Ok(access.realm().clone())).unwrap(),
+            host.with(|access| Ok(access.realm().clone())).unwrap(),
             caller
         );
     }
@@ -370,44 +389,50 @@ fn rebinding_the_callers_holder_reference_keeps_the_async_jobs_original_custody(
         JsValue::new(40)
     );
     assert_eq!(
-        independent.eval(Source::from_bytes("value")).unwrap(),
+        peer.eval(Source::from_bytes("value")).unwrap(),
         JsValue::new(7)
     );
 }
-
-fn native_plain<'a>(
-    this: &'a JsValue,
-    args: &'a [JsValue],
-    host: &'a HostContext<'_>,
-) -> BoxedFuture<'a> {
-    host.with(|mut access| access.eval(Source::from_bytes("factories += 1")))
-        .unwrap();
-    Box::pin(async move {
+fn native_plain(
+    this: JsValue,
+    args: Vec<JsValue>,
+    mut access: ContextAccess<'_>,
+) -> JsResult<ContextTask<JsValue>> {
+    access.eval(Source::from_bytes("factories += 1"))?;
+    let mut first = true;
+    Ok(ContextTask::from_poll(move |cx, host| {
         host.with(|mut access| access.eval(Source::from_bytes("polls += 1")))?;
-        yield_once().await;
-        host.with(|mut access| access.eval(Source::from_bytes("polls += 1")))?;
-        Ok(JsValue::new(
-            this.as_number().unwrap() + args[0].as_number().unwrap(),
-        ))
-    })
+        if first {
+            first = false;
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        } else {
+            Poll::Ready(Ok(JsValue::new(
+                this.as_number().unwrap() + args[0].as_number().unwrap(),
+            )))
+        }
+    }))
 }
-
-fn native_captured<'a>(
-    _: &'a JsValue,
-    args: &'a [JsValue],
-    capture: &'a i32,
-    host: &'a HostContext<'_>,
-) -> BoxedFuture<'a> {
-    host.with(|mut access| access.eval(Source::from_bytes("factories += 1")))
-        .unwrap();
-    Box::pin(async move {
+fn native_captured(
+    _: JsValue,
+    args: Vec<JsValue>,
+    capture: i32,
+    mut access: ContextAccess<'_>,
+) -> JsResult<ContextTask<JsValue>> {
+    access.eval(Source::from_bytes("factories += 1"))?;
+    let mut first = true;
+    Ok(ContextTask::from_poll(move |cx, host| {
         host.with(|mut access| access.eval(Source::from_bytes("polls += 1")))?;
-        yield_once().await;
-        host.with(|mut access| access.eval(Source::from_bytes("polls += 1")))?;
-        Ok(JsValue::new(
-            f64::from(*capture) + args[0].as_number().unwrap(),
-        ))
-    })
+        if first {
+            first = false;
+            cx.waker().wake_by_ref();
+            Poll::Pending
+        } else {
+            Poll::Ready(Ok(JsValue::new(
+                f64::from(capture) + args[0].as_number().unwrap(),
+            )))
+        }
+    }))
 }
 
 fn promise_context() -> Context {
@@ -483,13 +508,16 @@ fn async_promise_host_errors_reach_the_driver_without_guest_rejection() {
         let mut context = promise_context();
         let returned = Rc::new(Cell::new(false));
         let callback_returned = returned.clone();
-        let promise = JsPromise::from_async_fn(
-            async move |_| {
-                callback_returned.set(true);
-                Err(error)
+        let promise = JsPromise::from_task(
+            move |_| {
+                Ok(ContextTask::from_future(async move {
+                    callback_returned.set(true);
+                    Err(error)
+                }))
             },
             context.access(),
-        );
+        )
+        .unwrap();
         context
             .global_object()
             .set(
@@ -548,11 +576,20 @@ fn mixed_foreign_busy_cases(foreign: JsError) -> [(&'static str, JsError, JsErro
 #[test]
 fn async_promise_success_and_catchable_error_use_the_ordinary_guest_paths() {
     let mut context = promise_context();
-    let success = JsPromise::from_async_fn(async |_| Ok(JsValue::new(42)), context.access());
-    let failure = JsPromise::from_async_fn(
-        async |_| Err(JsError::from_opaque(JsValue::new(7))),
+    let success = JsPromise::from_task(
+        |_| Ok(ContextTask::from_future(async { Ok(JsValue::new(42)) })),
         context.access(),
-    );
+    )
+    .unwrap();
+    let failure = JsPromise::from_task(
+        |_| {
+            Ok(ContextTask::from_future(async {
+                Err(JsError::from_opaque(JsValue::new(7)))
+            }))
+        },
+        context.access(),
+    )
+    .unwrap();
     context
         .global_object()
         .set(
@@ -616,26 +653,41 @@ fn async_job_polls_share_first_stop_and_dispose_inner_work_before_receipt() {
     let mut task = context
         .execution_task(ExecutionOptions::new(256), async move |access| {
             let holder = access.into_host_access();
-            let job = NativeAsyncJob::new(async move |host| {
-                let _probe = probe;
-                host.with(|mut access| {
-                    access.eval(Source::from_bytes("globalThis.committed = 20"))
-                })?;
-                yield_once().await;
-                let stopped = host
-                    .with(|mut access| access.eval(Source::from_bytes("while (true) {}")))
-                    .unwrap_err();
-                assert_eq!(
-                    stopped.as_engine(),
-                    Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
-                        limit: 256
-                    }))
-                );
-                yield_once().await;
-                resumed_probe.set(true);
-                Ok(JsValue::new(42))
+            let mut stage = 0;
+            let mut job = NativeAsyncJob::new(move |_| {
+                Ok(ContextTask::from_poll(move |cx, host| {
+                    let _keep = &probe;
+                    if stage == 0 {
+                        stage = 1;
+                        host.with(|mut access| {
+                            access.eval(Source::from_bytes("globalThis.committed = 20"))
+                        })?;
+                        cx.waker().wake_by_ref();
+                        return Poll::Pending;
+                    }
+                    if stage == 1 {
+                        stage = 2;
+                        let stopped = host
+                            .with(|mut access| access.eval(Source::from_bytes("while (true) {}")))
+                            .unwrap_err();
+                        assert_eq!(
+                            stopped.as_engine(),
+                            Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
+                                limit: 256
+                            }))
+                        );
+                        return Poll::Pending;
+                    }
+                    resumed_probe.set(true);
+                    Poll::Ready(Ok(JsValue::new(42)))
+                }))
             });
-            let stopped = job.call(&holder).await.unwrap_err();
+            prepared(&mut job, &holder);
+            assert!(matches!(step(&mut job, &holder), JobStep::Pending));
+            yield_once().await;
+            let JobStep::Complete(Err(stopped)) = step(&mut job, &holder) else {
+                panic!("the stopping second task poll must complete with its original stop")
+            };
             assert_eq!(
                 stopped.as_engine(),
                 Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
@@ -696,23 +748,26 @@ impl ModuleLoader for LeasingLoader {
         self: Rc<Self>,
         _: Referrer,
         request: ModuleRequest,
-        host: &HostContext<'_>,
-    ) -> impl Future<Output = JsResult<Module>> {
+    ) -> ContextTask<Module> {
         assert_eq!(request.specifier(), &js_string!("dependency"));
-        // This runs at future creation, before its first poll.
-        let factory = host.with(|mut access| access.eval(Source::from_bytes("loaderLog += 'f'")));
-        async move {
-            factory?;
-            host.with(|mut access| access.eval(Source::from_bytes("loaderLog += 'p'")))?;
-            yield_once().await;
-            host.with(|mut access| access.eval(Source::from_bytes("loaderLog += 'r'")))?;
-            if let Some(error) = &self.failure {
-                return Err(error.clone());
+        let mut first = true;
+        ContextTask::from_poll(move |cx, host| {
+            if first {
+                first = false;
+                host.with(|mut access| access.eval(Source::from_bytes("loaderLog += 'f'")))?;
+                host.with(|mut access| access.eval(Source::from_bytes("loaderLog += 'p'")))?;
+                cx.waker().wake_by_ref();
+                Poll::Pending
+            } else {
+                host.with(|mut access| access.eval(Source::from_bytes("loaderLog += 'r'")))?;
+                if let Some(error) = &self.failure {
+                    return Poll::Ready(Err(error.clone()));
+                }
+                Poll::Ready(host.with(|access| {
+                    Module::parse(Source::from_bytes("export const answer = 42"), None, access)
+                }))
             }
-            host.with(|access| {
-                Module::parse(Source::from_bytes("export const answer = 42"), None, access)
-            })
-        }
+        })
     }
 }
 
@@ -731,7 +786,7 @@ fn loader_context(failure: Option<JsError>) -> Context {
 }
 
 #[test]
-fn source_graph_and_dynamic_import_loader_factories_and_polls_can_lease() {
+fn source_graph_and_dynamic_import_loader_owned_stages_can_lease() {
     for dynamic in [false, true] {
         let mut context = loader_context(None);
         let promise = if dynamic {
@@ -745,7 +800,7 @@ fn source_graph_and_dynamic_import_loader_factories_and_polls_can_lease() {
                 context.access(),
             )
             .unwrap();
-            module.load_link_evaluate(context.access())
+            module.load_link_evaluate(context.access()).unwrap()
         };
         context.run_jobs().unwrap();
         assert!(matches!(promise.state(), PromiseState::Fulfilled(_)));
@@ -798,7 +853,7 @@ fn source_graph_and_dynamic_import_loader_host_errors_do_not_reject_in_guest() {
                     context.access(),
                 )
                 .unwrap();
-                module.load(context.access())
+                module.load(context.access()).unwrap()
             };
             context
                 .global_object()

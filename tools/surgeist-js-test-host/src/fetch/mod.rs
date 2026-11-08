@@ -16,12 +16,13 @@ use http::{HeaderName, HeaderValue, Request as HttpRequest, Request};
 use std::rc::Rc;
 use surgeist_js::class::Class;
 use surgeist_js::gc::heap::Trace as HeapTrace;
+use surgeist_js::job::ContextTask;
 use surgeist_js::object::FunctionObjectBuilder;
 use surgeist_js::property::PropertyDescriptor;
 use surgeist_js::realm::Realm;
 use surgeist_js::{
-    Context, ContextAccess, HostContext, JsData, JsError, JsObject, JsResult, JsString, JsSymbol,
-    JsValue, NativeObject, boa_module, js_error, js_string, native_function::NativeFunction,
+    Context, ContextAccess, JsData, JsError, JsObject, JsResult, JsString, JsSymbol, JsValue,
+    NativeObject, boa_module, js_error, js_string, native_function::NativeFunction,
 };
 
 pub mod headers;
@@ -36,7 +37,6 @@ mod fetchers;
 pub use fetchers::*;
 
 /// A trait for backend implementation of an HTTP fetcher.
-// TODO: consider implementing an async version of this.
 pub trait Fetcher: NativeObject {
     /// Resolve a string to a URL. This is used when a string (e.g., the first argument to
     /// `fetch()`) is passed, and we need resolution. Some cases require resolution of
@@ -49,18 +49,15 @@ pub trait Fetcher: NativeObject {
         Ok(uri)
     }
 
-    /// Perform the Fetch execution, taking a [`request::JsRequest`] and returning a
-    /// [`response::JsResponse`].
+    /// Creates owned Fetch work for a [`request::JsRequest`].
     ///
-    /// # Errors
-    /// Any errors returned by the HTTP implementation must conform to [`JsError`].
-    #[expect(async_fn_in_trait, reason = "all our APIs are single-threaded")]
-    async fn fetch(
+    /// The task returns a [`response::JsResponse`] or a [`JsError`]. It owns its
+    /// IO and continuation state; engine access is temporary during each poll.
+    fn fetch(
         self: Rc<Self>,
         request: JsRequest,
         signal: Option<JsObject>,
-        context: &HostContext<'_>,
-    ) -> JsResult<JsResponse>;
+    ) -> ContextTask<JsResponse>;
 }
 
 /// A reference counted pointer to a `Fetcher` implementation. This is so we can
@@ -106,12 +103,12 @@ fn check_abort(signal: Option<&JsObject>, mut context: ContextAccess<'_>) -> JsR
 }
 
 /// The `fetch` function internals.
-async fn fetch_inner<T: Fetcher>(
+fn fetch_inner<T: Fetcher>(
     resource: Either<JsString, JsObject>,
     options: Option<RequestInit>,
-    context: &HostContext<'_>,
-) -> JsResult<JsValue> {
-    let fetcher = context.with(get_fetcher::<T>)?;
+    mut context: ContextAccess<'_>,
+) -> JsResult<ContextTask<JsValue>> {
+    let fetcher = get_fetcher::<T>(context.reborrow())?;
 
     let (options, signal) = match options {
         Some(mut opts) => {
@@ -121,7 +118,7 @@ async fn fetch_inner<T: Fetcher>(
         None => (None, None),
     };
 
-    context.with(|access| check_abort(signal.as_ref(), access))?;
+    check_abort(signal.as_ref(), context.reborrow())?;
 
     // The resource parsing is complicated, so we parse it in Rust here (instead of relying on
     // `TryFromJs` and friends).
@@ -130,7 +127,7 @@ async fn fetch_inner<T: Fetcher>(
     let request: Request<Vec<u8>> = match resource {
         Either::Left(url) => {
             let url = url.to_std_string().map_err(JsError::from_rust)?;
-            let url = context.with(|access| fetcher.resolve_uri(url, access))?;
+            let url = fetcher.resolve_uri(url, context.reborrow())?;
 
             let r = HttpRequest::get(url).body(Vec::new());
             r.map_err(JsError::from_rust)?
@@ -149,7 +146,7 @@ async fn fetch_inner<T: Fetcher>(
         }
     };
 
-    context.with(|access| check_abort(signal.as_ref(), access))?;
+    check_abort(signal.as_ref(), context.reborrow())?;
 
     let mut request = if let Some(options) = options {
         options.into_request_builder(Some(request))?
@@ -167,14 +164,12 @@ async fn fetch_inner<T: Fetcher>(
         request.headers_mut().append("Accept-Language", lang);
     }
 
-    let response = fetcher
-        .fetch(JsRequest::from(request), signal.clone(), context)
-        .await?;
-
-    context.with(|access| check_abort(signal.as_ref(), access))?;
-
-    let result = context.with(|access| Class::from_data(response, access))?;
-    Ok(result.into())
+    Ok(fetcher
+        .fetch(JsRequest::from(request), signal.clone())
+        .then(move |response, mut access| {
+            check_abort(signal.as_ref(), access.reborrow())?;
+            Class::from_data(response, access.reborrow()).map(Into::into)
+        }))
 }
 
 /// JavaScript module containing the fetch types and functions.
@@ -184,7 +179,7 @@ pub mod js_module {
     use crate::fetch::{Fetcher, fetch_inner};
     use either::Either;
     use surgeist_js::object::builtins::JsPromise;
-    use surgeist_js::{ContextAccess, JsObject, JsString};
+    use surgeist_js::{ContextAccess, JsObject, JsResult, JsString};
 
     type JsHeaders = super::JsHeaders;
     type JsRequest = super::JsRequest;
@@ -201,9 +196,9 @@ pub mod js_module {
         resource: Either<JsString, JsObject>,
         options: Option<RequestInit>,
         mut context: ContextAccess<'_>,
-    ) -> JsPromise {
-        JsPromise::from_async_fn(
-            async move |context| fetch_inner::<T>(resource, options, context).await,
+    ) -> JsResult<JsPromise> {
+        JsPromise::from_task(
+            move |context| fetch_inner::<T>(resource, options, context),
             context.reborrow(),
         )
     }

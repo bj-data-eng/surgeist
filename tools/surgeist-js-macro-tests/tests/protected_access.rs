@@ -172,6 +172,7 @@ fn generated_module_exports_protected_functions_classes_and_renamed_constants() 
     let module = protected_module::boa_module(None, owner.access()).unwrap();
     module
         .load_link_evaluate(owner.access())
+        .unwrap()
         .await_blocking(owner.access())
         .unwrap();
     let function = module

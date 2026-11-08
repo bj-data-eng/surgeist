@@ -495,14 +495,16 @@ impl Module {
     /// Prepares the module for linking by loading all its module dependencies. Returns a `JsPromise`
     /// that will resolve when the loading process either completes or fails.
     ///
+    /// # Errors
+    /// Returns host errors from preparing the promise and retaining its loading jobs.
+    /// Module loading failures continue to reject the returned promise.
+    ///
     /// [spec]: https://tc39.es/ecma262/#table-abstract-methods-of-module-records
-    #[allow(clippy::missing_panics_doc)]
     #[inline]
-    pub fn load(&self, context: ContextAccess<'_>) -> JsPromise {
+    pub fn load(&self, context: ContextAccess<'_>) -> JsResult<JsPromise> {
         let context = context.into_owner();
         if let Err(error) = self.check_runtime(context) {
-            return JsPromise::reject(error, context.access())
-                .expect("the runtime's native rejection function is callable");
+            return JsPromise::reject(error, context.access());
         }
         match self.kind() {
             ModuleKind::SourceText(_) => {
@@ -515,10 +517,7 @@ impl Module {
                 let pc = PromiseCapability::new(
                     &context.intrinsics().constructors().promise().constructor(),
                     context,
-                )
-                .expect(
-                    "capability creation must always succeed when using the `%Promise%` intrinsic",
-                );
+                )?;
 
                 // 4. Perform InnerModuleLoading(state, module).
                 self.inner_load(
@@ -533,11 +532,10 @@ impl Module {
                         visited: RefCell::default(),
                     }),
                     context,
-                );
+                )?;
 
                 // 5. Return pc.[[Promise]].
                 JsPromise::from_object(pc.promise().clone())
-                    .expect("promise created from the %Promise% intrinsic is always native")
             }
             ModuleKind::Synthetic(_) => SyntheticModule::load(context),
         }
@@ -546,15 +544,15 @@ impl Module {
     /// Abstract operation [`InnerModuleLoading`][spec].
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-InnerModuleLoading
-    fn inner_load(&self, state: &Rc<GraphLoadingState>, context: &mut Context) {
+    fn inner_load(&self, state: &Rc<GraphLoadingState>, context: &mut Context) -> JsResult<()> {
         // 1. Assert: state.[[IsLoading]] is true.
         assert!(state.loading.get());
 
         if let ModuleKind::SourceText(src) = self.kind() {
             // continues on `inner_load
-            src.inner_load(self, state, context);
+            src.inner_load(self, state, context)?;
             if !state.loading.get() {
-                return;
+                return Ok(());
             }
         }
 
@@ -576,10 +574,10 @@ impl Module {
             state
                 .capability
                 .resolve()
-                .call(&JsValue::undefined(), &[], context.access())
-                .expect("marking a module as loaded should not fail");
+                .call(&JsValue::undefined(), &[], context.access())?;
         }
         // 6. Return unused.
+        Ok(())
     }
 
     /// Abstract method [`GetExportedNames([exportStarSet])`][spec].
@@ -734,7 +732,7 @@ impl Module {
     ///
     /// loader.insert(Path::new("main.mjs").to_path_buf(), module.clone());
     ///
-    /// let promise = module.load_link_evaluate(context.access());
+    /// let promise = module.load_link_evaluate(context.access()).unwrap();
     ///
     /// context.run_jobs().unwrap();
     ///
@@ -743,9 +741,11 @@ impl Module {
     ///     PromiseState::Fulfilled(JsValue::undefined())
     /// );
     /// ```
-    #[allow(dropping_copy_types)]
+    /// # Errors
+    /// Returns host errors from preparing or retaining loading and continuation work.
+    /// Catchable module failures continue to reject the returned promise.
     #[inline]
-    pub fn load_link_evaluate(&self, context: ContextAccess<'_>) -> JsPromise {
+    pub fn load_link_evaluate(&self, context: ContextAccess<'_>) -> JsResult<JsPromise> {
         let context = context.into_owner();
         let result = (|| {
             self.check_runtime(context)?;
@@ -762,14 +762,15 @@ impl Module {
                 self.clone(),
             )
             .to_js_function(context.realm())?;
-            self.load(context.access())
+            self.load(context.access())?
                 .then(Some(link), None, context.access())?
                 .then(Some(evaluate), None, context.access())
         })();
-        result.unwrap_or_else(|error| {
-            JsPromise::reject(error, context.access())
-                .expect("the runtime's native rejection function is callable")
-        })
+        match result {
+            Ok(promise) => Ok(promise),
+            Err(error) if error.is_catchable() => JsPromise::reject(error, context.access()),
+            Err(error) => Err(error),
+        }
     }
 
     /// Abstract operation [`GetModuleNamespace ( module )`][spec].
@@ -936,8 +937,8 @@ fn module_execution_rejects_a_foreign_context() {
     .unwrap();
 
     for promise in [
-        module.load(foreign.access()),
-        module.load_link_evaluate(foreign.access()),
+        module.load(foreign.access()).unwrap(),
+        module.load_link_evaluate(foreign.access()).unwrap(),
     ] {
         let PromiseState::Rejected(reason) = promise.state() else {
             panic!("module execution accepted a foreign context");
@@ -964,7 +965,7 @@ fn module_execution_rejects_a_foreign_context() {
             .is_type()
     );
 
-    let promise = module.load_link_evaluate(owner.access());
+    let promise = module.load_link_evaluate(owner.access()).unwrap();
     owner.run_jobs().unwrap();
     assert_eq!(
         promise.state(),
@@ -1014,7 +1015,7 @@ fn module_construction_rejects_a_foreign_realm_before_parsing() {
     )
     .unwrap();
     assert_eq!(module.realm(), *peer.realm());
-    let promise = module.load_link_evaluate(owner.access());
+    let promise = module.load_link_evaluate(owner.access()).unwrap();
     owner.run_jobs().unwrap();
     assert_eq!(
         promise.state(),
@@ -1052,7 +1053,7 @@ fn module_namespace_rejects_foreign_contexts_before_and_after_caching() {
         .unwrap();
     let mut foreign = Context::default();
     let module = Module::from_value_as_default(42.into(), owner.access()).unwrap();
-    let promise = module.load_link_evaluate(owner.access());
+    let promise = module.load_link_evaluate(owner.access()).unwrap();
     owner.run_jobs().unwrap();
     assert_eq!(
         promise.state(),
@@ -1089,7 +1090,7 @@ fn synthetic_module_rejects_foreign_exports_without_overwriting_the_binding() {
     let foreign = Context::default();
     let object = JsObject::with_null_proto(foreign.runtime());
     let module = Module::from_value_as_default(42.into(), owner.access()).unwrap();
-    let promise = module.load_link_evaluate(owner.access());
+    let promise = module.load_link_evaluate(owner.access()).unwrap();
     owner.run_jobs().unwrap();
     assert_eq!(
         promise.state(),
@@ -1127,7 +1128,7 @@ fn static_module_loading_rejects_foreign_dependencies_and_allows_retry() {
     )
     .unwrap();
 
-    let promise = module.load(owner.access());
+    let promise = module.load(owner.access()).unwrap();
     owner.run_jobs().unwrap();
     let PromiseState::Rejected(reason) = promise.state() else {
         panic!("module loading accepted a foreign dependency");
@@ -1142,7 +1143,7 @@ fn static_module_loading_rejects_foreign_dependencies_and_allows_retry() {
 
     let dependency = Module::from_value_as_default(42.into(), owner.access()).unwrap();
     loader.insert("dependency", dependency);
-    let promise = module.load_link_evaluate(owner.access());
+    let promise = module.load_link_evaluate(owner.access()).unwrap();
     owner.run_jobs().unwrap();
     assert_eq!(
         promise.state(),
@@ -1165,9 +1166,8 @@ fn module_loading_rejects_a_foreign_loader_error_in_static_and_dynamic_imports()
             self: Rc<Self>,
             _referrer: Referrer,
             _request: ModuleRequest,
-            _context: &crate::HostContext<'_>,
-        ) -> impl std::future::Future<Output = JsResult<Module>> {
-            std::future::ready(Err(self.0.clone()))
+        ) -> crate::job::ContextTask<Module> {
+            crate::job::ContextTask::from_future(std::future::ready(Err(self.0.clone())))
         }
     }
 
@@ -1182,7 +1182,7 @@ fn module_loading_rejects_a_foreign_loader_error_in_static_and_dynamic_imports()
         owner.access(),
     )
     .unwrap();
-    let static_import = module.load(owner.access());
+    let static_import = module.load(owner.access()).unwrap();
     let dynamic_import = owner
         .eval(Source::from_bytes("import('dependency')"))
         .unwrap();
@@ -1223,13 +1223,13 @@ fn module_promises_reject_foreign_host_job_callback_data() {
         .unwrap();
     let module = Module::from_value_as_default(42.into(), owner.access()).unwrap();
     loader.insert("dependency", module.clone());
-    let load_link_evaluate = module.load_link_evaluate(owner.access());
+    let load_link_evaluate = module.load_link_evaluate(owner.access()).unwrap();
     let dynamic_import = owner
         .eval(Source::from_bytes("import('dependency')"))
         .unwrap();
     let dynamic_import = JsPromise::from_object(dynamic_import.as_object().unwrap()).unwrap();
     let async_module = Module::parse(Source::from_bytes("await 0;"), None, owner.access()).unwrap();
-    let load = async_module.load(owner.access());
+    let load = async_module.load(owner.access()).unwrap();
     owner.run_jobs().unwrap();
     assert_eq!(load.state(), PromiseState::Fulfilled(JsValue::undefined()));
     async_module.link(owner.access()).unwrap();
@@ -1388,7 +1388,7 @@ fn into_js_module() {
     );
     let root_module = Module::parse(source, None, context.access()).unwrap();
 
-    let promise_result = root_module.load_link_evaluate(context.access());
+    let promise_result = root_module.load_link_evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
 
     // Checking if the final promise didn't return an error.
@@ -1441,7 +1441,7 @@ fn can_throw_exception() {
     );
     let root_module = Module::parse(source, None, context.access()).unwrap();
 
-    let promise_result = root_module.load_link_evaluate(context.access());
+    let promise_result = root_module.load_link_evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
 
     // Checking if the final promise didn't return an error.
