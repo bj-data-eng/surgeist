@@ -787,8 +787,12 @@ fn text_fill_paint_matches_concrete_render_paint_surface() {
         let mut scene = Scene::new();
         scene.text_run(run);
 
-        let brush = glyph_paint_brush(&paint, &crate::accounting::Account::for_test())
-            .unwrap_or_else(|_| panic!("{label} should encode as a glyph brush"));
+        let brush = glyph_paint_brush(
+            &paint,
+            kurbo::Affine::IDENTITY,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap_or_else(|_| panic!("{label} should encode as a glyph brush"));
         match (&paint, &*brush) {
             (paint, peniko::Brush::Solid(_)) if paint == &Paint::color(Color::BLACK) => {}
             (paint, peniko::Brush::Gradient(_))

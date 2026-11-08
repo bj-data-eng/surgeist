@@ -15,12 +15,12 @@ use crate::{
     FontRef, Format, GpuFaultKind, Gradient, GradientStop, HitTestOwnership, Image, ImageBuffer,
     ImageFit, ImageQuality, InvalidValue, Layer, NormalizedPaintLayer, Paint, PaintColor, Path,
     PathElement, PhysicalSize, Point, PrimitiveFamily, PrimitiveOperation, Radii, Rect,
-    RenderRoute, RenderSurfaceAvailability, ResolvedLayerAlphaMask, RuntimeCapabilityUnavailable,
-    RuntimeCapabilityUnavailableReason, RuntimeOperation, Scene, Shadow, ShadowList, Shape, Size,
-    Stats, Stroke, StrokeAlign, SurfaceIdentityMismatchKind, SymbolicColorPolicy,
-    TextDecorationLine, TextDecorationLineStyle, TextGlyph, TextPaint, TextRun, TextRunBounds,
-    TextRunBoundsKind, TextShadowRun, Transform, UnresolvedResource, UnresolvedResourceKind,
-    UnsupportedPrimitive,
+    RenderRoute, RenderSurfaceAvailability, RepeatingGradient, RepeatingGradientStop,
+    ResolvedLayerAlphaMask, RuntimeCapabilityUnavailable, RuntimeCapabilityUnavailableReason,
+    RuntimeOperation, Scene, Shadow, ShadowList, Shape, Size, Stats, Stroke, StrokeAlign,
+    SurfaceIdentityMismatchKind, SymbolicColorPolicy, TextDecorationLine, TextDecorationLineStyle,
+    TextGlyph, TextPaint, TextRun, TextRunBounds, TextRunBoundsKind, TextShadowRun, Transform,
+    UnresolvedResource, UnresolvedResourceKind, UnsupportedPrimitive,
 };
 
 use crate::{
@@ -3550,7 +3550,7 @@ fn paint_capabilities_name_color_policy_and_conversion_boundaries() {
     );
     assert!(!capabilities.supports_unresolved_symbolic_colors());
     assert!(!capabilities.supports_color_mix());
-    assert!(!capabilities.supports_repeating_gradients());
+    assert!(capabilities.supports_repeating_gradients());
 }
 
 #[test]
@@ -3607,18 +3607,12 @@ fn unsupported_symbolic_color_inputs_report_typed_diagnostics() {
 }
 
 #[test]
-fn repeating_gradients_report_typed_diagnostics() {
-    let unsupported = UnsupportedPrimitive::new(
+fn repeating_gradients_support_resolved_native_input() {
+    let operation = UnsupportedPrimitive::new(
         PrimitiveFamily::PaintSources,
         PrimitiveOperation::RepeatingGradient,
     );
-
-    let error = Capabilities::CURRENT
-        .ensure_supported(unsupported)
-        .expect_err("repeating gradients require unsupported normalization");
-
-    assert_eq!(error.code(), ErrorCode::UnsupportedPrimitive);
-    assert_eq!(error.unsupported_primitive(), Some(unsupported));
+    Capabilities::CURRENT.ensure_supported(operation).unwrap();
 }
 
 #[test]
@@ -4664,5 +4658,192 @@ fn selected_color_bitmap_unsupported_instances_refuse_without_outline_substituti
     assert_eq!(
         error.glyph_preparation_diagnostic(),
         Some(&crate::GlyphPreparationError::InvalidFont)
+    );
+}
+
+#[test]
+fn repeating_gradient_preserves_order_phase_and_equal_positions() {
+    let stops = vec![
+        RepeatingGradientStop::try_new(-2.0, Color::BLACK).unwrap(),
+        RepeatingGradientStop::try_new(-2.0, Color::TRANSPARENT).unwrap(),
+        RepeatingGradientStop::try_new(3.5, Color::BLACK).unwrap(),
+    ];
+    let start = Point::new(2.0, 4.0);
+    let end = Point::new(8.0, 6.0);
+    let gradient = RepeatingGradient::try_linear(start, end, stops.clone()).unwrap();
+    assert_eq!(gradient.stops(), stops);
+    assert_eq!(gradient.stops()[0].position(), -2.0);
+    assert_eq!(gradient.stops()[1].color(), Color::TRANSPARENT);
+    assert_eq!(gradient.linear_points(), Some((start, end)));
+    assert_eq!(gradient.radial_geometry(), None);
+    let paint = Paint::repeating_gradient(gradient.clone());
+    assert_eq!(Paint::from(gradient.clone()), paint);
+    assert_eq!(
+        NormalizedPaintLayer::try_new(paint.clone())
+            .unwrap()
+            .paint(),
+        &paint
+    );
+    let mut scene = Scene::new();
+    scene.fill(Rect::try_new(0.0, 0.0, 8.0, 8.0).unwrap(), paint);
+    let commands = scene
+        .normalize(
+            Capabilities::CURRENT,
+            &crate::accounting::Account::for_test(),
+        )
+        .unwrap();
+    let [
+        command::RenderCommand::Fill {
+            paint: command::RenderPaint::RepeatingGradient(normalized),
+            ..
+        },
+    ] = &commands[..]
+    else {
+        panic!("repeating fill must preserve its resolved gradient");
+    };
+    assert_eq!(&**normalized, &gradient);
+}
+
+#[test]
+fn repeating_gradient_allows_one_stop_coincident_points_and_zero_height() {
+    let stops = vec![RepeatingGradientStop::try_new(7.0, Color::BLACK).unwrap()];
+    let center = Point::new(1.0, 2.0);
+    let linear = RepeatingGradient::try_linear(center, center, stops.clone()).unwrap();
+    assert_eq!(linear.linear_points(), Some((center, center)));
+    assert_eq!(linear.stops(), stops);
+    let radial = RepeatingGradient::try_radial(center, 3.0, 0.0, stops.clone()).unwrap();
+    assert_eq!(radial.radial_geometry(), Some((center, 3.0, 0.0)));
+    assert_eq!(radial.linear_points(), None);
+    assert_eq!(radial.stops(), stops);
+    let equal = vec![
+        stops[0],
+        RepeatingGradientStop::try_new(7.0, Color::TRANSPARENT).unwrap(),
+    ];
+    assert!(RepeatingGradient::try_radial(center, 3.0, 4.0, equal).is_ok());
+}
+
+#[test]
+fn repeating_gradient_rejects_nonfinite_descending_overflowing_and_empty_inputs() {
+    let p = Point::new(0.0, 0.0);
+    for value in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        assert_eq!(
+            RepeatingGradientStop::try_new(value, Color::BLACK)
+                .unwrap_err()
+                .code(),
+            ErrorCode::InvalidInput
+        );
+    }
+    let stop = |position| RepeatingGradientStop::try_new(position, Color::BLACK).unwrap();
+    for stops in [
+        vec![],
+        vec![stop(2.0), stop(1.0)],
+        vec![stop(-f64::MAX), stop(f64::MAX)],
+    ] {
+        assert_eq!(
+            RepeatingGradient::try_linear(p, p, stops)
+                .unwrap_err()
+                .code(),
+            ErrorCode::InvalidInput
+        );
+    }
+    for (rx, ry) in [
+        (0.0, 1.0),
+        (-1.0, 1.0),
+        (f64::INFINITY, 1.0),
+        (1.0, -1.0),
+        (1.0, f64::NAN),
+        (1.0, f64::INFINITY),
+    ] {
+        assert_eq!(
+            RepeatingGradient::try_radial(p, rx, ry, vec![stop(0.0)])
+                .unwrap_err()
+                .code(),
+            ErrorCode::InvalidInput
+        );
+    }
+    assert_eq!(
+        RepeatingGradient::try_linear(Point::new(f64::NAN, 0.0), p, vec![stop(0.0)])
+            .unwrap_err()
+            .code(),
+        ErrorCode::InvalidInput
+    );
+    assert_eq!(
+        RepeatingGradient::try_radial(Point::new(0.0, f64::INFINITY), 1.0, 1.0, vec![stop(0.0)])
+            .unwrap_err()
+            .code(),
+        ErrorCode::InvalidInput
+    );
+}
+
+#[test]
+fn repeating_gradient_normalized_clones_retain_backing_until_final_drop() {
+    use crate::accounting::{
+        FrameAttempt, FrameReportSlot, RenderAccountingOptions, RenderResource, RendererCpu,
+    };
+    let options = RenderAccountingOptions::default();
+    let cpu = RendererCpu::new(options).unwrap();
+    let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+    let opening = cpu
+        .snapshot()
+        .unwrap()
+        .usage()
+        .live(RenderResource::RetainedCpuBytes);
+    let stops = vec![
+        RepeatingGradientStop::try_new(-1.0, Color::BLACK).unwrap(),
+        RepeatingGradientStop::try_new(2.0, Color::TRANSPARENT).unwrap(),
+    ];
+    let gradient = RepeatingGradient::try_radial(Point::new(0.0, 0.0), 4.0, 2.0, stops).unwrap();
+    let mut scene = Scene::new();
+    scene.fill(Rect::try_new(0.0, 0.0, 8.0, 8.0).unwrap(), gradient);
+    let normalized = scene
+        .normalize(Capabilities::CURRENT, attempt.account())
+        .unwrap();
+    let retained = cpu
+        .snapshot()
+        .unwrap()
+        .usage()
+        .live(RenderResource::RetainedCpuBytes);
+    assert!(retained >= opening + (2 * std::mem::size_of::<RepeatingGradientStop>()) as u64);
+    let clone = normalized.clone();
+    drop(normalized);
+    assert_eq!(
+        cpu.snapshot()
+            .unwrap()
+            .usage()
+            .live(RenderResource::RetainedCpuBytes),
+        retained
+    );
+    let [
+        command::RenderCommand::Fill {
+            paint: command::RenderPaint::RepeatingGradient(value),
+            ..
+        },
+    ] = &clone[..]
+    else {
+        panic!("cloned commands must retain repeating paint");
+    };
+    assert_eq!(value.stops().len(), 2);
+    assert_eq!(
+        value.radial_geometry(),
+        Some((Point::new(0.0, 0.0), 4.0, 2.0))
+    );
+    drop(clone);
+    assert_eq!(
+        cpu.snapshot()
+            .unwrap()
+            .usage()
+            .live(RenderResource::RetainedCpuBytes),
+        opening
+    );
+    let (report, fault) = attempt.finish(crate::accounting::RenderAttemptStatus::Succeeded, None);
+    assert_eq!(fault, None);
+    // Two stops are validated once and copied once into normalized custody.
+    assert_eq!(
+        report
+            .attempt()
+            .unwrap()
+            .usage()
+            .work(crate::accounting::RenderWork::GradientStopVisits),
+        4
     );
 }

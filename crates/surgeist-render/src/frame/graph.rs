@@ -2368,7 +2368,11 @@ fn commands_require_surface_grid(commands: &[RenderCommand], account: &Account) 
     }
     fn paint_sensitive(paint: &crate::Paint, account: &Account) -> Result<bool> {
         account.work(RenderWork::PaintVisits, 1)?;
-        Ok(matches!(paint.kind(), crate::paint::PaintKind::Image(image) if sensitive(image)))
+        Ok(match paint.kind() {
+            crate::paint::PaintKind::RepeatingGradient(_) => true,
+            crate::paint::PaintKind::Image(image) => sensitive(image),
+            crate::paint::PaintKind::Color(_) | crate::paint::PaintKind::Gradient(_) => false,
+        })
     }
     for command in commands {
         account.work(RenderWork::CommandVisits, 1)?;
@@ -2376,7 +2380,12 @@ fn commands_require_surface_grid(commands: &[RenderCommand], account: &Account) 
             RenderCommand::Image { image, .. } => sensitive(image),
             RenderCommand::Fill { paint, .. } | RenderCommand::Stroke { paint, .. } => {
                 account.work(RenderWork::PaintVisits, 1)?;
-                matches!(paint, crate::command::RenderPaint::Image(image) if sensitive(image))
+                match paint {
+                    crate::command::RenderPaint::RepeatingGradient(_) => true,
+                    crate::command::RenderPaint::Image(image) => sensitive(image),
+                    crate::command::RenderPaint::Color(_)
+                    | crate::command::RenderPaint::Gradient(_) => false,
+                }
             }
             RenderCommand::TextRun { paint, .. } => paint_sensitive(paint.fill(), account)?,
             RenderCommand::PreparedGlyphRun { run, paint, .. } => {

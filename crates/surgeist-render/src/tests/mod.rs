@@ -8,6 +8,7 @@ mod nonseparable;
 mod outline;
 mod platform;
 mod porter_duff;
+mod repeating_gradients;
 mod separable;
 mod style;
 mod support;

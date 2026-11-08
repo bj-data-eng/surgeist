@@ -16,6 +16,11 @@ Plus operation remains distinct. [Layer blending](docs/reference.md#layer-blendi
 and [composition](docs/reference.md#layer-composition-and-isolation) describe the
 alpha, operation-domain and capability contracts.
 
+Resolved repeating linear and elliptical radial paints retain arbitrary ordered
+stop positions and choose a solid premultiplied-sRGBA average when the final
+device resolution cannot resolve a cycle. [Gradient paints](docs/reference.md#gradient-paints)
+describe period, phase, transform and accounting behavior.
+
 `FontData` accepts raw OpenType, collections, WOFF and WOFF2 through
 `surgeist-font`. `FontData::prepare_glyph_run` admits immutable glyph resources
 without a GPU.

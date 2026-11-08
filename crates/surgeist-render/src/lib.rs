@@ -102,6 +102,7 @@ pub use layer::{
 };
 pub use paint::{
     Color, Gradient, GradientStop, NormalizedPaintLayer, Paint, PaintColor, PaintColorSpace,
+    RepeatingGradient, RepeatingGradientStop,
 };
 pub use renderer::{Antialiasing, EffectQualityPolicy, Options, Renderer, ResourceCacheBudget};
 pub use scene::{Scene, SceneSummary};

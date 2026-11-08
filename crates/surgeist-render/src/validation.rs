@@ -35,6 +35,9 @@ pub(crate) fn validate_shape_in(shape: &Shape, account: &Account) -> Result<()> 
 }
 pub(crate) fn validate_paint_in(paint: &Paint, account: &Account) -> Result<()> {
     account.work(RenderWork::PaintVisits, 1)?;
+    if let PaintKind::RepeatingGradient(gradient) = paint.kind() {
+        return gradient.validate_in(Some(account));
+    }
     let PaintKind::Gradient(gradient) = paint.kind() else {
         return validate_paint(paint);
     };
@@ -174,6 +177,7 @@ pub(crate) fn validate_paint(paint: &Paint) -> Result<()> {
     match paint.kind() {
         PaintKind::Color(color) => validate_color(*color, "color paint"),
         PaintKind::Gradient(gradient) => validate_gradient(gradient),
+        PaintKind::RepeatingGradient(gradient) => gradient.validate_in(None),
         PaintKind::Image(image) => validate_size(image.size(), "image size"),
     }
 }

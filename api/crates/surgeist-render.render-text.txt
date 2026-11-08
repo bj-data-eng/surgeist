@@ -564,6 +564,7 @@ pub surgeist_render::RenderPhase::Frame
 pub surgeist_render::RenderPhase::FramePrepare
 pub surgeist_render::RenderPhase::GlyphPrepare
 pub surgeist_render::RenderPhase::GpuPrepare
+pub surgeist_render::RenderPhase::GradientPrepare
 pub surgeist_render::RenderPhase::Initialization
 pub surgeist_render::RenderPhase::Kernel
 pub surgeist_render::RenderPhase::Lower
@@ -1434,12 +1435,15 @@ impl surgeist_render::Paint
 pub const fn surgeist_render::Paint::color(color: surgeist_render::Color) -> Self
 pub fn surgeist_render::Paint::gradient(gradient: surgeist_render::Gradient) -> Self
 pub fn surgeist_render::Paint::image(image: surgeist_render::Image) -> Self
+pub fn surgeist_render::Paint::repeating_gradient(gradient: surgeist_render::RepeatingGradient) -> Self
 impl core::convert::From<surgeist_render::Color> for surgeist_render::Paint
 pub fn surgeist_render::Paint::from(color: surgeist_render::Color) -> Self
 impl core::convert::From<surgeist_render::Gradient> for surgeist_render::Paint
 pub fn surgeist_render::Paint::from(gradient: surgeist_render::Gradient) -> Self
 impl core::convert::From<surgeist_render::Image> for surgeist_render::Paint
 pub fn surgeist_render::Paint::from(image: surgeist_render::Image) -> Self
+impl core::convert::From<surgeist_render::RepeatingGradient> for surgeist_render::Paint
+pub fn surgeist_render::Paint::from(gradient: surgeist_render::RepeatingGradient) -> Self
 pub struct surgeist_render::PaintColor
 impl surgeist_render::PaintColor
 pub const fn surgeist_render::PaintColor::channels(self) -> [f32; 4]
@@ -1713,6 +1717,20 @@ pub fn surgeist_render::Renderer::take_last_attempt(&mut self) -> core::option::
 pub fn surgeist_render::Renderer::take_last_readback_attempt(&mut self) -> core::option::Option<surgeist_render::RenderReadbackReport>
 impl surgeist_render::Renderer
 pub async fn surgeist_render::Renderer::read_headless(&mut self, surface: &surgeist_render::Surface) -> surgeist_render::Result<surgeist_render::ImageBuffer>
+pub struct surgeist_render::RepeatingGradient
+impl surgeist_render::RepeatingGradient
+pub const fn surgeist_render::RepeatingGradient::linear_points(&self) -> core::option::Option<(surgeist_render::Point, surgeist_render::Point)>
+pub const fn surgeist_render::RepeatingGradient::radial_geometry(&self) -> core::option::Option<(surgeist_render::Point, f64, f64)>
+pub fn surgeist_render::RepeatingGradient::stops(&self) -> &[surgeist_render::RepeatingGradientStop]
+pub fn surgeist_render::RepeatingGradient::try_linear(start: surgeist_render::Point, end: surgeist_render::Point, stops: alloc::vec::Vec<surgeist_render::RepeatingGradientStop>) -> surgeist_render::Result<Self>
+pub fn surgeist_render::RepeatingGradient::try_radial(center: surgeist_render::Point, radius_x: f64, radius_y: f64, stops: alloc::vec::Vec<surgeist_render::RepeatingGradientStop>) -> surgeist_render::Result<Self>
+impl core::convert::From<surgeist_render::RepeatingGradient> for surgeist_render::Paint
+pub fn surgeist_render::Paint::from(gradient: surgeist_render::RepeatingGradient) -> Self
+pub struct surgeist_render::RepeatingGradientStop
+impl surgeist_render::RepeatingGradientStop
+pub const fn surgeist_render::RepeatingGradientStop::color(self) -> surgeist_render::Color
+pub const fn surgeist_render::RepeatingGradientStop::position(self) -> f64
+pub fn surgeist_render::RepeatingGradientStop::try_new(position: f64, color: surgeist_render::Color) -> surgeist_render::Result<Self>
 pub struct surgeist_render::ResolvedImagePlacement
 impl surgeist_render::ResolvedImagePlacement
 pub fn surgeist_render::ResolvedImagePlacement::from_parts(paint_rect: surgeist_render::Rect, tile_rect: surgeist_render::Rect) -> surgeist_render::Result<Self>
