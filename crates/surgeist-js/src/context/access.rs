@@ -1,12 +1,12 @@
 //! Borrowed access to the semantic operations of an owned context.
 
-use std::{any::Any, rc::Rc};
+use std::{any::Any, ops::AsyncFnOnce, rc::Rc};
 
 use super::{Clock, Context, HostHooks, intrinsics::Intrinsics};
 use crate::{
     HostDefined, JsResult, JsString, JsValue, Runtime, Source,
     class::{Class, ClassConstructor},
-    execution::{ExecutionOptions, ExecutionOutcome, ExecutionSetupError},
+    execution::{ExecutionOptions, ExecutionOutcome, ExecutionSetupError, ExecutionTask},
     job::Job,
     native_function::NativeFunction,
     object::{JsObject, shape::RootShape},
@@ -109,6 +109,43 @@ impl<'owner> ContextAccess<'owner> {
         options: ExecutionOptions,
     ) -> Result<ExecutionOutcome<JsValue>, ExecutionSetupError> {
         self.owner.eval_with_budget(source, options)
+    }
+
+    /// Runs a controlled callback on this same owner.
+    ///
+    /// # Errors
+    /// Returns [`ExecutionSetupError::AlreadyActive`] before invoking the
+    /// callback when this access belongs to an active operation. Other setup
+    /// failures are the same as [`Context::with_execution`].
+    #[inline]
+    pub fn with_execution<T>(
+        &mut self,
+        options: ExecutionOptions,
+        run: impl for<'call> FnOnce(ContextAccess<'call>) -> JsResult<T>,
+    ) -> Result<ExecutionOutcome<T>, ExecutionSetupError> {
+        self.reborrow().into_owner().with_execution(options, run)
+    }
+
+    /// Reserves this access's owner for a controlled async callback.
+    ///
+    /// The task borrows this handle only for the current reborrow, until it
+    /// completes or is dropped. Its callback receives shorter protected access.
+    ///
+    /// # Errors
+    /// Returns [`ExecutionSetupError::AlreadyActive`] before invoking the
+    /// callback when an operation is active. Other setup failures are the same
+    /// as [`Context::execution_task`].
+    #[inline]
+    pub fn execution_task<'access, T, F>(
+        &'access mut self,
+        options: ExecutionOptions,
+        run: F,
+    ) -> Result<ExecutionTask<'access, T>, ExecutionSetupError>
+    where
+        T: 'access,
+        F: for<'call> AsyncFnOnce(ContextAccess<'call>) -> JsResult<T> + 'access,
+    {
+        self.reborrow().into_owner().execution_task(options, run)
     }
 
     /// Registers a property on the current global object.

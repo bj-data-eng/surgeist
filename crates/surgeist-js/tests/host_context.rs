@@ -68,7 +68,7 @@ fn nested_same_holder_is_busy_without_invoking_callback_or_charging_work() {
     let called = Cell::new(false);
     let outcome = owner
         .with_execution(ExecutionOptions::new(64), |context| {
-            let holder = context.host_access();
+            let holder = context.into_host_access();
             holder.with(|mut access| {
                 let busy = holder
                     .with(|mut competing| {
@@ -172,7 +172,7 @@ fn retained_instruction_stop_wins_over_later_holder_busy_at_operation_completion
     let called = Cell::new(false);
     let outcome = owner
         .with_execution(ExecutionOptions::new(32), |context| {
-            let holder = context.host_access();
+            let holder = context.into_host_access();
             holder.with(|mut access| {
                 let first = access
                     .eval(Source::from_bytes(

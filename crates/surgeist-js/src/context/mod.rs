@@ -248,7 +248,7 @@ impl Context {
         src: Source<'_, R>,
         options: ExecutionOptions,
     ) -> Result<ExecutionOutcome<JsValue>, ExecutionSetupError> {
-        self.with_execution(options, |context| context.eval(src))
+        self.with_execution(options, |mut context| context.eval(src))
     }
 
     pub(crate) fn parse_source<R: ReadChar, T>(

@@ -42,7 +42,7 @@ fn synchronous_scope_returns_generic_values_and_reentry_uses_the_same_owner() {
     let mut context = Context::default();
     let denied_callback = Cell::new(false);
     let outcome = context
-        .with_execution(ExecutionOptions::new(128), |context| {
+        .with_execution(ExecutionOptions::new(128), |mut context| {
             assert!(matches!(
                 context.with_execution(ExecutionOptions::new(128), |_| {
                     denied_callback.set(true);
@@ -134,7 +134,7 @@ fn synchronous_scope_keeps_the_first_stop_over_swallowed_success_or_later_error(
     for later_error in [false, true] {
         let mut context = Context::default();
         let outcome = context
-            .with_execution(ExecutionOptions::new(32), |context| {
+            .with_execution(ExecutionOptions::new(32), |mut context| {
                 let first = context
                     .eval(Source::from_bytes("while (true) {}"))
                     .unwrap_err();
@@ -177,14 +177,16 @@ fn independently_prepared_scripts_compose_across_awaits_on_one_reserved_context(
     .unwrap();
     let second = Script::parse(Source::from_bytes("partial + 22"), None, context.access()).unwrap();
     let mut task = context
-        .execution_task(ExecutionOptions::new(256), async move |context| {
+        .execution_task(ExecutionOptions::new(256), async move |mut context| {
             assert_eq!(
                 first
-                    .evaluate_async_with_budget(context.access(), 1)
+                    .evaluate_async_with_budget(context.reborrow(), 1)
                     .await?,
                 JsValue::new(20)
             );
-            second.evaluate_async_with_budget(context.access(), 1).await
+            second
+                .evaluate_async_with_budget(context.reborrow(), 1)
+                .await
         })
         .unwrap();
     let (outcome, pending_polls) = complete(&mut task);
@@ -212,9 +214,11 @@ fn script_quantum_polls_share_exact_and_one_short_instruction_limits() {
     for limit in [exact, exact - 1] {
         let mut context = Context::default();
         let mut task = context
-            .execution_task(ExecutionOptions::new(limit), async |context| {
-                let script = Script::parse(Source::from_bytes(SOURCE), None, context.access())?;
-                script.evaluate_async_with_budget(context.access(), 1).await
+            .execution_task(ExecutionOptions::new(limit), async |mut context| {
+                let script = Script::parse(Source::from_bytes(SOURCE), None, context.reborrow())?;
+                script
+                    .evaluate_async_with_budget(context.reborrow(), 1)
+                    .await
             })
             .unwrap();
         let receipt = task.receipt();
@@ -286,7 +290,7 @@ fn unpolled_task_disposes_callback_captures_before_publishing_zero_work_abandonm
     let task = context
         .execution_task(
             ExecutionOptions::new(64).with_profile(ProfileMode::Summary { timing: false }),
-            async move |context| {
+            async move |mut context| {
                 let _probe = probe;
                 callback_called.set(true);
                 context.eval(Source::from_bytes("globalThis.unpolledEffect = 1"))
@@ -335,7 +339,7 @@ fn cancel_drops_polled_inner_work_before_publishing_and_keeps_committed_effects(
     let mut task = context
         .execution_task(
             ExecutionOptions::new(64).with_profile(ProfileMode::Summary { timing: false }),
-            async move |context| {
+            async move |mut context| {
                 let _probe = PublicationProbe {
                     receipt: inner_receipt,
                     drops: inner_drops,
@@ -386,11 +390,11 @@ fn canceling_suspended_script_keeps_transferred_jobs_and_skips_guest_cleanup() {
             }),
         )
         .unwrap();
-    let mut task = context.execution_task(ExecutionOptions::new(4096), async |context| {
+    let mut task = context.execution_task(ExecutionOptions::new(4096), async |mut context| {
         let script = Script::parse(Source::from_bytes(
             "globalThis.committedValue = 7; Promise.resolve().then(() => { globalThis.jobValue = 42; }); markCommitted(); try { while (true) {} } finally { globalThis.finalized = true; }",
-        ), None, context.access())?;
-        script.evaluate_async_with_budget(context.access(), 1).await
+        ), None, context.reborrow())?;
+        script.evaluate_async_with_budget(context.reborrow(), 1).await
     }).unwrap();
     let receipt = task.receipt();
     for _ in 0..256 {
@@ -434,7 +438,7 @@ fn completion_and_receipt_share_one_immutable_profile_body() {
     let mut task = context
         .execution_task(
             ExecutionOptions::new(64).with_profile(ProfileMode::Summary { timing: false }),
-            async move |context| {
+            async move |mut context| {
                 let _probe = PublicationProbe {
                     receipt: inner_receipt,
                     drops: inner_drops,
@@ -486,7 +490,7 @@ fn completion_and_receipt_share_one_immutable_profile_body() {
 #[test]
 fn canceling_after_a_swallowed_stop_moves_it_into_abandoned_report() {
     let mut context = Context::default();
-    let mut task = context.execution_task(ExecutionOptions::new(32), async |context| {
+    let mut task = context.execution_task(ExecutionOptions::new(32), async |mut context| {
         let first = context.eval(Source::from_bytes(
             "globalThis.beforeStop = 7; try { while (true) {} } finally { globalThis.finalized = true; }",
         )).unwrap_err();
@@ -534,7 +538,7 @@ fn native_unwind_publishes_abandonment_immediately_while_task_is_retained() {
         )
         .unwrap();
     let mut task = context
-        .execution_task(ExecutionOptions::new(64), async |context| {
+        .execution_task(ExecutionOptions::new(64), async |mut context| {
             context.eval(Source::from_bytes(
                 "globalThis.beforePanic = 7; panicHost()",
             ))
@@ -587,7 +591,7 @@ fn retained_stop_discards_generic_success_once_and_is_delivered_as_completed_err
     let drops = Rc::new(Cell::new(0));
     let output_drops = drops.clone();
     let mut task = context
-        .execution_task(ExecutionOptions::new(32), async move |context| {
+        .execution_task(ExecutionOptions::new(32), async move |mut context| {
             let _ = context.eval(Source::from_bytes("while (true) {}"));
             Ok(DiscardedOutput {
                 drops: output_drops,
@@ -615,7 +619,7 @@ fn panicking_discard_of_generic_success_still_publishes_the_first_stop_as_abando
     let drops = Rc::new(Cell::new(0));
     let output_drops = drops.clone();
     let mut task = context
-        .execution_task(ExecutionOptions::new(32), async move |context| {
+        .execution_task(ExecutionOptions::new(32), async move |mut context| {
             let _ = context.eval(Source::from_bytes("while (true) {}"));
             Ok(DiscardedOutput {
                 drops: output_drops,

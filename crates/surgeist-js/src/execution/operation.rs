@@ -13,7 +13,7 @@ use super::{
     Execution, ExecutionOptions, ExecutionOutcome, ExecutionPhase, ExecutionReceipt,
     ExecutionReport, ExecutionSetupError,
 };
-use crate::{Context, JsResult, vm::CallCheckpoint};
+use crate::{Context, ContextAccess, JsResult, vm::CallCheckpoint};
 
 /// A controlled callback reserving its Context until completion or drop.
 ///
@@ -193,21 +193,70 @@ impl Context {
     /// ```
     /// use surgeist_js::{Context, JsValue, Source, execution::ExecutionOptions};
     /// let mut context = Context::default();
-    /// let outcome = context.with_execution(ExecutionOptions::new(128), |context| {
+    /// let outcome = context.with_execution(ExecutionOptions::new(128), |mut context| {
     ///     context.eval(Source::from_bytes("40 + 2"))
     /// })?;
     /// assert_eq!(outcome.result.unwrap(), JsValue::new(42));
     /// assert!(outcome.report.instructions() > 0);
     /// # Ok::<(), surgeist_js::execution::ExecutionSetupError>(())
     /// ```
+    ///
+    /// The callback cannot take, replace or mutably project the reserved owner:
+    ///
+    /// ```compile_fail
+    /// use surgeist_js::{Context, execution::ExecutionOptions};
+    /// let mut owner = Context::default();
+    /// let _ = owner.with_execution(ExecutionOptions::new(128), |mut access| {
+    ///     let _: Context = std::mem::take(&mut access);
+    ///     Ok(())
+    /// });
+    /// ```
+    ///
+    /// ```compile_fail
+    /// use surgeist_js::{Context, execution::ExecutionOptions};
+    /// let mut owner = Context::default();
+    /// let _ = owner.with_execution(ExecutionOptions::new(128), |mut access| {
+    ///     let _: Context = std::mem::replace(&mut access, Context::default());
+    ///     Ok(())
+    /// });
+    /// ```
+    ///
+    /// ```compile_fail
+    /// use surgeist_js::{Context, execution::ExecutionOptions};
+    /// let mut owner = Context::default();
+    /// let _ = owner.with_execution(ExecutionOptions::new(128), |mut access| {
+    ///     let _: &mut Context = &mut *access;
+    ///     Ok(())
+    /// });
+    /// ```
+    ///
+    /// The callback's short access cannot escape in its generic output or in
+    /// external storage:
+    ///
+    /// ```compile_fail
+    /// use surgeist_js::{Context, execution::ExecutionOptions};
+    /// let mut owner = Context::default();
+    /// let _ = owner.with_execution(ExecutionOptions::new(128), |access| Ok(access));
+    /// ```
+    ///
+    /// ```compile_fail
+    /// use surgeist_js::{Context, execution::ExecutionOptions};
+    /// let mut owner = Context::default();
+    /// let mut saved = None;
+    /// let _ = owner.with_execution(ExecutionOptions::new(128), |access| {
+    ///     saved = Some(access);
+    ///     Ok(())
+    /// });
+    /// drop(saved);
+    /// ```
     pub fn with_execution<T>(
         &mut self,
         options: ExecutionOptions,
-        run: impl FnOnce(&mut Context) -> JsResult<T>,
+        run: impl for<'call> FnOnce(ContextAccess<'call>) -> JsResult<T>,
     ) -> Result<ExecutionOutcome<T>, ExecutionSetupError> {
         let mut invocation = Invocation::new(self, options)?;
         invocation.begin();
-        let result = run(&mut *invocation.context);
+        let result = run(invocation.context.access());
         Ok(invocation.complete(result))
     }
 
@@ -225,7 +274,7 @@ impl Context {
     /// ```
     /// use surgeist_js::{Context, Source, execution::{ExecutionOptions, ExecutionTermination}};
     /// let mut context = Context::default();
-    /// let task = context.execution_task(ExecutionOptions::new(128), async |context| {
+    /// let task = context.execution_task(ExecutionOptions::new(128), async |mut context| {
     ///     context.eval(Source::from_bytes("40 + 2"))
     /// })?;
     /// let receipt = task.receipt();
@@ -236,6 +285,57 @@ impl Context {
     /// assert!(receipt.report().is_some());
     /// # Ok::<(), surgeist_js::execution::ExecutionSetupError>(())
     /// ```
+    ///
+    /// Async callbacks cannot take, replace or mutably project the owner that
+    /// the task reserves across suspension:
+    ///
+    /// ```compile_fail
+    /// use surgeist_js::{Context, execution::ExecutionOptions};
+    /// let mut owner = Context::default();
+    /// let _ = owner.execution_task(ExecutionOptions::new(128), async |mut access| {
+    ///     let _: Context = std::mem::take(&mut access);
+    ///     Ok(())
+    /// });
+    /// ```
+    ///
+    /// ```compile_fail
+    /// use surgeist_js::{Context, execution::ExecutionOptions};
+    /// let mut owner = Context::default();
+    /// let _ = owner.execution_task(ExecutionOptions::new(128), async |mut access| {
+    ///     let _: Context = std::mem::replace(&mut access, Context::default());
+    ///     Ok(())
+    /// });
+    /// ```
+    ///
+    /// ```compile_fail
+    /// use surgeist_js::{Context, execution::ExecutionOptions};
+    /// let mut owner = Context::default();
+    /// let _ = owner.execution_task(ExecutionOptions::new(128), async |mut access| {
+    ///     let _: &mut Context = &mut *access;
+    ///     Ok(())
+    /// });
+    /// ```
+    ///
+    /// The lent access cannot outlive its callback through a generic result or
+    /// an external slot, even after the task is dropped:
+    ///
+    /// ```compile_fail
+    /// use surgeist_js::{Context, execution::ExecutionOptions};
+    /// let mut owner = Context::default();
+    /// let _ = owner.execution_task(ExecutionOptions::new(128), async |access| Ok(access));
+    /// ```
+    ///
+    /// ```compile_fail
+    /// use surgeist_js::{Context, execution::ExecutionOptions};
+    /// let mut owner = Context::default();
+    /// let mut saved = None;
+    /// let task = owner.execution_task(ExecutionOptions::new(128), async |access| {
+    ///     saved = Some(access);
+    ///     Ok(())
+    /// }).unwrap();
+    /// drop(task);
+    /// drop(saved);
+    /// ```
     pub fn execution_task<'ctx, T, F>(
         &'ctx mut self,
         options: ExecutionOptions,
@@ -243,7 +343,7 @@ impl Context {
     ) -> Result<ExecutionTask<'ctx, T>, ExecutionSetupError>
     where
         T: 'ctx,
-        F: AsyncFnOnce(&mut Context) -> JsResult<T> + 'ctx,
+        F: for<'call> AsyncFnOnce(ContextAccess<'call>) -> JsResult<T> + 'ctx,
     {
         let invocation = Invocation::new(self, options)?;
         let receipt = invocation.receipt();
@@ -253,7 +353,7 @@ impl Context {
         let future = async move {
             let (run, mut invocation) = prepared;
             invocation.begin();
-            let result = run(&mut *invocation.context).await;
+            let result = run(invocation.context.access()).await;
             invocation.complete(result)
         };
         Ok(ExecutionTask {

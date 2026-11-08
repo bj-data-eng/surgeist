@@ -1,47 +1,117 @@
 #![allow(unused_crate_dependencies)]
 
-use std::process::Command;
+use surgeist_js::{
+    Context, JsValue, Source,
+    error::{EngineError, RuntimeLimitError},
+    execution::{ExecutionOptions, ExecutionTermination, ProfileMode},
+};
 
-use surgeist_js::{Context, execution::ExecutionOptions};
+#[test]
+fn idle_context_move_and_swap_keep_committed_state_and_completed_report() {
+    let mut original = Context::default();
+    let completed = original
+        .with_execution(
+            ExecutionOptions::new(64).with_profile(ProfileMode::Summary { timing: false }),
+            |mut access| access.eval(Source::from_bytes("globalThis.originalValue = 7")),
+        )
+        .unwrap();
+    assert_eq!(completed.result.unwrap(), JsValue::new(7));
+    let instructions = completed.report.instructions();
+    assert!(instructions > 0);
+    let retained = completed.report.clone();
+    let mut second = Context::default();
+    second
+        .eval(Source::from_bytes("globalThis.otherValue = 42"))
+        .unwrap();
+    let mut moved = original;
+    std::mem::swap(&mut moved, &mut second);
+    assert_eq!(
+        second.eval(Source::from_bytes("originalValue")).unwrap(),
+        JsValue::new(7)
+    );
+    assert_eq!(
+        moved.eval(Source::from_bytes("otherValue")).unwrap(),
+        JsValue::new(42)
+    );
 
-const CHILD_ENV: &str = "SURGEIST_EXECUTION_CONTEXT_MOVEMENT_CHILD";
-const TEST_NAME: &str = "moving_context_from_safe_execution_callback_does_not_abort_the_host";
-
-fn bounded_diagnostic(bytes: &[u8]) -> String {
-    const LIMIT: usize = 4096;
-    let prefix = String::from_utf8_lossy(&bytes[..bytes.len().min(LIMIT)]);
-    format!(
-        "{prefix}\n({} bytes total; at most {LIMIT} shown)",
-        bytes.len()
-    )
+    let stopped = second
+        .with_execution(ExecutionOptions::new(0), |mut access| {
+            access.eval(Source::from_bytes("globalThis.afterStop = true"))
+        })
+        .unwrap();
+    assert_eq!(
+        stopped.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
+            limit: 0
+        }))
+    );
+    assert_eq!(stopped.report.instructions(), 0);
+    let selected = moved
+        .with_execution(ExecutionOptions::new(64), |mut access| {
+            access.eval(Source::from_bytes("otherValue"))
+        })
+        .unwrap();
+    assert_eq!(selected.result.unwrap(), JsValue::new(42));
+    assert!(selected.report.instructions() > 0);
+    assert_eq!(
+        second
+            .eval(Source::from_bytes("typeof afterStop === 'undefined'"))
+            .unwrap(),
+        JsValue::new(true)
+    );
+    assert_eq!(retained.instructions(), instructions);
+    assert!(matches!(
+        retained.termination(),
+        ExecutionTermination::Completed
+    ));
+    assert!(std::ptr::eq(
+        completed.report.profile().unwrap(),
+        retained.profile().unwrap()
+    ));
 }
 
 #[test]
-fn moving_context_from_safe_execution_callback_does_not_abort_the_host() {
-    if std::env::var_os(CHILD_ENV).as_deref() == Some(std::ffi::OsStr::new("1")) {
-        let mut context = Context::default();
-        let outcome = context.with_execution(ExecutionOptions::new(0), |context| {
-            Ok(std::mem::take(context))
-        });
-        // No guest work or panicking user destructor is involved. Either a
-        // returned outcome or a typed refusal must remain normally disposable.
-        drop(outcome);
-        return;
-    }
-
-    // Isolate process termination so an abort becomes an ordinary assertion
-    // failure. The child inherits the supervising invocation's process group.
-    let output = Command::new(std::env::current_exe().expect("current test executable"))
-        .args(["--exact", TEST_NAME, "--nocapture"])
-        .env(CHILD_ENV, "1")
-        .env("RUST_BACKTRACE", "0")
-        .output()
-        .expect("run the isolated Context movement test");
-    assert!(
-        output.status.success(),
-        "safe Context movement terminated the host: {}\nstdout:\n{}\nstderr:\n{}",
-        output.status,
-        bounded_diagnostic(&output.stdout),
-        bounded_diagnostic(&output.stderr),
+fn rebinding_local_access_to_independent_context_keeps_original_operation_custody() {
+    let mut original = Context::default();
+    let mut independent = Context::default();
+    let outcome = original
+        .with_execution(ExecutionOptions::new(0), |mut access| {
+            let mut selected = access.reborrow();
+            let mut original_access = std::mem::replace(&mut selected, independent.access());
+            assert_eq!(
+                selected.eval(Source::from_bytes("globalThis.independentValue = 42"))?,
+                JsValue::new(42)
+            );
+            original_access.eval(Source::from_bytes("globalThis.originalEffect = true"))
+        })
+        .unwrap();
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
+            limit: 0
+        }))
     );
+    assert_eq!(outcome.report.instructions(), 0);
+    assert!(!outcome.report.effects_started());
+    assert_eq!(
+        original
+            .eval(Source::from_bytes(
+                "typeof originalEffect === 'undefined' && typeof independentValue === 'undefined'"
+            ))
+            .unwrap(),
+        JsValue::new(true)
+    );
+    assert_eq!(
+        independent
+            .eval(Source::from_bytes("independentValue"))
+            .unwrap(),
+        JsValue::new(42)
+    );
+    let fresh = original
+        .with_execution(ExecutionOptions::new(64), |mut access| {
+            access.eval(Source::from_bytes("42"))
+        })
+        .unwrap();
+    assert_eq!(fresh.result.unwrap(), JsValue::new(42));
+    assert!(fresh.report.instructions() > 0);
 }
