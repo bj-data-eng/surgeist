@@ -2753,6 +2753,7 @@ fn block_ratio_with_a_height_cap_preserves_float_exclusion() {
 enum BfcFloatFixture {
     Square,
     InlineContainment,
+    InlineContainmentShape,
     EmptyLowerFloat,
     NegativeBlockEndMargin,
     SettledScrollbar,
@@ -2760,6 +2761,7 @@ enum BfcFloatFixture {
 
 fn assert_bfc_does_not_retry_a_rejected_float_band<S: LayoutScalar>(fixture: BfcFloatFixture) {
     let px = S::from_f64;
+    let shape = fixture == BfcFloatFixture::InlineContainmentShape;
     let fixed = |width, height| {
         Size::new(
             PreferredSizeOf::px(px(width)),
@@ -2769,6 +2771,11 @@ fn assert_bfc_does_not_retry_a_rejected_float_band<S: LayoutScalar>(fixture: Bfc
     let float = |side, width| NodeInputOf {
         display: Display::Block,
         float: side,
+        float_exclusion: if shape {
+            FloatExclusion::Shape
+        } else {
+            FloatExclusion::MarginBox
+        },
         size: fixed(width, 80.0),
         ..NodeInputOf::default()
     };
@@ -2810,7 +2817,11 @@ fn assert_bfc_does_not_retry_a_rejected_float_band<S: LayoutScalar>(fixture: Bfc
                     display: Display::Block,
                     block_flow_context: crate::BlockFlowContext::Independent,
                     position: Position::Relative,
-                    size_containment: if fixture == BfcFloatFixture::InlineContainment {
+                    size_containment: if matches!(
+                        fixture,
+                        BfcFloatFixture::InlineContainment
+                            | BfcFloatFixture::InlineContainmentShape
+                    ) {
                         crate::SizeContainment::InlineAxis
                     } else {
                         crate::SizeContainment::None
@@ -2836,6 +2847,14 @@ fn assert_bfc_does_not_retry_a_rejected_float_band<S: LayoutScalar>(fixture: Bfc
                     ..NodeInputOf::default()
                 },
             );
+        if shape {
+            // Clipping this interval to each query's margin box reproduces
+            // exactly the rectangular exclusions of the MarginBox control.
+            tree = tree.with_shape_provider(ShapeProviderBehavior::Interval {
+                minimum: S::ZERO,
+                maximum: px(200.0),
+            });
+        }
         if lower_float {
             let lower = if empty_lower {
                 NodeInputOf {
@@ -2948,6 +2967,16 @@ fn bfc_does_not_retry_a_rejected_float_band_f64() {
 fn inline_size_containment_does_not_retry_a_rejected_float_band() {
     assert_bfc_does_not_retry_a_rejected_float_band::<f32>(BfcFloatFixture::InlineContainment);
     assert_bfc_does_not_retry_a_rejected_float_band::<f64>(BfcFloatFixture::InlineContainment);
+}
+
+#[test]
+fn inline_size_containment_does_not_retry_an_equivalent_shape_float_band_f32() {
+    assert_bfc_does_not_retry_a_rejected_float_band::<f32>(BfcFloatFixture::InlineContainmentShape);
+}
+
+#[test]
+fn inline_size_containment_does_not_retry_an_equivalent_shape_float_band_f64() {
+    assert_bfc_does_not_retry_a_rejected_float_band::<f64>(BfcFloatFixture::InlineContainmentShape);
 }
 
 #[test]
