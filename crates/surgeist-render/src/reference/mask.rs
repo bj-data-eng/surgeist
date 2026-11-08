@@ -78,31 +78,19 @@ impl PremultipliedRgba8 {
         let context = MixBlendContext {
             source_alpha: f64::from(self.alpha) / 255.0,
             destination_alpha: f64::from(destination.alpha) / 255.0,
-            mode,
             output_alpha,
         };
+        let source = [self.red, self.green, self.blue]
+            .map(|channel| f64::from(channel) / f64::from(self.alpha));
+        let backdrop = [destination.red, destination.green, destination.blue]
+            .map(|channel| f64::from(channel) / f64::from(destination.alpha));
+        let blended: [f64; 3] = std::array::from_fn(|channel| {
+            blend_straight_channel(source[channel], backdrop[channel], mode)
+        });
         Self {
-            red: mix_blend_channel(
-                self.red,
-                self.alpha,
-                destination.red,
-                destination.alpha,
-                context,
-            ),
-            green: mix_blend_channel(
-                self.green,
-                self.alpha,
-                destination.green,
-                destination.alpha,
-                context,
-            ),
-            blue: mix_blend_channel(
-                self.blue,
-                self.alpha,
-                destination.blue,
-                destination.alpha,
-                context,
-            ),
+            red: mix_blend_channel(source[0], backdrop[0], blended[0], context),
+            green: mix_blend_channel(source[1], backdrop[1], blended[1], context),
+            blue: mix_blend_channel(source[2], backdrop[2], blended[2], context),
             alpha: output_alpha,
         }
     }
@@ -446,20 +434,10 @@ fn scale_channel_by_opacity(channel: u8, opacity: f64) -> u8 {
 struct MixBlendContext {
     source_alpha: f64,
     destination_alpha: f64,
-    mode: BlendMode,
     output_alpha: u8,
 }
 
-fn mix_blend_channel(
-    source_channel: u8,
-    source_alpha_byte: u8,
-    destination_channel: u8,
-    destination_alpha_byte: u8,
-    context: MixBlendContext,
-) -> u8 {
-    let source = f64::from(source_channel) / f64::from(source_alpha_byte);
-    let destination = f64::from(destination_channel) / f64::from(destination_alpha_byte);
-    let blended = blend_straight_channel(source, destination, context.mode);
+fn mix_blend_channel(source: f64, destination: f64, blended: f64, context: MixBlendContext) -> u8 {
     let premultiplied = (1.0 - context.source_alpha) * context.destination_alpha * destination
         + (1.0 - context.destination_alpha) * context.source_alpha * source
         + context.source_alpha * context.destination_alpha * blended;
