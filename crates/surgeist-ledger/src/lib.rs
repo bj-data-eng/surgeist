@@ -9,8 +9,10 @@ use std::{
 };
 
 mod checkpoint;
+mod phase_observation;
 mod shared;
 pub use checkpoint::{Checkpoint, IntervalReport, IntervalScopeReport, IntervalUsage};
+pub use phase_observation::PhaseObservation;
 pub use shared::SharedOperation;
 
 mod profile;
@@ -605,7 +607,7 @@ impl<const W: usize, const R: usize> Operation<W, R> {
         Ok(direct)
     }
 
-    fn end_phase(&mut self, scope: Scope, start: Option<Duration>) {
+    fn record_phase(&mut self, scope: Scope, start: Option<Duration>) {
         let end = self.profile.first().and_then(Profile::elapsed);
         if let Some(profile) = self.profile.first_mut() {
             profile.end_phase(scope, start, end);
@@ -718,6 +720,6 @@ impl<const W: usize, const R: usize> Deref for Phase<'_, W, R> {
 
 impl<const W: usize, const R: usize> Drop for Phase<'_, W, R> {
     fn drop(&mut self) {
-        self.operation.end_phase(self.scope, self.start);
+        self.operation.record_phase(self.scope, self.start);
     }
 }

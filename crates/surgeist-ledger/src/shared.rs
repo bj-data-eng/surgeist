@@ -1,6 +1,6 @@
 use crate::{
-    Change, Checkpoint, Error, IntervalReport, Limits, Operation, Report, Scope, Tariffs, Usage,
-    profile::Profile,
+    Change, Checkpoint, Error, IntervalReport, Limits, Operation, PhaseObservation, Report, Scope,
+    Tariffs, Usage, profile::Profile,
 };
 use std::{
     ops::AsyncFnOnce,
@@ -79,6 +79,21 @@ impl<const W: usize, const R: usize> SharedOperation<W, R> {
         self.lock().end_checkpoint(checkpoint)
     }
 
+    /// Begins an explicit observation through the operation's short private lock.
+    /// The returned marker retains no lock; see [`Operation::begin_phase`].
+    pub fn begin_phase(&self, scope: Scope) -> Result<PhaseObservation, Error<W, R>> {
+        self.lock().begin_phase(scope)
+    }
+
+    /// Completes an observation through the operation's short private lock.
+    ///
+    /// Any participant of the same operation may complete it, including after
+    /// [`Operation::share`]. A foreign observation is returned for retry without
+    /// reading a clock or changing state; see [`Operation::end_phase`].
+    pub fn end_phase(&self, observation: PhaseObservation) -> Result<(), PhaseObservation> {
+        self.lock().end_phase(observation)
+    }
+
     /// Runs a synchronous callback outside the lock and records its inclusive
     /// phase exactly once on normal return or unwinding. Nested calls use clones.
     pub fn with_phase<T>(&self, scope: Scope, run: impl FnOnce() -> T) -> Result<T, Error<W, R>> {
@@ -118,6 +133,6 @@ struct SharedPhase<const W: usize, const R: usize> {
 
 impl<const W: usize, const R: usize> Drop for SharedPhase<W, R> {
     fn drop(&mut self) {
-        self.operation.lock().end_phase(self.scope, self.start);
+        self.operation.lock().record_phase(self.scope, self.start);
     }
 }
