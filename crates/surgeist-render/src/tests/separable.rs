@@ -327,9 +327,8 @@ fn separable_direct_clamps_blend_result_before_composition_after_local_plus() {
         let mut surface =
             pollster::block_on(renderer.create_headless(Size::new(2.0, 2.0), 1.0)).unwrap();
         for (mode, expected) in [
-            // Normal preserves the separate local Plus accumulator and its
-            // existing direct source-over fast path: 1 + 1/8 clips to white.
-            (BlendMode::Normal, [255, 255, 255, 255]),
+            // Normal's B=clamp(Cs,0,1) has the same five-eighths result.
+            (BlendMode::Normal, [159, 159, 159, 255]),
             // B=clamp(max(1/4,2),0,1)=1, then co=1/2*1+1/2*1/4=5/8.
             // This does not assume that local Plus saturates its own source.
             (BlendMode::Lighten, [159, 159, 159, 255]),
@@ -368,24 +367,61 @@ fn separable_capture_local_clamps_blend_result_before_composition_after_local_pl
         let mut surface =
             pollster::block_on(renderer.create_headless(Size::new(2.0, 2.0), 1.0)).unwrap();
         let formats = graph_supported_working_formats_for_test(&mut renderer);
-        let mut scene = Scene::new();
-        // Keep gray, Lighten and local Plus together inside one raster capture.
-        // Masking Lighten itself would canonicalize Plus before the blend and
-        // would miss the live-accumulator defect in this owning consumer.
-        scene.layer(masked_layer(BlendMode::Normal, bounds, 255), |scene| {
-            draw_local_plus_blend(scene, BlendMode::Lighten, bounds);
-        });
-        for format in formats.iter().copied() {
-            let pixels = render_pixels(&mut renderer, &mut surface, &scene, Some(format));
-            for y in 0..2 {
-                for x in 0..2 {
-                    assert_near(
-                        pixel_rgba(&pixels, x, y),
-                        [159, 159, 159, 255],
-                        2,
-                        &format!("capture local {antialiasing:?}, {format:?}"),
-                    );
+        for mode in [BlendMode::Normal, BlendMode::Lighten] {
+            let mut scene = Scene::new();
+            // Keep gray, mixing and local Plus together inside one raster
+            // capture. Masking the mixing layer itself would canonicalize Plus
+            // before the blend and miss this live-accumulator defect.
+            scene.layer(masked_layer(BlendMode::Normal, bounds, 255), |scene| {
+                draw_local_plus_blend(scene, mode, bounds);
+            });
+            for format in formats.iter().copied() {
+                let pixels = render_pixels(&mut renderer, &mut surface, &scene, Some(format));
+                for y in 0..2 {
+                    for x in 0..2 {
+                        assert_near(
+                            pixel_rgba(&pixels, x, y),
+                            [159, 159, 159, 255],
+                            2,
+                            &format!("capture local {mode:?}, {antialiasing:?}, {format:?}"),
+                        );
+                    }
                 }
+            }
+        }
+    }
+}
+
+#[test]
+fn separable_bounding_preserves_local_plus_accumulation_before_later_paint() {
+    let bounds = Rect::new(0.0, 0.0, 2.0, 2.0);
+    let white = Color::try_rgba(1.0, 1.0, 1.0, 1.0).unwrap();
+    for antialiasing in [
+        crate::Antialiasing::Area,
+        crate::Antialiasing::Msaa8,
+        crate::Antialiasing::Msaa16,
+    ] {
+        let mut renderer = pollster::block_on(Renderer::new(
+            Options::default().with_antialiasing(antialiasing),
+        ))
+        .unwrap();
+        let mut surface =
+            pollster::block_on(renderer.create_headless(Size::new(2.0, 2.0), 1.0)).unwrap();
+        let mut scene = Scene::new();
+        scene.fill(bounds, white);
+        scene.layer(Layer::new().blend(BlendMode::Plus), |scene| {
+            scene.fill(bounds, white);
+        });
+        scene.fill(bounds, Color::try_rgba(0.0, 0.0, 0.0, 0.5).unwrap());
+        let pixels = render_pixels(&mut renderer, &mut surface, &scene, None);
+        // Existing local Plus retains RGB=2, alpha=1 before later paint.
+        // Half-black then leaves RGB=1, unlike prematurely saturating Plus.
+        // Raster alpha quantization can move that endpoint by one byte.
+        for y in 0..2 {
+            for x in 0..2 {
+                let pixel = pixel_rgba(&pixels, x, y);
+                assert_near(pixel, [255; 4], 2, &format!("Plus {antialiasing:?}"));
+                assert_eq!(pixel[3], 255);
             }
         }
     }
