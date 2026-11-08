@@ -4,6 +4,7 @@
 mod accounting;
 mod algorithm;
 mod gradient;
+mod gradient_stops;
 mod model;
 mod paint_order;
 
@@ -15,6 +16,11 @@ pub use algorithm::{PaintOutcome, plan_stacking};
 pub use gradient::{
     GradientGeometryError, LinearGradientDirection, LinearGradientLine, LinearGradientOutcome,
     resolve_linear_gradient,
+};
+pub use gradient_stops::{
+    GradientPosition, GradientPositionComponent, GradientStopItem, GradientStopPositions,
+    GradientStops, GradientStopsError, GradientStopsOutcome, UsedGradientItem,
+    resolve_gradient_stops,
 };
 pub use model::{
     BoxFacts, BoxId, ChildOrder, ContextEffect, ContextView, PaintError, Participation, Position,

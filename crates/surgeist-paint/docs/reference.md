@@ -18,10 +18,13 @@ The [public front door](../src/lib.rs) exports these surfaces:
 | `PaintLimits`, `PaintOptions`, `PaintReport`, `PaintPhase` | Limits, clock/profiling policy and named Ledger usage access. |
 | `resolve_linear_gradient`, `LinearGradientDirection`, `LinearGradientLine`, `LinearGradientOutcome` | Concrete box-local physical line geometry, length and optional accepted-prefix report. |
 | `GradientGeometryError` | Invalid dimensions/angle or unrepresentable positive line, wrapped by `PaintError::Gradient`. |
+| `GradientPosition`, `GradientStopPositions`, `GradientStopItem<C>` | Raw affine positions and native source records with opaque stop payloads or distinct hints. |
+| `resolve_gradient_stops`, `GradientStopsOutcome`, `GradientStops`, `UsedGradientItem` | Complete ordered used positions with exact source association, or typed failure and optional report. |
+| `GradientStopsError`, `GradientPositionComponent` | List/length/component/numerical diagnostics with source indices and expanded-position ordinals, wrapped by `PaintError::GradientStops`. |
 
 ## Accounting schema
 
-The operations share 19 work dimensions and two byte dimensions. Actions count
+The operations share 20 work dimensions and two byte dimensions. Actions count
 algorithm work, not CPU instructions or elapsed time.
 
 | Work family | `WorkKind` dimensions |
@@ -29,6 +32,7 @@ algorithm work, not CPU instructions or elapsed time.
 | Shared stacking and output | `BoxValidation`, `ParentEdge`, `TopologyVisit`, `SiblingComparison`, `MembershipVisit`, `ContextComparison`, `OrderMove`, `OutputRecord` |
 | Paint input and sequencing | `PaintValidation`, `FragmentVisit`, `LineVisit`, `InlineMemberVisit`, `PrimitiveVisit`, `PaintScopeVisit`, `PaintOrderComparison`, `DecorationComparison` |
 | Gradient geometry | `GradientValidation`, `GradientDirection`, `GradientCoordinate` |
+| Gradient stop lists | `GradientStopVisit`, plus shared validation, coordinate and output dimensions |
 
 `ResourceKind` is `ScratchBytes` or `RetainedResultBytes`.
 Fixed child phases are `validate`, `topology`, `sibling_order`, `membership`,
@@ -48,6 +52,17 @@ size as retained bytes. It allocates no geometry buffer; caller input and
 Ledger's bounded observer remain outside these byte dimensions. See
 [the implementation](../src/gradient.rs) for the precise charged action units.
 
+`resolve_gradient_stops` uses the `paint gradient stops` root with six child
+phases: validation, stop resolution, prefix fixup, omitted distribution,
+publication and cleanup. `GradientStopVisit` counts each actual source or
+expanded-record visit, including repeated passes and boundary inspection.
+`GradientCoordinate` counts actual numeric calculations/conversions/inspections;
+`GradientValidation` counts input domain/grammar actions. Each expanded retained
+record and the final fixed result owner contribute an `OutputRecord`.
+Retained bytes include actual record capacity and the fixed owner; source and
+payload storage remain caller-owned. See
+[the implementation](../src/gradient_stops.rs) for the precise charged units.
+
 ## Source map
 
 [Accounting](../src/accounting.rs) owns the named schema and capacity admissions.
@@ -62,6 +77,10 @@ composes these under one report.
 numerical validation and the line result; its
 [public tests](../tests/linear_gradient.rs) use real Layout values and independent
 coordinate, budget and profiling expectations.
+[Shared stop resolution](../src/gradient_stops.rs) owns expansion, affine
+positions, ordered fixup, omitted runs and borrowed result views;
+[public stop tests](../tests/gradient_stops.rs) exercise its values, associations
+and accounting through the front door.
 
 [Stacking tests](../src/algorithm/tests.rs), [paint-order tests](../src/paint_order/tests.rs)
 and [accounting tests](../src/paint_order/accounting_tests.rs) supply literal order,

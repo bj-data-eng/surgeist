@@ -34,6 +34,57 @@ stop/hint fixup, radial geometry and Render field composition retain their
 separate responsibilities. Geometry alone does not turn a parsed gradient into
 a complete rendered image.
 
+## Gradient stop positions
+
+`resolve_gradient_stops` shares used-position resolution between linear and
+radial consumers. Supply a finite nonnegative line or ray length and a native
+list of stops and hints. `GradientPosition` carries raw already-computed
+absolute `length` and dimensionless `fraction` contributions; fraction 1 means
+100%. Paint validates both components and computes their affine combination.
+This input does not evaluate an authored calculation tree or identify a color
+space. The consumer remains responsible for producing numeric and color facts.
+
+A color stop carries an opaque payload and omitted, one or two positions.
+Paint expands two positions into consecutive occurrences with the same borrowed
+payload. A hint always has a position and remains distinct from a colored stop.
+The native list must be nonempty, begin and end with stops, and contain no
+adjacent hints. The result borrows that exact list, owns used-position records,
+and exposes each occurrence's source index; stop views also expose position
+ordinal 0 or 1. Omitted/single stops use ordinal 0. The payload needs no cloning
+or color trait, and source identity uses indices even for zero-sized payloads.
+
+Resolve positions before ordering. Default an omitted first stop to zero, then
+an omitted last stop still unset to the line length. One omitted stop therefore
+stays at zero. Raise each specified position below the greatest earlier
+specified position, then distribute each remaining omitted run between its
+positioned neighbors. Positioned hints bound those runs under the adopted
+[CSSWG resolution](https://github.com/w3c/csswg-drafts/issues/3931#issuecomment-494876538),
+while the pinned fixup text awaits that editorial clarification. The
+[pinned Images4 syntax](https://www.w3.org/TR/2025/WD-css-images-4-20250930/#color-stop-syntax)
+defines double-position expansion and permits a single stop. The result retains
+source order, abrupt coincident positions and positions outside the line interval.
+
+Zero length is valid and never a divisor: percentage contributions become zero,
+while absolute contributions survive. Native arithmetic uses fused multiply-add
+for affine positions and sign-aware bounded interpolation for omitted runs.
+Finite positions at -MAX and +MAX can enclose a midpoint zero even though their
+total difference overflows. Rounded coincidences are valid; no epsilon or
+artificial separation is applied. A nonfinite final calculation or descending
+numerical output receives a typed refusal. Render's finite repeat-span and
+device-field restrictions remain at the consuming boundary.
+
+The operation validates, expands, fixes up, distributes and publishes under one
+Ledger report. Every actual traversal and repeated inspection is admitted;
+retained custody includes allocated record capacity and the fixed result owner.
+Caller payloads remain borrowed. A refusal drops unpublished backing and releases
+admitted custody while preserving accepted work. Optional phase timing uses the
+same Ledger authority. Caller iteration after return is outside this completed
+synchronous operation, as with the other Paint result views.
+
+This result supplies positions rather than rendered colors. Authored adapters,
+hint interpolation, ordinary/repeating field realization and radial semantic
+case selection retain their separate responsibilities.
+
 ## Rendering boxes and actual contexts
 
 The caller supplies the rendering tree, including generated/anonymous boxes as

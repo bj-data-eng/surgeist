@@ -1,5 +1,15 @@
 # Getting started
 
+## Resolve a native gradient
+
+Use `resolve_linear_gradient` with the concrete Layout size and physical
+direction, then pass its returned length to `resolve_gradient_stops`. Keep the
+native source list alive: used stop views borrow its exact payloads and preserve
+source indices, including both occurrences of a double-position stop. The
+[crate examples](../README.md#start) show geometry and a hint-bounded omitted
+position; the [explanation](explanation.md#gradient-stop-positions) describes the
+remaining authored-value and rendering boundaries.
+
 ## Plan stacking contexts
 
 A box ID is a slot in one immutable fact slice. Supply parentage, source sibling

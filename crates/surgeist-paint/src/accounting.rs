@@ -33,15 +33,18 @@ pub enum WorkKind {
     PaintOrderComparison,
     /// One decoration applicator or ordering comparison.
     DecorationComparison,
-    /// One input scalar or direction-discriminant validation.
+    /// One input scalar, direction-discriminant, or stop-list grammar validation.
     GradientValidation,
     /// One direction dispatch, scalar calculation, or scalar inspection.
     GradientDirection,
-    /// One scalar geometry calculation or inspection, including repeated checks.
+    /// One scalar gradient geometry or used-position calculation/inspection,
+    /// including repeated checks.
     GradientCoordinate,
+    /// One source-item or expanded stop-record visit, including repeated walks.
+    GradientStopVisit,
 }
 impl WorkKind {
-    pub const ALL: [Self; 19] = [
+    pub const ALL: [Self; 20] = [
         Self::BoxValidation,
         Self::ParentEdge,
         Self::TopologyVisit,
@@ -61,6 +64,7 @@ impl WorkKind {
         Self::GradientValidation,
         Self::GradientDirection,
         Self::GradientCoordinate,
+        Self::GradientStopVisit,
     ];
     pub(crate) fn dimension(self) -> Work<WORK_COUNT> {
         Work::new(self as usize).expect("closed work schema")
@@ -72,6 +76,7 @@ pub(crate) enum OperationKind {
     Stacking,
     PaintOrder,
     LinearGradient,
+    GradientStops,
 }
 impl OperationKind {
     fn name(&self) -> &'static str {
@@ -79,6 +84,7 @@ impl OperationKind {
             Self::Stacking => "paint stacking",
             Self::PaintOrder => "paint order",
             Self::LinearGradient => "paint linear gradient",
+            Self::GradientStops => "paint gradient stops",
         }
     }
     fn scope_limit(&self) -> usize {
@@ -86,6 +92,7 @@ impl OperationKind {
             Self::Stacking => 8,
             Self::PaintOrder => 10,
             Self::LinearGradient => 5,
+            Self::GradientStops => 7,
         }
     }
 }
@@ -189,6 +196,9 @@ pub enum PaintPhase {
     PaintSequence,
     GradientValidation,
     GradientGeometry,
+    GradientStopResolution,
+    GradientStopFixup,
+    GradientStopDistribution,
 }
 impl PaintPhase {
     fn from_name(name: &str) -> Self {
@@ -204,6 +214,9 @@ impl PaintPhase {
             "paint_sequence" => Self::PaintSequence,
             "gradient_validate" => Self::GradientValidation,
             "gradient_geometry" => Self::GradientGeometry,
+            "gradient_stop_resolution" => Self::GradientStopResolution,
+            "gradient_stop_fixup" => Self::GradientStopFixup,
+            "gradient_stop_distribution" => Self::GradientStopDistribution,
             _ => Self::Operation,
         }
     }

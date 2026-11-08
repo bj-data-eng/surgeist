@@ -1,11 +1,11 @@
 # surgeist-paint
 
-Paint resolves linear-gradient geometry and plans CSS stacking and non-table
-primitive order from explicit native facts. `plan_stacking` returns context
-membership and immediate child context order. `plan_paint_order` adds validated
-box/text occurrences, line
-incidences and primitive records to return ordered borrowed references inside
-nested actual-context intervals. Both use the shared context algorithm and one
+Paint resolves linear-gradient geometry and shared stop positions, and plans
+CSS stacking and non-table primitive order from explicit native facts.
+`plan_stacking` returns context membership and immediate child context order.
+`plan_paint_order` adds validated box/text occurrences, line incidences and
+primitive records to return ordered borrowed references inside nested
+actual-context intervals. Both use the shared context algorithm and one
 Ledger operation for work admission, storage custody and optional profiling.
 `resolve_linear_gradient` uses that same accounting authority to turn a concrete
 image size and physical direction into box-local line endpoints and length.
@@ -77,7 +77,34 @@ assert_eq!(line.length(), 100.0);
 ```
 
 The [geometry explanation](docs/explanation.md#linear-gradient-geometry)
-describes corner directions and numerical limits. Authored stop/hint resolution,
+describes corner directions and numerical limits. Resolve native stop positions
+against that length with `resolve_gradient_stops`:
+
+```rust
+use surgeist_paint::*;
+
+let source = [
+    GradientStopItem::Stop { payload: "red", positions: GradientStopPositions::Omitted },
+    GradientStopItem::Stop { payload: "green", positions: GradientStopPositions::Omitted },
+    GradientStopItem::Hint { position: GradientPosition { length: 0.0, fraction: 0.2 } },
+    GradientStopItem::Stop { payload: "blue", positions: GradientStopPositions::Omitted },
+];
+let outcome = resolve_gradient_stops(100.0, &source, PaintOptions::new(
+    PaintLimits::unlimited(), ProfileMode::Summary { timing: false },
+));
+let stops = outcome.result.unwrap();
+let positions: Vec<_> = stops.items().map(|item| match item {
+    UsedGradientItem::Stop { position, .. } | UsedGradientItem::Hint { position, .. } => position,
+}).collect();
+assert_eq!(positions, [0.0, 10.0, 20.0, 100.0]);
+```
+
+The result borrows its exact native source and cannot outlive those records.
+The [operation's API example](src/gradient_stops.rs) demonstrates that lifetime
+constraint.
+
+See [used-position resolution](docs/explanation.md#gradient-stop-positions) for
+double positions, hints and source association. Authored numeric/color adapters,
 radial geometry and complete gradient scene composition remain unfinished.
 
 ## Documentation
