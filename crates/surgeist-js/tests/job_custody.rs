@@ -10,9 +10,13 @@ use std::{
 
 use surgeist_js::{
     Context, JsResult, JsValue, Source,
+    context::time::FixedClock,
     error::{EngineError, RuntimeLimitError},
     execution::ExecutionOptions,
-    job::{GenericJob, JobExecutor, NativeAsyncJob, PromiseJob, SimpleJobExecutor},
+    job::{
+        GenericJob, JobExecutor, NativeAsyncJob, NativeJob, PromiseJob, SimpleJobExecutor,
+        TimeoutJob,
+    },
 };
 
 fn context_with_executor() -> Context {
@@ -305,4 +309,170 @@ fn dropping_a_pending_drain_preserves_the_started_future_for_the_next_drain() {
     assert_eq!(state.polls.get(), 2);
     assert_eq!(state.completions.get(), 1);
     assert_eq!(state.drops.get(), 1);
+}
+
+#[test]
+fn an_untouched_due_timeout_keeps_its_captures_after_another_timeout_stops() {
+    let clock = Rc::new(FixedClock::from_millis(100));
+    let mut context = Context::builder()
+        .job_executor(Rc::new(SimpleJobExecutor::new()))
+        .clock(clock.clone())
+        .build()
+        .unwrap();
+    let order = Rc::new(RefCell::new(Vec::new()));
+    let refusal_entries = Rc::new(Cell::new(0));
+    let tail_entries = Rc::new(Cell::new(0));
+    let observed_capture = Rc::new(RefCell::new(None));
+    let first_order = order.clone();
+    let first_entries = refusal_entries.clone();
+    context.enqueue_job(
+        TimeoutJob::new(
+            NativeJob::new(move |mut access| {
+                first_entries.set(first_entries.get() + 1);
+                first_order.borrow_mut().push("timeout-refusal");
+                access.eval(Source::from_bytes("0"))
+            }),
+            0,
+        )
+        .into(),
+    );
+    let second_order = order.clone();
+    let second_entries = tail_entries.clone();
+    let second_capture = observed_capture.clone();
+    let tag = String::from("accepted timeout payload");
+    let values = (40, 2);
+    context.enqueue_job(
+        TimeoutJob::new(
+            NativeJob::new(move |_| {
+                second_entries.set(second_entries.get() + 1);
+                second_order.borrow_mut().push("timeout-tail");
+                *second_capture.borrow_mut() = Some((tag, values.0 + values.1));
+                Ok(JsValue::new(values.0 + values.1))
+            }),
+            0,
+        )
+        .into(),
+    );
+    // Both requests have the same deadline, and it is strictly in the past
+    // before either drain starts. No later clock advancement is needed.
+    clock.forward(1);
+
+    let actual_drain = drain_in_zero_instruction_scope(&mut context);
+    assert_eq!(
+        actual_drain
+            .as_ref()
+            .err()
+            .and_then(|error| error.as_engine()),
+        Some(&instruction_stop()),
+        "actual driver result={actual_drain:?}; timeout order={:?}",
+        order.borrow()
+    );
+    assert_eq!(refusal_entries.get(), 1);
+    assert_eq!(tail_entries.get(), 0);
+    assert!(observed_capture.borrow().is_none());
+    assert_eq!(*order.borrow(), ["timeout-refusal"]);
+
+    let fresh_drain = context
+        .with_execution(ExecutionOptions::new(0), |mut access| access.run_jobs())
+        .unwrap();
+    fresh_drain.result.unwrap();
+    assert_eq!(tail_entries.get(), 1);
+    assert_eq!(
+        observed_capture.borrow().as_ref(),
+        Some(&(String::from("accepted timeout payload"), 42))
+    );
+    assert_eq!(*order.borrow(), ["timeout-refusal", "timeout-tail"]);
+    context.run_jobs().unwrap();
+    assert_eq!(refusal_entries.get(), 1);
+    assert_eq!(tail_entries.get(), 1);
+    assert_eq!(*order.borrow(), ["timeout-refusal", "timeout-tail"]);
+}
+
+#[test]
+fn reentrant_drain_runs_new_work_without_losing_or_running_the_outer_promise_tail() {
+    let mut context = context_with_executor();
+    let order = Rc::new(RefCell::new(Vec::new()));
+    let first_entries = Rc::new(Cell::new(0));
+    let new_entries = Rc::new(Cell::new(0));
+    let tail_entries = Rc::new(Cell::new(0));
+    let observed_capture = Rc::new(RefCell::new(None));
+    let actual_inner_drain = Rc::new(RefCell::new(None));
+    let callback_order = order.clone();
+    let callback_first_entries = first_entries.clone();
+    let callback_new_entries = new_entries.clone();
+    let callback_inner_drain = actual_inner_drain.clone();
+    context.enqueue_job(
+        PromiseJob::new(move |mut access| {
+            callback_first_entries.set(callback_first_entries.get() + 1);
+            callback_order.borrow_mut().push("A");
+            let new_order = callback_order.clone();
+            access.enqueue_job(
+                PromiseJob::new(move |_| {
+                    callback_new_entries.set(callback_new_entries.get() + 1);
+                    new_order.borrow_mut().push("N");
+                    Ok(JsValue::new(7))
+                })
+                .into(),
+            );
+            let inner = access.run_jobs();
+            *callback_inner_drain.borrow_mut() = Some(inner.clone());
+            inner?;
+            callback_order.borrow_mut().push("A-stop");
+            access.eval(Source::from_bytes("0"))
+        })
+        .into(),
+    );
+    let callback_order = order.clone();
+    let callback_tail_entries = tail_entries.clone();
+    let callback_capture = observed_capture.clone();
+    let tag = String::from("old promise tail payload");
+    let values = (40, 2);
+    context.enqueue_job(
+        PromiseJob::new(move |_| {
+            callback_tail_entries.set(callback_tail_entries.get() + 1);
+            callback_order.borrow_mut().push("B");
+            *callback_capture.borrow_mut() = Some((tag, values.0 + values.1));
+            Ok(JsValue::new(values.0 + values.1))
+        })
+        .into(),
+    );
+
+    let actual_outer_drain = drain_in_zero_instruction_scope(&mut context);
+    assert_eq!(
+        actual_outer_drain
+            .as_ref()
+            .err()
+            .and_then(|error| error.as_engine()),
+        Some(&instruction_stop()),
+        "actual outer driver result={actual_outer_drain:?}; callback order={:?}",
+        order.borrow()
+    );
+    assert!(
+        actual_inner_drain
+            .borrow()
+            .as_ref()
+            .is_some_and(Result::is_ok),
+        "the nested driver must run the new work before A requests its stop"
+    );
+    assert_eq!(first_entries.get(), 1);
+    assert_eq!(new_entries.get(), 1);
+    assert_eq!(tail_entries.get(), 0);
+    assert!(observed_capture.borrow().is_none());
+    assert_eq!(*order.borrow(), ["A", "N", "A-stop"]);
+
+    let fresh_drain = context
+        .with_execution(ExecutionOptions::new(0), |mut access| access.run_jobs())
+        .unwrap();
+    fresh_drain.result.unwrap();
+    assert_eq!(tail_entries.get(), 1);
+    assert_eq!(
+        observed_capture.borrow().as_ref(),
+        Some(&(String::from("old promise tail payload"), 42))
+    );
+    assert_eq!(*order.borrow(), ["A", "N", "A-stop", "B"]);
+    context.run_jobs().unwrap();
+    assert_eq!(first_entries.get(), 1);
+    assert_eq!(new_entries.get(), 1);
+    assert_eq!(tail_entries.get(), 1);
+    assert_eq!(*order.borrow(), ["A", "N", "A-stop", "B"]);
 }
