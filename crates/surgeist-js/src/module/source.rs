@@ -1043,64 +1043,74 @@ impl SourceTextModule {
         }
         let mut stack = EvaluationStack::default();
         let result = source.inner_evaluate(&module, &mut stack, 0, Some(prepared), context);
-        match result {
-            Ok(_) => {
-                if matches!(
-                    &*source.status.borrow(),
-                    ModuleStatus::Evaluated { error: None, .. }
-                ) && matches!(
-                    promise.borrow().data().state(),
-                    crate::builtins::promise::PromiseState::Pending
-                ) {
-                    capability
-                        .resolve()
-                        .call(&JsValue::undefined(), &[], context.access())?;
-                }
-                assert!(stack.is_empty());
-            }
-            Err(error) if error.as_engine().is_some() => {
-                // Open DFS callers are required owners even before parent registration.
-                stack.interrupt(&error);
-                while stack.pop().is_some() {}
-                source.evaluation.interrupt(&error);
-                return Err(error);
-            }
-            Err(error) => {
-                while let Some(member) = stack.pop() {
-                    let record = member.kind().as_source_text().expect("source stack");
-                    record
-                        .status
-                        .borrow_mut()
-                        .transition(|status| match status {
-                            ModuleStatus::Evaluating {
-                                environment,
-                                top_level_capability,
-                                cycle_root,
-                                ..
-                            }
-                            | ModuleStatus::EvaluatingAsync {
-                                environment,
-                                top_level_capability,
-                                cycle_root,
-                                ..
-                            } => ModuleStatus::Evaluated {
-                                environment,
-                                top_level_capability,
-                                cycle_root,
-                                error: Some(error.clone().into_stored()),
-                            },
-                            _ => unreachable!("DFS owns evaluating records"),
-                        });
-                    if record.status.borrow().top_level_capability().is_none() {
-                        record.evaluation.complete();
+        let result: JsResult<()> = (|| {
+            match result {
+                Ok(_) => {
+                    if matches!(
+                        &*source.status.borrow(),
+                        ModuleStatus::Evaluated { error: None, .. }
+                    ) && matches!(
+                        promise.borrow().data().state(),
+                        crate::builtins::promise::PromiseState::Pending
+                    ) {
+                        capability
+                            .resolve()
+                            .call(&JsValue::undefined(), &[], context.access())?;
                     }
+                    assert!(stack.is_empty());
                 }
-                let value = error.into_opaque(context.access())?;
-                capability
-                    .reject()
-                    .call(&JsValue::undefined(), &[value], context.access())?;
+                Err(error) if error.as_engine().is_some() => {
+                    // Open DFS callers are required owners even before parent registration.
+                    stack.interrupt(&error);
+                    while stack.pop().is_some() {}
+                    return Err(error);
+                }
+                Err(error) => {
+                    while let Some(member) = stack.pop() {
+                        let record = member.kind().as_source_text().expect("source stack");
+                        record
+                            .status
+                            .borrow_mut()
+                            .transition(|status| match status {
+                                ModuleStatus::Evaluating {
+                                    environment,
+                                    top_level_capability,
+                                    cycle_root,
+                                    ..
+                                }
+                                | ModuleStatus::EvaluatingAsync {
+                                    environment,
+                                    top_level_capability,
+                                    cycle_root,
+                                    ..
+                                } => ModuleStatus::Evaluated {
+                                    environment,
+                                    top_level_capability,
+                                    cycle_root,
+                                    error: Some(error.clone().into_stored()),
+                                },
+                                _ => unreachable!("DFS owns evaluating records"),
+                            });
+                        if record.status.borrow().top_level_capability().is_none() {
+                            record.evaluation.complete();
+                        }
+                    }
+                    let value = error.into_opaque(context.access())?;
+                    capability
+                        .reject()
+                        .call(&JsValue::undefined(), &[value], context.access())?;
+                }
             }
+            Ok(())
+        })();
+        if let Err(error) = &result
+            && error.as_engine().is_some()
+        {
+            // Canonical settlement is part of the entered evaluation until the
+            // Promise owner publishes its state and completes the origin.
+            source.evaluation.interrupt(error);
         }
+        result?;
         JsPromise::from_object(capability.promise().clone())
     }
 
