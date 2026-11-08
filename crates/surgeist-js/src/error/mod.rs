@@ -739,12 +739,43 @@ impl StoredJsError {
 
 impl JsError {
     pub(crate) fn admit_runtime(mut self, runtime: &crate::Runtime) -> Self {
-        let mut pending = vec![(&mut self, false)];
-        while let Some((error, diagnostic)) = pending.pop() {
-            if let Err(refusal) = error.check_runtime_owner(runtime) {
-                if !diagnostic {
-                    return refusal;
+        let replacement = {
+            let mut first_refusal = None;
+            let mut first_engine: Option<&Self> = None;
+            let mut pending = vec![&mut self];
+            while let Some(error) = pending.pop() {
+                if first_refusal.is_none() {
+                    first_refusal = error.check_runtime_owner(runtime).err();
                 }
+                if !error.is_catchable() {
+                    if let Repr::Engine(EngineError::Panic(panic)) = &mut error.inner
+                        && let Some(source) = panic.source.as_deref_mut()
+                    {
+                        source.admit_diagnostic(runtime);
+                    }
+                    if first_engine.is_none() {
+                        first_engine = Some(&*error);
+                    }
+                    continue;
+                }
+                if let Repr::Native(native) = &mut error.inner {
+                    if let JsNativeErrorKind::Aggregate(errors) = &mut native.kind {
+                        pending.extend(errors.iter_mut().rev());
+                    }
+                    pending.extend(native.cause.as_deref_mut());
+                }
+            }
+            // Preserve local trees, but never let unrelated foreign payloads
+            // replace their first engine failure or escape with that failure.
+            first_refusal.map(|refusal| first_engine.map_or(refusal, Self::clone))
+        };
+        replacement.unwrap_or(self)
+    }
+
+    fn admit_diagnostic(&mut self, runtime: &crate::Runtime) {
+        let mut pending = vec![self];
+        while let Some(error) = pending.pop() {
+            if let Err(refusal) = error.check_runtime_owner(runtime) {
                 // Diagnostic payloads must be local without changing the panic.
                 *error = refusal;
                 continue;
@@ -752,17 +783,16 @@ impl JsError {
             match &mut error.inner {
                 Repr::Native(native) => {
                     if let JsNativeErrorKind::Aggregate(errors) = &mut native.kind {
-                        pending.extend(errors.iter_mut().rev().map(|member| (member, diagnostic)));
+                        pending.extend(errors.iter_mut().rev());
                     }
-                    pending.extend(native.cause.as_deref_mut().map(|cause| (cause, diagnostic)));
+                    pending.extend(native.cause.as_deref_mut());
                 }
                 Repr::Engine(EngineError::Panic(panic)) => {
-                    pending.extend(panic.source.as_deref_mut().map(|source| (source, true)));
+                    pending.extend(panic.source.as_deref_mut());
                 }
                 _ => {}
             }
         }
-        self
     }
 
     fn check_runtime_owner(&self, runtime: &crate::Runtime) -> JsResult<()> {

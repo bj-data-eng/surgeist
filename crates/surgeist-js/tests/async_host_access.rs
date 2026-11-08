@@ -467,13 +467,29 @@ fn async_promise_host_errors_reach_the_driver_without_guest_rejection() {
     let busy: JsError = EngineError::ContextAccessBusy.into();
     let panic: JsError = PanicError::new("async host failure").into();
     let nested: JsError = JsNativeError::aggregate(vec![busy.clone()]).into();
-    for (error, expected) in [
-        (busy.clone(), busy.clone()),
-        (panic.clone(), panic),
-        (nested, busy),
-    ] {
+    let mut foreign_context = Context::default();
+    let foreign = JsError::from_opaque(
+        foreign_context
+            .eval(Source::from_bytes("new Error('foreign async completion')"))
+            .unwrap(),
+    );
+    let mut cases = vec![
+        ("direct Busy", busy.clone(), busy.clone()),
+        ("direct PanicError", panic.clone(), panic),
+        ("local nested Busy", nested, busy),
+    ];
+    cases.extend(mixed_foreign_busy_cases(foreign));
+    for (name, error, expected) in cases {
         let mut context = promise_context();
-        let promise = JsPromise::from_async_fn(async move |_| Err(error), context.access());
+        let returned = Rc::new(Cell::new(false));
+        let callback_returned = returned.clone();
+        let promise = JsPromise::from_async_fn(
+            async move |_| {
+                callback_returned.set(true);
+                Err(error)
+            },
+            context.access(),
+        );
         context
             .global_object()
             .set(
@@ -488,7 +504,11 @@ fn async_promise_host_errors_reach_the_driver_without_guest_rejection() {
                 "globalThis.caught = false; promise.catch(() => { caught = true; })",
             ))
             .unwrap();
-        assert_eq!(context.run_jobs().unwrap_err(), expected);
+        assert_eq!(context.run_jobs().unwrap_err(), expected, "{name}");
+        assert!(
+            returned.get(),
+            "{name}: the host callback must return its actual error"
+        );
         assert_eq!(promise.state(), PromiseState::Pending);
         assert_eq!(
             context.eval(Source::from_bytes("caught")).unwrap(),
@@ -500,6 +520,29 @@ fn async_promise_host_errors_reach_the_driver_without_guest_rejection() {
             JsValue::new(false)
         );
     }
+}
+
+fn mixed_foreign_busy_cases(foreign: JsError) -> [(&'static str, JsError, JsError); 3] {
+    let busy: JsError = EngineError::ContextAccessBusy.into();
+    [
+        (
+            "foreign aggregate member before Busy",
+            JsNativeError::aggregate(vec![foreign.clone(), busy.clone()]).into(),
+            busy.clone(),
+        ),
+        (
+            "foreign aggregate member after Busy",
+            JsNativeError::aggregate(vec![busy.clone(), foreign.clone()]).into(),
+            busy.clone(),
+        ),
+        (
+            "foreign cause and Busy aggregate member",
+            JsNativeError::aggregate(vec![busy.clone()])
+                .with_cause(foreign)
+                .into(),
+            busy,
+        ),
+    ]
 }
 
 #[test]
@@ -710,8 +753,19 @@ fn source_graph_and_dynamic_import_loader_factories_and_polls_can_lease() {
 fn source_graph_and_dynamic_import_loader_host_errors_do_not_reject_in_guest() {
     let busy: JsError = EngineError::ContextAccessBusy.into();
     let nested: JsError = JsNativeError::aggregate(vec![busy.clone()]).into();
+    let mut foreign_context = Context::default();
+    let foreign = JsError::from_opaque(
+        foreign_context
+            .eval(Source::from_bytes("new Error('foreign loader completion')"))
+            .unwrap(),
+    );
     for dynamic in [false, true] {
-        for (error, expected) in [(busy.clone(), busy.clone()), (nested.clone(), busy.clone())] {
+        let mut cases = vec![
+            ("direct Busy", busy.clone(), busy.clone()),
+            ("local nested Busy", nested.clone(), busy.clone()),
+        ];
+        cases.extend(mixed_foreign_busy_cases(foreign.clone()));
+        for (name, error, expected) in cases {
             let mut context = loader_context(Some(error.clone()));
             let promise = if dynamic {
                 JsPromise::from_object(
@@ -743,7 +797,16 @@ fn source_graph_and_dynamic_import_loader_host_errors_do_not_reject_in_guest() {
             context
                 .eval(Source::from_bytes("loaded.catch(() => { caught = true; })"))
                 .unwrap();
-            assert_eq!(context.run_jobs().unwrap_err(), expected);
+            assert_eq!(
+                context.run_jobs().unwrap_err(),
+                expected,
+                "{name}; dynamic={dynamic}"
+            );
+            assert_eq!(
+                context.eval(Source::from_bytes("loaderLog")).unwrap(),
+                JsValue::new(js_string!("fpr")),
+                "{name}: the actual loader factory and resumed future must run"
+            );
             assert_eq!(promise.state(), PromiseState::Pending);
             assert_eq!(
                 context.eval(Source::from_bytes("caught")).unwrap(),
