@@ -351,6 +351,7 @@ async fn load_dyn_import(
     let result = fut.init2(&mut stack, &mut heap).await;
     context.with(|context| {
         let context = context.into_owner();
+        context.check_execution_stop()?;
         let completion = Module::admit_loader_result(result, context);
 
         // `ContinueDynamicImport ( promiseCapability, moduleCompletion )`
