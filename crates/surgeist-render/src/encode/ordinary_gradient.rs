@@ -812,4 +812,66 @@ mod tests {
         )
         .unwrap();
     }
+    #[test]
+    fn negative_radial_solid_decision_accounts_its_executed_comparison() {
+        use crate::accounting::{RenderAttemptKind, RenderPhase, RenderResource};
+        use crate::{RenderAccountingContext, RenderAccountingOptions, RenderLimits};
+        let gradient = Gradient::try_radial(
+            Point::new(0., 0.),
+            1.,
+            1.,
+            vec![
+                GradientStop::try_new(-2., Color::BLACK).unwrap(),
+                GradientStop::try_new(-1., Color::TRANSPARENT).unwrap(),
+            ],
+        )
+        .unwrap();
+        let mut context = RenderAccountingContext::default();
+        context.run(RenderAttemptKind::Frame,RenderPhase::GradientPrepare,|account|{
+            let brush=prepare(&gradient,kurbo::Affine::IDENTITY,PhysicalSize::new(8,8),account)?;
+            assert!(matches!(brush.as_ref(),peniko::BrushRef::Solid(color) if color==peniko::Color::TRANSPARENT));
+            Ok(())
+        }).unwrap();
+        let usage = context.last_attempt().unwrap().usage();
+        // Two actual source position captures and the radial b<=0 comparison;
+        // selecting a solid needs no stop-range equality or unused geometry.
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), 3);
+        assert_eq!(usage.work(RenderWork::GradientStopVisits), 2);
+        assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
+        let mut context = RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::CoordinateVisits, 2)
+                    .unwrap(),
+            ),
+        );
+        let error = context
+            .run(
+                RenderAttemptKind::Frame,
+                RenderPhase::GradientPrepare,
+                |account| {
+                    prepare(
+                        &gradient,
+                        kurbo::Affine::IDENTITY,
+                        PhysicalSize::new(8, 8),
+                        account,
+                    )
+                    .map(drop)
+                },
+            )
+            .unwrap_err();
+        assert!(error.accounting_diagnostic().is_some());
+        let usage = context.last_attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), 2);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        assert!(
+            prepare(
+                &gradient,
+                kurbo::Affine::IDENTITY,
+                PhysicalSize::new(8, 8),
+                &Account::for_test()
+            )
+            .is_ok()
+        );
+    }
 }
