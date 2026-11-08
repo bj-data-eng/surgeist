@@ -4450,3 +4450,217 @@ fn table_normal_context_keeps_legacy_alignment_without_float_entries() {
     lane::<f32>();
     lane::<f64>();
 }
+
+#[derive(Clone, Copy, Debug)]
+enum TableWrapperContextCase {
+    ExternalClearance,
+    FloatHeight,
+    TopMargin,
+    BottomMargin,
+    FloatExport,
+}
+
+fn assert_table_wrapper_context<S: LayoutScalar>(case: TableWrapperContextCase) {
+    let px = S::from_f64;
+    let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let fixed = |width, height| NodeInputOf {
+        display: Display::Block,
+        size: Size::new(
+            PreferredSizeOf::px(px(width)),
+            PreferredSizeOf::px(px(height)),
+        ),
+        ..NodeInputOf::default()
+    };
+    for context in [
+        crate::BlockFlowContext::Independent,
+        crate::BlockFlowContext::Normal,
+    ] {
+        let mut table = fixed(50.0, 10.0);
+        table.item_is_table = true;
+        table.block_flow_context = context;
+        let mut child = fixed(50.0, 10.0);
+        let mut root_children = vec![2];
+        match case {
+            TableWrapperContextCase::ExternalClearance => {
+                root_children.insert(0, 1);
+                child.clear = Clear::Left;
+            }
+            TableWrapperContextCase::FloatHeight => {
+                table.size.height = PreferredSizeOf::AUTO;
+                child = fri06_c05_margin_float_style(axes, Float::Left, 30.0, 20.0);
+            }
+            TableWrapperContextCase::TopMargin => {
+                table.size.height = PreferredSizeOf::AUTO;
+                table.margin.top = LengthAutoOf::px(px(5.0));
+                child.margin.top = LengthAutoOf::px(px(20.0));
+            }
+            TableWrapperContextCase::BottomMargin => {
+                table.size.height = PreferredSizeOf::AUTO;
+                table.margin.bottom = LengthAutoOf::px(px(7.0));
+                child.margin.bottom = LengthAutoOf::px(px(30.0));
+                root_children.push(4);
+            }
+            TableWrapperContextCase::FloatExport => {
+                child = fri06_c05_margin_float_style(axes, Float::Left, 30.0, 40.0);
+                root_children.push(4);
+            }
+        }
+        let mut tree = PublicBlockTree::default()
+            .with_children(0, root_children)
+            .with_children(2, [3])
+            .with_children(3, [])
+            .with_style(0, fixed(100.0, 160.0))
+            .with_style(2, table)
+            .with_style(3, child);
+        if matches!(case, TableWrapperContextCase::ExternalClearance) {
+            tree = tree.with_children(1, []).with_style(
+                1,
+                fri06_c05_margin_float_style(axes, Float::Left, 100.0, 20.0),
+            );
+        }
+        if matches!(
+            case,
+            TableWrapperContextCase::BottomMargin | TableWrapperContextCase::FloatExport
+        ) {
+            let mut following = fixed(100.0, 10.0);
+            if matches!(case, TableWrapperContextCase::FloatExport) {
+                following.clear = Clear::Left;
+            }
+            tree = tree.with_children(4, []).with_style(4, following);
+        }
+        assert!(tree.node_input(2).item_is_table);
+        assert_eq!(tree.node_input(2).block_flow_context, context);
+        let batch = compute_layout(&tree, 0, fri06_c05_shape_request(axes)).unwrap();
+        let table = public_final_output(&batch, 2);
+        let child = public_final_output(&batch, 3);
+        let label = format!("{case:?}, {context:?}");
+        assert_eq!(table.size.width, px(50.0), "{label}");
+        match case {
+            TableWrapperContextCase::ExternalClearance => {
+                let external = public_final_output(&batch, 1);
+                assert_eq!(
+                    (external.location, external.size),
+                    (Point::ZERO, Size::new(px(100.0), px(20.0))),
+                    "{label}"
+                );
+                assert_eq!(table.size, Size::new(px(50.0), px(10.0)), "{label}");
+                assert_eq!(table.location, Point::new(S::ZERO, px(20.0)), "{label}");
+                assert_eq!(child.size, Size::new(px(50.0), px(10.0)), "{label}");
+                assert_eq!(child.margin, Edges::ZERO, "{label}");
+                assert_eq!(
+                    child.location,
+                    Point::ZERO,
+                    "parent float must not clear the wrapper's child again: {label}"
+                );
+                assert_eq!(table.location.y + child.location.y, px(20.0), "{label}");
+            }
+            TableWrapperContextCase::FloatHeight => {
+                assert_eq!(
+                    (child.location, child.size),
+                    (Point::ZERO, Size::new(px(30.0), px(20.0))),
+                    "{label}"
+                );
+                assert_eq!(table.location, Point::ZERO, "{label}");
+                assert_eq!(
+                    table.size.height,
+                    px(20.0),
+                    "wrapper owns its internal float's height: {label}"
+                );
+            }
+            TableWrapperContextCase::TopMargin => {
+                assert_eq!(child.size, Size::new(px(50.0), px(10.0)), "{label}");
+                assert_eq!(table.margin.top, px(5.0), "{label}");
+                assert_eq!(child.margin.top, px(20.0), "{label}");
+                assert_eq!(
+                    table.location,
+                    Point::new(S::ZERO, px(5.0)),
+                    "interior top margin must not escape the wrapper: {label}"
+                );
+                assert_eq!(child.location, Point::new(S::ZERO, px(20.0)), "{label}");
+                assert_eq!(table.size.height, px(30.0), "{label}");
+            }
+            TableWrapperContextCase::BottomMargin => {
+                assert_eq!(
+                    (child.location, child.size),
+                    (Point::ZERO, Size::new(px(50.0), px(10.0))),
+                    "{label}"
+                );
+                assert_eq!(table.location, Point::ZERO, "{label}");
+                assert_eq!(
+                    table.size.height,
+                    px(40.0),
+                    "interior bottom margin remains inside wrapper height: {label}"
+                );
+                assert_eq!(table.margin.bottom, px(7.0), "{label}");
+                assert_eq!(
+                    public_final_output(&batch, 4).location,
+                    Point::new(S::ZERO, px(47.0)),
+                    "outer margin remains applicable: {label}"
+                );
+            }
+            TableWrapperContextCase::FloatExport => {
+                assert_eq!(
+                    (table.location, table.size),
+                    (Point::ZERO, Size::new(px(50.0), px(10.0))),
+                    "{label}"
+                );
+                assert_eq!(
+                    (child.location, child.size),
+                    (Point::ZERO, Size::new(px(30.0), px(40.0))),
+                    "{label}"
+                );
+                assert_eq!(
+                    public_final_output(&batch, 4).size,
+                    Size::new(px(100.0), px(10.0)),
+                    "{label}"
+                );
+                assert_eq!(
+                    public_final_output(&batch, 4).location,
+                    Point::new(S::ZERO, px(10.0)),
+                    "parent clear must not see the wrapper's internal float: {label}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn table_wrapper_context_excludes_external_clearance_f32() {
+    assert_table_wrapper_context::<f32>(TableWrapperContextCase::ExternalClearance);
+}
+#[test]
+fn table_wrapper_context_excludes_external_clearance_f64() {
+    assert_table_wrapper_context::<f64>(TableWrapperContextCase::ExternalClearance);
+}
+#[test]
+fn table_wrapper_context_owns_internal_float_auto_height_f32() {
+    assert_table_wrapper_context::<f32>(TableWrapperContextCase::FloatHeight);
+}
+#[test]
+fn table_wrapper_context_owns_internal_float_auto_height_f64() {
+    assert_table_wrapper_context::<f64>(TableWrapperContextCase::FloatHeight);
+}
+#[test]
+fn table_wrapper_context_blocks_top_child_margin_f32() {
+    assert_table_wrapper_context::<f32>(TableWrapperContextCase::TopMargin);
+}
+#[test]
+fn table_wrapper_context_blocks_top_child_margin_f64() {
+    assert_table_wrapper_context::<f64>(TableWrapperContextCase::TopMargin);
+}
+#[test]
+fn table_wrapper_context_blocks_bottom_child_margin_f32() {
+    assert_table_wrapper_context::<f32>(TableWrapperContextCase::BottomMargin);
+}
+#[test]
+fn table_wrapper_context_blocks_bottom_child_margin_f64() {
+    assert_table_wrapper_context::<f64>(TableWrapperContextCase::BottomMargin);
+}
+#[test]
+fn table_wrapper_context_does_not_export_internal_float_f32() {
+    assert_table_wrapper_context::<f32>(TableWrapperContextCase::FloatExport);
+}
+#[test]
+fn table_wrapper_context_does_not_export_internal_float_f64() {
+    assert_table_wrapper_context::<f64>(TableWrapperContextCase::FloatExport);
+}
