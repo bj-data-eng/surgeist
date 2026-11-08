@@ -245,6 +245,15 @@ const BLEND_RESULT_REPLACEMENT: ShaderSourceReplacement = ShaderSourceReplacemen
     failure: "internal Vello fine shader no longer has the checked blend-result boundary",
 };
 
+// Normal's fast path also consumes bounded B in the overlap. Keep extended
+// local Plus source outside that overlap, without division or cancellation.
+const NORMAL_BLEND_REPLACEMENT: ShaderSourceReplacement = ShaderSourceReplacement {
+    from: "return backdrop * (1.0 - src.a) + src;",
+    to: "let bounded_source = clamp(src.rgb, vec3<f32>(0.0), vec3<f32>(src.a));\n        let rgb = (1.0 - backdrop.a) * src.rgb\n            + backdrop.a * bounded_source\n            + (1.0 - src.a) * backdrop.rgb;\n        return vec4<f32>(rgb, src.a + backdrop.a * (1.0 - src.a));",
+    count: 1,
+    failure: "internal Vello fine shader no longer has the checked Normal blend boundary",
+};
+
 #[derive(Clone, Copy)]
 struct ShaderSourceReplacement {
     from: &'static str,
@@ -265,6 +274,7 @@ fn fine_shader_source(
             &[
                 SET_LUM_REPLACEMENT,
                 BLEND_RESULT_REPLACEMENT,
+                NORMAL_BLEND_REPLACEMENT,
                 MSAA8_ENDPOINT_REPLACEMENTS[0],
                 MSAA8_ENDPOINT_REPLACEMENTS[1],
             ],
@@ -273,7 +283,11 @@ fn fine_shader_source(
         replace_shader_code(
             cpu,
             shader.wgsl.code.as_ref(),
-            &[SET_LUM_REPLACEMENT, BLEND_RESULT_REPLACEMENT],
+            &[
+                SET_LUM_REPLACEMENT,
+                BLEND_RESULT_REPLACEMENT,
+                NORMAL_BLEND_REPLACEMENT,
+            ],
         )
     }
 }
@@ -730,7 +744,8 @@ mod cpu_tests {
                 .wgsl
                 .code
                 .replace(SET_LUM_REPLACEMENT.from, SET_LUM_REPLACEMENT.to)
-                .replace(BLEND_RESULT_REPLACEMENT.from, BLEND_RESULT_REPLACEMENT.to);
+                .replace(BLEND_RESULT_REPLACEMENT.from, BLEND_RESULT_REPLACEMENT.to)
+                .replace(NORMAL_BLEND_REPLACEMENT.from, NORMAL_BLEND_REPLACEMENT.to);
             if msaa8 {
                 expected = expected
                     .replace(
@@ -772,7 +787,11 @@ mod cpu_tests {
     fn fine_source_cardinality_mismatch_refuses_before_scratch_or_emission() {
         let owner = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
         let cpu = owner.at(RenderCpuScope::DeviceBacking);
-        for replacement in [SET_LUM_REPLACEMENT, BLEND_RESULT_REPLACEMENT] {
+        for replacement in [
+            SET_LUM_REPLACEMENT,
+            BLEND_RESULT_REPLACEMENT,
+            NORMAL_BLEND_REPLACEMENT,
+        ] {
             for changed_source in [
                 "missing helper".to_owned(),
                 format!("{}\n{}", replacement.from, replacement.from),
