@@ -427,6 +427,60 @@ fn separable_bounding_preserves_local_plus_accumulation_before_later_paint() {
     }
 }
 
+#[test]
+fn separable_bounding_preserves_plus_under_full_cover_clip_only_layers() {
+    let bounds = Rect::new(0.0, 0.0, 2.0, 2.0);
+    let white = Color::try_rgba(1.0, 1.0, 1.0, 1.0).unwrap();
+    for antialiasing in [
+        crate::Antialiasing::Area,
+        crate::Antialiasing::Msaa8,
+        crate::Antialiasing::Msaa16,
+    ] {
+        let mut renderer = pollster::block_on(Renderer::new(
+            Options::default().with_antialiasing(antialiasing),
+        ))
+        .unwrap();
+        let mut surface =
+            pollster::block_on(renderer.create_headless(Size::new(2.0, 2.0), 1.0)).unwrap();
+        for clipped in [false, true] {
+            let mut scene = Scene::new();
+            scene.fill(bounds, Color::try_rgba(0.25, 0.25, 0.25, 1.0).unwrap());
+            let draw_source = |scene: &mut Scene| {
+                scene.fill(bounds, white);
+                scene.layer(Layer::new().blend(BlendMode::Plus), |scene| {
+                    scene.fill(bounds, white);
+                });
+            };
+            if clipped {
+                // This default layer selects coverage only, without an authored
+                // mixing or opacity operation at its closure.
+                scene.layer(
+                    Layer::new().try_clip(Shape::rect(bounds)).unwrap(),
+                    draw_source,
+                );
+            } else {
+                draw_source(&mut scene);
+            }
+            scene.fill(bounds, Color::try_rgba(0.0, 0.0, 0.0, 0.5).unwrap());
+            let pixels = render_pixels(&mut renderer, &mut surface, &scene, None);
+            // Pure full coverage preserves Plus RGB2 before later half-black:
+            // both scenes remain white within raster alpha quantization.
+            for y in 0..2 {
+                for x in 0..2 {
+                    let pixel = pixel_rgba(&pixels, x, y);
+                    assert_near(
+                        pixel,
+                        [255; 4],
+                        2,
+                        &format!("clip={clipped}, {antialiasing:?}"),
+                    );
+                    assert_eq!(pixel[3], 255);
+                }
+            }
+        }
+    }
+}
+
 fn draw_local_plus_blend(scene: &mut Scene, mode: BlendMode, bounds: Rect) {
     let white = Color::try_rgba(1.0, 1.0, 1.0, 1.0).unwrap();
     scene.fill(bounds, Color::try_rgba(0.25, 0.25, 0.25, 1.0).unwrap());
