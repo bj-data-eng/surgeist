@@ -433,7 +433,7 @@ impl FilterDropShadow {
         }
         let color = match shadow.paint().kind() {
             PaintKind::Color(color) => *color,
-            PaintKind::Gradient(_) | PaintKind::Image(_) => {
+            PaintKind::Gradient(_) | PaintKind::RepeatingGradient(_) | PaintKind::Image(_) => {
                 return Err(Error::unsupported_render_primitive(
                     UnsupportedPrimitive::new(
                         PrimitiveFamily::PaintSources,

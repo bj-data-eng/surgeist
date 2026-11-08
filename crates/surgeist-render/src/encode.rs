@@ -9,19 +9,28 @@ use super::{
     vello_engine::scene::{RoundedRectBlur, VelloScene},
     *,
 };
-use crate::accounting::{Account, BackedValue, Hold, RenderPhase, RenderWork};
+use crate::accounting::{Account, AccountedVec, BackedValue, Hold, RenderPhase, RenderWork};
+
+mod repeating_gradient;
 
 pub(crate) fn encode_vello_scene(
     commands: &RenderCommands,
     scale: f64,
+    target_extent: PhysicalSize,
     account: &Account,
 ) -> Result<VelloScene> {
-    encode_vello_scene_with_initial_transform(commands, Transform::scale(scale, scale)?, account)
+    encode_vello_scene_with_initial_transform(
+        commands,
+        Transform::scale(scale, scale)?,
+        target_extent,
+        account,
+    )
 }
 
 pub(crate) fn encode_vello_scene_with_initial_transform(
     commands: &RenderCommands,
     initial_transform: Transform,
+    target_extent: PhysicalSize,
     account: &Account,
 ) -> Result<VelloScene> {
     let account = account.at(RenderPhase::Encode);
@@ -31,6 +40,7 @@ pub(crate) fn encode_vello_scene_with_initial_transform(
             &commands.commands,
             &mut encoded,
             kurbo::Affine::from(initial_transform),
+            target_extent,
             &account,
         )?;
         Ok(encoded)
@@ -148,19 +158,28 @@ fn encode_vello_commands(
     commands: &[RenderCommand],
     scene: &mut VelloScene,
     transform: kurbo::Affine,
+    target_extent: PhysicalSize,
     account: &Account,
 ) -> Result<()> {
     for command in commands {
         account.work(RenderWork::CommandVisits, 1)?;
         match command {
             RenderCommand::Fill { shape, paint } => {
-                encode_fill(scene, transform, shape, paint, account)?
+                encode_fill(scene, transform, shape, paint, target_extent, account)?
             }
             RenderCommand::Stroke {
                 shape,
                 stroke,
                 paint,
-            } => encode_stroke(scene, transform, shape, stroke, paint, account)?,
+            } => encode_stroke(
+                scene,
+                transform,
+                shape,
+                stroke,
+                paint,
+                target_extent,
+                account,
+            )?,
             RenderCommand::Shadow { shape, shadow } => {
                 encode_shadow(scene, transform, shape, shadow, account)?
             }
@@ -184,7 +203,12 @@ fn encode_vello_commands(
                         } => {
                             let brush = match color {
                                 Some(color) => FrameBrush::solid((*color).into()),
-                                None => glyph_paint_brush(paint.fill(), account)?,
+                                None => glyph_paint_brush(
+                                    paint.fill(),
+                                    transform,
+                                    target_extent,
+                                    account,
+                                )?,
                             };
                             if let Some(clip) = clip {
                                 scene.push_clip_layer(
@@ -226,7 +250,7 @@ fn encode_vello_commands(
                                 scene.fill_elements(
                                     transform,
                                     brush.as_ref(),
-                                    None,
+                                    brush.transform(),
                                     elements,
                                     account,
                                 )?;
@@ -283,16 +307,29 @@ fn encode_vello_commands(
                     paint,
                     glyphs,
                 },
+                target_extent,
                 account,
             )?,
             RenderCommand::Layer { layer, children } => {
                 let layer_transform = transform * kurbo::Affine::from(layer.transform);
                 if layer.isolation != LayerIsolation::None {
                     encode_layer_start(scene, layer, layer_transform, account)?;
-                    encode_vello_commands(children, scene, layer_transform, account)?;
+                    encode_vello_commands(
+                        children,
+                        scene,
+                        layer_transform,
+                        target_extent,
+                        account,
+                    )?;
                     scene.pop_layer(account)?;
                 } else {
-                    encode_vello_commands(children, scene, layer_transform, account)?;
+                    encode_vello_commands(
+                        children,
+                        scene,
+                        layer_transform,
+                        target_extent,
+                        account,
+                    )?;
                 }
             }
         }
@@ -305,6 +342,7 @@ fn encode_fill(
     transform: kurbo::Affine,
     shape: &RenderShape,
     paint: &RenderPaint,
+    target_extent: PhysicalSize,
     account: &Account,
 ) -> Result<()> {
     account.work(RenderWork::PaintVisits, 1)?;
@@ -327,8 +365,8 @@ fn encode_fill(
             account,
         );
     }
-    let brush = render_paint_brush(paint, account)?;
-    encode_solid_fill(scene, transform, shape, &brush, None, account)?;
+    let brush = render_paint_brush(paint, transform, target_extent, account)?;
+    encode_solid_fill(scene, transform, shape, &brush, brush.transform(), account)?;
     Ok(())
 }
 
@@ -390,6 +428,7 @@ fn encode_stroke(
     shape: &RenderStrokeShape,
     stroke: &RenderStroke,
     paint: &RenderPaint,
+    target_extent: PhysicalSize,
     account: &Account,
 ) -> Result<()> {
     account.work(RenderWork::PaintVisits, 1)?;
@@ -413,8 +452,16 @@ fn encode_stroke(
             account,
         );
     }
-    let brush = render_paint_brush(paint, account)?;
-    encode_brush_stroke(scene, transform, shape, stroke, &brush, None, account)?;
+    let brush = render_paint_brush(paint, transform, target_extent, account)?;
+    encode_brush_stroke(
+        scene,
+        transform,
+        shape,
+        stroke,
+        &brush,
+        brush.transform(),
+        account,
+    )?;
     Ok(())
 }
 
@@ -692,6 +739,7 @@ fn encode_text_run(
     scene: &mut VelloScene,
     transform: kurbo::Affine,
     source: TextRunSource<'_>,
+    target_extent: PhysicalSize,
     account: &Account,
 ) -> Result<()> {
     let TextRunSource {
@@ -718,7 +766,7 @@ fn encode_text_run(
         ),
         [font_name_hold, paint_hold],
     );
-    scene.encode_text_run_with_transform(&run, transform, account)
+    scene.encode_text_run_with_transform(&run, transform, target_extent, account)
 }
 
 fn encode_layer_start(
@@ -811,8 +859,17 @@ fn push_vello_layer(
     }
 }
 
+// Keep the solved local map and its intended device field in one state.
+// Recomposition can itself lose phase before native narrowing.
+#[derive(Clone, Copy)]
+struct BrushTransform {
+    local: kurbo::Affine,
+    reference_device: kurbo::Affine,
+}
+
 pub(crate) struct FrameBrush {
     brush: peniko::Brush,
+    transform: Option<BrushTransform>,
     _hold: Option<Hold>,
     _payload: Option<crate::accounting::CpuImport>,
 }
@@ -831,6 +888,7 @@ impl FrameBrush {
     fn solid(color: peniko::Color) -> Self {
         Self {
             brush: peniko::Brush::Solid(color),
+            transform: None,
             _hold: None,
             _payload: None,
         }
@@ -839,8 +897,43 @@ impl FrameBrush {
         let payload = account.import_image(image)?;
         Ok(Self {
             brush: peniko::Brush::Image(image_brush(image)),
+            transform: None,
             _hold: None,
             _payload: payload,
+        })
+    }
+    pub(crate) const fn transform(&self) -> Option<kurbo::Affine> {
+        match self.transform {
+            Some(transform) => Some(transform.local),
+            None => None,
+        }
+    }
+    pub(crate) fn native_glyph_transform(
+        &self,
+        transform: kurbo::Affine,
+        target_extent: PhysicalSize,
+        account: &Account,
+    ) -> Result<Option<vello_encoding::Transform>> {
+        let Some(brush_transform) = self.transform else {
+            return Ok(None);
+        };
+        let account = account.at(RenderPhase::GradientPrepare);
+        account.phase(RenderPhase::GradientPrepare, || {
+            let radial_start = match &self.brush {
+                peniko::Brush::Gradient(gradient) => match gradient.kind {
+                    peniko::GradientKind::Radial(radial) => Some(f64::from(radial.start_radius)),
+                    _ => None,
+                },
+                _ => None,
+            };
+            repeating_gradient::native_glyph_transform(
+                brush_transform,
+                transform,
+                radial_start,
+                target_extent,
+                &account,
+            )
+            .map(Some)
         })
     }
     pub(crate) fn as_ref(&self) -> peniko::BrushRef<'_> {
@@ -854,23 +947,46 @@ impl std::ops::Deref for FrameBrush {
     }
 }
 
-pub(crate) fn glyph_paint_brush(paint: &Paint, account: &Account) -> Result<FrameBrush> {
+pub(crate) fn glyph_paint_brush(
+    paint: &Paint,
+    transform: kurbo::Affine,
+    target_extent: PhysicalSize,
+    account: &Account,
+) -> Result<FrameBrush> {
     account.work(RenderWork::PaintVisits, 1)?;
     match paint.kind() {
         PaintKind::Color(color) => Ok(FrameBrush::solid((*color).into())),
         PaintKind::Gradient(gradient) => gradient_brush(gradient, account),
+        PaintKind::RepeatingGradient(gradient) => {
+            repeating_gradient::prepare(gradient, transform, target_extent, account)
+        }
         PaintKind::Image(image) => FrameBrush::image(image, account),
     }
 }
-fn render_paint_brush(paint: &RenderPaint, account: &Account) -> Result<FrameBrush> {
+fn render_paint_brush(
+    paint: &RenderPaint,
+    transform: kurbo::Affine,
+    target_extent: PhysicalSize,
+    account: &Account,
+) -> Result<FrameBrush> {
     account.work(RenderWork::PaintVisits, 1)?;
     match paint {
         RenderPaint::Color(color) => Ok(FrameBrush::solid((*color).into())),
         RenderPaint::Gradient(gradient) => gradient_brush(gradient, account),
+        RenderPaint::RepeatingGradient(gradient) => {
+            repeating_gradient::prepare(gradient, transform, target_extent, account)
+        }
         RenderPaint::Image(image) => FrameBrush::image(image, account),
     }
 }
 fn gradient_brush(gradient: &Gradient, account: &Account) -> Result<FrameBrush> {
+    let account = account.at(RenderPhase::GradientPrepare);
+    account.phase(RenderPhase::GradientPrepare, || {
+        prepare_gradient(gradient, &account)
+    })
+}
+
+fn prepare_gradient(gradient: &Gradient, account: &Account) -> Result<FrameBrush> {
     let mut stops = account.temporary(gradient.stops().len())?;
     for stop in gradient.stops() {
         account.work(RenderWork::GradientStopVisits, 1)?;
@@ -879,8 +995,15 @@ fn gradient_brush(gradient: &Gradient, account: &Account) -> Result<FrameBrush> 
             peniko::Color::from(stop.color()),
         )))?;
     }
-    let (stops, hold) = stops.into_parts();
-    let mut output = match gradient.kind() {
+    account.work(
+        RenderWork::CoordinateVisits,
+        match gradient.kind() {
+            crate::paint::GradientKind::Linear { .. } => 4,
+            crate::paint::GradientKind::Radial { .. } => 3,
+            crate::paint::GradientKind::Sweep { .. } => 2,
+        },
+    )?;
+    let output = match gradient.kind() {
         crate::paint::GradientKind::Linear { start, end, .. } => peniko::Gradient::new_linear(
             (start.x() as f32, start.y() as f32),
             (end.x() as f32, end.y() as f32),
@@ -894,6 +1017,15 @@ fn gradient_brush(gradient: &Gradient, account: &Account) -> Result<FrameBrush> 
             std::f32::consts::TAU,
         ),
     };
+    gradient_with_stops(output, stops, None)
+}
+
+fn gradient_with_stops(
+    mut output: peniko::Gradient,
+    stops: AccountedVec<peniko::ColorStop>,
+    transform: Option<BrushTransform>,
+) -> Result<FrameBrush> {
+    let (stops, hold) = stops.into_parts();
     // SmallVec::from_vec moves an existing heap allocation; an inline result
     // releases it. Never call with_stops, which clones into an unadmitted backing.
     let hold = if stops.capacity() <= output.stops.capacity() {
@@ -905,6 +1037,7 @@ fn gradient_brush(gradient: &Gradient, account: &Account) -> Result<FrameBrush> 
     };
     Ok(FrameBrush {
         brush: peniko::Brush::Gradient(output),
+        transform,
         _hold: hold,
         _payload: None,
     })
@@ -1140,9 +1273,21 @@ mod paint_visit_tests {
                 context
                     .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
                         if authored {
-                            glyph_paint_brush(&paint, account).map(drop)
+                            glyph_paint_brush(
+                                &paint,
+                                kurbo::Affine::IDENTITY,
+                                PhysicalSize::new(2, 2),
+                                account,
+                            )
+                            .map(drop)
                         } else {
-                            render_paint_brush(render_paint, account).map(drop)
+                            render_paint_brush(
+                                render_paint,
+                                kurbo::Affine::IDENTITY,
+                                PhysicalSize::new(2, 2),
+                                account,
+                            )
+                            .map(drop)
                         }
                     })
                     .unwrap();
@@ -1174,9 +1319,21 @@ mod paint_visit_tests {
                 let error = context
                     .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
                         if authored {
-                            glyph_paint_brush(&paint, account).map(drop)
+                            glyph_paint_brush(
+                                &paint,
+                                kurbo::Affine::IDENTITY,
+                                PhysicalSize::new(2, 2),
+                                account,
+                            )
+                            .map(drop)
                         } else {
-                            render_paint_brush(render_paint, account).map(drop)
+                            render_paint_brush(
+                                render_paint,
+                                kurbo::Affine::IDENTITY,
+                                PhysicalSize::new(2, 2),
+                                account,
+                            )
+                            .map(drop)
                         }
                     })
                     .unwrap_err();
@@ -1199,6 +1356,7 @@ mod paint_visit_tests {
                         encode_vello_scene_with_initial_transform(
                             &normalized,
                             Transform::identity(),
+                            PhysicalSize::new(2, 2),
                             account,
                         )
                         .map(drop)
@@ -1229,6 +1387,7 @@ mod paint_visit_tests {
                         encode_vello_scene_with_initial_transform(
                             &normalized,
                             Transform::identity(),
+                            PhysicalSize::new(2, 2),
                             account,
                         )
                         .map(drop)
@@ -1287,6 +1446,7 @@ mod paint_visit_tests {
                     encode_vello_scene_with_initial_transform(
                         &normalized,
                         Transform::identity(),
+                        PhysicalSize::new(2, 2),
                         account,
                     )
                     .map(drop)
@@ -1316,6 +1476,7 @@ mod paint_visit_tests {
                     encode_vello_scene_with_initial_transform(
                         &normalized,
                         Transform::identity(),
+                        PhysicalSize::new(2, 2),
                         account,
                     )
                     .map(drop)
@@ -1363,6 +1524,7 @@ mod paint_visit_tests {
                     paint: &paint,
                     glyphs: &[],
                 },
+                PhysicalSize::new(2, 2),
                 &account,
             )
             .unwrap_err();

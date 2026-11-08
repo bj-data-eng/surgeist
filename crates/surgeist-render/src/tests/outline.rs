@@ -133,6 +133,7 @@ fn prepared_glyph_run_normalization_and_encoder_share_one_real_run_wide_nonzero_
     let encoded = encode_vello_scene_with_initial_transform(
         &normalized,
         Transform::identity(),
+        crate::PhysicalSize::new(2, 2),
         &crate::accounting::Account::for_test(),
     )
     .unwrap();
@@ -173,6 +174,7 @@ fn prepared_glyph_run_backend_placement_refuses_before_any_frame_output() {
         let error = match encode_vello_scene_with_initial_transform(
             &normalized,
             Transform::identity(),
+            crate::PhysicalSize::new(2, 2),
             &crate::accounting::Account::for_test(),
         ) {
             Ok(_) => panic!("unrepresentable composed affine cannot encode"),
@@ -201,6 +203,7 @@ fn prepared_glyph_run_backend_placement_refuses_before_any_frame_output() {
                 )
                 .unwrap(),
             Transform::identity(),
+            crate::PhysicalSize::new(2, 2),
             &crate::accounting::Account::for_test(),
         )
         .is_ok()
@@ -424,6 +427,7 @@ fn bold_contour_copies_are_one_nonzero_fill_on_direct_and_base_graph_routes() {
             let encoded = encode_vello_scene_with_initial_transform(
                 &normalized,
                 Transform::identity(),
+                crate::PhysicalSize::new(2, 2),
                 &crate::accounting::Account::for_test(),
             )
             .unwrap();

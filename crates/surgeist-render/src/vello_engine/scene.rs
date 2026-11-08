@@ -394,26 +394,26 @@ impl VelloScene {
         Ok(())
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "The private text encoding entry point is consumed by scene lowering."
-        )
-    )]
+    #[cfg(test)]
     pub(crate) fn encode_text_run(&mut self, run: &TextRun<'_>, account: &Account) -> Result<()> {
         let validated = preflight_selected_glyphs(run, account)?;
-        self.append_validated_glyph_run(validated, kurbo::Affine::IDENTITY, account)
+        self.append_validated_glyph_run(
+            validated,
+            kurbo::Affine::IDENTITY,
+            crate::PhysicalSize::new(2, 2),
+            account,
+        )
     }
 
     pub(crate) fn encode_text_run_with_transform(
         &mut self,
         run: &TextRun<'_>,
         transform: kurbo::Affine,
+        target_extent: crate::PhysicalSize,
         account: &Account,
     ) -> Result<()> {
         let validated = preflight_selected_glyphs(run, account)?;
-        self.append_validated_glyph_run(validated, transform, account)
+        self.append_validated_glyph_run(validated, transform, target_extent, account)
     }
 
     pub(crate) fn prepare_raster(
@@ -437,6 +437,7 @@ impl VelloScene {
         &mut self,
         validated: ValidatedGlyphRun<'_>,
         transform: kurbo::Affine,
+        target_extent: crate::PhysicalSize,
         account: &Account,
     ) -> Result<()> {
         let mut unsupported = None;
@@ -465,7 +466,15 @@ impl VelloScene {
         if let crate::paint::PaintKind::Image(image) = validated.paint().fill().kind() {
             self.import_image(image, account)?;
         }
-        let brush = glyph_paint_brush(validated.paint().fill(), account)?;
+        let paint_transform = transform * kurbo::Affine::from(validated.transform());
+        let brush = glyph_paint_brush(
+            validated.paint().fill(),
+            paint_transform,
+            target_extent,
+            account,
+        )?;
+        let gradient_transform =
+            brush.native_glyph_transform(paint_transform, target_extent, account)?;
         let image_expansion = match validated.paint().fill().kind() {
             crate::paint::PaintKind::Image(image)
                 if image.rendering_hint() == Some(crate::ImageRendering::Pixelated)
@@ -523,7 +532,8 @@ impl VelloScene {
             ),
             glyph_transform: None,
             brush_transform: image_expansion
-                .map(|(_, expansion)| VelloTransform::from_kurbo(&expansion.compensation())),
+                .map(|(_, expansion)| VelloTransform::from_kurbo(&expansion.compensation()))
+                .or(gradient_transform),
             font_size: validated.size(),
             font_embolden: vello_encoding::FontEmbolden::default(),
             hint: false,

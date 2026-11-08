@@ -66,7 +66,12 @@ fn shared_path(path: &Path, account: &Account) -> Result<SharedValue<Path>> {
     let (path, hold) = path.try_clone_in(account)?;
     shared(path, Some(hold), None, account)
 }
-fn shared_paint(paint: &Paint, account: &Account) -> Result<SharedValue<TextPaint>> {
+fn shared_paint(
+    paint: &Paint,
+    capabilities: Capabilities,
+    account: &Account,
+) -> Result<SharedValue<TextPaint>> {
+    ensure_paint_supported(paint, capabilities)?;
     let (paint, hold) = paint.try_clone_in(account)?;
     let import = if let PaintKind::Image(image) = paint.kind() {
         account.import_image(image)?
@@ -174,6 +179,7 @@ pub(crate) struct RenderStroke {
 pub(crate) enum RenderPaint {
     Color(Color),
     Gradient(SharedValue<Gradient>),
+    RepeatingGradient(SharedValue<RepeatingGradient>),
     Image(SharedValue<Image>),
 }
 
@@ -584,7 +590,7 @@ fn normalize_commands_in_context(
         let value = match command {
             Command::Fill { shape, paint } => RenderCommand::Fill {
                 shape: RenderShape::from_authored_in(shape, account)?,
-                paint: RenderPaint::from_authored_in(paint, account)?,
+                paint: RenderPaint::from_authored_in(paint, capabilities, account)?,
             },
             Command::Stroke {
                 shape,
@@ -593,7 +599,7 @@ fn normalize_commands_in_context(
             } => RenderCommand::Stroke {
                 shape: RenderStrokeShape::from_authored_in(shape, *stroke, capabilities, account)?,
                 stroke: RenderStroke::try_from(*stroke)?,
-                paint: RenderPaint::from_authored_in(paint, account)?,
+                paint: RenderPaint::from_authored_in(paint, capabilities, account)?,
             },
             Command::Shadow { shape, shadow } => RenderCommand::Shadow {
                 shape: ShadowShape::from_authored(shape, capabilities, account)?,
@@ -618,7 +624,7 @@ fn normalize_commands_in_context(
                 RenderCommand::PreparedGlyphRun {
                     run: shared(run.clone(), None, account.import_prepared(run)?, account)?,
                     transform: *transform,
-                    paint: shared_paint(paint.fill(), account)?,
+                    paint: shared_paint(paint.fill(), capabilities, account)?,
                 }
             }
             Command::TextRun {
@@ -646,7 +652,7 @@ fn normalize_commands_in_context(
                     account.work(RenderWork::GlyphVisits, 1)?;
                     copied.push(*glyph)?;
                 }
-                let paint = shared_paint(paint.fill(), account)?;
+                let paint = shared_paint(paint.fill(), capabilities, account)?;
                 let (glyphs, hold) = copied.into_parts();
                 RenderCommand::TextRun {
                     font,
@@ -1035,11 +1041,20 @@ impl TryFrom<Stroke> for RenderStroke {
 }
 
 impl RenderPaint {
-    fn from_authored_in(paint: &Paint, account: &Account) -> Result<Self> {
+    fn from_authored_in(
+        paint: &Paint,
+        capabilities: Capabilities,
+        account: &Account,
+    ) -> Result<Self> {
+        ensure_paint_supported(paint, capabilities)?;
         validate_paint_in(paint, account)?;
         account.work(RenderWork::PaintVisits, 1)?;
         Ok(match paint.kind() {
             PaintKind::Color(color) => Self::Color(*color),
+            PaintKind::RepeatingGradient(gradient) => {
+                let (gradient, hold) = gradient.try_clone_in(account)?;
+                Self::RepeatingGradient(shared(gradient, Some(hold), None, account)?)
+            }
             PaintKind::Gradient(gradient) => {
                 let (gradient, hold) = gradient.try_clone_in(account)?;
                 Self::Gradient(shared(gradient, Some(hold), None, account)?)
@@ -1386,10 +1401,20 @@ fn kurbo_bounds(bounds: kurbo::Rect) -> Result<OffscreenBounds> {
     OffscreenBounds::try_new(Rect::try_from(bounds)?)
 }
 
+fn ensure_paint_supported(paint: &Paint, capabilities: Capabilities) -> Result<()> {
+    if matches!(paint.kind(), PaintKind::RepeatingGradient(_)) {
+        capabilities.ensure_supported(UnsupportedPrimitive::new(
+            PrimitiveFamily::PaintSources,
+            PrimitiveOperation::RepeatingGradient,
+        ))?;
+    }
+    Ok(())
+}
+
 fn solid_shadow_color(paint: &Paint, capabilities: Capabilities) -> Result<Color> {
     match paint.kind() {
         PaintKind::Color(color) => Ok(*color),
-        PaintKind::Gradient(_) | PaintKind::Image(_) => {
+        PaintKind::Gradient(_) | PaintKind::RepeatingGradient(_) | PaintKind::Image(_) => {
             capabilities.ensure_supported(UnsupportedPrimitive::new(
                 PrimitiveFamily::PaintSources,
                 PrimitiveOperation::NonSolidShadowPaint,

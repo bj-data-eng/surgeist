@@ -503,6 +503,8 @@ pub enum RenderPhase {
     Lower,
     /// Raster or graph command encoding.
     Encode,
+    /// Ordinary or repeating gradient realization in final paint-to-output space.
+    GradientPrepare,
     /// Image packing and atlas source preparation.
     Atlas,
     /// One atlas build's non-timed local quota owner.
@@ -544,7 +546,7 @@ pub enum RenderPhase {
     ReadbackCleanup,
 }
 impl RenderPhase {
-    pub(crate) const ALL: [Self; 43] = [
+    pub(crate) const ALL: [Self; 44] = [
         Self::Attempt,
         Self::Preparation,
         Self::TextPreflight,
@@ -569,6 +571,7 @@ impl RenderPhase {
         Self::Plan,
         Self::Lower,
         Self::Encode,
+        Self::GradientPrepare,
         Self::Atlas,
         Self::AtlasQuota,
         Self::Filter,
@@ -618,6 +621,7 @@ impl RenderPhase {
             Self::Plan => Some(Self::FramePrepare),
             Self::Lower => Some(Self::FramePrepare),
             Self::Encode => Some(Self::FramePrepare),
+            Self::GradientPrepare => Some(Self::Encode),
             Self::Atlas => Some(Self::Encode),
             Self::AtlasQuota => Some(Self::Atlas),
             Self::Filter => Some(Self::Plan),
@@ -666,6 +670,7 @@ impl RenderPhase {
             Self::Plan => "plan",
             Self::Lower => "lower",
             Self::Encode => "encode",
+            Self::GradientPrepare => "gradient_prepare",
             Self::Atlas => "atlas",
             Self::AtlasQuota => "atlas_quota",
             Self::Filter => "filter",

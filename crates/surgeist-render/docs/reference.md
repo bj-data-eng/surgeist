@@ -11,6 +11,7 @@ current source API.
 | --- | --- | --- |
 | Renderer and options | `Renderer`, `Options`, `Parameters`, `EffectQualityPolicy` | [Renderer](../src/renderer/mod.rs), [options](../src/renderer/options.rs), [surface parameters](../src/surface.rs) |
 | Draw data | `Scene`, geometry, shapes, paints, images, layers, and positioned text runs | [Scene](../src/scene.rs), [public reexports](../src/lib.rs) |
+| Gradient paints | `Gradient`, `RepeatingGradient`, `RepeatingGradientStop`, `Paint` | [Paint sources](../src/paint.rs), [repeating inputs](../src/paint/repeating.rs) |
 | Placed Text consumer (`render-text`) | `prepare_text_layout`, `PreparedTextScene`, `TextLayoutLimits`, `TextLayoutError` | [Adapter](../src/text_layout.rs) |
 | Surface and pixels | `Surface`, `SurfaceOptions`, `Attachment`, `ImageBuffer` | [Surfaces](../src/surface.rs), [images](../src/image.rs) |
 | Support and diagnostics | `Capabilities`, `RuntimeCapabilities`, `Error`, `ErrorCode` | [Capabilities](../src/capability.rs), [errors](../src/error.rs) |
@@ -43,6 +44,77 @@ Unsupported semantic operations and unavailable runtime capabilities have
 distinct typed diagnostics. Missing adapters, required formats, device limits,
 and surface lifecycle availability do not authorize partial frame publication.
 The [error API](../src/error.rs) defines the operation and reason payloads.
+
+## Gradient paints
+
+`Gradient` supplies ordinary linear, circular radial and sweep fields with its
+existing normalized stops. `RepeatingGradient` supplies a separate resolved
+linear or elliptical radial field. Use `RepeatingGradientStop::try_new` for
+finite `f64` positions and validated numeric-sRGB colors, then `try_linear` or
+`try_radial` and `Paint::repeating_gradient`. The lossless conversion into Paint
+is also available. Constructors retain nonempty, nondecreasing stop lists,
+including equal, negative and outside-unit positions; descending, nonfinite or
+overflowing spans return typed invalid input. One stop is a solid native paint.
+
+Positions are units of the supplied field: the linear start-to-end vector or
+radial ending ellipse. A linear field from zero to forty logical units with
+stops at one-quarter and one-and-one-quarter therefore repeats a forty-unit
+cycle beginning at ten, including beyond the original field endpoints. Period
+is last minus first, with no box or unit-interval clamp. Duplicate positions
+retain their supplied order; cycle boundaries preserve the end/start jump.
+Radial phase preserves the center and concentric ellipses.
+
+Native gradient color is sampled at integer physical pixel indices in the
+current raster engine, consistently with ordinary gradients. Geometry coverage
+is a separate operation. Linear realization preserves the transformed field
+normal as well as its phase under shear.
+
+At each draw, realization includes the complete paint transform and surface
+scale. Native policy averages a positive period strictly smaller than two
+device pixels; exactly two remains a pattern. Linear spacing uses the field
+normal's inverse-transpose mapping under shear. Radial spacing uses the smallest
+singular value of the transformed period axes, so an unresolved direction
+averages the whole paint. These thresholds and directional rules are Render
+policy, not constants imposed by the pinned standard.
+
+Solid fallback integrates adjacent premultiplied-sRGBA endpoints by their
+relative segment lengths. A zero or actually rounded-zero whole period instead
+uses the original colors/count at uniform replacement positions. Coincident
+linear endpoints select that case. `try_radial` requires a positive horizontal
+radius and nonnegative vertical radius: positive-width zero-height is an
+already-selected weighted-average case; zero-width semantic resolution belongs
+to the caller. The [pinned repeating-gradient clauses](../../../references/css-images-3--CRD-css-images-3-20231218--74eb4b475aa0.md#repeating-gradients)
+own repetition and averaging requirements.
+
+Unit native patterns and brush transforms retain period/phase before narrowing.
+Actual period construction collapse is distinct from a small positive period;
+other unrepresentable required native geometry produces a typed diagnostic.
+Repeating-field qualification compares the realized linear or radial field with its
+intended device-space reference over the actual target's integer sample rectangle.
+The linear reference is retained before local compensation; native glyph encoding
+checks the actual separately narrowed transform product against that reference.
+Both phase granularity and conservative arithmetic error must fit within one
+existing native ramp interval. The certificate encloses permitted operations under
+[published shader accuracy rules](https://www.w3.org/TR/2026/CRD-WGSL-20261106/#floating-point-accuracy),
+including division domains and subnormal flushing. Circular sampling selects zero
+for zero/subnormal squared norms and evaluates its square root on a normal positive
+argument; the certificate includes this lost norm. A resolved cycle that exceeds
+numerical capacity returns typed invalid input before publication, preserving
+successful pixels and statistics. This conservative policy can reject individual
+samples that happen to look valid.
+Solid fallback needs no unused pattern backing. Repeating paint works through
+the existing fill, stroke and text paint consumers, preserving glyph/run-local
+coordinates. Graph captures use the output grid for this source, so a mask or
+nested capture preserves a pattern resolved by final magnification.
+
+`RenderPhase::GradientPrepare` is a Ledger child of Encode for ordinary and
+repeating brush preparation and native glyph representation checks. Actual stop
+walks, coordinate work, backing, serialization and ramp resources retain their
+existing named work and lifetime owners; optional elapsed time uses Ledger.
+See [frame accounting](#frame-accounting) for inclusive phases and host timing.
+`supports_repeating_gradients` reports this concrete resolved domain. `surgeist-paint`
+retains authored gradient-box geometry, stop/hint fixup and degenerate semantic
+selection; root retains their eventual composition through public front doors.
 
 ## Layer blending
 

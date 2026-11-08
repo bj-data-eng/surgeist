@@ -193,7 +193,12 @@ impl Renderer {
         )?;
         Ok(match dispatch {
             RendererFrameDispatch::DirectVello(normalized) => {
-                let vello_scene = encode_vello_scene(&normalized, surface.scale(), account)?;
+                let vello_scene = encode_vello_scene(
+                    &normalized,
+                    surface.scale(),
+                    surface.physical_size(),
+                    account,
+                )?;
                 (
                     normalized,
                     PreparedRendererExecution::DirectVello(OwnedBox::new(

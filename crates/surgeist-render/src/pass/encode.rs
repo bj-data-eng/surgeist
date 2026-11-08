@@ -1620,9 +1620,12 @@ fn vello_capture_scene(
 ) -> Result<VelloScene> {
     let initial_transform = handoff.initial_transform();
     match handoff.work() {
-        RuntimeVelloCapture::Span(span) => {
-            encode_vello_scene_with_initial_transform(&span.commands, initial_transform, account)
-        }
+        RuntimeVelloCapture::Span(span) => encode_vello_scene_with_initial_transform(
+            &span.commands,
+            initial_transform,
+            handoff.target_extent(),
+            account,
+        ),
         RuntimeVelloCapture::ClipCoverage(coverage) => {
             let mut elements = account.temporary(coverage.elements.len())?;
             for element in coverage.elements.iter() {

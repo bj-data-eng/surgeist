@@ -185,7 +185,7 @@ impl Capabilities {
             hsl_color_conversion: true,
             unresolved_symbolic_colors: false,
             color_mix: false,
-            repeating_gradients: false,
+            repeating_gradients: true,
             symbolic_color_policy: SymbolicColorPolicy::RootResolvedOnly,
         },
         image_sampling: ImageSamplingCapabilities {
@@ -786,7 +786,8 @@ impl PaintSourceCapabilities {
         self.color_mix
     }
 
-    /// Returns whether repeating gradients are supported.
+    /// Returns whether resolved repeating linear and elliptical radial gradients
+    /// are supported, including a positive-width, zero-height radial average.
     #[must_use]
     pub const fn supports_repeating_gradients(self) -> bool {
         self.repeating_gradients

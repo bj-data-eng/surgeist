@@ -759,6 +759,7 @@ fn bitmap_without_paths_admits_zero_path_capacity_but_charges_decoded_pixel_stor
     let encoded = crate::encode::encode_vello_scene_with_initial_transform(
         &commands,
         Transform::identity(),
+        crate::PhysicalSize::new(2, 2),
         &crate::accounting::Account::for_test(),
     )
     .unwrap();

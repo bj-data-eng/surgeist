@@ -1,3 +1,8 @@
+mod repeating;
+
+pub(crate) use repeating::RepeatingGradientGeometry;
+pub use repeating::{RepeatingGradient, RepeatingGradientStop};
+
 use super::{
     Error, Image, Point, Result,
     validation::{
@@ -212,6 +217,7 @@ pub struct Paint {
 pub(crate) enum PaintKind {
     Color(Color),
     Gradient(Gradient),
+    RepeatingGradient(RepeatingGradient),
     Image(Image),
 }
 
@@ -229,6 +235,14 @@ impl Paint {
     pub fn gradient(gradient: Gradient) -> Self {
         Self {
             kind: PaintKind::Gradient(gradient),
+        }
+    }
+
+    #[must_use]
+    /// Creates a repeating paint from a validated resolved gradient.
+    pub fn repeating_gradient(gradient: RepeatingGradient) -> Self {
+        Self {
+            kind: PaintKind::RepeatingGradient(gradient),
         }
     }
 
@@ -256,6 +270,13 @@ impl From<Color> for Paint {
 impl From<Gradient> for Paint {
     fn from(gradient: Gradient) -> Self {
         Self::gradient(gradient)
+    }
+}
+
+/// Converts a repeating gradient to its [`Paint`] representation without loss.
+impl From<RepeatingGradient> for Paint {
+    fn from(gradient: RepeatingGradient) -> Self {
+        Self::repeating_gradient(gradient)
     }
 }
 
@@ -504,6 +525,10 @@ impl Paint {
             PaintKind::Image(image) => {
                 account.work(crate::accounting::RenderWork::ImageIdentityCopies, 1)?;
                 (PaintKind::Image(image.clone()), None)
+            }
+            PaintKind::RepeatingGradient(gradient) => {
+                let (gradient, hold) = gradient.try_clone_in(account)?;
+                (PaintKind::RepeatingGradient(gradient), Some(hold))
             }
             PaintKind::Gradient(gradient) => {
                 let (gradient, hold) = gradient.try_clone_in(account)?;
