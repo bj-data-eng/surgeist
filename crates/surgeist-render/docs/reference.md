@@ -12,6 +12,7 @@ current source API.
 | Renderer and options | `Renderer`, `Options`, `Parameters`, `EffectQualityPolicy` | [Renderer](../src/renderer/mod.rs), [options](../src/renderer/options.rs), [surface parameters](../src/surface.rs) |
 | Draw data | `Scene`, geometry, shapes, paints, images, layers, and positioned text runs | [Scene](../src/scene.rs), [public reexports](../src/lib.rs) |
 | Gradient paints | `Gradient`, `RepeatingGradient`, `RepeatingGradientStop`, `Paint` | [Paint sources](../src/paint.rs), [repeating inputs](../src/paint/repeating.rs) |
+| Native Paint consumer (`render-paint`) | `prepare_repeating_linear_gradient`, `prepare_repeating_radial_gradient`, `PaintGradientError` | [Adapter](../src/paint_gradient.rs) |
 | Placed Text consumer (`render-text`) | `prepare_text_layout`, `PreparedTextScene`, `TextLayoutLimits`, `TextLayoutError` | [Adapter](../src/text_layout.rs) |
 | Surface and pixels | `Surface`, `SurfaceOptions`, `Attachment`, `ImageBuffer` | [Surfaces](../src/surface.rs), [images](../src/image.rs) |
 | Support and diagnostics | `Capabilities`, `RuntimeCapabilities`, `Error`, `ErrorCode` | [Capabilities](../src/capability.rs), [errors](../src/error.rs) |
@@ -38,7 +39,7 @@ compiled behind `render-window`.
 `Renderer::runtime_capabilities` reports availability or immutable facts about
 the selected device and surface: surface format, supported effect precisions,
 and maximum two-dimensional effect texture size. Cargo features select compiled
-host adapters; enabling a feature does not establish runtime device support.
+host and producer adapters; enabling a feature does not establish runtime device support.
 
 Unsupported semantic operations and unavailable runtime capabilities have
 distinct typed diagnostics. Missing adapters, required formats, device limits,
@@ -114,7 +115,55 @@ existing named work and lifetime owners; optional elapsed time uses Ledger.
 See [frame accounting](#frame-accounting) for inclusive phases and host timing.
 `supports_repeating_gradients` reports this concrete resolved domain. `surgeist-paint`
 retains authored gradient-box geometry, stop/hint fixup and degenerate semantic
-selection; root retains their eventual composition through public front doors.
+selection. Render owns its direct native Paint consumer; root retains facade
+wiring and broader authored composition.
+
+## Native Paint consumer
+
+The optional `render-paint` feature enables
+`prepare_repeating_linear_gradient` and `prepare_repeating_radial_gradient`.
+Both take real Paint geometry, `GradientStops<Color>` from its shared resolver,
+and a mutable `RenderAccountingContext`, then return the existing owned
+`RepeatingGradient`. Calling this front door selects repetition explicitly.
+The returned field works with the normal fill, stroke and glyph paint commands
+after the borrowed inputs and preparation context are dropped.
+
+Linear geometry must have positive length. Radial geometry must be the positive
+Ellipse case; its horizontal radius supplies the ray basis. The stop result's
+`line_length` must exactly equal that accepted `f64` basis. Each used physical
+position `p` becomes the field position `q = p / L`, retaining equal, double,
+negative and outside positions in source order. The conversion preserves all
+stop occurrences and colors. It does not rerun direction, geometry or fixup.
+
+Native qualification requires finite `q`, preserves nonzero positions and the
+equality or strict order of adjacent positions, and refuses a collapsed or
+reversed interval. Ordinary nonzero floating-point division rounding is allowed;
+there is no epsilon or exact back-mapping guarantee. The converted last-minus-first
+span must also be finite. An overflowing physical span is allowed when conversion
+produces a valid finite field span.
+
+`ErrorCode::PaintGradient` and `Error::paint_gradient_diagnostic` preserve typed
+basis, hint, unsupported geometry, source/position conversion, span and storage
+diagnostics. Named-limit and setup failures retain `RenderAccountingError`.
+Hints and all radial zero cases are refused; no zero-height basis or substitute
+radius is inferred. Authored/computed adapters, ordinary Pad fields and logarithmic
+hint execution remain outside this native repeating consumer.
+
+`RenderAttemptKind::PaintGradient` reports one standalone preparation. Ledger
+records actual geometry/result/item visits, scalar work and repeated validation,
+one actual stop-vector capacity and the fixed `size_of::<RepeatingGradient>()`
+output unit. Borrowed inputs are outside its custody. Failure returns no field
+and releases admitted backing; success records `PreparedTransferredBytes` and
+releases standalone custody as output transfers to the caller. Later clones and
+drops are caller-owned. Optional timing and filtering use the existing Ledger
+profile. Per-use `GradientPrepare`, native qualification and GPU publication
+still run later in the normal frame attempt.
+
+For this consumer, `PaintVisits` counts inspections of geometry, the stop owner
+and the constructed native gradient. `GradientStopVisits` counts every item visit
+in preflight, conversion and canonical validation. `CoordinateVisits` counts each
+actual scalar inspection or calculation, including comparisons. Repeated passes
+are charged separately; a refusal retains only admitted work.
 
 ## Layer blending
 
@@ -259,6 +308,7 @@ existing resource manager continues to own GPU residency and cross-frame leases.
 | --- | --- |
 | Default features (`[]`) | Native headless GPU execution without a window. |
 | `render-text` | Optional direct Text dependency, without Text default features; immutable placed-layout consumption, independent of window/web/accessibility adapters. |
+| `render-paint` | Optional direct Paint dependency; native positive geometry and used-stop consumption into repeating fields, independent of host adapters. |
 | `render-window` | Enables `surgeist-window` and native window attachment; live presentation requires its graphical host lifecycle. |
 | `render-web` | Enables `wgpu/webgpu`; web-canvas support requires `wasm32`. The documented wasm leaf check compiles `--lib --tests`. |
 | `render-window,render-web` on native | Additive compiled features; uses the same native live-window smoke target. |

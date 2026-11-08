@@ -97,6 +97,7 @@ Dependencies still retain their own manifest-defined defaults.
 | --- | --- |
 | `dialog-system` | `surgeist-dialog/system` |
 | `render-text` | `surgeist-render/render-text` |
+| `render-paint` | `surgeist-render/render-paint` |
 | `render-web` | `surgeist-render/render-web` |
 | `render-window` | `surgeist-render/render-window` |
 | `text-accessibility` | `surgeist-text/text-accessibility` |
@@ -129,11 +130,14 @@ Every package keeps its existing artifact using its manifest-defined default
 features. The configured `surgeist-generator` CSS profile adds
 `api/crates/surgeist-generator.css-corpus.txt`, built with
 `--no-default-features --features css-corpus` and without `browser-corpus`.
-Render's named profile adds `api/crates/surgeist-render.render-text.txt` with
-`--no-default-features --features render-text`. `--crate` selects the named
-package's default and configured companion profiles; `--all` includes both.
+Render's named profiles add `api/crates/surgeist-render.render-text.txt` and
+`api/crates/surgeist-render.render-paint.txt`, each with `--no-default-features`
+and only its matching `render-text` or `render-paint` feature. `--crate` selects
+the named package's default and configured companion profiles; `--all` includes
+all configured profiles.
 Listings, headers and stale diagnostics identify the companions as
-`surgeist-generator [css-corpus]` and `surgeist-render [render-text]`.
+`surgeist-generator [css-corpus]`, `surgeist-render [render-text]` and
+`surgeist-render [render-paint]`.
 
 ## Verification Scope
 

@@ -1,4 +1,6 @@
 use super::{Color, Error, Point, Result};
+#[cfg(feature = "render-paint")]
+use crate::accounting::{AccountedVec, BackedValue};
 use crate::{
     accounting::{Account, Hold, RenderWork},
     validation::{
@@ -6,6 +8,18 @@ use crate::{
         validate_positive_f64,
     },
 };
+
+#[cfg(feature = "render-paint")]
+fn validation_coordinates(account: Option<&Account>, amount: usize) -> Result<()> {
+    // The new consumer counts every scalar-domain inspection in its canonical
+    // validation walk. Existing frame/glyph units and their oracles stay intact.
+    if let Some(account) = account
+        && account.is_paint_gradient()
+    {
+        account.work(RenderWork::CoordinateVisits, amount)?;
+    }
+    Ok(())
+}
 
 /// A resolved repeating-gradient stop, positioned in units of its supplied field.
 ///
@@ -17,6 +31,12 @@ pub struct RepeatingGradientStop {
 }
 
 impl RepeatingGradientStop {
+    #[cfg(feature = "render-paint")]
+    pub(crate) const fn from_qualified_paint(position: f64, color: Color) -> Self {
+        // The consumer proved the position; Color already owns its invariant.
+        // The complete canonical constructor still validates the owned records.
+        Self { position, color }
+    }
     /// Creates a stop without clamping its position.
     ///
     /// Returns [`crate::ErrorCode::InvalidInput`] for a nonfinite position.
@@ -135,8 +155,18 @@ impl RepeatingGradient {
     }
 
     pub(crate) fn validate_in(&self, account: Option<&Account>) -> Result<()> {
+        self.validate_with_span(account, |error| error)
+    }
+
+    fn validate_with_span(
+        &self,
+        account: Option<&Account>,
+        span_error: impl FnOnce(Error) -> Error,
+    ) -> Result<()> {
         match self.geometry {
             RepeatingGradientGeometry::Linear { start, end } => {
+                #[cfg(feature = "render-paint")]
+                validation_coordinates(account, 4)?;
                 validate_point(start, "repeating linear gradient start")?;
                 validate_point(end, "repeating linear gradient end")?;
             }
@@ -145,6 +175,8 @@ impl RepeatingGradient {
                 radius_x,
                 radius_y,
             } => {
+                #[cfg(feature = "render-paint")]
+                validation_coordinates(account, 4)?;
                 validate_point(center, "repeating radial gradient center")?;
                 validate_positive_f64(radius_x, "repeating radial gradient horizontal radius")?;
                 validate_non_negative_f64(radius_y, "repeating radial gradient vertical radius")?;
@@ -163,20 +195,52 @@ impl RepeatingGradient {
             if let Some(account) = account {
                 account.work(RenderWork::GradientStopVisits, 1)?;
             }
+            #[cfg(feature = "render-paint")]
+            validation_coordinates(account, 5)?;
             validate_finite_f64(stop.position, "repeating gradient stop position")?;
             validate_color(stop.color, "repeating gradient stop color")?;
             if index == 0 {
                 first_position = stop.position;
-            } else if stop.position < previous {
-                return Err(Error::invalid_value(
-                    "repeating gradient stop position",
-                    stop.position,
-                    "must be nondecreasing",
-                ));
+            } else {
+                #[cfg(feature = "render-paint")]
+                validation_coordinates(account, 1)?;
+                if stop.position < previous {
+                    return Err(Error::invalid_value(
+                        "repeating gradient stop position",
+                        stop.position,
+                        "must be nondecreasing",
+                    ));
+                }
             }
             previous = stop.position;
         }
+        #[cfg(feature = "render-paint")]
+        validation_coordinates(account, 2)?;
         validate_non_negative_f64(previous - first_position, "repeating gradient span")
+            .map_err(span_error)
+    }
+
+    #[cfg(feature = "render-paint")]
+    pub(crate) fn from_accounted_paint(
+        geometry: RepeatingGradientGeometry,
+        stops: AccountedVec<RepeatingGradientStop>,
+        fixed_owner: Hold,
+        first_source_index: usize,
+        last_source_index: usize,
+        account: &Account,
+    ) -> Result<BackedValue<Self>> {
+        let (stops, backing) = stops.into_parts();
+        let gradient =
+            BackedValue::new(Self { geometry, stops }, [Some(backing), Some(fixed_owner)]);
+        account.work(RenderWork::PaintVisits, 1)?;
+        gradient.validate_with_span(Some(account), |_| {
+            crate::PaintGradientError::UnrepresentableSpan {
+                first_source_index,
+                last_source_index,
+            }
+            .into()
+        })?;
+        Ok(gradient)
     }
 
     pub(crate) fn try_clone_in(&self, account: &Account) -> Result<(Self, Hold)> {

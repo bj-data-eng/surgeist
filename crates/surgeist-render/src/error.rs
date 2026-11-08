@@ -50,6 +50,8 @@ struct ErrorContext {
 enum PreparationDiagnostic {
     Glyph(crate::GlyphPreparationError),
     Accounting(crate::RenderAccountingError),
+    #[cfg(feature = "render-paint")]
+    PaintGradient(crate::PaintGradientError),
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -386,6 +388,19 @@ impl Error {
         }
     }
 
+    /// Returns a native Paint-gradient consumer diagnostic, when present.
+    #[cfg(feature = "render-paint")]
+    #[must_use]
+    pub const fn paint_gradient_diagnostic(&self) -> Option<&crate::PaintGradientError> {
+        match &self.payload {
+            ErrorPayload::Context(context) => match &context.preparation {
+                Some(PreparationDiagnostic::PaintGradient(error)) => Some(error),
+                _ => None,
+            },
+            ErrorPayload::Accounting(_) => None,
+        }
+    }
+
     /// Returns the unsupported-primitive payload, when this diagnostic carries one.
     #[must_use]
     pub const fn unsupported_primitive(&self) -> Option<UnsupportedPrimitive> {
@@ -458,6 +473,25 @@ impl From<crate::GlyphPreparationError> for Error {
     }
 }
 
+#[cfg(feature = "render-paint")]
+impl From<crate::PaintGradientError> for Error {
+    fn from(value: crate::PaintGradientError) -> Self {
+        Self::context(ErrorContext {
+            code: ErrorCode::PaintGradient,
+            message: format!("Paint gradient preparation refused: {value:?}"),
+            source: None,
+            invalid_value: None,
+            unsupported_primitive: None,
+            unresolved_resource: None,
+            degraded_quality: None,
+            runtime_capability_unavailable: None,
+            preparation: Some(PreparationDiagnostic::PaintGradient(value)),
+            #[cfg(feature = "render-text")]
+            text_layout: None,
+        })
+    }
+}
+
 #[cfg(feature = "render-text")]
 impl From<crate::TextLayoutError> for Error {
     fn from(value: crate::TextLayoutError) -> Self {
@@ -512,6 +546,9 @@ mod tests;
 pub enum ErrorCode {
     /// General accounting setup or named admission failure.
     Accounting,
+    /// Reports atomic native Paint-gradient preparation failure.
+    #[cfg(feature = "render-paint")]
+    PaintGradient,
     /// Reports atomic standalone Text-layout admission failure.
     #[cfg(feature = "render-text")]
     TextLayout,
