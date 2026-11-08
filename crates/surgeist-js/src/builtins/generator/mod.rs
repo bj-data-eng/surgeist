@@ -340,6 +340,8 @@ impl Generator {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         context.with_generator_request(|context| {
+            context.runtime().check_value(r#gen)?;
+            context.runtime().check_value(&value)?;
             // 1. Let state be ? GeneratorValidate(generator, generatorBrand).
             let Some(generator_obj) = r#gen.as_object() else {
                 return Err(JsNativeError::typ()
@@ -422,6 +424,15 @@ impl Generator {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         context.with_generator_request(|context| {
+            context.runtime().check_value(r#gen)?;
+            match &abrupt_completion {
+                Ok(value) => context.runtime().check_value(value)?,
+                Err(error) => {
+                    if let Some(value) = error.as_opaque() {
+                        context.runtime().check_value(value)?;
+                    }
+                }
+            }
             // 1. Let state be ? GeneratorValidate(generator, generatorBrand).
             let Some(generator_obj) = r#gen.as_object() else {
                 return Err(JsNativeError::typ()

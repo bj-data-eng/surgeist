@@ -161,6 +161,8 @@ impl AsyncGenerator {
         value: JsValue,
         context: &mut Context,
     ) -> JsResult<JsObject> {
+        generator.check_runtime(context.runtime())?;
+        context.runtime().check_value(&value)?;
         // 5. Let state be generator.[[AsyncGeneratorState]].
         let state = generator.borrow().data().state;
 
@@ -249,6 +251,8 @@ impl AsyncGenerator {
         return_value: JsValue,
         context: &mut Context,
     ) -> JsResult<JsObject> {
+        generator.check_runtime(context.runtime())?;
+        context.runtime().check_value(&return_value)?;
         // 5. Let completion be Completion Record { [[Type]]: return, [[Value]]: value, [[Target]]: empty }.
         let completion = CompletionRecord::Return(return_value.clone());
 
@@ -331,6 +335,8 @@ impl AsyncGenerator {
         error_value: JsValue,
         context: &mut Context,
     ) -> JsResult<JsObject> {
+        generator.check_runtime(context.runtime())?;
+        context.runtime().check_value(&error_value)?;
         let mut r#gen = generator.borrow_mut();
 
         // 5. Let state be generator.[[AsyncGeneratorState]].

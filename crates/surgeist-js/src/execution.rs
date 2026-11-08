@@ -424,6 +424,8 @@ impl ExecutionOptions {
     /// requests that subsequently fail validation. Refusal preserves the
     /// generator's state and queue. VM instructions and native job actions
     /// retain their separate limits.
+    /// This cap does not bound continuation payload copies, queue or drain work,
+    /// or completion publication.
     #[must_use]
     pub const fn with_generator_request_limit(mut self, limit: u64) -> Self {
         self.generator_request_limit = limit;
