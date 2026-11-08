@@ -4195,3 +4195,113 @@ fn native_float_source_floor_uses_translated_shared_inherited_ledger() {
     lane::<f32>();
     lane::<f64>();
 }
+
+fn assert_table_border_avoids_full_width_float<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    let root_size = Size::new(px(100.0), px(100.0));
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        axes,
+        root_size.map(|v| Some(NonNegativeFiniteOf::new(v).unwrap())),
+        OrthogonalFallbackOf::new(
+            root_size.map(|v| Some(NonNegativeFiniteOf::new(v).unwrap())),
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(root_size.map(|v| {
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(v).unwrap()),
+            SizingOperation::Normal,
+        )
+    }));
+    for (role, table, replaced, context, top) in [
+        (
+            "ordinary",
+            false,
+            false,
+            crate::BlockFlowContext::Normal,
+            0.0,
+        ),
+        (
+            "replaced",
+            false,
+            true,
+            crate::BlockFlowContext::Normal,
+            20.0,
+        ),
+        (
+            "independent",
+            false,
+            false,
+            crate::BlockFlowContext::Independent,
+            20.0,
+        ),
+        ("table", true, false, crate::BlockFlowContext::Normal, 20.0),
+    ] {
+        let tree = PublicBlockTree::default()
+            .with_children(0, [1, 2])
+            .with_children(1, [])
+            .with_children(2, [])
+            .with_style(
+                0,
+                NodeInputOf {
+                    display: Display::Block,
+                    size: root_size.map(PreferredSizeOf::px),
+                    ..NodeInputOf::default()
+                },
+            )
+            .with_style(
+                1,
+                fri06_c05_margin_float_style(axes, Float::Left, 100.0, 20.0),
+            )
+            .with_style(
+                2,
+                NodeInputOf {
+                    display: Display::Block,
+                    block_flow_context: context,
+                    item_is_table: table,
+                    item_is_replaced: replaced,
+                    size: Size::new(PreferredSizeOf::px(px(50.0)), PreferredSizeOf::px(px(10.0))),
+                    ..NodeInputOf::default()
+                },
+            );
+        let input = tree.node_input(2);
+        assert_eq!(input.item_is_table, table);
+        assert_eq!(input.item_is_replaced, replaced);
+        assert_eq!(input.block_flow_context, context);
+        assert_eq!(input.float, Float::None);
+        assert_eq!(input.clear, Clear::None);
+        assert_eq!(input.overflow, ComputedOverflow::VISIBLE);
+        let batch = compute_layout(&tree, 0, request).unwrap();
+        assert_eq!(public_final_output(&batch, 0).size, root_size);
+        let floated = public_final_output(&batch, 1);
+        assert_eq!(floated.location, Point::ZERO);
+        assert_eq!(floated.size, Size::new(px(100.0), px(20.0)));
+        assert_eq!(floated.margin, Edges::ZERO);
+        let subject = public_final_output(&batch, 2);
+        assert_eq!(subject.size, Size::new(px(50.0), px(10.0)), "{role}");
+        assert_eq!(subject.margin, Edges::ZERO, "{role}");
+        assert_eq!(
+            subject.location,
+            Point::new(S::ZERO, px(top)),
+            "{role} table={table}, replaced={replaced}, context={context:?}"
+        );
+        if role != "ordinary" {
+            assert!(
+                subject.location.y >= floated.location.y + floated.size.height,
+                "{role} border box must avoid the full-width float margin box"
+            );
+        }
+    }
+}
+
+#[test]
+fn table_border_avoids_full_width_float_with_normal_context_f32() {
+    assert_table_border_avoids_full_width_float::<f32>();
+}
+
+#[test]
+fn table_border_avoids_full_width_float_with_normal_context_f64() {
+    assert_table_border_avoids_full_width_float::<f64>();
+}
