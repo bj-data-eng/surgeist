@@ -25,7 +25,7 @@ fn geometry_error(error: Error) -> Error {
 
 /// Admit each scalar comparison, arithmetic result, or representation conversion
 /// before evaluating it. Integer exponent bookkeeping does not inspect coordinates.
-fn scalar<T>(account: &Account, action: impl FnOnce() -> T) -> Result<T> {
+pub(super) fn scalar<T>(account: &Account, action: impl FnOnce() -> T) -> Result<T> {
     account.work(RenderWork::CoordinateVisits, 1)?;
     Ok(action())
 }
@@ -48,7 +48,8 @@ impl Scaled {
         let bits = scalar(account, || value.to_bits())?;
         let exponent = ((bits >> 52) & 0x7ff) as i32;
         if exponent == 0 {
-            let normalized = scalar(account, || value * 2.0_f64.powi(54))?;
+            const NORMALIZE_SCALE: f64 = f64::from_bits(1077_u64 << 52); //2^54.
+            let normalized = scalar(account, || value * NORMALIZE_SCALE)?;
             let mut result = Self::new(normalized, account)?;
             result.exponent -= 54;
             Ok(result)
@@ -102,7 +103,8 @@ impl Scaled {
         } else if self.exponent > 1023 {
             let scale = scalar(account, || 2.0_f64.powi(self.exponent - 1023))?;
             let high = scalar(account, || self.mantissa * scale)?;
-            scalar(account, || high * 2.0_f64.powi(1023))?
+            const HIGH_SCALE: f64 = f64::from_bits(2046_u64 << 52); //2^1023.
+            scalar(account, || high * HIGH_SCALE)?
         } else if self.exponent < -1022 {
             let scale = scalar(account, || 2.0_f64.powi(self.exponent + 1022))?;
             let high = scalar(account, || self.mantissa * scale)?;
@@ -178,32 +180,22 @@ impl Range {
         })
     }
     fn normalize(self, value: f64, account: &Account) -> Result<f32> {
-        // Source endpoint checks precede arithmetic; every executed division,
-        // subtraction and narrowing is separately admitted.
-        account.work(RenderWork::CoordinateVisits, 1)?;
-        let normalized = if value == self.first {
+        let normalized = if scalar(account, || value == self.first)? {
             0.0
+        } else if scalar(account, || value == self.last)? {
+            1.0
         } else {
-            account.work(RenderWork::CoordinateVisits, 1)?;
-            if value == self.last {
-                1.0
+            let difference = scalar(account, || value - self.first)?;
+            let numerator = if scalar(account, || difference.is_finite())? {
+                scalar(account, || difference / self.scale)?
             } else {
-                account.work(RenderWork::CoordinateVisits, 1)?;
-                let difference = value - self.first;
-                account.work(RenderWork::CoordinateVisits, 1)?;
-                let numerator = if difference.is_finite() {
-                    account.work(RenderWork::CoordinateVisits, 1)?;
-                    difference / self.scale
-                } else {
-                    account.work(RenderWork::CoordinateVisits, 3)?;
-                    value / self.scale - self.first / self.scale
-                };
-                account.work(RenderWork::CoordinateVisits, 1)?;
-                numerator / self.delta
-            }
+                let position = scalar(account, || value / self.scale)?;
+                let first = scalar(account, || self.first / self.scale)?;
+                scalar(account, || position - first)?
+            };
+            scalar(account, || numerator / self.delta)?
         };
-        account.work(RenderWork::CoordinateVisits, 1)?;
-        Ok(normalized as f32)
+        scalar(account, || normalized as f32)
     }
 }
 
@@ -248,17 +240,22 @@ fn scaled_geometry(
     let zero = Scaled::new(0.0, account)?;
     let (local, radial) = match gradient.kind() {
         GradientKind::Linear { start, end, .. } => {
+            // Capture each authored coordinate once; all later arithmetic uses
+            // these values rather than inspecting source points again.
             account.work(RenderWork::CoordinateVisits, 4)?;
-            if start == end {
+            let (start_x, start_y, end_x, end_y) = (start.x(), start.y(), end.x(), end.y());
+            if scalar(account, || start_x == end_x)? && scalar(account, || start_y == end_y)? {
                 return Err(Refusal::DegenerateLinearField.into());
             }
-            let difference = |end: f64, start: f64| {
-                Scaled::new(end, account)?.add(Scaled::new(-start, account)?, account)
+            let difference = |end: f64, start: f64| -> Result<Scaled> {
+                let end = Scaled::new(end, account)?;
+                let negative_start = scalar(account, || -start)?;
+                end.add(Scaled::new(negative_start, account)?, account)
             };
-            let dx = difference(end.x(), start.x())?;
-            let dy = difference(end.y(), start.y())?;
-            let sx = Scaled::new(start.x(), account)?;
-            let sy = Scaled::new(start.y(), account)?;
+            let dx = difference(end_x, start_x)?;
+            let dy = difference(end_y, start_y)?;
+            let sx = Scaled::new(start_x, account)?;
+            let sy = Scaled::new(start_y, account)?;
             let (u, v, ox, oy) = if let Some(range) = range {
                 let scale = Scaled::new(range.scale, account)?
                     .mul(Scaled::new(range.delta, account)?, account)?;
@@ -267,10 +264,8 @@ fn scaled_geometry(
                     // FMA retains finite cancellation even when d*a overflows.
                     match d.value(account) {
                         Ok(d) => {
-                            account.work(RenderWork::CoordinateVisits, 1)?;
-                            let exact = d.mul_add(range.first, s);
-                            account.work(RenderWork::CoordinateVisits, 1)?;
-                            if exact.is_finite() {
+                            let exact = scalar(account, || d.mul_add(range.first, s))?;
+                            if scalar(account, || exact.is_finite())? {
                                 return Scaled::new(exact, account);
                             }
                         }
@@ -282,14 +277,14 @@ fn scaled_geometry(
                 (
                     dx.mul(scale, account)?,
                     dy.mul(scale, account)?,
-                    origin(dx, start.x(), sx)?,
-                    origin(dy, start.y(), sy)?,
+                    origin(dx, start_x, sx)?,
+                    origin(dy, start_y, sy)?,
                 )
             } else {
                 (dx.shift(-shift), dy.shift(-shift), sx, sy)
             };
             let minus_v = Scaled {
-                mantissa: -v.mantissa,
+                mantissa: scalar(account, || -v.mantissa)?,
                 ..v
             };
             ([u, v, minus_v, u, ox, oy], None)
@@ -300,19 +295,21 @@ fn scaled_geometry(
             radius_y,
             ..
         } => {
+            // Center coordinates and axes are captured once and reused.
             account.work(RenderWork::CoordinateVisits, 4)?;
+            let (center_x, center_y, radius_x, radius_y) =
+                (center.x(), center.y(), *radius_x, *radius_y);
             let scale = if let Some(range) = range {
                 Scaled::new(range.scale, account)?
             } else {
                 Scaled::new(1.0, account)?.shift(-shift)
             };
-            let x = Scaled::new(*radius_x, account)?.mul(scale, account)?;
-            let y = Scaled::new(*radius_y, account)?.mul(scale, account)?;
+            let x = Scaled::new(radius_x, account)?.mul(scale, account)?;
+            let y = Scaled::new(radius_y, account)?.mul(scale, account)?;
             let reference = if let Some(range) = range {
-                account.work(RenderWork::CoordinateVisits, 2)?;
                 field::RadialReference {
-                    start: range.first / range.scale,
-                    end: range.last / range.scale,
+                    start: scalar(account, || range.first / range.scale)?,
+                    end: scalar(account, || range.last / range.scale)?,
                     delta: range.delta,
                 }
             } else {
@@ -328,8 +325,8 @@ fn scaled_geometry(
                     zero,
                     zero,
                     y,
-                    Scaled::new(center.x(), account)?,
-                    Scaled::new(center.y(), account)?,
+                    Scaled::new(center_x, account)?,
+                    Scaled::new(center_y, account)?,
                 ],
                 Some(reference),
             )
@@ -358,6 +355,37 @@ fn geometry(
     Ok((local, device, radial))
 }
 
+fn narrow_radial_radii(reference: field::RadialReference, account: &Account) -> Result<(f32, f32)> {
+    let start = scalar(account, || reference.start as f32)?;
+    let end = scalar(account, || reference.end as f32)?;
+    if !scalar(account, || start.is_finite())?
+        || !scalar(account, || end.is_finite())?
+        || scalar(account, || start >= end)?
+    {
+        return Err(Refusal::InsufficientNativeCapacity.into());
+    }
+    Ok((start, end))
+}
+
+fn qualify_stop_order(
+    position: f64,
+    offset: f32,
+    previous: Option<(f64, f32)>,
+    index: usize,
+    account: &Account,
+) -> Result<()> {
+    if !scalar(account, || offset.is_finite())? {
+        return Err(Refusal::UnrepresentableStop { stop_index: index }.into());
+    }
+    if let Some((p, n)) = previous
+        && scalar(account, || position > p)?
+        && scalar(account, || offset <= n)?
+    {
+        return Err(Refusal::UnrepresentableStop { stop_index: index }.into());
+    }
+    Ok(())
+}
+
 fn realize(
     gradient: &Gradient,
     range: Option<Range>,
@@ -369,11 +397,7 @@ fn realize(
     let (local, device, radial) = geometry(gradient, range, shift, transform, account)?;
     let comparison_only = range.is_none();
     if let Some(reference) = radial {
-        account.work(RenderWork::CoordinateVisits, 3)?;
-        let radii = (reference.start as f32, reference.end as f32);
-        if !radii.0.is_finite() || !radii.1.is_finite() || radii.0 >= radii.1 {
-            return Err(Refusal::InsufficientNativeCapacity.into());
-        }
+        let radii = narrow_radial_radii(reference, account)?;
         let native = field::narrow_transform(device, account).map_err(geometry_error)?;
         field::qualify_radial(
             device,
@@ -431,10 +455,10 @@ pub(super) fn prepare(
     let last = supplied[supplied.len() - 1];
     account.work(RenderWork::CoordinateVisits, 2)?;
     let (a, b) = (first.position(), last.position());
-    if matches!(gradient.kind(), GradientKind::Radial { .. }) && b <= 0.0 {
+    if matches!(gradient.kind(), GradientKind::Radial { .. }) && scalar(account, || b <= 0.0)? {
         return Ok(FrameBrush::solid(last.color().into()));
     }
-    let range = if a == b {
+    let range = if scalar(account, || a == b)? {
         None
     } else {
         Some(Range::new(a, b, account)?)
@@ -479,17 +503,15 @@ pub(super) fn prepare(
     let mut previous = None;
     for (index, stop) in supplied.iter().enumerate() {
         account.work(RenderWork::GradientStopVisits, 1)?;
-        let position = stop.position();
+        let position = scalar(account, || stop.position())?;
         let offset = if let Some(range) = range {
             range.normalize(position, account)?
         } else {
             0.0
         };
-        account.work(RenderWork::CoordinateVisits, 2)?;
-        if !offset.is_finite() || previous.is_some_and(|(p, n)| position > p && offset <= n) {
-            return Err(Refusal::UnrepresentableStop { stop_index: index }.into());
-        }
+        qualify_stop_order(position, offset, previous, index, account)?;
         previous = Some((position, offset));
+        // Native Color copies the four already validated source channels.
         account.work(RenderWork::CoordinateVisits, 4)?;
         stops.push_reserved(peniko::ColorStop::from((
             offset,
@@ -767,8 +789,7 @@ mod tests {
             &account,
         )
         .map_err(capacity_error)
-        .err()
-        .expect("the original native map must refuse fine overflow");
+        .expect_err("the original native map must refuse fine overflow");
         assert_eq!(
             error.gradient_realization_diagnostic(),
             Some(&Refusal::InsufficientNativeCapacity)
@@ -872,6 +893,212 @@ mod tests {
                 &Account::for_test()
             )
             .is_ok()
+        );
+    }
+    #[test]
+    fn adjacent_stop_qualification_counts_only_executed_float_predicates() {
+        use crate::accounting::{RenderAttemptKind, RenderPhase, RenderResource};
+        use crate::{RenderAccountingContext, RenderAccountingOptions, RenderLimits};
+        for (position, offset, previous, actions) in [
+            (0.0, 0.0, None, 1),
+            (0.0, 0.0, Some((0.0, 0.0)), 2),
+            (1.0, 1.0, Some((0.0, 0.0)), 3),
+        ] {
+            let mut context = RenderAccountingContext::default();
+            context
+                .run(
+                    RenderAttemptKind::Frame,
+                    RenderPhase::GradientPrepare,
+                    |account| qualify_stop_order(position, offset, previous, 1, account),
+                )
+                .unwrap();
+            // Finite offset; then source strict order if a predecessor exists;
+            // then native interval separation only for a strict source pair.
+            assert_eq!(
+                context
+                    .last_attempt()
+                    .unwrap()
+                    .usage()
+                    .work(RenderWork::CoordinateVisits),
+                actions
+            );
+        }
+        let mut context = RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::CoordinateVisits, 2)
+                    .unwrap(),
+            ),
+        );
+        let error = context
+            .run(
+                RenderAttemptKind::Frame,
+                RenderPhase::GradientPrepare,
+                |account| qualify_stop_order(1.0, 1.0, Some((0.0, 0.0)), 1, account),
+            )
+            .unwrap_err();
+        assert!(error.accounting_diagnostic().is_some());
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::CoordinateVisits),
+            2
+        );
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .live(RenderResource::ScratchCpuBytes),
+            0
+        );
+        assert!(qualify_stop_order(1., 1., Some((0., 0.)), 1, &Account::for_test()).is_ok());
+        let error =
+            qualify_stop_order(1., 0., Some((0., 0.)), 7, &Account::for_test()).unwrap_err();
+        assert_eq!(
+            error.gradient_realization_diagnostic(),
+            Some(&Refusal::UnrepresentableStop { stop_index: 7 })
+        );
+    }
+    #[test]
+    fn radial_radius_narrowing_admits_casts_and_each_executed_native_check() {
+        use crate::accounting::{RenderAttemptKind, RenderPhase};
+        use crate::{RenderAccountingContext, RenderAccountingOptions, RenderLimits};
+        let reference = field::RadialReference {
+            start: 0.,
+            end: 1.,
+            delta: 1.,
+        };
+        let mut context = RenderAccountingContext::default();
+        let radii = context
+            .run(
+                RenderAttemptKind::Frame,
+                RenderPhase::GradientPrepare,
+                |account| narrow_radial_radii(reference, account),
+            )
+            .unwrap();
+        assert_eq!(radii, (0., 1.));
+        // Two casts, two finiteness checks, one native radius-order comparison.
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::CoordinateVisits),
+            5
+        );
+        let mut context = RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::CoordinateVisits, 4)
+                    .unwrap(),
+            ),
+        );
+        let error = context
+            .run(
+                RenderAttemptKind::Frame,
+                RenderPhase::GradientPrepare,
+                |account| narrow_radial_radii(reference, account),
+            )
+            .unwrap_err();
+        assert!(error.accounting_diagnostic().is_some());
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::CoordinateVisits),
+            4
+        );
+        assert_eq!(
+            narrow_radial_radii(reference, &Account::for_test()).unwrap(),
+            (0., 1.)
+        );
+    }
+    #[test]
+    fn degenerate_line_decision_admits_range_equality_and_both_point_components() {
+        use crate::accounting::{RenderAttemptKind, RenderPhase, RenderResource};
+        use crate::{RenderAccountingContext, RenderAccountingOptions, RenderLimits};
+        let gradient = Gradient::try_linear(
+            Point::new(2., 3.),
+            Point::new(2., 3.),
+            vec![
+                GradientStop::try_new(0., Color::BLACK).unwrap(),
+                GradientStop::try_new(1., Color::TRANSPARENT).unwrap(),
+            ],
+        )
+        .unwrap();
+        let mut context = RenderAccountingContext::default();
+        let error = context
+            .run(
+                RenderAttemptKind::Frame,
+                RenderPhase::GradientPrepare,
+                |account| {
+                    prepare(
+                        &gradient,
+                        kurbo::Affine::IDENTITY,
+                        PhysicalSize::new(8, 8),
+                        account,
+                    )
+                    .map(drop)
+                },
+            )
+            .unwrap_err();
+        assert_eq!(
+            error.gradient_realization_diagnostic(),
+            Some(&Refusal::DegenerateLinearField)
+        );
+        // Two stop-position captures, source equality, subtraction+finiteness
+        // for the nonzero range, Scaled zero check, four point captures, and
+        // both executed point-component comparisons.
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::CoordinateVisits),
+            12
+        );
+        let mut context = RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::CoordinateVisits, 11)
+                    .unwrap(),
+            ),
+        );
+        let error = context
+            .run(
+                RenderAttemptKind::Frame,
+                RenderPhase::GradientPrepare,
+                |account| {
+                    prepare(
+                        &gradient,
+                        kurbo::Affine::IDENTITY,
+                        PhysicalSize::new(8, 8),
+                        account,
+                    )
+                    .map(drop)
+                },
+            )
+            .unwrap_err();
+        assert!(error.accounting_diagnostic().is_some());
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::CoordinateVisits),
+            11
+        );
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .live(RenderResource::ScratchCpuBytes),
+            0
         );
     }
 }

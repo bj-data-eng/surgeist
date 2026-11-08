@@ -1038,25 +1038,36 @@ fn prepare_sweep_gradient(gradient: &Gradient, account: &Account) -> Result<Fram
     let endpoints = if supplied.len() >= 2 {
         account.work(RenderWork::GradientStopVisits, 1)?;
         let first = supplied[0];
-        account.work(RenderWork::CoordinateVisits, 1)?;
-        let first = (first.position(), first.color());
+        let first = (
+            ordinary_gradient::scalar(account, || first.position())?,
+            first.color(),
+        );
         account.work(RenderWork::GradientStopVisits, 1)?;
         let last = supplied[supplied.len() - 1];
-        account.work(RenderWork::CoordinateVisits, 1)?;
-        let last = (last.position(), last.color());
-        account.work(RenderWork::CoordinateVisits, 1)?;
-        let (first, last) = if first.0 == last.0 {
+        let last = (
+            ordinary_gradient::scalar(account, || last.position())?,
+            last.color(),
+        );
+        let (first, last) = if ordinary_gradient::scalar(account, || first.0 == last.0)? {
             step = true;
             for stop in supplied {
                 account.work(RenderWork::GradientStopVisits, 1)?;
-                account.work(RenderWork::CoordinateVisits, 1)?;
-                step &= stop.position() == first.0;
+                let position = ordinary_gradient::scalar(account, || stop.position())?;
+                step &= ordinary_gradient::scalar(account, || position == first.0)?;
             }
             let cutoff = ordinary_gradient::cutoff(first.0, 0, account)?;
             ((cutoff, first.1), (cutoff, last.1))
         } else {
-            account.work(RenderWork::CoordinateVisits, 2)?;
-            ((first.0 as f32, first.1), (last.0 as f32, last.1))
+            (
+                (
+                    ordinary_gradient::scalar(account, || first.0 as f32)?,
+                    first.1,
+                ),
+                (
+                    ordinary_gradient::scalar(account, || last.0 as f32)?,
+                    last.1,
+                ),
+            )
         };
         Some(PadEndpoints::new(first, last, account)?)
     } else {
@@ -1078,9 +1089,11 @@ fn prepare_sweep_gradient(gradient: &Gradient, account: &Account) -> Result<Fram
     // leading endpoint, into backing whose actual capacity is already admitted.
     if let Some(stop) = leading {
         account.work(RenderWork::GradientStopVisits, 1)?;
-        account.work(RenderWork::CoordinateVisits, 5)?;
+        let position = ordinary_gradient::scalar(account, || stop.position())?;
+        let offset = ordinary_gradient::scalar(account, || position as f32)?;
+        account.work(RenderWork::CoordinateVisits, 4)?;
         stops.push_reserved(peniko::ColorStop::from((
-            stop.position() as f32,
+            offset,
             peniko::Color::from(stop.color()),
         )));
     }
@@ -1088,23 +1101,29 @@ fn prepare_sweep_gradient(gradient: &Gradient, account: &Account) -> Result<Fram
     let mut ordered = true;
     for (index, stop) in supplied.iter().enumerate() {
         account.work(RenderWork::GradientStopVisits, 1)?;
-        account.work(RenderWork::CoordinateVisits, 2)?;
-        let position = stop.position();
-        let offset = if step { 0.0 } else { position as f32 };
-        account.work(RenderWork::CoordinateVisits, 1)?;
-        if !step && position != 0.0 && offset == 0.0 {
+        let position = ordinary_gradient::scalar(account, || stop.position())?;
+        let offset = if step {
+            0.0
+        } else {
+            ordinary_gradient::scalar(account, || position as f32)?
+        };
+        if !step
+            && ordinary_gradient::scalar(account, || position != 0.0)?
+            && ordinary_gradient::scalar(account, || offset == 0.0)?
+        {
             return Err(GradientRealizationError::UnrepresentableStop { stop_index: index }.into());
         }
         if let Some((previous_position, previous_offset)) = previous {
-            account.work(RenderWork::CoordinateVisits, 3)?;
-            let source_order = position.partial_cmp(&previous_position);
-            let native_order = offset.partial_cmp(&previous_offset);
+            let source_order =
+                ordinary_gradient::scalar(account, || position.partial_cmp(&previous_position))?;
+            let native_order =
+                ordinary_gradient::scalar(account, || offset.partial_cmp(&previous_offset))?;
             if source_order != native_order {
                 return Err(
                     GradientRealizationError::UnrepresentableStop { stop_index: index }.into(),
                 );
             }
-            ordered &= position >= previous_position;
+            ordered &= ordinary_gradient::scalar(account, || position >= previous_position)?;
         }
         previous = Some((position, offset));
         account.work(RenderWork::CoordinateVisits, 4)?;
@@ -1118,11 +1137,12 @@ fn prepare_sweep_gradient(gradient: &Gradient, account: &Account) -> Result<Fram
         crate::paint::GradientKind::Linear { .. } | crate::paint::GradientKind::Radial { .. } => {
             unreachable!("ordinary fields use per-use preparation")
         }
-        crate::paint::GradientKind::Sweep { center, .. } => peniko::Gradient::new_sweep(
-            (center.x() as f32, center.y() as f32),
-            0.0,
-            std::f32::consts::TAU,
-        ),
+        crate::paint::GradientKind::Sweep { center, .. } => {
+            let (x, y) = (center.x(), center.y());
+            let x = ordinary_gradient::scalar(account, || x as f32)?;
+            let y = ordinary_gradient::scalar(account, || y as f32)?;
+            peniko::Gradient::new_sweep((x, y), 0.0, std::f32::consts::TAU)
+        }
     };
     let mut brush = gradient_with_stops(output, stops, None)?;
     brush.endpoints = endpoints.filter(|_| ordered);

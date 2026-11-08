@@ -554,7 +554,9 @@ impl Gradient {
         account.work(crate::accounting::RenderWork::GradientStopVisits, 1)?;
         let first = self.stops()[0];
         account.work(crate::accounting::RenderWork::CoordinateVisits, 1)?;
-        Ok((first.position > 0.0).then_some(GradientStop {
+        let position = first.position;
+        account.work(crate::accounting::RenderWork::CoordinateVisits, 1)?;
+        Ok((position > 0.0).then_some(GradientStop {
             position: 0.0,
             color: first.color,
         }))
