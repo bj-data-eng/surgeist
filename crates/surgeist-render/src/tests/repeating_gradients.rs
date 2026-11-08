@@ -932,3 +932,176 @@ fn circular_center_and_positive_ramps_hold_for_every_antialiasing_mode() {
         }
     }
 }
+
+fn assert_linear_glyph_phase_refusal(far_center: f64, unrepresentable_paint: RepeatingGradient) {
+    let mut renderer = renderer();
+    let graph_format = graph_supported_working_formats_for_test(&mut renderer)
+        .into_iter()
+        .next()
+        .unwrap();
+    let mut surface = surface(&mut renderer, 32.0, 32.0, 1.0);
+    let mut baseline = Scene::new();
+    baseline.fill(Rect::new(0.0, 0.0, 32.0, 32.0), rgba(0.0, 1.0, 0.0, 1.0));
+
+    let native_scene = |center: f64, paint: Paint| {
+        // Ahem X is a square with font bounds [0,-200,1000,800] at
+        // 1000 units/em. Size 32 and baseline 25.6 put its run-local ink
+        // at [center,center+32] by [0,32], with explicit matching bounds.
+        let glyphs = [TextGlyph::try_new(AHEM_GLYPH_X, center, 25.6, 32.0).unwrap()];
+        let mut scene = Scene::new();
+        scene.text_run(
+            TextRun::try_new(
+                ahem_font("linear glyph phase capacity"),
+                32.0,
+                Transform::translation(-center, 0.0).unwrap(),
+                TextPaint::try_fill(paint).unwrap(),
+                &glyphs,
+                TextRunBounds::try_ink(Rect::new(center, 0.0, 32.0, 32.0)).unwrap(),
+            )
+            .unwrap(),
+        );
+        scene
+    };
+    let gradient_at = |center: f64| {
+        RepeatingGradient::try_linear(
+            Point::new(center + 1.0, 0.0),
+            Point::new(center + 17.0, 0.0),
+            stops(&[(0.0, red()), (1.0, blue())]),
+        )
+        .unwrap()
+    };
+    let unrepresentable = native_scene(far_center, unrepresentable_paint.into());
+    let far_solid = native_scene(far_center, Color::BLACK.into());
+    let near_pattern = native_scene(0.0, gradient_at(0.0).into());
+
+    for format in [None, Some(graph_format)] {
+        let before = render_route(&mut renderer, &mut surface, &baseline, format);
+        assert_pixel(&before, 1, 8, [0, 255, 0, 255], 2);
+        assert_pixel(&before, 8, 8, [0, 255, 0, 255], 2);
+        let successful = renderer.stats();
+        let publication = surface.headless_publication_count_for_test();
+
+        // Each case has a resolved device period but loses its phase while
+        // compensating or narrowing the native glyph paint map. Refuse that
+        // paint before publishing pixels or successful statistics.
+        let result = if let Some(format) = format {
+            pollster::block_on(renderer.render_forced_base_graph_for_test(
+                &mut surface,
+                &unrepresentable,
+                Parameters::default(),
+                format,
+            ))
+            .map(|result| result.stats)
+        } else {
+            pollster::block_on(renderer.render(
+                &mut surface,
+                &unrepresentable,
+                Parameters::default(),
+            ))
+        };
+        let error = result.unwrap_err();
+        assert_eq!(error.code(), ErrorCode::InvalidInput);
+        assert!(error.invalid_value_diagnostic().is_some());
+        assert_eq!(renderer.stats(), successful);
+        assert_eq!(surface.headless_publication_count_for_test(), publication);
+        let report = renderer.take_last_attempt().unwrap();
+        assert_eq!(
+            report.status(),
+            RenderAttemptStatus::Failed(ErrorCode::InvalidInput)
+        );
+        assert_eq!(
+            report
+                .attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::Submissions),
+            0
+        );
+        assert_eq!(
+            pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+            before
+        );
+
+        // The same far glyph and bounds remain representable geometry when
+        // its paint does not require the lost linear field phase.
+        let solid = render_route(&mut renderer, &mut surface, &far_solid, format);
+        assert_pixel(&solid, 1, 8, [0, 0, 0, 255], 2);
+        assert_pixel(&solid, 8, 8, [0, 0, 0, 255], 2);
+        assert_eq!(
+            surface.headless_publication_count_for_test(),
+            publication + 1
+        );
+        assert_eq!(
+            renderer.last_attempt().unwrap().status(),
+            RenderAttemptStatus::Succeeded
+        );
+
+        // The center-zero native glyph has the same intended device field.
+        // Integer x=1 has phase 0, and x=8 has phase (8-1)/16=7/16.
+        // Opaque red/blue interpolation gives red 255 and then
+        // (255*9/16,0,255*7/16,255), rounded to [143,0,112,255].
+        let retried = render_route(&mut renderer, &mut surface, &near_pattern, format);
+        assert_pixel(&retried, 1, 8, [255, 0, 0, 255], 3);
+        assert_pixel(&retried, 8, 8, [143, 0, 112, 255], 3);
+        assert_eq!(
+            surface.headless_publication_count_for_test(),
+            publication + 2
+        );
+        assert_eq!(
+            renderer.last_attempt().unwrap().status(),
+            RenderAttemptStatus::Succeeded
+        );
+    }
+}
+
+#[test]
+fn unrepresentable_linear_glyph_factors_refuse_atomically_and_allow_valid_retry() {
+    let center = 268_435_456.0;
+    // The intended device line is [1,17], but f32(C+1) == f32(C).
+    assert_linear_glyph_phase_refusal(
+        center,
+        RepeatingGradient::try_linear(
+            Point::new(center + 1.0, 0.0),
+            Point::new(center + 17.0, 0.0),
+            stops(&[(0.0, red()), (1.0, blue())]),
+        )
+        .unwrap(),
+    );
+}
+
+#[test]
+fn rounded_linear_glyph_compensation_refuses_atomically_and_allows_valid_retry() {
+    let center = 2.0_f64.powi(53);
+    // (-C) mod 19 == 9, but C+9 rounds to C+8 in f64. At integer
+    // x=8 the intended phase is 18/19, independent of that lost compensation.
+    assert_eq!((-center).rem_euclid(19.0), 9.0);
+    assert_eq!((center + 9.0) - center, 8.0);
+    assert_linear_glyph_phase_refusal(
+        center,
+        RepeatingGradient::try_linear(
+            Point::new(0.0, 0.0),
+            Point::new(19.0, 0.0),
+            stops(&[(0.0, red()), (1.0, blue())]),
+        )
+        .unwrap(),
+    );
+}
+
+#[test]
+fn collapsed_linear_glyph_compensation_refuses_atomically_and_allows_valid_retry() {
+    let center = 2.0_f64.powi(57);
+    // (-C) mod 17 == 15, but C+15 rounds to C in f64. Both recomposed
+    // f64 and native maps would have origin zero; neither is a valid reference
+    // for the intended phase (8-15)/17 mod 1 == 10/17 at integer x=8.
+    assert_eq!((-center).rem_euclid(17.0), 15.0);
+    assert_eq!(center + 15.0, center);
+    assert_linear_glyph_phase_refusal(
+        center,
+        RepeatingGradient::try_linear(
+            Point::new(0.0, 0.0),
+            Point::new(17.0, 0.0),
+            stops(&[(0.0, red()), (1.0, blue())]),
+        )
+        .unwrap(),
+    );
+}
