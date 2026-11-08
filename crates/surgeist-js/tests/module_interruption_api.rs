@@ -913,3 +913,201 @@ fn a_locally_adopted_foreign_cause_identity_does_not_admit_an_unrelated_foreign_
     assert_eq!(primitive.object_identity(), None);
     assert!(members.next().is_none());
 }
+
+mod final_settlement {
+    use std::cell::Cell;
+
+    use surgeist_js::{
+        Context, JsError, JsObject, JsValue, Module, NativeFunction, Source,
+        builtins::promise::PromiseState,
+        error::{DiagnosticEngine, DiagnosticKind, EngineError, RuntimeLimitError},
+        execution::ExecutionOptions,
+        js_string,
+    };
+
+    thread_local! {
+        static ARM_CALLS: Cell<usize> = const { Cell::new(0) };
+    }
+
+    fn assert_recursion_refusal(error: &JsError) {
+        assert_eq!(
+            error.as_engine(),
+            Some(&EngineError::RuntimeLimit(RuntimeLimitError::Recursion))
+        );
+    }
+
+    fn observe(module: &Module, context: &mut Context) -> JsError {
+        let observed = context
+            .with_execution(ExecutionOptions::new(100_000), |access| {
+                module.evaluate(access)
+            })
+            .unwrap();
+        assert_eq!(observed.report.instructions(), 0);
+        let error = observed
+            .result
+            .expect_err("failed final publication makes this instance terminal");
+        let Some(EngineError::ModuleInterrupted(interruption)) = error.as_engine() else {
+            panic!("a fresh request needs the distinct typed interruption: {error:?}")
+        };
+        assert_eq!(
+            interruption.cause().kind(),
+            DiagnosticKind::Engine(DiagnosticEngine::RuntimeLimit(RuntimeLimitError::Recursion))
+        );
+        error
+    }
+
+    fn assert_final_publication_is_terminal(guest_throw: bool) {
+        ARM_CALLS.with(|calls| calls.set(0));
+        let builder = Context::builder();
+        #[cfg(feature = "fuzz")]
+        let builder = builder.instructions_remaining(1_000_000);
+        let mut context = builder.build().unwrap();
+        let saved_limits = context.runtime_limits();
+        context
+            .register_global_builtin_callable(
+                js_string!("armFinalPublicationRefusal"),
+                0,
+                NativeFunction::from_fn_ptr(|_, _, mut access| {
+                    ARM_CALLS.with(|calls| calls.set(calls.get() + 1));
+                    let mut limits = access.runtime_limits();
+                    limits.set_recursion_limit(0);
+                    access.set_runtime_limits(limits);
+                    Ok(JsValue::undefined())
+                }),
+            )
+            .unwrap();
+        context
+            .global_object()
+            .set(js_string!("publicationEffects"), 0, true, context.access())
+            .unwrap();
+        context
+            .global_object()
+            .set(
+                js_string!("publicationBodyCompleted"),
+                false,
+                true,
+                context.access(),
+            )
+            .unwrap();
+        let reason = JsObject::with_null_proto(context.runtime());
+        reason
+            .set(
+                js_string!("tag"),
+                js_string!("authored guest reason"),
+                true,
+                context.access(),
+            )
+            .unwrap();
+        context
+            .global_object()
+            .set(
+                js_string!("publicationGuestReason"),
+                reason.clone(),
+                true,
+                context.access(),
+            )
+            .unwrap();
+        let source = if guest_throw {
+            "globalThis.publicationEffects += 1;
+             armFinalPublicationRefusal();
+             globalThis.publicationBodyCompleted = true;
+             throw publicationGuestReason;"
+        } else {
+            "globalThis.publicationEffects += 1;
+             armFinalPublicationRefusal();
+             globalThis.publicationBodyCompleted = true;"
+        };
+        // The setter is the body's last callable operation. The following data
+        // property write proves it returned and the guest body continued, with
+        // no additional guest/host call before final resolve/reject publication.
+        let module = Module::parse(Source::from_bytes(source), None, context.access()).unwrap();
+        let loaded = module.load(context.access()).unwrap();
+        assert_eq!(
+            loaded.state(),
+            PromiseState::Fulfilled(JsValue::undefined())
+        );
+        module.link(context.access()).unwrap();
+        let mut direct = None;
+        let outcome = context
+            .with_execution(ExecutionOptions::new(100_000), |access| {
+                let result = module.evaluate(access);
+                direct = Some(result.clone());
+                result
+            })
+            .unwrap();
+        // Restore through the host API before any observation that could need a
+        // new runtime entry. This must not be a retry with the armed zero limit.
+        let armed_limit = context.runtime_limits().recursion_limit();
+        context.set_runtime_limits(saved_limits);
+        assert_eq!(armed_limit, 0);
+        ARM_CALLS.with(|calls| assert_eq!(calls.get(), 1));
+        assert_eq!(
+            context
+                .global_object()
+                .get(js_string!("publicationBodyCompleted"), context.access())
+                .unwrap(),
+            true.into(),
+            "the stimulus must reach the end of the body rather than fail during the native setter"
+        );
+        assert_eq!(
+            context
+                .global_object()
+                .get(js_string!("publicationEffects"), context.access())
+                .unwrap(),
+            1.into()
+        );
+        assert_recursion_refusal(
+            &direct
+                .unwrap()
+                .expect_err("final intrinsic publication must refuse the armed recursion limit"),
+        );
+        assert_recursion_refusal(&outcome.result.unwrap_err());
+        assert!(outcome.report.instructions() > 0);
+        assert!(outcome.report.instructions() < 100_000);
+        assert_eq!(
+            reason.get(js_string!("tag"), context.access()).unwrap(),
+            js_string!("authored guest reason").into()
+        );
+        assert_eq!(
+            context
+                .global_object()
+                .get(js_string!("publicationGuestReason"), context.access())
+                .unwrap()
+                .as_object()
+                .unwrap()
+                .identity(),
+            reason.identity()
+        );
+
+        let first = observe(&module, &mut context);
+        let repeated = observe(&module, &mut context);
+        let (
+            Some(EngineError::ModuleInterrupted(first)),
+            Some(EngineError::ModuleInterrupted(repeated)),
+        ) = (first.as_engine(), repeated.as_engine())
+        else {
+            unreachable!()
+        };
+        assert_eq!(first.identity(), repeated.identity());
+        assert_eq!(first.cause(), repeated.cause());
+        assert_eq!(
+            context
+                .global_object()
+                .get(js_string!("publicationEffects"), context.access())
+                .unwrap(),
+            1.into(),
+            "terminal observation cannot replay the accepted body effect"
+        );
+        ARM_CALLS.with(|calls| assert_eq!(calls.get(), 1));
+    }
+
+    #[test]
+    fn successful_body_final_resolve_refusal_is_retained_as_module_interruption() {
+        assert_final_publication_is_terminal(false);
+    }
+
+    #[test]
+    fn guest_throw_final_reject_refusal_is_retained_as_the_original_host_stop() {
+        assert_final_publication_is_terminal(true);
+    }
+}
