@@ -368,6 +368,9 @@ impl Context {
                 ExecutionPhase::Lifetime => 0,
                 ExecutionPhase::VmActive => 1,
                 ExecutionPhase::VmWaiting => 2,
+                ExecutionPhase::JobPreparation => 3,
+                ExecutionPhase::JobInvocation => 4,
+                ExecutionPhase::JobPoll => 5,
             };
             execution
                 .ledger

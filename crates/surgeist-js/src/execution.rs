@@ -16,7 +16,9 @@
 //! phase includes suspension. `vm-active` observes synchronous VM calls and
 //! individual async quanta; `vm-waiting` observes their cooperative scheduling
 //! waits. These are inclusive elapsed intervals, not CPU time or disjoint sums.
-//! Host future internals are opaque; these timings do not certify their work.
+//! The `job-prepare`, `job-invoke` and `job-poll` phases observe admitted
+//! synchronous job actions and their owned cleanup. No job observation spans
+//! Pending. Host future internals are opaque; these timings do not certify their work.
 
 use std::time::Duration;
 
@@ -48,33 +50,36 @@ use crate::{
 
 pub use surgeist_ledger::{EventFilter, ProfileMode};
 
-const INSTRUCTION: Work<27> = Work::new(0).unwrap();
-const SOURCE_READ: Work<27> = Work::new(1).unwrap();
-const SOURCE_CONSUMPTION: Work<27> = Work::new(2).unwrap();
-const SOURCE_RETENTION: Work<27> = Work::new(3).unwrap();
-const LEXER_LOOKAHEAD: Work<27> = Work::new(4).unwrap();
-const LEXER_DISPATCH: Work<27> = Work::new(5).unwrap();
-const TOKEN_PROBE: Work<27> = Work::new(6).unwrap();
-const TOKEN_ADVANCE: Work<27> = Work::new(7).unwrap();
-const GRAMMAR_DISPATCH: Work<27> = Work::new(8).unwrap();
-const EARLY_ERROR_VISIT: Work<27> = Work::new(9).unwrap();
-const LABEL_LOOKUP: Work<27> = Work::new(10).unwrap();
-const DIRECT_EVAL_VISIT: Work<27> = Work::new(11).unwrap();
-const NAME_VISIT: Work<27> = Work::new(12).unwrap();
-const NAME_RECORD: Work<27> = Work::new(13).unwrap();
-const NAME_COMPARISON: Work<27> = Work::new(14).unwrap();
-const INTERNER_BYTES: Work<27> = Work::new(15).unwrap();
-const INTERNER_UTF16: Work<27> = Work::new(16).unwrap();
-const INTERNER_INDEX: Work<27> = Work::new(17).unwrap();
-const INTERNER_CAPACITY: Work<27> = Work::new(18).unwrap();
-const INTERNER_RELOCATION: Work<27> = Work::new(19).unwrap();
-const DIAGNOSTIC_INPUT: Work<27> = Work::new(20).unwrap();
-const DIAGNOSTIC_OUTPUT: Work<27> = Work::new(21).unwrap();
-const TEMPLATE_INPUT: Work<27> = Work::new(22).unwrap();
-const TEMPLATE_OUTPUT: Work<27> = Work::new(23).unwrap();
-const SCOPE_WORK: Work<27> = Work::new(24).unwrap();
-const OPTIMIZER_WORK: Work<27> = Work::new(25).unwrap();
-const COMPILER_WORK: Work<27> = Work::new(26).unwrap();
+const INSTRUCTION: Work<30> = Work::new(0).unwrap();
+const SOURCE_READ: Work<30> = Work::new(1).unwrap();
+const SOURCE_CONSUMPTION: Work<30> = Work::new(2).unwrap();
+const SOURCE_RETENTION: Work<30> = Work::new(3).unwrap();
+const LEXER_LOOKAHEAD: Work<30> = Work::new(4).unwrap();
+const LEXER_DISPATCH: Work<30> = Work::new(5).unwrap();
+const TOKEN_PROBE: Work<30> = Work::new(6).unwrap();
+const TOKEN_ADVANCE: Work<30> = Work::new(7).unwrap();
+const GRAMMAR_DISPATCH: Work<30> = Work::new(8).unwrap();
+const EARLY_ERROR_VISIT: Work<30> = Work::new(9).unwrap();
+const LABEL_LOOKUP: Work<30> = Work::new(10).unwrap();
+const DIRECT_EVAL_VISIT: Work<30> = Work::new(11).unwrap();
+const NAME_VISIT: Work<30> = Work::new(12).unwrap();
+const NAME_RECORD: Work<30> = Work::new(13).unwrap();
+const NAME_COMPARISON: Work<30> = Work::new(14).unwrap();
+const INTERNER_BYTES: Work<30> = Work::new(15).unwrap();
+const INTERNER_UTF16: Work<30> = Work::new(16).unwrap();
+const INTERNER_INDEX: Work<30> = Work::new(17).unwrap();
+const INTERNER_CAPACITY: Work<30> = Work::new(18).unwrap();
+const INTERNER_RELOCATION: Work<30> = Work::new(19).unwrap();
+const DIAGNOSTIC_INPUT: Work<30> = Work::new(20).unwrap();
+const DIAGNOSTIC_OUTPUT: Work<30> = Work::new(21).unwrap();
+const TEMPLATE_INPUT: Work<30> = Work::new(22).unwrap();
+const TEMPLATE_OUTPUT: Work<30> = Work::new(23).unwrap();
+const SCOPE_WORK: Work<30> = Work::new(24).unwrap();
+const OPTIMIZER_WORK: Work<30> = Work::new(25).unwrap();
+const COMPILER_WORK: Work<30> = Work::new(26).unwrap();
+const JOB_PREPARATION: Work<30> = Work::new(27).unwrap();
+const JOB_INVOCATION: Work<30> = Work::new(28).unwrap();
+const JOB_POLL: Work<30> = Work::new(29).unwrap();
 const OPTIMIZER_ORIGINS: [&str; 21] = [
     "optimizer-visit",
     "optimizer-iteration",
@@ -133,7 +138,7 @@ const COMPILER_ORIGINS: [&str; 32] = [
     "compiler-environment-probe",
 ];
 // Root, frontend + four sources, three scope phases + 36 origins, optimizer
-// + 21 origins, 32 compiler origins, and three execution lifetime/slice scopes.
+// + 21 origins, 32 compiler origins, three lifetime/VM scopes and three job scopes.
 const FIXED_SCOPES: usize = 1
     + 1
     + 4
@@ -142,7 +147,7 @@ const FIXED_SCOPES: usize = 1
     + 1
     + OPTIMIZER_ORIGINS.len()
     + COMPILER_ORIGINS.len()
-    + 3;
+    + 6;
 const SCOPE_ORIGINS: [&str; 12] = [
     "scope-node",
     "scope-probe",
@@ -157,7 +162,7 @@ const SCOPE_ORIGINS: [&str; 12] = [
     "scope-publication",
     "scope-context-validation",
 ];
-type ExecutionLedger = Operation<27, 0>;
+type ExecutionLedger = Operation<30, 0>;
 
 // The shared producer offsets retain the existing optimizer origin order.
 fn string_charge(work: StringWork) -> (usize, u64) {
@@ -182,7 +187,7 @@ fn primitive_charge(work: PrimitiveWork) -> (usize, u64) {
     }
 }
 
-fn compiler_charge(work: CompilerWork) -> (usize, Work<27>, u64) {
+fn compiler_charge(work: CompilerWork) -> (usize, Work<30>, u64) {
     let (origin, units) = match work {
         CompilerWork::Visit => (0, 1),
         CompilerWork::Search => (1, 1),
@@ -240,10 +245,10 @@ fn scope_charge(work: ScopeWork) -> (usize, u64) {
 }
 
 fn charge_interner(
-    phase: &mut Phase<'_, 27, 0>,
+    phase: &mut Phase<'_, 30, 0>,
     scope: Scope,
     work: InternerWork,
-) -> Result<(), LedgerError<27, 0>> {
+) -> Result<(), LedgerError<30, 0>> {
     match work {
         InternerWork::Hash { encoding, units }
         | InternerWork::Compare { encoding, units }
@@ -307,6 +312,9 @@ fn charge_interner(
 #[derive(Clone, Copy, Debug)]
 pub struct ExecutionOptions {
     instruction_limit: u64,
+    job_preparation_limit: u64,
+    job_invocation_limit: u64,
+    job_poll_limit: u64,
     source_read_limit: u64,
     source_consumption_limit: u64,
     source_retention_limit: u64,
@@ -343,6 +351,9 @@ impl ExecutionOptions {
     pub const fn new(instruction_limit: u64) -> Self {
         Self {
             instruction_limit,
+            job_preparation_limit: u64::MAX,
+            job_invocation_limit: u64::MAX,
+            job_poll_limit: u64::MAX,
             source_read_limit: u64::MAX,
             source_consumption_limit: u64::MAX,
             source_retention_limit: u64::MAX,
@@ -373,6 +384,27 @@ impl ExecutionOptions {
             profile: ProfileMode::Off,
             clock: None,
         }
+    }
+
+    /// Caps internal future creations by native asynchronous job calls.
+    #[must_use]
+    pub const fn with_job_preparation_limit(mut self, limit: u64) -> Self {
+        self.job_preparation_limit = limit;
+        self
+    }
+
+    /// Caps transfers of control to synchronous native job callbacks.
+    #[must_use]
+    pub const fn with_job_invocation_limit(mut self, limit: u64) -> Self {
+        self.job_invocation_limit = limit;
+        self
+    }
+
+    /// Caps actual native asynchronous job future polls, including Pending polls.
+    #[must_use]
+    pub const fn with_job_poll_limit(mut self, limit: u64) -> Self {
+        self.job_poll_limit = limit;
+        self
     }
 
     /// Caps optimizer traversal, rewrite preparation and delegated operand work.
@@ -616,13 +648,36 @@ pub(crate) enum ExecutionPhase {
     Lifetime,
     VmActive,
     VmWaiting,
+    JobPreparation,
+    JobInvocation,
+    JobPoll,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum JobAction {
+    Preparation,
+    Invocation,
+    Poll,
+}
+
+impl JobAction {
+    pub(crate) const fn phase(self) -> ExecutionPhase {
+        match self {
+            Self::Preparation => ExecutionPhase::JobPreparation,
+            Self::Invocation => ExecutionPhase::JobInvocation,
+            Self::Poll => ExecutionPhase::JobPoll,
+        }
+    }
 }
 
 pub(crate) struct Execution {
     ledger: ExecutionLedger,
     prepared_report: PreparedReport,
-    execution_phases: [Scope; 3],
+    execution_phases: [Scope; 6],
     instruction_limit: u64,
+    job_preparation_limit: u64,
+    job_invocation_limit: u64,
+    job_poll_limit: u64,
     source_read_limit: u64,
     source_consumption_limit: u64,
     source_retention_limit: u64,
@@ -696,6 +751,9 @@ impl Execution {
                 options.scope_work_limit,
                 options.optimizer_work_limit,
                 options.compiler_work_limit,
+                options.job_preparation_limit,
+                options.job_invocation_limit,
+                options.job_poll_limit,
             ],
             [],
         );
@@ -768,12 +826,15 @@ impl Execution {
                 )
                 .map_err(Self::setup_error)?;
         }
-        let mut execution_phases = [ledger.root(); 3];
-        for (slot, name) in
-            execution_phases
-                .iter_mut()
-                .zip(["execution-lifetime", "vm-active", "vm-waiting"])
-        {
+        let mut execution_phases = [ledger.root(); 6];
+        for (slot, name) in execution_phases.iter_mut().zip([
+            "execution-lifetime",
+            "vm-active",
+            "vm-waiting",
+            "job-prepare",
+            "job-invoke",
+            "job-poll",
+        ]) {
             *slot = ledger
                 .child(
                     ledger.root(),
@@ -788,6 +849,9 @@ impl Execution {
             prepared_report: PreparedReport::new(),
             execution_phases,
             instruction_limit: options.instruction_limit,
+            job_preparation_limit: options.job_preparation_limit,
+            job_invocation_limit: options.job_invocation_limit,
+            job_poll_limit: options.job_poll_limit,
             source_read_limit: options.source_read_limit,
             source_consumption_limit: options.source_consumption_limit,
             source_retention_limit: options.source_retention_limit,
@@ -831,7 +895,7 @@ impl Execution {
         })
     }
 
-    fn setup_error(error: LedgerError<27, 0>) -> ExecutionSetupError {
+    fn setup_error(error: LedgerError<30, 0>) -> ExecutionSetupError {
         match error {
             LedgerError::Allocation => ExecutionSetupError::Allocation,
             LedgerError::IdentityExhausted => ExecutionSetupError::IdentityExhausted,
@@ -1254,6 +1318,42 @@ impl Execution {
         }
     }
 
+    fn charge_job_action(&mut self, action: JobAction) -> JsResult<()> {
+        if let Some(stop) = &self.stop {
+            return Err(stop.clone());
+        }
+        let (work, refusal) = match action {
+            JobAction::Preparation => (
+                JOB_PREPARATION,
+                RuntimeLimitError::JobPreparation {
+                    limit: self.job_preparation_limit,
+                },
+            ),
+            JobAction::Invocation => (
+                JOB_INVOCATION,
+                RuntimeLimitError::JobInvocation {
+                    limit: self.job_invocation_limit,
+                },
+            ),
+            JobAction::Poll => (
+                JOB_POLL,
+                RuntimeLimitError::JobPoll {
+                    limit: self.job_poll_limit,
+                },
+            ),
+        };
+        let scope = self.execution_phases[match action {
+            JobAction::Preparation => 3,
+            JobAction::Invocation => 4,
+            JobAction::Poll => 5,
+        }];
+        match self.ledger.apply(scope, Change::Work(work, 1)) {
+            Ok(()) => Ok(()),
+            Err(LedgerError::Refused(_)) => Err(refusal.into()),
+            Err(_) => unreachable!("job admission uses its preallocated action scope"),
+        }
+    }
+
     /// Records an actual accepted execution event; nested work cannot clear it.
     pub(crate) fn note_effect(&mut self) {
         self.effects_started = true;
@@ -1265,6 +1365,17 @@ impl Execution {
 }
 
 impl crate::Context {
+    /// Admits one engine-owned job action on the currently selected operation.
+    pub(crate) fn admit_job_action(&mut self, action: JobAction) -> JsResult<()> {
+        if let Some(execution) = &mut self.execution
+            && let Err(stop) = execution.charge_job_action(action)
+        {
+            execution.retain_stop(&stop);
+            return Err(stop);
+        }
+        Ok(())
+    }
+
     /// Called immediately before an accepted callback or declaration mutation.
     pub(crate) fn note_execution_effect(&mut self) {
         if let Some(execution) = &mut self.execution {

@@ -753,12 +753,17 @@ impl Context {
     /// Returns the previous realm on success.
     #[inline]
     pub fn enter_realm(&mut self, realm: Realm) -> JsResult<Realm> {
+        self.check_realm(&realm)?;
+        Ok(std::mem::replace(&mut self.vm.frame_mut().realm, realm))
+    }
+
+    pub(crate) fn check_realm(&self, realm: &Realm) -> JsResult<()> {
         if !self.runtime().same_heap(&realm.runtime()) {
             return Err(JsNativeError::typ()
                 .with_message("realm belongs to a different runtime")
                 .into());
         }
-        Ok(std::mem::replace(&mut self.vm.frame_mut().realm, realm))
+        Ok(())
     }
 
     /// Create a new Realm with the default global bindings.
