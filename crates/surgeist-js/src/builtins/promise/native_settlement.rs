@@ -652,6 +652,7 @@ impl Association {
         let mut cursor = (self.view.clone(), self.signal.clone());
         let mut slow = Some(self.view.clone());
         let mut fast = Some(self.view.clone());
+        let mut collision = None;
         loop {
             if cursor.1.status() == SettlementStatus::Settled {
                 return None;
@@ -662,6 +663,12 @@ impl Association {
                 return Some(cause);
             }
             cursor = Self::next_view(&cursor.0)?;
+            if let Some(collision) = &collision {
+                if Rc::ptr_eq(&cursor.0, collision) {
+                    return None;
+                }
+                continue;
+            }
             slow = slow.and_then(|view| Self::next_view(&view).map(|next| next.0));
             fast = fast
                 .and_then(|view| Self::next_view(&view))
@@ -670,7 +677,9 @@ impl Association {
             if let (Some(slow), Some(fast)) = (&slow, &fast)
                 && Rc::ptr_eq(slow, fast)
             {
-                return None;
+                // A collision can precede an unvisited origin. Inspect one full
+                // lap from this cursor before concluding the cycle has no cause.
+                collision = Some(cursor.0.clone());
             }
         }
     }
