@@ -3835,3 +3835,88 @@ fn deferred_float_margin_box_keeps_actual_inline_contour_demand() {
     lane::<f32>();
     lane::<f64>();
 }
+
+fn assert_native_float_top_keeps_source_order<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    // The wider control has no deferred float; all three tops stay at zero.
+    for (width, second, third) in [
+        (
+            140.0,
+            Point::new(px(80.0), S::ZERO),
+            Point::new(px(110.0), S::ZERO),
+        ),
+        (
+            100.0,
+            Point::new(S::ZERO, px(20.0)),
+            Point::new(px(30.0), px(20.0)),
+        ),
+    ] {
+        let root_size = Size::new(px(width), px(160.0));
+        let tree = PublicBlockTree::default()
+            .with_children(0, [1, 2, 3])
+            .with_children(1, [])
+            .with_children(2, [])
+            .with_children(3, [])
+            .with_style(
+                0,
+                NodeInputOf {
+                    display: Display::Block,
+                    size: root_size.map(PreferredSizeOf::px),
+                    ..NodeInputOf::default()
+                },
+            )
+            .with_style(
+                1,
+                fri06_c05_margin_float_style(axes, Float::Left, 80.0, 20.0),
+            )
+            .with_style(
+                2,
+                fri06_c05_margin_float_style(axes, Float::Left, 30.0, 10.0),
+            )
+            .with_style(
+                3,
+                fri06_c05_margin_float_style(axes, Float::Left, 10.0, 10.0),
+            );
+        let request = crate::test_support::requests::NativeRootFrameOf::new(
+            axes,
+            root_size.map(|v| Some(NonNegativeFiniteOf::new(v).unwrap())),
+            OrthogonalFallbackOf::new(
+                root_size.map(|v| Some(NonNegativeFiniteOf::new(v).unwrap())),
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(root_size.map(|v| {
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(v).unwrap()),
+                SizingOperation::Normal,
+            )
+        }));
+        let batch = compute_layout(&tree, 0, request).unwrap();
+        assert_eq!(public_final_output(&batch, 0).size, root_size);
+        for (node, w, h) in [(1, 80.0, 20.0), (2, 30.0, 10.0), (3, 10.0, 10.0)] {
+            let output = public_final_output(&batch, node);
+            assert_eq!(output.size, Size::new(px(w), px(h)));
+            assert_eq!(output.margin, Edges::ZERO);
+        }
+        assert_eq!(public_final_output(&batch, 1).location, Point::ZERO);
+        assert_eq!(public_final_output(&batch, 2).location, second);
+        assert_eq!(
+            public_final_output(&batch, 3).location,
+            third,
+            "later float must respect earlier outer tops: root width {width}"
+        );
+        assert!(public_final_output(&batch, 3).location.y >= second.y);
+    }
+}
+
+#[test]
+fn native_float_top_keeps_source_order_f32() {
+    assert_native_float_top_keeps_source_order::<f32>();
+}
+
+#[test]
+fn native_float_top_keeps_source_order_f64() {
+    assert_native_float_top_keeps_source_order::<f64>();
+}
