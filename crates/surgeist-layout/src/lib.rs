@@ -102,13 +102,13 @@
 //! Floating boxes select the closed [`FloatExclusion`] contract. `MarginBox` is
 //! the default; `Shape` promises a tree provider that accepts a validated
 //! physical [`FloatExclusionQueryOf`] and returns a clipped
-//! [`FloatExclusionIntervalOf`]. Independent block sizing and collision use the
-//! floats' physical margin boxes for both variants, without shape queries.
-//! Layout invokes the provider only for an
-//! overlapping finite candidate band. Missing providers, provider failures, and
-//! mismatched interval queries retain typed float/query diagnostics and return
-//! no partial batch. A required shape interval never falls back to rectangular
-//! exclusion.
+//! [`FloatExclusionIntervalOf`]. Float placement and independent block sizing
+//! and collision use the floats' physical margin boxes for both variants,
+//! without shape queries. Layout invokes the provider for inline wrapping
+//! across an overlapping finite candidate band. Missing providers, provider
+//! failures, and mismatched interval queries retain typed float/query diagnostics
+//! and return no partial batch. Required shape intervals never fall back to
+//! rectangular exclusion.
 //! Provider facts change through explicit tree invalidation rather than a
 //! cache-key revision.
 //!

@@ -13541,7 +13541,12 @@ mod tests {
         assert_eq!(snapshot(&warm), retained);
     }
 
-    fn fri06_c06_shape_input_xml(float_attrs: &str, provider: &str) -> String {
+    fn fri06_c06_shape_input_xml(
+        float_attrs: &str,
+        provider: &str,
+        second_attrs: &str,
+        atomic_facts: &str,
+    ) -> String {
         format!(
             r#"
             <test name="fri06-c06-shape-input" use-rounding="true">
@@ -13551,7 +13556,8 @@ mod tests {
                         <div width="80" height="20" {float_attrs}>
                             {provider}
                         </div>
-                        <div display="block" width="30" height="10" float="left" />
+                        <div width="30" height="10" {second_attrs} />
+                        {atomic_facts}
                     </div>
                 </input>
                 <expectations><node /></expectations>
@@ -13561,7 +13567,25 @@ mod tests {
     }
 
     fn fri06_c06_shape_input_lower(float_attrs: &str, provider: &str) -> Result<TestTree, Error> {
-        let golden = Golden::parse(&fri06_c06_shape_input_xml(float_attrs, provider))?;
+        let golden = Golden::parse(&fri06_c06_shape_input_xml(
+            float_attrs,
+            provider,
+            r#"display="block" float="left""#,
+            "",
+        ))?;
+        TestTree::from_golden(&golden.root, None)
+    }
+
+    fn fri06_c06_shape_inline_input_lower(
+        float_attrs: &str,
+        provider: &str,
+    ) -> Result<TestTree, Error> {
+        let golden = Golden::parse(&fri06_c06_shape_input_xml(
+            float_attrs,
+            provider,
+            r#"display="inline-block""#,
+            r#"<atomic-placeholder child-index="1" bidi-level="0" following-break="allowed" />"#,
+        ))?;
         TestTree::from_golden(&golden.root, None)
     }
 
@@ -13744,27 +13768,46 @@ mod tests {
     }
 
     #[test]
-    fn fri06_c06_shape_input_compute_consumes_partial_table_through_production_provider() {
+    fn fri06_c06_shape_input_compute_places_float_margin_boxes_independently_of_partial_table() {
         let tree = fri06_c06_shape_input_lower(
             r#"float="left" float-exclusion="shape""#,
             r#"<shape-bands><shape-band band-minimum="0" band-maximum="10" interval-minimum="0" interval-maximum="40" /></shape-bands>"#,
         )
         .expect("valid partial fixture response lowers");
         let batch = layout::compute_layout(&tree, 0, fri06_c06_shape_input_request())
-            .expect("production compute consumes the finite provider response");
+            .expect("float positioning uses physical margin boxes");
         let second_float = batch
             .node_layout(2)
             .expect("second float publishes output")
             .single_box()
             .expect("float produces one box")
             .final_output();
-        assert_eq!(second_float.location, layout::Point::new(40.0, 0.0));
+        assert_eq!(second_float.location, layout::Point::new(0.0, 20.0));
+    }
+
+    #[test]
+    fn fri06_c06_shape_inline_input_compute_consumes_partial_table_through_production_provider() {
+        let tree = fri06_c06_shape_inline_input_lower(
+            r#"float="left" float-exclusion="shape""#,
+            r#"<shape-bands><shape-band band-minimum="0" band-maximum="10" interval-minimum="0" interval-maximum="40" /></shape-bands>"#,
+        ).expect("valid partial inline fixture response lowers");
+        let batch = layout::compute_layout(&tree, 0, fri06_c06_shape_input_request())
+            .expect("actual inline demand consumes the finite provider response");
+        let inline = batch
+            .node_layout(2)
+            .unwrap()
+            .single_box()
+            .unwrap()
+            .final_output();
+        assert_eq!(inline.location, layout::Point::new(40.0, 0.0));
+        assert_eq!(inline.size, layout::Size::new(30.0, 10.0));
     }
 
     #[test]
     fn fri06_c06_shape_input_compute_reports_missing_mismatch_and_provider_failure() {
-        let missing = fri06_c06_shape_input_lower(r#"float="left" float-exclusion="shape""#, "")
-            .expect("shape without a table represents a missing fixture provider");
+        let missing =
+            fri06_c06_shape_inline_input_lower(r#"float="left" float-exclusion="shape""#, "")
+                .expect("shape without a table represents a missing fixture provider");
         let error = layout::compute_layout(&missing, 0, fri06_c06_shape_input_request())
             .expect_err("requested missing provider must fail");
         assert_eq!(
@@ -13785,7 +13828,7 @@ mod tests {
             )
         ));
 
-        let mismatch = fri06_c06_shape_input_lower(
+        let mismatch = fri06_c06_shape_inline_input_lower(
             r#"float="left" float-exclusion="shape""#,
             r#"<shape-bands><shape-band band-minimum="0" band-maximum="10" origin-band-minimum="10" origin-band-maximum="20" interval-minimum="0" interval-maximum="40" /></shape-bands>"#,
         )
@@ -13806,7 +13849,7 @@ mod tests {
         );
         assert_eq!((actual.band_minimum(), actual.band_maximum()), (10.0, 20.0));
 
-        let failure = fri06_c06_shape_input_lower(
+        let failure = fri06_c06_shape_inline_input_lower(
             r#"float="left" float-exclusion="shape""#,
             r#"<shape-bands><shape-band band-minimum="0" band-maximum="10" provider-result="failure" /></shape-bands>"#,
         )

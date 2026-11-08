@@ -870,17 +870,12 @@ where
                 float_exclusion: child_style.float_exclusion,
                 child_compute_geometry: output.scroll_geometry,
             };
-            let provider = ProviderBandContext {
-                tree,
-                container: node,
-                enabled: physical_float_context,
-            };
             // Intrinsic Max needs the actual rectangular cohort, without
             // querying Shape or pretending an indefinite line has zero width.
             let placement = if inline_operation == crate::SizingOperation::MaxContent {
-                float_exclusions.place_float_intrinsic(provider, &pending_float)?
+                float_exclusions.place_float_intrinsic(node, &pending_float)?
             } else {
-                float_exclusions.place_float_for_line(provider, &pending_float, None)?
+                float_exclusions.place_float_for_line(node, &pending_float, None)?
             };
             let logical_location = placement.logical;
             let intrinsic_float_demand = placement.intrinsic_inline_demand;
