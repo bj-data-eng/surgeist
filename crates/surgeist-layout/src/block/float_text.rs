@@ -5,10 +5,8 @@ use std::sync::Arc;
 
 use super::floats::{
     AcceptedFloatPlacement, AcceptedFloatPrefix, FloatExclusions, FloatInlineSpace, PendingFloat,
-    ProviderBandContext,
 };
 use crate::LayoutScalar;
-use crate::engine::contracts::Compute;
 use crate::text_layout::fit::{EncounterBasis, EncounterReplay, FitError};
 use surgeist_text::{FinalizedLine, LineEnd, PreparedParticipant, SourcePosition, TextSeam};
 
@@ -320,17 +318,12 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
     pub fn band(&self) -> &FloatExclusions<S, Node> {
         &self.current
     }
-    pub fn replay<'input, Tree, M>(
+    pub fn replay<M>(
         &mut self,
-        tree: &Tree,
         container: Node,
         line: &FinalizedLine,
         replay: EncounterReplay,
-        provider_enabled: bool,
-    ) -> crate::LayoutResultOf<Node, Vec<EncounterBasis>, S, M>
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
+    ) -> crate::LayoutResultOf<Node, Vec<EncounterBasis>, S, M> {
         self.reset_candidate();
         let portion_start = line
             .selected_line()
@@ -511,19 +504,14 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             let line_end = self.cursor
                 + crate::text_layout::run::number::<S>(replay.logical.max(placed) + used_height)
                     .map_err(|e| super::inline_run::text_run_error(container, e))?;
-            let provider = ProviderBandContext {
-                tree,
-                container,
-                enabled: provider_enabled,
-            };
             let location = match self.inline_space {
                 FloatInlineSpace::Finite => self.current.place_float_for_line(
-                    provider,
+                    container,
                     &pending,
                     preceding.then_some((inline_constraint, line_end)),
                 )?,
                 FloatInlineSpace::IntrinsicMaximum => {
-                    self.current.place_float_intrinsic(provider, &pending)?
+                    self.current.place_float_intrinsic(container, &pending)?
                 }
             };
             let logical_origin = location.logical;

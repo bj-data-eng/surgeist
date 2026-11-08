@@ -788,49 +788,33 @@ fn fri06_c05_expected_shape_query<S: LayoutScalar>(
 }
 
 #[test]
-fn fri06_c05_shape_band_empty_partial_full_clipped_zero_opposing_stacked_cleared_and_overwide_both_scalars()
- {
+fn fri06_c05_float_margin_boxes_ignore_empty_partial_full_clipped_and_zero_contours_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         let flow_axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
-        let cases: [(ShapeProviderBehavior<S>, (f64, f64)); 6] = [
-            (ShapeProviderBehavior::Empty, (0.0, 0.0)),
-            (
-                ShapeProviderBehavior::Interval {
-                    minimum: scalar_value(0.0),
-                    maximum: scalar_value(40.0),
-                },
-                (40.0, 0.0),
-            ),
-            (
-                ShapeProviderBehavior::Interval {
-                    minimum: scalar_value(0.0),
-                    maximum: scalar_value(80.0),
-                },
-                (0.0, 20.0),
-            ),
-            (
-                ShapeProviderBehavior::Interval {
-                    minimum: scalar_value(-20.0),
-                    maximum: scalar_value(40.0),
-                },
-                (40.0, 0.0),
-            ),
-            (
-                ShapeProviderBehavior::Interval {
-                    minimum: scalar_value(90.0),
-                    maximum: scalar_value(110.0),
-                },
-                (0.0, 0.0),
-            ),
-            (
-                ShapeProviderBehavior::Interval {
-                    minimum: scalar_value(40.0),
-                    maximum: scalar_value(40.0),
-                },
-                (0.0, 0.0),
-            ),
+        let cases = [
+            ShapeProviderBehavior::Empty,
+            ShapeProviderBehavior::Interval {
+                minimum: scalar_value(0.0),
+                maximum: scalar_value(40.0),
+            },
+            ShapeProviderBehavior::Interval {
+                minimum: scalar_value(0.0),
+                maximum: scalar_value(80.0),
+            },
+            ShapeProviderBehavior::Interval {
+                minimum: scalar_value(-20.0),
+                maximum: scalar_value(40.0),
+            },
+            ShapeProviderBehavior::Interval {
+                minimum: scalar_value(90.0),
+                maximum: scalar_value(110.0),
+            },
+            ShapeProviderBehavior::Interval {
+                minimum: scalar_value(40.0),
+                maximum: scalar_value(40.0),
+            },
         ];
-        for (provider, expected) in cases {
+        for provider in cases {
             let tree = fri06_c05_shape_tree(
                 flow_axes,
                 provider,
@@ -848,9 +832,10 @@ fn fri06_c05_shape_band_empty_partial_full_clipped_zero_opposing_stacked_cleared
             let batch = compute_layout(&tree, 0, fri06_c05_shape_request(flow_axes)).unwrap();
             assert_eq!(
                 public_final_output(&batch, 2).location,
-                Point::new(scalar_value(expected.0), scalar_value(expected.1)),
-                "shape interval did not replace the rectangular float collision"
+                Point::new(S::ZERO, scalar_value(20.0)),
+                "a contour cannot change float margin-box collision"
             );
+            assert!(tree.shape_queries().is_empty());
         }
 
         let stacked = fri06_c05_shape_tree(
@@ -930,7 +915,7 @@ fn fri06_c05_shape_band_empty_partial_full_clipped_zero_opposing_stacked_cleared
         );
         assert_eq!(
             public_final_output(&cleared_batch, 3).location,
-            Point::new(scalar_value(-20.0), S::ZERO),
+            Point::new(scalar_value(-20.0), scalar_value(30.0)),
         );
     }
 
@@ -939,7 +924,7 @@ fn fri06_c05_shape_band_empty_partial_full_clipped_zero_opposing_stacked_cleared
 }
 
 #[test]
-fn fri06_c05_shape_flow_physical_intervals_preserve_both_logical_sides_all_flows_both_scalars() {
+fn fri06_c05_shape_flow_separates_float_margin_boxes_and_inline_contours_all_flows_both_scalars() {
     fn assert_lane<S: LayoutScalar>() {
         for (writing_mode, direction) in all_writing_mode_directions() {
             let flow_axes = FlowAxes::new(writing_mode, direction);
@@ -966,7 +951,7 @@ fn fri06_c05_shape_flow_physical_intervals_preserve_both_logical_sides_all_flows
                 public_final_output(&start_batch, 2).location,
                 fri06_c04_expected_float_location(
                     flow_axes,
-                    crate::geometry::LogicalPointOf::new(scalar_value(25.0), S::ZERO),
+                    crate::geometry::LogicalPointOf::new(scalar_value(40.0), S::ZERO),
                     crate::geometry::LogicalSizeOf::new(scalar_value(10.0), scalar_value(10.0)),
                 ),
                 "line-start shape side was lost for {writing_mode:?} {direction:?}",
@@ -975,7 +960,7 @@ fn fri06_c05_shape_flow_physical_intervals_preserve_both_logical_sides_all_flows
                 public_final_output(&start_batch, 3).location,
                 fri06_c04_expected_float_location(
                     flow_axes,
-                    crate::geometry::LogicalPointOf::new(scalar_value(35.0), S::ZERO),
+                    crate::geometry::LogicalPointOf::new(scalar_value(50.0), S::ZERO),
                     crate::geometry::LogicalSizeOf::new(scalar_value(10.0), scalar_value(10.0)),
                 ),
                 "line band did not reuse the mapped line-start identity for {writing_mode:?} {direction:?}",
@@ -989,8 +974,8 @@ fn fri06_c05_shape_flow_physical_intervals_preserve_both_logical_sides_all_flows
             );
             assert_eq!(
                 start_tree.shape_queries(),
-                vec![(1, expected_start_query), (1, expected_start_query),],
-                "float and line candidates must share the exact mapped query; native publication validates the accepted placement without a new query for {writing_mode:?} {direction:?}",
+                vec![(1, expected_start_query)],
+                "only the line candidate queries the mapped contour for {writing_mode:?} {direction:?}",
             );
 
             let (minimum, maximum) = fri06_c05_physical_inline_interval(flow_axes, 75.0, 100.0);
@@ -1006,6 +991,7 @@ fn fri06_c05_shape_flow_physical_intervals_preserve_both_logical_sides_all_flows
                         2,
                         fri06_c05_margin_float_style(flow_axes, Float::Right, 10.0, 10.0),
                     ),
+                    (3, fri06_c05_atomic_style(flow_axes, 10.0, 10.0)),
                 ],
             );
             let end_batch =
@@ -1014,10 +1000,18 @@ fn fri06_c05_shape_flow_physical_intervals_preserve_both_logical_sides_all_flows
                 public_final_output(&end_batch, 2).location,
                 fri06_c04_expected_float_location(
                     flow_axes,
-                    crate::geometry::LogicalPointOf::new(scalar_value(65.0), S::ZERO),
+                    crate::geometry::LogicalPointOf::new(scalar_value(50.0), S::ZERO),
                     crate::geometry::LogicalSizeOf::new(scalar_value(10.0), scalar_value(10.0)),
                 ),
                 "line-end shape side was lost for {writing_mode:?} {direction:?}",
+            );
+            assert_eq!(
+                public_final_output(&end_batch, 3).location,
+                fri06_c04_expected_float_location(
+                    flow_axes,
+                    crate::geometry::LogicalPointOf::new(S::ZERO, S::ZERO),
+                    crate::geometry::LogicalSizeOf::new(scalar_value(10.0), scalar_value(10.0))
+                )
             );
             let expected_end_query = fri06_c05_expected_shape_query(
                 flow_axes,
@@ -1029,7 +1023,7 @@ fn fri06_c05_shape_flow_physical_intervals_preserve_both_logical_sides_all_flows
             assert_eq!(
                 end_tree.shape_queries(),
                 vec![(1, expected_end_query)],
-                "the line-end float candidate must retain the physical margin box and ordered band; native publication does not query again for {writing_mode:?} {direction:?}",
+                "the line-end inline candidate retains the physical margin box and ordered band for {writing_mode:?} {direction:?}",
             );
         }
     }
@@ -1072,12 +1066,13 @@ fn fri06_c05_shape_query_float_and_line_consumers_preserve_bfc_margin_box_isolat
                 ),
             ],
         );
-        compute_layout(&float_tree, 0, fri06_c05_shape_request(flow_axes)).unwrap();
+        let float_batch =
+            compute_layout(&float_tree, 0, fri06_c05_shape_request(flow_axes)).unwrap();
         assert_eq!(
-            float_tree.shape_queries(),
-            vec![(1, expected)],
-            "only the overlapping float candidate queries the shape; native publication reuses its validated placement",
+            public_final_output(&float_batch, 2).location,
+            Point::new(S::ZERO, scalar_value(20.0))
         );
+        assert!(float_tree.shape_queries().is_empty());
 
         let bfc_tree = fri06_c05_shape_tree(
             flow_axes,
@@ -1125,7 +1120,11 @@ fn fri06_c05_shape_query_float_and_line_consumers_preserve_bfc_margin_box_isolat
                 (2, fri06_c05_atomic_style(flow_axes, 60.0, 10.0)),
             ],
         );
-        compute_layout(&line_tree, 0, fri06_c05_shape_request(flow_axes)).unwrap();
+        let line_batch = compute_layout(&line_tree, 0, fri06_c05_shape_request(flow_axes)).unwrap();
+        assert_eq!(
+            public_final_output(&line_batch, 2).location,
+            Point::new(scalar_value(40.0), S::ZERO)
+        );
         assert_eq!(line_tree.shape_queries(), vec![(1, expected)]);
     }
 
@@ -3695,4 +3694,144 @@ fn later_float_stays_beside_shape_margin_box_in_wide_root_f32() {
 #[test]
 fn later_float_stays_beside_shape_margin_box_in_wide_root_f64() {
     assert_later_float_avoids_shape_margin_box::<f64>(140.0, Point::new(80.0, 0.0));
+}
+
+#[test]
+fn shape_float_margin_boxes_keep_opposite_sides_clear_and_changing_bands() {
+    fn lane<S: LayoutScalar>() {
+        use crate::geometry::{LogicalPointOf, LogicalSizeOf};
+        let px = S::from_f64;
+        for (writing_mode, direction) in all_writing_mode_directions() {
+            let axes = FlowAxes::new(writing_mode, direction);
+            for (first_side, second_side, clear, x, y) in [
+                (Float::Left, Float::Right, Clear::None, 70.0, 20.0),
+                (Float::Right, Float::Left, Clear::None, 0.0, 20.0),
+                (Float::Left, Float::Right, Clear::Left, 70.0, 20.0),
+                (Float::Right, Float::Left, Clear::Right, 0.0, 20.0),
+            ] {
+                let mut second = fri06_c05_shape_float_style(axes, second_side, 30.0, 10.0);
+                second.clear = clear;
+                let tree = fri06_c05_shape_tree(
+                    axes,
+                    ShapeProviderBehavior::Failure,
+                    [
+                        (1, fri06_c05_shape_float_style(axes, first_side, 80.0, 20.0)),
+                        (2, second),
+                    ],
+                );
+                let batch = compute_layout(&tree, 0, fri06_c05_shape_request(axes)).unwrap();
+                let second = public_final_output(&batch, 2);
+                assert_eq!(
+                    second.size,
+                    axes.physical_size(LogicalSizeOf::new(px(30.0), px(10.0)))
+                );
+                assert_eq!(
+                    second.location,
+                    fri06_c04_expected_float_location(
+                        axes,
+                        LogicalPointOf::new(px(x), px(y)),
+                        LogicalSizeOf::new(px(30.0), px(10.0))
+                    ),
+                    "{axes:?} {first_side:?} -> {second_side:?}, clear {clear:?}"
+                );
+                assert!(tree.shape_queries().is_empty());
+            }
+            // Float2 starts below float1. Float3 intersects each successive
+            // cohort and fits only after both margin-box bottoms have passed.
+            let tree = fri06_c05_shape_tree(
+                axes,
+                ShapeProviderBehavior::Missing,
+                [
+                    (
+                        1,
+                        fri06_c05_shape_float_style(axes, Float::Left, 70.0, 10.0),
+                    ),
+                    (
+                        2,
+                        fri06_c05_shape_float_style(axes, Float::Right, 50.0, 30.0),
+                    ),
+                    (
+                        3,
+                        fri06_c05_shape_float_style(axes, Float::Left, 60.0, 20.0),
+                    ),
+                ],
+            );
+            let batch = compute_layout(&tree, 0, fri06_c05_shape_request(axes)).unwrap();
+            for (node, x, y, w, h) in [
+                (1, 0.0, 0.0, 70.0, 10.0),
+                (2, 50.0, 10.0, 50.0, 30.0),
+                (3, 0.0, 40.0, 60.0, 20.0),
+            ] {
+                let output = public_final_output(&batch, node);
+                let size = LogicalSizeOf::new(px(w), px(h));
+                assert_eq!(output.size, axes.physical_size(size));
+                assert_eq!(
+                    output.location,
+                    fri06_c04_expected_float_location(
+                        axes,
+                        LogicalPointOf::new(px(x), px(y)),
+                        size
+                    ),
+                    "{axes:?}, node {node}"
+                );
+            }
+            assert!(tree.shape_queries().is_empty());
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+#[test]
+fn deferred_float_margin_box_keeps_actual_inline_contour_demand() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+        let tree = fri06_c05_shape_tree(
+            axes,
+            ShapeProviderBehavior::Interval {
+                minimum: S::ZERO,
+                maximum: px(40.0),
+            },
+            [
+                (
+                    1,
+                    fri06_c05_shape_float_style(axes, Float::Left, 80.0, 20.0),
+                ),
+                (
+                    2,
+                    fri06_c05_margin_float_style(axes, Float::Left, 30.0, 10.0),
+                ),
+                (3, fri06_c05_atomic_style(axes, 60.0, 10.0)),
+            ],
+        );
+        let batch = compute_layout(&tree, 0, fri06_c05_shape_request(axes)).unwrap();
+        assert_eq!(
+            public_final_output(&batch, 2).location,
+            Point::new(S::ZERO, px(20.0))
+        );
+        assert_eq!(
+            public_final_output(&batch, 3).location,
+            Point::new(px(40.0), S::ZERO)
+        );
+        assert_eq!(
+            public_final_output(&batch, 3).size,
+            Size::new(px(60.0), px(10.0))
+        );
+        assert_eq!(
+            tree.shape_queries(),
+            vec![(
+                1,
+                FloatExclusionQueryOf::try_new(
+                    ScrollRectOf::try_new(Point::ZERO, Size::new(px(80.0), px(20.0))).unwrap(),
+                    axes,
+                    S::ZERO,
+                    px(10.0)
+                )
+                .unwrap()
+            )]
+        );
+    }
+    lane::<f32>();
+    lane::<f64>();
 }

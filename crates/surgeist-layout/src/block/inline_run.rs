@@ -1288,7 +1288,7 @@ where
                 },
                 replay: |line: &surgeist_text::FinalizedLine, replay| match encounters
                     .borrow_mut()
-                    .replay(tree, container, line, replay, provider_enabled)
+                    .replay(container, line, replay)
                 {
                     Ok(basis) => Ok(basis),
                     Err(error) => {

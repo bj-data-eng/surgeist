@@ -1,6 +1,7 @@
 //! Transactional float trials over real native nodes and Text-issued receipts.
 
 use super::*;
+use crate::engine::contracts::Compute;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
 use crate::*;
@@ -264,7 +265,7 @@ fn lane<S: LayoutScalar>() {
     };
     encounters.checkpoint_group();
     let first_basis = encounters
-        .replay(&owner, 0, &first, replay_at(0.0), false)
+        .replay::<core::convert::Infallible>(0, &first, replay_at(0.0))
         .unwrap();
     assert_eq!(
         first_basis.iter().map(|row| row.event).collect::<Vec<_>>(),
@@ -290,7 +291,7 @@ fn lane<S: LayoutScalar>() {
     // survive restoration to the real group entry at block10.
     let visits = encounters.replay_event_visits;
     let losing = encounters
-        .replay(&owner, 0, &second, replay_at(30.0), false)
+        .replay::<core::convert::Infallible>(0, &second, replay_at(30.0))
         .unwrap();
     assert_eq!(losing.iter().map(|row| row.event).collect::<Vec<_>>(), [1]);
     assert_eq!(
@@ -304,7 +305,7 @@ fn lane<S: LayoutScalar>() {
     assert!(encounters.tentative[1].is_none());
     assert_eq!(width(&encounters, 30.0), S::from_f64(100.0));
     encounters
-        .replay(&owner, 0, &second, replay_at(30.0), false)
+        .replay::<core::convert::Infallible>(0, &second, replay_at(30.0))
         .unwrap();
     encounters.accept();
     assert_eq!(
@@ -331,7 +332,7 @@ fn lane<S: LayoutScalar>() {
     assert_eq!(width(&encounters, 0.0), S::from_f64(90.0));
     assert_eq!(width(&encounters, 30.0), S::from_f64(100.0));
     let winner = encounters
-        .replay(&owner, 0, &second, replay_at(10.0), false)
+        .replay::<core::convert::Infallible>(0, &second, replay_at(10.0))
         .unwrap();
     encounters.accept();
     assert_eq!(
@@ -353,14 +354,14 @@ fn lane<S: LayoutScalar>() {
     assert_eq!(width(&encounters, 0.0), S::from_f64(100.0));
     assert_eq!(
         encounters
-            .replay(&owner, 0, &first, replay_at(0.0), false)
+            .replay::<core::convert::Infallible>(0, &first, replay_at(0.0))
             .unwrap(),
         first_basis
     );
     encounters.accept();
     assert_eq!(
         encounters
-            .replay(&owner, 0, &second, replay_at(10.0), false)
+            .replay::<core::convert::Infallible>(0, &second, replay_at(10.0))
             .unwrap(),
         winner
     );

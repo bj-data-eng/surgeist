@@ -251,13 +251,6 @@ pub(crate) struct FloatBand<S: LayoutScalar> {
     pub(crate) evaluated: usize,
 }
 
-#[derive(Clone, Copy)]
-pub(super) struct ProviderBandContext<'a, Tree, Node> {
-    pub(super) tree: &'a Tree,
-    pub(super) container: Node,
-    pub(super) enabled: bool,
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum FloatBandQueryPurpose {
     PhysicalMarginBoxCollision,
@@ -572,27 +565,21 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         });
     }
 
-    pub(super) fn place_float_for_line<'input, Tree, M>(
+    pub(super) fn place_float_for_line<M>(
         &mut self,
-        provider: ProviderBandContext<'_, Tree, Node>,
+        container: Node,
         float: &PendingFloat<Node, S>,
         line: Option<(f64, S)>,
-    ) -> LayoutResultOf<Node, FloatPlacement<S>, S, M>
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
-        self.place_float_in_space(provider, float, line, FloatInlineSpace::Finite)
+    ) -> LayoutResultOf<Node, FloatPlacement<S>, S, M> {
+        self.place_float_in_space(container, float, line, FloatInlineSpace::Finite)
     }
 
-    pub(super) fn place_float_intrinsic<'input, Tree, M>(
+    pub(super) fn place_float_intrinsic<M>(
         &mut self,
-        provider: ProviderBandContext<'_, Tree, Node>,
+        container: Node,
         float: &PendingFloat<Node, S>,
-    ) -> LayoutResultOf<Node, FloatPlacement<S>, S, M>
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
-        self.place_float_in_space(provider, float, None, FloatInlineSpace::IntrinsicMaximum)
+    ) -> LayoutResultOf<Node, FloatPlacement<S>, S, M> {
+        self.place_float_in_space(container, float, None, FloatInlineSpace::IntrinsicMaximum)
     }
 
     /// End-side occupation from the same raw, height-qualified ledger query.
@@ -601,16 +588,13 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         self.containing_inline_end - band.inline_end
     }
 
-    fn place_float_in_space<'input, Tree, M>(
+    fn place_float_in_space<M>(
         &mut self,
-        provider: ProviderBandContext<'_, Tree, Node>,
+        container: Node,
         float: &PendingFloat<Node, S>,
         line: Option<(f64, S)>,
         inline_space: FloatInlineSpace,
-    ) -> LayoutResultOf<Node, FloatPlacement<S>, S, M>
-    where
-        Tree: Compute<'input, M, Node = Node, Scalar = S>,
-    {
+    ) -> LayoutResultOf<Node, FloatPlacement<S>, S, M> {
         let side = FloatLedgerSide::from_float(float.side);
         let logical_size = self.flow_axes.logical_size(float.size);
         let logical_margin = self.flow_axes.logical_edges(float.margin);
@@ -622,16 +606,8 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
 
         loop {
             let candidate_block_end = candidate_block + margin_box_size.block;
-            let band = if provider.enabled {
-                self.query_provider_band(
-                    provider.tree,
-                    provider.container,
-                    candidate_block,
-                    candidate_block_end,
-                )?
-            } else {
-                self.query_physical_margin_box_collisions(candidate_block, candidate_block_end)
-            };
+            let band =
+                self.query_physical_margin_box_collisions(candidate_block, candidate_block_end);
             let available_inline = (band.inline_end - band.inline_start).max(S::ZERO);
             if inline_space == FloatInlineSpace::Finite
                 && let Some((prefix, line_end)) = line
@@ -663,9 +639,8 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
                         + margin_box_size.inline
                         + self.end_occupation(&band);
                     Some(
-                        crate::text_layout::run::number::<S>(demand.to_f64()).map_err(|error| {
-                            super::inline_run::text_run_error(provider.container, error)
-                        })?,
+                        crate::text_layout::run::number::<S>(demand.to_f64())
+                            .map_err(|error| super::inline_run::text_run_error(container, error))?,
                     )
                 } else {
                     None
