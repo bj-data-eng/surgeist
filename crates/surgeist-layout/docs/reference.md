@@ -1188,7 +1188,11 @@ flow of a future source window. An intrinsic demand
 crossing an unmeasured atomic container into an unsupported physical axis
 returns the profile error; opaque measured leaves retain their physical
 axis request. Size containment obtains intrinsic sizing from the existing empty-box
-producer; descendants retain their actual layout.
+producer; descendants retain their actual layout. Eligible both-axis size-containment
+boxes form one monolithic unit. Internal break controls do not split that unit;
+outer controls and whole-box deferral remain effective. Inline-only containment
+retains normal block-axis continuation and resolves its inline size in each
+accepted fragmentainer.
 Descendant box layout inside an atomic unit uses the ordinary producers without
 splitting that unit. Nodes hidden by `Display::None` publish non-box metadata.
 The standalone root requires matching flow axes, auto preferred block size,
