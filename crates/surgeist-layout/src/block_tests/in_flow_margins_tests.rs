@@ -4530,3 +4530,130 @@ fn block_legacy_text_align_offsets_table_child_in_free_inline_space() {
     );
     assert_eq!(run(TextAlign::LegacyLeft, Direction::Rtl).location.x, 0.0);
 }
+
+fn assert_leading_empty_margins_expose_whole_group<S: LayoutScalar>(external_float: bool) {
+    let px = S::from_f64;
+    let width = NonNegativeFiniteOf::new(px(100.0)).unwrap();
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::new(Some(width), None),
+        OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::new(
+        AxisSizingRequestOf::new(AvailableSpaceOf::Definite(width), SizingOperation::Normal),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+    ));
+    let ordinary = NodeInputOf {
+        display: Display::Block,
+        block_flow_context: BlockFlowContext::Normal,
+        size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+        min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+        ..NodeInputOf::default()
+    };
+    for leading_empty in [false, true] {
+        let mut tree = PublicBlockTree::default()
+            .with_children(0, if external_float { vec![1, 2] } else { vec![2] })
+            .with_children(2, if leading_empty { vec![3, 4] } else { vec![4] })
+            .with_children(4, [])
+            .with_style(0, ordinary.clone())
+            .with_style(2, ordinary.clone())
+            .with_style(
+                4,
+                NodeInputOf {
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(10.0)),
+                    ),
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(20.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary.clone()
+                },
+            );
+        if external_float {
+            tree = tree.with_children(1, []).with_style(
+                1,
+                NodeInputOf {
+                    float: Float::Left,
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(30.0)),
+                    ),
+                    ..ordinary.clone()
+                },
+            );
+        }
+        if leading_empty {
+            tree = tree.with_children(3, []).with_style(
+                3,
+                NodeInputOf {
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(8.0)),
+                        bottom: LengthAutoOf::px(px(12.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary.clone()
+                },
+            );
+        }
+        let batch = compute_layout(&tree, 0, request).unwrap();
+        if external_float {
+            let float = public_final_output(&batch, 1);
+            assert_eq!(
+                (float.location, float.size),
+                (Point::ZERO, Size::new(px(100.0), px(30.0)))
+            );
+        }
+        if leading_empty {
+            let empty = public_final_output(&batch, 3);
+            assert_eq!(
+                (empty.location, empty.size),
+                (Point::ZERO, Size::new(px(100.0), S::ZERO))
+            );
+        }
+        let root = public_final_output(&batch, 0);
+        let parent = public_final_output(&batch, 2);
+        let body = public_final_output(&batch, 4);
+        // P->B is the nearest control. Adding empty A adjoins its8/12
+        // margins to B's20, so the same maximum20 remains exposed by P.
+        assert_eq!(
+            (
+                parent.location,
+                parent.size,
+                body.location,
+                body.size,
+                root.size
+            ),
+            (
+                Point::new(S::ZERO, px(20.0)),
+                Size::new(px(100.0), px(10.0)),
+                Point::ZERO,
+                Size::new(px(100.0), px(10.0)),
+                Size::new(px(100.0), px(30.0)),
+            ),
+            "external float {external_float}, leading empty {leading_empty}: parent/body/root"
+        );
+    }
+}
+
+#[test]
+fn leading_empty_margins_expose_whole_group_without_floats_f32() {
+    assert_leading_empty_margins_expose_whole_group::<f32>(false);
+}
+#[test]
+fn leading_empty_margins_expose_whole_group_without_floats_f64() {
+    assert_leading_empty_margins_expose_whole_group::<f64>(false);
+}
+#[test]
+fn leading_empty_margins_expose_whole_group_with_external_float_f32() {
+    assert_leading_empty_margins_expose_whole_group::<f32>(true);
+}
+#[test]
+fn leading_empty_margins_expose_whole_group_with_external_float_f64() {
+    assert_leading_empty_margins_expose_whole_group::<f64>(true);
+}
