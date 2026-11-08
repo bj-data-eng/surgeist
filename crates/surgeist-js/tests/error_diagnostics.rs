@@ -21,6 +21,21 @@ thread_local! {
     static CALLBACK_ERROR: RefCell<Option<JsError>> = const { RefCell::new(None) };
 }
 
+fn diagnostic_context() -> Context {
+    #[cfg(feature = "fuzz")]
+    {
+        // Fuzz contexts require an explicit allowance for these bounded snippets.
+        Context::builder()
+            .instructions_remaining(100_000)
+            .build()
+            .unwrap()
+    }
+    #[cfg(not(feature = "fuzz"))]
+    {
+        Context::default()
+    }
+}
+
 fn admit(error: JsError, receiving: &mut Context) -> JsError {
     CALLBACK_ERROR.with(|slot| assert!(slot.replace(Some(error)).is_none()));
     NativeFunction::from_fn_ptr(|_, _, _| {
@@ -118,7 +133,7 @@ fn native_kinds_and_authored_cause_and_member_order_remain_typed() {
 
 #[test]
 fn checked_opaque_leaf_access_preserves_identity_without_executing_a_getter() {
-    let mut context = Context::default();
+    let mut context = diagnostic_context();
     let object = context
         .eval(Source::from_bytes(
             "globalThis.diagnosticReads = 0;
@@ -178,7 +193,7 @@ fn assert_engine_view(view: Diagnostic<'_>, expected: &EngineError) {
 
 #[test]
 fn every_engine_family_preserves_typed_payloads_and_erased_export() {
-    let mut context = Context::default();
+    let mut context = diagnostic_context();
     let required = context.id();
     let mut cases = vec![
         EngineError::Resource(EngineResourceError::SizeOverflow),
@@ -298,8 +313,8 @@ fn nested_panic_views_preserve_their_own_message_and_borrowed_source() {
 
 #[test]
 fn clone_and_sequential_cross_runtime_admission_never_resurrect_hidden_objects() {
-    let mut a = Context::default();
-    let mut b = Context::default();
+    let mut a = diagnostic_context();
+    let mut b = diagnostic_context();
     let left = JsObject::with_null_proto(a.runtime());
     let right = JsObject::with_null_proto(b.runtime());
     let raw = panic_with(JsNativeError::aggregate(vec![
@@ -344,8 +359,8 @@ fn clone_and_sequential_cross_runtime_admission_never_resurrect_hidden_objects()
 
 #[test]
 fn foreign_parent_masks_cause_members_and_provenance_in_every_public_observation() {
-    let mut foreign = Context::default();
-    let mut receiver = Context::default();
+    let mut foreign = diagnostic_context();
+    let mut receiver = diagnostic_context();
     let thrown = foreign
         .eval(
             Source::from_bytes(
@@ -422,7 +437,7 @@ fn foreign_parent_masks_cause_members_and_provenance_in_every_public_observation
 
 #[test]
 fn semantic_equality_ignores_capture_storage_but_distinguishes_messages_and_identity() {
-    let mut context = Context::default();
+    let mut context = diagnostic_context();
     let first = context
         .eval(Source::from_bytes("throw new RangeError('same')").with_path(Path::new("first.js")))
         .unwrap_err()
@@ -459,7 +474,7 @@ fn semantic_equality_ignores_capture_storage_but_distinguishes_messages_and_iden
 
 #[test]
 fn captured_frames_preserve_authored_origin_and_bidirectional_iteration() {
-    let mut context = Context::default();
+    let mut context = diagnostic_context();
     let error = context
         .eval(
             Source::from_bytes(
@@ -516,7 +531,7 @@ fn captured_frames_preserve_authored_origin_and_bidirectional_iteration() {
 
 #[test]
 fn native_stack_position_retains_optional_native_origin_and_erased_opaque_behavior() {
-    let mut context = Context::default();
+    let mut context = diagnostic_context();
     let error = panic_with(JsNativeError::range().with_message("native"));
     let DiagnosticStack::Position(DiagnosticFrame::Native { source_info, .. }) =
         native(diagnostic(&error)).stack()
@@ -543,7 +558,7 @@ fn native_stack_position_retains_optional_native_origin_and_erased_opaque_behavi
 
 #[test]
 fn native_backtrace_stack_preserves_guest_origin_and_distinguishes_an_empty_capture() {
-    let mut context = Context::default();
+    let mut context = diagnostic_context();
     let thrown = context
         .eval(
             Source::from_bytes(
