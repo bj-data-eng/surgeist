@@ -373,6 +373,17 @@ impl SemanticSourceContribution {
             unreachable!("layer contribution helper received a non-layer command");
         };
         let layer_to_surface = layer.transform.then(local_to_surface)?;
+        let singular_source = linear_transform_is_rank_deficient(layer_to_surface)?;
+        if singular_source && layer.clip.is_some() {
+            // Own clip coverage collapses under the complete ancestor mapping.
+            // Remove the operation before its source prerequisites or graph route.
+            return Ok(SemanticCommandContribution {
+                command: None,
+                source_bounds: SemanticSourceBounds::exactly_empty(),
+                affected_bounds: SemanticSourceBounds::exactly_empty(),
+                current_parent,
+            });
+        }
         let has_bounded_children = commands_have_bounded_operation(&children, account)?;
         // Only an explicit isolated group starts against transparent black.
         // A default transparent wrapper forwards the actual surrounding image.
@@ -433,6 +444,7 @@ impl SemanticSourceContribution {
             .as_ref()
             .is_some_and(RenderLayerMask::annihilates_source)
             || layer.opacity <= 0.0
+            || singular_source
         {
             source_bounds = SemanticSourceBounds::exactly_empty();
             // Keep the outer operation, but an annihilated source has no ink
@@ -499,6 +511,7 @@ impl SemanticSourceContribution {
             affected_bounds
         };
         let no_operation = affected_bounds.is_exactly_empty()
+            || (transparent_wrapper && children.commands.is_empty())
             || (source_bounds.is_exactly_empty()
                 && layer.composition.transparent_source_preserves_parent()
                 && !transparent_wrapper);
