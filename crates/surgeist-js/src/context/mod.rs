@@ -243,18 +243,8 @@ impl Context {
         &mut self,
         src: Source<'_, R>,
         options: ExecutionOptions,
-    ) -> Result<ExecutionOutcome, ExecutionSetupError> {
-        if self.execution.is_some() {
-            return Err(ExecutionSetupError::AlreadyActive);
-        }
-        self.execution = Some(Execution::new(options)?);
-        let mut active = self.guard(|context| context.execution = None);
-        let result = active.eval(src);
-        let execution = active
-            .execution
-            .take()
-            .expect("the active evaluation owns the budget");
-        Ok(execution.finish(result))
+    ) -> Result<ExecutionOutcome<JsValue>, ExecutionSetupError> {
+        self.with_execution(options, |context| context.eval(src))
     }
 
     pub(crate) fn parse_source<R: ReadChar, T>(

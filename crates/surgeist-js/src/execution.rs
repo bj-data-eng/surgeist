@@ -1,6 +1,30 @@
-//! Work limits and profiling for controlled JavaScript execution.
+//! Work limits and profiling for host-selected JavaScript operations.
+//!
+//! [`Context::with_execution`](crate::Context::with_execution) scopes synchronous
+//! reentry under one budget. [`Context::execution_task`](crate::Context::execution_task)
+//! reserves a Context across an async callback's suspension. Neither evaluates
+//! source nor drains jobs unless the callback selects that work. The ordinary
+//! unscoped engine remains unbounded.
+//!
+//! A task's receipt observes one immutable terminal report, including after
+//! cancellation. Completed reports accompany a normal result, which owns any
+//! exact first host stop. Abandoned reports own that unreturned stop instead.
+//! Report storage is prepared before callback work; finalization moves retained
+//! data without copying profile vectors or allocating report storage.
+//!
+//! Profiling is selected once in [`ExecutionOptions`]. The `execution-lifetime`
+//! phase includes suspension. `vm-active` observes synchronous VM calls and
+//! individual async quanta; `vm-waiting` observes their cooperative scheduling
+//! waits. These are inclusive elapsed intervals, not CPU time or disjoint sums.
+//! Host future internals are opaque; these timings do not certify their work.
 
 use std::time::Duration;
+
+mod operation;
+mod report;
+pub use operation::ExecutionTask;
+use report::PreparedReport;
+pub use report::{ExecutionOutcome, ExecutionReceipt, ExecutionReport, ExecutionTermination};
 
 use surgeist_js_ast::{operations::NameWork, scope::ScopeWork};
 use surgeist_js_interner::{InternerEncoding, InternerWork};
@@ -10,12 +34,12 @@ use surgeist_js_parser::{
 };
 use surgeist_js_string::StringWork;
 use surgeist_ledger::{
-    Change, Error as LedgerError, Limits, Operation, Phase, Report, Scope, Tariffs, Work,
+    Change, Error as LedgerError, Limits, Operation, Phase, Scope, Tariffs, Work,
 };
 use thiserror::Error;
 
 use crate::{
-    JsError, JsResult, JsValue,
+    JsError, JsResult,
     bytecompiler::control::{CompilerControl, CompilerDepth, CompilerWork},
     error::{EngineError, RuntimeLimitError},
     optimizer::control::OptimizerWork,
@@ -109,9 +133,16 @@ const COMPILER_ORIGINS: [&str; 32] = [
     "compiler-environment-probe",
 ];
 // Root, frontend + four sources, three scope phases + 36 origins, optimizer
-// + 21 origins, and 32 compiler origins under the existing compilation phase.
-const FIXED_SCOPES: usize =
-    1 + 1 + 4 + 3 + 3 * SCOPE_ORIGINS.len() + 1 + OPTIMIZER_ORIGINS.len() + COMPILER_ORIGINS.len();
+// + 21 origins, 32 compiler origins, and three execution lifetime/slice scopes.
+const FIXED_SCOPES: usize = 1
+    + 1
+    + 4
+    + 3
+    + 3 * SCOPE_ORIGINS.len()
+    + 1
+    + OPTIMIZER_ORIGINS.len()
+    + COMPILER_ORIGINS.len()
+    + 3;
 const SCOPE_ORIGINS: [&str; 12] = [
     "scope-node",
     "scope-probe",
@@ -267,7 +298,7 @@ fn charge_interner(
     }
 }
 
-/// Work caps and optional profiling for one synchronous evaluation.
+/// Work caps and optional profiling for one host-selected operation.
 ///
 /// One unit admits one VM instruction before dispatch, including instructions
 /// reached through synchronous reentry in the same context. Parsing,
@@ -547,7 +578,7 @@ impl ExecutionOptions {
         self
     }
 
-    /// Sets profiling for the entire evaluation.
+    /// Sets profiling for the entire selected operation.
     #[must_use]
     pub const fn with_profile(mut self, profile: ProfileMode) -> Self {
         self.profile = profile;
@@ -563,11 +594,11 @@ impl ExecutionOptions {
     }
 }
 
-/// A failure to start an evaluation before it accepts any work.
+/// A failure to start an operation before it accepts any work.
 #[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
 pub enum ExecutionSetupError {
-    /// An evaluation in this context already owns the active budget.
-    #[error("a controlled evaluation is already active in this context")]
+    /// An operation in this context already owns the active budget.
+    #[error("a controlled operation is already active in this context")]
     AlreadyActive,
     /// Storage for the budget or profile could not be reserved.
     #[error("could not allocate execution accounting storage")]
@@ -580,230 +611,17 @@ pub enum ExecutionSetupError {
     TimingUnavailable,
 }
 
-/// The evaluation result and its report, retained even on a host refusal.
-#[derive(Debug)]
-pub struct ExecutionOutcome {
-    /// The script's completion or error.
-    pub result: JsResult<JsValue>,
-    /// The work admitted during the evaluation.
-    pub report: ExecutionReport,
-}
-
-/// Admitted work and optional profiling for one evaluation.
-#[derive(Debug)]
-pub struct ExecutionReport {
-    effects_started: bool,
-    instructions: u64,
-    source_reads: u64,
-    source_code_points: u64,
-    retained_source_units: u64,
-    lexer_lookahead_probes: u64,
-    lexer_dispatches: u64,
-    token_probes: u64,
-    token_advances: u64,
-    grammar_dispatches: u64,
-    early_error_visits: u64,
-    label_lookups: u64,
-    name_visits: u64,
-    name_records: u64,
-    name_comparisons: u64,
-    direct_eval_visits: u64,
-    interner_bytes: u64,
-    interner_utf16_units: u64,
-    interner_index_work: u64,
-    interner_capacity: u64,
-    interner_relocation: u64,
-    diagnostic_input: u64,
-    diagnostic_output: u64,
-    template_input: u64,
-    template_output: u64,
-    scope_work: u64,
-    optimizer_work: u64,
-    compiler_work: u64,
-    compiler_depth_peak: usize,
-    profile: Option<Report<27, 0>>,
-}
-
-impl ExecutionReport {
-    /// Whether this operation began a guest instruction, invoked a program callback,
-    /// or committed a declaration effect.
-    ///
-    /// This remains true across nested evaluation and later refusal. It does not
-    /// assert that a particular property changed, or that restarting source is safe.
-    pub const fn effects_started(&self) -> bool {
-        self.effects_started
-    }
-
-    /// Returns the number of admitted instructions.
-    pub const fn instructions(&self) -> u64 {
-        self.instructions
-    }
-
-    /// Returns the number of admitted source read attempts.
-    pub const fn source_reads(&self) -> u64 {
-        self.source_reads
-    }
-
-    /// Returns the number of decoded points consumed by the frontend.
-    pub const fn source_code_points(&self) -> u64 {
-        self.source_code_points
-    }
-
-    /// Returns the cumulative number of UTF-16 units retained in source text.
-    pub const fn retained_source_units(&self) -> u64 {
-        self.retained_source_units
-    }
-
-    /// Returns the number of admitted lexer lookahead probes.
-    pub const fn lexer_lookahead_probes(&self) -> u64 {
-        self.lexer_lookahead_probes
-    }
-
-    /// Returns the number of admitted lexical production dispatches.
-    pub const fn lexer_dispatches(&self) -> u64 {
-        self.lexer_dispatches
-    }
-
-    /// Returns the number of admitted buffered token probes.
-    pub const fn token_probes(&self) -> u64 {
-        self.token_probes
-    }
-
-    /// Returns the number of admitted buffered token advance requests.
-    pub const fn token_advances(&self) -> u64 {
-        self.token_advances
-    }
-
-    /// Returns the number of admitted grammar production attempts.
-    pub const fn grammar_dispatches(&self) -> u64 {
-        self.grammar_dispatches
-    }
-
-    /// Returns the number of admitted early-error AST visits.
-    pub const fn early_error_visits(&self) -> u64 {
-        self.early_error_visits
-    }
-
-    /// Returns the number of admitted logical label-table lookups.
-    pub const fn label_lookups(&self) -> u64 {
-        self.label_lookups
-    }
-
-    /// Returns the number of admitted direct-eval metadata visits.
-    pub const fn direct_eval_visits(&self) -> u64 {
-        self.direct_eval_visits
-    }
-
-    /// Returns admitted name, validation and delegated AST semantic-query visits.
-    /// This includes compiler completion-value and source-start queries.
-    pub const fn name_visits(&self) -> u64 {
-        self.name_visits
-    }
-
-    /// Returns the number of admitted name record attempts.
-    pub const fn name_records(&self) -> u64 {
-        self.name_records
-    }
-
-    /// Returns the number of admitted symbol comparisons or logical name-table operations.
-    pub const fn name_comparisons(&self) -> u64 {
-        self.name_comparisons
-    }
-
-    /// Returns the admitted UTF-8 and Latin1 byte work in frontend interning.
-    pub const fn interner_bytes(&self) -> u64 {
-        self.interner_bytes
-    }
-
-    /// Returns the admitted UTF-16 unit work in frontend interning and name preparation.
-    pub const fn interner_utf16_units(&self) -> u64 {
-        self.interner_utf16_units
-    }
-
-    /// Returns the admitted frontend interner slot initialization, probes, reinsertion and publication.
-    pub const fn interner_index_work(&self) -> u64 {
-        self.interner_index_work
-    }
-
-    /// Returns the admitted additional capacity requests in the affected buffers' units.
-    pub const fn interner_capacity(&self) -> u64 {
-        self.interner_capacity
-    }
-
-    /// Returns the admitted potentially relocated initialized units in the affected buffers' units.
-    pub const fn interner_relocation(&self) -> u64 {
-        self.interner_relocation
-    }
-
-    /// Returns the admitted diagnostic spelling input in UTF-16 units.
-    pub const fn diagnostic_input(&self) -> u64 {
-        self.diagnostic_input
-    }
-
-    /// Returns the admitted source-spelling diagnostic output in UTF-8 bytes.
-    pub const fn diagnostic_output(&self) -> u64 {
-        self.diagnostic_output
-    }
-
-    /// Returns admitted template preparation input in UTF-16 units.
-    pub const fn template_input(&self) -> u64 {
-        self.template_input
-    }
-
-    /// Returns admitted template preparation output in UTF-16 units.
-    pub const fn template_output(&self) -> u64 {
-        self.template_output
-    }
-
-    /// Returns admitted script scope analysis work units.
-    pub const fn scope_work(&self) -> u64 {
-        self.scope_work
-    }
-
-    /// Returns admitted optimizer work, including producer request reservations.
-    ///
-    /// This combines the units described by the optimizer profile origins; it is
-    /// neither elapsed time nor a measurement of physical memory consumption.
-    pub const fn optimizer_work(&self) -> u64 {
-        self.optimizer_work
-    }
-
-    /// Returns admitted compiler work, including delegated payload requests.
-    pub const fn compiler_work(&self) -> u64 {
-        self.compiler_work
-    }
-
-    /// Returns the greatest admitted structural compiler depth in any phase.
-    ///
-    /// Refused prospective entries do not increase this value. It is not the
-    /// VM call depth or an estimate of native stack memory.
-    pub const fn compiler_depth_peak(&self) -> usize {
-        self.compiler_depth_peak
-    }
-
-    /// Returns the optional profile. Work dimensions are instructions, source
-    /// reads, consumed code points, retained UTF-16 source units, and lexer
-    /// lookahead probes, lexical production dispatches, buffered token probes,
-    /// buffered token advance requests, grammar production attempts, and
-    /// early-error AST visits, label-table lookups, direct-eval metadata visits,
-    /// name visits, name records, name comparisons, interner bytes, interner
-    /// UTF-16 units, interner index work, interner capacity and interner
-    /// relocation, diagnostic spelling units and diagnostic payload bytes, then
-    /// template input and output units, then scope analysis work. Scope work
-    /// origins have separate profile entries under scope analysis, bytecode
-    /// compilation and script installation. Timed frontend phases include
-    /// interning, diagnostic rendering and template preparation. Dimension 25 is
-    /// optimizer work, with separate producer origins and an optimizer phase.
-    /// Retirement and opaque kernel units are prepaid native request prices.
-    /// Dimension 26 is compiler work, attributed under bytecode compilation;
-    /// delegated scope and name work retain dimensions 24 and 12–14.
-    pub const fn profile(&self) -> Option<&Report<27, 0>> {
-        self.profile.as_ref()
-    }
+#[derive(Clone, Copy)]
+pub(crate) enum ExecutionPhase {
+    Lifetime,
+    VmActive,
+    VmWaiting,
 }
 
 pub(crate) struct Execution {
     ledger: ExecutionLedger,
+    prepared_report: PreparedReport,
+    execution_phases: [Scope; 3],
     instruction_limit: u64,
     source_read_limit: u64,
     source_consumption_limit: u64,
@@ -882,15 +700,9 @@ impl Execution {
             [],
         );
         let mut ledger = if let Some(clock) = options.clock {
-            Operation::with_profile_clock(
-                "evaluation",
-                limits,
-                FIXED_SCOPES,
-                options.profile,
-                clock,
-            )
+            Operation::with_profile_clock("execution", limits, FIXED_SCOPES, options.profile, clock)
         } else {
-            Operation::with_profile("evaluation", limits, FIXED_SCOPES, options.profile)
+            Operation::with_profile("execution", limits, FIXED_SCOPES, options.profile)
         }
         .map_err(Self::setup_error)?;
         let frontend = ledger
@@ -956,8 +768,25 @@ impl Execution {
                 )
                 .map_err(Self::setup_error)?;
         }
+        let mut execution_phases = [ledger.root(); 3];
+        for (slot, name) in
+            execution_phases
+                .iter_mut()
+                .zip(["execution-lifetime", "vm-active", "vm-waiting"])
+        {
+            *slot = ledger
+                .child(
+                    ledger.root(),
+                    name,
+                    Limits::unlimited(),
+                    Tariffs::identity(),
+                )
+                .map_err(Self::setup_error)?;
+        }
         Ok(Self {
             ledger,
+            prepared_report: PreparedReport::new(),
+            execution_phases,
             instruction_limit: options.instruction_limit,
             source_read_limit: options.source_read_limit,
             source_consumption_limit: options.source_consumption_limit,
@@ -1433,49 +1262,6 @@ impl Execution {
     pub(crate) fn retain_stop(&mut self, stop: &JsError) {
         self.stop.get_or_insert_with(|| stop.clone());
     }
-
-    pub(crate) fn finish(self, result: JsResult<JsValue>) -> ExecutionOutcome {
-        let usage = self
-            .ledger
-            .usage(self.ledger.root())
-            .expect("the ledger owns its root");
-        let result = self.stop.map_or(result, Err);
-        ExecutionOutcome {
-            result,
-            report: ExecutionReport {
-                effects_started: self.effects_started,
-                instructions: usage.work(INSTRUCTION),
-                source_reads: usage.work(SOURCE_READ),
-                source_code_points: usage.work(SOURCE_CONSUMPTION),
-                retained_source_units: usage.work(SOURCE_RETENTION),
-                lexer_lookahead_probes: usage.work(LEXER_LOOKAHEAD),
-                lexer_dispatches: usage.work(LEXER_DISPATCH),
-                token_probes: usage.work(TOKEN_PROBE),
-                token_advances: usage.work(TOKEN_ADVANCE),
-                grammar_dispatches: usage.work(GRAMMAR_DISPATCH),
-                early_error_visits: usage.work(EARLY_ERROR_VISIT),
-                label_lookups: usage.work(LABEL_LOOKUP),
-                name_visits: usage.work(NAME_VISIT),
-                name_records: usage.work(NAME_RECORD),
-                name_comparisons: usage.work(NAME_COMPARISON),
-                direct_eval_visits: usage.work(DIRECT_EVAL_VISIT),
-                interner_bytes: usage.work(INTERNER_BYTES),
-                interner_utf16_units: usage.work(INTERNER_UTF16),
-                interner_index_work: usage.work(INTERNER_INDEX),
-                interner_capacity: usage.work(INTERNER_CAPACITY),
-                interner_relocation: usage.work(INTERNER_RELOCATION),
-                diagnostic_input: usage.work(DIAGNOSTIC_INPUT),
-                diagnostic_output: usage.work(DIAGNOSTIC_OUTPUT),
-                template_input: usage.work(TEMPLATE_INPUT),
-                template_output: usage.work(TEMPLATE_OUTPUT),
-                scope_work: usage.work(SCOPE_WORK),
-                optimizer_work: usage.work(OPTIMIZER_WORK),
-                compiler_work: usage.work(COMPILER_WORK),
-                compiler_depth_peak: self.compiler_depth_peak,
-                profile: self.ledger.finish(),
-            },
-        }
-    }
 }
 
 impl crate::Context {
@@ -1490,6 +1276,7 @@ impl crate::Context {
 #[cfg(test)]
 mod compiler_admission_tests {
     use super::*;
+    use crate::JsValue;
     use crate::error::{EngineResourceError, JsNativeError};
 
     #[test]

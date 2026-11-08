@@ -149,7 +149,7 @@ fn script_context(source: &str, action: u32) -> (Context, Script, RealmSnapshot)
     (context, script, snapshot)
 }
 
-fn run(context: &mut Context, limit: Option<u64>) -> ExecutionOutcome {
+fn run(context: &mut Context, limit: Option<u64>) -> ExecutionOutcome<JsValue> {
     let mut options =
         ExecutionOptions::new(4096).with_profile(ProfileMode::Summary { timing: false });
     if let Some(limit) = limit {
@@ -160,7 +160,7 @@ fn run(context: &mut Context, limit: Option<u64>) -> ExecutionOutcome {
         .unwrap()
 }
 
-fn assert_stop(outcome: &ExecutionOutcome, limit: u64) {
+fn assert_stop(outcome: &ExecutionOutcome<JsValue>, limit: u64) {
     assert_eq!(
         outcome.result.as_ref().unwrap_err().as_engine(),
         Some(&EngineError::RuntimeLimit(

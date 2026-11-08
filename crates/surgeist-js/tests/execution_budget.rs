@@ -1989,7 +1989,7 @@ fn bounded_profiling_preserves_admission_and_reports_trace_loss() {
             ExecutionOptions::new(2).with_profile(ProfileMode::Detailed {
                 timing: false,
                 event_limit: 0,
-                filter: EventFilter::ScopeName("evaluation"),
+                filter: EventFilter::ScopeName("execution"),
             }),
         )
         .unwrap();
