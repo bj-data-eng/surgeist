@@ -6183,3 +6183,181 @@ scalars!(
     maximum_progress_exact_fill_preserves_sibling_class_boundary_f32,
     maximum_progress_exact_fill_preserves_sibling_class_boundary_f64
 );
+
+fn maximum_progress_cross_progression_request<S: LayoutScalar>(
+    extent: f64,
+) -> LayoutRootRequestOf<S> {
+    let axes = FlowAxes::new(WritingMode::VerticalRl, Direction::Ltr);
+    let sizing = native_request::sizing(
+        Size::new(Some(S::from_f64(extent)), Some(S::from_f64(100.0))),
+        Size::splat(SizingOperation::Normal),
+    );
+    LayoutRootRequestOf::standalone(
+        sizing,
+        axes,
+        sizing.orthogonal_fallback().initial_containing_block(),
+    )
+}
+
+fn maximum_progress_cross_progression_verify<S: LayoutScalar>(
+    batch: &Batch<S>,
+    owner: f64,
+    child: f64,
+    root_x: f64,
+    native: bool,
+) {
+    let width = owner + 10.0;
+    assert_eq!(batch.node_layouts().count(), 5);
+    assert_eq!(batch.fragments().count(), 5);
+    for (node, x, width) in [
+        (0, root_x, width),
+        (1, 0.0, width),
+        (2, 0.0, owner),
+        (3, owner - child, child),
+        (4, owner, 10.0),
+    ] {
+        let value = single(batch, node);
+        for output in [value.unrounded_output(), value.final_output()] {
+            assert_packet(output, (x, 0.0), (width, 100.0));
+            assert_eq!(
+                output.source_index,
+                SourceIndex::new(usize::from(node == 4))
+            );
+        }
+    }
+    let root = single(batch, 0);
+    if native {
+        assert_eq!(batch.fragmentainers().len(), 1);
+        assert_eq!(
+            root.coordinate_parent(),
+            Some(&FragmentCoordinateSpace::Fragmentainer(
+                batch.fragmentainers()[0].id().clone()
+            ))
+        );
+        for (node, parent) in [(1, 0), (2, 1), (3, 2), (4, 1)] {
+            assert_eq!(
+                single(batch, node).coordinate_parent(),
+                Some(&FragmentCoordinateSpace::Fragment(
+                    single(batch, parent).id().clone()
+                ))
+            );
+        }
+        maximum_progress_children(batch, root.id(), &[single(batch, 1).id()]);
+        maximum_progress_children(
+            batch,
+            single(batch, 1).id(),
+            &[single(batch, 2).id(), single(batch, 4).id()],
+        );
+        maximum_progress_children(batch, single(batch, 2).id(), &[single(batch, 3).id()]);
+    } else {
+        assert_eq!(
+            root.coordinate_parent(),
+            Some(&FragmentCoordinateSpace::Root)
+        );
+    }
+    maximum_progress_unique_fragments(batch);
+}
+
+fn maximum_progress_cross_progression_whole_fit_case<S: LayoutScalar>(cap: f64, child: f64) {
+    let mut tree = Tree::new(
+        vec![
+            block::<S>(None, None),
+            block(None, None),
+            block(None, None),
+            block(Some(child), None),
+            block(Some(10.0), None),
+        ],
+        vec![vec![1], vec![2, 4], vec![3], vec![], vec![]],
+    );
+    for (node, input) in tree.inputs.iter_mut().enumerate() {
+        input.writing_mode = if matches!(node, 1 | 4) {
+            WritingMode::VerticalLr
+        } else {
+            WritingMode::VerticalRl
+        };
+    }
+    tree.inputs[2].max_size.width =
+        MaxSizeOf::value(LengthPercentageOf::px(S::from_f64(cap)).unwrap());
+    let owner = child.min(cap);
+    let continuous =
+        compute_layout(&tree, 0, maximum_progress_cross_progression_request(200.0)).unwrap();
+    maximum_progress_cross_progression_verify(
+        &continuous,
+        owner,
+        child,
+        200.0 - owner - 10.0,
+        false,
+    );
+
+    tree.inputs[2].max_size.width = block::<S>(None, None).max_size.width;
+    let axes = FlowAxes::new(WritingMode::VerticalRl, Direction::Ltr);
+    let uncapped_request = LayoutBoundRequestOf::block_fragmentation(
+        LayoutSourceBasis::fresh(),
+        maximum_progress_cross_progression_request(200.0),
+        FragmentationKind::Page,
+        axes,
+        vec![frame(200.0, 100.0, true)],
+    )
+    .unwrap();
+    let mut sink = Sink::new(5);
+    sink.authorize(0, &uncapped_request);
+    let uncapped =
+        compute(&tree, 0, &uncapped_request).expect("uncapped whole-fit cross-progression control");
+    maximum_progress_cross_progression_verify(&uncapped, child, child, 200.0 - child - 10.0, true);
+
+    tree.inputs[2].max_size.width =
+        MaxSizeOf::value(LengthPercentageOf::px(S::from_f64(cap)).unwrap());
+    let whole_request = LayoutBoundRequestOf::block_fragmentation(
+        LayoutSourceBasis::fresh(),
+        maximum_progress_cross_progression_request(300.0),
+        FragmentationKind::Page,
+        axes,
+        vec![frame(300.0, 100.0, true)],
+    )
+    .unwrap();
+    sink.authorize(0, &whole_request);
+    let whole =
+        compute(&tree, 0, &whole_request).expect("capped whole-fit cross-progression control");
+    maximum_progress_cross_progression_verify(&whole, owner, child, 300.0 - owner - 10.0, true);
+
+    let request = LayoutBoundRequestOf::block_fragmentation(
+        LayoutSourceBasis::fresh(),
+        maximum_progress_cross_progression_request(200.0),
+        FragmentationKind::Page,
+        axes,
+        vec![frame(200.0, 100.0, true)],
+    )
+    .unwrap();
+    sink.authorize(0, &request);
+    let batch = compute(&tree, 0, &request)
+        .expect("whole-fitting owner under opposite ordinary progression retains actual placement");
+    // Block's final pass places Owner at wrapper-local physical 0. The wrapper
+    // is owner +10 wide, so that point maps to fragmentation block offset 10.
+    // For cap 1/child 150, child-local x is 1-150=-149, without a continuation.
+    maximum_progress_cross_progression_verify(&batch, owner, child, 200.0 - owner - 10.0, true);
+    batch.apply_to(&mut sink).unwrap();
+    for node in 0..5 {
+        assert_eq!(
+            sink.state.custody[node],
+            Some(single(&batch, node).unrounded_entry())
+        );
+    }
+}
+
+fn maximum_progress_cross_progression_exact_cap_keeps_whole_owner_origin<S: LayoutScalar>() {
+    maximum_progress_cross_progression_whole_fit_case::<S>(20.0, 20.0);
+}
+scalars!(
+    maximum_progress_cross_progression_exact_cap_keeps_whole_owner_origin,
+    maximum_progress_cross_progression_exact_cap_keeps_whole_owner_origin_f32,
+    maximum_progress_cross_progression_exact_cap_keeps_whole_owner_origin_f64
+);
+
+fn maximum_progress_cross_progression_short_owner_keeps_actual_child_overflow<S: LayoutScalar>() {
+    maximum_progress_cross_progression_whole_fit_case::<S>(1.0, 150.0);
+}
+scalars!(
+    maximum_progress_cross_progression_short_owner_keeps_actual_child_overflow,
+    maximum_progress_cross_progression_short_owner_keeps_actual_child_overflow_f32,
+    maximum_progress_cross_progression_short_owner_keeps_actual_child_overflow_f64
+);
