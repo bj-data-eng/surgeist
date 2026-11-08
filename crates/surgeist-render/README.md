@@ -22,6 +22,10 @@ share the stop primitive and choose a solid premultiplied-sRGBA average when
 final device resolution cannot resolve a cycle. Outgoing `GradientHint` values
 control analytic premultiplied interpolation; repeating averages retain the
 specified stop-only weights.
+Horizontal-distance fields mirror physical stop distances around a local x
+origin. They execute native zero-width radial gradients through the same fill,
+stroke and glyph routes; [their contract](docs/reference.md#horizontal-distance-fields)
+defines the fold, phase and precision boundaries.
 [Gradient paints](docs/reference.md#gradient-paints) describe range, period,
 transform and accounting behavior.
 
@@ -29,7 +33,7 @@ With `render-paint`, `prepare_linear_gradient`, `prepare_radial_gradient` and
 their `prepare_repeating_*` counterparts consume Paint's native geometry and
 used stops through a `RenderAccountingContext`. They return owned fields for
 normal scene commands. The [native Paint consumer](docs/reference.md#native-paint-consumer)
-defines positive-geometry support, unit conversion and typed refusals.
+defines positive and zero-width geometry support, unit conversion and typed refusals.
 `prepare_zero_height_gradient_color` consumes Paint's authenticated zero-height
 color measure and returns an owned solid `Color`; its [reference](docs/reference.md#zero-height-paint-colors)
 describes the separate preparation contract.

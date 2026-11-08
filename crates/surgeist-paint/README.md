@@ -130,8 +130,10 @@ constraint.
 
 See [used-position resolution](docs/explanation.md#gradient-stop-positions) for
 double positions, hints and source association. Authored numeric/color/position
-adapters, zero-circle/zero-width radial realization and complete gradient
-scene composition remain unfinished. Zero-height solid colors use the
+adapters, zero-circle radial realization and complete gradient scene composition
+remain unfinished. Zero-width fields use basis-zero stops and Render's
+[native consumer](../surgeist-render/docs/reference.md#horizontal-distance-fields).
+Zero-height solid colors use the
 [dedicated color measure](docs/reference.md#zero-height-gradient-colors).
 
 ## Documentation

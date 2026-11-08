@@ -121,11 +121,20 @@ pub(super) struct RadialReference {
     pub(super) delta: f64,
 }
 
+/// Extra sampling arithmetic is proved about the sole accepted control state.
+#[derive(Clone, Copy)]
+pub(super) enum LinearSampling {
+    Direct,
+    HorizontalDistancePad { span: f64 },
+    HorizontalDistanceRepeat { phase: f32 },
+}
+
 pub(super) fn native_glyph_transform(
     brush_transform: BrushTransform,
     paint_to_device: kurbo::Affine,
     radial_radii: Option<(f32, f32)>,
     target_extent: PhysicalSize,
+    sampling: LinearSampling,
     account: &Account,
 ) -> Result<vello_encoding::Transform> {
     let local = narrow_transform(brush_transform.local, account)?;
@@ -149,11 +158,12 @@ pub(super) fn native_glyph_transform(
         if !check_native_linear(composed, account)? {
             return Err(invalid_geometry("rounded-zero native glyph period"));
         }
-        qualify_linear(
+        qualify_linear_sampling(
             brush_transform.reference_device,
             composed,
             target_extent,
             brush_transform.comparison_only,
+            sampling,
             account,
         )?;
     }
@@ -599,6 +609,24 @@ pub(super) fn qualify_linear(
     comparison_only: bool,
     account: &Account,
 ) -> Result<()> {
+    qualify_linear_sampling(
+        reference_device,
+        native_device,
+        target_extent,
+        comparison_only,
+        LinearSampling::Direct,
+        account,
+    )
+}
+
+pub(super) fn qualify_linear_sampling(
+    reference_device: kurbo::Affine,
+    native_device: vello_encoding::Transform,
+    target_extent: PhysicalSize,
+    comparison_only: bool,
+    sampling: LinearSampling,
+    account: &Account,
+) -> Result<()> {
     let field = linear_native_field(native_device, account)?;
     let coordinates = target_coordinates(target_extent, account)?;
     let inverse = reference_inverse(reference_device, account)?;
@@ -629,17 +657,89 @@ pub(super) fn qualify_linear(
     // A comparison field also requires finite fine-stage arithmetic. Infinite
     // raw coordinates would otherwise choose an unrelated endpoint color.
     finite_fine_bound(phase_bound, account)?;
+    if comparison_only {
+        // Sign-bit folding preserves the exact native coordinate magnitude;
+        // step cutoffs retain the existing finite-only comparison contract.
+        return Ok(());
+    }
     let quantum = scalar(account, || 1.0_f64 / 511.0)?;
     let quantum = scalar(account, || quantum.next_down())?;
-    if !comparison_only
-        && (scalar(account, || phase_error.upper > quantum)?
-            || phase_exceeds_quantum(phase_bound.upper, quantum, account)?)
+    let (error, magnitude, threshold) = match sampling {
+        LinearSampling::Direct => (phase_error, phase_bound, quantum),
+        LinearSampling::HorizontalDistancePad { span } => {
+            if !scalar(account, || span.is_finite())? || !scalar(account, || span > 0.0)? {
+                return Err(invalid_geometry("unrepresentable distance control span"));
+            }
+            let threshold = ShaderScalar::exact(span)
+                .real_mul(ShaderScalar::exact(quantum), account)?
+                .lower;
+            (phase_error, phase_bound, threshold)
+        }
+        LinearSampling::HorizontalDistanceRepeat { phase } => {
+            let (error, magnitude) =
+                distance_repeat_bounds(phase_error, phase_bound, phase, account)?;
+            (error, magnitude, quantum)
+        }
+    };
+    if scalar(account, || error.upper > threshold)?
+        || phase_exceeds_quantum(magnitude.upper, threshold, account)?
     {
         return Err(invalid_geometry(
             "insufficient native linear phase capacity",
         ));
     }
     Ok(())
+}
+
+/// Bound the exact shader fold/subtract/floor/subtract sequence. The sign-bit
+/// fold is 1-Lipschitz, including the cusp. Floor is exact for the bounded f32
+/// input; modulo changes the comparison to circular phase distance. The two
+/// subtraction bounds include their input/output FTZ losses and hold across
+/// negative values and every integer seam without visiting target pixels.
+fn distance_repeat_bounds(
+    field_error: ShaderScalar,
+    field_magnitude: ShaderScalar,
+    phase: f32,
+    account: &Account,
+) -> Result<(ShaderScalar, ShaderScalar)> {
+    if !scalar(account, || phase.is_finite())?
+        || scalar(account, || phase < 0.0)?
+        || scalar(account, || phase > 1.0)?
+        || (scalar(account, || phase != 0.0)? && !scalar(account, || phase.is_normal())?)
+    {
+        return Err(invalid_geometry("uncertifiable native distance phase"));
+    }
+    let phase = scalar(account, || f64::from(phase))?;
+    let phase = ShaderScalar::exact(phase);
+    let epsilon = ShaderScalar::exact(SHADER_EPSILON);
+    let min = ShaderScalar::exact(SHADER_MIN_NORMAL);
+    // The source projection has separately refused a nonzero phase lost to0.
+    // Full epsilon is conservative for either permitted native rounding.
+    let narrowing = phase.real_mul(epsilon, account)?;
+    let terms = field_magnitude.real_add(phase, account)?;
+    let subtraction = terms
+        .real_mul(epsilon, account)?
+        .real_add(min.real_mul(ShaderScalar::exact(2.0), account)?, account)?;
+    let shifted = terms.real_add(subtraction, account)?;
+    finite_fine_bound(shifted, account)?;
+    if scalar(account, || shifted.upper >= 16_777_216.0)? {
+        return Err(invalid_geometry(
+            "distance phase lacks native fractional precision",
+        ));
+    }
+    // |y| + |floor(y)| <= 2|y|+1. This term bound also covers permitted
+    // association instead of relying on a CPU cancellation/Sterbenz shortcut.
+    let wrap_terms = shifted
+        .real_mul(ShaderScalar::exact(2.0), account)?
+        .real_add(ShaderScalar::ONE, account)?;
+    let wrap = wrap_terms
+        .real_mul(epsilon, account)?
+        .real_add(min.real_mul(ShaderScalar::exact(3.0), account)?, account)?;
+    let error = field_error
+        .real_add(narrowing, account)?
+        .real_add(subtraction, account)?
+        .real_add(wrap, account)?;
+    Ok((error, shifted))
 }
 
 /// Scalar bounds over the actual integer target rectangle. Setup intervals

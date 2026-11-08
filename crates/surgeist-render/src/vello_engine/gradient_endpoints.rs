@@ -8,7 +8,7 @@ use vello_encoding::{DrawMonoid, DrawTag, Layout, Monoid, Ramps, StreamOffsets};
 use super::bounded;
 
 pub(crate) const RAMP_WIDTH: usize = 512;
-const DESCRIPTOR_TEXELS: usize = 7;
+const DESCRIPTOR_TEXELS: usize = 8;
 const PROGRAM_RECORD_TEXELS: usize = 7;
 
 #[derive(Clone, Copy, Debug)]
@@ -20,6 +20,14 @@ pub(crate) struct PadEndpoints {
 }
 
 impl PadEndpoints {
+    pub(crate) const fn first_position_bits(self) -> u32 {
+        self.first
+    }
+
+    pub(crate) const fn last_position_bits(self) -> u32 {
+        self.last
+    }
+
     pub(crate) fn new(first: (f32, Color), last: (f32, Color), account: &Account) -> Result<Self> {
         // One extraction, magnitude mask and zero comparison per scalar. Signed
         // comparison thresholds retain their bits; only actual -0 becomes +0.
@@ -73,21 +81,33 @@ pub(crate) struct ProgramRecord {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum ProgramExtend {
+pub(crate) enum ProgramCoordinates {
     Pad,
     Repeat,
+    HorizontalDistancePad,
+    HorizontalDistanceRepeat { phase: f32 },
+}
+
+impl ProgramCoordinates {
+    fn horizontal_distance(self) -> bool {
+        matches!(
+            self,
+            Self::HorizontalDistancePad | Self::HorizontalDistanceRepeat { .. }
+        )
+    }
 }
 
 #[derive(Clone, Copy)]
 pub(crate) struct GradientProgram<'a> {
     pub(crate) records: &'a [ProgramRecord],
     pub(crate) endpoints: PadEndpoints,
-    pub(crate) extend: ProgramExtend,
+    pub(crate) coordinates: ProgramCoordinates,
 }
 
 #[derive(Clone, Copy)]
 pub(crate) enum GradientSampling<'a> {
     PadRamp(PadEndpoints),
+    HorizontalDistanceStep(PadEndpoints),
     Program(GradientProgram<'a>),
 }
 
@@ -114,12 +134,13 @@ impl<'a, T: Into<BrushRef<'a>>> From<T> for SceneBrush<'a> {
 struct OwnedProgram {
     records: AccountedVec<ProgramRecord>,
     endpoints: PadEndpoints,
-    extend: ProgramExtend,
+    coordinates: ProgramCoordinates,
 }
 
 #[derive(Debug)]
 enum CapturedSampling {
     PadRamp(PadEndpoints),
+    HorizontalDistanceStep(PadEndpoints),
     Program(OwnedProgram),
 }
 
@@ -145,12 +166,39 @@ impl EndpointRecords {
         if !gradient_tag(tag) {
             return match sampling {
                 GradientSampling::PadRamp(_) => Ok(()),
-                GradientSampling::Program(_) => Err(correspondence()),
+                GradientSampling::HorizontalDistanceStep(_) | GradientSampling::Program(_) => {
+                    Err(correspondence())
+                }
             };
+        }
+        let distance = scalar(account, || match sampling {
+            GradientSampling::PadRamp(_) => false,
+            GradientSampling::HorizontalDistanceStep(_) => true,
+            GradientSampling::Program(program) => program.coordinates.horizontal_distance(),
+        })?;
+        if distance && !scalar(account, || tag == DrawTag::LINEAR_GRADIENT)? {
+            return Err(correspondence());
         }
         let sampling = match sampling {
             GradientSampling::PadRamp(endpoints) => CapturedSampling::PadRamp(endpoints),
+            GradientSampling::HorizontalDistanceStep(endpoints) => {
+                if !scalar(account, || endpoints.first == endpoints.last)? {
+                    return Err(correspondence());
+                }
+                CapturedSampling::HorizontalDistanceStep(endpoints)
+            }
             GradientSampling::Program(program) => {
+                if let ProgramCoordinates::HorizontalDistanceRepeat { phase } = program.coordinates
+                    && (!scalar(account, || phase.is_finite())?
+                        || scalar(account, || phase < 0.0)?
+                        || scalar(account, || phase > 1.0)?
+                        || (!scalar(account, || phase == 0.0)?
+                            && !scalar(account, || phase.is_normal())?)
+                        || !scalar(account, || program.endpoints.first == 0)?
+                        || !scalar(account, || program.endpoints.last == 1.0_f32.to_bits())?)
+                {
+                    return Err(correspondence());
+                }
                 let count = scalar(account, || program.records.len())?;
                 if scalar(account, || count < 2)? {
                     return Err(correspondence());
@@ -211,7 +259,7 @@ impl EndpointRecords {
                 CapturedSampling::Program(OwnedProgram {
                     records,
                     endpoints: program.endpoints,
-                    extend: program.extend,
+                    coordinates: program.coordinates,
                 })
             }
         };
@@ -396,6 +444,14 @@ pub(crate) fn prepare(
                 if !gradient_tag(tag) {
                     return Err(correspondence());
                 }
+                let distance = scalar(account, || match &record.sampling {
+                    CapturedSampling::PadRamp(_) => false,
+                    CapturedSampling::HorizontalDistanceStep(_) => true,
+                    CapturedSampling::Program(program) => program.coordinates.horizontal_distance(),
+                })?;
+                if distance && !scalar(account, || tag == DrawTag::LINEAR_GRADIENT)? {
+                    return Err(correspondence());
+                }
                 let byte = add(data_start, mul(prefix, 4, account)?, account)?;
                 account.work(RenderWork::ResourceProbes, 1)?;
                 let original = read_word(packed, byte)?;
@@ -403,7 +459,9 @@ pub(crate) fn prepare(
                 let ramp = scalar(account, || original >> 2)?;
                 let expected_mode = match &record.sampling {
                     CapturedSampling::Program(OwnedProgram {
-                        extend: ProgramExtend::Repeat,
+                        coordinates:
+                            ProgramCoordinates::Repeat
+                            | ProgramCoordinates::HorizontalDistanceRepeat { .. },
                         ..
                     }) => 1,
                     _ => 0,
@@ -416,19 +474,26 @@ pub(crate) fn prepare(
                 }
                 let flat = scalar(account, || u32::try_from(texels.len()))?
                     .map_err(|_| correspondence())?;
-                let (kind, payload, count, endpoints) = match &record.sampling {
-                    CapturedSampling::PadRamp(endpoints) => (0, ramp, 0, *endpoints),
+                let (kind, payload, count, endpoints, phase) = match &record.sampling {
+                    CapturedSampling::PadRamp(endpoints) => (0, ramp, 0, *endpoints, 0),
+                    CapturedSampling::HorizontalDistanceStep(endpoints) => {
+                        (3, ramp, 0, *endpoints, 0)
+                    }
                     CapturedSampling::Program(program) => {
                         let payload = add(texels.len(), DESCRIPTOR_TEXELS, account)?;
                         let payload = scalar(account, || u32::try_from(payload))?
                             .map_err(|_| correspondence())?;
                         let count = scalar(account, || u32::try_from(program.records.len()))?
                             .map_err(|_| correspondence())?;
-                        let kind = match program.extend {
-                            ProgramExtend::Pad => 1,
-                            ProgramExtend::Repeat => 2,
+                        let (kind, phase) = match program.coordinates {
+                            ProgramCoordinates::Pad => (1, 0),
+                            ProgramCoordinates::Repeat => (2, 0),
+                            ProgramCoordinates::HorizontalDistancePad => (4, 0),
+                            ProgramCoordinates::HorizontalDistanceRepeat { phase } => {
+                                (5, scalar(account, || phase.to_bits())?)
+                            }
                         };
-                        (kind, payload, count, program.endpoints)
+                        (kind, payload, count, program.endpoints, phase)
                     }
                 };
                 for word in [
@@ -439,6 +504,7 @@ pub(crate) fn prepare(
                     endpoints.last,
                     endpoints.first_color,
                     endpoints.last_color,
+                    phase,
                 ] {
                     serialize_word(&mut texels, word, account)?;
                 }
@@ -613,7 +679,7 @@ mod tests {
                     assert_eq!(layout.draw_data(&packed)[pad], (512 << 2) | 3);
                     assert_eq!(layout.draw_data(&packed)[repeat], repeat_before);
                     assert_eq!(repeat_before & 3, 1);
-                    let descriptor = &texture.texels[512..519];
+                    let descriptor = &texture.texels[512..520];
                     assert_eq!(
                         descriptor
                             .iter()
@@ -626,10 +692,11 @@ mod tests {
                             0.0_f32.to_bits(),
                             1.0_f32.to_bits(),
                             0xff00_00ff,
-                            0xff00_ff00
+                            0xff00_ff00,
+                            0
                         ]
                     );
-                    assert!(texture.texels[519..].iter().all(|word| *word == 0));
+                    assert!(texture.texels[520..].iter().all(|word| *word == 0));
                     Ok(())
                 },
             )
@@ -645,9 +712,9 @@ mod tests {
     }
 
     #[test]
-    fn a_descriptor_crosses_rows_without_a_per_draw_row() {
+    fn descriptors_share_rows_and_roll_over_at_the_eighth_word_boundary() {
         let mut encoding = Encoding::new();
-        let records: Vec<_> = (0..74)
+        let records: Vec<_> = (0..65)
             .map(|_| CapturedEndpoint {
                 word: append(&mut encoding, peniko::Extend::Pad),
                 sampling: CapturedSampling::PadRamp(endpoints()),
@@ -671,13 +738,13 @@ mod tests {
                         account,
                     )?
                     .unwrap();
-                    // 512 native texels + 518 descriptor texels, padded only once.
+                    // 512 native texels + 520 descriptor texels, padded only once.
                     assert_eq!(texture.texels.len(), 1536);
                     assert_eq!(texture.height, 3);
-                    let start = 512 + 73 * 7;
-                    assert_eq!(start, 1023);
+                    let start = 512 + 64 * 8;
+                    assert_eq!(start, 1024);
                     assert_eq!(
-                        layout.draw_data(&packed)[records[73].word],
+                        layout.draw_data(&packed)[records[64].word],
                         ((start as u32) << 2) | 3
                     );
                     assert_eq!(u32::from_le(texture.texels[start + 2]), 0);
@@ -778,7 +845,7 @@ mod tests {
         let usage = context.last_attempt().unwrap().usage();
         assert!(usage.peak(RenderResource::RetainedCpuBytes) >= 1024 * 4);
         assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
-        assert_eq!(usage.work(RenderWork::SerializedBytes), (512 + 7 + 1) * 4);
+        assert_eq!(usage.work(RenderWork::SerializedBytes), (512 + 8 + 1) * 4);
         assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
     }
 
@@ -925,7 +992,7 @@ mod tests {
                         GradientSampling::Program(GradientProgram {
                             records: &source,
                             endpoints: endpoints(),
-                            extend: ProgramExtend::Repeat,
+                            coordinates: ProgramCoordinates::Repeat,
                         }),
                         DrawTag::LINEAR_GRADIENT,
                         account,
@@ -943,7 +1010,7 @@ mod tests {
                 assert_eq!(&texture.texels[..512], ramps.data);
                 assert_eq!(layout.draw_data(&packed)[neighbor], neighbor_before);
                 assert_eq!(layout.draw_data(&packed)[word], (512 << 2) | 3);
-                let words: Vec<_> = texture.texels[512..533]
+                let words: Vec<_> = texture.texels[512..534]
                     .iter()
                     .map(|word| u32::from_le(*word))
                     .collect();
@@ -951,12 +1018,13 @@ mod tests {
                     words,
                     [
                         2,
-                        519,
+                        520,
                         2,
                         0,
                         1.0_f32.to_bits(),
                         0xff00_00ff,
                         0xff00_ff00,
+                        0,
                         0,
                         1.0_f32.to_bits(),
                         0,
@@ -973,7 +1041,7 @@ mod tests {
                         0,
                     ]
                 );
-                assert!(texture.texels[533..].iter().all(|word| *word == 0));
+                assert!(texture.texels[534..].iter().all(|word| *word == 0));
                 Ok(())
             })
             .unwrap();
@@ -1001,7 +1069,7 @@ mod tests {
                     GradientSampling::Program(GradientProgram {
                         records: &source,
                         endpoints: endpoints(),
-                        extend: ProgramExtend::Pad,
+                        coordinates: ProgramCoordinates::Pad,
                     }),
                     DrawTag::LINEAR_GRADIENT,
                     account,
@@ -1026,7 +1094,7 @@ mod tests {
                     GradientSampling::Program(GradientProgram {
                         records: &source,
                         endpoints: endpoints(),
-                        extend: ProgramExtend::Pad,
+                        coordinates: ProgramCoordinates::Pad,
                     }),
                     DrawTag::LINEAR_GRADIENT,
                     account,
@@ -1061,7 +1129,7 @@ mod tests {
                         GradientSampling::Program(GradientProgram {
                             records: &source,
                             endpoints: endpoints(),
-                            extend: ProgramExtend::Pad,
+                            coordinates: ProgramCoordinates::Pad,
                         }),
                         DrawTag::LINEAR_GRADIENT,
                         account,
@@ -1079,6 +1147,324 @@ mod tests {
                 0
             );
         }
+    }
+
+    #[test]
+    fn distance_coordinates_require_linear_carriers_before_copying() {
+        let source = program_records();
+        let step = PadEndpoints {
+            first: 1,
+            last: 1,
+            ..endpoints()
+        };
+        for sampling in [
+            GradientSampling::HorizontalDistanceStep(step),
+            GradientSampling::Program(GradientProgram {
+                records: &source,
+                endpoints: endpoints(),
+                coordinates: ProgramCoordinates::HorizontalDistancePad,
+            }),
+            GradientSampling::Program(GradientProgram {
+                records: &source,
+                endpoints: endpoints(),
+                coordinates: ProgramCoordinates::HorizontalDistanceRepeat { phase: 0.25 },
+            }),
+        ] {
+            for tag in [
+                DrawTag::COLOR,
+                DrawTag::RADIAL_GRADIENT,
+                DrawTag::SWEEP_GRADIENT,
+            ] {
+                let mut captured = EndpointRecords::default();
+                let mut context = RenderAccountingContext::default();
+                let error = context
+                    .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                        captured.capture(0, sampling, tag, account)
+                    })
+                    .unwrap_err();
+                assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+                assert!(captured.as_slice().is_empty());
+                let usage = context.last_attempt().unwrap().usage();
+                assert_eq!(usage.peak(RenderResource::RetainedCpuBytes), 0);
+                assert_eq!(usage.work(RenderWork::RasterResourceCopies), 0);
+            }
+        }
+    }
+
+    #[test]
+    fn distance_step_packs_equal_directed_controls_without_program_records() {
+        let mut encoding = Encoding::new();
+        let word = append(&mut encoding, peniko::Extend::Pad);
+        let mut resolver = Resolver::default();
+        let mut packed = Vec::new();
+        let (layout, ramps, _) = resolver.resolve(&encoding, &mut packed);
+        let mut context = RenderAccountingContext::default();
+        context
+            .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                let mut captured = EndpointRecords::default();
+                captured.capture(
+                    word,
+                    GradientSampling::HorizontalDistanceStep(PadEndpoints {
+                        first: 1,
+                        last: 1,
+                        ..endpoints()
+                    }),
+                    DrawTag::LINEAR_GRADIENT,
+                    account,
+                )?;
+                let texture = prepare(
+                    &layout,
+                    &mut packed,
+                    ramps,
+                    &StreamOffsets::default(),
+                    captured.as_slice(),
+                    account,
+                )?
+                .unwrap();
+                let header: Vec<_> = texture.texels[512..520]
+                    .iter()
+                    .map(|word| u32::from_le(*word))
+                    .collect();
+                assert_eq!(header, [3, 0, 0, 1, 1, 0xff00_00ff, 0xff00_ff00, 0]);
+                assert!(texture.texels[520..].iter().all(|word| *word == 0));
+                Ok(())
+            })
+            .unwrap();
+        let usage = context.last_attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::GradientStopVisits), 0);
+        assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+    }
+
+    #[test]
+    fn distance_step_resolved_radial_association_refuses_after_real_ramp_prefix() {
+        let mut encoding = Encoding::new();
+        let mut path = encoding.encode_path(true);
+        path.move_to(0.0, 0.0);
+        path.line_to(8.0, 0.0);
+        path.line_to(8.0, 8.0);
+        path.close();
+        path.finish(true);
+        let word = encoding.draw_data.len();
+        let gradient = peniko::Gradient::new_radial((0.0, 0.0), 8.0)
+            .with_stops([(0.0, peniko::Color::BLACK), (1.0, peniko::Color::WHITE)]);
+        encoding.encode_brush(&gradient, 1.0);
+        let mut resolver = Resolver::default();
+        let mut packed = Vec::new();
+        let (layout, ramps, _) = resolver.resolve(&encoding, &mut packed);
+        let original = packed.clone();
+        let records = [CapturedEndpoint {
+            word,
+            sampling: CapturedSampling::HorizontalDistanceStep(PadEndpoints {
+                first: 1,
+                last: 1,
+                ..endpoints()
+            }),
+        }];
+        let mut context = RenderAccountingContext::default();
+        let error = context
+            .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                prepare(
+                    &layout,
+                    &mut packed,
+                    ramps,
+                    &StreamOffsets::default(),
+                    &records,
+                    account,
+                )
+                .map(drop)
+            })
+            .unwrap_err();
+        assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+        assert_eq!(packed, original);
+        let usage = context.last_attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::SerializedBytes), 512 * 4);
+        assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+    }
+
+    #[test]
+    fn distance_repeat_phase_is_owned_and_packed_as_an_exact_eighth_word() {
+        let mut encoding = Encoding::new();
+        let word = append(&mut encoding, peniko::Extend::Repeat);
+        let mut resolver = Resolver::default();
+        let mut packed = Vec::new();
+        let (layout, ramps, _) = resolver.resolve(&encoding, &mut packed);
+        let mut context = RenderAccountingContext::default();
+        context
+            .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                let mut captured = EndpointRecords::default();
+                {
+                    let source = program_records();
+                    captured.capture(
+                        word,
+                        GradientSampling::Program(GradientProgram {
+                            records: &source,
+                            endpoints: endpoints(),
+                            coordinates: ProgramCoordinates::HorizontalDistanceRepeat {
+                                phase: 0.25,
+                            },
+                        }),
+                        DrawTag::LINEAR_GRADIENT,
+                        account,
+                    )?;
+                }
+                let texture = prepare(
+                    &layout,
+                    &mut packed,
+                    ramps,
+                    &StreamOffsets::default(),
+                    captured.as_slice(),
+                    account,
+                )?
+                .unwrap();
+                let header: Vec<_> = texture.texels[512..520]
+                    .iter()
+                    .map(|word| u32::from_le(*word))
+                    .collect();
+                assert_eq!(
+                    header,
+                    [
+                        5,
+                        520,
+                        2,
+                        0,
+                        1.0_f32.to_bits(),
+                        0xff00_00ff,
+                        0xff00_ff00,
+                        0.25_f32.to_bits()
+                    ]
+                );
+                assert_eq!(&texture.texels[..512], ramps.data);
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes),
+            0
+        );
+    }
+
+    #[test]
+    fn distance_repeat_invalid_phase_or_nonunit_controls_refuse_before_copying() {
+        let source = program_records();
+        for (phase, endpoints) in [
+            (f32::NAN, endpoints()),
+            (f32::INFINITY, endpoints()),
+            (-0.25, endpoints()),
+            (1.25, endpoints()),
+            (f32::from_bits(1), endpoints()),
+            (
+                0.25,
+                PadEndpoints {
+                    first: 1,
+                    ..endpoints()
+                },
+            ),
+            (
+                0.25,
+                PadEndpoints {
+                    last: 0.5_f32.to_bits(),
+                    ..endpoints()
+                },
+            ),
+        ] {
+            let mut captured = EndpointRecords::default();
+            let mut context = RenderAccountingContext::default();
+            let error = context
+                .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                    captured.capture(
+                        0,
+                        GradientSampling::Program(GradientProgram {
+                            records: &source,
+                            endpoints,
+                            coordinates: ProgramCoordinates::HorizontalDistanceRepeat { phase },
+                        }),
+                        DrawTag::LINEAR_GRADIENT,
+                        account,
+                    )
+                })
+                .unwrap_err();
+            assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+            assert!(captured.as_slice().is_empty());
+            assert_eq!(
+                context
+                    .last_attempt()
+                    .unwrap()
+                    .usage()
+                    .peak(RenderResource::RetainedCpuBytes),
+                0
+            );
+        }
+    }
+
+    #[test]
+    fn an_eighth_header_word_refusal_preserves_the_exact_real_prefix_and_retry() {
+        let mut encoding = Encoding::new();
+        let word = append(&mut encoding, peniko::Extend::Pad);
+        let mut resolver = Resolver::default();
+        let mut packed = Vec::new();
+        let (layout, ramps, _) = resolver.resolve(&encoding, &mut packed);
+        let records = [CapturedEndpoint {
+            word,
+            sampling: CapturedSampling::PadRamp(endpoints()),
+        }];
+        // The native 512-word ramp and the first seven actual header words fit;
+        // the required phase word is the first refused serialization action.
+        let mut context = RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::SerializedBytes, (512 + 7) * 4)
+                    .unwrap(),
+            ),
+        );
+        let original = packed.clone();
+        let error = context
+            .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                prepare(
+                    &layout,
+                    &mut packed,
+                    ramps,
+                    &StreamOffsets::default(),
+                    &records,
+                    account,
+                )
+                .map(drop)
+            })
+            .unwrap_err();
+        assert!(error.accounting_diagnostic().is_some());
+        assert_eq!(packed, original);
+        let usage = context.last_attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::SerializedBytes), (512 + 7) * 4);
+        assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
+        assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+        assert!(usage.peak(RenderResource::RetainedCpuBytes) >= 1024 * 4);
+        let mut retry = RenderAccountingContext::default();
+        retry
+            .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                let texture = prepare(
+                    &layout,
+                    &mut packed,
+                    ramps,
+                    &StreamOffsets::default(),
+                    &records,
+                    account,
+                )?
+                .unwrap();
+                assert_eq!(u32::from_le(texture.texels[519]), 0);
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(
+            retry
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes),
+            0
+        );
     }
 
     #[test]

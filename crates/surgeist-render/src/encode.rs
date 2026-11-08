@@ -886,6 +886,7 @@ struct BrushTransform {
 
 enum PreparedSampling {
     PadRamp(PadEndpoints),
+    HorizontalDistanceStep(PadEndpoints),
     Program(hint_program::PreparedProgram),
 }
 
@@ -958,6 +959,7 @@ impl FrameBrush {
                 transform,
                 radial_radii,
                 target_extent,
+                self.linear_sampling(&account)?,
                 &account,
             )
             .map_err(|error| {
@@ -970,16 +972,47 @@ impl FrameBrush {
             .map(Some)
         })
     }
+    fn linear_sampling(&self, account: &Account) -> Result<gradient_field::LinearSampling> {
+        use crate::vello_engine::gradient_endpoints::ProgramCoordinates;
+        match &self.sampling {
+            Some(PreparedSampling::Program(program)) => match program.coordinates {
+                ProgramCoordinates::HorizontalDistancePad => {
+                    let first_bits = gradient_field::scalar(account, || {
+                        program.endpoints.first_position_bits()
+                    })?;
+                    let last_bits =
+                        gradient_field::scalar(account, || program.endpoints.last_position_bits())?;
+                    let first = gradient_field::scalar(account, || f32::from_bits(first_bits))?;
+                    let last = gradient_field::scalar(account, || f32::from_bits(last_bits))?;
+                    let first = gradient_field::scalar(account, || f64::from(first))?;
+                    let last = gradient_field::scalar(account, || f64::from(last))?;
+                    let span = gradient_field::scalar(account, || last - first)?;
+                    Ok(gradient_field::LinearSampling::HorizontalDistancePad { span })
+                }
+                ProgramCoordinates::HorizontalDistanceRepeat { phase } => {
+                    account.work(RenderWork::CoordinateVisits, 1)?;
+                    Ok(gradient_field::LinearSampling::HorizontalDistanceRepeat { phase })
+                }
+                ProgramCoordinates::Pad | ProgramCoordinates::Repeat => {
+                    Ok(gradient_field::LinearSampling::Direct)
+                }
+            },
+            _ => Ok(gradient_field::LinearSampling::Direct),
+        }
+    }
     pub(crate) fn as_ref(&self) -> peniko::BrushRef<'_> {
         (&self.brush).into()
     }
     pub(crate) fn scene_brush(&self) -> SceneBrush<'_> {
         let sampling = self.sampling.as_ref().map(|sampling| match sampling {
             PreparedSampling::PadRamp(endpoints) => GradientSampling::PadRamp(*endpoints),
+            PreparedSampling::HorizontalDistanceStep(endpoints) => {
+                GradientSampling::HorizontalDistanceStep(*endpoints)
+            }
             PreparedSampling::Program(program) => GradientSampling::Program(GradientProgram {
                 records: program.records.as_slice(),
                 endpoints: program.endpoints,
-                extend: program.extend,
+                coordinates: program.coordinates,
             }),
         });
         SceneBrush::new(self.as_ref(), sampling)
@@ -1144,7 +1177,9 @@ fn prepare_sweep_gradient(gradient: &Gradient, account: &Account) -> Result<Fram
     }
     account.work(RenderWork::CoordinateVisits, 2)?;
     let output = match gradient.kind() {
-        crate::paint::GradientKind::Linear { .. } | crate::paint::GradientKind::Radial { .. } => {
+        crate::paint::GradientKind::Linear { .. }
+        | crate::paint::GradientKind::Radial { .. }
+        | crate::paint::GradientKind::HorizontalDistance { .. } => {
             unreachable!("ordinary fields use per-use preparation")
         }
         crate::paint::GradientKind::Sweep { center, .. } => {

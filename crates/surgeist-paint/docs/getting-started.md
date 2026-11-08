@@ -18,7 +18,11 @@ three degenerate cases explicitly rather than treating them as zero ordinary
 radii. For `ZeroHeight`, use
 [`resolve_zero_height_gradient_colors`](reference.md#zero-height-gradient-colors)
 with the raw source and ordinary/repeating selection to obtain a solid color
-measure. Zero-circle and zero-width realization remain separate composition work.
+measure. For `ZeroWidth`, resolve raw stops with basis zero and pass geometry
+and used stops to Render's ordinary or repeating radial consumer. Its
+[horizontal-distance field](../../surgeist-render/docs/reference.md#horizontal-distance-fields)
+mirrors physical positions around the center's x coordinate. Zero-circle
+realization remains separate composition work.
 
 ## Plan stacking contexts
 

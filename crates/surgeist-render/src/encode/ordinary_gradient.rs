@@ -6,9 +6,9 @@ use super::{
 };
 use crate::{
     Error, Gradient, GradientRealizationError as Refusal, PhysicalSize, Result,
-    accounting::{Account, RenderWork},
+    accounting::{Account, AccountedVec, RenderWork},
     paint::GradientKind,
-    vello_engine::gradient_endpoints::PadEndpoints,
+    vello_engine::gradient_endpoints::{PadEndpoints, ProgramCoordinates},
 };
 
 pub(super) fn capacity_error(error: Error) -> Error {
@@ -19,7 +19,7 @@ pub(super) fn capacity_error(error: Error) -> Error {
         Refusal::InsufficientNativeCapacity.into()
     }
 }
-fn geometry_error(error: Error) -> Error {
+pub(super) fn geometry_error(error: Error) -> Error {
     if error.accounting_diagnostic().is_some() {
         error
     } else {
@@ -328,6 +328,26 @@ fn scaled_geometry(
                 Some(reference),
             )
         }
+        GradientKind::HorizontalDistance { origin_x, .. } => {
+            let origin_x = scalar(account, || *origin_x)?;
+            let scale = if let Some(range) = range {
+                Scaled::new(range.scale, account)?
+            } else {
+                Scaled::new(1.0, account)?.shift(-shift)
+            };
+            let one = Scaled::new(1.0, account)?;
+            (
+                [
+                    scale,
+                    zero,
+                    zero,
+                    one,
+                    Scaled::new(origin_x, account)?,
+                    zero,
+                ],
+                None,
+            )
+        }
         GradientKind::Sweep { .. } => unreachable!("sweep uses normalized native path"),
     };
     Ok((local, radial))
@@ -389,6 +409,7 @@ fn realize(
     shift: i32,
     transform: kurbo::Affine,
     target: PhysicalSize,
+    sampling: field::LinearSampling,
     account: &Account,
 ) -> Result<(peniko::Gradient, BrushTransform)> {
     let (local, device, radial) = geometry(gradient, range, shift, transform, account)?;
@@ -424,16 +445,54 @@ fn realize(
         if !field::check_native_linear(native, account).map_err(geometry_error)? {
             return Err(Refusal::InsufficientNativeCapacity.into());
         }
-        field::qualify_linear(
+        field::qualify_linear_sampling(
             brush.reference_device,
             native,
             target,
             comparison_only,
+            sampling,
             account,
         )
         .map_err(capacity_error)?;
         Ok((peniko::Gradient::new_linear((0., 0.), (1., 0.)), brush))
     }
+}
+
+fn realize_with_fallback(
+    gradient: &Gradient,
+    range: Option<Range>,
+    transform: kurbo::Affine,
+    target: PhysicalSize,
+    sampling: field::LinearSampling,
+    account: &Account,
+) -> Result<(peniko::Gradient, BrushTransform, i32)> {
+    let mut shift = 0;
+    let (native, brush) =
+        match realize(gradient, range, shift, transform, target, sampling, account) {
+            Ok(result) => result,
+            Err(error)
+                if range.is_none()
+                    && error.accounting_diagnostic().is_none()
+                    && error.gradient_realization_diagnostic()
+                        != Some(&Refusal::DegenerateLinearField) =>
+            {
+                // A power-two basis is selected only when the original native basis
+                // cannot qualify. No translation is introduced at the threshold.
+                let (local, _) = scaled_geometry(gradient, None, 0, account)?;
+                let device = compose(transform, local, account)?;
+                let mut exponent = None;
+                for value in &device[..4] {
+                    if !scalar(account, || value.mantissa == 0.0)? {
+                        exponent =
+                            Some(exponent.map_or(value.exponent, |e: i32| e.max(value.exponent)));
+                    }
+                }
+                shift = exponent.ok_or(error)?;
+                realize(gradient, range, shift, transform, target, sampling, account)?
+            }
+            Err(error) => return Err(error),
+        };
+    Ok((native, brush, shift))
 }
 
 pub(super) fn prepare(
@@ -442,6 +501,9 @@ pub(super) fn prepare(
     target: PhysicalSize,
     account: &Account,
 ) -> Result<FrameBrush> {
+    if matches!(gradient.kind(), GradientKind::HorizontalDistance { .. }) {
+        return prepare_horizontal_distance(gradient, transform, target, account);
+    }
     let supplied = gradient.stops();
     account.work(RenderWork::GradientStopVisits, 1)?;
     let first = supplied[0];
@@ -460,31 +522,14 @@ pub(super) fn prepare(
     } else {
         Some(Range::new(a, b, account)?)
     };
-    let mut shift = 0;
-    let (native, brush) = match realize(gradient, range, shift, transform, target, account) {
-        Ok(result) => result,
-        Err(error)
-            if range.is_none()
-                && error.accounting_diagnostic().is_none()
-                && error.gradient_realization_diagnostic()
-                    != Some(&Refusal::DegenerateLinearField) =>
-        {
-            // A power-two basis is selected only when the original native basis
-            // cannot qualify. No translation is introduced at the threshold.
-            let (local, _) = scaled_geometry(gradient, None, 0, account)?;
-            let device = compose(transform, local, account)?;
-            let mut exponent = None;
-            for value in &device[..4] {
-                if !scalar(account, || value.mantissa == 0.0)? {
-                    exponent =
-                        Some(exponent.map_or(value.exponent, |e: i32| e.max(value.exponent)));
-                }
-            }
-            shift = exponent.ok_or(error)?;
-            realize(gradient, range, shift, transform, target, account)?
-        }
-        Err(error) => return Err(error),
-    };
+    let (native, brush, shift) = realize_with_fallback(
+        gradient,
+        range,
+        transform,
+        target,
+        field::LinearSampling::Direct,
+        account,
+    )?;
     let boundary = if range.is_some() {
         (0.0, 1.0)
     } else {
@@ -525,7 +570,7 @@ pub(super) fn prepare(
             &stops,
             |position, account| range.normalize(position, account),
             endpoints,
-            crate::vello_engine::gradient_endpoints::ProgramExtend::Pad,
+            crate::vello_engine::gradient_endpoints::ProgramCoordinates::Pad,
             account,
         )?)
     } else {
@@ -536,6 +581,189 @@ pub(super) fn prepare(
         Some(program) => PreparedSampling::Program(program),
         None => PreparedSampling::PadRamp(endpoints),
     });
+    Ok(output)
+}
+
+/// The dependency carrier owns only actual colours and source occurrence order.
+/// Its uniform offsets cannot be confused with the semantic programme controls.
+pub(super) fn horizontal_carrier_stops(
+    supplied: &[crate::GradientStop],
+    account: &Account,
+) -> Result<AccountedVec<peniko::ColorStop>> {
+    let mut carrier = account.temporary(supplied.len())?;
+    let denominator = scalar(account, || (supplied.len() - 1) as f64)?;
+    for (index, stop) in supplied.iter().enumerate() {
+        account.work(RenderWork::GradientStopVisits, 1)?;
+        let offset = if index == 0 {
+            0.0
+        } else if index == supplied.len() - 1 {
+            1.0
+        } else {
+            let ordinal = scalar(account, || index as f64)?;
+            let quotient = scalar(account, || ordinal / denominator)?;
+            scalar(account, || quotient as f32)?
+        };
+        account.work(RenderWork::CoordinateVisits, 4)?;
+        carrier.push_reserved(peniko::ColorStop::from((
+            offset,
+            peniko::Color::from(stop.color()),
+        )));
+    }
+    Ok(carrier)
+}
+
+/// No unused local coefficient is materialized before its final device product.
+/// The transverse unit column completes the scalar coordinates; it is not an
+/// authored radius, y coordinate or substituted ending shape.
+pub(super) fn horizontal_device(
+    origin_x: f64,
+    basis: f64,
+    transform: kurbo::Affine,
+    account: &Account,
+) -> Result<kurbo::Affine> {
+    let zero = Scaled::new(0.0, account)?;
+    let local = [
+        Scaled::new(basis, account)?,
+        zero,
+        zero,
+        Scaled::new(1.0, account)?,
+        Scaled::new(origin_x, account)?,
+        zero,
+    ];
+    affine(compose(transform, local, account)?, account)
+}
+
+pub(super) fn horizontal_brush(
+    device: kurbo::Affine,
+    transform: kurbo::Affine,
+    target: PhysicalSize,
+    sampling: field::LinearSampling,
+    account: &Account,
+) -> Result<BrushTransform> {
+    // Repeat phase belongs after the sign-bit fold, never in this solved origin.
+    let brush =
+        field::linear_brush_transform(transform, device, false, account).map_err(geometry_error)?;
+    let composed = field::affine_product(transform, brush.local, account)?;
+    let native = field::narrow_transform(composed, account).map_err(geometry_error)?;
+    if !field::check_native_linear(native, account).map_err(geometry_error)? {
+        return Err(Refusal::InsufficientNativeCapacity.into());
+    }
+    field::qualify_linear_sampling(
+        brush.reference_device,
+        native,
+        target,
+        false,
+        sampling,
+        account,
+    )
+    .map_err(capacity_error)?;
+    Ok(brush)
+}
+
+fn distance_position(value: f64, scale: f64, index: usize, account: &Account) -> Result<f32> {
+    let quotient = scalar(account, || value / scale)?;
+    let native = scalar(account, || quotient as f32)?;
+    if !scalar(account, || native.is_finite())?
+        || (scalar(account, || value != 0.0)? && scalar(account, || native == 0.0)?)
+    {
+        return Err(Refusal::UnrepresentableStop { stop_index: index }.into());
+    }
+    Ok(native)
+}
+
+fn prepare_horizontal_distance(
+    gradient: &Gradient,
+    transform: kurbo::Affine,
+    target: PhysicalSize,
+    account: &Account,
+) -> Result<FrameBrush> {
+    let supplied = gradient.stops();
+    account.work(RenderWork::GradientStopVisits, 1)?;
+    let first = supplied[0];
+    if supplied.len() == 1 {
+        return Ok(FrameBrush::solid(first.color().into()));
+    }
+    account.work(RenderWork::GradientStopVisits, 1)?;
+    let last = supplied[supplied.len() - 1];
+    account.work(RenderWork::CoordinateVisits, 2)?;
+    let (a, b) = (first.position(), last.position());
+    if scalar(account, || b <= 0.0)? {
+        return Ok(FrameBrush::solid(last.color().into()));
+    }
+    if scalar(account, || a == b)? {
+        let (native, brush, shift) = realize_with_fallback(
+            gradient,
+            None,
+            transform,
+            target,
+            field::LinearSampling::Direct,
+            account,
+        )?;
+        let threshold = cutoff(a, shift, account)?;
+        let endpoints = PadEndpoints::new(
+            (threshold, first.color()),
+            (threshold, last.color()),
+            account,
+        )?;
+        let carrier = horizontal_carrier_stops(supplied, account)?;
+        let mut output = gradient_with_stops(native, carrier, Some(brush))?;
+        output.sampling = Some(PreparedSampling::HorizontalDistanceStep(endpoints));
+        return Ok(output);
+    }
+    let low = scalar(account, || a.abs())?;
+    let high = scalar(account, || b.abs())?;
+    let largest = scalar(account, || low.max(high))?;
+    let magnitude = Scaled::new(largest, account)?;
+    let scale = Scaled {
+        mantissa: 1.0,
+        exponent: magnitude.exponent,
+    }
+    .value(account)?;
+    let first_native = distance_position(a, scale, 0, account)?;
+    let last_native = distance_position(b, scale, supplied.len() - 1, account)?;
+    qualify_stop_order(
+        b,
+        last_native,
+        Some((a, first_native)),
+        supplied.len() - 1,
+        account,
+    )?;
+    let first_wide = scalar(account, || f64::from(first_native))?;
+    let last_wide = scalar(account, || f64::from(last_native))?;
+    let span = scalar(account, || last_wide - first_wide)?;
+    let range = Range {
+        first: a,
+        last: b,
+        scale,
+        delta: 1.0,
+    };
+    let (native, brush, _) = realize_with_fallback(
+        gradient,
+        Some(range),
+        transform,
+        target,
+        field::LinearSampling::HorizontalDistancePad { span },
+        account,
+    )?;
+    let endpoints = PadEndpoints::new(
+        (first_native, first.color()),
+        (last_native, last.color()),
+        account,
+    )?;
+    let program = hint_program::prepare_projected(
+        supplied,
+        |index, position, account| distance_position(position, scale, index, account),
+        |position, account| {
+            let quotient = scalar(account, || position / scale)?;
+            scalar(account, || quotient as f32)
+        },
+        endpoints,
+        ProgramCoordinates::HorizontalDistancePad,
+        account,
+    )?;
+    let carrier = horizontal_carrier_stops(supplied, account)?;
+    let mut output = gradient_with_stops(native, carrier, Some(brush))?;
+    output.sampling = Some(PreparedSampling::Program(program));
     Ok(output)
 }
 
@@ -1115,6 +1343,117 @@ mod tests {
                 .usage()
                 .live(RenderResource::ScratchCpuBytes),
             0
+        );
+    }
+    #[test]
+    fn distance_program_keeps_signed_controls_separate_from_its_uniform_carrier() {
+        let gradient = Gradient::try_horizontal_distance(
+            8.0,
+            vec![
+                GradientStop::try_new(-4.0, Color::BLACK).unwrap(),
+                GradientStop::try_new(4.0, Color::TRANSPARENT).unwrap(),
+                GradientStop::try_new(12.0, Color::BLACK).unwrap(),
+            ],
+        )
+        .unwrap();
+        let brush = prepare(
+            &gradient,
+            kurbo::Affine::IDENTITY,
+            PhysicalSize::new(32, 8),
+            &Account::for_test(),
+        )
+        .unwrap();
+        let Some(PreparedSampling::Program(program)) = &brush.sampling else {
+            panic!("nonzero distance uses its analytic programme");
+        };
+        assert!(matches!(
+            program.coordinates,
+            ProgramCoordinates::HorizontalDistancePad
+        ));
+        // S=8: semantic controls are p/S, not shifted to the first stop.
+        assert_eq!(
+            program
+                .records
+                .iter()
+                .map(|r| r.position)
+                .collect::<Vec<_>>(),
+            [-0.5, 0.5, 1.5]
+        );
+        let peniko::Brush::Gradient(carrier) = &brush.brush else {
+            panic!("linear carrier")
+        };
+        assert!(matches!(carrier.kind, peniko::GradientKind::Linear(_)));
+        assert_eq!(
+            carrier.stops.iter().map(|r| r.offset).collect::<Vec<_>>(),
+            [0.0, 0.5, 1.0]
+        );
+        let inverse = brush.transform.unwrap().reference_device.inverse();
+        for (x, expected) in [(0.0, -1.0), (8.0, 0.0), (16.0, 1.0)] {
+            let point = inverse * kurbo::Point::new(x, 4.0);
+            assert_eq!(point.x, expected);
+        }
+    }
+
+    #[test]
+    fn distance_overflowing_stop_span_uses_its_finite_final_device_basis() {
+        let gradient = Gradient::try_horizontal_distance(
+            0.0,
+            vec![
+                GradientStop::try_new(-f64::MAX, Color::BLACK).unwrap(),
+                GradientStop::try_new(f64::MAX, Color::TRANSPARENT).unwrap(),
+            ],
+        )
+        .unwrap();
+        let brush = prepare(
+            &gradient,
+            kurbo::Affine::scale(f64::MIN_POSITIVE),
+            PhysicalSize::new(8, 4),
+            &Account::for_test(),
+        )
+        .unwrap();
+        let Some(PreparedSampling::Program(program)) = &brush.sampling else {
+            panic!("programme")
+        };
+        assert_eq!(program.records[0].position, -2.0);
+        assert_eq!(program.records[1].position, 2.0);
+        assert_eq!(
+            brush.transform.unwrap().reference_device.as_coeffs(),
+            [2.0, 0.0, -0.0, 2.0, 0.0, 0.0]
+        );
+    }
+
+    #[test]
+    fn distance_tiny_step_retains_an_unshifted_native_comparison_threshold() {
+        let threshold = f64::from(f32::from_bits(1));
+        let gradient = Gradient::try_horizontal_distance(
+            0.0,
+            vec![
+                GradientStop::try_new(threshold, Color::BLACK).unwrap(),
+                GradientStop::try_new(threshold, Color::TRANSPARENT).unwrap(),
+            ],
+        )
+        .unwrap();
+        let brush = prepare(
+            &gradient,
+            kurbo::Affine::IDENTITY,
+            PhysicalSize::new(8, 4),
+            &Account::for_test(),
+        )
+        .unwrap();
+        let Some(PreparedSampling::HorizontalDistanceStep(endpoints)) = &brush.sampling else {
+            panic!("directed step descriptor");
+        };
+        assert_eq!(
+            (
+                endpoints.first_position_bits(),
+                endpoints.last_position_bits()
+            ),
+            (1, 1)
+        );
+        assert!(brush.transform.unwrap().comparison_only);
+        assert_eq!(
+            brush.transform.unwrap().reference_device.as_coeffs(),
+            [1.0, 0.0, -0.0, 1.0, 0.0, 0.0]
         );
     }
 }

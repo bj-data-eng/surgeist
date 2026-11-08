@@ -4,14 +4,14 @@ use crate::{
     Error, GradientRealizationError as Refusal, GradientStop, Result,
     accounting::{Account, AccountedVec, RenderWork},
     vello_engine::gradient_endpoints::{
-        PadEndpoints, ProgramExtend, ProgramRecord, ProgramSegment,
+        PadEndpoints, ProgramCoordinates, ProgramRecord, ProgramSegment,
     },
 };
 
 pub(super) struct PreparedProgram {
     pub(super) records: AccountedVec<ProgramRecord>,
     pub(super) endpoints: PadEndpoints,
-    pub(super) extend: ProgramExtend,
+    pub(super) coordinates: ProgramCoordinates,
 }
 
 const U: f64 = f32::EPSILON as f64;
@@ -316,7 +316,31 @@ pub(super) fn prepare(
     native: &[peniko::ColorStop],
     normalize: impl Fn(f64, &Account) -> Result<f32>,
     endpoints: PadEndpoints,
-    extend: ProgramExtend,
+    coordinates: ProgramCoordinates,
+    account: &Account,
+) -> Result<PreparedProgram> {
+    prepare_projected(
+        stops,
+        |index, _, account| {
+            account.work(RenderWork::GradientStopVisits, 1)?;
+            scalar(account, || native[index].offset)
+        },
+        normalize,
+        endpoints,
+        coordinates,
+        account,
+    )
+}
+
+/// Semantic controls may differ from the uniform dependency carrier. This
+/// provider owns each real control projection; no temporary colour list or
+/// duplicated semantic control authority is needed.
+pub(super) fn prepare_projected(
+    stops: &[GradientStop],
+    native: impl Fn(usize, f64, &Account) -> Result<f32>,
+    normalize: impl Fn(f64, &Account) -> Result<f32>,
+    endpoints: PadEndpoints,
+    coordinates: ProgramCoordinates,
     account: &Account,
 ) -> Result<PreparedProgram> {
     let result = (|| {
@@ -325,16 +349,14 @@ pub(super) fn prepare(
         for (index, stop) in stops.iter().enumerate() {
             account.work(RenderWork::GradientStopVisits, 1)?;
             let position = scalar(account, || stop.position())?;
-            account.work(RenderWork::GradientStopVisits, 1)?;
-            let native_position = scalar(account, || native[index].offset)?;
+            let native_position = native(index, position, account)?;
             if !scalar(account, || native_position.is_finite())? {
                 return Err(Refusal::UnrepresentableStop { stop_index: index }.into());
             }
             let outgoing = if let Some(next) = stops.get(index + 1) {
                 account.work(RenderWork::GradientStopVisits, 1)?;
                 let next_position = scalar(account, || next.position())?;
-                account.work(RenderWork::GradientStopVisits, 1)?;
-                let next_native = scalar(account, || native[index + 1].offset)?;
+                let next_native = native(index + 1, next_position, account)?;
                 let same = scalar(account, || position == next_position)?;
                 let ordered = if same {
                     scalar(account, || native_position == next_native)?
@@ -400,7 +422,7 @@ pub(super) fn prepare(
         Ok(PreparedProgram {
             records,
             endpoints,
-            extend,
+            coordinates,
         })
     })();
     result.map_err(capacity)
@@ -516,7 +538,7 @@ mod tests {
                 &native,
                 |_, _| panic!("endpoint hint must not be narrowed"),
                 endpoints,
-                ProgramExtend::Pad,
+                ProgramCoordinates::Pad,
                 &account,
             )
             .unwrap();
@@ -537,7 +559,7 @@ mod tests {
             &native(&stops),
             |_, _| panic!("zero-width hint must not be narrowed"),
             PadEndpoints::new((0., Color::BLACK), (0., Color::TRANSPARENT), &account).unwrap(),
-            ProgramExtend::Pad,
+            ProgramCoordinates::Pad,
             &account,
         )
         .unwrap();
@@ -568,7 +590,7 @@ mod tests {
                         &native,
                         |_, _| Ok(0.0),
                         endpoints,
-                        ProgramExtend::Pad,
+                        ProgramCoordinates::Pad,
                         account,
                     )
                     .map(drop)
@@ -594,7 +616,7 @@ mod tests {
                 &native,
                 |p, account| scalar(account, || p as f32),
                 PadEndpoints::new((0., Color::BLACK), (1., Color::TRANSPARENT), &account).unwrap(),
-                ProgramExtend::Pad,
+                ProgramCoordinates::Pad,
                 &account
             )
             .is_ok()

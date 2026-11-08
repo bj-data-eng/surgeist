@@ -49,8 +49,8 @@ The [error API](../src/error.rs) defines the operation and reason payloads.
 
 ## Gradient paints
 
-`Gradient` supplies ordinary linear, positive elliptical radial and full-turn
-sweep fields. `GradientStop::try_new` preserves any finite `f64` field position
+`Gradient` supplies ordinary linear, positive elliptical radial, horizontal-distance
+and full-turn sweep fields. `GradientStop::try_new` preserves any finite `f64` field position
 and a validated numeric-sRGB color. Linear and radial constructors retain a
 nonempty, nondecreasing list, including negative, outside-unit and equal
 positions. Radial construction takes horizontal and vertical radii; equal axes
@@ -62,13 +62,15 @@ A single stop is a solid paint, including for coincident linear endpoints.
 Ordinary fields use first/last colors outside the supplied interval. A multicolor
 all-coincident list is a true step: first below the threshold, last at and above
 it. This equality rule is deterministic native policy. Source equality is tested
-in `f64` before normalization or narrowing. Nonzero intervals map to a canonical
-native range with exact endpoint records zero and one. Steps use an unshifted,
+in `f64` before normalization or narrowing. Nonzero linear/radial intervals map
+to a canonical native range with exact endpoint records zero and one.
+Horizontal-distance fields retain unshifted controls as described below.
+Steps use an unshifted,
 qualified comparison basis and directed threshold rounding, preserving subnormal
 thresholds. These rules compare the actual native computed coordinate; they do
 not promise exact-real geometric boundary coverage.
 
-Unhinted interpolation retains the native 512-sample RGBA8 ramp. Hinted lists
+Unhinted linear/radial/sweep interpolation retains the native 512-sample RGBA8 ramp. Hinted lists
 use the [analytic segment program](#transition-hints) below. Realization uses
 the full paint transform and final target,
 including shear and elliptical axes. Negative radial stops can contribute to the
@@ -89,7 +91,8 @@ for this execution contract; no infallible export to an external native sampler
 carries its endpoint/comparison semantics.
 
 For repetition, positions are units of the supplied field: the linear start-to-end vector or
-radial ending ellipse. A linear field from zero to forty logical units with
+radial ending ellipse; horizontal-distance stops use physical logical distances.
+A linear field from zero to forty logical units with
 stops at one-quarter and one-and-one-quarter therefore repeats a forty-unit
 cycle beginning at ten, including beyond the original field endpoints. Period
 is last minus first, with no box or unit-interval clamp. Duplicate positions
@@ -116,8 +119,8 @@ actually rounded-zero whole period instead
 uses the original colors/count at uniform replacement positions. Coincident
 linear endpoints select that case. `try_radial` requires a positive horizontal
 radius and nonnegative vertical radius: positive-width zero-height is an
-already-selected weighted-average case; zero-width semantic resolution belongs
-to the caller. The [pinned repeating-gradient clauses](../../../references/css-images-3--CRD-css-images-3-20231218--74eb4b475aa0.md#repeating-gradients)
+already-selected weighted-average case. Zero-width realization uses the distinct
+[horizontal-distance field](#horizontal-distance-fields). The [pinned repeating-gradient clauses](../../../references/css-images-3--CRD-css-images-3-20231218--74eb4b475aa0.md#repeating-gradients)
 own repetition and averaging requirements.
 
 Unit native patterns and brush transforms retain period/phase before narrowing.
@@ -157,6 +160,69 @@ See [frame accounting](#frame-accounting) for inclusive phases and host timing.
 retains authored gradient-box geometry, stop/hint fixup and degenerate semantic
 selection. Render owns its direct native Paint consumer; root retains facade
 wiring and broader authored composition.
+
+### Horizontal-distance fields
+
+`Gradient::try_horizontal_distance(origin_x, stops)` and
+`RepeatingGradient::try_horizontal_distance(origin_x, stops)` define the physical
+logical-distance field `r = abs(local_x - origin_x)`. They require a finite
+origin and the existing ordered finite color/hint list; repeating construction
+also requires a finite last-minus-first period. Both types expose
+`horizontal_distance_origin()`. Their other geometry getters return `None`.
+These constructors work without `render-paint` and retain no unused y origin
+or fictitious ending ellipse.
+
+The fold occurs before source offsets and repetition. Ordinary red at distance
+2 and blue at 6 is red at the center, half red/blue on both sides at distance 4,
+and blue at distance 6 and beyond. Applying `abs` after subtracting the first
+stop would move those colors. Repeating red at 1 and blue at 5 has period 4:
+the center's blue weight is .75, both distance-1 seams start red, and distance 3
+is half red/blue. The field is constant along local y before the complete paint
+transform. Rotation, reflection, shear and surface scale act on that same field.
+
+The native [ZeroWidth contribution](https://github.com/bj-data-eng/surgeist/issues/2105)
+uses Paint's authentic case and used stops at basis zero. Percentage contributions
+vanish while length contributions, hints, omissions and source order remain real.
+Both-zero ellipses retain the ordered `ZeroWidth` case. A zero-radius circle has
+a separate infinitesimal-boundary question and is outside this consumer.
+
+One-color lists are solid. Ordinary last positions at or below zero are solid
+last color on the nonnegative distance domain. A coincident positive threshold
+uses first color inside and last at and outside the two mirrored boundaries.
+For repetition, zero spans use uniform replacement over actual colors; positive
+unresolved spans use the specified stop-only weighted average. Local stripe
+spacing under a transform follows the inverse-transpose field normal, including
+shear. The existing strictly-below-two-device-pixel rule applies on both halves.
+
+Nonzero ordinary distance intervals use an analytic program even without hints.
+An unshifted signed linear carrier is folded by its sign bit before endpoint
+tests. A power-of-two scale bounds accepted native controls without requiring
+an overflowing raw span or a range offset before the fold. Repetition uses its
+physical period as scale, then subtracts the retained phase and wraps once.
+Unrepresentable controls/hints and uncertifiable phase/geometry retain typed
+capability refusals; numerical difficulty does not select a different average.
+Steps retain directed threshold rounding and their comparison-only finite
+certificate, including native subnormal threshold bits.
+Large local path coordinates under tiny transforms also encounter the existing
+[native geometry encoding limitation](https://github.com/bj-data-eng/surgeist/issues/2111).
+The field's bounded final-coefficient proof covers its carrier and sampling;
+complete scenes retain their geometry and inverse-domain receiving constraints.
+
+Qualification checks the complete final target and each actual glyph transform
+product. Smooth field error is measured relative to the accepted stop span,
+or in periods for repetition. The fold is exact on native representations and
+does not increase coordinate error at the cusp. Analytic weight error is a
+separate bound about the lowered curve; neither bound promises aggregate exact
+source-real colors at arbitrary affine discontinuities. Exact native endpoint,
+run and seam rules still apply, including the existing rounded-wrap endpoint.
+
+The coupled sampling interpretation survives prepared/direct/graph/native glyph
+copies. Its one eight-word descriptor and seven-word program records use the
+existing exact RGBA8 transport. Ledger counts actual field/phase proofs, record
+walks, carrier and program capacity, overlapping scene copies, checked packing,
+texture rows and uploads. Header costs also reflect the eight-word format for
+existing fields. Refused preparation releases unpublished backing and preserves
+the accepted prefix; later frame/device publication remains atomic.
 
 ### Transition hints
 
@@ -213,15 +279,18 @@ returning `RepeatingGradient`. Each takes real Paint geometry,
 repetition. The output works with normal fill, stroke and glyph commands after
 borrowed inputs and the preparation context are dropped.
 
-Linear geometry must have positive length. Radial geometry must be the positive
-Ellipse case; its horizontal radius supplies the ray basis. The stop result's
+Linear geometry must have positive length. For the positive radial Ellipse case,
+its horizontal radius supplies the ray basis. The stop result's
 `line_length` must exactly equal that accepted `f64` basis. Each used physical
 position `p` becomes the field position `q = p / L`, retaining equal, double,
 negative and outside positions in source order. The conversion preserves all
 stop occurrences, colors and outgoing hints. A hint following a double-position
 stop attaches after its second position; a following double-position stop begins
 the next interval at its first position. The consumer does not rerun direction,
-geometry or fixup.
+geometry or fixup. For radial `ZeroWidth`, the accepted basis is exactly zero:
+the consumer captures the required center x and copies used physical positions
+identically into a horizontal-distance field, with no division. Unused center y
+and original height are not retained. The same source/Hint/Two associations apply.
 
 Native qualification requires finite `q`, preserves nonzero positions and the
 equality or strict order of adjacent positions, and refuses a collapsed or
@@ -233,9 +302,9 @@ produces a valid finite field span.
 `ErrorCode::PaintGradient` and `Error::paint_gradient_diagnostic` preserve typed
 basis, unsupported geometry, source/position conversion, span and storage
 diagnostics. Named-limit and setup failures retain `RenderAccountingError`.
-Conversion checks hint positions as well as color positions, preserving the
-actual source item index; a hint has position ordinal zero. All radial zero
-cases remain refused; no zero-height basis or substitute radius is inferred.
+Positive-basis conversion qualifies hint positions as well as color positions, preserving the
+actual source item index; a hint has position ordinal zero. `ZeroCircle` and
+`ZeroHeight` remain refused by these field adapters; no substitute radius is inferred.
 Authored/computed adapters remain outside these native consumers.
 
 `RenderAttemptKind::PaintGradient` reports one standalone preparation. Ledger

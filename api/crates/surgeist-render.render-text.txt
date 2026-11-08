@@ -1197,10 +1197,12 @@ pub const fn surgeist_render::GlyphSynthesis::skew(self) -> f32
 pub fn surgeist_render::GlyphSynthesis::try_new(skew: f32, embolden: f32) -> surgeist_render::Result<Self>
 pub struct surgeist_render::Gradient
 impl surgeist_render::Gradient
+pub const fn surgeist_render::Gradient::horizontal_distance_origin(&self) -> core::option::Option<f64>
 pub const fn surgeist_render::Gradient::linear_points(&self) -> core::option::Option<(surgeist_render::Point, surgeist_render::Point)>
 pub const fn surgeist_render::Gradient::radial_geometry(&self) -> core::option::Option<(surgeist_render::Point, f64, f64)>
 pub fn surgeist_render::Gradient::stops(&self) -> &[surgeist_render::GradientStop]
 pub const fn surgeist_render::Gradient::sweep_center(&self) -> core::option::Option<surgeist_render::Point>
+pub fn surgeist_render::Gradient::try_horizontal_distance(origin_x: f64, stops: alloc::vec::Vec<surgeist_render::GradientStop>) -> surgeist_render::Result<Self>
 pub fn surgeist_render::Gradient::try_linear(start: surgeist_render::Point, end: surgeist_render::Point, stops: alloc::vec::Vec<surgeist_render::GradientStop>) -> surgeist_render::Result<Self>
 pub fn surgeist_render::Gradient::try_radial(center: surgeist_render::Point, radius_x: f64, radius_y: f64, stops: alloc::vec::Vec<surgeist_render::GradientStop>) -> surgeist_render::Result<Self>
 pub fn surgeist_render::Gradient::try_sweep(center: surgeist_render::Point, stops: alloc::vec::Vec<surgeist_render::GradientStop>) -> surgeist_render::Result<Self>
@@ -1751,9 +1753,11 @@ impl surgeist_render::Renderer
 pub async fn surgeist_render::Renderer::read_headless(&mut self, surface: &surgeist_render::Surface) -> surgeist_render::Result<surgeist_render::ImageBuffer>
 pub struct surgeist_render::RepeatingGradient
 impl surgeist_render::RepeatingGradient
+pub const fn surgeist_render::RepeatingGradient::horizontal_distance_origin(&self) -> core::option::Option<f64>
 pub const fn surgeist_render::RepeatingGradient::linear_points(&self) -> core::option::Option<(surgeist_render::Point, surgeist_render::Point)>
 pub const fn surgeist_render::RepeatingGradient::radial_geometry(&self) -> core::option::Option<(surgeist_render::Point, f64, f64)>
 pub fn surgeist_render::RepeatingGradient::stops(&self) -> &[surgeist_render::GradientStop]
+pub fn surgeist_render::RepeatingGradient::try_horizontal_distance(origin_x: f64, stops: alloc::vec::Vec<surgeist_render::GradientStop>) -> surgeist_render::Result<Self>
 pub fn surgeist_render::RepeatingGradient::try_linear(start: surgeist_render::Point, end: surgeist_render::Point, stops: alloc::vec::Vec<surgeist_render::GradientStop>) -> surgeist_render::Result<Self>
 pub fn surgeist_render::RepeatingGradient::try_radial(center: surgeist_render::Point, radius_x: f64, radius_y: f64, stops: alloc::vec::Vec<surgeist_render::GradientStop>) -> surgeist_render::Result<Self>
 impl core::convert::From<surgeist_render::RepeatingGradient> for surgeist_render::Paint

@@ -61,9 +61,9 @@ pub fn prepare_linear_gradient(
     )
 }
 
-/// Prepares an owned ordinary elliptical field from positive native Paint
-/// geometry and its used stops and hints. Radial zero cases refuse; no replacement
-/// radius or used-stop basis is invented.
+/// Prepares an owned ordinary field from native Paint elliptical or ZeroWidth
+/// geometry and its used stops and hints. ZeroWidth uses physical distances at
+/// basis zero. ZeroCircle and ZeroHeight refuse without replacement geometry.
 pub fn prepare_radial_gradient(
     geometry: &RadialGradientGeometry,
     stops: &GradientStops<'_, Color>,
@@ -99,9 +99,9 @@ pub fn prepare_repeating_linear_gradient(
     )
 }
 
-/// Prepares an owned repeating elliptical field from positive native Paint
-/// geometry and its used stops. Every radial zero case remains unsupported;
-/// this operation never invents a degenerate used-stop basis or replacement radii.
+/// Prepares an owned repeating elliptical or ZeroWidth field from native Paint
+/// geometry and its used stops. ZeroWidth uses physical distances at basis zero;
+/// ZeroCircle and ZeroHeight remain unsupported without replacement geometry.
 pub fn prepare_repeating_radial_gradient(
     geometry: &RadialGradientGeometry,
     stops: &GradientStops<'_, Color>,
@@ -166,10 +166,38 @@ pub fn prepare_zero_height_gradient_color(
     )
 }
 
-fn linear_geometry(
-    line: &LinearGradientLine,
-    account: &Account,
-) -> Result<(GradientGeometry, f64)> {
+/// Keep the required basis and its position projection in one closed state.
+/// In particular, a zero-width basis has no divisor or unused ellipse geometry.
+#[derive(Clone, Copy)]
+enum AdapterGeometry {
+    UnitBasis {
+        geometry: GradientGeometry,
+        basis: f64,
+    },
+    HorizontalDistance {
+        origin_x: f64,
+    },
+}
+
+impl AdapterGeometry {
+    const fn expected_basis(self) -> f64 {
+        match self {
+            Self::UnitBasis { basis, .. } => basis,
+            Self::HorizontalDistance { .. } => 0.0,
+        }
+    }
+
+    const fn into_geometry(self) -> GradientGeometry {
+        match self {
+            Self::UnitBasis { geometry, .. } => geometry,
+            Self::HorizontalDistance { origin_x } => {
+                GradientGeometry::HorizontalDistance { origin_x }
+            }
+        }
+    }
+}
+
+fn linear_geometry(line: &LinearGradientLine, account: &Account) -> Result<AdapterGeometry> {
     account.work(RenderWork::PaintVisits, 1)?;
     let length = scalar(account, || line.length())?;
     if scalar(account, || length == 0.0)? {
@@ -182,15 +210,22 @@ fn linear_geometry(
     account.work(RenderWork::CoordinateVisits, 2)?;
     let end = line.end();
     let end = Point::new(end.x, end.y);
-    Ok((GradientGeometry::Linear { start, end }, length))
+    Ok(AdapterGeometry::UnitBasis {
+        geometry: GradientGeometry::Linear { start, end },
+        basis: length,
+    })
 }
 
 fn radial_geometry(
     geometry: &RadialGradientGeometry,
     account: &Account,
-) -> Result<(GradientGeometry, f64)> {
+) -> Result<AdapterGeometry> {
     account.work(RenderWork::PaintVisits, 1)?;
     let radii = match geometry.case() {
+        RadialGradientCase::ZeroWidth => {
+            let origin_x = scalar(account, || geometry.center().x)?;
+            return Ok(AdapterGeometry::HorizontalDistance { origin_x });
+        }
         RadialGradientCase::Ellipse { radii } => radii,
         case => return Err(PaintGradientError::UnsupportedRadialCase { case }.into()),
     };
@@ -199,14 +234,14 @@ fn radial_geometry(
     let center = Point::new(center.x, center.y);
     let radius_x = scalar(account, || radii.width)?;
     let radius_y = scalar(account, || radii.height)?;
-    Ok((
-        GradientGeometry::Radial {
+    Ok(AdapterGeometry::UnitBasis {
+        geometry: GradientGeometry::Radial {
             center,
             radius_x,
             radius_y,
         },
-        radius_x,
-    ))
+        basis: radius_x,
+    })
 }
 
 type ConvertedStops = (AccountedVec<GradientStop>, (usize, usize), (f64, f64));
@@ -214,7 +249,7 @@ type ConvertedStops = (AccountedVec<GradientStop>, (usize, usize), (f64, f64));
 fn prepare<T>(
     stops: &GradientStops<'_, Color>,
     context: &mut RenderAccountingContext,
-    geometry: impl FnOnce(&Account) -> Result<(GradientGeometry, f64)>,
+    geometry: impl FnOnce(&Account) -> Result<AdapterGeometry>,
     construct: impl FnOnce(GradientGeometry, ConvertedStops, Hold, &Account) -> Result<BackedValue<T>>,
 ) -> Result<T> {
     context.run(
@@ -223,28 +258,25 @@ fn prepare<T>(
         |account| {
             account.phase(RenderPhase::Preparation, || {
                 let coordinates = account.at(RenderPhase::Coordinates);
-                let (geometry, length) = account.phase(RenderPhase::Coordinates, || {
+                let geometry = account.phase(RenderPhase::Coordinates, || {
                     // Geometry refusal precedes any stop-result inspection.
-                    let (geometry, length) = geometry(&coordinates)?;
+                    let geometry = geometry(&coordinates)?;
+                    let expected = geometry.expected_basis();
                     coordinates.work(RenderWork::PaintVisits, 1)?;
                     let actual = scalar(&coordinates, || stops.line_length())?;
-                    if !scalar(&coordinates, || actual == length)? {
-                        return Err(PaintGradientError::BasisMismatch {
-                            expected: length,
-                            actual,
-                        }
-                        .into());
+                    if !scalar(&coordinates, || actual == expected)? {
+                        return Err(PaintGradientError::BasisMismatch { expected, actual }.into());
                     }
-                    Ok((geometry, length))
+                    Ok(geometry)
                 })?;
                 let color_count = preflight(stops, account)?;
                 let converted = account.phase(RenderPhase::Coordinates, || {
-                    convert(stops, length, color_count, &coordinates)
+                    convert(stops, &geometry, color_count, &coordinates)
                 })?;
                 let output = account.at(RenderPhase::Output);
                 account.phase(RenderPhase::Output, || {
                     let fixed = output.acquire(RenderResource::RetainedCpuBytes, size_of::<T>())?;
-                    let guarded = construct(geometry, converted, fixed, &output)?;
+                    let guarded = construct(geometry.into_geometry(), converted, fixed, &output)?;
                     // Both actual allocation guards transfer through the enclosing
                     // standalone attempt only after all qualification succeeds.
                     let (gradient, backing, import) = guarded.into_parts();
@@ -284,8 +316,10 @@ fn preflight(stops: &GradientStops<'_, Color>, account: &Account) -> Result<usiz
 
 // One CoordinateVisits unit per actual scalar inspection/calculation/conversion,
 // admitted before action. Conversion uses 4 units per zero source item, 5 per
-// nonzero source item, and 2 per adjacent pair (including hints). Geometry/basis uses 8 units for linear and 6
-// for radial. Repeating output alone additionally subtracts/checks its span (2).
+// nonzero source item, and 2 per adjacent pair (including hints) for positive
+// unit-basis fields. Physical identity only captures each source position once.
+// Geometry/basis uses 8 units for linear, 6 for positive radial, and 3 for
+// horizontal distance. Repeating output alone subtracts/checks its span (2).
 // No color revalidation or duplicate canonical quotient/ordering walk is needed:
 // immutable Color and Paint geometry already own those intrinsic domains.
 fn scalar<T>(account: &Account, action: impl FnOnce() -> T) -> Result<T> {
@@ -295,7 +329,7 @@ fn scalar<T>(account: &Account, action: impl FnOnce() -> T) -> Result<T> {
 
 fn convert(
     stops: &GradientStops<'_, Color>,
-    length: f64,
+    geometry: &AdapterGeometry,
     color_count: usize,
     account: &Account,
 ) -> Result<ConvertedStops> {
@@ -327,29 +361,36 @@ fn convert(
                 position
             }
         })?;
-        let field = scalar(account, || position / length)?;
-        if !scalar(account, || field.is_finite())? {
-            return Err(failure().into());
-        }
-        if scalar(account, || position != 0.0)? && scalar(account, || field == 0.0)? {
-            return Err(failure().into());
-        }
-        if let Some((previous_position, previous_field)) = previous {
-            let same = scalar(account, || position == previous_position)?;
-            let preserves_order = scalar(account, || {
-                if same {
-                    field == previous_field
-                } else {
-                    field > previous_field
+        let field = match geometry {
+            AdapterGeometry::UnitBasis { basis, .. } => {
+                let field = scalar(account, || position / basis)?;
+                if !scalar(account, || field.is_finite())? {
+                    return Err(failure().into());
                 }
-            })?;
-            if !preserves_order {
-                return Err(failure().into());
+                if scalar(account, || position != 0.0)? && scalar(account, || field == 0.0)? {
+                    return Err(failure().into());
+                }
+                if let Some((previous_position, previous_field)) = previous {
+                    let same = scalar(account, || position == previous_position)?;
+                    let preserves_order = scalar(account, || {
+                        if same {
+                            field == previous_field
+                        } else {
+                            field > previous_field
+                        }
+                    })?;
+                    if !preserves_order {
+                        return Err(failure().into());
+                    }
+                }
+                previous = Some((position, field));
+                field
             }
-        }
-        // Equality/strict order of every source item, including Hint and Two
-        // ordinals, survives division. Paint's source association therefore
-        // proves each output hint's inclusive containment and following color.
+            AdapterGeometry::HorizontalDistance { .. } => position,
+        };
+        // Qualified division preserves source equality/order; physical identity
+        // preserves the authentic proof exactly without redundant numeric checks.
+        // Paint's item association proves inclusive hints and following colors.
         match item {
             UsedGradientItem::Stop { payload, .. } => {
                 if let Some((position, color, hint_after)) =
@@ -367,7 +408,6 @@ fn convert(
                     Some(GradientHint::from_qualified_paint(field));
             }
         }
-        previous = Some((position, field));
     }
     let (position, color, hint_after) = pending.expect("Paint list has a color");
     output.push_reserved(GradientStop::from_qualified_paint(
@@ -387,6 +427,17 @@ mod tests {
         GradientPosition, GradientStopItem, GradientStopPositions, PaintLimits, PaintOptions,
         ProfileMode, RadialGradientSize, resolve_gradient_stops, resolve_radial_gradient,
     };
+
+    fn unit_basis(basis: f64) -> AdapterGeometry {
+        AdapterGeometry::UnitBasis {
+            geometry: GradientGeometry::Radial {
+                center: Point::new(0.0, 0.0),
+                radius_x: basis,
+                radius_y: 1.0,
+            },
+            basis,
+        }
+    }
 
     fn options() -> PaintOptions {
         PaintOptions::new(PaintLimits::unlimited(), ProfileMode::Off)
@@ -419,6 +470,214 @@ mod tests {
         )
         .result
         .unwrap()
+    }
+
+    fn zero_width_geometry(origin_x: f64, center_y: f64, height: f64) -> RadialGradientGeometry {
+        resolve_radial_gradient(
+            Default::default(),
+            Some(surgeist_layout::Point::new(origin_x, center_y)),
+            RadialGradientSize::EllipseRadii(surgeist_layout::Size::new(
+                GradientPosition {
+                    length: 0.0,
+                    fraction: 0.0,
+                },
+                GradientPosition {
+                    length: height,
+                    fraction: 0.0,
+                },
+            )),
+            options(),
+        )
+        .result
+        .unwrap()
+    }
+
+    #[test]
+    fn zero_width_identity_preserves_physical_two_hint_records_and_charges_only_required_actions() {
+        let position = |length| GradientPosition {
+            length,
+            fraction: 0.0,
+        };
+        let source = [
+            GradientStopItem::Stop {
+                payload: Color::BLACK,
+                positions: GradientStopPositions::Two(position(-4.0), position(0.0)),
+            },
+            GradientStopItem::Hint {
+                position: position(2.0),
+            },
+            GradientStopItem::Stop {
+                payload: Color::TRANSPARENT,
+                positions: GradientStopPositions::Two(position(4.0), position(12.0)),
+            },
+        ];
+        let used = resolve_gradient_stops(0.0, &source, options())
+            .result
+            .unwrap();
+        let mut context = context(RenderLimits::new());
+        let ordinary = prepare_radial_gradient(
+            &zero_width_geometry(8.0, -f64::MAX, 8.0),
+            &used,
+            &mut context,
+        )
+        .unwrap();
+        assert_eq!(ordinary.horizontal_distance_origin(), Some(8.0));
+        assert_eq!(
+            ordinary
+                .stops()
+                .iter()
+                .map(|stop| stop.position())
+                .collect::<Vec<_>>(),
+            [-4.0, 0.0, 4.0, 12.0]
+        );
+        assert_eq!(
+            ordinary
+                .stops()
+                .iter()
+                .map(|stop| stop.hint_after().map(|hint| hint.position()))
+                .collect::<Vec<_>>(),
+            [None, Some(2.0), None, None]
+        );
+        let report = context.last_attempt().unwrap();
+        // Origin capture, actual basis capture, and basis equality: 3. Each
+        // of five source items is captured exactly once in physical identity.
+        assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 8);
+        assert_eq!(report.usage().work(RenderWork::GradientStopVisits), 10);
+        assert_eq!(report.usage().work(RenderWork::PaintVisits), 3);
+        let GradientKind::HorizontalDistance { stops, .. } = ordinary.kind() else {
+            panic!("distance output")
+        };
+        let actual_bytes =
+            (stops.capacity() * size_of::<GradientStop>() + size_of::<Gradient>()) as u64;
+        assert_eq!(
+            report.usage().peak(RenderResource::RetainedCpuBytes),
+            actual_bytes
+        );
+        assert_eq!(
+            report.usage().work(RenderWork::PreparedTransferredBytes),
+            actual_bytes
+        );
+        assert_eq!(report.usage().live(RenderResource::RetainedCpuBytes), 0);
+        // Both-zero geometry has the same ZeroWidth interpretation; neither
+        // center_y nor the unused original height is retained in the model.
+        let same = prepare_radial_gradient(
+            &zero_width_geometry(8.0, f64::MAX, 0.0),
+            &used,
+            &mut context,
+        )
+        .unwrap();
+        assert_eq!(same, ordinary);
+        let repeated = prepare_repeating_radial_gradient(
+            &zero_width_geometry(8.0, 0.0, 8.0),
+            &used,
+            &mut context,
+        )
+        .unwrap();
+        assert_eq!(repeated.horizontal_distance_origin(), Some(8.0));
+        assert_eq!(repeated.stops(), ordinary.stops());
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::CoordinateVisits),
+            10
+        );
+        context.set_options(
+            RenderAccountingOptions::new()
+                .with_profile(RenderProfile::Summary { timing: false })
+                .with_limits(
+                    RenderLimits::new()
+                        .with_work_limit(RenderWork::CoordinateVisits, 7)
+                        .unwrap(),
+                ),
+        );
+        let error =
+            prepare_radial_gradient(&zero_width_geometry(8.0, 0.0, 8.0), &used, &mut context)
+                .unwrap_err();
+        let Some(crate::RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+        else {
+            panic!("named scalar refusal")
+        };
+        assert_eq!(
+            refusal.quantity(),
+            crate::RenderQuantity::Work(RenderWork::CoordinateVisits)
+        );
+        assert_eq!(refusal.current(), 7);
+        assert_eq!(refusal.amount(), 1);
+        let report = context.last_attempt().unwrap();
+        assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 7);
+        assert_eq!(report.usage().work(RenderWork::GradientStopVisits), 10);
+        assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
+        assert_eq!(report.usage().live(RenderResource::RetainedCpuBytes), 0);
+        assert_eq!(report.usage().live(RenderResource::ScratchCpuBytes), 0);
+        assert!(report.phase_count(RenderPhase::Cleanup) > 0);
+        context.set_options(RenderAccountingOptions::new());
+        assert_eq!(
+            prepare_radial_gradient(&zero_width_geometry(8.0, 0.0, 8.0), &used, &mut context)
+                .unwrap(),
+            ordinary
+        );
+    }
+
+    #[test]
+    fn zero_width_basis_refuses_before_items_and_identity_has_no_quotient_loss() {
+        let geometry = zero_width_geometry(0.0, 1.0, 8.0);
+        let inputs = source(f64::from_bits(1), f64::MAX);
+        let mut context = context(RenderLimits::new());
+        let wrong = resolve_gradient_stops(1.0, &inputs, options())
+            .result
+            .unwrap();
+        for error in [
+            prepare_radial_gradient(&geometry, &wrong, &mut context).unwrap_err(),
+            prepare_repeating_radial_gradient(&geometry, &wrong, &mut context).unwrap_err(),
+        ] {
+            assert_eq!(
+                error.paint_gradient_diagnostic(),
+                Some(&PaintGradientError::BasisMismatch {
+                    expected: 0.0,
+                    actual: 1.0
+                })
+            );
+        }
+        let report = context.last_attempt().unwrap();
+        assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 3);
+        assert_eq!(report.usage().work(RenderWork::GradientStopVisits), 0);
+        let used = resolve_gradient_stops(0.0, &inputs, options())
+            .result
+            .unwrap();
+        let ordinary = prepare_radial_gradient(&geometry, &used, &mut context).unwrap();
+        assert_eq!(ordinary.stops()[0].position().to_bits(), 1);
+        assert_eq!(ordinary.stops()[1].position(), f64::MAX);
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::CoordinateVisits),
+            5
+        );
+        let source = source(-f64::MAX, f64::MAX);
+        let used = resolve_gradient_stops(0.0, &source, options())
+            .result
+            .unwrap();
+        assert!(prepare_radial_gradient(&geometry, &used, &mut context).is_ok());
+        let error = prepare_repeating_radial_gradient(&geometry, &used, &mut context).unwrap_err();
+        assert_eq!(
+            error.paint_gradient_diagnostic(),
+            Some(&PaintGradientError::UnrepresentableSpan {
+                first_source_index: 0,
+                last_source_index: 1
+            })
+        );
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes),
+            0
+        );
     }
 
     fn zero_height_geometry() -> RadialGradientGeometry {
@@ -837,7 +1096,8 @@ mod tests {
                 RenderAttemptKind::PaintGradient,
                 RenderPhase::Output,
                 |account| {
-                    let (converted, indices, positions) = convert(&stops, 1.0, 2, account)?;
+                    let (converted, indices, positions) =
+                        convert(&stops, &unit_basis(1.0), 2, account)?;
                     let actual_bytes = converted.capacity() * size_of::<GradientStop>()
                         + size_of::<RepeatingGradient>();
                     let fixed = account.acquire(
@@ -890,7 +1150,8 @@ mod tests {
             RenderAttemptKind::PaintGradient,
             RenderPhase::Output,
             |account| {
-                let (converted, indices, positions) = convert(&stops, 1.0, 2, account)?;
+                let (converted, indices, positions) =
+                    convert(&stops, &unit_basis(1.0), 2, account)?;
                 actual_bytes.set(
                     (converted.capacity() * size_of::<GradientStop>()
                         + size_of::<RepeatingGradient>()) as u64,
@@ -951,7 +1212,7 @@ mod tests {
         let result = context.run(
             RenderAttemptKind::PaintGradient,
             RenderPhase::Coordinates,
-            |account| convert(&stops, 1.0, 2, account).map(drop),
+            |account| convert(&stops, &unit_basis(1.0), 2, account).map(drop),
         );
         let error = result.unwrap_err();
         assert!(error.accounting_diagnostic().is_some());

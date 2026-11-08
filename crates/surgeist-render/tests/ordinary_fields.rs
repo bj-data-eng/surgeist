@@ -709,8 +709,9 @@ mod paint {
             prepare_radial_gradient(&geometry, &used(8.0, &source), &mut context).unwrap_err();
         assert_eq!(
             diagnostic(&error),
-            &PaintGradientError::UnsupportedRadialCase {
-                case: geometry.case()
+            &PaintGradientError::BasisMismatch {
+                expected: 0.0,
+                actual: 8.0,
             }
         );
     }
