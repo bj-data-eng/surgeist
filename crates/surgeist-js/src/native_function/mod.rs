@@ -36,7 +36,7 @@ pub(crate) use continuation::{
     CoroutineBranch, CoroutineState, NativeCoroutine, StoredNativeCoroutine,
 };
 
-/// The required signature for all native built-in function pointers.
+/// The required signature for native host function pointers.
 ///
 /// # Arguments
 ///
@@ -46,6 +46,10 @@ pub(crate) use continuation::{
 ///
 /// - The last argument is the engine [`Context`].
 pub type NativeFunctionPointer = fn(&JsValue, &[JsValue], &mut Context) -> JsResult<JsValue>;
+
+/// Engine-owned builtin implementation, never supplied through a public host constructor.
+pub(crate) type BuiltinFunctionPointer =
+    fn(&JsValue, &[JsValue], &mut Context) -> JsResult<JsValue>;
 
 /// A native callback that returns a future borrowing its invocation inputs.
 pub type NativeAsyncFunctionPointer =
@@ -170,7 +174,7 @@ impl NativeCapture for NativeFunction {
     fn restore(stored: &Self::Stored) -> Self {
         let roots = match &stored.0 {
             Inner::Closure(closure) => Some(closure.root_captures()),
-            Inner::PointerFn(_) | Inner::AsyncPointer(_) => None,
+            Inner::Builtin(_) | Inner::PointerFn(_) | Inner::AsyncPointer(_) => None,
         };
         Self {
             inner: stored.clone(),
@@ -181,6 +185,7 @@ impl NativeCapture for NativeFunction {
 
 #[derive(Clone)]
 enum Inner {
+    Builtin(BuiltinFunctionPointer),
     PointerFn(NativeFunctionPointer),
     AsyncPointer(NativeAsyncFunctionPointer),
     Closure(Rc<dyn TraceableClosure>),
@@ -190,7 +195,7 @@ impl HeapTrace for StoredNativeFunction {
     fn trace(&self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
         match &self.0 {
             Inner::Closure(closure) => closure.trace(edges),
-            Inner::PointerFn(_) | Inner::AsyncPointer(_) => Ok(()),
+            Inner::Builtin(_) | Inner::PointerFn(_) | Inner::AsyncPointer(_) => Ok(()),
         }
     }
 }
@@ -209,6 +214,15 @@ impl std::fmt::Debug for NativeFunction {
 }
 
 impl NativeFunction {
+    /// Keeps trusted builtin dispatch distinct from caller-supplied host callbacks.
+    #[inline]
+    pub(crate) fn from_builtin(function: BuiltinFunctionPointer) -> Self {
+        Self {
+            inner: StoredNativeFunction(Inner::Builtin(function)),
+            _capture_roots: None,
+        }
+    }
+
     /// Creates a `NativeFunction` from a function pointer.
     #[inline]
     pub fn from_fn_ptr(function: NativeFunctionPointer) -> Self {
@@ -345,6 +359,7 @@ impl NativeFunction {
 impl StoredNativeFunction {
     fn call(&self, this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         match self.0 {
+            Inner::Builtin(function) => function(this, args, context),
             Inner::PointerFn(f) => f(this, args, context),
             Inner::AsyncPointer(callback) => {
                 let this = this.clone();
@@ -513,4 +528,66 @@ fn native_function_construct(
     context.vm.stack.push(result?);
 
     Ok(CallValue::Complete)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Source, js_string, property::Attribute};
+
+    fn record_receiver(
+        this: &JsValue,
+        args: &[JsValue],
+        context: &mut Context,
+    ) -> JsResult<JsValue> {
+        context.register_global_property(
+            js_string!("recordedBuiltinReceiver"),
+            this.clone(),
+            Attribute::all(),
+        )?;
+        Ok(args.first().unwrap_or(this).clone())
+    }
+
+    #[test]
+    fn stored_builtin_dispatch_retains_receiver_arguments_and_context_effects() {
+        let builtin = NativeFunction::from_builtin(record_receiver);
+        let stored = builtin.store();
+        drop(builtin);
+        let restored = NativeFunction::restore(&stored);
+        let mut context = Context::default();
+        let function = restored.to_js_function(context.realm()).unwrap();
+
+        assert_eq!(
+            function
+                .call(&JsValue::new(17), &[JsValue::new(31)], &mut context)
+                .unwrap(),
+            JsValue::new(31)
+        );
+        assert_eq!(
+            context
+                .eval(Source::from_bytes("recordedBuiltinReceiver"))
+                .unwrap(),
+            JsValue::new(17)
+        );
+    }
+
+    #[test]
+    fn host_pointer_dispatch_preserves_receiver_and_context_effects() {
+        let host = NativeFunction::from_fn_ptr(record_receiver);
+        let stored = host.store();
+        drop(host);
+        let restored = NativeFunction::restore(&stored);
+        let mut context = Context::default();
+
+        assert_eq!(
+            restored.call(&JsValue::new(19), &[], &mut context).unwrap(),
+            JsValue::new(19)
+        );
+        assert_eq!(
+            context
+                .eval(Source::from_bytes("recordedBuiltinReceiver"))
+                .unwrap(),
+            JsValue::new(19)
+        );
+    }
 }
