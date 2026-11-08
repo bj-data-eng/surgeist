@@ -73,6 +73,24 @@ the accepted representation and preserves the existing native curve and coverage
 approximation. Ordinary nonzero rounding remains supported; this contract adds
 no exact source-f64 raster, arbitrary winding or affine-boundary tie guarantee.
 
+The receiver also bounds source-to-native device placement. It admits at most
+0.25 device pixel of Euclidean point displacement from coordinate/factor
+narrowing and permitted GPU point arithmetic. Outward bounds compare the source
+and actual native factors without evaluating a cancellation-sensitive source
+sum. This is a separate receiving capacity policy; the backend's curve and
+coverage approximation remains additive. The policy does not promise identical
+pixels at affine boundaries. A finite map whose separately narrowed factors
+move the geometry beyond this budget refuses as insufficient native capacity.
+
+Surviving image and blurred-rectangle brushes also require qualified native
+inverse arithmetic. A forward matrix can retain rank in widened arithmetic while
+its actual GPU determinant underflows; that is insufficient native capacity.
+The proof covers reassociated division/product forms and propagates bounded
+zero neighborhoods and subnormal flushing. Required nonzero factors must not
+collapse. It also encloses finite image/blur mapping across the raster format's
+padded device-coordinate domain, without adding a color-accuracy guarantee.
+Gradient field precision and its diagnostics remain with the gradient owner.
+
 Qualification follows existing semantic elimination. Empty paths and glyphs,
 true point degeneracy, zero-width strokes, empty clips and eliminated subtrees
 retain their behavior and do not acquire requirements from unused geometry or

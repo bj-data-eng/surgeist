@@ -11,6 +11,9 @@ use crate::{GeometryRealizationError as Reason, Result};
 use kurbo::{Affine, PathEl, Point, Rect, Stroke};
 use vello_encoding::Transform;
 
+mod inverse;
+pub(crate) use inverse::qualify_inverse;
+
 fn action<T>(account: &Account, run: impl FnOnce() -> T) -> Result<T> {
     account.work(RenderWork::CoordinateVisits, 1)?;
     Ok(run())
@@ -38,6 +41,7 @@ pub(crate) fn scalar(value: f64, reason: Reason, account: &Account) -> Result<f3
 }
 
 pub(crate) struct QualifiedTransform {
+    source: [f64; 6],
     native: Transform,
     nonsingular: bool,
 }
@@ -106,6 +110,7 @@ pub(crate) fn qualify_transform(source: Affine, account: &Account) -> Result<Qua
         translation: [native[4], native[5]],
     };
     Ok(QualifiedTransform {
+        source: values,
         native,
         nonsingular: rank(values, native, account)?,
     })
@@ -141,6 +146,7 @@ pub(crate) fn qualify_native_transform(
         finite_native(value, account)?;
     }
     Ok(QualifiedTransform {
+        source: values,
         native,
         nonsingular: rank(values, native, account)?,
     })
@@ -214,6 +220,13 @@ struct MappedPoint {
 // and the separately evaluated products/sums in shared/transform.wgsl. A
 // conservative enclosure covers permitted operation error, including possible
 // FTZ near zero. Exactly representable axis operations retain a zero enclosure.
+// With u=f32::EPSILON, m=f32::MIN_POSITIVE, and
+// M=|A*X|+|C*Y|+|E|, the permitted two multiplies/two adds have
+// error <4uM+5m about the exact native affine value, for every retained
+// association. The host fused center adds <2uM+2*2^-149 error. Thus
+// 8uM+8m encloses both GPU-vs-exact-native (placement) and GPU-vs-host
+// (pair separation). The exact branch proves all intermediates/associations
+// exact and normal, so both references coincide there.
 fn arithmetic(value: f32, account: &Account) -> Result<f32> {
     finite_native(value, account)?;
     let extent = action(account, || value.abs())?;
@@ -338,6 +351,126 @@ fn mapped_axis(a: f32, x: f32, c: f32, y: f32, e: f32, account: &Account) -> Res
     Ok((fused, error))
 }
 
+// These upper-bound operations take nonnegative operands. Exact zero is
+// preserved before unused arithmetic, including an unbounded interval times an
+// exact zero. Otherwise one adjacent f64 value encloses host rounding. An
+// infinite bound is retained until the capacity comparison, never clamped.
+fn difference_up(a: f64, b: f64, account: &Account) -> Result<f64> {
+    if action(account, || a == b)? {
+        return Ok(0.0);
+    }
+    let difference = action(account, || a - b)?;
+    let magnitude = action(account, || difference.abs())?;
+    action(account, || magnitude.next_up())
+}
+fn product_up(a: f64, b: f64, account: &Account) -> Result<f64> {
+    if action(account, || a == 0.0)? || action(account, || b == 0.0)? {
+        return Ok(0.0);
+    }
+    let product = action(account, || a * b)?;
+    action(account, || product.next_up())
+}
+fn sum_up(a: f64, b: f64, account: &Account) -> Result<f64> {
+    if action(account, || a == 0.0)? {
+        return Ok(b);
+    }
+    if action(account, || b == 0.0)? {
+        return Ok(a);
+    }
+    let sum = action(account, || a + b)?;
+    action(account, || sum.next_up())
+}
+
+fn placement_axis(
+    source: [f64; 3],
+    native: [f64; 3],
+    point_magnitudes: [f64; 2],
+    point_gaps: [f64; 2],
+    radius: f64,
+    account: &Account,
+) -> Result<f64> {
+    // Exact identity, interpreted over the stored source f64 values:
+    // ax+cy+e - (AX+CY+E)
+    //   = (a-A)x + A(x-X) + (c-C)y + C(y-Y) + (e-E).
+    // Bound each term rather than evaluating two huge cancelling positions.
+    let a_gap = difference_up(source[0], native[0], account)?;
+    let c_gap = difference_up(source[1], native[1], account)?;
+    let e_gap = difference_up(source[2], native[2], account)?;
+    let a_magnitude = action(account, || native[0].abs())?;
+    let c_magnitude = action(account, || native[1].abs())?;
+    let terms = [
+        product_up(a_gap, point_magnitudes[0], account)?,
+        product_up(a_magnitude, point_gaps[0], account)?,
+        product_up(c_gap, point_magnitudes[1], account)?,
+        product_up(c_magnitude, point_gaps[1], account)?,
+        e_gap,
+    ];
+    let mut bound = radius;
+    for term in terms {
+        bound = sum_up(bound, term, account)?;
+    }
+    Ok(bound)
+}
+fn placement(
+    transform: &QualifiedTransform,
+    source: [f64; 2],
+    native: [f32; 2],
+    radius: [f64; 2],
+    account: &Account,
+) -> Result<()> {
+    let nx = action(account, || f64::from(native[0]))?;
+    let ny = action(account, || f64::from(native[1]))?;
+    let point_gaps = [
+        difference_up(source[0], nx, account)?,
+        difference_up(source[1], ny, account)?,
+    ];
+    let point_magnitudes = [
+        action(account, || source[0].abs())?,
+        action(account, || source[1].abs())?,
+    ];
+    let mut bounds = [0.0; 2];
+    for axis in 0..2 {
+        // Three original and three actual native factor captures per axis.
+        account.work(RenderWork::CoordinateVisits, 6)?;
+        let source_factors = [
+            transform.source[axis],
+            transform.source[axis + 2],
+            transform.source[axis + 4],
+        ];
+        let native_factors = [
+            transform.native.matrix[axis],
+            transform.native.matrix[axis + 2],
+            transform.native.translation[axis],
+        ];
+        let native_factors = [
+            action(account, || f64::from(native_factors[0]))?,
+            action(account, || f64::from(native_factors[1]))?,
+            action(account, || f64::from(native_factors[2]))?,
+        ];
+        bounds[axis] = placement_axis(
+            source_factors,
+            native_factors,
+            point_magnitudes,
+            point_gaps,
+            radius[axis],
+            account,
+        )?;
+        if !action(account, || bounds[axis] <= 0.25)? {
+            return Err(Reason::InsufficientNativeCapacity.into());
+        }
+    }
+    // Render's receiving allowance is Euclidean 1/4 device pixel, separately
+    // additive to the retained native curve/coverage approximation. Components
+    // are already <=1/4, so these squares cannot overflow.
+    let x_squared = product_up(bounds[0], bounds[0], account)?;
+    let y_squared = product_up(bounds[1], bounds[1], account)?;
+    let squared = sum_up(x_squared, y_squared, account)?;
+    if !action(account, || squared <= 1.0 / 16.0)? {
+        return Err(Reason::InsufficientNativeCapacity.into());
+    }
+    Ok(())
+}
+
 fn point(
     transform: &QualifiedTransform,
     source: Point,
@@ -352,6 +485,7 @@ fn point(
     let [e, f] = transform.native.translation;
     let (mx, ex) = mapped_axis(a, native[0], c, native[1], e, account)?;
     let (my, ey) = mapped_axis(b, native[0], d, native[1], f, account)?;
+    placement(transform, [x, y], native, [ex, ey], account)?;
     Ok(MappedPoint {
         source,
         native,
@@ -786,6 +920,149 @@ mod tests {
     }
 
     #[test]
+    fn directed_difference_action_count_prefix_and_retry() {
+        let mut context = RenderAccountingContext::default();
+        let bound = context
+            .run(RenderAttemptKind::Frame, RenderPhase::Encode, |a| {
+                difference_up(1.0, 1.5, a)
+            })
+            .unwrap();
+        // Equal comparison, subtraction, absolute value, adjacent-up operation.
+        // The exact difference is 1/2; the next binary64 value encloses it.
+        assert_eq!(bound.to_bits(), 0x3fe0_0000_0000_0001);
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::CoordinateVisits),
+            4
+        );
+        let mut context = RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::CoordinateVisits, 3)
+                    .unwrap(),
+            ),
+        );
+        let error = context
+            .run(RenderAttemptKind::Frame, RenderPhase::Encode, |a| {
+                difference_up(1.0, 1.5, a)
+            })
+            .unwrap_err();
+        assert!(error.accounting_diagnostic().is_some());
+        let usage = context.last_attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), 3);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(
+            difference_up(1.0, 1.5, &account()).unwrap().to_bits(),
+            0x3fe0_0000_0000_0001
+        );
+    }
+    #[test]
+    fn outward_zero_terms_skip_unused_arithmetic_without_nan() {
+        assert_eq!(difference_up(1.0, 1.0, &account()).unwrap(), 0.0);
+        assert_eq!(product_up(0.0, f64::INFINITY, &account()).unwrap(), 0.0);
+        assert_eq!(product_up(f64::INFINITY, 0.0, &account()).unwrap(), 0.0);
+        assert_eq!(sum_up(0.0, 0.0, &account()).unwrap(), 0.0);
+        assert_eq!(sum_up(0.0, 0.125, &account()).unwrap(), 0.125);
+    }
+    #[test]
+    fn source_coordinate_and_factor_displacement_cannot_hide_behind_native_exactness() {
+        let reason = Reason::UnrepresentablePath { element_index: 0 };
+        // Every native operation is exact: (2^24 as f32)-2^24 ==0.
+        // Original source x=2^24+1 instead maps to1, beyond the1/4 allowance.
+        let transform =
+            qualify_transform(Affine::translate((-16_777_216.0, 0.0)), &account()).unwrap();
+        let error = qualify_point(
+            &transform,
+            Point::new(16_777_217.0, 0.0),
+            reason,
+            &account(),
+        )
+        .unwrap_err();
+        assert_eq!(diagnostic(error), Reason::InsufficientNativeCapacity);
+        // An independently rounded translation factor also displaces origin1px.
+        let source = Affine::translate((16_777_217.0, 0.0));
+        let transform =
+            qualify_native_transform(source, Transform::from_kurbo(&source), &account()).unwrap();
+        assert_eq!(
+            diagnostic(qualify_point(&transform, Point::ZERO, reason, &account()).unwrap_err()),
+            Reason::InsufficientNativeCapacity
+        );
+        // The actual finite-position regression has surviving native spans, but
+        // separate coordinate/factor narrowing moves the left edge off target.
+        let transform =
+            qualify_transform(Affine::new([1e-6, 0.0, 0.0, 1.0, -1e10, 0.0]), &account()).unwrap();
+        assert_eq!(
+            diagnostic(
+                qualify_point(&transform, Point::new(1e16, 0.0), reason, &account()).unwrap_err()
+            ),
+            Reason::InsufficientNativeCapacity
+        );
+    }
+    #[test]
+    fn coupled_position_budget_accepts_ordinary_decimals_and_exact_large_cancellation() {
+        let reason = Reason::UnrepresentablePath { element_index: 0 };
+        let transform =
+            qualify_transform(Affine::new([1.2, 0.1, -0.2, 0.9, 2.1, -1.3]), &account()).unwrap();
+        for source in [
+            Point::new(0.1, 0.2),
+            Point::new(29.9, 13.8),
+            Point::new(2.1, 2.0999999999999996),
+        ] {
+            assert!(qualify_point(&transform, source, reason, &account()).is_ok());
+        }
+        let transform = qualify_transform(
+            Affine::new([2.0_f64.powi(-50), 0.0, 0.0, 1.0, -1024.0, 0.0]),
+            &account(),
+        )
+        .unwrap();
+        assert!(
+            qualify_point(
+                &transform,
+                Point::new(2.0_f64.powi(60), 16.0),
+                reason,
+                &account()
+            )
+            .is_ok()
+        );
+        // Small source/native displacement is allowed; this source image is
+        // exactly1/8 while the actual native affine image is exactlyzero.
+        let transform =
+            qualify_transform(Affine::translate((-16_777_216.0, 0.0)), &account()).unwrap();
+        assert!(
+            qualify_point(
+                &transform,
+                Point::new(16_777_216.125, 0.0),
+                reason,
+                &account()
+            )
+            .is_ok()
+        );
+    }
+    #[test]
+    fn placement_allowance_is_euclidean_not_two_independent_axis_allowances() {
+        let transform = qualify_transform(Affine::IDENTITY, &account()).unwrap();
+        assert!(
+            placement(
+                &transform,
+                [0.0, 0.0],
+                [0.0, 0.0],
+                [0.125, 0.125],
+                &account()
+            )
+            .is_ok()
+        );
+        assert_eq!(
+            diagnostic(
+                placement(&transform, [0.0, 0.0], [0.0, 0.0], [0.2, 0.2], &account()).unwrap_err()
+            ),
+            Reason::InsufficientNativeCapacity
+        );
+    }
+
+    #[test]
     fn scalar_normal_action_count_and_one_short_prefix_are_independent() {
         let mut context = RenderAccountingContext::default();
         assert_eq!(
@@ -931,11 +1208,12 @@ mod tests {
     }
     #[test]
     fn local_alias_and_locked_epsilon_retention_refuse_at_source_index() {
+        // Keep displacement below the receiving budget to reach local retention.
         use PathEl::*;
         for elements in [
             [
                 MoveTo(Point::new(16_777_216.0, 0.0)),
-                LineTo(Point::new(16_777_217.0, 0.0)),
+                LineTo(Point::new(16_777_216.125, 0.0)),
             ],
             [
                 MoveTo(Point::ZERO),
@@ -1108,9 +1386,10 @@ mod tests {
     }
     #[test]
     fn complete_filled_contour_cannot_lose_an_axis_when_vector_controls_survive() {
+        // Keep displacement below the receiving budget to reach local retention.
         let elements = [
             PathEl::MoveTo(Point::new(16_777_216.0, 0.0)),
-            PathEl::LineTo(Point::new(16_777_217.0, 1.0)),
+            PathEl::LineTo(Point::new(16_777_216.125, 1.0)),
             PathEl::LineTo(Point::new(16_777_216.0, 2.0)),
             PathEl::ClosePath,
         ];

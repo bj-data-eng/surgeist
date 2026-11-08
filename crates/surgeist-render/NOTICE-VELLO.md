@@ -126,6 +126,14 @@ The encoding sources retain `Copyright 2022 the Vello Authors` and
 `Apache-2.0 OR MIT`; the shader sources additionally permit `Unlicense`.
 The existing linked license texts preserve these alternatives unchanged.
 
+Source-to-native point correspondence uses an explicit 0.25-device-pixel
+Euclidean receiving budget. The pinned flattening shader's curve and arc
+`tol` values inform this policy, but do not establish a total conversion
+or raster guarantee: the retained backend approximation is separately additive.
+The source/native affine-difference bound is Surgeist-owned qualification.
+Image and blurred-rectangle inverse qualification follows the actual
+`shared/transform.wgsl` determinant, reciprocal, matrix and translation chain.
+
 Native glyph qualification also uses the existing locked Skrifa 0.42.1 provider
 to distinguish a true empty outline from loss during its default scaled
 FreeType conversion. An unscaled outline is consulted only when the actual

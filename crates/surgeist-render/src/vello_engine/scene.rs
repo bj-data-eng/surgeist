@@ -153,13 +153,21 @@ impl VelloScene {
         Ok(qualified)
     }
 
-    fn brush(&mut self, brush: SceneBrush<'_>, account: &Account) -> Result<()> {
+    fn brush(
+        &mut self,
+        brush: SceneBrush<'_>,
+        effective_transform: &QualifiedTransform,
+        account: &Account,
+    ) -> Result<()> {
         let SceneBrush { brush, sampling } = brush;
+        account.work(RenderWork::PaintVisits, 1)?;
+        if matches!(brush, BrushRef::Image(_)) {
+            geometry::qualify_inverse(effective_transform, account)?;
+        }
         let word = self.encoding.draw_data.len();
         let tag_index = self.encoding.draw_tags.len();
         self.backing
             .reserve(&mut self.encoding, bounded::brush_growth(brush), account)?;
-        account.work(RenderWork::PaintVisits, 1)?;
         if let BrushRef::Gradient(gradient) = brush {
             for _ in &gradient.stops.0 {
                 account.work(RenderWork::GradientStopVisits, 1)?;
@@ -183,7 +191,11 @@ impl VelloScene {
         Ok(())
     }
 
-    fn brush_transform(&mut self, transform: kurbo::Affine, account: &Account) -> Result<()> {
+    fn brush_transform(
+        &mut self,
+        transform: kurbo::Affine,
+        account: &Account,
+    ) -> Result<QualifiedTransform> {
         let qualified = geometry::qualify_transform(transform, account)?;
         self.backing.reserve(
             &mut self.encoding,
@@ -197,7 +209,7 @@ impl VelloScene {
         if self.encoding.encode_transform(qualified.native()) {
             self.encoding.swap_last_path_tags();
         }
-        Ok(())
+        Ok(qualified)
     }
 
     pub(crate) fn fill_elements<'a>(
@@ -234,13 +246,15 @@ impl VelloScene {
         self.backing
             .path(&mut self.encoding, elements.len(), account)?;
         if bounded::encode_elements(&mut self.encoding, elements, true, &qualified, account)? {
-            if let Some(brush_transform) = brush_transform {
+            let effective = if let Some(brush_transform) = brush_transform {
                 self.brush_transform(
                     geometry::affine_product(transform, brush_transform, account)?,
                     account,
-                )?;
-            }
-            self.brush(brush, account)?;
+                )?
+            } else {
+                qualified
+            };
+            self.brush(brush, &effective, account)?;
         }
         Ok(())
     }
@@ -297,13 +311,15 @@ impl VelloScene {
         self.backing
             .path(&mut self.encoding, elements.len(), account)?;
         if bounded::encode_elements(&mut self.encoding, &elements, false, &qualified, account)? {
-            if let Some(brush_transform) = brush_transform {
+            let effective = if let Some(brush_transform) = brush_transform {
                 self.brush_transform(
                     geometry::affine_product(transform, brush_transform, account)?,
                     account,
-                )?;
-            }
-            self.brush(brush.into(), account)?;
+                )?
+            } else {
+                qualified
+            };
+            self.brush(brush.into(), &effective, account)?;
         }
         Ok(())
     }
@@ -426,10 +442,11 @@ impl VelloScene {
             let center_x = geometry_action(account, || 0.5 * sum_x)?;
             let center_y = geometry_action(account, || 0.5 * sum_y)?;
             let center = kurbo::Affine::translate((center_x, center_y));
-            self.brush_transform(
+            let blur_transform = self.brush_transform(
                 geometry::affine_product(transform, center, account)?,
                 account,
             )?;
+            geometry::qualify_inverse(&blur_transform, account)?;
             let reason = crate::GeometryRealizationError::UnrepresentableBlur;
             let width = geometry::scalar(width, reason, account)?;
             let height = geometry::scalar(height, reason, account)?;
@@ -621,7 +638,7 @@ impl VelloScene {
         } else {
             gradient_transform
         };
-        if let Some(native_brush) = native_brush {
+        let native_paint = if let Some(native_brush) = native_brush {
             account.work(RenderWork::CoordinateVisits, 6)?;
             let brush_source = native_brush.to_kurbo();
             let source_product = geometry::affine_product(paint_transform, brush_source, account)
@@ -630,8 +647,15 @@ impl VelloScene {
                 geometry::native_product(native_run.native(), native_brush, account)
                     .map_err(|error| glyph_geometry_error(error, first_drawable))?;
             geometry::qualify_native_transform(source_product, actual_product, account)
-                .map_err(|error| glyph_geometry_error(error, first_drawable))?;
-        }
+                .map_err(|error| glyph_geometry_error(error, first_drawable))?
+        } else {
+            // Resolver composes this actual identity brush factor as well.
+            let actual_product =
+                geometry::native_product(native_run.native(), VelloTransform::IDENTITY, account)
+                    .map_err(|error| glyph_geometry_error(error, first_drawable))?;
+            geometry::qualify_native_transform(paint_transform, actual_product, account)
+                .map_err(|error| glyph_geometry_error(error, first_drawable))?
+        };
         let face = validated.font_data().admitted_face();
         let resource = face.resource();
         let backing = self.font_backing(resource, account)?;
@@ -655,7 +679,7 @@ impl VelloScene {
             .patches
             .push(Patch::GlyphRun { index });
         let first_patch = self.encoding.resources.patches.len();
-        self.brush(brush.scene_brush(), account)?;
+        self.brush(brush.scene_brush(), &native_paint, account)?;
         if let Some((source_id, expansion)) = image_expansion {
             self.mark_image_expansion(first_patch, source_id, expansion, account)?;
         }
@@ -770,7 +794,8 @@ impl VelloScene {
     #[cfg(test)]
     fn append_large_path_scenario_for_test(&mut self, account: &Account) -> Result<()> {
         const LARGE_PATH_SCAN_LINE_SEGMENTS: usize = 4 * 256 * 256 + 1;
-        self.transform_and_style(kurbo::Affine::IDENTITY, Some(Fill::NonZero), None, account)?;
+        let qualified =
+            self.transform_and_style(kurbo::Affine::IDENTITY, Some(Fill::NonZero), None, account)?;
         self.backing.path(
             &mut self.encoding,
             LARGE_PATH_SCAN_LINE_SEGMENTS + 1,
@@ -786,7 +811,11 @@ impl VelloScene {
             x += 1.0;
         }
         path.finish(true);
-        self.brush(BrushRef::Solid(peniko::Color::BLACK).into(), account)
+        self.brush(
+            BrushRef::Solid(peniko::Color::BLACK).into(),
+            &qualified,
+            account,
+        )
     }
 
     #[cfg(test)]

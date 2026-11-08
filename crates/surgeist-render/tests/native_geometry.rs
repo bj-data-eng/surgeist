@@ -382,7 +382,18 @@ fn concrete_transform_path_stroke_blur_and_glyph_losses_have_contextual_receivin
                 Reason::UnrepresentableTransform,
             ),
             (
+                // Source/native displacement now refuses before pair retention.
                 geometry_scene(Geometry::CollapsedUnitEdge, graph, red),
+                Reason::InsufficientNativeCapacity,
+            ),
+            (
+                // A smaller displacement reaches the concrete alias receiver.
+                scene(graph, |scene| {
+                    let origin = 2.0_f64.powi(24);
+                    scene.transform(Transform::translation(-origin, 0.0).unwrap(), |scene| {
+                        scene.fill(Rect::try_new(origin, 0.0, 0.125, 16.0).unwrap(), red);
+                    });
+                }),
                 Reason::UnrepresentablePath { element_index: 1 },
             ),
             (
