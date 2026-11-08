@@ -89,6 +89,7 @@ pub struct NativeJob {
     #[allow(clippy::type_complexity)]
     f: Option<Box<dyn for<'call> FnOnce(ContextAccess<'call>) -> JsResult<JsValue>>>,
     observer: JobObserver,
+    module_action: Option<crate::module::lifecycle::ModuleActionRoot>,
     realm: Option<Realm>,
 }
 
@@ -148,6 +149,7 @@ impl NativeJob {
         Self {
             f: Some(Box::new(f)),
             observer: JobObserver::new(),
+            module_action: None,
             realm: None,
         }
     }
@@ -160,6 +162,7 @@ impl NativeJob {
         Self {
             f: Some(Box::new(f)),
             observer: JobObserver::new(),
+            module_action: None,
             realm: Some(realm),
         }
     }
@@ -189,7 +192,17 @@ impl NativeJob {
             return JobCall::Deferred { job: self, error };
         }
         let call = self.f.take().expect("native job callback runs once");
-        let result = invoke_native_job(context, self.realm.take(), call);
+        let result = if let Some(action) = &self.module_action {
+            match action.check() {
+                Ok(()) => invoke_native_job(context, self.realm.take(), call),
+                Err(error) => Err(error),
+            }
+        } else {
+            invoke_native_job(context, self.realm.take(), call)
+        };
+        if let (Some(action), Err(error)) = (&self.module_action, &result) {
+            action.finish(error);
+        }
         if result
             .as_ref()
             .is_err_and(|error| error.as_engine().is_some())
@@ -610,6 +623,13 @@ impl Debug for PromiseJob {
 }
 
 impl PromiseJob {
+    pub(crate) fn with_module_action(
+        mut self,
+        action: Option<crate::module::lifecycle::ModuleAction>,
+    ) -> Self {
+        self.0.module_action = action.map(|action| action.root());
+        self
+    }
     /// Creates a new `PromiseJob` from a closure.
     pub fn new<F>(f: F) -> Self
     where

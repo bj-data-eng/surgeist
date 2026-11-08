@@ -39,6 +39,35 @@ use super::{
     ResolveExportError, ResolvedBinding, SourceText,
 };
 
+use super::lifecycle::{EvaluationRef, EvaluationStack};
+use crate::builtins::promise::PreparedPendingReactions;
+use crate::builtins::promise::native_settlement::Association;
+use surgeist_js_gc::heap::Rooted;
+
+/// All fallible preparation precedes publication into the evaluation lifecycle.
+pub(super) struct PreparedEvaluation {
+    capability: PromiseCapability,
+    association: Rooted<Association>,
+    target: Option<Rooted<Association>>,
+    bridge: Option<PreparedPendingReactions>,
+}
+impl PreparedEvaluation {
+    fn publish(&mut self, evaluation: &EvaluationRef) {
+        self.association.attach_module(evaluation.clone());
+        evaluation.issue(self.association.signal());
+        if let Some(target) = &self.target {
+            target.bind_module(evaluation.clone());
+        }
+        if let Some(bridge) = &mut self.bridge {
+            bridge.publish();
+        }
+    }
+    fn notify(self) {
+        if let Some(bridge) = self.bridge {
+            bridge.notify();
+        }
+    }
+}
 mod preparation;
 pub(crate) use preparation::ModuleActivation;
 
@@ -52,6 +81,12 @@ pub(super) fn link(module: &Module, context: &mut Context) -> JsResult<()> {
 /// but with a state machine-like design for better correctness.
 ///
 /// [cyclic]: https://tc39.es/ecma262/#table-cyclic-module-fields
+#[derive(Debug, Trace)]
+enum InlineCompletion {
+    Fulfilled,
+    Rejected(StoredJsError),
+}
+
 #[derive(Debug, Trace)]
 enum ModuleStatus {
     Unlinked {
@@ -89,6 +124,8 @@ enum ModuleStatus {
         cycle_root: ModuleEdge,
         ancestor_index: usize,
         async_evaluation_order: Option<usize>,
+        pending_async_dependencies: usize,
+        inline_completion: Option<InlineCompletion>,
     },
     EvaluatingAsync {
         environment: DeclarativeEnvironmentEdge,
@@ -97,6 +134,7 @@ enum ModuleStatus {
         cycle_root: ModuleEdge,
         async_evaluation_order: usize,
         pending_async_dependencies: usize,
+        inline_completion: Option<InlineCompletion>,
     },
     Evaluated {
         environment: DeclarativeEnvironmentEdge,
@@ -253,7 +291,7 @@ impl std::fmt::Debug for SourceTextContext {
 pub(crate) struct SourceTextModule {
     status: RefCell<ModuleStatus>,
     loaded_modules: RefCell<FxHashMap<ModuleRequest, ModuleEdge>>,
-    async_parent_modules: RefCell<Vec<ModuleEdge>>,
+    pub(crate) evaluation: EvaluationRef,
     import_meta: RefCell<Option<ObjectEdge>>,
     #[heap_trace(skip)]
     code: ModuleCode,
@@ -264,7 +302,7 @@ impl std::fmt::Debug for SourceTextModule {
         f.debug_struct("SourceTextModule")
             .field("status", &self.status)
             .field("loaded_modules", &self.loaded_modules)
-            .field("async_parent_modules", &self.async_parent_modules)
+            .field("evaluation", &self.evaluation)
             .field("import_meta", &self.import_meta)
             .finish_non_exhaustive()
     }
@@ -373,7 +411,8 @@ impl SourceTextModule {
         interner: Interner,
         source_text: SourceText,
         path: Option<PathBuf>,
-    ) -> Self {
+        context: &Context,
+    ) -> JsResult<Self> {
         // 3. Let requestedModules be the ModuleRequests of body.
         let requested_modules = {
             use surgeist_js_ast::visitor::Visitor;
@@ -487,7 +526,7 @@ impl SourceTextModule {
         //     [[DFSIndex]]: empty, [[DFSAncestorIndex]]: empty
         // }.
         // Most of this can be ignored, since `Status` takes care of the remaining state.
-        Self {
+        Ok(Self {
             status: RefCell::new(ModuleStatus::Unlinked {
                 source: ModuleSource {
                     ast: source,
@@ -496,7 +535,7 @@ impl SourceTextModule {
                 },
             }),
             loaded_modules: RefCell::default(),
-            async_parent_modules: RefCell::default(),
+            evaluation: EvaluationRef::prepare(requested_modules.len(), context)?,
             import_meta: RefCell::default(),
             code: ModuleCode {
                 has_tla,
@@ -507,7 +546,7 @@ impl SourceTextModule {
                 indirect_export_entries,
                 star_export_entries,
             },
-        }
+        })
     }
 
     /// Abstract operation [`InnerModuleLoading`][spec].
@@ -836,151 +875,243 @@ impl SourceTextModule {
     /// Concrete method [`Evaluate ( )`][spec].
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-moduleevaluation
+    fn target_owner(
+        target: Option<&PromiseCapability>,
+        context: &Context,
+    ) -> JsResult<Option<Rooted<Association>>> {
+        target
+            .map(|target| {
+                let promise = target
+                    .promise()
+                    .clone()
+                    .downcast::<Promise>()
+                    .expect("intrinsic native target");
+                Promise::ensure_native_association(&promise, context)
+            })
+            .transpose()
+    }
+    fn notify_terminal_target(
+        &self,
+        target: Option<&PromiseCapability>,
+        context: &Context,
+    ) -> JsResult<()> {
+        context.check_execution_stop()?;
+        let owner = Self::target_owner(target, context)?;
+        context.check_execution_stop()?;
+        if let Some(owner) = owner {
+            owner.observe_module(self.evaluation.clone());
+        }
+        Ok(())
+    }
+    fn connect_target(
+        &self,
+        capability: &PromiseCapability,
+        bridge: Option<&super::NativeEvaluationBridge>,
+        context: &mut Context,
+    ) -> JsResult<()> {
+        if let Some(bridge) = bridge {
+            let promise = capability
+                .promise()
+                .clone()
+                .downcast::<Promise>()
+                .expect("intrinsic evaluation promise");
+            let owner =
+                Self::target_owner(Some(&bridge.target), context)?.expect("native bridge target");
+            Promise::perform_promise_then_with_native_target(
+                &promise,
+                Some(bridge.fulfilled.clone()),
+                Some(bridge.rejected.clone()),
+                None,
+                &bridge.target,
+                context,
+            )?;
+            owner.bind_module(self.evaluation.clone());
+        }
+        Ok(())
+    }
     pub(super) fn evaluate(
         &self,
         module_self: &Module,
+        bridge: Option<&super::NativeEvaluationBridge>,
         context: &mut Context,
     ) -> JsResult<JsPromise> {
-        // 1. Assert: This call to Evaluate is not happening at the same time as another call to Evaluate within the surrounding agent.
-        let (module, promise) = {
-            match &*self.status.borrow() {
-                ModuleStatus::Unlinked { .. }
-                | ModuleStatus::Linking { .. }
-                | ModuleStatus::Pending { .. }
-                | ModuleStatus::Preparing { .. }
-                | ModuleStatus::Transitioning
-                | ModuleStatus::Evaluating { .. } => {
-                    unreachable!(
-                        "2. Assert: module.[[Status]] is one of linked, evaluating-async, or evaluated."
-                    )
-                }
-                ModuleStatus::Linked { .. } => (module_self.clone(), None),
-                // 3. If module.[[Status]] is either evaluating-async or evaluated, set module to module.[[CycleRoot]].
-                ModuleStatus::EvaluatingAsync {
-                    cycle_root,
-                    top_level_capability,
-                    ..
-                }
-                | ModuleStatus::Evaluated {
-                    cycle_root,
-                    top_level_capability,
-                    ..
-                } => (
-                    Module::from_edge(cycle_root.clone()),
-                    top_level_capability
-                        .as_ref()
-                        .map(|cap| {
-                            JsPromise::from_object(cap.to_capability().promise().clone()).js_expect(
-                                "promise created from the %Promise% intrinsic is always native",
-                            )
-                        })
-                        .transpose()?,
-                ),
-            }
-        };
-
-        // 4. If module.[[TopLevelCapability]] is not empty, then
-        if let Some(promise) = promise {
-            // a. Return module.[[TopLevelCapability]].[[Promise]].
-            return Ok(promise);
+        let target = bridge.map(|bridge| &bridge.target);
+        context.check_execution_stop()?;
+        if let Some(error) = self.evaluation.error(module_self) {
+            self.notify_terminal_target(target, context)?;
+            return Err(error);
         }
-
-        // 5. Let stack be a new empty List.
-        let mut stack = Vec::new();
-
-        // 6. Let capability be ! NewPromiseCapability(%Promise%).
-        // 7. Set module.[[TopLevelCapability]] to capability.
+        let module = self
+            .status
+            .borrow()
+            .cycle_root()
+            .unwrap_or_else(|| module_self.clone());
+        let source = module.kind().as_source_text().expect("source cycle root");
+        if let Some(error) = source.evaluation.error(&module) {
+            source.notify_terminal_target(target, context)?;
+            return Err(error);
+        }
+        let cached = source.status.borrow().top_level_capability();
+        if let Some(capability) = cached {
+            source.connect_target(&capability, bridge, context)?;
+            if let Some(error) = source.evaluation.error(&module) {
+                return Err(error);
+            }
+            return JsPromise::from_object(capability.promise().clone());
+        }
         let capability = PromiseCapability::new(
             &context.intrinsics().constructors().promise().constructor(),
             context,
-        )
-        .js_expect(
-            "capability creation must always succeed when using the `%Promise%` intrinsic",
         )?;
-
-        // 8. Let result be Completion(InnerModuleEvaluation(module, stack, 0)).
-        let ModuleKind::SourceText(module_src) = module.kind() else {
-            unreachable!("module must be a source text module");
+        let promise = capability
+            .promise()
+            .clone()
+            .downcast::<Promise>()
+            .expect("intrinsic promise");
+        let association = Promise::ensure_native_association(&promise, context)?;
+        let target_owner = Self::target_owner(target, context)?;
+        let reactions = bridge
+            .map(|bridge| {
+                Promise::prepare_pending_then(
+                    &promise,
+                    bridge.fulfilled.clone(),
+                    bridge.rejected.clone(),
+                    &bridge.target,
+                    context,
+                )
+            })
+            .transpose()?;
+        // No public origin, canonical capability or issued route has been installed.
+        context.check_execution_stop()?;
+        if let Some(error) = source.evaluation.error(&module) {
+            source.notify_terminal_target(target, context)?;
+            return Err(error);
+        }
+        let cached = source.status.borrow().top_level_capability();
+        if let Some(existing) = cached {
+            source.connect_target(&existing, bridge, context)?;
+            if let Some(error) = source.evaluation.error(&module) {
+                return Err(error);
+            }
+            return JsPromise::from_object(existing.promise().clone());
+        }
+        let mut prepared = PreparedEvaluation {
+            capability: capability.clone(),
+            association,
+            target: target_owner,
+            bridge: reactions,
         };
-        let result =
-            module_src.inner_evaluate(&module, &mut stack, 0, Some(capability.clone()), context);
-
-        match result {
-            Ok(_) => {
-                // 10. Else,
-                //     a. Assert: module.[[Status]] is either evaluating-async or evaluated.
-                assert!(match &*module_src.status.borrow() {
-                    ModuleStatus::EvaluatingAsync { .. } => true,
-                    // b. Assert: module.[[EvaluationError]] is empty.
-                    ModuleStatus::Evaluated { error, .. } if error.is_none() => true,
-                    _ => false,
-                });
-
-                //     c. If module.[[AsyncEvaluation]] is false, then
-                if matches!(&*module_src.status.borrow(), ModuleStatus::Evaluated { .. }) {
-                    //    i. Assert: module.[[Status]] is evaluated.
-                    //    ii. Perform ! Call(capability.[[Resolve]], undefined, « undefined »).
+        // Late native entry can issue a capability for an indirect dependency.
+        let existing = {
+            let mut status = source.status.borrow_mut();
+            match &mut *status {
+                ModuleStatus::EvaluatingAsync {
+                    top_level_capability,
+                    ..
+                } => {
+                    *top_level_capability = Some(capability.stored());
+                    Some(None)
+                }
+                ModuleStatus::Evaluated {
+                    top_level_capability,
+                    error,
+                    ..
+                } => {
+                    *top_level_capability = Some(capability.stored());
+                    Some(Some(error.clone()))
+                }
+                ModuleStatus::Linked { .. } => None,
+                _ => unreachable!("native evaluation requires linked or completed source"),
+            }
+        };
+        if let Some(existing) = existing {
+            prepared.publish(&source.evaluation);
+            prepared.notify();
+            if let Some(error) = existing {
+                if let Some(error) = error {
+                    let value = error.to_error().into_opaque(context.access())?;
+                    capability
+                        .reject()
+                        .call(&JsValue::undefined(), &[value], context.access())?;
+                } else {
                     capability
                         .resolve()
-                        .call(&JsValue::undefined(), &[], context.access())
-                        .js_expect("cannot fail for the default resolve function")?;
+                        .call(&JsValue::undefined(), &[], context.access())?;
                 }
-
-                //     d. Assert: stack is empty.
-                assert!(stack.is_empty());
             }
-            // 9. If result is an abrupt completion, then
-            Err(err) => {
-                // a. For each Cyclic Module Record m of stack, do
-                for m in stack.iter().filter_map(|cmr| cmr.kind().as_source_text()) {
-                    m.status.borrow_mut().transition(|current| match current {
-                        // i. Assert: m.[[Status]] is evaluating.
-                        ModuleStatus::Evaluating {
-                            environment,
-                            top_level_capability,
-                            cycle_root,
-                            ..
-                        } | ModuleStatus::EvaluatingAsync {
-                            environment,
-                            top_level_capability,
-                            cycle_root,
-                            ..
-                        } => {
-                            // ii. Set m.[[Status]] to evaluated.
-                            // iii. Set m.[[EvaluationError]] to result.
-                            ModuleStatus::Evaluated {
-                                environment,
-                                top_level_capability,
-                                cycle_root,
-                                error: Some(err.clone().into_stored()),
-                            }
-                        },
-                        _ => panic!(
-                            "can only transition to `Evaluated` from the `Evaluating` or `EvaluatingAsync states"
-                        ),
-                    });
-                }
-                // b. Assert: module.[[Status]] is evaluated.
-                // c. Assert: module.[[EvaluationError]] is result.
-                assert!(
-                    matches!(&*module_src.status.borrow(), ModuleStatus::Evaluated { error, .. } if error.is_some())
-                );
-
-                // d. Perform ! Call(capability.[[Reject]], undefined, « result.[[Value]] »).
-                capability
-                    .reject()
-                    .call(
-                        &JsValue::undefined(),
-                        &[err.into_opaque(context.access())?],
-                        context.access(),
-                    )
-                    .js_expect("cannot fail for the default reject function")?;
-            }
+            return JsPromise::from_object(capability.promise().clone());
         }
-
-        // 11. Return capability.[[Promise]].
-        Ok(JsPromise::from_object(capability.promise().clone())
-            .js_expect("promise created from the %Promise% intrinsic is always native")?)
+        let mut stack = EvaluationStack::default();
+        let result = source.inner_evaluate(&module, &mut stack, 0, Some(prepared), context);
+        let result: JsResult<()> = (|| {
+            match result {
+                Ok(_) => {
+                    if matches!(
+                        &*source.status.borrow(),
+                        ModuleStatus::Evaluated { error: None, .. }
+                    ) && matches!(
+                        promise.borrow().data().state(),
+                        crate::builtins::promise::PromiseState::Pending
+                    ) {
+                        capability
+                            .resolve()
+                            .call(&JsValue::undefined(), &[], context.access())?;
+                    }
+                    assert!(stack.is_empty());
+                }
+                Err(error) if error.as_engine().is_some() => {
+                    // Open DFS callers are required owners even before parent registration.
+                    stack.interrupt(&error);
+                    while stack.pop().is_some() {}
+                    return Err(error);
+                }
+                Err(error) => {
+                    while let Some(member) = stack.pop() {
+                        let record = member.kind().as_source_text().expect("source stack");
+                        record
+                            .status
+                            .borrow_mut()
+                            .transition(|status| match status {
+                                ModuleStatus::Evaluating {
+                                    environment,
+                                    top_level_capability,
+                                    cycle_root,
+                                    ..
+                                }
+                                | ModuleStatus::EvaluatingAsync {
+                                    environment,
+                                    top_level_capability,
+                                    cycle_root,
+                                    ..
+                                } => ModuleStatus::Evaluated {
+                                    environment,
+                                    top_level_capability,
+                                    cycle_root,
+                                    error: Some(error.clone().into_stored()),
+                                },
+                                _ => unreachable!("DFS owns evaluating records"),
+                            });
+                        if record.status.borrow().top_level_capability().is_none() {
+                            record.evaluation.complete();
+                        }
+                    }
+                    let value = error.into_opaque(context.access())?;
+                    capability
+                        .reject()
+                        .call(&JsValue::undefined(), &[value], context.access())?;
+                }
+            }
+            Ok(())
+        })();
+        if let Err(error) = &result
+            && error.as_engine().is_some()
+        {
+            // Canonical settlement is part of the entered evaluation until the
+            // Promise owner publishes its state and completes the origin.
+            source.evaluation.interrupt(error);
+        }
+        result?;
+        JsPromise::from_object(capability.promise().clone())
     }
 
     /// Abstract operation [`InnerModuleEvaluation ( module, stack, index )`][spec]
@@ -989,11 +1120,15 @@ impl SourceTextModule {
     pub(super) fn inner_evaluate(
         &self,
         module_self: &Module,
-        stack: &mut Vec<Module>,
+        stack: &mut EvaluationStack,
         mut index: usize,
-        capability: Option<PromiseCapability>,
+        mut prepared: Option<PreparedEvaluation>,
         context: &mut Context,
     ) -> JsResult<usize> {
+        context.check_execution_stop()?;
+        if let Some(error) = self.evaluation.error(module_self) {
+            return Err(error);
+        }
         // TODO: this count should be part of the `context` instead, and we should
         // reset it after the last module has executed.
         /// [`IncrementModuleAsyncEvaluationCount ( )`][spec]
@@ -1042,6 +1177,7 @@ impl SourceTextModule {
             ),
         }
 
+        let capability = prepared.as_ref().map(|prepared| &prepared.capability);
         // 5. Set module.[[Status]] to evaluating.
         // 6. Set moduleIndex to index.
         // 7. Set module.[[DFSAncestorIndex]] to index.
@@ -1054,25 +1190,34 @@ impl SourceTextModule {
             } => ModuleStatus::Evaluating {
                 environment,
                 context,
-                top_level_capability: capability.as_ref().map(PromiseCapability::stored),
+                top_level_capability: capability.map(PromiseCapability::stored),
                 cycle_root: module_self.edge(),
                 ancestor_index: index,
                 async_evaluation_order: None,
+                pending_async_dependencies: 0,
+                inline_completion: None,
             },
             _ => unreachable!("already asserted that this state is `Linked`. "),
         });
 
+        if let Some(prepared) = &mut prepared {
+            prepared.publish(&self.evaluation);
+        }
+        self.evaluation.enter();
+        if let Some(prepared) = prepared {
+            prepared.notify();
+            context.check_execution_stop()?;
+        }
         let module_index = index;
 
         // 9. Set index to index + 1.
         index += 1;
 
-        let mut pending_async_dependencies = 0;
         // 10. Append module to stack.
         stack.push(module_self.clone());
 
         // 11. 11. For each ModuleRequest Record request of module.[[RequestedModules]], do
-        for required in &self.code.requested_modules {
+        for (request_index, required) in self.code.requested_modules.iter().enumerate() {
             // a. Let requiredModule be GetImportedModule(module, required).
             let required_module = self
                 .loaded_module(required)
@@ -1153,16 +1298,30 @@ impl SourceTextModule {
                 // v. If requiredModule.[[AsyncEvaluationOrder]] is an integer, then
                 if async_eval {
                     // 1. Set module.[[PendingAsyncDependencies]] to module.[[PendingAsyncDependencies]] + 1.
-                    pending_async_dependencies += 1;
+                    if let ModuleStatus::Evaluating {
+                        pending_async_dependencies,
+                        ..
+                    } = &mut *self.status.borrow_mut()
+                    {
+                        *pending_async_dependencies += 1;
+                    } else {
+                        unreachable!("dependency discovery owns Evaluating");
+                    }
                     // 2. Append module to requiredModule.[[AsyncParentModules]].
                     required_module
-                        .async_parent_modules
-                        .borrow_mut()
-                        .push(module_self.edge());
+                        .evaluation
+                        .register_parent(module_self, request_index);
                 }
             }
         }
 
+        let pending_async_dependencies = match &*self.status.borrow() {
+            ModuleStatus::Evaluating {
+                pending_async_dependencies,
+                ..
+            } => *pending_async_dependencies,
+            _ => unreachable!("dependency discovery owns Evaluating"),
+        };
         // 12. If module.[[PendingAsyncDependencies]] > 0 or module.[[HasTLA]] is true, then
         if pending_async_dependencies > 0 || self.code.has_tla {
             {
@@ -1196,12 +1355,14 @@ impl SourceTextModule {
         )?;
 
         // 14. Assert: module occurs exactly once in stack.
-        debug_assert_eq!(stack.iter().filter(|m| *m == module_self).count(), 1);
+        debug_assert!(stack.contains(module_self));
         // 15. Assert: module.[[DFSAncestorIndex]] ≤ moduleIndex.
         assert!(ancestor_index <= module_index);
 
         // 16. If module.[[DFSAncestorIndex]] = moduleIndex, then
         if ancestor_index == module_index {
+            let mut cycle_next = self.evaluation.clone();
+            let mut ordinary = OrdinaryQueue::default();
             // a. Let done be false.
             // b. Repeat, while done is false,
             loop {
@@ -1215,12 +1376,18 @@ impl SourceTextModule {
                 let ModuleKind::SourceText(required_module_src) = required_module.kind() else {
                     unreachable!("iii. Assert: requiredModule is a Cyclic Module Record.");
                 };
+                required_module_src
+                    .evaluation
+                    .cycle(&self.evaluation, &cycle_next);
+                cycle_next = required_module_src.evaluation.clone();
                 required_module_src.status.borrow_mut().transition(|current| match current {
                 ModuleStatus::Evaluating {
                             environment,
                             top_level_capability,
                             cycle_root,
                             async_evaluation_order,
+                            pending_async_dependencies,
+                            inline_completion,
                             context,
                             ..
                         } => if let Some(async_evaluation_order) = async_evaluation_order {
@@ -1236,6 +1403,7 @@ impl SourceTextModule {
                                 },
                                 async_evaluation_order,
                                 pending_async_dependencies,
+                                inline_completion,
                                 context
                             }
                         } else {
@@ -1257,11 +1425,29 @@ impl SourceTextModule {
                     }
                 );
 
+                if matches!(
+                    &*required_module_src.status.borrow(),
+                    ModuleStatus::Evaluated { .. }
+                ) && required_module_src
+                    .status
+                    .borrow()
+                    .top_level_capability()
+                    .is_none()
+                {
+                    required_module_src.evaluation.complete();
+                }
+                if matches!(
+                    &*required_module_src.status.borrow(),
+                    ModuleStatus::EvaluatingAsync { .. }
+                ) {
+                    ordinary.insert(required_module.clone());
+                }
                 // vii. If requiredModule and module are the same Module Record, set done to true.
                 if is_self {
                     break;
                 }
             }
+            ordinary.drain(context)?;
         }
 
         // 17. Return index.
@@ -1328,18 +1514,18 @@ impl SourceTextModule {
         .expect("async module reaction retains its current runtime");
 
         // 8. Perform PerformPromiseThen(capability.[[Promise]], onFulfilled, onRejected).
-        Promise::perform_promise_then(
+        Promise::perform_promise_then_module(
             &promise,
             Some(on_fulfilled),
             Some(on_rejected),
             None,
+            Some(super::lifecycle::ModuleAction::complete(module_self)),
             context,
         )?;
 
         // 9. Perform ! module.ExecuteModule(capability).
         // 10. Return unused.
-        self.execute(module_self, Some(capability), context)
-            .expect("async modules cannot directly throw");
+        self.execute(module_self, Some(capability), context)?;
         Ok(())
     }
 
@@ -1349,11 +1535,28 @@ impl SourceTextModule {
     #[allow(clippy::mutable_key_type)]
     fn gather_available_ancestors(&self, exec_list: &mut FxHashSet<Module>) {
         // 1. For each Cyclic Module Record m of module.[[AsyncParentModules]], do
-        let parents = self.take_async_parent_modules();
-        for m in parents {
+        for parent in self.evaluation.parents() {
+            let m = parent.module();
+            if m.kind()
+                .as_source_text()
+                .is_some_and(|source| source.evaluation.cause().is_some())
+            {
+                continue;
+            }
             let ModuleKind::SourceText(m_src) = m.kind() else {
                 continue;
             };
+            if matches!(&*m_src.status.borrow(), ModuleStatus::Evaluating { .. }) {
+                parent.defer_ready();
+                continue;
+            }
+            if !matches!(
+                &*m_src.status.borrow(),
+                ModuleStatus::EvaluatingAsync { .. }
+            ) || !parent.consume()
+            {
+                continue;
+            }
 
             if exec_list.contains(&m) {
                 continue;
@@ -1416,6 +1619,9 @@ impl SourceTextModule {
         capability: Option<PromiseCapability>,
         context: &mut Context,
     ) -> JsResult<()> {
+        if let Some(error) = self.evaluation.error(module_self) {
+            return Err(error);
+        }
         // 1. Let moduleContext be a new ECMAScript code execution context.
         let SourceTextContext {
             codeblock,
@@ -1437,7 +1643,7 @@ impl SourceTextModule {
         let env_fp = environments.len() as u32;
         let permit = context.reserve_guest_entry(codeblock.clone(), 0)?;
         let active = ActivatedCode::from_installed(codeblock)?;
-        let callframe = CallFrame::new(
+        let mut callframe = CallFrame::new(
             active,
             permit,
             Some(ActiveRunnable::Module(module_self.clone())),
@@ -1447,6 +1653,7 @@ impl SourceTextModule {
         .with_env_fp(env_fp)
         .with_flags(CallFrameFlags::EXIT_EARLY);
 
+        callframe.set_module_evaluation(self.evaluation.clone());
         // 8. Suspend the running execution context.
         context
             .vm
@@ -1466,11 +1673,18 @@ impl SourceTextModule {
         //    a. Assert: capability is a PromiseCapability Record.
         //    b. Perform AsyncBlockStart(capability, module.[[ECMAScriptCode]], moduleContext).
         let result = context.run();
-
+        let transferred =
+            !context.vm.frame().owns_continuation() && self.evaluation.has_suspension();
         context.vm.pop_frame();
 
         //     f. If result is an abrupt completion, then
         if let CompletionRecord::Throw(err) = result {
+            if transferred && context.check_execution_stop().is_err() {
+                return Ok(());
+            }
+            if err.as_engine().is_some() && !transferred {
+                self.evaluation.interrupt(&err);
+            }
             //    i. Return ? result.
             Err(err)
         } else {
@@ -1498,13 +1712,6 @@ impl SourceTextModule {
         assert_eq!(entry, &edge);
     }
 
-    fn take_async_parent_modules(&self) -> Vec<Module> {
-        std::mem::take(&mut *self.async_parent_modules.borrow_mut())
-            .into_iter()
-            .map(Module::from_edge)
-            .collect()
-    }
-
     /// Gets the cached import meta object.
     pub(crate) fn import_meta(&self) -> Option<JsObject> {
         self.import_meta.borrow().clone().map(JsObject::from_inner)
@@ -1530,6 +1737,21 @@ fn async_module_execution_fulfilled(module: &Module, context: &mut Context) -> J
         unreachable!("async executed module must be a source text module");
     };
 
+    if let Some(error) = module_src.evaluation.error(module) {
+        return Err(error);
+    }
+    {
+        let mut status = module_src.status.borrow_mut();
+        if let ModuleStatus::Evaluating {
+            inline_completion, ..
+        } = &mut *status
+        {
+            if inline_completion.is_none() {
+                *inline_completion = Some(InlineCompletion::Fulfilled);
+            }
+            return Ok(());
+        }
+    }
     // 1. If module.[[Status]] is evaluated, then
     if let ModuleStatus::Evaluated { error, .. } = &*module_src.status.borrow() {
         //     a. Assert: module.[[EvaluationError]] is not empty.
@@ -1561,6 +1783,9 @@ fn async_module_execution_fulfilled(module: &Module, context: &mut Context) -> J
             _ => unreachable!(),
         });
 
+    if module_src.status.borrow().top_level_capability().is_none() {
+        module_src.evaluation.complete();
+    }
     // 7. If module.[[TopLevelCapability]] is not empty, then
     if let Some(cap) = module_src.status.borrow().top_level_capability() {
         // a. Assert: module.[[CycleRoot]] and module are the same Module Record.
@@ -1606,80 +1831,162 @@ fn async_module_execution_fulfilled(module: &Module, context: &mut Context) -> J
         *async_evaluation_order
     });
 
-    // 12. For each Cyclic Module Record m of sortedExecList, do
-    for m in sorted_exec_list {
-        let ModuleKind::SourceText(m_src) = m.kind() else {
-            continue;
-        };
-
-        // a. If m.[[Status]] is evaluated, then
-        if let ModuleStatus::Evaluated { error, .. } = &*m_src.status.borrow() {
-            // i. Assert: m.[[EvaluationError]] is not empty.
-            debug_assert!(error.is_some());
-            continue;
-        }
-
-        // b. Else if m.[[HasTLA]] is true, then
-        let has_tla = m_src.code.has_tla;
-        if has_tla {
-            // i. Perform ExecuteAsyncModule(m).
-            if let Err(error) = m_src.execute_async(&m, context) {
-                async_module_execution_rejected(&m, &error, context)?;
-            }
-            continue;
-        }
-        // c. Else,
-        // c.i. Let result be m.ExecuteModule().
-        let result = m_src.execute(&m, None, context);
-
-        // c.ii. If result is an abrupt completion, then
-        if let Err(e) = result {
-            // eagerly convert to an opaque error so that we can exit immediately
-            // if there was an EngineError.
-            let e = &JsError::from_opaque(e.into_opaque(context.access())?);
-
-            // 1. Perform AsyncModuleExecutionRejected(m, result.[[Value]]).
-            async_module_execution_rejected(module, e, context)?;
-            continue;
-        }
-
-        // iii. Else,
-        // iii.1. Set m.[[AsyncEvaluationOrder]] to done.
-        // iii.2. Set m.[[Status]] to evaluated.
-        m_src.status.borrow_mut().transition(|status| match status {
-            ModuleStatus::EvaluatingAsync {
-                environment,
-                top_level_capability,
-                cycle_root,
-                ..
-            } => ModuleStatus::Evaluated {
-                environment,
-                top_level_capability,
-                cycle_root,
-                error: None,
-            },
-            _ => unreachable!(),
-        });
-
-        let status = m_src.status.borrow();
-
-        // 3. If m.[[TopLevelCapability]] is not empty, then
-        if let Some(cap) = status.top_level_capability() {
-            // a. Assert: m.[[CycleRoot]] and m are the same Module Record..
-            debug_assert_eq!(status.cycle_root(), Some(m.clone()));
-
-            // b. Perform ! Call(m.[[TopLevelCapability]].[[Resolve]], undefined, « undefined »).
-            cap.resolve()
-                .call(
-                    &JsValue::undefined(),
-                    &[JsValue::undefined()],
-                    context.access(),
-                )
-                .js_expect("default `resolve` function cannot fail")?;
-        }
+    for module in sorted_exec_list {
+        execute_available_module(&module, context)?;
     }
     // 13. Return unused.
     Ok(())
+}
+
+/// Runs a body whose dependency discovery and cyclic status publication are complete.
+fn execute_available_module(module: &Module, context: &mut Context) -> JsResult<()> {
+    let source = module.kind().as_source_text().expect("source ancestor");
+    if source.evaluation.cause().is_some()
+        || matches!(&*source.status.borrow(), ModuleStatus::Evaluated { .. })
+    {
+        return Ok(());
+    }
+    if source.code.has_tla {
+        if let Err(error) = source.execute_async(module, context) {
+            if error.as_engine().is_some() {
+                source.evaluation.interrupt(&error);
+                return Err(error);
+            }
+            async_module_execution_rejected(module, &error, context)?;
+        }
+    } else {
+        match source.execute(module, None, context) {
+            Ok(()) => async_module_execution_fulfilled(module, context)?,
+            Err(error) if error.as_engine().is_some() => {
+                source.evaluation.interrupt(&error);
+                return Err(error);
+            }
+            Err(error) => {
+                let value = error.into_opaque(context.access())?;
+                async_module_execution_rejected(module, &JsError::from_opaque(value), context)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Stack-owned SCC work order; links were reserved in each evaluation record.
+#[derive(Default)]
+struct OrdinaryQueue {
+    head: Option<Module>,
+}
+impl OrdinaryQueue {
+    fn order(module: &Module) -> usize {
+        match &*module
+            .kind()
+            .as_source_text()
+            .expect("source work")
+            .status
+            .borrow()
+        {
+            ModuleStatus::EvaluatingAsync {
+                async_evaluation_order,
+                ..
+            } => *async_evaluation_order,
+            _ => usize::MAX,
+        }
+    }
+    fn insert(&mut self, module: Module) {
+        let source = module.kind().as_source_text().expect("source work");
+        if self
+            .head
+            .as_ref()
+            .is_none_or(|head| Self::order(&module) < Self::order(head))
+        {
+            source.evaluation.set_ordinary_next(self.head.as_ref());
+            self.head = Some(module);
+            return;
+        }
+        let mut current = self.head.clone().expect("nonempty work");
+        loop {
+            let next = current
+                .kind()
+                .as_source_text()
+                .expect("source work")
+                .evaluation
+                .ordinary_next();
+            if next
+                .as_ref()
+                .is_none_or(|next| Self::order(&module) < Self::order(next))
+            {
+                source.evaluation.set_ordinary_next(next.as_ref());
+                current
+                    .kind()
+                    .as_source_text()
+                    .expect("source work")
+                    .evaluation
+                    .set_ordinary_next(Some(&module));
+                break;
+            }
+            current = next.expect("successor exists");
+        }
+    }
+    fn drain(mut self, context: &mut Context) -> JsResult<()> {
+        while let Some(module) = self.head.take() {
+            let source = module.kind().as_source_text().expect("source work");
+            self.head = source.evaluation.take_ordinary_next();
+            if source.evaluation.cause().is_some() {
+                continue;
+            }
+            // Restore the owned rejection while the status still traces its
+            // complete stored graph. Release that shared borrow before taking
+            // or disposing the old stored value and publishing transitions.
+            let completion: Option<JsResult<()>> = {
+                let status = source.status.borrow();
+                let ModuleStatus::EvaluatingAsync {
+                    inline_completion, ..
+                } = &*status
+                else {
+                    continue;
+                };
+                inline_completion
+                    .as_ref()
+                    .map(|completion| match completion {
+                        InlineCompletion::Fulfilled => Ok(()),
+                        InlineCompletion::Rejected(error) => Err(error.to_error()),
+                    })
+            };
+            let deferred = source.evaluation.take_deferred_ready();
+            let stored = {
+                let mut status = source.status.borrow_mut();
+                let ModuleStatus::EvaluatingAsync {
+                    pending_async_dependencies,
+                    inline_completion,
+                    ..
+                } = &mut *status
+                else {
+                    unreachable!("ordinary restoration does not change module state");
+                };
+                *pending_async_dependencies = pending_async_dependencies
+                    .checked_sub(deferred)
+                    .expect("each deferred request consumes one dependency");
+                inline_completion.take()
+            };
+            drop(stored);
+            match completion {
+                Some(Ok(())) => async_module_execution_fulfilled(&module, context)?,
+                Some(Err(error)) => async_module_execution_rejected(&module, &error, context)?,
+                None => {
+                    let ready = matches!(
+                        &*source.status.borrow(),
+                        ModuleStatus::EvaluatingAsync {
+                            pending_async_dependencies: 0,
+                            ..
+                        }
+                    );
+                    if ready && !source.evaluation.has_invocation() {
+                        execute_available_module(&module, context)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Abstract operation [`AsyncModuleExecutionRejected ( module, error )`][spec].
@@ -1693,6 +2000,21 @@ fn async_module_execution_rejected(
     let ModuleKind::SourceText(module_src) = module.kind() else {
         unreachable!("async executed module must be a source text module");
     };
+    if let Some(error) = module_src.evaluation.error(module) {
+        return Err(error);
+    }
+    {
+        let mut status = module_src.status.borrow_mut();
+        if let ModuleStatus::Evaluating {
+            inline_completion, ..
+        } = &mut *status
+        {
+            if !matches!(inline_completion, Some(InlineCompletion::Rejected(_))) {
+                *inline_completion = Some(InlineCompletion::Rejected(error.clone().into_stored()));
+            }
+            return Ok(());
+        }
+    }
     // 1. If module.[[Status]] is evaluated, then
     if let ModuleStatus::Evaluated { error, .. } = &*module_src.status.borrow() {
         //     a. Assert: module.[[EvaluationError]] is not empty.
@@ -1725,6 +2047,9 @@ fn async_module_execution_rejected(
             _ => unreachable!(),
         });
 
+    if module_src.status.borrow().top_level_capability().is_none() {
+        module_src.evaluation.complete();
+    }
     // 8. NOTE: module.[[AsyncEvaluationOrder]] is set to done for symmetry with
     //    AsyncModuleExecutionFulfilled. In InnerModuleEvaluation, the value of a
     //    module's [[AsyncEvaluationOrder]] internal slot is unused when its
@@ -1750,7 +2075,16 @@ fn async_module_execution_rejected(
     }
 
     // 10. For each Cyclic Module Record m of module.[[AsyncParentModules]], do
-    for m in module_src.take_async_parent_modules() {
+    for parent in module_src.evaluation.parents() {
+        let m = parent.module();
+        // A valid sibling's ordinary rejection does not drive a terminal
+        // ancestor. Direct stale action entry still reports its interruption.
+        if m.kind()
+            .as_source_text()
+            .is_some_and(|source| source.evaluation.cause().is_some())
+        {
+            continue;
+        }
         // a. Perform AsyncModuleExecutionRejected(m, error).
         async_module_execution_rejected(&m, error, context)?;
     }

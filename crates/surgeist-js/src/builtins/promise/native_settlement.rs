@@ -6,7 +6,8 @@ use crate::{
     job::{JobObserver, JobRetirement, RetirementRegistration, RetirementRelay},
 };
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
+    rc::{Rc, Weak as LocalWeak},
     sync::{
         Arc, Mutex, MutexGuard, OnceLock, Weak,
         atomic::{AtomicBool, Ordering},
@@ -31,6 +32,7 @@ pub(crate) enum SettlementStatus {
     Pending,
     Settled,
     Retired(JobRetirement),
+    ModuleInterrupted,
 }
 
 struct Waiter {
@@ -38,6 +40,7 @@ struct Waiter {
     waker: Option<Waker>,
 }
 struct SignalState {
+    module_epoch: Option<Arc<Epoch>>,
     status: SettlementStatus,
     waiters: Vec<Waiter>,
     dependents: Vec<Option<Weak<Dependency>>>,
@@ -95,6 +98,8 @@ pub(crate) struct Signal {
     #[cfg(test)]
     isolated_domain: Option<Arc<Domain>>,
     notified: AtomicBool,
+    module_notified: AtomicBool,
+    module_next: Mutex<Option<Arc<Signal>>>,
     state: Mutex<SignalState>,
     next: Mutex<Option<Arc<Signal>>>,
 }
@@ -112,7 +117,10 @@ impl Signal {
             #[cfg(test)]
             isolated_domain: None,
             notified: AtomicBool::new(false),
+            module_notified: AtomicBool::new(false),
+            module_next: Mutex::new(None),
             state: Mutex::new(SignalState {
+                module_epoch: None,
                 status: SettlementStatus::Pending,
                 waiters: Vec::new(),
                 dependents: Vec::new(),
@@ -164,12 +172,16 @@ impl Signal {
                 self.notice()
             }
             SettlementStatus::Retired(_) => {}
+            SettlementStatus::ModuleInterrupted => self.notify_module(),
             _ => self.wake(),
         }
     }
     pub(crate) fn settle(self: &Arc<Self>) {
         {
             let mut state = lock(&self.state);
+            if state.status == SettlementStatus::ModuleInterrupted {
+                return;
+            }
             state.status = SettlementStatus::Settled;
         }
         self.wake();
@@ -195,11 +207,67 @@ impl Signal {
             std::panic::resume_unwind(panic);
         }
     }
+    pub(crate) fn mark_module(&self) {
+        let mut state = lock(&self.state);
+        if state.status != SettlementStatus::Settled {
+            state.status = SettlementStatus::ModuleInterrupted;
+        }
+    }
+    fn mark_module_epoch(self: &Arc<Self>, epoch: &Arc<Epoch>) {
+        let changed = {
+            let mut state = lock(&self.state);
+            if !epoch.active.load(Ordering::Acquire)
+                || matches!(
+                    state.status,
+                    SettlementStatus::Settled | SettlementStatus::ModuleInterrupted
+                )
+            {
+                false
+            } else {
+                state.status = SettlementStatus::ModuleInterrupted;
+                state.module_epoch = Some(epoch.clone());
+                true
+            }
+        };
+        if changed {
+            self.notify_module();
+        }
+    }
+    pub(crate) fn notify_module(self: &Arc<Self>) {
+        if self.status() != SettlementStatus::ModuleInterrupted
+            || self.module_notified.swap(true, Ordering::AcqRel)
+        {
+            return;
+        }
+        static MODULE_DOMAIN: OnceLock<Domain> = OnceLock::new();
+        let domain = MODULE_DOMAIN.get_or_init(|| Domain {
+            queue: Mutex::new(NoticeQueue {
+                head: None,
+                tail: None,
+                wake_head: None,
+                wake_tail: None,
+                driving: false,
+            }),
+            #[cfg(test)]
+            empty_notice_hook: None,
+        });
+        self.notice_in(domain, true);
+    }
+    fn link(&self, module: bool) -> &Mutex<Option<Arc<Signal>>> {
+        if module {
+            &self.module_next
+        } else {
+            &self.next
+        }
+    }
     fn notice(self: &Arc<Self>) {
+        self.notice_in(self.notification_domain(), false);
+    }
+    fn notice_in(self: &Arc<Self>, domain: &Domain, module: bool) {
         let drive = {
-            let mut queue = lock(&self.notification_domain().queue);
+            let mut queue = lock(&domain.queue);
             if let Some(tail) = queue.tail.replace(self.clone()) {
-                *lock(&tail.next) = Some(self.clone());
+                *lock(tail.link(module)) = Some(self.clone());
             } else {
                 queue.head = Some(self.clone());
             }
@@ -224,21 +292,21 @@ impl Signal {
             // The authoritative selection below must see that arrival atomically.
             #[cfg(test)]
             {
-                let observed_empty = lock(&self.notification_domain().queue).head.is_none();
+                let observed_empty = lock(&domain.queue).head.is_none();
                 if observed_empty {
-                    self.notification_domain().after_empty_notice();
+                    domain.after_empty_notice();
                 }
             }
             let work = {
-                let mut queue = lock(&self.notification_domain().queue);
+                let mut queue = lock(&domain.queue);
                 if let Some(next) = queue.head.take() {
-                    queue.head = lock(&next.next).take();
+                    queue.head = lock(next.link(module)).take();
                     if queue.head.is_none() {
                         queue.tail = None;
                     }
                     Work::Notice(next)
                 } else if let Some(wake) = queue.wake_head.take() {
-                    queue.wake_head = lock(&wake.next).take();
+                    queue.wake_head = lock(wake.link(module)).take();
                     if queue.wake_head.is_none() {
                         queue.wake_tail = None;
                     }
@@ -250,23 +318,24 @@ impl Signal {
             };
             match work {
                 Work::Notice(next) => {
-                    if let SettlementStatus::Retired(reason) = next.status() {
-                        loop {
-                            let dependent = lock(&next.state)
-                                .dependents
-                                .iter_mut()
-                                .find_map(Option::take);
-                            let Some(dependent) = dependent else {
-                                break;
-                            };
-                            if let Some(dependent) = dependent.upgrade() {
+                    let count = lock(&next.state).dependents.len();
+                    for index in 0..count {
+                        let dependent = lock(&next.state)
+                            .dependents
+                            .get(index)
+                            .and_then(Clone::clone)
+                            .and_then(|value| value.upgrade());
+                        if let Some(dependent) = dependent {
+                            if module {
+                                dependent.module_interrupt();
+                            } else if let SettlementStatus::Retired(reason) = next.status() {
                                 dependent.retire(reason);
                             }
                         }
                     }
-                    let mut queue = lock(&self.notification_domain().queue);
+                    let mut queue = lock(&domain.queue);
                     if let Some(tail) = queue.wake_tail.replace(next.clone()) {
-                        *lock(&tail.next) = Some(next);
+                        *lock(tail.link(module)) = Some(next);
                     } else {
                         queue.wake_head = Some(next);
                     }
@@ -333,6 +402,9 @@ impl Signal {
         if let SettlementStatus::Retired(reason) = self.status() {
             dependency.retire(reason);
         }
+        if self.status() == SettlementStatus::ModuleInterrupted {
+            dependency.module_interrupt();
+        }
         Ok(DependencyGuard {
             source: Arc::downgrade(self),
             index,
@@ -377,6 +449,7 @@ impl Drop for SettlementWait {
     }
 }
 struct Epoch {
+    module_pending: AtomicBool,
     active: AtomicBool,
     pending: Mutex<Option<JobRetirement>>,
     completed: AtomicBool,
@@ -384,6 +457,7 @@ struct Epoch {
 impl Epoch {
     fn new() -> Arc<Self> {
         Arc::new(Self {
+            module_pending: AtomicBool::new(false),
             active: AtomicBool::new(false),
             pending: Mutex::new(None),
             completed: AtomicBool::new(false),
@@ -416,6 +490,12 @@ struct Dependency {
     epoch: Arc<Epoch>,
 }
 impl Dependency {
+    fn module_interrupt(&self) {
+        self.epoch.module_pending.store(true, Ordering::Release);
+        if let Some(target) = self.target.upgrade() {
+            target.mark_module_epoch(&self.epoch);
+        }
+    }
     fn retire(&self, reason: JobRetirement) {
         *lock(&self.epoch.pending) = Some(reason);
         if self.epoch.active.load(Ordering::Acquire)
@@ -466,40 +546,60 @@ impl PreparedHandoff {
             binding,
             dependency,
         } = self;
+        if owner.module_cause().is_some() {
+            owner.signal.mark_module();
+        }
         let epoch = binding.epoch.clone();
-        let old = {
+        let mut candidate = Some((binding, dependency));
+        let previous = {
             let mut bindings = owner.bindings.borrow_mut();
+            let mut local_dependency = owner.view.dependency.borrow_mut();
             let mut state = lock(&owner.signal.state);
-            let old = bindings.primary.replace(binding);
-            if let Some(old) = &old {
-                old.epoch.active.store(false, Ordering::Release);
+            if state.status == SettlementStatus::ModuleInterrupted {
+                None
+            } else {
+                let (binding, dependency) = candidate.take().expect("prepared handoff");
+                let old = bindings.primary.replace(binding);
+                if let Some(old) = &old {
+                    old.epoch.active.store(false, Ordering::Release);
+                }
+                let old_dependency = std::mem::replace(&mut *local_dependency, dependency);
+                let active = !epoch.completed.load(Ordering::Acquire);
+                epoch.active.store(active, Ordering::Release);
+                if active && epoch.module_pending.load(Ordering::Acquire) {
+                    state.status = SettlementStatus::ModuleInterrupted;
+                    state.module_epoch = Some(epoch.clone());
+                } else if active
+                    && state.status == SettlementStatus::Pending
+                    && let Some(reason) = *lock(&epoch.pending)
+                {
+                    state.status = SettlementStatus::Retired(reason);
+                }
+                Some((old, old_dependency))
             }
-            let active = !epoch.completed.load(Ordering::Acquire);
-            epoch.active.store(active, Ordering::Release);
-            if active
-                && state.status == SettlementStatus::Pending
-                && let Some(reason) = *lock(&epoch.pending)
-            {
-                state.status = SettlementStatus::Retired(reason);
-            }
-            old
         };
-        let old_dependency = owner.dependency.replace(dependency);
-        drop(old);
-        drop(old_dependency);
+        drop(previous);
+        drop(candidate);
         owner
     }
 }
 
 pub(crate) struct ResolutionLease(Option<Arc<Epoch>>);
 
+#[derive(Default, Trace)]
+struct AssociationView {
+    #[heap_trace(skip)]
+    completes_origin: Cell<bool>,
+    origin: RefCell<Option<crate::module::lifecycle::EvaluationRef>>,
+    dependency: RefCell<Option<AssociationEdge>>,
+}
 #[derive(Trace)]
 pub(crate) struct Association {
     #[heap_trace(skip)]
     signal: Arc<Signal>,
     #[heap_trace(skip)]
     bindings: RefCell<Bindings>,
-    dependency: RefCell<Option<AssociationEdge>>,
+    view: Rc<AssociationView>,
 }
 struct Bindings {
     primary: Option<Binding>,
@@ -513,7 +613,11 @@ impl std::fmt::Debug for Association {
     }
 }
 #[derive(Clone, Debug, Trace)]
-pub(crate) struct AssociationEdge(RecordRef<Association>);
+pub(crate) struct AssociationEdge(
+    RecordRef<Association>,
+    #[heap_trace(skip)] LocalWeak<AssociationView>,
+    #[heap_trace(skip)] Arc<Signal>,
+);
 impl AssociationEdge {
     pub(crate) fn root(&self) -> Rooted<Association> {
         self.0
@@ -523,6 +627,70 @@ impl AssociationEdge {
     }
 }
 impl Association {
+    pub(crate) fn attach_module(&self, evaluation: crate::module::lifecycle::EvaluationRef) {
+        self.view.completes_origin.set(true);
+        *self.view.origin.borrow_mut() = Some(evaluation);
+    }
+    pub(crate) fn bind_module(&self, evaluation: crate::module::lifecycle::EvaluationRef) {
+        let mut origin = self.view.origin.borrow_mut();
+        if origin.is_none() {
+            *origin = Some(evaluation);
+        }
+    }
+    pub(crate) fn observe_module(&self, evaluation: crate::module::lifecycle::EvaluationRef) {
+        self.bind_module(evaluation);
+        if self.module_cause().is_some() {
+            self.signal.mark_module();
+            self.signal.notify_module();
+        }
+    }
+    fn next_view(view: &Rc<AssociationView>) -> Option<(Rc<AssociationView>, Arc<Signal>)> {
+        let next = view.dependency.borrow().clone()?;
+        Some((next.1.upgrade()?, next.2.clone()))
+    }
+    pub(crate) fn module_cause(&self) -> Option<Rc<crate::error::RetainedInterruption>> {
+        let mut cursor = (self.view.clone(), self.signal.clone());
+        let mut slow = Some(self.view.clone());
+        let mut fast = Some(self.view.clone());
+        let mut collision = None;
+        loop {
+            if cursor.1.status() == SettlementStatus::Settled {
+                return None;
+            }
+            if let Some(origin) = cursor.0.origin.borrow().as_ref()
+                && let Some(cause) = origin.cause()
+            {
+                return Some(cause);
+            }
+            cursor = Self::next_view(&cursor.0)?;
+            if let Some(collision) = &collision {
+                if Rc::ptr_eq(&cursor.0, collision) {
+                    return None;
+                }
+                continue;
+            }
+            slow = slow.and_then(|view| Self::next_view(&view).map(|next| next.0));
+            fast = fast
+                .and_then(|view| Self::next_view(&view))
+                .and_then(|next| Self::next_view(&next.0))
+                .map(|next| next.0);
+            if let (Some(slow), Some(fast)) = (&slow, &fast)
+                && Rc::ptr_eq(slow, fast)
+            {
+                // A collision can precede an unvisited origin. Inspect one full
+                // lap from this cursor before concluding the cycle has no cause.
+                collision = Some(cursor.0.clone());
+            }
+        }
+    }
+    pub(crate) fn module_error(owner: &Rooted<Self>) -> Option<crate::JsError> {
+        owner.module_cause().map(|cause| {
+            crate::error::EngineError::ModuleInterrupted(
+                crate::error::ModuleInterruption::association(cause, owner.clone()),
+            )
+            .into()
+        })
+    }
     pub(crate) fn new(context: &Context) -> JsResult<Rooted<Self>> {
         context
             .runtime()
@@ -533,7 +701,7 @@ impl Association {
                     primary: None,
                     required: Vec::new(),
                 }),
-                dependency: RefCell::new(None),
+                view: Rc::new(AssociationView::default()),
             })
             .map_err(|error| {
                 PanicError::new(format!(
@@ -544,7 +712,11 @@ impl Association {
             })
     }
     pub(crate) fn edge(owner: &Rooted<Self>) -> AssociationEdge {
-        AssociationEdge(owner.record_ref())
+        AssociationEdge(
+            owner.record_ref(),
+            Rc::downgrade(&owner.view),
+            owner.signal.clone(),
+        )
     }
     pub(crate) fn signal(&self) -> Arc<Signal> {
         self.signal.clone()
@@ -634,8 +806,8 @@ impl Association {
             _dependency: None,
         };
         self.commit(binding, replace)?;
-        if replace {
-            self.dependency.borrow_mut().take();
+        if replace && self.signal.status() != SettlementStatus::ModuleInterrupted {
+            self.view.dependency.borrow_mut().take();
         }
         if let Some(reason) = *lock(&epoch.pending) {
             self.signal.retire_epoch(&epoch, reason);
@@ -683,6 +855,18 @@ impl Association {
         Ok(())
     }
     pub(crate) fn settle(&self) {
+        if self.module_cause().is_some()
+            || self.signal.status() == SettlementStatus::ModuleInterrupted
+        {
+            self.signal.mark_module();
+            self.signal.notify_module();
+            return;
+        }
+        if self.view.completes_origin.get()
+            && let Some(origin) = self.view.origin.borrow().as_ref()
+        {
+            origin.complete();
+        }
         let bindings = std::mem::replace(
             &mut *self.bindings.borrow_mut(),
             Bindings {
@@ -690,11 +874,14 @@ impl Association {
                 required: Vec::new(),
             },
         );
-        self.dependency.borrow_mut().take();
+        self.view.dependency.borrow_mut().take();
         self.signal.settle();
         drop(bindings);
     }
 }
+
+#[cfg(test)]
+mod module_tests;
 
 #[cfg(test)]
 mod tests {

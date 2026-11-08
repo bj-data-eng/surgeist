@@ -453,9 +453,6 @@ fn load_dyn_import(
                             return Ok(JsValue::undefined());
                         }
 
-                        // c. Let evaluatePromise be module.Evaluate().
-                        let evaluate = module.evaluate(context.access())?;
-
                         // d. Let fulfilledClosure be a new Abstract Closure with no parameters that captures module and promiseCapability and performs the following steps when called:
                         // e. Let onFulfilled be CreateBuiltinFunction(fulfilledClosure, 0, "", « »).
                         let fulfill = FunctionObjectBuilder::new(
@@ -480,15 +477,12 @@ fn load_dyn_import(
                         )
                         .build()?;
 
-                        // f. Perform PerformPromiseThen(evaluatePromise, onFulfilled, onRejected).
-                        if let Err(error) = Promise::perform_promise_then_with_native_target(
-                            &evaluate,
-                            Some(fulfill),
-                            Some(on_rejected.clone()),
-                            None,
-                            cap,
-                            context,
-                        ) {
+                        let bridge = crate::module::NativeEvaluationBridge {
+                            target: cap.clone(),
+                            fulfilled: fulfill,
+                            rejected: on_rejected.clone(),
+                        };
+                        if let Err(error) = module.evaluate_for_native(&bridge, context) {
                             let reason = error.into_opaque(context.access())?;
                             cap.reject().call(
                                 &JsValue::undefined(),

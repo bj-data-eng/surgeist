@@ -1,4 +1,5 @@
 use super::RegisterOperand;
+use crate::module::lifecycle::{EvaluationInvocation, ModuleAction};
 use crate::{
     Context, JsArgs, JsExpect, JsResult, JsValue,
     builtins::{
@@ -13,10 +14,42 @@ use crate::{
     object::FunctionObjectBuilder,
     vm::{CompletionRecord, GeneratorResumeKind, opcode::Operation},
 };
-use std::{cell::RefCell, ops::ControlFlow};
+use std::{
+    cell::RefCell,
+    ops::ControlFlow,
+    rc::{Rc, Weak},
+};
+use surgeist_js_gc::heap::{RecordRef, Trace};
 
 #[derive(surgeist_js_gc::heap::Trace)]
-struct AwaitState(RefCell<Option<StoredGeneratorContext>>);
+struct AwaitState(Rc<AwaitData>);
+#[derive(Trace)]
+struct AwaitData {
+    continuation: RefCell<Option<StoredGeneratorContext>>,
+    evaluation: Option<Rc<EvaluationInvocation>>,
+}
+#[derive(Clone, Trace)]
+pub(crate) struct AwaitRef {
+    edge: RecordRef<AwaitState>,
+    #[heap_trace(skip)]
+    data: Weak<AwaitData>,
+}
+impl std::fmt::Debug for AwaitRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Await").field(&self.edge.identity()).finish()
+    }
+}
+impl AwaitRef {
+    pub(crate) fn same(&self, other: &Self) -> bool {
+        self.edge == other.edge
+    }
+    pub(crate) fn retire(&self) {
+        if let Some(data) = self.data.upgrade() {
+            let owned = data.continuation.borrow_mut().take();
+            drop(owned);
+        }
+    }
+}
 
 impl AwaitState {
     fn resume(
@@ -25,8 +58,21 @@ impl AwaitState {
         kind: GeneratorResumeKind,
         context: &mut Context,
     ) -> JsResult<JsValue> {
+        if let Some(evaluation) = &self.0.evaluation
+            && let Some(cause) = evaluation.evaluation.cause()
+        {
+            let owned = self.0.continuation.borrow_mut().take();
+            drop(owned);
+            return Err(crate::error::EngineError::ModuleInterrupted(cause.external()).into());
+        }
+        if let Some(evaluation) = &self.0.evaluation {
+            evaluation
+                .evaluation
+                .validate_invocation(evaluation.invocation)?;
+        }
         let mut continuation = self
             .0
+            .continuation
             .borrow_mut()
             .take()
             .js_expect("await reaction should only run once")?
@@ -90,13 +136,31 @@ impl Await {
             .map(|cap| JsValue::from(cap.promise))
             .unwrap_or_default();
 
+        let data = Rc::new(AwaitData {
+            continuation: RefCell::new(None),
+            evaluation: context.vm.frame().module_evaluation.clone(),
+        });
+        let captures = match context.runtime().heap.allocate(AwaitState(data.clone())) {
+            Ok(captures) => captures,
+            Err(_) => {
+                return context.handle_error(crate::error::EngineResourceError::Allocation.into());
+            }
+        };
+        let state = AwaitRef {
+            edge: captures.record_ref(),
+            data: Rc::downgrade(&data),
+        };
+        let action = data.evaluation.as_ref().map(|evaluation| {
+            let Some(crate::vm::ActiveRunnable::Module(module)) =
+                &context.vm.frame().active_runnable
+            else {
+                unreachable!("actual module invocation has its module")
+            };
+            evaluation.evaluation.suspended(state.clone());
+            ModuleAction::resume(module, state.clone())
+        });
         let r#gen = GeneratorContext::from_current(context, None);
-
-        let captures = context
-            .runtime()
-            .heap
-            .allocate(AwaitState(RefCell::new(Some(r#gen.stored()))))
-            .expect("suspended await has valid heap edges");
+        *data.continuation.borrow_mut() = Some(r#gen.stored());
         // Keep the detached stack rooted until its reactions are installed.
         // 3. Let fulfilledClosure be a new Abstract Closure with parameters (value) that captures asyncContext and performs the following steps when called:
         // 4. Let onFulfilled be CreateBuiltinFunction(fulfilledClosure, 1, "", « »).
@@ -104,6 +168,12 @@ impl Await {
             context.realm(),
             NativeFunction::from_builtin_with_captures(
                 |_this, args, captures, context| {
+                    if let Some(evaluation) = &captures.0.evaluation {
+                        evaluation.evaluation.consume(&AwaitRef {
+                            edge: captures.record_ref(),
+                            data: Rc::downgrade(&captures.0),
+                        });
+                    }
                     captures.resume(
                         args.get_or_undefined(0).clone(),
                         GeneratorResumeKind::Normal,
@@ -124,6 +194,12 @@ impl Await {
             context.realm(),
             NativeFunction::from_builtin_with_captures(
                 |_this, args, captures, context| {
+                    if let Some(evaluation) = &captures.0.evaluation {
+                        evaluation.evaluation.consume(&AwaitRef {
+                            edge: captures.record_ref(),
+                            data: Rc::downgrade(&captures.0),
+                        });
+                    }
                     captures.resume(
                         args.get_or_undefined(0).clone(),
                         GeneratorResumeKind::Throw,
@@ -139,16 +215,17 @@ impl Await {
         .expect("await reaction retains the current runtime");
 
         // 7. Perform PerformPromiseThen(promise, onFulfilled, onRejected).
-        if let Err(error) = Promise::perform_promise_then(
+        if let Err(error) = Promise::perform_promise_then_module(
             &promise,
             Some(on_fulfilled),
             Some(on_rejected),
             None,
+            action,
             context,
         ) {
             // Withdraw a reaction that was never run before reclaiming its
             // segment. An inline reaction may already own a newer suspension.
-            let unconsumed = captures.0.borrow_mut().take();
+            let unconsumed = captures.0.continuation.borrow_mut().take();
             if unconsumed.is_some() {
                 context.vm.stack.append(r#gen.stack);
                 context.vm.frame_mut().restore_stack();

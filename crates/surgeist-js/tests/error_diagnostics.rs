@@ -184,6 +184,14 @@ fn assert_engine_view(view: Diagnostic<'_>, expected: &EngineError) {
         EngineError::InvocationIdExhausted => DiagnosticEngine::InvocationIdExhausted,
         EngineError::ScopeAnalysis(error) => DiagnosticEngine::ScopeAnalysis(*error),
         EngineError::RuntimeLimit(error) => DiagnosticEngine::RuntimeLimit(*error),
+        EngineError::ModuleInterrupted(expected) => {
+            let DiagnosticEngine::ModuleInterrupted(actual) = actual else {
+                panic!("module interruption lost its borrowed diagnostic variant")
+            };
+            assert_eq!(actual.identity(), expected.identity());
+            assert_eq!(actual.cause(), expected.cause());
+            return;
+        }
         #[cfg(feature = "fuzz")]
         EngineError::NoInstructionsRemain => DiagnosticEngine::NoInstructionsRemain,
         EngineError::Panic(_) => panic!("nested panic is covered with its own typed source"),
