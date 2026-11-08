@@ -5,11 +5,11 @@ use std::{cell::Cell, mem::size_of, time::Duration};
 use surgeist_layout as layout;
 use surgeist_paint as paint;
 use surgeist_render::{
-    Color, Error, ErrorCode, PaintGradientError, RenderAccountingContext, RenderAccountingError,
-    RenderAccountingOptions, RenderAccountingSetupError, RenderAttemptKind, RenderAttemptReport,
-    RenderAttemptStatus, RenderClock, RenderEvent, RenderLimits, RenderPhase, RenderPhaseFilter,
-    RenderProfile, RenderQuantity, RenderResource, RenderWork, RepeatingGradient,
-    RepeatingGradientStop, prepare_repeating_linear_gradient, prepare_repeating_radial_gradient,
+    Color, Error, ErrorCode, GradientStop, PaintGradientError, RenderAccountingContext,
+    RenderAccountingError, RenderAccountingOptions, RenderAccountingSetupError, RenderAttemptKind,
+    RenderAttemptReport, RenderAttemptStatus, RenderClock, RenderEvent, RenderLimits, RenderPhase,
+    RenderPhaseFilter, RenderProfile, RenderQuantity, RenderResource, RenderWork,
+    RepeatingGradient, prepare_repeating_linear_gradient, prepare_repeating_radial_gradient,
 };
 
 fn red() -> Color {
@@ -453,10 +453,7 @@ fn retained_backing_is_transferred_once_and_every_named_refusal_releases_its_pre
     let baseline = account.last_attempt().unwrap().clone();
     no_custody(&baseline);
     let transferred = baseline.usage().work(RenderWork::PreparedTransferredBytes);
-    assert!(
-        transferred
-            >= (size_of::<RepeatingGradient>() + 3 * size_of::<RepeatingGradientStop>()) as u64
-    );
+    assert!(transferred >= (size_of::<RepeatingGradient>() + 3 * size_of::<GradientStop>()) as u64);
     assert_eq!(
         transferred,
         baseline.usage().peak(RenderResource::RetainedCpuBytes)

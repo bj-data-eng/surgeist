@@ -116,6 +116,7 @@ pub surgeist_render::ErrorCode::Accounting
 pub surgeist_render::ErrorCode::DegradedQuality
 pub surgeist_render::ErrorCode::DeviceCreateFailed
 pub surgeist_render::ErrorCode::GlyphPreparation
+pub surgeist_render::ErrorCode::GradientRealization
 pub surgeist_render::ErrorCode::ImageUploadFailed
 pub surgeist_render::ErrorCode::InvalidInput
 pub surgeist_render::ErrorCode::PaintGradient
@@ -216,6 +217,14 @@ pub enum surgeist_render::GpuFaultKind
 pub surgeist_render::GpuFaultKind::Internal
 pub surgeist_render::GpuFaultKind::OutOfMemory
 pub surgeist_render::GpuFaultKind::Validation
+pub enum surgeist_render::GradientRealizationError
+pub surgeist_render::GradientRealizationError::DegenerateLinearField
+pub surgeist_render::GradientRealizationError::InsufficientNativeCapacity
+pub surgeist_render::GradientRealizationError::UnrepresentableGeometry
+pub surgeist_render::GradientRealizationError::UnrepresentableStop
+pub surgeist_render::GradientRealizationError::UnrepresentableStop::stop_index: usize
+impl core::convert::From<surgeist_render::GradientRealizationError> for surgeist_render::Error
+pub fn surgeist_render::Error::from(value: surgeist_render::GradientRealizationError) -> Self
 pub enum surgeist_render::HitTestOwnership
 pub surgeist_render::HitTestOwnership::RootOwned
 pub enum surgeist_render::ImageColorProfilePolicy
@@ -1036,6 +1045,7 @@ pub fn surgeist_render::Error::degraded_quality(diagnostic: surgeist_render::Deg
 pub const fn surgeist_render::Error::degraded_quality_diagnostic(&self) -> core::option::Option<&surgeist_render::DegradedQuality>
 pub fn surgeist_render::Error::from_invalid_value(invalid_value: surgeist_render::InvalidValue) -> Self
 pub const fn surgeist_render::Error::glyph_preparation_diagnostic(&self) -> core::option::Option<&surgeist_render::GlyphPreparationError>
+pub const fn surgeist_render::Error::gradient_realization_diagnostic(&self) -> core::option::Option<&surgeist_render::GradientRealizationError>
 pub fn surgeist_render::Error::invalid_value(name: impl core::convert::Into<alloc::string::String>, value: impl core::fmt::Display, rule: &'static str) -> Self
 pub const fn surgeist_render::Error::invalid_value_diagnostic(&self) -> core::option::Option<&surgeist_render::InvalidValue>
 pub fn surgeist_render::Error::message(&self) -> &str
@@ -1048,6 +1058,8 @@ pub const fn surgeist_render::Error::unsupported_primitive(&self) -> core::optio
 pub fn surgeist_render::Error::unsupported_render_primitive(primitive: surgeist_render::UnsupportedPrimitive) -> Self
 impl core::convert::From<surgeist_render::GlyphPreparationError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::GlyphPreparationError) -> Self
+impl core::convert::From<surgeist_render::GradientRealizationError> for surgeist_render::Error
+pub fn surgeist_render::Error::from(value: surgeist_render::GradientRealizationError) -> Self
 impl core::convert::From<surgeist_render::PaintGradientError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::PaintGradientError) -> Self
 impl core::convert::From<surgeist_render::RenderAccountingError> for surgeist_render::Error
@@ -1162,19 +1174,19 @@ pub fn surgeist_render::GlyphSynthesis::try_new(skew: f32, embolden: f32) -> sur
 pub struct surgeist_render::Gradient
 impl surgeist_render::Gradient
 pub const fn surgeist_render::Gradient::linear_points(&self) -> core::option::Option<(surgeist_render::Point, surgeist_render::Point)>
-pub const fn surgeist_render::Gradient::radial_geometry(&self) -> core::option::Option<(surgeist_render::Point, f64)>
+pub const fn surgeist_render::Gradient::radial_geometry(&self) -> core::option::Option<(surgeist_render::Point, f64, f64)>
 pub fn surgeist_render::Gradient::stops(&self) -> &[surgeist_render::GradientStop]
 pub const fn surgeist_render::Gradient::sweep_center(&self) -> core::option::Option<surgeist_render::Point>
 pub fn surgeist_render::Gradient::try_linear(start: surgeist_render::Point, end: surgeist_render::Point, stops: alloc::vec::Vec<surgeist_render::GradientStop>) -> surgeist_render::Result<Self>
-pub fn surgeist_render::Gradient::try_radial(center: surgeist_render::Point, radius: f64, stops: alloc::vec::Vec<surgeist_render::GradientStop>) -> surgeist_render::Result<Self>
+pub fn surgeist_render::Gradient::try_radial(center: surgeist_render::Point, radius_x: f64, radius_y: f64, stops: alloc::vec::Vec<surgeist_render::GradientStop>) -> surgeist_render::Result<Self>
 pub fn surgeist_render::Gradient::try_sweep(center: surgeist_render::Point, stops: alloc::vec::Vec<surgeist_render::GradientStop>) -> surgeist_render::Result<Self>
 impl core::convert::From<surgeist_render::Gradient> for surgeist_render::Paint
 pub fn surgeist_render::Paint::from(gradient: surgeist_render::Gradient) -> Self
 pub struct surgeist_render::GradientStop
 impl surgeist_render::GradientStop
 pub const fn surgeist_render::GradientStop::color(self) -> surgeist_render::Color
-pub const fn surgeist_render::GradientStop::offset(self) -> f32
-pub fn surgeist_render::GradientStop::try_new(offset: f32, color: surgeist_render::Color) -> surgeist_render::Result<Self>
+pub const fn surgeist_render::GradientStop::position(self) -> f64
+pub fn surgeist_render::GradientStop::try_new(position: f64, color: surgeist_render::Color) -> surgeist_render::Result<Self>
 pub struct surgeist_render::Image
 impl surgeist_render::Image
 pub const fn surgeist_render::Image::extend(self, extend: surgeist_render::Extend) -> Self
@@ -1701,16 +1713,11 @@ pub struct surgeist_render::RepeatingGradient
 impl surgeist_render::RepeatingGradient
 pub const fn surgeist_render::RepeatingGradient::linear_points(&self) -> core::option::Option<(surgeist_render::Point, surgeist_render::Point)>
 pub const fn surgeist_render::RepeatingGradient::radial_geometry(&self) -> core::option::Option<(surgeist_render::Point, f64, f64)>
-pub fn surgeist_render::RepeatingGradient::stops(&self) -> &[surgeist_render::RepeatingGradientStop]
-pub fn surgeist_render::RepeatingGradient::try_linear(start: surgeist_render::Point, end: surgeist_render::Point, stops: alloc::vec::Vec<surgeist_render::RepeatingGradientStop>) -> surgeist_render::Result<Self>
-pub fn surgeist_render::RepeatingGradient::try_radial(center: surgeist_render::Point, radius_x: f64, radius_y: f64, stops: alloc::vec::Vec<surgeist_render::RepeatingGradientStop>) -> surgeist_render::Result<Self>
+pub fn surgeist_render::RepeatingGradient::stops(&self) -> &[surgeist_render::GradientStop]
+pub fn surgeist_render::RepeatingGradient::try_linear(start: surgeist_render::Point, end: surgeist_render::Point, stops: alloc::vec::Vec<surgeist_render::GradientStop>) -> surgeist_render::Result<Self>
+pub fn surgeist_render::RepeatingGradient::try_radial(center: surgeist_render::Point, radius_x: f64, radius_y: f64, stops: alloc::vec::Vec<surgeist_render::GradientStop>) -> surgeist_render::Result<Self>
 impl core::convert::From<surgeist_render::RepeatingGradient> for surgeist_render::Paint
 pub fn surgeist_render::Paint::from(gradient: surgeist_render::RepeatingGradient) -> Self
-pub struct surgeist_render::RepeatingGradientStop
-impl surgeist_render::RepeatingGradientStop
-pub const fn surgeist_render::RepeatingGradientStop::color(self) -> surgeist_render::Color
-pub const fn surgeist_render::RepeatingGradientStop::position(self) -> f64
-pub fn surgeist_render::RepeatingGradientStop::try_new(position: f64, color: surgeist_render::Color) -> surgeist_render::Result<Self>
 pub struct surgeist_render::ResolvedImagePlacement
 impl surgeist_render::ResolvedImagePlacement
 pub fn surgeist_render::ResolvedImagePlacement::from_parts(paint_rect: surgeist_render::Rect, tile_rect: surgeist_render::Rect) -> surgeist_render::Result<Self>
@@ -2007,6 +2014,8 @@ pub struct surgeist_render::WebCanvas
 impl surgeist_render::WebCanvas
 pub fn surgeist_render::WebCanvas::id(&self) -> &str
 pub fn surgeist_render::WebCanvas::new(id: impl core::convert::Into<alloc::string::String>) -> Self
+pub fn surgeist_render::prepare_linear_gradient(line: &surgeist_paint::gradient::LinearGradientLine, stops: &surgeist_paint::gradient_stops::GradientStops<'_, surgeist_render::Color>, context: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::Gradient>
+pub fn surgeist_render::prepare_radial_gradient(geometry: &surgeist_paint::radial_gradient::RadialGradientGeometry, stops: &surgeist_paint::gradient_stops::GradientStops<'_, surgeist_render::Color>, context: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::Gradient>
 pub fn surgeist_render::prepare_repeating_linear_gradient(line: &surgeist_paint::gradient::LinearGradientLine, stops: &surgeist_paint::gradient_stops::GradientStops<'_, surgeist_render::Color>, context: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::RepeatingGradient>
 pub fn surgeist_render::prepare_repeating_radial_gradient(geometry: &surgeist_paint::radial_gradient::RadialGradientGeometry, stops: &surgeist_paint::gradient_stops::GradientStops<'_, surgeist_render::Color>, context: &mut surgeist_render::RenderAccountingContext) -> surgeist_render::Result<surgeist_render::RepeatingGradient>
 pub type surgeist_render::Result<T> = core::result::Result<T, surgeist_render::Error>

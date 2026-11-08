@@ -9,8 +9,8 @@ use surgeist_render::{
     RenderAccountingOptions, RenderAttemptReport, RenderAttemptStatus, RenderClock,
     RenderCpuInterval, RenderCpuScope, RenderEvent, RenderLimits, RenderPhase, RenderPhaseFilter,
     RenderProfile, RenderQuantity, RenderResource, RenderRoute, RenderWork, Renderer,
-    RepeatingGradient, RepeatingGradientStop, ResolvedLayerAlphaMask, Scene, Shape, Size, Stroke,
-    Surface, TextGlyph, TextInstance, TextPaint, TextRun, TextRunBounds, Transform,
+    RepeatingGradient, ResolvedLayerAlphaMask, Scene, Shape, Size, Stroke, Surface, TextGlyph,
+    TextInstance, TextPaint, TextRun, TextRunBounds, Transform,
 };
 
 fn color(r: f32, g: f32, b: f32) -> Color {
@@ -41,7 +41,7 @@ fn rect(x: f64, y: f64, w: f64, h: f64) -> Rect {
     Rect::try_new(x, y, w, h).unwrap()
 }
 fn stop(offset: f32, color: Color) -> GradientStop {
-    GradientStop::try_new(offset, color).unwrap()
+    GradientStop::try_new(f64::from(offset), color).unwrap()
 }
 
 fn step(start: f64, end: f64, first: Color, last: Color) -> Gradient {
@@ -204,9 +204,9 @@ fn shape_frame(graph: bool) -> Scene {
         point(0.0, 0.0),
         point(8.0, 0.0),
         vec![
-            RepeatingGradientStop::try_new(0.0, red()).unwrap(),
-            RepeatingGradientStop::try_new(1.0, blue()).unwrap(),
-            RepeatingGradientStop::try_new(1.0, green()).unwrap(),
+            GradientStop::try_new(0.0, red()).unwrap(),
+            GradientStop::try_new(1.0, blue()).unwrap(),
+            GradientStop::try_new(1.0, green()).unwrap(),
         ],
     )
     .unwrap();

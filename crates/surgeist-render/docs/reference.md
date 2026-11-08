@@ -11,8 +11,8 @@ current source API.
 | --- | --- | --- |
 | Renderer and options | `Renderer`, `Options`, `Parameters`, `EffectQualityPolicy` | [Renderer](../src/renderer/mod.rs), [options](../src/renderer/options.rs), [surface parameters](../src/surface.rs) |
 | Draw data | `Scene`, geometry, shapes, paints, images, layers, and positioned text runs | [Scene](../src/scene.rs), [public reexports](../src/lib.rs) |
-| Gradient paints | `Gradient`, `RepeatingGradient`, `RepeatingGradientStop`, `Paint` | [Paint sources](../src/paint.rs), [repeating inputs](../src/paint/repeating.rs) |
-| Native Paint consumer (`render-paint`) | `prepare_repeating_linear_gradient`, `prepare_repeating_radial_gradient`, `PaintGradientError` | [Adapter](../src/paint_gradient.rs) |
+| Gradient paints | `Gradient`, `RepeatingGradient`, `GradientStop`, `Paint` | [Paint sources](../src/paint.rs), [repeating inputs](../src/paint/repeating.rs) |
+| Native Paint consumer (`render-paint`) | `prepare_linear_gradient`, `prepare_radial_gradient`, `prepare_repeating_linear_gradient`, `prepare_repeating_radial_gradient`, `PaintGradientError` | [Adapter](../src/paint_gradient.rs) |
 | Placed Text consumer (`render-text`) | `prepare_text_layout`, `PreparedTextScene`, `TextLayoutLimits`, `TextLayoutError` | [Adapter](../src/text_layout.rs) |
 | Surface and pixels | `Surface`, `SurfaceOptions`, `Attachment`, `ImageBuffer` | [Surfaces](../src/surface.rs), [images](../src/image.rs) |
 | Support and diagnostics | `Capabilities`, `RuntimeCapabilities`, `Error`, `ErrorCode` | [Capabilities](../src/capability.rs), [errors](../src/error.rs) |
@@ -48,29 +48,43 @@ The [error API](../src/error.rs) defines the operation and reason payloads.
 
 ## Gradient paints
 
-`Gradient` supplies ordinary linear, circular radial and sweep fields with its
-existing normalized stops. `RepeatingGradient` supplies a separate resolved
-linear or elliptical radial field. Use `RepeatingGradientStop::try_new` for
-finite `f64` positions and validated numeric-sRGB colors, then `try_linear` or
-`try_radial` and `Paint::repeating_gradient`. The lossless conversion into Paint
-is also available. Constructors retain nonempty, nondecreasing stop lists,
-including equal, negative and outside-unit positions; descending, nonfinite or
-overflowing spans return typed invalid input. One stop is a solid native paint.
+`Gradient` supplies ordinary linear, positive elliptical radial and full-turn
+sweep fields. `GradientStop::try_new` preserves any finite `f64` field position
+and a validated numeric-sRGB color. Linear and radial constructors retain a
+nonempty, nondecreasing list, including negative, outside-unit and equal
+positions. Radial construction takes horizontal and vertical radii; equal axes
+represent a circle. Sweep retains normalized `0..=1` positions and supplied order.
+`RepeatingGradient` shares the stop primitive while additionally requiring a
+finite last-minus-first period and allowing its selected zero-height average.
+A single stop is a solid paint, including for coincident linear endpoints.
 
-For ordinary fields with ordered normalized stops, native sampling selects the
-first and last supplied colors at and outside their endpoint positions. If all
-stops coincide, the field is a step: the first color applies below that position,
-and the last color applies at and above it. This equality rule is deterministic
-native policy for an infinitesimal transition. A single stop keeps its native
-solid path, including for coincident linear endpoints.
+Ordinary fields use first/last colors outside the supplied interval. A multicolor
+all-coincident list is a true step: first below the threshold, last at and above
+it. This equality rule is deterministic native policy. Source equality is tested
+in `f64` before normalization or narrowing. Nonzero intervals map to a canonical
+native range with exact endpoint records zero and one. Steps use an unshifted,
+qualified comparison basis and directed threshold rounding, preserving subnormal
+thresholds. These rules compare the actual native computed coordinate; they do
+not promise exact-real geometric boundary coverage.
 
 Strictly between different endpoint positions, interpolation retains the native
-512-sample RGBA8 ramp. Endpoint selection compares the native computed field
-coordinate before ramp rounding; it does not establish exact real-valued geometry
-or analytic interior transitions. Submit `Gradient` through `Scene` for this
-execution contract.
+512-sample RGBA8 ramp. Realization uses the full paint transform and final target,
+including shear and elliptical axes. Negative radial stops can contribute to the
+center by interpolation. No repeating phase reduction or small-period averaging
+applies to ordinary fields. Finite source endpoints do not require a finite
+subtracted span: scaled whole-range arithmetic can represent an overflowing
+source interval when its mapped geometry is finite.
 
-Positions are units of the supplied field: the linear start-to-end vector or
+`ErrorCode::GradientRealization` and `Error::gradient_realization_diagnostic`
+distinguish degenerate required linear fields, unrepresentable geometry, a stop
+whose required native interval collapses, and insufficient native arithmetic
+capacity. These are contextual capability refusals for valid gradients. Actual
+resource limits retain Ledger diagnostics. A refusal preserves prior successful
+pixels/statistics and releases admitted backing. Submit `Gradient` through `Scene`
+for this execution contract; no infallible export to an external native sampler
+carries its endpoint/comparison semantics.
+
+For repetition, positions are units of the supplied field: the linear start-to-end vector or
 radial ending ellipse. A linear field from zero to forty logical units with
 stops at one-quarter and one-and-one-quarter therefore repeats a forty-unit
 cycle beginning at ten, including beyond the original field endpoints. Period
@@ -125,9 +139,9 @@ nested capture preserves a pattern resolved by final magnification.
 repeating brush preparation and native glyph representation checks. Actual stop
 walks, coordinate work, backing, serialization and ramp resources retain their
 existing named work and lifetime owners; optional elapsed time uses Ledger.
-Ordinary multistop preparation charges source endpoint inspection, order checks,
-scalar/color conversion and every actual native record, including a leading
-anchor. Encode separately charges native record visits, emitted-record capture,
+Ordinary multistop preparation charges actual endpoint inspection, range and
+comparison qualification, scalar/color conversion and every materialized native
+record. Intrinsic constructor proofs avoid redundant later validation walks. Encode separately charges native record visits, emitted-record capture,
 final draw-stream association and descriptor/ramp serialization. Actual backing,
 row padding and upload resources retain their existing lifetime owners.
 See [frame accounting](#frame-accounting) for inclusive phases and host timing.
@@ -138,13 +152,14 @@ wiring and broader authored composition.
 
 ## Native Paint consumer
 
-The optional `render-paint` feature enables
-`prepare_repeating_linear_gradient` and `prepare_repeating_radial_gradient`.
-Both take real Paint geometry, `GradientStops<Color>` from its shared resolver,
-and a mutable `RenderAccountingContext`, then return the existing owned
-`RepeatingGradient`. Calling this front door selects repetition explicitly.
-The returned field works with the normal fill, stroke and glyph paint commands
-after the borrowed inputs and preparation context are dropped.
+The optional `render-paint` feature enables `prepare_linear_gradient` and
+`prepare_radial_gradient`, returning an owned ordinary `Gradient`, and
+`prepare_repeating_linear_gradient` and `prepare_repeating_radial_gradient`,
+returning `RepeatingGradient`. Each takes real Paint geometry,
+`GradientStops<Color>` from its shared resolver, and a mutable
+`RenderAccountingContext`. Calling a repeating front door explicitly selects
+repetition. The output works with normal fill, stroke and glyph commands after
+borrowed inputs and the preparation context are dropped.
 
 Linear geometry must have positive length. Radial geometry must be the positive
 Ellipse case; its horizontal radius supplies the ray basis. The stop result's
@@ -156,21 +171,21 @@ stop occurrences and colors. It does not rerun direction, geometry or fixup.
 Native qualification requires finite `q`, preserves nonzero positions and the
 equality or strict order of adjacent positions, and refuses a collapsed or
 reversed interval. Ordinary nonzero floating-point division rounding is allowed;
-there is no epsilon or exact back-mapping guarantee. The converted last-minus-first
-span must also be finite. An overflowing physical span is allowed when conversion
+there is no epsilon or exact back-mapping guarantee. For repetition, the converted last-minus-first
+span must also be finite; ordinary conversion has no such restriction. An overflowing physical span is allowed when conversion
 produces a valid finite field span.
 
 `ErrorCode::PaintGradient` and `Error::paint_gradient_diagnostic` preserve typed
 basis, hint, unsupported geometry, source/position conversion, span and storage
 diagnostics. Named-limit and setup failures retain `RenderAccountingError`.
 Hints and all radial zero cases are refused; no zero-height basis or substitute
-radius is inferred. Authored/computed adapters, ordinary Pad fields and logarithmic
-hint execution remain outside this native repeating consumer.
+radius is inferred. Authored/computed adapters and logarithmic hint execution remain outside these
+native consumers.
 
 `RenderAttemptKind::PaintGradient` reports one standalone preparation. Ledger
-records actual geometry/result/item visits, scalar work and repeated validation,
-one actual stop-vector capacity and the fixed `size_of::<RepeatingGradient>()`
-output unit. Borrowed inputs are outside its custody. Failure returns no field
+records actual geometry/result/item visits and scalar work, one actual
+stop-vector capacity and the fixed returned gradient size. Qualified construction
+consumes the adapter's invariant proof without another stop traversal. Borrowed inputs are outside its custody. Failure returns no field
 and releases admitted backing; success records `PreparedTransferredBytes` and
 releases standalone custody as output transfers to the caller. Later clones and
 drops are caller-owned. Optional timing and filtering use the existing Ledger
@@ -179,7 +194,7 @@ still run later in the normal frame attempt.
 
 For this consumer, `PaintVisits` counts inspections of geometry, the stop owner
 and the constructed native gradient. `GradientStopVisits` counts every item visit
-in preflight, conversion and canonical validation. `CoordinateVisits` counts each
+in preflight and conversion. `CoordinateVisits` counts each
 actual scalar inspection or calculation, including comparisons. Repeated passes
 are charged separately; a refusal retains only admitted work.
 

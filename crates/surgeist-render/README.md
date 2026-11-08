@@ -16,15 +16,17 @@ Plus operation remains distinct. [Layer blending](docs/reference.md#layer-blendi
 and [composition](docs/reference.md#layer-composition-and-isolation) describe the
 alpha, operation-domain and capability contracts.
 
-Resolved repeating linear and elliptical radial paints retain arbitrary ordered
-stop positions and choose a solid premultiplied-sRGBA average when the final
-device resolution cannot resolve a cycle. [Gradient paints](docs/reference.md#gradient-paints)
-describe period, phase, transform and accounting behavior.
+Ordinary linear and positive elliptical radial paints preserve ordered finite
+`f64` stop positions, exterior colors and coincident steps. Repeating fields
+share the stop primitive and choose a solid premultiplied-sRGBA average when
+final device resolution cannot resolve a cycle.
+[Gradient paints](docs/reference.md#gradient-paints) describe range, period,
+transform and accounting behavior.
 
-With `render-paint`, `prepare_repeating_linear_gradient` and
-`prepare_repeating_radial_gradient` consume Paint's native geometry and used
-stops through a `RenderAccountingContext`. They return an owned repeating field
-for the normal scene commands. The [native Paint consumer](docs/reference.md#native-paint-consumer)
+With `render-paint`, `prepare_linear_gradient`, `prepare_radial_gradient` and
+their `prepare_repeating_*` counterparts consume Paint's native geometry and
+used stops through a `RenderAccountingContext`. They return owned fields for
+normal scene commands. The [native Paint consumer](docs/reference.md#native-paint-consumer)
 defines positive-geometry support, unit conversion and typed refusals.
 
 `FontData` accepts raw OpenType, collections, WOFF and WOFF2 through
