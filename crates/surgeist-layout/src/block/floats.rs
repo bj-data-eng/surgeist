@@ -602,7 +602,10 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             logical_size.inline + logical_margin.inline_sum(),
             logical_size.block + logical_margin.block_sum(),
         );
-        let mut candidate_block = self.clearance_block(float.block_start, float.clear);
+        let source_block = self
+            .preceding_float_top()
+            .map_or(float.block_start, |top| float.block_start.max(top));
+        let mut candidate_block = self.clearance_block(source_block, float.clear);
 
         loop {
             let candidate_block_end = candidate_block + margin_box_size.block;
