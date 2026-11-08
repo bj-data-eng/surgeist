@@ -5903,3 +5903,79 @@ scalars!(
     maximum_progress_interior_force_before_cap_advances_principal_flow_f32,
     maximum_progress_interior_force_before_cap_advances_principal_flow_f64
 );
+
+fn maximum_progress_initial_child_deferral_retains_unaccepted_parent_prefix<S: LayoutScalar>() {
+    let tree = Tree::new(
+        vec![
+            block::<S>(None, None),
+            block(None, Some(30.0)),
+            maximum_progress_cap(1.0),
+            block(None, Some(150.0)),
+            block(None, Some(10.0)),
+        ],
+        vec![vec![1, 2, 4], vec![], vec![3], vec![], vec![]],
+    );
+    let whole_request = fragmented(LayoutSourceBasis::fresh(), vec![frame(100.0, 200.0, true)]);
+    let mut sink = Sink::new(5);
+    sink.authorize(0, &whole_request);
+    for control in [
+        compute_layout(&tree, 0, root_request(100.0)).unwrap(),
+        compute(&tree, 0, &whole_request).expect("whole-fit initial child deferral control"),
+    ] {
+        for (node, y, height) in [
+            (0, 0.0, 41.0),
+            (1, 0.0, 30.0),
+            (2, 30.0, 1.0),
+            (3, 0.0, 150.0),
+            (4, 31.0, 10.0),
+        ] {
+            let value = single(&control, node);
+            for output in [value.unrounded_output(), value.final_output()] {
+                assert_packet(output, (0.0, y), (100.0, height));
+            }
+        }
+    }
+    let request = unequal(LayoutSourceBasis::fresh());
+    sink.authorize(0, &request);
+    // The child cannot start after the preceding 30 in a 50-unit frame. Its
+    // initial deferral moves the owner before any owner occurrence is accepted;
+    // principal size 1 must not conceal the child's 150-unit unsliceable head.
+    let batch = compute(&tree, 0, &request)
+        .expect("initial capped-child deferral preserves the unaccepted preceding prefix");
+    assert_eq!(batch.fragmentainers().len(), 2);
+    assert_eq!(batch.node_layouts().count(), 5);
+    let roots = minimum_progress_chain(&batch, 0, &[&[(0, 1)], &[(1, 2), (2, 4)]]);
+    assert_fragment(&roots[0], (100.0, 50.0));
+    assert_fragment(&roots[1], (60.0, 11.0));
+    for root in roots {
+        assert_eq!(root.unrounded().location, Point::ZERO);
+        assert_eq!(root.final_geometry().location, Point::ZERO);
+    }
+    minimum_progress_child(&batch, 1, 0, roots[0].id(), (0.0, 0.0), (100.0, 30.0));
+    minimum_progress_child(&batch, 2, 1, roots[1].id(), (0.0, 0.0), (60.0, 1.0));
+    let wrapper = single(&batch, 2);
+    minimum_progress_child(&batch, 3, 0, wrapper.id(), (0.0, 0.0), (60.0, 150.0));
+    minimum_progress_child(&batch, 4, 2, roots[1].id(), (0.0, 1.0), (60.0, 10.0));
+    // Exact occurrence relationships exclude an abandoned frame 0 owner/carrier
+    // and retain the preceding box once while the child occupies frame 1 once.
+    maximum_progress_children(&batch, roots[0].id(), &[single(&batch, 1).id()]);
+    maximum_progress_children(
+        &batch,
+        roots[1].id(),
+        &[wrapper.id(), single(&batch, 4).id()],
+    );
+    maximum_progress_children(&batch, wrapper.id(), &[single(&batch, 3).id()]);
+    maximum_progress_unique_fragments(&batch);
+    batch.apply_to(&mut sink).unwrap();
+    for node in [1, 2, 3, 4] {
+        assert_eq!(
+            sink.state.custody[node],
+            Some(single(&batch, node).unrounded_entry())
+        );
+    }
+}
+scalars!(
+    maximum_progress_initial_child_deferral_retains_unaccepted_parent_prefix,
+    maximum_progress_initial_child_deferral_retains_unaccepted_parent_prefix_f32,
+    maximum_progress_initial_child_deferral_retains_unaccepted_parent_prefix_f64
+);
