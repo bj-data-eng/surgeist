@@ -318,6 +318,7 @@ impl JsPromise {
                     let result = f(context).await;
 
                     let context = &mut context.borrow_mut();
+                    context.check_execution_stop()?;
                     match context.runtime().admit_callback_result(result) {
                         Ok(v) => {
                             resolvers
