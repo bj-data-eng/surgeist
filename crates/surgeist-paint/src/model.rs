@@ -144,6 +144,7 @@ impl BoxFacts {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PaintError {
     Input(crate::PaintInputError),
+    Gradient(crate::GradientGeometryError),
     MissingRoot,
     MultipleRoots {
         first: BoxId,

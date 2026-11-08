@@ -7,13 +7,16 @@ Start with the explicit `PaintLimits::unlimited()` policy, then select named
 `PaintOptions::new`. Named getters expose the selected policy. Zero limits are
 meaningful. `PaintReport` exposes named phase/refusal/event views backed by
 Ledger; callers do not depend on an internal numeric schema.
-Both `plan_stacking` and `plan_paint_order` apply this policy to one complete
-operation. A refused operation returns no plan. Its optional report retains
-earlier accepted work and the refusal; dropped scratch/result custody has live
+`plan_stacking`, `plan_paint_order` and `resolve_linear_gradient` each apply this
+policy to one complete operation. A refused operation returns no result. Its
+optional report retains earlier accepted work and the refusal; dropped scratch/result custody has live
 usage zero. `PaintError::Input` identifies a typed paint-input failure, including
 unsupported categories/topologies, separately from budget or allocation failures.
 Correct invalid input before retrying, or raise selected limits to retry the
 unchanged borrowed data after a budget refusal.
+For geometry, `PaintError::Gradient` distinguishes invalid width/height/angle
+from an unrepresentable positive line. Retry corrected geometry or raise an
+explicit named work/result-byte limit after budget refusal.
 Root usage is inclusive of child phases; inspect child attribution without
 adding it to the root totals.
 
