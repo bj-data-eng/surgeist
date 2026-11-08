@@ -773,6 +773,10 @@ Independent contexts contain their own floats; ordinary shared blocks transfer
 float exclusions through the enclosing context without including those floats
 in their own auto height.
 
+Independent blocks size and place against float margin boxes, including
+shape-backed floats. This collision geometry does not request shape intervals;
+see the [float input contract](../src/lib.rs).
+
 `TextJustification::Spaces` expands retained U+0020 slots using Text's finalized
 ownership and edge decisions. Layout distributes the remaining line capacity
 after subtracting Text's natural alignment measure to those slots, then finalizes
