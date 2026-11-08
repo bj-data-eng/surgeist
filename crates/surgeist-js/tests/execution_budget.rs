@@ -2224,7 +2224,7 @@ fn late_refusals_in_each_preparation_phase_preserve_fresh_source_retry() {
         )
         .unwrap();
     assert_eq!(complete.result.unwrap(), JsValue::new(42));
-    let work = surgeist_ledger::Work::<27>::new(24).unwrap();
+    let work = surgeist_ledger::Work::<30>::new(24).unwrap();
     let report = complete.report.profile().unwrap();
     let phase_work = |name| {
         report
@@ -2761,7 +2761,7 @@ fn assert_private_frontdoor_boundary(
         .unwrap();
     assert_eq!(complete.result.unwrap(), JsValue::new(42), "{source}");
     let total = complete.report.scope_work();
-    let work = surgeist_ledger::Work::<27>::new(24).unwrap();
+    let work = surgeist_ledger::Work::<30>::new(24).unwrap();
     let profile = complete.report.profile().unwrap();
     let mut phase_total = 0;
     for name in [

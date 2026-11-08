@@ -606,6 +606,9 @@ fn async_job_polls_share_first_stop_and_dispose_inner_work_before_receipt() {
     let mut context = Context::default();
     let receipt_slot = Rc::new(RefCell::new(None));
     let dropped_before_publication = Rc::new(Cell::new(false));
+    let resumed_after_stop = Rc::new(Cell::new(false));
+    let resumed_probe = resumed_after_stop.clone();
+    let disposed_probe = dropped_before_publication.clone();
     let probe = JobDrop {
         receipt: receipt_slot.clone(),
         dropped_before_publication: dropped_before_publication.clone(),
@@ -629,27 +632,38 @@ fn async_job_polls_share_first_stop_and_dispose_inner_work_before_receipt() {
                     }))
                 );
                 yield_once().await;
-                // Busy and an apparent success must not replace the retained stop.
-                host.with(|_| {
-                    assert_eq!(
-                        host.with(|_| Ok(())).unwrap_err().as_engine(),
-                        Some(&EngineError::ContextAccessBusy)
-                    );
-                    Ok(())
-                })?;
+                resumed_probe.set(true);
                 Ok(JsValue::new(42))
             });
-            job.call(&holder).await
+            let stopped = job.call(&holder).await.unwrap_err();
+            assert_eq!(
+                stopped.as_engine(),
+                Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
+                    limit: 256
+                }))
+            );
+            assert!(
+                disposed_probe.get(),
+                "job disposal precedes outer completion"
+            );
+            // The outer host future may continue its own Rust code. A later
+            // Busy and apparent success must not replace its retained stop.
+            holder.with(|_| {
+                assert_eq!(
+                    holder.with(|_| Ok(())).unwrap_err().as_engine(),
+                    Some(&EngineError::ContextAccessBusy)
+                );
+                Ok(())
+            })?;
+            Ok(JsValue::new(42))
         })
         .unwrap();
     let receipt = task.receipt();
     *receipt_slot.borrow_mut() = Some(receipt.clone());
     assert!(poll(&mut task).is_pending());
     assert!(receipt.report().is_none());
-    assert!(poll(&mut task).is_pending());
-    assert!(receipt.report().is_none());
     let Poll::Ready(outcome) = poll(&mut task) else {
-        panic!("three controlled polls must finish the job")
+        panic!("the stopping second poll must dispose the job and finish the task")
     };
     assert_eq!(
         outcome.result.unwrap_err().as_engine(),
@@ -663,6 +677,7 @@ fn async_job_polls_share_first_stop_and_dispose_inner_work_before_receipt() {
         outcome.report.termination(),
         ExecutionTermination::Completed
     ));
+    assert!(!resumed_after_stop.get());
     assert!(dropped_before_publication.get());
     assert!(receipt.report().is_some());
     drop(task);

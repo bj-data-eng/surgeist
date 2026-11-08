@@ -25,6 +25,7 @@
 //! [JobCallback]: https://tc39.es/ecma262/#sec-jobcallback-records
 
 use crate::context::time::{JsDuration, JsInstant};
+use crate::execution::JobAction;
 use crate::sys::time;
 use crate::{
     Context, JsNativeError, JsResult, JsValue,
@@ -40,12 +41,14 @@ use std::any::Any;
 use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::mem;
+use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::task::Poll;
 use std::{cell::RefCell, collections::VecDeque, fmt::Debug, future::Future, pin::Pin};
 use surgeist_js_gc::heap::{AccessError, EdgeVisitor, ObjectId, Trace as HeapTrace};
+use surgeist_ledger::PhaseObservation;
 
 pub use crate::builtins::finalization_registry::FinalizationRegistryCleanupJob;
 
@@ -70,8 +73,13 @@ fn invoke_native_job(
     call: impl for<'call> FnOnce(ContextAccess<'call>) -> JsResult<JsValue>,
 ) -> JsResult<JsValue> {
     context.check_execution_stop()?;
+    if let Some(realm) = &realm {
+        context.check_realm(realm)?;
+    }
+    context.admit_job_action(JobAction::Invocation)?;
     let checkpoint = context.vm.call_checkpoint();
     let previous_realm = realm.map(|realm| context.enter_realm(realm)).transpose()?;
+    let observation = context.begin_execution_phase(JobAction::Invocation.phase());
     let mut active = context.guard(move |context| {
         // An unwinding callback may leave a child frame on top. Release its
         // invocation state before restoring the actual entry caller's realm.
@@ -80,12 +88,14 @@ fn invoke_native_job(
             // Entry has already validated that both realms belong to this runtime.
             context.swap_realm(&mut realm);
         }
+        context.end_execution_phase(observation);
     });
     active.note_execution_effect();
     let result = call(active.access());
     // A host callback can swallow an inner error. Its accepted effects remain,
     // but neither success nor another error can replace the retained host stop.
-    active.check_execution_stop()?;
+    drop(active);
+    context.check_execution_stop()?;
     result
 }
 
@@ -539,63 +549,181 @@ impl NativeAsyncJob {
         context: &'a HostContext<'owner>,
     ) -> impl Future<Output = JsResult<JsValue>> + Unpin + use<'a, 'owner> {
         let realm = self.realm;
-        let mut future = in_job_realm(context, realm.as_ref(), || (self.f)(context));
+        let prepared = in_job_action(context, realm.as_ref(), JobAction::Preparation, || {
+            (self.f)(context)
+        });
+        let mut state = match prepared {
+            Ok(future) => AsyncJobState::Running(future),
+            Err(error) => AsyncJobState::Failed(error),
+        };
         std::future::poll_fn(move |cx| {
-            let future = match &mut future {
-                Ok(future) => future,
-                Err(error) => return Poll::Ready(Err(error.clone())),
-            };
-            match in_job_realm(context, realm.as_ref(), || future.as_mut().poll(cx)) {
-                Ok(result) => result,
-                Err(error) => Poll::Ready(Err(error)),
+            match &state {
+                AsyncJobState::Failed(error) => return Poll::Ready(Err(error.clone())),
+                AsyncJobState::Complete => panic!("a completed job cannot be polled"),
+                AsyncJobState::Running(_) => {}
             }
+            let action = match AsyncJobActionGuard::begin(context, realm.as_ref(), JobAction::Poll)
+            {
+                Ok(action) => action,
+                Err(refusal) => {
+                    // Admission holds no lease here. Even an external competing
+                    // lease cannot prevent disposal of the refused inner work.
+                    drop(mem::replace(
+                        &mut state,
+                        AsyncJobState::Failed(refusal.clone()),
+                    ));
+                    return Poll::Ready(Err(refusal));
+                }
+            };
+            let mut action = action;
+            let polled = catch_unwind(AssertUnwindSafe(|| {
+                let AsyncJobState::Running(future) = &mut state else {
+                    unreachable!("only a running job enters a poll action")
+                };
+                future.as_mut().poll(cx)
+            }));
+            let mut result = match polled {
+                Ok(result) => result,
+                Err(payload) => {
+                    // A caught native panic cannot leave poisoned inner work
+                    // retained in an otherwise reusable outer future.
+                    drop(mem::replace(&mut state, AsyncJobState::Complete));
+                    drop(action);
+                    resume_unwind(payload)
+                }
+            };
+            let stopped = action.restore_and_check().err();
+            if result.is_ready() || stopped.is_some() {
+                // Captures may run opaque host destructors. Keep the action's
+                // observation open, but release every engine-owned lease first.
+                drop(mem::replace(&mut state, AsyncJobState::Complete));
+            }
+            let stopped = action.check_stop().err().or(stopped);
+            if let Some(stop) = stopped {
+                drop(result);
+                result = Poll::Ready(Err(stop));
+            }
+            if let Err(stop) = action.finish() {
+                drop(result);
+                result = Poll::Ready(Err(stop));
+            }
+            if let Poll::Ready(Err(ref refusal)) = result {
+                state = AsyncJobState::Failed(refusal.clone());
+            }
+            result
         })
     }
 }
 
-// This guard owns invocation metadata only. Host factory/poll code runs after
-// the entry lease has returned the capability to this exact holder.
-struct AsyncJobRealmGuard<'holder, 'owner> {
-    context: &'holder HostContext<'owner>,
-    cleanup: Option<(crate::vm::CallCheckpoint, Realm)>,
+enum AsyncJobState<'future> {
+    Running(BoxedFuture<'future>),
+    Failed(crate::JsError),
+    Complete,
 }
 
-impl Drop for AsyncJobRealmGuard<'_, '_> {
-    fn drop(&mut self) {
-        let (checkpoint, mut previous_realm) =
-            self.cleanup.take().expect("guard owns invocation cleanup");
-        self.context
-            .with(|access| {
-                let owner = access.into_owner();
-                // Nested guest execution may unwind with child frames still
-                // attached. Restore the caller before swapping its realm.
-                owner.vm.restore_call(checkpoint);
-                owner.swap_realm(&mut previous_realm);
-                Ok(())
-            })
-            .expect("host callbacks release short leases before realm restoration");
+// Each guard exists for one admitted synchronous action only. Neither the
+// holder's access nor a borrowed Ledger phase spans host code or Pending.
+struct AsyncJobActionGuard<'holder, 'owner> {
+    context: &'holder HostContext<'owner>,
+    cleanup: Option<(crate::vm::CallCheckpoint, Option<Realm>)>,
+    observation: Option<PhaseObservation>,
+}
+
+impl<'holder, 'owner> AsyncJobActionGuard<'holder, 'owner> {
+    fn begin(
+        context: &'holder HostContext<'owner>,
+        realm: Option<&Realm>,
+        action: JobAction,
+    ) -> JsResult<Self> {
+        let (cleanup, observation) = context.with(|access| {
+            let owner = access.into_owner();
+            owner.check_execution_stop()?;
+            if let Some(realm) = realm {
+                owner.check_realm(realm)?;
+            }
+            owner.admit_job_action(action)?;
+            let checkpoint = owner.vm.call_checkpoint();
+            let previous_realm = realm
+                .map(|realm| owner.enter_realm(realm.clone()))
+                .transpose()?;
+            let observation = owner.begin_execution_phase(action.phase());
+            if matches!(action, JobAction::Poll) {
+                owner.note_execution_effect();
+            }
+            Ok(((checkpoint, previous_realm), observation))
+        })?;
+        Ok(Self {
+            context,
+            cleanup: Some(cleanup),
+            observation,
+        })
     }
 }
 
-fn in_job_realm<R>(
+impl AsyncJobActionGuard<'_, '_> {
+    fn restore_and_check(&mut self) -> JsResult<()> {
+        self.context.with(|access| {
+            let owner = access.into_owner();
+            self.restore(owner);
+            owner.check_execution_stop()
+        })
+    }
+
+    fn restore(&mut self, owner: &mut Context) {
+        if let Some((checkpoint, previous_realm)) = self.cleanup.take() {
+            owner.vm.restore_call(checkpoint);
+            if let Some(mut previous_realm) = previous_realm {
+                owner.swap_realm(&mut previous_realm);
+            }
+        }
+    }
+
+    fn check_stop(&self) -> JsResult<()> {
+        self.context
+            .with(|access| access.into_owner().check_execution_stop())
+    }
+
+    fn finish(mut self) -> JsResult<()> {
+        self.context.with(|access| {
+            let owner = access.into_owner();
+            self.restore(owner);
+            owner.end_execution_phase(self.observation.take());
+            owner.check_execution_stop()
+        })
+    }
+}
+
+impl Drop for AsyncJobActionGuard<'_, '_> {
+    fn drop(&mut self) {
+        if self.cleanup.is_none() && self.observation.is_none() {
+            return;
+        }
+        self.context
+            .with(|access| {
+                let owner = access.into_owner();
+                self.restore(owner);
+                owner.end_execution_phase(self.observation.take());
+                Ok(())
+            })
+            .expect("host callbacks release short leases before action cleanup");
+    }
+}
+
+fn in_job_action<R>(
     context: &HostContext<'_>,
     realm: Option<&Realm>,
+    action: JobAction,
     run: impl FnOnce() -> R,
 ) -> JsResult<R> {
-    let Some(realm) = realm else {
-        return Ok(run());
-    };
-    let cleanup = context.with(|access| {
-        let owner = access.into_owner();
-        let checkpoint = owner.vm.call_checkpoint();
-        let previous_realm = owner.enter_realm(realm.clone())?;
-        Ok((checkpoint, previous_realm))
-    })?;
-    let _guard = AsyncJobRealmGuard {
-        context,
-        cleanup: Some(cleanup),
-    };
-    Ok(run())
+    let mut guard = AsyncJobActionGuard::begin(context, realm, action)?;
+    let result = run();
+    if let Err(stop) = guard.restore_and_check() {
+        // Dispose a newly created future before closing its preparation phase.
+        drop(result);
+        return Err(guard.finish().err().unwrap_or(stop));
+    }
+    guard.finish()?;
+    Ok(result)
 }
 
 /// An ECMAScript [Job Abstract Closure] executing code related to [`Promise`] objects.

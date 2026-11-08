@@ -81,6 +81,9 @@ struct ReportData {
     termination: ExecutionTermination,
     effects_started: bool,
     instructions: u64,
+    job_preparations: u64,
+    job_invocations: u64,
+    job_polls: u64,
     source_reads: u64,
     source_code_points: u64,
     retained_source_units: u64,
@@ -108,7 +111,7 @@ struct ReportData {
     optimizer_work: u64,
     compiler_work: u64,
     compiler_depth_peak: usize,
-    profile: Option<Report<27, 0>>,
+    profile: Option<Report<30, 0>>,
 }
 
 impl ExecutionReport {
@@ -134,6 +137,21 @@ impl ExecutionReport {
     /// Returns the number of admitted instructions.
     pub fn instructions(&self) -> u64 {
         self.data().instructions
+    }
+
+    /// Returns the number of admitted native async job internal future creations.
+    pub fn job_preparations(&self) -> u64 {
+        self.data().job_preparations
+    }
+
+    /// Returns the number of admitted synchronous native job callback invocations.
+    pub fn job_invocations(&self) -> u64 {
+        self.data().job_invocations
+    }
+
+    /// Returns the number of admitted native async job future polls.
+    pub fn job_polls(&self) -> u64 {
+        self.data().job_polls
     }
 
     /// Returns the number of admitted source read attempts.
@@ -294,7 +312,9 @@ impl ExecutionReport {
     /// Retirement and opaque kernel units are prepaid native request prices.
     /// Dimension 26 is compiler work, attributed under bytecode compilation;
     /// delegated scope and name work retain dimensions 24 and 12–14.
-    pub fn profile(&self) -> Option<&Report<27, 0>> {
+    /// Dimensions 27–29 count native job preparations, invocations and polls.
+    /// Their action-local phases include owned cleanup and exclude time between polls.
+    pub fn profile(&self) -> Option<&Report<30, 0>> {
         self.data().profile.as_ref()
     }
 }
@@ -324,6 +344,9 @@ impl Execution {
             termination,
             effects_started: self.effects_started,
             instructions: usage.work(super::INSTRUCTION),
+            job_preparations: usage.work(super::JOB_PREPARATION),
+            job_invocations: usage.work(super::JOB_INVOCATION),
+            job_polls: usage.work(super::JOB_POLL),
             source_reads: usage.work(super::SOURCE_READ),
             source_code_points: usage.work(super::SOURCE_CONSUMPTION),
             retained_source_units: usage.work(super::SOURCE_RETENTION),

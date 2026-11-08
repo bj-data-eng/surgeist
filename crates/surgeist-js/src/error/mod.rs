@@ -450,6 +450,24 @@ pub enum RuntimeLimitError {
         /// Maximum number of instructions admitted by the operation.
         limit: u64,
     },
+    /// Error for exhausting native asynchronous job preparation admission.
+    #[error("reached the operation's limit of {limit} native job preparations")]
+    JobPreparation {
+        /// Maximum admitted internal job future creations.
+        limit: u64,
+    },
+    /// Error for exhausting synchronous native job invocation admission.
+    #[error("reached the operation's limit of {limit} native job invocations")]
+    JobInvocation {
+        /// Maximum admitted native job callback invocations.
+        limit: u64,
+    },
+    /// Error for exhausting native asynchronous job poll admission.
+    #[error("reached the operation's limit of {limit} native job polls")]
+    JobPoll {
+        /// Maximum admitted inner job future polls.
+        limit: u64,
+    },
     /// Error for reaching the iteration loops limit.
     #[error("reached the maximum number of iteration loops on this execution")]
     LoopIteration,
@@ -487,9 +505,13 @@ impl RuntimeLimitError {
             | Self::DiagnosticOutput { .. }
             | Self::TemplateInput { .. }
             | Self::TemplateOutput { .. } => true,
-            Self::Instruction { .. } | Self::LoopIteration | Self::Recursion | Self::StackSize => {
-                false
-            }
+            Self::Instruction { .. }
+            | Self::JobPreparation { .. }
+            | Self::JobInvocation { .. }
+            | Self::JobPoll { .. }
+            | Self::LoopIteration
+            | Self::Recursion
+            | Self::StackSize => false,
         }
     }
 }
