@@ -147,6 +147,7 @@ pub struct CallFrame {
 
     /// `[[ScriptOrModule]]`
     pub(crate) active_runnable: Option<ActiveRunnable>,
+    pub(crate) module_evaluation: Option<Rc<crate::module::lifecycle::EvaluationInvocation>>,
 
     /// \[\[Environment\]\]
     pub(crate) environments: EnvironmentStack,
@@ -182,6 +183,7 @@ pub(crate) struct StoredCallFrame {
     annex_b_eligible_names: Vec<JsString>,
     loop_iteration_count: u64,
     active_runnable: Option<StoredActiveRunnable>,
+    module_evaluation: Option<Rc<crate::module::lifecycle::EvaluationInvocation>>,
     environments: StoredEnvironmentStack,
     realm: RealmEdge,
     #[heap_trace(skip)]
@@ -193,6 +195,7 @@ impl StoredCallFrame {
         CallFrame {
             code_block: self.code_block.clone(),
             execution: self.execution.clone(),
+            module_evaluation: self.module_evaluation.clone(),
             invocation: self.invocation,
             first_dispatch: None,
             stack_custody: self.stack_custody,
@@ -251,6 +254,17 @@ impl CallFrame {
         self.stack_custody = StackCustody::NativeSnapshot;
     }
 
+    pub(crate) fn set_module_evaluation(
+        &mut self,
+        evaluation: crate::module::lifecycle::EvaluationRef,
+    ) {
+        evaluation.start_invocation(self.invocation);
+        self.module_evaluation = Some(Rc::new(crate::module::lifecycle::EvaluationInvocation {
+            evaluation,
+            invocation: self.invocation,
+        }));
+    }
+
     pub(crate) fn stored(&self) -> StoredCallFrame {
         assert!(
             self.first_dispatch.is_none(),
@@ -259,6 +273,7 @@ impl CallFrame {
         StoredCallFrame {
             code_block: self.code_block.clone(),
             execution: self.execution.clone(),
+            module_evaluation: self.module_evaluation.clone(),
             invocation: self.invocation,
             stack_custody: self.stack_custody,
             pc: self.pc,
@@ -293,6 +308,7 @@ impl Clone for CallFrame {
         Self {
             code_block: self.code_block.clone(),
             execution: self.execution.clone(),
+            module_evaluation: self.module_evaluation.clone(),
             invocation: self.invocation,
             first_dispatch: None,
             stack_custody: self.stack_custody,
@@ -379,6 +395,7 @@ impl CallFrame {
     ) -> Self {
         Self {
             execution,
+            module_evaluation: None,
             invocation,
             first_dispatch,
             stack_custody: StackCustody::Invocation,

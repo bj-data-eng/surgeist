@@ -2,17 +2,23 @@
 
 use crate::ContextAccess;
 mod diagnostic;
+mod interruption;
 use diagnostic::StoredDiagnostic;
 pub use diagnostic::{
     Diagnostic, DiagnosticBacktrace, DiagnosticEngine, DiagnosticFrame, DiagnosticFrames,
     DiagnosticKind, DiagnosticMembers, DiagnosticNative, DiagnosticNativeKind, DiagnosticOpaque,
     DiagnosticStack, PanicDiagnostic,
 };
+pub(crate) use interruption::RetainedInterruption;
+pub use interruption::{DiagnosticModuleInterruption, ModuleInterruption};
 #[cfg(test)]
 mod tests;
 
 #[cfg(test)]
 mod diagnostic_custody_tests;
+
+#[cfg(test)]
+mod interruption_tests;
 
 use crate::{
     Context, JsResult, JsString, JsValue,
@@ -631,6 +637,9 @@ impl From<EngineResourceError> for JsError {
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[allow(variant_size_differences)]
 pub enum EngineError {
+    /// This source module instance was terminally interrupted by an earlier host failure.
+    #[error("ModuleInterrupted: {0}")]
+    ModuleInterrupted(ModuleInterruption),
     /// A required resource request could not be completed.
     #[error("EngineResourceError: {0}")]
     Resource(#[from] EngineResourceError),
@@ -681,6 +690,10 @@ impl EngineError {
     /// error reporting frameworks such as `anyhow`, `eyre` or `miette`.
     fn into_erased(self, context: &mut Context) -> ErasedEngineError {
         match self {
+            EngineError::ModuleInterrupted(error) => ErasedEngineError::ModuleInterrupted {
+                identity: error.identity(),
+                cause: Box::new(error.cause().erase(context)),
+            },
             EngineError::Resource(error) => ErasedEngineError::Resource(error),
             EngineError::InvalidEntryPermit => ErasedEngineError::InvalidEntryPermit,
             EngineError::ContextAccessBusy => ErasedEngineError::ContextAccessBusy,
@@ -714,6 +727,7 @@ pub(crate) struct StoredJsError {
 
 #[derive(Debug, Clone, surgeist_js_gc::heap::Trace)]
 enum StoredErrorRepr {
+    ModuleInterrupted(Rc<RetainedInterruption>),
     Resource(#[heap_trace(skip)] EngineResourceError),
     InvalidEntryPermit,
     ContextAccessBusy,
@@ -761,6 +775,9 @@ enum StoredNativeErrorKind {
 impl StoredJsError {
     pub(crate) fn to_error(&self) -> JsError {
         let inner = match &self.inner {
+            StoredErrorRepr::ModuleInterrupted(error) => {
+                Repr::Engine(EngineError::ModuleInterrupted(error.external()))
+            }
             StoredErrorRepr::InvalidEntryPermit => Repr::Engine(EngineError::InvalidEntryPermit),
             StoredErrorRepr::ContextAccessBusy => Repr::Engine(EngineError::ContextAccessBusy),
             StoredErrorRepr::JobContextRequired(required) => {
@@ -825,6 +842,11 @@ impl JsError {
                     first_refusal = error.check_runtime_owner(runtime).err();
                 }
                 if !error.is_catchable() {
+                    if let Repr::Engine(EngineError::ModuleInterrupted(interruption)) =
+                        &mut error.inner
+                    {
+                        interruption.admit(runtime);
+                    }
                     if let Repr::Engine(EngineError::Panic(panic)) = &mut error.inner
                         && let Some(source) = &mut panic.source
                     {
@@ -875,6 +897,9 @@ impl JsError {
 
     pub(crate) fn into_stored(self) -> StoredJsError {
         let inner = match self.inner {
+            Repr::Engine(EngineError::ModuleInterrupted(error)) => {
+                StoredErrorRepr::ModuleInterrupted(error.retained)
+            }
             Repr::Opaque(value) => StoredErrorRepr::Opaque(value.into_stored()),
             Repr::Native(error) => StoredErrorRepr::Native(Box::new(StoredNativeError {
                 kind: match error.kind {
@@ -2160,6 +2185,14 @@ impl ErasedPanicError {
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[allow(variant_size_differences)]
 pub enum ErasedEngineError {
+    /// A source module is terminally interrupted; the cause is an explicit erased export.
+    #[error("ModuleInterrupted: {cause}")]
+    ModuleInterrupted {
+        /// Stable original interruption identity.
+        identity: surgeist_js_gc::heap::ObjectId,
+        /// Erased original failure.
+        cause: Box<JsErasedError>,
+    },
     /// A required resource request could not be completed.
     #[error("EngineResourceError: {0}")]
     Resource(EngineResourceError),

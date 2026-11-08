@@ -6,20 +6,20 @@ use std::{collections::HashMap, slice};
 use surgeist_js_gc::heap::{AccessError, EdgeVisitor, ObjectId, Trace};
 
 #[derive(Clone, Copy)]
-enum Mask {
+pub(super) enum Mask {
     Any,
     Heap(ObjectId),
     NoHeap,
 }
 impl Mask {
-    fn intersect(self, other: Self) -> Self {
+    pub(super) fn intersect(self, other: Self) -> Self {
         match (self, other) {
             (Self::Any, mask) | (mask, Self::Any) => mask,
             (Self::Heap(a), Self::Heap(b)) if a.same_heap(b) => Self::Heap(a),
             _ => Self::NoHeap,
         }
     }
-    fn allows(self, id: ObjectId) -> bool {
+    pub(super) fn allows(self, id: ObjectId) -> bool {
         match self {
             Self::Any => true,
             Self::Heap(heap) => heap.same_heap(id),
@@ -36,12 +36,14 @@ impl Mask {
 
 #[derive(Clone)]
 enum RootLeaf {
+    Interruption(ModuleInterruption),
     Object(JsObject),
     Realm(Realm),
 }
 impl RootLeaf {
     fn belongs_to(&self, runtime: &Runtime) -> bool {
         match self {
+            Self::Interruption(value) => value.root_local(runtime),
             Self::Object(object) => object.runtime().same_heap(runtime),
             Self::Realm(realm) => realm.runtime().same_heap(runtime),
         }
@@ -180,6 +182,13 @@ fn collect_live_roots(error: &JsError, roots: &mut RootBundle) {
                 }
             }
         }
+        Repr::Engine(EngineError::ModuleInterrupted(value)) => {
+            if value.has_root() {
+                roots
+                    .entry(value.identity())
+                    .or_insert_with(|| RootLeaf::Interruption(value.clone()));
+            }
+        }
         Repr::Engine(EngineError::Panic(panic)) => {
             if let Some(source) = &panic.source {
                 for (id, root) in source.roots.iter() {
@@ -240,6 +249,9 @@ pub struct Diagnostic<'a> {
     mask: Mask,
 }
 impl<'a> Diagnostic<'a> {
+    pub(super) fn stored(node: &'a StoredJsError, mask: Mask) -> Self {
+        Self { node, mask }
+    }
     fn replacement(self) -> Option<Replacement> {
         match &self.node.inner {
             StoredErrorRepr::Opaque(StoredValue::Object(object))
@@ -267,6 +279,9 @@ impl<'a> Diagnostic<'a> {
             });
         }
         match &self.node.inner {
+            StoredErrorRepr::ModuleInterrupted(value) => DiagnosticKind::Engine(
+                DiagnosticEngine::ModuleInterrupted(DiagnosticModuleInterruption(value, self.mask)),
+            ),
             StoredErrorRepr::Opaque(value) => DiagnosticKind::Opaque(DiagnosticOpaque { value }),
             StoredErrorRepr::Native(native) => DiagnosticKind::Native(DiagnosticNative {
                 data: NativeData::Original(native),
@@ -343,10 +358,15 @@ impl<'a> Diagnostic<'a> {
                 diagnostic: Some(source),
                 ..
             }) => source.visit_roots(visit),
+            DiagnosticKind::Engine(DiagnosticEngine::ModuleInterrupted(value)) => {
+                if value.0.has_anchor(value.1) {
+                    visit(value.identity());
+                }
+            }
             DiagnosticKind::Engine(_) => {}
         }
     }
-    fn trace(self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
+    pub(super) fn trace(self, edges: &mut EdgeVisitor<'_>) -> Result<(), AccessError> {
         match self.kind() {
             DiagnosticKind::Opaque(value) => value.value.trace(edges)?,
             DiagnosticKind::Native(native) => {
@@ -364,6 +384,9 @@ impl<'a> Diagnostic<'a> {
                 diagnostic: Some(source),
                 ..
             }) => source.trace(edges)?,
+            DiagnosticKind::Engine(DiagnosticEngine::ModuleInterrupted(value)) => {
+                value.0.trace_with(value.1, edges)?
+            }
             DiagnosticKind::Engine(_) => {}
         }
         Ok(())
@@ -400,6 +423,13 @@ impl<'a> Diagnostic<'a> {
                 diagnostic: Some(source),
                 ..
             }) => source.restore_roots(roots),
+            DiagnosticKind::Engine(DiagnosticEngine::ModuleInterrupted(value)) => {
+                if value.0.has_anchor(value.1) {
+                    roots
+                        .entry(value.identity())
+                        .or_insert_with(|| RootLeaf::Interruption(value.0.external()));
+                }
+            }
             DiagnosticKind::Engine(_) => {}
         }
     }
@@ -441,6 +471,12 @@ impl<'a> Diagnostic<'a> {
                 })
             }
             DiagnosticKind::Engine(engine) => ErasedRepr::Engine(match engine {
+                DiagnosticEngine::ModuleInterrupted(value) => {
+                    ErasedEngineError::ModuleInterrupted {
+                        identity: value.identity(),
+                        cause: Box::new(value.cause().erase(context)),
+                    }
+                }
                 DiagnosticEngine::Resource(value) => ErasedEngineError::Resource(value),
                 DiagnosticEngine::InvalidEntryPermit => ErasedEngineError::InvalidEntryPermit,
                 DiagnosticEngine::ContextAccessBusy => ErasedEngineError::ContextAccessBusy,
@@ -651,6 +687,8 @@ impl Eq for DiagnosticNative<'_> {}
 /// Exact engine diagnostic payloads. Nested Panic sources remain borrowed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagnosticEngine<'a> {
+    /// A retained source-module interruption and its original cause.
+    ModuleInterrupted(DiagnosticModuleInterruption<'a>),
     /// Engine resource refusal.
     Resource(EngineResourceError),
     /// Entry authority did not match.
@@ -978,6 +1016,7 @@ impl fmt::Display for DiagnosticEngine<'_> {
             Self::ScopeAnalysis(value) => write!(f, "ScopeAnalysisError: {value}"),
             Self::RuntimeLimit(value) => write!(f, "RuntimeLimitError: {value}"),
             Self::Panic { message, .. } => write!(f, "EnginePanic: {message}"),
+            Self::ModuleInterrupted(value) => write!(f, "ModuleInterrupted: {}", value.cause()),
             #[cfg(feature = "fuzz")]
             Self::NoInstructionsRemain => {
                 f.write_str("NoInstructionsRemainError: instruction budget was exhausted")

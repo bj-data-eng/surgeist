@@ -4,7 +4,7 @@ use super::{JsArray, JsFunction};
 use crate::ContextAccess;
 #[cfg(feature = "experimental")]
 use crate::JsArgs;
-use crate::builtins::promise::native_settlement::{SettlementStatus, SettlementWait};
+use crate::builtins::promise::native_settlement::{Association, SettlementStatus, SettlementWait};
 use crate::value::TryIntoJs;
 use crate::{
     JsError, JsExpect, JsNativeError, JsResult, JsValue, NativeFunction,
@@ -1120,13 +1120,20 @@ impl JsPromise {
     /// # Ok(())
     /// # }
     /// ```
-    /// Native-associated work retirement completes this future with
-    /// `EngineError::JobRetired`; it does not reject the guest promise.
-    /// An already published guest settlement takes precedence.
+    /// Native task retirement reports [`crate::error::EngineError::JobRetired`],
+    /// with already-published guest settlement taking precedence. Terminal source
+    /// evaluation instead reports [`crate::error::EngineError::ModuleInterrupted`]
+    /// with its immutable identity and original typed cause, including for a waiter
+    /// registered before interruption. An unsettled guest promise stays pending;
+    /// a larger budget cannot retry that module. An already-terminal request returns
+    /// the error before registering guest handlers.
     pub fn into_js_future(self, context: ContextAccess<'_>) -> JsResult<JsFuture> {
         let context = context.into_owner();
         self.inner.check_runtime(context.runtime())?;
         let association = Promise::ensure_native_association(&self.inner, context)?;
+        if let Some(error) = Association::module_error(&association) {
+            return Err(error);
+        }
         let native_wait = association.signal().wait()?;
 
         // Keep the ordinary species/host-hook/handled registration. Native
@@ -1138,6 +1145,7 @@ impl JsPromise {
         drop(self.then(Some(resolve), Some(reject), context.access())?);
 
         Ok(JsFuture {
+            association,
             promise: self,
             native_wait,
         })
@@ -1215,9 +1223,19 @@ impl JsPromise {
     /// # Ok(())
     /// # }
     /// ```
+    /// A terminal source-module evaluation returns
+    /// [`crate::error::EngineError::ModuleInterrupted`] without retrying or waiting
+    /// exclusively on its unchanged pending guest promise. Its identity and original
+    /// typed cause remain stable; increasing this call's budget cannot revive it.
     pub fn await_blocking(&self, context: ContextAccess<'_>) -> Result<JsValue, JsError> {
         let context = context.into_owner();
         loop {
+            context.check_execution_stop()?;
+            if let Some(association) = Promise::native_association(&self.inner)
+                && let Some(error) = Association::module_error(&association)
+            {
+                return Err(error);
+            }
             match self.state() {
                 PromiseState::Pending => {
                     if let Some(association) = Promise::native_association(&self.inner)
@@ -1385,7 +1403,12 @@ impl TryIntoJs for JsPromise {
 /// between promises and futures a bit easier.
 ///
 /// The only way to construct an instance of `JsFuture` is by calling [`JsPromise::into_js_future`].
+/// A source-module interruption completes native observation with
+/// [`crate::error::EngineError::ModuleInterrupted`], preserving its immutable cause
+/// and leaving the guest promise pending. Ordinary completed modules keep their
+/// published result; a larger budget does not resume an interrupted instance.
 pub struct JsFuture {
+    association: surgeist_js_gc::heap::Rooted<Association>,
     promise: JsPromise,
     native_wait: SettlementWait,
 }
@@ -1409,6 +1432,9 @@ impl Future for JsFuture {
         }
 
         let this = self.get_mut();
+        if let Some(error) = Association::module_error(&this.association) {
+            return task::Poll::Ready(Err(error));
+        }
         if let Some(result) = settled(&this.promise) {
             return task::Poll::Ready(result);
         }
@@ -1422,6 +1448,10 @@ impl Future for JsFuture {
             return task::Poll::Ready(result);
         }
         match status {
+            SettlementStatus::ModuleInterrupted => {
+                task::Poll::Ready(Err(Association::module_error(&this.association)
+                    .expect("module signal has a local cause")))
+            }
             SettlementStatus::Retired(reason) => {
                 task::Poll::Ready(Err(crate::error::EngineError::JobRetired(reason).into()))
             }

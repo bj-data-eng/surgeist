@@ -56,6 +56,14 @@ use crate::{
     realm::{Realm, RealmEdge},
 };
 
+pub(crate) mod lifecycle;
+/// Real guest completion callbacks owned before source evaluation can suspend.
+pub(crate) struct NativeEvaluationBridge {
+    pub(crate) target: builtins::promise::PromiseCapability,
+    pub(crate) fulfilled: crate::object::JsFunction,
+    pub(crate) rejected: crate::object::JsFunction,
+}
+
 mod loader;
 mod namespace;
 mod source;
@@ -385,7 +393,7 @@ impl Module {
         })?;
 
         let source_text = SourceText::new(source);
-        let src = SourceTextModule::new(module, interner, source_text, path.clone());
+        let src = SourceTextModule::new(module, interner, source_text, path.clone(), context)?;
 
         Self::allocate(&realm, ModuleKind::SourceText(Box::new(src)), path, context)
     }
@@ -648,6 +656,13 @@ impl Module {
     /// If the promise is rejected, hosts are expected to handle the promise rejection and rethrow
     /// the evaluation error.
     ///
+    /// A host stop after evaluation entry terminally interrupts that source-module
+    /// instance. The initiating call returns its original engine error; later calls
+    /// return [`crate::error::EngineError::ModuleInterrupted`] with the immutable
+    /// interruption identity and typed original cause. Increasing a later budget
+    /// cannot retry the instance. An already-issued guest promise stays pending;
+    /// native promise waits observe the interruption instead.
+    ///
     /// # Note
     ///
     /// This must only be called if the [`Module::link`] method finished successfully.
@@ -658,8 +673,32 @@ impl Module {
         let context = context.into_owner();
         self.check_runtime(context)?;
         match self.kind() {
-            ModuleKind::SourceText(src) => src.evaluate(self, context),
+            ModuleKind::SourceText(src) => src.evaluate(self, None, context),
             ModuleKind::Synthetic(synth) => synth.evaluate(self, context),
+        }
+    }
+
+    pub(crate) fn evaluate_for_native(
+        &self,
+        bridge: &NativeEvaluationBridge,
+        context: &mut Context,
+    ) -> JsResult<JsPromise> {
+        self.check_runtime(context)?;
+        context.check_execution_stop()?;
+        match self.kind() {
+            ModuleKind::SourceText(source) => source.evaluate(self, Some(bridge), context),
+            ModuleKind::Synthetic(source) => {
+                let evaluated = source.evaluate(self, context)?;
+                builtins::Promise::perform_promise_then_with_native_target(
+                    &evaluated,
+                    Some(bridge.fulfilled.clone()),
+                    Some(bridge.rejected.clone()),
+                    None,
+                    &bridge.target,
+                    context,
+                )?;
+                Ok(evaluated)
+            }
         }
     }
 
@@ -686,7 +725,7 @@ impl Module {
     /// [spec]: https://tc39.es/ecma262/#sec-InnerModuleLinking
     fn inner_evaluate(
         &self,
-        stack: &mut Vec<Module>,
+        stack: &mut lifecycle::EvaluationStack,
         index: usize,
         context: &mut Context,
     ) -> JsResult<usize> {
@@ -749,6 +788,16 @@ impl Module {
         let context = context.into_owner();
         let result = (|| {
             self.check_runtime(context)?;
+            let capability = builtins::promise::PromiseCapability::new(
+                &context.intrinsics().constructors().promise().constructor(),
+                context,
+            )?;
+            let result = capability
+                .promise()
+                .clone()
+                .downcast::<builtins::Promise>()
+                .expect("intrinsic result promise");
+            builtins::Promise::ensure_native_association(&result, context)?;
             let link = NativeFunction::from_builtin_with_captures(
                 |_, _, module, context| {
                     module.link(context.access())?;
@@ -757,14 +806,46 @@ impl Module {
                 self.clone(),
             )
             .to_js_function(context.realm())?;
+            // Preserve the separate language-job stages and their admissions.
+            let linked = self
+                .load(context.access())?
+                .then(Some(link), None, context.access())?;
             let evaluate = NativeFunction::from_builtin_with_captures(
-                |_, _, module, context| Ok(module.evaluate(context.access())?.into()),
-                self.clone(),
+                |_, _, (module, target), context| {
+                    let bridge = NativeEvaluationBridge {
+                        target: target.clone(),
+                        fulfilled: target.resolve().clone(),
+                        rejected: target.reject().clone(),
+                    };
+                    match module.evaluate_for_native(&bridge, context) {
+                        Ok(_) => {}
+                        Err(error) => {
+                            if error.as_engine().is_some() {
+                                return Err(error);
+                            }
+                            let reason = error.into_opaque(context.access())?;
+                            target.reject().call(
+                                &JsValue::undefined(),
+                                &[reason],
+                                context.access(),
+                            )?;
+                            return Ok(JsValue::undefined());
+                        }
+                    }
+                    Ok(JsValue::undefined())
+                },
+                (self.clone(), capability.clone()),
             )
             .to_js_function(context.realm())?;
-            self.load(context.access())?
-                .then(Some(link), None, context.access())?
-                .then(Some(evaluate), None, context.access())
+            builtins::Promise::perform_promise_then_with_native_target(
+                &linked,
+                Some(evaluate),
+                Some(capability.reject().clone()),
+                None,
+                &capability,
+                context,
+            )?;
+            JsPromise::from_object(capability.promise().clone())
         })();
         match result {
             Ok(promise) => Ok(promise),

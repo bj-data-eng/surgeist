@@ -227,6 +227,7 @@ impl NativeCapture for PromiseCapability {
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-promisereaction-records
 struct ReactionRecord {
+    module_action: Option<crate::module::lifecycle::ModuleAction>,
     native_result_target: Option<JsObject<Promise>>,
     native_target: Option<JsObject<Promise>>,
     /// The `[[Capability]]` field.
@@ -242,6 +243,7 @@ struct ReactionRecord {
 impl ReactionRecord {
     fn to_stored(&self) -> StoredReactionRecord {
         StoredReactionRecord {
+            module_action: self.module_action.clone(),
             native_result_target: self.native_result_target.as_ref().map(JsObject::edge),
             native_target: self.native_target.as_ref().map(JsObject::edge),
             promise_capability: self
@@ -256,6 +258,7 @@ impl ReactionRecord {
 
 #[derive(HeapTrace)]
 struct StoredReactionRecord {
+    module_action: Option<crate::module::lifecycle::ModuleAction>,
     native_result_target: Option<ObjectEdge>,
     native_target: Option<ObjectEdge>,
     promise_capability: Option<StoredPromiseCapability>,
@@ -267,6 +270,7 @@ struct StoredReactionRecord {
 impl StoredReactionRecord {
     fn to_reaction(&self) -> ReactionRecord {
         ReactionRecord {
+            module_action: self.module_action.clone(),
             native_result_target: self
                 .native_result_target
                 .clone()
@@ -2428,6 +2432,25 @@ impl Promise {
             on_rejected,
             result_capability,
             target,
+            None,
+            context,
+        )
+    }
+    pub(crate) fn perform_promise_then_module(
+        promise: &JsObject<Self>,
+        on_fulfilled: Option<JsFunction>,
+        on_rejected: Option<JsFunction>,
+        result_capability: Option<PromiseCapability>,
+        action: Option<crate::module::lifecycle::ModuleAction>,
+        context: &mut Context,
+    ) -> JsResult<()> {
+        Self::perform_promise_then_target(
+            promise,
+            on_fulfilled,
+            on_rejected,
+            result_capability,
+            None,
+            action,
             context,
         )
     }
@@ -2451,17 +2474,19 @@ impl Promise {
             on_rejected,
             result_capability,
             Some(target),
+            None,
             context,
         )
     }
-    fn perform_promise_then_target(
+    fn prepare_then_records(
         promise: &JsObject<Promise>,
         on_fulfilled: Option<JsFunction>,
         on_rejected: Option<JsFunction>,
         result_capability: Option<PromiseCapability>,
         native_target: Option<JsObject<Self>>,
+        module_action: Option<crate::module::lifecycle::ModuleAction>,
         context: &mut Context,
-    ) -> JsResult<()> {
+    ) -> JsResult<(ReactionRecord, ReactionRecord)> {
         // 1. Assert: IsPromise(promise) is true.
         promise.check_runtime(context.runtime())?;
 
@@ -2509,6 +2534,7 @@ impl Promise {
             });
         // 7. Let fulfillReaction be the PromiseReaction { [[Capability]]: resultCapability, [[Type]]: Fulfill, [[Handler]]: onFulfilledJobCallback }.
         let fulfill_reaction = ReactionRecord {
+            module_action: module_action.clone(),
             native_result_target: native_result_target.clone(),
             native_target: native_target.clone(),
             promise_capability: result_capability.clone(),
@@ -2518,6 +2544,7 @@ impl Promise {
 
         // 8. Let rejectReaction be the PromiseReaction { [[Capability]]: resultCapability, [[Type]]: Reject, [[Handler]]: onRejectedJobCallback }.
         let reject_reaction = ReactionRecord {
+            module_action,
             native_result_target,
             native_target,
             promise_capability: result_capability,
@@ -2525,6 +2552,81 @@ impl Promise {
             handler: on_rejected_job_callback,
         };
 
+        Ok((fulfill_reaction, reject_reaction))
+    }
+    /// Prepares the actual bridge pair for a new, unexposed intrinsic pending promise.
+    pub(crate) fn prepare_pending_then(
+        promise: &JsObject<Self>,
+        fulfilled: JsFunction,
+        rejected: JsFunction,
+        target: &PromiseCapability,
+        context: &mut Context,
+    ) -> JsResult<PreparedPendingReactions> {
+        let target_promise = target
+            .promise()
+            .clone()
+            .downcast::<Self>()
+            .expect("intrinsic bridge target");
+        let (fulfill, reject) = Self::prepare_then_records(
+            promise,
+            Some(fulfilled),
+            Some(rejected),
+            None,
+            Some(target_promise.clone()),
+            None,
+            context,
+        )?;
+        let stored = (fulfill.to_stored(), reject.to_stored());
+        let stored = context
+            .runtime()
+            .heap
+            .with_pending_edges(stored, |stored| stored)
+            .map_err(|error| JsNativeError::typ().with_message(error.to_string()))?;
+        {
+            let mut promise = promise.borrow_mut();
+            let StoredPromiseState::Pending {
+                fulfill_reactions,
+                reject_reactions,
+            } = &mut promise.data_mut().state
+            else {
+                unreachable!("new canonical promise is not exposed before publication");
+            };
+            fulfill_reactions
+                .try_reserve(1)
+                .map_err(|_| crate::error::EngineResourceError::Allocation)?;
+            reject_reactions
+                .try_reserve(1)
+                .map_err(|_| crate::error::EngineResourceError::Allocation)?;
+        }
+        let owner = Self::ensure_native_association(&target_promise, context)?;
+        let source = Self::ensure_native_association(promise, context)?;
+        let handoff = native_settlement::Association::prepare_follow(&owner, &source)?;
+        context.check_execution_stop()?;
+        Ok(PreparedPendingReactions {
+            promise: promise.clone(),
+            roots: (fulfill, reject),
+            stored: Some(stored),
+            handoff,
+        })
+    }
+    fn perform_promise_then_target(
+        promise: &JsObject<Promise>,
+        on_fulfilled: Option<JsFunction>,
+        on_rejected: Option<JsFunction>,
+        result_capability: Option<PromiseCapability>,
+        native_target: Option<JsObject<Self>>,
+        module_action: Option<crate::module::lifecycle::ModuleAction>,
+        context: &mut Context,
+    ) -> JsResult<()> {
+        let (fulfill_reaction, reject_reaction) = Self::prepare_then_records(
+            promise,
+            on_fulfilled,
+            on_rejected,
+            result_capability,
+            native_target,
+            module_action,
+            context,
+        )?;
         let (state, handled) = {
             let promise = promise.borrow();
             let promise = promise.data();
@@ -2786,6 +2888,11 @@ impl Promise {
             context: &mut Context,
         ) -> JsResult<()> {
             context.check_execution_stop()?;
+            if let Some(association) = Promise::native_association(promise)
+                && let Some(error) = native_settlement::Association::module_error(&association)
+            {
+                return Err(error);
+            }
             // Root all reactions before clearing the pending state. Enqueueing the first
             // job can run host code while the remaining reactions still await enqueueing.
             let reactions = {
@@ -2840,6 +2947,11 @@ impl Promise {
             context: &mut Context,
         ) -> JsResult<()> {
             context.check_execution_stop()?;
+            if let Some(association) = Promise::native_association(promise)
+                && let Some(error) = native_settlement::Association::module_error(&association)
+            {
+                return Err(error);
+            }
             let (reactions, handled) = {
                 let promise = promise.borrow();
                 let promise = promise.data();
@@ -3075,6 +3187,43 @@ impl Promise {
 ///  - [ECMAScript reference][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-newpromisereactionjob
+/// A prepared pair owns its live callback roots until atomic pending publication.
+/// Only the source-module canonical promise uses this unexposed-pending command.
+pub(crate) struct PreparedPendingReactions {
+    promise: JsObject<Promise>,
+    roots: (ReactionRecord, ReactionRecord),
+    stored: Option<(StoredReactionRecord, StoredReactionRecord)>,
+    handoff: native_settlement::PreparedHandoff,
+}
+impl PreparedPendingReactions {
+    pub(crate) fn publish(&mut self) {
+        let (fulfilled, rejected) = self.stored.take().expect("pending pair published once");
+        let mut promise = self.promise.borrow_mut();
+        let StoredPromiseState::Pending {
+            fulfill_reactions,
+            reject_reactions,
+        } = &mut promise.data_mut().state
+        else {
+            unreachable!("unexposed canonical promise remains pending");
+        };
+        fulfill_reactions.push(fulfilled);
+        reject_reactions.push(rejected);
+        promise.data_mut().handled = true;
+    }
+    pub(crate) fn notify(self) {
+        // The caller has released all status/promise/cell borrows before disposal
+        // of the previous native binding or arbitrary native wake callbacks.
+        let Self {
+            promise,
+            roots,
+            stored,
+            handoff,
+        } = self;
+        handoff.commit().notify();
+        drop((promise, roots, stored));
+    }
+}
+
 struct PreparedReactionJob {
     job: PromiseJob,
     handoffs: [Option<native_settlement::PreparedHandoff>; 2],
@@ -3111,6 +3260,7 @@ fn new_promise_reaction_job(
         .unwrap_or_else(|| context.realm().clone());
 
     // 1. Let job be a new Job Abstract Closure with no parameters that captures reaction and argument and performs the following steps when called:
+    let module_action = reaction.module_action.clone();
     let native_result_target = reaction.native_result_target.clone();
     let native_target = reaction.native_target.clone();
     let job = move |context: crate::ContextAccess<'_>| {
@@ -3175,7 +3325,7 @@ fn new_promise_reaction_job(
     };
 
     // 4. Return the Record { [[Job]]: job, [[Realm]]: handlerRealm }.
-    let job = PromiseJob::with_realm(job, realm);
+    let job = PromiseJob::with_realm(job, realm).with_module_action(module_action);
     let mut handoffs = [None, None];
     for (slot, target) in handoffs
         .iter_mut()
