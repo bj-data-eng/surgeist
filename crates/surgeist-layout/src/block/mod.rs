@@ -1082,6 +1082,7 @@ impl<S: LayoutScalar> Constants<S> {
         let blocks_margin_collapse = style.block_flow_context
             == crate::BlockFlowContext::Independent
             || style.common.item_is_replaced
+            || style.common.item_is_table
             || style
                 .common
                 .overflow
