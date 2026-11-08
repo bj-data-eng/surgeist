@@ -313,6 +313,99 @@ pub(super) fn render_pixels(
 }
 
 #[test]
+fn separable_direct_clamps_blend_result_before_composition_after_local_plus() {
+    let bounds = Rect::new(0.0, 0.0, 2.0, 2.0);
+    for antialiasing in [
+        crate::Antialiasing::Area,
+        crate::Antialiasing::Msaa8,
+        crate::Antialiasing::Msaa16,
+    ] {
+        let mut renderer = pollster::block_on(Renderer::new(
+            Options::default().with_antialiasing(antialiasing),
+        ))
+        .unwrap();
+        let mut surface =
+            pollster::block_on(renderer.create_headless(Size::new(2.0, 2.0), 1.0)).unwrap();
+        for (mode, expected) in [
+            // Normal preserves the separate local Plus accumulator and its
+            // existing direct source-over fast path: 1 + 1/8 clips to white.
+            (BlendMode::Normal, [255, 255, 255, 255]),
+            // B=clamp(max(1/4,2),0,1)=1, then co=1/2*1+1/2*1/4=5/8.
+            // This does not assume that local Plus saturates its own source.
+            (BlendMode::Lighten, [159, 159, 159, 255]),
+        ] {
+            let mut scene = Scene::new();
+            draw_local_plus_blend(&mut scene, mode, bounds);
+            let pixels = render_pixels(&mut renderer, &mut surface, &scene, None);
+            for y in 0..2 {
+                for x in 0..2 {
+                    assert_near(
+                        pixel_rgba(&pixels, x, y),
+                        expected,
+                        2,
+                        &format!("direct {mode:?}, {antialiasing:?}"),
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn separable_capture_local_clamps_blend_result_before_composition_after_local_plus() {
+    let bounds = Rect::new(0.0, 0.0, 2.0, 2.0);
+    for antialiasing in [
+        crate::Antialiasing::Area,
+        crate::Antialiasing::Msaa8,
+        crate::Antialiasing::Msaa16,
+    ] {
+        let mut renderer = pollster::block_on(Renderer::new(
+            Options::default()
+                .with_antialiasing(antialiasing)
+                .with_effect_quality_policy(EffectQualityPolicy::AllowReducedPrecision),
+        ))
+        .unwrap();
+        let mut surface =
+            pollster::block_on(renderer.create_headless(Size::new(2.0, 2.0), 1.0)).unwrap();
+        let formats = graph_supported_working_formats_for_test(&mut renderer);
+        let mut scene = Scene::new();
+        // Keep gray, Lighten and local Plus together inside one raster capture.
+        // Masking Lighten itself would canonicalize Plus before the blend and
+        // would miss the live-accumulator defect in this owning consumer.
+        scene.layer(masked_layer(BlendMode::Normal, bounds, 255), |scene| {
+            draw_local_plus_blend(scene, BlendMode::Lighten, bounds);
+        });
+        for format in formats.iter().copied() {
+            let pixels = render_pixels(&mut renderer, &mut surface, &scene, Some(format));
+            for y in 0..2 {
+                for x in 0..2 {
+                    assert_near(
+                        pixel_rgba(&pixels, x, y),
+                        [159, 159, 159, 255],
+                        2,
+                        &format!("capture local {antialiasing:?}, {format:?}"),
+                    );
+                }
+            }
+        }
+    }
+}
+
+fn draw_local_plus_blend(scene: &mut Scene, mode: BlendMode, bounds: Rect) {
+    let white = Color::try_rgba(1.0, 1.0, 1.0, 1.0).unwrap();
+    scene.fill(bounds, Color::try_rgba(0.25, 0.25, 0.25, 1.0).unwrap());
+    scene.layer(
+        Layer::new().blend(mode).try_opacity(0.5).unwrap(),
+        |scene| {
+            scene.fill(bounds, white);
+            scene.layer(Layer::new().blend(BlendMode::Plus), |scene| {
+                scene.fill(bounds, white);
+            });
+        },
+    );
+}
+
+#[test]
 fn separable_public_direct_and_masked_graph_pixels_match_independent_constants() {
     let cases = cases();
     let mut renderer = pollster::block_on(Renderer::new(
