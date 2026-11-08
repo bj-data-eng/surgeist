@@ -350,3 +350,81 @@ fn ordinary_receiving_checks_reject_foreign_realm_and_capture_but_accept_a_peer(
     );
     assert_eq!(observation.evaluations.get(), 1);
 }
+
+#[test]
+fn retained_stop_refuses_native_export_construction_before_pulling_its_input() {
+    use std::{cell::Cell, rc::Rc};
+    use surgeist_js::{
+        IntoJsModule, JsString, JsValue, NativeFunction, builtins::promise::PromiseState,
+    };
+
+    #[derive(Clone)]
+    struct ExportInput {
+        item: Option<(JsString, NativeFunction)>,
+        pulls: Rc<Cell<usize>>,
+        reached_eof: Rc<Cell<bool>>,
+    }
+
+    impl Iterator for ExportInput {
+        type Item = (JsString, NativeFunction);
+
+        fn next(&mut self) -> Option<Self::Item> {
+            self.pulls.set(self.pulls.get() + 1);
+            if let Some(item) = self.item.take() {
+                Some(item)
+            } else {
+                self.reached_eof.set(true);
+                None
+            }
+        }
+    }
+
+    fn exports(pulls: Rc<Cell<usize>>, reached_eof: Rc<Cell<bool>>) -> ExportInput {
+        ExportInput {
+            item: Some((
+                js_string!("answer"),
+                NativeFunction::from_fn_ptr(|_, _, _| Ok(42.into())),
+            )),
+            pulls,
+            reached_eof,
+        }
+    }
+
+    let mut context = context();
+    let pulls = Rc::new(Cell::new(0));
+    let reached_eof = Rc::new(Cell::new(false));
+    let stopped_input = exports(pulls.clone(), reached_eof.clone());
+    let (direct, first) = after_stop(&mut context, |access| stopped_input.into_js_module(access));
+    assert_eq!(pulls.get(), 0, "direct construction: {direct:?}");
+    assert!(!reached_eof.get());
+    assert_eq!(direct.unwrap_err(), first);
+
+    let fresh_pulls = Rc::new(Cell::new(0));
+    let fresh_eof = Rc::new(Cell::new(false));
+    let fresh_input = exports(fresh_pulls.clone(), fresh_eof.clone());
+    let module = in_scope(&mut context, |access| fresh_input.into_js_module(access)).unwrap();
+    assert!(fresh_pulls.get() > 0);
+    assert!(
+        fresh_eof.get(),
+        "normal construction must reach the finite input's end"
+    );
+    finish(&module, &mut context);
+    let exported = module
+        .get_value(js_string!("answer"), context.access())
+        .unwrap();
+    let repeated = in_scope(&mut context, |access| module.evaluate(access)).unwrap();
+    assert_eq!(
+        repeated.state(),
+        PromiseState::Fulfilled(JsValue::undefined())
+    );
+    let cached = module
+        .get_value(js_string!("answer"), context.access())
+        .unwrap();
+    let function = exported.as_object().expect("the named export is callable");
+    assert_eq!(function.identity(), cached.as_object().unwrap().identity());
+    let result = in_scope(&mut context, |access| {
+        function.call(&JsValue::undefined(), &[], access)
+    })
+    .unwrap();
+    assert_eq!(result, 42.into());
+}
