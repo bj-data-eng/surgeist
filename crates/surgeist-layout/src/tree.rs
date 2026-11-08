@@ -72,7 +72,8 @@ pub trait LayoutTree: Traverse {
     ///
     /// Outer `None` means the requested provider is absent. `Ok(None)` means
     /// the shape has no exclusion intersection with this band. Layout invokes
-    /// this provider only for a shape float overlapping a finite candidate band.
+    /// this provider for inline wrapping around a shape float overlapping a
+    /// finite candidate band. Float placement uses physical margin boxes.
     fn float_exclusion_interval(
         &self,
         _node: Self::Node,

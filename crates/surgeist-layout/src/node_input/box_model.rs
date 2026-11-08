@@ -107,7 +107,10 @@ pub enum Float {
     Right,
 }
 
-/// Layout-ready exclusion geometry selected for a floating box.
+/// Inline wrapping exclusion geometry selected for a floating box.
+///
+/// Float placement and independent block collision use physical margin boxes
+/// for either variant.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum FloatExclusion {
     /// Exclude the float's physical margin box.
