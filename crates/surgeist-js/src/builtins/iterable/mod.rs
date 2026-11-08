@@ -263,13 +263,13 @@ impl JsValue {
         context: &mut Context,
     ) -> JsResult<IteratorRecord> {
         // 1. Let iterator be ? Call(method, obj).
-        let iterator = method.call(self, &[], context)?;
+        let iterator = method.call(self, &[], context.access())?;
         // 2. If iterator is not an Object, throw a TypeError exception.
         let iterator_obj = iterator.as_object().ok_or_else(|| {
             JsNativeError::typ().with_message("returned iterator is not an object")
         })?;
         // 3. Let nextMethod be ? Get(iterator, "next").
-        let next_method = iterator_obj.get(js_string!("next"), context)?;
+        let next_method = iterator_obj.get(js_string!("next"), context.access())?;
         // 4. Let iteratorRecord be the Iterator Record { [[Iterator]]: iterator, [[NextMethod]]: nextMethod, [[Done]]: false }.
         // 5. Return iteratorRecord.
         Ok(IteratorRecord::new(iterator_obj.clone(), next_method))
@@ -367,7 +367,10 @@ impl IteratorResult {
     #[inline]
     pub fn complete(&self, context: &mut Context) -> JsResult<bool> {
         // 1. Return ToBoolean(? Get(iterResult, "done")).
-        Ok(self.object.get(js_string!("done"), context)?.to_boolean())
+        Ok(self
+            .object
+            .get(js_string!("done"), context.access())?
+            .to_boolean())
     }
 
     /// `IteratorValue ( iterResult )`
@@ -383,7 +386,7 @@ impl IteratorResult {
     #[inline]
     pub fn value(&self, context: &mut Context) -> JsResult<JsValue> {
         // 1. Return ? Get(iterResult, "value").
-        self.object.get(js_string!("value"), context)
+        self.object.get(js_string!("value"), context.access())
     }
 }
 
@@ -672,7 +675,7 @@ impl IteratorRecord {
 
                 if let Some(r#return) = r#return {
                     // c. Set innerResult to Completion(Call(return, iterator)).
-                    r#return.call(&iterator.clone().into(), &[], context)
+                    r#return.call(&iterator.clone().into(), &[], context.access())
                 } else {
                     // b. If return is undefined, return ? completion.
                     return completion;
@@ -742,7 +745,7 @@ pub(crate) fn get_iterator_direct(
     context: &mut Context,
 ) -> JsResult<IteratorRecord> {
     // 1. Let nextMethod be ? Get(obj, "next").
-    let next_method = obj.get(js_string!("next"), context)?;
+    let next_method = obj.get(js_string!("next"), context.access())?;
     // 2. Let iteratorRecord be the Iterator Record { [[Iterator]]: obj, [[NextMethod]]: nextMethod, [[Done]]: false }.
     // 3. Return iteratorRecord.
     Ok(IteratorRecord::new(obj.clone(), next_method))
@@ -791,7 +794,7 @@ pub(crate) fn get_iterator_flattenable(
         // 4. Else,
         Some(method) => {
             // a. Let iterator be ? Call(method, obj).
-            let iterator = method.call(obj, &[], context)?;
+            let iterator = method.call(obj, &[], context.access())?;
 
             // b. If iterator is not an Object, throw a TypeError exception.
             let iterator_obj = iterator.as_object().ok_or_else(|| {

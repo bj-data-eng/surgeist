@@ -50,11 +50,11 @@ fn get_by_name<const LENGTH: bool>(
 
         drop(object_borrowed);
         if slot.attributes.has_get() && result.is_object() {
-            result =
-                result
-                    .as_object()
-                    .expect("should contain getter")
-                    .call(receiver, &[], context)?;
+            result = result.as_object().expect("should contain getter").call(
+                receiver,
+                &[],
+                context.access(),
+            )?;
         }
         context.vm.set_register(dst.into(), result);
         return Ok(());

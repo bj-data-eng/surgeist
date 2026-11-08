@@ -37,7 +37,7 @@ where
 
         keys.into_iter()
             .map(|key| {
-                let js_value = object.get(key.clone(), context)?;
+                let js_value = object.get(key.clone(), context.access())?;
                 let js_key: JsValue = key.into();
 
                 let key = K::try_from_js(&js_key, context)?;
@@ -80,7 +80,7 @@ where
 
         keys.into_iter()
             .map(|key| {
-                let js_value = object.get(key.clone(), context)?;
+                let js_value = object.get(key.clone(), context.access())?;
                 let js_key: JsValue = key.into();
 
                 let key = K::try_from_js(&js_key, context)?;

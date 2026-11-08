@@ -328,19 +328,19 @@ fn backing_buffer_remains_live_only_while_its_view_is_live() {
             let backing_edge = backing.edge();
             let constructor = context
                 .global_object()
-                .get(view_name, context)
+                .get(view_name, context.access())
                 .unwrap()
                 .as_object()
                 .unwrap();
             let view = constructor
-                .construct(&[backing.into()], None, context)
+                .construct(&[backing.into()], None, context.access())
                 .unwrap();
 
             context.runtime().collect().unwrap();
             assert!(backing_edge.is_live().unwrap());
             {
                 let backing = view
-                    .get(js_string!("buffer"), context)
+                    .get(js_string!("buffer"), context.access())
                     .unwrap()
                     .as_object()
                     .unwrap();
@@ -353,7 +353,7 @@ fn backing_buffer_remains_live_only_while_its_view_is_live() {
                 .as_object()
                 .unwrap();
             let result = access
-                .call(&JsValue::undefined(), &[view.into()], context)
+                .call(&JsValue::undefined(), &[view.into()], context.access())
                 .unwrap();
             assert_eq!(result.as_number(), Some(173.0));
 

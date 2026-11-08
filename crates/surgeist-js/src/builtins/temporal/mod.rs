@@ -165,7 +165,7 @@ pub(crate) fn get_relative_to_option(
     context: &mut Context,
 ) -> JsResult<Option<RelativeTo>> {
     // Let value be ? Get(options, "relativeTo").
-    let value = options.get(js_string!("relativeTo"), context)?;
+    let value = options.get(js_string!("relativeTo"), context.access())?;
     // 2. If value is undefined, return the Record { [[PlainRelativeTo]]: undefined, [[ZonedRelativeTo]]: undefined }.
     if value.is_undefined() {
         return Ok(None);
@@ -267,13 +267,13 @@ pub(crate) fn is_partial_temporal_object(
     }
 
     // 3. Let calendarProperty be ? Get(value, "calendar").
-    let calendar_property = obj.get(js_string!("calendar"), context)?;
+    let calendar_property = obj.get(js_string!("calendar"), context.access())?;
     // 4. If calendarProperty is not undefined, return false.
     if !calendar_property.is_undefined() {
         return Ok(None);
     }
     // 5. Let timeZoneProperty be ? Get(value, "timeZone").
-    let time_zone_property = obj.get(js_string!("timeZone"), context)?;
+    let time_zone_property = obj.get(js_string!("timeZone"), context.access())?;
     // 6. If timeZoneProperty is not undefined, return false.
     if !time_zone_property.is_undefined() {
         return Ok(None);

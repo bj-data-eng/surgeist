@@ -43,8 +43,13 @@ fn make_abort_error(context: &mut Context) -> JsValue {
         .with_message("signal is aborted without reason")
         .into_opaque(context)
         .expect("the abort error contains only local data");
-    obj.set(js_string!("name"), js_string!("AbortError"), false, context)
-        .ok();
+    obj.set(
+        js_string!("name"),
+        js_string!("AbortError"),
+        false,
+        context.access(),
+    )
+    .ok();
     obj.into()
 }
 
@@ -101,7 +106,7 @@ impl JsAbortSignal {
             context.enqueue_job(
                 GenericJob::new(
                     move |context| {
-                        listener.call(&JsValue::undefined(), &[], context)?;
+                        listener.call(&JsValue::undefined(), &[], context.access())?;
                         Ok(JsValue::undefined())
                     },
                     realm.clone(),

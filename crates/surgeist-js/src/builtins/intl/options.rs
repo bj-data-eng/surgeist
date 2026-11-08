@@ -94,7 +94,7 @@ where
 {
     // 1. Assert: Type(options) is Object.
     // 2. Let value be ? Get(options, property).
-    let value = options.get(property, context)?;
+    let value = options.get(property, context.access())?;
 
     // 3. Return ? DefaultNumberOption(value, minimum, maximum, fallback).
     default_number_option(&value, minimum, maximum, context)

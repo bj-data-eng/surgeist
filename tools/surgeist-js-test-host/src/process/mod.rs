@@ -88,7 +88,7 @@ impl Process {
     {
         let env = JsObject::default(context.intrinsics());
         for (key, value) in provider.env() {
-            env.set(key, JsValue::from(value), false, context)?;
+            env.set(key, JsValue::from(value), false, context.access())?;
         }
 
         ObjectInitializer::new(context)

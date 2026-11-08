@@ -552,13 +552,17 @@ impl DigitFormatOptions {
             get_number_option(options, js_string!("minimumIntegerDigits"), 1, 21, context)?
                 .unwrap_or(1);
         // 2. Let mnfd be ? Get(options, "minimumFractionDigits").
-        let min_float_digits = options.get(js_string!("minimumFractionDigits"), context)?;
+        let min_float_digits =
+            options.get(js_string!("minimumFractionDigits"), context.access())?;
         // 3. Let mxfd be ? Get(options, "maximumFractionDigits").
-        let max_float_digits = options.get(js_string!("maximumFractionDigits"), context)?;
+        let max_float_digits =
+            options.get(js_string!("maximumFractionDigits"), context.access())?;
         // 4. Let mnsd be ? Get(options, "minimumSignificantDigits").
-        let min_sig_digits = options.get(js_string!("minimumSignificantDigits"), context)?;
+        let min_sig_digits =
+            options.get(js_string!("minimumSignificantDigits"), context.access())?;
         // 5. Let mxsd be ? Get(options, "maximumSignificantDigits").
-        let max_sig_digits = options.get(js_string!("maximumSignificantDigits"), context)?;
+        let max_sig_digits =
+            options.get(js_string!("maximumSignificantDigits"), context.access())?;
 
         // 7. Let roundingIncrement be ? GetNumberOption(options, "roundingIncrement", 1, 5000, 1).
         // 8. If roundingIncrement is not in « 1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000 », throw a RangeError exception.

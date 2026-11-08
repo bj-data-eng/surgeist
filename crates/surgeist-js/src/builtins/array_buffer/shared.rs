@@ -429,7 +429,7 @@ impl SharedArrayBuffer {
             .species_constructor(StandardConstructors::shared_array_buffer, context)?;
 
         // 15. Let new be ? Construct(ctor, « 𝔽(newLen) »).
-        let new = ctor.construct(&[new_len.into()], Some(&ctor), context)?;
+        let new = ctor.construct(&[new_len.into()], Some(&ctor), context.access())?;
 
         {
             let buf = buf.borrow();

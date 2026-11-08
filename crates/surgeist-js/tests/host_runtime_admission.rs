@@ -105,9 +105,11 @@ fn native_call_and_construct_restore_the_caller_after_a_callback_switches_realms
         for construct in [false, true] {
             let mut invoke = |args: &[JsValue]| {
                 let result = if construct {
-                    object.construct(args, None, &mut context).map(Into::into)
+                    object
+                        .construct(args, None, context.access())
+                        .map(Into::into)
                 } else {
-                    object.call(&JsValue::undefined(), args, &mut context)
+                    object.call(&JsValue::undefined(), args, context.access())
                 };
                 assert!(context.realm() == &caller);
                 result
@@ -226,7 +228,7 @@ fn separate_contexts_parsing_in_one_realm_get_distinct_template_objects() {
     assert_eq!(alpha.evaluate(owner.access()).unwrap(), first);
     assert_eq!(beta.evaluate(peer.access()).unwrap(), second);
     assert_eq!(
-        second.as_object().unwrap().get(0, &mut peer).unwrap(),
+        second.as_object().unwrap().get(0, peer.access()).unwrap(),
         JsValue::from(js_string!("surgeist-beta"))
     );
 }
@@ -513,7 +515,7 @@ fn failed_aggregate_conversion_leaves_existing_error_stack_unmodified() {
         .unwrap_err();
     assert!(
         retained
-            .get(js_string!("stack"), &mut context)
+            .get(js_string!("stack"), context.access())
             .unwrap()
             .is_undefined()
     );
@@ -525,7 +527,7 @@ fn failed_aggregate_conversion_leaves_existing_error_stack_unmodified() {
     assert_eq!(error.as_engine(), Some(&engine));
     assert!(
         retained
-            .get(js_string!("stack"), &mut context)
+            .get(js_string!("stack"), context.access())
             .unwrap()
             .is_undefined()
     );
@@ -535,20 +537,20 @@ fn next_value(iterator: JsValue, context: &mut Context) -> JsValue {
     let next = iterator
         .as_object()
         .unwrap()
-        .get(js_string!("next"), context)
+        .get(js_string!("next"), context.access())
         .unwrap()
         .as_callable()
         .unwrap();
     let result = next
-        .call(&iterator, &[], context)
+        .call(&iterator, &[], context.access())
         .unwrap()
         .as_object()
         .unwrap();
     assert_eq!(
-        result.get(js_string!("done"), context).unwrap(),
+        result.get(js_string!("done"), context.access()).unwrap(),
         false.into()
     );
-    result.get(js_string!("value"), context).unwrap()
+    result.get(js_string!("value"), context.access()).unwrap()
 }
 
 #[test]
@@ -581,9 +583,9 @@ fn array_with_refuses_a_foreign_replacement_and_retains_a_peer_replacement() {
 
     let replacement: JsValue = JsObject::with_null_proto(peer.runtime()).into();
     let copy = array.with(1, replacement.clone(), &mut peer).unwrap();
-    assert_eq!(array.get(1, &mut owner).unwrap(), 2.into());
-    assert_eq!(copy.get(0, &mut peer).unwrap(), 1.into());
-    assert_eq!(copy.get(1, &mut peer).unwrap(), replacement);
+    assert_eq!(array.get(1, owner.access()).unwrap(), 2.into());
+    assert_eq!(copy.get(0, peer.access()).unwrap(), 1.into());
+    assert_eq!(copy.get(1, peer.access()).unwrap(), replacement);
 }
 
 #[test]
@@ -604,8 +606,8 @@ fn typed_array_iterators_refuse_a_foreign_receiver_and_iterate_in_a_peer_context
 
     let iterator = array.entries(&mut peer).unwrap();
     let entry = next_value(iterator, &mut peer).as_object().unwrap();
-    assert_eq!(entry.get(0, &mut peer).unwrap(), 0.into());
-    assert_eq!(entry.get(1, &mut peer).unwrap(), 19.into());
+    assert_eq!(entry.get(0, peer.access()).unwrap(), 0.into());
+    assert_eq!(entry.get(1, peer.access()).unwrap(), 19.into());
     let iterator = array.keys(&mut peer).unwrap();
     assert_eq!(next_value(iterator, &mut peer), 0.into());
     let iterator = array.values(&mut peer).unwrap();
@@ -627,7 +629,7 @@ fn typed_array_from_array_buffer_refuses_a_foreign_buffer_and_retains_a_peer_buf
     let buffer = JsArrayBuffer::from_byte_block(vec![23], &mut peer).unwrap();
     let view = JsUint8Array::from_array_buffer(buffer.clone(), &mut owner).unwrap();
     assert_eq!(view.buffer(&mut owner).unwrap(), JsValue::from(buffer));
-    assert_eq!(view.get(0, &mut owner).unwrap(), 23.into());
+    assert_eq!(view.get(0, owner.access()).unwrap(), 23.into());
 }
 
 #[test]
@@ -662,9 +664,12 @@ fn iterator_result_refuses_a_foreign_value_without_panicking() {
         .unwrap()
         .as_object()
         .unwrap();
-    assert_eq!(result.get(js_string!("value"), &mut owner).unwrap(), value);
     assert_eq!(
-        result.get(js_string!("done"), &mut owner).unwrap(),
+        result.get(js_string!("value"), owner.access()).unwrap(),
+        value
+    );
+    assert_eq!(
+        result.get(js_string!("done"), owner.access()).unwrap(),
         true.into()
     );
 }
@@ -896,12 +901,20 @@ fn annex_b_compilation_does_not_create_a_global_property() {
         context.access(),
     )
     .unwrap();
-    assert!(!global.has_own_property(name.clone(), &mut context).unwrap());
+    assert!(
+        !global
+            .has_own_property(name.clone(), context.access())
+            .unwrap()
+    );
     script.codeblock(context.access()).unwrap();
-    assert!(!global.has_own_property(name.clone(), &mut context).unwrap());
+    assert!(
+        !global
+            .has_own_property(name.clone(), context.access())
+            .unwrap()
+    );
 
     assert_eq!(script.evaluate(context.access()).unwrap(), JsValue::new(42));
-    assert!(global.has_own_property(name, &mut context).unwrap());
+    assert!(global.has_own_property(name, context.access()).unwrap());
 }
 
 #[test]
@@ -1093,7 +1106,7 @@ fn a_host_cannot_hide_a_final_publication_conflict_from_the_outer_operation() {
     );
     assert!(
         !global
-            .has_own_property(js_string!("pendingPublicationFunction"), &mut peer)
+            .has_own_property(js_string!("pendingPublicationFunction"), peer.access())
             .unwrap()
     );
     assert_eq!(
@@ -1137,14 +1150,14 @@ fn assert_caught_preflight_stop_keeps_preparation_private(source: &str, native_d
                 if args[1].as_string() != Some(js_string!("pendingAfterStop")) {
                     let reflect = context
                         .global_object()
-                        .get(js_string!("Reflect"), context)?
+                        .get(js_string!("Reflect"), context.access())?
                         .as_object()
                         .unwrap();
                     let get = reflect
-                        .get(js_string!("getOwnPropertyDescriptor"), context)?
+                        .get(js_string!("getOwnPropertyDescriptor"), context.access())?
                         .as_callable()
                         .unwrap();
-                    return get.call(&reflect.into(), args, context);
+                    return get.call(&reflect.into(), args, context.access());
                 }
                 {
                     let first = {
@@ -1177,7 +1190,9 @@ fn assert_caught_preflight_stop_keeps_preparation_private(source: &str, native_d
             NativeFunction::from_fn_ptr(|_, args, context| {
                 if args[1].as_string() == Some(js_string!("pendingAfterStop")) {
                     let descriptor = args[2].as_object().unwrap();
-                    let function = descriptor.get(js_string!("value"), context)?.as_object();
+                    let function = descriptor
+                        .get(js_string!("value"), context.access())?
+                        .as_object();
                     context
                         .get_data::<CallbackEffects>()
                         .unwrap()
@@ -1187,7 +1202,7 @@ fn assert_caught_preflight_stop_keeps_preparation_private(source: &str, native_d
                     let target = args[0].as_object().unwrap();
                     let key = args[1].to_property_key(context.access())?;
                     let descriptor = args[2].to_property_descriptor(context.access())?;
-                    target.define_property_or_throw(key, descriptor, context)?;
+                    target.define_property_or_throw(key, descriptor, context.access())?;
                 }
                 Ok(JsValue::new(true))
             }),
@@ -1209,7 +1224,7 @@ fn assert_caught_preflight_stop_keeps_preparation_private(source: &str, native_d
         .unwrap();
     let target = owner
         .global_object()
-        .get(js_string!("pendingTarget"), &mut owner)
+        .get(js_string!("pendingTarget"), owner.access())
         .unwrap()
         .as_object()
         .unwrap();
@@ -1247,7 +1262,7 @@ fn assert_caught_preflight_stop_keeps_preparation_private(source: &str, native_d
     );
     assert!(
         !target
-            .has_own_property(js_string!("pendingAfterStop"), &mut context)
+            .has_own_property(js_string!("pendingAfterStop"), context.access())
             .unwrap(),
         "forwarding through a Proxy must not publish the pending function"
     );
@@ -1321,7 +1336,7 @@ fn proxy_global_with_a_guest_descriptor_trap() -> (Context, Context, JsObject) {
         .unwrap();
     let target = owner
         .global_object()
-        .get(js_string!("refusedEntryTarget"), &mut owner)
+        .get(js_string!("refusedEntryTarget"), owner.access())
         .unwrap()
         .as_object()
         .unwrap();
@@ -1373,12 +1388,16 @@ fn assert_refused_descriptor_trap_leaves_the_context_ready_for_retry(
         assert!(!outcome.report.effects_started());
         assert_eq!(outcome.report.instructions(), 0);
         assert!(!context.realm().scope().has_binding(&name));
-        assert!(!target.has_own_property(name.clone(), &mut owner).unwrap());
+        assert!(
+            !target
+                .has_own_property(name.clone(), owner.access())
+                .unwrap()
+        );
     }
     assert_eq!(
         owner
             .global_object()
-            .get(js_string!("refusedEntryTrapRuns"), &mut owner)
+            .get(js_string!("refusedEntryTrapRuns"), owner.access())
             .unwrap(),
         JsValue::new(0)
     );
@@ -1437,10 +1456,10 @@ fn assert_refused_direct_guest_entry_leaves_the_context_ready_for_retry(entry: D
     for _ in 0..3 {
         let error = match entry {
             DirectGuestEntry::Call => function
-                .call(&JsValue::undefined(), &[JsValue::new(1)], &mut context)
+                .call(&JsValue::undefined(), &[JsValue::new(1)], context.access())
                 .unwrap_err(),
             DirectGuestEntry::Construct => function
-                .construct(&[JsValue::new(1)], None, &mut context)
+                .construct(&[JsValue::new(1)], None, context.access())
                 .unwrap_err(),
         };
         assert_eq!(

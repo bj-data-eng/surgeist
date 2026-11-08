@@ -387,7 +387,7 @@ impl Json {
 
             // b. Let rootName be the empty String.
             // c. Perform ! CreateDataPropertyOrThrow(root, rootName, unfiltered).
-            root.create_data_property_or_throw(js_string!(), unfiltered, context)
+            root.create_data_property_or_throw(js_string!(), unfiltered, context.access())
                 .js_expect("CreateDataPropertyOrThrow should never throw here")?;
 
             // d. Return ? InternalizeJSONProperty(root, rootName, reviver).
@@ -419,7 +419,7 @@ impl Json {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let val be ? Get(holder, name).
-        let val = holder.get(name.clone(), context)?;
+        let val = holder.get(name.clone(), context.access())?;
 
         // 2. If Type(val) is Object, then
         if let Some(obj) = val.as_object() {
@@ -457,7 +457,7 @@ impl Json {
                     // 4. Else,
                     else {
                         // a. Perform ? CreateDataProperty(val, prop, newElement).
-                        obj.create_data_property(i, new_element, context)?;
+                        obj.create_data_property(i, new_element, context.access())?;
                     }
                 }
             }
@@ -501,7 +501,7 @@ impl Json {
                     // 3. Else,
                     else {
                         // a. Perform ? CreateDataProperty(val, P, newElement).
-                        obj.create_data_property(p, new_element, context)?;
+                        obj.create_data_property(p, new_element, context.access())?;
                     }
                 }
             }
@@ -545,7 +545,7 @@ impl Json {
                 ctx_obj.create_data_property_or_throw(
                     js_string!("source"),
                     JsValue::from(js_string!(source_text.as_str())),
-                    context,
+                    context.access(),
                 )?;
             }
         }
@@ -554,7 +554,7 @@ impl Json {
         reviver.call(
             &holder.clone().into(),
             &[name.into(), val, ctx_obj.into()],
-            context,
+            context.access(),
         )
     }
 
@@ -619,11 +619,11 @@ impl Json {
         let obj = JsObject::from_proto_and_data(context.runtime(), None::<JsObject>, RawJson)?;
 
         // 5. Perform ! CreateDataPropertyOrThrow(obj, "rawJSON", jsonString).
-        obj.create_data_property_or_throw(js_string!("rawJSON"), json_string, context)
+        obj.create_data_property_or_throw(js_string!("rawJSON"), json_string, context.access())
             .js_expect("CreateDataPropertyOrThrow should never throw here")?;
 
         // 6. Perform ! SetIntegrityLevel(obj, frozen).
-        obj.set_integrity_level(IntegrityLevel::Frozen, context)
+        obj.set_integrity_level(IntegrityLevel::Frozen, context.access())
             .js_expect("SetIntegrityLevel should never throw here")?;
 
         // 7. Return obj.
@@ -705,7 +705,7 @@ impl Json {
                     while k < len {
                         // a. Let prop be ! ToString(𝔽(k)).
                         // b. Let v be ? Get(replacer, prop).
-                        let v = replacer_obj.get(k, context)?;
+                        let v = replacer_obj.get(k, context.access())?;
 
                         // c. Let item be undefined.
                         // d. If Type(v) is String, set item to v.
@@ -787,7 +787,11 @@ impl Json {
 
         // 10. Perform ! CreateDataPropertyOrThrow(wrapper, the empty String, value).
         wrapper
-            .create_data_property_or_throw(js_string!(), args.get_or_undefined(0).clone(), context)
+            .create_data_property_or_throw(
+                js_string!(),
+                args.get_or_undefined(0).clone(),
+                context.access(),
+            )
             .js_expect("CreateDataPropertyOrThrow should never fail here")?;
 
         // 11. Let state be the Record { [[ReplacerFunction]]: ReplacerFunction, [[Stack]]: stack, [[Indent]]: indent, [[Gap]]: gap, [[PropertyList]]: PropertyList }.
@@ -820,7 +824,7 @@ impl Json {
         context: &mut Context,
     ) -> JsResult<Option<JsString>> {
         // 1. Let value be ? Get(holder, key).
-        let mut value = holder.get(key.clone(), context)?;
+        let mut value = holder.get(key.clone(), context.access())?;
 
         // 2. If Type(value) is Object or BigInt, then
         if value.is_object() || value.is_bigint() {
@@ -830,14 +834,18 @@ impl Json {
             // b. If IsCallable(toJSON) is true, then
             if let Some(obj) = to_json.as_callable() {
                 // i. Set value to ? Call(toJSON, value, « key »).
-                value = obj.call(&value, &[key.clone().into()], context)?;
+                value = obj.call(&value, &[key.clone().into()], context.access())?;
             }
         }
 
         // 3. If state.[[ReplacerFunction]] is not undefined, then
         if let Some(obj) = &state.replacer_function {
             // a. Set value to ? Call(state.[[ReplacerFunction]], holder, « key, value »).
-            value = obj.call(&holder.clone().into(), &[key.into(), value], context)?;
+            value = obj.call(
+                &holder.clone().into(),
+                &[key.into(), value],
+                context.access(),
+            )?;
         }
 
         // 4. If Type(value) is Object, then
@@ -865,7 +873,7 @@ impl Json {
             // e. Else if value has a [[IsRawJSON]] internal slot, then
             else if obj.is::<RawJson>() {
                 // i. Return the value of the "rawJSON" property of value.
-                let raw = obj.get(js_string!("rawJSON"), context)?;
+                let raw = obj.get(js_string!("rawJSON"), context.access())?;
                 return Ok(raw.as_string());
             }
         }

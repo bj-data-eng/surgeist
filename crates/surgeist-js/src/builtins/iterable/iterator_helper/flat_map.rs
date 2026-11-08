@@ -72,7 +72,11 @@ impl FlatMap {
                         return CoroutineState::Break(Ok(()));
                     };
                     let mapped_value = if_abrupt_close_iterator!(
-                        mapper.call(&JsValue::undefined(), &[value, counter.into()], context),
+                        mapper.call(
+                            &JsValue::undefined(),
+                            &[value, counter.into()],
+                            context.access()
+                        ),
                         iterated,
                         context
                     );

@@ -46,7 +46,7 @@ impl JsGeneratorFunction {
         args: &[JsValue],
         context: &mut Context,
     ) -> JsResult<JsGenerator> {
-        let value = self.inner.call(this, args, context)?;
+        let value = self.inner.call(this, args, context.access())?;
         let obj = value
             .as_object()
             .ok_or_else(|| {

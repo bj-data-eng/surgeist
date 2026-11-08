@@ -32,7 +32,7 @@ fn native_callbacks_cannot_return_or_throw_foreign_objects() {
     .unwrap();
     for outcome in 0..3 {
         let error = function
-            .call(&JsValue::undefined(), &[outcome.into()], &mut context)
+            .call(&JsValue::undefined(), &[outcome.into()], context.access())
             .unwrap_err();
         assert!(
             error
@@ -54,7 +54,7 @@ fn native_async_job_owns_captures_after_the_function_drops() {
         capture,
     );
     let promise = callback
-        .call(&JsValue::undefined(), &[], &mut context)
+        .call(&JsValue::undefined(), &[], context.access())
         .unwrap()
         .as_object()
         .unwrap();
@@ -112,9 +112,11 @@ fn nested_native_invocation_restores_the_outer_activation() {
                 for throws in [false, true] {
                     let args = [JsValue::from(throws)];
                     let outcome = if construct {
-                        inner.construct(&args, None, context).map(JsValue::from)
+                        inner
+                            .construct(&args, None, context.access())
+                            .map(JsValue::from)
                     } else {
-                        inner.call(&JsValue::undefined(), &args, context)
+                        inner.call(&JsValue::undefined(), &args, context.access())
                     };
                     assert_eq!(outcome.is_err(), throws);
                     assert!(context.realm() == &realm);
@@ -128,7 +130,7 @@ fn nested_native_invocation_restores_the_outer_activation() {
     .to_js_function(context.realm())
     .unwrap();
     outer
-        .call(&JsValue::undefined(), &[], context)
+        .call(&JsValue::undefined(), &[], context.access())
         .expect("outer invocation");
 }
 
@@ -264,7 +266,7 @@ fn closure_capture_clone() {
                         .writable(false)
                         .enumerable(false)
                         .configurable(false),
-                    ctx,
+                    ctx.access(),
                 )
                 .unwrap();
 

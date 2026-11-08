@@ -117,7 +117,7 @@ where
                 .into());
         };
 
-        let length = object.get(StaticJsStrings::LENGTH, context)?;
+        let length = object.get(StaticJsStrings::LENGTH, context.access())?;
         // If there's no length, return an error.
         if length.is_null_or_undefined() {
             return Err(js_error!(TypeError: "Not an array"));
@@ -134,7 +134,7 @@ where
         };
         let mut vec = Vec::with_capacity(length);
         for i in 0..length {
-            let value = object.get(i, context)?;
+            let value = object.get(i, context.access())?;
             vec.push(T::try_from_js(&value, context)?);
         }
 

@@ -48,7 +48,7 @@ impl SetClassPrototype {
                         .writable(false)
                         .enumerable(false)
                         .configurable(false),
-                    context,
+                    context.access(),
                 )
                 .expect("cannot fail per spec");
             class_object

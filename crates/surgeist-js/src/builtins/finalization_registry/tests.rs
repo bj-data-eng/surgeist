@@ -182,7 +182,7 @@ fn cleanup_retains_job_callback_host_data() {
         ) -> JsResult<JsValue> {
             let host = job.host_defined().downcast_ref::<HostData>().unwrap();
             assert!(host.0.is_ordinary());
-            job.callback().call(this, args, context)
+            job.callback().call(this, args, context.access())
         }
     }
 

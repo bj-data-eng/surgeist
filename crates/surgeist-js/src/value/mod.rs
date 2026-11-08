@@ -934,7 +934,7 @@ impl JsValue {
         // 1. Assert: input is an ECMAScript language value. (always a value not need to check)
         // 2. If Type(input) is Object, then
         if let Some(o) = self.as_object() {
-            return o.to_primitive(context, preferred_type);
+            return o.to_primitive(context.access(), preferred_type);
         }
 
         // 3. Return input.
@@ -974,7 +974,7 @@ impl JsValue {
                 .into()),
             JsVariant::BigInt(b) => Ok(b),
             JsVariant::Object(o) => o
-                .to_primitive(context, PreferredType::Number)?
+                .to_primitive(context.access(), PreferredType::Number)?
                 .to_bigint(context.access()),
             JsVariant::Symbol(_) => Err(JsNativeError::typ()
                 .with_message("cannot convert Symbol to a BigInt")
@@ -1111,7 +1111,7 @@ impl JsValue {
             // Cannot infinitely recurse since it is guaranteed that `to_primitive` returns a non-object
             // value or errors.
             JsVariant::Object(o) => o
-                .to_primitive(context, PreferredType::String)?
+                .to_primitive(context.access(), PreferredType::String)?
                 .to_property_key(context.access()),
         }
     }
@@ -1533,7 +1533,7 @@ impl JsValue {
                     .with_message("Cannot construct a property descriptor from a non-object")
                     .into()
             })
-            .and_then(|obj| obj.to_property_descriptor(context))
+            .and_then(|obj| obj.to_property_descriptor(context.access()))
     }
 
     /// `typeof` operator. Returns a string representing the type of the

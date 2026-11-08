@@ -358,7 +358,7 @@ impl Error {
         };
 
         // 5. Return ? CreateDataPropertyOrThrow(E, "stack", value).
-        e.create_data_property_or_throw(js_string!("stack"), value.clone(), context)
+        e.create_data_property_or_throw(js_string!("stack"), value.clone(), context.access())
             .map(Into::into)
     }
 
@@ -385,7 +385,7 @@ impl Error {
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not an Object"))?;
 
         // 3. Let name be ? Get(O, "name").
-        let name = o.get(js_string!("name"), context)?;
+        let name = o.get(js_string!("name"), context.access())?;
 
         // 4. If name is undefined, set name to "Error"; otherwise set name to ? ToString(name).
         let name = if name.is_undefined() {
@@ -395,7 +395,7 @@ impl Error {
         };
 
         // 5. Let msg be ? Get(O, "message").
-        let msg = o.get(js_string!("message"), context)?;
+        let msg = o.get(js_string!("message"), context.access())?;
 
         // 6. If msg is undefined, set msg to the empty String; otherwise set msg to ? ToString(msg).
         let msg = if msg.is_undefined() {

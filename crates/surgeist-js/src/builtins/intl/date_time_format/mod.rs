@@ -241,7 +241,7 @@ impl BuiltInConstructor for DateTimeFormat {
                     .writable(false)
                     .enumerable(false)
                     .configurable(false),
-                context,
+                context.access(),
             )?;
             // b. Return this.
             Ok(this)
@@ -683,7 +683,7 @@ pub(crate) fn create_date_time_format(
     // c. If hc is null, set hc to resolvedLocaleData.[[hourCycle]].
 
     // 15. Let timeZone be ? Get(options, "timeZone").
-    let time_zone = options.get(js_string!("timeZone"), context)?;
+    let time_zone = options.get(js_string!("timeZone"), context.access())?;
 
     // 16. If timeZone is undefined, then
     let time_zone = if time_zone.is_undefined() {
@@ -1022,7 +1022,7 @@ fn unwrap_date_time_format(
 
         //    a. Return ? Get(dtf, %Intl%.[[FallbackSymbol]]).
         if let Some(dtf) = dtf_o
-            .get(fallback_symbol, context)?
+            .get(fallback_symbol, context.access())?
             .as_object()
             .and_then(|o| o.downcast::<DateTimeFormat>().ok())
         {

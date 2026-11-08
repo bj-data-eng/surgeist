@@ -178,7 +178,7 @@ fn waiterlist_block_indexedposition_wake() {
                     .unwrap()
                     .as_object()
                     .unwrap()
-                    .get(js_string!("value"), context)
+                    .get(js_string!("value"), context.access())
                     .unwrap(),
                     context,
                 )

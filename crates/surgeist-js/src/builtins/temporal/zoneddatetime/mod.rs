@@ -1487,7 +1487,7 @@ impl ZonedDateTime {
             new_round_to.create_data_property_or_throw(
                 js_string!("smallestUnit"),
                 param_string,
-                context,
+                context.access(),
             )?;
             new_round_to
         } else {
@@ -1746,7 +1746,7 @@ impl ZonedDateTime {
             obj.create_data_property_or_throw(
                 js_string!("direction"),
                 JsValue::from(param_str.clone()),
-                context,
+                context.access(),
             )?;
             obj
         // 6. Else,
@@ -2109,7 +2109,7 @@ pub(crate) fn to_zoned_date_time_fields(
     context: &mut Context,
 ) -> JsResult<(ZonedDateTimeFields, Option<TimeZone>)> {
     let day = partial_object
-        .get(js_string!("day"), context)?
+        .get(js_string!("day"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             finite
@@ -2118,7 +2118,7 @@ pub(crate) fn to_zoned_date_time_fields(
         })
         .transpose()?;
     let hour = partial_object
-        .get(js_string!("hour"), context)?
+        .get(js_string!("hour"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             Ok::<u8, JsError>(finite.as_integer_with_truncation::<u8>())
@@ -2132,7 +2132,7 @@ pub(crate) fn to_zoned_date_time_fields(
         (None, None)
     } else {
         let era = partial_object
-            .get(js_string!("era"), context)?
+            .get(js_string!("era"), context.access())?
             .map(|v| {
                 let v = v.to_primitive(context.access(), PreferredType::String)?;
                 let Some(era) = v.as_string() else {
@@ -2147,7 +2147,7 @@ pub(crate) fn to_zoned_date_time_fields(
             })
             .transpose()?;
         let era_year = partial_object
-            .get(js_string!("eraYear"), context)?
+            .get(js_string!("eraYear"), context.access())?
             .map(|v| {
                 let finite = v.to_finitef64(context)?;
                 Ok::<i32, JsError>(finite.as_integer_with_truncation::<i32>())
@@ -2156,7 +2156,7 @@ pub(crate) fn to_zoned_date_time_fields(
         (era, era_year)
     };
     let microsecond = partial_object
-        .get(js_string!("microsecond"), context)?
+        .get(js_string!("microsecond"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             Ok::<u16, JsError>(finite.as_integer_with_truncation::<u16>())
@@ -2164,7 +2164,7 @@ pub(crate) fn to_zoned_date_time_fields(
         .transpose()?;
 
     let millisecond = partial_object
-        .get(js_string!("millisecond"), context)?
+        .get(js_string!("millisecond"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             Ok::<u16, JsError>(finite.as_integer_with_truncation::<u16>())
@@ -2172,7 +2172,7 @@ pub(crate) fn to_zoned_date_time_fields(
         .transpose()?;
 
     let minute = partial_object
-        .get(js_string!("minute"), context)?
+        .get(js_string!("minute"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             Ok::<u8, JsError>(finite.as_integer_with_truncation::<u8>())
@@ -2180,7 +2180,7 @@ pub(crate) fn to_zoned_date_time_fields(
         .transpose()?;
 
     let month = partial_object
-        .get(js_string!("month"), context)?
+        .get(js_string!("month"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             finite
@@ -2190,7 +2190,7 @@ pub(crate) fn to_zoned_date_time_fields(
         .transpose()?;
 
     let month_code = partial_object
-        .get(js_string!("monthCode"), context)?
+        .get(js_string!("monthCode"), context.access())?
         .map(|v| {
             let v = v.to_primitive(context.access(), PreferredType::String)?;
             let Some(month_code) = v.as_string() else {
@@ -2203,7 +2203,7 @@ pub(crate) fn to_zoned_date_time_fields(
         .transpose()?;
 
     let nanosecond = partial_object
-        .get(js_string!("nanosecond"), context)?
+        .get(js_string!("nanosecond"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             Ok::<u16, JsError>(finite.as_integer_with_truncation::<u16>())
@@ -2211,12 +2211,12 @@ pub(crate) fn to_zoned_date_time_fields(
         .transpose()?;
 
     let offset = partial_object
-        .get(js_string!("offset"), context)?
+        .get(js_string!("offset"), context.access())?
         .map(|v| to_offset_string(v, context))
         .transpose()?;
 
     let second = partial_object
-        .get(js_string!("second"), context)?
+        .get(js_string!("second"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             Ok::<u8, JsError>(finite.as_integer_with_truncation::<u8>())
@@ -2227,7 +2227,7 @@ pub(crate) fn to_zoned_date_time_fields(
         ZdtFieldsType::NoTimeZone => None,
         ZdtFieldsType::TimeZoneNotRequired | ZdtFieldsType::TimeZoneRequired => {
             let time_zone = partial_object
-                .get(js_string!("timeZone"), context)?
+                .get(js_string!("timeZone"), context.access())?
                 .map(|v| to_temporal_timezone_identifier(v, context))
                 .transpose()?;
             if zdt_fields_type == ZdtFieldsType::TimeZoneRequired && time_zone.is_none() {
@@ -2240,7 +2240,7 @@ pub(crate) fn to_zoned_date_time_fields(
     };
 
     let year = partial_object
-        .get(js_string!("year"), context)?
+        .get(js_string!("year"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             Ok::<i32, JsError>(finite.as_integer_with_truncation::<i32>())

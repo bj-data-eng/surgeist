@@ -1,14 +1,14 @@
 use crate::test::{TestAction, run_test_actions_with};
 use crate::timers as interval;
-use surgeist_js::context::time::FixedClock;
-use surgeist_js::context::{Clock, ContextBuilder};
-use surgeist_js::job::{JobExecutor, SimpleJobExecutor};
-use surgeist_js::{Context, js_str};
 use futures_lite::future::poll_once;
 use indoc::indoc;
 use std::cell::RefCell;
 use std::pin::pin;
 use std::rc::Rc;
+use surgeist_js::context::time::FixedClock;
+use surgeist_js::context::{Clock, ContextBuilder};
+use surgeist_js::job::{JobExecutor, SimpleJobExecutor};
+use surgeist_js::{Context, js_str};
 
 fn create_context(clock: Rc<impl Clock + 'static>) -> Context {
     let mut context = ContextBuilder::default().clock(clock).build().unwrap();
@@ -32,15 +32,18 @@ fn two_zero_delay_timeouts_both_fire() {
                 clock.forward(1);
                 ctx.run_jobs().unwrap();
 
-                let order = ctx.global_object().get(js_str!("order"), ctx).unwrap();
+                let order = ctx
+                    .global_object()
+                    .get(js_str!("order"), ctx.access())
+                    .unwrap();
                 let order = order.as_object().unwrap();
                 assert_eq!(
-                    order.get(js_str!("length"), ctx).unwrap().as_i32(),
+                    order.get(js_str!("length"), ctx.access()).unwrap().as_i32(),
                     Some(2),
                     "both callbacks must fire"
                 );
-                assert_eq!(order.get(0usize, ctx).unwrap().as_i32(), Some(1));
-                assert_eq!(order.get(1usize, ctx).unwrap().as_i32(), Some(2));
+                assert_eq!(order.get(0usize, ctx.access()).unwrap().as_i32(), Some(1));
+                assert_eq!(order.get(1usize, ctx.access()).unwrap().as_i32(), Some(2));
             }),
         ],
         context,
@@ -59,13 +62,19 @@ fn set_timeout_basic() {
                 setTimeout(() => { called = true; });
             "#}),
             TestAction::inspect_context(move |ctx| {
-                let called = ctx.global_object().get(js_str!("called"), ctx).unwrap();
+                let called = ctx
+                    .global_object()
+                    .get(js_str!("called"), ctx.access())
+                    .unwrap();
                 assert_eq!(called.as_boolean(), Some(false));
 
                 clock.forward(1);
                 ctx.run_jobs().unwrap();
 
-                let called = ctx.global_object().get(js_str!("called"), ctx).unwrap();
+                let called = ctx
+                    .global_object()
+                    .get(js_str!("called"), ctx.access())
+                    .unwrap();
                 assert_eq!(called.as_boolean(), Some(true));
             }),
         ],
@@ -90,7 +99,10 @@ fn set_timeout_cancel() {
                 let job_executor = ctx.downcast_job_executor::<SimpleJobExecutor>().unwrap();
                 let clock = clock1;
 
-                let called = ctx.global_object().get(js_str!("called"), ctx).unwrap();
+                let called = ctx
+                    .global_object()
+                    .get(js_str!("called"), ctx.access())
+                    .unwrap();
                 let ctx = &RefCell::new(ctx);
                 let mut event_loop = pin!(poll_once(job_executor.run_jobs_async(ctx)));
 
@@ -102,7 +114,7 @@ fn set_timeout_cancel() {
 
                 let global_object = ctx.borrow().global_object();
                 let called = global_object
-                    .get(js_str!("called"), &mut ctx.borrow_mut())
+                    .get(js_str!("called"), ctx.borrow_mut().access())
                     .unwrap();
                 assert_eq!(called.as_boolean(), Some(false));
                 assert!(event_loop.as_mut().await.is_none());
@@ -111,7 +123,10 @@ fn set_timeout_cancel() {
             TestAction::inspect_context(|ctx| {
                 let clock = clock2;
                 clock.forward(100);
-                let called = ctx.global_object().get(js_str!("called"), ctx).unwrap();
+                let called = ctx
+                    .global_object()
+                    .get(js_str!("called"), ctx.access())
+                    .unwrap();
                 // Should still be false, as it was cancelled.
                 assert_eq!(called.as_boolean(), Some(false));
             }),
@@ -142,7 +157,7 @@ fn set_timeout_delay() {
                 // As long as the clock isn't updated, `called` will always be false.
                 for _ in 0..5 {
                     let called = global_object
-                        .get(js_str!("called"), &mut ctx.borrow_mut())
+                        .get(js_str!("called"), ctx.borrow_mut().access())
                         .unwrap();
                     assert_eq!(called.as_boolean(), Some(false));
                     assert!(event_loop.as_mut().await.is_none());
@@ -152,7 +167,7 @@ fn set_timeout_delay() {
                 clock.forward(50);
                 assert!(event_loop.as_mut().await.is_none());
                 let called = global_object
-                    .get(js_str!("called"), &mut ctx.borrow_mut())
+                    .get(js_str!("called"), ctx.borrow_mut().access())
                     .unwrap();
                 assert_eq!(called.as_boolean(), Some(false));
 
@@ -161,7 +176,7 @@ fn set_timeout_delay() {
                 // jobs on the queue.
                 assert!(event_loop.as_mut().await.is_some());
                 let called = global_object
-                    .get(js_str!("called"), &mut ctx.borrow_mut())
+                    .get(js_str!("called"), ctx.borrow_mut().access())
                     .unwrap();
                 assert_eq!(called.as_boolean(), Some(true));
             }),
@@ -196,7 +211,7 @@ fn set_interval_delay() {
                 // As long as the clock isn't updated, `called` will always be false.
                 for _ in 0..5 {
                     let called = global_object
-                        .get(js_str!("called"), &mut ctx.borrow_mut())
+                        .get(js_str!("called"), ctx.borrow_mut().access())
                         .unwrap();
                     assert_eq!(called.as_i32(), Some(0));
                     assert!(event_loop.as_mut().await.is_none());
@@ -206,7 +221,7 @@ fn set_interval_delay() {
                 clock.forward(50);
                 assert!(event_loop.as_mut().await.is_none());
                 let called = global_object
-                    .get(js_str!("called"), &mut ctx.borrow_mut())
+                    .get(js_str!("called"), ctx.borrow_mut().access())
                     .unwrap();
                 assert_eq!(called.as_i32(), Some(0));
 
@@ -214,7 +229,7 @@ fn set_interval_delay() {
                 clock.forward(51);
                 assert!(event_loop.as_mut().await.is_none());
                 let called = global_object
-                    .get(js_str!("called"), &mut ctx.borrow_mut())
+                    .get(js_str!("called"), ctx.borrow_mut().access())
                     .unwrap();
                 assert_eq!(called.as_i32(), Some(1));
 
@@ -222,7 +237,7 @@ fn set_interval_delay() {
                 clock.forward(50);
                 assert!(event_loop.as_mut().await.is_none());
                 let called = global_object
-                    .get(js_str!("called"), &mut ctx.borrow_mut())
+                    .get(js_str!("called"), ctx.borrow_mut().access())
                     .unwrap();
                 assert_eq!(called.as_i32(), Some(1));
 
@@ -230,7 +245,7 @@ fn set_interval_delay() {
                 clock.forward(51);
                 assert!(event_loop.as_mut().await.is_none());
                 let called = global_object
-                    .get(js_str!("called"), &mut ctx.borrow_mut())
+                    .get(js_str!("called"), ctx.borrow_mut().access())
                     .unwrap();
                 assert_eq!(called.as_i32(), Some(2));
 
@@ -238,7 +253,7 @@ fn set_interval_delay() {
                 clock.forward(500);
                 assert!(event_loop.as_mut().await.is_none());
                 let called = global_object
-                    .get(js_str!("called"), &mut ctx.borrow_mut())
+                    .get(js_str!("called"), ctx.borrow_mut().access())
                     .unwrap();
                 assert_eq!(called.as_i32(), Some(3));
             }),
@@ -249,12 +264,18 @@ fn set_interval_delay() {
                 // Doesn't matter how long, this should not be called ever again.
                 clock.forward(500);
                 ctx.run_jobs().unwrap();
-                let called = ctx.global_object().get(js_str!("called"), ctx).unwrap();
+                let called = ctx
+                    .global_object()
+                    .get(js_str!("called"), ctx.access())
+                    .unwrap();
                 assert_eq!(called.as_i32(), Some(3));
 
                 clock.forward(500);
                 ctx.run_jobs().unwrap();
-                let called = ctx.global_object().get(js_str!("called"), ctx).unwrap();
+                let called = ctx
+                    .global_object()
+                    .get(js_str!("called"), ctx.access())
+                    .unwrap();
                 assert_eq!(called.as_i32(), Some(3));
             }),
         ],
@@ -308,10 +329,10 @@ fn clear_all_cancels_pending_timers_and_intervals() {
                 // Neither callback should have produced an observable effect.
                 let global = ctx.borrow().global_object();
                 let timeout_fired = global
-                    .get(js_str!("timeout_fired"), &mut ctx.borrow_mut())
+                    .get(js_str!("timeout_fired"), ctx.borrow_mut().access())
                     .unwrap();
                 let interval_fired = global
-                    .get(js_str!("interval_fired"), &mut ctx.borrow_mut())
+                    .get(js_str!("interval_fired"), ctx.borrow_mut().access())
                     .unwrap();
                 assert_eq!(
                     timeout_fired.as_boolean(),

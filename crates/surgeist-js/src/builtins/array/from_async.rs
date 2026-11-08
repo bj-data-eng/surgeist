@@ -91,7 +91,7 @@ impl Array {
                 // iv. If IsConstructor(C) is true, then
                 let a = if let Some(c) = this.as_constructor() {
                     // 1. Let A be ? Construct(C, « 𝔽(len) »).
-                    c.construct(&[len.into()], None, context)?
+                    c.construct(&[len.into()], None, context.access())?
                 }
                 // v. Else,
                 else {
@@ -130,7 +130,7 @@ impl Array {
             // i. If IsConstructor(C) is true, then
             let a = if let Some(c) = this.as_constructor() {
                 // 1. Let A be ? Construct(C).
-                c.construct(&[], None, context)?
+                c.construct(&[], None, context.access())?
             }
             // ii. Else,
             else {
@@ -173,7 +173,11 @@ impl Array {
             // ii. Perform ! Call(promiseCapability.[[Reject]], undefined, « result.[[Value]] »).
             resolvers
                 .reject
-                .call(&JsValue::undefined(), &[err.into_opaque(context)?], context)
+                .call(
+                    &JsValue::undefined(),
+                    &[err.into_opaque(context)?],
+                    context.access(),
+                )
                 .js_expect("resolving functions cannot fail")?;
         }
 
@@ -417,7 +421,8 @@ fn from_async_iterator(
                     // 7. If done is true,
                     if iterator_record.done() {
                         // a. Perform ? Set(A, "length", 𝔽(k), true).
-                        a.set(js_string!("length"), k, true, context).branch()?;
+                        a.set(js_string!("length"), k, true, context.access())
+                            .branch()?;
 
                         // b. Return Completion Record { [[Type]]: return, [[Value]]: A, [[Target]]: empty }.
                         // AsyncFunctionStart ( promiseCapability, asyncFunctionBody )
@@ -431,7 +436,7 @@ fn from_async_iterator(
                         global_state
                             .resolvers
                             .resolve
-                            .call(&JsValue::undefined(), &[a.into()], context)
+                            .call(&JsValue::undefined(), &[a.into()], context.access())
                             .js_expect("resolving functions cannot fail")
                             .branch()?;
 
@@ -448,7 +453,7 @@ fn from_async_iterator(
                         let mapped_value = match mapfn.call(
                             &global_state.this_arg,
                             &[next_value, k.into()],
-                            context,
+                            context.access(),
                         ) {
                             // 1. If value is an abrupt completion, then
                             Err(err) => {
@@ -522,7 +527,8 @@ fn from_async_iterator(
                     };
 
                     // 11. Let defineStatus be CreateDataPropertyOrThrow(A, Pk, mappedValue).
-                    sm = if let Err(err) = a.create_data_property_or_throw(k, mapped_value, context)
+                    sm = if let Err(err) =
+                        a.create_data_property_or_throw(k, mapped_value, context.access())
                     {
                         // 12. If defineStatus is an abrupt completion, return ? AsyncIteratorClose(iteratorRecord, defineStatus).
                         AsyncIteratorStateMachine::AsyncIteratorCloseStart {
@@ -555,7 +561,7 @@ fn from_async_iterator(
                         return CoroutineState::Break(Err(err));
                     };
 
-                    let Ok(value) = ret.call(&iterator.into(), &[], context) else {
+                    let Ok(value) = ret.call(&iterator.into(), &[], context.access()) else {
                         return CoroutineState::Break(Err(err));
                     };
 
@@ -586,7 +592,7 @@ fn from_async_iterator(
                 .call(
                     &JsValue::undefined(),
                     &[err.into_opaque(context).branch()?],
-                    context,
+                    context.access(),
                 )
                 .js_expect("resolving functions cannot fail")
                 .branch()?;
@@ -730,7 +736,8 @@ fn from_array_like(
                     // vii. Repeat, while k < len,
                     if k >= len {
                         // viii. Perform ? Set(A, "length", 𝔽(len), true).
-                        a.set(js_string!("length"), len, true, context).branch()?;
+                        a.set(js_string!("length"), len, true, context.access())
+                            .branch()?;
 
                         // ix. Return Completion Record { [[Type]]: return, [[Value]]: A, [[Target]]: empty }.
 
@@ -745,7 +752,7 @@ fn from_array_like(
                         global_state
                             .resolvers
                             .resolve
-                            .call(&JsValue::undefined(), &[a.into()], context)
+                            .call(&JsValue::undefined(), &[a.into()], context.access())
                             .js_expect("resolving functions cannot fail")
                             .branch()?;
 
@@ -754,7 +761,7 @@ fn from_array_like(
 
                     // 1. Let Pk be ! ToString(𝔽(k)).
                     // 2. Let kValue be ? Get(arrayLike, Pk).
-                    let k_value = array_like.get(k, context).branch()?;
+                    let k_value = array_like.get(k, context.access()).branch()?;
                     state_machine.set(ArrayLikeStateMachine::LoopContinue {
                         array_like,
                         a,
@@ -782,7 +789,11 @@ fn from_array_like(
                     if let Some(mapfn) = &global_state.mapfn {
                         // a. Let mappedValue be ? Call(mapfn, thisArg, « kValue, 𝔽(k) »).
                         let mapped_value = mapfn
-                            .call(&global_state.this_arg, &[k_value, k.into()], context)
+                            .call(
+                                &global_state.this_arg,
+                                &[k_value, k.into()],
+                                context.access(),
+                            )
                             .branch()?;
                         state_machine.set(ArrayLikeStateMachine::LoopEnd {
                             array_like,
@@ -820,7 +831,7 @@ fn from_array_like(
                     let mapped_value = mapped_value.unwrap_or(result);
 
                     // 6. Perform ? CreateDataPropertyOrThrow(A, Pk, mappedValue).
-                    a.create_data_property_or_throw(k, mapped_value, context)
+                    a.create_data_property_or_throw(k, mapped_value, context.access())
                         .branch()?;
 
                     // 7. Set k to k + 1.
@@ -850,7 +861,7 @@ fn from_array_like(
                 .call(
                     &JsValue::undefined(),
                     &[err.into_opaque(context).branch()?],
-                    context,
+                    context.access(),
                 )
                 .js_expect("resolving functions cannot fail")
                 .branch()?;

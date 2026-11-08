@@ -115,7 +115,7 @@ impl Decoder<'_> {
         for (key, id) in fields {
             let key = key.to_js_string();
             let value = self.value(*id, context)?;
-            object.set(key, value, true, context)?;
+            object.set(key, value, true, context.access())?;
         }
         Ok(JsValue::from(object))
     }
@@ -132,7 +132,7 @@ impl Decoder<'_> {
         for (index, item) in items.iter().enumerate() {
             if let Some(id) = item {
                 let value = self.value(*id, context)?;
-                array.set(index, value, true, context)?;
+                array.set(index, value, true, context.access())?;
             }
         }
         Ok(JsValue::from(array))

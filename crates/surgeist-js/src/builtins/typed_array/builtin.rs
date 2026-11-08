@@ -240,7 +240,7 @@ impl BuiltinTypedArray {
                 // iii. If mapping is true, then
                 let mapped_value = if let Some(map_fn) = &mapping {
                     // 1. Let mappedValue be ? Call(mapfn, thisArg, « kValue, 𝔽(k) »).
-                    map_fn.call(this_arg, &[k_value.clone(), k.into()], context)?
+                    map_fn.call(this_arg, &[k_value.clone(), k.into()], context.access())?
                 }
                 // iv. Else, let mappedValue be kValue.
                 else {
@@ -248,7 +248,7 @@ impl BuiltinTypedArray {
                 };
 
                 // v. Perform ? Set(targetObj, Pk, mappedValue, true).
-                target_obj.set(k, mapped_value, true, context)?;
+                target_obj.set(k, mapped_value, true, context.access())?;
             }
 
             // f. Assert: values is now an empty List.
@@ -273,12 +273,12 @@ impl BuiltinTypedArray {
         for k in 0..len {
             // a. Let Pk be ! ToString(𝔽(k)).
             // b. Let kValue be ? Get(arrayLike, Pk).
-            let k_value = array_like.get(k, context)?;
+            let k_value = array_like.get(k, context.access())?;
 
             // c. If mapping is true, then
             let mapped_value = if let Some(map_fn) = &mapping {
                 // i. Let mappedValue be ? Call(mapfn, thisArg, « kValue, 𝔽(k) »).
-                map_fn.call(this_arg, &[k_value, k.into()], context)?
+                map_fn.call(this_arg, &[k_value, k.into()], context.access())?
             }
             // d. Else, let mappedValue be kValue.
             else {
@@ -286,7 +286,7 @@ impl BuiltinTypedArray {
             };
 
             // e. Perform ? Set(targetObj, Pk, mappedValue, true).
-            target_obj.set(k, mapped_value, true, context)?;
+            target_obj.set(k, mapped_value, true, context.access())?;
         }
 
         // 13. Return targetObj.
@@ -336,7 +336,7 @@ impl BuiltinTypedArray {
             // a. Let kValue be items[k].
             // b. Let Pk be ! ToString(𝔽(k)).
             // c. Perform ? Set(newObj, Pk, kValue, true).
-            new_obj.set(k, k_value.clone(), true, context)?;
+            new_obj.set(k, k_value.clone(), true, context.access())?;
         }
 
         // 7. Return newObj.
@@ -394,7 +394,7 @@ impl BuiltinTypedArray {
 
         // 8. Return ! Get(O, ! ToString(𝔽(k))).
         Ok(o.upcast()
-            .get(k, context)
+            .get(k, context.access())
             .js_expect("Get cannot fail here")?)
     }
 
@@ -666,14 +666,14 @@ impl BuiltinTypedArray {
         for k in 0..len {
             // a. Let Pk be ! ToString(𝔽(k)).
             // b. Let kValue be ! Get(O, Pk).
-            let k_value = ta.get(k, context)?;
+            let k_value = ta.get(k, context.access())?;
 
             // c. Let testResult be ! ToBoolean(? Call(callbackfn, thisArg, « kValue, 𝔽(k), O »)).
             let test_result = callback_fn
                 .call(
                     args.get_or_undefined(1),
                     &[k_value, k.into(), this.clone()],
-                    context,
+                    context.access(),
                 )?
                 .to_boolean();
 
@@ -757,7 +757,7 @@ impl BuiltinTypedArray {
         for k in start_index..end_index {
             // a. Let Pk be ! ToString(𝔽(k)).
             // b. Perform ! Set(O, Pk, value, true).
-            ta.set(k, value.clone(), true, context)
+            ta.set(k, value.clone(), true, context.access())
                 .js_expect("Set cannot fail here")?;
 
             // c. Set k to k + 1.
@@ -809,14 +809,16 @@ impl BuiltinTypedArray {
         for k in 0..len {
             // a. Let Pk be ! ToString(𝔽(k)).
             // b. Let kValue be ! Get(O, Pk).
-            let k_value = ta.get(k, context).js_expect("Get cannot fail here")?;
+            let k_value = ta
+                .get(k, context.access())
+                .js_expect("Get cannot fail here")?;
 
             // c. Let selected be ! ToBoolean(? Call(callbackfn, thisArg, « kValue, 𝔽(k), O »)).#
             let selected = callback_fn
                 .call(
                     args.get_or_undefined(1),
                     &[k_value.clone(), k.into(), this.clone()],
-                    context,
+                    context.access(),
                 )?
                 .to_boolean();
 
@@ -837,7 +839,7 @@ impl BuiltinTypedArray {
         // 11. For each element e of kept, do
         for (n, e) in kept.iter().enumerate() {
             // a. Perform ! Set(A, ! ToString(𝔽(n)), e, true).
-            a.set(n, e.clone(), true, context)
+            a.set(n, e.clone(), true, context.access())
                 .js_expect("Set cannot fail here")?;
             // b. Set n to n + 1.
         }
@@ -1025,13 +1027,15 @@ impl BuiltinTypedArray {
         for k in 0..len {
             // a. Let Pk be ! ToString(𝔽(k)).
             // b. Let kValue be ! Get(O, Pk).
-            let k_value = ta.get(k, context).js_expect("Get cannot fail here")?;
+            let k_value = ta
+                .get(k, context.access())
+                .js_expect("Get cannot fail here")?;
 
             // c. Perform ? Call(callbackfn, thisArg, « kValue, 𝔽(k), O »).
             callback_fn.call(
                 args.get_or_undefined(1),
                 &[k_value, k.into(), this.clone()],
-                context,
+                context.access(),
             )?;
         }
 
@@ -1091,7 +1095,9 @@ impl BuiltinTypedArray {
         let ta = ta.upcast();
         for k in k..len {
             // a. Let elementK be ! Get(O, ! ToString(𝔽(k))).
-            let element_k = ta.get(k, context).js_expect("Get cannot fail here")?;
+            let element_k = ta
+                .get(k, context.access())
+                .js_expect("Get cannot fail here")?;
 
             // b. If SameValueZero(searchElement, elementK) is true, return true.
             if JsValue::same_value_zero(args.get_or_undefined(0), &element_k) {
@@ -1214,7 +1220,9 @@ impl BuiltinTypedArray {
             }
 
             // b. Let element be ! Get(O, ! ToString(𝔽(k))).
-            let element = ta.get(k, context).js_expect("Get cannot fail here")?;
+            let element = ta
+                .get(k, context.access())
+                .js_expect("Get cannot fail here")?;
 
             // c. If element is undefined, let next be the empty String; otherwise, let next be ! ToString(element).
             // d. Set R to the string-concatenation of R and next.
@@ -1381,17 +1389,19 @@ impl BuiltinTypedArray {
         for k in 0..len {
             // a. Let Pk be ! ToString(𝔽(k)).
             // b. Let kValue be ! Get(O, Pk).
-            let k_value = ta.get(k, context).js_expect("Get cannot fail here")?;
+            let k_value = ta
+                .get(k, context.access())
+                .js_expect("Get cannot fail here")?;
 
             // c. Let mappedValue be ? Call(callbackfn, thisArg, « kValue, 𝔽(k), O »).
             let mapped_value = callback_fn.call(
                 args.get_or_undefined(1),
                 &[k_value, k.into(), this.clone()],
-                context,
+                context.access(),
             )?;
 
             // d. Perform ? Set(A, Pk, mappedValue, true).
-            a.set(k, mapped_value, true, context)?;
+            a.set(k, mapped_value, true, context.access())?;
         }
 
         // 8. Return A.
@@ -1450,20 +1460,23 @@ impl BuiltinTypedArray {
             // b. Set accumulator to ! Get(O, Pk).
             // c. Set k to k + 1.
             k += 1;
-            ta.get(0, context).js_expect("Get cannot fail here")?
+            ta.get(0, context.access())
+                .js_expect("Get cannot fail here")?
         };
 
         // 10. Repeat, while k < len,
         for k in k..len {
             // a. Let Pk be ! ToString(𝔽(k)).
             // b. Let kValue be ! Get(O, Pk).
-            let k_value = ta.get(k, context).js_expect("Get cannot fail here")?;
+            let k_value = ta
+                .get(k, context.access())
+                .js_expect("Get cannot fail here")?;
 
             // c. Set accumulator to ? Call(callbackfn, undefined, « accumulator, kValue, 𝔽(k), O »).
             accumulator = callback_fn.call(
                 &JsValue::undefined(),
                 &[accumulator, k_value, k.into(), this.clone()],
-                context,
+                context.access(),
             )?;
 
             // d. Set k to k + 1.
@@ -1520,7 +1533,9 @@ impl BuiltinTypedArray {
         } else {
             // a. Let Pk be ! ToString(𝔽(k)).
             // b. Set accumulator to ! Get(O, Pk).
-            let accumulator = ta.get(len - 1, context).js_expect("Get cannot fail here")?;
+            let accumulator = ta
+                .get(len - 1, context.access())
+                .js_expect("Get cannot fail here")?;
 
             // c. Set k to k - 1.
             (accumulator, len - 1)
@@ -1530,13 +1545,15 @@ impl BuiltinTypedArray {
         for k in (0..k).rev() {
             // a. Let Pk be ! ToString(𝔽(k)).
             // b. Let kValue be ! Get(O, Pk).
-            let k_value = ta.get(k, context).js_expect("Get cannot fail here")?;
+            let k_value = ta
+                .get(k, context.access())
+                .js_expect("Get cannot fail here")?;
 
             // c. Set accumulator to ? Call(callbackfn, undefined, « accumulator, kValue, 𝔽(k), O »).
             accumulator = callback_fn.call(
                 &JsValue::undefined(),
                 &[accumulator, k_value, k.into(), this.clone()],
-                context,
+                context.access(),
             )?;
 
             // d. Set k to k - 1.
@@ -1580,15 +1597,19 @@ impl BuiltinTypedArray {
             // b. Let upperP be ! ToString(𝔽(upper)).
             // c. Let lowerP be ! ToString(𝔽(lower)).
             // d. Let lowerValue be ! Get(O, lowerP).
-            let lower_value = ta.get(lower, context).js_expect("Get cannot fail here")?;
+            let lower_value = ta
+                .get(lower, context.access())
+                .js_expect("Get cannot fail here")?;
             // e. Let upperValue be ! Get(O, upperP).
-            let upper_value = ta.get(upper, context).js_expect("Get cannot fail here")?;
+            let upper_value = ta
+                .get(upper, context.access())
+                .js_expect("Get cannot fail here")?;
 
             // f. Perform ! Set(O, lowerP, upperValue, true).
-            ta.set(lower, upper_value, true, context)
+            ta.set(lower, upper_value, true, context.access())
                 .js_expect("Set cannot fail here")?;
             // g. Perform ! Set(O, upperP, lowerValue, true).
-            ta.set(upper, lower_value, true, context)
+            ta.set(upper, lower_value, true, context.access())
                 .js_expect("Set cannot fail here")?;
 
             // h. Set lower to lower + 1.
@@ -1626,11 +1647,11 @@ impl BuiltinTypedArray {
             // b. Let Pk be ! ToString(𝔽(k)).
             // c. Let fromValue be ! Get(O, from).
             let value = ta
-                .get(len - k - 1, context)
+                .get(len - k - 1, context.access())
                 .js_expect("cannot fail per the spec")?;
             // d. Perform ! Set(A, Pk, fromValue, true).
             new_array
-                .set(k, value, true, context)
+                .set(k, value, true, context.access())
                 .js_expect("cannot fail per the spec")?;
             // e. Set k to k + 1.
         }
@@ -1964,7 +1985,7 @@ impl BuiltinTypedArray {
         for k in 0..src_length {
             // a. Let Pk be ! ToString(𝔽(k)).
             // b. Let value be ? Get(src, Pk).
-            let value = src.get(k, context)?;
+            let value = src.get(k, context.access())?;
 
             // c. Let targetIndex be 𝔽(targetOffset + k).
             let target_index = target_offset + k;
@@ -2076,11 +2097,13 @@ impl BuiltinTypedArray {
             for (n, k) in (start_index..end_index).enumerate() {
                 // 1. Let Pk be ! ToString(𝔽(k)).
                 // 2. Let kValue be ! Get(O, Pk).
-                let k_value = src.get(k, context).js_expect("Get cannot fail here")?;
+                let k_value = src
+                    .get(k, context.access())
+                    .js_expect("Get cannot fail here")?;
 
                 // 3. Perform ! Set(A, ! ToString(𝔽(n)), kValue, true).
                 target
-                    .set(n, k_value, true, context)
+                    .set(n, k_value, true, context.access())
                     .js_expect("Set cannot fail here")?;
 
                 // 4. Set k to k + 1.
@@ -2187,7 +2210,9 @@ impl BuiltinTypedArray {
         for k in 0..len {
             // a. Let Pk be ! ToString(𝔽(k)).
             // b. Let kValue be ! Get(O, Pk).
-            let k_value = ta.get(k, context).js_expect("Get cannot fail here")?;
+            let k_value = ta
+                .get(k, context.access())
+                .js_expect("Get cannot fail here")?;
 
             // c. Let testResult be ! ToBoolean(? Call(callbackfn, thisArg, « kValue, 𝔽(k), O »)).
             // d. If testResult is true, return true.
@@ -2195,7 +2220,7 @@ impl BuiltinTypedArray {
                 .call(
                     args.get_or_undefined(1),
                     &[k_value, k.into(), this.clone()],
-                    context,
+                    context.access(),
                 )?
                 .to_boolean()
             {
@@ -2252,7 +2277,7 @@ impl BuiltinTypedArray {
         // 9. Repeat, while j < len,
         for (j, item) in sorted.into_iter().enumerate() {
             // a. Perform ! Set(obj, ! ToString(𝔽(j)), sortedList[j], true).
-            ta.set(j, item, true, context)
+            ta.set(j, item, true, context.access())
                 .js_expect("cannot fail per spec")?;
 
             // b. Set j to j + 1.
@@ -2309,7 +2334,7 @@ impl BuiltinTypedArray {
         for (j, item) in sorted.into_iter().enumerate() {
             // a. Perform ! Set(A, ! ToString(𝔽(j)), sortedList[j], true).
             new_array
-                .set(j, item, true, context)
+                .set(j, item, true, context.access())
                 .js_expect("cannot fail per spec")?;
 
             // b. Set j to j + 1.
@@ -2496,7 +2521,7 @@ impl BuiltinTypedArray {
                 r.extend(separator.iter());
             }
 
-            let next_element = array.get(k, context)?;
+            let next_element = array.get(k, context.access())?;
 
             // Mirrors the behaviour of `join`, but the compiler
             // could unswitch the loop using `is_fixed_len`.
@@ -2601,11 +2626,12 @@ impl BuiltinTypedArray {
                 numeric_value.clone()
             } else {
                 // c. Else, let fromValue be ! Get(O, Pk).
-                ta.get(k, context).js_expect("cannot fail per the spec")?
+                ta.get(k, context.access())
+                    .js_expect("cannot fail per the spec")?
             };
             // d. Perform ! Set(A, Pk, fromValue, true).
             new_array
-                .set(k, value, true, context)
+                .set(k, value, true, context.access())
                 .js_expect("cannot fail per the spec")?;
 
             // e. Set k to k + 1.
@@ -2684,7 +2710,7 @@ impl BuiltinTypedArray {
         context: &mut Context,
     ) -> JsResult<JsObject<TypedArray>> {
         // 1. Let newTypedArray be ? Construct(constructor, argumentList).
-        let new_typed_array = constructor.construct(args, Some(constructor), context)?;
+        let new_typed_array = constructor.construct(args, Some(constructor), context.access())?;
 
         // 2. Let taRecord be ? ValidateTypedArray(newTypedArray, seq-cst).
         let (new_ta, buf_len) =
@@ -2772,7 +2798,7 @@ impl BuiltinTypedArray {
             // a. Let Pk be ! ToString(𝔽(k)).
             // b. Let kValue be the first element of values and remove that element from values.
             // c. Perform ? Set(O, Pk, kValue, true).
-            obj.set(k, k_value, true, context)?;
+            obj.set(k, k_value, true, context.access())?;
             // d. Set k to k + 1.
         }
 
@@ -3096,10 +3122,10 @@ impl BuiltinTypedArray {
         for k in 0..len {
             // a. Let Pk be ! ToString(𝔽(k)).
             // b. Let kValue be ? Get(arrayLike, Pk).
-            let k_value = array_like.get(k, context)?;
+            let k_value = array_like.get(k, context.access())?;
 
             // c. Perform ? Set(O, Pk, kValue, true).
-            obj.set(k, k_value, true, context)?;
+            obj.set(k, k_value, true, context.access())?;
         }
 
         Ok(obj)
@@ -3130,7 +3156,11 @@ fn compare_typed_array_elements(
     if let Some(compare_fn) = compare_fn {
         // a. Let v be ? ToNumber(? Call(comparefn, undefined, « x, y »)).
         let v = compare_fn
-            .call(&JsValue::undefined(), &[x.clone(), y.clone()], context)?
+            .call(
+                &JsValue::undefined(),
+                &[x.clone(), y.clone()],
+                context.access(),
+            )?
             .to_number(context.access())?;
 
         // b. If v is NaN, return +0𝔽.

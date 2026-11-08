@@ -45,7 +45,7 @@ impl Filter {
                     let selected = match predicate.call(
                         &JsValue::undefined(),
                         &[value.clone(), counter.into()],
-                        context,
+                        context.access(),
                     ) {
                         Ok(val) => val,
                         Err(err) => {

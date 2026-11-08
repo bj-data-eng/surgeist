@@ -841,7 +841,7 @@ impl PlainYearMonth {
         // 5. Let fields be ISODateToFields(calendar, yearMonth.[[ISODate]], year-month).
         // 6. Let inputFields be ? PrepareCalendarFields(calendar, item, « day », « », « »).
         let day = obj
-            .get(js_string!("day"), context)?
+            .get(js_string!("day"), context.access())?
             .map(|v| {
                 let finite = v.to_finitef64(context)?;
                 finite
@@ -1027,7 +1027,7 @@ pub(crate) fn to_year_month_calendar_fields(
         (None, None)
     } else {
         let era = partial_object
-            .get(js_string!("era"), context)?
+            .get(js_string!("era"), context.access())?
             .map(|v| {
                 let v = v.to_primitive(context.access(), crate::value::PreferredType::String)?;
                 let Some(era) = v.as_string() else {
@@ -1042,7 +1042,7 @@ pub(crate) fn to_year_month_calendar_fields(
             })
             .transpose()?;
         let era_year = partial_object
-            .get(js_string!("eraYear"), context)?
+            .get(js_string!("eraYear"), context.access())?
             .map(|v| {
                 let finite = v.to_finitef64(context)?;
                 Ok::<i32, JsError>(finite.as_integer_with_truncation::<i32>())
@@ -1052,7 +1052,7 @@ pub(crate) fn to_year_month_calendar_fields(
     };
 
     let month = partial_object
-        .get(js_string!("month"), context)?
+        .get(js_string!("month"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             finite
@@ -1061,7 +1061,7 @@ pub(crate) fn to_year_month_calendar_fields(
         })
         .transpose()?;
     let month_code = partial_object
-        .get(js_string!("monthCode"), context)?
+        .get(js_string!("monthCode"), context.access())?
         .map(|v| {
             let v = v.to_primitive(context.access(), crate::value::PreferredType::String)?;
             let Some(month_code) = v.as_string() else {
@@ -1074,7 +1074,7 @@ pub(crate) fn to_year_month_calendar_fields(
         .transpose()?;
 
     let year = partial_object
-        .get(js_string!("year"), context)?
+        .get(js_string!("year"), context.access())?
         .map(|v| {
             let finite = v.to_finitef64(context)?;
             Ok::<i32, JsError>(finite.as_integer_with_truncation::<i32>())

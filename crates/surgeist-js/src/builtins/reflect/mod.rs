@@ -94,7 +94,7 @@ impl Reflect {
                 .into());
         }
         let args = args_list.create_list_from_array_like(&[], context)?;
-        target.call(this_arg, &args, context)
+        target.call(this_arg, &args, context.access())
     }
 
     /// Calls a target function as a constructor with arguments.
@@ -133,7 +133,7 @@ impl Reflect {
 
         // 5. Return ? Construct(target, args, newTarget).
         target
-            .construct(&args, Some(&new_target), context)
+            .construct(&args, Some(&new_target), context.access())
             .map(JsValue::from)
     }
 

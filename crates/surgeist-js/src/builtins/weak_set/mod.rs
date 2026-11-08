@@ -99,7 +99,7 @@ impl BuiltInConstructor for WeakSet {
         }
 
         // 5. Let adder be ? Get(set, "add").
-        let adder = weak_set.get(js_string!("add"), context)?;
+        let adder = weak_set.get(js_string!("add"), context.access())?;
 
         // 6. If IsCallable(adder) is false, throw a TypeError exception.
         let adder = adder
@@ -113,7 +113,7 @@ impl BuiltInConstructor for WeakSet {
         //     a. Let next be ? IteratorStepValue(iteratorRecord).
         while let Some(next) = iterator_record.step_value(context)? {
             //     c. Let status be Completion(Call(adder, set, « next »)).
-            if let Err(status) = adder.call(&weak_set.clone().into(), &[next], context) {
+            if let Err(status) = adder.call(&weak_set.clone().into(), &[next], context.access()) {
                 //     d. IfAbruptCloseIterator(status, iteratorRecord).
                 return iterator_record.close(Err(status), context);
             }

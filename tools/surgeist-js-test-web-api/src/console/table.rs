@@ -112,7 +112,7 @@ fn extract_rows(obj: &JsObject, context: &mut Context) -> JsResult<TableData> {
     let mut rows = Vec::new();
 
     for index_str in &keys {
-        let val = obj.get(js_string!(index_str.as_str()), context)?;
+        let val = obj.get(js_string!(index_str.as_str()), context.access())?;
         let mut row = FxHashMap::default();
         row.insert(INDEX_COL.to_string(), index_str.clone());
 
@@ -122,7 +122,7 @@ fn extract_rows(obj: &JsObject, context: &mut Context) -> JsResult<TableData> {
                 if seen_cols.insert(col.clone()) {
                     col_names.push(col.clone());
                 }
-                let cell = val_obj.get(js_string!(col.as_str()), context)?;
+                let cell = val_obj.get(js_string!(col.as_str()), context.access())?;
                 row.insert(col.clone(), display_cell_value(&cell));
             }
         } else {
@@ -167,11 +167,11 @@ fn enumerable_keys(obj: &JsObject, context: &mut Context) -> JsResult<Vec<String
         ));
     };
     let length = keys_obj
-        .get(js_string!("length"), context)?
+        .get(js_string!("length"), context.access())?
         .to_length(context.access())?;
     let mut result = Vec::with_capacity(usize::try_from(length).unwrap_or(0));
     for i in 0..length {
-        let val = keys_obj.get(i, context)?;
+        let val = keys_obj.get(i, context.access())?;
         result.push(val.to_string(context.access())?.to_std_string_escaped());
     }
     Ok(result)
@@ -189,7 +189,7 @@ fn filter_columns(
     context: &mut Context,
 ) -> JsResult<Vec<String>> {
     let length = properties
-        .get(js_string!("length"), context)?
+        .get(js_string!("length"), context.access())?
         .to_length(context.access())?;
 
     let mut result = Vec::new();
@@ -203,7 +203,7 @@ fn filter_columns(
 
     // Add columns in the order specified by the properties array.
     for i in 0..length {
-        let val = properties.get(i, context)?;
+        let val = properties.get(i, context.access())?;
         let col = val.to_string(context.access())?.to_std_string_escaped();
         if seen.insert(col.clone()) {
             result.push(col);

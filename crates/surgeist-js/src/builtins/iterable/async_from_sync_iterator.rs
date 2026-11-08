@@ -91,7 +91,7 @@ impl AsyncFromSyncIterator {
 
         // 3. Let nextMethod be ! Get(asyncIterator, "next").
         let next_method = async_iterator
-            .get(js_string!("next"), context)
+            .get(js_string!("next"), context.access())
             .expect("async from sync iterator prototype must have next method");
 
         // 4. Let iteratorRecord be the Iterator Record { [[Iterator]]: asyncIterator, [[NextMethod]]: nextMethod, [[Done]]: false }.
@@ -189,7 +189,7 @@ impl AsyncFromSyncIterator {
                 // b. Perform ! Call(promiseCapability.[[Resolve]], undefined, « iterResult »).
                 promise_capability
                     .resolve()
-                    .call(&JsValue::undefined(), &[iter_result], context)
+                    .call(&JsValue::undefined(), &[iter_result], context.access())
                     .js_expect("cannot fail according to spec")?;
 
                 // c. Return promiseCapability.[[Promise]].
@@ -201,13 +201,13 @@ impl AsyncFromSyncIterator {
                 r#return.call(
                     &sync_iterator.clone().into(),
                     std::slice::from_ref(value),
-                    context,
+                    context.access(),
                 )
             }
             // 10. Else,
             (Some(r#return), None) => {
                 // a. Let result be Completion(Call(return, syncIterator)).
-                r#return.call(&sync_iterator.clone().into(), &[], context)
+                r#return.call(&sync_iterator.clone().into(), &[], context.access())
             }
         };
 
@@ -282,7 +282,7 @@ impl AsyncFromSyncIterator {
                             .with_message("sync iterator does not have a throw method")
                             .into_opaque(context)?
                             .into()],
-                        context,
+                        context.access(),
                     )
                     .js_expect("cannot fail according to spec")?;
 
@@ -295,13 +295,13 @@ impl AsyncFromSyncIterator {
                 throw.call(
                     &sync_iterator.clone().into(),
                     std::slice::from_ref(value),
-                    context,
+                    context.access(),
                 )
             }
             // 10. Else,
             (Some(throw), None) => {
                 // a. Let result be Completion(Call(throw, syncIterator)).
-                throw.call(&sync_iterator.clone().into(), &[], context)
+                throw.call(&sync_iterator.clone().into(), &[], context.access())
             }
         };
 

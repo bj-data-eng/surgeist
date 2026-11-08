@@ -239,7 +239,7 @@ impl BuiltInConstructor for Array {
             let int_len = if !len.is_number() {
                 // i. Perform ! CreateDataPropertyOrThrow(array, "0", len).
                 array
-                    .create_data_property_or_throw(0, len.clone(), context)
+                    .create_data_property_or_throw(0, len.clone(), context.access())
                     .js_expect("this CreateDataPropertyOrThrow call must not fail")?;
                 // ii. Let intLen be 1𝔽.
                 1
@@ -259,7 +259,7 @@ impl BuiltInConstructor for Array {
             };
             // e. Perform ! Set(array, "length", intLen, true).
             array
-                .set(StaticJsStrings::LENGTH, int_len, true, context)
+                .set(StaticJsStrings::LENGTH, int_len, true, context.access())
                 .js_expect("this Set call must not fail")?;
             // f. Return array.
             Ok(array.into())
@@ -305,7 +305,7 @@ impl Array {
             }
         }
 
-        o.set(StaticJsStrings::LENGTH, len, true, context)?;
+        o.set(StaticJsStrings::LENGTH, len, true, context.access())?;
         Ok(())
     }
 
@@ -428,7 +428,7 @@ impl Array {
         };
 
         // 2. Let spreadable be ? Get(O, @@isConcatSpreadable).
-        let spreadable = o.get(JsSymbol::is_concat_spreadable(), context)?;
+        let spreadable = o.get(JsSymbol::is_concat_spreadable(), context.access())?;
 
         // 3. If spreadable is not undefined, return ! ToBoolean(spreadable).
         if !spreadable.is_undefined() {
@@ -470,7 +470,7 @@ impl Array {
             return Self::array_create(length, None, context);
         }
         // 3. Let C be ? Get(originalArray, "constructor").
-        let c = original_array.get(CONSTRUCTOR, context)?;
+        let c = original_array.get(CONSTRUCTOR, context.access())?;
 
         // 4. If IsConstructor(C) is true, then
         if let Some(c) = c.as_constructor() {
@@ -492,7 +492,7 @@ impl Array {
         // 5. If Type(C) is Object, then
         let c = if let Some(c) = c.as_object() {
             // 5.a. Set C to ? Get(C, @@species).
-            let c = c.get(JsSymbol::species(), context)?;
+            let c = c.get(JsSymbol::species(), context.access())?;
             // 5.b. If C is null, set C to undefined.
             if c.is_null_or_undefined() {
                 JsValue::undefined()
@@ -510,7 +510,7 @@ impl Array {
 
         if let Some(c) = c.as_constructor() {
             // 8. Return ? Construct(C, « 𝔽(length) »).
-            return c.construct(&[JsValue::new(length)], Some(&c), context);
+            return c.construct(&[JsValue::new(length)], Some(&c), context.access());
         }
 
         // 7. If IsConstructor(C) is false, throw a TypeError exception.
@@ -571,7 +571,9 @@ impl Array {
             // 10. Else,
             //     a. Let A be ? ArrayCreate(len).
             let a = match this.as_constructor() {
-                Some(constructor) => constructor.construct(&[len.into()], None, context)?,
+                Some(constructor) => {
+                    constructor.construct(&[len.into()], None, context.access())?
+                }
                 _ => Self::array_create(len, None, context)?,
             };
 
@@ -582,23 +584,23 @@ impl Array {
             for k in 0..len {
                 // a. Let Pk be ! ToString(𝔽(k)).
                 // b. Let kValue be ? Get(arrayLike, Pk).
-                let k_value = array_like.get(k, context)?;
+                let k_value = array_like.get(k, context.access())?;
 
                 let mapped_value = if let Some(ref mapfn) = mapping {
                     // c. If mapping is true, then
                     //     i. Let mappedValue be ? Call(mapfn, thisArg, « kValue, 𝔽(k) »).
-                    mapfn.call(this_arg, &[k_value, k.into()], context)?
+                    mapfn.call(this_arg, &[k_value, k.into()], context.access())?
                 } else {
                     // d. Else, let mappedValue be kValue.
                     k_value
                 };
 
                 // e. Perform ? CreateDataPropertyOrThrow(A, Pk, mappedValue).
-                a.create_data_property_or_throw(k, mapped_value, context)?;
+                a.create_data_property_or_throw(k, mapped_value, context.access())?;
             }
 
             // 13. Perform ? Set(A, "length", 𝔽(len), true).
-            a.set(StaticJsStrings::LENGTH, len, true, context)?;
+            a.set(StaticJsStrings::LENGTH, len, true, context.access())?;
 
             // 14. Return A.
             return Ok(a.into());
@@ -611,7 +613,7 @@ impl Array {
         // b. Else,
         //     i. Let A be ? ArrayCreate(0en).
         let a = match this.as_constructor() {
-            Some(constructor) => constructor.construct(&[], None, context)?,
+            Some(constructor) => constructor.construct(&[], None, context.access())?,
             _ => Self::array_create(0, None, context)?,
         };
 
@@ -628,7 +630,7 @@ impl Array {
             let Some(next) = iterator_record.step_value(context)? else {
                 // iv. If next is done, then
                 //     1. Perform ? Set(A, "length", 𝔽(k), true).
-                a.set(StaticJsStrings::LENGTH, k, true, context)?;
+                a.set(StaticJsStrings::LENGTH, k, true, context.access())?;
                 //     2. Return A.
                 return Ok(a.into());
             };
@@ -636,7 +638,7 @@ impl Array {
             // v. If mapping is true, then
             let mapped_value = if let Some(ref mapfn) = mapping {
                 // 1. Let mappedValue be Completion(Call(mapper, thisArg, « next, 𝔽(k) »)).
-                let mapped_value = mapfn.call(this_arg, &[next, k.into()], context);
+                let mapped_value = mapfn.call(this_arg, &[next, k.into()], context.access());
 
                 // 2. IfAbruptCloseIterator(mappedValue, iteratorRecord).
                 if_abrupt_close_iterator!(mapped_value, iterator_record, context)
@@ -647,7 +649,7 @@ impl Array {
             };
 
             // vii. Let defineStatus be Completion(CreateDataPropertyOrThrow(A, Pk, mappedValue)).
-            let define_status = a.create_data_property_or_throw(k, mapped_value, context);
+            let define_status = a.create_data_property_or_throw(k, mapped_value, context.access());
 
             // viii. IfAbruptCloseIterator(defineStatus, iteratorRecord).
             if_abrupt_close_iterator!(define_status, iterator_record, context);
@@ -707,7 +709,7 @@ impl Array {
         // 5. Else,
         //     a. Let A be ? ArrayCreate(len).
         let a = match this.as_constructor() {
-            Some(constructor) => constructor.construct(&[len.into()], None, context)?,
+            Some(constructor) => constructor.construct(&[len.into()], None, context.access())?,
             _ => Self::array_create(len as u64, None, context)?,
         };
 
@@ -717,7 +719,7 @@ impl Array {
             // a. Let kValue be items[k].
             // b. Let Pk be ! ToString(𝔽(k)).
             // c. Perform ? CreateDataPropertyOrThrow(A, Pk, kValue).
-            a.create_data_property_or_throw(k, value.clone(), context)?;
+            a.create_data_property_or_throw(k, value.clone(), context.access())?;
             // d. Set k to k + 1.
         }
 
@@ -764,7 +766,7 @@ impl Array {
         //6. if k < 0  or k >= len,
         //handled by the above match guards
         //7. Return ? Get(O, !ToString(𝔽(k)))
-        obj.get(k, context)
+        obj.get(k, context.access())
     }
 
     /// `Array.prototype.concat(...arguments)`
@@ -819,7 +821,7 @@ impl Array {
                     // 3.a. Let subElement be ? Get(E, P).
                     if let Some(sub_element) = item.try_get(k, context)? {
                         // b. Perform ? CreateDataPropertyOrThrow(A, ! ToString(𝔽(n)), subElement).
-                        arr.create_data_property_or_throw(n, sub_element, context)?;
+                        arr.create_data_property_or_throw(n, sub_element, context.access())?;
                     }
                     // 4. Set n to n + 1.
                     n += 1;
@@ -836,7 +838,7 @@ impl Array {
                         .into());
                 }
                 // iii. Perform ? CreateDataPropertyOrThrow(A, ! ToString(𝔽(n)), E).
-                arr.create_data_property_or_throw(n, item.clone(), context)?;
+                arr.create_data_property_or_throw(n, item.clone(), context.access())?;
                 // iv. Set n to n + 1.
                 n += 1;
             }
@@ -882,7 +884,7 @@ impl Array {
         // 5. For each element E of items, do
         for element in args.iter().cloned() {
             // a. Perform ? Set(O, ! ToString(𝔽(len)), E, true).
-            o.set(len, element, true, context)?;
+            o.set(len, element, true, context.access())?;
             // b. Set len to len + 1.
             len += 1;
         }
@@ -923,9 +925,9 @@ impl Array {
             // c. Let index be ! ToString(newLen).
             let index = new_len;
             // d. Let element be ? Get(O, index).
-            let element = o.get(index, context)?;
+            let element = o.get(index, context.access())?;
             // e. Perform ? DeletePropertyOrThrow(O, index).
-            o.delete_property_or_throw(index, context)?;
+            o.delete_property_or_throw(index, context.access())?;
             // f. Perform ? Set(O, "length", newLen, true).
             Self::set_length(&o, new_len, context)?;
             // g. Return element.
@@ -967,7 +969,11 @@ impl Array {
             if let Some(k_value) = o.try_get(pk, context)? {
                 // ii. Perform ? Call(callbackfn, thisArg, « kValue, 𝔽(k), O »).
                 let this_arg = args.get_or_undefined(1);
-                callback.call(this_arg, &[k_value, k.into(), o.clone().into()], context)?;
+                callback.call(
+                    this_arg,
+                    &[k_value, k.into(), o.clone().into()],
+                    context.access(),
+                )?;
             }
             // d. Set k to k + 1.
         }
@@ -1015,7 +1021,7 @@ impl Array {
                 r.push(separator.clone());
             }
             // b. Let element be ? Get(O, ! ToString(𝔽(k))).
-            let element = o.get(k, context)?;
+            let element = o.get(k, context.access())?;
             // c. If element is undefined, null or the array itself, let next be the empty String; otherwise, let next be ? ToString(element).
             let next = if element.is_null_or_undefined() || &element == this {
                 js_string!()
@@ -1051,11 +1057,11 @@ impl Array {
         // 1. Let array be ? ToObject(this value).
         let array = this.to_object(context.access())?;
         // 2. Let func be ? Get(array, "join").
-        let func = array.get(js_string!("join"), context)?;
+        let func = array.get(js_string!("join"), context.access())?;
         // 3. If IsCallable(func) is false, set func to the intrinsic function %Object.prototype.toString%.
         // 4. Return ? Call(func, array).
         if let Some(func) = func.as_callable() {
-            func.call(&array.into(), &[], context)
+            func.call(&array.into(), &[], context.access())
         } else {
             crate::builtins::object::OrdinaryObject::to_string(&array.into(), &[], context)
         }
@@ -1104,23 +1110,23 @@ impl Array {
                 // h. If lowerExists is true and upperExists is true, then
                 (Some(lower_value), Some(upper_value)) => {
                     // i. Perform ? Set(O, lowerP, upperValue, true).
-                    o.set(lower, upper_value, true, context)?;
+                    o.set(lower, upper_value, true, context.access())?;
                     // ii. Perform ? Set(O, upperP, lowerValue, true).
-                    o.set(upper, lower_value, true, context)?;
+                    o.set(upper, lower_value, true, context.access())?;
                 }
                 // i. Else if lowerExists is false and upperExists is true, then
                 (None, Some(upper_value)) => {
                     // i. Perform ? Set(O, lowerP, upperValue, true).
-                    o.set(lower, upper_value, true, context)?;
+                    o.set(lower, upper_value, true, context.access())?;
                     // ii. Perform ? DeletePropertyOrThrow(O, upperP).
-                    o.delete_property_or_throw(upper, context)?;
+                    o.delete_property_or_throw(upper, context.access())?;
                 }
                 // j. Else if lowerExists is true and upperExists is false, then
                 (Some(lower_value), None) => {
                     // i. Perform ? DeletePropertyOrThrow(O, lowerP).
-                    o.delete_property_or_throw(lower, context)?;
+                    o.delete_property_or_throw(lower, context.access())?;
                     // ii. Perform ? Set(O, upperP, lowerValue, true).
-                    o.set(upper, lower_value, true, context)?;
+                    o.set(upper, lower_value, true, context.access())?;
                 }
                 // k. Else,
                 (None, None) => {
@@ -1163,10 +1169,10 @@ impl Array {
 
             // b. Let Pk be ! ToString(𝔽(k)).
             // c. Let fromValue be ? Get(O, from).
-            let from_value = o.get(from, context)?;
+            let from_value = o.get(from, context.access())?;
 
             // d. Perform ! CreateDataPropertyOrThrow(A, Pk, fromValue).
-            a.create_data_property_or_throw(i, from_value, context)
+            a.create_data_property_or_throw(i, from_value, context.access())
                 .js_expect("cannot fail per the spec")?;
 
             // e. Set k to k + 1.
@@ -1234,7 +1240,7 @@ impl Array {
         }
 
         // 4. Let first be ? Get(O, "0").
-        let first = o.get(0, context)?;
+        let first = o.get(0, context.access())?;
         // 5. Let k be 1.
         // 6. Repeat, while k < len,
         for k in 1..len {
@@ -1247,17 +1253,17 @@ impl Array {
             // d.i. Let fromVal be ? Get(O, from).
             if let Some(from_val) = o.try_get(from, context)? {
                 // ii. Perform ? Set(O, to, fromVal, true).
-                o.set(to, from_val, true, context)?;
+                o.set(to, from_val, true, context.access())?;
             // e. Else,
             } else {
                 // i. Assert: fromPresent is false.
                 // ii. Perform ? DeletePropertyOrThrow(O, to).
-                o.delete_property_or_throw(to, context)?;
+                o.delete_property_or_throw(to, context.access())?;
             }
             // f. Set k to k + 1.
         }
         // 7. Perform ? DeletePropertyOrThrow(O, ! ToString(𝔽(len - 1))).
-        o.delete_property_or_throw(len - 1, context)?;
+        o.delete_property_or_throw(len - 1, context.access())?;
         // 8. Perform ? Set(O, "length", 𝔽(len - 1), true).
         Self::set_length(&o, len - 1, context)?;
         // 9. Return first.
@@ -1308,12 +1314,12 @@ impl Array {
                 // iv.1. Let fromValue be ? Get(O, from).
                 if let Some(from_value) = o.try_get(from, context)? {
                     // 2. Perform ? Set(O, to, fromValue, true).
-                    o.set(to, from_value, true, context)?;
+                    o.set(to, from_value, true, context.access())?;
                 // v. Else,
                 } else {
                     // 1. Assert: fromPresent is false.
                     // 2. Perform ? DeletePropertyOrThrow(O, to).
-                    o.delete_property_or_throw(to, context)?;
+                    o.delete_property_or_throw(to, context.access())?;
                 }
                 // vi. Set k to k - 1.
                 k -= 1;
@@ -1322,7 +1328,7 @@ impl Array {
             // e. For each element E of items, do
             for (j, e) in args.iter().enumerate() {
                 // i. Perform ? Set(O, ! ToString(j), E, true).
-                o.set(j, e.clone(), true, context)?;
+                o.set(j, e.clone(), true, context.access())?;
                 // ii. Set j to j + 1𝔽.
             }
         }
@@ -1372,7 +1378,11 @@ impl Array {
             if let Some(k_value) = o.try_get(k, context)? {
                 // ii. Let testResult be ! ToBoolean(? Call(callbackfn, thisArg, « kValue, 𝔽(k), O »)).
                 let test_result = callback
-                    .call(this_arg, &[k_value, k.into(), o.clone().into()], context)?
+                    .call(
+                        this_arg,
+                        &[k_value, k.into(), o.clone().into()],
+                        context.access(),
+                    )?
                     .to_boolean();
                 // iii. If testResult is false, return false.
                 if !test_result {
@@ -1424,10 +1434,13 @@ impl Array {
             // c.i. Let kValue be ? Get(O, Pk).
             if let Some(k_value) = o.try_get(k, context)? {
                 // ii. Let mappedValue be ? Call(callbackfn, thisArg, « kValue, 𝔽(k), O »).
-                let mapped_value =
-                    callback.call(this_arg, &[k_value, k.into(), o.clone().into()], context)?;
+                let mapped_value = callback.call(
+                    this_arg,
+                    &[k_value, k.into(), o.clone().into()],
+                    context.access(),
+                )?;
                 // iii. Perform ? CreateDataPropertyOrThrow(A, Pk, mappedValue).
-                a.create_data_property_or_throw(k, mapped_value, context)?;
+                a.create_data_property_or_throw(k, mapped_value, context.access())?;
             }
             // d. Set k to k + 1.
         }
@@ -1893,7 +1906,7 @@ impl Array {
                     element = mapper_function.call(
                         this_arg,
                         &[element, source_index.into(), source.clone().into()],
-                        context,
+                        context.access(),
                     )?;
                 }
 
@@ -1944,7 +1957,11 @@ impl Array {
                     }
 
                     // 2. Perform ? CreateDataPropertyOrThrow(target, targetIndex, element)
-                    target.create_data_property_or_throw(target_index, element, context)?;
+                    target.create_data_property_or_throw(
+                        target_index,
+                        element,
+                        context.access(),
+                    )?;
 
                     // 3. Set targetIndex to targetIndex + 1
                     target_index += 1;
@@ -1999,7 +2016,7 @@ impl Array {
             // a. Let Pk be ! ToString(𝔽(k)).
             let pk = k;
             // b. Perform ? Set(O, Pk, value, true).
-            o.set(pk, value.clone(), true, context)?;
+            o.set(pk, value.clone(), true, context.access())?;
             // c. Set k to k + 1.
             k += 1;
         }
@@ -2068,7 +2085,7 @@ impl Array {
         // 10. Repeat, while k < len,
         while k < len {
             // a. Let elementK be ? Get(O, ! ToString(𝔽(k))).
-            let element_k = o.get(k, context)?;
+            let element_k = o.get(k, context.access())?;
             // b. If SameValueZero(searchElement, elementK) is true, return true.
             if JsValue::same_value_zero(search_element, &element_k) {
                 return Ok(JsValue::new(true));
@@ -2134,7 +2151,7 @@ impl Array {
             // c.i. Let kValue be ? Get(O, Pk).
             if let Some(k_value) = o.try_get(pk, context)? {
                 // ii. Perform ? CreateDataPropertyOrThrow(A, ! ToString(𝔽(n)), kValue).
-                a.create_data_property_or_throw(n, k_value, context)?;
+                a.create_data_property_or_throw(n, k_value, context.access())?;
             }
             // d. Set k to k + 1.
             k += 1;
@@ -2217,7 +2234,7 @@ impl Array {
             }
 
             // b. Let nextElement be ? Get(array, ! ToString(k)).
-            let next = array.get(k, context)?;
+            let next = array.get(k, context.access())?;
 
             // c. If nextElement is not undefined or null, then
             if !next.is_null_or_undefined() {
@@ -2336,7 +2353,7 @@ impl Array {
             // b.i. Let fromValue be ? Get(O, from).
             if let Some(from_value) = o.try_get(actual_start + k, context)? {
                 // ii. Perform ? CreateDataPropertyOrThrow(A, ! ToString(𝔽(k)), fromValue).
-                arr.create_data_property_or_throw(k, from_value, context)?;
+                arr.create_data_property_or_throw(k, from_value, context.access())?;
             }
             // c. Set k to k + 1.
         }
@@ -2363,11 +2380,11 @@ impl Array {
                     // iii.1. Let fromValue be ? Get(O, from).
                     if let Some(from_value) = o.try_get(from, context)? {
                         // 2. Perform ? Set(O, to, fromValue, true).
-                        o.set(to, from_value, true, context)?;
+                        o.set(to, from_value, true, context.access())?;
                     } else {
                         // iv. Else,
                         //     1. Perform ? DeletePropertyOrThrow(O, to).
-                        o.delete_property_or_throw(to, context)?;
+                        o.delete_property_or_throw(to, context.access())?;
                     }
                     // v. Set k to k + 1.
                 }
@@ -2376,7 +2393,7 @@ impl Array {
                 // d. Repeat, while k > (len - actualDeleteCount + itemCount),
                 for k in ((len - actual_delete_count + item_count)..len).rev() {
                     // i. Perform ? DeletePropertyOrThrow(O, ! ToString(𝔽(k - 1))).
-                    o.delete_property_or_throw(k, context)?;
+                    o.delete_property_or_throw(k, context.access())?;
 
                     // ii. Set k to k - 1.
                 }
@@ -2396,12 +2413,12 @@ impl Array {
                     // iii.1. Let fromValue be ? Get(O, from).
                     if let Some(from_value) = o.try_get(from, context)? {
                         // 2. Perform ? Set(O, to, fromValue, true).
-                        o.set(to, from_value, true, context)?;
+                        o.set(to, from_value, true, context.access())?;
                     }
                     // iv. Else,
                     else {
                         // 1. Perform ? DeletePropertyOrThrow(O, to).
-                        o.delete_property_or_throw(to, context)?;
+                        o.delete_property_or_throw(to, context.access())?;
                     }
                     // v. Set k to k - 1.
                 }
@@ -2413,7 +2430,12 @@ impl Array {
         for (i, item) in items.iter().enumerate() {
             //     a. Perform ? Set(O, ! ToString(𝔽(k)), E, true).
             //     b. Set k to k + 1.
-            o.set(actual_start + i as u64, item.clone(), true, context)?;
+            o.set(
+                actual_start + i as u64,
+                item.clone(),
+                true,
+                context.access(),
+            )?;
         }
 
         // 20. Perform ? Set(O, "length", 𝔽(len - actualDeleteCount + itemCount), true).
@@ -2471,10 +2493,10 @@ impl Array {
         while i < actual_start {
             //     a. Let Pi be ! ToString(𝔽(i)).
             //     b. Let iValue be ? Get(O, Pi).
-            let value = o.get(i, context)?;
+            let value = o.get(i, context.access())?;
 
             //     c. Perform ! CreateDataPropertyOrThrow(A, Pi, iValue).
-            arr.create_data_property_or_throw(i, value, context)
+            arr.create_data_property_or_throw(i, value, context.access())
                 .js_expect("cannot fail for a newly created array")?;
 
             //     d. Set i to i + 1.
@@ -2485,7 +2507,7 @@ impl Array {
         for item in items.iter().cloned() {
             //     a. Let Pi be ! ToString(𝔽(i)).
             //     b. Perform ! CreateDataPropertyOrThrow(A, Pi, E).
-            arr.create_data_property_or_throw(i, item, context)
+            arr.create_data_property_or_throw(i, item, context.access())
                 .js_expect("cannot fail for a newly created array")?;
 
             //     c. Set i to i + 1.
@@ -2500,10 +2522,10 @@ impl Array {
             //     a. Let Pi be ! ToString(𝔽(i)).
             //     b. Let from be ! ToString(𝔽(r)).
             //     c. Let fromValue be ? Get(O, from).
-            let from_value = o.get(r, context)?;
+            let from_value = o.get(r, context.access())?;
 
             //     d. Perform ! CreateDataPropertyOrThrow(A, Pi, fromValue).
-            arr.create_data_property_or_throw(i, from_value, context)
+            arr.create_data_property_or_throw(i, from_value, context.access())
                 .js_expect("cannot fail for a newly created array")?;
 
             //     e. Set i to i + 1.
@@ -2560,12 +2582,14 @@ impl Array {
                 let args = [element.clone(), JsValue::new(idx), JsValue::new(o.clone())];
 
                 // ii. Let selected be ! ToBoolean(? Call(callbackfn, thisArg, « kValue, 𝔽(k), O »)).
-                let selected = callback.call(this_arg, &args, context)?.to_boolean();
+                let selected = callback
+                    .call(this_arg, &args, context.access())?
+                    .to_boolean();
 
                 // iii. If selected is true, then
                 if selected {
                     // 1. Perform ? CreateDataPropertyOrThrow(A, ! ToString(𝔽(to)), kValue).
-                    a.create_data_property_or_throw(to, element, context)?;
+                    a.create_data_property_or_throw(to, element, context.access())?;
                     // 2. Set to to to + 1.
                     to += 1;
                 }
@@ -2616,7 +2640,11 @@ impl Array {
                 // ii. Let testResult be ! ToBoolean(? Call(callbackfn, thisArg, « kValue, 𝔽(k), O »)).
                 let this_arg = args.get_or_undefined(1);
                 let test_result = callback
-                    .call(this_arg, &[k_value, k.into(), o.clone().into()], context)?
+                    .call(
+                        this_arg,
+                        &[k_value, k.into(), o.clone().into()],
+                        context.access(),
+                    )?
                     .to_boolean();
                 // iii. If testResult is true, return true.
                 if test_result {
@@ -2653,7 +2681,7 @@ impl Array {
             // b. If holes is skip-holes, then
             let read = if skip_holes {
                 // i. Let kRead be ? HasProperty(obj, Pk).
-                obj.has_property(i, context)?
+                obj.has_property(i, context.access())?
             }
             // c. Else,
             else {
@@ -2666,7 +2694,7 @@ impl Array {
             if read {
                 // i. Let kValue be ? Get(obj, Pk).
                 // ii. Append kValue to items.
-                items.push(obj.get(i, context)?);
+                items.push(obj.get(i, context.access())?);
             }
             // e. Set k to k + 1.
         }
@@ -2739,7 +2767,7 @@ impl Array {
         // 8. Repeat, while j < itemCount,
         for (j, item) in sorted.into_iter().enumerate() {
             // a. Perform ? Set(obj, ! ToString(𝔽(j)), sortedList[j], true).
-            obj.set(j, item, true, context)?;
+            obj.set(j, item, true, context.access())?;
 
             // b. Set j to j + 1.
         }
@@ -2749,7 +2777,7 @@ impl Array {
         // 10. Repeat, while j < len,
         for j in sorted_len..len {
             // a. Perform ? DeletePropertyOrThrow(obj, ! ToString(𝔽(j))).
-            obj.delete_property_or_throw(j, context)?;
+            obj.delete_property_or_throw(j, context.access())?;
 
             // b. Set j to j + 1.
         }
@@ -2802,7 +2830,7 @@ impl Array {
         // 8. Repeat, while j < len,
         for (i, item) in sorted.into_iter().enumerate() {
             //     a. Perform ! CreateDataPropertyOrThrow(A, ! ToString(𝔽(j)), sortedList[j]).
-            arr.create_data_property_or_throw(i, item, context)
+            arr.create_data_property_or_throw(i, item, context.access())
                 .js_expect("cannot fail for a newly created array")?;
 
             //     b. Set j to j + 1.
@@ -2895,7 +2923,7 @@ impl Array {
                 accumulator = callback.call(
                     &JsValue::undefined(),
                     &[accumulator, k_value, k.into(), o.clone().into()],
-                    context,
+                    context.access(),
                 )?;
             }
             // d. Set k to k + 1.
@@ -2989,7 +3017,7 @@ impl Array {
                 accumulator = callback.call(
                     &JsValue::undefined(),
                     &[accumulator.clone(), k_value, k.into(), o.clone().into()],
-                    context,
+                    context.access(),
                 )?;
             }
             // d. Set k to k - 1.
@@ -3071,12 +3099,12 @@ impl Array {
             // d.i. Let fromVal be ? Get(O, fromKey).
             if let Some(from_val) = o.try_get(from_key, context)? {
                 // ii. Perform ? Set(O, toKey, fromVal, true).
-                o.set(to_key, from_val, true, context)?;
+                o.set(to_key, from_val, true, context.access())?;
             // e. Else,
             } else {
                 // i. Assert: fromPresent is false.
                 // ii. Perform ? DeletePropertyOrThrow(O, toKey).
-                o.delete_property_or_throw(to_key, context)?;
+                o.delete_property_or_throw(to_key, context.access())?;
             }
             // f. Set from to from + direction.
             from += direction;
@@ -3201,12 +3229,12 @@ impl Array {
                 value.clone()
             } else {
                 // c. Else, let fromValue be ? Get(O, Pk).
-                o.get(k, context)?
+                o.get(k, context.access())?
             };
 
             // d. Perform ! CreateDataPropertyOrThrow(A, Pk, fromValue).
             new_array
-                .create_data_property_or_throw(k, from_value, context)
+                .create_data_property_or_throw(k, from_value, context.access())
                 .js_expect("cannot fail for a newly created array")?;
 
             // e. Set k to k + 1.
@@ -3349,7 +3377,7 @@ fn compare_array_elements(
         let args = [x.clone(), y.clone()];
         //     a. Let v be ? ToNumber(? Call(comparefn, undefined, « x, y »)).
         let v = cmp
-            .call(&JsValue::undefined(), &args, context)?
+            .call(&JsValue::undefined(), &args, context.access())?
             .to_number(context.access())?;
         //     b. If v is NaN, return +0𝔽.
         //     c. Return v.
@@ -3408,14 +3436,14 @@ pub(crate) fn find_via_predicate(
 
         // b. NOTE: If O is a TypedArray, the following invocation of Get will return a normal completion.
         // c. Let kValue be ? Get(O, Pk).
-        let k_value = o.get(pk, context)?;
+        let k_value = o.get(pk, context.access())?;
 
         // d. Let testResult be ? Call(predicate, thisArg, « kValue, 𝔽(k), O »).
         let test_result = predicate
             .call(
                 this_arg,
                 &[k_value.clone(), k.into(), o.clone().into()],
-                context,
+                context.access(),
             )?
             .to_boolean();
 

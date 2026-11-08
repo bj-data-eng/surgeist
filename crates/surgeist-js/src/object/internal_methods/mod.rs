@@ -1280,7 +1280,7 @@ where
     // as the [[Prototype]] value of an object.
     // 2. Let proto be ? Get(constructor, "prototype").
     let realm = if let Some(constructor) = constructor.as_object() {
-        if let Some(proto) = constructor.get(PROTOTYPE, context)?.as_object() {
+        if let Some(proto) = constructor.get(PROTOTYPE, context.access())?.as_object() {
             return Ok(proto.clone());
         }
         // 3. If Type(proto) is not Object, then

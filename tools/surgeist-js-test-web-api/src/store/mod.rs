@@ -206,7 +206,7 @@ mod tests {
             .as_object()
             .unwrap();
         let edge = cloned
-            .get(js_string!("self"), &mut context)
+            .get(js_string!("self"), context.access())
             .unwrap()
             .as_object()
             .unwrap();

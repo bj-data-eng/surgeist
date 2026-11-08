@@ -102,7 +102,7 @@ pub fn set_timeout(
 
     let job = TimeoutJob::new(
         NativeJob::new(move |context| {
-            let result = function_ref.call(&JsValue::undefined(), &rest, context);
+            let result = function_ref.call(&JsValue::undefined(), &rest, context.access());
             let state = IntervalInnerState::from_context(context);
             state.active_map.remove(&id);
             result
@@ -153,7 +153,9 @@ pub fn set_interval(
     let rest = rest.to_vec();
 
     let job = IntervalJob::new(
-        NativeJobFn::new(move |context| function_ref.call(&JsValue::undefined(), &rest, context)),
+        NativeJobFn::new(move |context| {
+            function_ref.call(&JsValue::undefined(), &rest, context.access())
+        }),
         delay,
     );
     let token = job.cancellation_token().clone();

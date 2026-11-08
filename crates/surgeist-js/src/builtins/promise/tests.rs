@@ -71,7 +71,7 @@ fn every_reaction_survives_collection_during_job_enqueue() {
     let result_edge = result.edge();
     resolvers
         .resolve
-        .call(&JsValue::undefined(), &[result.into()], context)
+        .call(&JsValue::undefined(), &[result.into()], context.access())
         .unwrap();
     drop(promise);
     drop(resolvers);

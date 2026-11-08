@@ -32,11 +32,11 @@ fn subdirectories() {
             let foo_value = module
                 .namespace(&mut context)
                 .unwrap()
-                .get(js_string!("file1"), &mut context)
+                .get(js_string!("file1"), context.access())
                 .unwrap()
                 .as_callable()
                 .unwrap()
-                .call(&JsValue::undefined(), &[], &mut context)
+                .call(&JsValue::undefined(), &[], context.access())
                 .unwrap();
 
             assert_eq!(foo_value, js_string!("file1..file1_1.file1_2").into());
@@ -77,7 +77,7 @@ fn json_import_attributes_are_part_of_the_cache_key() {
     let value = module
         .namespace(&mut context)
         .unwrap()
-        .get(js_string!("value"), &mut context)
+        .get(js_string!("value"), context.access())
         .unwrap();
     assert_eq!(
         JsString::from(value.to_json(&mut context).unwrap().unwrap().to_string()),
@@ -87,7 +87,7 @@ fn json_import_attributes_are_part_of_the_cache_key() {
     let p = module
         .namespace(&mut context)
         .unwrap()
-        .get(js_string!("p"), &mut context)
+        .get(js_string!("p"), context.access())
         .unwrap();
     let p_obj = p.as_promise().unwrap();
     context.run_jobs().unwrap();
@@ -97,9 +97,9 @@ fn json_import_attributes_are_part_of_the_cache_key() {
             let error = e
                 .as_object()
                 .expect("expected rejection to be an Error object");
-            let name = error.get(js_string!("name"), &mut context).unwrap();
+            let name = error.get(js_string!("name"), context.access()).unwrap();
             assert_eq!(name.as_string().unwrap(), js_string!("TypeError"));
-            let message = error.get(js_string!("message"), &mut context).unwrap();
+            let message = error.get(js_string!("message"), context.access()).unwrap();
             assert_eq!(
                 message.as_string().unwrap(),
                 js_string!("module `data.json` needs an import attribute of type \"json\"")

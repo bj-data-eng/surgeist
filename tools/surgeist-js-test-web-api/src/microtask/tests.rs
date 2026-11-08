@@ -1,6 +1,6 @@
 use crate::test::{TestAction, run_test_actions_with};
-use surgeist_js::{Context, js_str};
 use indoc::indoc;
+use surgeist_js::{Context, js_str};
 
 #[test]
 fn queue_microtask() {
@@ -31,11 +31,14 @@ fn queue_microtask() {
                 ctx.run_jobs().unwrap();
             }),
             TestAction::inspect_context(|ctx| {
-                let order = ctx.global_object().get(js_str!("order"), ctx).unwrap();
+                let order = ctx
+                    .global_object()
+                    .get(js_str!("order"), ctx.access())
+                    .unwrap();
                 let order = order.as_object().unwrap();
 
                 assert_eq!(
-                    order.get(js_str!("length"), ctx).unwrap().as_i32(),
+                    order.get(js_str!("length"), ctx.access()).unwrap().as_i32(),
                     Some(9),
                     "all nine pushes must run",
                 );
@@ -45,7 +48,7 @@ fn queue_microtask() {
                 // they are enqueued.
                 for (i, expected) in [1, 3, 9, 2, 4, 8, 5, 7, 6].into_iter().enumerate() {
                     assert_eq!(
-                        order.get(i, ctx).unwrap().as_i32(),
+                        order.get(i, ctx.access()).unwrap().as_i32(),
                         Some(expected),
                         "order[{i}] mismatch",
                     );

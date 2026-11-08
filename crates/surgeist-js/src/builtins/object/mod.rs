@@ -297,7 +297,7 @@ impl OrdinaryObject {
         let key = args.get_or_undefined(0).to_property_key(context.access())?;
 
         // 5. Perform ? DefinePropertyOrThrow(O, key, desc).
-        obj.define_property_or_throw(key, desc, context)?;
+        obj.define_property_or_throw(key, desc, context.access())?;
 
         // 6. Return undefined.
         Ok(JsValue::undefined())
@@ -340,7 +340,7 @@ impl OrdinaryObject {
         let key = args.get_or_undefined(0).to_property_key(context.access())?;
 
         // 5. Perform ? DefinePropertyOrThrow(O, key, desc).
-        obj.define_property_or_throw(key, desc, context)?;
+        obj.define_property_or_throw(key, desc, context.access())?;
 
         // 6. Return undefined.
         Ok(JsValue::undefined())
@@ -547,7 +547,7 @@ impl OrdinaryObject {
             //    perform ! CreateDataPropertyOrThrow(descriptors, key, descriptor).
             if !descriptor.is_undefined() {
                 descriptors
-                    .create_data_property_or_throw(key, descriptor, context)
+                    .create_data_property_or_throw(key, descriptor, context.access())
                     .js_expect("should not fail according to spec")?;
             }
         }
@@ -577,43 +577,51 @@ impl OrdinaryObject {
         // 4. If Desc has a [[Value]] field, then
         if let Some(value) = desc.value() {
             // a. Perform ! CreateDataPropertyOrThrow(obj, "value", Desc.[[Value]]).
-            obj.create_data_property_or_throw(js_string!("value"), value.clone(), context)
+            obj.create_data_property_or_throw(js_string!("value"), value.clone(), context.access())
                 .js_expect("CreateDataPropertyOrThrow cannot fail here")?;
         }
 
         // 5. If Desc has a [[Writable]] field, then
         if let Some(writable) = desc.writable() {
             // a. Perform ! CreateDataPropertyOrThrow(obj, "writable", Desc.[[Writable]]).
-            obj.create_data_property_or_throw(js_string!("writable"), writable, context)
+            obj.create_data_property_or_throw(js_string!("writable"), writable, context.access())
                 .js_expect("CreateDataPropertyOrThrow cannot fail here")?;
         }
 
         // 6. If Desc has a [[Get]] field, then
         if let Some(get) = desc.get() {
             // a. Perform ! CreateDataPropertyOrThrow(obj, "get", Desc.[[Get]]).
-            obj.create_data_property_or_throw(js_string!("get"), get.clone(), context)
+            obj.create_data_property_or_throw(js_string!("get"), get.clone(), context.access())
                 .js_expect("CreateDataPropertyOrThrow cannot fail here")?;
         }
 
         // 7. If Desc has a [[Set]] field, then
         if let Some(set) = desc.set() {
             // a. Perform ! CreateDataPropertyOrThrow(obj, "set", Desc.[[Set]]).
-            obj.create_data_property_or_throw(js_string!("set"), set.clone(), context)
+            obj.create_data_property_or_throw(js_string!("set"), set.clone(), context.access())
                 .js_expect("CreateDataPropertyOrThrow cannot fail here")?;
         }
 
         // 8. If Desc has an [[Enumerable]] field, then
         if let Some(enumerable) = desc.enumerable() {
             // a. Perform ! CreateDataPropertyOrThrow(obj, "enumerable", Desc.[[Enumerable]]).
-            obj.create_data_property_or_throw(js_string!("enumerable"), enumerable, context)
-                .js_expect("CreateDataPropertyOrThrow cannot fail here")?;
+            obj.create_data_property_or_throw(
+                js_string!("enumerable"),
+                enumerable,
+                context.access(),
+            )
+            .js_expect("CreateDataPropertyOrThrow cannot fail here")?;
         }
 
         // 9. If Desc has a [[Configurable]] field, then
         if let Some(configurable) = desc.configurable() {
             // a. Perform ! CreateDataPropertyOrThrow(obj, "configurable", Desc.[[Configurable]]).
-            obj.create_data_property_or_throw(js_string!("configurable"), configurable, context)
-                .js_expect("CreateDataPropertyOrThrow cannot fail here")?;
+            obj.create_data_property_or_throw(
+                js_string!("configurable"),
+                configurable,
+                context.access(),
+            )
+            .js_expect("CreateDataPropertyOrThrow cannot fail here")?;
         }
 
         // 10. Return obj.
@@ -755,7 +763,7 @@ impl OrdinaryObject {
                 .unwrap_or(&JsValue::undefined())
                 .to_property_descriptor(context.access())?;
 
-            object.define_property_or_throw(key, desc, context)?;
+            object.define_property_or_throw(key, desc, context.access())?;
 
             Ok(object.clone().into())
         } else {
@@ -860,7 +868,7 @@ impl OrdinaryObject {
         };
 
         // 15. Let tag be ? Get(O, @@toStringTag).
-        let tag = o.get(JsSymbol::to_string_tag(), context)?;
+        let tag = o.get(JsSymbol::to_string_tag(), context.access())?;
 
         // 16. If Type(tag) is not String, set tag to builtinTag.
         let tag = tag.as_string();
@@ -912,7 +920,7 @@ impl OrdinaryObject {
         let object = this.to_object(context.access())?;
 
         // 3. Return ? HasOwnProperty(O, P).
-        Ok(object.has_own_property(key, context)?.into())
+        Ok(object.has_own_property(key, context.access())?.into())
     }
 
     /// `Object.prototype.propertyIsEnumerable( property )`
@@ -991,9 +999,9 @@ impl OrdinaryObject {
                         // 3.a.iii.2. If desc is not undefined and desc.[[Enumerable]] is true, then
                         if desc.expect_enumerable() {
                             // 3.a.iii.2.a. Let propValue be ? Get(from, nextKey).
-                            let property = from.get(key.clone(), context)?;
+                            let property = from.get(key.clone(), context.access())?;
                             // 3.a.iii.2.b. Perform ? Set(to, nextKey, propValue, true).
-                            to.set(key, property, true, context)?;
+                            to.set(key, property, true, context.access())?;
                         }
                     }
                 }
@@ -1100,7 +1108,7 @@ impl OrdinaryObject {
 
         if let Some(o) = o.as_object() {
             // 2. Let status be ? SetIntegrityLevel(O, sealed).
-            let status = o.set_integrity_level(IntegrityLevel::Sealed, context)?;
+            let status = o.set_integrity_level(IntegrityLevel::Sealed, context.access())?;
             // 3. If status is false, throw a TypeError exception.
             if !status {
                 return Err(js_error!(TypeError: "cannot seal object"));
@@ -1125,8 +1133,10 @@ impl OrdinaryObject {
         // 1. If Type(O) is not Object, return true.
         // 2. Return ? TestIntegrityLevel(O, sealed).
         if let Some(o) = o.as_object() {
-            Ok(o.test_integrity_level(IntegrityLevel::Sealed, context)?
-                .into())
+            Ok(
+                o.test_integrity_level(IntegrityLevel::Sealed, context.access())?
+                    .into(),
+            )
         } else {
             Ok(JsValue::new(true))
         }
@@ -1145,7 +1155,7 @@ impl OrdinaryObject {
 
         if let Some(o) = o.as_object() {
             // 2. Let status be ? SetIntegrityLevel(O, frozen).
-            let status = o.set_integrity_level(IntegrityLevel::Frozen, context)?;
+            let status = o.set_integrity_level(IntegrityLevel::Frozen, context.access())?;
             // 3. If status is false, throw a TypeError exception.
             if !status {
                 return Err(js_error!(TypeError: "cannot freeze object"));
@@ -1170,8 +1180,10 @@ impl OrdinaryObject {
         // 1. If Type(O) is not Object, return true.
         // 2. Return ? TestIntegrityLevel(O, frozen).
         if let Some(o) = o.as_object() {
-            Ok(o.test_integrity_level(IntegrityLevel::Frozen, context)?
-                .into())
+            Ok(
+                o.test_integrity_level(IntegrityLevel::Frozen, context.access())?
+                    .into(),
+            )
         } else {
             Ok(JsValue::new(true))
         }
@@ -1223,7 +1235,7 @@ impl OrdinaryObject {
         // 1. If Type(O) is not Object, return false.
         if let Some(o) = o.as_object() {
             // 2. Return ? IsExtensible(O).
-            Ok(o.is_extensible(context)?.into())
+            Ok(o.is_extensible(context.access())?.into())
         } else {
             Ok(JsValue::new(false))
         }
@@ -1281,7 +1293,7 @@ impl OrdinaryObject {
         let key = args.get_or_undefined(1).to_property_key(context.access())?;
 
         // 3. Return ? HasOwnProperty(obj, key).
-        Ok(obj.has_own_property(key, context)?.into())
+        Ok(obj.has_own_property(key, context.access())?.into())
     }
 
     /// `Object.fromEntries( iterable )`
@@ -1313,7 +1325,11 @@ impl OrdinaryObject {
                     let property_key = key.to_property_key(context.access())?;
 
                     // b. Perform ! CreateDataPropertyOrThrow(obj, propertyKey, value).
-                    obj.create_data_property_or_throw(property_key, value.clone(), context)?;
+                    obj.create_data_property_or_throw(
+                        property_key,
+                        value.clone(),
+                        context.access(),
+                    )?;
 
                     // c. Return undefined.
                     Ok(JsValue::undefined())
@@ -1392,7 +1408,11 @@ impl OrdinaryObject {
             let value = next;
 
             // e. Let key be Completion(Call(callbackfn, undefined, « value, 𝔽(k) »)).
-            let key = callback.call(&JsValue::undefined(), &[value.clone(), k.into()], context);
+            let key = callback.call(
+                &JsValue::undefined(),
+                &[value.clone(), k.into()],
+                context.access(),
+            );
 
             // f. IfAbruptCloseIterator(key, iteratorRecord).
             let key = if_abrupt_close_iterator!(key, iterator, context);
@@ -1420,7 +1440,7 @@ impl OrdinaryObject {
             let elements = Array::create_array_from_list(elements, context);
 
             // b. Perform ! CreateDataPropertyOrThrow(obj, g.[[Key]], elements).
-            obj.create_data_property_or_throw(key, elements, context)
+            obj.create_data_property_or_throw(key, elements, context.access())
                 .js_expect("cannot fail for a newly created object")?;
         }
 
@@ -1460,7 +1480,7 @@ fn object_define_properties(
             && prop_desc.expect_enumerable()
         {
             // i. Let descObj be ? Get(props, nextKey).
-            let desc_obj = props.get(next_key.clone(), context)?;
+            let desc_obj = props.get(next_key.clone(), context.access())?;
 
             // ii. Let desc be ? ToPropertyDescriptor(descObj).
             let desc = desc_obj.to_property_descriptor(context.access())?;
@@ -1475,7 +1495,7 @@ fn object_define_properties(
     // b. Let desc be the second element of pair.
     for (p, d) in descriptors {
         // c. Perform ? DefinePropertyOrThrow(O, P, desc).
-        object.define_property_or_throw(p, d, context)?;
+        object.define_property_or_throw(p, d, context.access())?;
     }
 
     // 7. Return O.

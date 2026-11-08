@@ -190,11 +190,11 @@ impl Iterator {
         // 4. If desc is undefined, then
         if desc.is_none() {
             // a. Perform ? CreateDataPropertyOrThrow(this, p, v).
-            this_obj.create_data_property_or_throw(p, v.clone(), context)?;
+            this_obj.create_data_property_or_throw(p, v.clone(), context.access())?;
         } else {
             // 5. Else,
             //    a. Perform ? Set(this, p, v, true).
-            this_obj.set(p, v.clone(), true, context)?;
+            this_obj.set(p, v.clone(), true, context.access())?;
         }
 
         // 6. Return undefined.
@@ -580,7 +580,7 @@ impl Iterator {
             let result = reducer.call(
                 &JsValue::undefined(),
                 &[accumulator, value, JsValue::new(counter)],
-                context,
+                context.access(),
             );
 
             // d. IfAbruptCloseIterator(result, iterated).
@@ -661,7 +661,7 @@ impl Iterator {
             let result = func.call(
                 &JsValue::undefined(),
                 &[value, JsValue::new(counter)],
-                context,
+                context.access(),
             );
 
             // d. IfAbruptCloseIterator(result, iterated).
@@ -716,7 +716,7 @@ impl Iterator {
             let result = predicate.call(
                 &JsValue::undefined(),
                 &[value, JsValue::new(counter)],
-                context,
+                context.access(),
             );
             // d. IfAbruptCloseIterator(result, iterated).
             let result = if_abrupt_close_iterator!(result, iterated, context);
@@ -776,7 +776,7 @@ impl Iterator {
             let result = predicate.call(
                 &JsValue::undefined(),
                 &[value, JsValue::new(counter)],
-                context,
+                context.access(),
             );
             // d. IfAbruptCloseIterator(result, iterated).
             let result = if_abrupt_close_iterator!(result, iterated, context);
@@ -835,7 +835,7 @@ impl Iterator {
             let result = predicate.call(
                 &JsValue::undefined(),
                 &[value.clone(), JsValue::new(counter)],
-                context,
+                context.access(),
             );
 
             // d. IfAbruptCloseIterator(result, iterated).

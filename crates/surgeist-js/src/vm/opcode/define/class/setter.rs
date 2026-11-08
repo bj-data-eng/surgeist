@@ -167,7 +167,7 @@ impl DefineClassStaticSetterByValue {
                 .enumerable(false)
                 .configurable(true)
                 .build(),
-            context,
+            context.access(),
         )?;
 
         Ok(())

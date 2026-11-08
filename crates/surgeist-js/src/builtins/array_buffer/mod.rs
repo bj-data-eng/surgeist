@@ -719,7 +719,7 @@ impl ArrayBuffer {
             .species_constructor(StandardConstructors::array_buffer, context)?;
 
         // 16. Let new be ? Construct(ctor, « 𝔽(newLen) »).
-        let new = ctor.construct(&[new_len.into()], Some(&ctor), context)?;
+        let new = ctor.construct(&[new_len.into()], Some(&ctor), context.access())?;
 
         // 17. Perform ? RequireInternalSlot(new, [[ArrayBufferData]]).
         // 18. If IsSharedArrayBuffer(new) is true, throw a TypeError exception.
@@ -962,7 +962,7 @@ fn get_max_byte_len(options: &JsValue, context: &mut Context) -> JsResult<Option
     };
 
     // 2. Let maxByteLength be ? Get(options, "maxByteLength").
-    let max_byte_len = options.get(js_string!("maxByteLength"), context)?;
+    let max_byte_len = options.get(js_string!("maxByteLength"), context.access())?;
 
     // 3. If maxByteLength is undefined, return empty.
     if max_byte_len.is_undefined() {

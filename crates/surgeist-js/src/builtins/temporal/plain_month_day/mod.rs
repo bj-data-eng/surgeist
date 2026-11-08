@@ -462,7 +462,7 @@ impl PlainMonthDay {
         // 5. Let fields be ISODateToFields(calendar, monthDay.[[ISODate]], month-day).
         // 6. Let inputFields be ? PrepareCalendarFields(calendar, item, « year », « », « »).
         let year = item
-            .get(js_string!("year"), context)?
+            .get(js_string!("year"), context.access())?
             .map(|v| {
                 let finite = v.to_finitef64(context)?;
                 Ok::<i32, JsError>(finite.as_integer_with_truncation::<i32>())
@@ -543,7 +543,7 @@ fn to_temporal_month_day(
         // NOTE: inlined
         // c. Let fields be ? PrepareCalendarFields(calendar, item, « year, month, month-code, day », «», «»).
         let day = obj
-            .get(js_string!("day"), context)?
+            .get(js_string!("day"), context.access())?
             .map(|v| {
                 let finite = v.to_finitef64(context)?;
                 finite
@@ -553,7 +553,7 @@ fn to_temporal_month_day(
             .transpose()?;
 
         let month = obj
-            .get(js_string!("month"), context)?
+            .get(js_string!("month"), context.access())?
             .map(|v| {
                 let finite = v.to_finitef64(context)?;
                 finite
@@ -563,7 +563,7 @@ fn to_temporal_month_day(
             .transpose()?;
 
         let month_code = obj
-            .get(js_string!("monthCode"), context)?
+            .get(js_string!("monthCode"), context.access())?
             .map(|v| {
                 let primitive =
                     v.to_primitive(context.access(), crate::value::PreferredType::String)?;
@@ -577,7 +577,7 @@ fn to_temporal_month_day(
             .transpose()?;
 
         let year = obj
-            .get(js_string!("year"), context)?
+            .get(js_string!("year"), context.access())?
             .map(|v| {
                 let finite = v.to_finitef64(context)?;
                 Ok::<i32, JsError>(finite.as_integer_with_truncation::<i32>())

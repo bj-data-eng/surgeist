@@ -270,7 +270,7 @@ pub fn register<F: Fetcher>(
             .writable(true)
             .enumerable(false)
             .configurable(true),
-        context,
+        context.access(),
     )?;
 
     Ok(())

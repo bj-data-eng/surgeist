@@ -135,7 +135,7 @@ pub fn register_js262(
     js262.create_data_property_or_throw(
         js_string!("IsHTMLDDA"),
         JsObject::from_proto_and_data(context.runtime(), None, IsHTMLDDA)?,
-        context,
+        context.access(),
     )?;
 
     context.register_global_property(
@@ -401,7 +401,7 @@ fn register_js262_worker(
                 .ok_or_else(|| JsNativeError::typ().with_message("argument is not callable"))?;
 
             let buffer = JsSharedArrayBuffer::from_buffer(array, context);
-            callable.call(&JsValue::undefined(), &[buffer.into()], context)
+            callable.call(&JsValue::undefined(), &[buffer.into()], context.access())
         },
         AgentCapture::new(WorkerBroadcasts(RefCell::new(rx))),
     );

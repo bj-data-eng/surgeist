@@ -515,7 +515,7 @@ impl Instant {
             new_round_to.create_data_property_or_throw(
                 js_string!("smallestUnit"),
                 param_string,
-                context,
+                context.access(),
             )?;
             new_round_to
         } else {
@@ -636,7 +636,7 @@ impl Instant {
         let smallest_unit = get_option::<Unit>(&options, js_string!("smallestUnit"), context)?;
         // NOTE: There may be an order-of-operations here due to a check on Unit groups and smallest_unit value.
         let timezone = options
-            .get(js_string!("timeZone"), context)?
+            .get(js_string!("timeZone"), context.access())?
             .map(|v| to_temporal_timezone_identifier(v, context))
             .transpose()?;
 

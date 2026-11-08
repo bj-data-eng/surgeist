@@ -270,7 +270,7 @@ pub(super) fn wait_async<E: Element + PartialEq>(
                     functions.resolve.call(
                         &JsValue::undefined(),
                         &[result.to_js_string().into()],
-                        &mut context.borrow_mut(),
+                        context.borrow_mut().access(),
                     )?;
                 }
 

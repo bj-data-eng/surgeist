@@ -75,7 +75,7 @@ impl GetNameGlobal {
                     result = result.as_object().expect("should contain getter").call(
                         &object.clone().into(),
                         &[],
-                        context,
+                        context.access(),
                     )?;
                 }
                 context.vm.set_register(dst.into(), result);

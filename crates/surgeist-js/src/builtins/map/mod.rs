@@ -159,7 +159,7 @@ impl BuiltInConstructor for Map {
         // 5. Let adder be ? Get(map, "set").
         // 6. If IsCallable(adder) is false, throw a TypeError exception.
         let adder = map
-            .get(js_string!("set"), context)?
+            .get(js_string!("set"), context.access())?
             .as_function()
             .ok_or_else(
                 || js_error!(TypeError: "constructor `Map` cannot use non-callable adder"),
@@ -496,7 +496,7 @@ impl Map {
             // a. If e.[[Key]] is not empty, then
             if let Some(arguments) = arguments {
                 // i. Perform ? Call(callbackfn, thisArg, « e.[[Value]], e.[[Key]], M »).
-                callback.call(this_arg, &arguments, context)?;
+                callback.call(this_arg, &arguments, context.access())?;
             }
 
             index += 1;
@@ -672,7 +672,11 @@ impl Map {
         // 7. NOTE: The Map may have been modified during execution of callback.
         let runtime = map.runtime();
         require_collection_value(&runtime, &key)?;
-        let value = callback_fn.call(&JsValue::undefined(), std::slice::from_ref(&key), context)?;
+        let value = callback_fn.call(
+            &JsValue::undefined(),
+            std::slice::from_ref(&key),
+            context.access(),
+        )?;
         require_collection_value(&runtime, &value)?;
 
         // 8. For each Record { [[Key]], [[Value]] } p of M.[[MapData]], do
@@ -757,7 +761,11 @@ impl Map {
             let value = next;
 
             // e. Let key be Completion(Call(callbackfn, undefined, « value, 𝔽(k) »)).
-            let key = callback.call(&JsValue::undefined(), &[value.clone(), k.into()], context);
+            let key = callback.call(
+                &JsValue::undefined(),
+                &[value.clone(), k.into()],
+                context.access(),
+            );
 
             // f. IfAbruptCloseIterator(key, iteratorRecord).
             let key = if_abrupt_close_iterator!(key, iterator, context);
@@ -836,15 +844,17 @@ pub(crate) fn add_entries_from_iterable(
 
         //     d. Let k be Completion(Get(next, "0")).
         //     e. IfAbruptCloseIterator(k, iteratorRecord).
-        let key = if_abrupt_close_iterator!(next.get(0, context), iterator_record, context);
+        let key =
+            if_abrupt_close_iterator!(next.get(0, context.access()), iterator_record, context);
 
         //     f. Let v be Completion(Get(next, "1")).
         //     g. IfAbruptCloseIterator(v, iteratorRecord).
-        let value = if_abrupt_close_iterator!(next.get(1, context), iterator_record, context);
+        let value =
+            if_abrupt_close_iterator!(next.get(1, context.access()), iterator_record, context);
 
         //     h. Let status be Completion(Call(adder, target, « k, v »)).
         //     i. IfAbruptCloseIterator(status, iteratorRecord).
-        let status = adder.call(&target.clone().into(), &[key, value], context);
+        let status = adder.call(&target.clone().into(), &[key, value], context.access());
         if_abrupt_close_iterator!(status, iterator_record, context);
     }
 

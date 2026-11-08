@@ -67,7 +67,7 @@ pub(crate) fn get_difference_settings(
 
 pub(crate) fn get_digits_option(options: &JsObject, context: &mut Context) -> JsResult<Precision> {
     // 1. Let digitsValue be ? Get(options, "fractionalSecondDigits").
-    let digits_value = options.get(js_string!("fractionalSecondDigits"), context)?;
+    let digits_value = options.get(js_string!("fractionalSecondDigits"), context.access())?;
     // 2. If digitsValue is undefined, return auto.
     if digits_value.is_undefined() {
         return Ok(Precision::Auto);

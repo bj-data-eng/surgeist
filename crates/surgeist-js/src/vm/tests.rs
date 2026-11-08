@@ -994,20 +994,22 @@ fn a_prepared_function_recipe_preserves_properties_and_constructor_back_referenc
         .activate(super::ActivatedCode::from_installed(code).unwrap())
         .unwrap();
     assert_eq!(
-        function.get(js_string!("name"), &mut context).unwrap(),
+        function.get(js_string!("name"), context.access()).unwrap(),
         JsValue::from(js_string!("prepared"))
     );
     assert_eq!(
-        function.get(js_string!("length"), &mut context).unwrap(),
+        function
+            .get(js_string!("length"), context.access())
+            .unwrap(),
         JsValue::from(2)
     );
     let prototype = function
-        .get(js_string!("prototype"), &mut context)
+        .get(js_string!("prototype"), context.access())
         .unwrap()
         .as_object()
         .unwrap();
     let constructor = prototype
-        .get(js_string!("constructor"), &mut context)
+        .get(js_string!("constructor"), context.access())
         .unwrap()
         .as_object()
         .unwrap();

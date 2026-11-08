@@ -373,7 +373,7 @@ impl Realm {
                 .writable(attribute.writable())
                 .enumerable(attribute.enumerable())
                 .configurable(attribute.configurable()),
-            context,
+            context.access(),
         )?;
         Ok(())
     }

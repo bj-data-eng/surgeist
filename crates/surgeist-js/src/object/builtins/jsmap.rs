@@ -128,7 +128,7 @@ impl JsMap {
 
         // Let adder be Get(map, "set") per spec. This action should not fail with default map.
         let adder = map
-            .get(js_string!("set"), context)?
+            .get(js_string!("set"), context.access())?
             .as_function()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("property `set` on new `Map` must be callable")

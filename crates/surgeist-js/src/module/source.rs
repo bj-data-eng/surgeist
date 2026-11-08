@@ -591,7 +591,7 @@ impl SourceTextModule {
                     state
                         .capability
                         .reject()
-                        .call(&JsValue::undefined(), &[err], &mut context.borrow_mut())
+                        .call(&JsValue::undefined(), &[err], context.borrow_mut().access())
                         .js_expect("cannot fail for the default reject function")?;
                 }
             }
@@ -920,7 +920,7 @@ impl SourceTextModule {
                     //    ii. Perform ! Call(capability.[[Resolve]], undefined, « undefined »).
                     capability
                         .resolve()
-                        .call(&JsValue::undefined(), &[], context)
+                        .call(&JsValue::undefined(), &[], context.access())
                         .js_expect("cannot fail for the default resolve function")?;
                 }
 
@@ -967,7 +967,11 @@ impl SourceTextModule {
                 // d. Perform ! Call(capability.[[Reject]], undefined, « result.[[Value]] »).
                 capability
                     .reject()
-                    .call(&JsValue::undefined(), &[err.into_opaque(context)?], context)
+                    .call(
+                        &JsValue::undefined(),
+                        &[err.into_opaque(context)?],
+                        context.access(),
+                    )
                     .js_expect("cannot fail for the default reject function")?;
             }
         }
@@ -1565,7 +1569,7 @@ fn async_module_execution_fulfilled(module: &Module, context: &mut Context) -> J
 
         // b. Perform ! Call(module.[[TopLevelCapability]].[[Resolve]], undefined, « undefined »).
         cap.resolve()
-            .call(&JsValue::undefined(), &[], context)
+            .call(&JsValue::undefined(), &[], context.access())
             .js_expect("default `resolve` function cannot fail")?;
     }
 
@@ -1664,7 +1668,11 @@ fn async_module_execution_fulfilled(module: &Module, context: &mut Context) -> J
 
             // b. Perform ! Call(m.[[TopLevelCapability]].[[Resolve]], undefined, « undefined »).
             cap.resolve()
-                .call(&JsValue::undefined(), &[JsValue::undefined()], context)
+                .call(
+                    &JsValue::undefined(),
+                    &[JsValue::undefined()],
+                    context.access(),
+                )
                 .js_expect("default `resolve` function cannot fail")?;
         }
     }
@@ -1733,7 +1741,7 @@ fn async_module_execution_rejected(
                 .call(
                     &JsValue::undefined(),
                     &[error.clone().into_opaque(context)?],
-                    context,
+                    context.access(),
                 )
                 .js_expect("default `reject` function cannot fail")?;
         }

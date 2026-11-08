@@ -571,7 +571,7 @@ impl Module {
             state
                 .capability
                 .resolve()
-                .call(&JsValue::undefined(), &[], context)
+                .call(&JsValue::undefined(), &[], context.access())
                 .expect("marking a module as loaded should not fail");
         }
         // 6. Return unused.
@@ -803,7 +803,7 @@ impl Module {
         K: Into<PropertyKey>,
     {
         let namespace = self.namespace(context)?;
-        namespace.get(name, context)
+        namespace.get(name, context.access())
     }
 
     /// Get an exported function, typed, from the module.
@@ -899,7 +899,7 @@ fn native_exports_do_not_root_unreachable_module_cycles() {
     .to_js_function(context.realm())
     .unwrap();
     exported
-        .create_data_property_or_throw(js_string!("callback"), function, &mut context)
+        .create_data_property_or_throw(js_string!("callback"), function, context.access())
         .unwrap();
 
     context.runtime().heap.collect().unwrap();

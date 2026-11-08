@@ -48,7 +48,7 @@ use surgeist_js_gc::heap::{Rooted, Trace as HeapTrace};
 ///         resolvers.resolve.call(
 ///             &JsValue::undefined(),
 ///             &[result],
-///             context,
+///             context.access(),
 ///         )?;
 ///         Ok(JsValue::undefined())
 ///     },
@@ -80,7 +80,7 @@ use surgeist_js_gc::heap::{Rooted, Trace as HeapTrace};
 ///                 js_string!("finally"),
 ///                 JsValue::from(true),
 ///                 true,
-///                 context,
+///                 context.access(),
 ///             )?;
 ///             Ok(JsValue::undefined())
 ///         })
@@ -99,7 +99,7 @@ use surgeist_js_gc::heap::{Rooted, Trace as HeapTrace};
 ///     context
 ///         .global_object()
 ///         .clone()
-///         .get(js_string!("finally"), context)?,
+///         .get(js_string!("finally"), context.access())?,
 ///     JsValue::from(true)
 /// );
 ///
@@ -150,7 +150,7 @@ impl JsPromise {
     ///         resolvers.resolve.call(
     ///             &JsValue::undefined(),
     ///             &[result],
-    ///             context,
+    ///             context.access(),
     ///         )?;
     ///         Ok(JsValue::undefined())
     ///     },
@@ -183,7 +183,7 @@ impl JsPromise {
             let e = e.into_opaque(context)?;
             resolvers
                 .reject
-                .call(&JsValue::undefined(), &[e], context)
+                .call(&JsValue::undefined(), &[e], context.access())
                 .js_expect("default `reject` function cannot throw")?;
         }
 
@@ -214,7 +214,7 @@ impl JsPromise {
     ///
     /// resolvers
     ///     .reject
-    ///     .call(&JsValue::undefined(), &[5.into()], context)?;
+    ///     .call(&JsValue::undefined(), &[5.into()], context.access())?;
     ///
     /// assert_eq!(promise.state(), PromiseState::Rejected(5.into()));
     ///
@@ -317,10 +317,16 @@ impl JsPromise {
 
                     let context = &mut context.borrow_mut();
                     match context.runtime().admit_callback_result(result) {
-                        Ok(v) => resolvers.resolve.call(&JsValue::undefined(), &[v], context),
+                        Ok(v) => {
+                            resolvers
+                                .resolve
+                                .call(&JsValue::undefined(), &[v], context.access())
+                        }
                         Err(e) => {
                             let e = e.into_opaque(context)?;
-                            resolvers.reject.call(&JsValue::undefined(), &[e], context)
+                            resolvers
+                                .reject
+                                .call(&JsValue::undefined(), &[e], context.access())
                         }
                     }
                 },
@@ -537,7 +543,7 @@ impl JsPromise {
     ///         resolvers.resolve.call(
     ///             &JsValue::undefined(),
     ///             &[255.255.into()],
-    ///             context,
+    ///             context.access(),
     ///         )?;
     ///         Ok(JsValue::undefined())
     ///     },
@@ -610,7 +616,7 @@ impl JsPromise {
     ///         resolvers.reject.call(
     ///             &JsValue::undefined(),
     ///             &[error.into()],
-    ///             context,
+    ///             context.access(),
     ///         )?;
     ///         Ok(JsValue::undefined())
     ///     },
@@ -680,7 +686,7 @@ impl JsPromise {
     ///         resolvers.reject.call(
     ///             &JsValue::undefined(),
     ///             &[error.into()],
-    ///             context,
+    ///             context.access(),
     ///         )?;
     ///         Ok(JsValue::undefined())
     ///     },
@@ -692,7 +698,7 @@ impl JsPromise {
     ///             js_string!("finally"),
     ///             JsValue::from(true),
     ///             true,
-    ///             context,
+    ///             context.access(),
     ///         )?;
     ///         Ok(JsValue::undefined())
     ///     })
@@ -706,7 +712,7 @@ impl JsPromise {
     ///     context
     ///         .global_object()
     ///         .clone()
-    ///         .get(js_string!("finally"), context)?,
+    ///         .get(js_string!("finally"), context.access())?,
     ///     JsValue::from(true)
     /// );
     ///
@@ -848,27 +854,27 @@ impl JsPromise {
     ///
     /// let a = array.at(0, context)?.as_object().unwrap().clone();
     /// assert_eq!(
-    ///     a.get(js_string!("status"), context)?,
+    ///     a.get(js_string!("status"), context.access())?,
     ///     js_string!("fulfilled").into()
     /// );
-    /// assert_eq!(a.get(js_string!("value"), context)?, 1.into());
+    /// assert_eq!(a.get(js_string!("value"), context.access())?, 1.into());
     ///
     /// let b = array.at(1, context)?.as_object().unwrap().clone();
     /// assert_eq!(
-    ///     b.get(js_string!("status"), context)?,
+    ///     b.get(js_string!("status"), context.access())?,
     ///     js_string!("rejected").into()
     /// );
     /// assert_eq!(
-    ///     b.get(js_string!("reason"), context)?.to_string(context.access())?,
+    ///     b.get(js_string!("reason"), context.access())?.to_string(context.access())?,
     ///     js_string!("TypeError")
     /// );
     ///
     /// let c = array.at(2, context)?.as_object().unwrap().clone();
     /// assert_eq!(
-    ///     c.get(js_string!("status"), context)?,
+    ///     c.get(js_string!("status"), context.access())?,
     ///     js_string!("fulfilled").into()
     /// );
-    /// assert_eq!(c.get(js_string!("value"), context)?, 3.into());
+    /// assert_eq!(c.get(js_string!("value"), context.access())?, 3.into());
     ///
     /// # Ok(())
     /// # }
@@ -994,14 +1000,14 @@ impl JsPromise {
     ///
     /// resolvers_b
     ///     .reject
-    ///     .call(&JsValue::undefined(), &[], context)?;
+    ///     .call(&JsValue::undefined(), &[], context.access())?;
     /// resolvers_a
     ///     .resolve
-    ///     .call(&JsValue::undefined(), &[5.into()], context)?;
+    ///     .call(&JsValue::undefined(), &[5.into()], context.access())?;
     /// resolvers_c.reject.call(
     ///     &JsValue::undefined(),
     ///     &[js_string!("c error").into()],
-    ///     context,
+    ///     context.access(),
     /// )?;
     ///
     /// context.run_jobs();
@@ -1066,7 +1072,7 @@ impl JsPromise {
     /// let future2 = async move {
     ///     resolvers
     ///         .resolve
-    ///         .call(&JsValue::undefined(), &[10.into()], context)?;
+    ///         .call(&JsValue::undefined(), &[10.into()], context.access())?;
     ///     context.run_jobs();
     ///     Ok::<(), JsError>(())
     /// };
@@ -1171,7 +1177,7 @@ impl JsPromise {
     /// let p1 = JsPromise::new(
     ///     |fns, context| {
     ///         fns.resolve
-    ///             .call(&JsValue::undefined(), &[JsValue::new(1)], context)
+    ///             .call(&JsValue::undefined(), &[JsValue::new(1)], context.access())
     ///     },
     ///     context,
     /// )?;
@@ -1200,7 +1206,7 @@ impl JsPromise {
     /// # fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// let context = &mut Context::default();
     /// let p1 = JsPromise::new(
-    ///     |fns, context| fns.resolve.call(&JsValue::undefined(), &[], context),
+    ///     |fns, context| fns.resolve.call(&JsValue::undefined(), &[], context.access()),
     ///     context,
     /// )?
     /// .then(
@@ -1291,7 +1297,7 @@ impl JsPromise {
 
                     if let Err(error) = result {
                         let reason = error.into_opaque(context)?;
-                        reject.call(&JsValue::undefined(), &[reason], context)?;
+                        reject.call(&JsValue::undefined(), &[reason], context.access())?;
                     }
                     Ok(JsValue::undefined())
                 },

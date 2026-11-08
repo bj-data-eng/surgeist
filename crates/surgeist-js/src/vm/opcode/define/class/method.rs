@@ -139,7 +139,7 @@ impl DefineClassStaticMethodByValue {
                 .enumerable(false)
                 .configurable(true)
                 .build(),
-            context,
+            context.access(),
         )?;
         Ok(())
     }

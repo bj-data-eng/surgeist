@@ -67,7 +67,7 @@ impl TemplateCreate {
                             .writable(false)
                             .enumerable(true)
                             .configurable(false),
-                        context,
+                        context.access(),
                     )
                     .js_expect("should not fail on new array")?;
             } else {
@@ -80,7 +80,7 @@ impl TemplateCreate {
                             .writable(false)
                             .enumerable(true)
                             .configurable(false),
-                        context,
+                        context.access(),
                     )
                     .js_expect("should not fail on new array")?;
                 index += 1;
@@ -90,7 +90,7 @@ impl TemplateCreate {
         }
 
         raw_obj
-            .set_integrity_level(IntegrityLevel::Frozen, context)
+            .set_integrity_level(IntegrityLevel::Frozen, context.access())
             .js_expect("should never fail per spec")?;
         template
             .define_property_or_throw(
@@ -100,11 +100,11 @@ impl TemplateCreate {
                     .writable(false)
                     .enumerable(false)
                     .configurable(false),
-                context,
+                context.access(),
             )
             .js_expect("should never fail per spec")?;
         template
-            .set_integrity_level(IntegrityLevel::Frozen, context)
+            .set_integrity_level(IntegrityLevel::Frozen, context.access())
             .js_expect("should never fail per spec")?;
 
         context.realm().push_template(site, template.clone());

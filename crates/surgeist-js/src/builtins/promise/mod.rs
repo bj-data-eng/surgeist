@@ -113,8 +113,8 @@ pub enum OperationType {
 /// the [`Promise()`] constructor.
 ///
 /// Both functions are always associated with the promise from which they were created. This
-/// means that by simply calling `resolve.call(this, &[values], context)` or
-/// `reject.call(this, &[error], context)`, the state of the original promise will be updated with
+/// means that by simply calling `resolve.call(this, &[values], context.access())` or
+/// `reject.call(this, &[error], context.access())`, the state of the original promise will be updated with
 /// the resolution value.
 ///
 /// [`Promise()`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise/Promise
@@ -145,7 +145,7 @@ macro_rules! if_abrupt_reject_promise {
                 // a. Perform ? Call(capability.[[Reject]], undefined, « value.[[Value]] »).
                 $capability
                     .reject()
-                    .call(&JsValue::undefined(), &[err], $context)?;
+                    .call(&JsValue::undefined(), &[err], $context.access())?;
 
                 // b. Return capability.[[Promise]].
                 return Ok($capability.promise().clone().into());
@@ -402,7 +402,7 @@ impl PromiseCapability {
         .into();
 
         // 6. Let promise be ? Construct(C, « executor »).
-        let promise = c.construct(&[executor], None, context)?;
+        let promise = c.construct(&[executor], None, context.access())?;
 
         let promise_capability = promise_capability.borrow();
 
@@ -553,7 +553,7 @@ impl BuiltInConstructor for Promise {
                 resolving_functions.resolve.clone().into(),
                 resolving_functions.reject.clone().into(),
             ],
-            context,
+            context.access(),
         );
 
         // 10. If completion is an abrupt completion, then
@@ -562,7 +562,7 @@ impl BuiltInConstructor for Promise {
             // a. Perform ? Call(resolvingFunctions.[[Reject]], undefined, « completion.[[Value]] »).
             resolving_functions
                 .reject
-                .call(&JsValue::undefined(), &[e], context)?;
+                .call(&JsValue::undefined(), &[e], context.access())?;
         }
 
         // 11. Return promise.
@@ -626,7 +626,7 @@ impl Promise {
                 promise_capability.functions.reject.call(
                     &JsValue::undefined(),
                     &[value],
-                    context,
+                    context.access(),
                 )?;
             }
             // 6. Else,
@@ -635,7 +635,7 @@ impl Promise {
                 promise_capability.functions.resolve.call(
                     &JsValue::undefined(),
                     &[value],
-                    context,
+                    context.access(),
                 )?;
             }
         }
@@ -778,7 +778,7 @@ impl Promise {
 
             // d. Let nextPromise be ? Call(promiseResolve, constructor, « next »).
             let next_promise =
-                promise_resolve.call(&constructor.clone().into(), &[next], context)?;
+                promise_resolve.call(&constructor.clone().into(), &[next], context.access())?;
 
             // e. Let steps be the algorithm steps defined in Promise.all Resolve Element Functions.
             // f. Let length be the number of non-optional parameters of the function definition in Promise.all Resolve Element Functions.
@@ -829,7 +829,7 @@ impl Promise {
                             return captures.capability.call(
                                 &JsValue::undefined(),
                                 &[values_array.into()],
-                                context,
+                                context.access(),
                             );
                         }
 
@@ -883,7 +883,7 @@ impl Promise {
             result_capability.functions.resolve.call(
                 &JsValue::undefined(),
                 &[values_array.into()],
-                context,
+                context.access(),
             )?;
         }
 
@@ -988,7 +988,7 @@ impl Promise {
 
             // d. Let nextPromise be ? Call(promiseResolve, constructor, « next »).
             let next_promise =
-                promise_resolve.call(&constructor.clone().into(), &[next], context)?;
+                promise_resolve.call(&constructor.clone().into(), &[next], context.access())?;
 
             // h. Let alreadyCalled be the Record { [[Value]]: false }.
             let already_called = Rc::new(Cell::new(false));
@@ -1030,7 +1030,7 @@ impl Promise {
                         obj.create_data_property_or_throw(
                             js_string!("status"),
                             js_string!("fulfilled"),
-                            context,
+                            context.access(),
                         )
                         .js_expect("cannot fail per spec")?;
 
@@ -1038,7 +1038,7 @@ impl Promise {
                         obj.create_data_property_or_throw(
                             js_string!("value"),
                             args.get_or_undefined(0).clone(),
-                            context,
+                            context.access(),
                         )
                         .js_expect("cannot fail per spec")?;
 
@@ -1063,7 +1063,7 @@ impl Promise {
                             return captures.capability.call(
                                 &JsValue::undefined(),
                                 &[values_array.into()],
-                                context,
+                                context.access(),
                             );
                         }
 
@@ -1121,7 +1121,7 @@ impl Promise {
                         obj.create_data_property_or_throw(
                             js_string!("status"),
                             js_string!("rejected"),
-                            context,
+                            context.access(),
                         )
                         .js_expect("cannot fail per spec")?;
 
@@ -1129,7 +1129,7 @@ impl Promise {
                         obj.create_data_property_or_throw(
                             js_string!("reason"),
                             args.get_or_undefined(0).clone(),
-                            context,
+                            context.access(),
                         )
                         .js_expect("cannot fail per spec")?;
 
@@ -1154,7 +1154,7 @@ impl Promise {
                             return captures.capability.call(
                                 &JsValue::undefined(),
                                 &[values_array.into()],
-                                context,
+                                context.access(),
                             );
                         }
 
@@ -1205,7 +1205,7 @@ impl Promise {
             result_capability.functions.resolve.call(
                 &JsValue::undefined(),
                 &[values_array.into()],
-                context,
+                context.access(),
             )?;
         }
 
@@ -1284,7 +1284,7 @@ impl Promise {
             promise_capability.functions.reject.call(
                 &JsValue::undefined(),
                 &[error.into()],
-                context,
+                context.access(),
             )?;
             // c. Return promiseCapability.[[Promise]].
             return Ok(promise_capability.promise.clone().into());
@@ -1358,7 +1358,7 @@ impl Promise {
         }
 
         // 1. Let allKeys be ? promises.[[OwnPropertyKeys]]().
-        let all_keys = promises.own_property_keys(context)?;
+        let all_keys = promises.own_property_keys(context.access())?;
 
         // 2. Let keys be a new empty List.
         let keys = Rc::new(RefCell::new(Vec::new()));
@@ -1387,7 +1387,7 @@ impl Promise {
                 && desc.expect_enumerable()
             {
                 // i. Let value be ? Get(promises, key).
-                let value = promises.get(key.clone(), context)?;
+                let value = promises.get(key.clone(), context.access())?;
 
                 // ii. Append key to keys.
                 keys.borrow_mut().push(key);
@@ -1396,8 +1396,11 @@ impl Promise {
                 values.borrow_mut().push(StoredValue::Undefined);
 
                 // iv. Let nextPromise be ? Call(promiseResolve, constructor, « value »).
-                let next_promise =
-                    promise_resolve.call(&JsValue::from(constructor.clone()), &[value], context)?;
+                let next_promise = promise_resolve.call(
+                    &JsValue::from(constructor.clone()),
+                    &[value],
+                    context.access(),
+                )?;
 
                 // v. Let alreadyCalled be the Record { [[Value]]: false }.
                 let already_called = Rc::new(Cell::new(false));
@@ -1430,12 +1433,16 @@ impl Promise {
                                 obj.create_data_property_or_throw(
                                     js_string!("status"),
                                     js_string!("fulfilled"),
-                                    context,
+                                    context.access(),
                                 )
                                 .js_expect("cannot fail per spec")?;
                                 // c. Perform ! CreateDataPropertyOrThrow(obj, "value", x).
-                                obj.create_data_property_or_throw(js_string!("value"), x, context)
-                                    .js_expect("cannot fail per spec")?;
+                                obj.create_data_property_or_throw(
+                                    js_string!("value"),
+                                    x,
+                                    context.access(),
+                                )
+                                .js_expect("cannot fail per spec")?;
                                 // d. Set values[index] to obj.
                                 element.values.borrow_mut()[element.index] =
                                     JsValue::from(obj).into_stored();
@@ -1458,7 +1465,7 @@ impl Promise {
                                 return element.capability.call(
                                     &JsValue::undefined(),
                                     &[result.into()],
-                                    context,
+                                    context.access(),
                                 );
                             }
 
@@ -1510,12 +1517,16 @@ impl Promise {
                                 obj.create_data_property_or_throw(
                                     js_string!("status"),
                                     js_string!("rejected"),
-                                    context,
+                                    context.access(),
                                 )
                                 .js_expect("cannot fail per spec")?;
                                 // 5. Perform ! CreateDataPropertyOrThrow(obj, "reason", x).
-                                obj.create_data_property_or_throw(js_string!("reason"), x, context)
-                                    .js_expect("cannot fail per spec")?;
+                                obj.create_data_property_or_throw(
+                                    js_string!("reason"),
+                                    x,
+                                    context.access(),
+                                )
+                                .js_expect("cannot fail per spec")?;
                                 // 6. Set values[index] to obj.
                                 element.values.borrow_mut()[element.index] =
                                     JsValue::from(obj).into_stored();
@@ -1535,7 +1546,7 @@ impl Promise {
                                     return element.capability.call(
                                         &JsValue::undefined(),
                                         &[result.into()],
-                                        context,
+                                        context.access(),
                                     );
                                 }
 
@@ -1589,7 +1600,7 @@ impl Promise {
             result_capability.functions.resolve.call(
                 &JsValue::undefined(),
                 &[result.into()],
-                context,
+                context.access(),
             )?;
         }
 
@@ -1695,7 +1706,7 @@ impl Promise {
 
             // d. Let nextPromise be ? Call(promiseResolve, constructor, « next »).
             let next_promise =
-                promise_resolve.call(&constructor.clone().into(), &[next], context)?;
+                promise_resolve.call(&constructor.clone().into(), &[next], context.access())?;
 
             // e. Let stepsRejected be the algorithm steps defined in Promise.any Reject Element Functions.
             // f. Let lengthRejected be the number of non-optional parameters of the function definition in Promise.any Reject Element Functions.
@@ -1753,7 +1764,7 @@ impl Promise {
                             return captures.capability.call(
                                 &JsValue::undefined(),
                                 &[error.into_opaque(context)?.into()],
-                                context,
+                                context.access(),
                             );
                         }
 
@@ -1906,7 +1917,7 @@ impl Promise {
         //     a. Let next be ? IteratorStepValue(iteratorRecord).
         while let Some(next) = iterator_record.step_value(context)? {
             // c. Let nextPromise be ? Call(promiseResolve, constructor, « next »).
-            let next_promise = promise_resolve.call(&constructor, &[next], context)?;
+            let next_promise = promise_resolve.call(&constructor, &[next], context.access())?;
             // d. Perform ? Invoke(nextPromise, "then", « resultCapability.[[Resolve]], resultCapability.[[Reject]] »).
             next_promise.invoke(
                 js_string!("then"),
@@ -1956,10 +1967,11 @@ impl Promise {
         let promise_capability = PromiseCapability::new(c, context)?;
 
         // 3. Perform ? Call(promiseCapability.[[Reject]], undefined, « r »).
-        promise_capability
-            .functions
-            .reject
-            .call(&JsValue::undefined(), &[reason], context)?;
+        promise_capability.functions.reject.call(
+            &JsValue::undefined(),
+            &[reason],
+            context.access(),
+        )?;
 
         // 4. Return promiseCapability.[[Promise]].
         Ok(promise_capability.promise.clone())
@@ -2009,7 +2021,7 @@ impl Promise {
         if let Some(x) = x.as_promise_object() {
             let x = x.upcast();
             // a. Let xConstructor be ? Get(x, "constructor").
-            let x_constructor = x.get(CONSTRUCTOR, context)?;
+            let x_constructor = x.get(CONSTRUCTOR, context.access())?;
             // b. If SameValue(xConstructor, C) is true, return x.
             if x_constructor
                 .as_object()
@@ -2026,7 +2038,7 @@ impl Promise {
         promise_capability
             .functions
             .resolve
-            .call(&JsValue::undefined(), &[x], context)?;
+            .call(&JsValue::undefined(), &[x], context.access())?;
 
         // 4. Return promiseCapability.[[Promise]].
         Ok(promise_capability.promise.clone())
@@ -2109,7 +2121,7 @@ impl Promise {
             //    a. Let thenFinally be onFinally.
             //    b. Let catchFinally be onFinally.
             // 7. Return ? Invoke(promise, "then", « thenFinally, catchFinally »).
-            let then = promise.get(js_string!("then"), context)?;
+            let then = promise.get(js_string!("then"), context.access())?;
             return then.call(this, &[on_finally.clone(), on_finally.clone()], context);
         };
 
@@ -2117,7 +2129,7 @@ impl Promise {
             Self::then_catch_finally_closures(c, on_finally, context)?;
 
         // 7. Return ? Invoke(promise, "then", « thenFinally, catchFinally »).
-        let then = promise.get(js_string!("then"), context)?;
+        let then = promise.get(js_string!("then"), context.access())?;
         then.call(this, &[then_finally.into(), catch_finally.into()], context)
     }
 
@@ -2134,7 +2146,7 @@ impl Promise {
                     let value = args.get_or_undefined(0);
 
                     // i. Let result be ? Call(onFinally, undefined).
-                    let result = on_finally.call(&JsValue::undefined(), &[], context)?;
+                    let result = on_finally.call(&JsValue::undefined(), &[], context.access())?;
 
                     // ii. Let promise be ? PromiseResolve(C, result).
                     let promise = Self::promise_resolve(c, result, context)?;
@@ -2172,7 +2184,7 @@ impl Promise {
                     let reason = args.get_or_undefined(0);
 
                     // i. Let result be ? Call(onFinally, undefined).
-                    let result = on_finally.call(&JsValue::undefined(), &[], context)?;
+                    let result = on_finally.call(&JsValue::undefined(), &[], context.access())?;
 
                     // ii. Let promise be ? PromiseResolve(C, result).
                     let promise = Self::promise_resolve(c, result, context)?;
@@ -2411,7 +2423,7 @@ impl Promise {
         context: &mut Context,
     ) -> JsResult<JsObject> {
         // 1. Let promiseResolve be ? Get(promiseConstructor, "resolve").
-        let promise_resolve = promise_constructor.get(js_string!("resolve"), context)?;
+        let promise_resolve = promise_constructor.get(js_string!("resolve"), context.access())?;
 
         // 2. If IsCallable(promiseResolve) is false, throw a TypeError exception.
         promise_resolve.as_callable().ok_or_else(|| {
@@ -2616,7 +2628,7 @@ impl Promise {
                     };
 
                     // 9. Let then be Completion(Get(resolution, "then")).
-                    let then_action = match then.get(js_string!("then"), context) {
+                    let then_action = match then.get(js_string!("then"), context.access()) {
                         // 10. If then is an abrupt completion, then
                         Err(e) => {
                             //   a. Perform RejectPromise(promise, then.[[Value]]).
@@ -2788,13 +2800,13 @@ fn new_promise_reaction_job(
                     Err(error) => {
                         // i. Return ? Call(promiseCapability.[[Reject]], undefined, « handlerResult.[[Value]] »).
                         let value = error.into_opaque(context)?;
-                        reject.call(&JsValue::undefined(), &[value], context)
+                        reject.call(&JsValue::undefined(), &[value], context.access())
                     }
 
                     // i. Else,
                     Ok(value) => {
                         // i. Return ? Call(promiseCapability.[[Resolve]], undefined, « handlerResult.[[Value]] »).
-                        resolve.call(&JsValue::undefined(), &[value], context)
+                        resolve.call(&JsValue::undefined(), &[value], context.access())
                     }
                 }
             }
@@ -2845,9 +2857,11 @@ fn new_promise_resolve_thenable_job(
         if let Err(value) = then_call_result {
             let value = value.into_opaque(context)?;
             //    i. Return ? Call(resolvingFunctions.[[Reject]], undefined, « thenCallResult.[[Value]] »).
-            return resolving_functions
-                .reject
-                .call(&JsValue::undefined(), &[value], context);
+            return resolving_functions.reject.call(
+                &JsValue::undefined(),
+                &[value],
+                context.access(),
+            );
         }
 
         //    d. Return ? thenCallResult.
@@ -2891,7 +2905,7 @@ fn create_keyed_result_object(
     // 3. For each integer i such that 0 ≤ i < the number of elements in keys, in ascending order, do
     for (key, value) in keys.iter().zip(values.iter()) {
         // a. Perform ! CreateDataPropertyOrThrow(obj, keys[i], values[i]).
-        obj.create_data_property_or_throw(key.clone(), value.to_value(), context)
+        obj.create_data_property_or_throw(key.clone(), value.to_value(), context.access())
             .expect("cannot fail per spec");
     }
 

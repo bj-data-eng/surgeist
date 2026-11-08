@@ -26,7 +26,7 @@ impl CopyDataProperties {
             );
         }
         let object = object.as_object().expect("not an object");
-        object.copy_data_properties(&source, excluded_keys, context)?;
+        object.copy_data_properties(&source, excluded_keys, context.access())?;
         Ok(())
     }
 }

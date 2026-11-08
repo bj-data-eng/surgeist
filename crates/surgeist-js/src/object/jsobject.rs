@@ -8,7 +8,7 @@ use super::{
     shape::{RootShape, UniqueShape, property_table::PropertyTableInner},
 };
 use crate::{
-    Context, JsError, JsResult, JsString, JsSymbol, JsValue, Runtime,
+    Context, ContextAccess, JsError, JsResult, JsString, JsSymbol, JsValue, Runtime,
     builtins::{
         array::ARRAY_EXOTIC_INTERNAL_METHODS,
         array_buffer::{ArrayBuffer, BufferObject, SharedArrayBuffer},
@@ -728,8 +728,8 @@ impl JsObject {
             encounters: &mut HashSet<ObjectId>,
             context: &mut Context,
         ) -> JsResult<bool> {
-            let l_keys = lhs.own_property_keys(context)?;
-            let r_keys = rhs.own_property_keys(context)?;
+            let l_keys = lhs.own_property_keys(context.access())?;
+            let r_keys = rhs.own_property_keys(context.access())?;
 
             if l_keys.len() != r_keys.len() {
                 return Ok(false);
@@ -793,17 +793,22 @@ impl JsObject {
     /// let context = &mut Context::default();
     ///
     /// let obj1 = JsObject::with_object_proto(context.intrinsics());
-    /// obj1.set(js_string!("key"), 42, false, context)?;
+    /// obj1.set(js_string!("key"), 42, false, context.access())?;
     ///
     /// let obj2 = JsObject::with_object_proto(context.intrinsics());
-    /// obj2.set(js_string!("key"), 42, false, context)?;
+    /// obj2.set(js_string!("key"), 42, false, context.access())?;
     ///
-    /// assert!(JsObject::deep_strict_equals(&obj1, &obj2, context)?);
+    /// assert!(JsObject::deep_strict_equals(&obj1, &obj2, context.access())?);
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
-    pub fn deep_strict_equals(lhs: &Self, rhs: &Self, context: &mut Context) -> JsResult<bool> {
+    pub fn deep_strict_equals(
+        lhs: &Self,
+        rhs: &Self,
+        context: ContextAccess<'_>,
+    ) -> JsResult<bool> {
+        let context = context.into_owner();
         Self::deep_strict_equals_inner(lhs, rhs, &mut HashSet::new(), context)
     }
 
@@ -813,9 +818,10 @@ impl JsObject {
     /// <https://tc39.es/ecma262/#sec-toprimitive>
     pub fn to_primitive(
         &self,
-        context: &mut Context,
+        context: ContextAccess<'_>,
         preferred_type: PreferredType,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         // a. Let exoticToPrim be ? GetMethod(input, @@toPrimitive).
         let Some(exotic_to_prim) = self.get_method(JsSymbol::to_primitive(), context)? else {
             // c. If preferredType is not present, let preferredType be number.
@@ -840,7 +846,7 @@ impl JsObject {
         .into();
 
         //    iv. Let result be ? Call(exoticToPrim, input, « hint »).
-        let result = exotic_to_prim.call(&self.clone().into(), &[hint], context)?;
+        let result = exotic_to_prim.call(&self.clone().into(), &[hint], context.access())?;
 
         //    v. If Type(result) is not Object, return result.
         //    vi. Throw a TypeError exception.
@@ -908,12 +914,12 @@ impl JsObject {
         // 5. For each name in methodNames in List order, do
         for name in method_names {
             // a. Let method be ? Get(O, name).
-            let method = self.get(name, context)?;
+            let method = self.get(name, context.access())?;
 
             // b. If IsCallable(method) is true, then
             if let Some(method) = method.as_callable() {
                 // i. Let result be ? Call(method, O).
-                let result = method.call(&self.clone().into(), &[], context)?;
+                let result = method.call(&self.clone().into(), &[], context.access())?;
 
                 // ii. If Type(result) is not Object, return result.
                 if !result.is_object() {
@@ -934,7 +940,11 @@ impl JsObject {
     /// - [ECMAScript reference][spec]
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-topropertydescriptor
-    pub fn to_property_descriptor(&self, context: &mut Context) -> JsResult<PropertyDescriptor> {
+    pub fn to_property_descriptor(
+        &self,
+        context: ContextAccess<'_>,
+    ) -> JsResult<PropertyDescriptor> {
+        let context = context.into_owner();
         // 1 is implemented on the method `to_property_descriptor` of value
 
         // 2. Let desc be a new Property Descriptor that initially has no fields.

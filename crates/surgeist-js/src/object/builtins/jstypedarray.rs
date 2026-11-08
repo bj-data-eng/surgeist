@@ -90,7 +90,7 @@ impl JsTypedArray {
     /// let array_buffer8 = JsArrayBuffer::new(8, context)?;
     /// let array = JsUint8Array::from_array_buffer(array_buffer8, context)?;
     /// assert_eq!(
-    ///     array.buffer(context)?.as_object().unwrap().get(PropertyKey::String(js_string!("byteLength")), context).unwrap(),
+    ///     array.buffer(context)?.as_object().unwrap().get(PropertyKey::String(js_string!("byteLength")), context.access()).unwrap(),
     ///     JsValue::new(8)
     /// );
     /// # Ok(())
@@ -171,14 +171,14 @@ impl JsTypedArray {
     /// let context = &mut Context::default();
     /// let array = JsUint8Array::from_iter(vec![1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8], context)?;
     /// array.copy_within(3, 1, Some(3), context)?;
-    /// assert_eq!(array.get(0, context)?, JsValue::new(1.0));
-    /// assert_eq!(array.get(1, context)?, JsValue::new(2.0));
-    /// assert_eq!(array.get(2, context)?, JsValue::new(3.0));
-    /// assert_eq!(array.get(3, context)?, JsValue::new(2.0));
-    /// assert_eq!(array.get(4, context)?, JsValue::new(3.0));
-    /// assert_eq!(array.get(5, context)?, JsValue::new(6.0));
-    /// assert_eq!(array.get(6, context)?, JsValue::new(7.0));
-    /// assert_eq!(array.get(7, context)?, JsValue::new(8.0));
+    /// assert_eq!(array.get(0, context.access())?, JsValue::new(1.0));
+    /// assert_eq!(array.get(1, context.access())?, JsValue::new(2.0));
+    /// assert_eq!(array.get(2, context.access())?, JsValue::new(3.0));
+    /// assert_eq!(array.get(3, context.access())?, JsValue::new(2.0));
+    /// assert_eq!(array.get(4, context.access())?, JsValue::new(3.0));
+    /// assert_eq!(array.get(5, context.access())?, JsValue::new(6.0));
+    /// assert_eq!(array.get(6, context.access())?, JsValue::new(7.0));
+    /// assert_eq!(array.get(7, context.access())?, JsValue::new(8.0));
     ///
     /// # Ok(())
     /// # }
@@ -295,14 +295,14 @@ impl JsTypedArray {
     /// let array = JsUint8Array::from_iter(vec![1u8, 2u8, 3u8, 4u8, 5u8, 6u8, 7u8, 8u8], context)?;
     /// let subarray2_6 = array.subarray(2, 6, context)?;
     /// assert_eq!(subarray2_6.length(context)?, 4);
-    /// assert_eq!(subarray2_6.get(0, context)?, JsValue::new(3.0));
-    /// assert_eq!(subarray2_6.get(1, context)?, JsValue::new(4.0));
-    /// assert_eq!(subarray2_6.get(2, context)?, JsValue::new(5.0));
-    /// assert_eq!(subarray2_6.get(3, context)?, JsValue::new(6.0));
+    /// assert_eq!(subarray2_6.get(0, context.access())?, JsValue::new(3.0));
+    /// assert_eq!(subarray2_6.get(1, context.access())?, JsValue::new(4.0));
+    /// assert_eq!(subarray2_6.get(2, context.access())?, JsValue::new(5.0));
+    /// assert_eq!(subarray2_6.get(3, context.access())?, JsValue::new(6.0));
     /// let subarray4_6 = array.subarray(-4, 6, context)?;
     /// assert_eq!(subarray4_6.length(context)?, 2);
-    /// assert_eq!(subarray4_6.get(0, context)?, JsValue::new(5.0));
-    /// assert_eq!(subarray4_6.get(1, context)?, JsValue::new(6.0));
+    /// assert_eq!(subarray4_6.get(0, context.access())?, JsValue::new(5.0));
+    /// assert_eq!(subarray4_6.get(1, context.access())?, JsValue::new(6.0));
     ///
     /// # Ok(())
     /// # }
@@ -435,15 +435,15 @@ impl JsTypedArray {
     ///   Some(3),
     ///   context,
     /// )?;
-    /// assert_eq!(initialized8_array.get(0, context)?, JsValue::new(0));
-    /// assert_eq!(initialized8_array.get(1, context)?, JsValue::new(0));
-    /// assert_eq!(initialized8_array.get(2, context)?, JsValue::new(0));
-    /// assert_eq!(initialized8_array.get(3, context)?, JsValue::new(1.0));
-    /// assert_eq!(initialized8_array.get(4, context)?, JsValue::new(2.0));
-    /// assert_eq!(initialized8_array.get(5, context)?, JsValue::new(0));
-    /// assert_eq!(initialized8_array.get(6, context)?, JsValue::new(0));
-    /// assert_eq!(initialized8_array.get(7, context)?, JsValue::new(0));
-    /// assert_eq!(initialized8_array.get(8, context)?, JsValue::undefined());
+    /// assert_eq!(initialized8_array.get(0, context.access())?, JsValue::new(0));
+    /// assert_eq!(initialized8_array.get(1, context.access())?, JsValue::new(0));
+    /// assert_eq!(initialized8_array.get(2, context.access())?, JsValue::new(0));
+    /// assert_eq!(initialized8_array.get(3, context.access())?, JsValue::new(1.0));
+    /// assert_eq!(initialized8_array.get(4, context.access())?, JsValue::new(2.0));
+    /// assert_eq!(initialized8_array.get(5, context.access())?, JsValue::new(0));
+    /// assert_eq!(initialized8_array.get(6, context.access())?, JsValue::new(0));
+    /// assert_eq!(initialized8_array.get(7, context.access())?, JsValue::new(0));
+    /// assert_eq!(initialized8_array.get(8, context.access())?, JsValue::undefined());
     ///
     /// # Ok(())
     /// # }
@@ -1140,7 +1140,7 @@ macro_rules! JsTypedArrayType {
                 let mut index = 0;
                 std::iter::from_fn(move || {
                     if index < length {
-                        let value = self.get(index, context).ok()?;
+                        let value = self.get(index, context.access()).ok()?;
                         index += 1;
                         value.$value_to_elem(context.access()).ok()
                     } else {
@@ -1438,17 +1438,17 @@ fn typed_array_entries() {
         let next_fn = entries
             .as_object()
             .unwrap()
-            .get(next_str.clone(), context)
+            .get(next_str.clone(), context.access())
             .unwrap();
         let result = next_fn
             .as_object()
             .unwrap()
-            .call(&entries, &[], context)
+            .call(&entries, &[], context.access())
             .unwrap();
         if result
             .as_object()
             .unwrap()
-            .get(crate::js_string!("done"), context)
+            .get(crate::js_string!("done"), context.access())
             .unwrap()
             .to_boolean()
         {
@@ -1458,7 +1458,7 @@ fn typed_array_entries() {
             result
                 .as_object()
                 .unwrap()
-                .get(crate::js_string!("value"), context)
+                .get(crate::js_string!("value"), context.access())
                 .unwrap(),
         );
     }
@@ -1477,17 +1477,17 @@ fn typed_array_keys() {
         let next_fn = keys
             .as_object()
             .unwrap()
-            .get(next_str.clone(), context)
+            .get(next_str.clone(), context.access())
             .unwrap();
         let result = next_fn
             .as_object()
             .unwrap()
-            .call(&keys, &[], context)
+            .call(&keys, &[], context.access())
             .unwrap();
         if result
             .as_object()
             .unwrap()
-            .get(crate::js_string!("done"), context)
+            .get(crate::js_string!("done"), context.access())
             .unwrap()
             .to_boolean()
         {
@@ -1497,7 +1497,7 @@ fn typed_array_keys() {
             result
                 .as_object()
                 .unwrap()
-                .get(crate::js_string!("value"), context)
+                .get(crate::js_string!("value"), context.access())
                 .unwrap(),
         );
     }
@@ -1516,17 +1516,17 @@ fn typed_array_values() {
         let next_fn = values
             .as_object()
             .unwrap()
-            .get(next_str.clone(), context)
+            .get(next_str.clone(), context.access())
             .unwrap();
         let result = next_fn
             .as_object()
             .unwrap()
-            .call(&values, &[], context)
+            .call(&values, &[], context.access())
             .unwrap();
         if result
             .as_object()
             .unwrap()
-            .get(crate::js_string!("done"), context)
+            .get(crate::js_string!("done"), context.access())
             .unwrap()
             .to_boolean()
         {
@@ -1536,7 +1536,7 @@ fn typed_array_values() {
             result
                 .as_object()
                 .unwrap()
-                .get(crate::js_string!("value"), context)
+                .get(crate::js_string!("value"), context.access())
                 .unwrap(),
         );
     }
@@ -1554,17 +1554,17 @@ fn typed_array_iterator() {
         let next_fn = values
             .as_object()
             .unwrap()
-            .get(next_str.clone(), context)
+            .get(next_str.clone(), context.access())
             .unwrap();
         let result = next_fn
             .as_object()
             .unwrap()
-            .call(&values, &[], context)
+            .call(&values, &[], context.access())
             .unwrap();
         if result
             .as_object()
             .unwrap()
-            .get(crate::js_string!("done"), context)
+            .get(crate::js_string!("done"), context.access())
             .unwrap()
             .to_boolean()
         {
@@ -1574,7 +1574,7 @@ fn typed_array_iterator() {
             result
                 .as_object()
                 .unwrap()
-                .get(crate::js_string!("value"), context)
+                .get(crate::js_string!("value"), context.access())
                 .unwrap(),
         );
     }

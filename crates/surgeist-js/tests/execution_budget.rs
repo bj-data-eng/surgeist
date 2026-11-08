@@ -2530,7 +2530,7 @@ fn construct_selected_function(
 ) -> JsResult<JsValue> {
     let constructor = context
         .global_object()
-        .get(js_string!("SelectedConstructor"), context)?
+        .get(js_string!("SelectedConstructor"), context.access())?
         .as_object()
         .unwrap();
     constructor.construct(
@@ -2538,7 +2538,7 @@ fn construct_selected_function(
             "let privateParameter = 1; return privateParameter"
         ))],
         None,
-        context,
+        context.access(),
     )?;
     Ok(JsValue::new(42))
 }
@@ -2817,7 +2817,7 @@ fn assert_private_frontdoor_boundary(
             assert!(
                 !context
                     .global_object()
-                    .has_own_property(name, &mut context)
+                    .has_own_property(name, context.access())
                     .unwrap(),
                 "{source}: refused global variable was published"
             );
@@ -2922,14 +2922,17 @@ fn compiler_json_lowering_records_additional_literal_work() {
     fn parse_selected(_: &JsValue, _: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         let input = context
             .global_object()
-            .get(js_string!("selectedJsonInput"), context)?;
+            .get(js_string!("selectedJsonInput"), context.access())?;
         let json = context
             .global_object()
-            .get(js_string!("JSON"), context)?
+            .get(js_string!("JSON"), context.access())?
             .as_object()
             .unwrap();
-        let parse = json.get(js_string!("parse"), context)?.as_object().unwrap();
-        parse.call(&JsValue::undefined(), &[input], context)?;
+        let parse = json
+            .get(js_string!("parse"), context.access())?
+            .as_object()
+            .unwrap();
+        parse.call(&JsValue::undefined(), &[input], context.access())?;
         Ok(JsValue::new(0))
     }
     fn run(input: &str) -> u64 {
@@ -3214,7 +3217,7 @@ fn compiler_default_export_anonymous_query_charges_parenthesized_searches() {
                             .as_object()
                             .unwrap();
                         assert_eq!(
-                            function.get(js_string!("name"), context)?,
+                            function.get(js_string!("name"), context.access())?,
                             JsValue::from(js_string!("default"))
                         );
                         Ok(JsValue::new(42))
@@ -3691,7 +3694,7 @@ mod async_operation_regressions {
             context.runtime_limits_mut().set_recursion_limit(1);
             assert_eq!(
                 fresh_function
-                    .call(&JsValue::undefined(), &[], &mut context)
+                    .call(&JsValue::undefined(), &[], context.access())
                     .unwrap(),
                 JsValue::new(42)
             );
@@ -3728,10 +3731,10 @@ mod async_operation_regressions {
                 if host_function_call {
                     let function = context
                         .global_object()
-                        .get(js_string!("panicWrapper"), context)?;
+                        .get(js_string!("panicWrapper"), context.access())?;
                     JsFunction::from_object(function.as_object().unwrap())
                         .unwrap()
-                        .call(&JsValue::undefined(), &[], context)
+                        .call(&JsValue::undefined(), &[], context.access())
                 } else {
                     context.eval(
                         Source::from_bytes(
@@ -3769,7 +3772,7 @@ mod async_operation_regressions {
                 .unwrap();
             context.enter_realm(caller_realm.clone()).unwrap();
             context.runtime_limits_mut().set_recursion_limit(1);
-            let tight_call = fresh_function.call(&JsValue::undefined(), &[], &mut context);
+            let tight_call = fresh_function.call(&JsValue::undefined(), &[], context.access());
             context
                 .runtime_limits_mut()
                 .set_recursion_limit(recursion_limit);

@@ -48,7 +48,8 @@ impl Animal {
     #[boa(length = 11)]
     fn method(context: &mut Context) -> JsObject {
         let obj = JsObject::with_null_proto(context.runtime());
-        obj.set(js_string!("key"), 43, false, context).unwrap();
+        obj.set(js_string!("key"), 43, false, context.access())
+            .unwrap();
         obj
     }
 
@@ -97,11 +98,11 @@ impl Pair {
             [JsValue::from(self.value), JsValue::from(self.value * 10)],
             context,
         )?;
-        let iter_fn = arr.get(surgeist_js::JsSymbol::iterator(), context)?;
+        let iter_fn = arr.get(surgeist_js::JsSymbol::iterator(), context.access())?;
         iter_fn
             .as_callable()
             .expect("@@iterator should be callable")
-            .call(&arr.into(), &[], context)
+            .call(&arr.into(), &[], context.access())
     }
 }
 

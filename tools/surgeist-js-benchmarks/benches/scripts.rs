@@ -62,13 +62,13 @@ fn bench_scripts(c: &mut Criterion) {
         // Get the main function
         let function = context
             .global_object()
-            .get(js_string!("main"), context)
+            .get(js_string!("main"), context.access())
             .unwrap_or_else(|_| panic!("No main function defined in script: {}", path.display()))
             .as_callable()
             .unwrap_or_else(|| panic!("'main' is not a function in script: {}", path.display()))
             .clone();
 
-        let mut call = || function.call(&JsValue::undefined(), &[], context);
+        let mut call = || function.call(&JsValue::undefined(), &[], context.access());
         if name == "intl/numberformat-different-options" {
             group.bench_function("Unsupported currency format error", |b| {
                 b.iter(|| {
@@ -88,7 +88,7 @@ fn bench_scripts(c: &mut Criterion) {
         if is_v8_suite {
             let failures = context
                 .global_object()
-                .get(js_string!("harnessErrorCount"), context)
+                .get(js_string!("harnessErrorCount"), context.access())
                 .expect("read the V8 harness error count");
             assert_eq!(
                 failures.as_number(),

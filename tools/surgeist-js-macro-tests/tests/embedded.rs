@@ -42,11 +42,13 @@ fn load_module_and_test(module_loader: &Rc<EmbeddedModuleLoader>) {
             let bar = module
                 .namespace(&mut context)
                 .unwrap()
-                .get(js_string!("bar"), &mut context)
+                .get(js_string!("bar"), context.access())
                 .unwrap()
                 .as_callable()
                 .unwrap();
-            let value = bar.call(&JsValue::undefined(), &[], &mut context).unwrap();
+            let value = bar
+                .call(&JsValue::undefined(), &[], context.access())
+                .unwrap();
             assert_eq!(
                 value.as_number(),
                 Some(6.),

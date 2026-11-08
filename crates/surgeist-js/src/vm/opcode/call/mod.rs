@@ -277,7 +277,7 @@ fn parse_import_attributes(
         };
 
         // b. Let attributesObj be ? Get(options, "with").
-        let attributes_obj = options_obj.get(crate::js_str!("with"), context)?;
+        let attributes_obj = options_obj.get(crate::js_str!("with"), context.access())?;
 
         // c. If attributesObj is not undefined, then
         if !attributes_obj.is_undefined() {
@@ -302,14 +302,14 @@ fn parse_import_attributes(
                     .js_expect("entry from EnumerableOwnProperties must be an object")?;
 
                 // 1. Let key be entry.[[Key]].
-                let key = entry.get(0, context)?;
+                let key = entry.get(0, context.access())?;
                 let key_str = key
                     .as_string()
                     .js_expect("key from EnumerableOwnProperties must be a string")?
                     .clone();
 
                 // 2. Let value be entry.[[Value]].
-                let value = entry.get(1, context)?;
+                let value = entry.get(1, context.access())?;
 
                 // 3. If Type(value) is not String, throw a TypeError exception.
                 let Some(value_str) = value.as_string() else {
@@ -363,7 +363,7 @@ async fn load_dyn_import(
             // a. Perform ! Call(promiseCapability.[[Reject]], undefined, « moduleCompletion.[[Value]] »).
             let err = err.into_opaque(&mut context.borrow_mut())?;
             cap.reject()
-                .call(&JsValue::undefined(), &[err], &mut context.borrow_mut())
+                .call(&JsValue::undefined(), &[err], context.borrow_mut().access())
                 .expect("default `reject` function cannot throw");
 
             // b. Return unused.
@@ -397,7 +397,7 @@ async fn load_dyn_import(
             .into();
         let err = JsError::into_opaque(err, &mut context.borrow_mut())?;
         cap.reject()
-            .call(&JsValue::undefined(), &[err], &mut context.borrow_mut())
+            .call(&JsValue::undefined(), &[err], context.borrow_mut().access())
             .expect("default `reject` function cannot throw");
         return Ok(());
     }
@@ -414,7 +414,7 @@ async fn load_dyn_import(
             .into();
         let err = JsError::into_opaque(err, &mut context.borrow_mut())?;
         cap.reject()
-            .call(&JsValue::undefined(), &[err], &mut context.borrow_mut())
+            .call(&JsValue::undefined(), &[err], context.borrow_mut().access())
             .expect("default `reject` function cannot throw");
         return Ok(());
     }
@@ -431,7 +431,7 @@ async fn load_dyn_import(
             |_, args, cap, context| {
                 //     a. Perform ! Call(promiseCapability.[[Reject]], undefined, « reason »).
                 cap.reject()
-                    .call(&JsValue::undefined(), args, context)
+                    .call(&JsValue::undefined(), args, context.access())
                     .expect("default `reject` function cannot throw");
 
                 //     b. Return unused.
@@ -454,7 +454,7 @@ async fn load_dyn_import(
                     // i. Perform ! Call(promiseCapability.[[Reject]], undefined, « link.[[Value]] »).
                     let e = e.into_opaque(context)?;
                     cap.reject()
-                        .call(&JsValue::undefined(), &[e], context)
+                        .call(&JsValue::undefined(), &[e], context.access())
                         .expect("default `reject` function cannot throw");
                     // ii. Return unused.
                     return Ok(JsValue::undefined());
@@ -474,7 +474,7 @@ async fn load_dyn_import(
 
                             // ii. Perform ! Call(promiseCapability.[[Resolve]], undefined, « namespace »).
                             cap.resolve()
-                                .call(&JsValue::undefined(), &[namespace.into()], context)
+                                .call(&JsValue::undefined(), &[namespace.into()], context.access())
                                 .expect("default `resolve` function cannot throw");
 
                             // iii. Return unused.
@@ -495,7 +495,7 @@ async fn load_dyn_import(
                 ) {
                     let reason = error.into_opaque(context)?;
                     cap.reject()
-                        .call(&JsValue::undefined(), &[reason], context)?;
+                        .call(&JsValue::undefined(), &[reason], context.access())?;
                 }
 
                 // g. Return unused.
@@ -517,7 +517,7 @@ async fn load_dyn_import(
     ) {
         let reason = error.into_opaque(&mut context)?;
         cap.reject()
-            .call(&JsValue::undefined(), &[reason], &mut context)?;
+            .call(&JsValue::undefined(), &[reason], context.access())?;
     }
 
     // 9. Return unused.
@@ -570,7 +570,8 @@ impl ImportCall {
             // 7. IfAbruptRejectPromise(specifierString, promiseCapability).
             Err(err) => {
                 let err = err.into_opaque(context)?;
-                cap.reject().call(&JsValue::undefined(), &[err], context)?;
+                cap.reject()
+                    .call(&JsValue::undefined(), &[err], context.access())?;
                 context.vm.set_register(specifier_op.into(), promise.into());
                 return Ok(());
             }
@@ -580,7 +581,8 @@ impl ImportCall {
             Ok(req) => req,
             Err(err) => {
                 let err = err.into_opaque(context)?;
-                cap.reject().call(&JsValue::undefined(), &[err], context)?;
+                cap.reject()
+                    .call(&JsValue::undefined(), &[err], context.access())?;
                 context.vm.set_register(specifier_op.into(), promise.into());
                 return Ok(());
             }

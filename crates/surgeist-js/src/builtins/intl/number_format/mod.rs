@@ -281,7 +281,7 @@ impl BuiltInConstructor for NumberFormat {
                     .writable(false)
                     .enumerable(false)
                     .configurable(false),
-                context,
+                context.access(),
             )?;
             // b. Return this.
             Ok(this)
@@ -414,7 +414,7 @@ impl NumberFormat {
             // <https://tc39.es/ecma402/#sec-getbooleanorstringnumberformatoption>
 
             // 1. Let value be ? Get(options, property).
-            let value = options.get(js_string!("useGrouping"), context)?;
+            let value = options.get(js_string!("useGrouping"), context.access())?;
 
             // 2. If value is undefined, return fallback.
             if value.is_undefined() {
@@ -859,7 +859,7 @@ fn unwrap_number_format(nf: &JsValue, context: &mut Context) -> JsResult<JsObjec
 
         //    a. Return ? Get(nf, %Intl%.[[FallbackSymbol]]).
         if let Some(nf) = nf_o
-            .get(fallback_symbol, context)?
+            .get(fallback_symbol, context.access())?
             .as_object()
             .and_then(|o| o.downcast::<NumberFormat>().ok())
         {

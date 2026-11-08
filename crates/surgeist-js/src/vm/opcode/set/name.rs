@@ -87,7 +87,9 @@ impl SetAnnexBGlobal {
             return Ok(());
         }
         let value = context.vm.get_register(value.into()).clone();
-        context.global_object().set(name, value, false, context)?;
+        context
+            .global_object()
+            .set(name, value, false, context.access())?;
         Ok(())
     }
 }
@@ -216,7 +218,7 @@ mod tests {
                 .expect("non-strict global assignment");
             let value = context
                 .global_object()
-                .get(name, &mut context)
+                .get(name, context.access())
                 .expect("global property");
             context.vm.pop_frame();
             value

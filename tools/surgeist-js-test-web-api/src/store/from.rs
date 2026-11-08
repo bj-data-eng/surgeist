@@ -140,10 +140,10 @@ impl Encoder<'_> {
         }
 
         // Keep own properties. Reconstruction supplies the destination realm's prototype.
-        let keys = object.own_property_keys(context)?;
+        let keys = object.own_property_keys(context.access())?;
         let mut fields = Vec::with_capacity(keys.len());
         for key in keys {
-            let value = object.get(key.clone(), context)?;
+            let value = object.get(key.clone(), context.access())?;
             let key = match key {
                 PropertyKey::String(string) => string.into(),
                 PropertyKey::Symbol(_) => return Err(unsupported_type()),

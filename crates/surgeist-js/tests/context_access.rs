@@ -7,10 +7,12 @@ use std::{
 };
 
 use surgeist_js::{
-    Context, JsValue, Script, Source,
+    Context, JsValue, NativeFunction, Script, Source,
     error::{EngineError, RuntimeLimitError},
     execution::{ExecutionOptions, ExecutionTermination, ProfileMode},
     js_string,
+    object::builtins::JsFunction,
+    property::{PropertyDescriptor, PropertyKey},
     value::{IntegerOrInfinity, PreferredType},
 };
 
@@ -387,4 +389,312 @@ fn descriptor_getter_work_keeps_first_stop_and_skips_later_getters_and_guest_cle
         owner.access().eval(Source::from_bytes("42")).unwrap(),
         JsValue::new(42)
     );
+}
+
+#[test]
+fn object_properties_getters_and_key_mutations_compose_through_reborrowed_access() {
+    let mut owner = Context::default();
+    let mut access = owner.access();
+    let object = access
+        .eval(Source::from_bytes(
+            "globalThis.propertyLog = []; ({
+            base: 40,
+            get value() { propertyLog.push('get'); return this.base + 2; },
+            set value(next) { propertyLog.push('set:' + next); this.base = next - 2; }
+        })",
+        ))
+        .unwrap()
+        .as_object()
+        .unwrap();
+    assert_eq!(
+        object.get(js_string!("value"), access.reborrow()).unwrap(),
+        JsValue::new(42)
+    );
+    assert!(
+        object
+            .set(js_string!("value"), 9, true, access.reborrow())
+            .unwrap()
+    );
+    assert_eq!(
+        object.get(js_string!("base"), access.reborrow()).unwrap(),
+        JsValue::new(7)
+    );
+    assert!(
+        object
+            .define_property_or_throw(
+                js_string!("bonus"),
+                PropertyDescriptor::builder()
+                    .value(35)
+                    .writable(true)
+                    .enumerable(true)
+                    .configurable(true)
+                    .build(),
+                access.reborrow(),
+            )
+            .unwrap()
+    );
+    assert!(
+        object
+            .has_own_property(js_string!("bonus"), access.reborrow())
+            .unwrap()
+    );
+    assert_eq!(
+        object.get(js_string!("bonus"), access.reborrow()).unwrap(),
+        JsValue::new(35)
+    );
+    assert_eq!(
+        object.own_property_keys(access.reborrow()).unwrap(),
+        [
+            PropertyKey::from(js_string!("base")),
+            PropertyKey::from(js_string!("value")),
+            PropertyKey::from(js_string!("bonus")),
+        ]
+    );
+    assert!(
+        object
+            .delete_property_or_throw(js_string!("bonus"), access.reborrow())
+            .unwrap()
+    );
+    assert!(
+        !object
+            .has_property(js_string!("bonus"), access.reborrow())
+            .unwrap()
+    );
+    assert_eq!(
+        access
+            .eval(Source::from_bytes("propertyLog.join(',')"))
+            .unwrap(),
+        JsValue::new(js_string!("get,set:9"))
+    );
+}
+
+#[test]
+fn object_operations_preserve_guest_proxy_trap_order_and_results() {
+    let mut owner = Context::default();
+    let mut access = owner.access();
+    let proxy = access.eval(Source::from_bytes(
+        "globalThis.trapLog = []; new Proxy({ a: 7 }, {
+            get(target, key, receiver) { trapLog.push('get:' + String(key)); return Reflect.get(target, key, receiver); },
+            set(target, key, value) { trapLog.push('set:' + String(key)); return Reflect.set(target, key, value, target); },
+            defineProperty(target, key, descriptor) { trapLog.push('define:' + String(key)); return Reflect.defineProperty(target, key, descriptor); },
+            ownKeys(target) { trapLog.push('keys'); return Reflect.ownKeys(target); },
+            deleteProperty(target, key) { trapLog.push('delete:' + String(key)); return Reflect.deleteProperty(target, key); }
+        })",
+    )).unwrap().as_object().unwrap();
+    assert_eq!(
+        proxy.get(js_string!("a"), access.reborrow()).unwrap(),
+        JsValue::new(7)
+    );
+    assert!(
+        proxy
+            .set(js_string!("a"), 42, true, access.reborrow())
+            .unwrap()
+    );
+    assert!(
+        proxy
+            .define_property_or_throw(
+                js_string!("b"),
+                PropertyDescriptor::builder()
+                    .value(7)
+                    .writable(true)
+                    .enumerable(true)
+                    .configurable(true)
+                    .build(),
+                access.reborrow(),
+            )
+            .unwrap()
+    );
+    assert_eq!(
+        proxy.own_property_keys(access.reborrow()).unwrap(),
+        [
+            PropertyKey::from(js_string!("a")),
+            PropertyKey::from(js_string!("b")),
+        ]
+    );
+    assert!(
+        proxy
+            .delete_property_or_throw(js_string!("b"), access.reborrow())
+            .unwrap()
+    );
+    assert_eq!(
+        access
+            .eval(Source::from_bytes("trapLog.join(',')"))
+            .unwrap(),
+        JsValue::new(js_string!("get:a,set:a,define:b,keys,delete:b"))
+    );
+    assert_eq!(
+        proxy.get(js_string!("a"), access.reborrow()).unwrap(),
+        JsValue::new(42)
+    );
+}
+
+#[test]
+fn object_call_and_construct_preserve_receiver_results_and_instruction_admission() {
+    let mut owner = Context::default();
+    let callable = owner
+        .access()
+        .eval(Source::from_bytes(
+            "(function add(delta) { globalThis.receiverSeen = this; return this.base + delta; })",
+        ))
+        .unwrap()
+        .as_object()
+        .unwrap();
+    let function = JsFunction::from_object(callable).unwrap();
+    let receiver = owner
+        .access()
+        .eval(Source::from_bytes("({ base: 40 })"))
+        .unwrap();
+    let control = owner
+        .with_execution(ExecutionOptions::new(128), |mut access| {
+            function.call(&receiver, &[JsValue::new(2)], access.reborrow())
+        })
+        .unwrap();
+    assert_eq!(control.result.unwrap(), JsValue::new(42));
+    assert_eq!(
+        owner
+            .access()
+            .eval(Source::from_bytes("receiverSeen"))
+            .unwrap(),
+        receiver
+    );
+    let exact = control.report.instructions();
+    assert!(exact > 1);
+    for limit in [exact, exact - 1] {
+        let outcome = owner
+            .with_execution(ExecutionOptions::new(limit), |mut access| {
+                function.call(&receiver, &[JsValue::new(2)], access.reborrow())
+            })
+            .unwrap();
+        assert_eq!(outcome.report.instructions(), limit);
+        if limit == exact {
+            assert_eq!(outcome.result.unwrap(), JsValue::new(42));
+        } else {
+            assert_eq!(
+                outcome.result.unwrap_err().as_engine(),
+                Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
+                    limit
+                }))
+            );
+        }
+    }
+    let constructor = owner.access().eval(Source::from_bytes(
+        "(function Box(value) { this.value = value; this.correctTarget = new.target === Box; })",
+    )).unwrap().as_object().unwrap();
+    let constructor = JsFunction::from_object(constructor).unwrap();
+    let constructed = owner
+        .with_execution(ExecutionOptions::new(128), |mut access| {
+            constructor.construct(&[JsValue::new(42)], None, access.reborrow())
+        })
+        .unwrap();
+    assert!(constructed.report.instructions() > 0);
+    let instance = constructed.result.unwrap();
+    let mut access = owner.access();
+    assert_eq!(
+        instance
+            .get(js_string!("value"), access.reborrow())
+            .unwrap(),
+        JsValue::new(42)
+    );
+    assert_eq!(
+        instance
+            .get(js_string!("correctTarget"), access.reborrow())
+            .unwrap(),
+        JsValue::new(true)
+    );
+    assert_eq!(
+        access.eval(Source::from_bytes("42")).unwrap(),
+        JsValue::new(42)
+    );
+}
+
+#[test]
+fn direct_native_function_call_accepts_access_and_keeps_reentrant_guest_work_in_scope() {
+    let native = NativeFunction::from_fn_ptr(|this, args, context| {
+        assert_eq!(this, &JsValue::new(7));
+        context.eval(Source::from_bytes("globalThis.nativeCommitted = 7"))?;
+        Ok(args[0].clone())
+    });
+    let mut owner = Context::default();
+    let outcome = owner
+        .with_execution(ExecutionOptions::new(64), |mut access| {
+            native.call(&JsValue::new(7), &[JsValue::new(42)], access.reborrow())
+        })
+        .unwrap();
+    assert_eq!(outcome.result.unwrap(), JsValue::new(42));
+    assert!(outcome.report.instructions() > 0);
+    assert_eq!(
+        owner
+            .access()
+            .eval(Source::from_bytes("nativeCommitted"))
+            .unwrap(),
+        JsValue::new(7)
+    );
+}
+
+#[test]
+fn same_runtime_peer_context_keeps_its_selected_budget_separate_from_a_retained_stop() {
+    let mut original = Context::default();
+    let mut peer = Context::builder()
+        .runtime(original.runtime().clone())
+        .build()
+        .unwrap();
+    assert_ne!(original.realm(), peer.realm());
+    original
+        .access()
+        .eval(Source::from_bytes("globalThis.ownerValue = 7"))
+        .unwrap();
+    peer.access()
+        .eval(Source::from_bytes("globalThis.ownerValue = 40"))
+        .unwrap();
+    let outcome = original
+        .with_execution(ExecutionOptions::new(0), |mut access| {
+            let first = access
+                .eval(Source::from_bytes("globalThis.originalEffect = true"))
+                .unwrap_err();
+            assert_eq!(
+                first.as_engine(),
+                Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
+                    limit: 0
+                }))
+            );
+            let selected_peer = peer
+                .with_execution(ExecutionOptions::new(64), |mut peer_access| {
+                    peer_access.eval(Source::from_bytes(
+                        "globalThis.peerValue = ownerValue + 2; peerValue",
+                    ))
+                })
+                .unwrap();
+            assert_eq!(selected_peer.result.unwrap(), JsValue::new(42));
+            assert!(selected_peer.report.instructions() > 0);
+            assert!(matches!(
+                selected_peer.report.termination(),
+                ExecutionTermination::Completed
+            ));
+            Ok(7_u32)
+        })
+        .unwrap();
+    assert_eq!(
+        outcome.result.unwrap_err().as_engine(),
+        Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
+            limit: 0
+        }))
+    );
+    assert_eq!(outcome.report.instructions(), 0);
+    assert!(!outcome.report.effects_started());
+    assert_eq!(original.access().eval(Source::from_bytes(
+        "ownerValue === 7 && typeof originalEffect === 'undefined' && typeof peerValue === 'undefined'",
+    )).unwrap(), JsValue::new(true));
+    assert_eq!(
+        peer.access()
+            .eval(Source::from_bytes("ownerValue === 40 && peerValue === 42"))
+            .unwrap(),
+        JsValue::new(true)
+    );
+    let fresh = original
+        .with_execution(ExecutionOptions::new(64), |mut access| {
+            access.eval(Source::from_bytes("ownerValue + 35"))
+        })
+        .unwrap();
+    assert_eq!(fresh.result.unwrap(), JsValue::new(42));
+    assert!(fresh.report.instructions() > 0);
 }

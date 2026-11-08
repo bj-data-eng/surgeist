@@ -158,7 +158,7 @@ impl JsValue {
             Some(instance_of_handler) => {
                 // a. Return ! ToBoolean(? Call(instOfHandler, target, « V »)).
                 Ok(instance_of_handler
-                    .call(target, std::slice::from_ref(self), context)?
+                    .call(target, std::slice::from_ref(self), context.access())?
                     .to_boolean())
             }
             None if target.is_callable() => {

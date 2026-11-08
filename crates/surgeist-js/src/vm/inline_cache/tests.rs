@@ -27,7 +27,7 @@ fn get_own_property_internal_method() {
     let property: PropertyKey = js_string!("prop").into();
     let value = 100;
 
-    o.set(property.clone(), value, true, context)
+    o.set(property.clone(), value, true, context.access())
         .expect("should not fail");
 
     let context = &mut InternalMethodPropertyContext::new(context);
@@ -72,7 +72,7 @@ fn get_internal_method() {
     let property: PropertyKey = js_string!("prop").into();
     let value = 100;
 
-    o.set(property.clone(), value, true, context)
+    o.set(property.clone(), value, true, context.access())
         .expect("should not fail");
 
     let context = &mut InternalMethodPropertyContext::new(context);
@@ -120,7 +120,7 @@ fn get_internal_method_in_prototype() {
     let prototype = context.intrinsics().constructors().object().prototype();
 
     prototype
-        .set(property.clone(), value, true, context)
+        .set(property.clone(), value, true, context.access())
         .expect("should not fail");
 
     let context = &mut InternalMethodPropertyContext::new(context);
@@ -165,7 +165,7 @@ fn define_own_property_internal_method_non_existent_property() {
     let property: PropertyKey = js_string!("prop").into();
     let value = 100;
 
-    o.set(property.clone(), value, true, context)
+    o.set(property.clone(), value, true, context.access())
         .expect("should not fail");
 
     let context = &mut InternalMethodPropertyContext::new(context);
@@ -219,7 +219,7 @@ fn define_own_property_internal_method_existing_property_property() {
     let property: PropertyKey = js_string!("prop").into();
     let value = 100;
 
-    o.set(property.clone(), value, true, context)
+    o.set(property.clone(), value, true, context.access())
         .expect("should not fail");
 
     o.__define_own_property__(
@@ -285,7 +285,7 @@ fn set_internal_method() {
     let property: PropertyKey = js_string!("prop").into();
     let value = 100;
 
-    o.set(property.clone(), value, true, context)
+    o.set(property.clone(), value, true, context.access())
         .expect("should not fail");
 
     let context = &mut InternalMethodPropertyContext::new(context);
@@ -339,7 +339,7 @@ fn set_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
         .unwrap();
     let o_shape = o.borrow().shape();
 
-    function.call(&JsValue::undefined(), &[o.clone().into()], context)?;
+    function.call(&JsValue::undefined(), &[o.clone().into()], context.access())?;
 
     assert_eq!(code.ic[0].entries.borrow().len(), 1);
     assert_eq!(
@@ -369,7 +369,7 @@ fn get_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
         .unwrap();
     let o_shape = o.borrow().shape();
 
-    function.call(&JsValue::undefined(), &[o.clone().into()], context)?;
+    function.call(&JsValue::undefined(), &[o.clone().into()], context.access())?;
 
     assert_eq!(code.ic[0].entries.borrow().len(), 1);
     assert_eq!(
@@ -417,7 +417,7 @@ fn test_polymorphic_inline_cache() -> JsResult<()> {
     ];
 
     for o in &shapes {
-        function.call(&JsValue::undefined(), &[o.clone().into()], context)?;
+        function.call(&JsValue::undefined(), &[o.clone().into()], context.access())?;
     }
 
     assert_eq!(code.ic[0].entries.borrow().len(), 4);
@@ -460,7 +460,7 @@ fn test_megamorphic_inline_cache() -> JsResult<()> {
     ];
 
     for o in &shapes {
-        function.call(&JsValue::undefined(), &[o.clone().into()], context)?;
+        function.call(&JsValue::undefined(), &[o.clone().into()], context.access())?;
     }
 
     assert_eq!(code.ic[0].entries.borrow().len(), 0);
@@ -472,7 +472,11 @@ fn test_megamorphic_inline_cache() -> JsResult<()> {
         .property(js_string!("test"), 1, Attribute::all())
         .build()
         .unwrap();
-    function.call(&JsValue::undefined(), &[o6.clone().into()], context)?;
+    function.call(
+        &JsValue::undefined(),
+        &[o6.clone().into()],
+        context.access(),
+    )?;
     assert_eq!(code.ic[0].entries.borrow().len(), 0);
     assert!(code.ic[0].megamorphic.get());
 

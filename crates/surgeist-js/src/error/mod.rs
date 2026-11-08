@@ -1049,12 +1049,12 @@ impl JsError {
                     ErrorKind::Syntax => JsNativeErrorKind::Syntax,
                     ErrorKind::Uri => JsNativeErrorKind::Uri,
                     ErrorKind::Aggregate => {
-                        let errors = obj.get(js_string!("errors"), context).map_err(|e| {
-                            TryNativeError::InaccessibleProperty {
-                                property: "errors",
-                                source: e,
-                            }
-                        })?;
+                        let errors =
+                            obj.get(js_string!("errors"), context.access())
+                                .map_err(|e| TryNativeError::InaccessibleProperty {
+                                    property: "errors",
+                                    source: e,
+                                })?;
                         let mut error_list = Vec::new();
                         match errors.as_object() {
                             Some(errors) if errors.is_array() => {
@@ -1067,7 +1067,7 @@ impl JsError {
                                 error_list.reserve(length as usize);
                                 for i in 0..length {
                                     error_list.push(Self::from_opaque(
-                                        errors.get(i, context).map_err(|e| {
+                                        errors.get(i, context.access()).map_err(|e| {
                                             TryNativeError::InvalidErrorsIndex {
                                                 index: i,
                                                 source: e,
@@ -1813,7 +1813,7 @@ impl JsNativeError {
     ///
     /// assert!(error_obj.is::<Error>());
     /// assert_eq!(
-    ///     error_obj.get(js_string!("message"), context).unwrap(),
+    ///     error_obj.get(js_string!("message"), context.access()).unwrap(),
     ///     js_string!("error!").into()
     /// )
     /// ```
@@ -1892,7 +1892,7 @@ impl JsNativeError {
                     .enumerable(false)
                     .writable(true)
                     .value(errors),
-                context,
+                context.access(),
             )
             .expect("The spec guarantees this succeeds for a newly created object ");
         }

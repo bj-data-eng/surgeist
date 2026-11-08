@@ -243,27 +243,41 @@ mod tests {
             let value = JsValue::from_json(&json, ctx).unwrap();
             let obj = value.as_object().unwrap();
             assert_eq!(
-                obj.get(js_str!("name"), ctx).unwrap(),
+                obj.get(js_str!("name"), ctx.access()).unwrap(),
                 js_str!("John Doe").into()
             );
-            assert_eq!(obj.get(js_str!("age"), ctx).unwrap(), 43_i32.into());
-            assert_eq!(obj.get(js_str!("minor"), ctx).unwrap(), false.into());
-            assert_eq!(obj.get(js_str!("adult"), ctx).unwrap(), true.into());
+            assert_eq!(
+                obj.get(js_str!("age"), ctx.access()).unwrap(),
+                43_i32.into()
+            );
+            assert_eq!(
+                obj.get(js_str!("minor"), ctx.access()).unwrap(),
+                false.into()
+            );
+            assert_eq!(
+                obj.get(js_str!("adult"), ctx.access()).unwrap(),
+                true.into()
+            );
 
             assert_eq!(
-                obj.get(js_str!("7.3"), ctx).unwrap(),
+                obj.get(js_str!("7.3"), ctx.access()).unwrap(),
                 js_string!("random text").into()
             );
-            assert_eq!(obj.get(js_str!("100"), ctx).unwrap(), 1000.into());
-            assert_eq!(obj.get(js_str!("24"), ctx).unwrap(), 42.into());
+            assert_eq!(obj.get(js_str!("100"), ctx.access()).unwrap(), 1000.into());
+            assert_eq!(obj.get(js_str!("24"), ctx.access()).unwrap(), 42.into());
 
             {
-                let extra = obj.get(js_str!("extra"), ctx).unwrap();
+                let extra = obj.get(js_str!("extra"), ctx.access()).unwrap();
                 let extra = extra.as_object().unwrap();
-                assert!(extra.get(js_str!("address"), ctx).unwrap().is_null());
+                assert!(
+                    extra
+                        .get(js_str!("address"), ctx.access())
+                        .unwrap()
+                        .is_null()
+                );
             }
             {
-                let phones = obj.get(js_str!("phones"), ctx).unwrap();
+                let phones = obj.get(js_str!("phones"), ctx.access()).unwrap();
                 let phones = phones.as_object().unwrap();
 
                 let arr = JsArray::from_object(phones.clone()).unwrap();
@@ -305,7 +319,7 @@ mod tests {
     fn to_json_cyclic() {
         let mut context = Context::default();
         let obj = JsObject::with_null_proto(context.runtime());
-        obj.create_data_property(js_string!("a"), obj.clone(), &mut context)
+        obj.create_data_property(js_string!("a"), obj.clone(), context.access())
             .expect("should create data property");
 
         assert!(
@@ -337,7 +351,11 @@ mod tests {
 
             let inner = JsObject::with_null_proto(context.runtime());
             inner
-                .create_data_property(js_string!("inner_a"), JsValue::undefined(), &mut context)
+                .create_data_property(
+                    js_string!("inner_a"),
+                    JsValue::undefined(),
+                    context.access(),
+                )
                 .expect("should add property");
 
             let array = JsArray::new(&mut context).expect("creating array in test must not fail");
@@ -350,13 +368,17 @@ mod tests {
 
             let outer = JsObject::with_null_proto(context.runtime());
             outer
-                .create_data_property(js_string!("outer_a"), JsValue::new(1), &mut context)
+                .create_data_property(js_string!("outer_a"), JsValue::new(1), context.access())
                 .expect("should add property");
             outer
-                .create_data_property(js_string!("outer_b"), JsValue::undefined(), &mut context)
+                .create_data_property(
+                    js_string!("outer_b"),
+                    JsValue::undefined(),
+                    context.access(),
+                )
                 .expect("should add property");
             outer
-                .create_data_property(js_string!("outer_c"), array, &mut context)
+                .create_data_property(js_string!("outer_c"), array, context.access())
                 .expect("should add property");
 
             JsValue::from(outer)

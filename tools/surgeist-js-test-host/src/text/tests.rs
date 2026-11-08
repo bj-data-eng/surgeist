@@ -1,9 +1,9 @@
 use crate::test::{TestAction, run_test_actions_with};
 use crate::text;
+use indoc::indoc;
 use surgeist_js::object::builtins::JsUint8Array;
 use surgeist_js::property::Attribute;
 use surgeist_js::{Context, JsString, js_str, js_string};
-use indoc::indoc;
 use test_case::test_case;
 
 #[test]
@@ -20,7 +20,7 @@ fn encoder_js() {
             TestAction::inspect_context(|context| {
                 let encoded = context
                     .global_object()
-                    .get(js_str!("encoded"), context)
+                    .get(js_str!("encoded"), context.access())
                     .unwrap();
                 let array =
                     JsUint8Array::from_object(encoded.as_object().unwrap().clone()).unwrap();
@@ -56,7 +56,7 @@ fn encoder_js_unpaired() {
             TestAction::inspect_context(|context| {
                 let encoded = context
                     .global_object()
-                    .get(js_str!("encoded"), context)
+                    .get(js_str!("encoded"), context.access())
                     .unwrap();
                 let array =
                     JsUint8Array::from_object(encoded.as_object().unwrap().clone()).unwrap();
@@ -85,7 +85,7 @@ fn decoder_js() {
             TestAction::inspect_context(|context| {
                 let decoded = context
                     .global_object()
-                    .get(js_str!("decoded"), context)
+                    .get(js_str!("decoded"), context.access())
                     .unwrap();
                 assert_eq!(decoded.as_string(), Some(js_string!("Hello, World!")));
             }),
@@ -109,11 +109,11 @@ fn decoder_js_without_input() {
             TestAction::inspect_context(|context| {
                 let decoded = context
                     .global_object()
-                    .get(js_str!("decoded"), context)
+                    .get(js_str!("decoded"), context.access())
                     .unwrap();
                 let decoded_undefined = context
                     .global_object()
-                    .get(js_str!("decodedUndefined"), context)
+                    .get(js_str!("decodedUndefined"), context.access())
                     .unwrap();
                 assert_eq!(decoded.as_string(), Some(js_string!("")));
                 assert_eq!(decoded_undefined.as_string(), Some(js_string!("")));
@@ -142,7 +142,7 @@ fn decoder_js_invalid() {
             TestAction::inspect_context(|context| {
                 let decoded = context
                     .global_object()
-                    .get(js_str!("decoded"), context)
+                    .get(js_str!("decoded"), context.access())
                     .unwrap();
                 assert_eq!(
                     decoded.as_string(),
@@ -171,7 +171,7 @@ fn roundtrip_utf8() {
             TestAction::inspect_context(|context| {
                 let decoded = context
                     .global_object()
-                    .get(js_str!("decoded"), context)
+                    .get(js_str!("decoded"), context.access())
                     .unwrap();
                 assert_eq!(decoded.as_string(), Some(js_string!("Hello, World!")));
             }),
@@ -200,13 +200,13 @@ fn encoder_ignores_non_utf_encoding_arguments(encoding: &'static str) {
             TestAction::inspect_context(|context| {
                 let actual_encoding = context
                     .global_object()
-                    .get(js_str!("actualEncoding"), context)
+                    .get(js_str!("actualEncoding"), context.access())
                     .unwrap();
                 assert_eq!(actual_encoding.as_string(), Some(js_string!("utf-8")));
 
                 let encoded = context
                     .global_object()
-                    .get(js_str!("encoded"), context)
+                    .get(js_str!("encoded"), context.access())
                     .unwrap();
                 let array =
                     JsUint8Array::from_object(encoded.as_object().unwrap().clone()).unwrap();
@@ -242,7 +242,7 @@ fn decoder_bom_default_stripped(encoding: &'static str, bytes: &'static [u8]) {
             TestAction::inspect_context(|context| {
                 let decoded = context
                     .global_object()
-                    .get(js_str!("decoded"), context)
+                    .get(js_str!("decoded"), context.access())
                     .unwrap();
                 assert_eq!(decoded.as_string(), Some(js_string!("Hi")));
             }),
@@ -275,7 +275,7 @@ fn decoder_bom_ignore_bom_true(encoding: &'static str, bytes: &'static [u8]) {
             TestAction::inspect_context(|context| {
                 let decoded = context
                     .global_object()
-                    .get(js_str!("decoded"), context)
+                    .get(js_str!("decoded"), context.access())
                     .unwrap();
                 assert_eq!(decoded.as_string(), Some(js_string!("\u{FEFF}Hi")));
             }),
@@ -308,7 +308,7 @@ fn decoder_bom_ignore_bom_false(encoding: &'static str, bytes: &'static [u8]) {
             TestAction::inspect_context(|context| {
                 let decoded = context
                     .global_object()
-                    .get(js_str!("decoded"), context)
+                    .get(js_str!("decoded"), context.access())
                     .unwrap();
                 assert_eq!(decoded.as_string(), Some(js_string!("Hi")));
             }),
@@ -341,7 +341,7 @@ fn decoder_normalizes_supported_labels(label: &'static str, expected: &'static s
             TestAction::inspect_context(move |context| {
                 let encoding = context
                     .global_object()
-                    .get(js_str!("encoding"), context)
+                    .get(js_str!("encoding"), context.access())
                     .unwrap();
                 assert_eq!(encoding.as_string(), Some(JsString::from(expected)));
             }),
@@ -388,15 +388,15 @@ fn decoder_ignore_bom_getter() {
             TestAction::inspect_context(|context| {
                 let v1 = context
                     .global_object()
-                    .get(js_str!("ignoreBOM1"), context)
+                    .get(js_str!("ignoreBOM1"), context.access())
                     .unwrap();
                 let v2 = context
                     .global_object()
-                    .get(js_str!("ignoreBOM2"), context)
+                    .get(js_str!("ignoreBOM2"), context.access())
                     .unwrap();
                 let v3 = context
                     .global_object()
-                    .get(js_str!("ignoreBOM3"), context)
+                    .get(js_str!("ignoreBOM3"), context.access())
                     .unwrap();
                 assert_eq!(v1.as_boolean(), Some(false));
                 assert_eq!(v2.as_boolean(), Some(true));
@@ -422,7 +422,7 @@ fn decoder_handle_data_view() {
             TestAction::inspect_context(|context| {
                 let decoded = context
                     .global_object()
-                    .get(js_str!("decoded"), context)
+                    .get(js_str!("decoded"), context.access())
                     .unwrap();
                 assert_eq!(decoded.as_string(), Some(js_string!("hello")));
             }),
@@ -444,7 +444,7 @@ fn decoder_handle_typed_array_offset_and_length() {
             TestAction::inspect_context(|context| {
                 let decoded = context
                     .global_object()
-                    .get(js_str!("decoded"), context)
+                    .get(js_str!("decoded"), context.access())
                     .unwrap();
                 assert_eq!(decoded.as_string(), Some(js_string!("CE")));
             }),
@@ -468,7 +468,7 @@ fn decoder_handle_data_view_offset_and_length() {
             TestAction::inspect_context(|context| {
                 let decoded = context
                     .global_object()
-                    .get(js_str!("decoded"), context)
+                    .get(js_str!("decoded"), context.access())
                     .unwrap();
                 assert_eq!(decoded.as_string(), Some(js_string!("CE")));
             }),

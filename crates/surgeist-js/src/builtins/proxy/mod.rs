@@ -283,12 +283,12 @@ impl Proxy {
 
         // 6. Perform ! CreateDataPropertyOrThrow(result, "proxy", p).
         result
-            .create_data_property_or_throw(js_string!("proxy"), p, context)
+            .create_data_property_or_throw(js_string!("proxy"), p, context.access())
             .js_expect("CreateDataPropertyOrThrow cannot fail here")?;
 
         // 7. Perform ! CreateDataPropertyOrThrow(result, "revoke", revoker).
         result
-            .create_data_property_or_throw(js_string!("revoke"), revoker, context)
+            .create_data_property_or_throw(js_string!("revoke"), revoker, context.access())
             .js_expect("CreateDataPropertyOrThrow cannot fail here")?;
 
         // 8. Return result.
@@ -323,7 +323,7 @@ pub(crate) fn proxy_exotic_get_prototype_of(
     };
 
     // 7. Let handlerProto be ? Call(trap, handler, « target »).
-    let handler_proto = trap.call(&handler.into(), &[target.clone().into()], context)?;
+    let handler_proto = trap.call(&handler.into(), &[target.clone().into()], context.access())?;
 
     // 8. If Type(handlerProto) is neither Object nor Null, throw a TypeError exception.
     let handler_proto = match handler_proto.variant() {
@@ -338,7 +338,7 @@ pub(crate) fn proxy_exotic_get_prototype_of(
 
     // 9. Let extensibleTarget be ? IsExtensible(target).
     // 10. If extensibleTarget is true, return handlerProto.
-    if target.is_extensible(context)? {
+    if target.is_extensible(context.access())? {
         return Ok(handler_proto);
     }
 
@@ -392,7 +392,7 @@ pub(crate) fn proxy_exotic_set_prototype_of(
                 target.clone().into(),
                 val.clone().map_or(JsValue::null(), Into::into),
             ],
-            context,
+            context.access(),
         )?
         .to_boolean()
     {
@@ -401,7 +401,7 @@ pub(crate) fn proxy_exotic_set_prototype_of(
 
     // 9. Let extensibleTarget be ? IsExtensible(target).
     // 10. If extensibleTarget is true, return true.
-    if target.is_extensible(context)? {
+    if target.is_extensible(context.access())? {
         return Ok(true);
     }
 
@@ -439,16 +439,16 @@ pub(crate) fn proxy_exotic_is_extensible(obj: &JsObject, context: &mut Context) 
     let Some(trap) = handler.get_method(js_string!("isExtensible"), context)? else {
         // 6. If trap is undefined, then
         // a. Return ? IsExtensible(target).
-        return target.is_extensible(context);
+        return target.is_extensible(context.access());
     };
 
     // 7. Let booleanTrapResult be ! ToBoolean(? Call(trap, handler, « target »)).
     let boolean_trap_result = trap
-        .call(&handler.into(), &[target.clone().into()], context)?
+        .call(&handler.into(), &[target.clone().into()], context.access())?
         .to_boolean();
 
     // 8. Let targetResult be ? IsExtensible(target).
-    let target_result = target.is_extensible(context)?;
+    let target_result = target.is_extensible(context.access())?;
 
     // 9. If SameValue(booleanTrapResult, targetResult) is false, throw a TypeError exception.
     if boolean_trap_result != target_result {
@@ -489,11 +489,11 @@ pub(crate) fn proxy_exotic_prevent_extensions(
 
     // 7. Let booleanTrapResult be ! ToBoolean(? Call(trap, handler, « target »)).
     let boolean_trap_result = trap
-        .call(&handler.into(), &[target.clone().into()], context)?
+        .call(&handler.into(), &[target.clone().into()], context.access())?
         .to_boolean();
 
     // 8. If booleanTrapResult is true, then
-    if boolean_trap_result && target.is_extensible(context)? {
+    if boolean_trap_result && target.is_extensible(context.access())? {
         // a. Let extensibleTarget be ? IsExtensible(target).
         // b. If extensibleTarget is true, throw a TypeError exception.
         return Err(JsNativeError::typ()
@@ -538,7 +538,7 @@ pub(crate) fn proxy_exotic_get_own_property(
     let trap_result_obj = trap.call(
         &handler.into(),
         &[target.clone().into(), key.clone().into()],
-        context,
+        context.access(),
     )?;
 
     // 8. If Type(trapResultObj) is neither Object nor Undefined, throw a TypeError exception.
@@ -565,7 +565,7 @@ pub(crate) fn proxy_exotic_get_own_property(
 
             // c. Let extensibleTarget be ? IsExtensible(target).
             // d. If extensibleTarget is false, throw a TypeError exception.
-            if !target.is_extensible(context)? {
+            if !target.is_extensible(context.access())? {
                 return Err(JsNativeError::typ()
                     .with_message("Proxy trap result is undefined and target is not extensible")
                     .into());
@@ -579,7 +579,7 @@ pub(crate) fn proxy_exotic_get_own_property(
     }
 
     // 11. Let extensibleTarget be ? IsExtensible(target).
-    let extensible_target = target.is_extensible(context)?;
+    let extensible_target = target.is_extensible(context.access())?;
 
     // 12. Let resultDesc be ? ToPropertyDescriptor(trapResultObj).
     let result_desc = trap_result_obj.to_property_descriptor(context.access())?;
@@ -668,7 +668,7 @@ pub(crate) fn proxy_exotic_define_own_property(
         .call(
             &handler.into(),
             &[target.clone().into(), key.clone().into(), desc_obj],
-            context,
+            context.access(),
         )?
         .to_boolean()
     {
@@ -688,7 +688,7 @@ fn validate_proxy_definition(
     let target_desc = target.__get_own_property__(key, context)?;
 
     // 11. Let extensibleTarget be ? IsExtensible(target).
-    let extensible_target = target.is_extensible(context)?;
+    let extensible_target = target.is_extensible(context.access())?;
 
     // 12. If Desc has a [[Configurable]] field and if Desc.[[Configurable]] is false, then
     let setting_config_false = matches!(desc.configurable(), Some(false));
@@ -840,7 +840,7 @@ pub(crate) fn proxy_exotic_has_property(
     let Some(trap) = handler.get_method(js_string!("has"), context)? else {
         // 6. If trap is undefined, then
         // a. Return ? target.[[HasProperty]](P).
-        return target.has_property(key.clone(), context);
+        return target.has_property(key.clone(), context.access());
     };
 
     // 7. Let booleanTrapResult be ! ToBoolean(? Call(trap, handler, « target, P »)).
@@ -848,7 +848,7 @@ pub(crate) fn proxy_exotic_has_property(
         .call(
             &handler.into(),
             &[target.clone().into(), key.clone().into()],
-            context,
+            context.access(),
         )?
         .to_boolean();
 
@@ -868,7 +868,7 @@ pub(crate) fn proxy_exotic_has_property(
 
             // ii. Let extensibleTarget be ? IsExtensible(target).
             // iii. If extensibleTarget is false, throw a TypeError exception.
-            if !target.is_extensible(context)? {
+            if !target.is_extensible(context.access())? {
                 return Err(JsNativeError::typ()
                     .with_message("Proxy trap returned unexpected property")
                     .into());
@@ -939,7 +939,7 @@ pub(crate) fn proxy_exotic_get(
     let trap_result = trap.call(
         &handler.into(),
         &[target.clone().into(), key.clone().into(), receiver],
-        context,
+        context.access(),
     )?;
 
     // 8. Let targetDesc be ? target.[[GetOwnProperty]](P).
@@ -1016,7 +1016,7 @@ pub(crate) fn proxy_exotic_set(
                 value.clone(),
                 receiver,
             ],
-            context,
+            context.access(),
         )?
         .to_boolean()
     {
@@ -1091,7 +1091,7 @@ pub(crate) fn proxy_exotic_delete(
         .call(
             &handler.into(),
             &[target.clone().into(), key.clone().into()],
-            context,
+            context.access(),
         )?
         .to_boolean()
     {
@@ -1114,7 +1114,7 @@ pub(crate) fn proxy_exotic_delete(
 
     // 12. Let extensibleTarget be ? IsExtensible(target).
     // 13. If extensibleTarget is false, throw a TypeError exception.
-    if !target.is_extensible(context)? {
+    if !target.is_extensible(context.access())? {
         return Err(JsNativeError::typ()
             .with_message("Proxy trap failed to delete property")
             .into());
@@ -1151,7 +1151,8 @@ pub(crate) fn proxy_exotic_own_property_keys(
     };
 
     // 7. Let trapResultArray be ? Call(trap, handler, « target »).
-    let trap_result_array = trap.call(&handler.into(), &[target.clone().into()], context)?;
+    let trap_result_array =
+        trap.call(&handler.into(), &[target.clone().into()], context.access())?;
 
     // 8. Let trapResult be ? CreateListFromArrayLike(trapResultArray, « String, Symbol »).
     let trap_result_raw =
@@ -1183,7 +1184,7 @@ pub(crate) fn proxy_exotic_own_property_keys(
     }
 
     // 10. Let extensibleTarget be ? IsExtensible(target).
-    let extensible_target = target.is_extensible(context)?;
+    let extensible_target = target.is_extensible(context.access())?;
 
     // 11. Let targetKeys be ? target.[[OwnPropertyKeys]]().
     // 12. Assert: targetKeys is a List of property keys.
@@ -1347,7 +1348,7 @@ fn proxy_exotic_construct(
     let new_obj = trap.call(
         &handler.into(),
         &[target.into(), arg_array.into(), new_target],
-        context,
+        context.access(),
     )?;
 
     // 10. If Type(newObj) is not Object, throw a TypeError exception.

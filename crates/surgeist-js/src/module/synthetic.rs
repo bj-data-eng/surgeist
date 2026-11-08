@@ -388,7 +388,7 @@ impl SyntheticModule {
                             .with_message("cannot evaluate unlinked synthetic module")
                             .into_opaque(context)?
                             .into()],
-                        context,
+                        context.access(),
                     )
                     .js_expect("native resolving functions cannot throw")?;
                 return Ok(promise);
@@ -440,14 +440,14 @@ impl SyntheticModule {
 
         match result {
             // 15. Perform ! pc.[[Resolve]](result).
-            Ok(()) => resolve.call(&JsValue::undefined(), &[], context),
+            Ok(()) => resolve.call(&JsValue::undefined(), &[], context.access()),
             // 14. IfAbruptRejectPromise(result, pc).
             Err(error) => {
                 let error = context.runtime().admit_error(error);
                 reject.call(
                     &JsValue::undefined(),
                     &[error.into_opaque(context)?],
-                    context,
+                    context.access(),
                 )
             }
         }

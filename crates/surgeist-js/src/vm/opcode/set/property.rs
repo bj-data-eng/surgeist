@@ -43,7 +43,7 @@ fn set_by_name(
                 result.as_object().expect("should contain getter").call(
                     receiver,
                     std::slice::from_ref(&value),
-                    context,
+                    context.access(),
                 )?;
             }
         } else if slot.attributes.contains(SlotAttributes::PROTOTYPE) {

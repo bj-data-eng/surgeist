@@ -263,7 +263,7 @@ impl String {
                 .writable(false)
                 .enumerable(false)
                 .configurable(false),
-            context,
+            context.access(),
         )
         .expect("length definition for a new string must not fail");
 
@@ -370,7 +370,7 @@ impl String {
 
         // 3. Let raw be ? ToObject(? Get(cooked, "raw")).
         let raw = cooked
-            .get(js_string!("raw"), context)?
+            .get(js_string!("raw"), context.access())?
             .to_object(context.access())?;
 
         // 4. Let literalSegments be ? LengthOfArrayLike(raw).
@@ -393,7 +393,9 @@ impl String {
             let next_key = next_index;
 
             // b. Let nextSeg be ? ToString(? Get(raw, nextKey)).
-            let next_seg = raw.get(next_key, context)?.to_string(context.access())?;
+            let next_seg = raw
+                .get(next_key, context.access())?
+                .to_string(context.access())?;
 
             // c. Append the code unit elements of nextSeg to the end of stringElements.
             string_elements.extend(next_seg.iter());
@@ -1037,7 +1039,11 @@ impl String {
             // b. If replacer is not undefined, then
             if let Some(replacer) = replacer {
                 // i. Return ? Call(replacer, searchValue, « O, replaceValue »).
-                return replacer.call(search_value, &[o.clone(), replace_value.clone()], context);
+                return replacer.call(
+                    search_value,
+                    &[o.clone(), replace_value.clone()],
+                    context.access(),
+                );
             }
         }
 
@@ -1078,7 +1084,7 @@ impl String {
                     .call(
                         &JsValue::undefined(),
                         &[search_string.into(), position.into(), string.clone().into()],
-                        context,
+                        context.access(),
                     )?
                     .to_string(context.access())?
             }
@@ -1143,7 +1149,7 @@ impl String {
             // b. If isRegExp is true, then
             if let Some(obj) = RegExp::is_reg_exp(search_value, context)? {
                 // i. Let flags be ? Get(searchValue, "flags").
-                let flags = obj.get(js_string!("flags"), context)?;
+                let flags = obj.get(js_string!("flags"), context.access())?;
 
                 // ii. Perform ? RequireObjectCoercible(flags).
                 flags.require_object_coercible()?;
@@ -1164,7 +1170,11 @@ impl String {
             // d. If replacer is not undefined, then
             if let Some(replacer) = replacer {
                 // i. Return ? Call(replacer, searchValue, « O, replaceValue »).
-                return replacer.call(search_value, &[o.clone(), replace_value.clone()], context);
+                return replacer.call(
+                    search_value,
+                    &[o.clone(), replace_value.clone()],
+                    context.access(),
+                );
             }
         }
 
@@ -1228,7 +1238,7 @@ impl String {
                                 p.into(),
                                 string.clone().into(),
                             ],
-                            context,
+                            context.access(),
                         )?
                         .to_string(context.access())?
                 }
@@ -1503,7 +1513,7 @@ impl String {
             // b. If matcher is not undefined, then
             if let Some(matcher) = matcher {
                 // i. Return ? Call(matcher, regexp, « O »).
-                return matcher.call(regexp, std::slice::from_ref(o), context);
+                return matcher.call(regexp, std::slice::from_ref(o), context.access());
             }
         }
 
@@ -1970,7 +1980,7 @@ impl String {
             // b. If splitter is not undefined, then
             if let Some(splitter) = splitter {
                 // i. Return ? Call(splitter, separator, « O, limit »).
-                return splitter.call(separator, &[this.clone(), limit.clone()], context);
+                return splitter.call(separator, &[this.clone(), limit.clone()], context.access());
             }
         }
 
@@ -2107,7 +2117,7 @@ impl String {
             // b. If isRegExp is true, then
             if let Some(regexp) = RegExp::is_reg_exp(regexp, context)? {
                 // i. Let flags be ? Get(regexp, "flags").
-                let flags = regexp.get(js_string!("flags"), context)?;
+                let flags = regexp.get(js_string!("flags"), context.access())?;
 
                 // ii. Perform ? RequireObjectCoercible(flags).
                 flags.require_object_coercible()?;
@@ -2125,7 +2135,7 @@ impl String {
             let matcher = regexp.get_method(JsSymbol::match_all(), context)?;
             // d. If matcher is not undefined, then
             if let Some(matcher) = matcher {
-                return matcher.call(regexp, std::slice::from_ref(o), context);
+                return matcher.call(regexp, std::slice::from_ref(o), context.access());
             }
         }
 
@@ -2250,7 +2260,7 @@ impl String {
             // b. If searcher is not undefined, then
             if let Some(searcher) = searcher {
                 // i. Return ? Call(searcher, regexp, « O »).
-                return searcher.call(regexp, std::slice::from_ref(o), context);
+                return searcher.call(regexp, std::slice::from_ref(o), context.access());
             }
         }
 
@@ -2803,7 +2813,7 @@ pub(crate) fn get_substitution(
                             // i. Let groupName be the enclosed substring.
                             let group_name = js_string!(&group_name[..]);
                             // ii. Let capture be ? Get(namedCaptures, groupName).
-                            let capture = named_captures.get(group_name, context)?;
+                            let capture = named_captures.get(group_name, context.access())?;
 
                             // iii. If capture is undefined, replace the text through > with the empty String.
                             // iv. Otherwise, replace the text through > with ? ToString(capture).

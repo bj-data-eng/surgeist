@@ -505,7 +505,7 @@ fn assert_unpublished(harness: &mut ModuleHarness) {
         let global = harness.context.global_object().clone();
         assert_eq!(
             global
-                .get(js_string!("dependencyRuns"), &mut harness.context)
+                .get(js_string!("dependencyRuns"), harness.context.access())
                 .unwrap(),
             JsValue::new(if committed { 1 } else { 0 })
         );
@@ -588,7 +588,7 @@ fn source_and_synthetic_exact_one_short_and_retry_publish_only_the_admitted_grou
                 let global = harness.context.global_object().clone();
                 assert_eq!(
                     global
-                        .get(js_string!("dependencyRuns"), &mut harness.context)
+                        .get(js_string!("dependencyRuns"), harness.context.access())
                         .unwrap(),
                     1.into()
                 );
@@ -624,7 +624,7 @@ fn constructor_context(expression: &str) -> (Context, JsFunction, RealmSnapshot)
                             js_string!("value").into(),
                             js_string!("return value + 1;").into(),
                         ],
-                        context,
+                        context.access(),
                     )
                 },
                 constructor.clone(),
@@ -647,15 +647,17 @@ fn fulfilled(value: JsValue, context: &mut Context) -> JsValue {
 fn verify_function(value: JsValue, family: Family, context: &mut Context) {
     let function = value.as_function().unwrap();
     assert_eq!(
-        function.get(js_string!("length"), context).unwrap(),
+        function
+            .get(js_string!("length"), context.access())
+            .unwrap(),
         1.into()
     );
     assert_eq!(
-        function.get(js_string!("name"), context).unwrap(),
+        function.get(js_string!("name"), context.access()).unwrap(),
         js_string!("anonymous").into()
     );
     let result = function
-        .call(&JsValue::undefined(), &[41.into()], context)
+        .call(&JsValue::undefined(), &[41.into()], context.access())
         .unwrap();
     match family {
         Family::Ordinary => assert_eq!(result, 42.into()),
@@ -663,19 +665,25 @@ fn verify_function(value: JsValue, family: Family, context: &mut Context) {
         Family::Generator | Family::AsyncGenerator => {
             let iterator = result.as_object().unwrap();
             let next = iterator
-                .get(js_string!("next"), context)
+                .get(js_string!("next"), context.access())
                 .unwrap()
                 .as_function()
                 .unwrap();
-            let next = next.call(&result, &[], context).unwrap();
+            let next = next.call(&result, &[], context.access()).unwrap();
             let next = if matches!(family, Family::AsyncGenerator) {
                 fulfilled(next, context)
             } else {
                 next
             };
             let next = next.as_object().unwrap();
-            assert_eq!(next.get(js_string!("value"), context).unwrap(), 42.into());
-            assert_eq!(next.get(js_string!("done"), context).unwrap(), true.into());
+            assert_eq!(
+                next.get(js_string!("value"), context.access()).unwrap(),
+                42.into()
+            );
+            assert_eq!(
+                next.get(js_string!("done"), context.access()).unwrap(),
+                true.into()
+            );
         }
     }
 }
@@ -712,7 +720,7 @@ fn all_dynamic_constructor_families_share_compiler_admission_and_fresh_retry() {
                     js_string!("value").into(),
                     js_string!("return value + 1;").into(),
                 ],
-                &mut retry,
+                retry.access(),
             )
             .unwrap();
         verify_function(fresh, family, &mut retry);

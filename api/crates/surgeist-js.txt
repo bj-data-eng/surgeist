@@ -1603,7 +1603,7 @@ impl surgeist_js_gc::heap::Trace for surgeist_js::native_function::CapturedValue
 pub fn surgeist_js::native_function::CapturedValue::trace(&self, edges: &mut surgeist_js_gc::heap::EdgeVisitor<'_>) -> core::result::Result<(), surgeist_js_gc::heap::AccessError>
 pub struct surgeist_js::native_function::NativeFunction
 impl surgeist_js::native_function::NativeFunction
-pub fn surgeist_js::native_function::NativeFunction::call(&self, this: &surgeist_js::value::JsValue, args: &[surgeist_js::value::JsValue], context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
+pub fn surgeist_js::native_function::NativeFunction::call(&self, this: &surgeist_js::value::JsValue, args: &[surgeist_js::value::JsValue], context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
 pub fn surgeist_js::native_function::NativeFunction::from_async_fn(callback: surgeist_js::native_function::NativeAsyncFunctionPointer) -> Self
 pub fn surgeist_js::native_function::NativeFunction::from_async_fn_with_captures<T: surgeist_js::native_function::NativeCapture>(callback: surgeist_js::native_function::NativeAsyncFunctionWithCaptures<T>, captures: T) -> Self
 pub fn surgeist_js::native_function::NativeFunction::from_fn_ptr(function: surgeist_js::native_function::NativeFunctionPointer) -> Self
@@ -2567,23 +2567,23 @@ pub fn surgeist_js::object::FunctionObjectBuilder<'realm>::name<N>(self, name: N
 pub fn surgeist_js::object::FunctionObjectBuilder<'realm>::new(realm: &'realm surgeist_js::realm::Realm, function: surgeist_js::native_function::NativeFunction) -> Self
 pub struct surgeist_js::object::JsObject<T: surgeist_js::object::NativeObject + ?core::marker::Sized>
 impl surgeist_js::object::JsObject
-pub fn surgeist_js::object::JsObject::call(&self, this: &surgeist_js::value::JsValue, args: &[surgeist_js::value::JsValue], context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
-pub fn surgeist_js::object::JsObject::construct(&self, args: &[surgeist_js::value::JsValue], new_target: core::option::Option<&Self>, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<Self>
-pub fn surgeist_js::object::JsObject::copy_data_properties<K>(&self, source: &surgeist_js::value::JsValue, excluded_keys: alloc::vec::Vec<K>, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<()> where K: core::convert::Into<surgeist_js::property::PropertyKey>
-pub fn surgeist_js::object::JsObject::create_data_property<K, V>(&self, key: K, value: V, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, V: core::convert::Into<surgeist_js::value::JsValue>
-pub fn surgeist_js::object::JsObject::create_data_property_or_throw<K, V>(&self, key: K, value: V, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, V: core::convert::Into<surgeist_js::value::JsValue>
-pub fn surgeist_js::object::JsObject::define_property_or_throw<K, P>(&self, key: K, desc: P, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, P: core::convert::Into<surgeist_js::property::PropertyDescriptor>
-pub fn surgeist_js::object::JsObject::delete_property_or_throw<K>(&self, key: K, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>
-pub fn surgeist_js::object::JsObject::get<K>(&self, key: K, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::JsValue> where K: core::convert::Into<surgeist_js::property::PropertyKey>
-pub fn surgeist_js::object::JsObject::has_own_property<K>(&self, key: K, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>
-pub fn surgeist_js::object::JsObject::has_property<K>(&self, key: K, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>
-pub fn surgeist_js::object::JsObject::is_extensible(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool>
-pub fn surgeist_js::object::JsObject::own_property_keys(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<alloc::vec::Vec<surgeist_js::property::PropertyKey>>
-pub fn surgeist_js::object::JsObject::set<K, V>(&self, key: K, value: V, throw: bool, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, V: core::convert::Into<surgeist_js::value::JsValue>
-pub fn surgeist_js::object::JsObject::set_integrity_level(&self, level: surgeist_js::object::IntegrityLevel, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool>
-pub fn surgeist_js::object::JsObject::test_integrity_level(&self, level: surgeist_js::object::IntegrityLevel, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool>
+pub fn surgeist_js::object::JsObject::call(&self, this: &surgeist_js::value::JsValue, args: &[surgeist_js::value::JsValue], context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
+pub fn surgeist_js::object::JsObject::construct(&self, args: &[surgeist_js::value::JsValue], new_target: core::option::Option<&Self>, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<Self>
+pub fn surgeist_js::object::JsObject::copy_data_properties<K>(&self, source: &surgeist_js::value::JsValue, excluded_keys: alloc::vec::Vec<K>, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<()> where K: core::convert::Into<surgeist_js::property::PropertyKey>
+pub fn surgeist_js::object::JsObject::create_data_property<K, V>(&self, key: K, value: V, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, V: core::convert::Into<surgeist_js::value::JsValue>
+pub fn surgeist_js::object::JsObject::create_data_property_or_throw<K, V>(&self, key: K, value: V, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, V: core::convert::Into<surgeist_js::value::JsValue>
+pub fn surgeist_js::object::JsObject::define_property_or_throw<K, P>(&self, key: K, desc: P, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, P: core::convert::Into<surgeist_js::property::PropertyDescriptor>
+pub fn surgeist_js::object::JsObject::delete_property_or_throw<K>(&self, key: K, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>
+pub fn surgeist_js::object::JsObject::get<K>(&self, key: K, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::JsValue> where K: core::convert::Into<surgeist_js::property::PropertyKey>
+pub fn surgeist_js::object::JsObject::has_own_property<K>(&self, key: K, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>
+pub fn surgeist_js::object::JsObject::has_property<K>(&self, key: K, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>
+pub fn surgeist_js::object::JsObject::is_extensible(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool>
+pub fn surgeist_js::object::JsObject::own_property_keys(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<alloc::vec::Vec<surgeist_js::property::PropertyKey>>
+pub fn surgeist_js::object::JsObject::set<K, V>(&self, key: K, value: V, throw: bool, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, V: core::convert::Into<surgeist_js::value::JsValue>
+pub fn surgeist_js::object::JsObject::set_integrity_level(&self, level: surgeist_js::object::IntegrityLevel, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool>
+pub fn surgeist_js::object::JsObject::test_integrity_level(&self, level: surgeist_js::object::IntegrityLevel, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool>
 impl surgeist_js::object::JsObject
-pub fn surgeist_js::object::JsObject::deep_strict_equals(lhs: &Self, rhs: &Self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool>
+pub fn surgeist_js::object::JsObject::deep_strict_equals(lhs: &Self, rhs: &Self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool>
 pub fn surgeist_js::object::JsObject::default(intrinsics: &surgeist_js::context::intrinsics::Intrinsics) -> Self
 pub fn surgeist_js::object::JsObject::downcast<T: surgeist_js::object::NativeObject>(self) -> core::result::Result<surgeist_js::object::JsObject<T>, Self>
 pub fn surgeist_js::object::JsObject::downcast_class_mut<C: surgeist_js::class::Class>(&self) -> core::option::Option<core::cell::RefMut<'_, C>>
@@ -2592,8 +2592,8 @@ pub fn surgeist_js::object::JsObject::from_proto_and_data<O: core::convert::Into
 pub fn surgeist_js::object::JsObject::is<T: surgeist_js::object::NativeObject>(&self) -> bool
 pub fn surgeist_js::object::JsObject::is_array(&self) -> bool
 pub fn surgeist_js::object::JsObject::is_ordinary(&self) -> bool
-pub fn surgeist_js::object::JsObject::to_primitive(&self, context: &mut surgeist_js::context::Context, preferred_type: surgeist_js::value::PreferredType) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
-pub fn surgeist_js::object::JsObject::to_property_descriptor(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::property::PropertyDescriptor>
+pub fn surgeist_js::object::JsObject::to_primitive(&self, context: surgeist_js::ContextAccess<'_>, preferred_type: surgeist_js::value::PreferredType) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
+pub fn surgeist_js::object::JsObject::to_property_descriptor(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::property::PropertyDescriptor>
 pub fn surgeist_js::object::JsObject::with_null_proto(runtime: &surgeist_js::Runtime) -> Self
 pub fn surgeist_js::object::JsObject::with_object_proto(intrinsics: &surgeist_js::context::intrinsics::Intrinsics) -> Self
 impl<T: surgeist_js::object::NativeObject + ?core::marker::Sized> surgeist_js::object::JsObject<T>
@@ -3396,23 +3396,23 @@ impl core::fmt::Display for surgeist_js::error::JsNativeError
 pub fn surgeist_js::error::JsNativeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_js::prelude::JsObject<T: surgeist_js::object::NativeObject + ?core::marker::Sized>
 impl surgeist_js::object::JsObject
-pub fn surgeist_js::object::JsObject::call(&self, this: &surgeist_js::value::JsValue, args: &[surgeist_js::value::JsValue], context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
-pub fn surgeist_js::object::JsObject::construct(&self, args: &[surgeist_js::value::JsValue], new_target: core::option::Option<&Self>, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<Self>
-pub fn surgeist_js::object::JsObject::copy_data_properties<K>(&self, source: &surgeist_js::value::JsValue, excluded_keys: alloc::vec::Vec<K>, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<()> where K: core::convert::Into<surgeist_js::property::PropertyKey>
-pub fn surgeist_js::object::JsObject::create_data_property<K, V>(&self, key: K, value: V, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, V: core::convert::Into<surgeist_js::value::JsValue>
-pub fn surgeist_js::object::JsObject::create_data_property_or_throw<K, V>(&self, key: K, value: V, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, V: core::convert::Into<surgeist_js::value::JsValue>
-pub fn surgeist_js::object::JsObject::define_property_or_throw<K, P>(&self, key: K, desc: P, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, P: core::convert::Into<surgeist_js::property::PropertyDescriptor>
-pub fn surgeist_js::object::JsObject::delete_property_or_throw<K>(&self, key: K, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>
-pub fn surgeist_js::object::JsObject::get<K>(&self, key: K, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::JsValue> where K: core::convert::Into<surgeist_js::property::PropertyKey>
-pub fn surgeist_js::object::JsObject::has_own_property<K>(&self, key: K, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>
-pub fn surgeist_js::object::JsObject::has_property<K>(&self, key: K, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>
-pub fn surgeist_js::object::JsObject::is_extensible(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool>
-pub fn surgeist_js::object::JsObject::own_property_keys(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<alloc::vec::Vec<surgeist_js::property::PropertyKey>>
-pub fn surgeist_js::object::JsObject::set<K, V>(&self, key: K, value: V, throw: bool, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, V: core::convert::Into<surgeist_js::value::JsValue>
-pub fn surgeist_js::object::JsObject::set_integrity_level(&self, level: surgeist_js::object::IntegrityLevel, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool>
-pub fn surgeist_js::object::JsObject::test_integrity_level(&self, level: surgeist_js::object::IntegrityLevel, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool>
+pub fn surgeist_js::object::JsObject::call(&self, this: &surgeist_js::value::JsValue, args: &[surgeist_js::value::JsValue], context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
+pub fn surgeist_js::object::JsObject::construct(&self, args: &[surgeist_js::value::JsValue], new_target: core::option::Option<&Self>, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<Self>
+pub fn surgeist_js::object::JsObject::copy_data_properties<K>(&self, source: &surgeist_js::value::JsValue, excluded_keys: alloc::vec::Vec<K>, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<()> where K: core::convert::Into<surgeist_js::property::PropertyKey>
+pub fn surgeist_js::object::JsObject::create_data_property<K, V>(&self, key: K, value: V, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, V: core::convert::Into<surgeist_js::value::JsValue>
+pub fn surgeist_js::object::JsObject::create_data_property_or_throw<K, V>(&self, key: K, value: V, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, V: core::convert::Into<surgeist_js::value::JsValue>
+pub fn surgeist_js::object::JsObject::define_property_or_throw<K, P>(&self, key: K, desc: P, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, P: core::convert::Into<surgeist_js::property::PropertyDescriptor>
+pub fn surgeist_js::object::JsObject::delete_property_or_throw<K>(&self, key: K, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>
+pub fn surgeist_js::object::JsObject::get<K>(&self, key: K, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::JsValue> where K: core::convert::Into<surgeist_js::property::PropertyKey>
+pub fn surgeist_js::object::JsObject::has_own_property<K>(&self, key: K, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>
+pub fn surgeist_js::object::JsObject::has_property<K>(&self, key: K, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>
+pub fn surgeist_js::object::JsObject::is_extensible(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool>
+pub fn surgeist_js::object::JsObject::own_property_keys(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<alloc::vec::Vec<surgeist_js::property::PropertyKey>>
+pub fn surgeist_js::object::JsObject::set<K, V>(&self, key: K, value: V, throw: bool, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, V: core::convert::Into<surgeist_js::value::JsValue>
+pub fn surgeist_js::object::JsObject::set_integrity_level(&self, level: surgeist_js::object::IntegrityLevel, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool>
+pub fn surgeist_js::object::JsObject::test_integrity_level(&self, level: surgeist_js::object::IntegrityLevel, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool>
 impl surgeist_js::object::JsObject
-pub fn surgeist_js::object::JsObject::deep_strict_equals(lhs: &Self, rhs: &Self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool>
+pub fn surgeist_js::object::JsObject::deep_strict_equals(lhs: &Self, rhs: &Self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool>
 pub fn surgeist_js::object::JsObject::default(intrinsics: &surgeist_js::context::intrinsics::Intrinsics) -> Self
 pub fn surgeist_js::object::JsObject::downcast<T: surgeist_js::object::NativeObject>(self) -> core::result::Result<surgeist_js::object::JsObject<T>, Self>
 pub fn surgeist_js::object::JsObject::downcast_class_mut<C: surgeist_js::class::Class>(&self) -> core::option::Option<core::cell::RefMut<'_, C>>
@@ -3421,8 +3421,8 @@ pub fn surgeist_js::object::JsObject::from_proto_and_data<O: core::convert::Into
 pub fn surgeist_js::object::JsObject::is<T: surgeist_js::object::NativeObject>(&self) -> bool
 pub fn surgeist_js::object::JsObject::is_array(&self) -> bool
 pub fn surgeist_js::object::JsObject::is_ordinary(&self) -> bool
-pub fn surgeist_js::object::JsObject::to_primitive(&self, context: &mut surgeist_js::context::Context, preferred_type: surgeist_js::value::PreferredType) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
-pub fn surgeist_js::object::JsObject::to_property_descriptor(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::property::PropertyDescriptor>
+pub fn surgeist_js::object::JsObject::to_primitive(&self, context: surgeist_js::ContextAccess<'_>, preferred_type: surgeist_js::value::PreferredType) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
+pub fn surgeist_js::object::JsObject::to_property_descriptor(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::property::PropertyDescriptor>
 pub fn surgeist_js::object::JsObject::with_null_proto(runtime: &surgeist_js::Runtime) -> Self
 pub fn surgeist_js::object::JsObject::with_object_proto(intrinsics: &surgeist_js::context::intrinsics::Intrinsics) -> Self
 impl<T: surgeist_js::object::NativeObject + ?core::marker::Sized> surgeist_js::object::JsObject<T>
@@ -3852,7 +3852,7 @@ pub fn surgeist_js::module::Module::restore(stored: &Self::Stored) -> Self
 pub fn surgeist_js::module::Module::store(&self) -> Self::Stored
 pub struct surgeist_js::prelude::NativeFunction
 impl surgeist_js::native_function::NativeFunction
-pub fn surgeist_js::native_function::NativeFunction::call(&self, this: &surgeist_js::value::JsValue, args: &[surgeist_js::value::JsValue], context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
+pub fn surgeist_js::native_function::NativeFunction::call(&self, this: &surgeist_js::value::JsValue, args: &[surgeist_js::value::JsValue], context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
 pub fn surgeist_js::native_function::NativeFunction::from_async_fn(callback: surgeist_js::native_function::NativeAsyncFunctionPointer) -> Self
 pub fn surgeist_js::native_function::NativeFunction::from_async_fn_with_captures<T: surgeist_js::native_function::NativeCapture>(callback: surgeist_js::native_function::NativeAsyncFunctionWithCaptures<T>, captures: T) -> Self
 pub fn surgeist_js::native_function::NativeFunction::from_fn_ptr(function: surgeist_js::native_function::NativeFunctionPointer) -> Self
@@ -5600,23 +5600,23 @@ impl core::fmt::Display for surgeist_js::error::JsNativeError
 pub fn surgeist_js::error::JsNativeError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_js::JsObject<T: surgeist_js::object::NativeObject + ?core::marker::Sized>
 impl surgeist_js::object::JsObject
-pub fn surgeist_js::object::JsObject::call(&self, this: &surgeist_js::value::JsValue, args: &[surgeist_js::value::JsValue], context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
-pub fn surgeist_js::object::JsObject::construct(&self, args: &[surgeist_js::value::JsValue], new_target: core::option::Option<&Self>, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<Self>
-pub fn surgeist_js::object::JsObject::copy_data_properties<K>(&self, source: &surgeist_js::value::JsValue, excluded_keys: alloc::vec::Vec<K>, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<()> where K: core::convert::Into<surgeist_js::property::PropertyKey>
-pub fn surgeist_js::object::JsObject::create_data_property<K, V>(&self, key: K, value: V, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, V: core::convert::Into<surgeist_js::value::JsValue>
-pub fn surgeist_js::object::JsObject::create_data_property_or_throw<K, V>(&self, key: K, value: V, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, V: core::convert::Into<surgeist_js::value::JsValue>
-pub fn surgeist_js::object::JsObject::define_property_or_throw<K, P>(&self, key: K, desc: P, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, P: core::convert::Into<surgeist_js::property::PropertyDescriptor>
-pub fn surgeist_js::object::JsObject::delete_property_or_throw<K>(&self, key: K, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>
-pub fn surgeist_js::object::JsObject::get<K>(&self, key: K, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::JsValue> where K: core::convert::Into<surgeist_js::property::PropertyKey>
-pub fn surgeist_js::object::JsObject::has_own_property<K>(&self, key: K, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>
-pub fn surgeist_js::object::JsObject::has_property<K>(&self, key: K, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>
-pub fn surgeist_js::object::JsObject::is_extensible(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool>
-pub fn surgeist_js::object::JsObject::own_property_keys(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<alloc::vec::Vec<surgeist_js::property::PropertyKey>>
-pub fn surgeist_js::object::JsObject::set<K, V>(&self, key: K, value: V, throw: bool, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, V: core::convert::Into<surgeist_js::value::JsValue>
-pub fn surgeist_js::object::JsObject::set_integrity_level(&self, level: surgeist_js::object::IntegrityLevel, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool>
-pub fn surgeist_js::object::JsObject::test_integrity_level(&self, level: surgeist_js::object::IntegrityLevel, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool>
+pub fn surgeist_js::object::JsObject::call(&self, this: &surgeist_js::value::JsValue, args: &[surgeist_js::value::JsValue], context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
+pub fn surgeist_js::object::JsObject::construct(&self, args: &[surgeist_js::value::JsValue], new_target: core::option::Option<&Self>, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<Self>
+pub fn surgeist_js::object::JsObject::copy_data_properties<K>(&self, source: &surgeist_js::value::JsValue, excluded_keys: alloc::vec::Vec<K>, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<()> where K: core::convert::Into<surgeist_js::property::PropertyKey>
+pub fn surgeist_js::object::JsObject::create_data_property<K, V>(&self, key: K, value: V, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, V: core::convert::Into<surgeist_js::value::JsValue>
+pub fn surgeist_js::object::JsObject::create_data_property_or_throw<K, V>(&self, key: K, value: V, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, V: core::convert::Into<surgeist_js::value::JsValue>
+pub fn surgeist_js::object::JsObject::define_property_or_throw<K, P>(&self, key: K, desc: P, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, P: core::convert::Into<surgeist_js::property::PropertyDescriptor>
+pub fn surgeist_js::object::JsObject::delete_property_or_throw<K>(&self, key: K, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>
+pub fn surgeist_js::object::JsObject::get<K>(&self, key: K, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::JsValue> where K: core::convert::Into<surgeist_js::property::PropertyKey>
+pub fn surgeist_js::object::JsObject::has_own_property<K>(&self, key: K, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>
+pub fn surgeist_js::object::JsObject::has_property<K>(&self, key: K, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>
+pub fn surgeist_js::object::JsObject::is_extensible(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool>
+pub fn surgeist_js::object::JsObject::own_property_keys(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<alloc::vec::Vec<surgeist_js::property::PropertyKey>>
+pub fn surgeist_js::object::JsObject::set<K, V>(&self, key: K, value: V, throw: bool, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool> where K: core::convert::Into<surgeist_js::property::PropertyKey>, V: core::convert::Into<surgeist_js::value::JsValue>
+pub fn surgeist_js::object::JsObject::set_integrity_level(&self, level: surgeist_js::object::IntegrityLevel, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool>
+pub fn surgeist_js::object::JsObject::test_integrity_level(&self, level: surgeist_js::object::IntegrityLevel, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool>
 impl surgeist_js::object::JsObject
-pub fn surgeist_js::object::JsObject::deep_strict_equals(lhs: &Self, rhs: &Self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<bool>
+pub fn surgeist_js::object::JsObject::deep_strict_equals(lhs: &Self, rhs: &Self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<bool>
 pub fn surgeist_js::object::JsObject::default(intrinsics: &surgeist_js::context::intrinsics::Intrinsics) -> Self
 pub fn surgeist_js::object::JsObject::downcast<T: surgeist_js::object::NativeObject>(self) -> core::result::Result<surgeist_js::object::JsObject<T>, Self>
 pub fn surgeist_js::object::JsObject::downcast_class_mut<C: surgeist_js::class::Class>(&self) -> core::option::Option<core::cell::RefMut<'_, C>>
@@ -5625,8 +5625,8 @@ pub fn surgeist_js::object::JsObject::from_proto_and_data<O: core::convert::Into
 pub fn surgeist_js::object::JsObject::is<T: surgeist_js::object::NativeObject>(&self) -> bool
 pub fn surgeist_js::object::JsObject::is_array(&self) -> bool
 pub fn surgeist_js::object::JsObject::is_ordinary(&self) -> bool
-pub fn surgeist_js::object::JsObject::to_primitive(&self, context: &mut surgeist_js::context::Context, preferred_type: surgeist_js::value::PreferredType) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
-pub fn surgeist_js::object::JsObject::to_property_descriptor(&self, context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::property::PropertyDescriptor>
+pub fn surgeist_js::object::JsObject::to_primitive(&self, context: surgeist_js::ContextAccess<'_>, preferred_type: surgeist_js::value::PreferredType) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
+pub fn surgeist_js::object::JsObject::to_property_descriptor(&self, context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::property::PropertyDescriptor>
 pub fn surgeist_js::object::JsObject::with_null_proto(runtime: &surgeist_js::Runtime) -> Self
 pub fn surgeist_js::object::JsObject::with_object_proto(intrinsics: &surgeist_js::context::intrinsics::Intrinsics) -> Self
 impl<T: surgeist_js::object::NativeObject + ?core::marker::Sized> surgeist_js::object::JsObject<T>
@@ -6056,7 +6056,7 @@ pub fn surgeist_js::module::Module::restore(stored: &Self::Stored) -> Self
 pub fn surgeist_js::module::Module::store(&self) -> Self::Stored
 pub struct surgeist_js::NativeFunction
 impl surgeist_js::native_function::NativeFunction
-pub fn surgeist_js::native_function::NativeFunction::call(&self, this: &surgeist_js::value::JsValue, args: &[surgeist_js::value::JsValue], context: &mut surgeist_js::context::Context) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
+pub fn surgeist_js::native_function::NativeFunction::call(&self, this: &surgeist_js::value::JsValue, args: &[surgeist_js::value::JsValue], context: surgeist_js::ContextAccess<'_>) -> surgeist_js::JsResult<surgeist_js::value::JsValue>
 pub fn surgeist_js::native_function::NativeFunction::from_async_fn(callback: surgeist_js::native_function::NativeAsyncFunctionPointer) -> Self
 pub fn surgeist_js::native_function::NativeFunction::from_async_fn_with_captures<T: surgeist_js::native_function::NativeCapture>(callback: surgeist_js::native_function::NativeAsyncFunctionWithCaptures<T>, captures: T) -> Self
 pub fn surgeist_js::native_function::NativeFunction::from_fn_ptr(function: surgeist_js::native_function::NativeFunctionPointer) -> Self

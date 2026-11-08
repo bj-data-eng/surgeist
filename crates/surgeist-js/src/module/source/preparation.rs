@@ -994,7 +994,7 @@ mod tests {
             answer
                 .as_function()
                 .unwrap()
-                .call(&JsValue::undefined(), &[], &mut context)
+                .call(&JsValue::undefined(), &[], context.access())
                 .unwrap(),
             42.into()
         );

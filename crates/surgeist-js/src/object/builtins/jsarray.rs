@@ -545,8 +545,8 @@ mod tests {
         let array = JsArray::from_iter([JsValue::from(1), peer_object.into()], context).unwrap();
         context.runtime().collect().unwrap();
         assert_eq!(array.length(context).unwrap(), 2);
-        assert_eq!(array.get(0, context).unwrap(), JsValue::from(1));
-        let retained = array.get(1, context).unwrap();
+        assert_eq!(array.get(0, context.access()).unwrap(), JsValue::from(1));
+        let retained = array.get(1, context.access()).unwrap();
         assert_eq!(
             retained.as_object(),
             Some(identity.upgrade().unwrap().unwrap())

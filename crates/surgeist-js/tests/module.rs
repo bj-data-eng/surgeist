@@ -175,7 +175,7 @@ fn linking_prepares_captures_without_entering_a_guest_frame() {
     let answer = answer.as_function().unwrap();
     assert_eq!(
         answer
-            .call(&surgeist_js::JsValue::undefined(), &[], &mut context)
+            .call(&surgeist_js::JsValue::undefined(), &[], context.access())
             .unwrap(),
         42.into()
     );
@@ -230,7 +230,7 @@ fn pending_cyclic_modules_use_the_current_realm_and_preserve_top_level_await() {
         through_cycle
             .as_function()
             .unwrap()
-            .call(&surgeist_js::JsValue::undefined(), &[], &mut context)
+            .call(&surgeist_js::JsValue::undefined(), &[], context.access())
             .unwrap(),
         42.into()
     );
@@ -351,7 +351,7 @@ fn test_json_module_from_str() {
     let json = module
         .namespace(&mut context)
         .unwrap()
-        .get(js_string!("json"), &mut context)
+        .get(js_string!("json"), context.access())
         .unwrap();
 
     assert_eq!(
@@ -410,7 +410,7 @@ fn test_json_module_dynamic_import() {
     let p = module
         .namespace(&mut context)
         .unwrap()
-        .get(js_string!("p"), &mut context)
+        .get(js_string!("p"), context.access())
         .unwrap();
 
     let p_obj = p.as_promise().unwrap();
@@ -421,7 +421,7 @@ fn test_json_module_dynamic_import() {
             let default_export = module_ns
                 .as_object()
                 .unwrap()
-                .get(js_string!("default"), &mut context)
+                .get(js_string!("default"), context.access())
                 .unwrap();
 
             assert_eq!(
@@ -494,7 +494,7 @@ fn test_json_module_static_import_with_attributes() {
     let value = module
         .namespace(&mut context)
         .unwrap()
-        .get(js_string!("value"), &mut context)
+        .get(js_string!("value"), context.access())
         .unwrap();
 
     assert_eq!(
@@ -551,7 +551,7 @@ fn test_json_module_reexport_with_attributes() {
     let json = module
         .namespace(&mut context)
         .unwrap()
-        .get(js_string!("json"), &mut context)
+        .get(js_string!("json"), context.access())
         .unwrap();
 
     assert_eq!(
@@ -598,7 +598,7 @@ fn test_dynamic_import_invalid_options() {
     let p = module
         .namespace(&mut context)
         .unwrap()
-        .get(js_string!("p"), &mut context)
+        .get(js_string!("p"), context.access())
         .unwrap();
 
     let p_obj = p.as_promise().unwrap();
@@ -607,7 +607,7 @@ fn test_dynamic_import_invalid_options() {
     match p_obj.state() {
         PromiseState::Rejected(e) => {
             let error = e.as_object().unwrap();
-            let name = error.get(js_string!("name"), &mut context).unwrap();
+            let name = error.get(js_string!("name"), context.access()).unwrap();
             assert_eq!(name.as_string().unwrap(), js_string!("TypeError"));
         }
         state => panic!("Dynamic import should be rejected with TypeError, got {state:?}"),
@@ -651,7 +651,7 @@ fn test_dynamic_import_non_string_attribute_value() {
     let p = module
         .namespace(&mut context)
         .unwrap()
-        .get(js_string!("p"), &mut context)
+        .get(js_string!("p"), context.access())
         .unwrap();
 
     let p_obj = p.as_promise().unwrap();
@@ -660,9 +660,9 @@ fn test_dynamic_import_non_string_attribute_value() {
     match p_obj.state() {
         PromiseState::Rejected(e) => {
             let error = e.as_object().unwrap();
-            let name = error.get(js_string!("name"), &mut context).unwrap();
+            let name = error.get(js_string!("name"), context.access()).unwrap();
             assert_eq!(name.as_string().unwrap(), js_string!("TypeError"));
-            let message = error.get(js_string!("message"), &mut context).unwrap();
+            let message = error.get(js_string!("message"), context.access()).unwrap();
             assert_eq!(
                 message.as_string().unwrap(),
                 js_string!("import attribute value must be a string")
@@ -719,7 +719,7 @@ fn test_dynamic_import_symbol_key() {
     let p = module
         .namespace(&mut context)
         .unwrap()
-        .get(js_string!("p"), &mut context)
+        .get(js_string!("p"), context.access())
         .unwrap();
 
     let p_obj = p.as_promise().unwrap();
@@ -730,7 +730,7 @@ fn test_dynamic_import_symbol_key() {
             let default_export = module_ns
                 .as_object()
                 .unwrap()
-                .get(js_string!("default"), &mut context)
+                .get(js_string!("default"), context.access())
                 .unwrap();
 
             assert_eq!(
@@ -870,7 +870,7 @@ fn a_mixed_context_graph_resolves_named_and_namespace_exports_with_attributes() 
         namespace
             .as_object()
             .unwrap()
-            .get(js_string!("peerNamespaceValue"), &mut peer)
+            .get(js_string!("peerNamespaceValue"), peer.access())
             .unwrap(),
         29.into()
     );

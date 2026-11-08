@@ -188,7 +188,7 @@ fn module_namespace_exotic_get_own_property(
     }
 
     // 4. Let value be ? O.[[Get]](P, O).
-    let value = obj.get(key, context)?;
+    let value = obj.get(key, context.access())?;
 
     // 5. Return PropertyDescriptor { [[Value]]: value, [[Writable]]: true, [[Enumerable]]: true, [[Configurable]]: false }.
     Ok(Some(

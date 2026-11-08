@@ -443,7 +443,7 @@ impl Collator {
             .create_data_property_or_throw(
                 js_string!("locale"),
                 js_string!(collator.locale.to_string()),
-                context,
+                context.access(),
             )
             .js_expect("operation must not fail per the spec")?;
         options
@@ -453,7 +453,7 @@ impl Collator {
                     Usage::Search => js_string!("search"),
                     Usage::Sort => js_string!("sort"),
                 },
-                context,
+                context.access(),
             )
             .js_expect("operation must not fail per the spec")?;
         options
@@ -465,14 +465,14 @@ impl Collator {
                     Sensitivity::Case => js_string!("case"),
                     Sensitivity::Variant => js_string!("variant"),
                 },
-                context,
+                context.access(),
             )
             .js_expect("operation must not fail per the spec")?;
         options
             .create_data_property_or_throw(
                 js_string!("ignorePunctuation"),
                 collator.ignore_punctuation,
-                context,
+                context.access(),
             )
             .js_expect("operation must not fail per the spec")?;
         options
@@ -482,18 +482,22 @@ impl Collator {
                     .collation
                     .map(|co| js_string!(co.as_str()))
                     .unwrap_or(js_string!("default")),
-                context,
+                context.access(),
             )
             .js_expect("operation must not fail per the spec")?;
         options
-            .create_data_property_or_throw(js_string!("numeric"), collator.numeric, context)
+            .create_data_property_or_throw(
+                js_string!("numeric"),
+                collator.numeric,
+                context.access(),
+            )
             .js_expect("operation must not fail per the spec")?;
         if let Some(kf) = collator.case_first {
             options
                 .create_data_property_or_throw(
                     js_string!("caseFirst"),
                     js_string!(kf.as_str()),
-                    context,
+                    context.access(),
                 )
                 .js_expect("operation must not fail per the spec")?;
         }

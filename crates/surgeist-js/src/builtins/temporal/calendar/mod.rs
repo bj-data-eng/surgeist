@@ -29,7 +29,7 @@ pub(crate) fn get_temporal_calendar_slot_value_with_default(
     }
 
     // 2. Let calendarLike be ? Get(item, "calendar").
-    let calendar_like = item.get(js_string!("calendar"), context)?;
+    let calendar_like = item.get(js_string!("calendar"), context.access())?;
     // 3. If calendarLike is undefined, then
     if calendar_like.is_undefined() {
         // a. Return "iso8601".

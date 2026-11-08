@@ -55,7 +55,7 @@
 //!         let age = args.get_or_undefined(1).to_number(context.access())?;
 //!
 //!         // Roughly equivalent to `this.age = Number(age)`.
-//!         instance.clone().upcast().set(js_string!("age"), age, true, context)?;
+//!         instance.clone().upcast().set(js_string!("age"), age, true, context.access())?;
 //!
 //!         Ok(())
 //!     }
@@ -181,7 +181,7 @@ pub trait Class: NativeObject + Sized {
 
         let prototype = 'proto: {
             let realm = if let Some(constructor) = new_target.as_object() {
-                if let Some(proto) = constructor.get(PROTOTYPE, context)?.as_object() {
+                if let Some(proto) = constructor.get(PROTOTYPE, context.access())?.as_object() {
                     break 'proto proto.clone();
                 }
                 constructor.get_function_realm(context)?

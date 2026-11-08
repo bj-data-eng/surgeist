@@ -2,7 +2,7 @@ use super::internal_methods::InternalMethodPropertyContext;
 use crate::js_error;
 use crate::value::JsVariant;
 use crate::{
-    Context, JsExpect, JsResult, JsSymbol, JsValue,
+    Context, ContextAccess, JsExpect, JsResult, JsSymbol, JsValue,
     builtins::{
         Array, Proxy,
         function::{BoundFunction, ClassFieldDefinition, OrdinaryFunction, set_function_name},
@@ -60,7 +60,8 @@ impl JsObject {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-isextensible-o
     #[inline]
-    pub fn is_extensible(&self, context: &mut Context) -> JsResult<bool> {
+    pub fn is_extensible(&self, context: ContextAccess<'_>) -> JsResult<bool> {
+        let context = context.into_owner();
         // 1. Return ? O.[[IsExtensible]]().
         self.__is_extensible__(context)
     }
@@ -71,10 +72,11 @@ impl JsObject {
     ///  - [ECMAScript reference][spec]
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-get-o-p
-    pub fn get<K>(&self, key: K, context: &mut Context) -> JsResult<JsValue>
+    pub fn get<K>(&self, key: K, context: ContextAccess<'_>) -> JsResult<JsValue>
     where
         K: Into<PropertyKey>,
     {
+        let context = context.into_owner();
         // 1. Assert: Type(O) is Object.
         // 2. Assert: IsPropertyKey(P) is true.
         // 3. Return ? O.[[Get]](P, O).
@@ -92,11 +94,18 @@ impl JsObject {
     ///  - [ECMAScript reference][spec]
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-set-o-p-v-throw
-    pub fn set<K, V>(&self, key: K, value: V, throw: bool, context: &mut Context) -> JsResult<bool>
+    pub fn set<K, V>(
+        &self,
+        key: K,
+        value: V,
+        throw: bool,
+        context: ContextAccess<'_>,
+    ) -> JsResult<bool>
     where
         K: Into<PropertyKey>,
         V: Into<JsValue>,
     {
+        let context = context.into_owner();
         let key = key.into();
         // 1. Assert: Type(O) is Object.
         // 2. Assert: IsPropertyKey(P) is true.
@@ -128,12 +137,13 @@ impl JsObject {
         &self,
         key: K,
         value: V,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<bool>
     where
         K: Into<PropertyKey>,
         V: Into<JsValue>,
     {
+        let context = context.into_owner();
         // 1. Assert: Type(O) is Object.
         // 2. Assert: IsPropertyKey(P) is true.
         // 3. Let newDesc be the PropertyDescriptor { [[Value]]: V, [[Writable]]: true, [[Enumerable]]: true, [[Configurable]]: true }.
@@ -224,17 +234,18 @@ impl JsObject {
         &self,
         key: K,
         value: V,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<bool>
     where
         K: Into<PropertyKey>,
         V: Into<JsValue>,
     {
+        let context = context.into_owner();
         let key = key.into();
         // 1. Assert: Type(O) is Object.
         // 2. Assert: IsPropertyKey(P) is true.
         // 3. Let success be ? CreateDataProperty(O, P, V).
-        let success = self.create_data_property(key.clone(), value, context)?;
+        let success = self.create_data_property(key.clone(), value, context.access())?;
         // 4. If success is false, throw a TypeError exception.
         if !success {
             return Err(JsNativeError::typ()
@@ -276,7 +287,7 @@ impl JsObject {
             .build();
 
         // 3. Perform ! DefinePropertyOrThrow(O, P, newDesc).
-        self.define_property_or_throw(key, new_desc, context)
+        self.define_property_or_throw(key, new_desc, context.access())
             .expect("should not fail according to spec");
 
         // 4. Return unused.
@@ -292,12 +303,13 @@ impl JsObject {
         &self,
         key: K,
         desc: P,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<bool>
     where
         K: Into<PropertyKey>,
         P: Into<PropertyDescriptor>,
     {
+        let context = context.into_owner();
         let key = key.into();
         // 1. Assert: Type(O) is Object.
         // 2. Assert: IsPropertyKey(P) is true.
@@ -323,10 +335,11 @@ impl JsObject {
     /// - [ECMAScript reference][spec]
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-deletepropertyorthrow
-    pub fn delete_property_or_throw<K>(&self, key: K, context: &mut Context) -> JsResult<bool>
+    pub fn delete_property_or_throw<K>(&self, key: K, context: ContextAccess<'_>) -> JsResult<bool>
     where
         K: Into<PropertyKey>,
     {
+        let context = context.into_owner();
         let key = key.into();
         // 1. Assert: Type(O) is Object.
         // 2. Assert: IsPropertyKey(P) is true.
@@ -348,10 +361,11 @@ impl JsObject {
     ///  - [ECMAScript reference][spec]
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-hasproperty
-    pub fn has_property<K>(&self, key: K, context: &mut Context) -> JsResult<bool>
+    pub fn has_property<K>(&self, key: K, context: ContextAccess<'_>) -> JsResult<bool>
     where
         K: Into<PropertyKey>,
     {
+        let context = context.into_owner();
         // 1. Assert: Type(O) is Object.
         // 2. Assert: IsPropertyKey(P) is true.
         // 3. Return ? O.[[HasProperty]](P).
@@ -390,10 +404,11 @@ impl JsObject {
     ///  - [ECMAScript reference][spec]
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-hasownproperty
-    pub fn has_own_property<K>(&self, key: K, context: &mut Context) -> JsResult<bool>
+    pub fn has_own_property<K>(&self, key: K, context: ContextAccess<'_>) -> JsResult<bool>
     where
         K: Into<PropertyKey>,
     {
+        let context = context.into_owner();
         let key = key.into();
         // 1. Assert: Type(O) is Object.
         // 2. Assert: IsPropertyKey(P) is true.
@@ -411,7 +426,8 @@ impl JsObject {
     ///  - [ECMAScript reference][spec]
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-ordinary-object-internal-methods-and-internal-slots-ownpropertykeys
-    pub fn own_property_keys(&self, context: &mut Context) -> JsResult<Vec<PropertyKey>> {
+    pub fn own_property_keys(&self, context: ContextAccess<'_>) -> JsResult<Vec<PropertyKey>> {
+        let context = context.into_owner();
         self.__own_property_keys__(context)
     }
 
@@ -431,8 +447,9 @@ impl JsObject {
         &self,
         this: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         self.call_with_entry(this, args, context, None)
     }
 
@@ -504,8 +521,9 @@ impl JsObject {
         &self,
         args: &[JsValue],
         new_target: Option<&Self>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<Self> {
+        let context = context.into_owner();
         // 1. If newTarget is not present, set newTarget to F.
         let new_target = new_target.unwrap_or(self);
         let runtime = context.runtime();
@@ -562,8 +580,9 @@ impl JsObject {
     pub fn set_integrity_level(
         &self,
         level: IntegrityLevel,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<bool> {
+        let context = context.into_owner();
         // 1. Assert: Type(O) is Object.
         // 2. Assert: level is either sealed or frozen.
 
@@ -587,7 +606,7 @@ impl JsObject {
                     self.define_property_or_throw(
                         k,
                         PropertyDescriptor::builder().configurable(false).build(),
-                        context,
+                        context.access(),
                     )?;
                 }
             }
@@ -616,7 +635,7 @@ impl JsObject {
                                 .build()
                         };
                         // 3. Perform ? DefinePropertyOrThrow(O, k, desc).
-                        self.define_property_or_throw(k, desc, context)?;
+                        self.define_property_or_throw(k, desc, context.access())?;
                     }
                 }
             }
@@ -635,13 +654,14 @@ impl JsObject {
     pub fn test_integrity_level(
         &self,
         level: IntegrityLevel,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<bool> {
+        let context = context.into_owner();
         // 1. Assert: Type(O) is Object.
         // 2. Assert: level is either sealed or frozen.
 
         // 3. Let extensible be ? IsExtensible(O).
-        let extensible = self.is_extensible(context)?;
+        let extensible = self.is_extensible(context.access())?;
 
         // 4. If extensible is true, return false.
         if extensible {
@@ -693,7 +713,7 @@ impl JsObject {
         }
 
         // 2. Return ℝ(? ToLength(? Get(obj, "length"))).
-        self.get(StaticJsStrings::LENGTH, context)?
+        self.get(StaticJsStrings::LENGTH, context.access())?
             .to_length(context.access())
     }
 
@@ -719,7 +739,7 @@ impl JsObject {
         // 1. Assert: Type(O) is Object.
 
         // 2. Let C be ? Get(O, "constructor").
-        let c = self.get(CONSTRUCTOR, context)?;
+        let c = self.get(CONSTRUCTOR, context.access())?;
 
         // 3. If C is undefined, return defaultConstructor.
         if c.is_undefined() {
@@ -732,7 +752,7 @@ impl JsObject {
         })?;
 
         // 5. Let S be ? Get(C, @@species).
-        let s = c.get(JsSymbol::species(), context)?;
+        let s = c.get(JsSymbol::species(), context.access())?;
 
         // 6. If S is either undefined or null, return defaultConstructor.
         if s.is_null_or_undefined() {
@@ -792,7 +812,7 @@ impl JsObject {
                         // a. Let value be ? Get(O, key).
                         // b. If kind is value, append value to properties.
                         PropertyNameKind::Value => {
-                            properties.push(self.get(key.clone(), context)?);
+                            properties.push(self.get(key.clone(), context.access())?);
                         }
                         // c. Else,
                         // i. Assert: kind is key+value.
@@ -800,7 +820,7 @@ impl JsObject {
                         // iii. Append entry to properties.
                         PropertyNameKind::KeyAndValue => properties.push(
                             Array::create_array_from_list(
-                                [key_str.into(), self.get(key.clone(), context)?],
+                                [key_str.into(), self.get(key.clone(), context.access())?],
                                 context,
                             )
                             .into(),
@@ -921,11 +941,12 @@ impl JsObject {
         &self,
         source: &JsValue,
         excluded_keys: Vec<K>,
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<()>
     where
         K: Into<PropertyKey>,
     {
+        let context = context.into_owner();
         let context = &mut InternalMethodPropertyContext::new(context);
 
         // 1. Assert: Type(target) is Object.
@@ -970,7 +991,7 @@ impl JsObject {
                     let prop_value = from.__get__(&key, from.clone().into(), context)?;
 
                     // 2. Perform ! CreateDataPropertyOrThrow(target, nextKey, propValue).
-                    self.create_data_property_or_throw(key, prop_value, context)
+                    self.create_data_property_or_throw(key, prop_value, context.access())
                         .expect("CreateDataPropertyOrThrow should never complete abruptly here");
                 }
             }
@@ -1010,7 +1031,7 @@ impl JsObject {
 
         // 2. If ? IsExtensible(O) is false, throw a TypeError exception.
         // NOTE: From <https://tc39.es/proposal-nonextensible-applies-to-private/#sec-privatefieldadd>
-        if !self.is_extensible(context)? {
+        if !self.is_extensible(context.access())? {
             return Err(js_error!(
                 TypeError: "cannot add private field to non-extensible class instance"
             ));
@@ -1071,7 +1092,7 @@ impl JsObject {
 
         // 3. If ? IsExtensible(O) is false, throw a TypeError exception.
         // NOTE: From <https://tc39.es/proposal-nonextensible-applies-to-private/#sec-privatemethodoraccessoradd>
-        if !self.is_extensible(context)? {
+        if !self.is_extensible(context.access())? {
             return if getter || setter {
                 Err(js_error!(
                     TypeError: "cannot add private accessor to non-extensible class instance"
@@ -1151,7 +1172,7 @@ impl JsObject {
 
                 // 7. Return ? Call(getter, O).
                 drop(object);
-                getter.call(&self.clone().into(), &[], context)
+                getter.call(&self.clone().into(), &[], context.access())
             }
         }
     }
@@ -1213,7 +1234,7 @@ impl JsObject {
 
                 // d. Perform ? Call(setter, O, « value »).
                 drop(object_mut);
-                setter.call(&self.clone().into(), &[value], context)?;
+                setter.call(&self.clone().into(), &[value], context.access())?;
             }
         }
 
@@ -1244,7 +1265,7 @@ impl JsObject {
         // a. Let initValue be ? Call(initializer, receiver).
         // 4. Else, let initValue be undefined.
         let initializer = JsFunction::from_record(initializer.clone());
-        let init_value = initializer.call(&self.clone().into(), &[], context)?;
+        let init_value = initializer.call(&self.clone().into(), &[], context.access())?;
 
         match field_record {
             // 1. Let fieldName be fieldRecord.[[Name]].
@@ -1269,7 +1290,11 @@ impl JsObject {
 
                 // a. Assert: IsPropertyKey(fieldName) is true.
                 // b. Perform ? CreateDataPropertyOrThrow(receiver, fieldName, initValue).
-                self.create_data_property_or_throw(field_name.clone(), init_value, context)?;
+                self.create_data_property_or_throw(
+                    field_name.clone(),
+                    init_value,
+                    context.access(),
+                )?;
             }
         }
 
@@ -1444,7 +1469,7 @@ impl JsValue {
         for index in 0..len {
             // a. Let indexName be ! ToString(𝔽(index)).
             // b. Let next be ? Get(obj, indexName).
-            let next = obj.get(index, context)?;
+            let next = obj.get(index, context.access())?;
             // c. If Type(next) is not an element of elementTypes, throw a TypeError exception.
             if !types.contains(&next.get_type()) {
                 return Err(JsNativeError::typ().with_message("bad type").into());
@@ -1482,7 +1507,7 @@ impl JsValue {
                 .into());
         };
 
-        object.call(this, args, context)
+        object.call(this, args, context.access())
     }
 
     /// Abstract operation `( V, P [ , argumentsList ] )`
@@ -1535,7 +1560,7 @@ impl JsValue {
         };
 
         // 4. Let P be ? Get(C, "prototype").
-        let prototype = function.get(PROTOTYPE, context)?;
+        let prototype = function.get(PROTOTYPE, context.access())?;
 
         // 5. If Type(P) is not Object, throw a TypeError exception.
         let prototype = prototype.as_object().ok_or_else(|| {

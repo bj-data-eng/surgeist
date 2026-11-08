@@ -620,7 +620,7 @@ fn generate_obj_properties(
             quote! { surgeist_js::value::TryIntoJs::try_into_js(&self.#name, context)? }
         };
         prop_ctors.push(quote! {
-            obj.create_data_property_or_throw(surgeist_js::js_string!(#prop_key), #value, context)?;
+            obj.create_data_property_or_throw(surgeist_js::js_string!(#prop_key), #value, context.access())?;
         });
     }
 

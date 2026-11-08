@@ -221,12 +221,16 @@ fn materialization_preserves_a_local_aggregate_members_cause() {
     let error = JsError::from_native(JsNativeError::aggregate(vec![member]));
 
     let error = error.into_opaque(context).unwrap().as_object().unwrap();
-    let members = error.get(js_string!("errors"), context).unwrap();
-    let member = members.as_object().unwrap().get(0, context).unwrap();
+    let members = error.get(js_string!("errors"), context.access()).unwrap();
+    let member = members
+        .as_object()
+        .unwrap()
+        .get(0, context.access())
+        .unwrap();
     let observed = member
         .as_object()
         .unwrap()
-        .get(js_string!("cause"), context);
+        .get(js_string!("cause"), context.access());
     assert_eq!(observed.unwrap(), cause.into());
 }
 

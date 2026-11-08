@@ -55,7 +55,7 @@ pub(crate) fn get_option<T: OptionType>(
     context: &mut Context,
 ) -> JsResult<Option<T>> {
     // 1. Let value be ? Get(options, property).
-    let value = options.get(property, context)?;
+    let value = options.get(property, context.access())?;
 
     // 2. If value is undefined, then
     if value.is_undefined() {

@@ -1551,7 +1551,7 @@ impl Date {
         }
 
         // 4. Return ? Invoke(O, "toISOString").
-        let func = o.get(js_string!("toISOString"), context)?;
+        let func = o.get(js_string!("toISOString"), context.access())?;
         func.call(this, &[], context)
     }
 

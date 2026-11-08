@@ -502,7 +502,7 @@ impl Context {
                 .writable(attribute.writable())
                 .enumerable(attribute.enumerable())
                 .configurable(attribute.configurable()),
-            self,
+            self.access(),
         )?;
         Ok(())
     }
@@ -538,7 +538,7 @@ impl Context {
                 .writable(true)
                 .enumerable(false)
                 .configurable(true),
-            self,
+            self.access(),
         )?;
         Ok(())
     }
@@ -571,7 +571,7 @@ impl Context {
                 .writable(true)
                 .enumerable(false)
                 .configurable(true),
-            self,
+            self.access(),
         )?;
         Ok(())
     }
@@ -608,8 +608,11 @@ impl Context {
             .enumerable(C::ATTRIBUTES.enumerable())
             .configurable(C::ATTRIBUTES.configurable());
 
-        self.global_object()
-            .define_property_or_throw(js_string!(C::NAME), property, self)?;
+        self.global_object().define_property_or_throw(
+            js_string!(C::NAME),
+            property,
+            self.access(),
+        )?;
         self.realm().register_class::<C>(class)?;
 
         Ok(())
@@ -640,7 +643,7 @@ impl Context {
     /// ```
     pub fn unregister_global_class<C: Class>(&mut self) -> JsResult<Option<ClassConstructor>> {
         self.global_object()
-            .delete_property_or_throw(js_string!(C::NAME), self)?;
+            .delete_property_or_throw(js_string!(C::NAME), self.access())?;
         Ok(self.realm().unregister_class::<C>())
     }
 
@@ -918,7 +921,7 @@ impl Context {
 
         // 4. If existingProp is undefined, return ? IsExtensible(globalObject).
         let Some(existing_prop) = existing_prop else {
-            return global_object.is_extensible(self);
+            return global_object.is_extensible(self.access());
         };
 
         // 5. If existingProp.[[Configurable]] is true, return true.
@@ -950,7 +953,7 @@ impl Context {
         let global_object = self.realm().global_object();
 
         // 3. Let hasProperty be ? HasOwnProperty(globalObject, N).
-        let has_property = global_object.has_own_property(name.clone(), self)?;
+        let has_property = global_object.has_own_property(name.clone(), self.access())?;
 
         // 4. If hasProperty is true, return true.
         if has_property {
@@ -958,7 +961,7 @@ impl Context {
         }
 
         // 5. Return ? IsExtensible(globalObject).
-        global_object.is_extensible(self)
+        global_object.is_extensible(self.access())
     }
 
     /// `CreateGlobalVarBinding ( N, D )`
@@ -977,10 +980,10 @@ impl Context {
         let global_object = self.realm().global_object();
 
         // 3. Let hasProperty be ? HasOwnProperty(globalObject, N).
-        let has_property = global_object.has_own_property(name.clone(), self)?;
+        let has_property = global_object.has_own_property(name.clone(), self.access())?;
 
         // 4. Let extensible be ? IsExtensible(globalObject).
-        let extensible = global_object.is_extensible(self)?;
+        let extensible = global_object.is_extensible(self.access())?;
 
         // 5. If hasProperty is false and extensible is true, then
         if !has_property && extensible {
@@ -1038,7 +1041,7 @@ impl Context {
                 .with_message(format!("cannot redefine property: {key}"))
                 .into());
         };
-        global_object.set(name, function, false, self)?;
+        global_object.set(name, function, false, self.access())?;
         Ok(())
     }
 

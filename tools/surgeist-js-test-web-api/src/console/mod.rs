@@ -247,11 +247,12 @@ fn formatter(data: &[JsValue], context: &mut Context) -> JsResult<String> {
                             // If a JS value implements `toString()`, call it.
                             let mut written = false;
                             if let Some(obj) = arg.as_object()
-                                && let Ok(to_string) = obj.get(js_string!("toString"), context)
+                                && let Ok(to_string) =
+                                    obj.get(js_string!("toString"), context.access())
                                 && let Some(to_string_fn) = to_string.as_function()
                             {
                                 let arg = to_string_fn
-                                    .call(arg, &[], context)?
+                                    .call(arg, &[], context.access())?
                                     .to_string(context.access())?;
                                 formatted.push_str(&arg.to_std_string_escaped());
                                 written = true;

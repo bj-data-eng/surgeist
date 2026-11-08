@@ -170,7 +170,7 @@ impl AsyncGenerator {
 
             // b. Perform ! Call(promiseCapability.[[Resolve]], undefined, « iteratorResult »).
             cap.resolve()
-                .call(&JsValue::undefined(), &[iterator_result], context)?;
+                .call(&JsValue::undefined(), &[iterator_result], context.access())?;
 
             // c. Return promiseCapability.[[Promise]].
             return Ok(cap.promise);
@@ -348,7 +348,7 @@ impl AsyncGenerator {
             cap.reject().call(
                 &JsValue::undefined(),
                 slice::from_ref(&error_value),
-                context,
+                context.access(),
             )?;
 
             // b. Return promiseCapability.[[Promise]].
@@ -434,7 +434,7 @@ impl AsyncGenerator {
                 promise_capability.reject().call(
                     &JsValue::undefined(),
                     &[e.into_opaque(context)?],
-                    context,
+                    context.access(),
                 )?;
             }
 
@@ -464,7 +464,7 @@ impl AsyncGenerator {
                 promise_capability.resolve().call(
                     &JsValue::undefined(),
                     &[iterator_result],
-                    context,
+                    context.access(),
                 )?;
             }
         }

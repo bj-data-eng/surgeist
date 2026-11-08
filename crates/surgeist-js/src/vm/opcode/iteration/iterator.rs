@@ -326,7 +326,7 @@ impl IteratorReturn {
 
         let old_return_value = context.vm.get_return_value();
 
-        let return_value = ret.call(&record.iterator().clone().into(), &[], context)?;
+        let return_value = ret.call(&record.iterator().clone().into(), &[], context.access())?;
 
         context.vm.set_return_value(old_return_value);
 

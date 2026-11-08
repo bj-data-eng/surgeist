@@ -12,7 +12,7 @@ use crate::job::BoxedFuture;
 use crate::object::internal_methods::InternalMethodCallContext;
 use crate::value::JsVariant;
 use crate::{
-    Context, JsNativeError, JsObject, JsResult, JsValue,
+    Context, ContextAccess, JsNativeError, JsObject, JsResult, JsValue,
     builtins::{OrdinaryObject, function::ConstructorKind},
     context::intrinsics::StandardConstructors,
     object::{
@@ -318,11 +318,11 @@ impl NativeFunction {
     /// );
     /// let mut context = Context::default();
     /// let receiver = JsValue::undefined();
-    /// let fulfilled = callback.call(&receiver, &[JsValue::from(3)], &mut context).unwrap();
+    /// let fulfilled = callback.call(&receiver, &[JsValue::from(3)], context.access()).unwrap();
     /// let rejected = callback.call(
     ///     &receiver,
     ///     &[JsValue::from(JsSymbol::iterator())],
-    ///     &mut context,
+    ///     context.access(),
     /// ).unwrap();
     /// let fulfilled = JsPromise::from_object(fulfilled.as_object().unwrap()).unwrap();
     /// let rejected = JsPromise::from_object(rejected.as_object().unwrap()).unwrap();
@@ -377,8 +377,9 @@ impl NativeFunction {
         &self,
         this: &JsValue,
         args: &[JsValue],
-        context: &mut Context,
+        context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
+        let context = context.into_owner();
         context.runtime().check_value(this)?;
         for arg in args {
             context.runtime().check_value(arg)?;
@@ -602,7 +603,7 @@ mod tests {
 
         assert_eq!(
             function
-                .call(&JsValue::new(17), &[JsValue::new(31)], &mut context)
+                .call(&JsValue::new(17), &[JsValue::new(31)], context.access())
                 .unwrap(),
             JsValue::new(31)
         );
@@ -623,7 +624,9 @@ mod tests {
         let mut context = Context::default();
 
         assert_eq!(
-            restored.call(&JsValue::new(19), &[], &mut context).unwrap(),
+            restored
+                .call(&JsValue::new(19), &[], context.access())
+                .unwrap(),
             JsValue::new(19)
         );
         assert_eq!(
@@ -644,7 +647,7 @@ mod tests {
         ) -> JsResult<JsValue> {
             // The invocation's restored roots survive collection and reentry.
             context.runtime().collect().unwrap();
-            capture.set(js_string!("receiver"), this.clone(), true, context)?;
+            capture.set(js_string!("receiver"), this.clone(), true, context.access())?;
             Ok(capture.clone().into())
         }
 
@@ -667,11 +670,15 @@ mod tests {
             context.runtime().collect().unwrap();
             assert!(weak_capture.is_live().unwrap());
             {
-                let value = function.call(&JsValue::new(27), &[], &mut context).unwrap();
+                let value = function
+                    .call(&JsValue::new(27), &[], context.access())
+                    .unwrap();
                 let object = value.as_object().unwrap();
                 assert_eq!(object, weak_capture.upgrade().unwrap().unwrap());
                 assert_eq!(
-                    object.get(js_string!("receiver"), &mut context).unwrap(),
+                    object
+                        .get(js_string!("receiver"), context.access())
+                        .unwrap(),
                     JsValue::new(27)
                 );
             }
@@ -697,7 +704,7 @@ mod tests {
         let restored = NativeFunction::restore(&stored);
         drop(callback);
         let promise = restored
-            .call(&JsValue::undefined(), &[], &mut context)
+            .call(&JsValue::undefined(), &[], context.access())
             .unwrap()
             .as_object()
             .unwrap();

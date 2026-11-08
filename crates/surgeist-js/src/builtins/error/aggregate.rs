@@ -126,7 +126,7 @@ impl BuiltInConstructor for AggregateError {
                 .writable(true)
                 .value(Array::create_array_from_list(errors_list, context))
                 .build(),
-            context,
+            context.access(),
         )
         .js_expect("should not fail according to spec")?;
 

@@ -45,8 +45,8 @@ fn get_set_field() {
         let obj = &JsObject::with_object_proto(ctx.intrinsics());
         // Create string and convert it to a Value
         let s = JsValue::new(js_str!("bar"));
-        obj.set(js_str!("foo"), s, false, ctx).unwrap();
-        obj.get(js_str!("foo"), ctx).unwrap() == JsValue::new(js_str!("bar"))
+        obj.set(js_str!("foo"), s, false, ctx.access()).unwrap();
+        obj.get(js_str!("foo"), ctx.access()).unwrap() == JsValue::new(js_str!("bar"))
     })]);
 }
 
@@ -1618,7 +1618,7 @@ mod js_value_macro {
         }, context)?;
 
         assert_eq!(order, ["value", "key", "first element", "second element"]);
-        assert_eq!(object.get(0, context)?, JsValue::from(42));
+        assert_eq!(object.get(0, context.access())?, JsValue::from(42));
         Ok(())
     }
 

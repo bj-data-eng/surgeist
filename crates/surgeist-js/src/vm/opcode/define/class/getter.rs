@@ -164,7 +164,7 @@ impl DefineClassStaticGetterByValue {
                 .enumerable(false)
                 .configurable(true)
                 .build(),
-            context,
+            context.access(),
         )?;
         Ok(())
     }

@@ -93,7 +93,7 @@ pub trait HostHooks {
         // 1. Assert: IsCallable(jobCallback.[[Callback]]) is true.
         // already asserted by `Call`.
         // 2. Return ? Call(jobCallback.[[Callback]], V, argumentsList).
-        job.callback().call(this, args, context)
+        job.callback().call(this, args, context.access())
     }
 
     /// [`HostPromiseRejectionTracker ( promise, operation )`][spec]

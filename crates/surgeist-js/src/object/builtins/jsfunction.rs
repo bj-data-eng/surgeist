@@ -75,7 +75,7 @@ impl<A: TryIntoJsArguments, R: TryFromJs> TypedJsFunction<A, R> {
     #[cfg_attr(feature = "native-backtrace", track_caller)]
     pub fn call_with_this(&self, this: &JsValue, context: &mut Context, args: A) -> JsResult<R> {
         let arguments = args.into_js_args(context)?;
-        let result = self.inner.call(this, &arguments, context)?;
+        let result = self.inner.call(this, &arguments, context.access())?;
         R::try_from_js(&result, context)
     }
 }

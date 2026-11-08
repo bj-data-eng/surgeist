@@ -70,7 +70,7 @@ impl<'a> TryFromJsArgument<'a> for Ignore {
 ///     .call(
 ///         &JsValue::undefined(),
 ///         &[JsValue::from(1), JsValue::from(2), JsValue::from(3)],
-///         &mut context,
+///         context.access(),
 ///     )
 ///     .unwrap();
 /// assert_eq!(result, JsValue::new(6));
@@ -149,7 +149,7 @@ impl<'a> IntoIterator for JsRest<'a> {
 ///             JsValue::from(true),
 ///             JsValue::from(4),
 ///         ],
-///         &mut context,
+///         context.access(),
 ///     )
 ///     .unwrap();
 /// assert_eq!(result, JsValue::new(6));
@@ -339,7 +339,7 @@ impl<'a, T: NativeObject + 'static> TryFromJsArgument<'a> for JsClass<T> {
 /// let f = f.into_js_function();
 ///
 /// assert_eq!(
-///     f.call(&JsValue::undefined(), &[], &mut context),
+///     f.call(&JsValue::undefined(), &[], context.access()),
 ///     Ok(JsValue::new(124))
 /// );
 /// ```
