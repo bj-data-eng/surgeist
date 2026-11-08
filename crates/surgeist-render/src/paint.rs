@@ -4,7 +4,7 @@ pub(crate) use repeating::GradientGeometry;
 pub use repeating::RepeatingGradient;
 
 use super::{
-    Error, Image, Point, Result,
+    Error, GradientHintError, Image, Point, Result,
     validation::{
         validate_color, validate_finite_f64, validate_paint, validate_point, validate_positive_f64,
     },
@@ -28,8 +28,14 @@ impl Color {
     /// Fully transparent numeric-sRGB black.
     pub const TRANSPARENT: Self = Self::rgba(0.0, 0.0, 0.0, 0.0);
 
+    /// Constructs channel storage without repeating intrinsic validation.
+    ///
+    /// Before returning this value across a model boundary, callers must prove
+    /// every channel finite and within `0..=1`. Constants and the qualified
+    /// native repeating average establish that proof directly; `try_rgba`
+    /// validates the stored channels before returning to its public caller.
     #[must_use]
-    const fn rgba(r: f32, g: f32, b: f32, a: f32) -> Self {
+    pub(crate) const fn rgba(r: f32, g: f32, b: f32, a: f32) -> Self {
         Self { r, g, b, a }
     }
 
@@ -313,7 +319,7 @@ impl NormalizedPaintLayer {
 ///
 /// Linear and radial fields preserve nonempty nondecreasing finite positions,
 /// including negative and outside-unit positions. Radial axes are positive.
-/// Sweep positions remain normalized to `0..=1` in their supplied order.
+/// Sweep positions remain normalized to `0..=1` in their supplied order, without hints.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Gradient {
     kind: GradientKind,
@@ -342,7 +348,7 @@ pub(crate) enum GradientKind {
 /// Individual finite positions and colors are already proved by GradientStop.
 fn validate_field_stops(stops: &[GradientStop]) -> Result<()> {
     validate_nonempty_stops(stops)?;
-    for pair in stops.windows(2) {
+    for (stop_index, pair) in stops.windows(2).enumerate() {
         if pair[1].position < pair[0].position {
             return Err(Error::invalid_value(
                 "gradient stop position",
@@ -350,6 +356,15 @@ fn validate_field_stops(stops: &[GradientStop]) -> Result<()> {
                 "must be nondecreasing",
             ));
         }
+        if let Some(hint) = pair[0].hint_after
+            && !(pair[0].position..=pair[1].position).contains(&hint.position)
+        {
+            return Err(GradientHintError::HintOutsideInterval { stop_index }.into());
+        }
+    }
+    let stop_index = stops.len() - 1;
+    if stops[stop_index].hint_after.is_some() {
+        return Err(GradientHintError::TrailingHint { stop_index }.into());
     }
     Ok(())
 }
@@ -367,7 +382,8 @@ impl Gradient {
     /// Creates an ordinary linear field between finite logical points.
     ///
     /// Empty or descending stops and nonfinite geometry return a typed input
-    /// diagnostic. Positions are preserved without a finite-span restriction.
+    /// diagnostic. Invalid outgoing hint associations return [`GradientHintError`].
+    /// Positions are preserved without a finite-span restriction.
     pub fn try_linear(start: Point, end: Point, stops: Vec<GradientStop>) -> Result<Self> {
         validate_point(start, "linear gradient start")?;
         validate_point(end, "linear gradient end")?;
@@ -380,7 +396,8 @@ impl Gradient {
     /// Creates an ordinary elliptical radial field around a finite center.
     ///
     /// Both axes must be finite and positive. Empty or descending stops return
-    /// a typed input diagnostic; no finite stop-span restriction is imposed.
+    /// a typed input diagnostic; invalid outgoing hints return [`GradientHintError`].
+    /// No finite stop-span restriction is imposed.
     pub fn try_radial(
         center: Point,
         radius_x: f64,
@@ -405,17 +422,25 @@ impl Gradient {
     ///
     /// Stops must be nonempty and within `0..=1`. Their supplied order is kept,
     /// including descending positions; invalid input returns a typed diagnostic.
+    /// The first outgoing hint returns [`GradientHintError::UnsupportedSweep`].
     pub fn try_sweep(center: Point, stops: Vec<GradientStop>) -> Result<Self> {
         validate_point(center, "sweep gradient center")?;
         validate_nonempty_stops(&stops)?;
-        for stop in &stops {
-            if !(0.0..=1.0).contains(&stop.position) {
-                return Err(Error::invalid_value(
-                    "sweep gradient stop position",
-                    stop.position,
-                    "must be between 0 and 1",
-                ));
+        let mut invalid_position = None;
+        for (stop_index, stop) in stops.iter().enumerate() {
+            if stop.hint_after.is_some() {
+                return Err(GradientHintError::UnsupportedSweep { stop_index }.into());
             }
+            if !(0.0..=1.0).contains(&stop.position) && invalid_position.is_none() {
+                invalid_position = Some(stop.position);
+            }
+        }
+        if let Some(position) = invalid_position {
+            return Err(Error::invalid_value(
+                "sweep gradient stop position",
+                position,
+                "must be between 0 and 1",
+            ));
         }
         Ok(Self {
             kind: GradientKind::Sweep { center, stops },
@@ -478,6 +503,7 @@ impl Gradient {
         // Authentic Paint geometry is finite/positive. Its immutable used-stop
         // consumer proved nonempty finite ordered quotients while filling this
         // exact backing. Consume that proof without another validation walk.
+        account.work(crate::accounting::RenderWork::PaintVisits, 1)?;
         let (stops, backing) = stops.into_parts();
         let kind = match geometry {
             GradientGeometry::Linear { start, end } => GradientKind::Linear { start, end, stops },
@@ -494,8 +520,38 @@ impl Gradient {
         };
         let gradient =
             crate::accounting::BackedValue::new(Self { kind }, [Some(backing), Some(fixed_owner)]);
-        account.work(crate::accounting::RenderWork::PaintVisits, 1)?;
         Ok(gradient)
+    }
+}
+
+/// A finite transition-hint position in dimensionless gradient field units.
+///
+/// A hint belongs to one color stop's outgoing interval. Its neighboring colors
+/// establish inclusive containment when the complete gradient is constructed.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GradientHint {
+    position: f64,
+}
+
+impl GradientHint {
+    /// Creates a hint while preserving its finite position exactly.
+    ///
+    /// A nonfinite position returns [`crate::ErrorCode::InvalidInput`].
+    pub fn try_new(position: f64) -> Result<Self> {
+        validate_finite_f64(position, "gradient hint position")?;
+        Ok(Self { position })
+    }
+
+    /// Returns the supplied position in field units.
+    #[must_use]
+    pub const fn position(self) -> f64 {
+        self.position
+    }
+
+    #[cfg(feature = "render-paint")]
+    pub(crate) const fn from_qualified_paint(position: f64) -> Self {
+        // The native Paint consumer proved the finite quotient before storage.
+        Self { position }
     }
 }
 
@@ -508,6 +564,7 @@ impl Gradient {
 pub struct GradientStop {
     position: f64,
     color: Color,
+    hint_after: Option<GradientHint>,
 }
 
 impl GradientStop {
@@ -517,13 +574,42 @@ impl GradientStop {
     /// already owns its finite normalized channel invariant.
     pub fn try_new(position: f64, color: Color) -> Result<Self> {
         validate_finite_f64(position, "gradient stop position")?;
-        Ok(Self { position, color })
+        Ok(Self {
+            position,
+            color,
+            hint_after: None,
+        })
     }
 
     #[cfg(feature = "render-paint")]
-    pub(crate) const fn from_qualified_paint(position: f64, color: Color) -> Self {
-        // The consumer proved this quotient finite before storing it.
-        Self { position, color }
+    pub(crate) const fn from_qualified_paint(
+        position: f64,
+        color: Color,
+        hint_after: Option<GradientHint>,
+    ) -> Self {
+        // The consumer proved finite ordered quotients and outgoing containment
+        // while consuming authentic native Paint records into this backing.
+        Self {
+            position,
+            color,
+            hint_after,
+        }
+    }
+
+    /// Attaches a hint to this stop's outgoing color interval.
+    ///
+    /// Complete Gradient/RepeatingGradient construction checks that a following
+    /// color exists and the hint lies within their inclusive position interval.
+    #[must_use]
+    pub const fn with_hint_after(mut self, hint: GradientHint) -> Self {
+        self.hint_after = Some(hint);
+        self
+    }
+
+    /// Returns this stop's outgoing transition hint, when supplied.
+    #[must_use]
+    pub const fn hint_after(self) -> Option<GradientHint> {
+        self.hint_after
     }
 
     /// Returns the supplied position in field units.
@@ -559,6 +645,7 @@ impl Gradient {
         Ok((position > 0.0).then_some(GradientStop {
             position: 0.0,
             color: first.color,
+            hint_after: None,
         }))
     }
 }
@@ -673,5 +760,109 @@ mod field_model_tests {
             assert!(Gradient::try_radial(p, 1.0, value, vec![stop(0.0)]).is_err());
         }
         assert!(RepeatingGradient::try_radial(p, 1.0, 0.0, vec![stop(0.0)]).is_ok());
+    }
+}
+
+#[cfg(test)]
+mod hint_model_tests {
+    use super::*;
+
+    fn stop(position: f64, hint: Option<f64>) -> GradientStop {
+        let stop = GradientStop::try_new(position, Color::BLACK).unwrap();
+        hint.map_or(stop, |position| {
+            stop.with_hint_after(GradientHint::try_new(position).unwrap())
+        })
+    }
+
+    #[test]
+    fn finite_hints_and_inclusive_endpoint_associations_preserve_exact_values() {
+        let p = Point::new(0.0, 0.0);
+        for (a, h, b) in [
+            (-f64::MAX, -1.0, f64::MAX),
+            (-2.0, -2.0, 3.0),
+            (-2.0, 3.0, 3.0),
+            (7.0, 7.0, 7.0),
+        ] {
+            let stops = vec![stop(a, Some(h)), stop(b, None)];
+            let gradient = Gradient::try_linear(p, p, stops.clone()).unwrap();
+            assert_eq!(gradient.stops(), stops);
+            assert_eq!(
+                gradient.stops()[0]
+                    .hint_after()
+                    .unwrap()
+                    .position()
+                    .to_bits(),
+                h.to_bits()
+            );
+            assert!(gradient.stops()[1].hint_after().is_none());
+            if a != -f64::MAX {
+                assert_eq!(
+                    RepeatingGradient::try_linear(p, p, stops.clone())
+                        .unwrap()
+                        .stops(),
+                    stops
+                );
+            }
+        }
+        for position in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+            let error = GradientHint::try_new(position).unwrap_err();
+            assert_eq!(error.code(), crate::ErrorCode::InvalidInput);
+            assert!(error.gradient_hint_diagnostic().is_none());
+        }
+    }
+
+    #[test]
+    fn canonical_fields_report_the_outgoing_interval_for_bad_hint_associations() {
+        let p = Point::new(0.0, 0.0);
+        for (stops, expected) in [
+            (
+                vec![stop(0.0, Some(0.0))],
+                GradientHintError::TrailingHint { stop_index: 0 },
+            ),
+            (
+                vec![stop(0.0, None), stop(1.0, Some(1.0))],
+                GradientHintError::TrailingHint { stop_index: 1 },
+            ),
+            (
+                vec![stop(0.0, Some(-1.0)), stop(1.0, None)],
+                GradientHintError::HintOutsideInterval { stop_index: 0 },
+            ),
+            (
+                vec![stop(0.0, None), stop(1.0, Some(3.0)), stop(2.0, None)],
+                GradientHintError::HintOutsideInterval { stop_index: 1 },
+            ),
+        ] {
+            for error in [
+                Gradient::try_linear(p, p, stops.clone()).unwrap_err(),
+                Gradient::try_radial(p, 1.0, 2.0, stops.clone()).unwrap_err(),
+                RepeatingGradient::try_linear(p, p, stops.clone()).unwrap_err(),
+                RepeatingGradient::try_radial(p, 1.0, 2.0, stops.clone()).unwrap_err(),
+            ] {
+                assert_eq!(error.code(), crate::ErrorCode::GradientHint);
+                assert_eq!(error.gradient_hint_diagnostic(), Some(&expected));
+                assert!(error.invalid_value_diagnostic().is_none());
+                assert!(error.gradient_realization_diagnostic().is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn sweep_reports_its_first_hint_before_an_unrelated_range_error() {
+        let p = Point::new(0.0, 0.0);
+        let error = Gradient::try_sweep(
+            p,
+            vec![
+                stop(-1.0, None),
+                stop(0.25, Some(0.5)),
+                stop(0.75, Some(0.75)),
+            ],
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.gradient_hint_diagnostic(),
+            Some(&GradientHintError::UnsupportedSweep { stop_index: 1 })
+        );
+        let error = Gradient::try_sweep(p, vec![stop(-1.0, None), stop(0.75, None)]).unwrap_err();
+        assert_eq!(error.code(), crate::ErrorCode::InvalidInput);
     }
 }

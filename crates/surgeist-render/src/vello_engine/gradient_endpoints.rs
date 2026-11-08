@@ -1,4 +1,4 @@
-//! Ordinary Pad side data transported through the existing native ramp texture.
+//! Checked Pad descriptors and analytic programs carried in the native ramp texture.
 
 use crate::accounting::{Account, AccountedVec, RenderResource, RenderWork};
 use crate::{BackendErrorCode, Color, Error, Result};
@@ -8,7 +8,8 @@ use vello_encoding::{DrawMonoid, DrawTag, Layout, Monoid, Ramps, StreamOffsets};
 use super::bounded;
 
 pub(crate) const RAMP_WIDTH: usize = 512;
-const DESCRIPTOR_TEXELS: usize = 5;
+const DESCRIPTOR_TEXELS: usize = 7;
+const PROGRAM_RECORD_TEXELS: usize = 7;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PadEndpoints {
@@ -54,17 +55,52 @@ impl PadEndpoints {
     }
 }
 
-/// A borrowed native brush and the side semantics its native stop list cannot
-/// express alone. Internal scene entrypoints consume this coupled value.
+/// A qualified outgoing interval. The numerical owner supplies the Power
+/// coefficient only after proving its whole-segment native error bound.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum ProgramSegment {
+    Linear,
+    Power { exponent: f32 },
+    HintAtStart,
+    HintAtEnd,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ProgramRecord {
+    pub(crate) position: f32,
+    pub(crate) premultiplied: [f32; 4],
+    pub(crate) outgoing: ProgramSegment,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum ProgramExtend {
+    Pad,
+    Repeat,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct GradientProgram<'a> {
+    pub(crate) records: &'a [ProgramRecord],
+    pub(crate) endpoints: PadEndpoints,
+    pub(crate) extend: ProgramExtend,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum GradientSampling<'a> {
+    PadRamp(PadEndpoints),
+    Program(GradientProgram<'a>),
+}
+
+/// A native brush coupled to its one selected sampling interpretation.
 #[derive(Clone, Copy)]
 pub(crate) struct SceneBrush<'a> {
     pub(crate) brush: BrushRef<'a>,
-    pub(crate) endpoints: Option<PadEndpoints>,
+    pub(crate) sampling: Option<GradientSampling<'a>>,
 }
 
 impl<'a> SceneBrush<'a> {
-    pub(crate) const fn new(brush: BrushRef<'a>, endpoints: Option<PadEndpoints>) -> Self {
-        Self { brush, endpoints }
+    pub(crate) const fn new(brush: BrushRef<'a>, sampling: Option<GradientSampling<'a>>) -> Self {
+        Self { brush, sampling }
     }
 }
 
@@ -74,10 +110,23 @@ impl<'a, T: Into<BrushRef<'a>>> From<T> for SceneBrush<'a> {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
+struct OwnedProgram {
+    records: AccountedVec<ProgramRecord>,
+    endpoints: PadEndpoints,
+    extend: ProgramExtend,
+}
+
+#[derive(Debug)]
+enum CapturedSampling {
+    PadRamp(PadEndpoints),
+    Program(OwnedProgram),
+}
+
+#[derive(Debug)]
 pub(crate) struct CapturedEndpoint {
     word: usize,
-    endpoints: PadEndpoints,
+    sampling: CapturedSampling,
 }
 
 #[derive(Default)]
@@ -89,13 +138,83 @@ impl EndpointRecords {
     pub(crate) fn capture(
         &mut self,
         word: usize,
-        endpoints: PadEndpoints,
+        sampling: GradientSampling<'_>,
         tag: DrawTag,
         account: &Account,
     ) -> Result<()> {
         if !gradient_tag(tag) {
-            return Ok(());
+            return match sampling {
+                GradientSampling::PadRamp(_) => Ok(()),
+                GradientSampling::Program(_) => Err(correspondence()),
+            };
         }
+        let sampling = match sampling {
+            GradientSampling::PadRamp(endpoints) => CapturedSampling::PadRamp(endpoints),
+            GradientSampling::Program(program) => {
+                let count = scalar(account, || program.records.len())?;
+                if scalar(account, || count < 2)? {
+                    return Err(correspondence());
+                }
+                let words = mul(count, PROGRAM_RECORD_TEXELS, account)?;
+                if scalar(account, || words >= (1_usize << 30))? {
+                    return Err(correspondence());
+                }
+                account.work(RenderWork::ResourceProbes, 2)?;
+                let first = program.records.first().expect("nonempty program");
+                let last = program.records.last().expect("nonempty program");
+                let first_control = scalar(account, || f32::from_bits(program.endpoints.first))?;
+                let last_control = scalar(account, || f32::from_bits(program.endpoints.last))?;
+                if !scalar(account, || first.position == first_control)?
+                    || !scalar(account, || last.position == last_control)?
+                    || !scalar(account, || first.position < last.position)?
+                    || !matches!(last.outgoing, ProgramSegment::Linear)
+                {
+                    return Err(correspondence());
+                }
+                // Own an independent copy before the borrowed FrameBrush
+                // can drop. Partial failures release this exact real capacity.
+                let mut records = account.retained(count)?;
+                let mut previous = None;
+                for record in program.records {
+                    account.work(RenderWork::GradientStopVisits, 1)?;
+                    if !scalar(account, || record.position.is_finite())? {
+                        return Err(correspondence());
+                    }
+                    if let Some(previous) = previous
+                        && scalar(account, || record.position < previous)?
+                    {
+                        return Err(correspondence());
+                    }
+                    previous = Some(record.position);
+                    for channel in record.premultiplied {
+                        if !scalar(account, || channel.is_finite())?
+                            || scalar(account, || channel < 0.0)?
+                            || scalar(account, || channel > 1.0)?
+                        {
+                            return Err(correspondence());
+                        }
+                    }
+                    for channel in &record.premultiplied[..3] {
+                        if scalar(account, || *channel > record.premultiplied[3])? {
+                            return Err(correspondence());
+                        }
+                    }
+                    if let ProgramSegment::Power { exponent } = record.outgoing
+                        && (!scalar(account, || exponent.is_normal())?
+                            || scalar(account, || exponent <= 0.0)?)
+                    {
+                        return Err(correspondence());
+                    }
+                    account.work(RenderWork::RasterResourceCopies, 1)?;
+                    records.push_reserved(*record);
+                }
+                CapturedSampling::Program(OwnedProgram {
+                    records,
+                    endpoints: program.endpoints,
+                    extend: program.extend,
+                })
+            }
+        };
         if self.records.is_none() {
             self.records = Some(account.retained(0)?);
         }
@@ -103,11 +222,11 @@ impl EndpointRecords {
         if !records.is_empty() {
             account.work(RenderWork::ResourceProbes, 1)?;
             let previous = records.last().expect("nonempty endpoint records");
-            if previous.word >= word {
+            if scalar(account, || previous.word >= word)? {
                 return Err(correspondence());
             }
         }
-        bounded::push_record(records, CapturedEndpoint { word, endpoints }, account)
+        bounded::push_record(records, CapturedEndpoint { word, sampling }, account)
     }
 
     pub(crate) fn as_slice(&self) -> &[CapturedEndpoint] {
@@ -127,7 +246,7 @@ fn gradient_tag(tag: DrawTag) -> bool {
 fn correspondence() -> Error {
     Error::new(
         BackendErrorCode::RenderFailed,
-        "locked ordinary-gradient endpoint correspondence changed",
+        "locked native-gradient sampling correspondence changed",
     )
 }
 
@@ -215,24 +334,27 @@ pub(crate) fn prepare(
     if scalar(account, || ramps.data.len() != native_count)? {
         return Err(correspondence());
     }
-    let required = add(
-        native_count,
-        mul(DESCRIPTOR_TEXELS, records.len(), account)?,
-        account,
-    )?;
+    let mut required = native_count;
+    for record in records {
+        account.work(RenderWork::ResourceProbes, 1)?;
+        required = add(required, DESCRIPTOR_TEXELS, account)?;
+        if let CapturedSampling::Program(program) = &record.sampling {
+            required = add(
+                required,
+                mul(PROGRAM_RECORD_TEXELS, program.records.len(), account)?,
+                account,
+            )?;
+        }
+    }
+    // A command reserves two low bits. Qualify every possible descriptor and
+    // record address, including the last word, before allocating upload backing.
+    if scalar(account, || required > (1_usize << 30))? {
+        return Err(correspondence());
+    }
     let rounded = add(required, RAMP_WIDTH - 1, account)?;
     let rows = scalar(account, || rounded / RAMP_WIDTH)?;
     let padded = mul(rows, RAMP_WIDTH, account)?;
     let height = scalar(account, || u32::try_from(rows))?.map_err(|_| correspondence())?;
-    let last_index = scalar(account, || records.len() - 1)?;
-    let last_descriptor = add(
-        native_count,
-        mul(DESCRIPTOR_TEXELS, last_index, account)?,
-        account,
-    )?;
-    if !scalar(account, || last_descriptor < (1_usize << 30))? {
-        return Err(correspondence());
-    }
     let mut texels = account.retained(padded)?;
     for texel in ramps.data {
         account.work(RenderWork::SerializedBytes, 4)?;
@@ -279,7 +401,14 @@ pub(crate) fn prepare(
                 let original = read_word(packed, byte)?;
                 let mode = scalar(account, || original & 3)?;
                 let ramp = scalar(account, || original >> 2)?;
-                if scalar(account, || mode != 0)? {
+                let expected_mode = match &record.sampling {
+                    CapturedSampling::Program(OwnedProgram {
+                        extend: ProgramExtend::Repeat,
+                        ..
+                    }) => 1,
+                    _ => 0,
+                };
+                if scalar(account, || mode != expected_mode)? {
                     return Err(correspondence());
                 }
                 if scalar(account, || ramp >= ramps.height)? {
@@ -287,17 +416,52 @@ pub(crate) fn prepare(
                 }
                 let flat = scalar(account, || u32::try_from(texels.len()))?
                     .map_err(|_| correspondence())?;
+                let (kind, payload, count, endpoints) = match &record.sampling {
+                    CapturedSampling::PadRamp(endpoints) => (0, ramp, 0, *endpoints),
+                    CapturedSampling::Program(program) => {
+                        let payload = add(texels.len(), DESCRIPTOR_TEXELS, account)?;
+                        let payload = scalar(account, || u32::try_from(payload))?
+                            .map_err(|_| correspondence())?;
+                        let count = scalar(account, || u32::try_from(program.records.len()))?
+                            .map_err(|_| correspondence())?;
+                        let kind = match program.extend {
+                            ProgramExtend::Pad => 1,
+                            ProgramExtend::Repeat => 2,
+                        };
+                        (kind, payload, count, program.endpoints)
+                    }
+                };
                 for word in [
-                    record.endpoints.first,
-                    record.endpoints.last,
-                    ramp,
-                    record.endpoints.first_color,
-                    record.endpoints.last_color,
+                    kind,
+                    payload,
+                    count,
+                    endpoints.first,
+                    endpoints.last,
+                    endpoints.first_color,
+                    endpoints.last_color,
                 ] {
-                    account.work(RenderWork::SerializedBytes, 4)?;
-                    // Upload bytes are explicitly little endian, matching the
-                    // WGSL pack4x8unorm codec regardless of CPU byte order.
-                    texels.push_reserved(u32::from_ne_bytes(word.to_le_bytes()));
+                    serialize_word(&mut texels, word, account)?;
+                }
+                if let CapturedSampling::Program(program) = &record.sampling {
+                    for record in &program.records {
+                        account.work(RenderWork::GradientStopVisits, 1)?;
+                        let position = scalar(account, || record.position.to_bits())?;
+                        serialize_word(&mut texels, position, account)?;
+                        for channel in record.premultiplied {
+                            let word = scalar(account, || channel.to_bits())?;
+                            serialize_word(&mut texels, word, account)?;
+                        }
+                        let (kind, exponent) = match record.outgoing {
+                            ProgramSegment::Linear => (0, 0),
+                            ProgramSegment::Power { exponent } => {
+                                (1, scalar(account, || exponent.to_bits())?)
+                            }
+                            ProgramSegment::HintAtStart => (2, 0),
+                            ProgramSegment::HintAtEnd => (3, 0),
+                        };
+                        serialize_word(&mut texels, kind, account)?;
+                        serialize_word(&mut texels, exponent, account)?;
+                    }
                 }
                 let shifted = scalar(account, || flat << 2)?;
                 let command = scalar(account, || shifted | 3)?;
@@ -324,16 +488,23 @@ pub(crate) fn prepare(
     Ok(Some(EndpointTexture { texels, height }))
 }
 
-fn read_record(
-    records: &[CapturedEndpoint],
+fn serialize_word(texels: &mut AccountedVec<u32>, word: u32, account: &Account) -> Result<()> {
+    account.work(RenderWork::SerializedBytes, 4)?;
+    // Exact little-endian words reconstructed by WGSL pack4x8unorm.
+    texels.push_reserved(u32::from_ne_bytes(word.to_le_bytes()));
+    Ok(())
+}
+
+fn read_record<'a>(
+    records: &'a [CapturedEndpoint],
     index: usize,
     account: &Account,
-) -> Result<Option<CapturedEndpoint>> {
+) -> Result<Option<&'a CapturedEndpoint>> {
     if index == records.len() {
         return Ok(None);
     }
     account.work(RenderWork::ResourceProbes, 1)?;
-    Ok(records.get(index).copied())
+    Ok(records.get(index))
 }
 
 fn read_word(bytes: &[u8], offset: usize) -> Result<u32> {
@@ -419,7 +590,7 @@ mod tests {
         let repeat_before = layout.draw_data(&packed)[repeat];
         let records = [CapturedEndpoint {
             word: pad,
-            endpoints: endpoints(),
+            sampling: CapturedSampling::PadRamp(endpoints()),
         }];
         let mut context = RenderAccountingContext::default();
         context
@@ -442,21 +613,23 @@ mod tests {
                     assert_eq!(layout.draw_data(&packed)[pad], (512 << 2) | 3);
                     assert_eq!(layout.draw_data(&packed)[repeat], repeat_before);
                     assert_eq!(repeat_before & 3, 1);
-                    let descriptor = &texture.texels[512..517];
+                    let descriptor = &texture.texels[512..519];
                     assert_eq!(
                         descriptor
                             .iter()
                             .map(|word| u32::from_le(*word))
                             .collect::<Vec<_>>(),
                         [
+                            0,
+                            0,
+                            0,
                             0.0_f32.to_bits(),
                             1.0_f32.to_bits(),
-                            0,
                             0xff00_00ff,
                             0xff00_ff00
                         ]
                     );
-                    assert!(texture.texels[517..].iter().all(|word| *word == 0));
+                    assert!(texture.texels[519..].iter().all(|word| *word == 0));
                     Ok(())
                 },
             )
@@ -474,10 +647,10 @@ mod tests {
     #[test]
     fn a_descriptor_crosses_rows_without_a_per_draw_row() {
         let mut encoding = Encoding::new();
-        let records: Vec<_> = (0..103)
+        let records: Vec<_> = (0..74)
             .map(|_| CapturedEndpoint {
                 word: append(&mut encoding, peniko::Extend::Pad),
-                endpoints: endpoints(),
+                sampling: CapturedSampling::PadRamp(endpoints()),
             })
             .collect();
         let mut resolver = Resolver::default();
@@ -498,17 +671,17 @@ mod tests {
                         account,
                     )?
                     .unwrap();
-                    // 512 native texels + 515 descriptor texels, padded only once.
+                    // 512 native texels + 518 descriptor texels, padded only once.
                     assert_eq!(texture.texels.len(), 1536);
                     assert_eq!(texture.height, 3);
-                    let start = 512 + 102 * 5;
-                    assert_eq!(start, 1022);
+                    let start = 512 + 73 * 7;
+                    assert_eq!(start, 1023);
                     assert_eq!(
-                        layout.draw_data(&packed)[records[102].word],
+                        layout.draw_data(&packed)[records[73].word],
                         ((start as u32) << 2) | 3
                     );
                     assert_eq!(u32::from_le(texture.texels[start + 2]), 0);
-                    assert_eq!(u32::from_le(texture.texels[start + 3]), 0xff00_00ff);
+                    assert_eq!(u32::from_le(texture.texels[start + 5]), 0xff00_00ff);
                     Ok(())
                 },
             )
@@ -525,7 +698,7 @@ mod tests {
         let original = packed.clone();
         let records = [CapturedEndpoint {
             word,
-            endpoints: endpoints(),
+            sampling: CapturedSampling::PadRamp(endpoints()),
         }];
         let mut context = RenderAccountingContext::default();
         let error = context
@@ -571,11 +744,11 @@ mod tests {
         let records = [
             CapturedEndpoint {
                 word: first,
-                endpoints: endpoints(),
+                sampling: CapturedSampling::PadRamp(endpoints()),
             },
             CapturedEndpoint {
                 word: second + 1,
-                endpoints: endpoints(),
+                sampling: CapturedSampling::PadRamp(endpoints()),
             },
         ];
         let mut context = RenderAccountingContext::default();
@@ -605,7 +778,7 @@ mod tests {
         let usage = context.last_attempt().unwrap().usage();
         assert!(usage.peak(RenderResource::RetainedCpuBytes) >= 1024 * 4);
         assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
-        assert_eq!(usage.work(RenderWork::SerializedBytes), (512 + 5 + 1) * 4);
+        assert_eq!(usage.work(RenderWork::SerializedBytes), (512 + 7 + 1) * 4);
         assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
     }
 
@@ -618,7 +791,7 @@ mod tests {
         let (layout, ramps, _) = resolver.resolve(&encoding, &mut packed);
         let records = [CapturedEndpoint {
             word,
-            endpoints: endpoints(),
+            sampling: CapturedSampling::PadRamp(endpoints()),
         }];
         let limits = RenderLimits::new()
             .with_work_limit(RenderWork::SerializedBytes, 512 * 4)
@@ -659,7 +832,7 @@ mod tests {
         let (layout, ramps, _) = resolver.resolve(&encoding, &mut packed);
         let records = [CapturedEndpoint {
             word,
-            endpoints: endpoints(),
+            sampling: CapturedSampling::PadRamp(endpoints()),
         }];
         let original = packed.clone();
         let mut context = RenderAccountingContext::default();
@@ -717,6 +890,197 @@ mod tests {
         assert_eq!(packed, original);
     }
 
+    fn program_records() -> [ProgramRecord; 2] {
+        [
+            ProgramRecord {
+                position: 0.0,
+                premultiplied: [1.0, 0.0, 0.0, 1.0],
+                outgoing: ProgramSegment::Power { exponent: 0.5 },
+            },
+            ProgramRecord {
+                position: 1.0,
+                premultiplied: [0.0, 1.0, 0.0, 1.0],
+                outgoing: ProgramSegment::Linear,
+            },
+        ]
+    }
+
+    #[test]
+    fn program_capture_survives_source_drop_and_serializes_exact_words() {
+        let mut encoding = Encoding::new();
+        let word = append(&mut encoding, peniko::Extend::Repeat);
+        let neighbor = append(&mut encoding, peniko::Extend::Repeat);
+        let mut resolver = Resolver::default();
+        let mut packed = Vec::new();
+        let (layout, ramps, _) = resolver.resolve(&encoding, &mut packed);
+        let neighbor_before = layout.draw_data(&packed)[neighbor];
+        let mut context = RenderAccountingContext::default();
+        context
+            .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                let mut captured = EndpointRecords::default();
+                {
+                    let source = program_records();
+                    captured.capture(
+                        word,
+                        GradientSampling::Program(GradientProgram {
+                            records: &source,
+                            endpoints: endpoints(),
+                            extend: ProgramExtend::Repeat,
+                        }),
+                        DrawTag::LINEAR_GRADIENT,
+                        account,
+                    )?;
+                }
+                let texture = prepare(
+                    &layout,
+                    &mut packed,
+                    ramps,
+                    &StreamOffsets::default(),
+                    captured.as_slice(),
+                    account,
+                )?
+                .unwrap();
+                assert_eq!(&texture.texels[..512], ramps.data);
+                assert_eq!(layout.draw_data(&packed)[neighbor], neighbor_before);
+                assert_eq!(layout.draw_data(&packed)[word], (512 << 2) | 3);
+                let words: Vec<_> = texture.texels[512..533]
+                    .iter()
+                    .map(|word| u32::from_le(*word))
+                    .collect();
+                assert_eq!(
+                    words,
+                    [
+                        2,
+                        519,
+                        2,
+                        0,
+                        1.0_f32.to_bits(),
+                        0xff00_00ff,
+                        0xff00_ff00,
+                        0,
+                        1.0_f32.to_bits(),
+                        0,
+                        0,
+                        1.0_f32.to_bits(),
+                        1,
+                        0.5_f32.to_bits(),
+                        1.0_f32.to_bits(),
+                        0,
+                        1.0_f32.to_bits(),
+                        0,
+                        1.0_f32.to_bits(),
+                        0,
+                        0,
+                    ]
+                );
+                assert!(texture.texels[533..].iter().all(|word| *word == 0));
+                Ok(())
+            })
+            .unwrap();
+        let usage = context.last_attempt().unwrap().usage();
+        assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+        assert_eq!(usage.work(RenderWork::GradientStopVisits), 4);
+        assert_eq!(usage.work(RenderWork::SerializedBytes), (1024 + 1) * 4);
+    }
+
+    #[test]
+    fn program_copy_refusal_releases_actual_prefix_and_fresh_attempt_retries() {
+        let source = program_records();
+        let mut captured = EndpointRecords::default();
+        let mut context = RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::RasterResourceCopies, 1)
+                    .unwrap(),
+            ),
+        );
+        let error = context
+            .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                captured.capture(
+                    0,
+                    GradientSampling::Program(GradientProgram {
+                        records: &source,
+                        endpoints: endpoints(),
+                        extend: ProgramExtend::Pad,
+                    }),
+                    DrawTag::LINEAR_GRADIENT,
+                    account,
+                )
+            })
+            .unwrap_err();
+        assert!(error.accounting_diagnostic().is_some());
+        assert!(captured.as_slice().is_empty());
+        let usage = context.last_attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::RasterResourceCopies), 1);
+        assert!(
+            usage.peak(RenderResource::RetainedCpuBytes) >= (2 * size_of::<ProgramRecord>()) as u64
+        );
+        assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+        assert_eq!(usage.work(RenderWork::SerializedBytes), 0);
+
+        let mut retry = RenderAccountingContext::default();
+        retry
+            .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                captured.capture(
+                    0,
+                    GradientSampling::Program(GradientProgram {
+                        records: &source,
+                        endpoints: endpoints(),
+                        extend: ProgramExtend::Pad,
+                    }),
+                    DrawTag::LINEAR_GRADIENT,
+                    account,
+                )?;
+                assert_eq!(captured.as_slice().len(), 1);
+                drop(std::mem::take(&mut captured));
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(
+            retry
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes),
+            0
+        );
+    }
+
+    #[test]
+    fn malformed_program_controls_refuse_without_retaining_a_descriptor() {
+        for positions in [[0.0, 0.0], [1.0, 0.0], [0.0, f32::NAN]] {
+            let mut source = program_records();
+            source[0].position = positions[0];
+            source[1].position = positions[1];
+            let mut captured = EndpointRecords::default();
+            let mut context = RenderAccountingContext::default();
+            let error = context
+                .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
+                    captured.capture(
+                        0,
+                        GradientSampling::Program(GradientProgram {
+                            records: &source,
+                            endpoints: endpoints(),
+                            extend: ProgramExtend::Pad,
+                        }),
+                        DrawTag::LINEAR_GRADIENT,
+                        account,
+                    )
+                })
+                .unwrap_err();
+            assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+            assert!(captured.as_slice().is_empty());
+            assert_eq!(
+                context
+                    .last_attempt()
+                    .unwrap()
+                    .usage()
+                    .live(RenderResource::RetainedCpuBytes),
+                0
+            );
+        }
+    }
+
     #[test]
     fn capture_backing_refusal_leaves_no_retained_record() {
         let mut context = RenderAccountingContext::new(
@@ -725,7 +1089,12 @@ mod tests {
         let mut records = EndpointRecords::default();
         let error = context
             .run(RenderAttemptKind::Frame, RenderPhase::Encode, |account| {
-                records.capture(0, endpoints(), DrawTag::LINEAR_GRADIENT, account)
+                records.capture(
+                    0,
+                    GradientSampling::PadRamp(endpoints()),
+                    DrawTag::LINEAR_GRADIENT,
+                    account,
+                )
             })
             .unwrap_err();
         assert!(error.accounting_diagnostic().is_some());

@@ -9,7 +9,8 @@ use surgeist_render::{
     RenderAccountingError, RenderAccountingOptions, RenderAccountingSetupError, RenderAttemptKind,
     RenderAttemptReport, RenderAttemptStatus, RenderClock, RenderEvent, RenderLimits, RenderPhase,
     RenderPhaseFilter, RenderProfile, RenderQuantity, RenderResource, RenderWork,
-    RepeatingGradient, prepare_repeating_linear_gradient, prepare_repeating_radial_gradient,
+    RepeatingGradient, prepare_linear_gradient, prepare_radial_gradient,
+    prepare_repeating_linear_gradient, prepare_repeating_radial_gradient,
 };
 
 fn red() -> Color {
@@ -177,7 +178,7 @@ fn returned_gradient_and_its_clone_outlive_all_source_storage_and_the_context() 
 }
 
 #[test]
-fn zero_geometry_precedes_basis_and_hint_errors_and_every_radial_zero_case_is_explicit() {
+fn zero_geometry_precedes_basis_and_source_conversion_and_radial_zero_cases_are_explicit() {
     let source = [
         at(0.0, red()),
         paint::GradientStopItem::Hint {
@@ -217,7 +218,7 @@ fn zero_geometry_precedes_basis_and_hint_errors_and_every_radial_zero_case_is_ex
 }
 
 #[test]
-fn exact_basis_equality_precedes_source_hint_preflight() {
+fn exact_basis_equality_precedes_source_item_conversion() {
     let source = [
         at(0.0, red()),
         paint::GradientStopItem::Hint {
@@ -245,7 +246,7 @@ fn exact_basis_equality_precedes_source_hint_preflight() {
 }
 
 #[test]
-fn adopted_hint_bounded_fixup_is_preserved_then_refused_with_its_source_index() {
+fn adopted_hint_bounded_fixup_and_outgoing_associations_survive_all_four_consumers() {
     let source = [
         at(0.0, red()),
         omitted(green()),
@@ -264,49 +265,217 @@ fn adopted_hint_bounded_fixup_is_preserved_then_refused_with_its_source_index() 
         .collect();
     assert_eq!(positions, [0.0, 10.0, 20.0, 100.0]);
     let mut account = context(RenderLimits::new());
-    for error in [
-        prepare_repeating_linear_gradient(&line(100.0), &used, &mut account).unwrap_err(),
-        prepare_repeating_radial_gradient(&radial(100.0, 50.0), &used, &mut account).unwrap_err(),
-    ] {
-        assert!(matches!(
-            diagnostic(&error),
-            PaintGradientError::UnsupportedHint { source_index: 2 }
-        ));
+    let prepared = [
+        prepare_linear_gradient(&line(100.0), &used, &mut account)
+            .unwrap()
+            .stops()
+            .to_vec(),
+        prepare_radial_gradient(&radial(100.0, 50.0), &used, &mut account)
+            .unwrap()
+            .stops()
+            .to_vec(),
+        prepare_repeating_linear_gradient(&line(100.0), &used, &mut account)
+            .unwrap()
+            .stops()
+            .to_vec(),
+        prepare_repeating_radial_gradient(&radial(100.0, 50.0), &used, &mut account)
+            .unwrap()
+            .stops()
+            .to_vec(),
+    ];
+    for output in prepared {
+        assert_eq!(
+            output
+                .iter()
+                .map(|stop| (stop.position(), stop.color()))
+                .collect::<Vec<_>>(),
+            [(0.0, red()), (0.1, green()), (1.0, blue())]
+        );
+        assert!(output[0].hint_after().is_none());
+        assert_eq!(output[1].hint_after().unwrap().position(), 0.2);
+        assert!(output[2].hint_after().is_none());
     }
     no_custody(account.last_attempt().unwrap());
     assert_eq!(
         account.last_attempt().unwrap().status(),
-        RenderAttemptStatus::Failed(ErrorCode::PaintGradient)
+        RenderAttemptStatus::Succeeded
     );
+}
+
+#[test]
+fn source_numeric_refusals_keep_hint_and_two_ordinals_instead_of_old_hint_preflight() {
+    let converted: Error = PaintGradientError::UnrepresentablePosition {
+        source_index: 7,
+        position_index: 1,
+    }
+    .into();
     assert_eq!(
-        account
-            .last_attempt()
-            .unwrap()
-            .usage()
-            .work(RenderWork::PreparedTransferredBytes),
-        0
-    );
-    let converted: Error = PaintGradientError::UnsupportedHint { source_index: 7 }.into();
-    assert!(matches!(
         converted.paint_gradient_diagnostic(),
-        Some(PaintGradientError::UnsupportedHint { source_index: 7 })
-    ));
-    // Hint preflight completes before conversion: this first stop would lose
-    // its positive position on division, but the later hint is refused first.
-    let preflight_source = [
-        at(f64::from_bits(1), red()),
-        paint::GradientStopItem::Hint {
-            position: position(1.0, 0.0),
+        Some(&PaintGradientError::UnrepresentablePosition {
+            source_index: 7,
+            position_index: 1
+        })
+    );
+    // The first color loses its positive quotient. A later authentic hint is
+    // accepted during classification, so the real first numeric refusal wins.
+    for (source, source_index) in [
+        (
+            [
+                at(f64::from_bits(1), red()),
+                paint::GradientStopItem::Hint {
+                    position: position(1.0, 0.0),
+                },
+                at(2.0, blue()),
+            ],
+            0,
+        ),
+        (
+            [
+                at(0.0, red()),
+                paint::GradientStopItem::Hint {
+                    position: position(f64::from_bits(1), 0.0),
+                },
+                at(2.0, blue()),
+            ],
+            1,
+        ),
+    ] {
+        let used = stops(2.0, &source);
+        let mut account = context(RenderLimits::new());
+        for error in [
+            prepare_linear_gradient(&line(2.0), &used, &mut account).unwrap_err(),
+            prepare_radial_gradient(&radial(2.0, 1.0), &used, &mut account).unwrap_err(),
+            prepare_repeating_linear_gradient(&line(2.0), &used, &mut account).unwrap_err(),
+            prepare_repeating_radial_gradient(&radial(2.0, 1.0), &used, &mut account).unwrap_err(),
+        ] {
+            assert_eq!(
+                diagnostic(&error),
+                &PaintGradientError::UnrepresentablePosition {
+                    source_index,
+                    position_index: 0
+                }
+            );
+        }
+        no_custody(account.last_attempt().unwrap());
+        assert_eq!(
+            account.last_attempt().unwrap().status(),
+            RenderAttemptStatus::Failed(ErrorCode::PaintGradient)
+        );
+        assert_eq!(
+            account
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::PreparedTransferredBytes),
+            0
+        );
+    }
+}
+
+#[test]
+fn hint_topology_collapse_reports_the_actual_hint_or_following_two_ordinal() {
+    let first = f64::from_bits(1.5_f64.to_bits() + 1);
+    let second = f64::from_bits(1.5_f64.to_bits() + 2);
+    assert_eq!(first / 3.0, second / 3.0);
+    for (source, source_index) in [
+        (
+            vec![
+                at(first, red()),
+                paint::GradientStopItem::Hint {
+                    position: position(second, 0.0),
+                },
+                at(3.0, blue()),
+            ],
+            1,
+        ),
+        (
+            vec![
+                at(0.0, red()),
+                paint::GradientStopItem::Hint {
+                    position: position(first, 0.0),
+                },
+                paint::GradientStopItem::Stop {
+                    payload: blue(),
+                    positions: paint::GradientStopPositions::Two(
+                        position(second, 0.0),
+                        position(3.0, 0.0),
+                    ),
+                },
+            ],
+            2,
+        ),
+    ] {
+        let used = stops(3.0, &source);
+        let mut account = context(RenderLimits::new());
+        for error in [
+            prepare_linear_gradient(&line(3.0), &used, &mut account).unwrap_err(),
+            prepare_radial_gradient(&radial(3.0, 1.0), &used, &mut account).unwrap_err(),
+            prepare_repeating_linear_gradient(&line(3.0), &used, &mut account).unwrap_err(),
+            prepare_repeating_radial_gradient(&radial(3.0, 1.0), &used, &mut account).unwrap_err(),
+        ] {
+            assert_eq!(
+                diagnostic(&error),
+                &PaintGradientError::UnrepresentablePosition {
+                    source_index,
+                    position_index: 0
+                }
+            );
+        }
+        no_custody(account.last_attempt().unwrap());
+    }
+}
+
+#[test]
+fn hint_after_two_attaches_to_ordinal_one_before_following_ordinal_zero() {
+    let source = [
+        paint::GradientStopItem::Stop {
+            payload: red(),
+            positions: paint::GradientStopPositions::Two(position(0.0, 0.0), position(0.2, 0.0)),
         },
-        at(2.0, blue()),
+        paint::GradientStopItem::Hint {
+            position: position(0.3, 0.0),
+        },
+        paint::GradientStopItem::Stop {
+            payload: blue(),
+            positions: paint::GradientStopPositions::Two(position(0.8, 0.0), position(1.0, 0.0)),
+        },
     ];
-    let preflight = stops(2.0, &preflight_source);
-    let error =
-        prepare_repeating_linear_gradient(&line(2.0), &preflight, &mut account).unwrap_err();
-    assert!(matches!(
-        diagnostic(&error),
-        PaintGradientError::UnsupportedHint { source_index: 1 }
-    ));
+    let used = stops(1.0, &source);
+    let mut account = context(RenderLimits::new());
+    let prepared = [
+        prepare_linear_gradient(&line(1.0), &used, &mut account)
+            .unwrap()
+            .stops()
+            .to_vec(),
+        prepare_radial_gradient(&radial(1.0, 2.0), &used, &mut account)
+            .unwrap()
+            .stops()
+            .to_vec(),
+        prepare_repeating_linear_gradient(&line(1.0), &used, &mut account)
+            .unwrap()
+            .stops()
+            .to_vec(),
+        prepare_repeating_radial_gradient(&radial(1.0, 2.0), &used, &mut account)
+            .unwrap()
+            .stops()
+            .to_vec(),
+    ];
+    for output in prepared {
+        assert_eq!(
+            output
+                .iter()
+                .map(|stop| stop.position())
+                .collect::<Vec<_>>(),
+            [0.0, 0.2, 0.8, 1.0]
+        );
+        assert_eq!(
+            output
+                .iter()
+                .map(|stop| stop.hint_after().map(|hint| hint.position()))
+                .collect::<Vec<_>>(),
+            [None, Some(0.3), None, None]
+        );
+    }
 }
 
 #[test]

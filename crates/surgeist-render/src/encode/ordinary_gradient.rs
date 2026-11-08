@@ -1,5 +1,9 @@
 //! Contextual realization of ordinary finite scalar fields.
-use super::{BrushTransform, FrameBrush, gradient_field as field, gradient_with_stops};
+use super::{
+    BrushTransform, FrameBrush, PreparedSampling,
+    gradient_field::{self as field, scalar},
+    gradient_with_stops, hint_program,
+};
 use crate::{
     Error, Gradient, GradientRealizationError as Refusal, PhysicalSize, Result,
     accounting::{Account, RenderWork},
@@ -21,13 +25,6 @@ fn geometry_error(error: Error) -> Error {
     } else {
         Refusal::UnrepresentableGeometry.into()
     }
-}
-
-/// Admit each scalar comparison, arithmetic result, or representation conversion
-/// before evaluating it. Integer exponent bookkeeping does not inspect coordinates.
-pub(super) fn scalar<T>(account: &Account, action: impl FnOnce() -> T) -> Result<T> {
-    account.work(RenderWork::CoordinateVisits, 1)?;
-    Ok(action())
 }
 
 /// A bounded binary factor. Products and affine sums stay scaled until the
@@ -501,8 +498,12 @@ pub(super) fn prepare(
     )?;
     let mut stops = account.temporary(supplied.len())?;
     let mut previous = None;
+    let mut hinted = false;
     for (index, stop) in supplied.iter().enumerate() {
         account.work(RenderWork::GradientStopVisits, 1)?;
+        if range.is_some() {
+            hinted |= stop.hint_after().is_some();
+        }
         let position = scalar(account, || stop.position())?;
         let offset = if let Some(range) = range {
             range.normalize(position, account)?
@@ -518,8 +519,23 @@ pub(super) fn prepare(
             peniko::Color::from(stop.color()),
         )));
     }
+    let program = if let Some(range) = range.filter(|_| hinted) {
+        Some(hint_program::prepare(
+            supplied,
+            &stops,
+            |position, account| range.normalize(position, account),
+            endpoints,
+            crate::vello_engine::gradient_endpoints::ProgramExtend::Pad,
+            account,
+        )?)
+    } else {
+        None
+    };
     let mut output = gradient_with_stops(native, stops, Some(brush))?;
-    output.endpoints = Some(endpoints);
+    output.sampling = Some(match program {
+        Some(program) => PreparedSampling::Program(program),
+        None => PreparedSampling::PadRamp(endpoints),
+    });
     Ok(output)
 }
 
@@ -635,7 +651,7 @@ mod tests {
         };
         assert_eq!(radial.start_radius, -1.0 / 3.0);
         assert_eq!(radial.end_radius, 2.0 / 3.0);
-        assert!(brush.endpoints.is_some());
+        assert!(brush.sampling.is_some());
     }
     #[test]
     fn fma_origin_retains_finite_cancellation_of_an_overflowing_product() {

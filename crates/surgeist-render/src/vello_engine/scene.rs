@@ -144,7 +144,7 @@ impl VelloScene {
     }
 
     fn brush(&mut self, brush: SceneBrush<'_>, account: &Account) -> Result<()> {
-        let SceneBrush { brush, endpoints } = brush;
+        let SceneBrush { brush, sampling } = brush;
         let word = self.encoding.draw_data.len();
         let tag_index = self.encoding.draw_tags.len();
         self.backing
@@ -160,7 +160,7 @@ impl VelloScene {
                 .keep(account.import_image_data(image.image)?, account)?;
         }
         self.encoding.encode_brush(brush, 1.0);
-        if let Some(endpoints) = endpoints {
+        if let Some(sampling) = sampling {
             account.work(RenderWork::ResourceProbes, 1)?;
             let Some([tag]) = self.encoding.draw_tags.get(tag_index..) else {
                 return Err(Error::new(
@@ -168,7 +168,7 @@ impl VelloScene {
                     "native brush draw-record count changed",
                 ));
             };
-            self.endpoints.capture(word, endpoints, *tag, account)?;
+            self.endpoints.capture(word, sampling, *tag, account)?;
         }
         Ok(())
     }

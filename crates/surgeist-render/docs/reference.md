@@ -11,7 +11,7 @@ current source API.
 | --- | --- | --- |
 | Renderer and options | `Renderer`, `Options`, `Parameters`, `EffectQualityPolicy` | [Renderer](../src/renderer/mod.rs), [options](../src/renderer/options.rs), [surface parameters](../src/surface.rs) |
 | Draw data | `Scene`, geometry, shapes, paints, images, layers, and positioned text runs | [Scene](../src/scene.rs), [public reexports](../src/lib.rs) |
-| Gradient paints | `Gradient`, `RepeatingGradient`, `GradientStop`, `Paint` | [Paint sources](../src/paint.rs), [repeating inputs](../src/paint/repeating.rs) |
+| Gradient paints | `Gradient`, `RepeatingGradient`, `GradientStop`, `GradientHint`, `Paint` | [Paint sources](../src/paint.rs), [repeating inputs](../src/paint/repeating.rs) |
 | Native Paint consumer (`render-paint`) | `prepare_linear_gradient`, `prepare_radial_gradient`, `prepare_repeating_linear_gradient`, `prepare_repeating_radial_gradient`, `PaintGradientError` | [Adapter](../src/paint_gradient.rs) |
 | Placed Text consumer (`render-text`) | `prepare_text_layout`, `PreparedTextScene`, `TextLayoutLimits`, `TextLayoutError` | [Adapter](../src/text_layout.rs) |
 | Surface and pixels | `Surface`, `SurfaceOptions`, `Attachment`, `ImageBuffer` | [Surfaces](../src/surface.rs), [images](../src/image.rs) |
@@ -67,8 +67,9 @@ qualified comparison basis and directed threshold rounding, preserving subnormal
 thresholds. These rules compare the actual native computed coordinate; they do
 not promise exact-real geometric boundary coverage.
 
-Strictly between different endpoint positions, interpolation retains the native
-512-sample RGBA8 ramp. Realization uses the full paint transform and final target,
+Unhinted interpolation retains the native 512-sample RGBA8 ramp. Hinted lists
+use the [analytic segment program](#transition-hints) below. Realization uses
+the full paint transform and final target,
 including shear and elliptical axes. Negative radial stops can contribute to the
 center by interpolation. No repeating phase reduction or small-period averaging
 applies to ordinary fields. Finite source endpoints do not require a finite
@@ -78,7 +79,9 @@ source interval when its mapped geometry is finite.
 `ErrorCode::GradientRealization` and `Error::gradient_realization_diagnostic`
 distinguish degenerate required linear fields, unrepresentable geometry, a stop
 whose required native interval collapses, and insufficient native arithmetic
-capacity. These are contextual capability refusals for valid gradients. Actual
+capacity. `UnrepresentableHint` identifies a hint control or exponent that cannot
+retain its required native meaning. These are contextual capability refusals for
+valid gradients. Actual
 resource limits retain Ledger diagnostics. A refusal preserves prior successful
 pixels/statistics and releases admitted backing. Submit `Gradient` through `Scene`
 for this execution contract; no infallible export to an external native sampler
@@ -105,8 +108,10 @@ singular value of the transformed period axes, so an unresolved direction
 averages the whole paint. These thresholds and directional rules are Render
 policy, not constants imposed by the pinned standard.
 
-Solid fallback integrates adjacent premultiplied-sRGBA endpoints by their
-relative segment lengths. A zero or actually rounded-zero whole period instead
+Solid fallback averages adjacent premultiplied-sRGBA endpoints by their
+relative segment lengths, excluding hints. This is the specified stop-only
+trapezoid average, even when a hint changes the resolved curve. A zero or
+actually rounded-zero whole period instead
 uses the original colors/count at uniform replacement positions. Coincident
 linear endpoints select that case. `try_radial` requires a positive horizontal
 radius and nonnegative vertical radius: positive-width zero-height is an
@@ -143,12 +148,58 @@ Ordinary multistop preparation charges actual endpoint inspection, range and
 comparison qualification, scalar/color conversion and every materialized native
 record. Intrinsic constructor proofs avoid redundant later validation walks. Encode separately charges native record visits, emitted-record capture,
 final draw-stream association and descriptor/ramp serialization. Actual backing,
-row padding and upload resources retain their existing lifetime owners.
+analytic program records and their captured copies, row padding and upload
+resources retain their existing lifetime owners. CPU coordinate visits measure
+preparation; shader evaluations remain GPU work.
 See [frame accounting](#frame-accounting) for inclusive phases and host timing.
 `supports_repeating_gradients` reports this concrete resolved domain. `surgeist-paint`
 retains authored gradient-box geometry, stop/hint fixup and degenerate semantic
 selection. Render owns its direct native Paint consumer; root retains facade
 wiring and broader authored composition.
+
+### Transition hints
+
+Create a finite `GradientHint` with `GradientHint::try_new(position)` and attach
+it to its left color with `GradientStop::with_hint_after`. `hint_after` returns
+that outgoing hint. Its position uses the same field units as the color stops.
+List construction requires a following color and inclusive containment between
+the two ordered colors. `GradientHintError` distinguishes `TrailingHint`,
+`HintOutsideInterval` and `UnsupportedSweep`, each with its owning `stop_index`.
+`ErrorCode::GradientHint` and `Error::gradient_hint_diagnostic` expose this
+intrinsic input diagnosis. Sweep rejects its first outgoing hint; its unhinted
+behavior is unchanged.
+
+For different positions `a < b` and an interior hint `h`, let
+`P = (q-a)/(b-a)` and `H = (h-a)/(b-a)`. The interpolation weight is
+`P.powf(ln(.5)/ln(H))` in premultiplied numeric-sRGBA. Thus a quarter-interval
+hint gives half the premultiplied color at that quarter, and three quarters
+at `P = 9/16`. Hints contribute no additional colors.
+
+Native endpoint policy completes the singular limits explicitly. A hint at
+`a` selects the left color at `a` and the right color in the open interval.
+A hint at `b` retains the left color throughout the open interval and selects
+the right at `b`. Source equalities are classified before division or narrowing;
+zero-width intervals have no power computation. Interior coincident runs select
+their last source record, while the existing whole-field endpoint and
+all-coincident step rules above retain precedence. These singular completions
+are native policy, rather than a claimed standards resolution.
+
+Per-use lowering preserves source equality and strict ordering in accepted
+binary32 controls. An interior hint that collapses onto a neighbor is refused
+as `UnrepresentableHint`; it never becomes an endpoint tag by rounding. The
+analytic reference is the ideal power curve through those accepted native
+controls, evaluated at the actual finite native field coordinate. It does not
+promise original-`f64` interior colors or exact-real pixel ties.
+
+A bounded [coefficient calculation and whole-segment certificate](../src/encode/hint_program.rs) enclose
+division, subnormal flushing, coefficient rounding, `log2`, multiplication and
+`exp2`. Accepted power segments have weight error at most `1/511`, before
+premultiplied blending and output rounding. This bound is separate from the
+field-coordinate qualification above. An uncertified segment returns
+`InsufficientNativeCapacity`. Endpoint tags, solid paints, coincident steps and
+repeating averages avoid unused logarithms and program backing. No artificial
+minimum hint fraction, substituted color stops or small transition span is
+introduced.
 
 ## Native Paint consumer
 
@@ -166,7 +217,10 @@ Ellipse case; its horizontal radius supplies the ray basis. The stop result's
 `line_length` must exactly equal that accepted `f64` basis. Each used physical
 position `p` becomes the field position `q = p / L`, retaining equal, double,
 negative and outside positions in source order. The conversion preserves all
-stop occurrences and colors. It does not rerun direction, geometry or fixup.
+stop occurrences, colors and outgoing hints. A hint following a double-position
+stop attaches after its second position; a following double-position stop begins
+the next interval at its first position. The consumer does not rerun direction,
+geometry or fixup.
 
 Native qualification requires finite `q`, preserves nonzero positions and the
 equality or strict order of adjacent positions, and refuses a collapsed or
@@ -176,11 +230,12 @@ span must also be finite; ordinary conversion has no such restriction. An overfl
 produces a valid finite field span.
 
 `ErrorCode::PaintGradient` and `Error::paint_gradient_diagnostic` preserve typed
-basis, hint, unsupported geometry, source/position conversion, span and storage
+basis, unsupported geometry, source/position conversion, span and storage
 diagnostics. Named-limit and setup failures retain `RenderAccountingError`.
-Hints and all radial zero cases are refused; no zero-height basis or substitute
-radius is inferred. Authored/computed adapters and logarithmic hint execution remain outside these
-native consumers.
+Conversion checks hint positions as well as color positions, preserving the
+actual source item index; a hint has position ordinal zero. All radial zero
+cases remain refused; no zero-height basis or substitute radius is inferred.
+Authored/computed adapters remain outside these native consumers.
 
 `RenderAttemptKind::PaintGradient` reports one standalone preparation. Ledger
 records actual geometry/result/item visits and scalar work, one actual

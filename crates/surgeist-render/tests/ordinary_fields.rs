@@ -641,7 +641,7 @@ mod paint {
     }
 
     #[test]
-    fn ordinary_paint_adapters_refuse_exact_basis_hints_and_two_position_quotient_loss() {
+    fn ordinary_paint_adapters_accept_hints_and_refuse_basis_or_two_position_quotient_loss() {
         let red = rgba(1.0, 0.0, 0.0, 1.0);
         let blue = rgba(0.0, 0.0, 1.0, 1.0);
         let source = [
@@ -667,14 +667,15 @@ mod paint {
             );
         }
         let hinted = used(8.0, &source);
-        for error in [
-            prepare_linear_gradient(&line(8.0), &hinted, &mut context).unwrap_err(),
-            prepare_radial_gradient(&ellipse(8.0, 4.0), &hinted, &mut context).unwrap_err(),
+        for gradient in [
+            prepare_linear_gradient(&line(8.0), &hinted, &mut context).unwrap(),
+            prepare_radial_gradient(&ellipse(8.0, 4.0), &hinted, &mut context).unwrap(),
         ] {
-            assert_eq!(
-                diagnostic(&error),
-                &PaintGradientError::UnsupportedHint { source_index: 1 }
-            );
+            assert_eq!(gradient.stops().len(), 2);
+            assert_eq!(gradient.stops()[0].position(), 0.0);
+            assert_eq!(gradient.stops()[0].hint_after().unwrap().position(), 0.5);
+            assert_eq!(gradient.stops()[1].position(), 1.0);
+            assert!(gradient.stops()[1].hint_after().is_none());
         }
         // These adjacent physical f64 positions share the same quotient by 3.
         // Keeping their Two-position source identity requires refusing index1.
