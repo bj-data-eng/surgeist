@@ -870,6 +870,153 @@ mod tests {
     }
 
     #[test]
+    fn radial_phase_capacity_covers_both_target_dimensions() {
+        let gradient = RepeatingGradient::try_radial(
+            Point::new(0.0, 0.0),
+            16.0,
+            16.0,
+            vec![stop(0.0, Color::BLACK), stop(1.0, Color::TRANSPARENT)],
+        )
+        .unwrap();
+        let account = Account::for_test();
+        assert!(is_pattern(
+            &prepare(&gradient, kurbo::Affine::IDENTITY, &account).unwrap()
+        ));
+        // On either axis the last integer sample has exact radial phase
+        // (2^20 - 1)/16. Its binary32 spacing is 1/256, already larger than
+        // one 512-entry ramp interval. The origin alone cannot expose this.
+        let far_phase = f64::from((1_u32 << 20) - 1) / 16.0;
+        assert_eq!(far_phase, 65_535.937_5);
+        let native_phase = far_phase as f32;
+        let spacing = native_phase.next_up() - native_phase;
+        assert_eq!(spacing, 1.0 / 256.0);
+        assert!(f64::from(spacing) > 1.0 / 511.0);
+        // These are CPU qualification inputs; no native texture is allocated.
+        for extent in [PhysicalSize::new(1 << 20, 2), PhysicalSize::new(2, 1 << 20)] {
+            let error = super::prepare(&gradient, kurbo::Affine::IDENTITY, extent, &account)
+                .err()
+                .expect("the entire sampled rectangle needs phase capacity");
+            assert_eq!(error.code(), ErrorCode::InvalidInput);
+            assert!(error.invalid_value_diagnostic().is_some());
+        }
+    }
+
+    #[test]
+    fn radial_output_translation_cancels_a_far_logical_center() {
+        let center = f64::from(1_u32 << 28);
+        let gradient = RepeatingGradient::try_radial(
+            Point::new(center, 0.0),
+            16.0,
+            16.0,
+            vec![stop(0.0, Color::BLACK), stop(1.0, Color::TRANSPARENT)],
+        )
+        .unwrap();
+        let account = Account::for_test();
+        let error = prepare(&gradient, kurbo::Affine::IDENTITY, &account)
+            .err()
+            .expect("the uncancelled far center loses native phase");
+        assert_eq!(error.code(), ErrorCode::InvalidInput);
+        let output = kurbo::Affine::translate((-center, 0.0));
+        let brush = prepare(&gradient, output, &account).unwrap();
+        assert!(is_pattern(&brush));
+        assert_eq!(
+            (output * brush.transform().unwrap()).as_coeffs(),
+            [16.0, 0.0, 0.0, 16.0, 0.0, 0.0]
+        );
+        // Device x=1 maps back to logical center+1. The concentric distance
+        // is therefore 1, independently of the large logical translation.
+        assert_eq!(((center + 1.0) - center) / 16.0, 1.0 / 16.0);
+        assert_eq!(((center - 1.0) / 16.0).fract(), 15.0 / 16.0);
+    }
+
+    #[test]
+    fn radial_glyph_accepts_exact_cancellation_of_separately_narrowed_factors() {
+        let center = f64::from(1_u32 << 28);
+        let local = kurbo::Affine::new([16.0, 0.0, 0.0, 16.0, center, 0.0]);
+        let output = kurbo::Affine::translate((-center, 0.0));
+        let native_local = native_glyph_transform(
+            local,
+            output,
+            Some(0.0),
+            PhysicalSize::new(2, 2),
+            &Account::for_test(),
+        )
+        .unwrap();
+        let native_device = vello_encoding::Transform::from_kurbo(&output) * native_local;
+        // Both factors retain their exact power-of-two translations in f32;
+        // the real glyph composition has the same centered 16-pixel period.
+        assert_eq!(
+            (output * local).as_coeffs(),
+            [16.0, 0.0, 0.0, 16.0, 0.0, 0.0]
+        );
+        assert_eq!(native_device.matrix, [16.0, 0.0, 0.0, 16.0]);
+        assert_eq!(native_device.translation, [0.0, 0.0]);
+    }
+
+    #[test]
+    fn radial_glyph_refuses_phase_error_from_separately_narrowed_factors() {
+        let center = f64::from(1_u32 << 28);
+        let output = kurbo::Affine::translate((-center, 0.0));
+        let gradient = RepeatingGradient::try_radial(
+            Point::new(center + 1.0, 0.0),
+            16.0,
+            16.0,
+            vec![stop(0.0, Color::BLACK), stop(1.0, Color::TRANSPARENT)],
+        )
+        .unwrap();
+        let account = Account::for_test();
+        // Outline preparation narrows the complete product, retaining center 1.
+        let brush = prepare(&gradient, output, &account).unwrap();
+        assert!(is_pattern(&brush));
+        let local = brush.transform().unwrap();
+        let ideal_device = output * local;
+        assert_eq!(ideal_device.as_coeffs(), [16.0, 0.0, 0.0, 16.0, 1.0, 0.0]);
+        // Glyph factors narrow separately: center+1 rounds to center before
+        // cancellation. At device (0,0), the ideal and actual concentric
+        // distances consequently differ by 1/16 of a cycle, well over 1/511.
+        assert_eq!((center + 1.0) as f32, center as f32);
+        let native_device = vello_encoding::Transform::from_kurbo(&output)
+            * vello_encoding::Transform::from_kurbo(&local);
+        assert_eq!(native_device.translation, [0.0, 0.0]);
+        let ideal_phase_at_origin = ideal_device.as_coeffs()[4] / 16.0;
+        let native_phase_at_origin = f64::from(native_device.translation[0]) / 16.0;
+        assert_eq!(ideal_phase_at_origin - native_phase_at_origin, 1.0 / 16.0);
+        assert!(ideal_phase_at_origin - native_phase_at_origin > 1.0 / 511.0);
+        let error =
+            native_glyph_transform(local, output, Some(0.0), PhysicalSize::new(2, 2), &account)
+                .expect_err("glyph qualification must compare the actual narrowed composition");
+        assert_eq!(error.code(), ErrorCode::InvalidInput);
+        assert!(error.invalid_value_diagnostic().is_some());
+    }
+
+    #[test]
+    fn radial_weighted_averages_precede_unused_native_pattern_capacity() {
+        let account = Account::for_test();
+        let expected: peniko::Color = color(1.0 / 3.0, 2.0 / 3.0, 0.0, 3.0 / 8.0).into();
+        // The center cannot narrow to native coordinates. A positive period
+        // of 4/16 pixel still selects the weighted integral, while selected
+        // zero height does so even though the unused width*span overflows.
+        assert!(!(f64::MAX as f32).is_finite());
+        assert_eq!(4.0 * (1.0 / 16.0), 0.25);
+        assert!(!(f64::MAX * 4.0).is_finite());
+        for (width, height) in [(1.0 / 16.0, 1.0 / 16.0), (f64::MAX, 0.0)] {
+            let gradient = RepeatingGradient::try_radial(
+                Point::new(f64::MAX, -f64::MAX),
+                width,
+                height,
+                weighted_stops(),
+            )
+            .unwrap();
+            // Segment lengths 1,3 yield premul (1/8,1/4,0,3/8), rather
+            // than the equal-spacing average (1/2,1/2,0,1/2).
+            assert_eq!(
+                solid(&prepare(&gradient, kurbo::Affine::IDENTITY, &account).unwrap()),
+                expected
+            );
+        }
+    }
+
+    #[test]
     fn zero_height_and_unresolved_positive_cycles_keep_the_actual_weights() {
         let expected: peniko::Color = color(1.0 / 3.0, 2.0 / 3.0, 0.0, 3.0 / 8.0).into();
         let account = Account::for_test();
