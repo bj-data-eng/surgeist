@@ -831,3 +831,61 @@ pub(super) fn check_native_linear(
     }
     Ok(true)
 }
+
+#[cfg(test)]
+mod accounting_tests {
+    use super::*;
+    use crate::accounting::{RenderAttemptKind, RenderPhase, RenderResource};
+    use crate::{RenderAccountingContext, RenderAccountingOptions, RenderLimits};
+
+    #[test]
+    fn identity_native_projection_accounts_each_executed_scalar_action() {
+        let mut context = RenderAccountingContext::default();
+        assert!(
+            context
+                .run(
+                    RenderAttemptKind::Frame,
+                    RenderPhase::GradientPrepare,
+                    |account| check_native_linear(vello_encoding::Transform::IDENTITY, account)
+                )
+                .unwrap()
+        );
+        // Six coefficient captures, six initial finite checks, four endpoint
+        // operations, one executed zero comparison, three squared-length
+        // operations, one reciprocal, two normal products, four offset
+        // operations, and seven final finite checks.
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::CoordinateVisits),
+            34
+        );
+    }
+
+    #[test]
+    fn native_projection_refuses_before_the_last_finite_check_and_can_retry() {
+        let mut context = RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::CoordinateVisits, 33)
+                    .unwrap(),
+            ),
+        );
+        let error = context
+            .run(
+                RenderAttemptKind::Frame,
+                RenderPhase::GradientPrepare,
+                |account| check_native_linear(vello_encoding::Transform::IDENTITY, account),
+            )
+            .unwrap_err();
+        assert!(error.accounting_diagnostic().is_some());
+        let usage = context.last_attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), 33);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        assert!(
+            check_native_linear(vello_encoding::Transform::IDENTITY, &Account::for_test()).unwrap()
+        );
+    }
+}

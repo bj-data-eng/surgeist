@@ -745,4 +745,32 @@ mod tests {
         .unwrap();
         assert_eq!(original.transform.unwrap().local, kurbo::Affine::IDENTITY);
     }
+    #[test]
+    fn radial_step_refuses_when_native_fine_squared_length_can_overflow() {
+        let gradient = Gradient::try_radial(
+            Point::new(0., 0.),
+            1.0e-18,
+            1.0e-18,
+            vec![
+                GradientStop::try_new(1.0e30, Color::BLACK).unwrap(),
+                GradientStop::try_new(1.0e30, Color::TRANSPARENT).unwrap(),
+            ],
+        )
+        .unwrap();
+        // At device (31,0), each rotated native component is about2.192e19;
+        // its square exceeds binary32 MAX although q≈3.1e19 remains below
+        // the1e30 threshold. Inf would select the wrong endpoint color.
+        let error = prepare(
+            &gradient,
+            kurbo::Affine::IDENTITY,
+            PhysicalSize::new(32, 32),
+            &Account::for_test(),
+        )
+        .err()
+        .expect("native fine overflow must be a contextual capacity refusal");
+        assert_eq!(
+            error.gradient_realization_diagnostic(),
+            Some(&Refusal::InsufficientNativeCapacity)
+        );
+    }
 }
