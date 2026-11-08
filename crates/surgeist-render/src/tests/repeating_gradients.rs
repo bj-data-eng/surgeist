@@ -751,3 +751,112 @@ fn refused_repeating_stop_work_preserves_publication_stats_and_fresh_retry() {
         before
     );
 }
+
+#[test]
+fn unrepresentable_radial_phase_is_refused_without_publishing_and_allows_valid_retry() {
+    let mut renderer = renderer();
+    let graph_format = graph_supported_working_formats_for_test(&mut renderer)
+        .into_iter()
+        .next()
+        .unwrap();
+    let mut surface = surface(&mut renderer, 4.0, 4.0, 1.0);
+    let baseline = solid_scene(rgba(0.0, 1.0, 0.0, 1.0));
+    let far_center = Point::new(268_435_456.0, 0.0);
+    let unresolved_native = solid_scene(
+        RepeatingGradient::try_radial(
+            far_center,
+            16.0,
+            16.0,
+            stops(&[(0.0, red()), (1.0, blue())]),
+        )
+        .unwrap(),
+    );
+    let valid = solid_scene(
+        RepeatingGradient::try_radial(
+            Point::new(0.0, 0.0),
+            16.0,
+            16.0,
+            stops(&[(0.0, red()), (1.0, blue())]),
+        )
+        .unwrap(),
+    );
+    let unresolved_period = solid_scene(
+        RepeatingGradient::try_radial(
+            far_center,
+            0.25,
+            0.25,
+            stops(&[(0.0, red()), (1.0, blue())]),
+        )
+        .unwrap(),
+    );
+    for format in [None, Some(graph_format)] {
+        let before = render_route(&mut renderer, &mut surface, &baseline, format);
+        assert_pixel(&before, 1, 0, [0, 255, 0, 255], 2);
+        let successful = renderer.stats();
+        let publication = surface.headless_publication_count_for_test();
+
+        // At integer device (1,0), the true distance is exactly 2^28-1.
+        // Its 16-pixel period has phase 15/16, hence [16,0,239,255]. The
+        // required native field cannot retain that phase: reject it rather
+        // than publishing a different field or averaging a resolved period.
+        let result = if let Some(format) = format {
+            pollster::block_on(renderer.render_forced_base_graph_for_test(
+                &mut surface,
+                &unresolved_native,
+                Parameters::default(),
+                format,
+            ))
+            .map(|result| result.stats)
+        } else {
+            pollster::block_on(renderer.render(
+                &mut surface,
+                &unresolved_native,
+                Parameters::default(),
+            ))
+        };
+        let error = result.unwrap_err();
+        assert_eq!(error.code(), ErrorCode::InvalidInput);
+        assert!(error.invalid_value_diagnostic().is_some());
+        assert_eq!(renderer.stats(), successful);
+        assert_eq!(surface.headless_publication_count_for_test(), publication);
+        let report = renderer.take_last_attempt().unwrap();
+        assert_eq!(
+            report.status(),
+            RenderAttemptStatus::Failed(ErrorCode::InvalidInput)
+        );
+        assert_eq!(
+            report
+                .attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::Submissions),
+            0
+        );
+        assert_eq!(
+            pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+            before
+        );
+
+        // A representable center-zero field must still render. At (1,0),
+        // phase 1/16 gives the independently derived opposite color ratio.
+        let retried = render_route(&mut renderer, &mut surface, &valid, format);
+        assert_pixel(&retried, 1, 0, [239, 0, 16, 255], 3);
+        assert_eq!(
+            surface.headless_publication_count_for_test(),
+            publication + 1
+        );
+        assert_eq!(
+            renderer.last_attempt().unwrap().status(),
+            RenderAttemptStatus::Succeeded
+        );
+
+        // A positive .25-pixel period selects the average before any unused
+        // native-pattern qualification, even with the same distant center.
+        let averaged = render_route(&mut renderer, &mut surface, &unresolved_period, format);
+        assert_pixel(&averaged, 1, 0, [128, 0, 128, 255], 2);
+        assert_eq!(
+            surface.headless_publication_count_for_test(),
+            publication + 2
+        );
+    }
+}
