@@ -10,6 +10,13 @@ source indices, including both occurrences of a double-position stop. The
 position; the [explanation](explanation.md#gradient-stop-positions) describes the
 remaining authored-value and rendering boundaries.
 
+For radial geometry, supply a coupled `RadialGradientSize` and either an
+already-used Layout point or `None` for the box center. Match the returned case.
+`RadialGradientCase::Ellipse` provides positive axes; its horizontal radius is
+the ordinary rightward ray length for `resolve_gradient_stops`. Handle the
+three degenerate cases explicitly rather than treating them as zero ordinary
+radii. Their used-stop and rendering rules remain separate composition work.
+
 ## Plan stacking contexts
 
 A box ID is a slot in one immutable fact slice. Supply parentage, source sibling

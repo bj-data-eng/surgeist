@@ -1,7 +1,8 @@
 # surgeist-paint
 
-Paint resolves linear-gradient geometry and shared stop positions, and plans
-CSS stacking and non-table primitive order from explicit native facts.
+Paint resolves linear and radial gradient geometry, classifies radial zero
+cases, resolves shared stop positions, and plans CSS stacking and non-table
+primitive order from explicit native facts.
 `plan_stacking` returns context membership and immediate child context order.
 `plan_paint_order` adds validated box/text occurrences, line incidences and
 primitive records to return ordered borrowed references inside nested
@@ -9,6 +10,8 @@ actual-context intervals. Both use the shared context algorithm and one
 Ledger operation for work admission, storage custody and optional profiling.
 `resolve_linear_gradient` uses that same accounting authority to turn a concrete
 image size and physical direction into box-local line endpoints and length.
+`resolve_radial_gradient` supplies positive ellipse axes or an explicit ordered
+degenerate case from a concrete radial size request.
 
 Callers retain exact source identities, geometry and appearance associations.
 The order is not a Render command stream or a complete transform/clip tree.
@@ -76,8 +79,27 @@ assert_eq!(line.end(), Point::new(100.0, 0.0));
 assert_eq!(line.length(), 100.0);
 ```
 
-The [geometry explanation](docs/explanation.md#linear-gradient-geometry)
-describes corner directions and numerical limits. Resolve native stop positions
+For radial geometry, select a native size request and an optional already-used
+physical center. This side-sized ellipse has a rightward ray length of 100:
+
+```rust
+use surgeist_layout::{Point, Size};
+use surgeist_paint::*;
+
+let geometry = resolve_radial_gradient(
+    Size::new(200.0, 100.0), None,
+    RadialGradientSize::EllipseExtent(RadialGradientExtent::ClosestSide),
+    PaintOptions::new(PaintLimits::unlimited(), ProfileMode::Off),
+).result.unwrap();
+assert_eq!(geometry.center(), Point::new(100.0, 50.0));
+assert_eq!(geometry.case(), RadialGradientCase::Ellipse {
+    radii: Size::new(100.0, 50.0),
+});
+```
+
+The [linear](docs/explanation.md#linear-gradient-geometry) and
+[radial](docs/explanation.md#radial-gradient-geometry-and-cases) explanations
+describe geometry and numerical limits. Resolve native stop positions
 against that length with `resolve_gradient_stops`:
 
 ```rust
@@ -104,8 +126,9 @@ The [operation's API example](src/gradient_stops.rs) demonstrates that lifetime
 constraint.
 
 See [used-position resolution](docs/explanation.md#gradient-stop-positions) for
-double positions, hints and source association. Authored numeric/color adapters,
-radial geometry and complete gradient scene composition remain unfinished.
+double positions, hints and source association. Authored numeric/color/position
+adapters, degenerate radial used-stop/field realization and complete gradient
+scene composition remain unfinished.
 
 ## Documentation
 

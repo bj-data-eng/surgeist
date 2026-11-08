@@ -8,7 +8,8 @@ Start with the explicit `PaintLimits::unlimited()` policy, then select named
 meaningful. `PaintReport` exposes named phase/refusal/event views backed by
 Ledger; callers do not depend on an internal numeric schema.
 `plan_stacking`, `plan_paint_order`, `resolve_linear_gradient` and
-`resolve_gradient_stops` each apply this policy to one complete operation.
+`resolve_gradient_stops` and `resolve_radial_gradient` each apply this policy to
+one complete operation.
 A refused operation returns no result. Its optional report retains earlier
 accepted work and the refusal; dropped scratch/result custody has live usage
 zero. `PaintError::Input` identifies a typed paint-input failure, including
@@ -23,6 +24,11 @@ structure or numeric component, or an unrepresentable result, with source
 association where applicable. Keep source storage alive while using the result.
 Bound `GradientStopVisit` for actual list/record walks and `RetainedResultBytes`
 for allocated capacity plus the fixed result owner; a zero limit is meaningful.
+For radial geometry, `PaintError::RadialGradient` distinguishes invalid native
+inputs from an unrepresentable required calculation. Inspect the resolved case
+before composing stops or fields. An explicit already-used center and a default
+center calculation are different input facts; a default half that loses a
+positive coordinate receives a numerical refusal.
 Root usage is inclusive of child phases; inspect child attribution without
 adding it to the root totals.
 
