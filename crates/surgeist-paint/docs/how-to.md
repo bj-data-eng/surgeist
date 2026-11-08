@@ -8,8 +8,8 @@ Start with the explicit `PaintLimits::unlimited()` policy, then select named
 meaningful. `PaintReport` exposes named phase/refusal/event views backed by
 Ledger; callers do not depend on an internal numeric schema.
 `plan_stacking`, `plan_paint_order`, `resolve_linear_gradient` and
-`resolve_gradient_stops` and `resolve_radial_gradient` each apply this policy to
-one complete operation.
+`resolve_gradient_stops`, `resolve_radial_gradient` and
+`resolve_zero_height_gradient_colors` each apply this policy to one complete operation.
 A refused operation returns no result. Its optional report retains earlier
 accepted work and the refusal; dropped scratch/result custody has live usage
 zero. `PaintError::Input` identifies a typed paint-input failure, including

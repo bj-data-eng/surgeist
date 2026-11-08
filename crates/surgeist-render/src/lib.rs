@@ -35,6 +35,7 @@
 mod accounting;
 mod backend;
 mod capability;
+mod color_reduction;
 mod command;
 mod encode;
 mod error;
@@ -111,6 +112,7 @@ pub use paint::{
 pub use paint_gradient::{
     PaintGradientError, prepare_linear_gradient, prepare_radial_gradient,
     prepare_repeating_linear_gradient, prepare_repeating_radial_gradient,
+    prepare_zero_height_gradient_color,
 };
 pub use renderer::{Antialiasing, EffectQualityPolicy, Options, Renderer, ResourceCacheBudget};
 pub use scene::{Scene, SceneSummary};

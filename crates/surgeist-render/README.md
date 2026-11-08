@@ -30,6 +30,9 @@ their `prepare_repeating_*` counterparts consume Paint's native geometry and
 used stops through a `RenderAccountingContext`. They return owned fields for
 normal scene commands. The [native Paint consumer](docs/reference.md#native-paint-consumer)
 defines positive-geometry support, unit conversion and typed refusals.
+`prepare_zero_height_gradient_color` consumes Paint's authenticated zero-height
+color measure and returns an owned solid `Color`; its [reference](docs/reference.md#zero-height-paint-colors)
+describes the separate preparation contract.
 
 `FontData` accepts raw OpenType, collections, WOFF and WOFF2 through
 `surgeist-font`. `FontData::prepare_glyph_run` admits immutable glyph resources

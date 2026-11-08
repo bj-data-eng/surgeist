@@ -13,6 +13,7 @@ current source API.
 | Draw data | `Scene`, geometry, shapes, paints, images, layers, and positioned text runs | [Scene](../src/scene.rs), [public reexports](../src/lib.rs) |
 | Gradient paints | `Gradient`, `RepeatingGradient`, `GradientStop`, `GradientHint`, `Paint` | [Paint sources](../src/paint.rs), [repeating inputs](../src/paint/repeating.rs) |
 | Native Paint consumer (`render-paint`) | `prepare_linear_gradient`, `prepare_radial_gradient`, `prepare_repeating_linear_gradient`, `prepare_repeating_radial_gradient`, `PaintGradientError` | [Adapter](../src/paint_gradient.rs) |
+| Native zero-height Paint colors (`render-paint`) | `prepare_zero_height_gradient_color` | [Color preparation](#zero-height-paint-colors) |
 | Placed Text consumer (`render-text`) | `prepare_text_layout`, `PreparedTextScene`, `TextLayoutLimits`, `TextLayoutError` | [Adapter](../src/text_layout.rs) |
 | Surface and pixels | `Surface`, `SurfaceOptions`, `Attachment`, `ImageBuffer` | [Surfaces](../src/surface.rs), [images](../src/image.rs) |
 | Support and diagnostics | `Capabilities`, `RuntimeCapabilities`, `Error`, `ErrorCode` | [Capabilities](../src/capability.rs), [errors](../src/error.rs) |
@@ -252,6 +253,28 @@ and the constructed native gradient. `GradientStopVisits` counts every item visi
 in preflight and conversion. `CoordinateVisits` counts each
 actual scalar inspection or calculation, including comparisons. Repeated passes
 are charged separately; a refusal retains only admitted work.
+
+## Zero-height Paint colors
+
+With `render-paint`, `prepare_zero_height_gradient_color` consumes an authentic
+Paint `ZeroHeightGradientColors<Color>` and a `RenderAccountingContext`. It
+returns owned `Color`, ready for normal solid fill, stroke or glyph paint after
+the source, measure and contexts have been dropped.
+
+Paint owns the [zero-height basis and color weights](../../surgeist-paint/docs/reference.md#zero-height-gradient-colors),
+including mixed-unit fixup, omission/hint distribution and repetition selection.
+Render uses those weights in premultiplied numeric-sRGBA. A single color is
+copied directly; an average is reduced with the same arithmetic owner as existing
+repeating fallbacks. Zero alpha produces transparent output; nonzero alpha is
+converted back to straight channels with the existing final color rounding.
+The positive-field adapters retain their geometry/used-position contracts.
+
+Preparation uses a standalone `RenderAttemptKind::PaintGradient` report and
+existing named Ledger work, phases, limits and optional timings. Actual record
+visits and weight/channel work count once per performed action. Input storage
+is borrowed; the fixed `Color` result is admitted and explicitly transferred to
+the caller. Refusal publishes no partial output and releases admitted custody.
+Later solid rendering and atomic frame/device publication use their usual owners.
 
 ## Layer blending
 

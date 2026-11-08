@@ -92,10 +92,10 @@ impl<C> Clone for UsedGradientItem<'_, C> {
 }
 
 #[derive(Clone, Copy, Debug)]
-struct UsedGradientRecord {
-    source_index: usize,
-    position_index: usize,
-    position: f64,
+pub(crate) struct UsedGradientRecord<P = f64> {
+    pub(crate) source_index: usize,
+    pub(crate) position_index: usize,
+    pub(crate) position: P,
 }
 
 /// Complete finite, nondecreasing used positions borrowing their exact source.
@@ -281,31 +281,34 @@ fn setup_scopes(meter: &mut Meter) -> Result<[Scope; 6], PaintError> {
     Ok(scopes)
 }
 
-struct StopWork<'a, 'b> {
+pub(crate) struct StopWork<'a, 'b> {
     meter: &'a mut PhaseMeter<'b>,
     scope: Scope,
 }
 impl<'a, 'b> StopWork<'a, 'b> {
-    fn new(meter: &'a mut PhaseMeter<'b>, scope: Scope) -> Self {
+    pub(crate) fn new(meter: &'a mut PhaseMeter<'b>, scope: Scope) -> Self {
         Self { meter, scope }
+    }
+    pub(crate) fn meter(&mut self) -> &mut PhaseMeter<'b> {
+        self.meter
     }
     // A validation unit is one scalar's complete domain check, one emptiness
     // check, or one source item's grammar/discriminant validation action.
-    fn validation<T>(&mut self, action: impl FnOnce() -> T) -> Result<T, PaintError> {
+    pub(crate) fn validation<T>(&mut self, action: impl FnOnce() -> T) -> Result<T, PaintError> {
         charge(self.meter, self.scope, WorkKind::GradientValidation, 1)?;
         Ok(action())
     }
     // A numeric unit is one scalar calculation/conversion/comparison/inspection;
     // FMA is one operation. Repeated inspections charge again. Scalar copies,
     // boolean control and record assembly are not extra numeric operations.
-    fn numeric<T>(&mut self, action: impl FnOnce() -> T) -> Result<T, PaintError> {
+    pub(crate) fn numeric<T>(&mut self, action: impl FnOnce() -> T) -> Result<T, PaintError> {
         charge(self.meter, self.scope, WorkKind::GradientCoordinate, 1)?;
         Ok(action())
     }
     // Each source access or existing record read/write is one actual visit,
     // including separate walks and boundary reinspections. Its constant-size
     // index/ordinal bookkeeping belongs to this unit. No access precedes charge.
-    fn source<'s, C>(
+    pub(crate) fn source<'s, C>(
         &mut self,
         source: &'s [GradientStopItem<C>],
         index: usize,
@@ -313,35 +316,35 @@ impl<'a, 'b> StopWork<'a, 'b> {
         charge(self.meter, self.scope, WorkKind::GradientStopVisit, 1)?;
         Ok(&source[index])
     }
-    fn record(
+    pub(crate) fn record<P: Copy>(
         &mut self,
-        records: &[UsedGradientRecord],
+        records: &[UsedGradientRecord<P>],
         index: usize,
-    ) -> Result<UsedGradientRecord, PaintError> {
+    ) -> Result<UsedGradientRecord<P>, PaintError> {
         charge(self.meter, self.scope, WorkKind::GradientStopVisit, 1)?;
         Ok(records[index])
     }
-    fn write(
+    pub(crate) fn write<P>(
         &mut self,
-        records: &mut [UsedGradientRecord],
+        records: &mut [UsedGradientRecord<P>],
         index: usize,
-        position: f64,
+        position: P,
     ) -> Result<(), PaintError> {
         self.record_mut(records, index)?.position = position;
         Ok(())
     }
-    fn record_mut<'r>(
+    pub(crate) fn record_mut<'r, P>(
         &mut self,
-        records: &'r mut [UsedGradientRecord],
+        records: &'r mut [UsedGradientRecord<P>],
         index: usize,
-    ) -> Result<&'r mut UsedGradientRecord, PaintError> {
+    ) -> Result<&'r mut UsedGradientRecord<P>, PaintError> {
         charge(self.meter, self.scope, WorkKind::GradientStopVisit, 1)?;
         Ok(&mut records[index])
     }
-    fn emit(
+    pub(crate) fn emit<P>(
         &mut self,
-        records: &mut Vec<UsedGradientRecord>,
-        record: UsedGradientRecord,
+        records: &mut Vec<UsedGradientRecord<P>>,
+        record: UsedGradientRecord<P>,
     ) -> Result<(), PaintError> {
         // One new retained expanded record; later fixup writes are not new records.
         charge(self.meter, self.scope, WorkKind::OutputRecord, 1)?;
@@ -358,11 +361,26 @@ fn validate<C>(
     if !work.validation(|| line_length.is_finite() && line_length >= 0.0)? {
         return Err(GradientStopsError::InvalidLineLength.into());
     }
+    Ok(validate_source(work, source)?.records)
+}
+
+pub(crate) struct ValidatedStops {
+    pub(crate) records: usize,
+    pub(crate) colors: usize,
+    pub(crate) last_ordinal: usize,
+}
+
+pub(crate) fn validate_source<C>(
+    work: &mut StopWork<'_, '_>,
+    source: &[GradientStopItem<C>],
+) -> Result<ValidatedStops, PaintError> {
     if work.validation(|| source.is_empty())? {
         return Err(GradientStopsError::EmptyList.into());
     }
     let mut count = 0usize;
     let mut previous_hint = false;
+    let mut colors = 0usize;
+    let mut last_ordinal = 0usize;
     for source_index in 0..source.len() {
         let item = work.source(source, source_index)?;
         previous_hint = work.validation(|| match item {
@@ -401,8 +419,18 @@ fn validate<C>(
         count = count
             .checked_add(amount)
             .ok_or(PaintError::CapacityOverflow)?;
+        if !previous_hint {
+            colors = colors
+                .checked_add(amount)
+                .ok_or(PaintError::CapacityOverflow)?;
+            last_ordinal = amount - 1;
+        }
     }
-    Ok(count)
+    Ok(ValidatedStops {
+        records: count,
+        colors,
+        last_ordinal,
+    })
 }
 
 fn validate_position(
@@ -456,6 +484,29 @@ fn expand<C>(
     source: &[GradientStopItem<C>],
     records: &mut Vec<UsedGradientRecord>,
 ) -> Result<(), PaintError> {
+    expand_with(
+        work,
+        source,
+        records,
+        0.0,
+        |work, source_index, ordinal, position| {
+            affine(work, line_length, source_index, ordinal, position)
+        },
+    )
+}
+
+pub(crate) fn expand_with<C, P: Copy>(
+    work: &mut StopWork<'_, '_>,
+    source: &[GradientStopItem<C>],
+    records: &mut Vec<UsedGradientRecord<P>>,
+    omitted: P,
+    mut resolve: impl FnMut(
+        &mut StopWork<'_, '_>,
+        usize,
+        usize,
+        GradientPosition,
+    ) -> Result<P, PaintError>,
+) -> Result<(), PaintError> {
     for source_index in 0..source.len() {
         let positions = match work.source(source, source_index)? {
             GradientStopItem::Stop { positions, .. } => *positions,
@@ -469,11 +520,11 @@ fn expand<C>(
                 UsedGradientRecord {
                     source_index,
                     position_index: 0,
-                    position: 0.0,
+                    position: omitted,
                 },
             )?,
             GradientStopPositions::One(position) => {
-                let position = affine(work, line_length, source_index, 0, position)?;
+                let position = resolve(work, source_index, 0, position)?;
                 work.emit(
                     records,
                     UsedGradientRecord {
@@ -484,7 +535,7 @@ fn expand<C>(
                 )?;
             }
             GradientStopPositions::Two(first, second) => {
-                let position = affine(work, line_length, source_index, 0, first)?;
+                let position = resolve(work, source_index, 0, first)?;
                 work.emit(
                     records,
                     UsedGradientRecord {
@@ -493,7 +544,7 @@ fn expand<C>(
                         position,
                     },
                 )?;
-                let position = affine(work, line_length, source_index, 1, second)?;
+                let position = resolve(work, source_index, 1, second)?;
                 work.emit(
                     records,
                     UsedGradientRecord {
@@ -508,10 +559,10 @@ fn expand<C>(
     Ok(())
 }
 
-fn originally_omitted<C>(
+pub(crate) fn originally_omitted<C, P>(
     work: &mut StopWork<'_, '_>,
     source: &[GradientStopItem<C>],
-    record: UsedGradientRecord,
+    record: UsedGradientRecord<P>,
 ) -> Result<bool, PaintError> {
     Ok(matches!(
         work.source(source, record.source_index)?,
@@ -522,10 +573,10 @@ fn originally_omitted<C>(
     ))
 }
 
-fn interior_omitted<C>(
+pub(crate) fn interior_omitted<C, P>(
     work: &mut StopWork<'_, '_>,
     source: &[GradientStopItem<C>],
-    record: UsedGradientRecord,
+    record: UsedGradientRecord<P>,
     index: usize,
     length: usize,
 ) -> Result<bool, PaintError> {
@@ -539,16 +590,29 @@ fn fixup<C>(
     source: &[GradientStopItem<C>],
     records: &mut [UsedGradientRecord],
 ) -> Result<(), PaintError> {
+    fixup_with(work, source, records, 0.0, line_length, |work, a, b| {
+        work.numeric(|| a < b)
+    })
+}
+
+pub(crate) fn fixup_with<C, P: Copy>(
+    work: &mut StopWork<'_, '_>,
+    source: &[GradientStopItem<C>],
+    records: &mut [UsedGradientRecord<P>],
+    first_default: P,
+    last_default: P,
+    mut less: impl FnMut(&mut StopWork<'_, '_>, P, P) -> Result<bool, PaintError>,
+) -> Result<(), PaintError> {
     let first = work.record(records, 0)?;
     if originally_omitted(work, source, first)? {
-        work.write(records, 0, 0.0)?;
+        work.write(records, 0, first_default)?;
     }
     let last_index = records.len() - 1;
     // A single omitted occurrence already received the first endpoint default.
     if last_index != 0 {
         let last = work.record(records, last_index)?;
         if originally_omitted(work, source, last)? {
-            work.write(records, last_index, line_length)?;
+            work.write(records, last_index, last_default)?;
         }
     }
     let mut maximum = None;
@@ -558,7 +622,7 @@ fn fixup<C>(
             continue;
         }
         let position = if let Some(previous) = maximum {
-            if work.numeric(|| record.position < previous)? {
+            if less(work, record.position, previous)? {
                 work.write(records, index, previous)?;
                 previous
             } else {
@@ -577,6 +641,22 @@ fn distribute<C>(
     source: &[GradientStopItem<C>],
     records: &mut [UsedGradientRecord],
 ) -> Result<(), PaintError> {
+    distribute_with(work, source, records, fill_run)
+}
+
+pub(crate) fn distribute_with<C, P: Copy>(
+    work: &mut StopWork<'_, '_>,
+    source: &[GradientStopItem<C>],
+    records: &mut [UsedGradientRecord<P>],
+    mut fill: impl FnMut(
+        &mut StopWork<'_, '_>,
+        &mut [UsedGradientRecord<P>],
+        usize,
+        usize,
+        UsedGradientRecord<P>,
+        UsedGradientRecord<P>,
+    ) -> Result<(), PaintError>,
+) -> Result<(), PaintError> {
     let mut index = 1;
     while index < records.len() {
         let record = work.record(records, index)?;
@@ -594,25 +674,39 @@ fn distribute<C>(
                 break candidate;
             }
         };
-        fill_run(work, records, start, index, left, right)?;
+        fill(work, records, start, index, left, right)?;
         // The positioned right boundary is visited again by the outer walk.
     }
     Ok(())
 }
 
-fn fill_run(
+pub(crate) trait ScalarPosition: Copy {
+    fn scalar(self) -> f64;
+    fn with_scalar(self, value: f64) -> Self;
+}
+impl ScalarPosition for f64 {
+    fn scalar(self) -> f64 {
+        self
+    }
+    fn with_scalar(self, value: f64) -> Self {
+        value
+    }
+}
+
+pub(crate) fn fill_run<P: ScalarPosition>(
     work: &mut StopWork<'_, '_>,
-    records: &mut [UsedGradientRecord],
+    records: &mut [UsedGradientRecord<P>],
     start: usize,
     end: usize,
-    left: UsedGradientRecord,
-    right: UsedGradientRecord,
+    left: UsedGradientRecord<P>,
+    right: UsedGradientRecord<P>,
 ) -> Result<(), PaintError> {
-    let a = left.position;
-    let b = right.position;
+    let a = left.position.scalar();
+    let b = right.position.scalar();
     if work.numeric(|| a == b)? {
         for index in start..end {
-            work.write(records, index, a)?;
+            let record = work.record_mut(records, index)?;
+            record.position = record.position.with_scalar(a);
         }
         return Ok(());
     }
@@ -650,7 +744,7 @@ fn fill_run(
             }
             .into());
         }
-        record.position = position;
+        record.position = record.position.with_scalar(position);
     }
     Ok(())
 }

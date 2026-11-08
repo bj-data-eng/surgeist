@@ -78,6 +78,7 @@ pub(crate) enum OperationKind {
     LinearGradient,
     GradientStops,
     RadialGradient,
+    ZeroHeightGradient,
 }
 impl OperationKind {
     fn name(&self) -> &'static str {
@@ -87,6 +88,7 @@ impl OperationKind {
             Self::LinearGradient => "paint linear gradient",
             Self::GradientStops => "paint gradient stops",
             Self::RadialGradient => "paint radial gradient",
+            Self::ZeroHeightGradient => "paint zero-height gradient colors",
         }
     }
     fn scope_limit(&self) -> usize {
@@ -96,6 +98,7 @@ impl OperationKind {
             Self::LinearGradient => 5,
             Self::GradientStops => 7,
             Self::RadialGradient => 5,
+            Self::ZeroHeightGradient => 7,
         }
     }
 }

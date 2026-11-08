@@ -15,7 +15,10 @@ already-used Layout point or `None` for the box center. Match the returned case.
 `RadialGradientCase::Ellipse` provides positive axes; its horizontal radius is
 the ordinary rightward ray length for `resolve_gradient_stops`. Handle the
 three degenerate cases explicitly rather than treating them as zero ordinary
-radii. Their used-stop and rendering rules remain separate composition work.
+radii. For `ZeroHeight`, use
+[`resolve_zero_height_gradient_colors`](reference.md#zero-height-gradient-colors)
+with the raw source and ordinary/repeating selection to obtain a solid color
+measure. Zero-circle and zero-width realization remain separate composition work.
 
 ## Plan stacking contexts
 

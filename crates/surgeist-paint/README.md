@@ -12,6 +12,9 @@ Ledger operation for work admission, storage custody and optional profiling.
 image size and physical direction into box-local line endpoints and length.
 `resolve_radial_gradient` supplies positive ellipse axes or an explicit ordered
 degenerate case from a concrete radial size request.
+`resolve_zero_height_gradient_colors` resolves a native zero-height case into
+borrowed color weights for a solid result. Its [basis policy](docs/reference.md#zero-height-gradient-colors)
+keeps mixed length/percentage semantics explicit.
 
 Callers retain exact source identities, geometry and appearance associations.
 The order is not a Render command stream or a complete transform/clip tree.
@@ -127,8 +130,9 @@ constraint.
 
 See [used-position resolution](docs/explanation.md#gradient-stop-positions) for
 double positions, hints and source association. Authored numeric/color/position
-adapters, degenerate radial used-stop/field realization and complete gradient
-scene composition remain unfinished.
+adapters, zero-circle/zero-width radial realization and complete gradient
+scene composition remain unfinished. Zero-height solid colors use the
+[dedicated color measure](docs/reference.md#zero-height-gradient-colors).
 
 ## Documentation
 

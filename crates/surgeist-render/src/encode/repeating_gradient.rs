@@ -15,6 +15,7 @@ use crate::vello_engine::gradient_endpoints::{PadEndpoints, ProgramExtend};
 use crate::{
     Color, Error, GradientStop, PhysicalSize, RepeatingGradient, Result,
     accounting::{Account, RenderPhase, RenderWork},
+    color_reduction::{PremultipliedSum, premultiplied},
     paint::GradientGeometry,
 };
 
@@ -312,22 +313,8 @@ fn solid_average(stops: &[GradientStop], rule: Average, account: &Account) -> Re
     Ok(FrameBrush::solid(average(stops, rule, account)?.into()))
 }
 
-fn premultiplied(color: Color, account: &Account) -> Result<[f64; 4]> {
-    account.work(RenderWork::CoordinateVisits, 4)?;
-    let (r, g, b, a) = (color.r(), color.g(), color.b(), color.a());
-    let alpha = scalar(account, || f64::from(a))?;
-    let r = scalar(account, || f64::from(r))?;
-    let g = scalar(account, || f64::from(g))?;
-    let b = scalar(account, || f64::from(b))?;
-    Ok([
-        scalar(account, || r * alpha)?,
-        scalar(account, || g * alpha)?,
-        scalar(account, || b * alpha)?,
-        alpha,
-    ])
-}
 fn average(stops: &[GradientStop], rule: Average, account: &Account) -> Result<Color> {
-    let mut total = [0.0; 4];
+    let mut total = PremultipliedSum::new();
     let mut previous = None;
     let denominator = if matches!(rule, Average::Uniform) {
         let intervals = scalar(account, || stops.len() - 1)?;
@@ -345,10 +332,7 @@ fn average(stops: &[GradientStop], rule: Average, account: &Account) -> Result<C
                 let weight = scalar(account, || {
                     numerator / denominator.expect("uniform color count")
                 })?;
-                for (total, component) in total.iter_mut().zip(color) {
-                    let weighted = scalar(account, || component * weight)?;
-                    *total = scalar(account, || *total + weighted)?;
-                }
+                total.add_weighted(color, weight, account)?;
             }
             Average::Weighted(span) => {
                 let position = scalar(account, || stop.position())?;
@@ -356,36 +340,13 @@ fn average(stops: &[GradientStop], rule: Average, account: &Account) -> Result<C
                     let difference = scalar(account, || position - previous_position)?;
                     let quotient = scalar(account, || difference / span)?;
                     let weight = scalar(account, || quotient * 0.5)?;
-                    for ((total, previous), current) in
-                        total.iter_mut().zip(previous_color).zip(color)
-                    {
-                        let sum = scalar(account, || previous + current)?;
-                        let weighted = scalar(account, || sum * weight)?;
-                        *total = scalar(account, || *total + weighted)?;
-                    }
+                    total.add_segment(previous_color, color, weight, account)?;
                 }
                 previous = Some((position, color));
             }
         }
     }
-    let [r, g, b, alpha] = total;
-    if scalar(account, || alpha == 0.0)? {
-        return Ok(Color::TRANSPARENT);
-    }
-    let channel = |component: f64| -> Result<f32> {
-        let straight = scalar(account, || component / alpha)?;
-        let bounded = scalar(account, || straight.clamp(0.0, 1.0))?;
-        scalar(account, || bounded as f32)
-    };
-    let r = channel(r)?;
-    let g = channel(g)?;
-    let b = channel(b)?;
-    let alpha = scalar(account, || alpha.clamp(0.0, 1.0))?;
-    let alpha = scalar(account, || alpha as f32)?;
-    // Valid source premultiplication and identical nonnegative weighted sums
-    // prove component<=alpha and finite totals. With nonzero alpha, the
-    // admitted division/clamp/narrowing above proves four finite unit channels.
-    Ok(Color::rgba(r, g, b, alpha))
+    total.finish(account)
 }
 
 #[cfg(test)]
