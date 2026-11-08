@@ -4,6 +4,9 @@ use crate::ContextAccess;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod diagnostic_custody_tests;
+
 use crate::{
     Context, JsResult, JsString, JsValue,
     builtins::{
