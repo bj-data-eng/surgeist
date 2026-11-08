@@ -1208,3 +1208,45 @@ mod tests {
         );
     }
 }
+
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod gradient_extent_tests {
+    use super::*;
+
+    #[test]
+    fn expanded_gradient_extent_refuses_before_any_resource_allocation() {
+        let mut renderer = pollster::block_on(crate::Renderer::new(crate::Options::default()))
+            .expect("host adapter for actual device-limit preflight");
+        let (device, _) = renderer.default_wgpu_device_queue().unwrap();
+        let height = device
+            .limits()
+            .max_texture_dimension_2d
+            .checked_add(1)
+            .expect("host texture limit permits one larger descriptor");
+        let account = crate::accounting::Account::for_test();
+        let mut recording = RecordingBuilder::new(&account).unwrap();
+        // A valid request precedes the oversized gradient image. The complete
+        // intent list must be admitted before even that first buffer allocates.
+        recording.new_buffer(BufferRole::Scene, 4).unwrap();
+        recording
+            .new_transient_image(ImageRole::GradientRamp, PhysicalSize::new(512, height))
+            .unwrap();
+        let (_recording, intents) = recording.finish();
+        let manager = ResourceManager::default();
+        let before = manager.stats();
+        let scope = ActiveVelloEncodingScope::begin(device);
+        let error = match VelloResourceLease::allocate(&scope, &manager, &intents, None) {
+            Ok(lease) => {
+                let _aborted = lease.abort();
+                panic!("an oversized endpoint descriptor texture must refuse")
+            }
+            Err(error) => error,
+        };
+        assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+        assert!(error.message().contains("device 2D texture limit"));
+        assert_eq!(manager.stats(), before);
+        assert_eq!(manager.live_count(), 0);
+        pollster::block_on(scope.finish(&account)).unwrap();
+    }
+}

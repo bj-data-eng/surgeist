@@ -1,5 +1,6 @@
 mod bounded;
 pub(crate) mod glyph;
+pub(crate) mod gradient_endpoints;
 mod image_atlas;
 mod shaders;
 mod recording {

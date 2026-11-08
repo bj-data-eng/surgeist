@@ -10,6 +10,7 @@ use super::{
     *,
 };
 use crate::accounting::{Account, AccountedVec, BackedValue, Hold, RenderPhase, RenderWork};
+use crate::vello_engine::gradient_endpoints::{PadEndpoints, SceneBrush};
 
 mod repeating_gradient;
 
@@ -249,7 +250,7 @@ fn encode_vello_commands(
                             } else {
                                 scene.fill_elements(
                                     transform,
-                                    brush.as_ref(),
+                                    brush.scene_brush(),
                                     brush.transform(),
                                     elements,
                                     account,
@@ -366,18 +367,26 @@ fn encode_fill(
         );
     }
     let brush = render_paint_brush(paint, transform, target_extent, account)?;
-    encode_solid_fill(scene, transform, shape, &brush, brush.transform(), account)?;
+    encode_solid_fill(
+        scene,
+        transform,
+        shape,
+        brush.scene_brush(),
+        brush.transform(),
+        account,
+    )?;
     Ok(())
 }
 
-fn encode_solid_fill(
+fn encode_solid_fill<'a>(
     scene: &mut VelloScene,
     transform: kurbo::Affine,
     shape: &RenderShape,
-    brush: &peniko::Brush,
+    brush: impl Into<SceneBrush<'a>>,
     brush_transform: Option<kurbo::Affine>,
     account: &Account,
 ) -> Result<()> {
+    let brush = brush.into();
     match shape {
         RenderShape::Rect(rect) => scene.fill(
             peniko::Fill::NonZero,
@@ -458,22 +467,23 @@ fn encode_stroke(
         transform,
         shape,
         stroke,
-        &brush,
+        brush.scene_brush(),
         brush.transform(),
         account,
     )?;
     Ok(())
 }
 
-fn encode_brush_stroke(
+fn encode_brush_stroke<'a>(
     scene: &mut VelloScene,
     transform: kurbo::Affine,
     shape: &RenderStrokeShape,
     stroke: &RenderStroke,
-    brush: &peniko::Brush,
+    brush: impl Into<SceneBrush<'a>>,
     brush_transform: Option<kurbo::Affine>,
     account: &Account,
 ) -> Result<()> {
+    let brush = brush.into();
     let vello_stroke = vello_stroke(stroke, account)?;
     match shape {
         RenderStrokeShape::Rect(rect) => scene.stroke(
@@ -870,6 +880,7 @@ struct BrushTransform {
 pub(crate) struct FrameBrush {
     brush: peniko::Brush,
     transform: Option<BrushTransform>,
+    endpoints: Option<PadEndpoints>,
     _hold: Option<Hold>,
     _payload: Option<crate::accounting::CpuImport>,
 }
@@ -889,6 +900,7 @@ impl FrameBrush {
         Self {
             brush: peniko::Brush::Solid(color),
             transform: None,
+            endpoints: None,
             _hold: None,
             _payload: None,
         }
@@ -898,6 +910,7 @@ impl FrameBrush {
         Ok(Self {
             brush: peniko::Brush::Image(image_brush(image)),
             transform: None,
+            endpoints: None,
             _hold: None,
             _payload: payload,
         })
@@ -938,6 +951,9 @@ impl FrameBrush {
     }
     pub(crate) fn as_ref(&self) -> peniko::BrushRef<'_> {
         (&self.brush).into()
+    }
+    pub(crate) fn scene_brush(&self) -> SceneBrush<'_> {
+        SceneBrush::new(self.as_ref(), self.endpoints)
     }
 }
 impl std::ops::Deref for FrameBrush {
@@ -987,7 +1003,21 @@ fn gradient_brush(gradient: &Gradient, account: &Account) -> Result<FrameBrush> 
 }
 
 fn prepare_gradient(gradient: &Gradient, account: &Account) -> Result<FrameBrush> {
-    let leading = gradient.native_leading_stop(Some(account))?;
+    let supplied = gradient.stops();
+    let endpoints = if supplied.len() >= 2 {
+        account.work(RenderWork::GradientStopVisits, 1)?;
+        let first = supplied[0];
+        account.work(RenderWork::CoordinateVisits, 1)?;
+        let first = (first.offset(), first.color());
+        account.work(RenderWork::GradientStopVisits, 1)?;
+        let last = supplied[supplied.len() - 1];
+        account.work(RenderWork::CoordinateVisits, 1)?;
+        let last = (last.offset(), last.color());
+        Some(PadEndpoints::new(first, last, account)?)
+    } else {
+        None
+    };
+    let leading = gradient.native_leading_stop(account)?;
     let count = gradient
         .stops()
         .len()
@@ -1001,8 +1031,23 @@ fn prepare_gradient(gradient: &Gradient, account: &Account) -> Result<FrameBrush
     // The preflight above inspects one existing record only for multistop
     // fields. This walk materializes every actual native record, including the
     // leading endpoint, into backing whose actual capacity is already admitted.
-    for stop in leading.iter().chain(gradient.stops()) {
+    if let Some(stop) = leading {
         account.work(RenderWork::GradientStopVisits, 1)?;
+        stops.push_reserved(peniko::ColorStop::from((
+            stop.offset(),
+            peniko::Color::from(stop.color()),
+        )));
+    }
+    let mut previous = None;
+    let mut ordered = true;
+    for stop in supplied {
+        account.work(RenderWork::GradientStopVisits, 1)?;
+        if let Some(previous) = previous {
+            account.work(RenderWork::CoordinateVisits, 1)?;
+            // Inspect every actual adjacent pair, even after finding disorder.
+            ordered &= stop.offset() >= previous;
+        }
+        previous = Some(stop.offset());
         stops.push_reserved(peniko::ColorStop::from((
             stop.offset(),
             peniko::Color::from(stop.color()),
@@ -1030,7 +1075,9 @@ fn prepare_gradient(gradient: &Gradient, account: &Account) -> Result<FrameBrush
             std::f32::consts::TAU,
         ),
     };
-    gradient_with_stops(output, stops, None)
+    let mut brush = gradient_with_stops(output, stops, None)?;
+    brush.endpoints = endpoints.filter(|_| ordered);
+    Ok(brush)
 }
 
 fn gradient_with_stops(
@@ -1051,6 +1098,7 @@ fn gradient_with_stops(
     Ok(FrameBrush {
         brush: peniko::Brush::Gradient(output),
         transform,
+        endpoints: None,
         _hold: hold,
         _payload: None,
     })
@@ -1203,13 +1251,72 @@ mod ordinary_gradient_accounting_tests {
     }
 
     #[test]
+    fn prepared_native_ramps_preserve_leading_and_premultiplied_intervals() {
+        for (alpha, leading, midpoint) in [
+            (1.0, [255_u8, 0, 0, 255], [128_u8, 0, 128, 255]),
+            (0.5, [128, 0, 0, 128], [64, 0, 128, 191]),
+        ] {
+            for field in 0..3 {
+                let red = Color::try_rgba(1.0, 0.0, 0.0, alpha).unwrap();
+                let blue = Color::try_rgba(0.0, 0.0, 1.0, 1.0).unwrap();
+                let stops = vec![
+                    GradientStop::try_new(0.5, red).unwrap(),
+                    GradientStop::try_new(1.0, blue).unwrap(),
+                ];
+                let gradient = match field {
+                    0 => Gradient::try_linear(Point::new(0.0, 0.0), Point::new(8.0, 0.0), stops),
+                    1 => Gradient::try_radial(Point::new(0.0, 4.0), 8.0, stops),
+                    _ => Gradient::try_sweep(Point::new(12.0, 4.0), stops),
+                }
+                .unwrap();
+                let brush = prepare_gradient(&gradient, &Account::for_test()).unwrap();
+                // Real prepared native brush -> locked public Encoding/Resolver.
+                // Endpoint execution additionally requires the owned descriptor.
+                let mut encoding = vello_encoding::Encoding::new();
+                encoding.encode_brush(brush.as_ref(), 1.0);
+                let mut resolver = vello_encoding::Resolver::default();
+                let mut packed = Vec::new();
+                let (_, ramps, _) = resolver.resolve(&encoding, &mut packed);
+                for (index, expected) in [(128, leading), (384, midpoint)] {
+                    let actual = ramps.data[index].to_le_bytes();
+                    assert!(
+                        actual
+                            .into_iter()
+                            .zip(expected)
+                            .all(|(a, b)| a.abs_diff(b) <= 1),
+                        "field{field} alpha{alpha}: {actual:?} expected{expected:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn unordered_source_keeps_the_original_native_path() {
+        let brush = prepare_gradient(&gradient(&[0.75, 0.25]), &Account::for_test()).unwrap();
+        assert!(brush.endpoints.is_none());
+        let peniko::BrushRef::Gradient(native) = brush.as_ref() else {
+            panic!("gradient brush");
+        };
+        assert_eq!(
+            native
+                .stops
+                .iter()
+                .map(|stop| stop.offset)
+                .collect::<Vec<_>>(),
+            [0.0, 0.75, 0.25]
+        );
+    }
+
+    #[test]
     fn native_record_work_distinguishes_metadata_preflight_and_materialization() {
-        // One stop needs no first-record preflight. Multistop fields inspect
-        // that first record once, then materialize every supplied/native record.
+        // Multistop: two original endpoint reads and fourteen endpoint scalar
+        // captures/conversions; one leading preflight scalar; one order scalar
+        // per adjacent pair. Geometry still contributes four scalars.
         for (offsets, visits, coordinates, native_count) in [
             (vec![0.5], 1, 4, 1),
-            (vec![0.0, 1.0], 3, 5, 2),
-            (vec![0.5, 1.0], 4, 5, 3),
+            (vec![0.0, 1.0], 5, 20, 2),
+            (vec![0.5, 1.0], 6, 20, 3),
         ] {
             let mut context = RenderAccountingContext::default();
             context
@@ -1256,7 +1363,7 @@ mod ordinary_gradient_accounting_tests {
         let usage = context.last_attempt().unwrap().usage();
         assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), bytes);
         assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
-        assert_eq!(usage.work(RenderWork::GradientStopVisits), 7);
+        assert_eq!(usage.work(RenderWork::GradientStopVisits), 9);
         assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
     }
 
@@ -1282,13 +1389,13 @@ mod ordinary_gradient_accounting_tests {
             ),
             (
                 RenderLimits::new()
-                    .with_work_limit(RenderWork::GradientStopVisits, 1)
+                    .with_work_limit(RenderWork::GradientStopVisits, 3)
                     .unwrap(),
-                1,
-                1,
+                3,
+                15,
                 true,
             ),
-            (RenderLimits::new().with_scratch_bytes(0), 1, 1, false),
+            (RenderLimits::new().with_scratch_bytes(0), 3, 15, false),
         ] {
             let mut context =
                 RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));

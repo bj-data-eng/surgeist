@@ -14,6 +14,7 @@ use vello_encoding::{DrawTag, PathTag, Style};
 use crate::{BackendErrorCode, Error, Result, TextRun, encode::glyph_paint_brush};
 
 use super::bounded::{self, EncodingBacking, Growth, PayloadCustody};
+use super::gradient_endpoints::{EndpointRecords, SceneBrush};
 use crate::accounting::{Account, AccountedVec, RenderPhase, RenderWork, SharedValue};
 
 use super::glyph::{
@@ -35,6 +36,7 @@ pub(crate) struct VelloScene {
     encoding: Encoding,
     backing: EncodingBacking,
     glyph_sizes: StreamOffsets,
+    endpoints: EndpointRecords,
     image_expansions: super::image_atlas::ImageExpansions,
     font_backings: Option<AccountedVec<(ResourceId, Blob<u8>)>>,
     // Drop source owners before releasing their CPU payload leases.
@@ -141,7 +143,10 @@ impl VelloScene {
         Ok(())
     }
 
-    fn brush(&mut self, brush: BrushRef<'_>, account: &Account) -> Result<()> {
+    fn brush(&mut self, brush: SceneBrush<'_>, account: &Account) -> Result<()> {
+        let SceneBrush { brush, endpoints } = brush;
+        let word = self.encoding.draw_data.len();
+        let tag_index = self.encoding.draw_tags.len();
         self.backing
             .reserve(&mut self.encoding, bounded::brush_growth(brush), account)?;
         account.work(RenderWork::PaintVisits, 1)?;
@@ -155,6 +160,16 @@ impl VelloScene {
                 .keep(account.import_image_data(image.image)?, account)?;
         }
         self.encoding.encode_brush(brush, 1.0);
+        if let Some(endpoints) = endpoints {
+            account.work(RenderWork::ResourceProbes, 1)?;
+            let Some([tag]) = self.encoding.draw_tags.get(tag_index..) else {
+                return Err(Error::new(
+                    BackendErrorCode::RenderFailed,
+                    "native brush draw-record count changed",
+                ));
+            };
+            self.endpoints.capture(word, endpoints, *tag, account)?;
+        }
         Ok(())
     }
 
@@ -180,7 +195,7 @@ impl VelloScene {
     pub(crate) fn fill_elements<'a>(
         &mut self,
         transform: kurbo::Affine,
-        brush: impl Into<BrushRef<'a>>,
+        brush: impl Into<SceneBrush<'a>>,
         brush_transform: Option<kurbo::Affine>,
         elements: &[kurbo::PathEl],
         account: &Account,
@@ -199,7 +214,7 @@ impl VelloScene {
         &mut self,
         style: Fill,
         transform: kurbo::Affine,
-        brush: BrushRef<'_>,
+        brush: SceneBrush<'_>,
         brush_transform: Option<kurbo::Affine>,
         elements: &[kurbo::PathEl],
         account: &Account,
@@ -220,7 +235,7 @@ impl VelloScene {
         &mut self,
         style: Fill,
         transform: kurbo::Affine,
-        brush: impl Into<BrushRef<'a>>,
+        brush: impl Into<SceneBrush<'a>>,
         brush_transform: Option<kurbo::Affine>,
         shape: &impl kurbo::Shape,
         account: &Account,
@@ -240,7 +255,7 @@ impl VelloScene {
         &mut self,
         style: &kurbo::Stroke,
         transform: kurbo::Affine,
-        brush: impl Into<BrushRef<'a>>,
+        brush: impl Into<SceneBrush<'a>>,
         brush_transform: Option<kurbo::Affine>,
         shape: &impl kurbo::Shape,
         account: &Account,
@@ -427,6 +442,7 @@ impl VelloScene {
                 &self.encoding,
                 &self.image_expansions,
                 &self.glyph_sizes,
+                self.endpoints.as_slice(),
                 parameters,
                 &account,
             )
@@ -548,7 +564,7 @@ impl VelloScene {
             .patches
             .push(Patch::GlyphRun { index });
         let first_patch = self.encoding.resources.patches.len();
-        self.brush(brush.as_ref(), account)?;
+        self.brush(brush.scene_brush(), account)?;
         if let Some((source_id, expansion)) = image_expansion {
             self.mark_image_expansion(first_patch, source_id, expansion, account)?;
         }
@@ -673,7 +689,7 @@ impl VelloScene {
             x += 1.0;
         }
         path.finish(true);
-        self.brush(BrushRef::Solid(peniko::Color::BLACK), account)
+        self.brush(BrushRef::Solid(peniko::Color::BLACK).into(), account)
     }
 
     #[cfg(test)]
