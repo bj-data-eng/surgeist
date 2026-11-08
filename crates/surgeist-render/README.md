@@ -9,6 +9,11 @@ It requires a compatible GPU; browser execution and application/window lifecycle
 belong to the integrating host. The current style-facing exports and intended
 crate boundary are described in the [architecture guide](docs/explanation.md).
 
+Layers support all twelve separable numeric-sRGB blend functions on both GPU
+routes, with source-over composition, plus the existing additive composition
+choice. [Layer blending](docs/reference.md#layer-blending) describes alpha,
+endpoint rules and the remaining composition boundaries.
+
 `FontData` accepts raw OpenType, collections, WOFF and WOFF2 through
 `surgeist-font`. `FontData::prepare_glyph_run` admits immutable glyph resources
 without a GPU.

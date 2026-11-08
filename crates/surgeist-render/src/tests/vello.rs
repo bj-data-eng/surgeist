@@ -470,13 +470,14 @@ fn supported_mix_blend_modes_use_direct_vello_and_extra_modes_are_typed() {
         BlendMode::Overlay,
         BlendMode::Darken,
         BlendMode::Lighten,
+        BlendMode::ColorDodge,
+        BlendMode::ColorBurn,
+        BlendMode::HardLight,
+        BlendMode::SoftLight,
+        BlendMode::Difference,
+        BlendMode::Exclusion,
         BlendMode::Plus,
     ];
-    assert_eq!(
-        blend_modes.len(),
-        7,
-        "public layer BlendMode additions require encoding and reference coverage"
-    );
 
     let source = PremultipliedRgba8::try_new(192, 64, 128, 255).unwrap();
     let destination = PremultipliedRgba8::try_new(64, 192, 96, 255).unwrap();
@@ -4007,21 +4008,6 @@ fn nested_direct_vello_blend_groups_match_nested_reference_oracle() {
 
 #[test]
 fn unsupported_blend_and_composite_boundaries_remain_typed_diagnostics() {
-    let public_layer_modes = [
-        BlendMode::Normal,
-        BlendMode::Multiply,
-        BlendMode::Screen,
-        BlendMode::Overlay,
-        BlendMode::Darken,
-        BlendMode::Lighten,
-        BlendMode::Plus,
-    ];
-    assert_eq!(
-        public_layer_modes.len(),
-        7,
-        "Task 6 should not expand layer BlendMode without encoding and tests"
-    );
-
     for mode in [
         BackgroundBlendMode::Multiply,
         BackgroundBlendMode::Screen,

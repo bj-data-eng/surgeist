@@ -243,7 +243,10 @@ impl Default for Layer {
 
 /// The compositing operation used to combine a layer with its backdrop.
 ///
-/// The default is [`Self::Normal`].
+/// Mixing modes operate on straight numeric-sRGB components, then use
+/// source-over composition with backdrop-alpha modulation. [`Self::Plus`] is
+/// the separate additive composition choice. The default is [`Self::Normal`].
+/// Arbitrary Porter-Duff operator selection is not part of this layer API.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum BlendMode {
     /// Standard source-over compositing.
@@ -259,6 +262,18 @@ pub enum BlendMode {
     Darken,
     /// Select the lighter source or backdrop contribution.
     Lighten,
+    /// Brighten the backdrop with guarded straight-color division.
+    ColorDodge,
+    /// Darken the backdrop with guarded straight-color division.
+    ColorBurn,
+    /// Select multiply or screen from the straight source component.
+    HardLight,
+    /// Apply the polynomial/square-root soft-light curve.
+    SoftLight,
+    /// Take the absolute difference of straight source and backdrop components.
+    Difference,
+    /// Apply the lower-contrast straight-color exclusion function.
+    Exclusion,
     /// Add source and backdrop contributions using plus composition.
     Plus,
 }

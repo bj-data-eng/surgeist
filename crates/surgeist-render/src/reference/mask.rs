@@ -47,7 +47,13 @@ impl PremultipliedRgba8 {
             | BlendMode::Screen
             | BlendMode::Overlay
             | BlendMode::Darken
-            | BlendMode::Lighten => self.mix_blend_over(destination, mode),
+            | BlendMode::Lighten
+            | BlendMode::ColorDodge
+            | BlendMode::ColorBurn
+            | BlendMode::HardLight
+            | BlendMode::SoftLight
+            | BlendMode::Difference
+            | BlendMode::Exclusion => self.mix_blend_over(destination, mode),
         }
     }
 
@@ -473,10 +479,50 @@ fn blend_straight_channel(source: f64, destination: f64, mode: BlendMode) -> f64
         }
         BlendMode::Darken => source.min(destination),
         BlendMode::Lighten => source.max(destination),
+        BlendMode::ColorDodge => {
+            if destination == 0.0 {
+                0.0
+            } else if source == 1.0 {
+                1.0
+            } else {
+                (destination / (1.0 - source)).min(1.0)
+            }
+        }
+        BlendMode::ColorBurn => {
+            if destination == 1.0 {
+                1.0
+            } else if source == 0.0 {
+                0.0
+            } else {
+                1.0 - ((1.0 - destination) / source).min(1.0)
+            }
+        }
+        BlendMode::HardLight => {
+            if source <= 0.5 {
+                2.0 * source * destination
+            } else {
+                1.0 - 2.0 * (1.0 - source) * (1.0 - destination)
+            }
+        }
+        BlendMode::SoftLight => {
+            if source <= 0.5 {
+                destination - (1.0 - 2.0 * source) * destination * (1.0 - destination)
+            } else {
+                let curve = if destination <= 0.25 {
+                    ((16.0 * destination - 12.0) * destination + 4.0) * destination
+                } else {
+                    destination.sqrt()
+                };
+                destination + (2.0 * source - 1.0) * (curve - destination)
+            }
+        }
+        BlendMode::Difference => (destination - source).abs(),
+        BlendMode::Exclusion => destination + source - 2.0 * destination * source,
         BlendMode::Normal | BlendMode::Plus => {
             unreachable!("normal and plus are handled before mix blend math")
         }
     }
+    .clamp(0.0, 1.0)
 }
 
 const fn scale_channel_by_alpha(channel: u8, alpha: u8) -> u8 {
@@ -505,4 +551,94 @@ pub(crate) fn execute_transitional_resolved_mask_bridge_for_test(
     let source = straight_rgba8_image_buffer_to_premultiplied_rgba8_reference(source)?;
     let masked = source.apply_resolved_alpha_mask(source_bounds, mask.image(), mask.bounds())?;
     premultiplied_rgba8_reference_to_straight_rgba8_image_buffer(&masked)
+}
+
+#[cfg(test)]
+mod separable_tests {
+    use super::*;
+
+    #[test]
+    fn reference_separable_division_guards_preserve_corner_precedence() {
+        for (mode, source, backdrop, expected) in [
+            (BlendMode::ColorDodge, 1.0, 0.0, 0.0),
+            (BlendMode::ColorDodge, 1.0, 0.25, 1.0),
+            (BlendMode::ColorDodge, 0.5, 0.25, 0.5),
+            (BlendMode::ColorDodge, 0.5, 0.75, 1.0),
+            (BlendMode::ColorBurn, 0.0, 1.0, 1.0),
+            (BlendMode::ColorBurn, 0.0, 0.75, 0.0),
+            (BlendMode::ColorBurn, 0.5, 0.75, 0.5),
+            (BlendMode::ColorBurn, 0.5, 0.25, 0.0),
+        ] {
+            assert_eq!(blend_straight_channel(source, backdrop, mode), expected);
+        }
+    }
+
+    #[test]
+    fn reference_separable_light_thresholds_match_independent_fraction_anchors() {
+        // Independently evaluated Compositing 1 equations. Values on both sides
+        // of each threshold distinguish branches that agree at equality.
+        for (mode, source, backdrop, expected) in [
+            (BlendMode::HardLight, 0.25, 0.25, 0.125),
+            (BlendMode::HardLight, 0.5, 0.25, 0.25),
+            (BlendMode::HardLight, 0.75, 0.25, 0.625),
+            (BlendMode::Overlay, 0.75, 0.25, 0.375),
+            (BlendMode::Overlay, 0.25, 0.75, 0.625),
+            (BlendMode::SoftLight, 0.75, 0.125, 0.234375),
+            (BlendMode::SoftLight, 0.75, 0.25, 0.375),
+            (BlendMode::SoftLight, 0.75, 0.5625, 0.65625),
+            (BlendMode::SoftLight, 0.25, 0.25, 0.15625),
+            (BlendMode::SoftLight, 0.5, 0.25, 0.25),
+            (BlendMode::SoftLight, 1.0, 0.0, 0.0),
+            (BlendMode::SoftLight, 1.0, 1.0, 1.0),
+        ] {
+            assert_eq!(blend_straight_channel(source, backdrop, mode), expected);
+        }
+    }
+
+    #[test]
+    fn reference_separable_difference_and_exclusion_preserve_distinct_channels() {
+        for (source, backdrop, difference, exclusion) in [
+            (0.75, 0.25, 0.5, 0.625),
+            (0.25, 0.75, 0.5, 0.625),
+            (0.5, 0.5, 0.0, 0.5),
+            (0.75, 0.0, 0.75, 0.75),
+            (0.75, 1.0, 0.25, 0.25),
+        ] {
+            assert_eq!(
+                blend_straight_channel(source, backdrop, BlendMode::Difference),
+                difference
+            );
+            assert_eq!(
+                blend_straight_channel(source, backdrop, BlendMode::Exclusion),
+                exclusion
+            );
+        }
+    }
+
+    #[test]
+    fn reference_separable_transparent_edges_keep_premultiplied_inputs() {
+        let source = PremultipliedRgba8::try_new(96, 32, 64, 128).unwrap();
+        let backdrop = PremultipliedRgba8::try_new(32, 96, 64, 128).unwrap();
+        for mode in [
+            BlendMode::ColorDodge,
+            BlendMode::ColorBurn,
+            BlendMode::HardLight,
+            BlendMode::SoftLight,
+            BlendMode::Difference,
+            BlendMode::Exclusion,
+        ] {
+            assert_eq!(
+                source.blend_over(PremultipliedRgba8::TRANSPARENT, mode),
+                source
+            );
+            assert_eq!(
+                PremultipliedRgba8::TRANSPARENT.blend_over(backdrop, mode),
+                backdrop
+            );
+            assert_eq!(
+                PremultipliedRgba8::TRANSPARENT.blend_over(PremultipliedRgba8::TRANSPARENT, mode),
+                PremultipliedRgba8::TRANSPARENT
+            );
+        }
+    }
 }

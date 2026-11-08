@@ -6,6 +6,7 @@ mod image_sampling_mask;
 mod model;
 mod outline;
 mod platform;
+mod separable;
 mod style;
 mod support;
 mod surface;
