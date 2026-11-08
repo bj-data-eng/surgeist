@@ -382,6 +382,7 @@ impl Module {
         context: ContextAccess<'_>,
     ) -> JsResult<Self> {
         let context = context.into_owner();
+        context.check_execution_stop()?;
         let realm = Self::resolve_realm(realm, context)?;
         let path = src.path().map(Path::to_path_buf);
 
@@ -418,6 +419,7 @@ impl Module {
         context: ContextAccess<'_>,
     ) -> JsResult<Self> {
         let context = context.into_owner();
+        context.check_execution_stop()?;
         let realm = Self::resolve_realm(realm, context)?;
         let names = export_names.iter().cloned().collect();
         let synth = SyntheticModule::new(names, &evaluation_steps);
@@ -436,6 +438,7 @@ impl Module {
     /// Returns a `TypeError` if the value belongs to another runtime or the heap rejects the module.
     pub fn from_value_as_default(value: JsValue, context: ContextAccess<'_>) -> JsResult<Self> {
         let context = context.into_owner();
+        context.check_execution_stop()?;
         Module::synthetic(
             &[js_string!("default")],
             SyntheticModuleInitializer::from_fn_with_captures(
@@ -465,6 +468,7 @@ impl Module {
     /// This will return an error if the JSON string is invalid or cannot be converted.
     pub fn parse_json(json: JsString, context: ContextAccess<'_>) -> JsResult<Self> {
         let context = context.into_owner();
+        context.check_execution_stop()?;
         let value = builtins::Json::parse(&JsValue::undefined(), &[json.into()], context)?;
         Self::from_value_as_default(value, context.access())
     }
@@ -956,6 +960,7 @@ pub trait IntoJsModule {
 
 impl<T: IntoIterator<Item = (JsString, NativeFunction)> + Clone> IntoJsModule for T {
     fn into_js_module(self, mut context: ContextAccess<'_>) -> JsResult<Module> {
+        context.reborrow().into_owner().check_execution_stop()?;
         let (names, fns): (Vec<_>, Vec<_>) = self.into_iter().unzip();
         let exports = names.clone();
 
