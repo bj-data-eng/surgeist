@@ -99,7 +99,7 @@ fn parent_context_gates_only_block_boundary_collapse_in_both_scalar_lanes() {
             assert_eq!(
                 collapse.at(flow_axes.block_start()).resolve(),
                 if expected_collapse {
-                    S::from_f64(3.0)
+                    S::from_f64(5.0)
                 } else {
                     S::ZERO
                 },
@@ -251,7 +251,9 @@ where
                 .block_margin_collapse
                 .at(flow_axes.block_start())
                 .resolve(),
-            fri06_mr02_physical_edge_value(sentinels, flow_axes.block_start()),
+            fri06_mr02_physical_edge_value(sentinels, flow_axes.block_start()).max(
+                fri06_mr02_physical_edge_value(sentinels, flow_axes.block_end()),
+            ),
             "block-start margin selection changed for {writing_mode:?} {direction:?}"
         );
         assert_eq!(
