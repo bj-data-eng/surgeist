@@ -480,30 +480,30 @@ impl<'a> HtmlInputSanitizationCursor<'a> {
         matches!(self.step, SanitizerStep::Done)
     }
     /// Charges the work of the next step, as one schema change, and charges nothing once the
-    /// cursor is done. A caller that charges work of its own between this charge and the step
-    /// calls this, then `advance_charged`.
+    /// cursor is done. The returned step is the only way to perform a step after charging
+    /// separately, for a caller that charges work of its own between this charge and the step.
+    /// Dropping it performs nothing.
     pub fn charge_next<C: Charge<HtmlWork, HtmlResource>>(
-        &self,
+        &mut self,
         charge: &mut C,
-    ) -> Result<(), C::Stop> {
-        match self.required_work() {
-            Some(work) => charge.charge(&[work.change()]),
-            None => Ok(()),
+    ) -> Result<HtmlInputChargedStep<'_, 'a>, C::Stop> {
+        if let Some(work) = self.required_work() {
+            charge.charge(&[work.change()])?;
         }
+        Ok(HtmlInputChargedStep { cursor: self })
     }
-    /// Charges the next step's work, then performs the step. See `advance_charged` for the
-    /// result.
+    /// Charges the next step's work, then performs the step. See
+    /// [`HtmlInputChargedStep::advance`] for the result.
     pub fn advance<C: Charge<HtmlWork, HtmlResource>>(
         &mut self,
         charge: &mut C,
     ) -> Result<Option<HtmlInputRetainedRange>, C::Stop> {
-        self.charge_next(charge)?;
-        Ok(self.advance_charged())
+        Ok(self.charge_next(charge)?.advance())
     }
-    /// Performs one step whose work `charge_next` has charged. It returns a retained source
-    /// interval when the step emits one and `None` otherwise, including after the cursor is done.
-    /// An Email list yields each token and each separating comma as its own interval.
-    pub fn advance_charged(&mut self) -> Option<HtmlInputRetainedRange> {
+    /// Performs one step whose work has been charged. It returns a retained source interval when
+    /// the step emits one and `None` otherwise, including after the cursor is done. An Email list
+    /// yields each token and each separating comma as its own interval.
+    fn step(&mut self) -> Option<HtmlInputRetainedRange> {
         match &mut self.step {
             SanitizerStep::Number(cursor) => {
                 cursor.advance();
@@ -944,6 +944,22 @@ pub(crate) enum HtmlInputRuleWork {
     CompareValueUnits,
     /// One source UTF-16 unit used by a sanitizer boundary decision.
     InspectValueUnit,
+}
+
+/// A step of an [`HtmlInputSanitizationCursor`] whose work has been charged. Only
+/// [`HtmlInputSanitizationCursor::charge_next`] makes one, it borrows the cursor, and performing
+/// it consumes it, so a step cannot be performed without its charge or twice for one charge.
+#[derive(Debug)]
+#[must_use = "a charged step performs nothing until it is advanced"]
+pub struct HtmlInputChargedStep<'c, 'a> {
+    cursor: &'c mut HtmlInputSanitizationCursor<'a>,
+}
+impl HtmlInputChargedStep<'_, '_> {
+    /// Performs the charged step. It returns a retained source interval when the step emits one
+    /// and `None` otherwise, including after the cursor is done.
+    pub fn advance(self) -> Option<HtmlInputRetainedRange> {
+        self.cursor.step()
+    }
 }
 
 impl HtmlInputRuleWork {

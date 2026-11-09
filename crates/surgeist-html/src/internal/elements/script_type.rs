@@ -280,8 +280,8 @@ enum State<'a> {
     Done(Option<HtmlScriptKind>),
 }
 
-/// Stack-only borrowed cursor. Each `advance` follows its `required_work`
-/// admission. Raw units are read only by advance, never by credit inspection.
+/// Stack-only borrowed cursor. Each `advance` charges the work of its action first.
+/// Raw units are read only by advance, never by credit inspection.
 /// Ordinary native reports use the same actions under their ordinary contract.
 /// Finite work: sixteen raw matches, at most two linear trim passes and sixteen
 /// stripped matches for explicit preparation, then three exact keyword matches.

@@ -325,14 +325,14 @@ fn next_input_range(
 ) -> Result<Option<surgeist_html::elements::input::HtmlInputRetainedRange>, SessionError> {
     while !cursor.is_complete() {
         // The step's work is charged first, then the parser's own writes, then the step.
-        cursor.charge_next(control)?;
+        let step = cursor.charge_next(control)?;
         payload_write::<surgeist_html::elements::input::HtmlInputSanitizationCursor<'_>>(
             control, 1,
         )?;
         payload_write::<Option<surgeist_html::elements::input::HtmlInputRetainedRange>>(
             control, 1,
         )?;
-        if let Some(range) = cursor.advance_charged() {
+        if let Some(range) = step.advance() {
             return Ok(Some(range));
         }
     }
