@@ -5,6 +5,8 @@
 #[macro_use]
 mod identity;
 mod accounting;
+#[cfg(test)]
+mod accounting_fault_tests;
 mod base;
 mod bidi;
 mod capture;

@@ -472,6 +472,17 @@ pub enum HtmlCaptureEdgeError<E> {
     /// walk ended without an answer.
     Interrupted(E),
 }
+impl<E> HtmlCaptureEdgeError<E> {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Capture(error) => error.accounting_fault(),
+            Self::Interrupted(_) => None,
+        }
+    }
+}
 impl<E> From<HtmlCaptureError> for HtmlCaptureEdgeError<E> {
     fn from(error: HtmlCaptureError) -> Self {
         Self::Capture(error)
@@ -558,6 +569,59 @@ pub enum HtmlCaptureError {
     ChargeProtocol,
     InvalidFragmentScriptingMode(HtmlParserScriptingMode),
     UnsupportedExecution(HtmlParserScriptingMode),
+}
+impl HtmlCaptureError {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Accounting(fault) => Some(*fault),
+            Self::NotHtmlLink
+            | Self::NotHtmlHyperlink
+            | Self::HyperlinkUrlAlreadyEstablished
+            | Self::HyperlinkHrefMismatch
+            | Self::LinkHistoryAlreadyEstablished
+            | Self::ForeignBuilder
+            | Self::ForeignCapture
+            | Self::WrongKind { .. }
+            | Self::MissingFact { .. }
+            | Self::UnavailableDefinitions(_)
+            | Self::ParentAlreadyEstablished
+            | Self::ChildrenAlreadyEstablished
+            | Self::ParentChildConflict
+            | Self::DuplicateChild
+            | Self::DocumentMismatch
+            | Self::AssociationAlreadyEstablished
+            | Self::FragmentAlreadyHosted
+            | Self::UnhostedFragment
+            | Self::NotHtmlTemplate
+            | Self::CannotHaveChildren(_)
+            | Self::CannotBeOrdinaryChild(_)
+            | Self::Cycle
+            | Self::InvalidDefinitionName
+            | Self::UnknownDefinition
+            | Self::CompleteRegistry
+            | Self::DocumentFactsAlreadyEstablished
+            | Self::RegistryScopeAlreadyEstablished
+            | Self::InvalidTemplateDocumentCache
+            | Self::InvalidTemplateContentsReference
+            | Self::ShadowRootCannotBeUnhosted
+            | Self::CustomElementContextAlreadyEstablished
+            | Self::CustomElementDefinitionRequired
+            | Self::CustomElementDefinitionNameMismatch
+            | Self::CustomElementDefinitionNamespaceMismatch
+            | Self::CustomElementSavedIsMismatch
+            | Self::DuplicateDefinitionName
+            | Self::NonceAlreadyEstablished
+            | Self::NonceInapplicable
+            | Self::LimitExceeded { .. }
+            | Self::RepresentationExhausted
+            | Self::ChargeProtocol
+            | Self::InvalidFragmentScriptingMode(_)
+            | Self::UnsupportedExecution(_) => None,
+        }
+    }
 }
 impl fmt::Display for HtmlCaptureError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

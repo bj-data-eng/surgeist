@@ -194,6 +194,26 @@ pub enum HtmlMediaFactsError {
     Accounting(HtmlAccountingFault),
     RepresentationExhausted,
 }
+impl HtmlMediaFactsError {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Accounting(fault) => Some(*fault),
+            Self::Capture(error) => error.accounting_fault(),
+            Self::InvalidInput
+            | Self::HostRevisionMismatch
+            | Self::GrammarRevisionMismatch
+            | Self::MatchRevisionMismatch
+            | Self::DuplicateInput(_)
+            | Self::RecordLimit
+            | Self::ByteLimit
+            | Self::WorkLimit
+            | Self::RepresentationExhausted => None,
+        }
+    }
+}
 impl ScanError for HtmlMediaFactsError {
     fn representation_exhausted() -> Self {
         Self::RepresentationExhausted

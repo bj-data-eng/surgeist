@@ -115,6 +115,24 @@ pub enum HtmlElementReferenceFactsError {
     InapplicableSubject(HtmlCaptureSubjectId),
     InvalidTarget(HtmlCaptureSubjectId),
 }
+impl HtmlElementReferenceFactsError {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Accounting(fault) => Some(*fault),
+            Self::Capture(error) => error.accounting_fault(),
+            Self::HostRevisionMismatch
+            | Self::RecordCapacity { .. }
+            | Self::ValidationWork { .. }
+            | Self::RepresentationExhausted
+            | Self::DuplicateReference { .. }
+            | Self::InapplicableSubject(_)
+            | Self::InvalidTarget(_) => None,
+        }
+    }
+}
 impl ScanError for HtmlElementReferenceFactsError {
     fn representation_exhausted() -> Self {
         Self::RepresentationExhausted

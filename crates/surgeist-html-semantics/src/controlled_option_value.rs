@@ -73,6 +73,17 @@ pub enum HtmlOptionValueControlError {
     /// reach the release and change causes; they report a defect in this crate's accounting.
     Accounting(HtmlAccountingFault),
 }
+impl HtmlOptionValueControlError {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Accounting(fault) => Some(*fault),
+            Self::Cancelled | Self::LimitExceeded { .. } | Self::RepresentationExhausted => None,
+        }
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlControlledOptionValueError {
@@ -83,6 +94,21 @@ pub enum HtmlControlledOptionValueError {
     Semantic(HtmlSemanticFailure),
     AllocationFailed,
     InvalidPhase,
+}
+impl HtmlControlledOptionValueError {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Control(error) => error.accounting_fault(),
+            Self::Capture(error) => error.accounting_fault(),
+            Self::ElementValues(error) => error.accounting_fault(),
+            Self::Context(error) => error.accounting_fault(),
+            Self::Semantic(error) => error.accounting_fault(),
+            Self::AllocationFailed | Self::InvalidPhase => None,
+        }
+    }
 }
 
 /// Usage remains available after every refused call, including setup failures.

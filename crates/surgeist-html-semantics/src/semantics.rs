@@ -1332,6 +1332,28 @@ pub enum HtmlSemanticFailureKind {
     /// The enclosing controlled OptionValue execution stopped before an action.
     ControlledOptionValue(crate::HtmlOptionValueControlError),
 }
+impl HtmlSemanticFailureKind {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Accounting(fault) => Some(*fault),
+            Self::Capture(error) => error.accounting_fault(),
+            Self::ControlledOptionValue(error) => error.accounting_fault(),
+            Self::RelationshipSelectorRequestMismatch
+            | Self::NoopenerRequestMismatch
+            | Self::Cancelled
+            | Self::LimitExceeded { .. }
+            | Self::RepresentationExhausted
+            | Self::AllocationFailed
+            | Self::ProtocolViolated
+            | Self::ContextCaptureMismatch
+            | Self::Attribute(_)
+            | Self::IntrinsicUnavailable => None,
+        }
+    }
+}
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlSemanticFailure {
     kind: HtmlSemanticFailureKind,
@@ -1341,6 +1363,11 @@ pub struct HtmlSemanticFailure {
 impl HtmlSemanticFailure {
     pub fn kind(&self) -> &HtmlSemanticFailureKind {
         &self.kind
+    }
+    /// The accounting fault of the ledger that carried the query, when the failure is one or
+    /// wraps an error that is one.
+    pub fn accounting_fault(&self) -> Option<HtmlAccountingFault> {
+        self.kind.accounting_fault()
     }
     pub fn usage(&self) -> HtmlSemanticUsage {
         self.usage
@@ -3667,5 +3694,37 @@ impl<'a> HtmlSemanticSession<'a> {
             usage: self.snapshot(),
             results,
         })
+    }
+}
+
+#[cfg(test)]
+mod accounting_fault_tests {
+    use super::*;
+
+    /// A failure and the controlled option value error that wraps it find the fault through the
+    /// failure's kind.
+    #[test]
+    fn a_semantic_failure_finds_the_fault_of_its_kind() {
+        let fault = HtmlAccountingFault::ForeignScope;
+        let failure = |kind| HtmlSemanticFailure {
+            kind,
+            usage: HtmlSemanticUsage::default(),
+            qualification: None,
+        };
+        assert_eq!(
+            failure(HtmlSemanticFailureKind::Accounting(fault)).accounting_fault(),
+            Some(fault)
+        );
+        assert_eq!(
+            failure(HtmlSemanticFailureKind::Cancelled).accounting_fault(),
+            None
+        );
+        assert_eq!(
+            crate::HtmlControlledOptionValueError::Semantic(failure(
+                HtmlSemanticFailureKind::Accounting(fault)
+            ))
+            .accounting_fault(),
+            Some(fault)
+        );
     }
 }

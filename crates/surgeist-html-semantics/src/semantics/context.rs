@@ -461,6 +461,57 @@ pub enum HtmlSemanticContextError {
     ContradictoryCustomControlAssociation(HtmlCaptureSubjectId),
     ControlsFacts(HtmlControlFactsError),
 }
+impl HtmlSemanticContextError {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Accounting(fault) => Some(*fault),
+            Self::ImageDimensionsFacts(error) => error.accounting_fault(),
+            Self::Capture(error) => error.accounting_fault(),
+            Self::ControlsFacts(error) => error.accounting_fault(),
+            Self::MediaCaptureMismatch
+            | Self::MediaHostRevisionMismatch
+            | Self::MediaRevisionMismatch
+            | Self::MicrodataFactsMismatch
+            | Self::BaseCaptureMismatch
+            | Self::BaseHostRevisionMismatch
+            | Self::BaseRevisionMismatch
+            | Self::LinkRelationshipsCaptureMismatch
+            | Self::LinkRelationshipsHostRevisionMismatch
+            | Self::LinkRelationshipsRevisionMismatch
+            | Self::ImageDimensionsCaptureMismatch
+            | Self::ImageDimensionsHostRevisionMismatch
+            | Self::ImageDimensionsRevisionMismatch
+            | Self::NaturalDimensionsCaptureMismatch
+            | Self::NaturalDimensionsHostRevisionMismatch
+            | Self::NaturalDimensionsRevisionMismatch
+            | Self::HostRevisionMismatch
+            | Self::ClassificationLimit { .. }
+            | Self::DuplicateSubject(_)
+            | Self::ParticipationLimit { .. }
+            | Self::ParticipationCaptureMismatch
+            | Self::ParticipationRevisionMismatch
+            | Self::ContradictoryParticipation(_)
+            | Self::LanguageDirectionCaptureMismatch
+            | Self::LanguageDirectionHostRevisionMismatch
+            | Self::InertCaptureMismatch
+            | Self::InertHostRevisionMismatch
+            | Self::InertRevisionMismatch
+            | Self::ControlsCaptureMismatch
+            | Self::ControlsHostRevisionMismatch
+            | Self::ElementReferencesCaptureMismatch
+            | Self::ElementReferencesHostRevisionMismatch
+            | Self::OutputDefaultsCaptureMismatch
+            | Self::OutputDefaultsHostRevisionMismatch
+            | Self::GlobalInheritanceCaptureMismatch
+            | Self::GlobalInheritanceHostRevisionMismatch
+            | Self::GlobalInheritanceRevisionMismatch
+            | Self::ContradictoryCustomControlAssociation(_) => None,
+        }
+    }
+}
 impl fmt::Display for HtmlSemanticContextError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self:?}")

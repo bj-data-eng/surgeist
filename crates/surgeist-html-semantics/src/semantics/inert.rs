@@ -147,6 +147,30 @@ pub enum HtmlInertFactError {
     InvalidBlockingDialog(HtmlCaptureSubjectId),
     DisconnectedBlockingDialog(HtmlCaptureSubjectId),
 }
+impl HtmlInertFactError {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Accounting(fault) => Some(*fault),
+            Self::Capture(error) => error.accounting_fault(),
+            Self::HostRevisionMismatch
+            | Self::RecordCapacity { .. }
+            | Self::ValidationWork { .. }
+            | Self::RepresentationExhausted
+            | Self::DuplicateSubject(_)
+            | Self::InvalidFlatRoot(_)
+            | Self::InvalidFlatParent(_)
+            | Self::DocumentMismatch(_)
+            | Self::ContradictoryConnectedness(_)
+            | Self::ContradictoryMembership(_)
+            | Self::FlatCycle(_)
+            | Self::InvalidBlockingDialog(_)
+            | Self::DisconnectedBlockingDialog(_) => None,
+        }
+    }
+}
 impl fmt::Display for HtmlInertFactError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self:?}")

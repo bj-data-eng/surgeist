@@ -244,6 +244,27 @@ pub enum HtmlControlFactsError {
     CrossTreeFormOwner(HtmlCaptureSubjectId),
     ContradictoryCustomControlAssociation(HtmlCaptureSubjectId),
 }
+impl HtmlControlFactsError {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Accounting(fault) => Some(*fault),
+            Self::Capture(error) => error.accounting_fault(),
+            Self::HostRevisionMismatch
+            | Self::RecordCapacity { .. }
+            | Self::ValidationWork { .. }
+            | Self::RepresentationExhausted
+            | Self::DuplicateSubject(_)
+            | Self::InapplicableSubject(_)
+            | Self::InvalidFormOwner(_)
+            | Self::CrossDocumentFormOwner(_)
+            | Self::CrossTreeFormOwner(_)
+            | Self::ContradictoryCustomControlAssociation(_) => None,
+        }
+    }
+}
 impl fmt::Display for HtmlControlFactsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self:?}")

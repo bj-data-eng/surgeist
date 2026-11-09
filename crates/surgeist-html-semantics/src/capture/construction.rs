@@ -230,6 +230,29 @@ pub enum HtmlConstructionCaptureError {
     /// operation's, or a change the operation does not charge. It carries the accounting fault.
     Accounting(HtmlAccountingFault),
 }
+impl HtmlConstructionCaptureError {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Accounting(fault) => Some(*fault),
+            Self::Capture(error) => error.accounting_fault(),
+            Self::ForeignResult
+            | Self::HostRevisionMismatch
+            | Self::ForeignBuilder
+            | Self::DuplicateNodeFacts
+            | Self::WrongFactRole
+            | Self::MissingNodeDocument
+            | Self::MissingShadowFacts
+            | Self::OutsideImportedClosure
+            | Self::LimitExceeded
+            | Self::RepresentationExhausted
+            | Self::AllocationFailed
+            | Self::Cancelled => None,
+        }
+    }
+}
 impl fmt::Display for HtmlConstructionCaptureError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "construction capture: {self:?}")

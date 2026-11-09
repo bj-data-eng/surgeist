@@ -59,6 +59,21 @@ pub enum HtmlEmptyGlobalRegistryError<E> {
     Capture(HtmlCaptureError),
     Interrupted(E),
 }
+impl<E> HtmlEmptyGlobalRegistryError<E> {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Accounting(fault) => Some(*fault),
+            Self::Capture(error) => error.accounting_fault(),
+            Self::FormationBytes { .. }
+            | Self::RepresentationExhausted
+            | Self::AllocationFailed
+            | Self::Interrupted(_) => None,
+        }
+    }
+}
 
 impl<E: fmt::Display> fmt::Display for HtmlEmptyGlobalRegistryError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

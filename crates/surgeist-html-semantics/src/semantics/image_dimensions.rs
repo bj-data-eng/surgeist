@@ -385,6 +385,34 @@ pub enum HtmlImageDimensionFactsError {
     Accounting(HtmlAccountingFault),
     RepresentationExhausted,
 }
+impl HtmlImageDimensionFactsError {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Accounting(fault) => Some(*fault),
+            Self::Capture(error) => error.accounting_fault(),
+            Self::HostRevisionMismatch
+            | Self::CaptureMismatch
+            | Self::RoleMismatch(_)
+            | Self::DuplicateSubject(_)
+            | Self::ResourceRevisionMissing
+            | Self::ResourceRevisionMismatch
+            | Self::ParticipationRevisionMismatch
+            | Self::UnexpectedObservation(_)
+            | Self::BindingMismatch(_)
+            | Self::InvalidOperation(_)
+            | Self::InvalidAvailability(_)
+            | Self::ContradictoryBox(_)
+            | Self::ContradictoryResource(_)
+            | Self::RecordLimit
+            | Self::ByteLimit
+            | Self::WorkLimit
+            | Self::RepresentationExhausted => None,
+        }
+    }
+}
 impl ScanError for HtmlImageDimensionFactsError {
     fn representation_exhausted() -> Self {
         Self::RepresentationExhausted

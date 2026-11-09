@@ -426,6 +426,39 @@ pub enum HtmlRelFactsError {
     InvalidSupportedToken,
     GrammarContradiction,
 }
+impl HtmlRelFactsError {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Accounting(fault) => Some(*fault),
+            Self::Capture(error) => error.accounting_fault(),
+            Self::SelectorBindingMismatch
+            | Self::IconObservationCoverage
+            | Self::IconOrderingInvalid
+            | Self::IconMediaContradiction
+            | Self::IconNotAttempted
+            | Self::HostRevisionMismatch
+            | Self::UrlRevisionMismatch
+            | Self::UrlBindingMismatch
+            | Self::RecordLimit
+            | Self::ByteLimit
+            | Self::WorkLimit
+            | Self::RepresentationExhausted
+            | Self::DuplicateDefinition
+            | Self::DuplicateObservation
+            | Self::InvalidRole
+            | Self::InvalidEffect
+            | Self::InvalidOccurrence
+            | Self::RawMismatch
+            | Self::MissingDefinition
+            | Self::CanonicalMismatch
+            | Self::InvalidSupportedToken
+            | Self::GrammarContradiction => None,
+        }
+    }
+}
 impl ScanError for HtmlRelFactsError {
     fn representation_exhausted() -> Self {
         Self::RepresentationExhausted
