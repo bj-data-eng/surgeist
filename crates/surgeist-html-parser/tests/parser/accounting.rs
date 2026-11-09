@@ -643,3 +643,40 @@ fn phase_observation_of_a_profiled_operation_that_profiles_nothing_still_charges
     assert!(report.profile().unwrap().is_none());
     assert_eq!(report.usage(), request().parse().unwrap().usage());
 }
+
+/// `< ` ten times with no DOCTYPE: ten tokenizer errors, one for each U+003C
+/// followed by U+0020 (13.2.5.6 Tag open state), and one for the missing
+/// DOCTYPE (13.2.6.4.1 "initial", "anything else").
+const TEN_ERRORS: &str = "< < < < < < < < < < ";
+
+#[test]
+fn a_host_diagnostics_cap_below_the_parse_cap_drops_diagnostics_and_the_parse_completes() {
+    let alone = HtmlDocumentParseRequest::offline(HtmlSource::utf8(TEN_ERRORS), limits())
+        .parse()
+        .unwrap();
+    assert_eq!(alone.diagnostics().len(), 11);
+    assert_eq!(alone.diagnostics().dropped(), 0);
+
+    let host_limits = HtmlLimits::from_fn(
+        |_| u64::MAX,
+        |resource| {
+            if resource == HtmlResource::Diagnostics {
+                3
+            } else {
+                u64::MAX
+            }
+        },
+    );
+    let (ledger, root) = host_with(host_limits, 3, ProfileMode::Off);
+    let hosted = HtmlDocumentParseRequest::offline(HtmlSource::utf8(TEN_ERRORS), limits())
+        .with_accounting(HtmlParseAccounting::host(ledger.clone(), root))
+        .parse()
+        .unwrap();
+    // The host retains three of the eleven, and the parse counts the rest.
+    assert_eq!(hosted.diagnostics().len(), 3);
+    assert_eq!(hosted.diagnostics().dropped(), 8);
+    assert_eq!(
+        ledger.usage(root).unwrap().live(HtmlResource::Diagnostics),
+        3
+    );
+}

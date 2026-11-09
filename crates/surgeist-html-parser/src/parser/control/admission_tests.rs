@@ -266,3 +266,127 @@ fn a_refused_record_after_a_reserve_leaves_the_ticket_releasable_for_what_was_ad
     c.release_vector(vector, ticket).unwrap();
     crate::parser::tree_builder::tests::assert_released(&c);
 }
+
+/// A control that charges `scope` of a host operation with the given caps.
+fn hosted(
+    host_limits: surgeist_html::accounting::HtmlLimits,
+    parent_tariffs: Option<surgeist_html::accounting::HtmlTariffs>,
+    parse_limits: HtmlParseLimitsBuilder,
+) -> (ParseControl, crate::accounting::RequestAccounting) {
+    let ledger = surgeist_ledger::Operation::new("host", host_limits, 8)
+        .unwrap()
+        .share();
+    let mut scope = ledger.root();
+    if let Some(tariffs) = parent_tariffs {
+        scope = ledger
+            .child(
+                scope,
+                "tenant",
+                surgeist_html::accounting::HtmlLimits::unlimited(),
+                tariffs,
+            )
+            .unwrap();
+    }
+    let request = crate::HtmlParseAccounting::host(ledger, scope).into_request();
+    let control = ParseControl::with_accounting(
+        parse_limits.finish().unwrap(),
+        HtmlParseCancellation::new(),
+        request.lease(),
+    );
+    (control, request)
+}
+
+fn host_cap_on(
+    work: Option<(HtmlWork, u64)>,
+    live: Option<(HtmlResource, u64)>,
+) -> surgeist_html::accounting::HtmlLimits {
+    surgeist_html::accounting::HtmlLimits::from_fn(
+        |dimension| match work {
+            Some((capped, cap)) if capped == dimension => cap,
+            _ => u64::MAX,
+        },
+        |dimension| match live {
+            Some((capped, cap)) if capped == dimension => cap,
+            _ => u64::MAX,
+        },
+    )
+}
+
+#[test]
+fn a_host_credit_cap_reached_in_a_batch_reports_the_hosts_total_before_it_and_the_batch_sum() {
+    let (mut c, _request) = hosted(
+        host_cap_on(Some((HtmlWork::Credits, 20)), None),
+        None,
+        builder(),
+    );
+    c.charge(HtmlParseWorkCategory::StateStep, 6).unwrap();
+    // The host holds 6 credits, the first two items fit and the third crosses its
+    // cap: the stop names the host's total before the batch and the whole batch.
+    assert_eq!(
+        c.charge_changes(&[
+            HtmlParseWorkCategory::CopyByte.change(5),
+            HtmlParseWorkCategory::InspectByte.change(7),
+            HtmlParseWorkCategory::RecordWrite.change(4),
+        ]),
+        Err(limit(HtmlParseResource::WorkCredits, 20, 6, 16))
+    );
+}
+
+#[test]
+fn a_cap_above_the_host_scope_reports_its_figures_in_the_units_it_counts() {
+    use surgeist_ledger::{Tariff, Tariffs};
+    // The root counts the host scope's work twice over.
+    let tariffs = Tariffs::from_fn(
+        |work| Tariff::new(work, 2),
+        |resource| Tariff::new(resource, 1),
+    );
+    let (mut c, _request) = hosted(
+        host_cap_on(Some((HtmlWork::Credits, 40)), None),
+        Some(tariffs),
+        builder(),
+    );
+    c.charge(HtmlParseWorkCategory::StateStep, 6).unwrap();
+    // The root holds 12 and the batch is 16 in the parse's units, 32 in its own.
+    assert_eq!(
+        c.charge_changes(&[
+            HtmlParseWorkCategory::CopyByte.change(5),
+            HtmlParseWorkCategory::InspectByte.change(7),
+            HtmlParseWorkCategory::RecordWrite.change(4),
+        ]),
+        Err(limit(HtmlParseResource::WorkCredits, 40, 12, 32))
+    );
+}
+
+#[test]
+fn a_replacement_refused_by_the_host_reports_the_hosts_value_and_the_net_growth() {
+    let (mut c, _request) = hosted(
+        host_cap_on(None, Some((HtmlResource::ManagedCapacityBytes, 150))),
+        None,
+        builder(),
+    );
+    c.set(HtmlParseResource::ManagedCapacityBytes, 100);
+    c.set(HtmlParseResource::PeakTransientBytes, 100);
+    // Replacing 40 bytes by 100 leaves 160 held in the host, over its cap of 150,
+    // and grows what it holds by 60.
+    assert_eq!(
+        c.preflight_capacity(40, 100, true),
+        Err(limit(HtmlParseResource::ManagedCapacityBytes, 150, 100, 60))
+    );
+}
+
+#[test]
+fn coalesced_storage_refused_by_the_host_reports_the_hosts_value_and_the_sum() {
+    let (mut c, _request) = hosted(
+        host_cap_on(None, Some((HtmlResource::ManagedNodes, 10))),
+        None,
+        builder(),
+    );
+    c.acquire(HtmlParseResource::ManagedNodes, 4).unwrap();
+    assert_eq!(
+        c.acquire_many(&[
+            (HtmlParseResource::ManagedNodes, 4),
+            (HtmlParseResource::ManagedNodes, 3),
+        ]),
+        Err(limit(HtmlParseResource::ManagedNodes, 10, 4, 7))
+    );
+}
