@@ -5,9 +5,12 @@
 //! dependency can write, including transient PathEncoder writes later truncated.
 
 use crate::Result;
+pub(super) use crate::accounting::PackedProducer;
+#[cfg(test)]
+pub(super) use crate::accounting::packed_size;
 use crate::accounting::{
-    Account, AccountedVec, Hold, RenderResource, RenderWork, StorageAccount, StorageContractError,
-    reserve_backing_with,
+    Account, AccountedVec, Hold, RenderResource, RenderWork, StorageContractError,
+    StorageSizing as Sizing, reserve_backing_with,
 };
 use peniko::BrushRef;
 use vello_encoding::{Encoding, StreamOffsets};
@@ -42,26 +45,6 @@ pub(super) struct Growth {
 
 pub(super) fn add(a: usize, b: usize, account: &Account) -> Result<usize> {
     Sizing::new(account, RenderResource::RetainedCpuBytes).add(a, b)
-}
-struct Sizing {
-    storage: StorageAccount,
-    resource: RenderResource,
-}
-impl Sizing {
-    fn new(account: &Account, resource: RenderResource) -> Self {
-        Self {
-            storage: account.storage(),
-            resource,
-        }
-    }
-    fn add(&self, a: usize, b: usize) -> Result<usize> {
-        a.checked_add(b)
-            .ok_or_else(|| self.storage.capacity_error(self.resource))
-    }
-    fn mul(&self, a: usize, b: usize) -> Result<usize> {
-        a.checked_mul(b)
-            .ok_or_else(|| self.storage.capacity_error(self.resource))
-    }
 }
 
 impl EncodingBacking {
@@ -305,47 +288,6 @@ pub(super) fn sum_streams(
     Ok(())
 }
 
-/// Locked Vello packed format: tags pad to 1024 bytes, then five word-aligned
-/// streams. Late glyph sizes include the exact preflight PathEncoder streams,
-/// plus one transform per occurrence and one paint transform per run.
-pub(super) fn packed_size(
-    encoding: &Encoding,
-    glyph_sizes: &StreamOffsets,
-    account: &Account,
-) -> Result<usize> {
-    let sizing = Sizing::new(account, RenderResource::RetainedCpuBytes);
-    let open = encoding.n_open_clips as usize;
-    let tags = sizing.add(
-        sizing.add(encoding.path_tags.len(), glyph_sizes.path_tags)?,
-        open,
-    )?;
-    let mut size = sizing.mul(sizing.add(tags, 1023)? / 1024, 1024)?;
-    for words in [
-        sizing.add(encoding.path_data.len(), glyph_sizes.path_data)?,
-        sizing.add(
-            sizing.add(encoding.draw_tags.len(), glyph_sizes.draw_tags)?,
-            open,
-        )?,
-        sizing.add(encoding.draw_data.len(), glyph_sizes.draw_data)?,
-    ] {
-        size = sizing.add(size, sizing.mul(words, 4)?)?;
-    }
-    size = sizing.add(
-        size,
-        sizing.mul(
-            sizing.add(encoding.transforms.len(), glyph_sizes.transforms)?,
-            std::mem::size_of::<vello_encoding::Transform>(),
-        )?,
-    )?;
-    sizing.add(
-        size,
-        sizing.mul(
-            sizing.add(encoding.styles.len(), glyph_sizes.styles)?,
-            std::mem::size_of::<vello_encoding::Style>(),
-        )?,
-    )
-}
-
 /// Imported immutable payload leases outlive the forward attempt without keeping
 /// its ledger or callbacks alive. Registry identities deduplicate shared sources.
 #[derive(Default)]
@@ -394,95 +336,6 @@ impl std::ops::Deref for OwnedEncoding {
 impl Drop for OwnedEncoding {
     fn drop(&mut self) {
         std::mem::take(&mut self.backing).dispose(std::mem::take(&mut self.encoding));
-    }
-}
-
-/// Locked serialization owns one intact admitted vector, bound to its actual
-/// immutable encoding and the size calculated from that encoding's streams.
-pub(super) struct PackedProducer<'a> {
-    encoding: &'a Encoding,
-    expected_size: usize,
-    values: AccountedVec<u8>,
-    account: &'a Account,
-}
-
-/// The dependency's upload type is unnameable outside its private module. This
-/// view borrows its actual upload slice without another backing or upload copy.
-pub(super) struct ResolvedImages<'a> {
-    pub(super) width: u32,
-    pub(super) height: u32,
-    pub(super) images: &'a [(peniko::ImageData, u32, u32)],
-}
-
-pub(super) struct PackedResolution<'a> {
-    packed: AccountedVec<u8>,
-    layout: vello_encoding::Layout,
-    ramps: vello_encoding::Ramps<'a>,
-    images: ResolvedImages<'a>,
-}
-
-impl<'a> PackedResolution<'a> {
-    pub(super) fn into_parts(
-        self,
-    ) -> (
-        AccountedVec<u8>,
-        vello_encoding::Layout,
-        vello_encoding::Ramps<'a>,
-        ResolvedImages<'a>,
-    ) {
-        (self.packed, self.layout, self.ramps, self.images)
-    }
-
-    #[cfg(test)]
-    pub(super) fn packed_for_test(&self) -> &AccountedVec<u8> {
-        &self.packed
-    }
-}
-
-impl<'a> PackedProducer<'a> {
-    pub(super) fn new(
-        encoding: &'a Encoding,
-        glyph_sizes: &StreamOffsets,
-        account: &'a Account,
-    ) -> Result<Self> {
-        let expected_size = packed_size(encoding, glyph_sizes, account)?;
-        Ok(Self {
-            encoding,
-            expected_size,
-            values: account.retained(expected_size.max(4))?,
-            account,
-        })
-    }
-
-    pub(super) fn resolve<'r>(
-        mut self,
-        resolver: &'r mut vello_encoding::Resolver,
-    ) -> Result<PackedResolution<'r>> {
-        let (layout, ramps, images) = self.values.with_producer(self.expected_size, |values| {
-            self.account
-                .work(RenderWork::SerializedBytes, self.expected_size)?;
-            let (layout, ramps, images) = resolver.resolve(self.encoding, values);
-            Ok((
-                layout,
-                ramps,
-                ResolvedImages {
-                    width: images.width,
-                    height: images.height,
-                    images: images.images,
-                },
-            ))
-        })?;
-        Ok(PackedResolution {
-            packed: self.values,
-            layout,
-            ramps,
-            images,
-        })
-    }
-
-    #[cfg(test)]
-    pub(super) fn capacity(&self) -> usize {
-        self.values.capacity()
     }
 }
 
@@ -623,7 +476,7 @@ pub(super) fn encode_elements(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::accounting::{RenderAccountingContext, RenderAttemptKind};
+    use crate::accounting::{RenderAccountingContext, RenderAttemptKind, StorageAccount};
     use kurbo::PathEl::{ClosePath, CurveTo, LineTo, MoveTo, QuadTo};
 
     #[test]
@@ -908,15 +761,15 @@ mod tests {
             let packed = PackedProducer::new(encoding, &StreamOffsets::default(), account)?;
             let capacity = packed.capacity();
             let mut resolver = vello_encoding::Resolver::default();
-            let resolved = packed.resolve(&mut resolver)?;
-            assert_eq!(resolved.packed.len(), 1088);
-            assert_eq!(resolved.packed.capacity(), capacity);
-            assert_eq!(resolved.layout.path_data_base, 256);
+            let (packed, layout, _, _) = packed.resolve(&mut resolver)?.into_parts();
+            assert_eq!(packed.len(), 1088);
+            assert_eq!(packed.capacity(), capacity);
+            assert_eq!(layout.path_data_base, 256);
             let expected_points: Vec<_> = [1.0_f32, 2.0, 3.0, 4.0, 1.0, 2.0]
                 .into_iter()
                 .flat_map(f32::to_le_bytes)
                 .collect();
-            assert_eq!(&resolved.packed[1024..1048], expected_points);
+            assert_eq!(&packed[1024..1048], expected_points);
             assert_eq!(account.work_count(RenderWork::SerializedBytes)?, 1088);
             Ok(())
         });
@@ -929,9 +782,9 @@ mod tests {
             let producer = PackedProducer::new(&encoding, &StreamOffsets::default(), account)?;
             assert!(producer.capacity() >= 4);
             let mut resolver = vello_encoding::Resolver::default();
-            let resolved = producer.resolve(&mut resolver)?;
-            assert!(resolved.packed.is_empty());
-            assert_eq!(resolved.layout.n_paths, 0);
+            let (packed, layout, _, _) = producer.resolve(&mut resolver)?.into_parts();
+            assert!(packed.is_empty());
+            assert_eq!(layout.n_paths, 0);
             assert_eq!(account.work_count(RenderWork::SerializedBytes)?, 0);
             Ok(())
         });
@@ -990,8 +843,8 @@ mod tests {
             let producer =
                 PackedProducer::new(&owned.encoding, &StreamOffsets::default(), account)?;
             let mut resolver = vello_encoding::Resolver::default();
-            let resolved = producer.resolve(&mut resolver)?;
-            assert_eq!(resolved.packed.len(), 1088);
+            let (packed, _, _, _) = producer.resolve(&mut resolver)?.into_parts();
+            assert_eq!(packed.len(), 1088);
             Ok(())
         });
     }

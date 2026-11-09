@@ -6,6 +6,32 @@ use crate::GlyphPreparationError;
 use crate::Result;
 use std::ops::{Deref, DerefMut};
 
+mod packed;
+pub(crate) use packed::PackedProducer;
+#[cfg(test)]
+pub(crate) use packed::packed_size;
+
+pub(crate) struct StorageSizing {
+    storage: StorageAccount,
+    resource: RenderResource,
+}
+impl StorageSizing {
+    pub(crate) fn new(account: &Account, resource: RenderResource) -> Self {
+        Self {
+            storage: account.storage(),
+            resource,
+        }
+    }
+    pub(crate) fn add(&self, a: usize, b: usize) -> Result<usize> {
+        a.checked_add(b)
+            .ok_or_else(|| self.storage.capacity_error(self.resource))
+    }
+    pub(crate) fn mul(&self, a: usize, b: usize) -> Result<usize> {
+        a.checked_mul(b)
+            .ok_or_else(|| self.storage.capacity_error(self.resource))
+    }
+}
+
 /// A Render consumer violated its owned-vector contract. These are not defects
 /// fabricated on behalf of Ledger; provider failures retain their own identity.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -814,7 +840,7 @@ impl<T> AccountedVec<T> {
     /// The locked native producer temporarily borrows this intact owner. A
     /// callback's original failure takes priority; successful calls must retain
     /// admitted capacity and produce exactly their qualified serialized length.
-    pub(crate) fn with_producer<R>(
+    fn with_producer<R>(
         &mut self,
         expected_len: usize,
         producer: impl FnOnce(&mut Vec<T>) -> Result<R>,

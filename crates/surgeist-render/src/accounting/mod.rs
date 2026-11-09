@@ -23,9 +23,11 @@ pub(crate) use generation::{
 #[cfg(test)]
 mod tests;
 pub use model::*;
+#[cfg(test)]
+pub(crate) use storage::packed_size;
 pub(crate) use storage::{
-    AccountedVec, BackedValue, Hold, OwnedBox, SharedValue, StorageAccount, StorageContractError,
-    reserve_backing_with,
+    AccountedVec, BackedValue, Hold, OwnedBox, PackedProducer, SharedValue, StorageAccount,
+    StorageContractError, StorageSizing, reserve_backing_with,
 };
 
 use crate::{Error, GlyphPreparationError, GlyphResource, GlyphRunLimits, Result};
