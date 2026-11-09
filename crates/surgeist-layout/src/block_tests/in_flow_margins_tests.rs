@@ -4936,7 +4936,7 @@ fn leading_start_component_stays_outside_minimum_parent_end_f64() {
     assert_leading_start_component_stays_outside_parent_end::<f64>();
 }
 
-fn assert_leading_component_text_lines<S: LayoutScalar>(inside_empty: bool) {
+fn assert_leading_component_text_lines<S: LayoutScalar>(inside_empty: bool, supplied_strut: bool) {
     use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
     let px = S::from_f64;
     let ordinary = NodeInputOf {
@@ -5021,10 +5021,17 @@ fn assert_leading_component_text_lines<S: LayoutScalar>(inside_empty: bool) {
             )
             .with_style(5, NodeInputOf::non_box())
             .with_layout_input(5, paragraph.text_input(5));
+        let mut binding = paragraph.binding(if inside_empty { 3 } else { 2 });
+        if supplied_strut {
+            binding.line_strut = Some(surgeist_text::LineStrut {
+                baseline: 3.0,
+                line_extent: 4.0,
+            });
+        }
         let capture = LayoutFlowInput::try_new(
             &tree,
             0,
-            vec![paragraph.binding(if inside_empty { 3 } else { 2 })],
+            vec![binding],
             WrappingInput::default(),
             Vec::new(),
         )
@@ -5040,8 +5047,18 @@ fn assert_leading_component_text_lines<S: LayoutScalar>(inside_empty: bool) {
             assert_eq!(completions.len(), 1);
             let receipt = completions[0].line.finalized_line();
             assert!(!receipt.has_in_flow_content());
-            assert_eq!(receipt.feedback().line_height, 4.0);
+            // The captured font contributes 3.2/.8; the supplied canonical
+            // strut contributes 3/1. Their union is 4.2, still nonformatted.
+            assert_eq!(
+                receipt.feedback().line_height,
+                if supplied_strut { 4.2 } else { 4.0 }
+            );
             assert_eq!(receipt.prepared_text(), paragraph.prepared);
+            let allocation = receipt.selected_line().request().line_strut;
+            assert_eq!(allocation.is_some(), supplied_strut);
+            if let Some(allocation) = allocation {
+                assert_eq!(allocation.line_extent, 4.0);
+            }
         }
         let (parent_y, parent_height, empty_height, body_y) = if !visible {
             (12.0, 10.0, 0.0, 0.0)
@@ -5076,19 +5093,19 @@ fn assert_leading_component_text_lines<S: LayoutScalar>(inside_empty: bool) {
 
 #[test]
 fn leading_component_text_inside_empty_box_f32() {
-    assert_leading_component_text_lines::<f32>(true);
+    assert_leading_component_text_lines::<f32>(true, false);
 }
 #[test]
 fn leading_component_text_inside_empty_box_f64() {
-    assert_leading_component_text_lines::<f64>(true);
+    assert_leading_component_text_lines::<f64>(true, false);
 }
 #[test]
 fn leading_component_text_between_empty_and_body_f32() {
-    assert_leading_component_text_lines::<f32>(false);
+    assert_leading_component_text_lines::<f32>(false, false);
 }
 #[test]
 fn leading_component_text_between_empty_and_body_f64() {
-    assert_leading_component_text_lines::<f64>(false);
+    assert_leading_component_text_lines::<f64>(false, false);
 }
 
 fn assert_empty_origin_with_participating_text_control<S: LayoutScalar>() {
@@ -5250,4 +5267,21 @@ fn empty_text_origin_preserves_participating_controls_f32() {
 #[test]
 fn empty_text_origin_preserves_participating_controls_f64() {
     assert_empty_origin_with_participating_text_control::<f64>();
+}
+
+#[test]
+fn leading_component_text_supplied_strut_inside_empty_box_f32() {
+    assert_leading_component_text_lines::<f32>(true, true);
+}
+#[test]
+fn leading_component_text_supplied_strut_inside_empty_box_f64() {
+    assert_leading_component_text_lines::<f64>(true, true);
+}
+#[test]
+fn leading_component_text_supplied_strut_between_empty_and_body_f32() {
+    assert_leading_component_text_lines::<f32>(false, true);
+}
+#[test]
+fn leading_component_text_supplied_strut_between_empty_and_body_f64() {
+    assert_leading_component_text_lines::<f64>(false, true);
 }
