@@ -2258,28 +2258,27 @@ mod controlled_tests {
         assert_eq!(storage.usage.peak_scratch_records, 5);
     }
 
-    /// A processing step that stops on a refused overshoot still ends with no live scratch, so the
-    /// front door's closing check holds.
+    /// A processing step whose scratch growth is refused stops with the scratch refusal and ends
+    /// with no live scratch in either scope, so the front door's closing check holds.
     #[test]
-    fn processing_after_a_refused_overshoot_ends_with_no_live_scratch() {
+    fn a_refused_scratch_growth_stops_processing_with_no_live_scratch() {
         let mut storage = Materialization::new(Some(HtmlAutocompleteMaterializationLimits {
-            scratch_records: 4,
+            scratch_records: 0,
             ..limits()
         }))
         .unwrap();
-        let tokens = storage
-            .tokens(&DocumentString::from("unknown name"))
-            .unwrap();
-        assert!(
-            storage
-                .observe_growth(5, 8, StoragePurpose::Scratch)
-                .is_err()
-        );
-        // Whether the step stops or completes, it ends with no live scratch in either scope.
-        let _ = process(
-            Some(&tokens),
-            HtmlAutocompleteMantle::Expectation,
-            &mut storage,
+        let tokens = storage.tokens(&DocumentString::from("name")).unwrap();
+        assert_eq!(
+            process(
+                Some(&tokens),
+                HtmlAutocompleteMantle::Expectation,
+                &mut storage,
+            )
+            .map(|_| ()),
+            Err(HtmlAutocompleteMaterializationError::ScratchLimit {
+                limit: 0,
+                required: 1
+            })
         );
         assert_eq!(storage.scratch, 0);
         for scope in [storage.observed, storage.caps] {
