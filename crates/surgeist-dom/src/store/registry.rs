@@ -11,7 +11,8 @@ use crate::registry::{DomRegistry, DomRegistryId};
 use surgeist_html::accounting::HtmlAccountingFault;
 
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureRegistryId, HtmlEmptyGlobalRegistryError, HtmlHostFactsRevision,
+    HtmlCapture, HtmlCaptureError, HtmlCaptureRegistryId, HtmlEmptyGlobalRegistryError,
+    HtmlHostFactsRevision,
 };
 
 #[derive(Debug)]
@@ -132,7 +133,7 @@ impl Bank {
             }
             HtmlEmptyGlobalRegistryError::AllocationFailed => DomHostedError::AllocationFailed,
             HtmlEmptyGlobalRegistryError::Accounting(fault) => hosted_accounting_error(fault),
-            HtmlEmptyGlobalRegistryError::Capture(_) => DomHostedError::UnsupportedProfile,
+            HtmlEmptyGlobalRegistryError::Capture(error) => hosted_capture_error(&error),
         })?;
         let payload_bytes = formed.retained_storage_usage().retained_bytes();
         let payload = source.retain(payload_bytes, cancel)?;
@@ -302,9 +303,38 @@ fn hosted_accounting_error(fault: HtmlAccountingFault) -> DomHostedError {
     }
 }
 
+/// The hosted outcome of a capture error of the registry formation: a ledger fault of the capture
+/// is the accounting outcome, and every other capture error is an unsupported profile.
+fn hosted_capture_error(error: &HtmlCaptureError) -> DomHostedError {
+    match error {
+        HtmlCaptureError::Accounting(fault) => hosted_accounting_error(*fault),
+        _ => DomHostedError::UnsupportedProfile,
+    }
+}
+
 #[cfg(test)]
 mod accounting_fault_tests {
     use super::*;
+
+    #[test]
+    fn a_capture_ledger_fault_of_the_formation_follows_the_accounting_outcome() {
+        assert_eq!(
+            hosted_capture_error(&HtmlCaptureError::Accounting(
+                HtmlAccountingFault::Allocation
+            )),
+            DomHostedError::AllocationFailed
+        );
+        assert_eq!(
+            hosted_capture_error(&HtmlCaptureError::Accounting(
+                HtmlAccountingFault::ReleaseUnderflow
+            )),
+            DomHostedError::Dom(DomError::HtmlChargeProtocol)
+        );
+        assert_eq!(
+            hosted_capture_error(&HtmlCaptureError::ForeignBuilder),
+            DomHostedError::UnsupportedProfile
+        );
+    }
 
     #[test]
     fn a_registry_formation_ledger_fault_is_an_allocation_failure_or_a_charge_protocol_fault() {

@@ -426,8 +426,9 @@ pub enum DomError {
     /// An HTML operation broke its accounting contract with this adapter. Either it charged a
     /// change that the DOM's work owner does not admit (a resource change, a gauge record or a
     /// dimension with no credit rate, since the DOM charges only work), or the ledger of an HTML
-    /// crate reported a fault that is not a refused limit and not a failed allocation: a release
-    /// that matches nothing held, a foreign scope, a spent scope bound or a ledger defect.
+    /// crate reported any `HtmlAccountingFault` other than a failed allocation, which is
+    /// `AllocationFailed`. Release underflow, foreign scope, spent scope bound and ledger defect
+    /// are examples.
     HtmlChargeProtocol,
     /// The processing-instruction pseudo-attribute driver and its cursor disagree about the
     /// committed names or the cursor's own replies. A driver that answers only what the cursor asks
