@@ -26,6 +26,7 @@ use std::{
 
 mod checkpoint;
 mod dimension;
+mod in_place;
 mod phase_observation;
 mod shared;
 #[cfg(test)]
@@ -567,6 +568,13 @@ impl<W: Dimension, R: Dimension> Operation<W, R> {
         if changes.is_empty() {
             return Ok(());
         }
+        if const { in_place::wide::<W, R>() }
+            && in_place::preferred::<W, R>(changes.len())
+            && let Some(checked) =
+                in_place::check(&mut self.scopes, &self.defect, scope, origin, changes)
+        {
+            return self.note(checked);
+        }
         let staged = Admission::new(self, scope)
             .stage(origin, changes)
             .map(|_| ());
@@ -625,6 +633,15 @@ impl<W: Dimension, R: Dimension> Operation<W, R> {
         origin: usize,
         changes: &[Change<W, R>],
     ) -> Result<(), Error<W, R>> {
+        // An open interval records the batch peak of every resource, which only
+        // the dense admission tracks.
+        if const { in_place::wide::<W, R>() }
+            && !self.checkpoints.configured()
+            && in_place::preferred::<W, R>(changes.len())
+            && in_place::admit(&mut self.scopes, &self.defect, scope, origin, changes)?
+        {
+            return Ok(());
+        }
         let direct = Admission::new(self, scope).stage(origin, changes)?;
         let Self {
             scopes,

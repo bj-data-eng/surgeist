@@ -192,3 +192,157 @@ fn snapshot_finding_mismatched_report_records_latches_the_defect() {
     );
     assert_latched(operation, Defect::ReportScope);
 }
+
+mod staging_stores {
+    use super::*;
+    use crate::{
+        Operation, Scope, Tariff,
+        in_place::{FORCE, Force},
+    };
+
+    crate::dimensions! {
+        enum Wk => WkTable { A, B, C, D }
+    }
+
+    crate::dimensions! {
+        enum Rs => RsTable { X, Y, Z }
+    }
+
+    /// A deterministic generator, so a failing case can be replayed.
+    struct Random(std::cell::Cell<u64>);
+
+    impl Random {
+        fn next(&self) -> u64 {
+            let mut state = self.0.get();
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            self.0.set(state);
+            state
+        }
+
+        fn below(&self, bound: u64) -> u64 {
+            self.next() % bound
+        }
+    }
+
+    fn cap(random: &Random) -> u64 {
+        match random.below(4) {
+            0 => u64::MAX,
+            1 => random.below(6),
+            _ => random.below(60),
+        }
+    }
+
+    fn work(random: &Random) -> Wk {
+        Wk::ALL[random.below(Wk::ALL.len() as u64) as usize]
+    }
+
+    fn resource(random: &Random) -> Rs {
+        Rs::ALL[random.below(Rs::ALL.len() as u64) as usize]
+    }
+
+    fn scale(random: &Random) -> u64 {
+        match random.below(12) {
+            0 => 0,
+            1 => u64::MAX / 3,
+            2 | 3 => 2,
+            4 => 3,
+            _ => 1,
+        }
+    }
+
+    /// Builds the same random scope tree from `seed` every time.
+    fn operation(seed: u64) -> (Operation<Wk, Rs>, Vec<Scope>) {
+        let random = Random(std::cell::Cell::new(seed));
+        let limit_set = |random: &Random| Limits::from_fn(|_| cap(random), |_| cap(random));
+        let mut operation = Operation::new("root", limit_set(&random), 6).unwrap();
+        let mut scopes = vec![operation.root()];
+        for _ in 0..random.below(5) {
+            let parent = scopes[random.below(scopes.len() as u64) as usize];
+            let limits = limit_set(&random);
+            let tariffs = Tariffs::from_fn(
+                |_| Tariff::new(work(&random), scale(&random)),
+                |_| Tariff::new(resource(&random), scale(&random)),
+            );
+            scopes.push(operation.child(parent, "child", limits, tariffs).unwrap());
+        }
+        (operation, scopes)
+    }
+
+    fn batch(random: &Random) -> Vec<Change<Wk, Rs>> {
+        let amount = |random: &Random| match random.below(10) {
+            0 => u64::MAX / 2,
+            1 => 0,
+            _ => random.below(9),
+        };
+        (0..random.below(11))
+            .map(|_| match random.below(3) {
+                0 => Change::Work(work(random), amount(random)),
+                1 => Change::Acquire(resource(random), amount(random)),
+                _ => Change::Release(resource(random), amount(random)),
+            })
+            .collect()
+    }
+
+    /// The result with the operation identity removed from a refused scope, so
+    /// results of two operations compare.
+    fn anonymous(result: Result<(), Error<Wk, Rs>>) -> Result<(), Error<Wk, Rs>> {
+        match result {
+            Err(Error::Refused(mut refusal)) => {
+                refusal.scope.operation = 0;
+                Err(Error::Refused(refusal))
+            }
+            other => other,
+        }
+    }
+
+    fn with<T>(store: Force, run: impl FnOnce() -> T) -> T {
+        FORCE.set(store);
+        let result = run();
+        FORCE.set(Force::Auto);
+        result
+    }
+
+    /// Every batch is accepted or refused the same way by the in-place store
+    /// and by the dense store, and leaves the same usage, peaks and direct
+    /// custody, including batches too large for the journal.
+    #[test]
+    fn the_in_place_and_dense_stores_agree_on_random_batches() {
+        let mut accepted = 0;
+        let mut refused = 0;
+        for seed in 1..=400_u64 {
+            let (mut fast, scopes) = operation(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+            let (mut slow, slow_scopes) = operation(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+            let random = Random(std::cell::Cell::new(
+                seed.wrapping_mul(0xD1B5_4A32_D192_ED03) | 1,
+            ));
+            for _ in 0..40 {
+                let position = random.below(scopes.len() as u64) as usize;
+                let (scope, twin) = (scopes[position], slow_scopes[position]);
+                let changes = batch(&random);
+                assert_eq!(
+                    anonymous(with(Force::InPlace, || fast.check_batch(scope, &changes))),
+                    anonymous(with(Force::Dense, || slow.check_batch(twin, &changes))),
+                    "seed {seed}: check"
+                );
+                let result = with(Force::InPlace, || fast.apply_batch(scope, &changes));
+                assert_eq!(
+                    anonymous(result),
+                    anonymous(with(Force::Dense, || slow.apply_batch(twin, &changes))),
+                    "seed {seed}: apply"
+                );
+                if result.is_ok() {
+                    accepted += 1;
+                } else {
+                    refused += 1;
+                }
+                for (fast, slow) in fast.scopes.iter().zip(&slow.scopes) {
+                    assert_eq!(fast.usage, slow.usage, "seed {seed}: usage");
+                    assert_eq!(fast.direct, slow.direct, "seed {seed}: direct");
+                }
+            }
+        }
+        assert!(accepted > 1_000 && refused > 1_000, "{accepted} {refused}");
+    }
+}

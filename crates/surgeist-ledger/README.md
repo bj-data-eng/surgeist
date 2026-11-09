@@ -215,6 +215,14 @@ use the same six profiling modes and 11 rounds, rotating their execution order.
 Its observer capacity column counts reserved report records and events, excluding
 the operation ledger, allocator metadata, and process memory.
 
+Run the admission cost comparison with
+`cargo bench --offline --locked -j 1 -p surgeist-ledger --bench admission`.
+It applies small batches at the root and below a capped root for a narrow and a
+wide dimension set. A small batch on a wide set changes only the values it
+touches and journals their old values, so its cost does not grow with the width
+of the sets; a refused batch is rolled back from the journal and leaves usage,
+peaks and direct custody as they were.
+
 Platforms without a supported standard clock can select untimed profiling
 or supply a monotonic source through `Operation::with_profile_clock`.
 A phase callback borrows the operation through a `Phase` view, so the ledger
