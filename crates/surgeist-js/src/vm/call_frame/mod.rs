@@ -10,7 +10,8 @@ use crate::{
     builtins::iterable::{IteratorRecord, StoredIteratorRecord},
     bytecompiler::Register,
     environments::{EnvironmentStack, StoredEnvironmentStack},
-    error::StoredJsError,
+    error::{RootingError, StoredJsError},
+    native_function::{CapturedRealm, CapturedValue, NativeCapture},
     realm::{Realm, RealmEdge},
     value::StoredValue,
     vm::{CodeBlock, SourcePath},
@@ -136,7 +137,7 @@ pub struct CallFrame {
     pub(crate) pending_exception: Option<Box<JsError>>,
 
     // Iterators and their `[[Done]]` flags that must be closed when an abrupt completion is thrown.
-    pub(crate) iterators: ThinVec<IteratorRecord>,
+    pub(crate) iterators: Vec<IteratorRecord>,
 
     // The stack of bindings being updated.
     pub(crate) binding_stack: ThinVec<BindingLocator>,
@@ -193,8 +194,8 @@ pub(crate) struct StoredCallFrame {
 }
 
 impl StoredCallFrame {
-    pub(crate) fn to_frame(&self) -> CallFrame {
-        CallFrame {
+    pub(crate) fn to_frame(&self) -> Result<CallFrame, RootingError> {
+        Ok(CallFrame {
             code_block: self.code_block.clone(),
             execution: self.execution.clone(),
             module_evaluation: self.module_evaluation.clone(),
@@ -208,27 +209,39 @@ impl StoredCallFrame {
             argument_count: self.argument_count,
             env_fp: self.env_fp,
             rp: self.rp,
-            return_value: self.return_value.to_value(),
+            return_value: JsValue::restore(&CapturedValue(self.return_value.clone()))?,
             pending_exception: self
                 .pending_exception
                 .as_deref()
-                .map(|error| Box::new(error.to_error())),
-            iterators: self
-                .iterators
-                .iter()
-                .map(StoredIteratorRecord::to_iterator)
-                .collect(),
+                .map(|error| error.to_error().map(Box::new))
+                .transpose()?,
+            iterators: {
+                self.iterators
+                    .len()
+                    .checked_mul(std::mem::size_of::<IteratorRecord>())
+                    .filter(|bytes| *bytes <= isize::MAX as usize)
+                    .ok_or(RootingError::SizeOverflow)?;
+                let mut iterators = Vec::new();
+                iterators
+                    .try_reserve_exact(self.iterators.len())
+                    .map_err(|_| RootingError::Allocation)?;
+                for iterator in &self.iterators {
+                    iterators.push(iterator.to_iterator()?);
+                }
+                iterators
+            },
             binding_stack: self.binding_stack.clone(),
             annex_b_eligible_names: self.annex_b_eligible_names.clone(),
             loop_iteration_count: self.loop_iteration_count,
             active_runnable: self
                 .active_runnable
                 .as_ref()
-                .map(StoredActiveRunnable::to_runnable),
-            environments: self.environments.to_stack(),
-            realm: Realm::from_edge(self.realm.clone()),
+                .map(StoredActiveRunnable::to_runnable)
+                .transpose()?,
+            environments: self.environments.to_stack()?,
+            realm: Realm::restore(&CapturedRealm(self.realm.clone()))?,
             flags: self.flags,
-        }
+        })
     }
 }
 
@@ -459,7 +472,7 @@ impl CallFrame {
             rp: 0,
             return_value: JsValue::undefined(),
             pending_exception: None,
-            iterators: ThinVec::new(),
+            iterators: Vec::new(),
             binding_stack: ThinVec::new(),
             annex_b_eligible_names: Vec::new(),
             code_block,
@@ -692,7 +705,13 @@ mod tests {
         .with_annex_b_eligibility(vec![name.clone()]);
         assert!(frame.annex_b_global_eligible(&name));
         assert!(frame.clone().annex_b_global_eligible(&name));
-        assert!(frame.stored().to_frame().annex_b_global_eligible(&name));
+        assert!(
+            frame
+                .stored()
+                .to_frame()
+                .unwrap()
+                .annex_b_global_eligible(&name)
+        );
         assert!(!context.vm.frame().annex_b_global_eligible(&name));
     }
 }

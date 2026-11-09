@@ -59,7 +59,7 @@ impl HeadersIterator {
     fn next(&mut self, mut context: ContextAccess<'_>) -> JsResult<JsValue> {
         let item_kind = self.iteration_kind;
 
-        let headers = JsObject::<JsHeaders>::restore(&self.iterated_headers);
+        let headers = JsObject::<JsHeaders>::restore(&self.iterated_headers)?;
         let element = headers
             .borrow()
             .data()

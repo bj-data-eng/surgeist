@@ -967,7 +967,7 @@ fn suspended_and_cloned_frames_retain_their_actual_scope_activation() {
         .unwrap()
         .validate_dispatch(&frame)
         .unwrap();
-    for resumed in [frame.clone(), frame.stored().to_frame()] {
+    for resumed in [frame.clone(), frame.stored().to_frame().unwrap()] {
         assert!(std::rc::Rc::ptr_eq(resumed.code_block(), &code));
         assert_eq!(resumed.constant_scope(0).unwrap().handle(), handle);
         resumed.require_executable().unwrap();

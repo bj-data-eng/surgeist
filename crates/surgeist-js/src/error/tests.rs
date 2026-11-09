@@ -278,7 +278,7 @@ fn scope_state_failure_stays_a_host_error_across_storage_and_erasure() {
             Some(&EngineError::ScopeAnalysis(failure))
         );
         assert!(error.as_native().is_none());
-        let restored = error.clone().into_stored().to_error();
+        let restored = error.clone().into_stored().to_error().unwrap();
         assert_eq!(restored, error);
         let context = &mut Context::default();
         assert_eq!(restored.clone().into_opaque(context.access()), Err(error));
@@ -339,7 +339,7 @@ fn invocation_authority_failures_remain_uncatchable_host_errors() {
     ] {
         let error = JsError::from(failure);
         assert!(!error.is_catchable());
-        assert_eq!(error.clone().into_stored().to_error(), error);
+        assert_eq!(error.clone().into_stored().to_error().unwrap(), error);
         let context = &mut Context::default();
         assert_eq!(
             error.clone().into_opaque(context.access()),
@@ -358,7 +358,7 @@ fn context_access_busy_remains_uncatchable_through_storage_and_erasure() {
 
     let error = JsError::from(EngineError::ContextAccessBusy);
     assert!(!error.is_catchable());
-    assert_eq!(error.clone().into_stored().to_error(), error);
+    assert_eq!(error.clone().into_stored().to_error().unwrap(), error);
     let context = &mut Context::default();
     assert_eq!(
         error.clone().into_opaque(context.access()),

@@ -236,7 +236,7 @@ impl Iterator {
 
         // 6-8 are deferred to `IteratorHelper::create` and `Map::new`.
         let result = IteratorHelper::create(
-            iterator_helper::Map::new(iterated, mapper, context),
+            iterator_helper::Map::new(iterated, mapper, context)?,
             context,
         );
 
@@ -278,7 +278,7 @@ impl Iterator {
 
         // 6-8 are deferred to `IteratorHelper::create` and `Filter::new`.
         let result = IteratorHelper::create(
-            iterator_helper::Filter::new(iterated, predicate, context),
+            iterator_helper::Filter::new(iterated, predicate, context)?,
             context,
         );
 
@@ -342,7 +342,7 @@ impl Iterator {
 
         // 10-12 are deferred to `IteratorHelper::create` and `Take::new`.
         let result = IteratorHelper::create(
-            iterator_helper::Take::new(iterated, integer_limit, context),
+            iterator_helper::Take::new(iterated, integer_limit, context)?,
             context,
         );
 
@@ -405,7 +405,7 @@ impl Iterator {
 
         // 10-12 are deferred to `IteratorHelper::create` and `Drop::new`.
         let result = IteratorHelper::create(
-            iterator_helper::Drop::new(iterated, integer_limit, context),
+            iterator_helper::Drop::new(iterated, integer_limit, context)?,
             context,
         );
 
@@ -447,7 +447,7 @@ impl Iterator {
 
         // 6-8 are deferred to `IteratorHelper::create` and `FlatMap::new`.
         let helper = IteratorHelper::create(
-            iterator_helper::FlatMap::new(iterated, mapper, context),
+            iterator_helper::FlatMap::new(iterated, mapper, context)?,
             context,
         );
 

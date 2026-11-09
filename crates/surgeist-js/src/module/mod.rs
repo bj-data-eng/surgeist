@@ -178,7 +178,7 @@ pub(crate) struct ModuleEdge(RecordRef<ModuleRepr>);
 
 /// Native callback capture of a module allocation.
 #[derive(Debug, HeapTrace)]
-pub struct CapturedModule(ModuleEdge);
+pub struct CapturedModule(pub(crate) ModuleEdge);
 
 impl crate::native_function::NativeCapture for Module {
     type Stored = CapturedModule;
@@ -187,8 +187,16 @@ impl crate::native_function::NativeCapture for Module {
         CapturedModule(self.edge())
     }
 
-    fn restore(stored: &Self::Stored) -> Self {
-        Self::from_edge(stored.0.clone())
+    fn restore(stored: &Self::Stored) -> Result<Self, crate::error::RootingError> {
+        use crate::error::RootingError;
+
+        let inner = stored
+            .0
+            .0
+            .upgrade()
+            .map_err(RootingError::Access)?
+            .ok_or(RootingError::Expired)?;
+        Ok(Self { inner })
     }
 }
 
@@ -1436,8 +1444,8 @@ fn into_js_module() {
             self.clone()
         }
 
-        fn restore(stored: &Self::Stored) -> Self {
-            stored.clone()
+        fn restore(stored: &Self::Stored) -> Result<Self, crate::error::RootingError> {
+            Ok(stored.clone())
         }
     }
 

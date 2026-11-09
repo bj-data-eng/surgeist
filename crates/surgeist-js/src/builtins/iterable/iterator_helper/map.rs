@@ -1,6 +1,7 @@
 use crate::{
     Context, JsValue,
     builtins::iterable::IteratorRecord,
+    error::RootingError,
     native_function::{CoroutineBranch, CoroutineState, NativeCoroutine},
     object::JsFunction,
 };
@@ -21,14 +22,14 @@ impl Map {
         iterated: IteratorRecord,
         mapper: JsFunction,
         context: &Context,
-    ) -> NativeCoroutine {
+    ) -> Result<NativeCoroutine, RootingError> {
         // 6. Let closure be a new Abstract Closure with no parameters that captures
         //    iterated and mapper and performs the following steps when called:
         NativeCoroutine::from_fn_with_state(
             // a. Let counter be 0.
             // b. Repeat,
-            |completion, (), state, context| {
-                let Some((mut iterated, mapper, counter)) = state.take() else {
+            |completion, (), prepared, state, context| {
+                let Some((mut iterated, mapper, counter)) = prepared else {
                     return CoroutineState::Break(Ok(()));
                 };
                 // vi. IfAbruptCloseIterator(completion, iterated).
@@ -53,7 +54,7 @@ impl Map {
                 );
 
                 // vii. Set counter to counter + 1.
-                state.set((iterated, mapper, counter + 1));
+                state.set((iterated, mapper, counter + 1)).branch()?;
                 // v. Let completion be Completion(Yield(mapped)).
                 CoroutineState::Continue(value)
             },

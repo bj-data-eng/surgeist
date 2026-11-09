@@ -45,11 +45,11 @@ impl NativeCapture for LiveCapture {
             shared: self.shared.clone(),
         }
     }
-    fn restore(stored: &StoredCapture) -> Self {
-        Self {
+    fn restore(stored: &StoredCapture) -> Result<Self, surgeist_js::error::RootingError> {
+        Ok(Self {
             shared: stored.shared.clone(),
             restored: true,
-        }
+        })
     }
 }
 impl Drop for LiveCapture {

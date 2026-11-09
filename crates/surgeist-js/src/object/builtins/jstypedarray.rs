@@ -710,7 +710,9 @@ impl JsTypedArray {
     /// # impl NativeCapture for Counter {
     /// #     type Stored = Self;
     /// #     fn store(&self) -> Self { self.clone() }
-    /// #     fn restore(stored: &Self) -> Self { stored.clone() }
+    /// #     fn restore(stored: &Self) -> Result<Self, surgeist_js::error::RootingError> {
+    /// #         Ok(stored.clone())
+    /// #     }
     /// # }
     /// # use surgeist_js::{JsResult, object::{builtins::JsUint8Array, FunctionObjectBuilder}, NativeFunction, JsValue, Context};
     /// # fn main() -> JsResult<()> {

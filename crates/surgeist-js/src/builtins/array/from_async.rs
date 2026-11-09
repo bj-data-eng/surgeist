@@ -4,7 +4,7 @@ use super::Array;
 use crate::builtins::AsyncFromSyncIterator;
 use crate::builtins::iterable::{IteratorRecord, StoredIteratorRecord};
 use crate::builtins::promise::ResolvingFunctions;
-use crate::error::{PanicError, StoredJsError};
+use crate::error::{PanicError, RootingError, StoredJsError};
 use crate::native_function::{
     CapturedObject, CapturedValue, CoroutineBranch, CoroutineSlot, CoroutineState, NativeCapture,
     NativeCoroutine,
@@ -114,10 +114,13 @@ impl Array {
                         k: 0,
                     },
                     context,
-                );
+                )?;
 
-                return match coroutine.call(CompletionRecord::Normal(JsValue::undefined()), context)
-                {
+                return match coroutine.call(
+                    CompletionRecord::Normal(JsValue::undefined()),
+                    || {},
+                    context,
+                )? {
                     CoroutineState::Continue(value) => JsPromise::resolve(value, context.access())?
                         .await_native(coroutine, &resolvers.reject, context),
                     CoroutineState::Break(Err(err)) => Err(err),
@@ -152,9 +155,13 @@ impl Array {
                     iterator_record,
                 },
                 context,
-            );
+            )?;
 
-            match coroutine.call(CompletionRecord::Normal(JsValue::undefined()), context) {
+            match coroutine.call(
+                CompletionRecord::Normal(JsValue::undefined()),
+                || {},
+                context,
+            )? {
                 CoroutineState::Continue(value) => JsPromise::resolve(value, context.access())?
                     .await_native(coroutine, &resolvers.reject, context),
                 CoroutineState::Break(Err(err)) => Err(err),
@@ -209,15 +216,15 @@ impl NativeCapture for GlobalState {
         )
     }
 
-    fn restore((mapfn, this_arg, resolve, reject): &Self::Stored) -> Self {
-        Self {
-            mapfn: Option::restore(mapfn),
-            this_arg: JsValue::restore(this_arg),
+    fn restore((mapfn, this_arg, resolve, reject): &Self::Stored) -> Result<Self, RootingError> {
+        Ok(Self {
+            mapfn: Option::restore(mapfn)?,
+            this_arg: JsValue::restore(this_arg)?,
             resolvers: ResolvingFunctions {
-                resolve: JsFunction::restore(resolve),
-                reject: JsFunction::restore(reject),
+                resolve: JsFunction::restore(resolve)?,
+                reject: JsFunction::restore(reject)?,
             },
-        }
+        })
     }
 }
 
@@ -300,25 +307,25 @@ impl NativeCapture for AsyncIteratorStateMachine {
         }
     }
 
-    fn restore(stored: &Self::Stored) -> Self {
-        match stored {
+    fn restore(stored: &Self::Stored) -> Result<Self, RootingError> {
+        Ok(match stored {
             StoredAsyncIteratorState::LoopStart {
                 a,
                 k,
                 iterator_record,
             } => Self::LoopStart {
-                a: JsObject::restore(a),
+                a: JsObject::restore(a)?,
                 k: *k,
-                iterator_record: iterator_record.to_iterator(),
+                iterator_record: iterator_record.to_iterator()?,
             },
             StoredAsyncIteratorState::LoopContinue {
                 a,
                 k,
                 iterator_record,
             } => Self::LoopContinue {
-                a: JsObject::restore(a),
+                a: JsObject::restore(a)?,
                 k: *k,
-                iterator_record: iterator_record.to_iterator(),
+                iterator_record: iterator_record.to_iterator()?,
             },
             StoredAsyncIteratorState::LoopEnd {
                 a,
@@ -326,23 +333,23 @@ impl NativeCapture for AsyncIteratorStateMachine {
                 iterator_record,
                 mapped_value,
             } => Self::LoopEnd {
-                a: JsObject::restore(a),
+                a: JsObject::restore(a)?,
                 k: *k,
-                iterator_record: iterator_record.to_iterator(),
-                mapped_value: Option::restore(mapped_value),
+                iterator_record: iterator_record.to_iterator()?,
+                mapped_value: Option::restore(mapped_value)?,
             },
             StoredAsyncIteratorState::AsyncIteratorCloseStart { err, iterator } => {
                 Self::AsyncIteratorCloseStart {
-                    err: err.to_error(),
-                    iterator: JsObject::restore(iterator),
+                    err: err.to_error()?,
+                    iterator: JsObject::restore(iterator)?,
                 }
             }
             StoredAsyncIteratorState::AsyncIteratorCloseEnd { err } => {
                 Self::AsyncIteratorCloseEnd {
-                    err: err.to_error(),
+                    err: err.to_error()?,
                 }
             }
-        }
+        })
     }
 }
 
@@ -350,11 +357,12 @@ impl NativeCapture for AsyncIteratorStateMachine {
 fn from_async_iterator(
     mut result: CompletionRecord,
     global_state: &GlobalState,
+    prepared: Option<AsyncIteratorStateMachine>,
     state_machine: &CoroutineSlot<AsyncIteratorStateMachine>,
     context: &mut Context,
 ) -> CoroutineState {
     let result = (|| {
-        let Some(mut sm) = state_machine.take() else {
+        let Some(mut sm) = prepared else {
             return CoroutineState::Break(Ok(()));
         };
 
@@ -375,11 +383,13 @@ fn from_async_iterator(
                             .call(&iterator_record.iterator().clone().into(), &[], context)
                             .branch()?;
 
-                        state_machine.set(AsyncIteratorStateMachine::LoopContinue {
-                            a,
-                            k,
-                            iterator_record,
-                        });
+                        state_machine
+                            .set(AsyncIteratorStateMachine::LoopContinue {
+                                a,
+                                k,
+                                iterator_record,
+                            })
+                            .branch()?;
 
                         // 4. Set nextResult to ? Await(nextResult).
                         return CoroutineState::Continue(next_result);
@@ -468,12 +478,14 @@ fn from_async_iterator(
                             // 2. Else if value is a Completion Record, set value to value.[[Value]].
                             Ok(value) => value,
                         };
-                        state_machine.set(AsyncIteratorStateMachine::LoopEnd {
-                            a,
-                            k,
-                            iterator_record,
-                            mapped_value: None,
-                        });
+                        state_machine
+                            .set(AsyncIteratorStateMachine::LoopEnd {
+                                a,
+                                k,
+                                iterator_record,
+                                mapped_value: None,
+                            })
+                            .branch()?;
                         // c. Set mappedValue to Await(mappedValue).
                         return CoroutineState::Continue(mapped_value);
                     }
@@ -565,7 +577,14 @@ fn from_async_iterator(
                         return CoroutineState::Break(Err(err));
                     };
 
-                    state_machine.set(AsyncIteratorStateMachine::AsyncIteratorCloseEnd { err });
+                    let original_engine = err.as_engine().is_some().then(|| err.clone());
+                    if let Err(error) =
+                        state_machine.set(AsyncIteratorStateMachine::AsyncIteratorCloseEnd { err })
+                    {
+                        return CoroutineState::Break(Err(
+                            original_engine.unwrap_or_else(|| error.into())
+                        ));
+                    }
                     return CoroutineState::Continue(value);
                 }
                 AsyncIteratorStateMachine::AsyncIteratorCloseEnd { err } => {
@@ -672,16 +691,16 @@ impl NativeCapture for ArrayLikeStateMachine {
         }
     }
 
-    fn restore(stored: &Self::Stored) -> Self {
-        match stored {
+    fn restore(stored: &Self::Stored) -> Result<Self, RootingError> {
+        Ok(match stored {
             StoredArrayLikeState::LoopStart {
                 array_like,
                 a,
                 len,
                 k,
             } => Self::LoopStart {
-                array_like: JsObject::restore(array_like),
-                a: JsObject::restore(a),
+                array_like: JsObject::restore(array_like)?,
+                a: JsObject::restore(a)?,
                 len: *len,
                 k: *k,
             },
@@ -691,8 +710,8 @@ impl NativeCapture for ArrayLikeStateMachine {
                 len,
                 k,
             } => Self::LoopContinue {
-                array_like: JsObject::restore(array_like),
-                a: JsObject::restore(a),
+                array_like: JsObject::restore(array_like)?,
+                a: JsObject::restore(a)?,
                 len: *len,
                 k: *k,
             },
@@ -703,13 +722,13 @@ impl NativeCapture for ArrayLikeStateMachine {
                 k,
                 mapped_value,
             } => Self::LoopEnd {
-                array_like: JsObject::restore(array_like),
-                a: JsObject::restore(a),
+                array_like: JsObject::restore(array_like)?,
+                a: JsObject::restore(a)?,
                 len: *len,
                 k: *k,
-                mapped_value: Option::restore(mapped_value),
+                mapped_value: Option::restore(mapped_value)?,
             },
-        }
+        })
     }
 }
 
@@ -717,11 +736,12 @@ impl NativeCapture for ArrayLikeStateMachine {
 fn from_array_like(
     mut result: CompletionRecord,
     global_state: &GlobalState,
+    prepared: Option<ArrayLikeStateMachine>,
     state_machine: &CoroutineSlot<ArrayLikeStateMachine>,
     context: &mut Context,
 ) -> CoroutineState {
     let result = (|| {
-        let Some(mut sm) = state_machine.take() else {
+        let Some(mut sm) = prepared else {
             return CoroutineState::Break(Ok(()));
         };
 
@@ -762,12 +782,14 @@ fn from_array_like(
                     // 1. Let Pk be ! ToString(𝔽(k)).
                     // 2. Let kValue be ? Get(arrayLike, Pk).
                     let k_value = array_like.get(k, context.access()).branch()?;
-                    state_machine.set(ArrayLikeStateMachine::LoopContinue {
-                        array_like,
-                        a,
-                        len,
-                        k,
-                    });
+                    state_machine
+                        .set(ArrayLikeStateMachine::LoopContinue {
+                            array_like,
+                            a,
+                            len,
+                            k,
+                        })
+                        .branch()?;
 
                     // 3. Set kValue to ? Await(kValue).
                     return CoroutineState::Continue(k_value);
@@ -795,13 +817,15 @@ fn from_array_like(
                                 context.access(),
                             )
                             .branch()?;
-                        state_machine.set(ArrayLikeStateMachine::LoopEnd {
-                            array_like,
-                            a,
-                            len,
-                            k,
-                            mapped_value: None,
-                        });
+                        state_machine
+                            .set(ArrayLikeStateMachine::LoopEnd {
+                                array_like,
+                                a,
+                                len,
+                                k,
+                                mapped_value: None,
+                            })
+                            .branch()?;
 
                         // b. Set mappedValue to ? Await(mappedValue).
                         return CoroutineState::Continue(mapped_value);

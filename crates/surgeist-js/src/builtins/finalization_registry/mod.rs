@@ -365,8 +365,13 @@ impl FinalizationRegistry {
     ) -> JsResult<()> {
         obj.check_runtime(context.runtime())?;
         // 2. Let callback be finalizationRegistry.[[CleanupCallback]].
-        let stored_callback = obj.borrow().data().callback.clone();
-        let callback = stored_callback.to_callback();
+        let stored_callback = obj
+            .try_borrow()
+            .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?
+            .data()
+            .callback
+            .clone();
+        let callback = stored_callback.to_callback()?;
         loop {
             let held_value = {
                 let mut registry = obj.borrow_mut();

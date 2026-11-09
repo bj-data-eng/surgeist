@@ -302,7 +302,10 @@ fn request_stores_signal() {
                 .as_object()
                 .unwrap();
 
-            let stored_signal = request.signal().expect("request should keep its signal");
+            let stored_signal = request
+                .signal()
+                .unwrap()
+                .expect("request should keep its signal");
             assert!(JsObject::equals(&stored_signal, &signal));
         }),
     ]);
@@ -348,6 +351,7 @@ fn request_clone_preserves_signal_without_override() {
 
             let stored_signal = cloned
                 .signal()
+                .unwrap()
                 .expect("cloned request should keep its signal");
             assert!(JsObject::equals(&stored_signal, &signal));
         }),
@@ -395,6 +399,7 @@ fn request_clone_signal_override() {
 
             let stored_signal = cloned
                 .signal()
+                .unwrap()
                 .expect("overridden request should keep the new signal");
             assert!(JsObject::equals(&stored_signal, &signal));
         }),

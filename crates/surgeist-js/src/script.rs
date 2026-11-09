@@ -148,13 +148,13 @@ impl Script {
         ScriptEdge(self.inner.record_ref())
     }
 
-    pub(crate) fn from_edge(edge: ScriptEdge) -> Self {
+    pub(crate) fn from_edge(edge: ScriptEdge) -> Result<Self, crate::error::RootingError> {
         let inner = edge
             .0
             .upgrade()
-            .expect("script heap is available")
-            .expect("live owner retains its script");
-        Self { inner }
+            .map_err(crate::error::RootingError::Access)?
+            .ok_or(crate::error::RootingError::Expired)?;
+        Ok(Self { inner })
     }
 
     /// Returns the [`ECMAScript specification`][spec] defined [`\[\[HostDefined\]\]`][`HostDefined`] field of the [`Module`].

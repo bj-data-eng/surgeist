@@ -142,6 +142,7 @@ fn assert_engine_cause(view: Diagnostic<'_>, expected: &EngineError) {
     };
     let expected = match expected {
         EngineError::Resource(value) => DiagnosticEngine::Resource(*value),
+        EngineError::Rooting(value) => DiagnosticEngine::Rooting(*value),
         EngineError::InvalidEntryPermit => DiagnosticEngine::InvalidEntryPermit,
         EngineError::ContextAccessBusy => DiagnosticEngine::ContextAccessBusy,
         EngineError::ObjectAccessBusy => DiagnosticEngine::ObjectAccessBusy,

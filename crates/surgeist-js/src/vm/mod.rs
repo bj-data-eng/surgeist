@@ -153,14 +153,25 @@ impl NativeArguments {
 pub(crate) struct StoredStack(Vec<crate::value::StoredValue>);
 
 impl StoredStack {
-    pub(crate) fn to_stack(&self) -> Stack {
-        Stack {
-            stack: self
-                .0
-                .iter()
-                .map(crate::value::StoredValue::to_value)
-                .collect(),
+    pub(crate) fn to_stack(&self) -> Result<Stack, crate::error::RootingError> {
+        use crate::{
+            error::RootingError,
+            native_function::{CapturedValue, NativeCapture},
+        };
+
+        self.0
+            .len()
+            .checked_mul(std::mem::size_of::<JsValue>())
+            .filter(|bytes| *bytes <= isize::MAX as usize)
+            .ok_or(RootingError::SizeOverflow)?;
+        let mut stack = Vec::new();
+        stack
+            .try_reserve_exact(self.0.len())
+            .map_err(|_| RootingError::Allocation)?;
+        for value in &self.0 {
+            stack.push(JsValue::restore(&CapturedValue(value.clone()))?);
         }
+        Ok(Stack { stack })
     }
 }
 
@@ -475,11 +486,15 @@ pub(crate) enum StoredActiveRunnable {
 }
 
 impl StoredActiveRunnable {
-    pub(crate) fn to_runnable(&self) -> ActiveRunnable {
-        match self {
-            Self::Script(script) => ActiveRunnable::Script(Script::from_edge(script.clone())),
-            Self::Module(module) => ActiveRunnable::Module(Module::from_edge(module.clone())),
-        }
+    pub(crate) fn to_runnable(&self) -> Result<ActiveRunnable, crate::error::RootingError> {
+        use crate::native_function::NativeCapture;
+
+        Ok(match self {
+            Self::Script(script) => ActiveRunnable::Script(Script::from_edge(script.clone())?),
+            Self::Module(module) => ActiveRunnable::Module(Module::restore(
+                &crate::module::CapturedModule(module.clone()),
+            )?),
+        })
     }
 }
 

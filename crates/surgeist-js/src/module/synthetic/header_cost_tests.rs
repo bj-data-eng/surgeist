@@ -13,8 +13,8 @@ impl NativeCapture for Capture {
         self.0.set(self.0.get() + 1);
         StoredCapture(self.0.clone())
     }
-    fn restore(stored: &StoredCapture) -> Self {
-        Self(stored.0.clone())
+    fn restore(stored: &StoredCapture) -> Result<Self, crate::error::RootingError> {
+        Ok(Self(stored.0.clone()))
     }
 }
 fn context() -> Context {

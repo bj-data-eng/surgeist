@@ -8,6 +8,7 @@ use crate::{
         promise::{PromiseCapability, if_abrupt_reject_promise},
     },
     context::intrinsics::Intrinsics,
+    error::RootingError,
     js_string,
     native_function::{NativeCapture, NativeFunction},
     object::{FunctionObjectBuilder, JsObject},
@@ -34,7 +35,7 @@ impl NativeCapture for IteratorRecord {
         self.stored()
     }
 
-    fn restore(stored: &Self::Stored) -> Self {
+    fn restore(stored: &Self::Stored) -> Result<Self, RootingError> {
         stored.to_iterator()
     }
 }
@@ -115,14 +116,13 @@ impl AsyncFromSyncIterator {
             .and_then(JsObject::downcast_ref::<Self>)
             .js_expect("async from sync iterator prototype must be object")?
             .sync_iterator_record
-            .to_iterator();
+            .to_iterator()?;
 
         // 3. Let promiseCapability be ! NewPromiseCapability(%Promise%).
         let promise_capability = PromiseCapability::new(
             &context.intrinsics().constructors().promise().constructor(),
             context,
-        )
-        .js_expect("cannot fail with promise constructor")?;
+        )?;
 
         // 5. If value is present, then
         //     a. Let result be Completion(IteratorNext(syncIteratorRecord, value)).
@@ -159,7 +159,7 @@ impl AsyncFromSyncIterator {
             .and_then(JsObject::downcast_ref::<Self>)
             .js_expect("async from sync iterator prototype must be object")?
             .sync_iterator_record
-            .to_iterator();
+            .to_iterator()?;
         // 5. Let syncIterator be syncIteratorRecord.[[Iterator]].
         let sync_iterator = sync_iterator_record.iterator().clone();
 
@@ -167,8 +167,7 @@ impl AsyncFromSyncIterator {
         let promise_capability = PromiseCapability::new(
             &context.intrinsics().constructors().promise().constructor(),
             context,
-        )
-        .js_expect("cannot fail with promise constructor")?;
+        )?;
 
         // 6. Let return be Completion(GetMethod(syncIterator, "return")).
         let r#return = sync_iterator.get_method(js_string!("return"), context);
@@ -244,7 +243,7 @@ impl AsyncFromSyncIterator {
             .and_then(JsObject::downcast_ref::<Self>)
             .js_expect("async from sync iterator prototype must be object")?
             .sync_iterator_record
-            .to_iterator();
+            .to_iterator()?;
         // 5. Let syncIterator be syncIteratorRecord.[[Iterator]].
         let sync_iterator = sync_iterator_record.iterator().clone();
 
@@ -252,8 +251,7 @@ impl AsyncFromSyncIterator {
         let promise_capability = PromiseCapability::new(
             &context.intrinsics().constructors().promise().constructor(),
             context,
-        )
-        .js_expect("cannot fail with promise constructor")?;
+        )?;
 
         // 6. Let throw be Completion(GetMethod(syncIterator, "throw")).
         let throw = sync_iterator.get_method(js_string!("throw"), context);

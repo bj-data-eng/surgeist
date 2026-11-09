@@ -24,7 +24,9 @@ pub(crate) mod private {
 /// impl NativeCapture for Counter {
 ///     type Stored = Self;
 ///     fn store(&self) -> Self { self.clone() }
-///     fn restore(stored: &Self) -> Self { stored.clone() }
+///     fn restore(stored: &Self) -> Result<Self, surgeist_js::error::RootingError> {
+///         Ok(stored.clone())
+///     }
 /// }
 ///
 /// let mut context = Context::default();

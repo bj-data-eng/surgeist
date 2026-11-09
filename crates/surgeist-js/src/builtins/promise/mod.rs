@@ -209,14 +209,14 @@ pub(crate) struct StoredPromiseCapability {
 }
 
 impl StoredPromiseCapability {
-    pub(crate) fn to_capability(&self) -> PromiseCapability {
-        PromiseCapability {
-            promise: JsObject::from_inner(self.promise.clone()),
+    pub(crate) fn to_capability(&self) -> Result<PromiseCapability, crate::error::RootingError> {
+        Ok(PromiseCapability {
+            promise: JsObject::restore(&CapturedObject(self.promise.clone()))?,
             functions: ResolvingFunctions {
-                resolve: JsFunction::from_record(self.resolve.clone()),
-                reject: JsFunction::from_record(self.reject.clone()),
+                resolve: JsFunction::restore(&CapturedObject(self.resolve.clone()))?,
+                reject: JsFunction::restore(&CapturedObject(self.reject.clone()))?,
             },
-        }
+        })
     }
 }
 
@@ -227,7 +227,7 @@ impl NativeCapture for PromiseCapability {
         self.stored()
     }
 
-    fn restore(stored: &Self::Stored) -> Self {
+    fn restore(stored: &Self::Stored) -> Result<Self, crate::error::RootingError> {
         stored.to_capability()
     }
 }
@@ -280,34 +280,31 @@ struct StoredReactionRecord {
 }
 
 impl StoredReactionRecord {
-    fn to_reaction(&self) -> ReactionRecord {
-        ReactionRecord {
+    fn to_reaction(&self) -> Result<ReactionRecord, crate::error::RootingError> {
+        Ok(ReactionRecord {
             lifecycle: self.lifecycle.clone(),
             native_result_target: self
                 .native_result_target
-                .clone()
-                .map(JsObject::from_inner)
-                .map(|value| {
-                    value
-                        .downcast::<Promise>()
-                        .expect("reaction target is a promise")
-                }),
+                .as_ref()
+                .map(|edge| JsObject::<Promise>::restore(&CapturedObject(edge.clone())))
+                .transpose()?,
             native_target: self
                 .native_target
-                .clone()
-                .map(JsObject::from_inner)
-                .map(|value| {
-                    value
-                        .downcast::<Promise>()
-                        .expect("reaction target is a promise")
-                }),
+                .as_ref()
+                .map(|edge| JsObject::<Promise>::restore(&CapturedObject(edge.clone())))
+                .transpose()?,
             promise_capability: self
                 .promise_capability
                 .as_ref()
-                .map(StoredPromiseCapability::to_capability),
+                .map(StoredPromiseCapability::to_capability)
+                .transpose()?,
             reaction_type: self.reaction_type,
-            handler: self.handler.as_ref().map(StoredJobCallback::to_callback),
-        }
+            handler: self
+                .handler
+                .as_ref()
+                .map(StoredJobCallback::to_callback)
+                .transpose()?,
+        })
     }
 }
 
@@ -364,14 +361,14 @@ impl NativeCapture for CombinatorElementCaptures {
         }
     }
 
-    fn restore(stored: &Self::Stored) -> Self {
-        Self {
+    fn restore(stored: &Self::Stored) -> Result<Self, crate::error::RootingError> {
+        Ok(Self {
             already_called: stored.already_called.clone(),
             index: stored.index,
-            values: Rooted::restore(&stored.values),
-            capability: JsFunction::restore(&stored.capability),
+            values: Rooted::restore(&stored.values)?,
+            capability: JsFunction::restore(&stored.capability)?,
             remaining_elements: stored.remaining_elements.clone(),
-        }
+        })
     }
 }
 
@@ -1491,12 +1488,12 @@ impl Promise {
                 }
             }
 
-            fn restore(stored: &Self::Stored) -> Self {
-                Self {
-                    element: CombinatorElementCaptures::restore(&stored.element),
+            fn restore(stored: &Self::Stored) -> Result<Self, crate::error::RootingError> {
+                Ok(Self {
+                    element: CombinatorElementCaptures::restore(&stored.element)?,
                     variant: stored.variant,
                     keys: stored.keys.clone(),
-                }
+                })
             }
         }
 
@@ -3670,7 +3667,7 @@ impl<'a> ReactionRestoration<'a> {
             .try_reserve(records.len())
             .map_err(|_| crate::error::EngineResourceError::Allocation)?;
         for record in records {
-            self.live.push(record.to_reaction());
+            self.live.push(record.to_reaction()?);
         }
         Ok(std::mem::take(&mut self.live))
     }

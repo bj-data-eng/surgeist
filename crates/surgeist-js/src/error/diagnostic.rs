@@ -51,6 +51,28 @@ impl RootLeaf {
 }
 type RootBundle = HashMap<ObjectId, RootLeaf>;
 
+// Reserve only for the next distinct visible leaf. Acquiring a root is deferred
+// until capacity exists, and failure drops the caller's already-built bundle.
+fn restore_root(
+    roots: &mut RootBundle,
+    id: ObjectId,
+    acquire: impl FnOnce() -> Result<RootLeaf, RootingError>,
+) -> Result<(), RootingError> {
+    if roots.contains_key(&id) {
+        return Ok(());
+    }
+    roots
+        .len()
+        .checked_add(1)
+        .and_then(|len| len.checked_mul(std::mem::size_of::<(ObjectId, RootLeaf)>()))
+        .filter(|bytes| *bytes <= isize::MAX as usize)
+        .ok_or(RootingError::SizeOverflow)?;
+    roots.try_reserve(1).map_err(|_| RootingError::Allocation)?;
+    let root = acquire()?;
+    roots.insert(id, root);
+    Ok(())
+}
+
 /// A Panic's immutable source and external root custody.
 ///
 /// This is the concrete [`std::error::Error::source`] of [`PanicError`]. Its own
@@ -78,13 +100,13 @@ impl StoredDiagnostic {
             mask: self.mask.intersect(mask),
         }
     }
-    pub(super) fn to_external(&self) -> PanicDiagnostic {
+    pub(super) fn to_external(&self) -> Result<PanicDiagnostic, RootingError> {
         let mut roots = RootBundle::new();
-        self.view().restore_roots(&mut roots);
-        PanicDiagnostic {
+        self.view().restore_roots(&mut roots)?;
+        Ok(PanicDiagnostic {
             stored: self.clone(),
             roots: Rc::new(roots),
-        }
+        })
     }
 }
 impl Trace for StoredDiagnostic {
@@ -309,6 +331,9 @@ impl<'a> Diagnostic<'a> {
                 data: NativeData::Original(native),
                 mask: self.mask,
             }),
+            StoredErrorRepr::Rooting(value) => {
+                DiagnosticKind::Engine(DiagnosticEngine::Rooting(*value))
+            }
             StoredErrorRepr::Resource(value) => {
                 DiagnosticKind::Engine(DiagnosticEngine::Resource(*value))
             }
@@ -423,50 +448,51 @@ impl<'a> Diagnostic<'a> {
         }
         Ok(())
     }
-    fn restore_roots(self, roots: &mut RootBundle) {
+    fn restore_roots(self, roots: &mut RootBundle) -> Result<(), RootingError> {
         match self.kind() {
             DiagnosticKind::Opaque(value) => {
                 if let StoredValue::Object(edge) = value.value {
-                    roots.entry(edge.identity()).or_insert_with(|| {
-                        RootLeaf::Object(
-                            edge.upgrade()
-                                .expect("diagnostic heap available")
-                                .expect("rooted stored owner retains diagnostic object"),
-                        )
-                    });
+                    restore_root(roots, edge.identity(), || {
+                        Ok(RootLeaf::Object(JsObject::restore(&CapturedObject(
+                            edge.clone(),
+                        ))?))
+                    })?;
                 }
             }
             DiagnosticKind::Native(native) => {
                 if let NativeData::Original(data) = native.data
                     && let (Some(id), Some(realm)) = (data.realm_identity, &data.realm)
                 {
-                    roots
-                        .entry(id)
-                        .or_insert_with(|| RootLeaf::Realm(Realm::from_edge(realm.clone())));
+                    restore_root(roots, id, || {
+                        Ok(RootLeaf::Realm(Realm::restore(&CapturedRealm(
+                            realm.clone(),
+                        ))?))
+                    })?;
                 }
                 if let Some(cause) = native.cause() {
-                    cause.restore_roots(roots);
+                    cause.restore_roots(roots)?;
                 }
                 for member in native.members() {
-                    member.restore_roots(roots);
+                    member.restore_roots(roots)?;
                 }
             }
             DiagnosticKind::Engine(DiagnosticEngine::ForeignSelectedRealm(value)) => {
-                value.diagnostic().restore_roots(roots)
+                value.diagnostic().restore_roots(roots)?;
             }
             DiagnosticKind::Engine(DiagnosticEngine::Panic {
                 diagnostic: Some(source),
                 ..
-            }) => source.restore_roots(roots),
+            }) => source.restore_roots(roots)?,
             DiagnosticKind::Engine(DiagnosticEngine::ModuleInterrupted(value)) => {
                 if value.0.has_anchor(value.1) {
-                    roots
-                        .entry(value.identity())
-                        .or_insert_with(|| RootLeaf::Interruption(value.0.external()));
+                    restore_root(roots, value.identity(), || {
+                        Ok(RootLeaf::Interruption(value.0.external()?))
+                    })?;
                 }
             }
             DiagnosticKind::Engine(_) => {}
         }
+        Ok(())
     }
     pub(super) fn erase(self, context: &mut Context) -> JsErasedError {
         let inner = match self.kind() {
@@ -522,6 +548,7 @@ impl<'a> Diagnostic<'a> {
                 DiagnosticEngine::JobDeadlineOverflow { now, delay } => {
                     ErasedEngineError::JobDeadlineOverflow { now, delay }
                 }
+                DiagnosticEngine::Rooting(value) => ErasedEngineError::Rooting(value),
                 DiagnosticEngine::Resource(value) => ErasedEngineError::Resource(value),
                 DiagnosticEngine::InvalidEntryPermit => ErasedEngineError::InvalidEntryPermit,
                 DiagnosticEngine::ContextAccessBusy => ErasedEngineError::ContextAccessBusy,
@@ -734,6 +761,8 @@ impl Eq for DiagnosticNative<'_> {}
 /// Exact engine diagnostic payloads. Nested Panic sources remain borrowed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagnosticEngine<'a> {
+    /// Exact refusal encountered while acquiring roots.
+    Rooting(RootingError),
     /// Publication refused a selected realm from another runtime.
     ForeignSelectedRealm(DiagnosticForeignSelectedRealm<'a>),
     /// Exact timer operands whose sum cannot be represented.
@@ -1066,6 +1095,7 @@ impl fmt::Display for DiagnosticEngine<'_> {
                 f,
                 "JobDeadlineOverflow: {now:?} + {delay:?} is unrepresentable"
             ),
+            Self::Rooting(value) => write!(f, "RootingError: {value}"),
             Self::Resource(value) => write!(f, "EngineResourceError: {value}"),
             Self::InvalidEntryPermit => {
                 f.write_str("InvalidEntryPermit: execution entry authority does not match")

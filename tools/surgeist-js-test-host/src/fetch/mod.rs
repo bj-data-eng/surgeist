@@ -96,7 +96,7 @@ fn check_abort(signal: Option<&JsObject>, mut context: ContextAccess<'_>) -> JsR
         && signal_ref.is_aborted()
     {
         return Err(JsError::from_opaque(
-            signal_ref.abort_reason(context.reborrow()),
+            signal_ref.abort_reason(context.reborrow())?,
         ));
     }
     Ok(())
@@ -141,7 +141,9 @@ fn fetch_inner<T: Fetcher>(
                 return Err(js_error!(TypeError: "Request object is already in use"));
             };
 
-            signal = signal.or_else(|| request_ref.data().signal());
+            if signal.is_none() {
+                signal = request_ref.data().signal()?;
+            }
             request_ref.data().inner().clone()
         }
     };

@@ -1,5 +1,7 @@
 //! Prepared immutable source-module interruption causes and observation roots.
-use super::{Context, Diagnostic, EngineError, JsError, StoredJsError, diagnostic::Mask};
+use super::{
+    Context, Diagnostic, EngineError, JsError, RootingError, StoredJsError, diagnostic::Mask,
+};
 use crate::{Runtime, builtins::promise::native_settlement::Association, module::Module};
 use std::{cell::OnceCell, fmt, rc::Rc};
 use surgeist_js_gc::heap::{AccessError, EdgeVisitor, ObjectId, RecordRef, Rooted, Trace};
@@ -90,19 +92,21 @@ impl RetainedInterruption {
         }
         Ok(())
     }
-    pub(crate) fn external(self: &Rc<Self>) -> ModuleInterruption {
-        let root = self.anchor.as_ref().map(|anchor| {
-            ObservationRoot::Cause(
+    pub(crate) fn external(self: &Rc<Self>) -> Result<ModuleInterruption, RootingError> {
+        let root = self
+            .anchor
+            .as_ref()
+            .map(|anchor| {
                 anchor
-                    .upgrade()
-                    .expect("cause heap available")
-                    .expect("traced cause remains live"),
-            )
-        });
-        ModuleInterruption {
+                    .upgrade()?
+                    .ok_or(RootingError::Expired)
+                    .map(ObservationRoot::Cause)
+            })
+            .transpose()?;
+        Ok(ModuleInterruption {
             retained: self.clone(),
             root,
-        }
+        })
     }
 }
 impl Trace for RetainedInterruption {

@@ -163,7 +163,7 @@ fn stored_edges_keep_a_diagnostic_alive_and_restore_it_after_the_old_lease_is_go
             "the rooted stored owner traces its visible leaf"
         );
 
-        let restored = owner.error.to_error();
+        let restored = owner.error.to_error().unwrap();
         let DiagnosticKind::Native(native) = panic_diagnostic(&restored).kind() else {
             unreachable!()
         };
@@ -453,7 +453,7 @@ fn stored_diagnostics_preserve_all_engine_families_and_exact_context_identity() 
             .with_source(JsError::from(engine))
             .into();
         let stored = original.clone().into_stored();
-        assert_eq!(stored.to_error(), original);
+        assert_eq!(stored.to_error().unwrap(), original);
     }
 }
 
@@ -501,7 +501,7 @@ fn deep_causes_and_many_members_survive_clone_storage_and_ordered_restoration() 
         "the stored owner traces the complete deep tree"
     );
 
-    let restored = owner.error.to_error();
+    let restored = owner.error.to_error().unwrap();
     let mut view = panic_diagnostic(&restored);
     for depth in (0..DEPTH).rev() {
         let DiagnosticKind::Native(native) = view.kind() else {
@@ -627,7 +627,7 @@ fn masked_stored_diagnostics_trace_and_restore_after_the_hidden_heaps_and_leaves
         "the real stored owner traces only visible custody"
     );
 
-    let restored = owner.error.to_error();
+    let restored = owner.error.to_error().unwrap();
     let DiagnosticKind::Native(aggregate) = panic_diagnostic(&restored).kind() else {
         unreachable!()
     };

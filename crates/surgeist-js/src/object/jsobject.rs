@@ -1780,7 +1780,7 @@ mod tests {
             runtime.collect().unwrap();
 
             assert_eq!(object.prototype(), Some(prototype.clone()));
-            let target: JsObject = JsObject::restore(&object.borrow().data().0);
+            let target: JsObject = JsObject::restore(&object.borrow().data().0).unwrap();
             assert_eq!(target.identity(), identity);
 
             let edge = target.into_record();

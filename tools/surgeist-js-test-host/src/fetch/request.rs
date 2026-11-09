@@ -124,10 +124,10 @@ impl JsRequest {
     }
 
     /// Split this request into its HTTP request and abort signal.
-    fn into_parts(mut self) -> (HttpRequest<Vec<u8>>, Option<JsObject>) {
+    fn into_parts(mut self) -> JsResult<(HttpRequest<Vec<u8>>, Option<JsObject>)> {
+        let signal = self.signal()?;
         let request = mem::replace(&mut self.inner, HttpRequest::new(Vec::new()));
-        let signal = self.signal();
-        (request, signal)
+        Ok((request, signal))
     }
 
     /// Get a reference to the inner `http::Request` object.
@@ -136,8 +136,8 @@ impl JsRequest {
     }
 
     /// Get the abort signal associated with this request, if any.
-    pub(crate) fn signal(&self) -> Option<JsObject> {
-        self.signal.as_ref().map(JsObject::restore)
+    pub(crate) fn signal(&self) -> Result<Option<JsObject>, surgeist_js::error::RootingError> {
+        self.signal.as_ref().map(JsObject::restore).transpose()
     }
 
     /// Get the URI of the request.
@@ -149,7 +149,7 @@ impl JsRequest {
     /// calling its constructor in JavaScript.
     ///
     /// # Errors
-    /// If the URI is invalid, an error is returned.
+    /// Returns an error if the URI is invalid or a stored abort signal cannot be rooted.
     pub fn create_from_js(
         input: Either<JsString, JsObject<JsRequest>>,
         options: Option<RequestInit>,
@@ -167,7 +167,7 @@ impl JsRequest {
                     .map_err(|_| js_error!(Error: "Cannot construct request"))?;
                 (request, None)
             }
-            Either::Right(r) => r.borrow().data().clone().into_parts(),
+            Either::Right(r) => r.borrow().data().clone().into_parts()?,
         };
 
         if let Some(mut options) = options {

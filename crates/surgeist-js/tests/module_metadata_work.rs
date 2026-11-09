@@ -72,11 +72,11 @@ impl NativeCapture for Capture {
             panic: self.panic,
         }
     }
-    fn restore(stored: &StoredCapture) -> Self {
-        Self {
+    fn restore(stored: &StoredCapture) -> Result<Self, surgeist_js::error::RootingError> {
+        Ok(Self {
             observation: stored.observation.clone(),
             panic: stored.panic,
-        }
+        })
     }
 }
 fn initializer(observation: Rc<Observation>, panic: bool) -> SyntheticModuleInitializer {

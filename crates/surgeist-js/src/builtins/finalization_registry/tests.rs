@@ -161,8 +161,8 @@ fn cleanup_retains_job_callback_host_data() {
             self.0.store()
         }
 
-        fn restore(stored: &Self::Stored) -> Self {
-            Self(JsObject::restore(stored))
+        fn restore(stored: &Self::Stored) -> Result<Self, crate::error::RootingError> {
+            Ok(Self(JsObject::restore(stored)?))
         }
     }
 

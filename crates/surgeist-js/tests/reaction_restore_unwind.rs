@@ -108,7 +108,7 @@ impl NativeCapture for Capture {
             role: self.role,
         }
     }
-    fn restore(stored: &Self::Stored) -> Self {
+    fn restore(stored: &Self::Stored) -> Result<Self, surgeist_js::error::RootingError> {
         if stored.monitor.armed.get() {
             let count = &stored.monitor.restores[stored.role.index()];
             count.set(count.get() + 1);
@@ -117,11 +117,11 @@ impl NativeCapture for Capture {
                 panic_any(HostUnwind::OriginalRestore);
             }
         }
-        Capture::new(
+        Ok(Capture::new(
             stored.monitor.clone(),
             stored.role,
             stored.monitor.armed.get(),
-        )
+        ))
     }
 }
 struct Hooks(Rc<Monitor>);

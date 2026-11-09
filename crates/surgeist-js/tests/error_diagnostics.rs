@@ -175,6 +175,7 @@ fn assert_engine_view(view: Diagnostic<'_>, expected: &EngineError) {
     };
     let expected = match expected {
         EngineError::Resource(error) => DiagnosticEngine::Resource(*error),
+        EngineError::Rooting(error) => DiagnosticEngine::Rooting(*error),
         EngineError::InvalidEntryPermit => DiagnosticEngine::InvalidEntryPermit,
         EngineError::ContextAccessBusy => DiagnosticEngine::ContextAccessBusy,
         EngineError::ObjectAccessBusy => DiagnosticEngine::ObjectAccessBusy,

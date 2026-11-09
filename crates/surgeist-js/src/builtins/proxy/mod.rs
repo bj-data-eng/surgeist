@@ -18,7 +18,7 @@ use crate::{
     Context, JsArgs, JsResult, JsString, JsValue,
     builtins::{BuiltInObject, array},
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
-    error::JsNativeError,
+    error::{JsNativeError, RootingError},
     js_string,
     native_function::{NativeCapture, NativeFunction},
     object::{
@@ -36,7 +36,7 @@ use crate::{
 };
 use rustc_hash::FxHashSet;
 use std::{cell::RefCell, rc::Rc};
-use surgeist_js_gc::heap::Trace as HeapTrace;
+use surgeist_js_gc::heap::{AccessError, Trace as HeapTrace};
 /// Javascript `Proxy` object.
 #[derive(Debug, Clone, HeapTrace)]
 pub struct Proxy {
@@ -56,14 +56,23 @@ impl NativeCapture for Revocation {
         self.target.clone()
     }
 
-    fn restore(stored: &Self::Stored) -> Self {
-        Self {
+    fn restore(stored: &Self::Stored) -> Result<Self, RootingError> {
+        let root = {
+            let slot = stored
+                .try_borrow()
+                .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?;
+            slot.as_ref()
+                .map(|edge| {
+                    edge.upgrade()
+                        .map_err(RootingError::Access)?
+                        .ok_or(RootingError::Expired)
+                })
+                .transpose()?
+        };
+        Ok(Self {
             target: stored.clone(),
-            _root: stored
-                .borrow()
-                .as_ref()
-                .map(|edge| JsObject::from_inner(edge.clone())),
-        }
+            _root: root,
+        })
     }
 }
 

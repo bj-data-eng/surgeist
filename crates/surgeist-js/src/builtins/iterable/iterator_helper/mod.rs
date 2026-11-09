@@ -16,7 +16,7 @@ use crate::{
     Context, JsData, JsResult, JsValue,
     builtins::{BuiltInBuilder, IntrinsicObject, iterable::create_iter_result_object_trusted},
     context::intrinsics::Intrinsics,
-    error::PanicError,
+    error::{PanicError, RootingError},
     js_error, js_string,
     native_function::{NativeCapture, NativeCoroutine, StoredNativeCoroutine},
     object::JsObject,
@@ -25,7 +25,7 @@ use crate::{
     symbol::JsSymbol,
     vm::CompletionRecord,
 };
-use surgeist_js_gc::heap::Trace as HeapTrace;
+use surgeist_js_gc::heap::{AccessError, Trace as HeapTrace};
 
 /// `IfAbruptCloseIterator ( value, iteratorRecord )`, but specialized
 /// for usage in coroutines.
@@ -101,13 +101,9 @@ impl IntrinsicObject for IteratorHelper {
 }
 
 impl IteratorHelper {
-    fn resume(&mut self) -> JsResult<Option<NativeCoroutine>> {
+    fn prepare_resume(&self) -> JsResult<Option<NativeCoroutine>> {
         match &self.state {
-            HelperState::Suspended(coroutine) => {
-                let coroutine = NativeCoroutine::restore(coroutine);
-                self.state = HelperState::Executing;
-                Ok(Some(coroutine))
-            }
+            HelperState::Suspended(coroutine) => Ok(Some(NativeCoroutine::restore(coroutine)?)),
             HelperState::Executing => {
                 Err(js_error!(TypeError: "Iterator Helper is already executing"))
             }
@@ -144,8 +140,12 @@ impl IteratorHelper {
         // 5. Let state be generator.[[GeneratorState]].
         // 6. If state is executing, throw a TypeError exception.
         // 7. Return state.
-        let coroutine = helper.borrow_mut().data_mut().resume()?;
+        let mut helper_guard = helper
+            .try_borrow_mut()
+            .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?;
+        let coroutine = helper_guard.data().prepare_resume()?;
         let Some(coroutine) = coroutine else {
+            drop(helper_guard);
             return Ok(create_iter_result_object_trusted(
                 JsValue::undefined(),
                 true,
@@ -170,8 +170,19 @@ impl IteratorHelper {
         // All these steps don't map directly to the spec, but we can consider
         // the code below as "suspending" the underlying generator or returning
         // if the result is available.
-        let result = coroutine.call(CompletionRecord::Normal(JsValue::undefined()), context);
-        helper.borrow_mut().data_mut().state = if matches!(&result, ControlFlow::Continue(_)) {
+        let result = coroutine.call(
+            CompletionRecord::Normal(JsValue::undefined()),
+            move || {
+                helper_guard.data_mut().state = HelperState::Executing;
+                drop(helper_guard);
+            },
+            context,
+        )?;
+        helper
+            .try_borrow_mut()
+            .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?
+            .data_mut()
+            .state = if matches!(&result, ControlFlow::Continue(_)) {
             HelperState::Suspended(coroutine.store())
         } else {
             HelperState::Completed
@@ -229,8 +240,12 @@ impl IteratorHelper {
         // 5. Let state be generator.[[GeneratorState]].
         // 6. If state is executing, throw a TypeError exception.
         // 7. Return state.
-        let coroutine = helper.borrow_mut().data_mut().resume()?;
+        let mut helper_guard = helper
+            .try_borrow_mut()
+            .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?;
+        let coroutine = helper_guard.data().prepare_resume()?;
         let Some(coroutine) = coroutine else {
+            drop(helper_guard);
             return Ok(create_iter_result_object_trusted(
                 JsValue::undefined(),
                 true,
@@ -264,7 +279,14 @@ impl IteratorHelper {
         //     running execution context.
         //
         // ... Delegate status tracking to each transformer.
-        let result = match coroutine.call(CompletionRecord::Return(JsValue::undefined()), context) {
+        let result = match coroutine.call(
+            CompletionRecord::Return(JsValue::undefined()),
+            move || {
+                helper_guard.data_mut().state = HelperState::Executing;
+                drop(helper_guard);
+            },
+            context,
+        )? {
             // We technically would need to follow step 3.b here and return
             // the yielded value, but our transformers shouldn't keep executing
             // after calling `return`, so it's better to panic here to catch bugs.
@@ -282,7 +304,11 @@ impl IteratorHelper {
             ControlFlow::Break(Err(err)) => Err(err),
         };
 
-        helper.borrow_mut().data_mut().state = HelperState::Completed;
+        helper
+            .try_borrow_mut()
+            .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?
+            .data_mut()
+            .state = HelperState::Completed;
 
         // 12. Return ? result.
         result
@@ -328,5 +354,175 @@ impl IteratorHelper {
             },
         )
         .upcast()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+
+    use surgeist_js_gc::heap::Rooted;
+
+    use super::*;
+    use crate::{Source, error::EngineError, native_function::CoroutineBranch};
+
+    fn resume(returning: bool, helper: &JsValue, context: &mut Context) -> JsResult<JsValue> {
+        if returning {
+            IteratorHelper::r#return(helper, &[], context)
+        } else {
+            IteratorHelper::next(helper, &[], context)
+        }
+    }
+
+    #[test]
+    fn closed_map_helper_keeps_suspension_on_preparation_refusal_and_retries() {
+        for returning in [false, true] {
+            let mut context = Context::default();
+            let helper = context
+                .eval(Source::from_bytes(
+                    r#"
+                    globalThis.sourceSteps = 0;
+                    globalThis.sourceCloses = 0;
+                    globalThis.mapperCalls = 0;
+                    function checkReentry() {
+                        let refused = false;
+                        try { preparedHelper.next(); }
+                        catch (error) {
+                            if (!(error instanceof TypeError)) throw error;
+                            refused = true;
+                        }
+                        if (!refused) throw new Error("executing helper accepted reentry");
+                    }
+                    globalThis.preparedHelper = Iterator.prototype.map.call({
+                        next() {
+                            sourceSteps++;
+                            return {value: 4, done: false};
+                        },
+                        return() {
+                            sourceCloses++;
+                            checkReentry();
+                            return {done: true};
+                        }
+                    }, value => {
+                        mapperCalls++;
+                        checkReentry();
+                        return value * 2;
+                    });
+                    preparedHelper
+                    "#,
+                ))
+                .unwrap();
+            let typed_helper = IteratorHelper::generator_validate(&helper).unwrap();
+            let heap = context.runtime().heap.clone();
+            let error = heap
+                .read(|_| resume(returning, &helper, &mut context))
+                .unwrap()
+                .unwrap_err();
+            assert_eq!(
+                error.as_engine(),
+                Some(&EngineError::Rooting(RootingError::Access(
+                    AccessError::HeapBorrowed
+                )))
+            );
+            assert!(matches!(
+                typed_helper.try_borrow().unwrap().data().state,
+                HelperState::Suspended(_)
+            ));
+            assert_eq!(
+                context
+                    .eval(Source::from_bytes(
+                        "sourceSteps + sourceCloses + mapperCalls"
+                    ))
+                    .unwrap(),
+                JsValue::new(0)
+            );
+
+            let result = resume(returning, &helper, &mut context)
+                .unwrap()
+                .as_object()
+                .unwrap();
+            assert_eq!(
+                result.get(js_string!("done"), context.access()).unwrap(),
+                JsValue::new(returning)
+            );
+            if returning {
+                assert!(matches!(
+                    typed_helper.try_borrow().unwrap().data().state,
+                    HelperState::Completed
+                ));
+                assert_eq!(
+                    context.eval(Source::from_bytes("sourceCloses")).unwrap(),
+                    JsValue::new(1)
+                );
+            } else {
+                assert_eq!(
+                    result.get(js_string!("value"), context.access()).unwrap(),
+                    JsValue::new(8)
+                );
+                assert_eq!(
+                    context
+                        .eval(Source::from_bytes("sourceSteps + mapperCalls"))
+                        .unwrap(),
+                    JsValue::new(2)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn entered_body_payload_refusal_completes_helper_without_replaying_work() {
+        let mut context = Context::default();
+        let calls = context
+            .runtime()
+            .heap
+            .allocate(RefCell::new(0_u32))
+            .unwrap();
+        let source = context
+            .runtime()
+            .heap
+            .allocate(RefCell::new(9_u32))
+            .unwrap();
+        let coroutine = NativeCoroutine::from_fn_with_state(
+            |_, calls: &Rooted<RefCell<u32>>, prepared, _, _| {
+                *calls.borrow_mut() += 1;
+                let state: Rooted<RefCell<u32>> = prepared.unwrap();
+                let value = *state
+                    .try_borrow()
+                    .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))
+                    .branch()?;
+                ControlFlow::Continue(JsValue::new(value))
+            },
+            calls.clone(),
+            source.clone(),
+            &context,
+        )
+        .unwrap();
+        let helper = IteratorHelper::create(coroutine, &mut context);
+        let typed_helper = helper.clone().downcast::<IteratorHelper>().unwrap();
+        let held_payload = source.borrow_mut();
+
+        let error = IteratorHelper::next(&helper.clone().into(), &[], &mut context).unwrap_err();
+        assert_eq!(
+            error.as_engine(),
+            Some(&EngineError::Rooting(RootingError::Access(
+                AccessError::PayloadBorrowed
+            )))
+        );
+        assert_eq!(*calls.borrow(), 1);
+        assert!(matches!(
+            typed_helper.try_borrow().unwrap().data().state,
+            HelperState::Completed
+        ));
+
+        drop(held_payload);
+        let result = IteratorHelper::next(&helper.into(), &[], &mut context)
+            .unwrap()
+            .as_object()
+            .unwrap();
+        assert_eq!(
+            result.get(js_string!("done"), context.access()).unwrap(),
+            JsValue::new(true)
+        );
+        assert_eq!(*calls.borrow(), 1);
     }
 }

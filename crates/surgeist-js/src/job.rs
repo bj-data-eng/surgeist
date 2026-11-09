@@ -795,11 +795,13 @@ pub(crate) struct StoredJobCallback {
 }
 
 impl StoredJobCallback {
-    pub(crate) fn to_callback(&self) -> JobCallback {
-        JobCallback {
-            callback: JsFunction::from_record(self.callback.clone()),
-            host_defined: self.host_defined.restore(),
-        }
+    pub(crate) fn to_callback(&self) -> Result<JobCallback, crate::error::RootingError> {
+        Ok(JobCallback {
+            callback: JsFunction::restore(&crate::native_function::CapturedObject(
+                self.callback.clone(),
+            ))?,
+            host_defined: self.host_defined.restore()?,
+        })
     }
 }
 
@@ -814,7 +816,7 @@ impl<T: NativeCapture> JobCallbackHost for T {
 }
 
 trait StoredJobCallbackHost: HeapTrace {
-    fn restore(&self) -> Box<dyn JobCallbackHost>;
+    fn restore(&self) -> Result<Box<dyn JobCallbackHost>, crate::error::RootingError>;
 }
 
 struct CapturedJobCallbackHost<T: NativeCapture>(T::Stored);
@@ -826,8 +828,8 @@ impl<T: NativeCapture> HeapTrace for CapturedJobCallbackHost<T> {
 }
 
 impl<T: NativeCapture> StoredJobCallbackHost for CapturedJobCallbackHost<T> {
-    fn restore(&self) -> Box<dyn JobCallbackHost> {
-        Box::new(T::restore(&self.0))
+    fn restore(&self) -> Result<Box<dyn JobCallbackHost>, crate::error::RootingError> {
+        Ok(Box::new(T::restore(&self.0)?))
     }
 }
 

@@ -40,9 +40,9 @@ impl crate::native_function::NativeCapture for RestoreCount {
     fn store(&self) -> Self::Stored {
         StoredRestoreCount(self.0.clone())
     }
-    fn restore(stored: &Self::Stored) -> Self {
+    fn restore(stored: &Self::Stored) -> Result<Self, crate::error::RootingError> {
         stored.0.set(stored.0.get() + 1);
-        Self(stored.0.clone())
+        Ok(Self(stored.0.clone()))
     }
 }
 struct RestoreHooks(Rc<Cell<usize>>);

@@ -15,6 +15,7 @@ use crate::{
     Context, ContextAccess, JsNativeError, JsObject, JsResult, JsValue,
     builtins::{OrdinaryObject, function::ConstructorKind},
     context::intrinsics::StandardConstructors,
+    error::RootingError,
     object::{
         FunctionObjectBuilder, JsData, JsFunction, JsPromise,
         internal_methods::{
@@ -61,7 +62,7 @@ pub type NativeAsyncFunctionWithCaptures<T> =
     for<'call> fn(JsValue, Vec<JsValue>, T, ContextAccess<'call>) -> JsResult<ContextTask<JsValue>>;
 
 trait TraceableClosure: HeapTrace {
-    fn root_captures(&self) -> Rc<dyn Any>;
+    fn root_captures(&self) -> Result<Rc<dyn Any>, RootingError>;
     fn call(&self, this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue>;
 }
 
@@ -78,12 +79,12 @@ impl<T: NativeCapture> CaptureStore<T> {
         }
     }
 
-    fn restore(&self) -> T {
+    fn restore(&self) -> Result<T, RootingError> {
         T::restore(&self.stored)
     }
 
-    fn root_captures(&self) -> Rc<dyn Any> {
-        Rc::new(self.restore())
+    fn root_captures(&self) -> Result<Rc<dyn Any>, RootingError> {
+        Ok(Rc::new(self.restore()?))
     }
 }
 
@@ -101,12 +102,12 @@ struct Closure<T: NativeCapture> {
 }
 
 impl<T: NativeCapture> TraceableClosure for Closure<T> {
-    fn root_captures(&self) -> Rc<dyn Any> {
+    fn root_captures(&self) -> Result<Rc<dyn Any>, RootingError> {
         self.captures.root_captures()
     }
 
     fn call(&self, this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
-        let captures = self.captures.restore();
+        let captures = self.captures.restore()?;
         match self.callback {
             CapturedCall::Host(callback) => callback(this, args, &captures, context.access()),
             CapturedCall::Builtin(callback) => callback(this, args, &captures, context),
@@ -122,13 +123,13 @@ struct AsyncClosure<T: NativeCapture> {
 }
 
 impl<T: NativeCapture> TraceableClosure for AsyncClosure<T> {
-    fn root_captures(&self) -> Rc<dyn Any> {
+    fn root_captures(&self) -> Result<Rc<dyn Any>, RootingError> {
         self.captures.root_captures()
     }
 
     fn call(&self, this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         let callback = self.callback;
-        let captures = self.captures.restore();
+        let captures = self.captures.restore()?;
         let this = this.clone();
         let args = args.to_vec();
         JsPromise::from_task(
@@ -202,9 +203,9 @@ impl NativeCapture for NativeFunction {
         self.stored()
     }
 
-    fn restore(stored: &Self::Stored) -> Self {
+    fn restore(stored: &Self::Stored) -> Result<Self, RootingError> {
         let roots = match &stored.0 {
-            Inner::Closure(closure) => Some(closure.root_captures()),
+            Inner::Closure(closure) => Some(closure.root_captures()?),
             Inner::Builtin(_) | Inner::PointerFn(_) | Inner::AsyncPointer(_) => None,
         };
         let mut function = Self {
@@ -216,11 +217,11 @@ impl NativeCapture for NativeFunction {
                 function._capture_roots.take(),
                 target
                     .upgrade()
-                    .expect("resolving metadata heap available")
-                    .expect("live resolving metadata"),
+                    .map_err(RootingError::Access)?
+                    .ok_or(RootingError::Expired)?,
             )));
         }
-        function
+        Ok(function)
     }
 }
 
@@ -606,7 +607,7 @@ mod tests {
         });
         let stored = builtin.store();
         drop(builtin);
-        let restored = NativeFunction::restore(&stored);
+        let restored = NativeFunction::restore(&stored).unwrap();
         let mut context = Context::default();
         let function = restored.to_js_function(context.realm()).unwrap();
 
@@ -629,7 +630,7 @@ mod tests {
         let host = NativeFunction::from_fn_ptr(record_receiver);
         let stored = host.store();
         drop(host);
-        let restored = NativeFunction::restore(&stored);
+        let restored = NativeFunction::restore(&stored).unwrap();
         let mut context = Context::default();
 
         assert_eq!(
@@ -680,7 +681,7 @@ mod tests {
                 NativeFunction::from_fn_with_captures(captured_receiver, capture)
             };
             let stored = callback.store();
-            let restored = NativeFunction::restore(&stored);
+            let restored = NativeFunction::restore(&stored).unwrap();
             drop(callback);
 
             context.runtime().collect().unwrap();
@@ -720,7 +721,7 @@ mod tests {
             capture,
         );
         let stored = callback.store();
-        let restored = NativeFunction::restore(&stored);
+        let restored = NativeFunction::restore(&stored).unwrap();
         drop(callback);
         let promise = restored
             .call(&JsValue::undefined(), &[], context.access())
@@ -743,5 +744,238 @@ mod tests {
         drop(promise);
         context.runtime().collect().unwrap();
         assert!(!weak_capture.is_live().unwrap());
+    }
+
+    // Resolver metadata and closure captures own independent restoration roots.
+    use std::cell::{Cell, RefCell};
+
+    #[derive(crate::JsData, HeapTrace)]
+    struct ResolutionMetadataLeaf(#[heap_trace(skip)] Rc<Cell<usize>>);
+
+    impl Drop for ResolutionMetadataLeaf {
+        fn drop(&mut self) {
+            self.0.set(self.0.get() + 1);
+        }
+    }
+
+    struct ResolutionMetadataCapture {
+        object: JsObject,
+        calls: Rc<Cell<usize>>,
+    }
+
+    #[derive(HeapTrace)]
+    struct StoredResolutionMetadataCapture {
+        object: CapturedObject,
+        #[heap_trace(skip)]
+        calls: Rc<Cell<usize>>,
+    }
+
+    impl NativeCapture for ResolutionMetadataCapture {
+        type Stored = StoredResolutionMetadataCapture;
+
+        fn store(&self) -> Self::Stored {
+            StoredResolutionMetadataCapture {
+                object: self.object.store(),
+                calls: self.calls.clone(),
+            }
+        }
+
+        fn restore(stored: &Self::Stored) -> Result<Self, RootingError> {
+            Ok(Self {
+                object: JsObject::restore(&stored.object)?,
+                calls: stored.calls.clone(),
+            })
+        }
+    }
+
+    fn resolution_metadata_leaf(runtime: &crate::Runtime, drops: &Rc<Cell<usize>>) -> JsObject {
+        JsObject::new_unique(runtime, None, ResolutionMetadataLeaf(drops.clone()))
+            .unwrap()
+            .upcast()
+    }
+
+    fn resolution_metadata_callback(object: JsObject, calls: &Rc<Cell<usize>>) -> NativeFunction {
+        NativeFunction::from_fn_with_captures(
+            |_, _, capture, _| {
+                capture.calls.set(capture.calls.get() + 1);
+                Ok(capture.object.clone().into())
+            },
+            ResolutionMetadataCapture {
+                object,
+                calls: calls.clone(),
+            },
+        )
+    }
+
+    #[test]
+    fn restored_function_retains_closure_and_resolution_metadata_graph_until_last_owner_drop() {
+        let mut context = Context::default();
+        context
+            .runtime()
+            .heap
+            .set_allocation_collection(surgeist_js_gc::heap::AllocationCollection::Manual)
+            .unwrap();
+        let capture_drops = Rc::new(Cell::new(0));
+        let target_drops = Rc::new(Cell::new(0));
+        let child_drops = Rc::new(Cell::new(0));
+        let calls = Rc::new(Cell::new(0));
+        let capture = resolution_metadata_leaf(context.runtime(), &capture_drops);
+        let target = resolution_metadata_leaf(context.runtime(), &target_drops);
+        let child = resolution_metadata_leaf(context.runtime(), &child_drops);
+        let weak_capture = capture.edge();
+        let weak_target = target.edge();
+        let weak_child = child.edge();
+        let capture_id = capture.identity();
+        let target_id = target.identity();
+        let child_id = child.identity();
+        target
+            .set(js_string!("child"), child.clone(), true, context.access())
+            .unwrap();
+        let metadata = context
+            .runtime()
+            .heap
+            .allocate(RefCell::new(Some(target.edge())))
+            .unwrap();
+        let weak_metadata = metadata.record_ref();
+        let original =
+            resolution_metadata_callback(capture, &calls).with_resolution_target(&metadata);
+        let stored = original.store();
+        let restored = NativeFunction::restore(&stored).unwrap();
+        let last_owner = restored.clone();
+        drop(original);
+        drop(metadata);
+        drop(target);
+        drop(child);
+        drop(restored);
+
+        context.runtime().collect().unwrap();
+        assert!(weak_metadata.is_live().unwrap());
+        assert!(weak_capture.is_live().unwrap());
+        assert!(weak_target.is_live().unwrap());
+        assert!(weak_child.is_live().unwrap());
+        for drops in [&capture_drops, &target_drops, &child_drops] {
+            assert_eq!(drops.get(), 0);
+        }
+        assert_eq!(calls.get(), 0, "restoration must not enter the callback");
+        {
+            let target = last_owner.inner.resolution_target().unwrap();
+            assert_eq!(target.identity(), target_id);
+            let child = target.get(js_string!("child"), context.access()).unwrap();
+            assert_eq!(child.as_object().unwrap().identity(), child_id);
+            let returned = last_owner
+                .call(&JsValue::undefined(), &[], context.access())
+                .unwrap();
+            assert_eq!(returned.as_object().unwrap().identity(), capture_id);
+        }
+        assert_eq!(calls.get(), 1);
+        drop(last_owner);
+
+        context.runtime().collect().unwrap();
+        assert!(!weak_metadata.is_live().unwrap());
+        assert!(!weak_capture.is_live().unwrap());
+        assert!(!weak_target.is_live().unwrap());
+        assert!(!weak_child.is_live().unwrap());
+        for drops in [&capture_drops, &target_drops, &child_drops] {
+            assert_eq!(drops.get(), 1);
+        }
+        drop(stored);
+        context.runtime().collect().unwrap();
+        for drops in [&capture_drops, &target_drops, &child_drops] {
+            assert_eq!(drops.get(), 1);
+        }
+    }
+
+    #[test]
+    fn resolution_metadata_heap_refusal_releases_previously_restored_closure_roots() {
+        let context = Context::default();
+        context
+            .runtime()
+            .heap
+            .set_allocation_collection(surgeist_js_gc::heap::AllocationCollection::Manual)
+            .unwrap();
+        let metadata_heap = surgeist_js_gc::heap::RuntimeHeap::default();
+        let metadata = metadata_heap
+            .allocate(RefCell::new(None::<crate::object::ObjectEdge>))
+            .unwrap();
+        let weak_metadata = metadata.record_ref();
+        let drops = Rc::new(Cell::new(0));
+        let calls = Rc::new(Cell::new(0));
+        let capture = resolution_metadata_leaf(context.runtime(), &drops);
+        let weak_capture = capture.edge();
+        let original =
+            resolution_metadata_callback(capture, &calls).with_resolution_target(&metadata);
+        let stored = original.store();
+        let metadata_id = stored.1.as_ref().unwrap().identity();
+        drop(original);
+        drop(metadata);
+        assert!(weak_capture.is_live().unwrap());
+
+        metadata_heap
+            .read(|_| {
+                assert_eq!(
+                    NativeFunction::restore(&stored).unwrap_err(),
+                    RootingError::Access(AccessError::HeapBorrowed)
+                );
+            })
+            .unwrap();
+        assert_eq!(stored.1.as_ref().unwrap().identity(), metadata_id);
+        assert_eq!(calls.get(), 0);
+        assert_eq!(drops.get(), 0);
+        context.runtime().collect().unwrap();
+        assert_eq!(
+            drops.get(),
+            1,
+            "failed metadata acquisition releases the closure prefix"
+        );
+        assert!(!weak_capture.is_live().unwrap());
+        assert_eq!(metadata_heap.collect().unwrap(), 1);
+        assert!(!weak_metadata.is_live().unwrap());
+        drop(stored);
+        assert_eq!(calls.get(), 0);
+    }
+
+    #[test]
+    fn expired_resolution_metadata_releases_previously_restored_closure_roots() {
+        let context = Context::default();
+        context
+            .runtime()
+            .heap
+            .set_allocation_collection(surgeist_js_gc::heap::AllocationCollection::Manual)
+            .unwrap();
+        let metadata_heap = surgeist_js_gc::heap::RuntimeHeap::default();
+        let metadata = metadata_heap
+            .allocate(RefCell::new(None::<crate::object::ObjectEdge>))
+            .unwrap();
+        let weak_metadata = metadata.record_ref();
+        let drops = Rc::new(Cell::new(0));
+        let calls = Rc::new(Cell::new(0));
+        let capture = resolution_metadata_leaf(context.runtime(), &drops);
+        let weak_capture = capture.edge();
+        let original =
+            resolution_metadata_callback(capture, &calls).with_resolution_target(&metadata);
+        let stored = original.store();
+        let metadata_id = stored.1.as_ref().unwrap().identity();
+        drop(original);
+        drop(metadata);
+        assert_eq!(metadata_heap.collect().unwrap(), 1);
+        assert!(!weak_metadata.is_live().unwrap());
+        assert!(weak_capture.is_live().unwrap());
+
+        assert_eq!(
+            NativeFunction::restore(&stored).unwrap_err(),
+            RootingError::Expired
+        );
+        assert_eq!(stored.1.as_ref().unwrap().identity(), metadata_id);
+        assert_eq!(calls.get(), 0);
+        assert_eq!(drops.get(), 0);
+        context.runtime().collect().unwrap();
+        assert_eq!(
+            drops.get(),
+            1,
+            "expired metadata releases the closure prefix"
+        );
+        assert!(!weak_capture.is_live().unwrap());
+        drop(stored);
+        assert_eq!(calls.get(), 0);
     }
 }

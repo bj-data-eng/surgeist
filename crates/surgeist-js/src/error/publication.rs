@@ -39,14 +39,14 @@ impl ForeignSelectedRealm {
         selected: ObjectId,
         receiving: ObjectId,
         original: &StoredDiagnostic,
-    ) -> Self {
-        Self {
+    ) -> Result<Self, RootingError> {
+        Ok(Self {
             facts: Rc::new(RealmOwnershipFacts {
                 selected,
                 receiving,
             }),
-            original: original.to_external(),
-        }
+            original: original.to_external()?,
+        })
     }
 }
 
