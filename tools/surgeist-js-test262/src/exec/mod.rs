@@ -26,6 +26,22 @@ use surgeist_js::{
 
 use js262::WorkerHandles;
 
+fn render_result(passed: bool, rendered: JsResult<String>) -> (bool, String) {
+    match rendered {
+        Ok(text) => (passed, text),
+        // Checked rendering refuses only with rootless host errors. Reporting
+        // that cause does not attempt to access the original guest value again.
+        Err(error) => (false, format!("Uncaught {error}")),
+    }
+}
+
+fn error_result(passed: bool, error: &JsError) -> (bool, String) {
+    render_result(
+        passed,
+        error.render().map(|text| format!("Uncaught {text}")),
+    )
+}
+
 impl TestSuite {
     /// Runs the test suite.
     pub(crate) fn run(
@@ -285,16 +301,16 @@ impl Test {
                 let value = if self.is_module() {
                     let module = match parse_module_and_register(source, &self.path, context) {
                         Ok(module) => module,
-                        Err(err) => return (false, format!("Uncaught {err}")),
+                        Err(err) => return error_result(false, &err),
                     };
 
                     let promise = match module.load_link_evaluate(context.access()) {
                         Ok(promise) => promise,
-                        Err(err) => return (false, format!("Uncaught {err}")),
+                        Err(err) => return error_result(false, &err),
                     };
 
                     if let Err(err) = context.run_jobs() {
-                        return (false, format!("Uncaught {err}"));
+                        return error_result(false, &err);
                     }
 
                     match promise.state() {
@@ -303,34 +319,43 @@ impl Test {
                         }
                         Ok(PromiseState::Fulfilled(v)) => v,
                         Ok(PromiseState::Rejected(err)) => {
-                            let output = JsError::from_opaque(err.clone())
-                                .try_native(context.access())
-                                .map_or_else(
-                                    |_| format!("Uncaught {}", err.display()),
-                                    |err| {
-                                        format!(
-                                            "Uncaught {err}{}",
-                                            err.cause().map_or_else(String::new, |cause| format!(
-                                                "\n  caused by {cause}"
-                                            ))
-                                        )
-                                    },
-                                );
+                            let error = match JsError::from_opaque(err.clone()) {
+                                Ok(error) => error,
+                                Err(error) => {
+                                    return error_result(false, &JsError::from(error));
+                                }
+                            };
+                            let output = match error.try_native(context.access()) {
+                                Ok(error) => {
+                                    let cause = match error.cause() {
+                                        Some(cause) => match cause.render() {
+                                            Ok(text) => format!("\n  caused by {text}"),
+                                            Err(error) => return render_result(false, Err(error)),
+                                        },
+                                        None => String::new(),
+                                    };
+                                    format!("Uncaught {error}{cause}")
+                                }
+                                Err(_) => match err.display().render() {
+                                    Ok(rendered) => format!("Uncaught {rendered}"),
+                                    Err(error) => return (false, format!("Uncaught {error}")),
+                                },
+                            };
 
                             return (false, output);
                         }
-                        Err(err) => return (false, format!("Uncaught {err}")),
+                        Err(err) => return error_result(false, &err),
                     }
                 } else {
                     context.strict(strict);
                     match context.eval(source) {
                         Ok(v) => v,
-                        Err(err) => return (false, format!("Uncaught {err}")),
+                        Err(err) => return error_result(false, &err),
                     }
                 };
 
                 if let Err(err) = context.run_jobs() {
-                    return (false, format!("Uncaught {err}"));
+                    return error_result(false, &err);
                 }
 
                 match *async_result.inner.borrow() {
@@ -352,7 +377,7 @@ impl Test {
                     }
                 }
 
-                (true, value.display().to_string())
+                render_result(true, value.display().render())
             }
             Outcome::Negative {
                 phase: Phase::Parse,
@@ -370,13 +395,13 @@ impl Test {
                 if self.is_module() {
                     match Module::parse(source, None, context.access()) {
                         Ok(_) => (false, "ModuleItemList parsing should fail".to_owned()),
-                        Err(e) => (true, format!("Uncaught {e}")),
+                        Err(e) => error_result(true, &e),
                     }
                 } else {
                     context.strict(strict);
                     match Script::parse(source, None, context.access()) {
                         Ok(_) => (false, "StatementList parsing should fail".to_owned()),
-                        Err(e) => (true, format!("Uncaught {e}")),
+                        Err(e) => error_result(true, &e),
                     }
                 }
             }
@@ -392,16 +417,16 @@ impl Test {
 
                 let module = match parse_module_and_register(source, &self.path, context) {
                     Ok(module) => module,
-                    Err(err) => return (false, format!("Uncaught {err}")),
+                    Err(err) => return error_result(false, &err),
                 };
 
                 let promise = match module.load(context.access()) {
                     Ok(promise) => promise,
-                    Err(err) => return (false, format!("Uncaught {err}")),
+                    Err(err) => return error_result(false, &err),
                 };
 
                 if let Err(err) = context.run_jobs() {
-                    return (false, format!("Uncaught {err}"));
+                    return error_result(false, &err);
                 }
 
                 match promise.state() {
@@ -412,20 +437,19 @@ impl Test {
                         // Try to link to see if the resolution error shows there.
                     }
                     Ok(PromiseState::Rejected(err)) => {
-                        let err = JsError::from_opaque(err);
-                        return (
-                            is_error_type(&err, error_type, context),
-                            format!("Uncaught {err}"),
-                        );
+                        let err = match JsError::from_opaque(err) {
+                            Ok(error) => error,
+                            Err(error) => {
+                                return error_result(false, &JsError::from(error));
+                            }
+                        };
+                        return error_result(is_error_type(&err, error_type, context), &err);
                     }
-                    Err(err) => return (false, format!("Uncaught {err}")),
+                    Err(err) => return error_result(false, &err),
                 }
 
                 if let Err(err) = module.link(context.access()) {
-                    (
-                        is_error_type(&err, error_type, context),
-                        format!("Uncaught {err}"),
-                    )
+                    error_result(is_error_type(&err, error_type, context), &err)
                 } else {
                     (false, "module resolution didn't fail".to_string())
                 }
@@ -443,16 +467,16 @@ impl Test {
                 let error = if self.is_module() {
                     let module = match parse_module_and_register(source, &self.path, context) {
                         Ok(module) => module,
-                        Err(err) => return (false, format!("Uncaught {err}")),
+                        Err(err) => return error_result(false, &err),
                     };
 
                     let promise = match module.load(context.access()) {
                         Ok(promise) => promise,
-                        Err(err) => return (false, format!("Uncaught {err}")),
+                        Err(err) => return error_result(false, &err),
                     };
 
                     if let Err(err) = context.run_jobs() {
-                        return (false, format!("Uncaught {err}"));
+                        return error_result(false, &err);
                     }
 
                     match promise.state() {
@@ -461,22 +485,25 @@ impl Test {
                         }
                         Ok(PromiseState::Fulfilled(_)) => {}
                         Ok(PromiseState::Rejected(err)) => {
-                            return (false, format!("Uncaught {}", err.display()));
+                            return match err.display().render() {
+                                Ok(rendered) => (false, format!("Uncaught {rendered}")),
+                                Err(error) => (false, format!("Uncaught {error}")),
+                            };
                         }
-                        Err(err) => return (false, format!("Uncaught {err}")),
+                        Err(err) => return error_result(false, &err),
                     }
 
                     if let Err(err) = module.link(context.access()) {
-                        return (false, format!("Uncaught {err}"));
+                        return error_result(false, &err);
                     }
 
                     let promise = match module.evaluate(context.access()) {
                         Ok(p) => p,
-                        Err(err) => return (false, format!("Uncaught {err}")),
+                        Err(err) => return error_result(false, &err),
                     };
 
                     if let Err(err) = context.run_jobs() {
-                        return (false, format!("Uncaught {err}"));
+                        return error_result(false, &err);
                     }
 
                     match promise.state() {
@@ -484,16 +511,24 @@ impl Test {
                             return (false, "module didn't try to evaluate".to_string());
                         }
                         Ok(PromiseState::Fulfilled(val)) => {
-                            return (false, val.display().to_string());
+                            return match val.display().render() {
+                                Ok(rendered) => (false, rendered),
+                                Err(error) => (false, format!("Uncaught {error}")),
+                            };
                         }
-                        Ok(PromiseState::Rejected(err)) => JsError::from_opaque(err),
-                        Err(err) => return (false, format!("Uncaught {err}")),
+                        Ok(PromiseState::Rejected(err)) => match JsError::from_opaque(err) {
+                            Ok(error) => error,
+                            Err(error) => {
+                                return error_result(false, &JsError::from(error));
+                            }
+                        },
+                        Err(err) => return error_result(false, &err),
                     }
                 } else {
                     context.strict(strict);
                     let script = match Script::parse(source, None, context.access()) {
                         Ok(code) => code,
-                        Err(e) => return (false, format!("Uncaught {e}")),
+                        Err(e) => return error_result(false, &e),
                     };
 
                     match script.evaluate(context.access()) {
@@ -510,10 +545,7 @@ impl Test {
                     }
                 }
 
-                (
-                    is_error_type(&error, error_type, context),
-                    format!("Uncaught {error}"),
-                )
+                error_result(is_error_type(&error, error_type, context), &error)
             }
         });
 
@@ -556,15 +588,16 @@ impl Test {
         context.set_optimizer_options(optimizer_options);
 
         // Register the print() function.
-        register_print_fn(&mut context, async_result.clone()).map_err(|e| e.to_string())?;
+        register_print_fn(&mut context, async_result.clone())
+            .map_err(|e| render_result(false, e.render()).1)?;
 
         // add the $262 object.
         let _js262 = js262::register_js262(handles.clone(), console, context.access())
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| render_result(false, e.render()).1)?;
 
         if console {
             let console = surgeist_js_test_host::Console::init(context.access())
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| render_result(false, e.render()).1)?;
             context
                 .register_global_property(
                     surgeist_js_test_host::Console::NAME,
@@ -584,21 +617,36 @@ impl Test {
         );
         let sta = Source::from_reader(harness.sta.content.as_bytes(), Some(&harness.sta.path));
 
-        context
-            .eval(assert)
-            .map_err(|e| format!("could not run assert.js:\n{e}"))?;
-        context
-            .eval(sta)
-            .map_err(|e| format!("could not run sta.js:\n{e}"))?;
+        context.eval(assert).map_err(|e| {
+            render_result(
+                false,
+                e.render()
+                    .map(|text| format!("could not run assert.js:\n{text}")),
+            )
+            .1
+        })?;
+        context.eval(sta).map_err(|e| {
+            render_result(
+                false,
+                e.render()
+                    .map(|text| format!("could not run sta.js:\n{text}")),
+            )
+            .1
+        })?;
 
         if self.flags.contains(TestFlags::ASYNC) {
             let dph = Source::from_reader(
                 harness.doneprint_handle.content.as_bytes(),
                 Some(&harness.doneprint_handle.path),
             );
-            context
-                .eval(dph)
-                .map_err(|e| format!("could not run doneprintHandle.js:\n{e}"))?;
+            context.eval(dph).map_err(|e| {
+                render_result(
+                    false,
+                    e.render()
+                        .map(|text| format!("could not run doneprintHandle.js:\n{text}")),
+                )
+                .1
+            })?;
         }
 
         for include_name in &self.includes {
@@ -608,7 +656,13 @@ impl Test {
                 .ok_or_else(|| format!("could not find the {include_name} include file."))?;
             let source = Source::from_reader(include.content.as_bytes(), Some(&include.path));
             context.eval(source).map_err(|e| {
-                format!("could not run the harness `{include_name}`:\nUncaught {e}")
+                render_result(
+                    false,
+                    e.render().map(|text| {
+                        format!("could not run the harness `{include_name}`:\nUncaught {text}")
+                    }),
+                )
+                .1
             })?;
         }
 
@@ -735,5 +789,34 @@ impl NativeCapture for AsyncResult {
 
     fn restore(stored: &Self) -> Result<Self, surgeist_js::error::RootingError> {
         Ok(stored.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::error_result;
+    use surgeist_js::{Context, JsError, JsObject};
+
+    #[test]
+    fn borrowed_error_rendering_cannot_report_an_expected_guest_failure_as_passed() {
+        let context = Context::default();
+        let object = JsObject::with_null_proto(context.runtime());
+        let error = JsError::from_opaque(object.clone().into()).unwrap();
+        let expected = error_result(true, &error);
+        assert!(expected.0);
+
+        let alias = object.clone();
+        let held = alias.borrow_mut().unwrap();
+        let refused = error_result(true, &error);
+        assert_eq!(
+            refused,
+            (
+                false,
+                "Uncaught ObjectAccessError: object access is already borrowed".to_string(),
+            )
+        );
+        drop(held);
+
+        assert_eq!(error_result(true, &error), expected);
     }
 }

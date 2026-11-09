@@ -111,8 +111,8 @@ mod tests {
                     .unwrap()
                     .upcast();
             let source: JsError = JsNativeError::aggregate(vec![
-                JsError::from_opaque(first.into()),
-                JsError::from_opaque(last.into()),
+                JsError::from_opaque(first.into()).unwrap(),
+                JsError::from_opaque(last.into()).unwrap(),
             ])
             .into();
             let stored = if diagnostic {
@@ -143,7 +143,7 @@ mod tests {
                 .unwrap()
                 .upcast();
             let identity = object.identity();
-            let source = JsError::from_opaque(object.into());
+            let source = JsError::from_opaque(object.into()).unwrap();
             let original = if diagnostic {
                 JsError::from(PanicError::new("retry").with_source(source))
             } else {

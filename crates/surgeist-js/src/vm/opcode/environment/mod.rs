@@ -184,7 +184,7 @@ impl SuperCallSpread {
             .as_object()
             .js_expect("arguments array in call spread function must be an object")?;
         let arguments = arguments_array_object
-            .borrow()
+            .borrow()?
             .properties()
             .to_dense_indexed_properties()
             .js_expect("arguments array in call spread function must be dense")?;

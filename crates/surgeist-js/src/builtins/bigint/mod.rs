@@ -37,7 +37,7 @@ mod tests;
 pub struct BigInt;
 
 impl IntrinsicObject for BigInt {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::from_standard_constructor::<Self>(realm)
             .method(Self::to_string, js_string!("toString"), 0)
             .method(Self::to_locale_string, js_string!("toLocaleString"), 0)
@@ -49,7 +49,9 @@ impl IntrinsicObject for BigInt {
                 Self::NAME,
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
             )
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -141,18 +143,18 @@ impl BigInt {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-thisbigintvalue
     fn this_bigint_value(value: &JsValue) -> JsResult<JsBigInt> {
+        if let Some(primitive) = value.as_bigint() {
+            return Ok(primitive);
+        }
         value
-            // 1. If Type(value) is BigInt, return value.
-            .as_bigint()
-            // 2. If Type(value) is Object and value has a [[BigIntData]] internal slot, then
-            //    a. Assert: Type(value.[[BigIntData]]) is BigInt.
-            //    b. Return value.[[BigIntData]].
-            .or_else(|| {
-                value
-                    .as_object()
-                    .and_then(|obj| obj.downcast_ref::<JsBigInt>().as_deref().cloned())
+            .as_object()
+            .map(|object| {
+                object
+                    .downcast_ref::<JsBigInt>()
+                    .map(|value| value.as_deref().cloned())
             })
-            // 3. Throw a TypeError exception.
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("'this' is not a BigInt")

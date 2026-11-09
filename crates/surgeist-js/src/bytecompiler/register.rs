@@ -228,7 +228,7 @@ mod tests {
     #[test]
     fn wide_reuse_admits_each_probe_and_the_write_before_changing_flags() {
         const WIDTH: usize = 32;
-        let marker = JsError::from_opaque(JsValue::new(211));
+        let marker = JsError::from_opaque(JsValue::new(211)).unwrap();
         // The last entry is free: 32 probes and one flag write are necessary.
         for limit in [WIDTH, WIDTH + 1] {
             let mut allocator = RegisterAllocator {
@@ -279,7 +279,7 @@ mod tests {
                 })
                 .collect(),
         };
-        let marker = JsError::from_opaque(JsValue::new(212));
+        let marker = JsError::from_opaque(JsValue::new(212)).unwrap();
         let mut probes = 0;
         let mut admission = |work| {
             assert!(matches!(work, CompilerWork::RegisterProbe));
@@ -301,7 +301,7 @@ mod tests {
 
     #[test]
     fn persistent_flag_refusal_returns_the_original_error_and_leaves_cleanup_infallible() {
-        let marker = JsError::from_opaque(JsValue::new(215));
+        let marker = JsError::from_opaque(JsValue::new(215)).unwrap();
         for limit in [2, 3] {
             let mut allocator = RegisterAllocator {
                 registers: Vec::with_capacity(1),
@@ -343,7 +343,7 @@ mod tests {
     #[test]
     fn new_register_refusal_before_growth_does_not_append_an_entry() {
         let mut allocator = RegisterAllocator::default();
-        let marker = JsError::from_opaque(JsValue::new(216));
+        let marker = JsError::from_opaque(JsValue::new(216)).unwrap();
         let mut requests = Vec::new();
         let mut admission = |work| {
             requests.push(work);
@@ -364,7 +364,7 @@ mod tests {
 
     #[test]
     fn refused_deallocation_and_finish_can_discard_live_tokens_without_callbacks() {
-        let marker = JsError::from_opaque(JsValue::new(213));
+        let marker = JsError::from_opaque(JsValue::new(213)).unwrap();
         let depth = CompilerDepth::new();
         let mut allocator = RegisterAllocator::default();
         let register = allocator
@@ -412,7 +412,7 @@ mod tests {
                     })
                     .collect(),
             };
-            let marker = JsError::from_opaque(JsValue::new(214));
+            let marker = JsError::from_opaque(JsValue::new(214)).unwrap();
             let mut accepted = 0;
             let mut admission = |work| {
                 assert!(matches!(work, CompilerWork::RegisterProbe));

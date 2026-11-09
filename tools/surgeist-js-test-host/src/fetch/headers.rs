@@ -99,7 +99,9 @@ impl JsHeaders {
         if let Some(other_header) = init
             .as_object()
             .as_ref()
-            .and_then(JsObject::downcast_ref::<JsHeaders>)
+            .map(JsObject::downcast_ref::<JsHeaders>)
+            .transpose()?
+            .flatten()
         {
             for (key, value) in other_header.headers.borrow().iter() {
                 if h.contains_key(key) {
@@ -192,7 +194,7 @@ impl JsHeaders {
     ) -> JsResult<()> {
         let object = this.inner().upcast();
         let this_arg = this_arg.unwrap_or_default();
-        for (k, v) in this.clone_inner().headers.borrow().iter() {
+        for (k, v) in this.clone_inner()?.headers.borrow().iter() {
             let k = JsString::from(k.as_str());
             let v = JsString::from(v.to_str().unwrap_or(""));
             callback.call_with_this(&this_arg, context.reborrow(), (v, k, object.clone()))?;

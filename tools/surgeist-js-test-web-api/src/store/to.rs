@@ -62,7 +62,7 @@ impl Decoder<'_> {
                 self.seen.insert(id, date.clone().into());
                 Ok(JsValue::from(date))
             }
-            StoredValue::Error { .. } => Err(js_error!("Not yet implemented.")),
+            StoredValue::Error { .. } => Err(js_error!("Not yet implemented.")?),
             StoredValue::RegExp { source, flags } => {
                 let regexp = JsRegExp::new(
                     JsString::from(source.as_str()),

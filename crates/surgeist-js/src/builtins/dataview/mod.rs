@@ -102,7 +102,7 @@ impl DataView {
 }
 
 impl IntrinsicObject for DataView {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let flag_attributes = Attribute::CONFIGURABLE | Attribute::NON_ENUMERABLE;
 
         let get_buffer = BuiltInBuilder::callable(realm, Self::get_buffer)
@@ -167,7 +167,9 @@ impl IntrinsicObject for DataView {
             .method(Self::get_float16, js_string!("getFloat16"), 1)
             .method(Self::set_float16, js_string!("setFloat16"), 2);
 
-        builder.build();
+        builder.build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -222,7 +224,7 @@ impl BuiltInConstructor for DataView {
         let offset = args.get_or_undefined(1).to_index(context.access())?;
 
         let (buf_byte_len, is_fixed_len) = {
-            let buffer = buffer.as_buffer();
+            let buffer = buffer.as_buffer()?;
 
             // 4. If IsDetachedBuffer(buffer) is true, throw a TypeError exception.
             let Some(slice) = buffer.bytes(Ordering::SeqCst) else {
@@ -275,7 +277,7 @@ impl BuiltInConstructor for DataView {
         // 11. If IsDetachedBuffer(buffer) is true, throw a TypeError exception.
         // 12. Set bufferByteLength to ArrayBufferByteLength(buffer, seq-cst).
         let Some(buf_byte_len) = buffer
-            .as_buffer()
+            .as_buffer()?
             .bytes(Ordering::SeqCst)
             .map(|s| s.len() as u64)
         else {
@@ -338,7 +340,9 @@ impl DataView {
         let object = this.as_object();
         let view = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("`this` is not a DataView"))?;
         // 3. Assert: O has a [[ViewedArrayBuffer]] internal slot.
         // 4. Let buffer be O.[[ViewedArrayBuffer]].
@@ -368,13 +372,15 @@ impl DataView {
         let object = this.as_object();
         let view = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("`this` is not a DataView"))?;
 
         // 4. Let viewRecord be MakeDataViewWithBufferWitnessRecord(O, seq-cst).
         // 5. If IsViewOutOfBounds(viewRecord) is true, throw a TypeError exception.
         let buffer = view.viewed_array_buffer.to_buffer();
-        let buffer = buffer.as_buffer();
+        let buffer = buffer.as_buffer()?;
         let Some(slice) = buffer
             .bytes(Ordering::SeqCst)
             .filter(|s| !view.is_out_of_bounds(s.len()))
@@ -412,12 +418,14 @@ impl DataView {
         let object = this.as_object();
         let view = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("`this` is not a DataView"))?;
 
         // 3. Assert: O has a [[ViewedArrayBuffer]] internal slot.
         let buffer = view.viewed_array_buffer.to_buffer();
-        let buffer = buffer.as_buffer();
+        let buffer = buffer.as_buffer()?;
         // 4. Let viewRecord be MakeDataViewWithBufferWitnessRecord(O, seq-cst).
         // 5. If IsViewOutOfBounds(viewRecord) is true, throw a TypeError exception.
         if buffer
@@ -457,7 +465,9 @@ impl DataView {
         let object = view.as_object();
         let view = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("`this` is not a DataView"))?;
 
         // 3. Let getIndex be ? ToIndex(requestIndex).
@@ -470,7 +480,7 @@ impl DataView {
         // 7. NOTE: Bounds checking is not a synchronizing operation when view's backing buffer is a growable SharedArrayBuffer.
         // 8. If IsViewOutOfBounds(viewRecord) is true, throw a TypeError exception.
         let buffer = view.viewed_array_buffer.to_buffer();
-        let buffer = buffer.as_buffer();
+        let buffer = buffer.as_buffer()?;
         let Some(data) = buffer
             .bytes(Ordering::Relaxed)
             .filter(|buf| !view.is_out_of_bounds(buf.len()))
@@ -790,7 +800,9 @@ impl DataView {
         let object = view.as_object();
         let view = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("`this` is not a DataView"))?;
 
         // 3. Let getIndex be ? ToIndex(requestIndex).
@@ -807,7 +819,7 @@ impl DataView {
         // 9. NOTE: Bounds checking is not a synchronizing operation when view's backing buffer is a growable SharedArrayBuffer.
         // 10. If IsViewOutOfBounds(viewRecord) is true, throw a TypeError exception.
         let buffer = view.viewed_array_buffer.to_buffer();
-        let mut buffer = buffer.as_buffer_mut();
+        let mut buffer = buffer.as_buffer_mut()?;
 
         let Some(mut data) = buffer
             .bytes(Ordering::Relaxed)

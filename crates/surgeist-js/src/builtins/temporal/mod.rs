@@ -82,33 +82,33 @@ impl BuiltInObject for Temporal {
 }
 
 impl IntrinsicObject for Temporal {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::with_intrinsic::<Self>(realm)
             .static_property(
                 JsSymbol::to_string_tag(),
                 Self::NAME,
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .static_property(
                 js_string!("Now"),
                 realm.intrinsics().objects().now(),
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .static_property(
                 js_string!("Duration"),
                 realm.intrinsics().constructors().duration().constructor(),
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .static_property(
                 js_string!("Instant"),
                 realm.intrinsics().constructors().instant().constructor(),
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .static_property(
                 js_string!("PlainDate"),
                 realm.intrinsics().constructors().plain_date().constructor(),
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .static_property(
                 js_string!("PlainDateTime"),
                 realm
@@ -117,7 +117,7 @@ impl IntrinsicObject for Temporal {
                     .plain_date_time()
                     .constructor(),
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .static_property(
                 js_string!("PlainMonthDay"),
                 realm
@@ -126,12 +126,12 @@ impl IntrinsicObject for Temporal {
                     .plain_month_day()
                     .constructor(),
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .static_property(
                 js_string!("PlainTime"),
                 realm.intrinsics().constructors().plain_time().constructor(),
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .static_property(
                 js_string!("PlainYearMonth"),
                 realm
@@ -140,7 +140,7 @@ impl IntrinsicObject for Temporal {
                     .plain_year_month()
                     .constructor(),
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
+            )?
             .static_property(
                 js_string!("ZonedDateTime"),
                 realm
@@ -149,8 +149,10 @@ impl IntrinsicObject for Temporal {
                     .zoned_date_time()
                     .constructor(),
                 Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
-            .build();
+            )?
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -175,15 +177,15 @@ pub(crate) fn get_relative_to_option(
     // 5. If value is an Object, then
     if let Some(object) = value.as_object() {
         // a. If value has an [[InitializedTemporalZonedDateTime]] internal slot, then
-        if let Some(zdt) = object.downcast_ref::<ZonedDateTime>() {
+        if let Some(zdt) = object.downcast_ref::<ZonedDateTime>()? {
             // i. Return the Record { [[PlainRelativeTo]]: undefined, [[ZonedRelativeTo]]: value }.
             return Ok(Some(RelativeTo::ZonedDateTime(zdt.inner.as_ref().clone())));
         // b. If value has an [[InitializedTemporalDate]] internal slot, then
-        } else if let Some(date) = object.downcast_ref::<PlainDate>() {
+        } else if let Some(date) = object.downcast_ref::<PlainDate>()? {
             // i. Return the Record { [[PlainRelativeTo]]: value, [[ZonedRelativeTo]]: undefined }.
             return Ok(Some(RelativeTo::PlainDate(date.inner.clone())));
         // c. If value has an [[InitializedTemporalDateTime]] internal slot, then
-        } else if let Some(dt) = object.downcast_ref::<PlainDateTime>() {
+        } else if let Some(dt) = object.downcast_ref::<PlainDateTime>()? {
             // i. Let plainDate be ! CreateTemporalDate(value.[[ISODateTime]].[[ISODate]], value.[[Calendar]]).
             // ii. Return the Record { [[PlainRelativeTo]]: plainDate, [[ZonedRelativeTo]]: undefined }.
             return Ok(Some(RelativeTo::PlainDate(dt.inner.clone().into())));
@@ -305,15 +307,15 @@ where
     MDF: FnOnce(&PlainMonthDay) -> JsResult<Option<Ret>>,
     ZDTF: FnOnce(&ZonedDateTime) -> JsResult<Option<Ret>>,
 {
-    if let Some(date) = object.downcast_ref::<PlainDate>() {
+    if let Some(date) = object.downcast_ref::<PlainDate>()? {
         return date_f(&date);
-    } else if let Some(dt) = object.downcast_ref::<PlainDateTime>() {
+    } else if let Some(dt) = object.downcast_ref::<PlainDateTime>()? {
         return datetime_f(&dt);
-    } else if let Some(ym) = object.downcast_ref::<PlainYearMonth>() {
+    } else if let Some(ym) = object.downcast_ref::<PlainYearMonth>()? {
         return year_month_f(&ym);
-    } else if let Some(md) = object.downcast_ref::<PlainMonthDay>() {
+    } else if let Some(md) = object.downcast_ref::<PlainMonthDay>()? {
         return month_day_f(&md);
-    } else if let Some(dt) = object.downcast_ref::<ZonedDateTime>() {
+    } else if let Some(dt) = object.downcast_ref::<ZonedDateTime>()? {
         return zoned_datetime_f(&dt);
     }
 

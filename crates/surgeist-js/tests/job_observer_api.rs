@@ -87,7 +87,7 @@ fn rootless_observation_types_are_thread_safe_and_registration_resources_keep_th
 fn ordinary_success_and_guest_failure_both_publish_completed_and_ready_wait_results() {
     for guest_error in [false, true] {
         let mut owner = context();
-        let original = JsError::from_opaque(7.into());
+        let original = JsError::from_opaque(7.into()).unwrap();
         let supplied = original.clone();
         let calls = Rc::new(Cell::new(0));
         let seen = calls.clone();

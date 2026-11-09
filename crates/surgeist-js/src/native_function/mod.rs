@@ -15,7 +15,7 @@ use crate::{
     Context, ContextAccess, JsNativeError, JsObject, JsResult, JsValue,
     builtins::{OrdinaryObject, function::ConstructorKind},
     context::intrinsics::StandardConstructors,
-    error::RootingError,
+    error::{ObjectAccessError, RootingError},
     object::{
         FunctionObjectBuilder, JsData, JsFunction, JsPromise,
         internal_methods::{
@@ -429,9 +429,6 @@ impl StoredNativeFunction {
 
 /// Call this object.
 ///
-/// # Panics
-///
-/// Panics if the object is currently mutably borrowed.
 // <https://tc39.es/ecma262/#sec-built-in-function-objects-call-thisargument-argumentslist>
 pub(crate) fn native_function_call(
     obj: &JsObject,
@@ -451,8 +448,8 @@ pub(crate) fn native_function_call(
 
     let (function, name, constructor, mut realm) = {
         let record = obj
-            .downcast_ref::<NativeFunctionObject>()
-            .expect("the object should be a native function object");
+            .downcast_ref::<NativeFunctionObject>()?
+            .ok_or(ObjectAccessError::WrongNativeBrand)?;
         (
             record.f.clone(),
             record.name.clone(),
@@ -497,9 +494,6 @@ pub(crate) fn native_function_call(
 
 /// Construct an instance of this object with the specified arguments.
 ///
-/// # Panics
-///
-/// Panics if the object is currently mutably borrowed.
 // <https://tc39.es/ecma262/#sec-built-in-function-objects-construct-argumentslist-newtarget>
 fn native_function_construct(
     obj: &JsObject,
@@ -515,8 +509,8 @@ fn native_function_construct(
 
     let (function, name, constructor, mut realm) = {
         let record = obj
-            .downcast_ref::<NativeFunctionObject>()
-            .expect("the object should be a native function object");
+            .downcast_ref::<NativeFunctionObject>()?
+            .ok_or(ObjectAccessError::WrongNativeBrand)?;
         (
             record.f.clone(),
             record.name.clone(),

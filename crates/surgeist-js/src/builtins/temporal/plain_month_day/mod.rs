@@ -56,7 +56,7 @@ impl BuiltInObject for PlainMonthDay {
 }
 
 impl IntrinsicObject for PlainMonthDay {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_day = BuiltInBuilder::callable(realm, Self::get_day)
             .name(js_string!("get day"))
             .build();
@@ -101,7 +101,9 @@ impl IntrinsicObject for PlainMonthDay {
             .method(Self::to_json, js_string!("toJSON"), 0)
             .method(Self::value_of, js_string!("valueOf"), 0)
             .method(Self::to_plain_date, js_string!("toPlainDate"), 1)
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -195,7 +197,9 @@ impl PlainMonthDay {
         let object = this.as_object();
         let month_day = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainMonthDay object.")
             })?;
@@ -222,7 +226,9 @@ impl PlainMonthDay {
         let object = this.as_object();
         let month_day = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainMonthDay object.")
             })?;
@@ -280,7 +286,9 @@ impl PlainMonthDay {
         let object = this.as_object();
         let month_day = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainMonthDay object.")
             })?;
@@ -320,7 +328,9 @@ impl PlainMonthDay {
         let object = this.as_object();
         let month_day = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainMonthDay object.")
             })?;
@@ -348,7 +358,9 @@ impl PlainMonthDay {
         let object = this.as_object();
         let month_day = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainMonthDay object.")
             })?;
@@ -383,7 +395,9 @@ impl PlainMonthDay {
         let object = this.as_object();
         let month_day = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainMonthDay object.")
             })?;
@@ -404,7 +418,9 @@ impl PlainMonthDay {
         let object = this.as_object();
         let month_day = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainMonthDay object.")
             })?;
@@ -444,7 +460,9 @@ impl PlainMonthDay {
         let object = this.as_object();
         let month_day = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainMonthDay object.")
             })?;
@@ -529,7 +547,7 @@ fn to_temporal_month_day(
     // 2. If item is a Object, then
     if let Some(obj) = item.as_object() {
         // a. If item has an [[InitializedTemporalMonthDay]] internal slot, then
-        if let Some(md) = obj.downcast_ref::<PlainMonthDay>() {
+        if let Some(md) = obj.downcast_ref::<PlainMonthDay>()? {
             // i. Let resolvedOptions be ? GetOptionsObject(options).
             let options = get_options_object(options, context)?;
             // ii. Perform ? GetTemporalOverflowOption(resolvedOptions).

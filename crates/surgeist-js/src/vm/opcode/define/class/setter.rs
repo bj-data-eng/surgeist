@@ -36,8 +36,8 @@ impl DefineClassStaticSetterByName {
                 .js_expect("method must be function object")?;
             set_function_name(&function_object, &key, Some(js_str!("set")), context)?;
             function_object
-                .downcast_mut::<OrdinaryFunction>()
-                .js_expect("method must be function object")?
+                .downcast_mut::<OrdinaryFunction>()?
+                .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
                 .set_home_object(class.clone());
         }
         let get = class
@@ -94,8 +94,8 @@ impl DefineClassSetterByName {
                 .js_expect("method must be function object")?;
             set_function_name(&function_object, &key, Some(js_str!("set")), context)?;
             function_object
-                .downcast_mut::<OrdinaryFunction>()
-                .js_expect("method must be function object")?
+                .downcast_mut::<OrdinaryFunction>()?
+                .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
                 .set_home_object(class_proto.clone());
         }
         let get = class_proto
@@ -149,8 +149,8 @@ impl DefineClassStaticSetterByValue {
                 .js_expect("method must be function object")?;
             set_function_name(&function_object, &key, Some(js_str!("set")), context)?;
             function_object
-                .downcast_mut::<OrdinaryFunction>()
-                .js_expect("method must be function object")?
+                .downcast_mut::<OrdinaryFunction>()?
+                .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
                 .set_home_object(class.clone());
         }
         let get = class
@@ -204,8 +204,8 @@ impl DefineClassSetterByValue {
                 .js_expect("method must be function object")?;
             set_function_name(&function_object, &key, Some(js_str!("set")), context)?;
             function_object
-                .downcast_mut::<OrdinaryFunction>()
-                .js_expect("method must be function object")?
+                .downcast_mut::<OrdinaryFunction>()?
+                .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
                 .set_home_object(class_proto.clone());
         }
         let get = class_proto

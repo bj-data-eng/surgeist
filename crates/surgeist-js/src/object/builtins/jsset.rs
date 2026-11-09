@@ -8,7 +8,7 @@ use crate::{
         Set, canonicalize_keyed_collection_key, iterable::IteratorHint,
         set::ordered_set::OrderedSet,
     },
-    error::JsNativeError,
+    error::{JsNativeError, ObjectAccessError},
     object::{JsFunction, JsObject, JsSetIterator},
     value::TryFromJs,
 };
@@ -36,12 +36,12 @@ impl JsSet {
     ///
     /// Same as JavaScript's `set.size`.
     #[inline]
-    #[must_use]
-    pub fn size(&self) -> usize {
-        self.inner
-            .downcast_ref::<OrderedSet>()
-            .expect("set data")
-            .len()
+    pub fn size(&self) -> Result<usize, ObjectAccessError> {
+        Ok(self
+            .inner
+            .downcast_ref::<OrderedSet>()?
+            .ok_or(ObjectAccessError::WrongNativeBrand)?
+            .len())
     }
 
     /// Appends value to the Set object.
@@ -70,11 +70,12 @@ impl JsSet {
     ///
     /// Same as JavaScript's `set.clear()`.
     #[inline]
-    pub fn clear(&self) {
+    pub fn clear(&self) -> Result<(), ObjectAccessError> {
         self.inner
-            .downcast_mut::<OrderedSet>()
-            .expect("set data")
+            .downcast_mut::<OrderedSet>()?
+            .ok_or(ObjectAccessError::WrongNativeBrand)?
             .clear();
+        Ok(())
     }
 
     /// Removes the element associated to the value.
@@ -82,31 +83,32 @@ impl JsSet {
     /// successfully removed or not.
     ///
     /// Same as JavaScript's `set.delete(value)`.
-    pub fn delete<T>(&self, value: T) -> bool
+    pub fn delete<T>(&self, value: T) -> Result<bool, ObjectAccessError>
     where
         T: Into<JsValue>,
     {
         let value = canonicalize_keyed_collection_key(value.into());
-        self.inner
-            .downcast_mut::<OrderedSet>()
-            .expect("set data")
-            .delete(&value)
+        Ok(self
+            .inner
+            .downcast_mut::<OrderedSet>()?
+            .ok_or(ObjectAccessError::WrongNativeBrand)?
+            .delete(&value))
     }
 
     /// Returns a boolean asserting whether an element is present
     /// with the given value in the Set object or not.
     ///
     /// Same as JavaScript's `set.has(value)`.
-    #[must_use]
-    pub fn has<T>(&self, value: T) -> bool
+    pub fn has<T>(&self, value: T) -> Result<bool, ObjectAccessError>
     where
         T: Into<JsValue>,
     {
         let value = canonicalize_keyed_collection_key(value.into());
-        self.inner
-            .downcast_ref::<OrderedSet>()
-            .expect("set data")
-            .contains(&value)
+        Ok(self
+            .inner
+            .downcast_ref::<OrderedSet>()?
+            .ok_or(ObjectAccessError::WrongNativeBrand)?
+            .contains(&value))
     }
 
     /// Returns a new iterator object that yields the values
@@ -233,5 +235,30 @@ impl TryFromJs for JsSet {
                 .with_message("value is not a Set object")
                 .into())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Context;
+
+    #[test]
+    fn set_access_refuses_an_alias_without_removing_members() {
+        let context = &mut Context::default();
+        let set = JsSet::from_iter([JsValue::new(7)], context.access()).unwrap();
+        let alias: JsObject = set.clone().into();
+        let view = alias.borrow_mut().unwrap();
+
+        assert_eq!(set.size(), Err(ObjectAccessError::Borrowed));
+        assert_eq!(set.has(7), Err(ObjectAccessError::Borrowed));
+        assert_eq!(set.delete(7), Err(ObjectAccessError::Borrowed));
+        assert_eq!(set.clear(), Err(ObjectAccessError::Borrowed));
+        drop(view);
+
+        assert_eq!(set.size().unwrap(), 1);
+        assert!(set.has(7).unwrap());
+        assert!(set.delete(7).unwrap());
+        assert_eq!(set.size().unwrap(), 0);
     }
 }

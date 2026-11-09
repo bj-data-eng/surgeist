@@ -118,18 +118,18 @@ impl Intl {
 }
 
 impl IntrinsicObject for Intl {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::with_intrinsic::<Self>(realm)
             .static_property(
                 JsSymbol::to_string_tag(),
                 Self::NAME,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .static_property(
                 Collator::NAME,
                 realm.intrinsics().constructors().collator().constructor(),
                 Collator::ATTRIBUTE,
-            )
+            )?
             .static_property(
                 ListFormat::NAME,
                 realm
@@ -138,17 +138,17 @@ impl IntrinsicObject for Intl {
                     .list_format()
                     .constructor(),
                 ListFormat::ATTRIBUTE,
-            )
+            )?
             .static_property(
                 Locale::NAME,
                 realm.intrinsics().constructors().locale().constructor(),
                 Locale::ATTRIBUTE,
-            )
+            )?
             .static_property(
                 Segmenter::NAME,
                 realm.intrinsics().constructors().segmenter().constructor(),
                 Segmenter::ATTRIBUTE,
-            )
+            )?
             .static_property(
                 PluralRules::NAME,
                 realm
@@ -157,7 +157,7 @@ impl IntrinsicObject for Intl {
                     .plural_rules()
                     .constructor(),
                 PluralRules::ATTRIBUTE,
-            )
+            )?
             .static_property(
                 DateTimeFormat::NAME,
                 realm
@@ -166,7 +166,7 @@ impl IntrinsicObject for Intl {
                     .date_time_format()
                     .constructor(),
                 DateTimeFormat::ATTRIBUTE,
-            )
+            )?
             .static_property(
                 NumberFormat::NAME,
                 realm
@@ -175,13 +175,15 @@ impl IntrinsicObject for Intl {
                     .number_format()
                     .constructor(),
                 NumberFormat::ATTRIBUTE,
-            )
+            )?
             .static_method(
                 Self::get_canonical_locales,
                 js_string!("getCanonicalLocales"),
                 1,
-            )
-            .build();
+            )?
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {

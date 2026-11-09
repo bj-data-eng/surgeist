@@ -45,7 +45,7 @@ pub mod js_module {
             .map(|c| {
                 let cp = c as u32;
                 if cp > 0xFF {
-                    Err(js_error!("InvalidCharacterError: The string to be encoded contains characters outside of the Latin1 range."))
+                    Err(js_error!("InvalidCharacterError: The string to be encoded contains characters outside of the Latin1 range.")?)
                 } else {
                     Ok(cp as u8)
                 }
@@ -69,9 +69,14 @@ pub mod js_module {
             .filter(|c| !matches!(c, ' ' | '\t' | '\n' | '\x0C' | '\r'))
             .collect();
 
-        let bytes = FORGIVING.decode(cleaned.as_bytes()).map_err(|_| {
-            js_error!("InvalidCharacterError: The string to be decoded is not correctly encoded.")
-        })?;
+        let bytes = match FORGIVING.decode(cleaned.as_bytes()) {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                return Err(js_error!(
+                    "InvalidCharacterError: The string to be decoded is not correctly encoded."
+                )?);
+            }
+        };
 
         Ok(bytes.into_iter().map(char::from).collect())
     }

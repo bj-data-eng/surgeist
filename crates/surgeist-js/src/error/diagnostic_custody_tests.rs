@@ -26,7 +26,7 @@ fn panic_with_foreign_parent_and_local_cause(
     let diagnostic = JsNativeError::range()
         .with_message("foreign diagnostic parent")
         .with_realm(foreign.realm().clone())
-        .with_cause(JsError::from_opaque(cause.into()));
+        .with_cause(JsError::from_opaque(cause.into()).unwrap());
     PanicError::new(PANIC_MESSAGE)
         .with_source(diagnostic)
         .into()
@@ -151,7 +151,7 @@ fn stored_edges_keep_a_diagnostic_alive_and_restore_it_after_the_old_lease_is_go
             .with_source(
                 JsNativeError::range()
                     .with_message("stored source")
-                    .with_cause(JsError::from_opaque(object.into())),
+                    .with_cause(JsError::from_opaque(object.into()).unwrap()),
             )
             .into();
         let owner = publish_stored(&runtime, &source);
@@ -177,7 +177,7 @@ fn stored_edges_keep_a_diagnostic_alive_and_restore_it_after_the_old_lease_is_go
             .with_source(
                 JsNativeError::range()
                     .with_message("stored source")
-                    .with_cause(JsError::from_opaque(leaf.value().unwrap())),
+                    .with_cause(JsError::from_opaque(leaf.value().unwrap()).unwrap()),
             )
             .into();
         assert_eq!(restored, expected);
@@ -226,12 +226,12 @@ fn object_to_stored_panic_cycle_collects_after_its_last_external_error_root() {
     )
     .unwrap();
     let source: JsError = PanicError::new("cycle")
-        .with_source(JsError::from_opaque(object.clone().upcast().into()))
+        .with_source(JsError::from_opaque(object.clone().upcast().into()).unwrap())
         .into();
     runtime
         .heap
         .with_pending_edges(source.clone().into_stored(), |stored| {
-            *object.borrow().data().error.borrow_mut() = Some(stored);
+            *object.borrow().unwrap().data().error.borrow_mut() = Some(stored);
         })
         .unwrap();
     drop(object);
@@ -263,9 +263,9 @@ fn projection_retains_an_identity_that_is_hidden_once_but_visible_in_another_mem
         .with_source(JsNativeError::aggregate(vec![
             JsNativeError::range()
                 .with_realm(foreign.realm().clone())
-                .with_cause(JsError::from_opaque(object.clone().into()))
+                .with_cause(JsError::from_opaque(object.clone().into()).unwrap())
                 .into(),
-            JsError::from_opaque(object.into()),
+            JsError::from_opaque(object.into()).unwrap(),
         ]))
         .into();
     let admitted = source.admit_runtime(receiving.runtime());
@@ -296,7 +296,7 @@ fn checked_leaf_access_reports_a_heap_borrow_without_changing_identity_or_type()
     let object = JsObject::with_null_proto(&runtime);
     let identity = object.identity();
     let source: JsError = PanicError::new("borrowed heap")
-        .with_source(JsError::from_opaque(object.into()))
+        .with_source(JsError::from_opaque(object.into()).unwrap())
         .into();
     let DiagnosticKind::Opaque(leaf) = panic_diagnostic(&source).kind() else {
         unreachable!()
@@ -375,7 +375,7 @@ fn final_foreign_runtime_disposal_reenters_after_surviving_local_roots_are_prote
             JsNativeError::range()
                 .with_realm(foreign.realm().clone())
                 .into(),
-            JsError::from_opaque(local.into()),
+            JsError::from_opaque(local.into()).unwrap(),
         ]))
         .into();
     drop(foreign);
@@ -474,7 +474,7 @@ fn deep_causes_and_many_members_survive_clone_storage_and_ordered_restoration() 
             .unwrap()
             .upcast();
         identities.push(object.identity());
-        members.push(JsError::from_opaque(object.into()));
+        members.push(JsError::from_opaque(object.into()).unwrap());
     }
     let mut tree = JsError::from(JsNativeError::aggregate(members).with_message("wide source"));
     for depth in 0..DEPTH {
@@ -593,9 +593,9 @@ fn masked_stored_diagnostics_trace_and_restore_after_the_hidden_heaps_and_leaves
             JsNativeError::range()
                 .with_message("discarded foreign payload")
                 .with_realm(foreign.realm().clone())
-                .with_cause(JsError::from_opaque(hidden.into()))
+                .with_cause(JsError::from_opaque(hidden.into()).unwrap())
                 .into(),
-            JsError::from_opaque(visible.into()),
+            JsError::from_opaque(visible.into()).unwrap(),
         ]))
         .into();
     drop(foreign);
@@ -651,7 +651,7 @@ fn masked_stored_diagnostics_trace_and_restore_after_the_hidden_heaps_and_leaves
             JsNativeError::typ()
                 .with_message(FOREIGN_REALM_MESSAGE)
                 .into(),
-            JsError::from_opaque(visible.value().unwrap()),
+            JsError::from_opaque(visible.value().unwrap()).unwrap(),
         ]))
         .into();
     assert_eq!(restored, expected);

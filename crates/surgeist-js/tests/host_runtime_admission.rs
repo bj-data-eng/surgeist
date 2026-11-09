@@ -122,7 +122,7 @@ fn native_call_and_construct_restore_the_caller_after_a_callback_switches_realms
                 .unwrap()
                 .as_object()
                 .unwrap();
-            assert_eq!(error.prototype(), error_prototype);
+            assert_eq!(error.prototype().unwrap(), error_prototype);
         }
     }
 }
@@ -294,7 +294,7 @@ fn dropping_the_last_context_removes_its_pending_atomic_waiter() {
             .build()
             .unwrap();
         let buffer = JsSharedArrayBuffer::new(4, waiting.access()).unwrap();
-        let backing = buffer.inner();
+        let backing = buffer.inner().unwrap();
         waiting
             .register_global_property(js_string!("buffer"), buffer, Attribute::all())
             .unwrap();
@@ -463,7 +463,7 @@ fn compile_hook_engine_panic_remains_uncatchable_with_a_foreign_diagnostic() {
     }
 
     let foreign = Context::default();
-    let diagnostic = JsError::from_opaque(foreign.global_object().into());
+    let diagnostic = JsError::from_opaque(foreign.global_object().into()).unwrap();
     let panic = PanicError::new("compile hook panic").with_source(diagnostic);
     for error in [
         panic.clone().into(),
@@ -490,7 +490,7 @@ fn compile_hook_engine_panic_remains_uncatchable_with_a_foreign_diagnostic() {
 fn aggregate_conversion_preserves_an_engine_member_with_a_foreign_diagnostic() {
     let mut context = Context::default();
     let foreign = Context::default();
-    let diagnostic = JsError::from_opaque(foreign.global_object().into());
+    let diagnostic = JsError::from_opaque(foreign.global_object().into()).unwrap();
     let engine = EngineError::from(PanicError::new("aggregate panic").with_source(diagnostic));
     let error = JsNativeError::aggregate(vec![engine.clone().into()])
         .into_opaque(context.access())

@@ -2,8 +2,8 @@ use std::ops::Deref;
 
 use crate::{
     Context, JsNativeError, JsObject, JsResult, JsValue,
-    builtins::finalization_registry::FinalizationRegistry, object::JsObjectType, realm::Realm,
-    value::TryFromJs,
+    builtins::finalization_registry::FinalizationRegistry, error::ObjectAccessError,
+    object::JsObjectType, realm::Realm, value::TryFromJs,
 };
 
 /// `JsFinalizationRegistry` provides a wrapper for Boa's implementation of the ECMAScript
@@ -30,27 +30,30 @@ impl JsFinalizationRegistry {
     }
 
     /// Gets the `[[Realm]]` slot of this [`FinalizationRegistry`].
-    pub fn realm(&self) -> Realm {
-        self.downcast_ref::<FinalizationRegistry>()
-            .expect("must be a `FinalizationRegistry")
+    pub fn realm(&self) -> Result<Realm, ObjectAccessError> {
+        Ok(self
+            .downcast_ref::<FinalizationRegistry>()?
+            .ok_or(ObjectAccessError::WrongNativeBrand)?
             .realm
-            .clone()
+            .clone())
     }
 
     /// Returns `true` if this finalization registry has unreachable cells.
-    pub(crate) fn needs_cleanup(&self) -> bool {
-        self.downcast_ref::<FinalizationRegistry>()
-            .expect("must be a `FinalizationRegistry")
+    pub(crate) fn needs_cleanup(&self) -> Result<bool, ObjectAccessError> {
+        Ok(self
+            .downcast_ref::<FinalizationRegistry>()?
+            .ok_or(ObjectAccessError::WrongNativeBrand)?
             .needs_cleanup
-            .get()
+            .get())
     }
 
     /// Clears the `needs_cleanup` flag from the registry.
-    pub(crate) fn clear_needs_cleanup(&self) {
-        self.downcast_ref::<FinalizationRegistry>()
-            .expect("must be a `FinalizationRegistry")
+    pub(crate) fn clear_needs_cleanup(&self) -> Result<(), ObjectAccessError> {
+        self.downcast_ref::<FinalizationRegistry>()?
+            .ok_or(ObjectAccessError::WrongNativeBrand)?
             .needs_cleanup
-            .set(false)
+            .set(false);
+        Ok(())
     }
 
     /// Abstract operation [`CleanupFinalizationRegistry ( finalizationRegistry )`][spec].

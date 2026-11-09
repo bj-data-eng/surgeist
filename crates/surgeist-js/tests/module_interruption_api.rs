@@ -8,11 +8,12 @@ use surgeist_js::{
     error::{
         Diagnostic, DiagnosticEngine, DiagnosticFrame, DiagnosticKind, DiagnosticNative,
         DiagnosticNativeKind, DiagnosticStack, EngineError, EngineResourceError, ErasedEngineError,
-        JobError, JsErasedError, PanicError, RuntimeLimitError,
+        JobError, JsErasedError, ObjectAccessError, PanicError, RuntimeLimitError,
     },
     execution::ExecutionOptions,
     job::JobRetirement,
     js_string,
+    value::ValueRenderError,
     vm::SourcePath,
 };
 use surgeist_js_ast::scope::ScopeStateError;
@@ -143,9 +144,10 @@ fn assert_engine_cause(view: Diagnostic<'_>, expected: &EngineError) {
     let expected = match expected {
         EngineError::Resource(value) => DiagnosticEngine::Resource(*value),
         EngineError::Rooting(value) => DiagnosticEngine::Rooting(*value),
+        EngineError::ValueRender(value) => DiagnosticEngine::ValueRender(*value),
         EngineError::InvalidEntryPermit => DiagnosticEngine::InvalidEntryPermit,
         EngineError::ContextAccessBusy => DiagnosticEngine::ContextAccessBusy,
-        EngineError::ObjectAccessBusy => DiagnosticEngine::ObjectAccessBusy,
+        EngineError::ObjectAccess(value) => DiagnosticEngine::ObjectAccess(*value),
         EngineError::ForeignSelectedRealm(expected) => {
             let DiagnosticEngine::ForeignSelectedRealm(actual) = actual else {
                 panic!("publication refusal lost its borrowed diagnostic variant")
@@ -182,7 +184,8 @@ fn scalar_cases(context: &Context) -> Vec<EngineError> {
         EngineError::Resource(EngineResourceError::Allocation),
         EngineError::InvalidEntryPermit,
         EngineError::ContextAccessBusy,
-        EngineError::ObjectAccessBusy,
+        EngineError::ObjectAccess(ObjectAccessError::Borrowed),
+        EngineError::ObjectAccess(ObjectAccessError::WrongNativeBrand),
         EngineError::Job(JobError::TaskCompleted),
         EngineError::Job(JobError::CancellationRevoked),
         EngineError::JobContextRequired {
@@ -190,6 +193,16 @@ fn scalar_cases(context: &Context) -> Vec<EngineError> {
         },
         EngineError::InvocationIdExhausted,
     ];
+    cases.extend(
+        [
+            ValueRenderError::Sink,
+            ValueRenderError::MissingArrayLength,
+            ValueRenderError::InvalidArrayLength,
+            ValueRenderError::MissingProperty,
+            ValueRenderError::InvalidDescriptor,
+        ]
+        .map(EngineError::ValueRender),
+    );
     cases.extend(
         [
             JobRetirement::Cancelled,
@@ -277,10 +290,16 @@ fn actual_callback_stops_preserve_every_scalar_engine_payload_identity_and_erase
         };
         assert_eq!(*identity, handle.identity());
         assert_eq!(cause.as_ref(), &expected);
-        if let EngineError::ObjectAccessBusy = engine {
+        if let EngineError::ObjectAccess(error) = engine {
             assert_eq!(
                 cause.as_engine(),
-                Some(&ErasedEngineError::ObjectAccessBusy)
+                Some(&ErasedEngineError::ObjectAccess(error))
+            );
+        }
+        if let EngineError::ValueRender(error) = engine {
+            assert_eq!(
+                cause.as_engine(),
+                Some(&ErasedEngineError::ValueRender(error))
             );
         }
         if let EngineError::Job(error) = engine {
@@ -371,12 +390,12 @@ fn nested_panic_causes_keep_native_order_object_identity_and_borrowed_provenance
         .unwrap_err()
         .try_native(context.access())
         .unwrap();
-    let aggregate =
-        JsNativeError::aggregate(vec![JsError::from_opaque(object.into()), captured.into()])
-            .with_message("authored members")
-            .with_cause(JsError::from_opaque(
-                js_string!("authored native cause").into(),
-            ));
+    let aggregate = JsNativeError::aggregate(vec![
+        JsError::from_opaque(object.into()).unwrap(),
+        captured.into(),
+    ])
+    .with_message("authored members")
+    .with_cause(JsError::from_opaque(js_string!("authored native cause").into()).unwrap());
     let original: JsError = PanicError::new("original outer panic")
         .with_source(PanicError::new("original inner panic").with_source(aggregate))
         .into();
@@ -480,7 +499,7 @@ fn foreign_admission_masks_retained_objects_without_resurrecting_them_or_changin
     let object = JsObject::with_null_proto(owner.runtime());
     let identity = object.identity();
     let original: JsError = PanicError::new("opaque cause")
-        .with_source(JsError::from_opaque(object.into()))
+        .with_source(JsError::from_opaque(object.into()).unwrap())
         .into();
     let (_module, terminal) = interrupt(original, &mut owner);
     let masked = admit(terminal.clone(), &mut foreign);
@@ -892,8 +911,8 @@ fn a_locally_adopted_foreign_cause_identity_does_not_admit_an_unrelated_foreign_
     let outer: JsError = PanicError::new("composed runtime admission")
         .with_source(JsNativeError::aggregate(vec![
             adopted,
-            JsError::from_opaque(foreign.into()),
-            JsError::from_opaque(42.into()),
+            JsError::from_opaque(foreign.into()).unwrap(),
+            JsError::from_opaque(42.into()).unwrap(),
         ]))
         .into();
     let Some(EngineError::Panic(unrestricted)) = outer.as_engine() else {

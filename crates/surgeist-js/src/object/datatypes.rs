@@ -37,7 +37,7 @@ use super::internal_methods::{InternalObjectMethods, ORDINARY_INTERNAL_METHODS};
 /// )
 /// .unwrap();
 ///
-/// assert_eq!(object.downcast_ref::<CustomStruct>().unwrap().counter, 5);
+/// assert_eq!(object.downcast_ref::<CustomStruct>().unwrap().unwrap().counter, 5);
 /// ```
 pub trait JsData {
     #[doc(hidden)]

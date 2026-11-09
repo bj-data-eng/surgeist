@@ -44,12 +44,12 @@ impl Fetcher for BlockingReqwestFetcher {
 
         ContextTask::from_future(async move {
             if let Some(ref sig) = signal
-                && let Some(sig_ref) = sig.downcast_ref::<crate::abort::JsAbortSignal>()
+                && let Some(sig_ref) = sig.downcast_ref::<crate::abort::JsAbortSignal>()?
                 && sig_ref.is_aborted()
             {
                 return Err(JsError::from_opaque(
                     surgeist_js::js_string!("AbortError").into(),
-                ));
+                )?);
             }
 
             let request = request.into_inner();
@@ -67,12 +67,12 @@ impl Fetcher for BlockingReqwestFetcher {
             let resp = self.client.execute(req).map_err(JsError::from_rust)?;
 
             if let Some(ref sig) = signal
-                && let Some(sig_ref) = sig.downcast_ref::<crate::abort::JsAbortSignal>()
+                && let Some(sig_ref) = sig.downcast_ref::<crate::abort::JsAbortSignal>()?
                 && sig_ref.is_aborted()
             {
                 return Err(JsError::from_opaque(
                     surgeist_js::js_string!("AbortError").into(),
-                ));
+                )?);
             }
 
             let status = resp.status();

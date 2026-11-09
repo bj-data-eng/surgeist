@@ -505,7 +505,7 @@ fn generate_conversion(
 
     // TODO: this could possibly skip accessors. Consider using `JsObject::get` instead.
     Ok(quote! {
-        let o = o.borrow();
+        let o = o.borrow()?;
         let props = o.properties();
         #(#final_fields)*
         Ok(Self {

@@ -29,7 +29,7 @@ use super::options::coerce_options_to_object;
 pub(crate) struct Locale;
 
 impl IntrinsicObject for Locale {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let base_name = BuiltInBuilder::callable(realm, Self::base_name)
             .name(js_string!("get baseName"))
             .build();
@@ -149,7 +149,9 @@ impl IntrinsicObject for Locale {
                 None,
                 Attribute::CONFIGURABLE,
             )
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -351,7 +353,9 @@ impl Locale {
         let object = this.as_object();
         let mut loc = object
             .as_ref()
-            .and_then(|o| o.downcast_ref::<icu_locale::Locale>())
+            .map(|o| o.downcast_ref::<icu_locale::Locale>())
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("`Locale.maximize` can only be called on a `Locale` object")
@@ -389,7 +393,9 @@ impl Locale {
         let object = this.as_object();
         let mut loc = object
             .as_ref()
-            .and_then(|o| o.downcast_ref::<icu_locale::Locale>())
+            .map(|o| o.downcast_ref::<icu_locale::Locale>())
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message(
                     "`Locale.prototype.minimize` can only be called on a `Locale` object",
@@ -424,7 +430,9 @@ impl Locale {
         let object = this.as_object();
         let loc = object
             .as_ref()
-            .and_then(|o| o.downcast_ref::<icu_locale::Locale>())
+            .map(|o| o.downcast_ref::<icu_locale::Locale>())
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message(
                     "`Locale.prototype.toString` can only be called on a `Locale` object",
@@ -448,7 +456,9 @@ impl Locale {
         let object = this.as_object();
         let loc = object
             .as_ref()
-            .and_then(|o| o.downcast_ref::<icu_locale::Locale>())
+            .map(|o| o.downcast_ref::<icu_locale::Locale>())
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message(
                     "`get Locale.prototype.baseName` can only be called on a `Locale` object",
@@ -473,7 +483,9 @@ impl Locale {
         let object = this.as_object();
         let loc = object
             .as_ref()
-            .and_then(|o| o.downcast_ref::<icu_locale::Locale>())
+            .map(|o| o.downcast_ref::<icu_locale::Locale>())
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message(
                     "`get Locale.prototype.calendar` can only be called on a `Locale` object",
@@ -503,7 +515,9 @@ impl Locale {
         let object = this.as_object();
         let loc = object
             .as_ref()
-            .and_then(|o| o.downcast_ref::<icu_locale::Locale>())
+            .map(|o| o.downcast_ref::<icu_locale::Locale>())
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message(
                     "`get Locale.prototype.caseFirst` can only be called on a `Locale` object",
@@ -533,7 +547,9 @@ impl Locale {
         let object = this.as_object();
         let loc = object
             .as_ref()
-            .and_then(|o| o.downcast_ref::<icu_locale::Locale>())
+            .map(|o| o.downcast_ref::<icu_locale::Locale>())
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message(
                     "`get Locale.prototype.collation` can only be called on a `Locale` object",
@@ -563,7 +579,9 @@ impl Locale {
         let object = this.as_object();
         let loc = object
             .as_ref()
-            .and_then(|o| o.downcast_ref::<icu_locale::Locale>())
+            .map(|o| o.downcast_ref::<icu_locale::Locale>())
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message(
                     "`get Locale.prototype.hourCycle` can only be called on a `Locale` object",
@@ -593,7 +611,9 @@ impl Locale {
         let object = this.as_object();
         let loc = object
             .as_ref()
-            .and_then(|o| o.downcast_ref::<icu_locale::Locale>())
+            .map(|o| o.downcast_ref::<icu_locale::Locale>())
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message(
                     "`get Locale.prototype.numeric` can only be called on a `Locale` object",
@@ -628,7 +648,7 @@ impl Locale {
         let object = this.as_object();
         let loc = object
             .as_ref()
-            .and_then(|o| o.downcast_ref::<icu_locale::Locale>())
+            .map(|o| o.downcast_ref::<icu_locale::Locale>()).transpose()?.flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message(
                     "`get Locale.prototype.numberingSystem` can only be called on a `Locale` object",
@@ -658,7 +678,9 @@ impl Locale {
         let object = this.as_object();
         let loc = object
             .as_ref()
-            .and_then(|o| o.downcast_ref::<icu_locale::Locale>())
+            .map(|o| o.downcast_ref::<icu_locale::Locale>())
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message(
                     "`get Locale.prototype.language` can only be called on a `Locale` object",
@@ -684,7 +706,9 @@ impl Locale {
         let object = this.as_object();
         let loc = object
             .as_ref()
-            .and_then(|o| o.downcast_ref::<icu_locale::Locale>())
+            .map(|o| o.downcast_ref::<icu_locale::Locale>())
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message(
                     "`get Locale.prototype.script` can only be called on a `Locale` object",
@@ -715,7 +739,9 @@ impl Locale {
         let object = this.as_object();
         let loc = object
             .as_ref()
-            .and_then(|o| o.downcast_ref::<icu_locale::Locale>())
+            .map(|o| o.downcast_ref::<icu_locale::Locale>())
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message(
                     "`get Locale.prototype.region` can only be called on a `Locale` object",
@@ -746,7 +772,9 @@ impl Locale {
         let loc = this.as_object();
         let loc = loc
             .as_ref()
-            .and_then(|o| o.downcast_ref::<icu_locale::Locale>())
+            .map(|o| o.downcast_ref::<icu_locale::Locale>())
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message(
                     "`get Locale.prototype.variants` can only be called on a `Locale` object",

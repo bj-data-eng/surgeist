@@ -1,4 +1,3 @@
-use std::fmt;
 use std::sync::atomic::Ordering;
 
 use crate::{JsObject, JsValue, builtins::typed_array::TypedArray};
@@ -7,19 +6,19 @@ use crate::{JsObject, JsValue, builtins::typed_array::TypedArray};
 ///
 /// If `show_elements` is `false`, only the type name and length are printed (e.g. `Uint8Array(3)`).
 pub(super) fn log_typed_array(
-    f: &mut fmt::Formatter<'_>,
+    f: &mut super::RenderSink<'_>,
     obj: &JsObject,
     show_elements: bool,
     print_internals: bool,
-) -> fmt::Result {
+) -> crate::JsResult<()> {
     let inner = obj
-        .downcast_ref::<TypedArray>()
-        .expect("must be a TypedArray object");
+        .downcast_ref::<TypedArray>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
     let kind = inner.kind();
     let type_name = kind.js_name().to_std_string_lossy();
 
     let viewed_buf = inner.viewed_array_buffer();
-    let buf_ref = viewed_buf.as_buffer();
+    let buf_ref = viewed_buf.as_buffer()?;
     let Some(buf_bytes) = buf_ref.bytes(Ordering::Relaxed) else {
         if show_elements {
             return write!(f, "{type_name}(0) []");

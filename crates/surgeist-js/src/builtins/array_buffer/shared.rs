@@ -94,7 +94,7 @@ impl SharedArrayBuffer {
 }
 
 impl IntrinsicObject for SharedArrayBuffer {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let flag_attributes = Attribute::CONFIGURABLE | Attribute::NON_ENUMERABLE;
 
         let get_species = BuiltInBuilder::callable(realm, Self::get_species)
@@ -145,7 +145,9 @@ impl IntrinsicObject for SharedArrayBuffer {
                 Self::NAME,
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
             )
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -226,7 +228,9 @@ impl SharedArrayBuffer {
         let object = this.as_object();
         let buf = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("SharedArrayBuffer.byteLength called with invalid value")
@@ -253,7 +257,9 @@ impl SharedArrayBuffer {
         let object = this.as_object();
         let buf = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("get SharedArrayBuffer.growable called with invalid `this`")
@@ -277,7 +283,9 @@ impl SharedArrayBuffer {
         let object = this.as_object();
         let buf = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("get SharedArrayBuffer.maxByteLength called with invalid value")
@@ -311,7 +319,7 @@ impl SharedArrayBuffer {
         };
 
         // 2. Perform ? RequireInternalSlot(O, [[ArrayBufferMaxByteLength]]).
-        if buf.borrow().data().is_fixed_len() {
+        if buf.borrow()?.data().is_fixed_len() {
             return Err(JsNativeError::typ()
                 .with_message("SharedArrayBuffer.grow: cannot grow a fixed-length buffer")
                 .into());
@@ -330,7 +338,7 @@ impl SharedArrayBuffer {
         // 9. Let currentByteLengthRawBytes be GetRawBytesFromSharedBlock(byteLengthBlock, 0, biguint64, true, seq-cst).
         // 10. Let newByteLengthRawBytes be NumericToRawBytes(biguint64, ℤ(newByteLength), isLittleEndian).
 
-        let buf = buf.borrow();
+        let buf = buf.borrow()?;
         let buf = &buf.data();
 
         // d. If newByteLength < currentByteLength or newByteLength > O.[[ArrayBufferMaxByteLength]], throw a RangeError exception.
@@ -405,7 +413,7 @@ impl SharedArrayBuffer {
             })?;
 
         // 4. Let len be ArrayBufferByteLength(O, seq-cst).
-        let len = buf.borrow().data().len(Ordering::SeqCst);
+        let len = buf.borrow()?.data().len(Ordering::SeqCst);
 
         // 5. Let relativeStart be ? ToIntegerOrInfinity(start).
         // 6. If relativeStart = -∞, let first be 0.
@@ -432,11 +440,11 @@ impl SharedArrayBuffer {
         let new = ctor.construct(&[new_len.into()], Some(&ctor), context.access())?;
 
         {
-            let buf = buf.borrow();
+            let buf = buf.borrow()?;
             let buf = &buf.data();
             // 16. Perform ? RequireInternalSlot(new, [[ArrayBufferData]]).
             // 17. If IsSharedArrayBuffer(new) is false, throw a TypeError exception.
-            let new = new.downcast_ref::<Self>().ok_or_else(|| {
+            let new = new.downcast_ref::<Self>()?.ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("SharedArrayBuffer constructor returned invalid object")
             })?;

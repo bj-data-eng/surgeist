@@ -155,10 +155,88 @@ fn boa_class() {
         .unwrap()
         .as_object()
         .unwrap();
-    let borrow = pet.borrow();
+    let borrow = pet.borrow().unwrap();
     let age = context.eval(Source::from_bytes("pet.age")).unwrap();
     drop(borrow);
     assert_eq!(age, JsValue::from(5));
+}
+
+#[test]
+fn generated_shared_getter_refuses_exclusive_alias_and_retries_same_receiver() {
+    use surgeist_js::error::{EngineError, ObjectAccessError};
+
+    let mut context = Context::default();
+    context.register_global_class::<Animal>().unwrap();
+    let pet = context
+        .eval(Source::from_bytes("new Animal('dog', 3)"))
+        .unwrap();
+    let object = pet.as_object().unwrap();
+    let alias = object.clone();
+    let getter = context
+        .eval(Source::from_bytes(
+            "Object.getOwnPropertyDescriptor(Animal.prototype, 'age').get",
+        ))
+        .unwrap()
+        .as_callable()
+        .unwrap();
+
+    let guard = alias.borrow_mut().unwrap();
+    let error = getter.call(&pet, &[], context.access()).unwrap_err();
+    assert_eq!(
+        error.as_engine(),
+        Some(&EngineError::ObjectAccess(ObjectAccessError::Borrowed))
+    );
+    drop(guard);
+
+    assert_eq!(object.downcast_ref::<Animal>().unwrap().unwrap().age, 3);
+    assert_eq!(
+        getter.call(&pet, &[], context.access()).unwrap(),
+        JsValue::new(3)
+    );
+}
+
+#[test]
+fn generated_mutable_method_refuses_aliases_before_write_and_retries_same_receiver() {
+    use surgeist_js::error::{EngineError, ObjectAccessError};
+
+    for exclusive in [false, true] {
+        let mut context = Context::default();
+        context.register_global_class::<Animal>().unwrap();
+        let pet = context
+            .eval(Source::from_bytes("new Animal('dog', 3)"))
+            .unwrap();
+        let object = pet.as_object().unwrap();
+        let alias = object.clone();
+        let method = context
+            .eval(Source::from_bytes("Animal.prototype.setAge"))
+            .unwrap()
+            .as_callable()
+            .unwrap();
+        let args = [JsValue::new(7)];
+
+        let error = if exclusive {
+            let guard = alias.borrow_mut().unwrap();
+            let error = method.call(&pet, &args, context.access()).unwrap_err();
+            drop(guard);
+            error
+        } else {
+            let guard = alias.borrow().unwrap();
+            let error = method.call(&pet, &args, context.access()).unwrap_err();
+            drop(guard);
+            error
+        };
+        assert_eq!(
+            error.as_engine(),
+            Some(&EngineError::ObjectAccess(ObjectAccessError::Borrowed))
+        );
+        assert_eq!(object.downcast_ref::<Animal>().unwrap().unwrap().age, 3);
+
+        assert_eq!(
+            method.call(&pet, &args, context.access()).unwrap(),
+            JsValue::null()
+        );
+        assert_eq!(object.downcast_ref::<Animal>().unwrap().unwrap().age, 7);
+    }
 }
 
 #[test]

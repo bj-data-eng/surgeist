@@ -215,7 +215,7 @@ impl Realm {
         };
 
         drop(roots);
-        realm.initialize();
+        realm.initialize()?;
 
         Ok(realm)
     }
@@ -498,7 +498,7 @@ mod tests {
         let buffer_edge = buffer.edge();
         let view = JsDataView::from_js_array_buffer(buffer, None, None, owner.access()).unwrap();
         let view_edge = view.edge();
-        let payload = view.borrow().data().clone();
+        let payload = view.borrow().unwrap().data().clone();
 
         let error = other
             .realm()

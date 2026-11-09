@@ -48,7 +48,7 @@ mod tests;
 pub struct OrdinaryObject;
 
 impl IntrinsicObject for OrdinaryObject {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let legacy_proto_getter = BuiltInBuilder::callable(realm, |this, args, context| {
             Self::legacy_proto_getter(this, args, context.access())
         })
@@ -235,7 +235,9 @@ impl IntrinsicObject for OrdinaryObject {
                 1,
             )
             .static_method(Self::group_by, js_string!("groupBy"), 2)
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {

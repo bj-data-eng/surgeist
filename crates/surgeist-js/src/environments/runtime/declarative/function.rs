@@ -211,23 +211,21 @@ impl FunctionEnvironment {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-function-environment-records-hassuperbinding
     ///
-    /// # Panics
-    ///
-    /// Panics if the function object of the environment is not a function.
-    #[track_caller]
-    pub(crate) fn has_super_binding(&self) -> bool {
+    /// Returns the exact access refusal when the function cannot be inspected.
+    pub(crate) fn has_super_binding(&self) -> crate::JsResult<bool> {
         // 1.If envRec.[[ThisBindingStatus]] is lexical, return false.
         if matches!(&*self.slots.this.borrow(), ThisBindingStatus::Lexical) {
-            return false;
+            return Ok(false);
         }
 
         // 2. If envRec.[[FunctionObject]].[[HomeObject]] is undefined, return false; otherwise, return true.
-        self.slots
+        Ok(self
+            .slots
             .function_object()
-            .downcast_ref::<OrdinaryFunction>()
-            .expect("function object must be function")
+            .downcast_ref::<OrdinaryFunction>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
             .get_home_object()
-            .is_some()
+            .is_some())
     }
 
     /// `HasThisBinding`

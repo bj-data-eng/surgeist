@@ -9,12 +9,15 @@ fn typed_object_views_preserve_brand_and_identity() {
     let erased = typed.clone().upcast();
     let wrong = erased.clone().downcast::<u64>().expect_err("wrong brand");
     assert_eq!(wrong, erased);
-    assert_eq!(*erased.downcast_ref::<u32>().expect("u32 payload"), 12);
+    assert_eq!(
+        *erased.downcast_ref::<u32>().unwrap().expect("u32 payload"),
+        12
+    );
 
-    let mut view = typed.borrow_mut();
+    let mut view = typed.borrow_mut().unwrap();
     assert!(erased.is::<u32>());
-    assert!(erased.downcast_ref::<u64>().is_none());
-    assert!(erased.try_borrow().is_err());
+    assert!(erased.downcast_ref::<u64>().unwrap().is_none());
+    assert!(erased.borrow().is_err());
     *view.data_mut() = 19;
     view.insert(
         js_string!("marker"),
@@ -28,10 +31,11 @@ fn typed_object_views_preserve_brand_and_identity() {
 
     let typed_again = erased.downcast::<u32>().expect("u32 brand");
     assert_eq!(typed_again, typed);
-    assert_eq!(*typed_again.borrow().data(), 19);
+    assert_eq!(*typed_again.borrow().unwrap().data(), 19);
     assert!(
         typed_again
             .borrow()
+            .unwrap()
             .properties()
             .contains_key(&js_string!("marker").into())
     );
@@ -45,14 +49,17 @@ fn object_accepts_a_naturally_aligned_native_payload() {
 
     let typed = crate::JsObject::new_unique(&crate::Runtime::default(), None, Aligned(5)).unwrap();
     let erased = typed.clone().upcast();
-    let mut payload = erased.downcast_mut::<Aligned>().expect("aligned payload");
+    let mut payload = erased
+        .downcast_mut::<Aligned>()
+        .unwrap()
+        .expect("aligned payload");
     assert_eq!(
         std::ptr::from_ref(&*payload).addr() % align_of::<Aligned>(),
         0
     );
     payload.0 = 8;
     drop(payload);
-    assert_eq!(typed.borrow().data().0, 8);
+    assert_eq!(typed.borrow().unwrap().data().0, 8);
 }
 
 #[test]
@@ -269,7 +276,7 @@ fn native_accessor_keeps_captures_and_outcomes_during_collection() {
                     function.edge()
                 };
                 receiver
-                    .prototype()
+                    .prototype()?
                     .expect("accessor prototype")
                     .delete_property_or_throw(js_string!("probe"), context.reborrow())?;
 
@@ -291,7 +298,7 @@ fn native_accessor_keeps_captures_and_outcomes_during_collection() {
                 let value = receiver.get(js_string!("nested"), context.reborrow())?;
                 receiver.delete_property_or_throw(js_string!("nested"), context.reborrow())?;
                 if *throws {
-                    Err(JsError::from_opaque(value))
+                    Err(JsError::from_opaque(value)?)
                 } else {
                     Ok(value)
                 }
@@ -373,7 +380,12 @@ fn property_admission_distinguishes_peer_and_foreign_runtimes() {
             )
             .is_err()
     );
-    assert!(!object.borrow_mut().set_prototype(Some(foreign_child)));
+    assert!(
+        !object
+            .borrow_mut()
+            .unwrap()
+            .set_prototype(Some(foreign_child))
+    );
     context.runtime().collect().unwrap();
     assert_eq!(
         object.get(0, context.access()).unwrap(),

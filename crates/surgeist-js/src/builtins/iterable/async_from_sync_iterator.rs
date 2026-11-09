@@ -41,7 +41,7 @@ impl NativeCapture for IteratorRecord {
 }
 
 impl IntrinsicObject for AsyncFromSyncIterator {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::with_intrinsic::<Self>(realm)
             .prototype(
                 realm
@@ -50,10 +50,12 @@ impl IntrinsicObject for AsyncFromSyncIterator {
                     .iterator_prototypes()
                     .async_iterator(),
             )
-            .static_method(Self::next, js_string!("next"), 1)
-            .static_method(Self::r#return, js_string!("return"), 1)
-            .static_method(Self::throw, js_string!("throw"), 1)
-            .build();
+            .static_method(Self::next, js_string!("next"), 1)?
+            .static_method(Self::r#return, js_string!("return"), 1)?
+            .static_method(Self::throw, js_string!("throw"), 1)?
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -113,7 +115,9 @@ impl AsyncFromSyncIterator {
         let object = this.as_object();
         let mut sync_iterator_record = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .js_expect("async from sync iterator prototype must be object")?
             .sync_iterator_record
             .to_iterator()?;
@@ -156,7 +160,9 @@ impl AsyncFromSyncIterator {
         let object = this.as_object();
         let sync_iterator_record = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .js_expect("async from sync iterator prototype must be object")?
             .sync_iterator_record
             .to_iterator()?;
@@ -240,7 +246,9 @@ impl AsyncFromSyncIterator {
         let object = this.as_object();
         let sync_iterator_record = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .js_expect("async from sync iterator prototype must be object")?
             .sync_iterator_record
             .to_iterator()?;
@@ -415,7 +423,7 @@ impl AsyncFromSyncIterator {
                         |_this, args, iter, context| {
                             // i. Return ? IteratorClose(syncIteratorRecord, ThrowCompletion(error)).
                             iter.close(
-                                Err(JsError::from_opaque(args.get_or_undefined(0).clone())),
+                                Err(JsError::from_opaque(args.get_or_undefined(0).clone())?),
                                 context,
                             )
                         },

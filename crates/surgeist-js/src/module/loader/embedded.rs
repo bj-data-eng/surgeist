@@ -45,8 +45,15 @@ impl EmbeddedModuleEntry {
                 CompressType::None => source,
 
                 #[cfg(feature = "embedded_lz4")]
-                CompressType::Lz4 => &lz4_flex::decompress_size_prepended(source)
-                    .map_err(|e| surgeist_js::js_error!("Could not decompress module: {}", e))?,
+                CompressType::Lz4 => &match lz4_flex::decompress_size_prepended(source) {
+                    Ok(bytes) => bytes,
+                    Err(error) => {
+                        return Err(surgeist_js::js_error!(
+                            "Could not decompress module: {}",
+                            error
+                        )?);
+                    }
+                },
             };
             let path = path.to_std_string_escaped();
             let source = Source::from_reader(&mut bytes, Some(Path::new(&path)));

@@ -81,7 +81,7 @@ impl JsWeakSet {
     /// if it is not a `WeakSet`.
     #[inline]
     pub fn from_object(object: JsObject) -> Result<Self, JsObject> {
-        if object.downcast_ref::<NativeWeakSet>().is_some() {
+        if object.is::<NativeWeakSet>() {
             Ok(Self { inner: object })
         } else {
             Err(object)

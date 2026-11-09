@@ -1,19 +1,18 @@
 use std::collections::HashSet;
-use std::fmt;
 
 use surgeist_js_gc::heap::ObjectId;
 
 use crate::{JsObject, builtins::map::ordered_map::OrderedMap};
 
 pub(super) fn log_map_to(
-    f: &mut fmt::Formatter<'_>,
+    f: &mut super::RenderSink<'_>,
     v: &JsObject,
     print_internals: bool,
     print_children: bool,
-) -> fmt::Result {
+) -> crate::JsResult<()> {
     let map = v
-        .downcast_ref::<OrderedMap>()
-        .expect("object must be a map");
+        .downcast_ref::<OrderedMap>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
     let size = map.len();
 
     if size == 0 {
@@ -39,15 +38,15 @@ pub(super) fn log_map_to(
 }
 
 pub(super) fn log_map_compact(
-    f: &mut fmt::Formatter<'_>,
+    f: &mut super::RenderSink<'_>,
     v: &JsObject,
     depth: u32,
     print_internals: bool,
     encounters: &mut HashSet<ObjectId>,
-) -> fmt::Result {
+) -> crate::JsResult<()> {
     let map = v
-        .downcast_ref::<OrderedMap>()
-        .expect("object must be a map");
+        .downcast_ref::<OrderedMap>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
     let size = map.len();
 
     if size == 0 {

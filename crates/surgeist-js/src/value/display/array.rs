@@ -1,23 +1,22 @@
 use std::collections::HashSet;
-use std::fmt;
 
 use crate::{JsObject, JsValue, js_string, property::DescriptorKind};
 
 pub(super) fn log_array_to(
-    f: &mut fmt::Formatter<'_>,
+    f: &mut super::RenderSink<'_>,
     x: &JsObject,
     print_internals: bool,
     print_children: bool,
-) -> fmt::Result {
+) -> crate::JsResult<()> {
     let len = x
-        .borrow()
+        .borrow()?
         .properties()
         .get(&js_string!("length").into())
-        .expect("array object must have 'length' property")
+        .ok_or(super::ValueRenderError::MissingArrayLength)?
         .value()
         .and_then(JsValue::as_number)
         .map(|n| n.max(0.0) as u32)
-        .unwrap_or_default();
+        .ok_or(super::ValueRenderError::InvalidArrayLength)?;
 
     if print_children {
         // Cap the number of elements we iterate over to avoid hangs on very large/sparse arrays.
@@ -38,7 +37,7 @@ pub(super) fn log_array_to(
                 f.write_str(", ")?;
             }
 
-            if let Some(desc) = x.borrow().properties().get(&i.into()) {
+            if let Some(desc) = x.borrow()?.properties().get(&i.into()) {
                 match desc.kind() {
                     DescriptorKind::Data { value, .. } => {
                         if let Some(value) = value {
@@ -57,7 +56,7 @@ pub(super) fn log_array_to(
                         f.write_str(display)?;
                     }
                     DescriptorKind::Generic => {
-                        unreachable!("found generic descriptor in array")
+                        return Err(super::ValueRenderError::InvalidDescriptor.into());
                     }
                 }
             } else {
@@ -78,21 +77,21 @@ pub(super) fn log_array_to(
 }
 
 pub(super) fn log_array_compact(
-    f: &mut fmt::Formatter<'_>,
+    f: &mut super::RenderSink<'_>,
     x: &JsObject,
     depth: u32,
     print_internals: bool,
     encounters: &mut HashSet<surgeist_js_gc::heap::ObjectId>,
-) -> fmt::Result {
+) -> crate::JsResult<()> {
     let len = x
-        .borrow()
+        .borrow()?
         .properties()
         .get(&js_string!("length").into())
-        .expect("array object must have 'length' property")
+        .ok_or(super::ValueRenderError::MissingArrayLength)?
         .value()
         .and_then(JsValue::as_number)
         .map(|n| n.max(0.0) as u32)
-        .unwrap_or_default();
+        .ok_or(super::ValueRenderError::InvalidArrayLength)?;
 
     if len == 0 {
         return f.write_str("[]");
@@ -106,7 +105,7 @@ pub(super) fn log_array_compact(
         } else {
             f.write_str(", ")?;
         }
-        if let Some(desc) = x.borrow().properties().get(&i.into()) {
+        if let Some(desc) = x.borrow()?.properties().get(&i.into()) {
             match desc.kind() {
                 DescriptorKind::Data { value, .. } => {
                     if let Some(value) = value {
@@ -131,7 +130,7 @@ pub(super) fn log_array_compact(
                     f.write_str(display)?;
                 }
                 DescriptorKind::Generic => {
-                    unreachable!("found generic descriptor in array")
+                    return Err(super::ValueRenderError::InvalidDescriptor.into());
                 }
             }
         } else {

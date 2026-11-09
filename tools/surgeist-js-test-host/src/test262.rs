@@ -354,7 +354,7 @@ fn agent_obj(
                 JsNativeError::typ().with_message("argument was not a shared array")
             })?;
             let buffer = buffer
-                .downcast_ref::<SharedArrayBuffer>()
+                .downcast_ref::<SharedArrayBuffer>()?
                 .ok_or_else(|| {
                     JsNativeError::typ().with_message("argument was not a shared array")
                 })?

@@ -222,16 +222,16 @@ impl Logger for NullLogger {
 
 /// This represents the `console` formatter.
 fn formatter(data: &[JsValue], mut context: ContextAccess<'_>) -> JsResult<String> {
-    fn to_string(value: &JsValue, _context: ContextAccess<'_>) -> String {
+    fn to_string(value: &JsValue, _context: ContextAccess<'_>) -> JsResult<String> {
         match value.variant() {
-            JsVariant::String(s) => s.to_std_string_escaped(),
-            _ => value.display().to_string(),
+            JsVariant::String(s) => Ok(s.to_std_string_escaped()),
+            _ => value.display().render(),
         }
     }
 
     match data {
         [] => Ok(String::new()),
-        [val] => Ok(to_string(val, context.reborrow())),
+        [val] => to_string(val, context.reborrow()),
         data => {
             let mut formatted = String::new();
             let mut arg_index = 1;
@@ -267,7 +267,7 @@ fn formatter(data: &[JsValue], mut context: ContextAccess<'_>) -> JsResult<Strin
                         /* object: use internals mode for richer inspection */
                         'o' | 'O' => {
                             let arg = data.get_or_undefined(arg_index);
-                            formatted.push_str(&arg.display().internals(true).to_string());
+                            formatted.push_str(&arg.display().internals(true).render()?);
                             arg_index += 1;
                         }
                         /* string */
@@ -310,7 +310,7 @@ fn formatter(data: &[JsValue], mut context: ContextAccess<'_>) -> JsResult<Strin
             /* unformatted data */
             for rest in data.iter().skip(arg_index) {
                 formatted.push(' ');
-                formatted.push_str(&to_string(rest, context.reborrow()));
+                formatted.push_str(&to_string(rest, context.reborrow())?);
             }
 
             Ok(formatted)
@@ -623,7 +623,7 @@ impl Console {
             } else if !args[0].is_string() {
                 args.insert(0, JsValue::new(message));
             } else {
-                let value = JsString::from(args[0].display().to_string());
+                let value = JsString::from(args[0].display().render()?);
                 let concat = js_string!(message.as_str(), js_str!(": "), &value);
                 args[0] = JsValue::new(concat);
             }
@@ -944,7 +944,7 @@ impl Console {
             let time = Self::system_time_in_ms();
             let mut concat = format!("{}: {} ms", label.to_std_string_escaped(), time - t);
             for msg in args.iter().skip(1) {
-                concat = concat + " " + &msg.display().to_string();
+                concat = concat + " " + &msg.display().render()?;
             }
             logger.log(concat, &console.state, context.reborrow())?;
         } else {
@@ -1099,7 +1099,7 @@ impl Console {
         mut context: ContextAccess<'_>,
     ) -> JsResult<JsValue> {
         logger.info(
-            args.get_or_undefined(0).display_obj(true),
+            args.get_or_undefined(0).display_obj(true)?,
             &console.state,
             context.reborrow(),
         )?;

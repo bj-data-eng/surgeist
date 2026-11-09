@@ -200,7 +200,9 @@ impl JsAbortSignal {
 
     fn throw_if_aborted(&self, mut context: ContextAccess<'_>) -> JsResult<()> {
         if self.aborted.get() {
-            Err(JsError::from_opaque(self.abort_reason(context.reborrow())?))
+            Err(JsError::from_opaque(
+                self.abort_reason(context.reborrow())?,
+            )?)
         } else {
             Ok(())
         }
@@ -272,7 +274,7 @@ impl JsAbortController {
         let abort_reason = reason.unwrap_or_else(|| make_abort_error(context.reborrow()));
 
         let signal_obj = self.signal()?;
-        let Some(signal) = signal_obj.downcast_ref::<JsAbortSignal>() else {
+        let Some(signal) = signal_obj.downcast_ref::<JsAbortSignal>()? else {
             return Err(js_error!(TypeError: "AbortController: invalid signal object"));
         };
         signal.signal_abort(abort_reason, context.reborrow())

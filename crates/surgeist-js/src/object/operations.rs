@@ -8,7 +8,7 @@ use crate::{
         function::{BoundFunction, ClassFieldDefinition, OrdinaryFunction, set_function_name},
     },
     context::intrinsics::{StandardConstructor, StandardConstructors},
-    error::JsNativeError,
+    error::{JsNativeError, ObjectAccessError},
     native_function::NativeFunctionObject,
     object::{CONSTRUCTOR, JsFunction, JsObject, PROTOTYPE, PrivateName, StoredPrivateElement},
     property::{PropertyDescriptor, PropertyDescriptorBuilder, PropertyKey, PropertyNameKind},
@@ -707,7 +707,7 @@ impl JsObject {
         // NOTE: This is an optimization, most of the cases that `LengthOfArrayLike` will be called
         //       is for arrays. The "length" property of an array is stored in the first index.
         if self.is_array() {
-            let length = self.borrow().properties().named_slot(0);
+            let length = self.borrow()?.properties().named_slot(0);
             // Arrays are limited to [0, 2^32 - 1].
             return length.to_u32(context.access()).map(u64::from);
         }
@@ -889,7 +889,7 @@ impl JsObject {
         }
 
         // 3. If argument is a Proxy exotic object, then
-        if let Some(proxy) = self.downcast_ref::<Proxy>() {
+        if let Some(proxy) = self.downcast_ref::<Proxy>()? {
             // a. If argument.[[ProxyHandler]] is null, throw a TypeError exception.
             // b. Let target be argument.[[ProxyTarget]].
             let (target, _) = proxy.try_data()?;
@@ -906,11 +906,11 @@ impl JsObject {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-getfunctionrealm
     pub(crate) fn get_function_realm(&self, context: &mut Context) -> JsResult<Realm> {
-        if let Some(fun) = self.downcast_ref::<OrdinaryFunction>() {
+        if let Some(fun) = self.downcast_ref::<OrdinaryFunction>()? {
             return Ok(fun.realm());
         }
 
-        if let Some(f) = self.downcast_ref::<NativeFunctionObject>() {
+        if let Some(f) = self.downcast_ref::<NativeFunctionObject>()? {
             return Ok(f
                 .realm
                 .clone()
@@ -918,12 +918,12 @@ impl JsObject {
                 .unwrap_or_else(|| context.realm().clone()));
         }
 
-        if let Some(bound) = self.downcast_ref::<BoundFunction>() {
+        if let Some(bound) = self.downcast_ref::<BoundFunction>()? {
             let fun = bound.target_function();
             return fun.get_function_realm(context);
         }
 
-        if let Some(proxy) = self.downcast_ref::<Proxy>() {
+        if let Some(proxy) = self.downcast_ref::<Proxy>()? {
             let (fun, _) = proxy.try_data()?;
             return fun.get_function_realm(context);
         }
@@ -1002,10 +1002,14 @@ impl JsObject {
     }
 
     /// Check whether the object has a private element with the given name.
-    pub(crate) fn has_private_element(&self, name: &PrivateName) -> bool {
-        self.borrow()
+    pub(crate) fn has_private_element(
+        &self,
+        name: &PrivateName,
+    ) -> Result<bool, ObjectAccessError> {
+        Ok(self
+            .borrow()?
             .private_element_find(name, true, true)
-            .is_some()
+            .is_some())
     }
 
     /// Abstract operation `PrivateFieldAdd ( O, P, value )`
@@ -1040,7 +1044,7 @@ impl JsObject {
         // 3. Let entry be PrivateElementFind(O, P).
         // 4. If entry is not empty, throw a TypeError exception.
         if self
-            .borrow()
+            .borrow()?
             .private_element_find(name, false, false)
             .is_some()
         {
@@ -1048,7 +1052,7 @@ impl JsObject {
         }
 
         // 5. Append PrivateElement { [[Key]]: P, [[Kind]]: field, [[Value]]: value } to O.[[PrivateElements]].
-        self.borrow_mut().state_mut().private_elements.push((
+        self.borrow_mut()?.state_mut().private_elements.push((
             name.clone(),
             StoredPrivateElement::Field(value.into_stored()),
         ));
@@ -1107,7 +1111,7 @@ impl JsObject {
         // 3. Let entry be PrivateElementFind(O, method.[[Key]]).
         // 4. If entry is not empty, throw a TypeError exception.
         if self
-            .borrow()
+            .borrow()?
             .private_element_find(name, getter, setter)
             .is_some()
         {
@@ -1123,7 +1127,7 @@ impl JsObject {
         }
 
         // 5. Append method to O.[[PrivateElements]].
-        self.borrow_mut()
+        self.borrow_mut()?
             .state_mut()
             .append_stored_private_element(name.clone(), method.clone());
 
@@ -1145,7 +1149,7 @@ impl JsObject {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         // 1. Let entry be PrivateElementFind(O, P).
-        let object = self.borrow();
+        let object = self.borrow()?;
         let entry = object.private_element_find(name, true, true);
 
         match entry {
@@ -1193,7 +1197,7 @@ impl JsObject {
     ) -> JsResult<()> {
         // 1. Let entry be PrivateElementFind(O, P).
         // Note: This function is inlined here for mutable access.
-        let mut object_mut = self.borrow_mut();
+        let mut object_mut = self.borrow_mut()?;
         let entry = object_mut
             .state_mut()
             .private_elements
@@ -1316,8 +1320,8 @@ impl JsObject {
         context: &mut Context,
     ) -> JsResult<()> {
         let constructor_function = constructor
-            .downcast_ref::<OrdinaryFunction>()
-            .js_expect("class constructor must be function object")?;
+            .downcast_ref::<OrdinaryFunction>()?
+            .ok_or(ObjectAccessError::WrongNativeBrand)?;
 
         // 1. Let methods be the value of constructor.[[PrivateMethods]].
         // 2. For each PrivateElement method of methods, do
@@ -1549,7 +1553,7 @@ impl JsValue {
         };
 
         // 2. If C has a [[BoundTargetFunction]] internal slot, then
-        if let Some(bound_function) = function.downcast_ref::<BoundFunction>() {
+        if let Some(bound_function) = function.downcast_ref::<BoundFunction>()? {
             // a. Let BC be C.[[BoundTargetFunction]].
             // b. Return ? InstanceofOperator(O, BC).
             return object.instance_of(&bound_function.target_function().into(), context.access());

@@ -159,9 +159,11 @@ fn recursive_display() {
                 let array = new Array([set]);
                 set.add(set);
             "#}),
-        TestAction::assert_with_op("set", |v, _| v.display().to_string() == "Set { Set(1) }"),
+        TestAction::assert_with_op("set", |v, _| {
+            v.display().render().unwrap() == "Set { Set(1) }"
+        }),
         TestAction::assert_with_op("set.add(array)", |v, _| {
-            v.display().to_string() == "Set { Set(2), Array(1) }"
+            v.display().render().unwrap() == "Set { Set(2), Array(1) }"
         }),
     ]);
 }
@@ -183,10 +185,10 @@ fn difference() {
             let setB = new Set([1, 4, 9]);
         "#}),
         TestAction::assert_with_op("setA.difference(setB)", |v, _| {
-            v.display().to_string() == "Set { 3, 5, 7 }"
+            v.display().render().unwrap() == "Set { 3, 5, 7 }"
         }),
         TestAction::assert_with_op("setB.difference(setA)", |v, _| {
-            v.display().to_string() == "Set { 4 }"
+            v.display().render().unwrap() == "Set { 4 }"
         }),
     ]);
 }
@@ -199,10 +201,10 @@ fn difference_equal_set() {
             let setB = new Set([1, 4, 5, 7, 9]);
         "#}),
         TestAction::assert_with_op("setA.difference(setB)", |v, _| {
-            v.display().to_string() == "Set { 3 }"
+            v.display().render().unwrap() == "Set { 3 }"
         }),
         TestAction::assert_with_op("setB.difference(setA)", |v, _| {
-            v.display().to_string() == "Set { 4 }"
+            v.display().render().unwrap() == "Set { 4 }"
         }),
     ]);
 }
@@ -215,10 +217,10 @@ fn difference_empty() {
            let setB = new Set([]);
         "#}),
         TestAction::assert_with_op("setA.difference(setB)", |v, _| {
-            v.display().to_string() == "Set { 1, 3, 5, 7, 9 }"
+            v.display().render().unwrap() == "Set { 1, 3, 5, 7, 9 }"
         }),
         TestAction::assert_with_op("setB.difference(setA)", |v, _| {
-            v.display().to_string() == "Set(0)"
+            v.display().render().unwrap() == "Set(0)"
         }),
     ]);
 }
@@ -232,22 +234,22 @@ fn intersection() {
             let setC = new Set([]);
             "#}),
         TestAction::assert_with_op("setA.intersection(setB)", |v, _| {
-            v.display().to_string() == "Set { 1, 3 }"
+            v.display().render().unwrap() == "Set { 1, 3 }"
         }),
         TestAction::assert_with_op("setB.intersection(setA)", |v, _| {
-            v.display().to_string() == "Set { 1, 3 }"
+            v.display().render().unwrap() == "Set { 1, 3 }"
         }),
         TestAction::assert_with_op("setA.intersection(setA)", |v, _| {
-            v.display().to_string() == "Set { 1, 2, 3 }"
+            v.display().render().unwrap() == "Set { 1, 2, 3 }"
         }),
         TestAction::assert_with_op("setB.intersection(setB)", |v, _| {
-            v.display().to_string() == "Set { 1, 4, 3 }"
+            v.display().render().unwrap() == "Set { 1, 4, 3 }"
         }),
         TestAction::assert_with_op("setB.intersection(setC)", |v, _| {
-            v.display().to_string() == "Set(0)"
+            v.display().render().unwrap() == "Set(0)"
         }),
         TestAction::assert_with_op("setA.intersection(setC)", |v, _| {
-            v.display().to_string() == "Set(0)"
+            v.display().render().unwrap() == "Set(0)"
         }),
     ]);
 }
@@ -327,10 +329,12 @@ fn symmetric_difference_different_sets_strings() {
             let setB = new Set(["Python", "Java", "JavaScript", "PHP"]);
             "#}),
         TestAction::assert_with_op("setA.symmetricDifference(setB)", |v, _| {
-            v.display().to_string() == "Set { \"HTML\", \"CSS\", \"Python\", \"Java\", \"PHP\" }"
+            v.display().render().unwrap()
+                == "Set { \"HTML\", \"CSS\", \"Python\", \"Java\", \"PHP\" }"
         }),
         TestAction::assert_with_op("setB.symmetricDifference(setA)", |v, _| {
-            v.display().to_string() == "Set { \"Python\", \"Java\", \"PHP\", \"HTML\", \"CSS\" }"
+            v.display().render().unwrap()
+                == "Set { \"Python\", \"Java\", \"PHP\", \"HTML\", \"CSS\" }"
         }),
     ]);
 }
@@ -343,10 +347,10 @@ fn symmetric_difference_different_sets_numbers() {
             let setD = new Set([1, 4, 9]);
             "#}),
         TestAction::assert_with_op("setC.symmetricDifference(setD)", |v, _| {
-            v.display().to_string() == "Set { 2, 6, 8, 1, 9 }"
+            v.display().render().unwrap() == "Set { 2, 6, 8, 1, 9 }"
         }),
         TestAction::assert_with_op("setD.symmetricDifference(setC)", |v, _| {
-            v.display().to_string() == "Set { 1, 9, 2, 6, 8 }"
+            v.display().render().unwrap() == "Set { 1, 9, 2, 6, 8 }"
         }),
     ]);
 }
@@ -359,7 +363,7 @@ fn symmetric_difference_same_set() {
             let setACopy = setA;
         "#}),
         TestAction::assert_with_op("setA.symmetricDifference(setACopy)", |v, _| {
-            v.display().to_string() == "Set(0)"
+            v.display().render().unwrap() == "Set(0)"
         }),
     ]);
 }
@@ -377,7 +381,7 @@ fn symmetric_difference_with_identical_content() {
             "#}),
         // We use a function to get a new Set object with the same content.
         TestAction::assert_with_op("setA.symmetricDifference(getIdenticalSet())", |v, _| {
-            v.display().to_string() == "Set(0)"
+            v.display().render().unwrap() == "Set(0)"
         }),
     ]);
 }
@@ -390,10 +394,10 @@ fn union() {
             let setB = new Set([1, 4, 9]);
             "#}),
         TestAction::assert_with_op("setA.union(setB)", |v, _| {
-            v.display().to_string() == "Set { 2, 4, 6, 8, 1, 9 }"
+            v.display().render().unwrap() == "Set { 2, 4, 6, 8, 1, 9 }"
         }),
         TestAction::assert_with_op("setB.union(setA)", |v, _| {
-            v.display().to_string() == "Set { 1, 4, 9, 2, 6, 8 }"
+            v.display().render().unwrap() == "Set { 1, 4, 9, 2, 6, 8 }"
         }),
     ]);
 }
@@ -405,7 +409,7 @@ fn union_same_set() {
             let setA = new Set([1, 4, 9]);
             "#}),
         TestAction::assert_with_op("setA.union(setA)", |v, _| {
-            v.display().to_string() == "Set { 1, 4, 9 }"
+            v.display().render().unwrap() == "Set { 1, 4, 9 }"
         }),
     ]);
 }
@@ -420,14 +424,14 @@ fn intersection_common_elements() {
         "#}),
         // Both directions must yield the same logical result (order follows `this`).
         TestAction::assert_with_op("setA.intersection(setB)", |v, _| {
-            v.display().to_string() == "Set { 3, 4 }"
+            v.display().render().unwrap() == "Set { 3, 4 }"
         }),
         TestAction::assert_with_op("setB.intersection(setA)", |v, _| {
-            v.display().to_string() == "Set { 3, 4 }"
+            v.display().render().unwrap() == "Set { 3, 4 }"
         }),
         // Intersecting a set with itself yields an identical set.
         TestAction::assert_with_op("setA.intersection(setA)", |v, _| {
-            v.display().to_string() == "Set { 1, 2, 3, 4 }"
+            v.display().render().unwrap() == "Set { 1, 2, 3, 4 }"
         }),
     ]);
 }
@@ -443,14 +447,14 @@ fn intersection_no_common_elements() {
         "#}),
         // Two sets with nothing in common.
         TestAction::assert_with_op("setA.intersection(setB)", |v, _| {
-            v.display().to_string() == "Set(0)"
+            v.display().render().unwrap() == "Set(0)"
         }),
         // Intersection with an empty set is always empty.
         TestAction::assert_with_op("setA.intersection(setEmpty)", |v, _| {
-            v.display().to_string() == "Set(0)"
+            v.display().render().unwrap() == "Set(0)"
         }),
         TestAction::assert_with_op("setEmpty.intersection(setA)", |v, _| {
-            v.display().to_string() == "Set(0)"
+            v.display().render().unwrap() == "Set(0)"
         }),
     ]);
 }
@@ -552,5 +556,5 @@ fn set_rejects_foreign_edges_at_both_rust_entry_points() {
     assert!(error.try_native(context.access()).unwrap().is_type());
 
     context.runtime().collect().unwrap();
-    assert_eq!(set.size(), 0);
+    assert_eq!(set.size().unwrap(), 0);
 }

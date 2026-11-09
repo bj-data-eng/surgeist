@@ -358,7 +358,7 @@ impl EarlyErrorNames<'_, '_> {
 }
 
 impl IntrinsicObject for BuiltInFunctionObject {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let has_instance = BuiltInBuilder::callable(realm, Self::has_instance)
             .name(js_string!("[Symbol.hasInstance]"))
             .length(1)
@@ -384,16 +384,18 @@ impl IntrinsicObject for BuiltInFunctionObject {
                 Some(throw_type_error),
                 Attribute::CONFIGURABLE,
             )
-            .build();
+            .build()?;
 
         let prototype = realm.intrinsics().constructors().function().prototype();
 
         BuiltInBuilder::callable_with_object(realm, prototype.clone(), Self::prototype)
             .name(js_string!())
             .length(0)
-            .build();
+            .build()?;
 
-        prototype.set_prototype(Some(realm.intrinsics().constructors().object().prototype()));
+        prototype.set_prototype(Some(realm.intrinsics().constructors().object().prototype()))?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -815,9 +817,12 @@ impl BuiltInFunctionObject {
     fn apply(this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         // 1. Let func be the this value.
         // 2. If IsCallable(func) is false, throw a TypeError exception.
-        let func = this.as_callable().ok_or_else(|| {
-            JsNativeError::typ().with_message(format!("{} is not a function", this.display()))
-        })?;
+        let Some(func) = this.as_callable() else {
+            let rendered = this.display().render()?;
+            return Err(JsNativeError::typ()
+                .with_message(format!("{rendered} is not a function"))
+                .into());
+        };
 
         let this_arg = args.get_or_undefined(0);
         let arg_array = args.get_or_undefined(1);
@@ -935,9 +940,12 @@ impl BuiltInFunctionObject {
     fn call(this: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsValue> {
         // 1. Let func be the this value.
         // 2. If IsCallable(func) is false, throw a TypeError exception.
-        let func = this.as_callable().ok_or_else(|| {
-            JsNativeError::typ().with_message(format!("{} is not a function", this.display()))
-        })?;
+        let Some(func) = this.as_callable() else {
+            let rendered = this.display().render()?;
+            return Err(JsNativeError::typ()
+                .with_message(format!("{rendered} is not a function"))
+                .into());
+        };
         let this_arg = args.get_or_undefined(0);
 
         // 3. Perform PrepareForTailCall().
@@ -995,7 +1003,7 @@ impl BuiltInFunctionObject {
         }
 
         let function = object
-            .downcast_ref::<OrdinaryFunction>()
+            .downcast_ref::<OrdinaryFunction>()?
             .ok_or_else(|| JsNativeError::typ().with_message("not a function"))?;
 
         let code = function.codeblock();
@@ -1100,8 +1108,8 @@ pub(crate) fn reserve_prepared_call_entry(
     context: &mut Context,
 ) -> JsResult<FirstDispatchPermit> {
     let function = function_object
-        .downcast_ref::<OrdinaryFunction>()
-        .js_expect("not a function")?;
+        .downcast_ref::<OrdinaryFunction>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
     context.prepare_guest_call_storage(argument_count, function.code.register_count)?;
     let realm = context.realm().resolve_call_realm(Some(&function.realm));
     let code = ordinary_call_code(&function, realm)?;
@@ -1141,8 +1149,8 @@ pub(crate) fn function_call(
     context: &mut InternalMethodCallContext<'_>,
 ) -> JsResult<CallValue> {
     let function = function_object
-        .downcast_ref::<OrdinaryFunction>()
-        .js_expect("not a function")?;
+        .downcast_ref::<OrdinaryFunction>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
     let realm = context.realm().resolve_call_realm(Some(&function.realm));
 
     let raw_code = function.code.clone();
@@ -1258,8 +1266,8 @@ fn function_construct(
     context: &mut InternalMethodCallContext<'_>,
 ) -> JsResult<CallValue> {
     let function = this_function_object
-        .downcast_ref::<OrdinaryFunction>()
-        .js_expect("not a function")?;
+        .downcast_ref::<OrdinaryFunction>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
     let realm = context.realm().resolve_call_realm(Some(&function.realm));
 
     debug_assert!(

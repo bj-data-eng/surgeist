@@ -100,7 +100,7 @@ impl IntrinsicObject for FinalizationRegistry {
         Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
     }
 
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::from_standard_constructor::<Self>(realm)
             .property(
                 JsSymbol::to_string_tag(),
@@ -109,7 +109,9 @@ impl IntrinsicObject for FinalizationRegistry {
             )
             .method(Self::register, js_string!("register"), 2)
             .method(Self::unregister, js_string!("unregister"), 1)
-            .build();
+            .build()?;
+
+        Ok(())
     }
 }
 
@@ -280,7 +282,7 @@ impl FinalizationRegistry {
         }
 
         // 6. Let cell be the Record { [[WeakRefTarget]]: target, [[HeldValue]]: heldValue, [[UnregisterToken]]: unregisterToken }.
-        let mut registry = this.borrow_data_mut();
+        let mut registry = this.borrow_data_mut()?;
         let sender = registry.cleanup_notifier.downgrade();
         let retirement: Rc<dyn Fn()> = Rc::new(move || {
             if let Some(sender) = sender.upgrade() {
@@ -312,7 +314,9 @@ impl FinalizationRegistry {
         let this = this.as_object();
         let mut registry = this
             .as_ref()
-            .and_then(JsObject::downcast_mut::<Self>)
+            .map(JsObject::downcast_mut::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 js_error!(
                     TypeError: "FinalizationRegistry.prototype.unregister: \
@@ -365,16 +369,11 @@ impl FinalizationRegistry {
     ) -> JsResult<()> {
         obj.check_runtime(context.runtime())?;
         // 2. Let callback be finalizationRegistry.[[CleanupCallback]].
-        let stored_callback = obj
-            .try_borrow()
-            .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?
-            .data()
-            .callback
-            .clone();
+        let stored_callback = obj.borrow()?.data().callback.clone();
         let callback = stored_callback.to_callback()?;
         loop {
             let held_value = {
-                let mut registry = obj.borrow_mut();
+                let mut registry = obj.borrow_mut()?;
                 let cells = &mut registry.data_mut().cells;
                 // 3. Choose and remove a cell with an empty [[WeakRefTarget]].
                 let Some(index) = cells

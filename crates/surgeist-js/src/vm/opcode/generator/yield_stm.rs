@@ -86,7 +86,10 @@ impl AsyncGeneratorYield {
         //     a. NOTE: Execution continues without suspending the generator.
         //     b. Let toYield be the first element of queue.
         let next = {
-            let generator = async_generator_object.borrow();
+            let generator = match async_generator_object.borrow() {
+                Ok(generator) => generator,
+                Err(error) => return context.handle_error(error.into()),
+            };
             generator
                 .data()
                 .queue
@@ -128,7 +131,13 @@ impl AsyncGeneratorYield {
         // 12. Else,
 
         //     a. Set generator.[[AsyncGeneratorState]] to suspended-yield.
-        async_generator_object.borrow_mut().data_mut().state = AsyncGeneratorState::SuspendedYield;
+        {
+            let mut generator = match async_generator_object.borrow_mut() {
+                Ok(generator) => generator,
+                Err(error) => return context.handle_error(error.into()),
+            };
+            generator.data_mut().state = AsyncGeneratorState::SuspendedYield;
+        }
 
         //     TODO: b. Remove genContext from the execution context stack and restore the execution context that is at the top of the execution context stack as the running execution context.
         //     TODO: c. Let callerContext be the running execution context.

@@ -7,11 +7,11 @@ use surgeist_js::{
     error::{
         Diagnostic, DiagnosticEngine, DiagnosticFrame, DiagnosticKind, DiagnosticNative,
         DiagnosticNativeKind, DiagnosticStack, EngineError, EngineResourceError, ErasedEngineError,
-        JobError, JsErasedError, PanicDiagnostic, PanicError, RuntimeLimitError,
+        JobError, JsErasedError, ObjectAccessError, PanicDiagnostic, PanicError, RuntimeLimitError,
     },
     job::JobRetirement,
     js_string,
-    value::Type,
+    value::{Type, ValueRenderError},
     vm::SourcePath,
 };
 use surgeist_js_ast::scope::ScopeStateError;
@@ -101,12 +101,12 @@ fn native_kinds_and_authored_cause_and_member_order_remain_typed() {
     }
     let panic = panic_with(
         JsNativeError::aggregate(vec![
-            JsError::from_opaque(11.into()),
+            JsError::from_opaque(11.into()).unwrap(),
             JsNativeError::syntax().with_message("middle").into(),
-            JsError::from_opaque(33.into()),
+            JsError::from_opaque(33.into()).unwrap(),
         ])
         .with_message("aggregate")
-        .with_cause(JsError::from_opaque(js_string!("cause").into())),
+        .with_cause(JsError::from_opaque(js_string!("cause").into()).unwrap()),
     );
     let view = native(diagnostic(&panic));
     assert_eq!(view.kind(), DiagnosticNativeKind::Aggregate);
@@ -141,7 +141,7 @@ fn checked_opaque_leaf_access_preserves_identity_without_executing_a_getter() {
         ))
         .unwrap();
     let identity = object.as_object().unwrap().identity();
-    let panic = panic_with(JsError::from_opaque(object.clone()));
+    let panic = panic_with(JsError::from_opaque(object.clone()).unwrap());
     let DiagnosticKind::Opaque(leaf) = diagnostic(&panic).kind() else {
         panic!("opaque values stay opaque")
     };
@@ -159,7 +159,7 @@ fn checked_opaque_leaf_access_preserves_identity_without_executing_a_getter() {
         7.into(),
         js_string!("text").into(),
     ] {
-        let panic = panic_with(JsError::from_opaque(value.clone()));
+        let panic = panic_with(JsError::from_opaque(value.clone()).unwrap());
         let DiagnosticKind::Opaque(leaf) = diagnostic(&panic).kind() else {
             unreachable!()
         };
@@ -176,9 +176,10 @@ fn assert_engine_view(view: Diagnostic<'_>, expected: &EngineError) {
     let expected = match expected {
         EngineError::Resource(error) => DiagnosticEngine::Resource(*error),
         EngineError::Rooting(error) => DiagnosticEngine::Rooting(*error),
+        EngineError::ValueRender(error) => DiagnosticEngine::ValueRender(*error),
         EngineError::InvalidEntryPermit => DiagnosticEngine::InvalidEntryPermit,
         EngineError::ContextAccessBusy => DiagnosticEngine::ContextAccessBusy,
-        EngineError::ObjectAccessBusy => DiagnosticEngine::ObjectAccessBusy,
+        EngineError::ObjectAccess(error) => DiagnosticEngine::ObjectAccess(*error),
         EngineError::ForeignSelectedRealm(expected) => {
             let DiagnosticEngine::ForeignSelectedRealm(actual) = actual else {
                 panic!("publication refusal lost its borrowed diagnostic variant")
@@ -224,7 +225,8 @@ fn every_engine_family_preserves_typed_payloads_and_erased_export() {
         EngineError::Resource(EngineResourceError::Allocation),
         EngineError::InvalidEntryPermit,
         EngineError::ContextAccessBusy,
-        EngineError::ObjectAccessBusy,
+        EngineError::ObjectAccess(ObjectAccessError::Borrowed),
+        EngineError::ObjectAccess(ObjectAccessError::WrongNativeBrand),
         EngineError::Job(JobError::TaskCompleted),
         EngineError::Job(JobError::CancellationRevoked),
         EngineError::JobContextRequired {
@@ -232,6 +234,16 @@ fn every_engine_family_preserves_typed_payloads_and_erased_export() {
         },
         EngineError::InvocationIdExhausted,
     ];
+    cases.extend(
+        [
+            ValueRenderError::Sink,
+            ValueRenderError::MissingArrayLength,
+            ValueRenderError::InvalidArrayLength,
+            ValueRenderError::MissingProperty,
+            ValueRenderError::InvalidDescriptor,
+        ]
+        .map(EngineError::ValueRender),
+    );
     cases.extend(
         [
             JobRetirement::Cancelled,
@@ -315,10 +327,16 @@ fn every_engine_family_preserves_typed_payloads_and_erased_export() {
                 })
             );
         }
-        if let EngineError::ObjectAccessBusy = engine {
+        if let EngineError::ObjectAccess(error) = engine {
             assert_eq!(
                 source.as_engine(),
-                Some(&ErasedEngineError::ObjectAccessBusy)
+                Some(&ErasedEngineError::ObjectAccess(error))
+            );
+        }
+        if let EngineError::ValueRender(error) = engine {
+            assert_eq!(
+                source.as_engine(),
+                Some(&ErasedEngineError::ValueRender(error))
             );
         }
         if let EngineError::Job(error) = engine {
@@ -331,8 +349,9 @@ fn every_engine_family_preserves_typed_payloads_and_erased_export() {
 
 #[test]
 fn nested_panic_views_preserve_their_own_message_and_borrowed_source() {
-    let error =
-        panic_with(PanicError::new("inner failure").with_source(JsError::from_opaque(42.into())));
+    let error = panic_with(
+        PanicError::new("inner failure").with_source(JsError::from_opaque(42.into()).unwrap()),
+    );
     let DiagnosticKind::Engine(DiagnosticEngine::Panic {
         message,
         diagnostic: Some(inner),
@@ -354,8 +373,8 @@ fn clone_and_sequential_cross_runtime_admission_never_resurrect_hidden_objects()
     let left = JsObject::with_null_proto(a.runtime());
     let right = JsObject::with_null_proto(b.runtime());
     let raw = panic_with(JsNativeError::aggregate(vec![
-        JsError::from_opaque(left.clone().into()),
-        JsError::from_opaque(right.clone().into()),
+        JsError::from_opaque(left.clone().into()).unwrap(),
+        JsError::from_opaque(right.clone().into()).unwrap(),
     ]));
     let first = admit(raw.clone(), &mut a);
     let members: Vec<_> = native(diagnostic(&raw)).members().collect();
@@ -497,14 +516,14 @@ fn semantic_equality_ignores_capture_storage_but_distinguishes_messages_and_iden
     let one = JsObject::with_null_proto(context.runtime());
     let two = JsObject::with_null_proto(context.runtime());
     assert_eq!(
-        panic_with(JsError::from_opaque(one.clone().into())),
-        panic_with(JsError::from_opaque(one.into()))
+        panic_with(JsError::from_opaque(one.clone().into()).unwrap()),
+        panic_with(JsError::from_opaque(one.into()).unwrap())
     );
     assert_ne!(
-        panic_with(JsError::from_opaque(two.into())),
-        panic_with(JsError::from_opaque(
-            JsObject::with_null_proto(context.runtime()).into()
-        ))
+        panic_with(JsError::from_opaque(two.into()).unwrap()),
+        panic_with(
+            JsError::from_opaque(JsObject::with_null_proto(context.runtime()).into()).unwrap()
+        )
     );
 }
 
@@ -578,7 +597,7 @@ fn native_stack_position_retains_optional_native_origin_and_erased_opaque_behavi
         source_info.as_location().is_some(),
         cfg!(feature = "native-backtrace")
     );
-    let source = JsError::from_opaque(js_string!("opaque detail").into());
+    let source = JsError::from_opaque(js_string!("opaque detail").into()).unwrap();
     let expected = source.to_string();
     let exported = panic_with(source).into_erased(context.access());
     let Some(ErasedEngineError::Panic(panic)) = exported.as_engine() else {

@@ -31,11 +31,11 @@ struct MapIteration {
 }
 
 impl MapIteration {
-    fn new(collection: &JsObject<OrderedMap>) -> Self {
-        Self {
+    fn new(collection: &JsObject<OrderedMap>) -> JsResult<Self> {
+        Ok(Self {
             collection: collection.edge(),
-            _position_lock: collection.borrow_mut().data_mut().lock(),
-        }
+            _position_lock: collection.borrow_mut()?.data_mut().lock(),
+        })
     }
 }
 
@@ -54,16 +54,18 @@ pub(crate) struct MapIterator {
 }
 
 impl IntrinsicObject for MapIterator {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::with_intrinsic::<Self>(realm)
             .prototype(realm.intrinsics().constructors().iterator().prototype())
-            .static_method(Self::next, js_string!("next"), 0)
+            .static_method(Self::next, js_string!("next"), 0)?
             .static_property(
                 JsSymbol::to_string_tag(),
                 js_string!("Map Iterator"),
                 Attribute::CONFIGURABLE,
-            )
-            .build();
+            )?
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -89,7 +91,7 @@ impl MapIterator {
             return Err(js_error!(TypeError: "collection iterator crosses JavaScript runtimes"));
         }
         let iter = Self {
-            iterated_map: Some(MapIteration::new(&map)),
+            iterated_map: Some(MapIteration::new(&map)?),
             next_index: 0,
             iteration_kind: kind,
         };
@@ -113,7 +115,9 @@ impl MapIterator {
         let invalid_receiver = || JsNativeError::typ().with_message("`this` is not a MapIterator");
         let object = this.as_object().ok_or_else(invalid_receiver)?;
         let (element, kind) = {
-            let mut iterator = object.downcast_mut::<Self>().ok_or_else(invalid_receiver)?;
+            let mut iterator = object
+                .downcast_mut::<Self>()?
+                .ok_or_else(invalid_receiver)?;
             if !context.runtime().same_heap(&object.runtime()) {
                 return Err(
                     js_error!(TypeError: "collection iterator crosses JavaScript runtimes"),
@@ -129,19 +133,23 @@ impl MapIterator {
                     .downcast::<OrderedMap>()
                     .expect("iterator retains a Map")
             });
-            let element = collection.and_then(|collection| {
-                let collection = collection.borrow();
+            let element = if let Some(collection) = collection {
+                let collection = collection.borrow()?;
                 let entries = collection.data();
 
-                while iterator.next_index < entries.full_len() {
+                loop {
+                    if iterator.next_index >= entries.full_len() {
+                        break None;
+                    }
                     let index = iterator.next_index;
                     iterator.next_index += 1;
                     if let Some(element) = entries.get_index(index) {
-                        return Some(element);
+                        break Some(element);
                     }
                 }
+            } else {
                 None
-            });
+            };
             if element.is_none() {
                 iterator.iterated_map = None;
             }

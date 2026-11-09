@@ -67,7 +67,7 @@
 //!             0,
 //!             NativeFunction::from_fn_ptr(|this, _args, _ctx| {
 //!                 if let Some(object) = this.as_object() {
-//!                     if let Some(animal) = object.downcast_ref::<Animal>() {
+//!                     if let Some(animal) = object.downcast_ref::<Animal>()? {
 //!                         return Ok(match &*animal {
 //!                             Self::Cat => js_string!("meow"),
 //!                             Self::Dog => js_string!("woof"),

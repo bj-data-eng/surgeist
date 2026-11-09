@@ -39,7 +39,7 @@ pub struct Now;
 
 impl IntrinsicObject for Now {
     /// Initializes the `Temporal.Now` object.
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         // is an ordinary object.
         // has a [[Prototype]] internal slot whose value is %Object.prototype%.
         // is not a function object.
@@ -50,14 +50,16 @@ impl IntrinsicObject for Now {
                 JsSymbol::to_string_tag(),
                 StaticJsStrings::NOW_TAG,
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
-            .static_method(Self::time_zone_id, js_string!("timeZoneId"), 0)
-            .static_method(Self::instant, js_string!("instant"), 0)
-            .static_method(Self::plain_date_time_iso, js_string!("plainDateTimeISO"), 0)
-            .static_method(Self::zoned_date_time_iso, js_string!("zonedDateTimeISO"), 0)
-            .static_method(Self::plain_date_iso, js_string!("plainDateISO"), 0)
-            .static_method(Self::plain_time_iso, js_string!("plainTimeISO"), 0)
-            .build();
+            )?
+            .static_method(Self::time_zone_id, js_string!("timeZoneId"), 0)?
+            .static_method(Self::instant, js_string!("instant"), 0)?
+            .static_method(Self::plain_date_time_iso, js_string!("plainDateTimeISO"), 0)?
+            .static_method(Self::zoned_date_time_iso, js_string!("zonedDateTimeISO"), 0)?
+            .static_method(Self::plain_date_iso, js_string!("plainDateISO"), 0)?
+            .static_method(Self::plain_time_iso, js_string!("plainTimeISO"), 0)?
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {

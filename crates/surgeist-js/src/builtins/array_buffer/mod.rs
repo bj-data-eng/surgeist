@@ -166,12 +166,16 @@ impl BufferObject {
 
     /// Gets the buffer data of the object.
     #[inline]
-    #[must_use]
-    pub(crate) fn as_buffer(&self) -> BufferRef<Ref<'_, ArrayBuffer>, Ref<'_, SharedArrayBuffer>> {
-        match self {
-            Self::Buffer(buf) => BufferRef::Buffer(buf.borrow_data()),
-            Self::SharedBuffer(buf) => BufferRef::SharedBuffer(buf.borrow_data()),
-        }
+    pub(crate) fn as_buffer(
+        &self,
+    ) -> Result<
+        BufferRef<Ref<'_, ArrayBuffer>, Ref<'_, SharedArrayBuffer>>,
+        crate::error::ObjectAccessError,
+    > {
+        Ok(match self {
+            Self::Buffer(buf) => BufferRef::Buffer(buf.borrow_data()?),
+            Self::SharedBuffer(buf) => BufferRef::SharedBuffer(buf.borrow_data()?),
+        })
     }
 
     /// Gets the mutable buffer data of the object
@@ -179,31 +183,34 @@ impl BufferObject {
     #[track_caller]
     pub(crate) fn as_buffer_mut(
         &self,
-    ) -> BufferRefMut<RefMut<'_, ArrayBuffer>, RefMut<'_, SharedArrayBuffer>> {
-        match self {
-            Self::Buffer(buf) => BufferRefMut::Buffer(buf.borrow_data_mut()),
-            Self::SharedBuffer(buf) => BufferRefMut::SharedBuffer(buf.borrow_data_mut()),
-        }
+    ) -> Result<
+        BufferRefMut<RefMut<'_, ArrayBuffer>, RefMut<'_, SharedArrayBuffer>>,
+        crate::error::ObjectAccessError,
+    > {
+        Ok(match self {
+            Self::Buffer(buf) => BufferRefMut::Buffer(buf.borrow_data_mut()?),
+            Self::SharedBuffer(buf) => BufferRefMut::SharedBuffer(buf.borrow_data_mut()?),
+        })
     }
 
     /// Returns `true` if the buffer objects point to the same buffer.
     #[inline]
     #[track_caller]
-    pub(crate) fn equals(lhs: &Self, rhs: &Self) -> bool {
-        match (lhs, rhs) {
+    pub(crate) fn equals(lhs: &Self, rhs: &Self) -> Result<bool, crate::error::ObjectAccessError> {
+        Ok(match (lhs, rhs) {
             (BufferObject::Buffer(lhs), BufferObject::Buffer(rhs)) => JsObject::equals(lhs, rhs),
             (BufferObject::SharedBuffer(lhs), BufferObject::SharedBuffer(rhs)) => {
                 if JsObject::equals(lhs, rhs) {
-                    return true;
+                    return Ok(true);
                 }
 
-                let lhs = lhs.borrow();
-                let rhs = rhs.borrow();
+                let lhs = lhs.borrow()?;
+                let rhs = rhs.borrow()?;
 
                 lhs.data().shares_backing_with(rhs.data())
             }
             _ => false,
-        }
+        })
     }
 }
 
@@ -340,7 +347,7 @@ impl ArrayBuffer {
 }
 
 impl IntrinsicObject for ArrayBuffer {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let flag_attributes = Attribute::CONFIGURABLE | Attribute::NON_ENUMERABLE;
 
         let get_species = BuiltInBuilder::callable(realm, Self::get_species)
@@ -413,7 +420,9 @@ impl IntrinsicObject for ArrayBuffer {
                 0,
             );
 
-        builder.build();
+        builder.build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -512,7 +521,9 @@ impl ArrayBuffer {
         let object = this.as_object();
         let buf = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("get ArrayBuffer.prototype.byteLength called with invalid `this`")
@@ -538,7 +549,9 @@ impl ArrayBuffer {
         let object = this.as_object();
         let buf = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message(
                     "get ArrayBuffer.prototype.maxByteLength called with invalid `this`",
@@ -572,7 +585,9 @@ impl ArrayBuffer {
         let object = this.as_object();
         let buf = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("get ArrayBuffer.prototype.resizable called with invalid `this`")
@@ -597,7 +612,9 @@ impl ArrayBuffer {
         let object = this.as_object();
         let buf = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("get ArrayBuffer.prototype.detached called with invalid `this`")
@@ -626,14 +643,14 @@ impl ArrayBuffer {
                     .with_message("ArrayBuffer.prototype.resize called with invalid `this`")
             })?;
 
-        buf.borrow().data().resizable_limit()?;
+        buf.borrow()?.data().resizable_limit()?;
 
         // 4. Let newByteLength be ? ToIndex(newLength).
         let new_byte_length = args.get_or_undefined(0).to_index(context.access())?;
 
         // 5–6. Validate the source before asking the host to admit an allocation.
         let capacity = buf
-            .borrow_mut()
+            .borrow_mut()?
             .data_mut()
             .resizable_bytes(new_byte_length)?
             .capacity();
@@ -654,7 +671,7 @@ impl ArrayBuffer {
         // 14. Set O.[[ArrayBufferData]] to newBlock.
         // 15. Set O.[[ArrayBufferByteLength]] to newByteLength.
         // The host hook can reenter. Validate the current source before any edit.
-        let mut buf = buf.borrow_mut();
+        let mut buf = buf.borrow_mut()?;
         let bytes = buf.data_mut().resizable_bytes(new_byte_length)?;
         if let Some(limit) = limit
             && new_byte_length > bytes.capacity() as u64
@@ -686,7 +703,7 @@ impl ArrayBuffer {
             })?;
 
         let len = {
-            let buf = buf.borrow();
+            let buf = buf.borrow()?;
             // 4. If IsDetachedBuffer(O) is true, throw a TypeError exception.
             if buf.data().is_detached() {
                 return Err(JsNativeError::typ()
@@ -739,7 +756,7 @@ impl ArrayBuffer {
         {
             // 19. If IsDetachedBuffer(new) is true, throw a TypeError exception.
             // 25. Let toBuf be new.[[ArrayBufferData]].
-            let mut new = new.borrow_mut();
+            let mut new = new.borrow_mut()?;
             let Some(to_buf) = new.data_mut().bytes_mut() else {
                 return Err(JsNativeError::typ()
                     .with_message("ArrayBuffer constructor returned detached ArrayBuffer")
@@ -756,7 +773,7 @@ impl ArrayBuffer {
             // 22. NOTE: Side-effects of the above steps may have detached O.
             // 23. If IsDetachedBuffer(O) is true, throw a TypeError exception.
             // 24. Let fromBuf be O.[[ArrayBufferData]].
-            let buf = buf.borrow();
+            let buf = buf.borrow()?;
             let Some(from_buf) = buf.data().bytes() else {
                 return Err(JsNativeError::typ()
                     .with_message("ArrayBuffer detached while ArrayBuffer.slice was running")
@@ -808,7 +825,7 @@ impl ArrayBuffer {
         // 3. If newLength is undefined, then
         let new_len = if new_length.is_undefined() {
             // a. Let newByteLength be arrayBuffer.[[ArrayBufferByteLength]].
-            buf.borrow().data().len() as u64
+            buf.borrow()?.data().len() as u64
         } else {
             // 4. Else,
             //     a. Let newByteLength be ? ToIndex(newLength).
@@ -816,7 +833,7 @@ impl ArrayBuffer {
         };
 
         let needs_allocation = {
-            let mut source = buf.borrow_mut();
+            let mut source = buf.borrow_mut()?;
             let (bytes, new_max_len) = source
                 .data_mut()
                 .transfer_source(new_len, TO_FIXED_LENGTH)?;
@@ -826,7 +843,7 @@ impl ArrayBuffer {
             needs_allocation.then(|| context.host_hooks().max_buffer_size(context.access()));
 
         let (bytes, new_max_len) = {
-            let mut source = buf.borrow_mut();
+            let mut source = buf.borrow_mut()?;
             let source = source.data_mut();
             let (bytes, new_max_len) = source.transfer_source(new_len, TO_FIXED_LENGTH)?;
             if let Some(limit) = limit

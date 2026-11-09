@@ -20,9 +20,9 @@ fn native_callbacks_cannot_return_or_throw_foreign_objects() {
         NativeFunction::from_fn_ptr(|_, args, _| {
             let object = JsObject::with_null_proto(&Runtime::default()).into();
             match args[0].as_number() {
-                Some(1.0) => Err(JsError::from_opaque(object)),
+                Some(1.0) => Err(JsError::from_opaque(object)?),
                 Some(2.0) => {
-                    Err(JsNativeError::aggregate(vec![JsError::from_opaque(object)]).into())
+                    Err(JsNativeError::aggregate(vec![JsError::from_opaque(object)?]).into())
                 }
                 _ => Ok(object),
             }
@@ -93,7 +93,7 @@ fn nested_native_invocation_restores_the_outer_activation() {
                 context.runtime().collect().unwrap();
                 let value = JsObject::with_null_proto(context.runtime()).into();
                 if args[0].as_boolean() == Some(true) {
-                    Err(JsError::from_opaque(value))
+                    Err(JsError::from_opaque(value)?)
                 } else {
                     Ok(value)
                 }

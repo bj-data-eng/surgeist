@@ -61,7 +61,7 @@ impl BuiltInObject for PlainYearMonth {
 }
 
 impl IntrinsicObject for PlainYearMonth {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_calendar_id = BuiltInBuilder::callable(realm, Self::get_calendar_id)
             .name(js_string!("get calendarId"))
             .build();
@@ -181,7 +181,9 @@ impl IntrinsicObject for PlainYearMonth {
             .method(Self::to_json, js_string!("toJSON"), 0)
             .method(Self::value_of, js_string!("valueOf"), 0)
             .method(Self::to_plain_date, js_string!("toPlainDate"), 1)
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -300,7 +302,9 @@ impl PlainYearMonth {
         let object = this.as_object();
         let year_month = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainYearMonth object.")
             })?;
@@ -337,7 +341,7 @@ impl PlainYearMonth {
                 .into());
         };
 
-        let calendar = year_month.borrow().data().inner.calendar().clone();
+        let calendar = year_month.borrow()?.data().inner.calendar().clone();
         Ok(js_string!(calendar.identifier()).into())
     }
 
@@ -356,7 +360,9 @@ impl PlainYearMonth {
         let object = this.as_object();
         let year_month = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainYearMonth object.")
             })?;
@@ -383,7 +389,9 @@ impl PlainYearMonth {
         let object = this.as_object();
         let year_month = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainYearMonth object.")
             })?;
@@ -450,7 +458,9 @@ impl PlainYearMonth {
         let object = this.as_object();
         let year_month = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainYearMonth object.")
             })?;
@@ -473,7 +483,9 @@ impl PlainYearMonth {
         let object = this.as_object();
         let year_month = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainYearMonth object.")
             })?;
@@ -496,7 +508,9 @@ impl PlainYearMonth {
         let object = this.as_object();
         let year_month = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainYearMonth object.")
             })?;
@@ -519,7 +533,9 @@ impl PlainYearMonth {
         let object = this.as_object();
         let year_month = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainYearMonth object.")
             })?;
@@ -548,7 +564,9 @@ impl PlainYearMonth {
         let object = this.as_object();
         let year_month = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainYearMonth object.")
             })?;
@@ -632,7 +650,9 @@ impl PlainYearMonth {
         let object = this.as_object();
         let year_month = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainYearMonth object.")
             })?;
@@ -667,7 +687,9 @@ impl PlainYearMonth {
         let object = this.as_object();
         let year_month = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainYearMonth object.")
             })?;
@@ -702,7 +724,9 @@ impl PlainYearMonth {
         let object = this.as_object();
         let year_month = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainYearMonth object.")
             })?;
@@ -729,7 +753,9 @@ impl PlainYearMonth {
         let object = this.as_object();
         let year_month = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainYearMonth object.")
             })?;
@@ -764,7 +790,9 @@ impl PlainYearMonth {
         let object = this.as_object();
         let year_month = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainYearMonth object.")
             })?;
@@ -785,7 +813,9 @@ impl PlainYearMonth {
         let object = this.as_object();
         let year_month = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainYearMonth object.")
             })?;
@@ -825,7 +855,9 @@ impl PlainYearMonth {
         let object = this.as_object();
         let year_month = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("this value must be a PlainYearMonth object.")
             })?;
@@ -873,7 +905,7 @@ fn to_temporal_year_month(
     // 2. If item is an Object, then
     if let Some(obj) = value.as_object() {
         // a. If item has an [[InitializedTemporalYearMonth]] internal slot, then
-        if let Some(ym) = obj.downcast_ref::<PlainYearMonth>() {
+        if let Some(ym) = obj.downcast_ref::<PlainYearMonth>()? {
             // i. Let resolvedOptions be ? GetOptionsObject(options).
             let resolved_options = get_options_object(&options, context)?;
             // ii. Perform ? GetTemporalOverflowOption(resolvedOptions).
@@ -986,7 +1018,9 @@ fn add_or_subtract_duration(
     let object = this.as_object();
     let year_month = object
         .as_ref()
-        .and_then(JsObject::downcast_ref::<PlainYearMonth>)
+        .map(JsObject::downcast_ref::<PlainYearMonth>)
+        .transpose()?
+        .flatten()
         .ok_or_else(|| {
             JsNativeError::typ().with_message("this value must be a PlainYearMonth object.")
         })?;

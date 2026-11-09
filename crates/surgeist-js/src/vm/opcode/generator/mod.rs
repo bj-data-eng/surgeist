@@ -49,9 +49,15 @@ impl Generator {
             Err(error) => return context.handle_error(error),
         };
 
-        generator.borrow_mut().data_mut().state = GeneratorState::SuspendedStart {
-            context: gen_ctx.stored(),
-        };
+        {
+            let mut stored = match generator.borrow_mut() {
+                Ok(stored) => stored,
+                Err(error) => return context.handle_error(error.into()),
+            };
+            stored.data_mut().state = GeneratorState::SuspendedStart {
+                context: gen_ctx.stored(),
+            };
+        }
 
         context.vm.set_return_value(generator.upcast().into());
         context.handle_yield()
@@ -101,7 +107,13 @@ impl AsyncGenerator {
                 Ok(value) => value,
                 Err(error) => return context.handle_error(error),
             };
-        generator.borrow_mut().data_mut().context = Some(gen_ctx.stored());
+        {
+            let mut stored = match generator.borrow_mut() {
+                Ok(stored) => stored,
+                Err(error) => return context.handle_error(error.into()),
+            };
+            stored.data_mut().context = Some(gen_ctx.stored());
+        }
 
         context.vm.set_return_value(generator.upcast().into());
         context.handle_yield()
@@ -133,7 +145,7 @@ impl AsyncGeneratorClose {
             .ok()
             .js_expect("must be async generator")?;
 
-        let mut r#gen = generator.borrow_mut();
+        let mut r#gen = generator.borrow_mut()?;
 
         // e. Assert: If we return here, the async generator either threw an exception or performed either an implicit or explicit return.
         // f. Remove acGenContext from the execution context stack and restore the execution context that is at the top of the execution context stack as the running execution context.

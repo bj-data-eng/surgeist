@@ -71,7 +71,7 @@ impl BuiltInObject for ZonedDateTime {
 }
 
 impl IntrinsicObject for ZonedDateTime {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_calendar_id = BuiltInBuilder::callable(realm, Self::get_calendar_id)
             .name(js_string!("get calendarId"))
             .build();
@@ -384,7 +384,9 @@ impl IntrinsicObject for ZonedDateTime {
             .method(Self::to_plain_date, js_string!("toPlainDate"), 0)
             .method(Self::to_plain_time, js_string!("toPlainTime"), 0)
             .method(Self::to_plain_date_time, js_string!("toPlainDateTime"), 0)
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -481,7 +483,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -504,7 +508,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -532,7 +538,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -558,7 +566,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -581,7 +591,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -604,7 +616,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -627,7 +641,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -650,7 +666,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -673,7 +691,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -696,7 +716,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -719,7 +741,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -742,7 +766,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -765,7 +791,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -788,7 +816,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -811,7 +841,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -834,7 +866,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -857,7 +891,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -880,7 +916,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -903,7 +941,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -926,7 +966,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -949,7 +991,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -975,7 +1019,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -998,7 +1044,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1021,7 +1069,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1044,7 +1094,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1067,7 +1119,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1090,7 +1144,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1113,7 +1169,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1181,7 +1239,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1253,7 +1313,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1284,7 +1346,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1312,7 +1376,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1338,7 +1404,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1369,7 +1437,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1400,7 +1470,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1431,7 +1503,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1464,7 +1538,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1539,7 +1615,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1566,7 +1644,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1617,7 +1697,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1646,7 +1728,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1692,7 +1776,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1725,7 +1811,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1789,7 +1877,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1812,7 +1902,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1836,7 +1928,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1864,7 +1958,9 @@ impl ZonedDateTime {
         let object = this.as_object();
         let zdt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a ZonedDateTime object.")
             })?;
@@ -1922,7 +2018,7 @@ pub(crate) fn to_temporal_zoneddatetime(
     match value.variant() {
         JsVariant::Object(object) => {
             // a. If item has an [[InitializedTemporalZonedDateTime]] internal slot, then
-            if let Some(zdt) = object.downcast_ref::<ZonedDateTime>() {
+            if let Some(zdt) = object.downcast_ref::<ZonedDateTime>()? {
                 // i. NOTE: The following steps, and similar ones below, read options
                 // and perform independent validation in alphabetical order
                 // (GetTemporalDisambiguationOption reads "disambiguation", GetTemporalOffsetOption
@@ -2027,7 +2123,7 @@ pub(crate) fn to_temporal_timezone_identifier(
     // 1. If temporalTimeZoneLike is an Object, then
     //    a. If temporalTimeZoneLike has an [[InitializedTemporalZonedDateTime]] internal slot, then
     if let Some(obj) = value.as_object()
-        && let Some(zdt) = obj.downcast_ref::<ZonedDateTime>()
+        && let Some(zdt) = obj.downcast_ref::<ZonedDateTime>()?
     {
         // i. Return temporalTimeZoneLike.[[TimeZone]].
         return Ok(*zdt.inner.time_zone());

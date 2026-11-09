@@ -143,7 +143,7 @@ fn assert_leaf(error: &JsError, expected: ObjectId) {
 
 fn original(leaf: JsObject) -> JsError {
     PanicError::new("custody source")
-        .with_source(JsError::from_opaque(leaf.into()))
+        .with_source(JsError::from_opaque(leaf.into()).unwrap())
         .into()
 }
 
@@ -277,7 +277,7 @@ fn a_real_object_to_stored_interruption_cause_cycle_collects_without_external_ob
         .runtime()
         .heap
         .with_pending_edges(terminal.clone().into_stored(), |stored| {
-            *object.borrow().data().error.borrow_mut() = Some(stored);
+            *object.borrow().unwrap().data().error.borrow_mut() = Some(stored);
         })
         .unwrap();
     drop(object);
@@ -344,12 +344,12 @@ fn masked_stored_interruption_restores_and_exports_after_its_foreign_runtime_is_
     let input: JsError = PanicError::new("custody source")
         .with_source(
             JsNativeError::aggregate(vec![
-                JsError::from_opaque(probe(foreign.runtime(), &drops).into()),
+                JsError::from_opaque(probe(foreign.runtime(), &drops).into()).unwrap(),
                 JsNativeError::range()
                     .with_message("visible native member")
                     .into(),
             ])
-            .with_cause(JsError::from_opaque(js_string!("visible primitive").into())),
+            .with_cause(JsError::from_opaque(js_string!("visible primitive").into()).unwrap()),
         )
         .into();
     let (module, terminal) = interrupt(input, &mut foreign, &module_drops);
@@ -395,7 +395,7 @@ fn masked_stored_interruption_restores_and_exports_after_its_foreign_runtime_is_
                     .with_message("visible native member")
                     .into(),
             ])
-            .with_cause(JsError::from_opaque(js_string!("visible primitive").into())),
+            .with_cause(JsError::from_opaque(js_string!("visible primitive").into()).unwrap()),
         )
         .into();
     assert_eq!(cause.as_ref(), &expected.into_erased(receiving.access()));
@@ -466,7 +466,7 @@ fn final_foreign_interruption_disposal_reenters_only_after_visible_local_roots_a
     let outer: JsError = PanicError::new("outer container")
         .with_source(JsNativeError::aggregate(vec![
             terminal,
-            JsError::from_opaque(local.into()),
+            JsError::from_opaque(local.into()).unwrap(),
         ]))
         .into();
     drop(module);
@@ -738,7 +738,7 @@ fn a_local_module_adopting_foreign_identity_does_not_retain_an_unrelated_foreign
     let outer: JsError = PanicError::new("composed custody")
         .with_source(JsNativeError::aggregate(vec![
             adopted,
-            JsError::from_opaque(foreign.into()),
+            JsError::from_opaque(foreign.into()).unwrap(),
         ]))
         .into();
     origin.runtime().collect().unwrap();

@@ -176,8 +176,8 @@ fn module_namespace_exotic_get_own_property(
 
     {
         let obj = obj
-            .downcast_ref::<ModuleNamespace>()
-            .js_expect("internal method can only be called on module namespace objects")?;
+            .downcast_ref::<ModuleNamespace>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
         // 2. Let exports be O.[[Exports]].
         let exports = obj.exports();
 
@@ -254,8 +254,8 @@ fn module_namespace_exotic_has_property(
     };
 
     let obj = obj
-        .downcast_ref::<ModuleNamespace>()
-        .js_expect("internal method can only be called on module namespace objects")?;
+        .downcast_ref::<ModuleNamespace>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
 
     // 2. Let exports be O.[[Exports]].
     let exports = obj.exports();
@@ -290,8 +290,8 @@ fn module_namespace_exotic_try_get(
     };
 
     let obj = obj
-        .downcast_ref::<ModuleNamespace>()
-        .js_expect("internal method can only be called on module namespace objects")?;
+        .downcast_ref::<ModuleNamespace>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
 
     // 2. Let exports be O.[[Exports]].
     let exports = obj.exports();
@@ -373,8 +373,8 @@ fn module_namespace_exotic_get(
     };
 
     let obj = obj
-        .downcast_ref::<ModuleNamespace>()
-        .js_expect("internal method can only be called on module namespace objects")?;
+        .downcast_ref::<ModuleNamespace>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
 
     // 2. Let exports be O.[[Exports]].
     let exports = obj.exports();
@@ -469,8 +469,8 @@ fn module_namespace_exotic_delete(
     };
 
     let obj = obj
-        .downcast_ref::<ModuleNamespace>()
-        .js_expect("internal method can only be called on module namespace objects")?;
+        .downcast_ref::<ModuleNamespace>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
 
     // 2. Let exports be O.[[Exports]].
     let exports = obj.exports();
@@ -491,8 +491,8 @@ fn module_namespace_exotic_own_property_keys(
     let symbol_keys = ordinary_own_property_keys(obj, context)?;
 
     let obj = obj
-        .downcast_ref::<ModuleNamespace>()
-        .js_expect("internal method can only be called on module namespace objects")?;
+        .downcast_ref::<ModuleNamespace>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
 
     // 1. Let exports be O.[[Exports]].
     let exports = obj.exports();

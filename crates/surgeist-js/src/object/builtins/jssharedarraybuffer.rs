@@ -5,7 +5,7 @@ use crate::ContextAccess;
 use crate::{
     JsResult, JsValue,
     builtins::array_buffer::{SharedArrayBuffer, utils::SliceRef},
-    error::JsNativeError,
+    error::{JsNativeError, ObjectAccessError},
     object::JsObject,
     value::TryFromJs,
 };
@@ -89,9 +89,8 @@ impl JsSharedArrayBuffer {
 
     /// Returns the byte length of the array buffer.
     #[inline]
-    #[must_use]
-    pub fn byte_length(&self) -> usize {
-        self.borrow().data().len(Ordering::SeqCst)
+    pub fn byte_length(&self) -> Result<usize, ObjectAccessError> {
+        Ok(self.borrow()?.data().len(Ordering::SeqCst))
     }
 
     /// Copies the contents of this [`JsSharedArrayBuffer`] into a new [`Vec<u8>`].
@@ -106,24 +105,22 @@ impl JsSharedArrayBuffer {
     /// # fn main() -> JsResult<()> {
     /// let context = &mut Context::default();
     /// let sab = JsSharedArrayBuffer::new(64, context.access())?;
-    /// let bytes = sab.to_vec();
+    /// let bytes = sab.to_vec()?;
     /// assert_eq!(bytes.len(), 64);
     /// # Ok(())
     /// # }
     /// ```
-    #[must_use]
-    pub fn to_vec(&self) -> Vec<u8> {
-        let obj = self.borrow();
+    pub fn to_vec(&self) -> Result<Vec<u8>, ObjectAccessError> {
+        let obj = self.borrow()?;
         let src = obj.data().bytes(Ordering::SeqCst);
         let src = SliceRef::AtomicSlice(src);
-        src.to_vec()
+        Ok(src.to_vec())
     }
 
     /// Gets the raw buffer of this `JsSharedArrayBuffer`.
     #[inline]
-    #[must_use]
-    pub fn inner(&self) -> SharedArrayBuffer {
-        self.borrow().data().clone()
+    pub fn inner(&self) -> Result<SharedArrayBuffer, ObjectAccessError> {
+        Ok(self.borrow()?.data().clone())
     }
 }
 
@@ -171,16 +168,16 @@ mod tests {
         let context = &mut Context::default();
         let len = 64;
         let sab = JsSharedArrayBuffer::new(len, context.access()).unwrap();
-        assert_eq!(sab.byte_length(), len);
+        assert_eq!(sab.byte_length().unwrap(), len);
 
         // Write a pattern at multiple indices and ensure `to_vec` observes it.
-        let inner = sab.inner();
+        let inner = sab.inner().unwrap();
         let atoms = inner.bytes(Ordering::SeqCst);
         atoms.store_byte(0, 1, Ordering::SeqCst);
         atoms.store_byte(1, 2, Ordering::SeqCst);
         atoms.store_byte(len - 1, 255, Ordering::SeqCst);
 
-        let bytes = sab.to_vec();
+        let bytes = sab.to_vec().unwrap();
         assert_eq!(bytes.len(), len);
         assert_eq!(bytes[0], 1);
         assert_eq!(bytes[1], 2);
@@ -191,9 +188,9 @@ mod tests {
     fn shared_array_buffer_to_vec_zero_length() {
         let context = &mut Context::default();
         let sab = JsSharedArrayBuffer::new(0, context.access()).unwrap();
-        assert_eq!(sab.byte_length(), 0);
+        assert_eq!(sab.byte_length().unwrap(), 0);
 
-        let bytes = sab.to_vec();
+        let bytes = sab.to_vec().unwrap();
         assert!(bytes.is_empty());
     }
 }

@@ -30,11 +30,13 @@ use super::{BuiltInBuilder, BuiltInConstructor, IntrinsicObject};
 pub(crate) struct Boolean;
 
 impl IntrinsicObject for Boolean {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::from_standard_constructor::<Self>(realm)
             .method(Self::to_string, js_string!("toString"), 0)
             .method(Self::value_of, js_string!("valueOf"), 0)
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -84,13 +86,18 @@ impl Boolean {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-thisbooleanvalue
     fn this_boolean_value(value: &JsValue) -> JsResult<bool> {
+        if let Some(primitive) = value.as_boolean() {
+            return Ok(primitive);
+        }
         value
-            .as_boolean()
-            .or_else(|| {
-                value
-                    .as_object()
-                    .and_then(|obj| obj.downcast_ref::<bool>().as_deref().copied())
+            .as_object()
+            .map(|object| {
+                object
+                    .downcast_ref::<bool>()
+                    .map(|value| value.as_deref().copied())
             })
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("'this' is not a boolean")

@@ -24,7 +24,7 @@ fn materialized_engine(owner: &mut Context, error: JsError) -> EngineError {
 }
 
 fn foreign_opaque(foreign: &Context) -> JsError {
-    JsError::from_opaque(foreign.global_object().into())
+    JsError::from_opaque(foreign.global_object().into()).unwrap()
 }
 
 fn foreign_native(foreign: &mut Context) -> JsNativeError {
@@ -32,6 +32,7 @@ fn foreign_native(foreign: &mut Context) -> JsNativeError {
         .eval(Source::from_bytes("new Error('foreign native realm')"))
         .unwrap();
     JsError::from_opaque(value)
+        .unwrap()
         .try_native(foreign.access())
         .unwrap()
 }

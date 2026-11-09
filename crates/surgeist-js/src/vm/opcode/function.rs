@@ -23,8 +23,8 @@ impl SetHomeObject {
         function
             .as_object()
             .js_expect("must be object")?
-            .downcast_mut::<OrdinaryFunction>()
-            .js_expect("must be function object")?
+            .downcast_mut::<OrdinaryFunction>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
             .set_home_object(home.as_object().js_expect("must be object")?.clone());
 
         Ok(())
@@ -58,8 +58,8 @@ impl GetHomeObject {
         let home_object = function_v
             .as_object()
             .js_expect("must be object")?
-            .downcast_ref::<OrdinaryFunction>()
-            .js_expect("must be function object")?
+            .downcast_ref::<OrdinaryFunction>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
             .get_home_object()
             .map_or_else(JsValue::null, JsValue::from);
 

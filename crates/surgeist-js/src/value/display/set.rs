@@ -1,19 +1,18 @@
 use std::collections::HashSet;
-use std::fmt;
 
 use surgeist_js_gc::heap::ObjectId;
 
 use crate::{JsObject, builtins::set::ordered_set::OrderedSet};
 
 pub(super) fn log_set_to(
-    f: &mut fmt::Formatter<'_>,
+    f: &mut super::RenderSink<'_>,
     v: &JsObject,
     print_internals: bool,
     print_children: bool,
-) -> fmt::Result {
+) -> crate::JsResult<()> {
     let set = v
-        .downcast_ref::<OrderedSet>()
-        .expect("object must be a set");
+        .downcast_ref::<OrderedSet>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
     let size = set.len();
 
     if size == 0 {
@@ -37,15 +36,15 @@ pub(super) fn log_set_to(
 }
 
 pub(super) fn log_set_compact(
-    f: &mut fmt::Formatter<'_>,
+    f: &mut super::RenderSink<'_>,
     v: &JsObject,
     depth: u32,
     print_internals: bool,
     encounters: &mut HashSet<ObjectId>,
-) -> fmt::Result {
+) -> crate::JsResult<()> {
     let set = v
-        .downcast_ref::<OrderedSet>()
-        .expect("object must be a set");
+        .downcast_ref::<OrderedSet>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
     let size = set.len();
 
     if size == 0 {

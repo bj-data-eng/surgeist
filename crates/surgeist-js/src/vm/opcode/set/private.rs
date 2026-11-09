@@ -93,7 +93,7 @@ impl SetPrivateMethod {
     pub(crate) fn operation(
         (object, value, index): (RegisterOperand, RegisterOperand, IndexOperand),
         context: &mut Context,
-    ) {
+    ) -> JsResult<()> {
         let object = context.vm.get_register(object.into()).clone();
         let value = context.vm.get_register(value.into()).clone();
         let name = context
@@ -114,14 +114,13 @@ impl SetPrivateMethod {
             .enumerable(false)
             .configurable(true)
             .build();
-        value
-            .__define_own_property__(&js_string!("name").into(), desc, &mut context.into())
-            .expect("failed to set name property on private method");
+        value.__define_own_property__(&js_string!("name").into(), desc, &mut context.into())?;
 
-        object.borrow_mut().state_mut().append_private_element(
+        object.borrow_mut()?.state_mut().append_private_element(
             object.private_name(name),
             &PrivateElement::Method(value.clone()),
         );
+        Ok(())
     }
 }
 
@@ -143,7 +142,7 @@ impl SetPrivateSetter {
     pub(crate) fn operation(
         (object, value, index): (RegisterOperand, RegisterOperand, IndexOperand),
         context: &mut Context,
-    ) {
+    ) -> JsResult<()> {
         let object = context.vm.get_register(object.into());
         let value = context.vm.get_register(value.into());
         let name = context
@@ -157,13 +156,14 @@ impl SetPrivateSetter {
             .as_object()
             .expect("class prototype must be an object");
 
-        object.borrow_mut().state_mut().append_private_element(
+        object.borrow_mut()?.state_mut().append_private_element(
             object.private_name(name),
             &PrivateElement::Accessor {
                 getter: None,
                 setter: Some(value.clone()),
             },
         );
+        Ok(())
     }
 }
 
@@ -185,7 +185,7 @@ impl SetPrivateGetter {
     pub(crate) fn operation(
         (object, value, index): (RegisterOperand, RegisterOperand, IndexOperand),
         context: &mut Context,
-    ) {
+    ) -> JsResult<()> {
         let object = context.vm.get_register(object.into());
         let value = context.vm.get_register(value.into());
         let name = context
@@ -199,13 +199,14 @@ impl SetPrivateGetter {
             .as_object()
             .expect("class prototype must be an object");
 
-        object.borrow_mut().state_mut().append_private_element(
+        object.borrow_mut()?.state_mut().append_private_element(
             object.private_name(name),
             &PrivateElement::Accessor {
                 getter: Some(value.clone()),
                 setter: None,
             },
         );
+        Ok(())
     }
 }
 

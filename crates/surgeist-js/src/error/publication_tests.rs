@@ -102,7 +102,7 @@ fn publication_diagnostic_preserves_topology_identity_trace_and_stored_edge_cust
         let identity = object.identity();
         let mut original: JsError = JsNativeError::aggregate(vec![
             JsNativeError::range().with_message("member").into(),
-            JsError::from_opaque(object.into()),
+            JsError::from_opaque(object.into()).unwrap(),
         ])
         .with_message("authored aggregate")
         .with_cause(JsNativeError::syntax().with_message("cause"))
@@ -188,7 +188,7 @@ fn publication_admission_masks_a_foreign_parent_without_retaining_local_descenda
     let original = JsNativeError::range()
         .with_message("foreign parent")
         .with_realm(selected.realm().clone())
-        .with_cause(JsError::from_opaque(object.into()))
+        .with_cause(JsError::from_opaque(object.into()).unwrap())
         .into();
     let source = with_diagnostic(&receiving, &selected, original);
     let alias = source.clone();
@@ -267,12 +267,12 @@ fn stored_publication_diagnostic_cycle_collects_after_external_observation_drops
     let error = with_diagnostic(
         &receiving,
         &selected,
-        JsError::from_opaque(object.clone().upcast().into()),
+        JsError::from_opaque(object.clone().upcast().into()).unwrap(),
     );
     runtime
         .heap
         .with_pending_edges(error.clone().into_stored(), |stored| {
-            *object.borrow().data().error.borrow_mut() = Some(stored);
+            *object.borrow().unwrap().data().error.borrow_mut() = Some(stored);
         })
         .unwrap();
     drop(object);
@@ -300,7 +300,11 @@ fn enclosing_diagnostic_traces_and_masks_the_nested_publication_source() {
         .unwrap()
         .upcast();
     let identity = object.identity();
-    let publication = with_diagnostic(&receiving, &selected, JsError::from_opaque(object.into()));
+    let publication = with_diagnostic(
+        &receiving,
+        &selected,
+        JsError::from_opaque(object.into()).unwrap(),
+    );
     let enclosing: JsError = PanicError::new("enclosing").with_source(publication).into();
     receiving.runtime().collect().unwrap();
     assert_eq!(

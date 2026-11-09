@@ -24,7 +24,7 @@ use super::{BuiltInBuilder, BuiltInConstructor, IntrinsicObject};
 pub struct AsyncFunction;
 
 impl IntrinsicObject for AsyncFunction {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::from_standard_constructor::<Self>(realm)
             .prototype(realm.intrinsics().constructors().function().constructor())
             .inherits(Some(
@@ -35,7 +35,9 @@ impl IntrinsicObject for AsyncFunction {
                 Self::NAME,
                 Attribute::CONFIGURABLE,
             )
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> crate::object::JsObject {

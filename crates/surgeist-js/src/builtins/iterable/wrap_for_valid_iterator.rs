@@ -34,12 +34,14 @@ pub(crate) struct WrapForValidIterator {
 }
 
 impl IntrinsicObject for WrapForValidIterator {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::with_intrinsic::<Self>(realm)
             .prototype(realm.intrinsics().constructors().iterator().prototype())
-            .static_method(Self::next, js_string!("next"), 0)
-            .static_method(Self::r#return, js_string!("return"), 0)
-            .build();
+            .static_method(Self::next, js_string!("next"), 0)?
+            .static_method(Self::r#return, js_string!("return"), 0)?
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -68,7 +70,7 @@ impl WrapForValidIterator {
             JsNativeError::typ().with_message("WrapForValidIterator method called on non-object")
         })?;
 
-        let wrapper = object.downcast_ref::<Self>().ok_or_else(|| {
+        let wrapper = object.downcast_ref::<Self>()?.ok_or_else(|| {
             JsNativeError::typ()
                 .with_message("WrapForValidIterator method called on incompatible object")
         })?;
@@ -100,7 +102,7 @@ impl WrapForValidIterator {
             JsNativeError::typ().with_message("WrapForValidIterator method called on non-object")
         })?;
 
-        let wrapper = object.downcast_ref::<Self>().ok_or_else(|| {
+        let wrapper = object.downcast_ref::<Self>()?.ok_or_else(|| {
             JsNativeError::typ()
                 .with_message("WrapForValidIterator method called on incompatible object")
         })?;

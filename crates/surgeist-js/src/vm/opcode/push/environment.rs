@@ -89,8 +89,8 @@ impl PushPrivateEnvironment {
         let environment = Rc::new(PrivateEnvironment::new(class.identity(), names));
 
         class
-            .downcast_mut::<OrdinaryFunction>()
-            .js_expect("class object must be function")?
+            .downcast_mut::<OrdinaryFunction>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
             .push_private_environment(environment.clone());
         context
             .vm

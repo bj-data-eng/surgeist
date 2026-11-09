@@ -61,7 +61,7 @@ impl HeadersIterator {
 
         let headers = JsObject::<JsHeaders>::restore(&self.iterated_headers)?;
         let element = headers
-            .borrow()
+            .borrow()?
             .data()
             .headers
             .borrow()

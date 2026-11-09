@@ -24,7 +24,7 @@ impl JsGeneratorFunction {
     #[inline]
     pub fn from_object(object: JsObject) -> JsResult<Self> {
         if object
-            .downcast_ref::<OrdinaryFunction>()
+            .downcast_ref::<OrdinaryFunction>()?
             .is_some_and(|f| f.code.is_generator() && !f.code.is_async())
         {
             Ok(Self { inner: object })

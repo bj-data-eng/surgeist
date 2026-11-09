@@ -37,13 +37,13 @@ impl PushClassField {
             .js_expect("class must be function object")?;
 
         function
-            .downcast_mut::<OrdinaryFunction>()
-            .js_expect("field value must be function object")?
+            .downcast_mut::<OrdinaryFunction>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
             .set_home_object(class.clone());
 
         class
-            .downcast_mut::<OrdinaryFunction>()
-            .js_expect("class must be function object")?
+            .downcast_mut::<OrdinaryFunction>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
             .push_field(
                 name.clone(),
                 JsFunction::from_object_unchecked(function.clone()),
@@ -92,13 +92,13 @@ impl PushClassFieldPrivate {
             .js_expect("class must be function object")?;
 
         function
-            .downcast_mut::<OrdinaryFunction>()
-            .js_expect("field value must be function object")?
+            .downcast_mut::<OrdinaryFunction>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
             .set_home_object(class.clone());
 
         class
-            .downcast_mut::<OrdinaryFunction>()
-            .js_expect("class must be function object")?
+            .downcast_mut::<OrdinaryFunction>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
             .push_field_private(
                 class.private_name(name),
                 JsFunction::from_object_unchecked(function.clone()),

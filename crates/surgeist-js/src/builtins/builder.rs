@@ -60,11 +60,11 @@ pub(crate) struct OrdinaryObject;
 
 /// Applies the pending builder data to the object.
 pub(crate) trait ApplyToObject {
-    fn apply_to(self, object: &JsObject);
+    fn apply_to(self, object: &JsObject) -> crate::JsResult<()>;
 }
 
 impl ApplyToObject for Constructor {
-    fn apply_to(self, object: &JsObject) {
+    fn apply_to(self, object: &JsObject) -> crate::JsResult<()> {
         object.insert(
             PROTOTYPE,
             PropertyDescriptor::builder()
@@ -72,10 +72,9 @@ impl ApplyToObject for Constructor {
                 .writable(false)
                 .enumerable(false)
                 .configurable(false),
-        );
-
+        )?;
         {
-            let mut prototype = self.prototype.borrow_mut();
+            let mut prototype = self.prototype.borrow_mut()?;
             prototype.set_prototype(self.inherits);
             prototype.insert(
                 CONSTRUCTOR,
@@ -86,23 +85,28 @@ impl ApplyToObject for Constructor {
                     .configurable(self.attributes.configurable()),
             );
         }
+        Ok(())
     }
 }
 
 impl ApplyToObject for ConstructorNoProto {
-    fn apply_to(self, _: &JsObject) {}
+    fn apply_to(self, _: &JsObject) -> crate::JsResult<()> {
+        Ok(())
+    }
 }
 
 impl ApplyToObject for OrdinaryFunction {
-    fn apply_to(self, _: &JsObject) {}
+    fn apply_to(self, _: &JsObject) -> crate::JsResult<()> {
+        Ok(())
+    }
 }
 
 impl<S: ApplyToObject + IsConstructor> ApplyToObject for Callable<S> {
-    fn apply_to(self, object: &JsObject) {
+    fn apply_to(self, object: &JsObject) -> crate::JsResult<()> {
         {
             let mut function = object
-                .downcast_mut::<NativeFunctionObject>()
-                .expect("Builtin must be a function object");
+                .downcast_mut::<NativeFunctionObject>()?
+                .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
             function.f = NativeFunction::from_builtin(self.function).stored();
             function.constructor = S::IS_CONSTRUCTOR.then_some(ConstructorKind::Base);
             function.realm = Some(self.realm.edge());
@@ -114,7 +118,7 @@ impl<S: ApplyToObject + IsConstructor> ApplyToObject for Callable<S> {
                 .writable(false)
                 .enumerable(false)
                 .configurable(true),
-        );
+        )?;
         object.insert(
             js_string!("name"),
             PropertyDescriptor::builder()
@@ -122,14 +126,18 @@ impl<S: ApplyToObject + IsConstructor> ApplyToObject for Callable<S> {
                 .writable(false)
                 .enumerable(false)
                 .configurable(true),
-        );
+        )?;
 
-        self.kind.apply_to(object);
+        self.kind.apply_to(object)?;
+
+        Ok(())
     }
 }
 
 impl ApplyToObject for OrdinaryObject {
-    fn apply_to(self, _: &JsObject) {}
+    fn apply_to(self, _: &JsObject) -> crate::JsResult<()> {
+        Ok(())
+    }
 }
 
 /// Builder for creating built-in objects, like `Array`.
@@ -379,7 +387,7 @@ impl BuiltInConstructorWithPrototype<'_> {
     }
 
     #[track_caller]
-    pub(crate) fn build(mut self) {
+    pub(crate) fn build(mut self) -> crate::JsResult<()> {
         let length = self.length;
         let name = self.name.clone();
         let prototype = self.prototype.clone();
@@ -413,7 +421,7 @@ impl BuiltInConstructorWithPrototype<'_> {
         );
 
         {
-            let mut prototype = self.prototype.borrow_mut();
+            let mut prototype = self.prototype.borrow_mut()?;
             prototype
                 .properties_mut()
                 .shape()
@@ -429,14 +437,14 @@ impl BuiltInConstructorWithPrototype<'_> {
         {
             let mut function = self
                 .constructor
-                .downcast_mut::<NativeFunctionObject>()
-                .expect("Builtin must be a function object");
+                .downcast_mut::<NativeFunctionObject>()?
+                .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
             function.f = NativeFunction::from_builtin(self.function).stored();
             function.constructor = Some(ConstructorKind::Base);
             function.realm = Some(self.realm.edge());
         }
 
-        let mut object = self.constructor.borrow_mut();
+        let mut object = self.constructor.borrow_mut()?;
         object
             .properties_mut()
             .shape()
@@ -447,9 +455,11 @@ impl BuiltInConstructorWithPrototype<'_> {
         object
             .properties_mut()
             .initialize_named_slots(self.constructor_storage);
+
+        Ok(())
     }
 
-    pub(crate) fn build_without_prototype(mut self) {
+    pub(crate) fn build_without_prototype(mut self) -> crate::JsResult<()> {
         let length = self.length;
         let name = self.name.clone();
         self = self.static_property(js_string!("length"), length, Attribute::CONFIGURABLE);
@@ -458,14 +468,14 @@ impl BuiltInConstructorWithPrototype<'_> {
         {
             let mut function = self
                 .constructor
-                .downcast_mut::<NativeFunctionObject>()
-                .expect("Builtin must be a function object");
+                .downcast_mut::<NativeFunctionObject>()?
+                .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
             function.f = NativeFunction::from_builtin(self.function).stored();
             function.constructor = Some(ConstructorKind::Base);
             function.realm = Some(self.realm.edge());
         }
 
-        let mut object = self.constructor.borrow_mut();
+        let mut object = self.constructor.borrow_mut()?;
         object
             .properties_mut()
             .shape()
@@ -476,6 +486,8 @@ impl BuiltInConstructorWithPrototype<'_> {
         object
             .properties_mut()
             .initialize_named_slots(self.constructor_storage);
+
+        Ok(())
     }
 }
 
@@ -620,7 +632,7 @@ impl<T> BuiltInBuilder<'_, T> {
         function: BuiltinFunctionPointer,
         binding: B,
         length: usize,
-    ) -> Self
+    ) -> crate::JsResult<Self>
     where
         B: Into<FunctionBinding>,
     {
@@ -637,12 +649,17 @@ impl<T> BuiltInBuilder<'_, T> {
                 .writable(true)
                 .enumerable(false)
                 .configurable(true),
-        );
-        self
+        )?;
+        Ok(self)
     }
 
     /// Adds a new static data property to the builtin object.
-    pub(crate) fn static_property<K, V>(self, key: K, value: V, attribute: Attribute) -> Self
+    pub(crate) fn static_property<K, V>(
+        self,
+        key: K,
+        value: V,
+        attribute: Attribute,
+    ) -> crate::JsResult<Self>
     where
         K: Into<PropertyKey>,
         V: Into<JsValue>,
@@ -652,8 +669,8 @@ impl<T> BuiltInBuilder<'_, T> {
             .writable(attribute.writable())
             .enumerable(attribute.enumerable())
             .configurable(attribute.configurable());
-        self.object.insert(key, property);
-        self
+        self.object.insert(key, property)?;
+        Ok(self)
     }
 
     /// Adds a new accessor property to the builtin object.
@@ -663,7 +680,7 @@ impl<T> BuiltInBuilder<'_, T> {
         get: Option<JsFunction>,
         set: Option<JsFunction>,
         attribute: Attribute,
-    ) -> Self
+    ) -> crate::JsResult<Self>
     where
         K: Into<PropertyKey>,
     {
@@ -681,9 +698,9 @@ impl<T> BuiltInBuilder<'_, T> {
 
         let key = key.into();
 
-        self.object.insert(key, property);
+        self.object.insert(key, property)?;
 
-        self
+        Ok(self)
     }
 
     /// Specify the `[[Prototype]]` internal field of the builtin object.
@@ -716,23 +733,23 @@ impl<FnTyp> BuiltInBuilder<'_, Callable<FnTyp>> {
 
 impl BuiltInBuilder<'_, OrdinaryObject> {
     /// Build the builtin object.
-    pub(crate) fn build(self) -> JsObject {
-        self.kind.apply_to(&self.object);
+    pub(crate) fn build(self) -> crate::JsResult<JsObject> {
+        self.kind.apply_to(&self.object)?;
 
-        self.object.set_prototype(Some(self.prototype));
+        self.object.set_prototype(Some(self.prototype))?;
 
-        self.object
+        Ok(self.object)
     }
 }
 
 impl<FnTyp: ApplyToObject + IsConstructor> BuiltInBuilder<'_, Callable<FnTyp>> {
     /// Build the builtin callable.
-    pub(crate) fn build(self) -> JsFunction {
-        self.kind.apply_to(&self.object);
+    pub(crate) fn build(self) -> crate::JsResult<JsFunction> {
+        self.kind.apply_to(&self.object)?;
 
-        self.object.set_prototype(Some(self.prototype));
+        self.object.set_prototype(Some(self.prototype))?;
 
-        JsFunction::from_object_unchecked(self.object)
+        Ok(JsFunction::from_object_unchecked(self.object))
     }
 }
 

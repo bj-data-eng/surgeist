@@ -115,7 +115,7 @@ fn ordinary_guest_error_is_a_completed_result_without_an_abandoned_stop() {
     let mut context = Context::default();
     let outcome = context
         .with_execution(ExecutionOptions::new(0), |_| {
-            Err::<(), _>(JsError::from_opaque(JsValue::new(23)))
+            Err::<(), _>(JsError::from_opaque(JsValue::new(23)).unwrap())
         })
         .unwrap();
     assert_eq!(

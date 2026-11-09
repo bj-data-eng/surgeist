@@ -52,7 +52,7 @@ impl PushValueToArray {
 
         // Fast path: push directly to dense indexed storage.
         {
-            let mut o_mut = o.borrow_mut();
+            let mut o_mut = o.borrow_mut()?;
             let len = o_mut.properties().named_slot(0).as_i32();
             if let Some(len) = len
                 && o_mut.properties_mut().indexed_properties.push_dense(&value)
@@ -96,7 +96,7 @@ impl PushElisionToArray {
             .length_of_array_like(context)
             .js_expect("arrays should always have a 'length' property")?;
         o.set(StaticJsStrings::LENGTH, len + 1, true, context.access())?;
-        o.borrow_mut()
+        o.borrow_mut()?
             .properties_mut()
             .indexed_properties
             .transform_to_sparse();

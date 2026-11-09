@@ -16,7 +16,7 @@ use crate::{
     Context, JsData, JsResult, JsValue,
     builtins::{BuiltInBuilder, IntrinsicObject, iterable::create_iter_result_object_trusted},
     context::intrinsics::Intrinsics,
-    error::{PanicError, RootingError},
+    error::PanicError,
     js_error, js_string,
     native_function::{NativeCapture, NativeCoroutine, StoredNativeCoroutine},
     object::JsObject,
@@ -25,7 +25,7 @@ use crate::{
     symbol::JsSymbol,
     vm::CompletionRecord,
 };
-use surgeist_js_gc::heap::{AccessError, Trace as HeapTrace};
+use surgeist_js_gc::heap::Trace as HeapTrace;
 
 /// `IfAbruptCloseIterator ( value, iteratorRecord )`, but specialized
 /// for usage in coroutines.
@@ -82,17 +82,19 @@ enum HelperState {
 }
 
 impl IntrinsicObject for IteratorHelper {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::with_intrinsic::<Self>(realm)
             .prototype(realm.intrinsics().constructors().iterator().prototype())
-            .static_method(Self::next, js_string!("next"), 0)
-            .static_method(Self::r#return, js_string!("return"), 0)
+            .static_method(Self::next, js_string!("next"), 0)?
+            .static_method(Self::r#return, js_string!("return"), 0)?
             .static_property(
                 JsSymbol::to_string_tag(),
                 js_string!("Iterator Helper"),
                 Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
-            .build();
+            )?
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -140,9 +142,7 @@ impl IteratorHelper {
         // 5. Let state be generator.[[GeneratorState]].
         // 6. If state is executing, throw a TypeError exception.
         // 7. Return state.
-        let mut helper_guard = helper
-            .try_borrow_mut()
-            .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?;
+        let mut helper_guard = helper.borrow_mut()?;
         let coroutine = helper_guard.data().prepare_resume()?;
         let Some(coroutine) = coroutine else {
             drop(helper_guard);
@@ -178,15 +178,21 @@ impl IteratorHelper {
             },
             context,
         )?;
-        helper
-            .try_borrow_mut()
-            .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?
-            .data_mut()
-            .state = if matches!(&result, ControlFlow::Continue(_)) {
+        let mut helper_guard = match helper.borrow_mut() {
+            Ok(guard) => guard,
+            Err(later) => {
+                return Err(match result {
+                    ControlFlow::Break(Err(error)) if error.as_engine().is_some() => error,
+                    _ => later.into(),
+                });
+            }
+        };
+        helper_guard.data_mut().state = if matches!(&result, ControlFlow::Continue(_)) {
             HelperState::Suspended(coroutine.store())
         } else {
             HelperState::Completed
         };
+        drop(helper_guard);
 
         match result {
             ControlFlow::Continue(value) => {
@@ -240,9 +246,7 @@ impl IteratorHelper {
         // 5. Let state be generator.[[GeneratorState]].
         // 6. If state is executing, throw a TypeError exception.
         // 7. Return state.
-        let mut helper_guard = helper
-            .try_borrow_mut()
-            .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?;
+        let mut helper_guard = helper.borrow_mut()?;
         let coroutine = helper_guard.data().prepare_resume()?;
         let Some(coroutine) = coroutine else {
             drop(helper_guard);
@@ -304,11 +308,17 @@ impl IteratorHelper {
             ControlFlow::Break(Err(err)) => Err(err),
         };
 
-        helper
-            .try_borrow_mut()
-            .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))?
-            .data_mut()
-            .state = HelperState::Completed;
+        let mut helper_guard = match helper.borrow_mut() {
+            Ok(guard) => guard,
+            Err(later) => {
+                return Err(match result {
+                    Err(error) if error.as_engine().is_some() => error,
+                    _ => later.into(),
+                });
+            }
+        };
+        helper_guard.data_mut().state = HelperState::Completed;
+        drop(helper_guard);
 
         // 12. Return ? result.
         result
@@ -361,10 +371,14 @@ impl IteratorHelper {
 mod tests {
     use std::cell::RefCell;
 
-    use surgeist_js_gc::heap::Rooted;
+    use surgeist_js_gc::heap::{AccessError, Rooted};
 
     use super::*;
-    use crate::{Source, error::EngineError, native_function::CoroutineBranch};
+    use crate::{
+        Source,
+        error::{EngineError, RootingError},
+        native_function::CoroutineBranch,
+    };
 
     fn resume(returning: bool, helper: &JsValue, context: &mut Context) -> JsResult<JsValue> {
         if returning {
@@ -425,7 +439,7 @@ mod tests {
                 )))
             );
             assert!(matches!(
-                typed_helper.try_borrow().unwrap().data().state,
+                typed_helper.borrow().unwrap().data().state,
                 HelperState::Suspended(_)
             ));
             assert_eq!(
@@ -447,7 +461,7 @@ mod tests {
             );
             if returning {
                 assert!(matches!(
-                    typed_helper.try_borrow().unwrap().data().state,
+                    typed_helper.borrow().unwrap().data().state,
                     HelperState::Completed
                 ));
                 assert_eq!(
@@ -510,7 +524,7 @@ mod tests {
         );
         assert_eq!(*calls.borrow(), 1);
         assert!(matches!(
-            typed_helper.try_borrow().unwrap().data().state,
+            typed_helper.borrow().unwrap().data().state,
             HelperState::Completed
         ));
 

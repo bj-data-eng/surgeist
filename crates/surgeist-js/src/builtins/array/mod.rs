@@ -75,7 +75,7 @@ impl JsData for Array {
 }
 
 impl IntrinsicObject for Array {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let symbol_iterator = JsSymbol::iterator();
         let symbol_unscopables = JsSymbol::unscopables();
 
@@ -89,7 +89,7 @@ impl IntrinsicObject for Array {
             Self::values,
         )
         .name(js_string!("values"))
-        .build();
+        .build()?;
 
         let to_string_function = BuiltInBuilder::callable_with_object(
             realm,
@@ -101,9 +101,9 @@ impl IntrinsicObject for Array {
             Self::to_string,
         )
         .name(js_string!("toString"))
-        .build();
+        .build()?;
 
-        let unscopables_object = Self::unscopables_object(&realm.intrinsics().runtime());
+        let unscopables_object = Self::unscopables_object(&realm.intrinsics().runtime())?;
 
         let builder = BuiltInBuilder::from_standard_constructor::<Self>(realm)
             // Static Methods
@@ -181,7 +181,9 @@ impl IntrinsicObject for Array {
         #[cfg(feature = "experimental")]
         let builder = builder.static_method(Self::from_async, js_string!("fromAsync"), 1);
 
-        builder.build();
+        builder.build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -278,7 +280,7 @@ impl BuiltInConstructor for Array {
             //    iii. Perform ! CreateDataPropertyOrThrow(array, Pk, itemK).
             //    iv. Set k to k + 1.
             array
-                .borrow_mut()
+                .borrow_mut()?
                 .properties_mut()
                 .override_indexed_properties(args.iter().cloned().collect());
 
@@ -293,7 +295,7 @@ impl Array {
     /// Optimized helper function, that sets the length of the array.
     fn set_length(o: &JsObject, len: u64, context: &mut Context) -> JsResult<()> {
         if o.is_array() && len < (2u64.pow(32) - 1) {
-            let mut borrowed_object = o.borrow_mut();
+            let mut borrowed_object = o.borrow_mut()?;
             if borrowed_object.properties().shape().identity()
                 == context.intrinsics().templates().array().shape().identity()
             {
@@ -1211,7 +1213,7 @@ impl Array {
         // TODO: this optimization could be generalized to many other objects with
         // slot-based dense property maps.
         if o.is_array() {
-            let mut o_borrow = o.borrow_mut();
+            let mut o_borrow = o.borrow_mut()?;
             if let IndexedProperties::DenseI32(dense) =
                 &mut o_borrow.properties_mut().indexed_properties
                 && len <= dense.len() as u64
@@ -3305,7 +3307,7 @@ impl Array {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-array.prototype-@@unscopables
     /// [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/@@unscopables
-    pub(crate) fn unscopables_object(runtime: &crate::Runtime) -> JsObject {
+    pub(crate) fn unscopables_object(runtime: &crate::Runtime) -> JsResult<JsObject> {
         // 1. Let unscopableList be OrdinaryObjectCreate(null).
         let unscopable_list = JsObject::with_null_proto(runtime);
         let true_prop = PropertyDescriptor::builder()
@@ -3314,7 +3316,7 @@ impl Array {
             .enumerable(true)
             .configurable(true);
         {
-            let mut obj = unscopable_list.borrow_mut();
+            let mut obj = unscopable_list.borrow_mut()?;
             // 2. Perform ! CreateDataPropertyOrThrow(unscopableList, "at", true).
             obj.insert(js_string!("at"), true_prop.clone());
             // 3. Perform ! CreateDataPropertyOrThrow(unscopableList, "copyWithin", true).
@@ -3350,7 +3352,7 @@ impl Array {
         }
 
         // 13. Return unscopableList.
-        unscopable_list
+        Ok(unscopable_list)
     }
 }
 
@@ -3486,7 +3488,7 @@ fn array_exotic_define_own_property(
             // Optimization: If the shape of the object is the array template shape,
             // we know the position of the "length" property.
             if u64::from(new_len) < (2u64.pow(32) - 1) {
-                let borrowed_object = obj.borrow();
+                let borrowed_object = obj.borrow()?;
                 if borrowed_object.properties().shape().identity()
                     == context.intrinsics().templates().array().shape().identity()
                 {
@@ -3495,7 +3497,7 @@ fn array_exotic_define_own_property(
                     let old_len = old_len.to_u32(context.access())?;
                     if new_len >= old_len {
                         if ordinary_define_own_property(obj, key, desc, context)? {
-                            let mut borrowed_object = obj.borrow_mut();
+                            let mut borrowed_object = obj.borrow_mut()?;
                             borrowed_object
                                 .properties_mut()
                                 .write_named_slot(0, JsValue::new(new_len));
@@ -3665,7 +3667,7 @@ fn array_set_length(
     // greater than or equal to newLen, in descending numeric index order, do
     let ordered_keys = {
         let mut keys: Vec<_> = obj
-            .borrow()
+            .borrow()?
             .properties
             .index_property_keys()
             .filter(|idx| new_len <= *idx && *idx < u32::MAX)

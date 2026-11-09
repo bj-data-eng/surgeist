@@ -3,7 +3,7 @@ use crate::text;
 use indoc::indoc;
 use surgeist_js::object::builtins::JsUint8Array;
 use surgeist_js::property::Attribute;
-use surgeist_js::{Context, JsString, js_str, js_string};
+use surgeist_js::{Context, JsResult, JsString, js_str, js_string};
 use test_case::test_case;
 
 #[test]
@@ -24,7 +24,11 @@ fn encoder_js() {
                     .unwrap();
                 let array =
                     JsUint8Array::from_object(encoded.as_object().unwrap().clone()).unwrap();
-                let buffer = array.iter(context.access()).collect::<Vec<_>>();
+                let buffer = array
+                    .iter(context.access())
+                    .unwrap()
+                    .collect::<JsResult<Vec<_>>>()
+                    .unwrap();
 
                 assert_eq!(buffer, b"Hello, World!");
             }),
@@ -60,7 +64,11 @@ fn encoder_js_unpaired() {
                     .unwrap();
                 let array =
                     JsUint8Array::from_object(encoded.as_object().unwrap().clone()).unwrap();
-                let buffer = array.iter(context.access()).collect::<Vec<_>>();
+                let buffer = array
+                    .iter(context.access())
+                    .unwrap()
+                    .collect::<JsResult<Vec<_>>>()
+                    .unwrap();
 
                 assert_eq!(buffer, "\u{FFFD}\u{FFFD}\u{15}".as_bytes());
             }),
@@ -210,7 +218,11 @@ fn encoder_ignores_non_utf_encoding_arguments(encoding: &'static str) {
                     .unwrap();
                 let array =
                     JsUint8Array::from_object(encoded.as_object().unwrap().clone()).unwrap();
-                let buffer = array.iter(context.access()).collect::<Vec<_>>();
+                let buffer = array
+                    .iter(context.access())
+                    .unwrap()
+                    .collect::<JsResult<Vec<_>>>()
+                    .unwrap();
                 assert_eq!(buffer, b"Hi");
             }),
         ],

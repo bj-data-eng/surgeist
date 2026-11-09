@@ -27,69 +27,71 @@ mod tests;
 pub(crate) struct Math;
 
 impl IntrinsicObject for Math {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let attribute = Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::PERMANENT;
         let builder = BuiltInBuilder::with_intrinsic::<Self>(realm)
-            .static_property(js_string!("E"), std::f64::consts::E, attribute)
-            .static_property(js_string!("LN10"), std::f64::consts::LN_10, attribute)
-            .static_property(js_string!("LN2"), std::f64::consts::LN_2, attribute)
-            .static_property(js_string!("LOG10E"), std::f64::consts::LOG10_E, attribute)
-            .static_property(js_string!("LOG2E"), std::f64::consts::LOG2_E, attribute)
-            .static_property(js_string!("PI"), std::f64::consts::PI, attribute)
+            .static_property(js_string!("E"), std::f64::consts::E, attribute)?
+            .static_property(js_string!("LN10"), std::f64::consts::LN_10, attribute)?
+            .static_property(js_string!("LN2"), std::f64::consts::LN_2, attribute)?
+            .static_property(js_string!("LOG10E"), std::f64::consts::LOG10_E, attribute)?
+            .static_property(js_string!("LOG2E"), std::f64::consts::LOG2_E, attribute)?
+            .static_property(js_string!("PI"), std::f64::consts::PI, attribute)?
             .static_property(
                 js_string!("SQRT1_2"),
                 std::f64::consts::FRAC_1_SQRT_2,
                 attribute,
-            )
-            .static_property(js_string!("SQRT2"), std::f64::consts::SQRT_2, attribute)
-            .static_method(Self::abs, js_string!("abs"), 1)
-            .static_method(Self::acos, js_string!("acos"), 1)
-            .static_method(Self::acosh, js_string!("acosh"), 1)
-            .static_method(Self::asin, js_string!("asin"), 1)
-            .static_method(Self::asinh, js_string!("asinh"), 1)
-            .static_method(Self::atan, js_string!("atan"), 1)
-            .static_method(Self::atanh, js_string!("atanh"), 1)
-            .static_method(Self::atan2, js_string!("atan2"), 2)
-            .static_method(Self::cbrt, js_string!("cbrt"), 1)
-            .static_method(Self::ceil, js_string!("ceil"), 1)
-            .static_method(Self::clz32, js_string!("clz32"), 1)
-            .static_method(Self::cos, js_string!("cos"), 1)
-            .static_method(Self::cosh, js_string!("cosh"), 1)
-            .static_method(Self::exp, js_string!("exp"), 1)
-            .static_method(Self::expm1, js_string!("expm1"), 1)
-            .static_method(Self::floor, js_string!("floor"), 1)
-            .static_method(Self::fround, js_string!("fround"), 1)
-            .static_method(Self::hypot, js_string!("hypot"), 2)
-            .static_method(Self::imul, js_string!("imul"), 2)
-            .static_method(Self::log, js_string!("log"), 1)
-            .static_method(Self::log1p, js_string!("log1p"), 1)
-            .static_method(Self::log10, js_string!("log10"), 1)
-            .static_method(Self::log2, js_string!("log2"), 1)
-            .static_method(Self::max, js_string!("max"), 2)
-            .static_method(Self::min, js_string!("min"), 2)
-            .static_method(Self::pow, js_string!("pow"), 2)
-            .static_method(Self::random, js_string!("random"), 0)
-            .static_method(Self::round, js_string!("round"), 1)
-            .static_method(Self::sign, js_string!("sign"), 1)
-            .static_method(Self::sin, js_string!("sin"), 1)
-            .static_method(Self::sinh, js_string!("sinh"), 1)
-            .static_method(Self::sqrt, js_string!("sqrt"), 1)
-            .static_method(Self::tan, js_string!("tan"), 1)
-            .static_method(Self::tanh, js_string!("tanh"), 1)
-            .static_method(Self::trunc, js_string!("trunc"), 1)
+            )?
+            .static_property(js_string!("SQRT2"), std::f64::consts::SQRT_2, attribute)?
+            .static_method(Self::abs, js_string!("abs"), 1)?
+            .static_method(Self::acos, js_string!("acos"), 1)?
+            .static_method(Self::acosh, js_string!("acosh"), 1)?
+            .static_method(Self::asin, js_string!("asin"), 1)?
+            .static_method(Self::asinh, js_string!("asinh"), 1)?
+            .static_method(Self::atan, js_string!("atan"), 1)?
+            .static_method(Self::atanh, js_string!("atanh"), 1)?
+            .static_method(Self::atan2, js_string!("atan2"), 2)?
+            .static_method(Self::cbrt, js_string!("cbrt"), 1)?
+            .static_method(Self::ceil, js_string!("ceil"), 1)?
+            .static_method(Self::clz32, js_string!("clz32"), 1)?
+            .static_method(Self::cos, js_string!("cos"), 1)?
+            .static_method(Self::cosh, js_string!("cosh"), 1)?
+            .static_method(Self::exp, js_string!("exp"), 1)?
+            .static_method(Self::expm1, js_string!("expm1"), 1)?
+            .static_method(Self::floor, js_string!("floor"), 1)?
+            .static_method(Self::fround, js_string!("fround"), 1)?
+            .static_method(Self::hypot, js_string!("hypot"), 2)?
+            .static_method(Self::imul, js_string!("imul"), 2)?
+            .static_method(Self::log, js_string!("log"), 1)?
+            .static_method(Self::log1p, js_string!("log1p"), 1)?
+            .static_method(Self::log10, js_string!("log10"), 1)?
+            .static_method(Self::log2, js_string!("log2"), 1)?
+            .static_method(Self::max, js_string!("max"), 2)?
+            .static_method(Self::min, js_string!("min"), 2)?
+            .static_method(Self::pow, js_string!("pow"), 2)?
+            .static_method(Self::random, js_string!("random"), 0)?
+            .static_method(Self::round, js_string!("round"), 1)?
+            .static_method(Self::sign, js_string!("sign"), 1)?
+            .static_method(Self::sin, js_string!("sin"), 1)?
+            .static_method(Self::sinh, js_string!("sinh"), 1)?
+            .static_method(Self::sqrt, js_string!("sqrt"), 1)?
+            .static_method(Self::tan, js_string!("tan"), 1)?
+            .static_method(Self::tanh, js_string!("tanh"), 1)?
+            .static_method(Self::trunc, js_string!("trunc"), 1)?
             .static_property(
                 JsSymbol::to_string_tag(),
                 Self::NAME,
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            );
+            )?;
 
         #[cfg(feature = "float16")]
-        let builder = builder.static_method(Self::f16round, js_string!("f16round"), 1);
+        let builder = builder.static_method(Self::f16round, js_string!("f16round"), 1)?;
 
         #[cfg(feature = "xsum")]
-        let builder = builder.static_method(Self::sum_precise, js_string!("sumPrecise"), 1);
+        let builder = builder.static_method(Self::sum_precise, js_string!("sumPrecise"), 1)?;
 
-        builder.build();
+        builder.build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {

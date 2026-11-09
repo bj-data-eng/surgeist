@@ -28,7 +28,7 @@ use crate::{
     Context, JsArgs, JsError, JsExpect, JsResult, JsString,
     builtins::{Array, BuiltInObject},
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
-    error::JsNativeError,
+    error::{JsNativeError, ObjectAccessError},
     job::{JobCallback, PromiseJob, StoredJobCallback},
     js_string,
     native_function::{CapturedObject, NativeCapture, NativeFunction},
@@ -178,7 +178,7 @@ impl ResolvingFunctions {
         observer: &crate::job::JobObserver,
         context: &mut Context,
     ) -> JsResult<()> {
-        if let Some(promise) = Promise::native_handler_target(&self.resolve) {
+        if let Some(promise) = Promise::native_handler_target(&self.resolve)? {
             Promise::ensure_native_association(&promise, context)?.bind_job(observer, false)?;
         }
         Ok(())
@@ -530,7 +530,7 @@ impl PromiseCapability {
 }
 
 impl IntrinsicObject for Promise {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> JsResult<()> {
         let get_species = BuiltInBuilder::callable(realm, Self::get_species)
             .name(js_string!("get [Symbol.species]"))
             .build();
@@ -565,7 +565,8 @@ impl IntrinsicObject for Promise {
             .static_method(Self::all_keyed, js_string!("allKeyed"), 1)
             .static_method(Self::all_settled_keyed, js_string!("allSettledKeyed"), 1);
 
-        builder.build();
+        builder.build()?;
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -654,12 +655,7 @@ impl Promise {
     pub(crate) fn native_association(
         promise: &JsObject<Self>,
     ) -> JsResult<Option<Rooted<native_settlement::Association>>> {
-        let edge = promise
-            .try_borrow()
-            .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?
-            .data()
-            .native_settlement
-            .clone();
+        let edge = promise.borrow()?.data().native_settlement.clone();
         edge.as_ref()
             .map(native_settlement::AssociationEdge::root)
             .transpose()
@@ -675,19 +671,12 @@ impl Promise {
             return Ok(association);
         }
         let pending = matches!(
-            promise
-                .try_borrow()
-                .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?
-                .data()
-                .state,
+            promise.borrow()?.data().state,
             StoredPromiseState::Pending { .. }
         );
         let association = native_settlement::Association::new(context)?;
-        promise
-            .try_borrow_mut()
-            .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?
-            .data_mut()
-            .native_settlement = Some(native_settlement::Association::edge(&association));
+        promise.borrow_mut()?.data_mut().native_settlement =
+            Some(native_settlement::Association::edge(&association));
         if !pending {
             association.settle();
         }
@@ -701,13 +690,16 @@ impl Promise {
             .map(|owner| native_settlement::Association::prepare_handoff(&owner, observer))
             .transpose()
     }
-    fn native_handler_target(function: &JsFunction) -> Option<JsObject<Self>> {
-        function
-            .downcast_ref::<crate::native_function::NativeFunctionObject>()?
+    fn native_handler_target(function: &JsFunction) -> JsResult<Option<JsObject<Self>>> {
+        let Some(function) =
+            function.downcast_ref::<crate::native_function::NativeFunctionObject>()?
+        else {
+            return Ok(None);
+        };
+        Ok(function
             .f
-            .resolution_target()?
-            .downcast::<Self>()
-            .ok()
+            .resolution_target()
+            .and_then(|target| target.downcast::<Self>().ok()))
     }
 
     /// Creates a new, pending `Promise`.
@@ -1896,7 +1888,7 @@ impl Promise {
                                     .borrow()
                                     .iter()
                                     .map(|value| JsError::from_opaque(value.to_value()))
-                                    .collect(),
+                                    .collect::<Result<_, _>>()?,
                             )
                             .with_message("no promise in Promise.any was fulfilled.");
 
@@ -1953,7 +1945,7 @@ impl Promise {
                     .borrow()
                     .iter()
                     .map(|value| JsError::from_opaque(value.to_value()))
-                    .collect(),
+                    .collect::<Result<_, _>>()?,
             )
             .with_message("no promise in Promise.any was fulfilled.");
 
@@ -2335,7 +2327,7 @@ impl Promise {
                         NativeFunction::from_builtin_with_captures(
                             |_this, _args, captures, _context| {
                                 // 1. Return ThrowCompletion(reason).
-                                Err(JsError::from_opaque(captures.clone()))
+                                Err(JsError::from_opaque(captures.clone())?)
                             },
                             reason.clone(),
                         ),
@@ -2440,15 +2432,30 @@ impl Promise {
         result_capability: Option<PromiseCapability>,
         context: &mut Context,
     ) -> ReactionRegistration {
-        let target = on_fulfilled
-            .as_ref()
-            .and_then(Self::native_handler_target)
-            .or_else(|| on_rejected.as_ref().and_then(Self::native_handler_target))
-            .or_else(|| {
+        let target = (|| {
+            let fulfilled_target = on_fulfilled
+                .as_ref()
+                .map(Self::native_handler_target)
+                .transpose()?
+                .flatten();
+            if fulfilled_target.is_some() {
+                return Ok(fulfilled_target);
+            }
+            let rejected_target = on_rejected
+                .as_ref()
+                .map(Self::native_handler_target)
+                .transpose()?
+                .flatten();
+            Ok::<_, JsError>(rejected_target.or_else(|| {
                 result_capability
                     .as_ref()
                     .and_then(|cap| cap.promise.clone().downcast::<Self>().ok())
-            });
+            }))
+        })();
+        let target = match target {
+            Ok(target) => target,
+            Err(error) => return ReactionRegistration::uncommitted(error),
+        };
         let target = match target {
             Some(target) => match Self::native_association(&target) {
                 Ok(Some(_)) => Some(target),
@@ -2638,9 +2645,7 @@ impl Promise {
         let handoff = native_settlement::Association::prepare_follow(&owner, &source)?;
         context.check_execution_stop()?;
         {
-            let mut promise = promise
-                .try_borrow_mut()
-                .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?;
+            let mut promise = promise.borrow_mut()?;
             let StoredPromiseState::Pending {
                 fulfill_reactions,
                 reject_reactions,
@@ -2694,9 +2699,7 @@ impl Promise {
             preparation.fulfilled = Some(fulfilled);
             preparation.rejected = Some(rejected);
             let (state, handled) = {
-                let promise = promise
-                    .try_borrow()
-                    .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?;
+                let promise = promise.borrow()?;
                 (promise.data().state(), promise.data().handled)
             };
             if matches!(state, PromiseState::Pending) {
@@ -2743,9 +2746,7 @@ impl Promise {
                                 .hold
                                 .as_ref()
                                 .ok_or_else(reaction_state_error)?;
-                            let mut promise = promise
-                                .try_borrow_mut()
-                                .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?;
+                            let mut promise = promise.borrow_mut()?;
                             let StoredPromiseState::Pending {
                                 fulfill_reactions,
                                 reject_reactions,
@@ -2829,8 +2830,8 @@ impl Promise {
                 })??;
             let registration = if registration.is_committed() {
                 let handled = promise
-                    .try_borrow_mut()
-                    .map_err(|_| crate::error::EngineError::ObjectAccessBusy.into())
+                    .borrow_mut()
+                    .map_err(JsError::from)
                     .map(|mut promise| {
                         promise.data_mut().handled = true;
                     });
@@ -3002,11 +3003,8 @@ impl Promise {
                     let pending = restoration.take_pending()?;
                     let batch = ReactionBatch::new(jobs, pending);
                     // 3–6. Store the result and mark the promise fulfilled.
-                    promise
-                        .try_borrow_mut()
-                        .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?
-                        .data_mut()
-                        .state = StoredPromiseState::Fulfilled(value.clone().into_stored());
+                    promise.borrow_mut()?.data_mut().state =
+                        StoredPromiseState::Fulfilled(value.clone().into_stored());
                     restoration.enabled = false;
                     // 7. Perform TriggerPromiseReactions(reactions, value).
                     if let Some(association) = &association {
@@ -3064,11 +3062,8 @@ impl Promise {
                     let pending = restoration.take_pending()?;
                     let batch = ReactionBatch::new(jobs, pending);
                     // 3–6. Store the reason and mark the promise rejected.
-                    promise
-                        .try_borrow_mut()
-                        .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?
-                        .data_mut()
-                        .state = StoredPromiseState::Rejected(reason.clone().into_stored());
+                    promise.borrow_mut()?.data_mut().state =
+                        StoredPromiseState::Rejected(reason.clone().into_stored());
                     restoration.enabled = false;
                     if let Some(association) = &association {
                         association.settle();
@@ -3348,7 +3343,7 @@ fn reaction_access_error(error: surgeist_js_gc::heap::AccessError) -> JsError {
     use crate::job::{JobFault, JobFaultCause, JobFaultOwner};
     use surgeist_js_gc::heap::AccessError;
     let cause = match error {
-        AccessError::PayloadBorrowed => return crate::error::EngineError::ObjectAccessBusy.into(),
+        AccessError::PayloadBorrowed => return ObjectAccessError::Borrowed.into(),
         AccessError::HeapBorrowed => JobFaultCause::InaccessibleRegistry,
         AccessError::ForeignHeap | AccessError::StaleHandle => JobFaultCause::OwnerMismatch,
         AccessError::WrongType => JobFaultCause::StateInconsistency,
@@ -3591,8 +3586,12 @@ impl HeapTrace for ReactionSourceRoots {
     ) -> Result<(), surgeist_js_gc::heap::AccessError> {
         let promise = self
             .0
-            .try_borrow()
-            .map_err(|_| surgeist_js_gc::heap::AccessError::PayloadBorrowed)?;
+            .borrow()
+            // Trace reports through the GC boundary rather than JsResult.
+            .map_err(|error| match error {
+                ObjectAccessError::Borrowed => surgeist_js_gc::heap::AccessError::PayloadBorrowed,
+                ObjectAccessError::WrongNativeBrand => surgeist_js_gc::heap::AccessError::WrongType,
+            })?;
         let StoredPromiseState::Pending {
             fulfill_reactions,
             reject_reactions,
@@ -3632,10 +3631,7 @@ impl<'a> ReactionRestoration<'a> {
         }
     }
     fn detach(&mut self) -> JsResult<bool> {
-        let mut source = self
-            .source
-            .try_borrow_mut()
-            .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?;
+        let mut source = self.source.borrow_mut()?;
         let handled = source.data().handled;
         let StoredPromiseState::Pending {
             fulfill_reactions,
@@ -3679,10 +3675,7 @@ impl<'a> ReactionRestoration<'a> {
         kind: ReactionType,
         index: usize,
     ) -> JsResult<Option<ReactionLifecycle>> {
-        let source = self
-            .source
-            .try_borrow()
-            .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?;
+        let source = self.source.borrow()?;
         let StoredPromiseState::Pending {
             fulfill_reactions,
             reject_reactions,
@@ -3707,10 +3700,7 @@ impl<'a> ReactionRestoration<'a> {
         // the full pass ends. Module failure and retirement notifications must
         // remain outside this attached-source loop.
         let lengths = {
-            let source = self
-                .source
-                .try_borrow()
-                .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?;
+            let source = self.source.borrow()?;
             let StoredPromiseState::Pending {
                 fulfill_reactions,
                 reject_reactions,
@@ -3757,10 +3747,7 @@ impl<'a> ReactionRestoration<'a> {
             Ok(())
         } else if !self.detached {
             (|| {
-                let source = self
-                    .source
-                    .try_borrow()
-                    .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?;
+                let source = self.source.borrow()?;
                 let StoredPromiseState::Pending {
                     fulfill_reactions,
                     reject_reactions,
@@ -4002,6 +3989,15 @@ impl Drop for ReactionBatch {
     }
 }
 
+/// Guest realm-lookup failures use the current realm; host refusals stop job preparation.
+fn promise_job_realm(callback: &JsFunction, context: &mut Context) -> JsResult<Realm> {
+    match callback.get_function_realm(context) {
+        Ok(realm) => Ok(realm),
+        Err(error) if error.is_catchable() => Ok(context.realm().clone()),
+        Err(error) => Err(error),
+    }
+}
+
 fn new_promise_reaction_job(
     preparation: &mut ReactionJobPreparation,
     argument: JsValue,
@@ -4020,11 +4016,10 @@ fn new_promise_reaction_job(
     //   c. Else, set handlerRealm to the current Realm Record.
     //   d. NOTE: handlerRealm is never null unless the handler is undefined. When the handler is a
     // revoked Proxy and no ECMAScript code runs, handlerRealm is used to create error objects.
-    let realm = reaction
-        .handler
-        .as_ref()
-        .and_then(|handler| handler.callback().get_function_realm(context).ok())
-        .unwrap_or_else(|| context.realm().clone());
+    let realm = match &reaction.handler {
+        Some(handler) => promise_job_realm(handler.callback(), context)?,
+        None => context.realm().clone(),
+    };
 
     // 1. Let job be a new Job Abstract Closure with no parameters that captures reaction and argument and performs the following steps when called:
     let hold = reaction.lifecycle.hold()?;
@@ -4050,7 +4045,7 @@ fn new_promise_reaction_job(
                 //   1. Assert: type is Reject.
                 ReactionType::Reject => {
                     // 2. Let handlerResult be ThrowCompletion(argument).
-                    Err(JsError::from_opaque(argument.clone()))
+                    Err(JsError::from_opaque(argument.clone())?)
                 }
             },
             //   e. Else, let handlerResult be Completion(HostCallJobCallback(handler, undefined, « argument »)).
@@ -4137,10 +4132,7 @@ fn new_promise_resolve_thenable_job(
     // 3. If getThenRealmResult is a normal completion, let thenRealm be getThenRealmResult.[[Value]].
     // 4. Else, let thenRealm be the current Realm Record.
     // 5. NOTE: thenRealm is never null. When then.[[Callback]] is a revoked Proxy and no code runs, thenRealm is used to create error objects.
-    let realm = then
-        .callback()
-        .get_function_realm(context)
-        .unwrap_or_else(|_| context.realm().clone());
+    let realm = promise_job_realm(then.callback(), context)?;
 
     // 1. Let job be a new Job Abstract Closure with no parameters that captures promiseToResolve, thenable, and then and performs the following steps when called:
     let native_target = promise_to_resolve.clone();

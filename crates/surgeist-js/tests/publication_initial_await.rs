@@ -196,7 +196,7 @@ fn a_scoped_initial_await_retains_its_stored_reaction_and_exact_post_store_panic
         .with_source(
             JsNativeError::range()
                 .with_message("authored hook cause")
-                .with_cause(JsError::from_opaque(opaque.clone())),
+                .with_cause(JsError::from_opaque(opaque.clone()).unwrap()),
         )
         .into();
     *executor.hook.borrow_mut() = Some(authored.clone());

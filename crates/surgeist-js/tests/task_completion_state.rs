@@ -31,7 +31,7 @@ fn first_future_results_preserve_success_conversion_and_an_ordinary_guest_error(
     for guest_error in [false, true] {
         let completions = Rc::new(Cell::new(0));
         let calls = completions.clone();
-        let original = JsError::from_opaque(7.into());
+        let original = JsError::from_opaque(7.into()).unwrap();
         let supplied = if guest_error {
             Err(original.clone())
         } else {
@@ -129,7 +129,7 @@ fn an_ordinary_error_completes_the_task_once_without_running_its_success_convers
     let completions = Rc::new(Cell::new(0));
     let source_calls = polls.clone();
     let complete_calls = completions.clone();
-    let original = JsError::from_opaque(7.into());
+    let original = JsError::from_opaque(7.into()).unwrap();
     let supplied = original.clone();
     let mut task: ContextTask<i32> = ContextTask::from_poll(move |_, _| {
         source_calls.set(source_calls.get() + 1);

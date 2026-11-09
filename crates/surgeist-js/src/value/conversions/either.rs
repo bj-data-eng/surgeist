@@ -2,6 +2,7 @@
 //!
 //! This will try to deserialize for the [`Either::Left`] type
 //! first, and if it fails will try the [`Either::Right`] type.
+//! Engine failures are returned immediately without trying another conversion.
 //!
 //! Upon failure of both, the second failure will be returned.
 #![cfg(feature = "either")]
@@ -23,7 +24,13 @@ where
     fn try_from_js(value: &JsValue, mut context: ContextAccess<'_>) -> JsResult<Self> {
         L::try_from_js(value, context.reborrow())
             .map(Self::Left)
-            .or_else(|_| R::try_from_js(value, context.reborrow()).map(Self::Right))
+            .or_else(|error| {
+                if error.as_engine().is_some() {
+                    Err(error)
+                } else {
+                    R::try_from_js(value, context.reborrow()).map(Self::Right)
+                }
+            })
     }
 }
 

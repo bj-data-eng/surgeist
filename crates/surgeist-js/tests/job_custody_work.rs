@@ -750,7 +750,7 @@ fn ordinary_factory_and_poll_errors_complete_once_without_retirement() {
     for factory_error in [false, true] {
         let mut owner = Context::default();
         let mut job = NativeAsyncJob::new(move |_| {
-            let error = JsError::from_opaque(JsValue::new(7));
+            let error = JsError::from_opaque(JsValue::new(7)).unwrap();
             if factory_error {
                 Err(error)
             } else {

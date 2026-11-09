@@ -34,8 +34,8 @@ impl DefineClassStaticMethodByName {
                 .js_expect("method must be function object")?;
             set_function_name(&function_object, &key, None, context)?;
             function_object
-                .downcast_mut::<OrdinaryFunction>()
-                .js_expect("method must be function object")?
+                .downcast_mut::<OrdinaryFunction>()?
+                .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
                 .set_home_object(class.clone());
         }
 
@@ -82,8 +82,8 @@ impl DefineClassMethodByName {
                 .js_expect("method must be function object")?;
             set_function_name(&function_object, &key, None, context)?;
             function_object
-                .downcast_mut::<OrdinaryFunction>()
-                .js_expect("method must be function object")?
+                .downcast_mut::<OrdinaryFunction>()?
+                .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
                 .set_home_object(class_proto.clone());
         }
 
@@ -126,8 +126,8 @@ impl DefineClassStaticMethodByValue {
                 .js_expect("method must be function object")?;
             set_function_name(&function_object, &key, None, context)?;
             function_object
-                .downcast_mut::<OrdinaryFunction>()
-                .js_expect("method must be function object")?
+                .downcast_mut::<OrdinaryFunction>()?
+                .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
                 .set_home_object(class.clone());
         }
 
@@ -175,8 +175,8 @@ impl DefineClassMethodByValue {
                 .js_expect("method must be function object")?;
             set_function_name(&function_object, &key, None, context)?;
             function_object
-                .downcast_mut::<OrdinaryFunction>()
-                .js_expect("method must be function object")?
+                .downcast_mut::<OrdinaryFunction>()?
+                .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
                 .set_home_object(class_proto.clone());
         }
 

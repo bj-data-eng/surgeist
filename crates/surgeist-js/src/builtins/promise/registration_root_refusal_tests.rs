@@ -93,7 +93,7 @@ fn whole_untracked_registration_keeps_a_real_root_barrier_refusal_typed_and_unco
             .is_none()
     );
     {
-        let borrowed = source_object.borrow();
+        let borrowed = source_object.borrow().unwrap();
         let StoredPromiseState::Pending {
             fulfill_reactions,
             reject_reactions,
@@ -135,7 +135,7 @@ fn whole_untracked_registration_keeps_a_real_root_barrier_refusal_typed_and_unco
             .is_none()
     );
     {
-        let borrowed = source_object.borrow();
+        let borrowed = source_object.borrow().unwrap();
         let StoredPromiseState::Pending {
             fulfill_reactions,
             reject_reactions,
@@ -167,7 +167,7 @@ fn whole_untracked_registration_keeps_a_real_root_barrier_refusal_typed_and_unco
             .is_none()
     );
     {
-        let borrowed = source_object.borrow();
+        let borrowed = source_object.borrow().unwrap();
         let StoredPromiseState::Pending {
             fulfill_reactions,
             reject_reactions,

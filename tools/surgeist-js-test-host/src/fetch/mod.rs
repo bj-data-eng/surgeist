@@ -92,12 +92,12 @@ fn get_fetcher<T: Fetcher>(context: ContextAccess<'_>) -> JsResult<Rc<T>> {
 
 fn check_abort(signal: Option<&JsObject>, mut context: ContextAccess<'_>) -> JsResult<()> {
     if let Some(signal_obj) = signal
-        && let Some(signal_ref) = signal_obj.downcast_ref::<crate::abort::JsAbortSignal>()
+        && let Some(signal_ref) = signal_obj.downcast_ref::<crate::abort::JsAbortSignal>()?
         && signal_ref.is_aborted()
     {
         return Err(JsError::from_opaque(
             signal_ref.abort_reason(context.reborrow())?,
-        ));
+        )?);
     }
     Ok(())
 }
@@ -137,9 +137,7 @@ fn fetch_inner<T: Fetcher>(
             let Ok(request) = request.downcast::<JsRequest>() else {
                 return Err(js_error!(TypeError: "Resource must be a URL or Request object"));
             };
-            let Ok(request_ref) = request.try_borrow() else {
-                return Err(js_error!(TypeError: "Request object is already in use"));
-            };
+            let request_ref = request.borrow()?;
 
             if signal.is_none() {
                 signal = request_ref.data().signal()?;

@@ -103,7 +103,7 @@ impl Service for Segmenter {
 }
 
 impl IntrinsicObject for Segmenter {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::from_standard_constructor::<Self>(realm)
             .static_method(
                 Self::supported_locales_of,
@@ -117,7 +117,9 @@ impl IntrinsicObject for Segmenter {
             )
             .method(Self::resolved_options, js_string!("resolvedOptions"), 0)
             .method(Self::segment, js_string!("segment"), 1)
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -265,7 +267,9 @@ impl Segmenter {
         let object = this.as_object();
         let segmenter = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message(
                     "`resolved_options` can only be called on an `Intl.Segmenter` object",

@@ -202,6 +202,7 @@ impl<'a, T: TryFromJs> TryFromJsArgument<'a> for JsAll<T> {
                     values.push(value);
                     rest = &rest[1..];
                 }
+                Err(error) if !error.is_catchable() => return Err(error),
                 Err(_) => break,
             }
         }
@@ -252,14 +253,8 @@ impl<T: NativeObject> JsClass<T> {
 
     /// Borrow a reference to the class instance of type `T`.
     ///
-    /// # Panics
-    ///
-    /// Panics if the object is currently borrowed.
-    ///
-    /// This does not panic if the type is wrong, as the type is checked
-    /// during the construction of the `JsClass` instance.
-    #[must_use]
-    pub fn borrow(&self) -> Ref<'_, T> {
+    /// Returns the exact access refusal if an alias prevents the borrow.
+    pub fn borrow(&self) -> Result<Ref<'_, T>, crate::error::ObjectAccessError> {
         self.inner.borrow_data()
     }
 
@@ -267,9 +262,7 @@ impl<T: NativeObject> JsClass<T> {
     ///
     /// The caller must preserve the heap edges described by [`Class`].
     ///
-    /// # Panics
-    ///
-    /// Panics if the object is currently borrowed.
+    /// Returns the exact access refusal if an alias prevents the borrow.
     ///
     /// ```compile_fail
     /// use surgeist_js::{Context, JsValue, builtins::array_buffer::ArrayBuffer};
@@ -277,11 +270,10 @@ impl<T: NativeObject> JsClass<T> {
     /// use surgeist_js::object::builtins::JsArrayBuffer;
     /// let mut context = Context::default();
     /// let this = JsValue::from(JsArrayBuffer::new(8, context.access()).unwrap());
-    /// let (class, _) = JsClass::<ArrayBuffer>::try_from_js_argument(&this, &[], &mut context).unwrap();
+    /// let (class, _) = JsClass::<ArrayBuffer>::try_from_js_argument(&this, &[], context.access()).unwrap();
     /// let _ = class.borrow_mut();
     /// ```
-    #[must_use]
-    pub fn borrow_mut(&self) -> RefMut<'_, T>
+    pub fn borrow_mut(&self) -> Result<RefMut<'_, T>, crate::error::ObjectAccessError>
     where
         T: Class,
     {
@@ -292,12 +284,9 @@ impl<T: NativeObject> JsClass<T> {
 impl<T: NativeObject + Clone> JsClass<T> {
     /// Clones the inner class instance.
     ///
-    /// # Panics
-    ///
-    /// Panics if the inner object is currently borrowed mutably.
-    #[must_use]
-    pub fn clone_inner(&self) -> T {
-        self.inner.borrow().data().clone()
+    /// Returns the exact access refusal if an alias prevents the read.
+    pub fn clone_inner(&self) -> Result<T, crate::error::ObjectAccessError> {
+        Ok(self.inner.borrow()?.data().clone())
     }
 }
 

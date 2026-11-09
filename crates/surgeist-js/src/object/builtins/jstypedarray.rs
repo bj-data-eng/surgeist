@@ -8,7 +8,7 @@ use crate::{
         BuiltInConstructor,
         typed_array::{BuiltinTypedArray, TypedArray, TypedArrayKind},
     },
-    error::JsNativeError,
+    error::{JsNativeError, ObjectAccessError},
     object::{JsArrayBuffer, JsFunction, JsObject, JsSharedArrayBuffer},
     value::{IntoOrUndefined, TryFromJs},
 };
@@ -42,11 +42,12 @@ impl JsTypedArray {
     /// Return the kind of typed array this is. This can be used in conjunction with
     /// [`js_typed_array_from_kind`] to create a typed array of the same kind.
     #[inline]
-    #[must_use]
-    pub fn kind(&self) -> Option<TypedArrayKind> {
-        self.inner
-            .downcast_ref::<TypedArray>()
-            .map(|arr| arr.kind())
+    pub fn kind(&self) -> Result<TypedArrayKind, ObjectAccessError> {
+        Ok(self
+            .inner
+            .downcast_ref::<TypedArray>()?
+            .ok_or(ObjectAccessError::WrongNativeBrand)?
+            .kind())
     }
 
     /// Get the length of the array.
@@ -1074,7 +1075,7 @@ macro_rules! JsTypedArrayType {
             )]
             #[inline]
             pub fn from_object(object: JsObject) -> JsResult<Self> {
-                let is_kind = if let Some(int) = object.downcast_ref::<TypedArray>() {
+                let is_kind = if let Some(int) = object.downcast_ref::<TypedArray>()? {
                     int.kind() == $kind
                 } else {
                     false
@@ -1191,6 +1192,16 @@ macro_rules! JsTypedArrayType {
 
             /// Create an iterator over the typed array's elements.
             ///
+            /// The initial length is captured when this method succeeds. An initially
+            /// detached or out-of-bounds view has length zero. Each item preserves
+            /// the indexed read and scalar conversion result. The first item error
+            /// is yielded once, after which the iterator remains exhausted.
+            ///
+            /// # Errors
+            ///
+            /// Returns an error if the array belongs to another runtime or its
+            /// initial length cannot be read.
+            ///
             /// The iterator reserves its context access until it is dropped.
             /// A shorter reborrow cannot escape its access capability:
             ///
@@ -1201,23 +1212,32 @@ macro_rules! JsTypedArrayType {
             /// let array = JsUint8Array::from_iter([1u8], owner.access()).unwrap();
             /// let escaped = {
             ///     let mut access = owner.access();
-            ///     array.iter(access.reborrow())
+            ///     array.iter(access.reborrow()).unwrap()
             /// };
             /// let _ = escaped.count();
             /// ```
-            pub fn iter<'a>(&'a self, context: ContextAccess<'a>) -> impl Iterator<Item = $element> + 'a {
+            pub fn iter<'a>(
+                &'a self,
+                context: ContextAccess<'a>,
+            ) -> JsResult<impl std::iter::FusedIterator<Item = JsResult<$element>> + 'a> {
                 let context = context.into_owner();
-                let length = self.length(context.access()).unwrap_or(0);
+                self.check_runtime(context.runtime())?;
+                let length = self.length(context.access())?;
                 let mut index = 0;
-                std::iter::from_fn(move || {
-                    if index < length {
-                        let value = self.get(index, context.access()).ok()?;
-                        index += 1;
-                        value.$value_to_elem(context.access()).ok()
-                    } else {
-                        None
+                let mut done = false;
+                Ok(std::iter::from_fn(move || {
+                    if done || index == length {
+                        done = true;
+                        return None;
                     }
-                })
+                    let result = self.get(index, context.access())
+                        .and_then(|value| value.$value_to_elem(context.access()));
+                    match &result {
+                        Ok(_) => index += 1,
+                        Err(_) => done = true,
+                    }
+                    Some(result)
+                }).fuse())
             }
         }
 
@@ -1299,10 +1319,10 @@ impl JsUint8Array {
         let this_val = self.inner.inner.clone().into();
         let (obj, buf_byte_len) = TypedArray::validate(&this_val, Ordering::SeqCst)?;
         let vec = {
-            let array = obj.borrow();
+            let array = obj.borrow()?;
             let ta = array.data();
             let buffer = ta.viewed_array_buffer();
-            let buffer = buffer.as_buffer();
+            let buffer = buffer.as_buffer()?;
             let Some(slice) = buffer.bytes(Ordering::SeqCst) else {
                 return Err(JsNativeError::typ()
                     .with_message("typed array buffer is detached or out of bounds")
@@ -1466,7 +1486,11 @@ fn typed_iterators_uint8() {
     let vec = vec![1u8, 2, 3, 4, 5, 6, 7, 8];
 
     let array = JsUint8Array::from_iter(vec.clone(), context.access()).unwrap();
-    let vec2 = array.iter(context.access()).collect::<Vec<_>>();
+    let vec2 = array
+        .iter(context.access())
+        .unwrap()
+        .collect::<JsResult<Vec<_>>>()
+        .unwrap();
     assert_eq!(vec, vec2);
 }
 
@@ -1485,7 +1509,11 @@ fn typed_iterators_uint32() {
     let vec = vec![1u32, 2, 0xFFFF, 4, 0xFF12_3456, 6, 7, 8];
 
     let array = JsUint32Array::from_iter(vec.clone(), context.access()).unwrap();
-    let vec2 = array.iter(context.access()).collect::<Vec<_>>();
+    let vec2 = array
+        .iter(context.access())
+        .unwrap()
+        .collect::<JsResult<Vec<_>>>()
+        .unwrap();
     assert_eq!(vec, vec2);
 }
 
@@ -1495,8 +1523,149 @@ fn typed_iterators_f32() {
     let vec = vec![0.1f32, 0.2, 0.3, 0.4, 1.1, 9.99999];
 
     let array = JsFloat32Array::from_iter(vec.clone(), context.access()).unwrap();
-    let vec2 = array.iter(context.access()).collect::<Vec<_>>();
+    let vec2 = array
+        .iter(context.access())
+        .unwrap()
+        .collect::<JsResult<Vec<_>>>()
+        .unwrap();
     assert_eq!(vec, vec2);
+}
+
+#[cfg(test)]
+mod iterator_access_tests {
+    use super::*;
+    use crate::{JsError, JsNativeErrorKind, error::EngineError};
+
+    fn assert_borrowed(error: &JsError) {
+        assert_eq!(
+            error.as_engine(),
+            Some(&EngineError::ObjectAccess(ObjectAccessError::Borrowed))
+        );
+    }
+
+    #[test]
+    fn typed_iterator_preparation_preserves_array_and_buffer_access_errors() {
+        for borrow_array in [true, false] {
+            let context = &mut Context::default();
+            let buffer = JsArrayBuffer::from_byte_block(vec![7, 11], context.access()).unwrap();
+            let array = JsUint8Array::from_array_buffer(buffer.clone(), context.access()).unwrap();
+            let alias: JsObject = if borrow_array {
+                array.clone().into()
+            } else {
+                buffer.into()
+            };
+            let view = alias.borrow_mut().unwrap();
+
+            assert_borrowed(&array.length(context.access()).unwrap_err());
+            assert_borrowed(&array.iter(context.access()).err().unwrap());
+            drop(view);
+
+            let values = array
+                .iter(context.access())
+                .unwrap()
+                .collect::<JsResult<Vec<_>>>()
+                .unwrap();
+            assert_eq!(values, vec![7, 11]);
+        }
+    }
+
+    #[test]
+    fn typed_iterator_item_access_error_is_yielded_once_without_consuming_the_array() {
+        for borrow_array in [true, false] {
+            let context = &mut Context::default();
+            let buffer = JsArrayBuffer::from_byte_block(vec![7, 11, 13], context.access()).unwrap();
+            let array = JsUint8Array::from_array_buffer(buffer.clone(), context.access()).unwrap();
+            let alias: JsObject = if borrow_array {
+                array.clone().into()
+            } else {
+                buffer.into()
+            };
+            let mut iterator = array.iter(context.access()).unwrap();
+            assert_eq!(iterator.next().unwrap().unwrap(), 7);
+
+            let view = alias.borrow_mut().unwrap();
+            assert_borrowed(&iterator.next().unwrap().unwrap_err());
+            assert!(iterator.next().is_none());
+            drop(view);
+            assert!(iterator.next().is_none());
+            assert!(iterator.next().is_none());
+            drop(iterator);
+
+            let values = array
+                .iter(context.access())
+                .unwrap()
+                .collect::<JsResult<Vec<_>>>()
+                .unwrap();
+            assert_eq!(values, vec![7, 11, 13]);
+        }
+    }
+
+    #[test]
+    fn typed_iterators_keep_empty_and_initially_detached_views_empty() {
+        let context = &mut Context::default();
+        let empty = JsUint8Array::from_iter([], context.access()).unwrap();
+        assert!(empty.iter(context.access()).unwrap().next().is_none());
+
+        let buffer = JsArrayBuffer::from_byte_block(vec![0; 8], context.access()).unwrap();
+        let numbers = JsUint8Array::from_array_buffer(buffer.clone(), context.access()).unwrap();
+        let bigints = JsBigInt64Array::from_array_buffer(buffer.clone(), context.access()).unwrap();
+        buffer.detach(&JsValue::undefined()).unwrap();
+        assert!(numbers.iter(context.access()).unwrap().next().is_none());
+        assert!(bigints.iter(context.access()).unwrap().next().is_none());
+    }
+
+    #[test]
+    fn typed_iterators_preserve_numeric_conversion_after_detachment() {
+        let context = &mut Context::default();
+        let buffer = JsArrayBuffer::from_byte_block(vec![7, 11], context.access()).unwrap();
+        let array = JsUint8Array::from_array_buffer(buffer.clone(), context.access()).unwrap();
+        let mut iterator = array.iter(context.access()).unwrap();
+        assert_eq!(iterator.next().unwrap().unwrap(), 7);
+        buffer.detach(&JsValue::undefined()).unwrap();
+        assert_eq!(iterator.next().unwrap().unwrap(), 0);
+        assert!(iterator.next().is_none());
+        drop(iterator);
+
+        let bytes = [1.25_f32, 2.5]
+            .into_iter()
+            .flat_map(f32::to_ne_bytes)
+            .collect();
+        let buffer = JsArrayBuffer::from_byte_block(bytes, context.access()).unwrap();
+        let array = JsFloat32Array::from_array_buffer(buffer.clone(), context.access()).unwrap();
+        let mut iterator = array.iter(context.access()).unwrap();
+        assert_eq!(iterator.next().unwrap().unwrap(), 1.25);
+        buffer.detach(&JsValue::undefined()).unwrap();
+        assert!(iterator.next().unwrap().unwrap().is_nan());
+        assert!(iterator.next().is_none());
+    }
+
+    #[test]
+    fn typed_iterator_yields_the_bigint_conversion_error_once_after_detachment() {
+        let context = &mut Context::default();
+        let bytes = [7_i64, 11].into_iter().flat_map(i64::to_ne_bytes).collect();
+        let buffer = JsArrayBuffer::from_byte_block(bytes, context.access()).unwrap();
+        let array = JsBigInt64Array::from_array_buffer(buffer.clone(), context.access()).unwrap();
+        let mut iterator = array.iter(context.access()).unwrap();
+        assert_eq!(iterator.next().unwrap().unwrap(), 7);
+        buffer.detach(&JsValue::undefined()).unwrap();
+
+        let error = iterator.next().unwrap().unwrap_err();
+        assert_eq!(error.as_native().unwrap().kind(), &JsNativeErrorKind::Type);
+        assert!(error.as_engine().is_none());
+        assert!(iterator.next().is_none());
+        assert!(iterator.next().is_none());
+    }
+
+    #[test]
+    fn typed_iterator_preparation_rejects_even_an_empty_foreign_view() {
+        let owner = &mut Context::default();
+        let foreign = &mut Context::default();
+        let array = JsUint8Array::from_iter([], owner.access()).unwrap();
+        let error = array.iter(foreign.access()).err().unwrap();
+        assert_eq!(error.as_native().unwrap().kind(), &JsNativeErrorKind::Type);
+        assert!(error.as_engine().is_none());
+        assert!(array.iter(owner.access()).unwrap().next().is_none());
+    }
 }
 
 #[test]

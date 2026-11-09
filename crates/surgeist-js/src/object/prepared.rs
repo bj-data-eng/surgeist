@@ -182,7 +182,7 @@ impl JsObject {
             descriptor,
             current,
             property.slot(),
-        );
+        )?;
         debug_assert!(
             accepted,
             "fresh-function restrictions were checked before activation"
@@ -205,7 +205,7 @@ impl JsObject {
             target.check_runtime(context.runtime())?;
             context.runtime().check_value(&this)?;
             let bound_parts = target
-                .downcast_ref::<BoundFunction>()
+                .downcast_ref::<BoundFunction>()?
                 .map(|bound| bound.call_parts());
             if let Some((next, bound_this, mut values)) = bound_parts {
                 let prefix = values.len();
@@ -268,7 +268,7 @@ impl JsObject {
                         values: output,
                     } => {
                         if !values.is_empty() {
-                            let mut array = array.borrow_mut();
+                            let mut array = array.borrow_mut()?;
                             let slots = array
                                 .properties_mut()
                                 .dense_indexed_properties_mut()

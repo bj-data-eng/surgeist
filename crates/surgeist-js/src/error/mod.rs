@@ -20,6 +20,8 @@ pub use publication::{
 };
 pub(crate) use publication::{RealmOwnershipMismatch, check_realm_ownership};
 pub use rooting::RootingError;
+mod object_access;
+pub use object_access::ObjectAccessError;
 #[cfg(test)]
 mod tests;
 
@@ -58,6 +60,9 @@ use thiserror::Error;
 /// Can be used with an expression that converts into `JsValue` or a format
 /// string with arguments.
 ///
+/// Untyped opaque-value forms return `Result<JsError, ObjectAccessError>`;
+/// typed native-error forms return `JsError` without inspecting a live payload.
+///
 /// # Native Errors
 ///
 /// The only native error that is not buildable using this macro is
@@ -80,21 +85,21 @@ use thiserror::Error;
 /// use surgeist_js::js_error;
 /// let context = &mut Context::default();
 ///
-/// let error = js_error!("error!");
+/// let error = js_error!("error!").unwrap();
 /// assert!(error.as_opaque().is_some());
 /// assert_eq!(
 ///     error.as_opaque().unwrap().to_string(context.access()).unwrap(),
 ///     "error!"
 /// );
 ///
-/// let error = js_error!("error: {}", 5);
+/// let error = js_error!("error: {}", 5).unwrap();
 /// assert_eq!(
 ///     error.as_opaque().unwrap().to_string(context.access()).unwrap(),
 ///     "error: 5"
 /// );
 ///
 /// // Non-string literals must be used as an expression.
-/// let error = js_error!({ true });
+/// let error = js_error!({ true }).unwrap();
 /// assert_eq!(error.as_opaque().unwrap(), &JsValue::from(true));
 /// ```
 ///
@@ -214,7 +219,7 @@ macro_rules! js_error {
 ///
 /// ```rust
 /// # use surgeist_js::{JsError, JsNativeError, JsNativeErrorKind, JsValue, js_string};
-/// let cause = JsError::from_opaque(js_string!("error!").into());
+/// let cause = JsError::from_opaque(js_string!("error!").into()).unwrap();
 ///
 /// assert!(cause.as_opaque().is_some());
 /// assert_eq!(
@@ -743,9 +748,12 @@ pub enum EngineError {
     #[error("ContextAccessBusy: host context access is already leased")]
     ContextAccessBusy,
 
-    /// An object alias currently holds incompatible access to the same object.
-    #[error("ObjectAccessBusy: object access is already borrowed")]
-    ObjectAccessBusy,
+    /// A live object refused the required access or native projection.
+    #[error("ObjectAccessError: {0}")]
+    ObjectAccess(#[from] ObjectAccessError),
+    /// Value rendering refused access, output or invalid represented data.
+    #[error("ValueRenderError: {0}")]
+    ValueRender(#[from] crate::value::ValueRenderError),
 
     /// A retained task requires another exact Context instance.
     #[error("JobContextRequired: task requires Context {required}")]
@@ -807,7 +815,8 @@ impl EngineError {
             EngineError::Resource(error) => ErasedEngineError::Resource(error),
             EngineError::InvalidEntryPermit => ErasedEngineError::InvalidEntryPermit,
             EngineError::ContextAccessBusy => ErasedEngineError::ContextAccessBusy,
-            EngineError::ObjectAccessBusy => ErasedEngineError::ObjectAccessBusy,
+            EngineError::ObjectAccess(error) => ErasedEngineError::ObjectAccess(error),
+            EngineError::ValueRender(error) => ErasedEngineError::ValueRender(error),
             EngineError::JobContextRequired { required } => {
                 ErasedEngineError::JobContextRequired { required }
             }
@@ -852,7 +861,8 @@ enum StoredErrorRepr {
     Resource(#[heap_trace(skip)] EngineResourceError),
     InvalidEntryPermit,
     ContextAccessBusy,
-    ObjectAccessBusy,
+    ObjectAccess(#[heap_trace(skip)] ObjectAccessError),
+    ValueRender(#[heap_trace(skip)] crate::value::ValueRenderError),
     JobContextRequired(#[heap_trace(skip)] crate::job::ContextId),
     JobRetired(#[heap_trace(skip)] crate::job::JobRetirement),
     Job(#[heap_trace(skip)] JobError),
@@ -916,7 +926,8 @@ impl StoredJsError {
             }
             StoredErrorRepr::InvalidEntryPermit => Repr::Engine(EngineError::InvalidEntryPermit),
             StoredErrorRepr::ContextAccessBusy => Repr::Engine(EngineError::ContextAccessBusy),
-            StoredErrorRepr::ObjectAccessBusy => Repr::Engine(EngineError::ObjectAccessBusy),
+            StoredErrorRepr::ObjectAccess(error) => Repr::Engine(EngineError::ObjectAccess(*error)),
+            StoredErrorRepr::ValueRender(error) => Repr::Engine(EngineError::ValueRender(*error)),
             StoredErrorRepr::JobContextRequired(required) => {
                 Repr::Engine(EngineError::JobContextRequired {
                     required: required.clone(),
@@ -1100,7 +1111,8 @@ impl JsError {
             })),
             Repr::Engine(EngineError::InvalidEntryPermit) => StoredErrorRepr::InvalidEntryPermit,
             Repr::Engine(EngineError::ContextAccessBusy) => StoredErrorRepr::ContextAccessBusy,
-            Repr::Engine(EngineError::ObjectAccessBusy) => StoredErrorRepr::ObjectAccessBusy,
+            Repr::Engine(EngineError::ObjectAccess(error)) => StoredErrorRepr::ObjectAccess(error),
+            Repr::Engine(EngineError::ValueRender(error)) => StoredErrorRepr::ValueRender(error),
             Repr::Engine(EngineError::JobContextRequired { required }) => {
                 StoredErrorRepr::JobContextRequired(required)
             }
@@ -1173,26 +1185,30 @@ impl JsError {
 
     /// Creates a new `JsError` from an opaque error `value`.
     ///
+    /// Returns the exact access refusal if an Error object's backtrace cannot
+    /// be read. A successful conversion preserves the original opaque identity.
+    ///
     /// # Examples
     ///
     /// ```rust
     /// # use surgeist_js::JsError;
-    /// let error = JsError::from_opaque(5.0f64.into());
+    /// let error = JsError::from_opaque(5.0f64.into()).unwrap();
     ///
     /// assert!(error.as_opaque().is_some());
     /// ```
-    #[must_use]
-    pub fn from_opaque(value: JsValue) -> Self {
+    pub fn from_opaque(value: JsValue) -> Result<Self, ObjectAccessError> {
         // Recover the backtrace from the Error object if present,
         // so it survives the JsError → JsValue → JsError round-trip.
-        let backtrace = value.as_object().and_then(|obj| {
-            let error = obj.downcast_ref::<Error>()?;
-            error.stack.0.backtrace().cloned()
-        });
-        Self {
+        let backtrace = match value.as_object() {
+            Some(object) => object
+                .downcast_ref::<Error>()?
+                .and_then(|error| error.stack.0.backtrace().cloned()),
+            None => None,
+        };
+        Ok(Self {
             inner: Repr::Opaque(value),
             backtrace,
-        }
+        })
     }
 
     /// Converts the error to an opaque `JsValue` error
@@ -1240,7 +1256,7 @@ impl JsError {
                 // JsError → JsValue → JsError round-trip through promise
                 // rejection.
                 if let Some(backtrace) = self.backtrace
-                    && let Some(mut error) = obj.downcast_mut::<Error>()
+                    && let Some(mut error) = obj.downcast_mut::<Error>()?
                 {
                     error.stack = IgnoreEq(ErrorStack::Backtrace(backtrace));
                 }
@@ -1251,7 +1267,7 @@ impl JsError {
                 // too (e.g. explicit `throw new Error(...)`).
                 if let Some(backtrace) = self.backtrace
                     && let Some(obj) = v.as_object()
-                    && let Some(mut error) = obj.downcast_mut::<Error>()
+                    && let Some(mut error) = obj.downcast_mut::<Error>()?
                     && !error.stack.0.is_backtrace()
                 {
                     error.stack = IgnoreEq(ErrorStack::Backtrace(backtrace));
@@ -1295,7 +1311,7 @@ impl JsError {
     /// let error_val = error.into_opaque(context.access()).unwrap();
     ///
     /// // then, try to recover the original
-    /// let error = JsError::from_opaque(error_val).try_native(context.access()).unwrap();
+    /// let error = JsError::from_opaque(error_val).unwrap().try_native(context.access()).unwrap();
     ///
     /// assert!(matches!(error.kind(), JsNativeErrorKind::Type));
     /// assert_eq!(error.message(), "type error!");
@@ -1311,6 +1327,9 @@ impl JsError {
                     .ok_or_else(|| TryNativeError::NotAnErrorObject(val.clone()))?;
                 let error_data: Error = obj
                     .downcast_ref::<Error>()
+                    .map_err(|source| TryNativeError::EngineError {
+                        source: source.into(),
+                    })?
                     .ok_or_else(|| TryNativeError::NotAnErrorObject(val.clone()))?
                     .clone();
 
@@ -1366,14 +1385,21 @@ impl JsError {
                                 })?;
                                 error_list.reserve(length as usize);
                                 for i in 0..length {
-                                    error_list.push(Self::from_opaque(
-                                        errors.get(i, context.access()).map_err(|e| {
-                                            TryNativeError::InvalidErrorsIndex {
-                                                index: i,
-                                                source: e,
-                                            }
-                                        })?,
-                                    ));
+                                    error_list.push(
+                                        Self::from_opaque(
+                                            errors.get(i, context.access()).map_err(|e| {
+                                                TryNativeError::InvalidErrorsIndex {
+                                                    index: i,
+                                                    source: e,
+                                                }
+                                            })?,
+                                        )
+                                        .map_err(
+                                            |source| TryNativeError::EngineError {
+                                                source: source.into(),
+                                            },
+                                        )?,
+                                    );
                                 }
                             }
                             _ => return Err(TryNativeError::InvalidPropertyType("errors")),
@@ -1393,7 +1419,13 @@ impl JsError {
                 Ok(JsNativeError {
                     kind,
                     message,
-                    cause: cause.map(|v| Box::new(Self::from_opaque(v))),
+                    cause: cause
+                        .map(Self::from_opaque)
+                        .transpose()
+                        .map_err(|source| TryNativeError::EngineError {
+                            source: source.into(),
+                        })?
+                        .map(Box::new),
                     realm: Some(realm),
                     stack: location,
                 })
@@ -1414,7 +1446,7 @@ impl JsError {
     ///
     /// assert!(error.as_opaque().is_none());
     ///
-    /// let error = JsError::from_opaque(256u32.into());
+    /// let error = JsError::from_opaque(256u32.into()).unwrap();
     ///
     /// assert!(error.as_opaque().is_some());
     /// ```
@@ -1438,7 +1470,7 @@ impl JsError {
     ///
     /// assert!(error.as_native().is_some());
     ///
-    /// let error = JsError::from_opaque(JsValue::undefined());
+    /// let error = JsError::from_opaque(JsValue::undefined()).unwrap();
     ///
     /// assert!(error.as_native().is_none());
     /// ```
@@ -1481,7 +1513,7 @@ impl JsError {
     /// # use surgeist_js::{js_string, Context, JsError, JsNativeError, JsSymbol, JsValue};
     /// # use std::error::Error;
     /// let context = &mut Context::default();
-    /// let cause = JsError::from_opaque(JsSymbol::new(Some(js_string!("error!"))).unwrap().into());
+    /// let cause = JsError::from_opaque(JsSymbol::new(Some(js_string!("error!"))).unwrap().into()).unwrap();
     ///
     /// let native_error: JsError = JsNativeError::typ()
     ///     .with_message("invalid type!")
@@ -1508,9 +1540,18 @@ impl JsError {
                     inner: ErasedRepr::Engine(source.into_erased(context)),
                 };
             }
+            Err(
+                TryNativeError::InaccessibleProperty { source, .. }
+                | TryNativeError::InvalidErrorsIndex { source, .. }
+                | TryNativeError::InaccessibleRealm { source },
+            ) if !source.is_catchable() => return source.into_erased(context.access()),
             Err(_) => {
+                let mut rendered = String::new();
+                if let Err(error) = self.render_to(&mut rendered) {
+                    return error.into_erased(context.access());
+                }
                 return JsErasedError {
-                    inner: ErasedRepr::Opaque(Cow::Owned(self.to_string())),
+                    inner: ErasedRepr::Opaque(Cow::Owned(rendered)),
                 };
             }
         };
@@ -1646,20 +1687,44 @@ impl From<RuntimeLimitError> for JsError {
     }
 }
 
-impl fmt::Display for JsError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.inner {
-            Repr::Native(e) => e.fmt(f)?,
-            Repr::Engine(e) => e.fmt(f)?,
-            Repr::Opaque(v) => v.display().fmt(f)?,
-        }
+impl From<crate::value::ValueRenderError> for JsError {
+    fn from(error: crate::value::ValueRenderError) -> Self {
+        EngineError::ValueRender(error).into()
+    }
+}
 
-        if let Some(shadow_stack) = &self.backtrace {
-            for entry in shadow_stack.iter().rev() {
-                write!(f, "\n    at {}", entry.display(true))?;
+impl JsError {
+    /// Renders this error once, preserving value-access and rendering refusals.
+    pub fn render(&self) -> JsResult<String> {
+        let mut output = String::new();
+        self.render_to(&mut output)?;
+        Ok(output)
+    }
+
+    /// Writes an error without erasing a value-rendering access refusal.
+    pub(crate) fn render_to(&self, output: &mut dyn fmt::Write) -> JsResult<()> {
+        match &self.inner {
+            Repr::Native(error) => {
+                write!(output, "{error}").map_err(|_| crate::value::ValueRenderError::Sink)?
+            }
+            Repr::Engine(error) => {
+                write!(output, "{error}").map_err(|_| crate::value::ValueRenderError::Sink)?
+            }
+            Repr::Opaque(value) => value.display().render_to(output)?,
+        }
+        if let Some(backtrace) = &self.backtrace {
+            for entry in backtrace.iter().rev() {
+                write!(output, "\n    at {}", entry.display(true))
+                    .map_err(|_| crate::value::ValueRenderError::Sink)?;
             }
         }
         Ok(())
+    }
+}
+
+impl fmt::Display for JsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.render_to(f).map_err(|_| fmt::Error)
     }
 }
 
@@ -2399,9 +2464,12 @@ pub enum ErasedEngineError {
     #[error("ContextAccessBusy: host context access is already leased")]
     ContextAccessBusy,
 
-    /// An object alias currently holds incompatible access to the same object.
-    #[error("ObjectAccessBusy: object access is already borrowed")]
-    ObjectAccessBusy,
+    /// A live object refused the required access or native projection.
+    #[error("ObjectAccessError: {0}")]
+    ObjectAccess(#[from] ObjectAccessError),
+    /// Value rendering refused access, output or invalid represented data.
+    #[error("ValueRenderError: {0}")]
+    ValueRender(#[from] crate::value::ValueRenderError),
 
     /// A retained task requires another exact Context instance.
     #[error("JobContextRequired: task requires Context {required}")]

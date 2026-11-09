@@ -20,11 +20,13 @@ pub(crate) struct Segments {
 }
 
 impl IntrinsicObject for Segments {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::with_intrinsic::<Self>(realm)
-            .static_method(Self::containing, js_string!("containing"), 1)
-            .static_method(Self::iterator, JsSymbol::iterator(), 0)
-            .build();
+            .static_method(Self::containing, js_string!("containing"), 1)?
+            .static_method(Self::iterator, JsSymbol::iterator(), 0)?
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -62,7 +64,9 @@ impl Segments {
         let object = this.as_object();
         let segments = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("`containing` can only be called on a `Segments` object")
@@ -71,8 +75,8 @@ impl Segments {
         // 3. Let segmenter be segments.[[SegmentsSegmenter]].
         let segmenter = JsObject::from_inner(segments.segmenter.clone());
         let segmenter = segmenter
-            .downcast_ref::<Segmenter>()
-            .js_expect("segments object should contain a segmenter")?;
+            .downcast_ref::<Segmenter>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
 
         // 4. Let string be segments.[[SegmentsString]].
         // 5. Let len be the length of string.
@@ -117,7 +121,9 @@ impl Segments {
         let object = this.as_object();
         let segments = object
             .as_ref()
-            .and_then(|o| o.downcast_ref::<Self>())
+            .map(|o| o.downcast_ref::<Self>())
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("`containing` can only be called on a `Segments` object")
