@@ -758,7 +758,7 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     E::Boundary(B::RequestedCapacityLimitExceeded { required, .. }) => {
                         match baseline.checked_add(required) {
-                            Some(total) => self.requested_capacity_stop(required, total),
+                            Some(total) => return self.requested_capacity_stop(required, total),
                             None => HtmlSemanticFailureKind::RepresentationExhausted,
                         }
                     }

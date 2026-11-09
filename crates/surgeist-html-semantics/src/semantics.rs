@@ -2223,12 +2223,8 @@ impl<'a> HtmlSemanticSession<'a> {
     /// allocated them, when the request would have brought the session's allocated bytes to
     /// `total`. A cap of the host's scope or of one above it that is tighter than what the
     /// session's own limit leaves refuses the request as the ledger reports it, with that cap's
-    /// limit and total; otherwise the session's limit does.
-    fn requested_capacity_stop(
-        &mut self,
-        required: usize,
-        total: usize,
-    ) -> HtmlSemanticFailureKind {
+    /// limit and total, mapped as every other ledger stop is; otherwise the session's limit does.
+    fn requested_capacity_stop(&mut self, required: usize, total: usize) -> HtmlSemanticFailure {
         let own = self
             .limits
             .allocated_bytes
@@ -2240,13 +2236,13 @@ impl<'a> HtmlSemanticSession<'a> {
                 query_account::wide(required),
             )])
         {
-            return query_account::stop_kind(error);
+            return self.ledger_stop(error);
         }
-        HtmlSemanticFailureKind::LimitExceeded {
+        self.stop(HtmlSemanticFailureKind::LimitExceeded {
             resource: HtmlSemanticResource::AllocatedBytes,
             limit: self.limits.allocated_bytes,
             required: total,
-        }
+        })
     }
     /// Records actual capacity after an admitted allocation, including an
     /// allocator overshoot. Accounting precedes the next cancellation poll.
@@ -2287,7 +2283,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 }
                 HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded { required, .. } => {
                     let total = self.snapshot().allocated_bytes.saturating_add(required);
-                    self.requested_capacity_stop(required, total)
+                    return self.requested_capacity_stop(required, total);
                 }
                 HtmlIntegerUnitStepError::ActualCapacityLimitExceeded { .. } => {
                     HtmlSemanticFailureKind::LimitExceeded {

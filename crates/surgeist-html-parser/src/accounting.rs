@@ -356,7 +356,7 @@ impl HtmlParseAccounting {
     /// Charges in the scope `host` names, of an operation of the HTML schema pair that
     /// the host owns.
     ///
-    /// The tariffs between `scope` and the scopes above it must map each parse
+    /// The tariffs between the scope of `host` and the scopes above it must map each parse
     /// resource to a parse resource. The schema does not promise a retargeting
     /// to another dimension. A cap of a scope above such a tariff that refuses a
     /// parse charge stops the parse with `HtmlParseStop::Accounting`

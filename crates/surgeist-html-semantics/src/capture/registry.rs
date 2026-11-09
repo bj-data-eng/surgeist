@@ -339,9 +339,9 @@ impl HtmlCapture {
     /// Forms the registry as [`Self::complete_empty_global_registry_with`] does, charging scopes
     /// below the scope `accounting` names instead of operations of its own. The formation opens
     /// `html-registry-formation`, which carries the allowance, and its capture builder opens
-    /// `html-capture`; the host operation keeps the captured registry, and the formation backing
-    /// is returned when the formation ends. A cap of the host scope or of an ancestor refuses with
-    /// the limit that scope carries.
+    /// `html-capture`. The host operation keeps the captured registry and the formation backing
+    /// the capture holds; the formation peak is a gauge, which stays below the host scope. A cap
+    /// of the host scope or of an ancestor refuses with the limit that scope carries.
     pub fn complete_empty_global_registry_with_accounting<E>(
         host_revision: HtmlHostFactsRevision,
         formation_bytes: usize,
