@@ -221,3 +221,79 @@ impl HtmlSemanticSession<'_> {
         self.stop(kind)
     }
 }
+
+#[cfg(test)]
+mod schema_tests {
+    use super::super::*;
+    use crate::{
+        HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlScriptingStatus,
+    };
+    use surgeist_html::{
+        accounting::{HtmlChange, HtmlWork, time_interpretation_work},
+        bounded::temporal::HtmlTimeElementInterpretation,
+        construction::HtmlDocumentMode,
+    };
+
+    /// The session charges each interpretation action's `work()` as semantic work.
+    /// The schema converts the same layouts to semantic steps.
+    #[test]
+    fn time_interpretation_layouts_convert_to_the_work_the_session_charges() {
+        let mut builder = HtmlCaptureBuilder::new(
+            HtmlCaptureLimits::new(1, 0, 0, 0, 0, 0, 0, 16_777_216),
+            HtmlHostFactsRevision::fresh(),
+        );
+        builder
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                HtmlScriptingStatus::Unavailable,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap();
+        let capture = builder.finish().unwrap();
+        let context = HtmlSemanticContext::new(
+            &capture,
+            capture.host_facts_revision().clone(),
+            HtmlSemanticContextInput::new(vec![]),
+            0,
+        )
+        .unwrap();
+        for text in [
+            "2011-11-18T14:54:39.929Z",
+            "2011-11-18",
+            "2011-W47",
+            "PT4H18M3S",
+            "3d 4h",
+            "2011-11-18 25:00",
+            "bad",
+        ] {
+            let raw = DocumentString::from(text);
+            let mut session = HtmlSemanticSession::new(
+                &capture,
+                &context,
+                HtmlValueInterpreter::new(4096),
+                HtmlSemanticLimits::new(1 << 40, 0, 0, 64, 1 << 30, 0),
+                HtmlSemanticCancellation::new(),
+            )
+            .unwrap();
+            let _ = session.interpret_time_element(&raw);
+            let mut owner =
+                HtmlTimeElementInterpretation::new(&raw, HtmlValueInterpreter::new(4096)).unwrap();
+            let mut steps: Vec<HtmlChange> = Vec::new();
+            while let Ok(Some(action)) = owner.next_action() {
+                steps.push(time_interpretation_work(action.layout()));
+                if action.advance(64, 1 << 30).outcome().is_err() {
+                    break;
+                }
+            }
+            let expected: u64 = steps
+                .iter()
+                .map(|change| match *change {
+                    HtmlChange::Work(HtmlWork::SemanticStep, amount) => amount,
+                    other => panic!("unexpected change {other:?}"),
+                })
+                .sum();
+            assert_eq!(session.usage().work() as u64, expected, "{text:?}");
+            assert_ne!(expected, 0, "{text:?}");
+        }
+    }
+}

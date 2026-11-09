@@ -272,3 +272,24 @@ impl HtmlCspLayout {
         })
     }
 }
+
+#[cfg(test)]
+mod schema_tests {
+    use super::*;
+    use crate::accounting::{HtmlChargeOverflow, csp_work};
+
+    /// No constructor builds a layout whose own and closing credits overflow, so
+    /// the conversion's overflow path is reached with fields set directly.
+    #[test]
+    fn csp_work_reports_credits_that_overflow() {
+        let layout = HtmlCspLayout {
+            work_credits: u64::MAX,
+            closing_work: HtmlCspDisposalWork {
+                work_credits: 1,
+                atomic_bytes: 0,
+            },
+            ..HtmlCspLayout::default()
+        };
+        assert_eq!(csp_work(&layout), Err(HtmlChargeOverflow));
+    }
+}

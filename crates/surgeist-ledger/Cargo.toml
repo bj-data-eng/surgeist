@@ -14,3 +14,7 @@ workspace = true
 [[bench]]
 name = "profiling"
 harness = false
+
+[[bench]]
+name = "admission"
+harness = false

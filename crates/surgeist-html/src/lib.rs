@@ -6,6 +6,8 @@
 //!
 //! # Modules
 //!
+//! - [`accounting`]: the work and resource dimensions, conversion rates and cap
+//!   scopes that the HTML crates charge through `surgeist-ledger`.
 //! - [`values`]: document strings, names, attributes and other immutable
 //!   construction values.
 //! - [`vocabulary`]: exact name recognition and the specification's inventories.
@@ -104,6 +106,7 @@
 #![deny(unfulfilled_lint_expectations)]
 #![warn(missing_docs)]
 
+pub mod accounting;
 pub mod attributes;
 pub mod bounded;
 pub mod construction;

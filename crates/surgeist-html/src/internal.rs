@@ -1,5 +1,6 @@
 //! Private implementation tree. Public modules re-export items from here by explicit lists.
 
+pub(crate) mod accounting;
 pub(crate) mod amortized;
 pub(crate) mod attributes;
 pub(crate) mod construction;

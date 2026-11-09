@@ -1881,6 +1881,61 @@ mod tests {
         assert_eq!(inspected, (expected_units * 2) as u64);
     }
 
+    /// The usage a pool action reports, retained as provider storage, is the
+    /// schema's `value_pool_usage`: the controller acquires its bytes as capacity
+    /// and peak bytes and its UTF-16 units as managed units.
+    #[test]
+    fn value_pool_usage_converts_to_the_resources_the_controller_acquires() {
+        use surgeist_html::{
+            accounting::value_pool_usage,
+            bounded::values::{
+                HtmlStringPoolOperation, HtmlValuePoolActionKind, HtmlValuePoolUsage,
+            },
+        };
+        let input = DocumentString::from("provider storage of a pooled string");
+        let equal = DocumentString::from_utf16(input.code_units().to_vec());
+        let mut pool = HtmlStringPool::new();
+        let root = pool.begin_root().unwrap();
+        let mut usages: Vec<HtmlValuePoolUsage> = Vec::new();
+        // The first offer misses and inserts; the second probe hits the offered
+        // string, which holds a strong candidate.
+        for (value, offer) in [(&input, true), (&equal, false)] {
+            let mut operation = Some(if offer {
+                pool.offer(value)
+            } else {
+                pool.probe(value)
+            });
+            while let Some(action) = pool.next_action(operation.as_mut().unwrap()).unwrap() {
+                let layout = action.layout();
+                usages.push(layout.pool());
+                usages.push(layout.candidate());
+                match action.kind() {
+                    HtmlValuePoolActionKind::Read => {
+                        operation.as_mut().unwrap().read(action).unwrap();
+                    }
+                    HtmlValuePoolActionKind::Pool => {
+                        pool.perform(operation.as_mut().unwrap(), action).unwrap();
+                    }
+                }
+            }
+            drop(HtmlStringPoolOperation::try_finish(&mut operation).unwrap());
+        }
+        pool.abort_root(root).unwrap();
+        assert!(usages.iter().any(|usage| usage.bytes() > 0));
+        assert!(usages.iter().any(|usage| usage.utf16_units() > 0));
+        for usage in usages {
+            let mut c = ParseControl::new(
+                crate::parser::tree_builder::tests::limits(100),
+                crate::HtmlParseCancellation::new(),
+            );
+            Usage::pool(usage).retain(&mut c).unwrap();
+            for (resource, amount) in value_pool_usage(usage) {
+                let parse = crate::settings::RESOURCES[resource as usize];
+                assert_eq!(c.usage().resource(parse).current(), amount, "{resource:?}");
+            }
+        }
+    }
+
     #[test]
     fn cold_string_miss_charges_one_inspection_of_nonempty_raw_utf16() {
         assert_cold_string_inspection(1, 4);

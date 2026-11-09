@@ -24,6 +24,8 @@ mod meta_csp;
 mod parser;
 pub use meta_csp::{HtmlParseCspFailure, HtmlParseCspFailureKind};
 mod request;
+#[cfg(test)]
+mod schema_support;
 mod settings;
 mod source;
 pub use request::*;

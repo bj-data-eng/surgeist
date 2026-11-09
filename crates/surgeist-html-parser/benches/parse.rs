@@ -1,0 +1,267 @@
+//! Release-mode parse benchmark over five deterministic generated documents.
+//!
+//! Each round parses one document once with generous limits and no profiling.
+//! The report lists each document's size and its `HtmlParseUsage` work and
+//! resource totals beside the median, minimum and maximum parse time over the
+//! rounds. Totals depend only on the document and the limits, so they identify
+//! the accounted work a timing change is measured against.
+//!
+//! Run with `cargo bench --offline --locked -j 1 -p surgeist-html-parser --bench parse`.
+
+use std::{fmt::Write as _, hint::black_box, time::Instant};
+
+use surgeist_html_parser::{
+    HtmlDocumentParseRequest, HtmlParseLimits, HtmlParseResource, HtmlParseUsage,
+    HtmlParseWorkCategory, HtmlSource,
+};
+
+/// Measured rounds per document, after one unmeasured warm-up parse.
+const ROUNDS: usize = 11;
+
+const WORK: [(HtmlParseWorkCategory, &str); 8] = [
+    (HtmlParseWorkCategory::InputUnitRead, "InputUnitRead"),
+    (HtmlParseWorkCategory::InspectByte, "InspectByte"),
+    (HtmlParseWorkCategory::CopyByte, "CopyByte"),
+    (HtmlParseWorkCategory::StateStep, "StateStep"),
+    (HtmlParseWorkCategory::RecordVisit, "RecordVisit"),
+    (HtmlParseWorkCategory::RecordWrite, "RecordWrite"),
+    (HtmlParseWorkCategory::ReserveByte, "ReserveByte"),
+    (HtmlParseWorkCategory::ProviderCall, "ProviderCall"),
+];
+
+const RESOURCES: [(HtmlParseResource, &str); 20] = [
+    (HtmlParseResource::SourceUnits, "SourceUnits"),
+    (HtmlParseResource::BufferedUtf16Units, "BufferedUtf16Units"),
+    (HtmlParseResource::TokenAttributes, "TokenAttributes"),
+    (HtmlParseResource::AuxiliaryEntries, "AuxiliaryEntries"),
+    (HtmlParseResource::ManagedNodes, "ManagedNodes"),
+    (HtmlParseResource::ManagedEdges, "ManagedEdges"),
+    (HtmlParseResource::ManagedAttributes, "ManagedAttributes"),
+    (HtmlParseResource::ManagedUtf16Units, "ManagedUtf16Units"),
+    (HtmlParseResource::SourceMapEntries, "SourceMapEntries"),
+    (
+        HtmlParseResource::SourceMapPayloadUnits,
+        "SourceMapPayloadUnits",
+    ),
+    (HtmlParseResource::Diagnostics, "Diagnostics"),
+    (
+        HtmlParseResource::DiagnosticPayloadUnits,
+        "DiagnosticPayloadUnits",
+    ),
+    (HtmlParseResource::ContextEffects, "ContextEffects"),
+    (HtmlParseResource::OpenElements, "OpenElements"),
+    (
+        HtmlParseResource::ActiveFormattingEntries,
+        "ActiveFormattingEntries",
+    ),
+    (HtmlParseResource::TreeDepth, "TreeDepth"),
+    (
+        HtmlParseResource::ManagedCapacityBytes,
+        "ManagedCapacityBytes",
+    ),
+    (HtmlParseResource::PeakTransientBytes, "PeakTransientBytes"),
+    (HtmlParseResource::AtomicLayoutBytes, "AtomicLayoutBytes"),
+    (HtmlParseResource::WorkCredits, "WorkCredits"),
+];
+
+/// A large ordinary document: headings, paragraphs with inline formatting,
+/// links, lists and a few attributes per element.
+fn ordinary() -> String {
+    let mut html = String::from(
+        "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">\
+         <title>Ordinary</title><style>body{margin:0}</style></head><body>",
+    );
+    for section in 0..240_usize {
+        let _ = write!(
+            html,
+            "<section id=\"s{section}\" class=\"part\"><h2>Section {section}</h2>\
+             <p>Paragraph with <b>bold</b>, <i>italic</i> and <a href=\"/p/{section}\">a link</a>. \
+             Entities &amp; &lt;markup&gt; &copy; stay text.</p>\
+             <ul>"
+        );
+        for item in 0..6_usize {
+            let _ = write!(
+                html,
+                "<li class=\"item\"><span>Item {item}</span> of section {section}</li>"
+            );
+        }
+        html.push_str("</ul><p>Closing paragraph of the section.</p></section>");
+    }
+    html.push_str("</body></html>");
+    html
+}
+
+/// Deeply nested elements: runs of nested `div` elements closed in order.
+fn deeply_nested() -> String {
+    const DEPTH: usize = 1_000;
+    const RUNS: usize = 10;
+    let mut html = String::from("<!DOCTYPE html><html><body>");
+    for run in 0..RUNS {
+        for _ in 0..DEPTH {
+            html.push_str("<div>");
+        }
+        let _ = write!(html, "<p>Leaf of run {run}</p>");
+        for _ in 0..DEPTH {
+            html.push_str("</div>");
+        }
+    }
+    html.push_str("</body></html>");
+    html
+}
+
+/// Elements that each carry many attributes.
+fn many_attributes() -> String {
+    let mut html = String::from("<!DOCTYPE html><html><body>");
+    for element in 0..1_000_usize {
+        let _ = write!(html, "<div id=\"e{element}\"");
+        for attribute in 0..24_usize {
+            let _ = write!(html, " data-a{attribute}=\"value {element} {attribute}\"");
+        }
+        html.push_str(">content</div>");
+    }
+    html.push_str("</body></html>");
+    html
+}
+
+/// Tables with many rows and cells, with explicit sections and spans.
+fn table_heavy() -> String {
+    let mut html = String::from("<!DOCTYPE html><html><body>");
+    for table in 0..16_usize {
+        let _ = write!(
+            html,
+            "<table id=\"t{table}\"><caption>Table {table}</caption><thead><tr>"
+        );
+        for column in 0..16_usize {
+            let _ = write!(html, "<th scope=\"col\">C{column}</th>");
+        }
+        html.push_str("</tr></thead><tbody>");
+        for row in 0..60_usize {
+            html.push_str("<tr>");
+            for column in 0..16_usize {
+                if column == 3 && row % 7 == 0 {
+                    let _ = write!(html, "<td colspan=\"2\">{row}:{column}</td>");
+                } else {
+                    let _ = write!(html, "<td>{row}:{column}</td>");
+                }
+            }
+            html.push_str("</tr>");
+        }
+        html.push_str("</tbody></table>");
+    }
+    html.push_str("</body></html>");
+    html
+}
+
+/// Markup that produces parse-error diagnostics: stray end tags, unknown
+/// character references, duplicate attributes and misplaced table content.
+fn many_diagnostics() -> String {
+    let mut html = String::from("<!DOCTYPE html><html><body>");
+    for index in 0..2_400_usize {
+        let _ = write!(
+            html,
+            "</span><p class=\"a\" class=\"b\">text &bogus; &#x110000; {index}</i>\
+             <table>stray {index}<tr><td>cell</table></b>"
+        );
+    }
+    html.push_str("</body></html>");
+    html
+}
+
+fn limits() -> HtmlParseLimits {
+    HtmlParseLimits::builder()
+        .source_units(1 << 30)
+        .buffered_utf16_units(1 << 30)
+        .token_attributes(1 << 30)
+        .auxiliary_entries(1 << 30)
+        .active_formatting_entries(1 << 30)
+        .managed_nodes(1 << 30)
+        .managed_edges(1 << 30)
+        .managed_attributes(1 << 30)
+        .managed_utf16_units(1 << 30)
+        .source_map_entries(1 << 30)
+        .source_map_payload_units(1 << 30)
+        .diagnostics(1 << 30)
+        .diagnostic_payload_units(1 << 30)
+        .context_effects(1 << 30)
+        .open_elements(1 << 30)
+        .tree_depth(1 << 30)
+        .managed_capacity_bytes(1 << 40)
+        .peak_transient_bytes(1 << 40)
+        .atomic_layout_bytes(1 << 40)
+        .work_credits(u64::MAX)
+        .finish()
+        .expect("benchmark limits are representable")
+}
+
+fn parse(source: &HtmlSource) -> HtmlParseUsage {
+    let report = HtmlDocumentParseRequest::offline(source.clone(), limits())
+        .parse()
+        .unwrap_or_else(|failure| panic!("benchmark document failed to parse: {failure:?}"));
+    let usage = report.usage().clone();
+    drop(black_box(report));
+    usage
+}
+
+fn timed(source: &HtmlSource) -> f64 {
+    let start = Instant::now();
+    let report = HtmlDocumentParseRequest::offline(black_box(source).clone(), limits())
+        .parse()
+        .unwrap_or_else(|failure| panic!("benchmark document failed to parse: {failure:?}"));
+    let elapsed = start.elapsed().as_secs_f64() * 1_000.0;
+    drop(black_box(report));
+    elapsed
+}
+
+fn main() {
+    let documents: [(&str, String); 5] = [
+        ("ordinary", ordinary()),
+        ("deeply-nested", deeply_nested()),
+        ("many-attributes", many_attributes()),
+        ("table-heavy", table_heavy()),
+        ("many-diagnostics", many_diagnostics()),
+    ];
+    println!("rounds per document: {ROUNDS} (after one warm-up parse)");
+    println!();
+    println!(
+        "{:<18} {:>10} {:>10} {:>10} {:>10}",
+        "document", "bytes", "median ms", "min ms", "max ms"
+    );
+    let mut details = String::new();
+    for (name, text) in &documents {
+        let source = HtmlSource::utf8(text.as_str());
+        let usage = parse(&source);
+        let mut rounds: Vec<f64> = (0..ROUNDS).map(|_| timed(&source)).collect();
+        rounds.sort_by(f64::total_cmp);
+        let median = rounds[ROUNDS / 2];
+        println!(
+            "{:<18} {:>10} {:>10.2} {:>10.2} {:>10.2}",
+            name,
+            text.len(),
+            median,
+            rounds[0],
+            rounds[ROUNDS - 1]
+        );
+        let _ = writeln!(details, "{name} ({} bytes)", text.len());
+        let _ = write!(details, "  work:");
+        for (category, label) in WORK {
+            let _ = write!(details, " {label}={}", usage.work(category));
+        }
+        let _ = writeln!(details);
+        let _ = write!(details, "  resource high-water:");
+        for (resource, label) in RESOURCES {
+            let _ = write!(
+                details,
+                " {label}={}",
+                usage.resource(resource).high_water()
+            );
+        }
+        let _ = writeln!(details);
+        let _ = write!(details, "  resource current:");
+        for (resource, label) in RESOURCES {
+            let _ = write!(details, " {label}={}", usage.resource(resource).current());
+        }
+        let _ = writeln!(details);
+    }
+    println!();
+    print!("{details}");
+}

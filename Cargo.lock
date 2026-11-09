@@ -4908,6 +4908,7 @@ dependencies = [
  "surgeist-html",
  "surgeist-html-parser",
  "surgeist-html-semantics",
+ "surgeist-ledger",
  "surgeist-test",
 ]
 
@@ -4959,6 +4960,7 @@ name = "surgeist-html"
 version = "0.1.0"
 dependencies = [
  "cssparser",
+ "surgeist-ledger",
 ]
 
 [[package]]
@@ -4982,6 +4984,7 @@ dependencies = [
  "surgeist-css",
  "surgeist-html",
  "surgeist-html-semantics",
+ "surgeist-ledger",
  "surgeist-test",
 ]
 

@@ -2862,6 +2862,8 @@ impl HtmlParseUsage {
 mod html_value_tests;
 #[cfg(test)]
 mod release_tests;
+#[cfg(test)]
+mod schema_tests;
 
 #[cfg(test)]
 mod tests {
