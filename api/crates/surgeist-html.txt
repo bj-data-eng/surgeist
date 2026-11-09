@@ -4831,6 +4831,9 @@ pub surgeist_html::elements::input::HtmlRadioTrigger::Connected
 pub surgeist_html::elements::input::HtmlRadioTrigger::FormOwner
 pub surgeist_html::elements::input::HtmlRadioTrigger::Name
 pub surgeist_html::elements::input::HtmlRadioTrigger::Type
+pub struct surgeist_html::elements::input::HtmlInputChargedStep<'c, 'a>
+impl surgeist_html::elements::input::HtmlInputChargedStep<'_, '_>
+pub fn surgeist_html::elements::input::HtmlInputChargedStep<'_, '_>::advance(self) -> core::option::Option<surgeist_html::elements::input::HtmlInputRetainedRange>
 pub struct surgeist_html::elements::input::HtmlInputColorSerialization
 impl surgeist_html::elements::input::HtmlInputColorSerialization
 pub fn surgeist_html::elements::input::HtmlInputColorSerialization::html_compatible(&self) -> bool
@@ -4890,8 +4893,7 @@ pub fn surgeist_html::elements::input::HtmlInputRetainedRange::start(self) -> us
 pub struct surgeist_html::elements::input::HtmlInputSanitizationCursor<'a>
 impl<'a> surgeist_html::elements::input::HtmlInputSanitizationCursor<'a>
 pub fn surgeist_html::elements::input::HtmlInputSanitizationCursor<'a>::advance<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&mut self, charge: &mut C) -> core::result::Result<core::option::Option<surgeist_html::elements::input::HtmlInputRetainedRange>, <C as surgeist_ledger::charge::Charge>::Stop>
-pub fn surgeist_html::elements::input::HtmlInputSanitizationCursor<'a>::advance_charged(&mut self) -> core::option::Option<surgeist_html::elements::input::HtmlInputRetainedRange>
-pub fn surgeist_html::elements::input::HtmlInputSanitizationCursor<'a>::charge_next<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&self, charge: &mut C) -> core::result::Result<(), <C as surgeist_ledger::charge::Charge>::Stop>
+pub fn surgeist_html::elements::input::HtmlInputSanitizationCursor<'a>::charge_next<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&mut self, charge: &mut C) -> core::result::Result<surgeist_html::elements::input::HtmlInputChargedStep<'_, 'a>, <C as surgeist_ledger::charge::Charge>::Stop>
 pub fn surgeist_html::elements::input::HtmlInputSanitizationCursor<'a>::email_value_count(&self) -> core::option::Option<usize>
 pub fn surgeist_html::elements::input::HtmlInputSanitizationCursor<'a>::is_complete(&self) -> bool
 pub fn surgeist_html::elements::input::HtmlInputSanitizationCursor<'a>::new(policy: surgeist_html::elements::input::HtmlInputSanitization, units: &'a [u16], mode: surgeist_html::elements::input::HtmlInputEmailMode) -> Self
