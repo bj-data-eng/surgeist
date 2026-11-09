@@ -75,8 +75,6 @@ pub enum surgeist_html::accounting::HtmlLedgerOutcome
 pub surgeist_html::accounting::HtmlLedgerOutcome::Cap(surgeist_html::accounting::HtmlCapRefusal)
 pub surgeist_html::accounting::HtmlLedgerOutcome::Exhausted(surgeist_html::accounting::HtmlChange)
 pub surgeist_html::accounting::HtmlLedgerOutcome::Fault(surgeist_html::accounting::HtmlAccountingFault)
-impl surgeist_html::accounting::HtmlLedgerOutcome
-pub const fn surgeist_html::accounting::HtmlLedgerOutcome::into_fault(self) -> surgeist_html::accounting::HtmlAccountingFault
 pub enum surgeist_html::accounting::HtmlResource
 pub surgeist_html::accounting::HtmlResource::ActiveFormattingEntries
 pub surgeist_html::accounting::HtmlResource::AllocatedBytes

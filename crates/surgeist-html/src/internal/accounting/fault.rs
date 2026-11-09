@@ -165,10 +165,9 @@ pub enum HtmlLedgerOutcome {
 }
 
 impl HtmlLedgerOutcome {
-    /// The fault of this outcome, for a consumer that charges nothing a cap can refuse where it
-    /// classifies, such as the creation of a scope or the read of a profile: a refusal at a cap
-    /// or an overflow there is a change the consumer does not charge.
-    pub const fn into_fault(self) -> HtmlAccountingFault {
+    /// The fault of this outcome, for a place where the consumer charges nothing a cap can
+    /// refuse: a refusal at a cap or an overflow there is a change the consumer does not charge.
+    const fn into_fault(self) -> HtmlAccountingFault {
         match self {
             Self::Fault(fault) => fault,
             Self::Cap(_) | Self::Exhausted(_) => HtmlAccountingFault::UnexpectedChange,
@@ -176,8 +175,9 @@ impl HtmlLedgerOutcome {
     }
 }
 
-/// The fault of a ledger error at a place where the consumer charges nothing a cap can refuse.
-/// See [`HtmlLedgerOutcome::into_fault`].
+/// The fault of a ledger error at a place where the consumer charges nothing a cap can refuse,
+/// such as the creation of a scope or the read of a profile. A refusal at a cap or an overflow
+/// there is a change the consumer does not charge, so it is [`HtmlAccountingFault::UnexpectedChange`].
 pub fn fault_of(error: LedgerError<HtmlWork, HtmlResource>) -> HtmlAccountingFault {
     classify(error).into_fault()
 }

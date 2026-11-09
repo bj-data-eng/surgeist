@@ -668,3 +668,49 @@ fn an_auxiliary_scope_name_is_unique_prefixed_and_not_a_cap_scope_name() {
         );
     }
 }
+
+/// The exact names a host profile reader matches on. Each auxiliary scope has one fixed name, and
+/// a table of every variant keeps a new entry from going unpinned.
+#[test]
+fn each_auxiliary_scope_has_its_exact_name() {
+    let table = [
+        (HtmlAuxiliaryScope::ParseHost, "html-parse-host"),
+        (HtmlAuxiliaryScope::ParseCharging, "html-parse-charging"),
+        (HtmlAuxiliaryScope::ParseAdmission, "html-parse-admission"),
+        (
+            HtmlAuxiliaryScope::ParseConstruction,
+            "html-parse-construction",
+        ),
+        (
+            HtmlAuxiliaryScope::ParseFinalization,
+            "html-parse-finalization",
+        ),
+        (
+            HtmlAuxiliaryScope::ParsePublication,
+            "html-parse-publication",
+        ),
+        (HtmlAuxiliaryScope::QueryObserved, "html-query-observed"),
+        (
+            HtmlAuxiliaryScope::AutocompleteObserved,
+            "html-autocomplete-observed",
+        ),
+        (HtmlAuxiliaryScope::FactGrown, "html-fact-grown"),
+        (
+            HtmlAuxiliaryScope::OptionValueRetained,
+            "html-option-value-retained",
+        ),
+        (
+            HtmlAuxiliaryScope::OptionValueTemporary,
+            "html-option-value-temporary",
+        ),
+        (
+            HtmlAuxiliaryScope::OptionValueObserved,
+            "html-option-value-observed",
+        ),
+    ];
+    assert_eq!(table.len(), HtmlAuxiliaryScope::ALL.len());
+    for (scope, name) in table {
+        assert_eq!(scope.name(), name, "{scope:?}");
+        assert!(HtmlAuxiliaryScope::ALL.contains(&scope), "{scope:?}");
+    }
+}
