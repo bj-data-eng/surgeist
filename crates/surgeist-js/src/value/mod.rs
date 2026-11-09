@@ -135,6 +135,35 @@ impl StoredValue {
     }
 }
 
+impl crate::native_function::NativeCapture for JsValue {
+    type Stored = crate::native_function::CapturedValue;
+
+    fn store(&self) -> Self::Stored {
+        crate::native_function::CapturedValue(self.clone().into_stored())
+    }
+
+    fn restore(stored: &Self::Stored) -> Result<Self, crate::error::RootingError> {
+        use crate::error::RootingError;
+
+        let inner = match stored.0.clone() {
+            inner::InnerValue::Undefined => inner::InnerValue::Undefined,
+            inner::InnerValue::Null => inner::InnerValue::Null,
+            inner::InnerValue::Boolean(value) => inner::InnerValue::Boolean(value),
+            inner::InnerValue::Integer32(value) => inner::InnerValue::Integer32(value),
+            inner::InnerValue::Float64(value) => inner::InnerValue::Float64(value),
+            inner::InnerValue::BigInt(value) => inner::InnerValue::BigInt(value),
+            inner::InnerValue::Symbol(value) => inner::InnerValue::Symbol(value),
+            inner::InnerValue::String(value) => inner::InnerValue::String(value),
+            inner::InnerValue::Object(edge) => inner::InnerValue::Object(
+                edge.upgrade()
+                    .map_err(RootingError::Access)?
+                    .ok_or(RootingError::Expired)?,
+            ),
+        };
+        Ok(Self::from_inner(inner))
+    }
+}
+
 impl From<i32> for StoredValue {
     fn from(value: i32) -> Self {
         JsValue::from(value).into_stored()

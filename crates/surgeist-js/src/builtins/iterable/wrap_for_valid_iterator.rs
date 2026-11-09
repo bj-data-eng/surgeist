@@ -75,7 +75,7 @@ impl WrapForValidIterator {
 
         // 3. Let iteratorRecord be O.[[Iterated]].
         // 4. Return ? Call(iteratorRecord.[[NextMethod]], iteratorRecord.[[Iterator]]).
-        let iterated = wrapper.iterated.to_iterator();
+        let iterated = wrapper.iterated.to_iterator()?;
         drop(wrapper);
 
         iterated
@@ -106,7 +106,7 @@ impl WrapForValidIterator {
         })?;
 
         // 3. Let iterator be O.[[Iterated]].[[Iterator]].
-        let iterator = wrapper.iterated.to_iterator().iterator().clone();
+        let iterator = wrapper.iterated.to_iterator()?.iterator().clone();
         drop(wrapper);
 
         // 4. Assert: iterator is an Object.

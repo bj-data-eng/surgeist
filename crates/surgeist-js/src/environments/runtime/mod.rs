@@ -203,12 +203,23 @@ impl PreparedFunctionCapture {
 }
 
 impl StoredEnvironmentStack {
-    pub(crate) fn to_stack(&self) -> EnvironmentStack {
-        EnvironmentStack {
-            tip: self.tip.as_ref().map(root),
+    pub(crate) fn to_stack(&self) -> Result<EnvironmentStack, crate::error::RootingError> {
+        use crate::error::RootingError;
+
+        let tip = self
+            .tip
+            .as_ref()
+            .map(|edge| {
+                edge.upgrade()
+                    .map_err(RootingError::Access)?
+                    .ok_or(RootingError::Expired)
+            })
+            .transpose()?;
+        Ok(EnvironmentStack {
+            tip,
             depth: self.depth,
             private_stack: self.private_stack.clone(),
-        }
+        })
     }
 
     pub(crate) fn push_private(&mut self, environment: Rc<PrivateEnvironment>) {

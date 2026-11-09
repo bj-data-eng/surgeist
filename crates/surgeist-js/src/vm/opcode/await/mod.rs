@@ -358,8 +358,9 @@ impl AwaitState {
     ) -> JsResult<JsValue> {
         if let Some(evaluation) = &self.0.evaluation {
             if let Some(cause) = evaluation.evaluation.cause() {
+                let cause = cause.external()?;
                 state.reference.retire();
-                return Err(crate::error::EngineError::ModuleInterrupted(cause.external()).into());
+                return Err(crate::error::EngineError::ModuleInterrupted(cause).into());
             }
             evaluation
                 .evaluation
@@ -369,17 +370,17 @@ impl AwaitState {
         if !self.0.phase.get().available() {
             return Err(await_fault(JobFaultCause::StateInconsistency).into());
         }
-        let mut continuation = self
-            .0
-            .continuation
-            .try_borrow_mut()
-            .map_err(|_| {
-                self.0
-                    .record_fault(await_fault(JobFaultCause::InaccessibleRegistry))
-            })?
-            .take()
+        let mut stored_continuation = self.0.continuation.try_borrow_mut().map_err(|_| {
+            self.0
+                .record_fault(await_fault(JobFaultCause::InaccessibleRegistry))
+        })?;
+        let mut continuation = stored_continuation
+            .as_ref()
             .ok_or_else(|| await_fault(JobFaultCause::StateInconsistency))?
-            .to_context();
+            .to_context()?;
+        let stored = stored_continuation.take();
+        drop(stored_continuation);
+        drop(stored);
         self.0.phase.set(AwaitPhase::Consumed);
         if let Some(evaluation) = &self.0.evaluation {
             evaluation.evaluation.consume(state.reference())?;

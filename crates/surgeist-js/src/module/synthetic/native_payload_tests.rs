@@ -25,15 +25,15 @@ impl NativeCapture for Capture {
             restored: self.restored.clone(),
         }
     }
-    fn restore(stored: &StoredCapture) -> Self {
+    fn restore(stored: &StoredCapture) -> Result<Self, crate::error::RootingError> {
         // The scalar log is outside every owning engine record. Conversion
         // neither enters the engine nor mutates the retained export payload.
         stored.restored.borrow_mut().push(stored.id);
-        Self {
+        Ok(Self {
             id: stored.id,
-            value: JsObject::restore(&stored.value),
+            value: JsObject::restore(&stored.value)?,
             restored: stored.restored.clone(),
-        }
+        })
     }
 }
 fn context() -> Context {

@@ -84,8 +84,9 @@ impl Default for JsAbortSignal {
 impl JsAbortSignal {
     /// # Errors
     ///
-    /// Returns the first listener publication error after completing the
-    /// committed abort and attempting every listener publication.
+    /// Returns a listener restoration error before publishing any jobs, or the
+    /// first publication error after attempting every prepared listener. The
+    /// committed abort and token cancellation are preserved in either case.
     pub fn signal_abort(&self, reason: JsValue, mut context: ContextAccess<'_>) -> JsResult<()> {
         if self.aborted.get() {
             return Ok(());
@@ -94,13 +95,30 @@ impl JsAbortSignal {
         *self.reason.borrow_mut() = Some(reason.store());
 
         let abort = js_string!("abort");
-        let listeners: Vec<JsFunction> = self
-            .listeners
-            .borrow()
-            .iter()
-            .filter(|listener| listener.event_type == abort)
-            .map(|listener| JsFunction::restore(&listener.callback))
-            .collect();
+        let mut listeners = Vec::new();
+        let preparation = (|| -> Result<(), surgeist_js::error::RootingError> {
+            let stored = self.listeners.borrow();
+            stored
+                .len()
+                .checked_mul(std::mem::size_of::<JsFunction>())
+                .filter(|&bytes| bytes <= isize::MAX as usize)
+                .ok_or(surgeist_js::error::RootingError::SizeOverflow)?;
+            listeners
+                .try_reserve_exact(stored.len())
+                .map_err(|_| surgeist_js::error::RootingError::Allocation)?;
+            for listener in stored
+                .iter()
+                .filter(|listener| listener.event_type == abort)
+            {
+                listeners.push(JsFunction::restore(&listener.callback)?);
+            }
+            Ok(())
+        })();
+        if let Err(error) = preparation {
+            drop(listeners);
+            self.cancel_token.cancel();
+            return Err(error.into());
+        }
 
         let realm = context.realm().clone();
         let mut publication_error = None;
@@ -137,12 +155,20 @@ impl JsAbortSignal {
     }
 
     /// Returns the abort reason.
-    pub fn abort_reason(&self, mut context: ContextAccess<'_>) -> JsValue {
+    ///
+    /// # Errors
+    /// Returns an error if the stored abort reason cannot be rooted.
+    pub fn abort_reason(&self, mut context: ContextAccess<'_>) -> JsResult<JsValue> {
         if !self.aborted.get() {
-            return JsValue::undefined();
+            return Ok(JsValue::undefined());
         }
-        let reason = self.reason.borrow().as_ref().map(JsValue::restore);
-        reason.unwrap_or_else(|| make_abort_error(context.reborrow()))
+        let reason = self
+            .reason
+            .borrow()
+            .as_ref()
+            .map(JsValue::restore)
+            .transpose()?;
+        Ok(reason.unwrap_or_else(|| make_abort_error(context.reborrow())))
     }
 
     /// Returns the cancellation token.
@@ -168,13 +194,13 @@ impl JsAbortSignal {
     }
 
     #[boa(getter)]
-    fn reason(&self, mut context: ContextAccess<'_>) -> JsValue {
+    fn reason(&self, mut context: ContextAccess<'_>) -> JsResult<JsValue> {
         self.abort_reason(context.reborrow())
     }
 
     fn throw_if_aborted(&self, mut context: ContextAccess<'_>) -> JsResult<()> {
         if self.aborted.get() {
-            Err(JsError::from_opaque(self.abort_reason(context.reborrow())))
+            Err(JsError::from_opaque(self.abort_reason(context.reborrow())?))
         } else {
             Ok(())
         }
@@ -185,27 +211,38 @@ impl JsAbortSignal {
         event_type: JsString,
         callback: JsFunction,
         _context: ContextAccess<'_>,
-    ) {
+    ) -> JsResult<()> {
         {
             let listeners = self.listeners.borrow();
-            if listeners.iter().any(|listener| {
-                listener.event_type == event_type
-                    && JsObject::equals(&JsFunction::restore(&listener.callback), &callback)
-            }) {
-                return;
+            for listener in listeners.iter() {
+                if listener.event_type == event_type {
+                    let restored = JsFunction::restore(&listener.callback)?;
+                    if JsObject::equals(&restored, &callback) {
+                        return Ok(());
+                    }
+                }
             }
         }
         self.listeners.borrow_mut().push(AbortEventListener {
             event_type,
             callback: callback.store(),
         });
+        Ok(())
     }
 
-    fn remove_event_listener(&self, event_type: JsString, callback: JsFunction) {
-        self.listeners.borrow_mut().retain(|listener| {
-            listener.event_type != event_type
-                || !JsObject::equals(&JsFunction::restore(&listener.callback), &callback)
-        });
+    fn remove_event_listener(&self, event_type: JsString, callback: JsFunction) -> JsResult<()> {
+        let mut listeners = self.listeners.borrow_mut();
+        for index in 0..listeners.len() {
+            let listener = &listeners[index];
+            if listener.event_type == event_type {
+                let restored = JsFunction::restore(&listener.callback)?;
+                if JsObject::equals(&restored, &callback) {
+                    listeners.remove(index);
+                    break;
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -227,14 +264,14 @@ impl JsAbortController {
     }
 
     #[boa(getter)]
-    fn signal(&self) -> JsObject {
-        JsObject::restore(&self.signal)
+    fn signal(&self) -> JsResult<JsObject> {
+        Ok(JsObject::restore(&self.signal)?)
     }
 
     fn abort(&self, reason: Option<JsValue>, mut context: ContextAccess<'_>) -> JsResult<()> {
         let abort_reason = reason.unwrap_or_else(|| make_abort_error(context.reborrow()));
 
-        let signal_obj = self.signal();
+        let signal_obj = self.signal()?;
         let Some(signal) = signal_obj.downcast_ref::<JsAbortSignal>() else {
             return Err(js_error!(TypeError: "AbortController: invalid signal object"));
         };

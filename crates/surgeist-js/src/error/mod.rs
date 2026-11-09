@@ -4,6 +4,7 @@ use crate::ContextAccess;
 mod diagnostic;
 mod interruption;
 mod publication;
+mod rooting;
 use diagnostic::StoredDiagnostic;
 pub use diagnostic::{
     Diagnostic, DiagnosticBacktrace, DiagnosticEngine, DiagnosticFrame, DiagnosticFrames,
@@ -18,6 +19,7 @@ pub use publication::{
     DiagnosticForeignSelectedRealm, ErasedForeignSelectedRealm, ForeignSelectedRealm,
 };
 pub(crate) use publication::{RealmOwnershipMismatch, check_realm_ownership};
+pub use rooting::RootingError;
 #[cfg(test)]
 mod tests;
 
@@ -35,6 +37,7 @@ use crate::{
     },
     context::time::{JsDuration, JsInstant},
     js_string,
+    native_function::{CapturedObject, CapturedRealm, CapturedValue, NativeCapture},
     object::JsObject,
     property::PropertyDescriptor,
     realm::{Realm, RealmEdge},
@@ -712,6 +715,9 @@ impl From<crate::job::JobRegistrationError> for JsError {
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[allow(variant_size_differences)]
 pub enum EngineError {
+    /// Root restoration could not acquire the required live authority.
+    #[error("RootingError: {0}")]
+    Rooting(#[from] RootingError),
     /// Publication refused a selected realm from another runtime.
     #[error("ForeignSelectedRealm: {0}")]
     ForeignSelectedRealm(ForeignSelectedRealm),
@@ -797,6 +803,7 @@ impl EngineError {
                 identity: error.identity(),
                 cause: Box::new(error.cause().erase(context)),
             },
+            EngineError::Rooting(error) => ErasedEngineError::Rooting(error),
             EngineError::Resource(error) => ErasedEngineError::Resource(error),
             EngineError::InvalidEntryPermit => ErasedEngineError::InvalidEntryPermit,
             EngineError::ContextAccessBusy => ErasedEngineError::ContextAccessBusy,
@@ -832,6 +839,7 @@ pub(crate) struct StoredJsError {
 
 #[derive(Debug, Clone, surgeist_js_gc::heap::Trace)]
 enum StoredErrorRepr {
+    Rooting(#[heap_trace(skip)] RootingError),
     ForeignSelectedRealm {
         #[heap_trace(skip)]
         selected: surgeist_js_gc::heap::ObjectId,
@@ -888,14 +896,14 @@ enum StoredNativeErrorKind {
 }
 
 impl StoredJsError {
-    pub(crate) fn to_error(&self) -> JsError {
+    pub(crate) fn to_error(&self) -> Result<JsError, RootingError> {
         let inner = match &self.inner {
             StoredErrorRepr::ForeignSelectedRealm {
                 selected,
                 receiving,
                 original,
             } => Repr::Engine(EngineError::ForeignSelectedRealm(
-                ForeignSelectedRealm::from_stored(*selected, *receiving, original),
+                ForeignSelectedRealm::from_stored(*selected, *receiving, original)?,
             )),
             StoredErrorRepr::JobDeadlineOverflow((now, delay)) => {
                 Repr::Engine(EngineError::JobDeadlineOverflow {
@@ -904,7 +912,7 @@ impl StoredJsError {
                 })
             }
             StoredErrorRepr::ModuleInterrupted(error) => {
-                Repr::Engine(EngineError::ModuleInterrupted(error.external()))
+                Repr::Engine(EngineError::ModuleInterrupted(error.external()?))
             }
             StoredErrorRepr::InvalidEntryPermit => Repr::Engine(EngineError::InvalidEntryPermit),
             StoredErrorRepr::ContextAccessBusy => Repr::Engine(EngineError::ContextAccessBusy),
@@ -919,11 +927,25 @@ impl StoredJsError {
             StoredErrorRepr::InvocationIdExhausted => {
                 Repr::Engine(EngineError::InvocationIdExhausted)
             }
-            StoredErrorRepr::Opaque(value) => Repr::Opaque(value.to_value()),
+            StoredErrorRepr::Opaque(value) => {
+                Repr::Opaque(JsValue::restore(&CapturedValue(value.clone()))?)
+            }
             StoredErrorRepr::Native(error) => Repr::Native(Box::new(JsNativeError {
                 kind: match &error.kind {
                     StoredNativeErrorKind::Aggregate(errors) => {
-                        JsNativeErrorKind::Aggregate(errors.iter().map(Self::to_error).collect())
+                        errors
+                            .len()
+                            .checked_mul(std::mem::size_of::<JsError>())
+                            .filter(|bytes| *bytes <= isize::MAX as usize)
+                            .ok_or(RootingError::SizeOverflow)?;
+                        let mut restored = Vec::new();
+                        restored
+                            .try_reserve_exact(errors.len())
+                            .map_err(|_| RootingError::Allocation)?;
+                        for error in errors {
+                            restored.push(error.to_error()?);
+                        }
+                        JsNativeErrorKind::Aggregate(restored)
                     }
                     StoredNativeErrorKind::Error => JsNativeErrorKind::Error,
                     StoredNativeErrorKind::Eval => JsNativeErrorKind::Eval,
@@ -934,11 +956,20 @@ impl StoredJsError {
                     StoredNativeErrorKind::Uri => JsNativeErrorKind::Uri,
                 },
                 message: error.message.clone(),
-                cause: error.cause.as_ref().map(|error| Box::new(error.to_error())),
-                realm: error.realm.clone().map(Realm::from_edge),
+                cause: error
+                    .cause
+                    .as_ref()
+                    .map(|error| error.to_error().map(Box::new))
+                    .transpose()?,
+                realm: error
+                    .realm
+                    .as_ref()
+                    .map(|realm| Realm::restore(&CapturedRealm(realm.clone())))
+                    .transpose()?,
                 stack: error.stack.clone(),
             })),
             StoredErrorRepr::RuntimeLimit(error) => Repr::Engine(EngineError::RuntimeLimit(*error)),
+            StoredErrorRepr::Rooting(error) => Repr::Engine(EngineError::Rooting(*error)),
             StoredErrorRepr::Resource(error) => Repr::Engine(EngineError::Resource(*error)),
             StoredErrorRepr::ScopeAnalysis(error) => {
                 Repr::Engine(EngineError::ScopeAnalysis(*error))
@@ -946,7 +977,10 @@ impl StoredJsError {
             StoredErrorRepr::Panic { message, source } => {
                 Repr::Engine(EngineError::Panic(PanicError {
                     message: message.clone(),
-                    source: source.as_ref().map(StoredDiagnostic::to_external),
+                    source: source
+                        .as_ref()
+                        .map(StoredDiagnostic::to_external)
+                        .transpose()?,
                 }))
             }
             #[cfg(feature = "fuzz")]
@@ -954,10 +988,10 @@ impl StoredJsError {
                 Repr::Engine(EngineError::NoInstructionsRemain)
             }
         };
-        JsError {
+        Ok(JsError {
             inner,
             backtrace: self.backtrace.clone(),
-        }
+        })
     }
 }
 
@@ -1076,6 +1110,7 @@ impl JsError {
                 StoredErrorRepr::InvocationIdExhausted
             }
             Repr::Engine(EngineError::RuntimeLimit(error)) => StoredErrorRepr::RuntimeLimit(error),
+            Repr::Engine(EngineError::Rooting(error)) => StoredErrorRepr::Rooting(error),
             Repr::Engine(EngineError::Resource(error)) => StoredErrorRepr::Resource(error),
             Repr::Engine(EngineError::ScopeAnalysis(error)) => {
                 StoredErrorRepr::ScopeAnalysis(error)
@@ -2331,6 +2366,9 @@ impl ErasedPanicError {
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[allow(variant_size_differences)]
 pub enum ErasedEngineError {
+    /// Root restoration could not acquire the required live authority.
+    #[error("RootingError: {0}")]
+    Rooting(#[from] RootingError),
     /// Publication refused a selected realm from another runtime.
     #[error("ForeignSelectedRealm: {0}")]
     ForeignSelectedRealm(ErasedForeignSelectedRealm),
@@ -2617,7 +2655,7 @@ mod job_identity_storage_tests {
         let stored = error.into_stored();
         drop(owner);
         for _ in 0..2 {
-            let restored = stored.to_error();
+            let restored = stored.to_error().unwrap();
             assert_eq!(
                 restored.as_engine(),
                 Some(&EngineError::JobContextRequired {

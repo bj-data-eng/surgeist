@@ -1,6 +1,89 @@
 use crate::test::{TestAction, run_test_actions};
 
 #[test]
+fn expired_listener_finishes_committed_abort_without_publishing_prepared_prefix() {
+    use crate::publication_test_support::PublicationExecutor;
+    use std::rc::Rc;
+    use surgeist_js::{
+        Context, JsObject, JsValue, Runtime, Source,
+        error::{EngineError, RootingError},
+        js_string,
+        native_function::NativeCapture,
+        object::builtins::JsFunction,
+    };
+
+    let executor = Rc::new(PublicationExecutor::new(Some(0)));
+    let mut context = Context::builder()
+        .job_executor(executor.clone())
+        .build()
+        .unwrap();
+    let signal = super::JsAbortSignal::default();
+    let first = context.eval(Source::from_bytes("(() => {})")).unwrap();
+    let first = JsFunction::from_object(first.as_object().unwrap()).unwrap();
+    signal
+        .add_event_listener(js_string!("abort"), first.clone(), context.access())
+        .unwrap();
+
+    let expired_runtime = Runtime::default();
+    {
+        let mut expired_context = Context::builder()
+            .runtime(expired_runtime.clone())
+            .build()
+            .unwrap();
+        let later = expired_context
+            .eval(Source::from_bytes("(() => {})"))
+            .unwrap();
+        let later = JsFunction::from_object(later.as_object().unwrap()).unwrap();
+        signal
+            .add_event_listener(js_string!("abort"), later, expired_context.access())
+            .unwrap();
+    }
+    drop(expired_runtime);
+
+    let token = signal.cancellation_token();
+    let error = signal
+        .signal_abort(JsValue::new(42), context.access())
+        .unwrap_err();
+    assert_eq!(
+        error.as_engine(),
+        Some(&EngineError::Rooting(RootingError::Expired))
+    );
+    assert!(signal.is_aborted());
+    assert!(token.is_cancelled());
+    assert_eq!(
+        signal.abort_reason(context.access()).unwrap(),
+        JsValue::new(42)
+    );
+    assert_eq!(executor.attempts.get(), 0);
+    assert!(executor.observations.borrow().is_empty());
+    {
+        let listeners = signal.listeners.borrow();
+        assert_eq!(listeners.len(), 2);
+        assert!(JsObject::equals(
+            &JsFunction::restore(&listeners[0].callback).unwrap(),
+            &first,
+        ));
+        assert!(matches!(
+            JsFunction::restore(&listeners[1].callback),
+            Err(RootingError::Expired)
+        ));
+    }
+
+    signal
+        .signal_abort(JsValue::new(43), context.access())
+        .unwrap();
+    assert!(signal.is_aborted());
+    assert!(token.is_cancelled());
+    assert_eq!(
+        signal.abort_reason(context.access()).unwrap(),
+        JsValue::new(42)
+    );
+    assert_eq!(executor.attempts.get(), 0);
+    assert!(executor.observations.borrow().is_empty());
+    assert_eq!(signal.listeners.borrow().len(), 2);
+}
+
+#[test]
 fn publication_failure_finishes_abort_and_every_listener_tail() {
     use crate::publication_test_support::PublicationExecutor;
     use std::rc::Rc;
@@ -22,7 +105,9 @@ fn publication_failure_finishes_abort_and_every_listener_tail() {
         for _ in 0..2 {
             let callback = context.eval(Source::from_bytes("(() => {})")).unwrap();
             let callback = JsFunction::from_object(callback.as_object().unwrap()).unwrap();
-            signal.add_event_listener(js_string!("abort"), callback, context.access());
+            signal
+                .add_event_listener(js_string!("abort"), callback, context.access())
+                .unwrap();
         }
         let token = signal.cancellation_token();
         let error = signal
@@ -34,7 +119,10 @@ fn publication_failure_finishes_abort_and_every_listener_tail() {
         );
         assert!(signal.is_aborted());
         assert!(token.is_cancelled());
-        assert_eq!(signal.abort_reason(context.access()), JsValue::new(42));
+        assert_eq!(
+            signal.abort_reason(context.access()).unwrap(),
+            JsValue::new(42)
+        );
         assert_eq!(executor.attempts.get(), 2);
         let observations = executor.observations.borrow();
         let dropped = JobStatus::Retired(JobRetirement::Dropped);
@@ -53,7 +141,10 @@ fn publication_failure_finishes_abort_and_every_listener_tail() {
             .signal_abort(JsValue::new(43), context.access())
             .unwrap();
         assert_eq!(executor.attempts.get(), 2);
-        assert_eq!(signal.abort_reason(context.access()), JsValue::new(42));
+        assert_eq!(
+            signal.abort_reason(context.access()).unwrap(),
+            JsValue::new(42)
+        );
         if let Some(index) = accepted_attempt {
             context.run_jobs().unwrap();
             assert_eq!(

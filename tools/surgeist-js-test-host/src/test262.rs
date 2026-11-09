@@ -277,8 +277,8 @@ impl<T: Trace> NativeCapture for AgentCapture<T> {
         }
     }
 
-    fn restore(stored: &Self) -> Self {
-        stored.store()
+    fn restore(stored: &Self) -> Result<Self, surgeist_js::error::RootingError> {
+        Ok(stored.store())
     }
 }
 

@@ -26,7 +26,7 @@ use crate::{
     },
     bytecompiler::ToJsString,
     environments::{DeclarativeEnvironmentEdge, DeclarativeEnvironmentRef, StoredEnvironmentStack},
-    error::StoredJsError,
+    error::{RootingError, StoredJsError},
     job::{ContextTask, NativeAsyncJob, UnwindCleanup},
     js_string,
     module::ModuleKind,
@@ -218,14 +218,14 @@ impl ModuleStatus {
 
     /// If this module is the top module being evaluated and is in the evaluating state, gets its top
     /// level capability.
-    fn top_level_capability(&self) -> Option<PromiseCapability> {
+    fn top_level_capability(&self) -> Result<Option<PromiseCapability>, RootingError> {
         match &self {
             Self::Unlinked { .. }
             | Self::Linking { .. }
             | Self::Pending { .. }
             | Self::Preparing { .. }
             | Self::Transitioning
-            | Self::Linked { .. } => None,
+            | Self::Linked { .. } => Ok(None),
             Self::Evaluating {
                 top_level_capability,
                 ..
@@ -239,7 +239,8 @@ impl ModuleStatus {
                 ..
             } => top_level_capability
                 .as_ref()
-                .map(StoredPromiseCapability::to_capability),
+                .map(StoredPromiseCapability::to_capability)
+                .transpose(),
         }
     }
 
@@ -973,7 +974,7 @@ impl SourceTextModule {
             source.notify_terminal_target(target, context)?;
             return Err(error);
         }
-        let cached = source.status.borrow().top_level_capability();
+        let cached = source.status.borrow().top_level_capability()?;
         if let Some(capability) = cached {
             source.connect_target(&capability, bridge, context)?;
             if let Some(error) = source.evaluation.error(&module) {
@@ -1009,7 +1010,7 @@ impl SourceTextModule {
             source.notify_terminal_target(target, context)?;
             return Err(error);
         }
-        let cached = source.status.borrow().top_level_capability();
+        let cached = source.status.borrow().top_level_capability()?;
         if let Some(existing) = cached {
             source.connect_target(&existing, bridge, context)?;
             if let Some(error) = source.evaluation.error(&module) {
@@ -1039,8 +1040,9 @@ impl SourceTextModule {
                     error,
                     ..
                 } => {
+                    let error = error.as_ref().map(StoredJsError::to_error).transpose()?;
                     *top_level_capability = Some(capability.stored());
-                    Some(Some(error.clone()))
+                    Some(Some(error))
                 }
                 ModuleStatus::Linked { .. } => None,
                 _ => unreachable!("native evaluation requires linked or completed source"),
@@ -1051,7 +1053,7 @@ impl SourceTextModule {
             prepared.notify();
             if let Some(error) = existing {
                 if let Some(error) = error {
-                    let value = error.to_error().into_opaque(context.access())?;
+                    let value = error.into_opaque(context.access())?;
                     capability
                         .reject()
                         .call(&JsValue::undefined(), &[value], context.access())?;
@@ -1116,7 +1118,13 @@ impl SourceTextModule {
                                 },
                                 _ => unreachable!("DFS owns evaluating records"),
                             });
-                        if record.status.borrow().top_level_capability().is_none() {
+                        if matches!(
+                            &*record.status.borrow(),
+                            ModuleStatus::Evaluated {
+                                top_level_capability: None,
+                                ..
+                            }
+                        ) {
                             record.evaluation.complete();
                         }
                     }
@@ -1190,11 +1198,10 @@ impl SourceTextModule {
             //     a. If module.[[EvaluationError]] is empty, return index.
             //     b. Otherwise, return ? module.[[EvaluationError]].
             ModuleStatus::Evaluated { error, .. } => {
-                return error
-                    .as_ref()
-                    .map_or(Ok(EvaluationProgress::new(index)), |error| {
-                        Err(error.to_error())
-                    });
+                return match error.as_ref() {
+                    Some(error) => Err(error.to_error()?),
+                    None => Ok(EvaluationProgress::new(index)),
+                };
             }
             ModuleStatus::Linked { .. } => {
                 // 4. Assert: module.[[Status]] is linked.
@@ -1299,7 +1306,7 @@ impl SourceTextModule {
                             // 3. If requiredModule.[[EvaluationError]] is not empty, return ? requiredModule.[[EvaluationError]].
                             ModuleStatus::Evaluated {
                                 error: Some(error), ..
-                            } => return Err(error.to_error()),
+                            } => return Err(error.to_error()?),
                             ModuleStatus::Evaluated { .. } => (cycle_root.clone(), false, None),
                             _ => unreachable!(
                                 "2. Assert: requiredModule.[[Status]] is either evaluating-async or evaluated."
@@ -1463,13 +1470,11 @@ impl SourceTextModule {
 
                 if matches!(
                     &*required_module_src.status.borrow(),
-                    ModuleStatus::Evaluated { .. }
+                    ModuleStatus::Evaluated {
+                        top_level_capability: None,
+                        ..
+                    }
                 ) && !stopped
-                    && required_module_src
-                        .status
-                        .borrow()
-                        .top_level_capability()
-                        .is_none()
                 {
                     required_module_src.evaluation.complete();
                 }
@@ -1686,7 +1691,7 @@ impl SourceTextModule {
         // 5. Assert: module has been linked and declarations in its module environment have been instantiated.
         // 6. Set the VariableEnvironment of moduleContext to module.[[Environment]].
         // 7. Set the LexicalEnvironment of moduleContext to module.[[Environment]].
-        let environments = environments.to_stack();
+        let environments = environments.to_stack()?;
         let env_fp = environments.len() as u32;
         let permit = context.reserve_guest_entry(codeblock.clone(), 0)?;
         let active = ActivatedCode::from_installed(codeblock)?;
@@ -1939,6 +1944,8 @@ fn async_module_execution_fulfilled_run(module: &Module, context: &mut Context) 
         return Ok(());
     }
 
+    let capability = { module_src.status.borrow().top_level_capability()? };
+
     // 2. Assert: module.[[Status]] is evaluating-async.
     // 3. Assert: module.[[AsyncEvaluationOrder]] is an integer.
     // 4. Assert: module.[[EvaluationError]] is empty.
@@ -1962,11 +1969,10 @@ fn async_module_execution_fulfilled_run(module: &Module, context: &mut Context) 
             _ => unreachable!(),
         });
 
-    if module_src.status.borrow().top_level_capability().is_none() {
+    if capability.is_none() {
         module_src.evaluation.complete();
     }
     // 7. If module.[[TopLevelCapability]] is not empty, then
-    let capability = { module_src.status.borrow().top_level_capability() };
     if let Some(cap) = capability {
         // a. Assert: module.[[CycleRoot]] and module are the same Module Record.
         debug_assert_eq!(
@@ -2118,34 +2124,45 @@ impl OrdinaryQueue {
     }
     fn drain(mut self, context: &mut Context, mut stopped: bool) -> JsResult<bool> {
         let mut failures = ModuleCompletionFailures::default();
-        while let Some(module) = self.head.take() {
+        while let Some(module) = self.head.clone() {
             let source = module.kind().as_source_text().expect("source work");
-            self.head = source.evaluation.take_ordinary_next();
             if source.evaluation.cause().is_some() {
+                self.head = source.evaluation.take_ordinary_next();
                 continue;
             }
             // Restore the owned rejection while the status still traces its
             // complete stored graph. Release that shared borrow before taking
             // or disposing the old stored value and publishing transitions.
-            let completion: Option<JsResult<()>> = {
+            let completion: Result<Option<JsResult<()>>, RootingError> = {
                 let status = source.status.borrow();
                 let ModuleStatus::EvaluatingAsync {
                     inline_completion, ..
                 } = &*status
                 else {
+                    drop(status);
+                    self.head = source.evaluation.take_ordinary_next();
                     continue;
                 };
                 if stopped {
-                    None
+                    Ok(None)
                 } else {
                     inline_completion
                         .as_ref()
                         .map(|completion| match completion {
-                            InlineCompletion::Fulfilled => Ok(()),
-                            InlineCompletion::Rejected(error) => Err(error.to_error()),
+                            InlineCompletion::Fulfilled => Ok(Ok(())),
+                            InlineCompletion::Rejected(error) => error.to_error().map(Err),
                         })
+                        .transpose()
                 }
             };
+            let completion = match completion {
+                Ok(completion) => completion,
+                Err(error) => {
+                    failures.record(error.into(), context);
+                    break;
+                }
+            };
+            self.head = source.evaluation.take_ordinary_next();
             let deferred = source.evaluation.take_deferred_ready();
             let stored = {
                 let mut status = source.status.borrow_mut();
@@ -2256,6 +2273,8 @@ fn async_module_execution_rejected_run(
         return Ok(());
     }
 
+    let capability = { module_src.status.borrow().top_level_capability()? };
+
     // 2. Assert: module.[[Status]] is evaluating-async.
     // 3. Assert: module.[[AsyncEvaluationOrder]] is an integer..
     // 4. Assert: module.[[EvaluationError]] is empty.
@@ -2280,7 +2299,7 @@ fn async_module_execution_rejected_run(
             _ => unreachable!(),
         });
 
-    if module_src.status.borrow().top_level_capability().is_none() {
+    if capability.is_none() {
         module_src.evaluation.complete();
     }
     // 8. NOTE: module.[[AsyncEvaluationOrder]] is set to done for symmetry with
@@ -2288,7 +2307,6 @@ fn async_module_execution_rejected_run(
     //    module's [[AsyncEvaluationOrder]] internal slot is unused when its
     //    [[EvaluationError]] internal slot is not empty.
 
-    let capability = { module_src.status.borrow().top_level_capability() };
     if let Some(cap) = capability {
         debug_assert_eq!(
             module_src.status.borrow().cycle_root(),

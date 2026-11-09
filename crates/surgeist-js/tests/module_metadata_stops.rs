@@ -50,11 +50,11 @@ impl NativeCapture for Capture {
         }
     }
 
-    fn restore(stored: &Self::Stored) -> Self {
-        Self {
-            value: JsObject::restore(&stored.value),
+    fn restore(stored: &Self::Stored) -> Result<Self, surgeist_js::error::RootingError> {
+        Ok(Self {
+            value: JsObject::restore(&stored.value)?,
             observation: stored.observation.clone(),
-        }
+        })
     }
 }
 

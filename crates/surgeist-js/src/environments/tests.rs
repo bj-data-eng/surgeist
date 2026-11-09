@@ -35,6 +35,7 @@ fn cloned_and_captured_scopes_keep_outer_bindings_alive() {
 
     let outer = captured
         .to_stack()
+        .unwrap()
         .get(outer as usize)
         .and_then(super::Environment::into_declarative)
         .unwrap();
@@ -205,7 +206,15 @@ fn private_module_captures_reject_foreign_scopes_and_code_identity() {
     let capture: Result<_, ScopeAnalysisError<()>> =
         own.with_access(None, |access| environment.capture_for(&owned_code, access));
     let capture = capture.unwrap();
-    assert_eq!(capture.stored_for(&owned_code).unwrap().to_stack().len(), 1);
+    assert_eq!(
+        capture
+            .stored_for(&owned_code)
+            .unwrap()
+            .to_stack()
+            .unwrap()
+            .len(),
+        1
+    );
     let other_code = code(own_scope);
     assert_eq!(
         capture.stored_for(&other_code).unwrap_err().as_engine(),

@@ -2,7 +2,11 @@
 
 #![allow(clippy::inline_always)]
 
-use crate::{Context, JsError, JsResult, JsValue};
+use crate::{
+    Context, JsError, JsResult, JsValue,
+    error::RootingError,
+    native_function::{CapturedValue, NativeCapture},
+};
 use std::ops::ControlFlow;
 
 /// An implementation of the ECMAScript's `CompletionRecord` [specification] for
@@ -24,12 +28,16 @@ pub(crate) enum StoredCompletionRecord {
 }
 
 impl StoredCompletionRecord {
-    pub(crate) fn to_completion(&self) -> CompletionRecord {
-        match self {
-            Self::Normal(value) => CompletionRecord::Normal(value.to_value()),
-            Self::Return(value) => CompletionRecord::Return(value.to_value()),
-            Self::Throw(error) => CompletionRecord::Throw(error.to_error()),
-        }
+    pub(crate) fn to_completion(&self) -> Result<CompletionRecord, RootingError> {
+        Ok(match self {
+            Self::Normal(value) => {
+                CompletionRecord::Normal(JsValue::restore(&CapturedValue(value.clone()))?)
+            }
+            Self::Return(value) => {
+                CompletionRecord::Return(JsValue::restore(&CapturedValue(value.clone()))?)
+            }
+            Self::Throw(error) => CompletionRecord::Throw(error.to_error()?),
+        })
     }
 }
 

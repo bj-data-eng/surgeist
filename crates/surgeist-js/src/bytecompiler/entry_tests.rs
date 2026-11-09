@@ -39,8 +39,8 @@ impl NativeCapture for ScriptCapture {
         self.0.edge()
     }
 
-    fn restore(stored: &Self::Stored) -> Self {
-        Self(Script::from_edge(stored.clone()))
+    fn restore(stored: &Self::Stored) -> Result<Self, crate::error::RootingError> {
+        Ok(Self(Script::from_edge(stored.clone())?))
     }
 }
 

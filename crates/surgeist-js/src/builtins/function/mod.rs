@@ -1151,11 +1151,12 @@ pub(crate) fn function_call(
         context.check_runtime_limits()?;
     }
     let code = ordinary_call_code(&function, realm.clone())?;
-    let environments = function.environments.to_stack();
+    let environments = function.environments.to_stack()?;
     let script_or_module = function
         .script_or_module
         .as_ref()
-        .map(StoredActiveRunnable::to_runnable);
+        .map(StoredActiveRunnable::to_runnable)
+        .transpose()?;
 
     drop(function);
 
@@ -1271,11 +1272,12 @@ fn function_construct(
     if entry.is_none() {
         context.check_runtime_limits()?;
     }
-    let environments = function.environments.to_stack();
+    let environments = function.environments.to_stack()?;
     let script_or_module = function
         .script_or_module
         .as_ref()
-        .map(StoredActiveRunnable::to_runnable);
+        .map(StoredActiveRunnable::to_runnable)
+        .transpose()?;
     drop(function);
 
     let env_fp = environments.len() as u32;

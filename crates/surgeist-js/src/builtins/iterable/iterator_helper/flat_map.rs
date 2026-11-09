@@ -1,6 +1,7 @@
 use crate::{
     Context, JsValue,
     builtins::iterable::{IteratorRecord, get_iterator_flattenable},
+    error::RootingError,
     native_function::{CoroutineBranch, CoroutineState, NativeCoroutine},
     object::JsFunction,
     vm::CompletionRecord,
@@ -23,14 +24,14 @@ impl FlatMap {
         iterated: IteratorRecord,
         mapper: JsFunction,
         context: &Context,
-    ) -> NativeCoroutine {
+    ) -> Result<NativeCoroutine, RootingError> {
         // 6. Let closure be a new Abstract Closure with no parameters that captures
         //    iterated and mapper and performs the following steps when called:
         NativeCoroutine::from_fn_with_state(
             // a. Let counter be 0.
             // b. Repeat,
-            |completion, (), state, context| {
-                let Some((mut iterated, mapper, mut counter, mut inner)) = state.take() else {
+            |completion, (), prepared, state, context| {
+                let Some((mut iterated, mapper, mut counter, mut inner)) = prepared else {
                     return CoroutineState::Break(Ok(()));
                 };
 
@@ -61,7 +62,9 @@ impl FlatMap {
                             context
                         );
                         if let Some(value) = inner_value {
-                            state.set((iterated, mapper, counter, Some(inner_iterator)));
+                            state
+                                .set((iterated, mapper, counter, Some(inner_iterator)))
+                                .branch()?;
                             return CoroutineState::Continue(value);
                         }
                         // The inner iterator is done. Advance the outer iterator.

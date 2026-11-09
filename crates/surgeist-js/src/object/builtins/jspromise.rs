@@ -1295,12 +1295,16 @@ impl JsPromise {
         let reaction = |rejected: bool| {
             NativeFunction::from_builtin_with_captures(
                 |_this, args, (continuation, frame, reject, rejected): &Captures, context| {
-                    let mut generator = frame
-                        .borrow()
+                    let mut frame_slot = frame.try_borrow_mut().map_err(|_| {
+                        crate::error::RootingError::Access(
+                            surgeist_js_gc::heap::AccessError::PayloadBorrowed,
+                        )
+                    })?;
+                    let mut generator = frame_slot
                         .as_ref()
                         .map(StoredGeneratorContext::to_context)
+                        .transpose()?
                         .js_expect("continuation should only run once")?;
-                    *frame.borrow_mut() = None;
                     let value = args.get_or_undefined(0).clone();
                     let completion = if *rejected {
                         CompletionRecord::Throw(JsError::from_opaque(value))
@@ -1309,7 +1313,15 @@ impl JsPromise {
                     };
                     let result = generator
                         .with_attached(context, |context| {
-                            match continuation.call(completion, context) {
+                            match continuation.call(
+                                completion,
+                                || {
+                                    let stored = frame_slot.take();
+                                    drop(frame_slot);
+                                    drop(stored);
+                                },
+                                context,
+                            )? {
                                 ControlFlow::Continue(value) => JsPromise::resolve(
                                     value,
                                     context.access(),

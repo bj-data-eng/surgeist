@@ -64,7 +64,7 @@ impl<T: NativeCapture> Initializer for Callback<T> {
 
 impl<T: NativeCapture> StoredInitializer for StoredCallback<T> {
     fn call(&self, module: &SyntheticModule, context: &mut Context) -> JsResult<()> {
-        (self.callback)(module, &T::restore(&self.captures), context.access())
+        (self.callback)(module, &T::restore(&self.captures)?, context.access())
     }
 }
 
@@ -95,12 +95,19 @@ impl StoredInitializer for StoredNativeExports {
     fn call(&self, module: &SyntheticModule, context: &mut Context) -> JsResult<()> {
         // Preserve the original Vec capture's restore-before-execution order.
         // Restoration/instantiation belongs to evaluation, outside construction.
-        let functions: Vec<_> = self
-            .payload
+        self.payload
             .entries
-            .iter()
-            .map(|(_, function)| NativeFunction::restore(function))
-            .collect();
+            .len()
+            .checked_mul(std::mem::size_of::<NativeFunction>())
+            .filter(|bytes| *bytes <= isize::MAX as usize)
+            .ok_or(crate::error::RootingError::SizeOverflow)?;
+        let mut functions = Vec::new();
+        functions
+            .try_reserve_exact(self.payload.entries.len())
+            .map_err(|_| crate::error::RootingError::Allocation)?;
+        for (_, function) in &self.payload.entries {
+            functions.push(NativeFunction::restore(function)?);
+        }
         for ((name, _), function) in self.payload.entries.iter().zip(functions) {
             module.set_export(name, function.to_js_function(context.realm())?.into())?;
         }
@@ -484,7 +491,7 @@ impl SyntheticModule {
                 environments,
                 codeblock,
                 ..
-            } => (environments.to_stack(), codeblock.clone()),
+            } => (environments.to_stack()?, codeblock.clone()),
             ModuleStatus::Evaluated { promise, .. } => {
                 return JsPromise::from_object(JsObject::from_inner(promise.clone()));
             }

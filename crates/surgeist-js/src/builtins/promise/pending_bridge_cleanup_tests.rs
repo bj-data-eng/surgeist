@@ -47,11 +47,11 @@ impl NativeCapture for BridgeLiveCapture {
             tag: self.tag,
         }
     }
-    fn restore(stored: &Self::Stored) -> Self {
-        Self {
+    fn restore(stored: &Self::Stored) -> Result<Self, crate::error::RootingError> {
+        Ok(Self {
             shared: stored.shared.clone(),
             tag: stored.tag,
-        }
+        })
     }
 }
 impl Drop for BridgeLiveCapture {

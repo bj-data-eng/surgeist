@@ -35,8 +35,8 @@ macro_rules! impl_signature {
                     Self { callback: self.callback }
                 }
 
-                fn restore(stored: &Self) -> Self {
-                    Self { callback: stored.callback }
+                fn restore(stored: &Self) -> Result<Self, crate::error::RootingError> {
+                    Ok(Self { callback: stored.callback })
                 }
             }
 
@@ -64,11 +64,11 @@ macro_rules! impl_signature {
                     }
                 }
 
-                fn restore(stored: &Self::Stored) -> Self {
-                    Self {
+                fn restore(stored: &Self::Stored) -> Result<Self, crate::error::RootingError> {
+                    Ok(Self {
                         callback: stored.callback,
-                        captures: Captures::restore(&stored.captures),
-                    }
+                        captures: Captures::restore(&stored.captures)?,
+                    })
                 }
             }
 

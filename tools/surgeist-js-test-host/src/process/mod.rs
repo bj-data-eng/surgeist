@@ -62,8 +62,8 @@ impl<P: ProcessProvider> NativeCapture for ProviderCapture<P> {
         Self(self.0.clone())
     }
 
-    fn restore(stored: &Self) -> Self {
-        stored.store()
+    fn restore(stored: &Self) -> Result<Self, surgeist_js::error::RootingError> {
+        Ok(stored.store())
     }
 }
 

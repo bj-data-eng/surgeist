@@ -40,6 +40,26 @@ pub struct Realm {
     inner: Rooted<RealmRecord>,
 }
 
+impl crate::native_function::NativeCapture for Realm {
+    type Stored = crate::native_function::CapturedRealm;
+
+    fn store(&self) -> Self::Stored {
+        crate::native_function::CapturedRealm(self.edge())
+    }
+
+    fn restore(stored: &Self::Stored) -> Result<Self, crate::error::RootingError> {
+        use crate::error::RootingError;
+
+        let inner = stored
+            .0
+            .0
+            .upgrade()
+            .map_err(RootingError::Access)?
+            .ok_or(RootingError::Expired)?;
+        Ok(Self { inner })
+    }
+}
+
 impl Eq for Realm {}
 
 impl PartialEq for Realm {

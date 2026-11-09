@@ -436,15 +436,17 @@ pub struct StoredIteratorRecord {
 }
 
 impl StoredIteratorRecord {
-    pub(crate) fn to_iterator(&self) -> IteratorRecord {
-        IteratorRecord {
-            iterator: JsObject::from_inner(self.iterator.clone()),
-            next_method: self.next_method.to_value(),
+    pub(crate) fn to_iterator(&self) -> Result<IteratorRecord, crate::error::RootingError> {
+        use crate::native_function::{CapturedObject, CapturedValue, NativeCapture};
+
+        Ok(IteratorRecord {
+            iterator: JsObject::restore(&CapturedObject(self.iterator.clone()))?,
+            next_method: JsValue::restore(&CapturedValue(self.next_method.clone()))?,
             done: self.done,
             last_result: IteratorResult {
-                object: JsObject::from_inner(self.last_result.clone()),
+                object: JsObject::restore(&CapturedObject(self.last_result.clone()))?,
             },
-        }
+        })
     }
 }
 

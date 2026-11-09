@@ -733,7 +733,7 @@ impl NativeCapture for AsyncResult {
         self.clone()
     }
 
-    fn restore(stored: &Self) -> Self {
-        stored.clone()
+    fn restore(stored: &Self) -> Result<Self, surgeist_js::error::RootingError> {
+        Ok(stored.clone())
     }
 }

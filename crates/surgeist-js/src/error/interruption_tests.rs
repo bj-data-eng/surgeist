@@ -219,7 +219,7 @@ fn stored_owner_restores_the_same_cause_after_the_source_module_environment_is_c
         0,
         "the traced cause anchor independently preserves its leaf"
     );
-    let restored = owner.error.to_error();
+    let restored = owner.error.to_error().unwrap();
     assert_eq!(identity(&restored), interruption_identity);
     assert_leaf(&restored, leaf_identity);
     drop(owner);
@@ -373,7 +373,7 @@ fn masked_stored_interruption_restores_and_exports_after_its_foreign_runtime_is_
     let owner = store(receiving.runtime(), &masked);
     drop(masked);
     receiving.runtime().collect().unwrap();
-    let restored = owner.error.to_error();
+    let restored = owner.error.to_error().unwrap();
     assert_eq!(identity(&restored), interruption_identity);
     assert_masked(&restored);
     let exported = restored.clone().into_erased(receiving.access());
@@ -565,7 +565,7 @@ fn module_and_restored_anchor_observations_clone_and_borrow_under_a_held_heap_re
             drop(terminal);
             context.runtime().collect().unwrap();
             assert_eq!(module_drops.get(), 1);
-            let restored = owner.error.to_error();
+            let restored = owner.error.to_error().unwrap();
             drop(owner);
             restored
         } else {
@@ -881,4 +881,40 @@ fn equal_cause_identities_with_different_observation_roots_keep_every_visible_oc
     assert_eq!(drops.get(), 1);
     assert_eq!(origin_module_drops.get(), 1);
     assert_eq!(receiving_module_drops.get(), 1);
+}
+
+#[test]
+fn checked_interruption_anchor_restoration_preserves_identity_and_cause_on_retry() {
+    use super::{RetainedInterruption, RootingError};
+    use surgeist_js_gc::heap::AccessError;
+
+    let context = Context::default();
+    let (retained, anchor) = RetainedInterruption::prepare(&context).unwrap();
+    let source: JsError = EngineError::InvalidEntryPermit.into();
+    let retained = retained.seal(&source);
+    let before = retained.external().unwrap();
+    let identity = before.identity();
+    context
+        .runtime()
+        .heap
+        .read(|_| {
+            assert_eq!(
+                retained.external(),
+                Err(RootingError::Access(AccessError::HeapBorrowed))
+            );
+        })
+        .unwrap();
+    let restored = retained.external().unwrap();
+    assert_eq!(restored.identity(), identity);
+    assert_eq!(
+        restored.cause().kind(),
+        DiagnosticKind::Engine(DiagnosticEngine::InvalidEntryPermit)
+    );
+    drop(before);
+    drop(anchor);
+    context.runtime().collect().unwrap();
+    assert_eq!(restored.identity(), identity);
+    drop(restored);
+    drop(context);
+    assert_eq!(retained.external(), Err(RootingError::Expired));
 }

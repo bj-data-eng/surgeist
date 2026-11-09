@@ -46,7 +46,10 @@ fn receiving_ownership_produces_direct_type_error_and_typed_publication_refusal(
     assert_eq!(erased.selected_realm(), selected.realm().identity());
     assert_eq!(erased.receiving_realm(), receiving.realm().identity());
     assert!(erased.diagnostic().as_native().is_some());
-    assert_eq!(publication.clone().into_stored().to_error(), publication);
+    assert_eq!(
+        publication.clone().into_stored().to_error().unwrap(),
+        publication
+    );
 }
 
 #[derive(crate::JsData, surgeist_js_gc::heap::Trace)]
@@ -148,7 +151,7 @@ fn publication_diagnostic_preserves_topology_identity_trace_and_stored_edge_cust
             0,
             "stored edges retain the visible opaque member"
         );
-        let restored = owner.error.to_error();
+        let restored = owner.error.to_error().unwrap();
         let DiagnosticKind::Native(native) = payload(&restored).diagnostic().kind() else {
             panic!("aggregate")
         };
@@ -208,7 +211,7 @@ fn publication_admission_masks_a_foreign_parent_without_retaining_local_descenda
         1,
         "masked observation must release hidden descendants"
     );
-    assert_eq!(admitted.clone().into_stored().to_error(), admitted);
+    assert_eq!(admitted.clone().into_stored().to_error().unwrap(), admitted);
 }
 
 #[test]
@@ -218,7 +221,7 @@ fn deadline_failure_preserves_exact_large_operands_through_all_error_forms() {
     let delay = JsDuration::from(Duration::new(u64::MAX, 123));
     let error: JsError = EngineError::JobDeadlineOverflow { now, delay }.into();
     assert!(!error.is_catchable());
-    assert_eq!(error.clone().into_stored().to_error(), error);
+    assert_eq!(error.clone().into_stored().to_error().unwrap(), error);
     let diagnostic = PanicDiagnostic::new(error.clone());
     assert_eq!(
         diagnostic.view().kind(),
@@ -337,5 +340,5 @@ fn enclosing_diagnostic_traces_and_masks_the_nested_publication_source() {
         panic!("foreign opaque leaf is replaced")
     };
     assert_eq!(replacement.kind(), DiagnosticNativeKind::Type);
-    assert_eq!(masked.clone().into_stored().to_error(), masked);
+    assert_eq!(masked.clone().into_stored().to_error().unwrap(), masked);
 }

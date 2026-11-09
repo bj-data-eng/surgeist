@@ -1,10 +1,11 @@
 use std::{cell::RefCell, collections::VecDeque};
 
-use surgeist_js_gc::heap::{Rooted, Trace};
+use surgeist_js_gc::heap::{AccessError, Rooted, Trace};
 
 use crate::{
     Context, JsObject,
     builtins::iterable::IteratorRecord,
+    error::RootingError,
     js_error,
     native_function::{
         CapturedObject, CoroutineBranch, CoroutineState, NativeCapture, NativeCoroutine,
@@ -37,27 +38,39 @@ impl Concat {
         clippy::new_ret_no_self,
         reason = "slightly cleaner to have this be a `new` method"
     )]
-    pub(crate) fn new(iterables: VecDeque<IterableRecord>, context: &Context) -> NativeCoroutine {
+    pub(crate) fn new(
+        iterables: VecDeque<IterableRecord>,
+        context: &Context,
+    ) -> Result<NativeCoroutine, RootingError> {
         // 3. Let closure be a new Abstract Closure with no parameters that captures
         //    iterables and performs the following steps when called:
-        let pending: VecDeque<_> = iterables
-            .iter()
-            .map(|record| StoredIterableRecord {
+        iterables
+            .len()
+            .checked_mul(std::mem::size_of::<StoredIterableRecord>())
+            .filter(|bytes| *bytes <= isize::MAX as usize)
+            .ok_or(RootingError::SizeOverflow)?;
+        let mut pending = VecDeque::new();
+        pending
+            .try_reserve(iterables.len())
+            .map_err(|_| RootingError::Allocation)?;
+        for record in &iterables {
+            pending.push_back(StoredIterableRecord {
                 iterable: record.iterable.store(),
                 open_method: record.open_method.store(),
-            })
-            .collect();
+            });
+        }
         let pending = context
             .runtime()
             .heap
             .allocate(RefCell::new(pending))
-            .expect("iterables belong to the continuation runtime");
+            .map_err(|rejected| RootingError::Access(rejected.reason))?;
         NativeCoroutine::from_fn_with_state::<_, Option<IteratorRecord>>(
             |completion,
              pending: &Rooted<RefCell<VecDeque<StoredIterableRecord>>>,
+             prepared,
              state,
              context| {
-                let Some(mut current) = state.take() else {
+                let Some(mut current) = prepared else {
                     return CoroutineState::Break(Ok(()));
                 };
 
@@ -71,20 +84,25 @@ impl Concat {
                     if let Some(mut iterator) = current.take()
                         && let Some(value) = iterator.step_value(context).branch()?
                     {
-                        state.set(Some(iterator));
+                        state.set(Some(iterator)).branch()?;
                         return CoroutineState::Continue(value);
                     }
 
-                    let record = pending.borrow_mut().pop_front();
-                    let Some(StoredIterableRecord {
-                        iterable,
-                        open_method,
-                    }) = record
-                    else {
-                        return CoroutineState::Break(Ok(()));
+                    let (iterable, open_method, removed) = {
+                        let mut pending = pending
+                            .try_borrow_mut()
+                            .map_err(|_| RootingError::Access(AccessError::PayloadBorrowed))
+                            .branch()?;
+                        let Some(record) = pending.front() else {
+                            return CoroutineState::Break(Ok(()));
+                        };
+                        // Acquire both live roots before withdrawing the stored
+                        // front. Capture restoration cannot reenter this owner.
+                        let iterable: JsObject = JsObject::restore(&record.iterable).branch()?;
+                        let open_method = JsFunction::restore(&record.open_method).branch()?;
+                        (iterable, open_method, pending.pop_front())
                     };
-                    let iterable: JsObject = JsObject::restore(&iterable);
-                    let open_method = JsFunction::restore(&open_method);
+                    drop(removed);
                     let iter = open_method
                         .call(&iterable.into(), &[], context.access())
                         .branch()?;

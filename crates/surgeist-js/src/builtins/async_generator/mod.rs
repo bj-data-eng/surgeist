@@ -427,6 +427,16 @@ impl AsyncGenerator {
     ) -> JsResult<()> {
         // 1. Assert: generator.[[AsyncGeneratorQueue]] is not empty.
         // 2. Let next be the first element of generator.[[AsyncGeneratorQueue]].
+        // Prepare step 4 while the queue still traces the entire request.
+        let promise_capability = {
+            let generator = generator.borrow();
+            let next = generator
+                .data()
+                .queue
+                .front()
+                .js_expect("1. Assert: generator.[[AsyncGeneratorQueue]] is not empty.")?;
+            next.capability.to_capability()?
+        };
         // 3. Remove the first element from generator.[[AsyncGeneratorQueue]].
         let next = generator
             .borrow_mut()
@@ -434,9 +444,6 @@ impl AsyncGenerator {
             .queue
             .pop_front()
             .js_expect("1. Assert: generator.[[AsyncGeneratorQueue]] is not empty.")?;
-
-        // 4. Let promiseCapability be next.[[Capability]].
-        let promise_capability = next.capability.to_capability();
 
         // 5. Let value be completion.[[Value]].
         match completion {
@@ -480,6 +487,8 @@ impl AsyncGenerator {
                 )?;
             }
         }
+        // The removed stored request is disposed with no generator borrow held.
+        drop(next);
         // 8. Return unused.
         Ok(())
     }
@@ -506,16 +515,26 @@ impl AsyncGenerator {
         ));
 
         // 2. Let genContext be generator.[[AsyncGeneratorContext]].
-        let mut generator_context = generator
-            .borrow_mut()
-            .data_mut()
-            .context
-            .take()
-            .js_expect("generator context cannot be empty here")?
-            .to_context();
+        let mut generator_context = {
+            let generator = generator.borrow();
+            generator
+                .data()
+                .context
+                .as_ref()
+                .js_expect("generator context cannot be empty here")?
+                .to_context()?
+        };
 
-        // 5. Set generator.[[AsyncGeneratorState]] to executing.
-        generator.borrow_mut().data_mut().state = AsyncGeneratorState::Executing;
+        // 5. Set generator.[[AsyncGeneratorState]] to executing only after the
+        // complete suspended context has acquired independent live roots.
+        let stored = {
+            let mut generator = generator.borrow_mut();
+            let data = generator.data_mut();
+            let stored = data.context.take();
+            data.state = AsyncGeneratorState::Executing;
+            stored
+        };
+        drop(stored);
 
         let (value, resume_kind) = match completion {
             CompletionRecord::Normal(val) => (val, GeneratorResumeKind::Normal),
@@ -764,7 +783,7 @@ impl AsyncGenerator {
                 .front()
                 .js_expect("must have entry")?
                 .completion
-                .to_completion();
+                .to_completion()?;
 
             // b. Let completion be Completion(next.[[Completion]]).
             match next {

@@ -52,7 +52,10 @@ fn restoring_an_expired_native_capture_does_not_unwind_rust() {
         attempt.is_ok(),
         "expired capture restoration must refuse without a Rust unwind"
     );
-    drop(attempt);
+    assert!(matches!(
+        attempt.unwrap(),
+        Err(surgeist_js::error::RootingError::Expired)
+    ));
     assert_eq!(heap.collect().unwrap(), 0);
     assert_eq!(drops.get(), 1);
     drop(stored);
@@ -72,7 +75,7 @@ fn restoring_a_live_native_capture_preserves_identity_and_root_custody() {
         .unwrap();
     let identity = original.handle().erase();
     let stored = <Rooted<Payload> as NativeCapture>::store(&original);
-    let restored = <Rooted<Payload> as NativeCapture>::restore(&stored);
+    let restored = <Rooted<Payload> as NativeCapture>::restore(&stored).unwrap();
     assert_eq!(restored.handle().erase(), identity);
     assert_eq!(restored.value, 73);
     drop(original);

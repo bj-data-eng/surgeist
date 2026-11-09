@@ -3,9 +3,10 @@
 use surgeist_js_gc::heap::{RecordRef, Rooted, Trace};
 
 use crate::{
-    JsObject, JsValue,
+    JsObject,
+    error::RootingError,
     object::{JsFunction, NativeObject, ObjectEdge},
-    realm::{Realm, RealmEdge},
+    realm::RealmEdge,
     value::StoredValue,
 };
 
@@ -23,7 +24,11 @@ pub trait NativeCapture: 'static {
     fn store(&self) -> Self::Stored;
 
     /// Restores the capture while the owning function is rooted.
-    fn restore(stored: &Self::Stored) -> Self;
+    ///
+    /// Returns only after acquiring all roots required by the live capture.
+    fn restore(stored: &Self::Stored) -> Result<Self, RootingError>
+    where
+        Self: Sized;
 }
 
 impl<T: Trace> NativeCapture for Rooted<T> {
@@ -33,17 +38,17 @@ impl<T: Trace> NativeCapture for Rooted<T> {
         self.record_ref()
     }
 
-    fn restore(stored: &Self::Stored) -> Self {
+    fn restore(stored: &Self::Stored) -> Result<Self, RootingError> {
         stored
             .upgrade()
-            .expect("capture heap is available")
-            .expect("live function retains capture")
+            .map_err(RootingError::Access)?
+            .ok_or(RootingError::Expired)
     }
 }
 
 /// An object captured in a native function record.
 #[derive(Debug, Clone, Trace)]
-pub struct CapturedObject(ObjectEdge);
+pub struct CapturedObject(pub(crate) ObjectEdge);
 
 impl NativeCapture for JsObject {
     type Stored = CapturedObject;
@@ -52,8 +57,12 @@ impl NativeCapture for JsObject {
         CapturedObject(self.edge())
     }
 
-    fn restore(stored: &Self::Stored) -> Self {
-        Self::from_inner(stored.0.clone())
+    fn restore(stored: &Self::Stored) -> Result<Self, RootingError> {
+        stored
+            .0
+            .upgrade()
+            .map_err(RootingError::Access)?
+            .ok_or(RootingError::Expired)
     }
 }
 
@@ -64,10 +73,10 @@ impl<T: NativeObject> NativeCapture for JsObject<T> {
         CapturedObject(self.edge())
     }
 
-    fn restore(stored: &Self::Stored) -> Self {
-        JsObject::from_inner(stored.0.clone())
+    fn restore(stored: &Self::Stored) -> Result<Self, RootingError> {
+        JsObject::restore(stored)?
             .downcast()
-            .expect("capture retains its native brand")
+            .map_err(|_| RootingError::WrongNativeBrand)
     }
 }
 
@@ -78,42 +87,18 @@ impl NativeCapture for JsFunction {
         CapturedObject(self.clone().into_record())
     }
 
-    fn restore(stored: &Self::Stored) -> Self {
-        Self::from_record(stored.0.clone())
+    fn restore(stored: &Self::Stored) -> Result<Self, RootingError> {
+        Self::from_object(JsObject::restore(stored)?).ok_or(RootingError::NotCallable)
     }
 }
 
 /// A JavaScript value captured in a native function record.
 #[derive(Debug, Clone, Trace)]
-pub struct CapturedValue(StoredValue);
-
-impl NativeCapture for JsValue {
-    type Stored = CapturedValue;
-
-    fn store(&self) -> Self::Stored {
-        CapturedValue(self.clone().into_stored())
-    }
-
-    fn restore(stored: &Self::Stored) -> Self {
-        stored.0.to_value()
-    }
-}
+pub struct CapturedValue(pub(crate) StoredValue);
 
 /// A realm captured in a native function record.
 #[derive(Debug, Clone, Trace)]
-pub struct CapturedRealm(RealmEdge);
-
-impl NativeCapture for Realm {
-    type Stored = CapturedRealm;
-
-    fn store(&self) -> Self::Stored {
-        CapturedRealm(self.edge())
-    }
-
-    fn restore(stored: &Self::Stored) -> Self {
-        Self::from_edge(stored.0.clone())
-    }
-}
+pub struct CapturedRealm(pub(crate) RealmEdge);
 
 macro_rules! capture_leaf {
     ($($type:ty),+ $(,)?) => {
@@ -125,8 +110,8 @@ macro_rules! capture_leaf {
                     self.clone()
                 }
 
-                fn restore(stored: &Self) -> Self {
-                    stored.clone()
+                fn restore(stored: &Self) -> Result<Self, RootingError> {
+                    Ok(stored.clone())
                 }
             }
         )+
@@ -142,8 +127,8 @@ impl<T: NativeCapture> NativeCapture for Option<T> {
         self.as_ref().map(T::store)
     }
 
-    fn restore(stored: &Self::Stored) -> Self {
-        stored.as_ref().map(T::restore)
+    fn restore(stored: &Self::Stored) -> Result<Self, RootingError> {
+        stored.as_ref().map(T::restore).transpose()
     }
 }
 
@@ -154,8 +139,22 @@ impl<T: NativeCapture> NativeCapture for Vec<T> {
         self.iter().map(T::store).collect()
     }
 
-    fn restore(stored: &Self::Stored) -> Self {
-        stored.iter().map(T::restore).collect()
+    fn restore(stored: &Self::Stored) -> Result<Self, RootingError> {
+        let bytes = stored
+            .len()
+            .checked_mul(std::mem::size_of::<T>())
+            .ok_or(RootingError::SizeOverflow)?;
+        if bytes > isize::MAX as usize {
+            return Err(RootingError::SizeOverflow);
+        }
+        let mut restored = Self::new();
+        restored
+            .try_reserve_exact(stored.len())
+            .map_err(|_| RootingError::Allocation)?;
+        for capture in stored {
+            restored.push(T::restore(capture)?);
+        }
+        Ok(restored)
     }
 }
 
@@ -168,8 +167,8 @@ macro_rules! capture_tuple {
                 ($(self.$field.store(),)+)
             }
 
-            fn restore(stored: &Self::Stored) -> Self {
-                ($($type::restore(&stored.$field),)+)
+            fn restore(stored: &Self::Stored) -> Result<Self, RootingError> {
+                Ok(($($type::restore(&stored.$field)?,)+))
             }
         }
     };
