@@ -102,6 +102,7 @@ pub fn surgeist_ledger::Operation<W, R>::apply_batch(&mut self, scope: surgeist_
 pub fn surgeist_ledger::Operation<W, R>::check_batch(&mut self, scope: surgeist_ledger::Scope, changes: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::child(&mut self, parent: surgeist_ledger::Scope, name: &'static str, limits: surgeist_ledger::Limits<W, R>, tariffs: surgeist_ledger::Tariffs<W, R>) -> core::result::Result<surgeist_ledger::Scope, surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::finish(self) -> core::result::Result<core::option::Option<surgeist_ledger::Report<W, R>>, surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::Operation<W, R>::headroom(&self, scope: surgeist_ledger::Scope, resource: R) -> core::result::Result<u64, surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::limits(&self, scope: surgeist_ledger::Scope) -> core::result::Result<&surgeist_ledger::Limits<W, R>, surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::new(name: &'static str, limits: surgeist_ledger::Limits<W, R>, max_scopes: usize) -> core::result::Result<Self, surgeist_ledger::Error<W, R>>
 pub const fn surgeist_ledger::Operation<W, R>::root(&self) -> surgeist_ledger::Scope
@@ -186,6 +187,7 @@ pub fn surgeist_ledger::SharedOperation<W, R>::check_batch(&self, scope: surgeis
 pub fn surgeist_ledger::SharedOperation<W, R>::child(&self, parent: surgeist_ledger::Scope, name: &'static str, limits: surgeist_ledger::Limits<W, R>, tariffs: surgeist_ledger::Tariffs<W, R>) -> core::result::Result<surgeist_ledger::Scope, surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::SharedOperation<W, R>::end_checkpoint(&self, checkpoint: &surgeist_ledger::Checkpoint) -> core::result::Result<surgeist_ledger::IntervalReport<W, R>, surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::SharedOperation<W, R>::end_phase(&self, observation: surgeist_ledger::PhaseObservation) -> core::result::Result<(), surgeist_ledger::PhaseObservation>
+pub fn surgeist_ledger::SharedOperation<W, R>::headroom(&self, scope: surgeist_ledger::Scope, resource: R) -> core::result::Result<u64, surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::SharedOperation<W, R>::limits(&self, scope: surgeist_ledger::Scope) -> core::result::Result<surgeist_ledger::Limits<W, R>, surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::SharedOperation<W, R>::root(&self) -> surgeist_ledger::Scope
 pub fn surgeist_ledger::SharedOperation<W, R>::scope_name(&self, scope: surgeist_ledger::Scope) -> core::result::Result<&'static str, surgeist_ledger::Error<W, R>>

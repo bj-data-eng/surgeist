@@ -65,6 +65,11 @@ impl<W: Dimension, R: Dimension> SharedOperation<W, R> {
     pub fn limits(&self, scope: Scope) -> Result<Limits<W, R>, Error<W, R>> {
         self.lock().limits(scope).copied()
     }
+    /// The most of a resource an acquisition at `scope` could take before a cap on its chain
+    /// refuses it, read under one lock; see [`Operation::headroom`].
+    pub fn headroom(&self, scope: Scope, resource: R) -> Result<u64, Error<W, R>> {
+        self.lock().headroom(scope, resource)
+    }
     /// Replaces the caps of a scope for later batches under one lock; see
     /// [`Operation::set_limits`].
     pub fn set_limits(&self, scope: Scope, limits: Limits<W, R>) -> Result<(), Error<W, R>> {

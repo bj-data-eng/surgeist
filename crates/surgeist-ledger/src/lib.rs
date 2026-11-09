@@ -479,6 +479,49 @@ impl<W: Dimension, R: Dimension> Operation<W, R> {
         Ok(&self.entry(self.index(scope)?)?.limits)
     }
 
+    /// The most of a resource that an acquisition at `scope` could take before a cap on the
+    /// chain from `scope` to the root refuses it.
+    ///
+    /// Each scope on the chain contributes its cap on the resource minus the live usage it
+    /// holds, which includes its descendants. The contribution of an ancestor is expressed in the
+    /// units of `scope` by dividing by the product of the tariff scales between them, rounding
+    /// down, so `Acquire(resource, n)` at `scope` is admitted exactly when `n` is no more than
+    /// the result. A tariff of scale zero ends the walk, because nothing above it sees the
+    /// change; a resource that no cap on the chain bounds reports `u64::MAX`. A scope that
+    /// already holds more than its cap, which [`Operation::set_limits`] can produce, reports
+    /// zero, though even a zero acquisition is refused there.
+    ///
+    /// The value is a read: it reserves nothing, and a later admission checks again.
+    pub fn headroom(&self, scope: Scope, resource: R) -> Result<u64, Error<W, R>> {
+        let mut index = self.index(scope)?;
+        let mut dimension = resource;
+        // The product of the scales from `scope` to the scope being read. It saturates, and a
+        // product beyond `u64::MAX` divides every cap down to zero, as the product itself would.
+        let mut scale = 1_u128;
+        let mut headroom = u64::MAX;
+        // A chain is shorter than the number of scopes, so this bound is never reached.
+        for _ in 0..self.scopes.len() {
+            let entry = self.entry(index)?;
+            let room = entry
+                .limits
+                .live(dimension)
+                .saturating_sub(entry.usage.live(dimension));
+            let share = u128::from(room).checked_div(scale).unwrap_or(0);
+            headroom = headroom.min(u64::try_from(share).unwrap_or(u64::MAX));
+            let Some(parent) = &entry.parent else {
+                break;
+            };
+            let tariff = R::get(&parent.tariffs.resources, dimension);
+            if tariff.scale == 0 {
+                break;
+            }
+            scale = scale.saturating_mul(u128::from(tariff.scale));
+            dimension = tariff.target;
+            index = parent.index;
+        }
+        Ok(headroom)
+    }
+
     /// Replaces the caps of a scope, for the batches admitted after this call.
     ///
     /// Usage, peaks, direct custody, the profile and open intervals stay as they
