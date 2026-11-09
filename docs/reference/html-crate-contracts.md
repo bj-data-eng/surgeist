@@ -378,7 +378,7 @@ Three steps use the index:
 Clearing, hashing, probing and inserting are `Inspect`/`Compare` descriptions with their own work
 (slots written and bytes copied per 256-slot clearing chunk, record visits and inspected bytes of
 the lengths and units hashed, one slot read and one admitted write per probe slot), so a consumer
-that admits `description().work()` generically needs no new case.
+that charges `description().charge()` generically needs no new case.
 
 Named merge replaces the existing parser `missing: OwnedVec<bool>` allocation
 with one HTML-owned plan allocation of private decision/name records. It is the
@@ -1046,10 +1046,10 @@ exceptions and the separate annotation-xml/SVG branch remain parser-owned.
 
 `bounded::script::HtmlScriptTypeCursor` owns the existing script classification actions
 for current content and preparation. It borrows original operands, including
-the virtual language prefix, and exposes `required_work`, `advance` and the
-completed optional kind. `HtmlScriptTypeWork` describes record visits and actual
-inspected bytes before each action; callers retain their controller, admission
-and cancellation. Preparation-only JavaScript whitespace handling is not
+the virtual language prefix, and exposes `advance` and the completed optional
+kind. `advance` charges the record visits and actual inspected bytes of its
+action through the caller's `surgeist_ledger::Charge` before it runs; callers
+retain their controller, admission and cancellation. Preparation-only JavaScript whitespace handling is not
 applied to current-content classification or module/import-map keywords. The
 literal matcher remains private, and ordinary reports use this same classifier.
 

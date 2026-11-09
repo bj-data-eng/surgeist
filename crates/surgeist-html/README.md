@@ -355,7 +355,7 @@ Do not offer pending mutable builder storage: retaining a Weak changes whether
 that backing can subsequently be mutated uniquely.
 
 Pool actions are owned scalar tokens. Describe under the consumer's owner lock,
-release that lock to admit the action's work/storage and poll cancellation, then
+release that lock to charge the action's work through the caller's `Charge`, admit its storage and poll cancellation, then
 perform a pool action under the lock or a read action outside it. No producer
 method calls consumer code. Only one operation is current in an owner. Starting
 another supersedes unfinished actions; checkpoint changes also invalidate them.
