@@ -94,8 +94,10 @@ impl Dimension for NoDimension {
 ///
 /// The enum derives `Clone`, `Copy`, `Debug`, `Eq`, `Hash`, `Ord`,
 /// `PartialEq` and `PartialOrd`. The table has the enum's visibility, one
-/// public field per variant with the variant's name and attributes, and
-/// derives `Clone`, `Copy`, `Debug`, `Eq`, `Hash` and `PartialEq`.
+/// public field per variant with the variant's name and documentation, and
+/// derives `Clone`, `Copy`, `Debug`, `Eq`, `Hash` and `PartialEq`. A variant
+/// accepts doc comments only, because each one is copied to both the variant
+/// and its field; the enum itself accepts any attributes.
 ///
 /// A table built from its struct must name every dimension:
 ///
@@ -112,7 +114,7 @@ macro_rules! dimensions {
         $(#[$enum_meta:meta])*
         $vis:vis enum $name:ident => $table:ident {
             $(
-                $(#[$variant_meta:meta])*
+                $(#[doc = $variant_doc:expr])*
                 $variant:ident
             ),+ $(,)?
         }
@@ -121,7 +123,7 @@ macro_rules! dimensions {
         #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
         $vis enum $name {
             $(
-                $(#[$variant_meta])*
+                $(#[doc = $variant_doc])*
                 $variant,
             )+
         }
@@ -131,7 +133,7 @@ macro_rules! dimensions {
         #[allow(non_snake_case)]
         $vis struct $table<T> {
             $(
-                $(#[$variant_meta])*
+                $(#[doc = $variant_doc])*
                 pub $variant: T,
             )+
         }
