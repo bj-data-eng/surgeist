@@ -449,6 +449,10 @@ pub(crate) struct ParseControl {
     /// provider that allocates more than it was asked to would.
     #[cfg(test)]
     capacity_overshoot: u64,
+    /// Runs once after the next retention check, as a parse sharing a host
+    /// scope would between the check and the acquisition.
+    #[cfg(test)]
+    after_retention_check: Option<Box<dyn FnOnce() + Send>>,
 }
 
 /// Which prepared payload slot a test stops the parse after, and how many the
@@ -621,9 +625,16 @@ impl ParseControl {
             stop_armed: false,
             #[cfg(test)]
             capacity_overshoot: 0,
+            #[cfg(test)]
+            after_retention_check: None,
         };
         control.enter_phase(ParsePhase::Admission);
         control
+    }
+    /// Runs `hook` once, right after the next retention check.
+    #[cfg(test)]
+    pub(crate) fn after_next_retention_check(&mut self, hook: impl FnOnce() + Send + 'static) {
+        self.after_retention_check = Some(Box::new(hook));
     }
     /// Makes the next capacity a provider reports exceed the observed one by
     /// `extra` bytes.
@@ -1211,6 +1222,14 @@ impl ParseControl {
     /// holds is dropped and counted, never refused, so the parse continues. The
     /// cap that refuses may be the parse's or any scope above it.
     pub(crate) fn diagnostics_retention_full(&mut self) -> Result<bool, HtmlParseStop> {
+        let full = self.retention_check();
+        #[cfg(test)]
+        if let Some(hook) = self.after_retention_check.take() {
+            hook();
+        }
+        full
+    }
+    fn retention_check(&mut self) -> Result<bool, HtmlParseStop> {
         let one = [Change::Acquire(HtmlResource::Diagnostics, 1)];
         let Err(error) = self.accounts_mut()?.check(&one) else {
             return Ok(false);

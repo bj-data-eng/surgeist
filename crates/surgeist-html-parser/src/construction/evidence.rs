@@ -1779,4 +1779,58 @@ mod tests {
         );
         assert!(matches!(view.retained_record(1), Ok(None)));
     }
+
+    /// A parse sharing a host scope takes the last `Diagnostics` slot between
+    /// the retention check and the acquisition. Retention bounds what is kept
+    /// and never ends a parse, so the diagnostic is dropped and counted.
+    #[test]
+    fn a_host_slot_taken_after_the_retention_check_drops_the_diagnostic_and_the_parse_goes_on() {
+        use surgeist_html::accounting::{HtmlLimits, HtmlResource};
+        use surgeist_ledger::{Change, Operation, Tariffs};
+        let host_limits = HtmlLimits::from_fn(
+            |_| u64::MAX,
+            |resource| {
+                if resource == HtmlResource::Diagnostics {
+                    1
+                } else {
+                    u64::MAX
+                }
+            },
+        );
+        let ledger = Operation::new("host", host_limits, 8).unwrap().share();
+        let root = ledger.root();
+        let sibling = ledger
+            .child(
+                root,
+                "sibling",
+                HtmlLimits::unlimited(),
+                Tariffs::identity(),
+            )
+            .unwrap();
+        let request = crate::HtmlParseAccounting::host(ledger.clone(), root).into_request();
+        let source = HtmlSource::utf8("\0");
+        let mut c = ParseControl::with_accounting(
+            limits(100),
+            HtmlParseCancellation::new(),
+            request.lease(),
+        );
+        c.admit_source(&source).unwrap();
+        let mut evidence = ParseEvidence::prepare(&mut c).unwrap();
+        evidence.initialize_native_source(&mut c, &source).unwrap();
+        let taker = ledger.clone();
+        c.after_next_retention_check(move || {
+            taker
+                .apply(sibling, Change::Acquire(HtmlResource::Diagnostics, 1))
+                .unwrap();
+        });
+        assert!(matches!(
+            append(&mut evidence, &mut c, &source, 0),
+            Ok(DiagnosticAdmission::Dropped)
+        ));
+        assert_eq!(c.stop(), None);
+        assert_eq!(evidence.dropped(), 1);
+        assert_eq!(evidence.len(), 0);
+        evidence.release(&mut c).unwrap();
+        assert_released(&c);
+    }
 }
