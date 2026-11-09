@@ -2,9 +2,9 @@
 
 pub(crate) mod native_settlement;
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod pending_bridge_cleanup_tests;
+#[cfg(test)]
+mod tests;
 
 use super::{
     BuiltInBuilder, BuiltInConstructor, IntrinsicObject,
