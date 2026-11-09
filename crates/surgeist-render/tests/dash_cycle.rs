@@ -316,3 +316,67 @@ fn native_initializer_admission_preserves_profiles_prefix_custody_and_retry() {
         }
     }
 }
+
+#[test]
+fn rounded_full_cycle_phase_keeps_the_visible_gap_or_refuses_atomically() {
+    // The authored odd pattern is [2^100, 2^100]. Offset -2 puts a two-unit
+    // gap before the first mark, independently of the huge remaining lengths.
+    const LONG_DASH: f64 = (1_u128 << 100) as f64;
+    for graph in [false, true] {
+        let mut renderer = pollster::block_on(Renderer::new(
+            Options::default()
+                .with_effect_quality_policy(EffectQualityPolicy::AllowReducedPrecision),
+        ))
+        .unwrap();
+        let mut surface =
+            pollster::block_on(renderer.create_headless(Size::try_new(32.0, 16.0).unwrap(), 1.0))
+                .unwrap();
+        let baseline = scene(graph, |scene| {
+            scene.fill(bounds(), Color::try_rgba(0.0, 0.0, 1.0, 1.0).unwrap());
+        });
+        let stats =
+            pollster::block_on(renderer.render(&mut surface, &baseline, Parameters::default()))
+                .unwrap();
+        let previous = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+        let target = line_scene(graph, Dash::try_new(-2.0, &[LONG_DASH]).unwrap());
+        match pollster::block_on(renderer.render(&mut surface, &target, Parameters::default())) {
+            Ok(_) => {
+                let actual = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+                for (x, expected) in [(0, [0, 0, 255]), (4, [255, 0, 0])] {
+                    let offset = (8 * 32 + x) * 4;
+                    assert_eq!(&actual.rgba()[offset..offset + 3], expected, "gap at x{x}");
+                }
+            }
+            Err(error) => {
+                assert_eq!(
+                    error.geometry_realization_diagnostic(),
+                    Some(&GeometryRealizationError::InsufficientNativeCapacity)
+                );
+                assert_eq!(renderer.stats(), stats);
+                let report = renderer.take_last_attempt().unwrap();
+                assert_eq!(report.status(), RenderAttemptStatus::Failed(error.code()));
+                assert_eq!(report.cleanup_fault(), None);
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::Submissions),
+                    0
+                );
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::DashInitializations),
+                    0
+                );
+                assert_eq!(
+                    pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+                    previous
+                );
+            }
+        }
+    }
+}
