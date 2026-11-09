@@ -712,6 +712,133 @@ fn finite_raw_admission_precedes_wrong_role_and_rechecks_surrounding_values() {
     assert_eq!(report.input_code_units(), 1);
 }
 
+/// A context of each role with `extra` added to its own attributes and, for a source, to those of
+/// its following image. The target value and the facts the rules read are short enough for `cap`.
+fn contexts_with(extra: &[(&str, &str)]) -> [(&'static str, HtmlSrcsetContext); 3] {
+    let with = |base: &[(&str, &str)]| {
+        let mut all = base.to_vec();
+        all.extend_from_slice(extra);
+        attributes(&all)
+    };
+    [
+        (
+            "img",
+            HtmlSrcsetContext::Img {
+                attributes: with(&[("srcset", "a 1x"), ("sizes", "1"), ("src", "s")]),
+            },
+        ),
+        (
+            "source",
+            HtmlSrcsetContext::Source {
+                attributes: with(&[("srcset", "a 1x"), ("sizes", "1")]),
+                parent: HtmlSrcsetParentObservation::Element(element("picture")),
+                following_image: HtmlSrcsetFollowingImageObservation::Element {
+                    name: element("img"),
+                    attributes: with(&[("loading", "lazy"), ("sizes", "auto")]),
+                },
+            },
+        ),
+        (
+            "link",
+            HtmlSrcsetContext::Link {
+                attributes: with(&[
+                    ("imagesrcset", "a 1x"),
+                    ("imagesizes", "1"),
+                    ("rel", "preload"),
+                    ("as", "image"),
+                ]),
+            },
+        ),
+    ]
+}
+fn with_context(
+    interpreter: &HtmlValueInterpreter,
+    role: &str,
+    context: &HtmlSrcsetContext,
+) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
+    match role {
+        "img" => interpreter.img_srcset_with_context(&element("img"), context),
+        "source" => interpreter.source_srcset_with_context(&element("source"), context),
+        _ => interpreter.link_imagesrcset_with_context(&element("link"), context),
+    }
+}
+
+#[test]
+fn context_admission_ignores_attributes_the_rules_do_not_read() {
+    let interpreter = HtmlValueInterpreter::new(16);
+    let large = "x".repeat(17);
+    for unrelated in ["style", "data-x", "class", "title"] {
+        for (role, context) in contexts_with(&[(unrelated, large.as_str())]) {
+            let report = with_context(&interpreter, role, &context)
+                .unwrap_or_else(|error| panic!("{role} read {unrelated}: {error}"));
+            assert_eq!(report.input_code_units(), 4, "{role}");
+        }
+    }
+}
+
+#[test]
+fn context_admission_refuses_each_attribute_the_rules_read_with_its_length() {
+    let interpreter = HtmlValueInterpreter::new(16);
+    let large = "x".repeat(17);
+    let read: [(&str, &[&str]); 3] = [
+        ("img", &["srcset", "sizes", "src"]),
+        ("source", &["srcset", "sizes"]),
+        ("link", &["imagesrcset", "imagesizes", "rel", "as"]),
+    ];
+    for (role, names) in read {
+        for name in names {
+            let mut context = contexts_with(&[])
+                .into_iter()
+                .find(|(candidate, _)| *candidate == role)
+                .unwrap()
+                .1;
+            let replaced = |attributes: &OrderedAttributes| {
+                OrderedAttributes::new(attributes.shared_attributes().iter().map(|attribute| {
+                    if attribute.name().local_name() == &DocumentString::from(*name) {
+                        attr(name, large.as_str())
+                    } else {
+                        attribute.clone()
+                    }
+                }))
+                .unwrap()
+            };
+            match &mut context {
+                HtmlSrcsetContext::Img { attributes }
+                | HtmlSrcsetContext::Source { attributes, .. }
+                | HtmlSrcsetContext::Link { attributes } => *attributes = replaced(attributes),
+            }
+            let refused = with_context(&interpreter, role, &context)
+                .expect_err(&format!("{role} reads {name}"));
+            assert!(
+                matches!(refused, HtmlSrcsetInterpretationError::RawAdmission(error) if error.required() == 17),
+                "{role} {name}: {refused:?}"
+            );
+        }
+    }
+    for name in ["loading", "sizes"] {
+        let mut context = contexts_with(&[]).into_iter().nth(1).unwrap().1;
+        let HtmlSrcsetContext::Source {
+            following_image: HtmlSrcsetFollowingImageObservation::Element { attributes, .. },
+            ..
+        } = &mut context
+        else {
+            unreachable!("the second context is a source with a following image");
+        };
+        *attributes = OrderedAttributes::new(
+            [("loading", "lazy"), ("sizes", "auto")]
+                .into_iter()
+                .map(|(key, value)| attr(key, if key == name { large.as_str() } else { value })),
+        )
+        .unwrap();
+        let refused = with_context(&interpreter, "source", &context)
+            .expect_err(&format!("the following image's {name} is read"));
+        assert!(
+            matches!(refused, HtmlSrcsetInterpretationError::RawAdmission(error) if error.required() == 17),
+            "{name}: {refused:?}"
+        );
+    }
+}
+
 #[test]
 fn unavailable_and_absent_parent_facts_are_distinct_and_prefixed_raw_attributes_stay_exact() {
     let interpreter = HtmlValueInterpreter::new(100);
