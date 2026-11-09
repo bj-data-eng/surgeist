@@ -739,6 +739,38 @@ fn primitive_target_root_background_and_applicator_errors_are_typed() {
     );
 }
 
+#[test]
+fn decoration_target_errors_precede_invalid_applicators() {
+    for (target, expected) in [
+        (
+            99,
+            PaintInputError::MissingPrimitiveFragment {
+                primitive: PrimitiveId::new(0),
+                fragment: FragmentId::new(99),
+            },
+        ),
+        (
+            1,
+            PaintInputError::InvalidPrimitiveTarget {
+                primitive: PrimitiveId::new(0),
+                fragment: FragmentId::new(1),
+            },
+        ),
+    ] {
+        // Neither a missing nor an unrelated applicator masks a target error.
+        for applying_box in [BoxId::new(99), BoxId::new(2)] {
+            let mut input = Input::valid();
+            input.primitives[0] = PaintPrimitive::decoration(
+                FragmentId::new(target),
+                applying_box,
+                DecorationKind::Overline,
+                0,
+            );
+            invalid(&input, expected.clone());
+        }
+    }
+}
+
 fn promoted_input() -> Input {
     Input {
         boxes: vec![facts(None, 0), facts(Some(0), 0), facts(Some(1), 1)],
@@ -767,6 +799,28 @@ fn promoted_input() -> Input {
             primitive(6, FragmentPaintKind::Text, 0),
         ],
     }
+}
+
+#[test]
+fn promoted_owner_and_container_errors_precede_placement_eligibility() {
+    let mut input = promoted_input();
+    input.fragments[2] = PaintFragment::block_in_inline(BoxId::new(99), FragmentId::new(99), 1, 0);
+    invalid(
+        &input,
+        PaintInputError::MissingFragmentOwner {
+            fragment: FragmentId::new(2),
+            owner: FragmentOwner::Box(BoxId::new(99)),
+        },
+    );
+    input.fragments[2] = PaintFragment::block_in_inline(BoxId::new(2), FragmentId::new(99), 1, 0);
+    input.boxes[2].position = Position::Relative;
+    invalid(
+        &input,
+        PaintInputError::MissingFragmentParent {
+            fragment: FragmentId::new(2),
+            parent: FragmentId::new(99),
+        },
+    );
 }
 
 #[test]
