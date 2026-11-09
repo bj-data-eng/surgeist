@@ -130,6 +130,13 @@ impl ParseControl {
         Ok(record_largest(resource, held, value))
     }
 
+    /// The stop for a charge of one of `surgeist-html`'s operations whose amount does not fit the
+    /// ledger's `u64`: the representation exhaustion of the work credits, in every operation that
+    /// reports it.
+    pub(crate) fn charge_overflow_stop(&mut self) -> HtmlParseStop {
+        self.stop_representation(HtmlParseResource::WorkCredits)
+    }
+
     /// A change the parser does not charge reached its ledger: the parse stops with the
     /// accounting fault, after the cancellation check every invariant stop takes.
     pub(crate) fn unexpected_change(&mut self) -> HtmlParseStop {

@@ -550,6 +550,27 @@ fn a_refused_record_after_an_owned_vector_reserve_leaves_it_releasable() {
     crate::parser::tree_builder::tests::assert_released(&c);
 }
 
+/// An operation of `surgeist-html` whose amount does not fit the ledger's `u64` stops the parse
+/// with the representation exhaustion of the work credits, as a sum that overflows inside the
+/// ledger does. Both operations that report it use the stop, and the session error of the
+/// construction paths carries it, not a token fault.
+#[test]
+fn a_charge_amount_beyond_u64_stops_with_work_credit_exhaustion() {
+    let mut c = control_with(builder());
+    let stop = c.charge_overflow_stop();
+    assert_eq!(
+        stop,
+        HtmlParseStop::RepresentationExhausted {
+            resource: HtmlParseResource::WorkCredits
+        }
+    );
+    assert_eq!(c.stop(), Some(stop));
+    assert_eq!(
+        crate::construction::SessionError::from(stop),
+        crate::construction::SessionError::Stop(stop)
+    );
+}
+
 /// A release that matches nothing held, a ledger that cannot allocate, a scope of another
 /// operation and a spent scope bound each stop the parse with the one accounting fault, at every
 /// admission site: a resource batch, a work batch and a check.
