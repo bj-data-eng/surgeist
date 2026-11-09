@@ -96,8 +96,9 @@ impl ParseControl {
                 (HtmlParseWorkCategory::ReserveByte, bytes),
                 (HtmlParseWorkCategory::ProviderCall, 1),
             ])?;
-            let reserved = self.reserve(vector, plan);
-            // The ticket describes the allocation as it is, refused or not.
+            let reserved = self.reserve(vector, plan, &mut allocation.vector_admitted);
+            // The ticket describes the allocation as it is, refused or not; its
+            // admitted bytes change only when the ledger admits the record.
             allocation.vector_capacity = vector.capacity();
             allocation.data_pointer = vector.as_ptr() as usize;
             reserved?;

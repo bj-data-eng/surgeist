@@ -172,13 +172,7 @@ impl ParseControl {
                     HtmlParseInvariant::ForeignControl,
                 ));
             }
-            let Some(bytes) = vector
-                .capacity
-                .checked_mul(size_of::<T>())
-                .and_then(|bytes| u64::try_from(bytes).ok())
-            else {
-                return self.representation(HtmlParseResource::ManagedCapacityBytes);
-            };
+            let bytes = vector.admitted;
             self.commit_prepared_release(&[
                 (HtmlParseResource::ManagedCapacityBytes, bytes),
                 (HtmlParseResource::PeakTransientBytes, bytes),
@@ -245,6 +239,7 @@ impl ParseControl {
             owner: self.identity.clone(),
             units: value.len() as u64,
             vector_capacity: capacity,
+            vector_admitted: bytes.saturating_sub(size_of::<Vec<u16>>() as u64),
             wrapper_bytes: size_of::<Vec<u16>>() as u64,
             resource: HtmlParseResource::ManagedUtf16Units,
             data_pointer: value.code_units().as_ptr() as usize,
@@ -271,6 +266,7 @@ impl ParseControl {
             VectorCapacity {
                 owner: self.identity.clone(),
                 capacity,
+                admitted: bytes.saturating_sub(size_of::<Vec<Attribute>>() as u64),
                 element: PhantomData,
             },
             SharedAllocation {

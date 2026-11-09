@@ -62,6 +62,7 @@ impl ParseControl {
             owner: self.identity.clone(),
             units: 0,
             vector_capacity: 0,
+            vector_admitted: 0,
             wrapper_bytes,
             resource: HtmlParseResource::BufferedUtf16Units,
             data_pointer: 0,
@@ -148,8 +149,10 @@ impl ParseControl {
         }
         Ok(())
     }
-    /// Records real growth before post-provider polling; refusal reports the
-    /// same bank, while successful overshoot stays owned and releasable.
+    /// Records real growth before post-provider polling. The ticket describes
+    /// the backing as it is. A successful overshoot is admitted and released as
+    /// admitted; a record the ledger refuses leaves the admitted bytes as they
+    /// were, and the refusal is the stop.
     pub(crate) fn record_text_append_capacity(
         &mut self,
         allocation: &mut DocumentStringAllocation,
@@ -170,9 +173,7 @@ impl ParseControl {
             ));
         }
         const UNIT_BYTES: u64 = size_of::<u16>() as u64;
-        let Some(old) = (allocation.vector_capacity as u64).checked_mul(UNIT_BYTES) else {
-            return self.representation(HtmlParseResource::ManagedCapacityBytes);
-        };
+        let old = allocation.vector_admitted;
         let actual = value.payload_bytes() as u64;
         let current = self.live(HtmlParseResource::ManagedCapacityBytes)?;
         if current
@@ -187,13 +188,16 @@ impl ParseControl {
         if current.checked_add(actual).is_none() {
             return self.representation(HtmlParseResource::PeakTransientBytes);
         }
-        self.record_capacity(
+        let recorded = self.record_capacity(
             old,
             actual,
             (expected_capacity as u64).saturating_mul(UNIT_BYTES),
-        )?;
+        );
+        // The ticket describes the backing as it is; only a record the ledger
+        // admitted changes the bytes the ticket releases.
         allocation.vector_capacity = value.capacity();
         allocation.data_pointer = value.data_address();
+        allocation.vector_admitted = recorded?;
         if value.capacity() > expected_capacity {
             return self.fail(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::ManagedCapacityBytes,

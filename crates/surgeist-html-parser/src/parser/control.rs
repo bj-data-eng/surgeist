@@ -739,6 +739,8 @@ impl ParseControl {
         }
         // No allocation or useful progression: the fixed control layout owns
         // this observation. Denied requests remain in the stop, not in usage.
+        // A capacity record the ledger refused is in the stop too: the usage
+        // shows the custody the ledger admitted, without the refused overshoot.
         self.stopped = Some(FirstStop {
             reason,
             usage: self.usage(),
@@ -1364,6 +1366,7 @@ impl ParseControl {
             VectorCapacity {
                 owner: self.identity.clone(),
                 capacity: 0,
+                admitted: 0,
                 element: PhantomData,
             },
         ))
@@ -1403,9 +1406,10 @@ impl ParseControl {
             (HtmlParseWorkCategory::RecordWrite, 1),
             (HtmlParseWorkCategory::CopyByte, size_of::<usize>() as u64),
         ])?;
-        let result = self.reserve(vector, plan);
-        // Successful reserve can change capacity before a post-call stop. That
-        // physical ownership must remain releasable even when logical work ends.
+        let result = self.reserve(vector, plan, &mut allocation.admitted);
+        // A reserve can change the physical capacity before a post-call stop. The
+        // ticket records that capacity for its identity checks, and the bytes the
+        // ledger admitted for release, which a refused record leaves as they were.
         Self::record_vector_capacity(vector, allocation, result)
     }
     /// Geometric growth of an actual vector. Spare capacity is submitted and
@@ -1461,7 +1465,7 @@ impl ParseControl {
             (HtmlParseWorkCategory::RecordWrite, 1),
             (HtmlParseWorkCategory::CopyByte, size_of::<usize>() as u64),
         ])?;
-        let result = self.reserve(vector, plan);
+        let result = self.reserve(vector, plan, &mut allocation.admitted);
         Self::record_vector_capacity(vector, allocation, result)
     }
     fn geometric_plan<T>(
@@ -1605,14 +1609,7 @@ impl ParseControl {
                     HtmlParseInvariant::CapacityMismatch,
                 ));
             }
-            let Some(bytes) = allocation
-                .capacity
-                .checked_mul(size_of::<T>())
-                .and_then(|bytes| u64::try_from(bytes).ok())
-            else {
-                return self.representation(HtmlParseResource::ManagedCapacityBytes);
-            };
-            self.cleanup_capacity(bytes)
+            self.cleanup_capacity(allocation.admitted)
         })();
         match release {
             Ok(()) => {
@@ -1889,10 +1886,14 @@ impl ParseControl {
         let record = self.gauge_changes(HtmlResource::TreeDepth, depth)?;
         self.admit_resources(&record, Site::RELEASE)
     }
+    /// Reserves for `plan`. `admitted` is the bytes the ledger holds for the
+    /// vector; it becomes the capacity recorded once the ledger admits it, and
+    /// stays as it was when the record is refused.
     fn reserve<T>(
         &mut self,
         vector: &mut Vec<T>,
         plan: ReservationPlan,
+        admitted: &mut u64,
     ) -> Result<(), HtmlParseStop> {
         self.checkpoint()?;
         // A reservation never shrinks the allocation it replaces.
@@ -1914,7 +1915,7 @@ impl ParseControl {
         else {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
-        self.record_capacity(plan.old_bytes, actual, plan.new_bytes)?;
+        *admitted = self.record_capacity(*admitted, actual, plan.new_bytes)?;
         if actual > plan.new_bytes {
             // `actual` exceeds `new_bytes`, which is at least `old_bytes`.
             let requested_delta = actual.saturating_sub(plan.old_bytes);
@@ -1974,15 +1975,19 @@ impl ParseControl {
     /// Records the capacity an allocation actually holds in place of the `old`
     /// bytes it was charged. The allocation exists whatever its size, so the
     /// record is not refused for exceeding the planned `expected` layout: an
-    /// overshoot is recorded and the caller stops. When the ledger cannot hold
-    /// an overshoot under the cap the stop names the overshoot and the ledger
-    /// keeps the capacity from before.
+    /// overshoot is recorded and the caller stops. The result is the bytes the
+    /// ledger now holds for the allocation. When the ledger cannot hold an
+    /// overshoot under the cap the stop names the overshoot and the ledger keeps
+    /// the `old` bytes: the caller records the physical capacity in its ticket
+    /// and keeps `old` as the admitted bytes, so that cleanup credits exactly
+    /// what the ledger holds. The first-stop usage then shows that custody
+    /// without the refused overshoot.
     pub(super) fn record_capacity(
         &mut self,
         old: u64,
         actual: u64,
         expected: u64,
-    ) -> Result<(), HtmlParseStop> {
+    ) -> Result<u64, HtmlParseStop> {
         #[cfg(test)]
         let actual = actual.saturating_add(std::mem::take(&mut self.capacity_overshoot));
         let recorded = self.accounts_mut()?.charge(&[
@@ -1992,7 +1997,7 @@ impl ParseControl {
             Change::Release(HtmlResource::PeakTransientBytes, old),
         ]);
         let Err(error) = recorded else {
-            return Ok(());
+            return Ok(actual);
         };
         if actual > expected && matches!(classify(error), Classified::Refusal(_)) {
             return self.fail(HtmlParseStop::LimitExceeded {
@@ -2005,7 +2010,8 @@ impl ParseControl {
         Err(self.ledger_stop(error, Site::REPLACEMENT))
     }
     /// Cleanup is permitted after a terminal stop; it refunds no admitted work or
-    /// high-water observation. The vector owner supplies its exact retained size.
+    /// high-water observation. The vector owner supplies the bytes the ledger
+    /// admitted for it.
     fn cleanup_storage(
         &mut self,
         resource: HtmlParseResource,
@@ -2051,6 +2057,7 @@ impl ParseControl {
             owner: self.identity.clone(),
             units: buffer.len() as u64,
             vector_capacity: buffer.capacity(),
+            vector_admitted: buffer.admitted,
             wrapper_bytes: bytes,
             resource: HtmlParseResource::BufferedUtf16Units,
             data_pointer: buffer.as_slice().as_ptr() as usize,
@@ -2156,10 +2163,8 @@ impl ParseControl {
             ));
         }
         let Some(bytes) = allocation
-            .vector_capacity
-            .checked_mul(size_of::<u16>())
-            .and_then(|bytes| u64::try_from(bytes).ok())
-            .and_then(|bytes| bytes.checked_add(allocation.wrapper_bytes))
+            .vector_admitted
+            .checked_add(allocation.wrapper_bytes)
         else {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
@@ -2268,9 +2273,12 @@ impl ParseControl {
         // This is an ownership transfer, not finalization or destruction of
         // live backing. The new aggregate is already admitted; consume the
         // unique prior ticket and retire only its duplicate debit.
+        let debit = allocation
+            .vector_admitted
+            .saturating_add(allocation.wrapper_bytes);
         self.commit_prepared_release(&[
-            (HtmlParseResource::ManagedCapacityBytes, bytes as u64),
-            (HtmlParseResource::PeakTransientBytes, bytes as u64),
+            (HtmlParseResource::ManagedCapacityBytes, debit),
+            (HtmlParseResource::PeakTransientBytes, debit),
             (allocation.resource, allocation.units),
         ])?;
         drop(allocation);
@@ -2287,10 +2295,8 @@ impl ParseControl {
             ));
         }
         let Some(bytes) = allocation
-            .vector_capacity
-            .checked_mul(size_of::<u16>())
-            .and_then(|bytes| u64::try_from(bytes).ok())
-            .and_then(|bytes| bytes.checked_add(allocation.wrapper_bytes))
+            .vector_admitted
+            .checked_add(allocation.wrapper_bytes)
         else {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
@@ -2315,7 +2321,12 @@ impl ParseControl {
 #[derive(Debug)]
 pub(crate) struct VectorCapacity<T> {
     owner: Arc<()>,
+    /// The capacity the vector physically holds, which identity and capacity
+    /// checks compare.
     capacity: usize,
+    /// The bytes of that capacity the ledger admitted, which release credits. A
+    /// capacity the ledger refused to record is physical but not admitted.
+    admitted: u64,
     element: PhantomData<T>,
 }
 impl<T> VectorCapacity<T> {
@@ -2371,7 +2382,10 @@ impl<T> SharedReleaseError<T> {
 pub(crate) struct DocumentStringAllocation {
     owner: Arc<()>,
     units: u64,
+    /// The capacity the backing physically holds.
     vector_capacity: usize,
+    /// The bytes of that capacity the ledger admitted; see [`VectorCapacity`].
+    vector_admitted: u64,
     wrapper_bytes: u64,
     resource: HtmlParseResource,
     data_pointer: usize,
@@ -2467,6 +2481,9 @@ enum Growth {
 /// by this byte ledger. `into_vec` transfers admitted storage without a copy.
 pub(crate) struct OwnedVec<T> {
     vector: Vec<T>,
+    /// The bytes of the vector's capacity the ledger admitted, which release
+    /// credits; see [`VectorCapacity`].
+    admitted: u64,
     resource: HtmlParseResource,
     owner: Option<Arc<()>>,
 }
@@ -2484,6 +2501,7 @@ impl<T> OwnedVec<T> {
         }
         Ok(Self {
             vector: Vec::new(),
+            admitted: 0,
             resource,
             owner: None,
         })
@@ -2695,7 +2713,7 @@ impl<T> OwnedVec<T> {
         ])?;
         control.check_acquire_many(&[(self.resource, units)])?;
         if let Some(plan) = plan {
-            control.reserve(&mut self.vector, plan)?;
+            control.reserve(&mut self.vector, plan, &mut self.admitted)?;
         }
         Ok(())
     }
@@ -2732,7 +2750,7 @@ impl<T> OwnedVec<T> {
             (HtmlParseWorkCategory::ReserveByte, bytes),
             (HtmlParseWorkCategory::ProviderCall, 1),
         ])?;
-        control.reserve(&mut self.vector, plan)
+        control.reserve(&mut self.vector, plan, &mut self.admitted)
     }
     pub(crate) fn try_push(
         &mut self,
@@ -2879,15 +2897,7 @@ impl<T> OwnedVec<T> {
                 HtmlParseInvariant::ForeignControl,
             ));
         }
-        let Some(bytes) = self
-            .vector
-            .capacity()
-            .checked_mul(size_of::<T>())
-            .and_then(|bytes| u64::try_from(bytes).ok())
-        else {
-            return control.representation(HtmlParseResource::ManagedCapacityBytes);
-        };
-        control.cleanup_storage(self.resource, self.vector.len() as u64, bytes)?;
+        control.cleanup_storage(self.resource, self.vector.len() as u64, self.admitted)?;
         drop(self);
         Ok(())
     }
@@ -3560,7 +3570,8 @@ mod tests {
             old_bytes,
             new_bytes,
         };
-        c.reserve(&mut values, plan).unwrap();
+        c.reserve(&mut values, plan, &mut plan.old_bytes.clone())
+            .unwrap();
         assert!(values.capacity() > len);
         assert_eq!(values, before);
         let actual = (values.capacity() * size_of::<u64>()) as u64;
@@ -3591,7 +3602,7 @@ mod tests {
             new_bytes,
         };
         assert!(matches!(
-            c.reserve(&mut values, plan),
+            c.reserve(&mut values, plan, &mut plan.old_bytes.clone()),
             Err(HtmlParseStop::AllocationFailed { .. })
         ));
         assert_eq!(values.capacity(), len);
@@ -4913,7 +4924,7 @@ mod tests {
             .charge(HtmlParseWorkCategory::ProviderCall, 1)
             .unwrap();
         assert_eq!(
-            control.reserve(&mut vector, plan),
+            control.reserve(&mut vector, plan, &mut plan.old_bytes.clone()),
             Err(HtmlParseStop::AllocationFailed {
                 resource: HtmlParseResource::ManagedCapacityBytes,
                 layout_bytes: isize::MAX as u64,
@@ -5831,7 +5842,9 @@ mod tests {
                 (HtmlParseWorkCategory::ProviderCall, 1),
             ])
             .unwrap();
-        control.reserve(&mut vector, plan).unwrap();
+        control
+            .reserve(&mut vector, plan, &mut ticket.admitted)
+            .unwrap();
         control.cancellation.cancel();
         let stop = control.checkpoint().unwrap_err();
         assert_eq!(

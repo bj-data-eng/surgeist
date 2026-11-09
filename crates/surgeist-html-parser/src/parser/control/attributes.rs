@@ -113,19 +113,16 @@ impl ParseControl {
         vector: &mut VectorCapacity<surgeist_html::values::Attribute>,
         expected: usize,
     ) -> Result<(), HtmlParseStop> {
-        let (Some(old), Some(actual)) = (
-            vector
-                .capacity
-                .checked_mul(size_of::<surgeist_html::values::Attribute>()),
-            after
-                .capacity
-                .checked_mul(size_of::<surgeist_html::values::Attribute>()),
-        ) else {
+        let Some(actual) = after
+            .capacity
+            .checked_mul(size_of::<surgeist_html::values::Attribute>())
+        else {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
+        let old = vector.admitted;
         let current = self.live(HtmlParseResource::ManagedCapacityBytes)?;
         if current
-            .checked_sub(old as u64)
+            .checked_sub(old)
             .and_then(|v| v.checked_add(actual as u64))
             .is_none()
         {
@@ -134,14 +131,17 @@ impl ParseControl {
         if current.checked_add(actual as u64).is_none() {
             return self.representation(HtmlParseResource::PeakTransientBytes);
         }
-        self.record_capacity(old as u64, actual as u64, expected as u64)?;
+        let recorded = self.record_capacity(old, actual as u64, expected as u64);
+        // The ticket describes the vector as it is; only a record the ledger
+        // admitted changes the bytes the ticket releases.
         vector.capacity = after.capacity;
+        vector.admitted = recorded?;
         if actual > expected {
             return self.fail(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::ManagedCapacityBytes,
                 limit: expected as u64,
-                current: old as u64,
-                requested_delta: actual.saturating_sub(old) as u64,
+                current: old,
+                requested_delta: (actual as u64).saturating_sub(old),
             });
         }
         Ok(())

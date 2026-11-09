@@ -9,7 +9,13 @@ use surgeist_html::bounded::construction::{
 #[derive(Debug)]
 pub(crate) struct ConstructionAllocation {
     owner: Arc<()>,
+    /// The bank as the provider holds it, which identity and capacity checks
+    /// compare.
     snapshot: Snapshot,
+    /// The bytes of the bank's payload the ledger admitted, which retirement
+    /// credits. A capacity the ledger refused to record is physical but not
+    /// admitted.
+    admitted: u64,
 }
 impl ConstructionAllocation {
     pub(crate) fn snapshot(&self) -> &Snapshot {
@@ -194,8 +200,10 @@ impl ParseControl {
         }
         Ok(())
     }
-    /// Records actual provider ownership *before* the post-call checkpoint. A
-    /// later refusal leaves the ticket describing exactly the retained bank.
+    /// Records actual provider ownership *before* the post-call checkpoint. The
+    /// ticket describes the bank the provider holds, and carries the bytes the
+    /// ledger admitted for it: a record the ledger refuses leaves those bytes as
+    /// they were, and retirement credits exactly them.
     pub(crate) fn observe_construction_allocation(
         &mut self,
         snapshot: &Snapshot,
@@ -217,9 +225,7 @@ impl ParseControl {
         ticket: &mut Option<ConstructionAllocation>,
         expected_capacity_bytes: usize,
     ) -> Result<(), HtmlParseStop> {
-        let old = ticket
-            .as_ref()
-            .map_or(0, |value| value.snapshot.payload_bytes() as u64);
+        let old = ticket.as_ref().map_or(0, |value| value.admitted);
         if let Some(previous) = ticket.as_ref() {
             if !Arc::ptr_eq(&previous.owner, &self.identity) {
                 return self.fail(HtmlParseStop::InternalInvariant(
@@ -247,12 +253,16 @@ impl ParseControl {
         if current.checked_add(actual).is_none() {
             return self.representation(HtmlParseResource::PeakTransientBytes);
         }
-        self.record_capacity(old, actual, expected_capacity_bytes as u64)?;
-        // Snapshot/owner clones are fixed provider calls prepaid by the driver.
+        let recorded = self.record_capacity(old, actual, expected_capacity_bytes as u64);
+        // The ticket describes the bank as it is; only a record the ledger
+        // admitted changes the bytes it retires. Snapshot/owner clones are fixed
+        // provider calls prepaid by the driver.
         *ticket = Some(ConstructionAllocation {
             owner: self.identity.clone(),
             snapshot: snapshot.clone(),
+            admitted: *recorded.as_ref().unwrap_or(&old),
         });
+        recorded?;
         if actual > expected_capacity_bytes as u64 {
             return self.fail(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::ManagedCapacityBytes,
@@ -269,7 +279,7 @@ impl ParseControl {
         snapshot: &Snapshot,
     ) -> Result<(), HtmlParseStop> {
         self.require_construction_snapshot(snapshot, Some(ticket))?;
-        if self.live(HtmlParseResource::ManagedCapacityBytes)? < snapshot.payload_bytes() as u64 {
+        if self.live(HtmlParseResource::ManagedCapacityBytes)? < ticket.admitted {
             return self.fail(HtmlParseStop::InternalInvariant(
                 HtmlParseInvariant::ReleaseUnderflow,
             ));
@@ -282,6 +292,6 @@ impl ParseControl {
         receipt: HtmlConstructionRetired,
     ) -> Result<(), HtmlParseStop> {
         self.require_construction_retirement(&ticket, receipt.allocation())?;
-        self.cleanup_capacity(receipt.allocation().payload_bytes() as u64)
+        self.cleanup_capacity(ticket.admitted)
     }
 }

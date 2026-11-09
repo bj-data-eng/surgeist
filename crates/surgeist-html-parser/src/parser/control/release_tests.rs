@@ -202,20 +202,20 @@ fn final_attribute_release_with_a_forged_capacity_is_refused() {
 // Characterization of existing behaviour after the release paths became
 // fallible; these were not RED against any earlier commit.
 #[test]
-fn characterization_final_vector_release_with_an_unrepresentable_capacity_hands_the_ticket_back() {
+fn characterization_final_vector_release_beyond_the_admitted_bytes_hands_the_ticket_back() {
     let mut c = control();
     let values = bank();
     let (mut vector, shared) = c.final_attribute_tickets(&values).unwrap();
-    let real = vector.capacity;
-    // No allocation spans this many bytes, so the byte count overflows.
-    vector.capacity = usize::MAX;
+    let real = vector.admitted;
+    // The ticket claims more bytes than the ledger holds for the bank.
+    vector.admitted = u64::MAX;
     let before = c.usage().clone();
     let (stop, mut vector) = c.release_final_vector(vector, 1).unwrap_err().into_parts();
-    assert_eq!(stop, REPRESENTATION);
-    assert_eq!(c.stop(), Some(REPRESENTATION));
+    assert_eq!(stop, UNDERFLOW);
+    assert_eq!(c.stop(), Some(UNDERFLOW));
     assert_eq!(c.usage(), before);
     // The ticket came back intact: restored, the owner's release drains it.
-    vector.capacity = real;
+    vector.admitted = real;
     c.release_final_vector(vector, 1).unwrap();
     c.release_final_shared(shared).unwrap();
     drop(values);
@@ -432,7 +432,10 @@ fn reserving_a_plan_that_shrinks_the_allocation_is_refused_before_any_change() {
         old_bytes: 10,
         new_bytes: 5,
     };
-    assert_eq!(c.reserve(&mut vector, plan), Err(MISMATCH));
+    assert_eq!(
+        c.reserve(&mut vector, plan, &mut plan.old_bytes.clone()),
+        Err(MISMATCH)
+    );
     assert_eq!(c.stop(), Some(MISMATCH));
     assert_eq!(c.usage(), before);
     assert_eq!(vector.capacity(), 0);

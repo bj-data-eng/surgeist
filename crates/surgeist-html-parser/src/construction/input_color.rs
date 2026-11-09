@@ -1638,7 +1638,7 @@ mod tests {
                 layout.current,
                 layout.high_water,
             ),
-            (446_317, 1440, 9472)
+            (446_357, 1440, 9472)
         );
         output.release(&mut c).unwrap();
     }
