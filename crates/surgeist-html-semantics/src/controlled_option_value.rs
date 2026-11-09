@@ -143,6 +143,10 @@ impl HtmlControlledOptionValueFailure {
     pub fn kind(&self) -> &HtmlControlledOptionValueError {
         &self.kind
     }
+    /// The accounting fault this failure carries, directly or inside an error it wraps.
+    pub fn accounting_fault(&self) -> Option<HtmlAccountingFault> {
+        self.kind.accounting_fault()
+    }
     pub fn usage(&self) -> HtmlControlledOptionValueUsage {
         self.usage
     }

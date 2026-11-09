@@ -1922,6 +1922,7 @@ pub fn surgeist_html_semantics::HtmlConstructionCaptureFacts::new(revision: surg
 pub fn surgeist_html_semantics::HtmlConstructionCaptureFacts::nodes(&self) -> &[surgeist_html_semantics::HtmlConstructionCaptureNodeFacts]
 pub struct surgeist_html_semantics::HtmlConstructionCaptureFailure
 impl surgeist_html_semantics::HtmlConstructionCaptureFailure
+pub fn surgeist_html_semantics::HtmlConstructionCaptureFailure::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 pub fn surgeist_html_semantics::HtmlConstructionCaptureFailure::builder(&self) -> &surgeist_html_semantics::HtmlCaptureBuilder
 pub fn surgeist_html_semantics::HtmlConstructionCaptureFailure::facts(&self) -> &surgeist_html_semantics::HtmlConstructionCaptureFacts
 pub fn surgeist_html_semantics::HtmlConstructionCaptureFailure::into_parts(self) -> (surgeist_html_semantics::HtmlConstructionCaptureError, surgeist_html_semantics::HtmlCaptureBuilder, surgeist_html::internal::construction::bounded::HtmlConstructionResult, surgeist_html_semantics::HtmlConstructionCaptureFacts, surgeist_html_semantics::HtmlConstructionCaptureUsage)
@@ -1930,6 +1931,7 @@ pub fn surgeist_html_semantics::HtmlConstructionCaptureFailure::source(&self) ->
 pub fn surgeist_html_semantics::HtmlConstructionCaptureFailure::usage(&self) -> surgeist_html_semantics::HtmlConstructionCaptureUsage
 pub struct surgeist_html_semantics::HtmlConstructionCaptureFinishFailure
 impl surgeist_html_semantics::HtmlConstructionCaptureFinishFailure
+pub fn surgeist_html_semantics::HtmlConstructionCaptureFinishFailure::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 pub fn surgeist_html_semantics::HtmlConstructionCaptureFinishFailure::import(&self) -> &surgeist_html_semantics::HtmlConstructionCaptureImport
 pub fn surgeist_html_semantics::HtmlConstructionCaptureFinishFailure::into_parts(self) -> (surgeist_html_semantics::HtmlConstructionCaptureError, surgeist_html_semantics::HtmlConstructionCaptureImport)
 pub fn surgeist_html_semantics::HtmlConstructionCaptureFinishFailure::reason(&self) -> &surgeist_html_semantics::HtmlConstructionCaptureError
@@ -2033,6 +2035,7 @@ pub fn surgeist_html_semantics::HtmlControlledOptionValueCapture::storage_usage(
 pub fn surgeist_html_semantics::HtmlControlledOptionValueCapture::usage(&self) -> surgeist_html_semantics::HtmlControlledOptionValueUsage
 pub struct surgeist_html_semantics::HtmlControlledOptionValueFailure
 impl surgeist_html_semantics::HtmlControlledOptionValueFailure
+pub fn surgeist_html_semantics::HtmlControlledOptionValueFailure::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 pub fn surgeist_html_semantics::HtmlControlledOptionValueFailure::into_error(self) -> surgeist_html_semantics::HtmlControlledOptionValueError
 pub fn surgeist_html_semantics::HtmlControlledOptionValueFailure::kind(&self) -> &surgeist_html_semantics::HtmlControlledOptionValueError
 pub fn surgeist_html_semantics::HtmlControlledOptionValueFailure::usage(&self) -> surgeist_html_semantics::HtmlControlledOptionValueUsage

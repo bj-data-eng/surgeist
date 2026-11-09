@@ -714,3 +714,23 @@ fn the_owner_names_its_scopes_by_the_schema() {
         assert_eq!(control.ledger.scope_name(scope), Ok(name));
     }
 }
+
+#[test]
+fn a_failure_finds_the_accounting_fault_of_the_error_it_carries() {
+    let fault = HtmlAccountingFault::ReleaseUnderflow;
+    let failure = |kind| HtmlControlledOptionValueFailure {
+        kind,
+        usage: HtmlControlledOptionValueUsage::default(),
+    };
+    assert_eq!(
+        failure(HtmlControlledOptionValueError::Control(
+            HtmlOptionValueControlError::Accounting(fault)
+        ))
+        .accounting_fault(),
+        Some(fault)
+    );
+    assert_eq!(
+        failure(HtmlControlledOptionValueError::InvalidPhase).accounting_fault(),
+        None
+    );
+}

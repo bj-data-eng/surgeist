@@ -510,6 +510,10 @@ impl HtmlConstructionCaptureFailure {
     pub fn reason(&self) -> &HtmlConstructionCaptureError {
         &self.reason
     }
+    /// The accounting fault the reason carries, directly or inside an error it wraps.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        self.reason.accounting_fault()
+    }
     pub fn builder(&self) -> &HtmlCaptureBuilder {
         &self.builder
     }
@@ -617,6 +621,10 @@ pub struct HtmlConstructionCaptureFinishFailure {
 impl HtmlConstructionCaptureFinishFailure {
     pub fn reason(&self) -> &HtmlConstructionCaptureError {
         &self.reason
+    }
+    /// The accounting fault the reason carries, directly or inside an error it wraps.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        self.reason.accounting_fault()
     }
     pub fn import(&self) -> &HtmlConstructionCaptureImport {
         &self.import
