@@ -122,7 +122,7 @@ use std::{
     error::Error,
     fmt,
     sync::{
-        Arc,
+        Arc, Mutex, PoisonError,
         atomic::{AtomicBool, Ordering},
     },
 };
@@ -1370,6 +1370,9 @@ pub struct HtmlSemanticSession<'a> {
     cancellation: HtmlSemanticCancellation,
     qualification: Arc<HtmlSemanticQualification>,
     account: query_account::QueryAccount,
+    /// The last usage read from the ledger, which a read that cannot reach the ledger returns when
+    /// no failure is latched. A mutex keeps the session `Sync`, as `usage` takes `&self`.
+    last_usage: Mutex<HtmlSemanticUsage>,
     failure: Option<HtmlSemanticFailure>,
     option_control: Option<crate::controlled_option_value::QueryControl<'a>>,
     /// The item graph of the tree the last graph query used, kept for the rest
@@ -1496,6 +1499,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 },
             }),
             account,
+            last_usage: Mutex::new(HtmlSemanticUsage::default()),
             failure: None,
             option_control: None,
             microdata_graph: None,
@@ -1506,18 +1510,22 @@ impl<'a> HtmlSemanticSession<'a> {
         })
     }
     /// The usage read from the session's ledger scopes. A ledger that cannot be read has latched a
-    /// defect, which the session reports as its terminal `Accounting` failure; the usage
-    /// then is that failure's.
+    /// defect, which the next charge reports as the session's terminal `Accounting` failure; the
+    /// usage then is that failure's when one is latched, and else the last usage read.
     pub fn usage(&self) -> HtmlSemanticUsage {
         self.snapshot()
     }
     fn snapshot(&self) -> HtmlSemanticUsage {
+        let mut last = self
+            .last_usage
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         match self.account.read() {
-            Ok(usage) => usage,
-            Err(_) => self
-                .failure
-                .as_ref()
-                .map_or_else(HtmlSemanticUsage::default, |failure| failure.usage),
+            Ok(usage) => {
+                *last = usage;
+                usage
+            }
+            Err(_) => self.failure.as_ref().map_or(*last, |failure| failure.usage),
         }
     }
     pub(crate) fn control_option_value(

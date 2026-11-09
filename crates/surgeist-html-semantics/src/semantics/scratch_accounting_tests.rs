@@ -145,3 +145,11 @@ fn a_usage_read_that_cannot_reach_the_ledger_returns_the_latched_failures_usage(
     s.account.point_at_another_operation();
     assert_eq!(s.usage(), at_failure);
 }
+
+/// Reading the last usage through `&self` keeps the session and the owner `Send + Sync`.
+#[test]
+fn the_session_and_the_option_value_owner_stay_send_and_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<HtmlSemanticSession<'static>>();
+    assert_send_sync::<crate::HtmlControlledOptionValueCapture>();
+}

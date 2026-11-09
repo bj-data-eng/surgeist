@@ -3,8 +3,8 @@ use crate::accounting::{LedgerError, wide};
 use crate::capture::preflight::ActionPolicy;
 use crate::*;
 use std::mem::size_of;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Mutex, PoisonError};
 use std::{error::Error, fmt};
 use surgeist_html::accounting::{
     HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapRefusal, HtmlCapScope, HtmlLedgerOutcome,
@@ -198,6 +198,14 @@ fn gate_limits(bytes: usize, units: usize, work: u64) -> HtmlLimits {
 /// call's work cap. The `retained` and `temporary` scopes hold the storage itself, and the
 /// `observed` scope records peak evidence for storage that exceeded the allowance. Held storage is
 /// never refused by the gate, because the caller has already decided its admission.
+/// The ledger-backed figures of the usage the owner last read.
+#[derive(Clone, Copy, Default)]
+struct LastUsage {
+    work: u64,
+    storage: HtmlOptionValueStorageUsage,
+    peak: HtmlOptionValueStorageUsage,
+}
+
 pub(crate) struct Control {
     ledger: SharedOperation<HtmlWork, HtmlResource>,
     gate: Scope,
@@ -206,6 +214,9 @@ pub(crate) struct Control {
     observed: Scope,
     /// The remaining work the current call was given, which the work cap is measured from.
     allowance: AtomicU64,
+    /// The ledger-backed figures of the last usage read, which a read that cannot reach the ledger
+    /// returns. A mutex keeps the owner `Sync`, as `usage` takes `&self`.
+    last: Mutex<LastUsage>,
     semantic: Mutex<HtmlSemanticUsage>,
     #[cfg(test)]
     cancel_after: AtomicU64,
@@ -243,6 +254,7 @@ impl Control {
             temporary,
             observed,
             allowance: AtomicU64::new(envelope.work),
+            last: Mutex::new(LastUsage::default()),
             semantic: Mutex::new(HtmlSemanticUsage::default()),
             #[cfg(test)]
             cancel_after: AtomicU64::new(u64::MAX),
@@ -346,14 +358,24 @@ impl Control {
             .map_err(Self::error)?
             .work(HtmlWork::SemanticStep))
     }
-    /// The usage after every call, including refused ones. A ledger that cannot be read has
-    /// latched a defect, which the next charge reports as an accounting fault; the usage then is
-    /// the unread one.
+    /// The usage after every call, including refused ones. A figure that cannot be read from the
+    /// ledger is the last one read: an unreadable ledger has latched a defect, which the next
+    /// charge reports as an accounting fault.
     fn usage(&self) -> HtmlControlledOptionValueUsage {
+        let mut last = self.last.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Ok(work) = self.work_done() {
+            last.work = work;
+        }
+        if let Ok(storage) = self.live() {
+            last.storage = storage;
+        }
+        if let Ok(peak) = self.peak() {
+            last.peak = peak;
+        }
         HtmlControlledOptionValueUsage {
-            work: self.work_done().unwrap_or_default(),
-            storage: self.live().unwrap_or_default(),
-            peak: self.peak().unwrap_or_default(),
+            work: last.work,
+            storage: last.storage,
+            peak: last.peak,
             semantic: self
                 .semantic
                 .lock()
