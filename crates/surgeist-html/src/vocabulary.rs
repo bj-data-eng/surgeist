@@ -54,12 +54,29 @@ impl KnownHtmlElement {
     /// Unknown, foreign, uppercase, and malformed names return `None`. The raw
     /// name remains unchanged; this is recognition, not HTML parser case folding.
     pub fn from_name(name: &(impl crate::values::HtmlNameInput + ?Sized)) -> Option<Self> {
-        crate::internal::values::is_html_namespace_uri(name.namespace_uri()).then(|| {
-            Self::ALL
-                .iter()
-                .copied()
-                .find(|known| exact_string(name.local_name(), known.local_name()))
-        })?
+        if !crate::internal::values::is_html_namespace_uri(name.namespace_uri()) {
+            return None;
+        }
+        let units = name.local_name().code_units();
+        let sorted = Self::sorted_by_name();
+        sorted
+            .binary_search_by(|known| known.local_name().encode_utf16().cmp(units.iter().copied()))
+            .ok()
+            .and_then(|index| sorted.get(index).copied())
+    }
+
+    /// The known elements in the order of their local names' UTF-16 code units, built once.
+    fn sorted_by_name() -> &'static [Self] {
+        static SORTED: std::sync::OnceLock<Vec<KnownHtmlElement>> = std::sync::OnceLock::new();
+        SORTED.get_or_init(|| {
+            let mut sorted = Self::ALL.to_vec();
+            sorted.sort_by(|left, right| {
+                left.local_name()
+                    .encode_utf16()
+                    .cmp(right.local_name().encode_utf16())
+            });
+            sorted
+        })
     }
 }
 

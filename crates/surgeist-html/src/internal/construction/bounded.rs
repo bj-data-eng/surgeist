@@ -645,7 +645,6 @@ impl HtmlConstructionStorage {
         self.arena.usage = usage;
     }
     /// The capacity of the record bank.
-    #[cfg(test)]
     pub(super) fn records_capacity(&self) -> usize {
         self.arena.records.capacity()
     }
