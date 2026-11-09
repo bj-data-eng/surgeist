@@ -1,17 +1,37 @@
 #![doc = include_str!("../README.md")]
 #![forbid(unsafe_code)]
+#![cfg_attr(
+    not(test),
+    deny(
+        clippy::arithmetic_side_effects,
+        clippy::expect_used,
+        clippy::indexing_slicing,
+        clippy::panic,
+        clippy::todo,
+        clippy::unimplemented,
+        clippy::unreachable,
+        clippy::unwrap_used
+    )
+)]
 
 use std::{
     fmt,
     ops::{AsyncFnOnce, Deref},
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        OnceLock,
+        atomic::{AtomicU64, Ordering},
+    },
     time::Duration,
 };
 
 mod checkpoint;
+mod dimension;
 mod phase_observation;
 mod shared;
+#[cfg(test)]
+mod tests;
 pub use checkpoint::{Checkpoint, IntervalReport, IntervalScopeReport, IntervalUsage};
+pub use dimension::{Dimension, NoDimension, NoTable, TableValue};
 pub use phase_observation::PhaseObservation;
 pub use shared::SharedOperation;
 
@@ -19,43 +39,45 @@ mod profile;
 use profile::Profile;
 pub use profile::{Event, EventFilter, ProfileMode, Report, ScopeReport, TerminalReport};
 
-/// A work dimension in an operation's schema.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Work<const N: usize>(usize);
-
-impl<const N: usize> Work<N> {
-    /// Selects an index below the schema's work dimension count.
-    pub const fn new(index: usize) -> Option<Self> {
-        if index < N { Some(Self(index)) } else { None }
-    }
-}
-
-/// A live resource dimension in an operation's schema.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Resource<const N: usize>(usize);
-
-impl<const N: usize> Resource<N> {
-    /// Selects an index below the schema's resource dimension count.
-    pub const fn new(index: usize) -> Option<Self> {
-        if index < N { Some(Self(index)) } else { None }
-    }
+/// Items the [`dimensions!`] expansion names. Not part of the supported API.
+#[doc(hidden)]
+pub mod __private {
+    /// Marks a dimension set declared through [`dimensions!`](crate::dimensions).
+    pub trait Sealed {}
 }
 
 /// Per-dimension caps in the scope's own units.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Limits<const W: usize, const R: usize> {
-    work: [u64; W],
-    live: [u64; R],
+pub struct Limits<W: Dimension, R: Dimension> {
+    work: W::Table<u64>,
+    live: R::Table<u64>,
 }
 
-impl<const W: usize, const R: usize> Limits<W, R> {
-    pub const fn new(work: [u64; W], live: [u64; R]) -> Self {
+impl<W: Dimension, R: Dimension> Limits<W, R> {
+    /// Caps each work dimension's cumulative usage and each resource
+    /// dimension's live usage.
+    pub const fn new(work: W::Table<u64>, live: R::Table<u64>) -> Self {
         Self { work, live }
     }
 
+    /// Builds caps by calling each function once per dimension.
+    pub fn from_fn(work: impl FnMut(W) -> u64, live: impl FnMut(R) -> u64) -> Self {
+        Self::new(W::from_fn(work), R::from_fn(live))
+    }
+
     /// Removes configured caps. Arithmetic remains checked.
-    pub const fn unlimited() -> Self {
-        Self::new([u64::MAX; W], [u64::MAX; R])
+    pub fn unlimited() -> Self {
+        Self::from_fn(|_| u64::MAX, |_| u64::MAX)
+    }
+
+    /// The cap on a work dimension's cumulative usage.
+    pub fn work(&self, dimension: W) -> u64 {
+        *W::get(&self.work, dimension)
+    }
+
+    /// The cap on a resource dimension's live usage.
+    pub fn live(&self, dimension: R) -> u64 {
+        *R::get(&self.live, dimension)
     }
 }
 
@@ -73,50 +95,41 @@ impl<D> Tariff<D> {
     }
 }
 
-/// One mapping per local dimension, indexed in schema order.
+/// One mapping per local dimension into the parent's dimensions.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Tariffs<const W: usize, const R: usize> {
-    work: [Tariff<Work<W>>; W],
-    resources: [Tariff<Resource<R>>; R],
+pub struct Tariffs<W: Dimension, R: Dimension> {
+    work: W::Table<Tariff<W>>,
+    resources: R::Table<Tariff<R>>,
 }
 
-impl<const W: usize, const R: usize> Tariffs<W, R> {
-    pub const fn new(work: [Tariff<Work<W>>; W], resources: [Tariff<Resource<R>>; R]) -> Self {
+impl<W: Dimension, R: Dimension> Tariffs<W, R> {
+    pub const fn new(work: W::Table<Tariff<W>>, resources: R::Table<Tariff<R>>) -> Self {
         Self { work, resources }
+    }
+
+    /// Builds mappings by calling each function once per local dimension.
+    pub fn from_fn(
+        work: impl FnMut(W) -> Tariff<W>,
+        resources: impl FnMut(R) -> Tariff<R>,
+    ) -> Self {
+        Self::new(W::from_fn(work), R::from_fn(resources))
     }
 
     /// Explicitly keeps the same dimensions and units in the parent.
     pub fn identity() -> Self {
-        Self::new(
-            std::array::from_fn(|i| Tariff::new(Work(i), 1)),
-            std::array::from_fn(|i| Tariff::new(Resource(i), 1)),
+        Self::from_fn(
+            |dimension| Tariff::new(dimension, 1),
+            |dimension| Tariff::new(dimension, 1),
         )
-    }
-
-    fn project(&self, change: Change<W, R>) -> Option<Change<W, R>> {
-        Some(match change {
-            Change::Work(dimension, amount) => {
-                let tariff = self.work[dimension.0];
-                Change::Work(tariff.target, amount.checked_mul(tariff.scale)?)
-            }
-            Change::Acquire(dimension, amount) => {
-                let tariff = self.resources[dimension.0];
-                Change::Acquire(tariff.target, amount.checked_mul(tariff.scale)?)
-            }
-            Change::Release(dimension, amount) => {
-                let tariff = self.resources[dimension.0];
-                Change::Release(tariff.target, amount.checked_mul(tariff.scale)?)
-            }
-        })
     }
 }
 
 /// One ordered ledger change, expressed in the originating scope's units.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Change<const W: usize, const R: usize> {
-    Work(Work<W>, u64),
-    Acquire(Resource<R>, u64),
-    Release(Resource<R>, u64),
+pub enum Change<W: Dimension, R: Dimension> {
+    Work(W, u64),
+    Acquire(R, u64),
+    Release(R, u64),
 }
 
 /// An operation-owned scope. Its identity stays valid for the operation's lifetime.
@@ -128,58 +141,31 @@ pub struct Scope {
 
 /// Inclusive accepted usage in one scope's own units.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Usage<const W: usize, const R: usize> {
-    work: [u64; W],
-    live: [u64; R],
-    peak: [u64; R],
+pub struct Usage<W: Dimension, R: Dimension> {
+    work: W::Table<u64>,
+    live: R::Table<u64>,
+    peak: R::Table<u64>,
 }
 
-impl<const W: usize, const R: usize> Usage<W, R> {
-    const ZERO: Self = Self {
-        work: [0; W],
-        live: [0; R],
-        peak: [0; R],
-    };
-
-    pub const fn work(&self, dimension: Work<W>) -> u64 {
-        self.work[dimension.0]
-    }
-
-    pub const fn live(&self, dimension: Resource<R>) -> u64 {
-        self.live[dimension.0]
-    }
-
-    pub const fn peak(&self, dimension: Resource<R>) -> u64 {
-        self.peak[dimension.0]
-    }
-
-    fn current(&self, change: Change<W, R>) -> u64 {
-        match change {
-            Change::Work(dimension, _) => self.work(dimension),
-            Change::Acquire(dimension, _) | Change::Release(dimension, _) => self.live(dimension),
+impl<W: Dimension, R: Dimension> Usage<W, R> {
+    fn zero() -> Self {
+        Self {
+            work: W::from_fn(|_| 0),
+            live: R::from_fn(|_| 0),
+            peak: R::from_fn(|_| 0),
         }
     }
 
-    fn stage(&mut self, limits: &Limits<W, R>, change: Change<W, R>) -> Result<(), RefusalReason> {
-        match change {
-            Change::Work(dimension, amount) => {
-                let current = &mut self.work[dimension.0];
-                *current = increase(*current, amount, limits.work[dimension.0])?;
-            }
-            Change::Acquire(dimension, amount) => {
-                let current = &mut self.live[dimension.0];
-                *current = increase(*current, amount, limits.live[dimension.0])?;
-                let peak = &mut self.peak[dimension.0];
-                *peak = (*peak).max(*current);
-            }
-            Change::Release(dimension, amount) => {
-                let current = &mut self.live[dimension.0];
-                *current = current
-                    .checked_sub(amount)
-                    .ok_or(RefusalReason::Underflow)?;
-            }
-        }
-        Ok(())
+    pub fn work(&self, dimension: W) -> u64 {
+        *W::get(&self.work, dimension)
+    }
+
+    pub fn live(&self, dimension: R) -> u64 {
+        *R::get(&self.live, dimension)
+    }
+
+    pub fn peak(&self, dimension: R) -> u64 {
+        *R::get(&self.peak, dimension)
     }
 }
 
@@ -202,7 +188,7 @@ pub enum RefusalReason {
 /// The first refused item. Current usage includes the provisional prefix of the
 /// batch and, for a custody underflow, describes only the origin's direct hold.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct Refusal<const W: usize, const R: usize> {
+pub struct Refusal<W: Dimension, R: Dimension> {
     pub scope: Scope,
     pub item: usize,
     pub change: Change<W, R>,
@@ -210,22 +196,64 @@ pub struct Refusal<const W: usize, const R: usize> {
     pub reason: RefusalReason,
 }
 
+/// A ledger state that the ledger's own sequencing rules out. No valid use
+/// produces one. Each variant names the invariant that was found broken.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum Defect {
+    /// A scope identity of this operation names no scope entry.
+    ScopeEntry,
+    /// A profile or interval report has no record for an existing scope, or
+    /// holds a different number of records than the operation has scopes.
+    ReportScope,
+    /// A buffer reserved at setup was full where the operation's bounds leave room.
+    ReservedCapacity,
+    /// A scope's direct custody exceeded the custody its admissions accepted.
+    DirectCustody,
+    /// Cumulative accepted work fell below its value when an interval opened.
+    IntervalWork,
+    /// Retained detail events exceeded the configured event limit.
+    EventLimit,
+    /// A checkpoint slot found free was missing when the interval was stored.
+    CheckpointSlot,
+}
+
+impl fmt::Display for Defect {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Self::ScopeEntry => "scope identity names no scope entry",
+            Self::ReportScope => "report records do not match the operation's scopes",
+            Self::ReservedCapacity => "reserved buffer full within its bound",
+            Self::DirectCustody => "direct custody exceeds accepted custody",
+            Self::IntervalWork => "cumulative work fell below its interval opening",
+            Self::EventLimit => "retained events exceed the event limit",
+            Self::CheckpointSlot => "free checkpoint slot missing",
+        })
+    }
+}
+
 /// A ledger admission or scope management failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Error<const W: usize, const R: usize> {
+pub enum Error<W: Dimension, R: Dimension> {
     Allocation,
     IdentityExhausted,
     ForeignScope,
     ForeignCheckpoint,
     StaleCheckpoint,
-    CheckpointLimit { limit: usize },
+    CheckpointLimit {
+        limit: usize,
+    },
     CheckpointsConfigured,
-    ScopeLimit { limit: usize },
+    ScopeLimit {
+        limit: usize,
+    },
     TimingUnavailable,
     Refused(Refusal<W, R>),
+    /// The ledger found a broken internal invariant. The operation stays in
+    /// this state: every later fallible call returns the same defect.
+    Defect(Defect),
 }
 
-impl<const W: usize, const R: usize> fmt::Display for Error<W, R> {
+impl<W: Dimension, R: Dimension> fmt::Display for Error<W, R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Allocation => f.write_str("could not allocate ledger storage"),
@@ -244,37 +272,49 @@ impl<const W: usize, const R: usize> fmt::Display for Error<W, R> {
                 "ledger change {} refused: {:?}",
                 refusal.item, refusal.reason
             ),
+            Self::Defect(defect) => write!(f, "ledger defect: {defect}"),
         }
     }
 }
 
-impl<const W: usize, const R: usize> std::error::Error for Error<W, R> {}
+impl<W: Dimension, R: Dimension> std::error::Error for Error<W, R> {}
 
-struct Parent<const W: usize, const R: usize> {
+/// Pushes into a buffer whose capacity was reserved for this item, without
+/// reallocating. A full buffer is a defect in the reservation bound.
+fn push_reserved<T>(buffer: &mut Vec<T>, item: T) -> Result<(), Defect> {
+    if buffer.len() < buffer.capacity() {
+        buffer.push(item);
+        Ok(())
+    } else {
+        Err(Defect::ReservedCapacity)
+    }
+}
+
+struct Parent<W: Dimension, R: Dimension> {
     index: usize,
     tariffs: Tariffs<W, R>,
 }
 
-struct ScopeEntry<const W: usize, const R: usize> {
+struct ScopeEntry<W: Dimension, R: Dimension> {
     name: &'static str,
     parent: Option<Parent<W, R>>,
     limits: Limits<W, R>,
     usage: Usage<W, R>,
     staged: Usage<W, R>,
-    batch_peak: [u64; R],
-    direct: [u64; R],
+    batch_peak: R::Table<u64>,
+    direct: R::Table<u64>,
 }
 
-impl<const W: usize, const R: usize> ScopeEntry<W, R> {
-    const fn new(name: &'static str, parent: Option<Parent<W, R>>, limits: Limits<W, R>) -> Self {
+impl<W: Dimension, R: Dimension> ScopeEntry<W, R> {
+    fn new(name: &'static str, parent: Option<Parent<W, R>>, limits: Limits<W, R>) -> Self {
         Self {
             name,
             parent,
             limits,
-            usage: Usage::ZERO,
-            staged: Usage::ZERO,
-            batch_peak: [0; R],
-            direct: [0; R],
+            usage: Usage::zero(),
+            staged: Usage::zero(),
+            batch_peak: R::from_fn(|_| 0),
+            direct: R::from_fn(|_| 0),
         }
     }
 
@@ -290,7 +330,7 @@ static NEXT_OPERATION: AtomicU64 = AtomicU64::new(0);
 /// Scopes are retained until this ledger is dropped. Only the originating scope
 /// can release its direct custody, even when that scope has children. Consumers
 /// own cancellation and terminal state and can issue cleanup after refusal.
-pub struct Operation<const W: usize, const R: usize> {
+pub struct Operation<W: Dimension, R: Dimension> {
     identity: u64,
     max_scopes: usize,
     scopes: Vec<ScopeEntry<W, R>>,
@@ -298,9 +338,12 @@ pub struct Operation<const W: usize, const R: usize> {
     // while enabled setup reserves it fallibly alongside the report buffers.
     profile: Vec<Profile<W, R>>,
     checkpoints: checkpoint::Checkpoints<W, R>,
+    // The first defect found. Once set, every fallible call returns it. A
+    // `OnceLock` lets read-only calls latch a defect they find.
+    defect: OnceLock<Defect>,
 }
 
-impl<const W: usize, const R: usize> Operation<W, R> {
+impl<W: Dimension, R: Dimension> Operation<W, R> {
     /// Creates an operation. The scope bound includes the root.
     pub fn new(
         name: &'static str,
@@ -322,6 +365,7 @@ impl<const W: usize, const R: usize> Operation<W, R> {
             scopes,
             profile: Vec::new(),
             checkpoints: checkpoint::Checkpoints::default(),
+            defect: OnceLock::new(),
         })
     }
 
@@ -363,7 +407,7 @@ impl<const W: usize, const R: usize> Operation<W, R> {
                 .profile
                 .try_reserve_exact(1)
                 .map_err(|_| Error::Allocation)?;
-            profile.add_scope(root, None, name);
+            profile.add_scope(root, None, name).map_err(Error::Defect)?;
             operation.profile.push(profile);
         }
         Ok(operation)
@@ -383,7 +427,7 @@ impl<const W: usize, const R: usize> Operation<W, R> {
     ) -> Result<Scope, Error<W, R>> {
         let parent_index = self.index(parent)?;
         let index = self.scopes.len();
-        if index == self.max_scopes {
+        if index >= self.max_scopes {
             return Err(Error::ScopeLimit {
                 limit: self.max_scopes,
             });
@@ -398,19 +442,33 @@ impl<const W: usize, const R: usize> Operation<W, R> {
             limits,
         ));
         let scope = self.scope(index);
-        if let Some(profile) = self.profile.first_mut() {
-            profile.add_scope(scope, Some(parent), name);
-        }
-        self.checkpoints.add_scope(scope, Some(parent), name);
+        let observed = self.observe_scope(scope, parent, name);
+        self.note(observed)?;
         Ok(scope)
     }
 
+    fn observe_scope(
+        &mut self,
+        scope: Scope,
+        parent: Scope,
+        name: &'static str,
+    ) -> Result<(), Error<W, R>> {
+        if let Some(profile) = self.profile.first_mut() {
+            profile
+                .add_scope(scope, Some(parent), name)
+                .map_err(Error::Defect)?;
+        }
+        self.checkpoints
+            .add_scope(scope, Some(parent), name)
+            .map_err(Error::Defect)
+    }
+
     pub fn usage(&self, scope: Scope) -> Result<&Usage<W, R>, Error<W, R>> {
-        Ok(&self.scopes[self.index(scope)?].usage)
+        Ok(&self.entry(self.index(scope)?)?.usage)
     }
 
     pub fn scope_name(&self, scope: Scope) -> Result<&'static str, Error<W, R>> {
-        Ok(self.scopes[self.index(scope)?].name)
+        Ok(self.entry(self.index(scope)?)?.name)
     }
 
     /// Observes an inclusive phase at a scope while running the caller's
@@ -460,6 +518,7 @@ impl<const W: usize, const R: usize> Operation<W, R> {
     /// Elapsed operation time is observed at the snapshot; phase summaries include
     /// only phases that have ended. This is not an interval-peak calculation.
     pub fn snapshot(&self) -> Result<Option<Report<W, R>>, Error<W, R>> {
+        self.healthy()?;
         self.profile
             .first()
             .map(|profile| profile.snapshot(self.scopes.iter().map(|entry| entry.usage)))
@@ -469,10 +528,18 @@ impl<const W: usize, const R: usize> Operation<W, R> {
     /// Consumes the ledger and returns its structured report if enabled.
     /// Consumers release live resources before finishing when cleanup is part
     /// of the operation; outstanding balances remain visible in the report.
-    pub fn finish(mut self) -> Option<Report<W, R>> {
+    /// A defect found earlier, including on a path with no error return, is
+    /// returned instead of a report.
+    pub fn finish(mut self) -> Result<Option<Report<W, R>>, Error<W, R>> {
+        self.healthy()?;
         self.profile
             .pop()
-            .map(|profile| profile.finish(self.scopes.into_iter().map(|entry| entry.usage)))
+            .map(|profile| {
+                profile
+                    .finish(self.scopes.into_iter().map(|entry| entry.usage))
+                    .map_err(Error::Defect)
+            })
+            .transpose()
     }
 
     /// Checks the same ordered admission rules without committing usage, peaks
@@ -487,7 +554,10 @@ impl<const W: usize, const R: usize> Operation<W, R> {
         if changes.is_empty() {
             return Ok(());
         }
-        self.stage_batch(scope, origin, changes).map(|_| ())
+        let staged = Admission::new(self, scope)
+            .stage(origin, changes)
+            .map(|_| ());
+        self.note(staged)
     }
 
     pub fn apply(&mut self, scope: Scope, change: Change<W, R>) -> Result<(), Error<W, R>> {
@@ -511,11 +581,29 @@ impl<const W: usize, const R: usize> Operation<W, R> {
             return Ok(());
         }
         let result = self.admit_batch(scope, origin, changes);
-        if let Some(profile) = self.profile.first_mut() {
-            profile.admission(scope, changes, result);
+        if !self.profile.is_empty() || self.checkpoints.configured() {
+            self.observe_admission(scope, changes, result)?;
         }
-        self.checkpoints.admission(scope, changes, result);
-        result
+        self.note(result)
+    }
+
+    /// Records an admission in the profile and every open interval. A defect
+    /// found while recording is latched and returned.
+    fn observe_admission(
+        &mut self,
+        scope: Scope,
+        changes: &[Change<W, R>],
+        result: Result<(), Error<W, R>>,
+    ) -> Result<(), Error<W, R>> {
+        if let Some(profile) = self.profile.first_mut()
+            && let Err(defect) = profile.admission(scope, changes, result)
+        {
+            return Err(Error::Defect(latch_defect(&self.defect, defect)));
+        }
+        if let Err(defect) = self.checkpoints.admission(scope, changes, result) {
+            return Err(Error::Defect(latch_defect(&self.defect, defect)));
+        }
+        Ok(())
     }
 
     fn admit_batch(
@@ -524,95 +612,49 @@ impl<const W: usize, const R: usize> Operation<W, R> {
         origin: usize,
         changes: &[Change<W, R>],
     ) -> Result<(), Error<W, R>> {
-        let direct = self.stage_batch(scope, origin, changes)?;
+        let direct = Admission::new(self, scope).stage(origin, changes)?;
+        let Self {
+            scopes,
+            defect,
+            checkpoints,
+            ..
+        } = self;
+        let scopes = scopes.as_mut_slice();
         let mut cursor = Some(origin);
         while let Some(index) = cursor {
-            let entry = &mut self.scopes[index];
+            let Some(entry) = scopes.get_mut(index) else {
+                return Err(missing_scope(defect));
+            };
             entry.usage = entry.staged;
-            self.checkpoints.commit_peak(index, entry.batch_peak);
+            let peak = entry.batch_peak;
             cursor = entry.parent_index();
+            if checkpoints.configured()
+                && let Err(found) = checkpoints.commit_peak(index, peak)
+            {
+                return Err(Error::Defect(latch_defect(defect, found)));
+            }
         }
-        self.scopes[origin].direct = direct;
+        let Some(entry) = scopes.get_mut(origin) else {
+            return Err(missing_scope(defect));
+        };
+        entry.direct = direct;
         Ok(())
-    }
-
-    fn stage_batch(
-        &mut self,
-        scope: Scope,
-        origin: usize,
-        changes: &[Change<W, R>],
-    ) -> Result<[u64; R], Error<W, R>> {
-        let mut cursor = Some(origin);
-        while let Some(index) = cursor {
-            let entry = &mut self.scopes[index];
-            entry.staged = entry.usage;
-            entry.batch_peak = entry.usage.live;
-            cursor = entry.parent_index();
-        }
-
-        let mut direct = self.scopes[origin].direct;
-        for (item, &change) in changes.iter().enumerate() {
-            if let Change::Release(dimension, amount) = change {
-                let current = &mut direct[dimension.0];
-                *current = current.checked_sub(amount).ok_or(Error::Refused(Refusal {
-                    scope,
-                    item,
-                    change,
-                    current: *current,
-                    reason: RefusalReason::Underflow,
-                }))?;
-            }
-
-            let mut index = origin;
-            let mut projected = change;
-            loop {
-                let entry = &mut self.scopes[index];
-                let current = entry.staged.current(projected);
-                let refusal = |reason| {
-                    Error::Refused(Refusal {
-                        scope: Scope {
-                            operation: scope.operation,
-                            index,
-                        },
-                        item,
-                        change: projected,
-                        current,
-                        reason,
-                    })
-                };
-                entry
-                    .staged
-                    .stage(&entry.limits, projected)
-                    .map_err(refusal)?;
-                if let Change::Acquire(dimension, _) = projected {
-                    entry.batch_peak[dimension.0] =
-                        entry.batch_peak[dimension.0].max(entry.staged.live[dimension.0]);
-                }
-                let Some(parent) = entry.parent.as_ref() else {
-                    break;
-                };
-                projected = parent
-                    .tariffs
-                    .project(projected)
-                    .ok_or_else(|| refusal(RefusalReason::Overflow))?;
-                index = parent.index;
-            }
-
-            if let Change::Acquire(dimension, amount) = change {
-                // Direct holdings are a subset of the admitted inclusive total.
-                direct[dimension.0] += amount;
-            }
-        }
-
-        Ok(direct)
     }
 
     fn record_phase(&mut self, scope: Scope, start: Option<Duration>) {
         let end = self.profile.first().and_then(Profile::elapsed);
-        if let Some(profile) = self.profile.first_mut() {
-            profile.end_phase(scope, start, end);
+        let profiled = self
+            .profile
+            .first_mut()
+            .map_or(Ok(()), |profile| profile.end_phase(scope, start, end));
+        if let Err(defect) = profiled {
+            latch_defect(&self.defect, defect);
         }
-        self.checkpoints.end_phase(scope, start, end);
+        if self.checkpoints.configured()
+            && let Err(defect) = self.checkpoints.end_phase(scope, start, end)
+        {
+            latch_defect(&self.defect, defect);
+        }
     }
 
     const fn scope(&self, index: usize) -> Scope {
@@ -622,12 +664,42 @@ impl<const W: usize, const R: usize> Operation<W, R> {
         }
     }
 
+    /// Returns the latched defect, if any.
+    fn healthy(&self) -> Result<(), Error<W, R>> {
+        self.defect
+            .get()
+            .map_or(Ok(()), |&defect| Err(Error::Defect(defect)))
+    }
+
+    /// Latches a defect carried by `result` and passes the result on.
+    fn note<T>(&mut self, result: Result<T, Error<W, R>>) -> Result<T, Error<W, R>> {
+        match result {
+            Err(Error::Defect(defect)) => Err(self.latch(defect)),
+            other => other,
+        }
+    }
+
+    /// Records `defect` unless an earlier one is latched, and returns it as an error.
+    fn latch(&self, defect: Defect) -> Error<W, R> {
+        Error::Defect(latch_defect(&self.defect, defect))
+    }
+
     fn index(&self, scope: Scope) -> Result<usize, Error<W, R>> {
-        if scope.operation == self.identity {
+        self.healthy()?;
+        if scope.operation != self.identity {
+            return Err(Error::ForeignScope);
+        }
+        if scope.index < self.scopes.len() {
             Ok(scope.index)
         } else {
-            Err(Error::ForeignScope)
+            Err(self.latch(Defect::ScopeEntry))
         }
+    }
+
+    fn entry(&self, index: usize) -> Result<&ScopeEntry<W, R>, Error<W, R>> {
+        self.scopes
+            .get(index)
+            .ok_or_else(|| self.latch(Defect::ScopeEntry))
     }
 }
 
@@ -635,21 +707,23 @@ impl<const W: usize, const R: usize> Operation<W, R> {
 /// remains in place through phase completion.
 ///
 /// ```compile_fail,E0596
-/// use surgeist_ledger::{Limits, Operation};
+/// use surgeist_ledger::{Limits, NoDimension, Operation};
 ///
-/// let mut operation = Operation::<0, 0>::new("original", Limits::unlimited(), 1).unwrap();
-/// let replacement = Operation::<0, 0>::new("replacement", Limits::unlimited(), 1).unwrap();
+/// let mut operation =
+///     Operation::<NoDimension, NoDimension>::new("original", Limits::unlimited(), 1).unwrap();
+/// let replacement =
+///     Operation::<NoDimension, NoDimension>::new("replacement", Limits::unlimited(), 1).unwrap();
 /// operation.with_phase(operation.root(), |phase| {
 ///     std::mem::replace(&mut **phase, replacement);
 /// }).unwrap();
 /// ```
-pub struct Phase<'a, const W: usize, const R: usize> {
+pub struct Phase<'a, W: Dimension, R: Dimension> {
     start: Option<Duration>,
     scope: Scope,
     operation: &'a mut Operation<W, R>,
 }
 
-impl<const W: usize, const R: usize> Phase<'_, W, R> {
+impl<W: Dimension, R: Dimension> Phase<'_, W, R> {
     pub fn child(
         &mut self,
         parent: Scope,
@@ -710,7 +784,7 @@ impl<const W: usize, const R: usize> Phase<'_, W, R> {
     }
 }
 
-impl<const W: usize, const R: usize> Deref for Phase<'_, W, R> {
+impl<W: Dimension, R: Dimension> Deref for Phase<'_, W, R> {
     type Target = Operation<W, R>;
 
     fn deref(&self) -> &Self::Target {
@@ -718,8 +792,222 @@ impl<const W: usize, const R: usize> Deref for Phase<'_, W, R> {
     }
 }
 
-impl<const W: usize, const R: usize> Drop for Phase<'_, W, R> {
+impl<W: Dimension, R: Dimension> Drop for Phase<'_, W, R> {
     fn drop(&mut self) {
         self.operation.record_phase(self.scope, self.start);
     }
+}
+
+/// One batch's view of the scope list, borrowed once so that every walk
+/// along a scope chain works on the same slice.
+struct Admission<'a, W: Dimension, R: Dimension> {
+    scopes: &'a mut [ScopeEntry<W, R>],
+    defect: &'a OnceLock<Defect>,
+    scope: Scope,
+}
+
+impl<'a, W: Dimension, R: Dimension> Admission<'a, W, R> {
+    fn new(operation: &'a mut Operation<W, R>, scope: Scope) -> Self {
+        Self {
+            scopes: operation.scopes.as_mut_slice(),
+            defect: &operation.defect,
+            scope,
+        }
+    }
+
+    fn at(&self, index: usize) -> Scope {
+        Scope {
+            operation: self.scope.operation,
+            index,
+        }
+    }
+
+    /// Stages a batch along the origin's chain and returns the origin's
+    /// direct custody after it. Staged usage is committed by the caller.
+    fn stage(
+        &mut self,
+        origin: usize,
+        changes: &[Change<W, R>],
+    ) -> Result<R::Table<u64>, Error<W, R>> {
+        let mut cursor = Some(origin);
+        while let Some(index) = cursor {
+            let Some(entry) = self.scopes.get_mut(index) else {
+                return Err(missing_scope(self.defect));
+            };
+            entry.staged = entry.usage;
+            entry.batch_peak = entry.usage.live;
+            cursor = entry.parent_index();
+        }
+
+        let Some(origin_entry) = self.scopes.get(origin) else {
+            return Err(missing_scope(self.defect));
+        };
+        let mut direct = origin_entry.direct;
+        for (item, &change) in changes.iter().enumerate() {
+            match change {
+                Change::Work(dimension, amount) => {
+                    self.work(origin, item, dimension, amount)?;
+                }
+                Change::Acquire(dimension, amount) => {
+                    self.acquire(origin, item, dimension, amount)?;
+                    // Direct holdings are a subset of the admitted inclusive total.
+                    let held = R::get_mut(&mut direct, dimension);
+                    let Some(total) = held.checked_add(amount) else {
+                        return Err(Error::Defect(latch_defect(
+                            self.defect,
+                            Defect::DirectCustody,
+                        )));
+                    };
+                    *held = total;
+                }
+                Change::Release(dimension, amount) => {
+                    let held = R::get_mut(&mut direct, dimension);
+                    let Some(remaining) = held.checked_sub(amount) else {
+                        return Err(refused(
+                            self.scope,
+                            item,
+                            change,
+                            *held,
+                            RefusalReason::Underflow,
+                        ));
+                    };
+                    *held = remaining;
+                    self.release(origin, item, dimension, amount)?;
+                }
+            }
+        }
+        Ok(direct)
+    }
+
+    /// Stages one work change from `index` to the root. Each scope checks its
+    /// own limit before the change is projected into its parent's units.
+    fn work(
+        &mut self,
+        mut index: usize,
+        item: usize,
+        mut dimension: W,
+        mut amount: u64,
+    ) -> Result<(), Error<W, R>> {
+        loop {
+            let at = self.at(index);
+            let Some(entry) = self.scopes.get_mut(index) else {
+                return Err(missing_scope(self.defect));
+            };
+            let change = Change::Work(dimension, amount);
+            let current = W::get_mut(&mut entry.staged.work, dimension);
+            let held = *current;
+            *current = increase(held, amount, entry.limits.work(dimension))
+                .map_err(|reason| refused(at, item, change, held, reason))?;
+            let Some(parent) = &entry.parent else {
+                return Ok(());
+            };
+            let tariff = W::get(&parent.tariffs.work, dimension);
+            amount = amount
+                .checked_mul(tariff.scale)
+                .ok_or_else(|| refused(at, item, change, held, RefusalReason::Overflow))?;
+            dimension = tariff.target;
+            index = parent.index;
+        }
+    }
+
+    /// Stages one acquisition from `index` to the root, raising each scope's
+    /// lifetime and batch peaks.
+    fn acquire(
+        &mut self,
+        mut index: usize,
+        item: usize,
+        mut dimension: R,
+        mut amount: u64,
+    ) -> Result<(), Error<W, R>> {
+        loop {
+            let at = self.at(index);
+            let Some(entry) = self.scopes.get_mut(index) else {
+                return Err(missing_scope(self.defect));
+            };
+            let change = Change::Acquire(dimension, amount);
+            let current = R::get_mut(&mut entry.staged.live, dimension);
+            let held = *current;
+            let live = increase(held, amount, entry.limits.live(dimension))
+                .map_err(|reason| refused(at, item, change, held, reason))?;
+            *current = live;
+            let peak = R::get_mut(&mut entry.staged.peak, dimension);
+            *peak = (*peak).max(live);
+            let batch_peak = R::get_mut(&mut entry.batch_peak, dimension);
+            *batch_peak = (*batch_peak).max(live);
+            let Some(parent) = &entry.parent else {
+                return Ok(());
+            };
+            let tariff = R::get(&parent.tariffs.resources, dimension);
+            amount = amount
+                .checked_mul(tariff.scale)
+                .ok_or_else(|| refused(at, item, change, held, RefusalReason::Overflow))?;
+            dimension = tariff.target;
+            index = parent.index;
+        }
+    }
+
+    /// Stages one release from `index` to the root.
+    fn release(
+        &mut self,
+        mut index: usize,
+        item: usize,
+        mut dimension: R,
+        mut amount: u64,
+    ) -> Result<(), Error<W, R>> {
+        loop {
+            let at = self.at(index);
+            let Some(entry) = self.scopes.get_mut(index) else {
+                return Err(missing_scope(self.defect));
+            };
+            let change = Change::Release(dimension, amount);
+            let current = R::get_mut(&mut entry.staged.live, dimension);
+            let held = *current;
+            *current = held
+                .checked_sub(amount)
+                .ok_or_else(|| refused(at, item, change, held, RefusalReason::Underflow))?;
+            let Some(parent) = &entry.parent else {
+                return Ok(());
+            };
+            let tariff = R::get(&parent.tariffs.resources, dimension);
+            amount = amount
+                .checked_mul(tariff.scale)
+                .ok_or_else(|| refused(at, item, change, held, RefusalReason::Overflow))?;
+            dimension = tariff.target;
+            index = parent.index;
+        }
+    }
+}
+
+/// Builds a refusal. Kept out of line so admission loops stay small.
+#[cold]
+#[inline(never)]
+fn refused<W: Dimension, R: Dimension>(
+    scope: Scope,
+    item: usize,
+    change: Change<W, R>,
+    current: u64,
+    reason: RefusalReason,
+) -> Error<W, R> {
+    Error::Refused(Refusal {
+        scope,
+        item,
+        change,
+        current,
+        reason,
+    })
+}
+
+/// Latches and returns a missing-scope defect, out of line.
+#[cold]
+#[inline(never)]
+fn missing_scope<W: Dimension, R: Dimension>(defect: &OnceLock<Defect>) -> Error<W, R> {
+    Error::Defect(latch_defect(defect, Defect::ScopeEntry))
+}
+
+/// Latches `defect` unless an earlier one is latched and returns the latched
+/// defect. Out of line: a defect is never on the admission fast path.
+#[cold]
+#[inline(never)]
+fn latch_defect(latched: &OnceLock<Defect>, defect: Defect) -> Defect {
+    *latched.get_or_init(|| defect)
 }

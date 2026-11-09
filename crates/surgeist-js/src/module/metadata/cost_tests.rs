@@ -1,6 +1,6 @@
 // Intended as a child of the constructor metadata owner.
 use super::*;
-use crate::execution::{ExecutionOptions, ExecutionReport, ProfileMode};
+use crate::execution::{ExecutionOptions, ExecutionReport, ExecutionWork, ProfileMode};
 use surgeist_js_ast::operations::NameWork;
 
 fn context() -> Context {
@@ -14,16 +14,17 @@ fn options(limit: u64) -> ExecutionOptions {
         .with_module_metadata_work_limit(limit)
         .with_profile(ProfileMode::Summary { timing: false })
 }
-fn origin(report: &ExecutionReport, name: &str, dimension: usize) -> u64 {
+fn origin(report: &ExecutionReport, name: &str, dimension: ExecutionWork) -> u64 {
     report
         .profile()
+        .unwrap()
         .unwrap()
         .scopes
         .iter()
         .find(|scope| scope.name == name)
         .unwrap()
         .usage
-        .work(surgeist_ledger::Work::new(dimension).unwrap())
+        .work(dimension)
 }
 
 #[test]
@@ -45,9 +46,23 @@ fn path_payload_has_capacity_then_copy_byte_batches_and_none_has_no_payload_work
                     crate::error::RuntimeLimitError::ModuleMetadataWork { limit }
                 ))
             );
-            assert_eq!(outcome.report.module_metadata_work(), accepted);
-            assert_eq!(origin(&outcome.report, "metadata-capacity", 31), accepted);
-            assert_eq!(origin(&outcome.report, "metadata-copy", 31), 0);
+            assert_eq!(outcome.report.module_metadata_work().unwrap(), accepted);
+            assert_eq!(
+                origin(
+                    &outcome.report,
+                    "metadata-capacity",
+                    ExecutionWork::ModuleMetadataWork
+                ),
+                accepted
+            );
+            assert_eq!(
+                origin(
+                    &outcome.report,
+                    "metadata-copy",
+                    ExecutionWork::ModuleMetadataWork
+                ),
+                0
+            );
             assert!(!outcome.report.effects_started());
         }
         let mut context = context();
@@ -59,9 +74,23 @@ fn path_payload_has_capacity_then_copy_byte_batches_and_none_has_no_payload_work
             })
             .unwrap();
         assert_eq!(complete.result.unwrap().as_deref(), Some(path));
-        assert_eq!(complete.report.module_metadata_work(), 2 * bytes);
-        assert_eq!(origin(&complete.report, "metadata-capacity", 31), bytes);
-        assert_eq!(origin(&complete.report, "metadata-copy", 31), bytes);
+        assert_eq!(complete.report.module_metadata_work().unwrap(), 2 * bytes);
+        assert_eq!(
+            origin(
+                &complete.report,
+                "metadata-capacity",
+                ExecutionWork::ModuleMetadataWork
+            ),
+            bytes
+        );
+        assert_eq!(
+            origin(
+                &complete.report,
+                "metadata-copy",
+                ExecutionWork::ModuleMetadataWork
+            ),
+            bytes
+        );
     }
     let mut context = context();
     let none = context
@@ -72,7 +101,7 @@ fn path_payload_has_capacity_then_copy_byte_batches_and_none_has_no_payload_work
         })
         .unwrap();
     assert_eq!(none.result.unwrap(), None);
-    assert_eq!(none.report.module_metadata_work(), 0);
+    assert_eq!(none.report.module_metadata_work().unwrap(), 0);
     assert!(!none.report.effects_started());
 }
 
@@ -101,7 +130,7 @@ fn shallow_record_copy_prices_its_declared_descriptor_without_recopying_attribut
             crate::error::RuntimeLimitError::ModuleMetadataWork { limit: bytes - 1 }
         ))
     );
-    assert_eq!(refused.report.module_metadata_work(), 0);
+    assert_eq!(refused.report.module_metadata_work().unwrap(), 0);
     let accepted = context
         .with_execution(options(bytes), |access| {
             access
@@ -110,14 +139,24 @@ fn shallow_record_copy_prices_its_declared_descriptor_without_recopying_attribut
         })
         .unwrap();
     assert_eq!(accepted.result.unwrap(), request);
-    assert_eq!(accepted.report.module_metadata_work(), bytes);
-    assert_eq!(origin(&accepted.report, "metadata-copy", 31), bytes);
+    assert_eq!(accepted.report.module_metadata_work().unwrap(), bytes);
+    assert_eq!(
+        origin(
+            &accepted.report,
+            "metadata-copy",
+            ExecutionWork::ModuleMetadataWork
+        ),
+        bytes
+    );
     for name in [
         "metadata-string-scan",
         "metadata-string-copy",
         "metadata-string-allocate",
     ] {
-        assert_eq!(origin(&accepted.report, name, 31), 0);
+        assert_eq!(
+            origin(&accepted.report, name, ExecutionWork::ModuleMetadataWork),
+            0
+        );
     }
     assert!(!accepted.report.effects_started());
 }
@@ -152,13 +191,21 @@ fn delegated_string_prefixes_are_charged_once_to_metadata_without_compiler_or_in
                     crate::error::RuntimeLimitError::ModuleMetadataWork { limit }
                 ))
             );
-            assert_eq!(outcome.report.module_metadata_work(), accepted);
+            assert_eq!(outcome.report.module_metadata_work().unwrap(), accepted);
             assert_eq!(
-                origin(&outcome.report, "metadata-string-scan", 31),
+                origin(
+                    &outcome.report,
+                    "metadata-string-scan",
+                    ExecutionWork::ModuleMetadataWork
+                ),
                 if accepted >= scan { scan } else { 0 }
             );
             assert_eq!(
-                origin(&outcome.report, "metadata-string-allocate", 31),
+                origin(
+                    &outcome.report,
+                    "metadata-string-allocate",
+                    ExecutionWork::ModuleMetadataWork
+                ),
                 if accepted >= scan + allocation {
                     allocation
                 } else {
@@ -166,14 +213,18 @@ fn delegated_string_prefixes_are_charged_once_to_metadata_without_compiler_or_in
                 }
             );
             assert_eq!(
-                origin(&outcome.report, "metadata-string-copy", 31),
+                origin(
+                    &outcome.report,
+                    "metadata-string-copy",
+                    ExecutionWork::ModuleMetadataWork
+                ),
                 if accepted == prefix { copy } else { 0 }
             );
-            assert_eq!(outcome.report.compiler_work(), 0);
-            assert_eq!(outcome.report.interner_bytes(), 0);
-            assert_eq!(outcome.report.interner_utf16_units(), 0);
-            assert_eq!(outcome.report.interner_index_work(), 0);
-            assert_eq!(outcome.report.name_visits(), 0);
+            assert_eq!(outcome.report.compiler_work().unwrap(), 0);
+            assert_eq!(outcome.report.interner_bytes().unwrap(), 0);
+            assert_eq!(outcome.report.interner_utf16_units().unwrap(), 0);
+            assert_eq!(outcome.report.interner_index_work().unwrap(), 0);
+            assert_eq!(outcome.report.name_visits().unwrap(), 0);
             assert!(!outcome.report.effects_started());
         }
     }
@@ -199,22 +250,25 @@ fn delegated_name_dimensions_and_origins_remain_separate_from_a_zero_metadata_ca
         )
         .unwrap();
     accepted.result.unwrap();
-    assert_eq!(accepted.report.module_metadata_work(), 0);
+    assert_eq!(accepted.report.module_metadata_work().unwrap(), 0);
     assert_eq!(
         (
-            accepted.report.name_visits(),
-            accepted.report.name_records(),
-            accepted.report.name_comparisons()
+            accepted.report.name_visits().unwrap(),
+            accepted.report.name_records().unwrap(),
+            accepted.report.name_comparisons().unwrap()
         ),
         (1, 1, 1)
     );
     for (name, dimension) in [
-        ("metadata-name-visit", 12),
-        ("metadata-name-record", 13),
-        ("metadata-name-comparison", 14),
+        ("metadata-name-visit", ExecutionWork::NameVisit),
+        ("metadata-name-record", ExecutionWork::NameRecord),
+        ("metadata-name-comparison", ExecutionWork::NameComparison),
     ] {
         assert_eq!(origin(&accepted.report, name, dimension), 1);
-        assert_eq!(origin(&accepted.report, name, 31), 0);
+        assert_eq!(
+            origin(&accepted.report, name, ExecutionWork::ModuleMetadataWork),
+            0
+        );
     }
     assert!(!accepted.report.effects_started());
     let mut first = None;
@@ -240,7 +294,7 @@ fn delegated_name_dimensions_and_origins_remain_separate_from_a_zero_metadata_ca
         })
         .unwrap();
     assert_eq!(stopped.result.unwrap_err(), first.unwrap());
-    assert_eq!(stopped.report.name_visits(), 1);
-    assert_eq!(stopped.report.name_comparisons(), 0);
-    assert_eq!(stopped.report.module_metadata_work(), 0);
+    assert_eq!(stopped.report.name_visits().unwrap(), 1);
+    assert_eq!(stopped.report.name_comparisons().unwrap(), 0);
+    assert_eq!(stopped.report.module_metadata_work().unwrap(), 0);
 }

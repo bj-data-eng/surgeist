@@ -26,7 +26,7 @@ fn folded_literal_interning_cannot_bypass_the_operation_budget() {
         .eval_with_budget(Source::from_bytes(source), ExecutionOptions::new(128))
         .unwrap();
     assert_eq!(parsed.result.unwrap(), expected);
-    let source_units = parsed.report.interner_utf16_units();
+    let source_units = parsed.report.interner_utf16_units().unwrap();
     assert!(source_units > 0);
 
     for profile in [ProfileMode::Off, ProfileMode::Summary { timing: true }] {
@@ -39,7 +39,10 @@ fn folded_literal_interning_cannot_bypass_the_operation_budget() {
             .eval_with_budget(Source::from_bytes(source), options)
             .unwrap();
         assert_eq!(admitted_source.result.unwrap(), expected);
-        assert_eq!(admitted_source.report.interner_utf16_units(), source_units);
+        assert_eq!(
+            admitted_source.report.interner_utf16_units().unwrap(),
+            source_units
+        );
 
         let mut optimized = Context::default();
         optimized.set_optimizer_options(OptimizerOptions::CONSTANT_FOLDING);
@@ -53,7 +56,7 @@ fn folded_literal_interning_cannot_bypass_the_operation_budget() {
                 limit: source_units,
             }))
         );
-        assert_eq!(refused_output.report.instructions(), 0);
+        assert_eq!(refused_output.report.instructions().unwrap(), 0);
         assert!(!refused_output.report.effects_started());
         assert_eq!(
             optimized.eval(Source::from_bytes(source)).unwrap(),
@@ -76,8 +79,8 @@ fn interner_publication_admits_index_and_retained_units_together() {
                 ExecutionOptions::new(64).with_interner_utf16_limit(limit),
             )
             .unwrap();
-        assert_eq!(evaluation.report.interner_utf16_units(), limit);
-        assert_eq!(evaluation.report.interner_bytes(), 0);
+        assert_eq!(evaluation.report.interner_utf16_units().unwrap(), limit);
+        assert_eq!(evaluation.report.interner_bytes().unwrap(), 0);
         if limit == 3 {
             assert_eq!(
                 evaluation.result.unwrap_err().as_engine(),
@@ -86,10 +89,13 @@ fn interner_publication_admits_index_and_retained_units_together() {
                     limit,
                 }))
             );
-            assert_eq!(evaluation.report.instructions(), 0);
-            refused_index = evaluation.report.interner_index_work();
+            assert_eq!(evaluation.report.instructions().unwrap(), 0);
+            refused_index = evaluation.report.interner_index_work().unwrap();
         } else {
-            assert_eq!(evaluation.report.interner_index_work(), refused_index + 1);
+            assert_eq!(
+                evaluation.report.interner_index_work().unwrap(),
+                refused_index + 1
+            );
             assert_eq!(
                 evaluation.result.unwrap().as_string().unwrap().to_vec(),
                 [0xD800]
@@ -116,9 +122,9 @@ fn interner_byte_refusal_precedes_the_first_lookup_probe() {
             limit: 0,
         }))
     );
-    assert_eq!(evaluation.report.interner_bytes(), 0);
-    assert_eq!(evaluation.report.interner_index_work(), 0);
-    assert_eq!(evaluation.report.instructions(), 0);
+    assert_eq!(evaluation.report.interner_bytes().unwrap(), 0);
+    assert_eq!(evaluation.report.interner_index_work().unwrap(), 0);
+    assert_eq!(evaluation.report.instructions().unwrap(), 0);
 }
 
 #[test]
@@ -136,8 +142,8 @@ fn nested_eval_interner_refusal_bypasses_guest_catch() {
             ExecutionOptions::new(128).with_interner_byte_limit(limit),
         )
         .unwrap();
-    assert_eq!(evaluation.report.interner_bytes(), limit);
-    assert!(evaluation.report.instructions() > 0);
+    assert_eq!(evaluation.report.interner_bytes().unwrap(), limit);
+    assert!(evaluation.report.instructions().unwrap() > 0);
     assert_eq!(
         evaluation.result.unwrap_err().as_engine(),
         Some(&EngineError::RuntimeLimit(RuntimeLimitError::Interner {
@@ -157,8 +163,8 @@ fn label_lookup_budget_refuses_before_resolution_and_preserves_exact_work() {
                 ExecutionOptions::new(64).with_label_lookup_limit(limit),
             )
             .unwrap();
-        assert_eq!(refused.report.label_lookups(), limit);
-        assert_eq!(refused.report.instructions(), 0);
+        assert_eq!(refused.report.label_lookups().unwrap(), limit);
+        assert_eq!(refused.report.instructions().unwrap(), 0);
         assert_eq!(
             refused.result.unwrap_err().as_engine(),
             Some(&EngineError::RuntimeLimit(RuntimeLimitError::LabelLookup {
@@ -172,7 +178,7 @@ fn label_lookup_budget_refuses_before_resolution_and_preserves_exact_work() {
             ExecutionOptions::new(64).with_label_lookup_limit(2),
         )
         .unwrap();
-    assert_eq!(exact.report.label_lookups(), 2);
+    assert_eq!(exact.report.label_lookups().unwrap(), 2);
     assert_eq!(exact.result.unwrap(), JsValue::undefined());
 
     let nested = context
@@ -184,7 +190,7 @@ fn label_lookup_budget_refuses_before_resolution_and_preserves_exact_work() {
             ExecutionOptions::new(64).with_label_lookup_limit(0),
         )
         .unwrap();
-    assert_eq!(nested.report.label_lookups(), 0);
+    assert_eq!(nested.report.label_lookups().unwrap(), 0);
     assert_eq!(
         nested.result.unwrap_err().as_engine(),
         Some(&EngineError::RuntimeLimit(RuntimeLimitError::LabelLookup {
@@ -215,12 +221,12 @@ fn early_error_visit_budget_is_exact_and_independent_of_profiling() {
                         .with_profile(profile),
                 )
                 .unwrap();
-            assert_eq!(outcome.report.early_error_visits(), limit);
-            assert_eq!(outcome.report.grammar_dispatches(), 5);
+            assert_eq!(outcome.report.early_error_visits().unwrap(), limit);
+            assert_eq!(outcome.report.grammar_dispatches().unwrap(), 5);
             if limit == 12 {
                 assert_eq!(outcome.result.unwrap(), JsValue::undefined());
             } else {
-                assert_eq!(outcome.report.instructions(), 0);
+                assert_eq!(outcome.report.instructions().unwrap(), 0);
                 assert_eq!(
                     outcome.result.unwrap_err().as_engine(),
                     Some(&EngineError::RuntimeLimit(
@@ -248,10 +254,11 @@ fn a_nested_early_error_walk_keeps_the_outer_operation_and_first_stop() {
                 .with_profile(ProfileMode::Summary { timing: false }),
         )
         .unwrap();
-    assert_eq!(outcome.report.early_error_visits(), 512);
+    assert_eq!(outcome.report.early_error_visits().unwrap(), 512);
     let frontend = outcome
         .report
         .profile()
+        .unwrap()
         .unwrap()
         .scopes
         .iter()
@@ -313,7 +320,7 @@ fn direct_eval_charges_the_contextual_new_target_check() {
                 ExecutionOptions::new(128).with_early_error_visit_limit(limit),
             )
             .unwrap();
-        assert_eq!(outcome.report.early_error_visits(), limit);
+        assert_eq!(outcome.report.early_error_visits().unwrap(), limit);
         if limit == exact {
             outcome.result.unwrap();
             assert_eq!(
@@ -419,8 +426,8 @@ fn diagnostic_limits_preserve_the_admitted_prefix_and_bypass_guest_catch() {
                         .with_profile(profile),
                 )
                 .unwrap();
-            assert_eq!(evaluation.report.diagnostic_input(), units);
-            assert_eq!(evaluation.report.diagnostic_output(), bytes);
+            assert_eq!(evaluation.report.diagnostic_input().unwrap(), units);
+            assert_eq!(evaluation.report.diagnostic_output().unwrap(), bytes);
             if let Some(error) = expected {
                 assert_eq!(
                     evaluation.result.unwrap_err().as_engine(),
@@ -456,9 +463,9 @@ fn label_diagnostics_charge_the_message_prefix_and_source_name() {
             ExecutionOptions::new(32).with_diagnostic_output_limit(limit),
         )
         .unwrap();
-    assert_eq!(evaluation.report.diagnostic_input(), 1);
-    assert_eq!(evaluation.report.diagnostic_output(), prefix);
-    assert_eq!(evaluation.report.instructions(), 0);
+    assert_eq!(evaluation.report.diagnostic_input().unwrap(), 1);
+    assert_eq!(evaluation.report.diagnostic_output().unwrap(), prefix);
+    assert_eq!(evaluation.report.instructions().unwrap(), 0);
     assert_eq!(
         evaluation.result.unwrap_err().as_engine(),
         Some(&EngineError::RuntimeLimit(
@@ -493,16 +500,16 @@ fn template_limits_share_head_and_tail_and_admit_astral_output_together() {
                         .with_profile(profile),
                 )
                 .unwrap();
-            assert_eq!(evaluation.report.template_input(), input);
+            assert_eq!(evaluation.report.template_input().unwrap(), input);
             if let Some(error) = expected {
-                assert_eq!(evaluation.report.template_output(), 11);
+                assert_eq!(evaluation.report.template_output().unwrap(), 11);
                 assert_eq!(
                     evaluation.result.unwrap_err().as_engine(),
                     Some(&EngineError::RuntimeLimit(error))
                 );
-                assert_eq!(evaluation.report.instructions(), 0);
+                assert_eq!(evaluation.report.instructions().unwrap(), 0);
             } else {
-                assert_eq!(evaluation.report.template_output(), 13);
+                assert_eq!(evaluation.report.template_output().unwrap(), 13);
                 assert_eq!(
                     evaluation.result.unwrap().as_string().unwrap().to_vec(),
                     [0xD83D, 0xDE00]
@@ -523,8 +530,8 @@ fn template_budget_refuses_before_the_invalid_braced_escape_is_diagnosed() {
                     ExecutionOptions::new(128).with_template_input_limit(input),
                 )
                 .unwrap();
-            assert_eq!(evaluation.report.template_input(), input);
-            assert_eq!(evaluation.report.template_output(), 5);
+            assert_eq!(evaluation.report.template_input().unwrap(), input);
+            assert_eq!(evaluation.report.template_output().unwrap(), 5);
             if input == 9 {
                 assert_eq!(
                     evaluation.result.unwrap_err().as_engine(),
@@ -563,8 +570,8 @@ fn template_normalization_and_cooking_charge_crlf_and_cached_lookahead() {
                     .with_template_output_limit(output),
             )
             .unwrap();
-        assert_eq!(evaluation.report.template_input(), input);
-        assert_eq!(evaluation.report.template_output(), output);
+        assert_eq!(evaluation.report.template_input().unwrap(), input);
+        assert_eq!(evaluation.report.template_output().unwrap(), output);
         assert_eq!(
             evaluation.result.unwrap().as_string().unwrap().to_vec(),
             cooked
@@ -580,7 +587,7 @@ fn scope_refusal_leaves_realm_bindings_and_identities_ready_for_retry() {
         .eval_with_budget(Source::from_bytes(SOURCE), ExecutionOptions::new(128))
         .unwrap();
     assert_eq!(full.result.unwrap(), JsValue::new(42));
-    let work = full.report.scope_work();
+    let work = full.report.scope_work().unwrap();
     assert!(work > 1);
 
     for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
@@ -594,8 +601,8 @@ fn scope_refusal_leaves_realm_bindings_and_identities_ready_for_retry() {
                     .with_profile(profile),
             )
             .unwrap();
-        assert_eq!(refused.report.scope_work(), limit);
-        assert_eq!(refused.report.instructions(), 0);
+        assert_eq!(refused.report.scope_work().unwrap(), limit);
+        assert_eq!(refused.report.instructions().unwrap(), 0);
         assert_eq!(
             refused.result.unwrap_err().as_engine(),
             Some(&EngineError::RuntimeLimit(RuntimeLimitError::ScopeWork {
@@ -632,7 +639,7 @@ fn scope_preparation_has_separate_analysis_compilation_and_installation_phases()
         )
         .unwrap();
     evaluation.result.unwrap();
-    let profile = evaluation.report.profile().unwrap();
+    let profile = evaluation.report.profile().unwrap().unwrap();
     let phase = profile
         .scopes
         .iter()
@@ -640,7 +647,7 @@ fn scope_preparation_has_separate_analysis_compilation_and_installation_phases()
         .unwrap();
     // Default optimization edits the syntax, then scope analysis runs again.
     assert_eq!(phase.phases, 2);
-    assert!(evaluation.report.scope_work() > 0);
+    assert!(evaluation.report.scope_work().unwrap() > 0);
     assert!(
         profile
             .scopes
@@ -710,10 +717,11 @@ fn dynamic_function_source_limits_include_separators_and_wrapped_body_eof() {
                         .with_profile(ProfileMode::Summary { timing: false }),
                 )
                 .unwrap();
-            assert_eq!(outcome.report.source_reads(), limit, "{setup}");
+            assert_eq!(outcome.report.source_reads().unwrap(), limit, "{setup}");
             let utf16 = outcome
                 .report
                 .profile()
+                .unwrap()
                 .unwrap()
                 .scopes
                 .iter()
@@ -760,7 +768,7 @@ fn dynamic_function_only_parses_an_empty_parameter_list_when_an_argument_supplie
             .unwrap();
         outcome.result.unwrap();
         assert_eq!(
-            outcome.report.source_reads(),
+            outcome.report.source_reads().unwrap(),
             u64::try_from(script.len()).unwrap() + 1 + nested_reads
         );
     }
@@ -801,8 +809,8 @@ fn dynamic_function_charges_direct_eval_metadata_before_publication() {
                 ExecutionOptions::new(128).with_direct_eval_visit_limit(limit),
             )
             .unwrap();
-        assert_eq!(outcome.report.direct_eval_visits(), limit);
-        assert!(outcome.report.instructions() > 0);
+        assert_eq!(outcome.report.direct_eval_visits().unwrap(), limit);
+        assert!(outcome.report.instructions().unwrap() > 0);
         if published {
             outcome.result.unwrap();
             assert_eq!(
@@ -852,7 +860,7 @@ fn dynamic_function_charges_private_name_validation_before_publication() {
                 JsValue::from(js_string!("function"))
             );
         }
-        assert_eq!(evaluation.report.name_comparisons(), limit);
+        assert_eq!(evaluation.report.name_comparisons().unwrap(), limit);
     }
 }
 
@@ -882,7 +890,7 @@ fn dynamic_function_private_parameters_charge_resolution_before_publication() {
                 JsValue::from(js_string!("function"))
             );
         }
-        assert_eq!(evaluation.report.name_comparisons(), limit);
+        assert_eq!(evaluation.report.name_comparisons().unwrap(), limit);
     }
 }
 
@@ -913,7 +921,7 @@ fn direct_eval_private_name_refusal_reaches_the_host() {
         } else {
             assert_eq!(evaluation.result.unwrap(), JsValue::new(1));
         }
-        assert_eq!(evaluation.report.name_comparisons(), limit);
+        assert_eq!(evaluation.report.name_comparisons().unwrap(), limit);
         assert_eq!(
             context
                 .eval(Source::from_bytes("privateMeterMarker"))
@@ -948,9 +956,12 @@ fn dynamic_function_charges_each_strict_binding_and_redeclaration_comparison() {
                 options.with_name_record_limit(record_limit),
             )
             .unwrap();
-        assert!(denied.report.instructions() > 0);
-        assert_eq!(denied.report.name_records(), record_limit);
-        assert_eq!(denied.report.name_comparisons(), earlier_comparisons);
+        assert!(denied.report.instructions().unwrap() > 0);
+        assert_eq!(denied.report.name_records().unwrap(), record_limit);
+        assert_eq!(
+            denied.report.name_comparisons().unwrap(),
+            earlier_comparisons
+        );
         assert_eq!(
             denied.result.unwrap_err().as_engine(),
             Some(&EngineError::RuntimeLimit(RuntimeLimitError::NameRecord {
@@ -970,8 +981,8 @@ fn dynamic_function_charges_each_strict_binding_and_redeclaration_comparison() {
                     options.with_name_comparison_limit(limit),
                 )
                 .unwrap();
-            assert_eq!(outcome.report.name_records(), records);
-            assert_eq!(outcome.report.name_comparisons(), limit);
+            assert_eq!(outcome.report.name_records().unwrap(), records);
+            assert_eq!(outcome.report.name_comparisons().unwrap(), limit);
             let error = outcome.result.unwrap_err();
             if final_comparisons == 1 {
                 assert_eq!(
@@ -999,15 +1010,15 @@ fn grammar_dispatch_budget_is_exact_and_refuses_before_source_work() {
                 ExecutionOptions::new(64).with_grammar_dispatch_limit(limit),
             )
             .unwrap();
-        assert_eq!(outcome.report.grammar_dispatches(), limit);
+        assert_eq!(outcome.report.grammar_dispatches().unwrap(), limit);
         if limit == 0 {
-            assert_eq!(outcome.report.source_reads(), 0);
-            assert_eq!(outcome.report.token_probes(), 0);
+            assert_eq!(outcome.report.source_reads().unwrap(), 0);
+            assert_eq!(outcome.report.token_probes().unwrap(), 0);
         }
         if limit == 5 {
             assert_eq!(outcome.result.unwrap(), JsValue::undefined());
         } else {
-            assert_eq!(outcome.report.instructions(), 0);
+            assert_eq!(outcome.report.instructions().unwrap(), 0);
             assert_eq!(
                 outcome.result.unwrap_err().as_engine(),
                 Some(&EngineError::RuntimeLimit(
@@ -1034,10 +1045,11 @@ fn nested_eval_grammar_refusal_bypasses_guest_catch() {
                 .with_profile(ProfileMode::Summary { timing: false }),
         )
         .unwrap();
-    assert_eq!(outcome.report.grammar_dispatches(), 512);
+    assert_eq!(outcome.report.grammar_dispatches().unwrap(), 512);
     let frontend = outcome
         .report
         .profile()
+        .unwrap()
         .unwrap()
         .scopes
         .iter()
@@ -1068,9 +1080,9 @@ fn buffered_token_limits_refuse_before_guest_execution() {
         let probe = context
             .eval_with_budget(Source::from_bytes("1;"), options.with_token_probe_limit(0))
             .unwrap();
-        assert_eq!(probe.report.token_probes(), 0);
-        assert_eq!(probe.report.source_reads(), 0);
-        assert_eq!(probe.report.instructions(), 0);
+        assert_eq!(probe.report.token_probes().unwrap(), 0);
+        assert_eq!(probe.report.source_reads().unwrap(), 0);
+        assert_eq!(probe.report.instructions().unwrap(), 0);
         assert_eq!(
             probe.result.unwrap_err().as_engine(),
             Some(&EngineError::RuntimeLimit(RuntimeLimitError::TokenProbe {
@@ -1084,9 +1096,9 @@ fn buffered_token_limits_refuse_before_guest_execution() {
                 options.with_token_advance_limit(0),
             )
             .unwrap();
-        assert!(advance.report.token_probes() > 0);
-        assert_eq!(advance.report.token_advances(), 0);
-        assert_eq!(advance.report.instructions(), 0);
+        assert!(advance.report.token_probes().unwrap() > 0);
+        assert_eq!(advance.report.token_advances().unwrap(), 0);
+        assert_eq!(advance.report.instructions().unwrap(), 0);
         assert_eq!(
             advance.result.unwrap_err().as_engine(),
             Some(&EngineError::RuntimeLimit(
@@ -1098,8 +1110,8 @@ fn buffered_token_limits_refuse_before_guest_execution() {
             .eval_with_budget(Source::from_bytes("1;"), options)
             .unwrap();
         assert_eq!(admitted.result.unwrap(), JsValue::new(1));
-        assert!(admitted.report.token_probes() > 0);
-        assert_eq!(admitted.report.token_advances(), 2);
+        assert!(admitted.report.token_probes().unwrap() > 0);
+        assert_eq!(admitted.report.token_advances().unwrap(), 2);
     }
 }
 
@@ -1113,9 +1125,9 @@ fn lexical_dispatch_limit_counts_discarded_comments_and_refuses_before_tokenizat
             ExecutionOptions::new(64).with_lexer_dispatch_limit(1),
         )
         .unwrap();
-    assert_eq!(refused.report.lexer_dispatches(), 1);
-    assert_eq!(refused.report.source_code_points(), 6);
-    assert_eq!(refused.report.instructions(), 0);
+    assert_eq!(refused.report.lexer_dispatches().unwrap(), 1);
+    assert_eq!(refused.report.source_code_points().unwrap(), 6);
+    assert_eq!(refused.report.instructions().unwrap(), 0);
     assert_eq!(
         refused.result.unwrap_err().as_engine(),
         Some(&EngineError::RuntimeLimit(
@@ -1129,7 +1141,7 @@ fn lexical_dispatch_limit_counts_discarded_comments_and_refuses_before_tokenizat
             ExecutionOptions::new(64).with_lexer_dispatch_limit(2),
         )
         .unwrap();
-    assert_eq!(admitted.report.lexer_dispatches(), 2);
+    assert_eq!(admitted.report.lexer_dispatches().unwrap(), 2);
     assert_eq!(admitted.result.unwrap(), JsValue::new(1));
 }
 
@@ -1145,11 +1157,11 @@ fn lookahead_refusal_preserves_the_partial_source_and_profile_equivalence() {
                     .with_profile(profile),
             )
             .unwrap();
-        assert_eq!(outcome.report.source_reads(), 1);
-        assert_eq!(outcome.report.source_code_points(), 1);
-        assert_eq!(outcome.report.retained_source_units(), 1);
-        assert_eq!(outcome.report.lexer_lookahead_probes(), 0);
-        assert_eq!(outcome.report.instructions(), 0);
+        assert_eq!(outcome.report.source_reads().unwrap(), 1);
+        assert_eq!(outcome.report.source_code_points().unwrap(), 1);
+        assert_eq!(outcome.report.retained_source_units().unwrap(), 1);
+        assert_eq!(outcome.report.lexer_lookahead_probes().unwrap(), 0);
+        assert_eq!(outcome.report.instructions().unwrap(), 0);
         assert_eq!(
             outcome.result.unwrap_err().as_engine(),
             Some(&EngineError::RuntimeLimit(
@@ -1185,7 +1197,7 @@ fn a_host_callback_cannot_swallow_the_first_lookahead_stop() {
             ExecutionOptions::new(64).with_lexer_lookahead_limit(64),
         )
         .unwrap();
-    assert_eq!(outcome.report.lexer_lookahead_probes(), 64);
+    assert_eq!(outcome.report.lexer_lookahead_probes().unwrap(), 64);
     assert_eq!(
         outcome.result.unwrap_err().as_engine(),
         Some(&EngineError::RuntimeLimit(
@@ -1215,8 +1227,11 @@ fn character_and_retention_caps_include_crlf_trivia_and_astral_width() {
                     .with_source_retention_limit(12),
             )
             .unwrap();
-        assert_eq!(outcome.report.source_code_points(), expected);
-        assert_eq!(outcome.report.retained_source_units(), expected + 1);
+        assert_eq!(outcome.report.source_code_points().unwrap(), expected);
+        assert_eq!(
+            outcome.report.retained_source_units().unwrap(),
+            expected + 1
+        );
         if limit == 11 {
             assert_eq!(
                 outcome
@@ -1229,7 +1244,7 @@ fn character_and_retention_caps_include_crlf_trivia_and_astral_width() {
                 "😀"
             );
         } else {
-            assert_eq!(outcome.report.instructions(), 0);
+            assert_eq!(outcome.report.instructions().unwrap(), 0);
             assert_eq!(
                 outcome.result.unwrap_err().as_engine(),
                 Some(&EngineError::RuntimeLimit(
@@ -1249,10 +1264,10 @@ fn astral_retention_refusal_leaves_both_consumption_dimensions_unchanged() {
             ExecutionOptions::new(64).with_source_retention_limit(2),
         )
         .unwrap();
-    assert_eq!(outcome.report.source_reads(), 5);
-    assert_eq!(outcome.report.source_code_points(), 1);
-    assert_eq!(outcome.report.retained_source_units(), 1);
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.source_reads().unwrap(), 5);
+    assert_eq!(outcome.report.source_code_points().unwrap(), 1);
+    assert_eq!(outcome.report.retained_source_units().unwrap(), 1);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
     assert_eq!(
         outcome.result.unwrap_err().as_engine(),
         Some(&EngineError::RuntimeLimit(
@@ -1272,9 +1287,9 @@ fn consumption_is_checked_first_when_both_frontend_caps_are_exhausted() {
                 .with_source_retention_limit(0),
         )
         .unwrap();
-    assert_eq!(outcome.report.source_reads(), 1);
-    assert_eq!(outcome.report.source_code_points(), 0);
-    assert_eq!(outcome.report.retained_source_units(), 0);
+    assert_eq!(outcome.report.source_reads().unwrap(), 1);
+    assert_eq!(outcome.report.source_code_points().unwrap(), 0);
+    assert_eq!(outcome.report.retained_source_units().unwrap(), 0);
     assert_eq!(
         outcome.result.unwrap_err().as_engine(),
         Some(&EngineError::RuntimeLimit(
@@ -1300,11 +1315,12 @@ fn nested_eval_shares_the_retained_source_budget_and_preserves_the_host_stop() {
                 .with_profile(ProfileMode::Summary { timing: false }),
         )
         .unwrap();
-    assert_eq!(outcome.report.retained_source_units(), limit);
-    assert_eq!(outcome.report.source_code_points(), limit);
+    assert_eq!(outcome.report.retained_source_units().unwrap(), limit);
+    assert_eq!(outcome.report.source_code_points().unwrap(), limit);
     let frontend = outcome
         .report
         .profile()
+        .unwrap()
         .unwrap()
         .scopes
         .iter()
@@ -1349,8 +1365,8 @@ fn a_source_limit_stops_before_the_next_utf8_byte_and_before_dispatch() {
         .eval_with_budget(source, ExecutionOptions::new(64).with_source_read_limit(2))
         .unwrap();
     assert_eq!(reads.get(), 2);
-    assert_eq!(outcome.report.source_reads(), 2);
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.source_reads().unwrap(), 2);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
     assert_eq!(
         outcome.result.unwrap_err().as_engine(),
         Some(&EngineError::RuntimeLimit(RuntimeLimitError::SourceRead {
@@ -1376,7 +1392,7 @@ fn lookahead_and_eof_report_only_the_reader_calls_that_occurred() {
         .unwrap();
     assert_eq!(outcome.result.unwrap(), JsValue::new(true));
     assert!(reads.get() > u64::try_from(bytes.len()).unwrap());
-    assert_eq!(outcome.report.source_reads(), reads.get());
+    assert_eq!(outcome.report.source_reads().unwrap(), reads.get());
 }
 
 #[test]
@@ -1392,9 +1408,9 @@ fn utf16_surrogate_inspection_has_its_own_source_read_admission() {
                 .with_profile(ProfileMode::Summary { timing: false }),
         )
         .unwrap();
-    assert_eq!(outcome.report.source_reads(), 2);
-    assert_eq!(outcome.report.instructions(), 0);
-    let profile = outcome.report.profile().unwrap();
+    assert_eq!(outcome.report.source_reads().unwrap(), 2);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
+    let profile = outcome.report.profile().unwrap().unwrap();
     let utf16 = profile
         .scopes
         .iter()
@@ -1445,8 +1461,8 @@ fn nested_eval_preserves_source_units_and_attributes_decoder_attempts() {
                 *expected
             );
             let retained = u64::try_from(script.len() + source.len()).unwrap();
-            assert_eq!(outcome.report.retained_source_units(), retained);
-            let profile = outcome.report.profile().unwrap();
+            assert_eq!(outcome.report.retained_source_units().unwrap(), retained);
+            let profile = outcome.report.profile().unwrap().unwrap();
             let decoder = profile
                 .scopes
                 .iter()
@@ -1483,7 +1499,7 @@ fn nested_eval_read_refusal_uses_the_outer_budget_and_bypasses_guest_catch() {
             // Refuse the closing quote or low surrogate, then separately refuse only EOF.
             for units in [2, source.len()] {
                 let admitted_units = u64::try_from(units).unwrap();
-                let limit = outer.report.source_reads() + admitted_units;
+                let limit = outer.report.source_reads().unwrap() + admitted_units;
                 let mut context = Context::default();
                 context
                     .register_global_property(
@@ -1500,8 +1516,8 @@ fn nested_eval_read_refusal_uses_the_outer_budget_and_bypasses_guest_catch() {
                             .with_profile(ProfileMode::Summary { timing: false }),
                     )
                     .unwrap();
-                assert_eq!(outcome.report.source_reads(), limit);
-                assert!(outcome.report.instructions() > 0);
+                assert_eq!(outcome.report.source_reads().unwrap(), limit);
+                assert!(outcome.report.instructions().unwrap() > 0);
                 assert_eq!(
                     outcome.result.unwrap_err().as_engine(),
                     Some(&EngineError::RuntimeLimit(RuntimeLimitError::SourceRead {
@@ -1514,7 +1530,7 @@ fn nested_eval_read_refusal_uses_the_outer_budget_and_bypasses_guest_catch() {
                         .unwrap()
                         .is_undefined()
                 );
-                let profile = outcome.report.profile().unwrap();
+                let profile = outcome.report.profile().unwrap().unwrap();
                 let decoder = profile
                     .scopes
                     .iter()
@@ -1547,7 +1563,7 @@ fn interrupted_utf8_reads_cannot_retry_past_the_source_budget() {
         )
         .unwrap();
     assert_eq!(reads.get(), 3);
-    assert_eq!(outcome.report.source_reads(), 3);
+    assert_eq!(outcome.report.source_reads().unwrap(), 3);
     assert_eq!(
         outcome.result.unwrap_err().as_engine(),
         Some(&EngineError::RuntimeLimit(RuntimeLimitError::SourceRead {
@@ -1577,8 +1593,8 @@ fn opaque_decoder_runs_only_for_admitted_calls() {
         )
         .unwrap();
     assert_eq!(reads.get(), 1);
-    assert_eq!(outcome.report.source_reads(), 1);
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.source_reads().unwrap(), 1);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
     assert_eq!(
         outcome.result.unwrap_err().as_engine(),
         Some(&EngineError::RuntimeLimit(RuntimeLimitError::SourceRead {
@@ -1588,6 +1604,7 @@ fn opaque_decoder_runs_only_for_admitted_calls() {
     let decoder = outcome
         .report
         .profile()
+        .unwrap()
         .unwrap()
         .scopes
         .iter()
@@ -1604,8 +1621,8 @@ fn opaque_decoder_rejects_code_points_outside_unicode() {
     let outcome = context
         .eval_with_budget(source, ExecutionOptions::new(64).with_source_read_limit(1))
         .unwrap();
-    assert_eq!(outcome.report.source_reads(), 1);
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.source_reads().unwrap(), 1);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
     let error = outcome.result.unwrap_err();
     let native = error.as_native().unwrap();
     assert_eq!(native.kind(), &surgeist_js::JsNativeErrorKind::Syntax);
@@ -1661,14 +1678,15 @@ fn guest_parser_entry_points_share_the_outer_source_cap() {
                     .with_profile(ProfileMode::Summary { timing: false }),
             )
             .unwrap();
-        assert_eq!(outcome.report.source_reads(), limit, "{builtin}");
+        assert_eq!(outcome.report.source_reads().unwrap(), limit, "{builtin}");
         assert!(
-            outcome.report.instructions() > 0,
+            outcome.report.instructions().unwrap() > 0,
             "{builtin} must be reached during execution"
         );
         let frontend = outcome
             .report
             .profile()
+            .unwrap()
             .unwrap()
             .scopes
             .iter()
@@ -1767,12 +1785,13 @@ fn the_file_loader_propagates_source_stops_from_dynamic_imports() {
             .report
             .profile()
             .unwrap()
+            .unwrap()
             .scopes
             .iter()
             .find(|scope| scope.name == "frontend")
             .unwrap();
         assert_eq!(frontend.phases, 2, "{import}");
-        assert_eq!(outcome.report.source_reads(), limit, "{import}");
+        assert_eq!(outcome.report.source_reads().unwrap(), limit, "{import}");
         assert_eq!(
             outcome.result.unwrap_err().as_engine(),
             Some(&EngineError::RuntimeLimit(RuntimeLimitError::SourceRead {
@@ -1800,7 +1819,7 @@ fn an_empty_script_admits_its_return_check_and_return() {
     let denied = context
         .eval_with_budget(Source::from_bytes(""), ExecutionOptions::new(1))
         .unwrap();
-    assert_eq!(denied.report.instructions(), 1);
+    assert_eq!(denied.report.instructions().unwrap(), 1);
     assert_eq!(
         denied.result.unwrap_err().as_engine(),
         Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
@@ -1811,7 +1830,7 @@ fn an_empty_script_admits_its_return_check_and_return() {
     let exact = context
         .eval_with_budget(Source::from_bytes(""), ExecutionOptions::new(2))
         .unwrap();
-    assert_eq!(exact.report.instructions(), 2);
+    assert_eq!(exact.report.instructions().unwrap(), 2);
     assert_eq!(exact.result.unwrap(), JsValue::undefined());
 }
 
@@ -1825,7 +1844,7 @@ fn a_host_stop_preserves_prior_effects_and_bypasses_guest_handlers() {
     let outcome = context
         .eval_with_budget(Source::from_bytes(source), ExecutionOptions::new(64))
         .unwrap();
-    assert_eq!(outcome.report.instructions(), 64);
+    assert_eq!(outcome.report.instructions().unwrap(), 64);
     assert_eq!(
         outcome.result.unwrap_err().as_engine(),
         Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
@@ -1877,7 +1896,7 @@ fn reentrant_evaluation_cannot_hide_the_first_instruction_stop() {
             ExecutionOptions::new(32),
         )
         .unwrap();
-    assert_eq!(outcome.report.instructions(), 32);
+    assert_eq!(outcome.report.instructions().unwrap(), 32);
     let error = outcome.result.unwrap_err();
     assert_eq!(
         error.as_engine(),
@@ -2009,8 +2028,8 @@ fn bounded_profiling_preserves_admission_and_reports_trace_loss() {
         .unwrap();
 
     assert_eq!(outcome.result.unwrap(), JsValue::undefined());
-    assert_eq!(outcome.report.instructions(), 2);
-    let profile = outcome.report.profile().unwrap();
+    assert_eq!(outcome.report.instructions().unwrap(), 2);
+    let profile = outcome.report.profile().unwrap().unwrap();
     assert_eq!(profile.dropped_events, 2);
     assert!(profile.events.is_empty());
     assert_eq!(profile.elapsed, None);
@@ -2041,8 +2060,8 @@ fn the_configured_clock_runs_only_for_timed_profiling() {
             )
             .unwrap();
         assert_eq!(outcome.result.unwrap(), JsValue::undefined());
-        assert_eq!(outcome.report.instructions(), 2);
-        let report = outcome.report.profile().unwrap();
+        assert_eq!(outcome.report.instructions().unwrap(), 2);
+        let report = outcome.report.profile().unwrap().unwrap();
         for (name, expected_phases) in [
             ("frontend", Some(1)),
             ("scope-analysis", Some(2)),
@@ -2170,7 +2189,7 @@ fn preparation_and_first_instruction_refusals_report_no_execution_effect() {
                 .unwrap();
             assert!(outcome.result.is_err());
             assert!(!outcome.report.effects_started());
-            assert_eq!(outcome.report.instructions(), 0);
+            assert_eq!(outcome.report.instructions().unwrap(), 0);
         }
     }
 }
@@ -2186,7 +2205,7 @@ fn an_instruction_stop_retains_execution_effect_status() {
         .unwrap();
     assert!(outcome.result.is_err());
     assert!(outcome.report.effects_started());
-    assert_eq!(outcome.report.instructions(), 32);
+    assert_eq!(outcome.report.instructions().unwrap(), 32);
     assert_eq!(
         context.eval(Source::from_bytes("retainedEffect")).unwrap(),
         JsValue::new(41)
@@ -2213,7 +2232,7 @@ fn nested_preparation_refusal_cannot_clear_execution_effect_status() {
         .unwrap();
     assert!(outcome.result.is_err());
     assert!(outcome.report.effects_started());
-    assert!(outcome.report.instructions() > 0);
+    assert!(outcome.report.instructions().unwrap() > 0);
 }
 
 #[test]
@@ -2232,8 +2251,8 @@ fn late_refusals_in_each_preparation_phase_preserve_fresh_source_retry() {
         )
         .unwrap();
     assert_eq!(complete.result.unwrap(), JsValue::new(42));
-    let work = surgeist_ledger::Work::<32>::new(24).unwrap();
-    let report = complete.report.profile().unwrap();
+    let work = surgeist_js::execution::ExecutionWork::ScopeWork;
+    let report = complete.report.profile().unwrap().unwrap();
     let phase_work = |name| {
         report
             .scopes
@@ -2249,7 +2268,7 @@ fn late_refusals_in_each_preparation_phase_preserve_fresh_source_retry() {
     assert!(analysis > 0 && compilation > 0 && installation > 0);
     assert_eq!(
         analysis + compilation + installation,
-        complete.report.scope_work()
+        complete.report.scope_work().unwrap()
     );
     let next_baseline =
         surgeist_js_ast::scope::Scope::new(baseline.realm().scope().clone(), false).unique_id();
@@ -2274,7 +2293,7 @@ fn late_refusals_in_each_preparation_phase_preserve_fresh_source_retry() {
                     limit
                 }))
             );
-            assert_eq!(stopped.report.instructions(), 0);
+            assert_eq!(stopped.report.instructions().unwrap(), 0);
             assert!(!stopped.report.effects_started());
             assert!(!context.realm().scope().has_binding(&js_string!("pending")));
             assert!(context.realm().scope().has_binding(&js_string!("seed")));
@@ -2320,7 +2339,7 @@ fn optimizer_work_boundaries_preserve_results_and_first_refusal() {
                 .unwrap();
             if limit == EXACT {
                 assert_eq!(outcome.result.unwrap(), JsValue::new(3));
-                assert_eq!(outcome.report.optimizer_work(), EXACT);
+                assert_eq!(outcome.report.optimizer_work().unwrap(), EXACT);
             } else {
                 assert_eq!(
                     outcome.result.unwrap_err().as_engine(),
@@ -2328,8 +2347,8 @@ fn optimizer_work_boundaries_preserve_results_and_first_refusal() {
                         RuntimeLimitError::OptimizerWork { limit }
                     ))
                 );
-                assert_eq!(outcome.report.optimizer_work(), limit);
-                assert_eq!(outcome.report.instructions(), 0);
+                assert_eq!(outcome.report.optimizer_work().unwrap(), limit);
+                assert_eq!(outcome.report.instructions().unwrap(), 0);
                 assert!(!outcome.report.effects_started());
                 assert_eq!(
                     context.eval(Source::from_bytes("1 + 2")).unwrap(),
@@ -2352,7 +2371,7 @@ fn disabled_optimizer_ignores_a_zero_optimizer_budget() {
         )
         .unwrap();
     assert_eq!(result.result.unwrap(), JsValue::new(3));
-    assert_eq!(result.report.optimizer_work(), 0);
+    assert_eq!(result.report.optimizer_work().unwrap(), 0);
 }
 
 #[test]
@@ -2374,7 +2393,7 @@ fn optimizer_refusal_keeps_lexical_names_and_script_effects_private() {
         ))
     );
     assert!(!outcome.report.effects_started());
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
     assert!(
         context
             .realm()
@@ -2463,7 +2482,7 @@ fn optimizer_large_literals_and_wide_deep_inputs_preserve_profile_decisions() {
                 )
                 .unwrap();
             assert_eq!(outcome.result.unwrap(), expected, "{source}");
-            let admitted = outcome.report.optimizer_work();
+            let admitted = outcome.report.optimizer_work().unwrap();
             if let Some(usage) = usage {
                 assert_eq!(admitted, usage);
             }
@@ -2485,7 +2504,7 @@ fn optimizer_large_literals_and_wide_deep_inputs_preserve_profile_decisions() {
                     RuntimeLimitError::OptimizerWork { limit }
                 ))
             );
-            assert_eq!(refused.report.instructions(), 0);
+            assert_eq!(refused.report.instructions().unwrap(), 0);
             assert!(!refused.report.effects_started());
         }
     }
@@ -2524,7 +2543,7 @@ fn optimizer_phase_timing_is_selected_by_the_operation_profile() {
             )
             .unwrap();
         assert_eq!(outcome.result.unwrap(), JsValue::new(3));
-        let profile = outcome.report.profile().unwrap();
+        let profile = outcome.report.profile().unwrap().unwrap();
         let optimizer = profile
             .scopes
             .iter()
@@ -2591,7 +2610,7 @@ fn assert_constructor_uses_the_shared_scope_budget(expression: &str) {
         )
         .unwrap();
     assert_eq!(control.result.unwrap(), JsValue::new(42));
-    let limit = control.report.scope_work();
+    let limit = control.report.scope_work().unwrap();
     for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
         let mut unlimited = selected_constructor_context(
             expression,
@@ -2627,7 +2646,7 @@ fn assert_constructor_uses_the_shared_scope_budget(expression: &str) {
             })),
             "{expression}"
         );
-        assert_eq!(outcome.report.scope_work(), limit);
+        assert_eq!(outcome.report.scope_work().unwrap(), limit);
         assert!(outcome.report.effects_started());
     }
 }
@@ -2670,7 +2689,7 @@ fn non_script_eval_preparation_uses_the_operation_scope_budget() {
             .eval_with_budget(Source::from_bytes(source), ExecutionOptions::new(256))
             .unwrap();
         assert_eq!(control.result.unwrap(), JsValue::new(42));
-        let limit = control.report.scope_work();
+        let limit = control.report.scope_work().unwrap();
         let mut context = Context::default();
         let outcome = context
             .eval_with_budget(
@@ -2685,7 +2704,7 @@ fn non_script_eval_preparation_uses_the_operation_scope_budget() {
             })),
             "{source}"
         );
-        assert_eq!(outcome.report.scope_work(), limit);
+        assert_eq!(outcome.report.scope_work().unwrap(), limit);
         assert!(outcome.report.effects_started());
     }
 }
@@ -2724,7 +2743,7 @@ fn non_script_module_preparation_uses_the_operation_scope_budget() {
             ExecutionOptions::new(256),
         )
         .unwrap();
-    let limit = control.report.scope_work();
+    let limit = control.report.scope_work().unwrap();
     assert_eq!(control.result.unwrap(), JsValue::new(42));
     let mut unlimited = context(NativeFunction::from_fn_ptr(prepare_module));
     assert_eq!(
@@ -2751,7 +2770,7 @@ fn non_script_module_preparation_uses_the_operation_scope_budget() {
             limit
         }))
     );
-    assert_eq!(outcome.report.scope_work(), limit);
+    assert_eq!(outcome.report.scope_work().unwrap(), limit);
     assert!(outcome.report.effects_started());
 }
 
@@ -2768,9 +2787,9 @@ fn assert_private_frontdoor_boundary(
         )
         .unwrap();
     assert_eq!(complete.result.unwrap(), JsValue::new(42), "{source}");
-    let total = complete.report.scope_work();
-    let work = surgeist_ledger::Work::<32>::new(24).unwrap();
-    let profile = complete.report.profile().unwrap();
+    let total = complete.report.scope_work().unwrap();
+    let work = surgeist_js::execution::ExecutionWork::ScopeWork;
+    let profile = complete.report.profile().unwrap().unwrap();
     let mut phase_total = 0;
     for name in [
         "scope-analysis",
@@ -2808,7 +2827,7 @@ fn assert_private_frontdoor_boundary(
             )
             .unwrap();
         assert_eq!(accepted.result.unwrap(), JsValue::new(42), "{source}");
-        assert_eq!(accepted.report.scope_work(), total);
+        assert_eq!(accepted.report.scope_work().unwrap(), total);
 
         let mut context = make_context();
         let root = context.realm().scope().clone();
@@ -2829,7 +2848,7 @@ fn assert_private_frontdoor_boundary(
             })),
             "{source}"
         );
-        assert!(refused.report.scope_work() <= limit);
+        assert!(refused.report.scope_work().unwrap() <= limit);
         let after = surgeist_js_ast::scope::Scope::new(root, false).unique_id();
         assert_eq!(after, before + 1, "{source}: refused private scope IDs");
         if let Some(name) = unpublished_name {
@@ -2888,9 +2907,15 @@ fn non_script_eval_exact_boundaries_preserve_profiles_and_fresh_retry() {
 }
 
 fn compilation_profile_work(source: &str) -> u64 {
-    fn total<const W: usize, const R: usize>(usage: &surgeist_ledger::Usage<W, R>) -> u64 {
-        (0..W)
-            .map(|index| usage.work(surgeist_ledger::Work::new(index).unwrap()))
+    fn total(
+        usage: &surgeist_ledger::Usage<
+            surgeist_js::execution::ExecutionWork,
+            surgeist_ledger::NoDimension,
+        >,
+    ) -> u64 {
+        <surgeist_js::execution::ExecutionWork as surgeist_ledger::Dimension>::ALL
+            .iter()
+            .map(|&dimension| usage.work(dimension))
             .sum()
     }
     let mut context = Context::default();
@@ -2902,7 +2927,7 @@ fn compilation_profile_work(source: &str) -> u64 {
         )
         .unwrap();
     assert_eq!(outcome.result.unwrap(), JsValue::new(0));
-    let report = outcome.report.profile().unwrap();
+    let report = outcome.report.profile().unwrap().unwrap();
     let compilation = report
         .scopes
         .iter()
@@ -2964,9 +2989,15 @@ fn compiler_json_lowering_records_additional_literal_work() {
         Ok(JsValue::new(0))
     }
     fn run(input: &str) -> u64 {
-        fn total<const W: usize, const R: usize>(usage: &surgeist_ledger::Usage<W, R>) -> u64 {
-            (0..W)
-                .map(|index| usage.work(surgeist_ledger::Work::new(index).unwrap()))
+        fn total(
+            usage: &surgeist_ledger::Usage<
+                surgeist_js::execution::ExecutionWork,
+                surgeist_ledger::NoDimension,
+            >,
+        ) -> u64 {
+            <surgeist_js::execution::ExecutionWork as surgeist_ledger::Dimension>::ALL
+                .iter()
+                .map(|&dimension| usage.work(dimension))
                 .sum()
         }
         let mut context = Context::default();
@@ -2992,7 +3023,7 @@ fn compiler_json_lowering_records_additional_literal_work() {
             )
             .unwrap();
         assert_eq!(outcome.result.unwrap(), JsValue::new(0));
-        let profile = outcome.report.profile().unwrap();
+        let profile = outcome.report.profile().unwrap().unwrap();
         let compilation = profile
             .scopes
             .iter()
@@ -3019,10 +3050,10 @@ fn assert_compiler_boundary(source: &str, effects_before_compilation_stop: bool)
         .eval_with_budget(Source::from_bytes(source), ExecutionOptions::new(4096))
         .unwrap();
     assert_eq!(complete.result.unwrap(), JsValue::new(42), "{source}");
-    let work = complete.report.compiler_work();
+    let work = complete.report.compiler_work().unwrap();
     let depth = complete.report.compiler_depth_peak();
-    let scope_work = complete.report.scope_work();
-    let name_visits = complete.report.name_visits();
+    let scope_work = complete.report.scope_work().unwrap();
+    let name_visits = complete.report.name_visits().unwrap();
     assert!(work > 0 && depth > 0, "{source}");
 
     for mode in [
@@ -3046,17 +3077,25 @@ fn assert_compiler_boundary(source: &str, effects_before_compilation_stop: bool)
             )
             .unwrap();
         assert_eq!(accepted.result.unwrap(), JsValue::new(42), "{source}");
-        assert_eq!(accepted.report.compiler_work(), work, "{source}");
+        assert_eq!(accepted.report.compiler_work().unwrap(), work, "{source}");
         assert_eq!(accepted.report.compiler_depth_peak(), depth, "{source}");
-        assert_eq!(accepted.report.scope_work(), scope_work, "{source}");
-        assert_eq!(accepted.report.name_visits(), name_visits, "{source}");
-        if let Some(profile) = accepted.report.profile() {
+        assert_eq!(
+            accepted.report.scope_work().unwrap(),
+            scope_work,
+            "{source}"
+        );
+        assert_eq!(
+            accepted.report.name_visits().unwrap(),
+            name_visits,
+            "{source}"
+        );
+        if let Some(profile) = accepted.report.profile().unwrap() {
             let compilation = profile
                 .scopes
                 .iter()
                 .find(|scope| scope.name == "bytecode-compilation")
                 .unwrap();
-            let dimension = surgeist_ledger::Work::new(26).unwrap();
+            let dimension = surgeist_js::execution::ExecutionWork::CompilerWork;
             assert_eq!(compilation.usage.work(dimension), work, "{source}");
             let origins: u64 = profile
                 .scopes
@@ -3093,7 +3132,7 @@ fn assert_compiler_boundary(source: &str, effects_before_compilation_stop: bool)
             )),
             "{source}"
         );
-        assert!(refused.report.compiler_work() <= limit, "{source}");
+        assert!(refused.report.compiler_work().unwrap() <= limit, "{source}");
         assert_eq!(
             refused.report.effects_started(),
             effects_before_compilation_stop,
@@ -3163,7 +3202,7 @@ fn compiler_class_anonymous_queries_charge_parenthesized_searches() {
             )
             .unwrap();
         assert_eq!(outcome.result.unwrap(), JsValue::new(42));
-        let profile = outcome.report.profile().unwrap();
+        let profile = outcome.report.profile().unwrap().unwrap();
         let phase = profile
             .scopes
             .iter()
@@ -3175,7 +3214,7 @@ fn compiler_class_anonymous_queries_charge_parenthesized_searches() {
             .find(|scope| scope.parent == Some(phase.scope) && scope.name == "compiler-search")
             .unwrap()
             .usage
-            .work(surgeist_ledger::Work::new(26).unwrap())
+            .work(surgeist_js::execution::ExecutionWork::CompilerWork)
     }
     let mut observations = Vec::new();
     for (field, result, expected_name) in [
@@ -3262,7 +3301,7 @@ fn compiler_default_export_anonymous_query_charges_parenthesized_searches() {
             )
             .unwrap();
         assert_eq!(outcome.result.unwrap(), JsValue::new(42));
-        let profile = outcome.report.profile().unwrap();
+        let profile = outcome.report.profile().unwrap().unwrap();
         let phase = profile
             .scopes
             .iter()
@@ -3274,7 +3313,7 @@ fn compiler_default_export_anonymous_query_charges_parenthesized_searches() {
             .find(|scope| scope.parent == Some(phase.scope) && scope.name == "compiler-search")
             .unwrap()
             .usage
-            .work(surgeist_ledger::Work::new(26).unwrap())
+            .work(surgeist_js::execution::ExecutionWork::CompilerWork)
     }
     let narrow = searches(1);
     let wide = searches(9);
@@ -3297,7 +3336,7 @@ fn compiler_source_position_queries_charge_the_actual_start_path() {
             )
             .unwrap();
         assert_eq!(outcome.result.unwrap(), JsValue::new(42));
-        let profile = outcome.report.profile().unwrap();
+        let profile = outcome.report.profile().unwrap().unwrap();
         let phase = profile
             .scopes
             .iter()
@@ -3309,7 +3348,7 @@ fn compiler_source_position_queries_charge_the_actual_start_path() {
             .find(|scope| scope.parent == Some(phase.scope) && scope.name == "name-visit")
             .unwrap()
             .usage
-            .work(surgeist_ledger::Work::new(12).unwrap())
+            .work(surgeist_js::execution::ExecutionWork::NameVisit)
     }
     // Both trees have four literals and three Binary nodes. Only addition's
     // left-associative start path crosses all three operators; exponentiation
@@ -3547,7 +3586,7 @@ mod async_operation_regressions {
                 }))
             );
             assert_eq!(outcome.result.unwrap_err(), first_stop);
-            assert_eq!(outcome.report.instructions(), LIMIT);
+            assert_eq!(outcome.report.instructions().unwrap(), LIMIT);
             assert_eq!(
                 probe.calls.get(),
                 0,
@@ -3664,7 +3703,7 @@ mod async_operation_regressions {
             }))
         );
         assert_eq!(outcome.result.unwrap_err(), first_stop);
-        assert_eq!(outcome.report.instructions(), LIMIT);
+        assert_eq!(outcome.report.instructions().unwrap(), LIMIT);
         assert_eq!(probe.calls.get(), 1);
         assert!(probe.entered_target_realm.get());
         assert!(probe.restored_caller_realm.get());

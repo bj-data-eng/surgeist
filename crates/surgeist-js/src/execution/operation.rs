@@ -13,7 +13,7 @@ use super::{
     Execution, ExecutionOptions, ExecutionOutcome, ExecutionPhase, ExecutionReceipt,
     ExecutionReport, ExecutionSetupError,
 };
-use crate::{Context, ContextAccess, JsResult, vm::CallCheckpoint};
+use crate::{Context, ContextAccess, JsResult, error::EngineResourceError, vm::CallCheckpoint};
 
 /// A controlled callback reserving its Context until completion or drop.
 ///
@@ -197,7 +197,7 @@ impl Context {
     ///     context.eval(Source::from_bytes("40 + 2"))
     /// })?;
     /// assert_eq!(outcome.result.unwrap(), JsValue::new(42));
-    /// assert!(outcome.report.instructions() > 0);
+    /// assert!(outcome.report.instructions().unwrap() > 0);
     /// # Ok::<(), surgeist_js::execution::ExecutionSetupError>(())
     /// ```
     ///
@@ -280,7 +280,7 @@ impl Context {
     /// let receipt = task.receipt();
     /// assert!(receipt.report().is_none());
     /// let report = task.cancel(); // No poll: the callback never ran.
-    /// assert_eq!(report.instructions(), 0);
+    /// assert_eq!(report.instructions().unwrap(), 0);
     /// assert!(matches!(report.termination(), ExecutionTermination::Abandoned { first_stop: None }));
     /// assert!(receipt.report().is_some());
     /// # Ok::<(), surgeist_js::execution::ExecutionSetupError>(())
@@ -362,33 +362,44 @@ impl Context {
         })
     }
 
-    pub(crate) fn begin_execution_phase(&self, phase: ExecutionPhase) -> Option<PhaseObservation> {
-        self.execution.as_ref().map(|execution| {
-            let index = match phase {
-                ExecutionPhase::Lifetime => 0,
-                ExecutionPhase::VmActive => 1,
-                ExecutionPhase::VmWaiting => 2,
-                ExecutionPhase::JobPreparation => 3,
-                ExecutionPhase::JobInvocation => 4,
-                ExecutionPhase::JobPoll => 5,
-                ExecutionPhase::GeneratorRequest => 6,
-                ExecutionPhase::ModuleMetadata => 7,
-            };
-            execution
-                .ledger
-                .begin_phase(execution.execution_phases[index])
-                .expect("execution owns its phase scope")
-        })
+    /// Starts observing an execution phase. A ledger failure is retained as the
+    /// operation's stop and returned by its next admission, its check and its
+    /// result, so no observation is returned for it.
+    pub(crate) fn begin_execution_phase(
+        &mut self,
+        phase: ExecutionPhase,
+    ) -> Option<PhaseObservation> {
+        let execution = self.execution.as_mut()?;
+        let index = match phase {
+            ExecutionPhase::Lifetime => 0,
+            ExecutionPhase::VmActive => 1,
+            ExecutionPhase::VmWaiting => 2,
+            ExecutionPhase::JobPreparation => 3,
+            ExecutionPhase::JobInvocation => 4,
+            ExecutionPhase::JobPoll => 5,
+            ExecutionPhase::GeneratorRequest => 6,
+            ExecutionPhase::ModuleMetadata => 7,
+        };
+        match execution
+            .ledger
+            .begin_phase(execution.execution_phases[index])
+        {
+            Ok(observation) => Some(observation),
+            Err(error) => {
+                execution.retain_stop(&super::ledger_error(error));
+                None
+            }
+        }
     }
 
+    /// Completes an observation. A ledger failure is retained as the operation's
+    /// stop, as for `begin_execution_phase`.
     pub(crate) fn end_execution_phase(&mut self, observation: Option<PhaseObservation>) {
-        if let Some(observation) = observation {
-            self.execution
-                .as_mut()
-                .expect("an active phase owns execution")
-                .ledger
-                .end_phase(observation)
-                .expect("execution owns its phase observation");
+        if let Some(observation) = observation
+            && let Some(execution) = self.execution.as_mut()
+            && execution.ledger.end_phase(observation).is_err()
+        {
+            execution.retain_stop(&EngineResourceError::LedgerInvariant.into());
         }
     }
 

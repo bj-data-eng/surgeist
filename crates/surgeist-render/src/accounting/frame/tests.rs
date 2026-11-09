@@ -49,7 +49,7 @@ fn basic_composition_profiles_preserve_work_pixels_and_optional_timing() {
         assert_eq!(usage.work(RenderWork::VelloPasses), 0);
         assert_eq!(stats.vello_passes, 0);
         assert_eq!(usage.work(RenderWork::Submissions), 1);
-        let work = RenderWork::ALL.map(|unit| usage.work(unit));
+        let work = <RenderWork as surgeist_ledger::Dimension>::from_fn(|unit| usage.work(unit));
         if let Some(expected) = observed_work {
             assert_eq!(work, expected, "observation must not change admitted work");
         } else {

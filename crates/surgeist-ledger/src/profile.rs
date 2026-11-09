@@ -2,7 +2,7 @@
 use std::time::Instant;
 use std::{fmt, time::Duration};
 
-use crate::{Change, Error, Refusal, Scope, Usage};
+use crate::{Change, Defect, Dimension, Error, Refusal, Scope, Usage, push_reserved};
 
 /// Selects which origins contribute detailed events. Summary accounting
 /// includes every scope regardless of this filter.
@@ -29,7 +29,7 @@ pub enum ProfileMode {
 
 /// Direct admission and phase observations, with inclusive ledger usage.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ScopeReport<const W: usize, const R: usize> {
+pub struct ScopeReport<W: Dimension, R: Dimension> {
     pub scope: Scope,
     pub parent: Option<Scope>,
     pub name: &'static str,
@@ -44,13 +44,13 @@ pub struct ScopeReport<const W: usize, const R: usize> {
     pub phase_elapsed: Option<Duration>,
 }
 
-impl<const W: usize, const R: usize> ScopeReport<W, R> {
+impl<W: Dimension, R: Dimension> ScopeReport<W, R> {
     fn new(scope: Scope, parent: Option<Scope>, name: &'static str, timing: bool) -> Self {
         Self {
             scope,
             parent,
             name,
-            usage: Usage::ZERO,
+            usage: Usage::zero(),
             accepted_batches: 0,
             accepted_items: 0,
             refused_batches: 0,
@@ -64,7 +64,7 @@ impl<const W: usize, const R: usize> ScopeReport<W, R> {
 /// A retained observation. Timestamps are elapsed time since operation setup.
 /// Accepted items in the same atomic batch share a timestamp.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Event<const W: usize, const R: usize> {
+pub enum Event<W: Dimension, R: Dimension> {
     Accepted {
         scope: Scope,
         change: Change<W, R>,
@@ -85,7 +85,7 @@ pub enum Event<const W: usize, const R: usize> {
 /// Structured report for an operation. The first scope holds the root totals.
 /// Child usage is attribution and should be read in that child's units.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Report<const W: usize, const R: usize> {
+pub struct Report<W: Dimension, R: Dimension> {
     pub elapsed: Option<Duration>,
     pub scopes: Vec<ScopeReport<W, R>>,
     pub events: Vec<Event<W, R>>,
@@ -95,16 +95,16 @@ pub struct Report<const W: usize, const R: usize> {
     pub saturated: bool,
 }
 
-impl<const W: usize, const R: usize> Report<W, R> {
+impl<W: Dimension, R: Dimension> Report<W, R> {
     pub const fn terminal(&self) -> TerminalReport<'_, W, R> {
         TerminalReport(self)
     }
 }
 
 /// Display adapter for a structured report.
-pub struct TerminalReport<'a, const W: usize, const R: usize>(&'a Report<W, R>);
+pub struct TerminalReport<'a, W: Dimension, R: Dimension>(&'a Report<W, R>);
 
-impl<const W: usize, const R: usize> fmt::Display for TerminalReport<'_, W, R> {
+impl<W: Dimension, R: Dimension> fmt::Display for TerminalReport<'_, W, R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let report = self.0;
         if let Some(elapsed) = report.elapsed {
@@ -232,14 +232,14 @@ impl Clock {
     }
 }
 
-pub(super) struct Profile<const W: usize, const R: usize> {
+pub(super) struct Profile<W: Dimension, R: Dimension> {
     clock: Option<Clock>,
     offset: Duration,
     detail: Option<(usize, EventFilter)>,
     report: Report<W, R>,
 }
 
-impl<const W: usize, const R: usize> Profile<W, R> {
+impl<W: Dimension, R: Dimension> Profile<W, R> {
     pub(super) fn new(
         mode: ProfileMode,
         scope_limit: usize,
@@ -313,18 +313,25 @@ impl<const W: usize, const R: usize> Profile<W, R> {
         scope: Scope,
         start: Option<Duration>,
         end: Option<Duration>,
-    ) {
+    ) -> Result<(), Defect> {
         self.end_phase(
             scope,
             start.map(|start| start.saturating_sub(self.offset)),
             end.map(|end| end.saturating_sub(self.offset)),
-        );
+        )
     }
 
-    pub(super) fn add_scope(&mut self, scope: Scope, parent: Option<Scope>, name: &'static str) {
-        self.report
-            .scopes
-            .push(ScopeReport::new(scope, parent, name, self.clock.is_some()));
+    pub(super) fn add_scope(
+        &mut self,
+        scope: Scope,
+        parent: Option<Scope>,
+        name: &'static str,
+    ) -> Result<(), Defect> {
+        let timing = self.clock.is_some();
+        push_reserved(
+            &mut self.report.scopes,
+            ScopeReport::new(scope, parent, name, timing),
+        )
     }
 
     pub(super) fn admission(
@@ -332,38 +339,56 @@ impl<const W: usize, const R: usize> Profile<W, R> {
         origin: Scope,
         changes: &[Change<W, R>],
         result: Result<(), Error<W, R>>,
-    ) {
-        let summary = &mut self.report.scopes[origin.index];
-        let saturated = &mut self.report.saturated;
+    ) -> Result<(), Defect> {
         match result {
             Ok(()) => {
+                let keep = self.retain(origin, changes.len())?;
+                let summary = self
+                    .report
+                    .scopes
+                    .get_mut(origin.index)
+                    .ok_or(Defect::ReportScope)?;
+                let saturated = &mut self.report.saturated;
                 count(&mut summary.accepted_batches, 1, saturated);
                 count(&mut summary.accepted_items, changes.len(), saturated);
-                let keep = self.retain(origin, changes.len());
                 if keep != 0 {
                     let elapsed = self.elapsed();
-                    self.report
-                        .events
-                        .extend(changes[..keep].iter().map(|&change| Event::Accepted {
-                            scope: origin,
-                            change,
-                            elapsed,
-                        }));
+                    for &change in changes.iter().take(keep) {
+                        push_reserved(
+                            &mut self.report.events,
+                            Event::Accepted {
+                                scope: origin,
+                                change,
+                                elapsed,
+                            },
+                        )?;
+                    }
                 }
             }
             Err(Error::Refused(refusal)) => {
-                count(&mut summary.refused_batches, 1, saturated);
+                let keep = self.retain(origin, 1)?;
+                let summary = self
+                    .report
+                    .scopes
+                    .get_mut(origin.index)
+                    .ok_or(Defect::ReportScope)?;
+                count(&mut summary.refused_batches, 1, &mut self.report.saturated);
                 summary.first_refusal.get_or_insert(refusal);
-                if self.retain(origin, 1) != 0 {
-                    self.report.events.push(Event::Refused {
-                        origin,
-                        refusal,
-                        elapsed: self.elapsed(),
-                    });
+                if keep != 0 {
+                    let elapsed = self.elapsed();
+                    push_reserved(
+                        &mut self.report.events,
+                        Event::Refused {
+                            origin,
+                            refusal,
+                            elapsed,
+                        },
+                    )?;
                 }
             }
             Err(_) => {}
         }
+        Ok(())
     }
 
     pub(super) fn elapsed(&self) -> Option<Duration> {
@@ -377,9 +402,14 @@ impl<const W: usize, const R: usize> Profile<W, R> {
         scope: Scope,
         start: Option<Duration>,
         end: Option<Duration>,
-    ) {
+    ) -> Result<(), Defect> {
         let duration = start.zip(end).map(|(start, end)| end.saturating_sub(start));
-        let summary = &mut self.report.scopes[scope.index];
+        let keep = self.retain(scope, 1)?;
+        let summary = self
+            .report
+            .scopes
+            .get_mut(scope.index)
+            .ok_or(Defect::ReportScope)?;
         count(&mut summary.phases, 1, &mut self.report.saturated);
         if let (Some(sum), Some(duration)) = (&mut summary.phase_elapsed, duration) {
             if let Some(total) = sum.checked_add(duration) {
@@ -389,39 +419,55 @@ impl<const W: usize, const R: usize> Profile<W, R> {
                 self.report.saturated = true;
             }
         }
-        if self.retain(scope, 1) != 0 {
-            self.report.events.push(Event::Phase {
-                scope,
-                duration,
-                elapsed: end,
-            });
+        if keep != 0 {
+            push_reserved(
+                &mut self.report.events,
+                Event::Phase {
+                    scope,
+                    duration,
+                    elapsed: end,
+                },
+            )?;
         }
+        Ok(())
     }
 
-    fn retain(&mut self, scope: Scope, count_events: usize) -> usize {
+    /// How many of `count_events` new events fit in the detail stream. The
+    /// rest are counted as dropped. Filtered origins retain and drop nothing.
+    fn retain(&mut self, scope: Scope, count_events: usize) -> Result<usize, Defect> {
         let Some((limit, filter)) = self.detail else {
-            return 0;
+            return Ok(0);
         };
-        if let EventFilter::ScopeName(name) = filter
-            && self.report.scopes[scope.index].name != name
-        {
-            return 0;
+        if let EventFilter::ScopeName(name) = filter {
+            let origin = self
+                .report
+                .scopes
+                .get(scope.index)
+                .ok_or(Defect::ReportScope)?;
+            if origin.name != name {
+                return Ok(0);
+            }
         }
-        let keep = count_events.min(limit - self.report.events.len());
+        let room = limit
+            .checked_sub(self.report.events.len())
+            .ok_or(Defect::EventLimit)?;
+        let keep = count_events.min(room);
+        let dropped = count_events.checked_sub(keep).ok_or(Defect::EventLimit)?;
         count(
             &mut self.report.dropped_events,
-            count_events - keep,
+            dropped,
             &mut self.report.saturated,
         );
-        keep
+        Ok(keep)
     }
 
-    pub(super) fn finish(mut self, usage: impl Iterator<Item = Usage<W, R>>) -> Report<W, R> {
+    pub(super) fn finish(
+        mut self,
+        usage: impl Iterator<Item = Usage<W, R>>,
+    ) -> Result<Report<W, R>, Defect> {
         self.report.elapsed = self.elapsed();
-        for (scope, usage) in self.report.scopes.iter_mut().zip(usage) {
-            scope.usage = usage;
-        }
-        self.report
+        fill_usage(&mut self.report.scopes, usage)?;
+        Ok(self.report)
     }
 
     pub(super) fn snapshot(
@@ -438,9 +484,7 @@ impl<const W: usize, const R: usize> Profile<W, R> {
             .map_err(|_| Error::Allocation)?;
         scopes.extend(self.report.scopes.iter().cloned());
         events.extend_from_slice(&self.report.events);
-        for (scope, usage) in scopes.iter_mut().zip(usage) {
-            scope.usage = usage;
-        }
+        fill_usage(&mut scopes, usage).map_err(Error::Defect)?;
         Ok(Report {
             elapsed: self.elapsed(),
             scopes,
@@ -449,6 +493,21 @@ impl<const W: usize, const R: usize> Profile<W, R> {
             saturated: self.report.saturated,
         })
     }
+}
+
+/// Pairs each report record with its scope's usage. The operation creates both
+/// in step, so their counts are equal.
+fn fill_usage<W: Dimension, R: Dimension>(
+    scopes: &mut [ScopeReport<W, R>],
+    mut usage: impl Iterator<Item = Usage<W, R>>,
+) -> Result<(), Defect> {
+    for scope in scopes {
+        scope.usage = usage.next().ok_or(Defect::ReportScope)?;
+    }
+    if usage.next().is_some() {
+        return Err(Defect::ReportScope);
+    }
+    Ok(())
 }
 
 fn count(total: &mut u64, increment: usize, saturated: &mut bool) {
@@ -467,9 +526,13 @@ fn count(total: &mut u64, increment: usize, saturated: &mut bool) {
 mod tests {
     use std::cell::Cell;
 
-    use crate::{Limits, Operation, Tariffs, Work};
+    use crate::{Limits, NoDimension, Operation, Tariffs};
 
     use super::*;
+
+    crate::dimensions! {
+        enum TestWork => TestWorkTable { Visit }
+    }
 
     thread_local! {
         static TICKS: Cell<u64> = const { Cell::new(0) };
@@ -481,7 +544,7 @@ mod tests {
         Duration::from_millis(tick)
     }
 
-    fn operation(mode: ProfileMode) -> Operation<1, 0> {
+    fn operation(mode: ProfileMode) -> Operation<TestWork, NoDimension> {
         TICKS.set(0);
         Operation::with_profile_clock("root", Limits::unlimited(), 2, mode, clock).unwrap()
     }
@@ -502,7 +565,7 @@ mod tests {
             ledger
                 .with_phase(root, |ledger| {
                     ledger
-                        .apply(root, Change::Work(Work::new(0).unwrap(), 1))
+                        .apply(root, Change::Work(TestWork::Visit, 1))
                         .unwrap();
                 })
                 .unwrap();
@@ -515,7 +578,7 @@ mod tests {
     fn unwinding_records_the_phase_and_preserves_accepted_work() {
         let mut ledger = operation(ProfileMode::Summary { timing: true });
         let root = ledger.root();
-        let work = Work::new(0).unwrap();
+        let work = TestWork::Visit;
         let stopped = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let _ = ledger.with_phase(root, |phase| {
                 phase.apply(root, Change::Work(work, 3)).unwrap();
@@ -523,7 +586,7 @@ mod tests {
             });
         }));
         assert!(stopped.is_err());
-        let report = ledger.finish().unwrap();
+        let report = ledger.finish().unwrap().unwrap();
         assert_eq!(report.scopes[0].usage.work(work), 3);
         assert_eq!(report.scopes[0].phases, 1);
         assert_eq!(
@@ -543,7 +606,7 @@ mod tests {
         let child = ledger
             .child(root, "child", Limits::unlimited(), Tariffs::identity())
             .unwrap();
-        let charge = Change::Work(Work::new(0).unwrap(), 1);
+        let charge = Change::Work(TestWork::Visit, 1);
         ledger
             .with_phase(root, |ledger| {
                 ledger
@@ -554,7 +617,7 @@ mod tests {
             })
             .unwrap();
 
-        let report = ledger.finish().unwrap();
+        let report = ledger.finish().unwrap().unwrap();
         let ms = |n| Some(Duration::from_millis(n));
         assert_eq!(report.elapsed, ms(6));
         assert_eq!(report.scopes[0].phase_elapsed, ms(4));
@@ -595,22 +658,86 @@ mod tests {
         });
         let root = operation.root();
         let mut interval = operation.profile[0].checkpoint(2).unwrap();
-        interval.add_scope(root, None, "root");
+        interval.add_scope(root, None, "root").unwrap();
         interval.report.scopes[0].accepted_batches = u64::MAX;
         interval.report.scopes[0].accepted_items = u64::MAX;
         interval.report.scopes[0].phases = u64::MAX;
         interval.report.dropped_events = u64::MAX;
-        let change = Change::Work(Work::new(0).unwrap(), 1);
+        let change = Change::Work(TestWork::Visit, 1);
         operation.apply(root, change).unwrap();
-        interval.admission(root, &[change], Ok(()));
-        interval.end_checkpoint_phase(root, None, None);
-        let report = interval.finish([*operation.usage(root).unwrap()].into_iter());
+        interval.admission(root, &[change], Ok(())).unwrap();
+        interval.end_checkpoint_phase(root, None, None).unwrap();
+        let report = interval
+            .finish([*operation.usage(root).unwrap()].into_iter())
+            .unwrap();
         assert!(report.saturated);
         assert_eq!(report.dropped_events, u64::MAX);
         assert_eq!(report.scopes[0].accepted_batches, u64::MAX);
         assert_eq!(report.scopes[0].accepted_items, u64::MAX);
         assert_eq!(report.scopes[0].phases, u64::MAX);
-        assert_eq!(report.scopes[0].usage.work(Work::new(0).unwrap()), 1);
+        assert_eq!(report.scopes[0].usage.work(TestWork::Visit), 1);
         assert!(report.events.is_empty());
+    }
+
+    #[test]
+    fn full_scope_record_buffer_latches_a_reserved_capacity_defect() {
+        let mut operation = operation(ProfileMode::Summary { timing: false });
+        let root = operation.root();
+        // Fill the buffer reserved at setup, so the next scope has no room.
+        let records = &mut operation.profile[0].report.scopes;
+        let record = records[0].clone();
+        records.resize(records.capacity(), record);
+        assert_eq!(
+            operation.child(root, "child", Limits::unlimited(), Tariffs::identity()),
+            Err(Error::Defect(Defect::ReservedCapacity))
+        );
+        crate::tests::assert_latched(operation, Defect::ReservedCapacity);
+    }
+
+    #[test]
+    fn full_event_buffer_latches_a_reserved_capacity_defect() {
+        let mut operation = operation(ProfileMode::Detailed {
+            timing: false,
+            event_limit: 1,
+            filter: EventFilter::All,
+        });
+        let root = operation.root();
+        // Raise the limit past the reservation and fill the reservation, so
+        // the limit promises room that the buffer does not have.
+        let profile = &mut operation.profile[0];
+        let event = Event::Phase {
+            scope: root,
+            duration: None,
+            elapsed: None,
+        };
+        let capacity = profile.report.events.capacity();
+        profile.report.events.resize(capacity, event);
+        profile.detail = Some((capacity + 1, EventFilter::All));
+        assert_eq!(
+            operation.apply(root, Change::Work(TestWork::Visit, 1)),
+            Err(Error::Defect(Defect::ReservedCapacity))
+        );
+        crate::tests::assert_latched(operation, Defect::ReservedCapacity);
+    }
+
+    #[test]
+    fn retained_events_above_the_limit_latch_an_event_limit_defect() {
+        let mut operation = operation(ProfileMode::Detailed {
+            timing: false,
+            event_limit: 1,
+            filter: EventFilter::All,
+        });
+        let root = operation.root();
+        let event = Event::Phase {
+            scope: root,
+            duration: None,
+            elapsed: None,
+        };
+        operation.profile[0].report.events.extend([event, event]);
+        assert_eq!(
+            operation.apply(root, Change::Work(TestWork::Visit, 1)),
+            Err(Error::Defect(Defect::EventLimit))
+        );
+        crate::tests::assert_latched(operation, Defect::EventLimit);
     }
 }

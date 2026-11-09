@@ -628,7 +628,7 @@ fn assert_blockified_category_refusal(kind: BoxPaintKind, role: BlockifiedRole) 
             reason,
         }))
     );
-    for resource in ResourceKind::ALL {
+    for &resource in ResourceKind::ALL {
         assert_eq!(report.live(resource), 0);
     }
     // CSS blockification changes the outer inline category, while the matched

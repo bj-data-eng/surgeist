@@ -1,6 +1,6 @@
 // Intended as a child of the source-module owner.
 use super::*;
-use crate::execution::{ExecutionOptions, ExecutionReport, ProfileMode};
+use crate::execution::{ExecutionOptions, ExecutionReport, ExecutionWork, ProfileMode};
 
 fn context() -> Context {
     let builder = Context::builder();
@@ -8,16 +8,17 @@ fn context() -> Context {
     let builder = builder.instructions_remaining(1_000_000);
     builder.build().unwrap()
 }
-fn origin(report: &ExecutionReport, name: &str, dimension: usize) -> u64 {
+fn origin(report: &ExecutionReport, name: &str, dimension: ExecutionWork) -> u64 {
     report
         .profile()
+        .unwrap()
         .unwrap()
         .scopes
         .iter()
         .find(|scope| scope.name == name)
         .unwrap()
         .usage
-        .work(surgeist_ledger::Work::new(dimension).unwrap())
+        .work(dimension)
 }
 
 #[test]
@@ -52,18 +53,39 @@ fn actual_has_tla_metadata_origins_keep_pruned_bodies_and_early_exit_visit_count
         // First await: root/item/list-item/statement/expression/await, without its
         // target or any suffix. Parser work has different origins and is not subtracted.
         assert_eq!(
-            origin(&outcome.report, "metadata-name-visit", 12),
+            origin(
+                &outcome.report,
+                "metadata-name-visit",
+                ExecutionWork::NameVisit
+            ),
             visits,
             "{text}"
         );
-        assert_eq!(origin(&outcome.report, "metadata-name-record", 13), 0);
-        assert_eq!(origin(&outcome.report, "metadata-name-comparison", 14), 0);
+        assert_eq!(
+            origin(
+                &outcome.report,
+                "metadata-name-record",
+                ExecutionWork::NameRecord
+            ),
+            0
+        );
+        assert_eq!(
+            origin(
+                &outcome.report,
+                "metadata-name-comparison",
+                ExecutionWork::NameComparison
+            ),
+            0
+        );
         for name in [
             "metadata-name-visit",
             "metadata-name-record",
             "metadata-name-comparison",
         ] {
-            assert_eq!(origin(&outcome.report, name, 31), 0);
+            assert_eq!(
+                origin(&outcome.report, name, ExecutionWork::ModuleMetadataWork),
+                0
+            );
         }
         assert!(!outcome.report.effects_started());
     }
@@ -97,9 +119,30 @@ fn exported_destructuring_records_its_two_names_under_metadata_name_origins_only
             .len(),
         2
     );
-    assert_eq!(origin(&outcome.report, "metadata-name-record", 13), 2);
-    assert_eq!(origin(&outcome.report, "metadata-name-record", 31), 0);
-    assert_eq!(origin(&outcome.report, "metadata-name-comparison", 14), 0);
+    assert_eq!(
+        origin(
+            &outcome.report,
+            "metadata-name-record",
+            ExecutionWork::NameRecord
+        ),
+        2
+    );
+    assert_eq!(
+        origin(
+            &outcome.report,
+            "metadata-name-record",
+            ExecutionWork::ModuleMetadataWork
+        ),
+        0
+    );
+    assert_eq!(
+        origin(
+            &outcome.report,
+            "metadata-name-comparison",
+            ExecutionWork::NameComparison
+        ),
+        0
+    );
     assert!(!outcome.report.effects_started());
 }
 
@@ -134,10 +177,24 @@ fn has_tla_one_short_name_refusal_preserves_the_ast_and_spends_no_metadata_credi
                 },
             )
             .unwrap();
-        assert_eq!(outcome.report.name_visits(), limit);
-        assert_eq!(origin(&outcome.report, "metadata-name-visit", 12), limit);
-        assert_eq!(outcome.report.module_metadata_work(), 0);
-        assert_eq!(origin(&outcome.report, "metadata-name-visit", 31), 0);
+        assert_eq!(outcome.report.name_visits().unwrap(), limit);
+        assert_eq!(
+            origin(
+                &outcome.report,
+                "metadata-name-visit",
+                ExecutionWork::NameVisit
+            ),
+            limit
+        );
+        assert_eq!(outcome.report.module_metadata_work().unwrap(), 0);
+        assert_eq!(
+            origin(
+                &outcome.report,
+                "metadata-name-visit",
+                ExecutionWork::ModuleMetadataWork
+            ),
+            0
+        );
         if limit == 6 {
             assert!(outcome.result.unwrap());
         } else {

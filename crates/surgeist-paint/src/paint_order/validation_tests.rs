@@ -62,18 +62,18 @@ fn exercise(
                     source_ranges: index.source_ranges.clone(),
                     content_ranges: index.content_ranges.clone(),
                 };
-                index.cleanup(p, root);
+                index.cleanup(p, root).unwrap();
                 Ok(snapshot)
             })
             .unwrap()
     });
     meter
         .with_phase(scopes[6], |p| {
-            core.scratch_cleanup(p, root);
-            core.result_cleanup(p, root);
+            core.scratch_cleanup(p, root).unwrap();
+            core.result_cleanup(p, root).unwrap();
         })
         .unwrap();
-    let report = PaintReport(meter.finish().unwrap());
+    let report = PaintReport::new(meter.finish().unwrap().unwrap()).unwrap();
     assert_eq!(report.live(ResourceKind::ScratchBytes), 0);
     assert_eq!(report.live(ResourceKind::RetainedResultBytes), 0);
     (result, report)

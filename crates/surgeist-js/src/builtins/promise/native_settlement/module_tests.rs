@@ -390,7 +390,7 @@ fn native_association_finds_a_retained_module_cause_at_the_last_vertex_of_a_foll
             module.evaluate(access)
         })
         .unwrap();
-    assert_eq!(stopped.report.instructions(), LIMIT);
+    assert_eq!(stopped.report.instructions().unwrap(), LIMIT);
     assert_eq!(
         stopped.result.unwrap_err().as_engine(),
         Some(&EngineError::RuntimeLimit(RuntimeLimitError::Instruction {
@@ -409,7 +409,7 @@ fn native_association_finds_a_retained_module_cause_at_the_last_vertex_of_a_foll
             module.evaluate(access)
         })
         .unwrap();
-    assert_eq!(retained.report.instructions(), 0);
+    assert_eq!(retained.report.instructions().unwrap(), 0);
     let retained = retained.result.unwrap_err();
     let Some(EngineError::ModuleInterrupted(retained)) = retained.as_engine() else {
         panic!("fresh source evaluation must expose its retained interruption")

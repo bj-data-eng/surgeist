@@ -671,7 +671,7 @@ fn repeating_profiles_preserve_every_work_dimension_pixels_and_optional_timing()
             "Encode includes preparation and the two resolved stops serialized by its native brush"
         );
         assert!(usage.work(RenderWork::GradientStopVisits) > gradient_work);
-        let work = RenderWork::ALL.map(|unit| usage.work(unit));
+        let work = <RenderWork as surgeist_ledger::Dimension>::from_fn(|unit| usage.work(unit));
         if let Some(expected) = expected_work {
             assert_eq!(
                 work, expected,

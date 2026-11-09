@@ -55,7 +55,7 @@ fn full_request_identity_deduplicates_canonical_attributes_and_preserves_first_o
         &[("a", "first"), ("z", "last")],
     );
     assert!(code.import_entries.is_empty());
-    assert!(report.module_metadata_work() > 0);
+    assert!(report.module_metadata_work().unwrap() > 0);
 }
 
 #[test]
@@ -164,7 +164,10 @@ fn duplicate_request_attempts_cost_additional_metadata_work_without_new_owned_re
     // The unique output and lifecycle-slot count are unchanged. The second raw
     // request still requires at least its positive Visit credit; no measured
     // total from either run is used as a later refusal threshold.
-    assert!(duplicate_report.module_metadata_work() > single_report.module_metadata_work());
+    assert!(
+        duplicate_report.module_metadata_work().unwrap()
+            > single_report.module_metadata_work().unwrap()
+    );
 }
 
 use surgeist_js_ast::{

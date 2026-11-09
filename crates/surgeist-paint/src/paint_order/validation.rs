@@ -62,10 +62,14 @@ pub(super) struct PaintIndex {
 }
 
 impl PaintIndex {
-    pub(super) fn cleanup(&mut self, p: &mut PhaseMeter<'_>, root: Scope) {
+    pub(super) fn cleanup(
+        &mut self,
+        p: &mut PhaseMeter<'_>,
+        root: Scope,
+    ) -> Result<(), PaintError> {
         macro_rules! drop_scratch {
             ($($field:ident),+ $(,)?) => {$(
-                release(p, root, take(&mut self.$field), ResourceKind::ScratchBytes);
+                release(p, root, take(&mut self.$field), ResourceKind::ScratchBytes)?;
             )+};
         }
         drop_scratch!(
@@ -88,6 +92,7 @@ impl PaintIndex {
             content_order,
             merge,
         );
+        Ok(())
     }
 }
 
@@ -209,7 +214,7 @@ pub(super) fn prepare(
     match result {
         Ok(()) => Ok(index),
         Err(error) => {
-            index.cleanup(p, root);
+            index.cleanup(p, root)?;
             Err(error)
         }
     }
@@ -1018,7 +1023,7 @@ fn ranges(
     match fill {
         Ok(()) => Ok(result),
         Err(error) => {
-            release(p, root, result, ResourceKind::ScratchBytes);
+            release(p, root, result, ResourceKind::ScratchBytes)?;
             Err(error)
         }
     }

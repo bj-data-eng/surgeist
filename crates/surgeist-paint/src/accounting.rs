@@ -2,75 +2,48 @@ use crate::PaintError;
 use std::{mem::size_of, time::Duration};
 pub use surgeist_ledger::RefusalReason;
 use surgeist_ledger::{
-    Change, Error as LedgerError, Limits, Operation, Phase, ProfileMode, Report, Resource, Scope,
-    ScopeReport, Work,
+    Change, Dimension, Error as LedgerError, Limits, Operation, Phase, ProfileMode, Report, Scope,
+    ScopeReport, Usage, dimensions,
 };
 
-/// Defined algorithm actions, not CPU instructions.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum WorkKind {
-    BoxValidation,
-    ParentEdge,
-    TopologyVisit,
-    SiblingComparison,
-    MembershipVisit,
-    ContextComparison,
-    OrderMove,
-    OutputRecord,
-    /// One paint-input record or reference validation action.
-    PaintValidation,
-    /// One fragment inspection, including repeated passes.
-    FragmentVisit,
-    /// One line inspection.
-    LineVisit,
-    /// One mixed text, child, or occurrence traversal action.
-    InlineMemberVisit,
-    /// One primitive record inspection.
-    PrimitiveVisit,
-    /// One recursive paint-scope work-stack action or visit.
-    PaintScopeVisit,
-    /// One source, occurrence, or primitive ordering comparison.
-    PaintOrderComparison,
-    /// One decoration applicator or ordering comparison.
-    DecorationComparison,
-    /// One input scalar, gradient request discriminant, or stop-list grammar validation.
-    GradientValidation,
-    /// One direction dispatch, scalar calculation, or scalar inspection.
-    GradientDirection,
-    /// One scalar gradient geometry or used-position calculation/inspection,
-    /// including repeated checks and bounded scalar representation-proof actions.
-    GradientCoordinate,
-    /// One source-item or expanded stop-record visit, including repeated walks.
-    GradientStopVisit,
-}
-impl WorkKind {
-    pub const ALL: [Self; 20] = [
-        Self::BoxValidation,
-        Self::ParentEdge,
-        Self::TopologyVisit,
-        Self::SiblingComparison,
-        Self::MembershipVisit,
-        Self::ContextComparison,
-        Self::OrderMove,
-        Self::OutputRecord,
-        Self::PaintValidation,
-        Self::FragmentVisit,
-        Self::LineVisit,
-        Self::InlineMemberVisit,
-        Self::PrimitiveVisit,
-        Self::PaintScopeVisit,
-        Self::PaintOrderComparison,
-        Self::DecorationComparison,
-        Self::GradientValidation,
-        Self::GradientDirection,
-        Self::GradientCoordinate,
-        Self::GradientStopVisit,
-    ];
-    pub(crate) fn dimension(self) -> Work<WORK_COUNT> {
-        Work::new(self as usize).expect("closed work schema")
+dimensions! {
+    /// Defined algorithm actions, not CPU instructions.
+    pub enum WorkKind => WorkKindTable {
+        BoxValidation,
+        ParentEdge,
+        TopologyVisit,
+        SiblingComparison,
+        MembershipVisit,
+        ContextComparison,
+        OrderMove,
+        OutputRecord,
+        /// One paint-input record or reference validation action.
+        PaintValidation,
+        /// One fragment inspection, including repeated passes.
+        FragmentVisit,
+        /// One line inspection.
+        LineVisit,
+        /// One mixed text, child, or occurrence traversal action.
+        InlineMemberVisit,
+        /// One primitive record inspection.
+        PrimitiveVisit,
+        /// One recursive paint-scope work-stack action or visit.
+        PaintScopeVisit,
+        /// One source, occurrence, or primitive ordering comparison.
+        PaintOrderComparison,
+        /// One decoration applicator or ordering comparison.
+        DecorationComparison,
+        /// One input scalar, gradient request discriminant, or stop-list grammar validation.
+        GradientValidation,
+        /// One direction dispatch, scalar calculation, or scalar inspection.
+        GradientDirection,
+        /// One scalar gradient geometry or used-position calculation/inspection,
+        /// including repeated checks and bounded scalar representation-proof actions.
+        GradientCoordinate,
+        /// One source-item or expanded stop-record visit, including repeated walks.
+        GradientStopVisit,
     }
 }
-const WORK_COUNT: usize = WorkKind::ALL.len();
 
 pub(crate) enum OperationKind {
     Stacking,
@@ -102,45 +75,45 @@ impl OperationKind {
         }
     }
 }
-/// Owned storage, excluding caller input and Ledger's independently bounded observer.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ResourceKind {
-    ScratchBytes,
-    RetainedResultBytes,
+impl WorkKind {
+    /// Every work kind, in declaration order.
+    pub const ALL: &'static [Self] = <Self as Dimension>::ALL;
 }
-impl ResourceKind {
-    pub const ALL: [Self; 2] = [Self::ScratchBytes, Self::RetainedResultBytes];
-    pub(crate) fn dimension(self) -> Resource<2> {
-        Resource::new(self as usize).expect("closed resource schema")
+
+dimensions! {
+    /// Owned storage, excluding caller input and Ledger's independently bounded observer.
+    pub enum ResourceKind => ResourceKindTable {
+        ScratchBytes,
+        RetainedResultBytes,
     }
 }
 
 /// Named limits. An explicit unlimited policy still checks arithmetic.
 #[derive(Clone, Copy, Debug)]
 pub struct PaintLimits {
-    work: [u64; WORK_COUNT],
-    resources: [u64; 2],
+    work: WorkKindTable<u64>,
+    resources: ResourceKindTable<u64>,
 }
 impl PaintLimits {
     pub const fn unlimited() -> Self {
         Self {
-            work: [u64::MAX; WORK_COUNT],
-            resources: [u64::MAX; 2],
+            work: WorkKindTable::splat(u64::MAX),
+            resources: ResourceKindTable::splat(u64::MAX),
         }
     }
-    pub const fn with_work_limit(mut self, kind: WorkKind, limit: u64) -> Self {
-        self.work[kind as usize] = limit;
+    pub fn with_work_limit(mut self, kind: WorkKind, limit: u64) -> Self {
+        *WorkKind::get_mut(&mut self.work, kind) = limit;
         self
     }
-    pub const fn with_resource_limit(mut self, kind: ResourceKind, limit: u64) -> Self {
-        self.resources[kind as usize] = limit;
+    pub fn with_resource_limit(mut self, kind: ResourceKind, limit: u64) -> Self {
+        *ResourceKind::get_mut(&mut self.resources, kind) = limit;
         self
     }
-    pub const fn work_limit(self, kind: WorkKind) -> u64 {
-        self.work[kind as usize]
+    pub fn work_limit(self, kind: WorkKind) -> u64 {
+        *WorkKind::get(&self.work, kind)
     }
-    pub const fn resource_limit(self, kind: ResourceKind) -> u64 {
-        self.resources[kind as usize]
+    pub fn resource_limit(self, kind: ResourceKind) -> u64 {
+        *ResourceKind::get(&self.resources, kind)
     }
 }
 
@@ -235,29 +208,11 @@ pub enum PaintChange {
     Acquire { kind: ResourceKind, amount: u64 },
     Release { kind: ResourceKind, amount: u64 },
 }
-fn change(value: Change<WORK_COUNT, 2>) -> PaintChange {
+fn change(value: Change<WorkKind, ResourceKind>) -> PaintChange {
     match value {
-        Change::Work(dimension, amount) => PaintChange::Work {
-            kind: WorkKind::ALL
-                .into_iter()
-                .find(|kind| kind.dimension() == dimension)
-                .expect("owned work dimension"),
-            amount,
-        },
-        Change::Acquire(dimension, amount) => PaintChange::Acquire {
-            kind: ResourceKind::ALL
-                .into_iter()
-                .find(|kind| kind.dimension() == dimension)
-                .expect("owned resource dimension"),
-            amount,
-        },
-        Change::Release(dimension, amount) => PaintChange::Release {
-            kind: ResourceKind::ALL
-                .into_iter()
-                .find(|kind| kind.dimension() == dimension)
-                .expect("owned resource dimension"),
-            amount,
-        },
+        Change::Work(kind, amount) => PaintChange::Work { kind, amount },
+        Change::Acquire(kind, amount) => PaintChange::Acquire { kind, amount },
+        Change::Release(kind, amount) => PaintChange::Release { kind, amount },
     }
 }
 /// Exact ordered refusal, without exposing Ledger's numeric schema.
@@ -280,7 +235,7 @@ pub enum AccountingFailure {
     TimingUnavailable,
     Invariant,
 }
-pub(crate) fn setup_error(error: LedgerError<WORK_COUNT, 2>) -> PaintError {
+pub(crate) fn setup_error(error: LedgerError<WorkKind, ResourceKind>) -> PaintError {
     PaintError::Accounting(match error {
         LedgerError::Allocation => AccountingFailure::Allocation,
         LedgerError::IdentityExhausted => AccountingFailure::IdentityExhausted,
@@ -291,45 +246,50 @@ pub(crate) fn setup_error(error: LedgerError<WORK_COUNT, 2>) -> PaintError {
         | LedgerError::ForeignCheckpoint
         | LedgerError::StaleCheckpoint
         | LedgerError::CheckpointLimit { .. }
-        | LedgerError::CheckpointsConfigured => AccountingFailure::Invariant,
+        | LedgerError::CheckpointsConfigured
+        | LedgerError::Defect(_) => AccountingFailure::Invariant,
     })
 }
-fn phase_name(meter: &Meter, scope: Scope) -> PaintPhase {
-    PaintPhase::from_name(meter.scope_name(scope).expect("owned accounting scope"))
+fn phase_name(meter: &Meter, scope: Scope) -> Result<PaintPhase, PaintError> {
+    meter
+        .scope_name(scope)
+        .map(PaintPhase::from_name)
+        .map_err(setup_error)
 }
 pub(crate) fn apply(
     meter: &mut PhaseMeter<'_>,
     origin: Scope,
-    value: Change<WORK_COUNT, 2>,
+    value: Change<WorkKind, ResourceKind>,
 ) -> Result<(), PaintError> {
-    meter.apply(origin, value).map_err(|error| match error {
-        LedgerError::Refused(refusal) => PaintError::Budget(BudgetRefusal {
-            origin: phase_name(meter, origin),
-            limiting_phase: phase_name(meter, refusal.scope),
+    match meter.apply(origin, value) {
+        Ok(()) => Ok(()),
+        Err(LedgerError::Refused(refusal)) => Err(PaintError::Budget(BudgetRefusal {
+            origin: phase_name(meter, origin)?,
+            limiting_phase: phase_name(meter, refusal.scope)?,
             item: refusal.item,
             change: change(refusal.change),
             current: refusal.current,
             reason: refusal.reason,
-        }),
-        other => setup_error(other),
-    })
+        })),
+        Err(other) => Err(setup_error(other)),
+    }
 }
 
 /// Borrowed inclusive usage/profiling view, directly backed by Ledger.
 #[derive(Clone, Copy, Debug)]
-pub struct PhaseReport<'a>(&'a ScopeReport<WORK_COUNT, 2>);
+pub struct PhaseReport<'a>(&'a ScopeReport<WorkKind, ResourceKind>);
 impl PhaseReport<'_> {
     pub fn phase(self) -> PaintPhase {
         PaintPhase::from_name(self.0.name)
     }
     pub fn work(self, kind: WorkKind) -> u64 {
-        self.0.usage.work(kind.dimension())
+        self.0.usage.work(kind)
     }
     pub fn live(self, kind: ResourceKind) -> u64 {
-        self.0.usage.live(kind.dimension())
+        self.0.usage.live(kind)
     }
     pub fn peak(self, kind: ResourceKind) -> u64 {
-        self.0.usage.peak(kind.dimension())
+        self.0.usage.peak(kind)
     }
     pub fn invocations(self) -> u64 {
         self.0.phases
@@ -366,42 +326,72 @@ pub enum PaintEvent {
 
 /// Ledger's accepted-prefix report, including failed operations. Resource live
 /// at success includes returned plan custody; it is not a post-return tracker.
+///
+/// Construction verifies that the report has its root scope and that every
+/// scope its refusals and events name has an entry, so reading it cannot fail.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PaintReport(pub(crate) Report<WORK_COUNT, 2>);
+pub struct PaintReport {
+    report: Report<WorkKind, ResourceKind>,
+    root: Usage<WorkKind, ResourceKind>,
+}
 impl PaintReport {
+    /// Takes a finished ledger report, or refuses one that does not name its own scopes.
+    pub(crate) fn new(report: Report<WorkKind, ResourceKind>) -> Result<Self, PaintError> {
+        let Some(root) = report.scopes.first().map(|entry| entry.usage) else {
+            return Err(PaintError::Accounting(AccountingFailure::Invariant));
+        };
+        let known = |scope| report.scopes.iter().any(|entry| entry.scope == scope);
+        let scopes_resolve = report
+            .scopes
+            .iter()
+            .filter_map(|entry| entry.first_refusal)
+            .all(|refusal| known(refusal.scope))
+            && report.events.iter().all(|event| match *event {
+                surgeist_ledger::Event::Accepted { scope, .. }
+                | surgeist_ledger::Event::Phase { scope, .. } => known(scope),
+                surgeist_ledger::Event::Refused {
+                    origin, refusal, ..
+                } => known(origin) && known(refusal.scope),
+            });
+        if scopes_resolve {
+            Ok(Self { report, root })
+        } else {
+            Err(PaintError::Accounting(AccountingFailure::Invariant))
+        }
+    }
     pub fn work(&self, kind: WorkKind) -> u64 {
-        self.0.scopes[0].usage.work(kind.dimension())
+        self.root.work(kind)
     }
     pub fn live(&self, kind: ResourceKind) -> u64 {
-        self.0.scopes[0].usage.live(kind.dimension())
+        self.root.live(kind)
     }
     pub fn peak(&self, kind: ResourceKind) -> u64 {
-        self.0.scopes[0].usage.peak(kind.dimension())
+        self.root.peak(kind)
     }
     pub fn elapsed(&self) -> Option<Duration> {
-        self.0.elapsed
+        self.report.elapsed
     }
     pub fn dropped_events(&self) -> u64 {
-        self.0.dropped_events
+        self.report.dropped_events
     }
     pub fn saturated(&self) -> bool {
-        self.0.saturated
+        self.report.saturated
     }
     pub fn phases(&self) -> impl ExactSizeIterator<Item = PhaseReport<'_>> {
-        self.0.scopes.iter().map(PhaseReport)
+        self.report.scopes.iter().map(PhaseReport)
     }
+    /// The phase of a scope that construction verified the report names.
     fn phase(&self, scope: Scope) -> PaintPhase {
-        PaintPhase::from_name(
-            self.0
-                .scopes
-                .iter()
-                .find(|entry| entry.scope == scope)
-                .expect("owned report scope")
-                .name,
-        )
+        self.report
+            .scopes
+            .iter()
+            .find(|entry| entry.scope == scope)
+            .map_or(PaintPhase::Operation, |entry| {
+                PaintPhase::from_name(entry.name)
+            })
     }
     pub fn refusals(&self) -> impl Iterator<Item = BudgetRefusal> + '_ {
-        self.0.scopes.iter().filter_map(|entry| {
+        self.report.scopes.iter().filter_map(|entry| {
             entry.first_refusal.map(|refusal| BudgetRefusal {
                 origin: self.phase(entry.scope),
                 limiting_phase: self.phase(refusal.scope),
@@ -413,7 +403,7 @@ impl PaintReport {
         })
     }
     pub fn events(&self) -> impl ExactSizeIterator<Item = PaintEvent> + '_ {
-        self.0.events.iter().map(|event| match *event {
+        self.report.events.iter().map(|event| match *event {
             surgeist_ledger::Event::Accepted {
                 scope,
                 change: value,
@@ -451,8 +441,8 @@ impl PaintReport {
     }
 }
 
-pub(crate) type Meter = Operation<WORK_COUNT, 2>;
-pub(crate) type PhaseMeter<'a> = Phase<'a, WORK_COUNT, 2>;
+pub(crate) type Meter = Operation<WorkKind, ResourceKind>;
+pub(crate) type PhaseMeter<'a> = Phase<'a, WorkKind, ResourceKind>;
 pub(crate) fn charge(
     meter: &mut PhaseMeter<'_>,
     scope: Scope,
@@ -460,7 +450,7 @@ pub(crate) fn charge(
     amount: usize,
 ) -> Result<(), PaintError> {
     let amount = u64::try_from(amount).map_err(|_| PaintError::CapacityOverflow)?;
-    apply(meter, scope, Change::Work(kind.dimension(), amount))
+    apply(meter, scope, Change::Work(kind, amount))
 }
 pub(crate) fn bytes<T>(capacity: usize) -> Result<u64, PaintError> {
     capacity
@@ -476,7 +466,7 @@ pub(crate) fn allocate<T>(
     capacity: usize,
     kind: ResourceKind,
 ) -> Result<Vec<T>, PaintError> {
-    let request = Change::Acquire(kind.dimension(), bytes::<T>(capacity)?);
+    let request = Change::Acquire(kind, bytes::<T>(capacity)?);
     if meter.check_batch(root, &[request]).is_err() {
         // Record the refusal, never a speculative accepted allocation/peak.
         apply(meter, root, request)?;
@@ -488,7 +478,7 @@ pub(crate) fn allocate<T>(
     apply(
         meter,
         root,
-        Change::Acquire(kind.dimension(), bytes::<T>(values.capacity())?),
+        Change::Acquire(kind, bytes::<T>(values.capacity())?),
     )?;
     Ok(values)
 }
@@ -497,11 +487,60 @@ pub(crate) fn release<T>(
     root: Scope,
     values: Vec<T>,
     kind: ResourceKind,
-) {
-    let amount = bytes::<T>(values.capacity()).expect("admitted capacity remains representable");
+) -> Result<(), PaintError> {
+    let amount = bytes::<T>(values.capacity())?;
     drop(values);
     if amount != 0 {
-        apply(meter, root, Change::Release(kind.dimension(), amount))
-            .expect("release exact admitted custody");
+        apply(meter, root, Change::Release(kind, amount))?;
+    }
+    Ok(())
+}
+
+/// Closes the operation. A ledger defect found while it ran replaces the result,
+/// because accepted counts can no longer be trusted.
+pub(crate) fn finish<T>(
+    meter: Meter,
+    result: Result<T, PaintError>,
+) -> (Result<T, PaintError>, Option<PaintReport>) {
+    match meter
+        .finish()
+        .map_err(setup_error)
+        .and_then(|report| report.map(PaintReport::new).transpose())
+    {
+        Ok(report) => (result, report),
+        Err(error) => (Err(error), None),
+    }
+}
+
+impl ResourceKind {
+    /// Every resource kind, in declaration order.
+    pub const ALL: &'static [Self] = <Self as Dimension>::ALL;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ledger_defect_is_an_accounting_invariant_failure() {
+        assert_eq!(
+            setup_error(LedgerError::Defect(surgeist_ledger::Defect::ScopeEntry)),
+            PaintError::Accounting(AccountingFailure::Invariant)
+        );
+    }
+
+    #[test]
+    fn report_without_its_root_scope_is_an_accounting_invariant_failure() {
+        let report = Report {
+            elapsed: None,
+            scopes: Vec::new(),
+            events: Vec::new(),
+            dropped_events: 0,
+            saturated: false,
+        };
+        assert_eq!(
+            PaintReport::new(report),
+            Err(PaintError::Accounting(AccountingFailure::Invariant))
+        );
     }
 }

@@ -159,7 +159,7 @@ fn assert_retained_stop_precedes_loader_error_materialization(dynamic: bool) {
             limit: 0
         }))
     );
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
     assert!(
         loader.called.get(),
         "the scoped drain must reach the loader"

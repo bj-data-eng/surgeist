@@ -81,7 +81,7 @@ fn retained_stop_prevents_async_error_materialization_from_mutating_saved_stack(
             limit: 0
         }))
     );
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
     assert_eq!(promise.state(), PromiseState::Pending);
     assert_eq!(
         saved_object
@@ -165,7 +165,7 @@ fn retained_stop_prevents_sync_executor_error_materialization_from_mutating_save
             limit: 0
         }))
     );
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
     assert_eq!(
         saved_object
             .get(js_string!("stack"), context.access())

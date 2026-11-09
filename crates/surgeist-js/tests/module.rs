@@ -115,7 +115,12 @@ fn one_short_module_preparation_preserves_identities_and_retained_source_retry()
         )
         .unwrap();
     complete.result.unwrap();
-    let limit = complete.report.scope_work().checked_sub(1).unwrap();
+    let limit = complete
+        .report
+        .scope_work()
+        .unwrap()
+        .checked_sub(1)
+        .unwrap();
 
     let (mut context, module, baseline) = setup();
     let stopped = context

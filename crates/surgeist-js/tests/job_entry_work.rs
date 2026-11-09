@@ -93,14 +93,15 @@ fn deferred<J>(call: JobCall<J>) -> (J, JsError) {
     }
 }
 fn assert_counts(report: &ExecutionReport, prep: u64, invoke: u64, polls: u64) {
-    assert_eq!(report.job_preparations(), prep);
-    assert_eq!(report.job_invocations(), invoke);
-    assert_eq!(report.job_polls(), polls);
-    assert_eq!(report.instructions(), 0);
+    assert_eq!(report.job_preparations().unwrap(), prep);
+    assert_eq!(report.job_invocations().unwrap(), invoke);
+    assert_eq!(report.job_polls().unwrap(), polls);
+    assert_eq!(report.instructions().unwrap(), 0);
 }
 fn assert_phase(report: &ExecutionReport, name: &str, phases: u64, elapsed: Option<Duration>) {
     let phase = report
         .profile()
+        .unwrap()
         .unwrap()
         .scopes
         .iter()
@@ -340,7 +341,7 @@ fn callback_vm_instructions_retain_their_own_units_beside_job_invocation() {
         .eval_with_budget(Source::from_bytes("40 + 2"), ExecutionOptions::new(64))
         .unwrap();
     assert_eq!(control.result.unwrap(), JsValue::new(42));
-    assert!(control.report.instructions() > 0);
+    assert!(control.report.instructions().unwrap() > 0);
     let mut context = Context::default();
     let outcome = context
         .with_execution(
@@ -354,10 +355,13 @@ fn callback_vm_instructions_retain_their_own_units_beside_job_invocation() {
         )
         .unwrap();
     assert_eq!(outcome.result.unwrap(), JsValue::new(42));
-    assert_eq!(outcome.report.job_preparations(), 0);
-    assert_eq!(outcome.report.job_invocations(), 1);
-    assert_eq!(outcome.report.job_polls(), 0);
-    assert_eq!(outcome.report.instructions(), control.report.instructions());
+    assert_eq!(outcome.report.job_preparations().unwrap(), 0);
+    assert_eq!(outcome.report.job_invocations().unwrap(), 1);
+    assert_eq!(outcome.report.job_polls().unwrap(), 0);
+    assert_eq!(
+        outcome.report.instructions().unwrap(),
+        control.report.instructions().unwrap()
+    );
 }
 #[test]
 fn reentry_preserves_the_first_invocation_stop_over_success_and_later_job_dimensions() {
@@ -769,7 +773,7 @@ fn dropping_or_polling_pending_jobs_inside_a_real_lease_is_safe_in_every_profile
                         timed(mode).then_some(Duration::ZERO),
                     );
                 } else {
-                    assert!(outcome.report.profile().is_none());
+                    assert!(outcome.report.profile().unwrap().is_none());
                 }
                 if !timed(mode) {
                     assert_eq!(CLOCK_READS.get(), 0);
@@ -820,7 +824,7 @@ fn action_timing_excludes_host_gaps_while_the_execution_lifetime_includes_them()
         assert_eq!(outcome.result.unwrap(), 42);
         assert_counts(&outcome.report, 1, 1, 2);
         if !matches!(mode, ProfileMode::Off) {
-            let profile = outcome.report.profile().unwrap();
+            let profile = outcome.report.profile().unwrap().unwrap();
             assert_eq!(
                 profile.elapsed,
                 timed(mode).then_some(Duration::from_millis(110))
@@ -860,11 +864,11 @@ fn action_timing_excludes_host_gaps_while_the_execution_lifetime_includes_them()
                 if event_limit == 1 {
                     assert_eq!(profile.events.len(), 1);
                     assert!(profile.dropped_events >= 1);
-                    assert_eq!(outcome.report.job_polls(), 2);
+                    assert_eq!(outcome.report.job_polls().unwrap(), 2);
                 }
             }
         } else {
-            assert!(outcome.report.profile().is_none());
+            assert!(outcome.report.profile().unwrap().is_none());
         }
         if !timed(mode) {
             assert_eq!(CLOCK_READS.get(), 0);

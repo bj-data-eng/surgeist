@@ -1386,7 +1386,7 @@ fn assert_refused_descriptor_trap_leaves_the_context_ready_for_retry(
             Some(&EngineError::RuntimeLimit(expected))
         );
         assert!(!outcome.report.effects_started());
-        assert_eq!(outcome.report.instructions(), 0);
+        assert_eq!(outcome.report.instructions().unwrap(), 0);
         assert!(!context.realm().scope().has_binding(&name));
         assert!(
             !target

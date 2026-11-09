@@ -185,7 +185,7 @@ fn literal_counts_and_all_exact_one_under_limits_preserve_atomic_output_and_retr
         assert_eq!(report.work(kind), 0);
         exact = exact.with_work_limit(kind, 0);
     }
-    for kind in ResourceKind::ALL {
+    for &kind in ResourceKind::ALL {
         exact = exact.with_resource_limit(kind, report.peak(kind));
     }
     assert_eq!(
@@ -208,11 +208,11 @@ fn literal_counts_and_all_exact_one_under_limits_preserve_atomic_output_and_retr
         );
         let refused = outcome.report.unwrap();
         assert!(refused.work(kind) <= limit);
-        for resource in ResourceKind::ALL {
+        for &resource in ResourceKind::ALL {
             assert_eq!(refused.live(resource), 0, "{kind:?}");
         }
     }
-    for kind in ResourceKind::ALL {
+    for &kind in ResourceKind::ALL {
         let outcome = plan_paint_order(
             fixture.request(),
             options(exact.with_resource_limit(kind, report.peak(kind) - 1)),
@@ -222,7 +222,7 @@ fn literal_counts_and_all_exact_one_under_limits_preserve_atomic_output_and_retr
             "{kind:?}"
         );
         let refused = outcome.report.unwrap();
-        for resource in ResourceKind::ALL {
+        for &resource in ResourceKind::ALL {
             assert_eq!(refused.live(resource), 0);
         }
     }
@@ -266,7 +266,7 @@ fn final_owner_refusal_publishes_no_order_after_the_complete_staged_sequence() {
     );
     let refused = outcome.report.unwrap();
     assert_eq!(refused.work(WorkKind::OutputRecord), 47);
-    for kind in ResourceKind::ALL {
+    for &kind in ResourceKind::ALL {
         assert_eq!(refused.live(kind), 0);
     }
     assert_eq!(
@@ -332,10 +332,10 @@ fn fixed_phase_timing_detail_loss_and_off_untimed_preserve_work_and_outcomes() {
         assert_eq!(events(&outcome.result.unwrap()), expected);
         if let Some(report) = outcome.report {
             assert_eq!(report.elapsed(), None);
-            for kind in WorkKind::ALL {
+            for &kind in WorkKind::ALL {
                 assert_eq!(report.work(kind), baseline.work(kind));
             }
-            for kind in ResourceKind::ALL {
+            for &kind in ResourceKind::ALL {
                 assert_eq!(report.live(kind), baseline.live(kind));
                 assert_eq!(report.peak(kind), baseline.peak(kind));
             }

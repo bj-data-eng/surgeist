@@ -25,6 +25,137 @@ stop, or map a refusal. Cleanup can release previously admitted resources
 after a stop. Treat charges as definitions of work and resource custody.
 Use a separate elapsed-time or process-memory measurement for those quantities.
 
+## Declare dimensions
+
+A consumer declares each dimension set with `dimensions!`. The macro writes a
+fieldless enum with one variant per dimension and a table struct with one public
+field per variant, named like the variant. The enum is the dimension type; the
+table holds one value per dimension. An operation takes one set for work and one
+for live resources. `NoDimension` is the empty set, and `NoTable::EMPTY` is its
+table.
+
+```rust
+use surgeist_ledger::{Change, Limits, Operation};
+
+surgeist_ledger::dimensions! {
+    /// Work a parser charges.
+    enum ParseWork => ParseWorkTable {
+        /// One input byte read.
+        InputByte,
+        /// One tree node visited.
+        NodeVisit,
+    }
+}
+
+surgeist_ledger::dimensions! {
+    /// Resources a parser holds while it runs.
+    enum ParseResource => ParseResourceTable {
+        /// Bytes of buffered input.
+        Buffer,
+    }
+}
+
+let limits = Limits::new(
+    ParseWorkTable { InputByte: 4096, NodeVisit: 512 },
+    ParseResourceTable { Buffer: 1024 },
+);
+let mut operation = Operation::new("parse", limits, 1)?;
+let root = operation.root();
+operation.apply_batch(
+    root,
+    &[
+        Change::Acquire(ParseResource::Buffer, 64),
+        Change::Work(ParseWork::InputByte, 64),
+    ],
+)?;
+let usage = operation.usage(root)?;
+assert_eq!(usage.work(ParseWork::InputByte), 64);
+assert_eq!(usage.live(ParseResource::Buffer), 64);
+assert_eq!(limits.work(ParseWork::NodeVisit), 512);
+# Ok::<(), surgeist_ledger::Error<ParseWork, ParseResource>>(())
+```
+
+A table names every dimension, so a limit or a tariff cannot be left out, and a
+lookup cannot go out of range. `Limits::from_fn`, `Tariffs::from_fn` and
+`Limits::unlimited` build tables by calling a function once per dimension, and
+`Tariffs::identity` keeps every dimension and unit in the parent. `Limits::work`
+and `Limits::live` read a cap back.
+
+Dimensions of different sets are different types. A resource dimension cannot be
+passed where a work dimension is expected, and a dimension of another set cannot
+name a change, a limit or a usage read of an operation. An operation's `Limits`,
+`Tariffs`, `Change`, `Usage` and reports carry the same two types.
+
+```compile_fail,E0308
+use surgeist_ledger::{Change, Limits, Operation};
+
+surgeist_ledger::dimensions! {
+    enum Visit => VisitTable { Node }
+}
+
+surgeist_ledger::dimensions! {
+    enum Buffer => BufferTable { Bytes }
+}
+
+let mut operation =
+    Operation::<Visit, Buffer>::new("parse", Limits::unlimited(), 1).unwrap();
+let root = operation.root();
+// A resource dimension is not a work dimension.
+let _ = operation.apply(root, Change::Work(Buffer::Bytes, 1));
+```
+
+```compile_fail,E0308
+use surgeist_ledger::{Change, Limits, Operation};
+
+surgeist_ledger::dimensions! {
+    enum Visit => VisitTable { Node }
+}
+
+surgeist_ledger::dimensions! {
+    enum Buffer => BufferTable { Bytes }
+}
+
+surgeist_ledger::dimensions! {
+    enum Elsewhere => ElsewhereTable { Node }
+}
+
+let mut operation =
+    Operation::<Visit, Buffer>::new("parse", Limits::unlimited(), 1).unwrap();
+let root = operation.root();
+// A dimension of a set the operation does not use cannot name a change.
+let _ = operation.apply(root, Change::Work(Elsewhere::Node, 1));
+```
+
+```compile_fail,E0308
+use surgeist_ledger::{Limits, NoDimension, Operation};
+
+surgeist_ledger::dimensions! {
+    enum Visit => VisitTable { Node }
+}
+
+surgeist_ledger::dimensions! {
+    enum Elsewhere => ElsewhereTable { Node }
+}
+
+// Limits of another schema do not configure this operation.
+let limits: Limits<Elsewhere, NoDimension> = Limits::unlimited();
+let _ = Operation::<Visit, NoDimension>::new("parse", limits, 1);
+```
+
+## Defects
+
+`Error::Defect` reports that the ledger found one of its own invariants broken,
+such as a scope identity that names no scope or a report with fewer records than
+the operation has scopes. No valid use of the API produces it. Each `Defect`
+variant names the broken invariant.
+
+A defect is latched. After the ledger finds one, every later fallible call on
+the operation, including `finish` and `snapshot`, returns the same
+`Error::Defect`. A defect found on a path with no error return, such as phase
+completion when a `Phase` is dropped, is returned by the operation's next
+fallible call. `finish` returns it instead of a report, so a report is never
+built from a state the ledger no longer trusts.
+
 ## Profile an operation
 
 Select a mode at setup. Summary mode counts admissions and ended phase
@@ -50,20 +181,26 @@ setup succeeds, observation never grows either buffer during admission.
 The accepted ledger totals remain authoritative when detail is incomplete.
 
 ```rust
-use surgeist_ledger::{Change, Limits, Operation, ProfileMode, Work};
+use surgeist_ledger::{Change, Limits, NoDimension, NoTable, Operation, ProfileMode};
 
-const VISITS: Work<1> = Work::new(0).unwrap();
-let mut operation =
-    Operation::<1, 0>::with_profile("parse", Limits::new([10], []), 1,
-        ProfileMode::Summary { timing: true })?;
+surgeist_ledger::dimensions! {
+    enum Work => WorkTable { Visit }
+}
+
+let mut operation = Operation::<Work, NoDimension>::with_profile(
+    "parse",
+    Limits::new(WorkTable { Visit: 10 }, NoTable::EMPTY),
+    1,
+    ProfileMode::Summary { timing: true },
+)?;
 let root = operation.root();
 operation.with_phase(root, |operation| {
-    operation.apply(root, Change::Work(VISITS, 2))
+    operation.apply(root, Change::Work(Work::Visit, 2))
 })??;
-let report = operation.finish().expect("summary enabled");
-assert_eq!(report.scopes[0].usage.work(VISITS), 2);
+let report = operation.finish()?.expect("summary enabled");
+assert_eq!(report.scopes[0].usage.work(Work::Visit), 2);
 println!("{}", report.terminal());
-# Ok::<(), surgeist_ledger::Error<1, 0>>(())
+# Ok::<(), surgeist_ledger::Error<Work, NoDimension>>(())
 ```
 
 Pass `ProfileMode::Off` to skip observation, or `timing: false` to collect work
@@ -97,21 +234,24 @@ overlapping observations may end in any order; each contributes its own
 inclusive interval.
 
 ```rust
-use surgeist_ledger::{Change, Limits, Operation, ProfileMode, Work};
+use surgeist_ledger::{Change, Limits, NoDimension, Operation, ProfileMode};
 
-let mut operation = Operation::<1, 0>::with_profile(
+# surgeist_ledger::dimensions! {
+#     enum Work => WorkTable { Visit }
+# }
+let mut operation = Operation::<Work, NoDimension>::with_profile(
     "callback", Limits::unlimited(), 1,
     ProfileMode::Summary { timing: true },
 )?;
 let root = operation.root();
 let observation = operation.begin_phase(root)?;
 // The operation remains available while the observation is unfinished.
-operation.apply(root, Change::Work(Work::new(0).unwrap(), 3))?;
+operation.apply(root, Change::Work(Work::Visit, 3))?;
 operation.end_phase(observation).expect("observation belongs to this operation");
-let report = operation.finish().expect("summary enabled");
+let report = operation.finish()?.expect("summary enabled");
 assert_eq!(report.scopes[0].phases, 1);
-assert_eq!(report.scopes[0].usage.work(Work::new(0).unwrap()), 3);
-# Ok::<(), surgeist_ledger::Error<1, 0>>(())
+assert_eq!(report.scopes[0].usage.work(Work::Visit), 3);
+# Ok::<(), surgeist_ledger::Error<Work, NoDimension>>(())
 ```
 
 Detached observations complete only through explicit `end_phase`. Dropping an
@@ -167,9 +307,12 @@ phases begin on first poll, include pending time and close once on completion or
 drop. Plain operations retain their borrowed phase API without synchronization.
 
 ```rust
-use surgeist_ledger::{Change, Limits, Operation, ProfileMode, Work};
+use surgeist_ledger::{Change, Limits, NoDimension, Operation, ProfileMode};
 
-let operation = Operation::<1, 0>::with_profile(
+# surgeist_ledger::dimensions! {
+#     enum Work => WorkTable { Visit }
+# }
+let operation = Operation::<Work, NoDimension>::with_profile(
     "device", Limits::unlimited(), 1,
     ProfileMode::Summary { timing: false },
 )?.with_checkpoint_limit(2)?.share();
@@ -177,11 +320,11 @@ let participant = operation.clone();
 let root = operation.root();
 let checkpoint = operation.begin_checkpoint()?;
 operation.with_phase(root, || {
-    participant.apply(root, Change::Work(Work::new(0).unwrap(), 3))
+    participant.apply(root, Change::Work(Work::Visit, 3))
 })??;
 let report = operation.end_checkpoint(&checkpoint)?;
-assert_eq!(report.scopes[0].usage.work(Work::new(0).unwrap()), 3);
-# Ok::<(), surgeist_ledger::Error<1, 0>>(())
+assert_eq!(report.scopes[0].usage.work(Work::Visit), 3);
+# Ok::<(), surgeist_ledger::Error<Work, NoDimension>>(())
 ```
 
 Retain a participant and checkpoint custodian outside cancelable work. After

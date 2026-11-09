@@ -262,7 +262,7 @@ fn lifecycle_work_overflow_records_first_fault_after_mandatory_custody_cleanup()
         .ledger
         .apply(
             scope,
-            Change::Work(RenderWork::ResourceLeaseReturns.dimension(), u64::MAX),
+            Change::Work(RenderWork::ResourceLeaseReturns, u64::MAX),
         )
         .unwrap();
     generation.lease_return(GenerationClass::CacheEffects);

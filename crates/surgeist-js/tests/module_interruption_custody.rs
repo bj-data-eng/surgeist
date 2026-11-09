@@ -125,7 +125,7 @@ fn assert_terminal(module: &Module, context: &mut Context) {
         .result
         .expect_err("fresh admission cannot revive the interrupted module instance");
     assert!(error.as_engine().is_some(), "{error:?}");
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
 }
 
 fn assert_limit(error: &JsError, expected: RuntimeLimitError) {
@@ -215,7 +215,7 @@ fn suspended_async_function_created_by_a_module_survives_that_modules_own_stop()
         &stopped.result.unwrap_err(),
         RuntimeLimitError::Instruction { limit: STOP_LIMIT },
     );
-    assert_eq!(stopped.report.instructions(), STOP_LIMIT);
+    assert_eq!(stopped.report.instructions().unwrap(), STOP_LIMIT);
     assert_eq!(count("moduleEffects", &mut context), 1.into());
     assert_eq!(count("innerStarts", &mut context), 1.into());
     assert_eq!(count("innerFinishes", &mut context), 0.into());
@@ -282,8 +282,8 @@ fn outer_await_job_admission_refusal_returns_the_same_viable_continuation() {
         &refused.result.unwrap_err(),
         RuntimeLimitError::JobInvocation { limit: 0 },
     );
-    assert_eq!(refused.report.job_invocations(), 0);
-    assert_eq!(refused.report.instructions(), 0);
+    assert_eq!(refused.report.job_invocations().unwrap(), 0);
+    assert_eq!(refused.report.instructions().unwrap(), 0);
     assert_eq!(observer.status(), JobStatus::Pending);
     assert_eq!(count("moduleEffects", &mut context), 1.into());
     assert_eq!(evaluation.state(), PromiseState::Pending);
@@ -343,8 +343,8 @@ fn consumed_await_reaction_whose_handler_entry_is_refused_interrupts_its_module(
         .unwrap();
     context.runtime_limits_mut().set_recursion_limit(recursion);
     assert_limit(&outcome.result.unwrap_err(), RuntimeLimitError::Recursion);
-    assert_eq!(outcome.report.job_invocations(), 1);
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.job_invocations().unwrap(), 1);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
     assert_eq!(
         observer.status(),
         JobStatus::Retired(JobRetirement::Interrupted)
@@ -417,7 +417,7 @@ fn inline_resume_transfers_a_new_module_await_before_enclosing_publication_stops
         RuntimeLimitError::Instruction { limit: STOP_LIMIT },
     );
     assert_eq!(stopped.result.unwrap_err(), original);
-    assert_eq!(stopped.report.instructions(), STOP_LIMIT);
+    assert_eq!(stopped.report.instructions().unwrap(), STOP_LIMIT);
     assert_eq!(count("moduleEffects", &mut context), 1.into());
     assert_eq!(gate.state(), PromiseState::Pending);
 
@@ -478,7 +478,7 @@ fn interrupt_next_reaction(executor: &ManualExecutor, context: &mut Context) {
         RuntimeLimitError::Instruction { limit: STOP_LIMIT },
     );
     assert_eq!(outcome.result.unwrap_err(), direct);
-    assert_eq!(outcome.report.instructions(), STOP_LIMIT);
+    assert_eq!(outcome.report.instructions().unwrap(), STOP_LIMIT);
     assert_eq!(count("moduleEffects", context), 1.into());
 }
 
@@ -502,7 +502,7 @@ fn assert_adapter_interrupted(
             module.evaluate(access)
         })
         .unwrap();
-    assert_eq!(later.report.instructions(), 0);
+    assert_eq!(later.report.instructions().unwrap(), 0);
     let later_error = later.result.unwrap_err();
     assert_interruption_cause(&later_error);
     let Some(EngineError::ModuleInterrupted(interruption)) = later_error.as_engine() else {
@@ -779,7 +779,7 @@ fn initial_immediate_await_keeps_the_exact_deferred_job_viable_after_publication
         &stopped.result.unwrap_err(),
         RuntimeLimitError::JobInvocation { limit: 0 },
     );
-    assert_eq!(stopped.report.job_invocations(), 0);
+    assert_eq!(stopped.report.job_invocations().unwrap(), 0);
     assert_eq!(count("moduleEffects", &mut context), 0.into());
     let continuation = executor.take_deferred();
     let observer = continuation.observer();
@@ -837,7 +837,7 @@ fn refuse_initial_adapter_resume(executor: &FullyInlineExecutor, context: &mut C
     let direct = direct.unwrap();
     assert_limit(&direct, RuntimeLimitError::JobInvocation { limit: 1 });
     assert_eq!(outcome.result.unwrap_err(), direct);
-    assert_eq!(outcome.report.job_invocations(), 1);
+    assert_eq!(outcome.report.job_invocations().unwrap(), 1);
     assert_eq!(count("moduleEffects", context), 0.into());
 }
 
@@ -1310,7 +1310,7 @@ fn native_waiter_finds_the_retained_module_cause_through_a_public_promise_follow
             module.evaluate(access)
         })
         .unwrap();
-    assert_eq!(retained.report.instructions(), 0);
+    assert_eq!(retained.report.instructions().unwrap(), 0);
     let retained = retained.result.unwrap_err();
     assert_interruption_cause(&retained);
     let Some(EngineError::ModuleInterrupted(observed)) = observed.as_engine() else {

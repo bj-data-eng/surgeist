@@ -290,7 +290,7 @@ mod tests {
             .eval_with_budget(Source::from_bytes(SOURCE), ExecutionOptions::new(512))
             .unwrap();
         assert_eq!(complete.result.unwrap(), 242.into());
-        let work = complete.report.compiler_work();
+        let work = complete.report.compiler_work().unwrap();
         assert!(work > 0);
         for profile in [ProfileMode::Off, ProfileMode::Summary { timing: false }] {
             let mut exact = Context::default();
@@ -303,7 +303,7 @@ mod tests {
                 )
                 .unwrap();
             assert_eq!(result.result.unwrap(), 242.into());
-            assert_eq!(result.report.compiler_work(), work);
+            assert_eq!(result.report.compiler_work().unwrap(), work);
 
             let limit = work - 1;
             let mut retry = Context::default();

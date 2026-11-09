@@ -63,7 +63,7 @@ fn nested_same_holder_is_busy_without_invoking_callback_or_charging_work() {
         .eval_with_budget(Source::from_bytes("40 + 2"), ExecutionOptions::new(64))
         .unwrap();
     assert_eq!(control.result.unwrap(), JsValue::new(42));
-    let instructions = control.report.instructions();
+    let instructions = control.report.instructions().unwrap();
     let mut owner = Context::default();
     let called = Cell::new(false);
     let outcome = owner
@@ -85,7 +85,7 @@ fn nested_same_holder_is_busy_without_invoking_callback_or_charging_work() {
         })
         .unwrap();
     assert_eq!(outcome.result.unwrap(), JsValue::new(42));
-    assert_eq!(outcome.report.instructions(), instructions);
+    assert_eq!(outcome.report.instructions().unwrap(), instructions);
     assert!(!called.get());
     assert!(matches!(
         outcome.report.termination(),
@@ -203,7 +203,7 @@ fn retained_instruction_stop_wins_over_later_holder_busy_at_operation_completion
             limit: 32
         }))
     );
-    assert_eq!(outcome.report.instructions(), 32);
+    assert_eq!(outcome.report.instructions().unwrap(), 32);
     assert!(matches!(
         outcome.report.termination(),
         ExecutionTermination::Completed

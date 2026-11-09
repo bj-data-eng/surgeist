@@ -29,7 +29,7 @@ fn plain_and_captured_native_reentry_share_exact_instruction_limits() {
         .eval_with_budget(Source::from_bytes("40 + 2"), ExecutionOptions::new(64))
         .unwrap();
     assert_eq!(control.result.unwrap(), JsValue::new(42));
-    let exact = control.report.instructions();
+    let exact = control.report.instructions().unwrap();
     let plain =
         NativeFunction::from_fn_ptr(|_, _, mut access| access.eval(Source::from_bytes("40 + 2")));
     let captured = NativeFunction::from_fn_with_captures(
@@ -47,7 +47,7 @@ fn plain_and_captured_native_reentry_share_exact_instruction_limits() {
                     native.call(&JsValue::undefined(), &[], access.reborrow())
                 })
                 .unwrap();
-            assert_eq!(outcome.report.instructions(), limit);
+            assert_eq!(outcome.report.instructions().unwrap(), limit);
             if limit == exact {
                 assert_eq!(outcome.result.unwrap(), JsValue::new(42));
             } else {
@@ -87,7 +87,7 @@ fn native_callbacks_cannot_replace_the_first_stop_with_success_or_another_error(
             outcome.result.unwrap_err().as_engine(),
             Some(&instruction_error(32))
         );
-        assert_eq!(outcome.report.instructions(), 32);
+        assert_eq!(outcome.report.instructions().unwrap(), 32);
         assert_eq!(
             owner
                 .eval(Source::from_bytes(
@@ -156,7 +156,7 @@ fn typed_call_keeps_argument_guest_and_result_conversion_order_and_one_budget() 
         owner.eval(Source::from_bytes("trace.join(',')")).unwrap(),
         JsValue::new(js_string!("arguments,argument,call,result"))
     );
-    let exact = control.report.instructions();
+    let exact = control.report.instructions().unwrap();
     assert!(exact > 1);
     for limit in [exact, exact - 1] {
         owner.eval(Source::from_bytes("trace = []")).unwrap();
@@ -165,7 +165,7 @@ fn typed_call_keeps_argument_guest_and_result_conversion_order_and_one_budget() 
                 function.call(access.reborrow(), LoggedArguments)
             })
             .unwrap();
-        assert_eq!(outcome.report.instructions(), limit);
+        assert_eq!(outcome.report.instructions().unwrap(), limit);
         if limit == exact {
             assert_eq!(outcome.result.unwrap().0, 42);
         } else {
@@ -230,7 +230,7 @@ fn typed_native_adapter_reborrows_for_argument_callback_and_result_hooks() {
             })
             .unwrap();
         assert_eq!(outcome.result.unwrap(), JsValue::new(42));
-        assert!(outcome.report.instructions() > 0);
+        assert!(outcome.report.instructions().unwrap() > 0);
         assert_eq!(
             owner.eval(Source::from_bytes("trace.join(',')")).unwrap(),
             JsValue::new(js_string!("host-argument,host-call,host-result"))
@@ -275,7 +275,7 @@ fn custom_argument_converter_cannot_redirect_the_typed_adapters_original_owner()
         outcome.result.unwrap_err().as_engine(),
         Some(&instruction_error(0))
     );
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
     assert_eq!(
         owner
             .eval(Source::from_bytes(
@@ -290,7 +290,7 @@ fn custom_argument_converter_cannot_redirect_the_typed_adapters_original_owner()
         })
         .unwrap();
     assert_eq!(fresh.result.unwrap(), 42);
-    assert!(fresh.report.instructions() > 0);
+    assert!(fresh.report.instructions().unwrap() > 0);
 }
 
 #[derive(Debug, JsData, HeapTrace)]
@@ -401,7 +401,7 @@ fn every_class_hook_and_short_builder_getter_operates_on_the_reserved_context() 
         })
         .unwrap();
     outcome.result.unwrap();
-    assert!(outcome.report.instructions() > 0);
+    assert!(outcome.report.instructions().unwrap() > 0);
     assert_eq!(
         owner
             .eval(Source::from_bytes("classLog.join(',')"))
@@ -462,7 +462,7 @@ fn promise_executor_reenters_through_access_and_retains_the_first_stop() {
             )
         })
         .unwrap();
-    assert!(completed.report.instructions() > 0);
+    assert!(completed.report.instructions().unwrap() > 0);
     assert_eq!(
         completed.result.unwrap().state(),
         PromiseState::Fulfilled(JsValue::new(42))
@@ -490,7 +490,7 @@ fn promise_executor_reenters_through_access_and_retains_the_first_stop() {
         stopped.result.unwrap_err().as_engine(),
         Some(&instruction_error(0))
     );
-    assert_eq!(stopped.report.instructions(), 0);
+    assert_eq!(stopped.report.instructions().unwrap(), 0);
 }
 
 #[test]
@@ -513,5 +513,5 @@ fn open_module_conversion_exports_a_protected_reentrant_native_function() {
         })
         .unwrap();
     assert_eq!(outcome.result.unwrap(), JsValue::new(42));
-    assert!(outcome.report.instructions() > 0);
+    assert!(outcome.report.instructions().unwrap() > 0);
 }

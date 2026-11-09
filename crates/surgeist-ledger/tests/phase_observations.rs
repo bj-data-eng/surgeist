@@ -7,12 +7,28 @@ use std::{
 };
 
 use surgeist_ledger::{
-    Change, Error, Event, EventFilter, Limits, Operation, PhaseObservation, ProfileMode, Resource,
-    Scope, Tariffs, Work,
+    Change, Error, Event, EventFilter, Limits, NoDimension, Operation, PhaseObservation,
+    ProfileMode, Scope, Tariffs,
 };
 
-const WORK: Work<1> = Work::new(0).unwrap();
-const BYTES: Resource<1> = Resource::new(0).unwrap();
+surgeist_ledger::dimensions! {
+    enum Work => WorkTable { Visit }
+}
+
+surgeist_ledger::dimensions! {
+    enum Resource => ResourceTable { Bytes }
+}
+
+const WORK: Work = Work::Visit;
+const BYTES: Resource = Resource::Bytes;
+
+fn limits(work: u64, bytes: u64) -> Limits<Work, Resource> {
+    Limits::new(WorkTable { Visit: work }, ResourceTable { Bytes: bytes })
+}
+
+surgeist_ledger::dimensions! {
+    enum ForeignWork => ForeignWorkTable { First, Second }
+}
 
 thread_local! {
     static NOW: Cell<Duration> = const { Cell::new(Duration::ZERO) };
@@ -37,18 +53,18 @@ fn ms(milliseconds: u64) -> Option<Duration> {
     Some(Duration::from_millis(milliseconds))
 }
 
-fn operation(mode: ProfileMode) -> Operation<1, 1> {
-    Operation::with_profile_clock("root", Limits::new([3], [8]), 3, mode, clock).unwrap()
+fn operation(mode: ProfileMode) -> Operation<Work, Resource> {
+    Operation::with_profile_clock("root", limits(3, 8), 3, mode, clock).unwrap()
 }
 
 // A consumer owns this completion policy; the observation itself has no drop hook.
 struct EndOnDrop<'a> {
-    owner: &'a RefCell<Operation<1, 1>>,
+    owner: &'a RefCell<Operation<Work, Resource>>,
     observation: Option<PhaseObservation>,
 }
 
 impl<'a> EndOnDrop<'a> {
-    fn begin(owner: &'a RefCell<Operation<1, 1>>, scope: Scope) -> Self {
+    fn begin(owner: &'a RefCell<Operation<Work, Resource>>, scope: Scope) -> Self {
         let observation = owner.borrow().begin_phase(scope).unwrap();
         Self {
             owner,
@@ -94,7 +110,7 @@ fn consumer_guard_ends_reentrant_phase_on_unwind_and_preserves_cleanup_custody()
         .apply(root, Change::Release(BYTES, 5))
         .unwrap();
     time(40);
-    let report = owner.into_inner().finish().unwrap();
+    let report = owner.into_inner().finish().unwrap().unwrap();
     let scope = &report.scopes[0];
     assert_eq!((scope.phases, scope.phase_elapsed), (1, ms(15)));
     assert_eq!((scope.accepted_batches, scope.accepted_items), (2, 3));
@@ -168,7 +184,7 @@ fn consumer_guard_ends_polled_future_on_drop_but_unpolled_future_has_no_observat
         .apply(root, Change::Release(BYTES, 5))
         .unwrap();
     time(40);
-    let report = owner.into_inner().finish().unwrap();
+    let report = owner.into_inner().finish().unwrap().unwrap();
     let scope = &report.scopes[0];
     assert_eq!((scope.phases, scope.phase_elapsed), (1, ms(15)));
     assert_eq!((scope.accepted_batches, scope.accepted_items), (2, 3));
@@ -247,7 +263,7 @@ fn explicit_end_preserves_accepted_prefix_refusal_and_cleanup_in_every_mode() {
             (2, 0, 5)
         );
         time(25);
-        let report = owner.finish();
+        let report = owner.finish().unwrap();
         if matches!(mode, ProfileMode::Off) {
             assert!(report.is_none());
         } else {
@@ -294,7 +310,7 @@ fn explicit_end_preserves_accepted_prefix_refusal_and_cleanup_in_every_mode() {
 fn foreign_plain_begin_and_end_validate_before_clock_and_retain_the_original_marker() {
     reset();
     let mut owner = operation(ProfileMode::Summary { timing: true });
-    let mut foreign = Operation::<0, 0>::with_profile_clock(
+    let mut foreign = Operation::<NoDimension, NoDimension>::with_profile_clock(
         "foreign",
         Limits::unlimited(),
         1,
@@ -322,7 +338,7 @@ fn foreign_plain_begin_and_end_validate_before_clock_and_retain_the_original_mar
     assert_eq!(foreign_interval.profile.unwrap().scopes[0].phases, 0);
     time(40);
     owner.end_phase(observation).unwrap();
-    let report = owner.finish().unwrap();
+    let report = owner.finish().unwrap().unwrap();
     assert_eq!(report.scopes[0].phases, 1);
     assert_eq!(report.scopes[0].phase_elapsed, ms(30));
     assert_eq!(report.scopes[0].usage.work(WORK), 0);
@@ -337,7 +353,7 @@ fn sharing_and_cloned_participants_preserve_foreign_retry_and_completion_access(
     let before_share = owner.begin_phase(root).unwrap();
     let shared = owner.share();
     let participant = shared.clone();
-    let foreign = Operation::<2, 0>::with_profile_clock(
+    let foreign = Operation::<ForeignWork, NoDimension>::with_profile_clock(
         "foreign",
         Limits::unlimited(),
         1,
@@ -476,7 +492,7 @@ fn overlapping_observations_complete_out_of_order_with_inclusive_durations() {
     time(60);
     owner.end_phase(second).unwrap();
     time(75);
-    let report = owner.finish().unwrap();
+    let report = owner.finish().unwrap().unwrap();
     assert_eq!(report.elapsed, ms(75));
     assert_eq!(
         (report.scopes[0].phases, report.scopes[0].phase_elapsed),
@@ -537,7 +553,7 @@ fn discard_and_finishing_the_owner_never_manufacture_phase_completions() {
         time(40);
         let _unfinished = owner.begin_phase(root).unwrap();
         time(50);
-        report = owner.finish().unwrap();
+        report = owner.finish().unwrap().unwrap();
         reads = READS.get();
     }
     assert_eq!(READS.get(), reads);
@@ -630,7 +646,7 @@ fn checkpoint_profiles_clip_only_observations_explicitly_ended_inside_them() {
         ]
     );
     assert_eq!(first_profile.scopes[0].phases, 1);
-    let lifetime = owner.finish().unwrap();
+    let lifetime = owner.finish().unwrap().unwrap();
     assert_eq!(
         (lifetime.scopes[0].phases, lifetime.scopes[0].phase_elapsed),
         (2, ms(50))
@@ -672,7 +688,7 @@ fn static_scope_filter_and_detail_cap_preserve_all_phase_summaries() {
     owner.end_phase(clipped).unwrap();
     time(13);
     owner.apply(other, Change::Work(WORK, 2)).unwrap();
-    let report = owner.finish().unwrap();
+    let report = owner.finish().unwrap().unwrap();
     assert_eq!(
         report.events,
         [
@@ -711,7 +727,7 @@ fn overlapping_maximum_intervals_saturate_observation_without_changing_usage() {
     NOW.set(Duration::MAX);
     owner.end_phase(first).unwrap();
     owner.end_phase(second).unwrap();
-    let report = owner.finish().unwrap();
+    let report = owner.finish().unwrap().unwrap();
     assert_eq!(report.scopes[0].phases, 2);
     assert_eq!(report.scopes[0].phase_elapsed, Some(Duration::MAX));
     assert_eq!(report.elapsed, Some(Duration::MAX));

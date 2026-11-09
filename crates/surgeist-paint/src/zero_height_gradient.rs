@@ -3,7 +3,9 @@
 use crate::{
     GradientPosition, GradientStopItem, PaintError, PaintOptions, PaintReport, RadialGradientCase,
     RadialGradientGeometry, ResourceKind, WorkKind,
-    accounting::{Meter, OperationKind, allocate, apply, bytes, charge, release, setup_error},
+    accounting::{
+        Meter, OperationKind, allocate, apply, bytes, charge, finish, release, setup_error,
+    },
     gradient_stops::{
         ScalarPosition, StopWork, UsedGradientRecord, distribute_with, expand_with, fill_run,
         fixup_with, interior_omitted, validate_source,
@@ -118,10 +120,8 @@ pub fn resolve_zero_height_gradient_colors<'a, C>(
     let scopes = match setup_scopes(&mut meter) {
         Ok(scopes) => scopes,
         Err(error) => {
-            return ZeroHeightGradientColorsOutcome {
-                result: Err(error),
-                report: meter.finish().map(PaintReport),
-            };
+            let (result, report) = finish(meter, Err(error));
+            return ZeroHeightGradientColorsOutcome { result, report };
         }
     };
     let mut pairs = Vec::new();
@@ -216,7 +216,7 @@ pub fn resolve_zero_height_gradient_colors<'a, C>(
                     p,
                     root,
                     Change::Acquire(
-                        ResourceKind::RetainedResultBytes.dimension(),
+                        ResourceKind::RetainedResultBytes,
                         bytes::<ZeroHeightGradientColors<'_, C>>(1)?,
                     ),
                 )?;
@@ -234,36 +234,35 @@ pub fn resolve_zero_height_gradient_colors<'a, C>(
             })
             .map_err(setup_error)?
     })();
-    meter
+    let cleanup = meter
         .with_phase(scopes[5], |p| {
-            release(p, root, take(&mut normalized), ResourceKind::ScratchBytes);
-            release(p, root, take(&mut pairs), ResourceKind::ScratchBytes);
+            release(p, root, take(&mut normalized), ResourceKind::ScratchBytes)?;
+            release(p, root, take(&mut pairs), ResourceKind::ScratchBytes)?;
             if result.is_err() {
                 release(
                     p,
                     root,
                     take(&mut weights),
                     ResourceKind::RetainedResultBytes,
-                );
+                )?;
                 if fixed_owner {
                     apply(
                         p,
                         root,
                         Change::Release(
-                            ResourceKind::RetainedResultBytes.dimension(),
-                            bytes::<ZeroHeightGradientColors<'_, C>>(1)
-                                .expect("admitted fixed owner"),
+                            ResourceKind::RetainedResultBytes,
+                            bytes::<ZeroHeightGradientColors<'_, C>>(1)?,
                         ),
-                    )
-                    .expect("release exact fixed owner");
+                    )?;
                 }
             }
+            Ok(())
         })
-        .expect("owned cleanup scope");
-    ZeroHeightGradientColorsOutcome {
-        result,
-        report: meter.finish().map(PaintReport),
-    }
+        .map_err(setup_error)
+        .and_then(|done| done);
+    let result = result.and_then(|value| cleanup.map(|()| value));
+    let (result, report) = finish(meter, result);
+    ZeroHeightGradientColorsOutcome { result, report }
 }
 
 fn setup_scopes(meter: &mut Meter) -> Result<[Scope; 6], PaintError> {
@@ -637,7 +636,10 @@ mod tests {
                 Distance::positive(&mut StopWork::new(p, scopes[3]), 1.5)
             })
             .unwrap();
-        (result, PaintReport(meter.finish().unwrap()))
+        (
+            result,
+            PaintReport::new(meter.finish().unwrap().unwrap()).unwrap(),
+        )
     }
 
     #[test]
@@ -665,7 +667,7 @@ mod tests {
             }
         );
         assert_eq!(report.work(WorkKind::GradientCoordinate), 7);
-        for resource in ResourceKind::ALL {
+        for &resource in ResourceKind::ALL {
             assert_eq!(report.live(resource), 0);
         }
         assert_eq!(
@@ -745,7 +747,7 @@ mod tests {
             );
             assert!(matches!(outcome.result, Err(PaintError::Budget(_))));
             let report = outcome.report.unwrap();
-            for resource in ResourceKind::ALL {
+            for &resource in ResourceKind::ALL {
                 assert_eq!(report.live(resource), 0);
             }
         }

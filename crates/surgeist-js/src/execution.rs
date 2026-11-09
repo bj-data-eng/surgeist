@@ -39,52 +39,91 @@ use surgeist_js_parser::{
 };
 use surgeist_js_string::StringWork;
 use surgeist_ledger::{
-    Change, Error as LedgerError, Limits, Operation, Phase, Scope, Tariffs, Work,
+    Change, Defect, Error as LedgerError, Limits, NoDimension, NoTable, Operation, Phase, Scope,
+    Tariffs, dimensions,
 };
 use thiserror::Error;
 
 use crate::{
     JsError, JsResult,
     bytecompiler::control::{CompilerControl, CompilerDepth, CompilerWork},
-    error::{EngineError, RuntimeLimitError},
+    error::{EngineError, EngineResourceError, RuntimeLimitError},
     optimizer::control::OptimizerWork,
     value::primitive::PrimitiveWork,
 };
 
 pub use surgeist_ledger::{EventFilter, ProfileMode};
 
-const INSTRUCTION: Work<32> = Work::new(0).unwrap();
-const SOURCE_READ: Work<32> = Work::new(1).unwrap();
-const SOURCE_CONSUMPTION: Work<32> = Work::new(2).unwrap();
-const SOURCE_RETENTION: Work<32> = Work::new(3).unwrap();
-const LEXER_LOOKAHEAD: Work<32> = Work::new(4).unwrap();
-const LEXER_DISPATCH: Work<32> = Work::new(5).unwrap();
-const TOKEN_PROBE: Work<32> = Work::new(6).unwrap();
-const TOKEN_ADVANCE: Work<32> = Work::new(7).unwrap();
-const GRAMMAR_DISPATCH: Work<32> = Work::new(8).unwrap();
-const EARLY_ERROR_VISIT: Work<32> = Work::new(9).unwrap();
-const LABEL_LOOKUP: Work<32> = Work::new(10).unwrap();
-const DIRECT_EVAL_VISIT: Work<32> = Work::new(11).unwrap();
-const NAME_VISIT: Work<32> = Work::new(12).unwrap();
-const NAME_RECORD: Work<32> = Work::new(13).unwrap();
-const NAME_COMPARISON: Work<32> = Work::new(14).unwrap();
-const INTERNER_BYTES: Work<32> = Work::new(15).unwrap();
-const INTERNER_UTF16: Work<32> = Work::new(16).unwrap();
-const INTERNER_INDEX: Work<32> = Work::new(17).unwrap();
-const INTERNER_CAPACITY: Work<32> = Work::new(18).unwrap();
-const INTERNER_RELOCATION: Work<32> = Work::new(19).unwrap();
-const DIAGNOSTIC_INPUT: Work<32> = Work::new(20).unwrap();
-const DIAGNOSTIC_OUTPUT: Work<32> = Work::new(21).unwrap();
-const TEMPLATE_INPUT: Work<32> = Work::new(22).unwrap();
-const TEMPLATE_OUTPUT: Work<32> = Work::new(23).unwrap();
-const SCOPE_WORK: Work<32> = Work::new(24).unwrap();
-const OPTIMIZER_WORK: Work<32> = Work::new(25).unwrap();
-const COMPILER_WORK: Work<32> = Work::new(26).unwrap();
-const JOB_PREPARATION: Work<32> = Work::new(27).unwrap();
-const JOB_INVOCATION: Work<32> = Work::new(28).unwrap();
-const JOB_POLL: Work<32> = Work::new(29).unwrap();
-const GENERATOR_REQUEST: Work<32> = Work::new(30).unwrap();
-const MODULE_METADATA_WORK: Work<32> = Work::new(31).unwrap();
+dimensions! {
+    /// Work units the execution ledger admits, in profile order. Each variant has
+    /// its own limit in [`ExecutionOptions`]. Values of different variants are not additive.
+    pub enum ExecutionWork => ExecutionWorkTable {
+        /// One VM instruction admitted before dispatch, including instructions reached through synchronous reentry.
+        Instruction,
+        /// One input read attempt across source decoders, including EOF probes.
+        SourceRead,
+        /// One decoded code point consumed across frontend phases, including trivia.
+        SourceConsumption,
+        /// One UTF-16 source unit retained across frontend phases.
+        SourceRetention,
+        /// One bounded lexer lookahead probe, including cache hits and EOF probes.
+        LexerLookahead,
+        /// One lexical production dispatch, including comments and continuations.
+        LexerDispatch,
+        /// One buffered token probe, including cache hits and EOF.
+        TokenProbe,
+        /// One buffered token advance request, including requests at EOF.
+        TokenAdvance,
+        /// One grammar production attempt, including inline repeated items.
+        GrammarDispatch,
+        /// One AST visit in a metered early-error walk.
+        EarlyErrorVisit,
+        /// One logical label-table lookup.
+        LabelLookup,
+        /// One AST visit that computes cached direct-eval metadata.
+        DirectEvalVisit,
+        /// One AST visit in name collection, validation and delegated semantic queries.
+        NameVisit,
+        /// One name record attempt.
+        NameRecord,
+        /// One symbol comparison or logical name-table operation.
+        NameComparison,
+        /// One UTF-8 or Latin1 byte of frontend interning work.
+        InternerBytes,
+        /// One UTF-16 unit of frontend interning and name preparation work.
+        InternerUtf16,
+        /// One frontend interner slot initialization, probe, reinsertion or publication.
+        InternerIndex,
+        /// One unit of additional capacity requested by a frontend interner buffer.
+        InternerCapacity,
+        /// One initialized unit that a frontend interner reserve may relocate.
+        InternerRelocation,
+        /// One UTF-16 spelling unit inspected while rendering a frontend diagnostic.
+        DiagnosticInput,
+        /// One UTF-8 byte appended to an owned source-spelling diagnostic payload.
+        DiagnosticOutput,
+        /// One UTF-16 unit inspected by raw and cooked template preparation.
+        TemplateInput,
+        /// One UTF-16 unit appended to a normalized raw or cooked template.
+        TemplateOutput,
+        /// One unit of script scope analysis work, including staged changes and publication.
+        ScopeWork,
+        /// One unit of optimizer traversal, rewrite preparation and delegated operand work.
+        OptimizerWork,
+        /// One unit of compiler lowering and delegated payload work.
+        CompilerWork,
+        /// One native task preparation factory invocation.
+        JobPreparation,
+        /// One transfer of control to a synchronous native job callback.
+        JobInvocation,
+        /// One native asynchronous job future poll, including Pending polls.
+        JobPoll,
+        /// One generator `next`, `return` or `throw` request attempt.
+        GeneratorRequest,
+        /// One logical credit of module-owned metadata construction work.
+        ModuleMetadataWork,
+    }
+}
 const OPTIMIZER_ORIGINS: [&str; 21] = [
     "optimizer-visit",
     "optimizer-iteration",
@@ -169,7 +208,7 @@ const SCOPE_ORIGINS: [&str; 12] = [
     "scope-publication",
     "scope-context-validation",
 ];
-type ExecutionLedger = Operation<32, 0>;
+type ExecutionLedger = Operation<ExecutionWork, NoDimension>;
 
 // The shared producer offsets retain the existing optimizer origin order.
 fn string_charge(work: StringWork) -> (usize, u64) {
@@ -194,7 +233,7 @@ fn primitive_charge(work: PrimitiveWork) -> (usize, u64) {
     }
 }
 
-fn compiler_charge(work: CompilerWork) -> (usize, Work<32>, u64) {
+fn compiler_charge(work: CompilerWork) -> (usize, ExecutionWork, u64) {
     let (origin, units) = match work {
         CompilerWork::Visit => (0, 1),
         CompilerWork::Search => (1, 1),
@@ -224,14 +263,14 @@ fn compiler_charge(work: CompilerWork) -> (usize, Work<32>, u64) {
         }
         CompilerWork::Name(work) => {
             return match work {
-                NameWork::Visit => (27, NAME_VISIT, 1),
-                NameWork::Record => (28, NAME_RECORD, 1),
-                NameWork::Comparison => (29, NAME_COMPARISON, 1),
+                NameWork::Visit => (27, ExecutionWork::NameVisit, 1),
+                NameWork::Record => (28, ExecutionWork::NameRecord, 1),
+                NameWork::Comparison => (29, ExecutionWork::NameComparison, 1),
             };
         }
         CompilerWork::Scope(_) => unreachable!("scope work retains its existing phase origins"),
     };
-    (origin, COMPILER_WORK, units)
+    (origin, ExecutionWork::CompilerWork, units)
 }
 
 fn scope_charge(work: ScopeWork) -> (usize, u64) {
@@ -251,40 +290,64 @@ fn scope_charge(work: ScopeWork) -> (usize, u64) {
     }
 }
 
+/// Reports a ledger failure that the prepared scope tree rules out. A refusal
+/// is handled by the caller before this.
+fn ledger_fault(error: LedgerError<ExecutionWork, NoDimension>) -> EngineResourceError {
+    match error {
+        LedgerError::Defect(defect) => EngineResourceError::LedgerDefect(defect),
+        LedgerError::Allocation
+        | LedgerError::IdentityExhausted
+        | LedgerError::ForeignScope
+        | LedgerError::ForeignCheckpoint
+        | LedgerError::StaleCheckpoint
+        | LedgerError::CheckpointLimit { .. }
+        | LedgerError::CheckpointsConfigured
+        | LedgerError::ScopeLimit { .. }
+        | LedgerError::TimingUnavailable
+        | LedgerError::Refused(_) => EngineResourceError::LedgerInvariant,
+    }
+}
+
+fn ledger_error(error: LedgerError<ExecutionWork, NoDimension>) -> JsError {
+    ledger_fault(error).into()
+}
+
 fn charge_interner(
-    phase: &mut Phase<'_, 32, 0>,
+    phase: &mut Phase<'_, ExecutionWork, NoDimension>,
     scope: Scope,
     work: InternerWork,
-) -> Result<(), LedgerError<32, 0>> {
+) -> Result<(), LedgerError<ExecutionWork, NoDimension>> {
     match work {
         InternerWork::Hash { encoding, units }
         | InternerWork::Compare { encoding, units }
         | InternerWork::Convert { encoding, units } => {
             let dimension = match encoding {
-                InternerEncoding::Utf8 | InternerEncoding::Latin1 => INTERNER_BYTES,
-                InternerEncoding::Utf16 => INTERNER_UTF16,
+                InternerEncoding::Utf8 | InternerEncoding::Latin1 => ExecutionWork::InternerBytes,
+                InternerEncoding::Utf16 => ExecutionWork::InternerUtf16,
             };
             phase.apply(scope, Change::Work(dimension, units as u64))
         }
-        InternerWork::Classify { units } => {
-            phase.apply(scope, Change::Work(INTERNER_UTF16, units as u64))
-        }
+        InternerWork::Classify { units } => phase.apply(
+            scope,
+            Change::Work(ExecutionWork::InternerUtf16, units as u64),
+        ),
         InternerWork::ValidateStatic {
             utf8_bytes,
             utf16_units,
         } => phase.apply_batch(
             scope,
             &[
-                Change::Work(INTERNER_BYTES, utf8_bytes as u64),
-                Change::Work(INTERNER_UTF16, utf16_units as u64),
+                Change::Work(ExecutionWork::InternerBytes, utf8_bytes as u64),
+                Change::Work(ExecutionWork::InternerUtf16, utf16_units as u64),
             ],
         ),
         InternerWork::Probe | InternerWork::Reinsert => {
-            phase.apply(scope, Change::Work(INTERNER_INDEX, 1))
+            phase.apply(scope, Change::Work(ExecutionWork::InternerIndex, 1))
         }
-        InternerWork::InitializeSlots { slots } => {
-            phase.apply(scope, Change::Work(INTERNER_INDEX, slots as u64))
-        }
+        InternerWork::InitializeSlots { slots } => phase.apply(
+            scope,
+            Change::Work(ExecutionWork::InternerIndex, slots as u64),
+        ),
         InternerWork::Reserve {
             additional,
             existing,
@@ -292,8 +355,8 @@ fn charge_interner(
         } => phase.apply_batch(
             scope,
             &[
-                Change::Work(INTERNER_CAPACITY, additional as u64),
-                Change::Work(INTERNER_RELOCATION, existing as u64),
+                Change::Work(ExecutionWork::InternerCapacity, additional as u64),
+                Change::Work(ExecutionWork::InternerRelocation, existing as u64),
             ],
         ),
         InternerWork::Publish {
@@ -302,9 +365,9 @@ fn charge_interner(
         } => phase.apply_batch(
             scope,
             &[
-                Change::Work(INTERNER_INDEX, 1),
-                Change::Work(INTERNER_BYTES, utf8_bytes as u64),
-                Change::Work(INTERNER_UTF16, utf16_units as u64),
+                Change::Work(ExecutionWork::InternerIndex, 1),
+                Change::Work(ExecutionWork::InternerBytes, utf8_bytes as u64),
+                Change::Work(ExecutionWork::InternerUtf16, utf16_units as u64),
             ],
         ),
     }
@@ -683,6 +746,12 @@ pub enum ExecutionSetupError {
     /// The host needs to supply a clock for timed profiling.
     #[error("timed execution profiling requires a host clock")]
     TimingUnavailable,
+    /// The execution ledger found a broken internal invariant during setup.
+    #[error("execution ledger defect: {0}")]
+    LedgerDefect(Defect),
+    /// The execution ledger rejected a setup call that its fixed scope tree rules out.
+    #[error("execution ledger rejected a setup call its fixed scope tree rules out")]
+    LedgerInvariant,
 }
 
 #[derive(Clone, Copy)]
@@ -770,41 +839,41 @@ pub(crate) struct Execution {
 impl Execution {
     pub(crate) fn new(options: ExecutionOptions) -> Result<Self, ExecutionSetupError> {
         let limits = Limits::new(
-            [
-                options.instruction_limit,
-                options.source_read_limit,
-                options.source_consumption_limit,
-                options.source_retention_limit,
-                options.lexer_lookahead_limit,
-                options.lexer_dispatch_limit,
-                options.token_probe_limit,
-                options.token_advance_limit,
-                options.grammar_dispatch_limit,
-                options.early_error_visit_limit,
-                options.label_lookup_limit,
-                options.direct_eval_visit_limit,
-                options.name_visit_limit,
-                options.name_record_limit,
-                options.name_comparison_limit,
-                options.interner_byte_limit,
-                options.interner_utf16_limit,
-                options.interner_index_limit,
-                options.interner_capacity_limit,
-                options.interner_relocation_limit,
-                options.diagnostic_input_limit,
-                options.diagnostic_output_limit,
-                options.template_input_limit,
-                options.template_output_limit,
-                options.scope_work_limit,
-                options.optimizer_work_limit,
-                options.compiler_work_limit,
-                options.job_preparation_limit,
-                options.job_invocation_limit,
-                options.job_poll_limit,
-                options.generator_request_limit,
-                options.module_metadata_work_limit,
-            ],
-            [],
+            ExecutionWorkTable {
+                Instruction: options.instruction_limit,
+                SourceRead: options.source_read_limit,
+                SourceConsumption: options.source_consumption_limit,
+                SourceRetention: options.source_retention_limit,
+                LexerLookahead: options.lexer_lookahead_limit,
+                LexerDispatch: options.lexer_dispatch_limit,
+                TokenProbe: options.token_probe_limit,
+                TokenAdvance: options.token_advance_limit,
+                GrammarDispatch: options.grammar_dispatch_limit,
+                EarlyErrorVisit: options.early_error_visit_limit,
+                LabelLookup: options.label_lookup_limit,
+                DirectEvalVisit: options.direct_eval_visit_limit,
+                NameVisit: options.name_visit_limit,
+                NameRecord: options.name_record_limit,
+                NameComparison: options.name_comparison_limit,
+                InternerBytes: options.interner_byte_limit,
+                InternerUtf16: options.interner_utf16_limit,
+                InternerIndex: options.interner_index_limit,
+                InternerCapacity: options.interner_capacity_limit,
+                InternerRelocation: options.interner_relocation_limit,
+                DiagnosticInput: options.diagnostic_input_limit,
+                DiagnosticOutput: options.diagnostic_output_limit,
+                TemplateInput: options.template_input_limit,
+                TemplateOutput: options.template_output_limit,
+                ScopeWork: options.scope_work_limit,
+                OptimizerWork: options.optimizer_work_limit,
+                CompilerWork: options.compiler_work_limit,
+                JobPreparation: options.job_preparation_limit,
+                JobInvocation: options.job_invocation_limit,
+                JobPoll: options.job_poll_limit,
+                GeneratorRequest: options.generator_request_limit,
+                ModuleMetadataWork: options.module_metadata_work_limit,
+            },
+            NoTable::EMPTY,
         );
         let mut ledger = if let Some(clock) = options.clock {
             Operation::with_profile_clock("execution", limits, FIXED_SCOPES, options.profile, clock)
@@ -963,18 +1032,19 @@ impl Execution {
         })
     }
 
-    fn setup_error(error: LedgerError<32, 0>) -> ExecutionSetupError {
+    fn setup_error(error: LedgerError<ExecutionWork, NoDimension>) -> ExecutionSetupError {
         match error {
             LedgerError::Allocation => ExecutionSetupError::Allocation,
             LedgerError::IdentityExhausted => ExecutionSetupError::IdentityExhausted,
             LedgerError::TimingUnavailable => ExecutionSetupError::TimingUnavailable,
+            LedgerError::Defect(defect) => ExecutionSetupError::LedgerDefect(defect),
             LedgerError::ScopeLimit { .. }
             | LedgerError::ForeignScope
             | LedgerError::ForeignCheckpoint
             | LedgerError::StaleCheckpoint
             | LedgerError::CheckpointLimit { .. }
             | LedgerError::CheckpointsConfigured
-            | LedgerError::Refused(_) => unreachable!("setup uses its fixed scope tree"),
+            | LedgerError::Refused(_) => ExecutionSetupError::LedgerInvariant,
         }
     }
 
@@ -985,6 +1055,7 @@ impl Execution {
         self.ledger
             .with_phase(self.frontend, |phase| {
                 let mut refusal = None;
+                let mut fault = None;
                 let result = parse(&mut |work| {
                     if let Some(refusal) = refusal {
                         return Err(refusal);
@@ -994,7 +1065,7 @@ impl Execution {
                             let (origin, units) = scope_charge(work);
                             phase.apply(
                                 self.scope_origins[0][origin],
-                                Change::Work(SCOPE_WORK, units),
+                                Change::Work(ExecutionWork::ScopeWork, units),
                             )
                         }
                         FrontendWork::Read(unit) => {
@@ -1004,62 +1075,72 @@ impl Execution {
                                 ReadUnit::HostRead => self.host,
                                 ReadUnit::Latin1Byte => self.latin1,
                             };
-                            phase.apply(scope, Change::Work(SOURCE_READ, 1))
+                            phase.apply(scope, Change::Work(ExecutionWork::SourceRead, 1))
                         }
-                        FrontendWork::Lookahead => {
-                            phase.apply(self.frontend, Change::Work(LEXER_LOOKAHEAD, 1))
-                        }
-                        FrontendWork::LexicalDispatch => {
-                            phase.apply(self.frontend, Change::Work(LEXER_DISPATCH, 1))
-                        }
+                        FrontendWork::Lookahead => phase.apply(
+                            self.frontend,
+                            Change::Work(ExecutionWork::LexerLookahead, 1),
+                        ),
+                        FrontendWork::LexicalDispatch => phase
+                            .apply(self.frontend, Change::Work(ExecutionWork::LexerDispatch, 1)),
                         FrontendWork::TokenProbe => {
-                            phase.apply(self.frontend, Change::Work(TOKEN_PROBE, 1))
+                            phase.apply(self.frontend, Change::Work(ExecutionWork::TokenProbe, 1))
                         }
                         FrontendWork::TokenAdvance => {
-                            phase.apply(self.frontend, Change::Work(TOKEN_ADVANCE, 1))
+                            phase.apply(self.frontend, Change::Work(ExecutionWork::TokenAdvance, 1))
                         }
-                        FrontendWork::GrammarDispatch => {
-                            phase.apply(self.frontend, Change::Work(GRAMMAR_DISPATCH, 1))
-                        }
-                        FrontendWork::EarlyErrorVisit => {
-                            phase.apply(self.frontend, Change::Work(EARLY_ERROR_VISIT, 1))
-                        }
+                        FrontendWork::GrammarDispatch => phase.apply(
+                            self.frontend,
+                            Change::Work(ExecutionWork::GrammarDispatch, 1),
+                        ),
+                        FrontendWork::EarlyErrorVisit => phase.apply(
+                            self.frontend,
+                            Change::Work(ExecutionWork::EarlyErrorVisit, 1),
+                        ),
                         FrontendWork::LabelLookup => {
-                            phase.apply(self.frontend, Change::Work(LABEL_LOOKUP, 1))
+                            phase.apply(self.frontend, Change::Work(ExecutionWork::LabelLookup, 1))
                         }
-                        FrontendWork::DirectEvalVisit => {
-                            phase.apply(self.frontend, Change::Work(DIRECT_EVAL_VISIT, 1))
-                        }
+                        FrontendWork::DirectEvalVisit => phase.apply(
+                            self.frontend,
+                            Change::Work(ExecutionWork::DirectEvalVisit, 1),
+                        ),
                         FrontendWork::NameVisit => {
-                            phase.apply(self.frontend, Change::Work(NAME_VISIT, 1))
+                            phase.apply(self.frontend, Change::Work(ExecutionWork::NameVisit, 1))
                         }
                         FrontendWork::NameRecord => {
-                            phase.apply(self.frontend, Change::Work(NAME_RECORD, 1))
+                            phase.apply(self.frontend, Change::Work(ExecutionWork::NameRecord, 1))
                         }
-                        FrontendWork::NameComparison => {
-                            phase.apply(self.frontend, Change::Work(NAME_COMPARISON, 1))
-                        }
+                        FrontendWork::NameComparison => phase.apply(
+                            self.frontend,
+                            Change::Work(ExecutionWork::NameComparison, 1),
+                        ),
                         FrontendWork::Interner(work) => charge_interner(phase, self.frontend, work),
-                        FrontendWork::DiagnosticInput => {
-                            phase.apply(self.frontend, Change::Work(DIAGNOSTIC_INPUT, 1))
-                        }
-                        FrontendWork::DiagnosticOutput(bytes) => phase
-                            .apply(self.frontend, Change::Work(DIAGNOSTIC_OUTPUT, bytes as u64)),
-                        FrontendWork::TemplateInput => {
-                            phase.apply(self.frontend, Change::Work(TEMPLATE_INPUT, 1))
-                        }
+                        FrontendWork::DiagnosticInput => phase.apply(
+                            self.frontend,
+                            Change::Work(ExecutionWork::DiagnosticInput, 1),
+                        ),
+                        FrontendWork::DiagnosticOutput(bytes) => phase.apply(
+                            self.frontend,
+                            Change::Work(ExecutionWork::DiagnosticOutput, bytes as u64),
+                        ),
+                        FrontendWork::TemplateInput => phase
+                            .apply(self.frontend, Change::Work(ExecutionWork::TemplateInput, 1)),
                         FrontendWork::TemplateOutput(units) => phase.apply(
                             self.frontend,
-                            Change::Work(TEMPLATE_OUTPUT, u64::from(units)),
+                            Change::Work(ExecutionWork::TemplateOutput, u64::from(units)),
                         ),
-                        FrontendWork::InternerNamePreparation(units) => {
-                            phase.apply(self.frontend, Change::Work(INTERNER_UTF16, units as u64))
-                        }
+                        FrontendWork::InternerNamePreparation(units) => phase.apply(
+                            self.frontend,
+                            Change::Work(ExecutionWork::InternerUtf16, units as u64),
+                        ),
                         FrontendWork::Consume { retained_units } => phase.apply_batch(
                             self.frontend,
                             &[
-                                Change::Work(SOURCE_CONSUMPTION, 1),
-                                Change::Work(SOURCE_RETENTION, u64::from(retained_units)),
+                                Change::Work(ExecutionWork::SourceConsumption, 1),
+                                Change::Work(
+                                    ExecutionWork::SourceRetention,
+                                    u64::from(retained_units),
+                                ),
                             ],
                         ),
                     };
@@ -1067,94 +1148,121 @@ impl Execution {
                         Ok(()) => Ok(()),
                         Err(LedgerError::Refused(denial)) => {
                             let error = match denial.change {
-                                Change::Work(SOURCE_READ, _) => {
+                                Change::Work(ExecutionWork::SourceRead, _) => {
                                     FrontendLimit::Read(self.source_read_limit)
                                 }
-                                Change::Work(SOURCE_CONSUMPTION, _) => {
+                                Change::Work(ExecutionWork::SourceConsumption, _) => {
                                     FrontendLimit::Consumption(self.source_consumption_limit)
                                 }
-                                Change::Work(SOURCE_RETENTION, _) => {
+                                Change::Work(ExecutionWork::SourceRetention, _) => {
                                     FrontendLimit::Retention(self.source_retention_limit)
                                 }
-                                Change::Work(LEXER_LOOKAHEAD, _) => {
+                                Change::Work(ExecutionWork::LexerLookahead, _) => {
                                     FrontendLimit::Lookahead(self.lexer_lookahead_limit)
                                 }
-                                Change::Work(LEXER_DISPATCH, _) => {
+                                Change::Work(ExecutionWork::LexerDispatch, _) => {
                                     FrontendLimit::LexicalDispatch(self.lexer_dispatch_limit)
                                 }
-                                Change::Work(TOKEN_PROBE, _) => {
+                                Change::Work(ExecutionWork::TokenProbe, _) => {
                                     FrontendLimit::TokenProbe(self.token_probe_limit)
                                 }
-                                Change::Work(TOKEN_ADVANCE, _) => {
+                                Change::Work(ExecutionWork::TokenAdvance, _) => {
                                     FrontendLimit::TokenAdvance(self.token_advance_limit)
                                 }
-                                Change::Work(GRAMMAR_DISPATCH, _) => {
+                                Change::Work(ExecutionWork::GrammarDispatch, _) => {
                                     FrontendLimit::GrammarDispatch(self.grammar_dispatch_limit)
                                 }
-                                Change::Work(EARLY_ERROR_VISIT, _) => {
+                                Change::Work(ExecutionWork::EarlyErrorVisit, _) => {
                                     FrontendLimit::EarlyErrorVisit(self.early_error_visit_limit)
                                 }
-                                Change::Work(LABEL_LOOKUP, _) => {
+                                Change::Work(ExecutionWork::LabelLookup, _) => {
                                     FrontendLimit::LabelLookup(self.label_lookup_limit)
                                 }
-                                Change::Work(DIRECT_EVAL_VISIT, _) => {
+                                Change::Work(ExecutionWork::DirectEvalVisit, _) => {
                                     FrontendLimit::DirectEvalVisit(self.direct_eval_visit_limit)
                                 }
-                                Change::Work(NAME_VISIT, _) => {
+                                Change::Work(ExecutionWork::NameVisit, _) => {
                                     FrontendLimit::NameVisit(self.name_visit_limit)
                                 }
-                                Change::Work(NAME_RECORD, _) => {
+                                Change::Work(ExecutionWork::NameRecord, _) => {
                                     FrontendLimit::NameRecord(self.name_record_limit)
                                 }
-                                Change::Work(NAME_COMPARISON, _) => {
+                                Change::Work(ExecutionWork::NameComparison, _) => {
                                     FrontendLimit::NameComparison(self.name_comparison_limit)
                                 }
-                                Change::Work(INTERNER_BYTES, _) => FrontendLimit::Interner {
-                                    kind: InternerLimitKind::Bytes,
-                                    limit: self.interner_byte_limit,
-                                },
-                                Change::Work(INTERNER_UTF16, _) => FrontendLimit::Interner {
-                                    kind: InternerLimitKind::Utf16,
-                                    limit: self.interner_utf16_limit,
-                                },
-                                Change::Work(INTERNER_INDEX, _) => FrontendLimit::Interner {
-                                    kind: InternerLimitKind::Index,
-                                    limit: self.interner_index_limit,
-                                },
-                                Change::Work(INTERNER_CAPACITY, _) => FrontendLimit::Interner {
-                                    kind: InternerLimitKind::Capacity,
-                                    limit: self.interner_capacity_limit,
-                                },
-                                Change::Work(DIAGNOSTIC_INPUT, _) => {
+                                Change::Work(ExecutionWork::InternerBytes, _) => {
+                                    FrontendLimit::Interner {
+                                        kind: InternerLimitKind::Bytes,
+                                        limit: self.interner_byte_limit,
+                                    }
+                                }
+                                Change::Work(ExecutionWork::InternerUtf16, _) => {
+                                    FrontendLimit::Interner {
+                                        kind: InternerLimitKind::Utf16,
+                                        limit: self.interner_utf16_limit,
+                                    }
+                                }
+                                Change::Work(ExecutionWork::InternerIndex, _) => {
+                                    FrontendLimit::Interner {
+                                        kind: InternerLimitKind::Index,
+                                        limit: self.interner_index_limit,
+                                    }
+                                }
+                                Change::Work(ExecutionWork::InternerCapacity, _) => {
+                                    FrontendLimit::Interner {
+                                        kind: InternerLimitKind::Capacity,
+                                        limit: self.interner_capacity_limit,
+                                    }
+                                }
+                                Change::Work(ExecutionWork::DiagnosticInput, _) => {
                                     FrontendLimit::DiagnosticInput(self.diagnostic_input_limit)
                                 }
-                                Change::Work(DIAGNOSTIC_OUTPUT, _) => {
+                                Change::Work(ExecutionWork::DiagnosticOutput, _) => {
                                     FrontendLimit::DiagnosticOutput(self.diagnostic_output_limit)
                                 }
-                                Change::Work(TEMPLATE_INPUT, _) => {
+                                Change::Work(ExecutionWork::TemplateInput, _) => {
                                     FrontendLimit::TemplateInput(self.template_input_limit)
                                 }
-                                Change::Work(TEMPLATE_OUTPUT, _) => {
+                                Change::Work(ExecutionWork::TemplateOutput, _) => {
                                     FrontendLimit::TemplateOutput(self.template_output_limit)
                                 }
-                                Change::Work(SCOPE_WORK, _) => {
+                                Change::Work(ExecutionWork::ScopeWork, _) => {
                                     FrontendLimit::Scope(self.scope_work_limit)
                                 }
-                                Change::Work(INTERNER_RELOCATION, _) => FrontendLimit::Interner {
-                                    kind: InternerLimitKind::Relocation,
-                                    limit: self.interner_relocation_limit,
-                                },
-                                _ => unreachable!("frontend uses only its own work dimensions"),
+                                Change::Work(ExecutionWork::InternerRelocation, _) => {
+                                    FrontendLimit::Interner {
+                                        kind: InternerLimitKind::Relocation,
+                                        limit: self.interner_relocation_limit,
+                                    }
+                                }
+                                _ => {
+                                    // No frontend limit names this dimension. The
+                                    // stand-in ends the parse and the fault replaces it.
+                                    fault = Some(EngineResourceError::LedgerInvariant);
+                                    FrontendLimit::Read(self.source_read_limit)
+                                }
                             };
                             refusal = Some(error);
                             Err(error)
                         }
-                        Err(_) => unreachable!("frontend work uses a preallocated scope"),
+                        Err(error) => {
+                            // The parser can only stop on a limit. This stand-in
+                            // ends the parse and is replaced by the fault below.
+                            let stop = FrontendLimit::Read(self.source_read_limit);
+                            fault = Some(ledger_fault(error));
+                            refusal = Some(stop);
+                            Err(stop)
+                        }
                     }
                 });
-                refusal.map_or(result, |error| Err(RuntimeLimitError::from(error).into()))
+                match fault {
+                    Some(fault) => Err(fault.into()),
+                    None => {
+                        refusal.map_or(result, |error| Err(RuntimeLimitError::from(error).into()))
+                    }
+                }
             })
-            .expect("the ledger owns the frontend scope")
+            .map_err(ledger_error)?
     }
 
     pub(crate) fn with_scope_control<T>(
@@ -1199,54 +1307,67 @@ impl Execution {
                         };
                         phase.apply(
                             self.optimizer_origins[origin],
-                            Change::Work(OPTIMIZER_WORK, units),
+                            Change::Work(ExecutionWork::OptimizerWork, units),
                         )
                     };
                     match admission {
                         Ok(()) => Ok(()),
                         Err(LedgerError::Refused(denial)) => {
-                            let error = match denial.change {
-                                Change::Work(INTERNER_BYTES, _) => RuntimeLimitError::Interner {
-                                    kind: InternerLimitKind::Bytes,
-                                    limit: self.interner_byte_limit,
-                                },
-                                Change::Work(INTERNER_UTF16, _) => RuntimeLimitError::Interner {
-                                    kind: InternerLimitKind::Utf16,
-                                    limit: self.interner_utf16_limit,
-                                },
-                                Change::Work(INTERNER_INDEX, _) => RuntimeLimitError::Interner {
-                                    kind: InternerLimitKind::Index,
-                                    limit: self.interner_index_limit,
-                                },
-                                Change::Work(INTERNER_CAPACITY, _) => RuntimeLimitError::Interner {
-                                    kind: InternerLimitKind::Capacity,
-                                    limit: self.interner_capacity_limit,
-                                },
-                                Change::Work(INTERNER_RELOCATION, _) => {
-                                    RuntimeLimitError::Interner {
+                            let limit = match denial.change {
+                                Change::Work(ExecutionWork::InternerBytes, _) => {
+                                    Some(RuntimeLimitError::Interner {
+                                        kind: InternerLimitKind::Bytes,
+                                        limit: self.interner_byte_limit,
+                                    })
+                                }
+                                Change::Work(ExecutionWork::InternerUtf16, _) => {
+                                    Some(RuntimeLimitError::Interner {
+                                        kind: InternerLimitKind::Utf16,
+                                        limit: self.interner_utf16_limit,
+                                    })
+                                }
+                                Change::Work(ExecutionWork::InternerIndex, _) => {
+                                    Some(RuntimeLimitError::Interner {
+                                        kind: InternerLimitKind::Index,
+                                        limit: self.interner_index_limit,
+                                    })
+                                }
+                                Change::Work(ExecutionWork::InternerCapacity, _) => {
+                                    Some(RuntimeLimitError::Interner {
+                                        kind: InternerLimitKind::Capacity,
+                                        limit: self.interner_capacity_limit,
+                                    })
+                                }
+                                Change::Work(ExecutionWork::InternerRelocation, _) => {
+                                    Some(RuntimeLimitError::Interner {
                                         kind: InternerLimitKind::Relocation,
                                         limit: self.interner_relocation_limit,
-                                    }
+                                    })
                                 }
-                                Change::Work(OPTIMIZER_WORK, _) => {
-                                    RuntimeLimitError::OptimizerWork {
+                                Change::Work(ExecutionWork::OptimizerWork, _) => {
+                                    Some(RuntimeLimitError::OptimizerWork {
                                         limit: self.optimizer_work_limit,
-                                    }
+                                    })
                                 }
-                                _ => unreachable!(
-                                    "optimizer charges only its own and interner dimensions"
-                                ),
+                                _ => None,
                             };
-                            let error = JsError::from(error);
+                            let error = limit.map_or_else(
+                                || JsError::from(EngineResourceError::LedgerInvariant),
+                                JsError::from,
+                            );
                             refusal = Some(error.clone());
                             Err(error)
                         }
-                        Err(_) => unreachable!("optimizer work uses preallocated origins"),
+                        Err(error) => {
+                            let error = ledger_error(error);
+                            refusal = Some(error.clone());
+                            Err(error)
+                        }
                     }
                 });
                 refusal.map_or(result, Err)
             })
-            .expect("the ledger owns the optimizer phase")
+            .map_err(ledger_error)?
     }
 
     pub(crate) fn with_compilation_control<T>(
@@ -1276,7 +1397,7 @@ impl Execution {
                     }
                     let (scope, dimension, units) = if let CompilerWork::Scope(work) = work {
                         let (origin, units) = scope_charge(work);
-                        (self.scope_origins[1][origin], SCOPE_WORK, units)
+                        (self.scope_origins[1][origin], ExecutionWork::ScopeWork, units)
                     } else {
                         let (origin, dimension, units) = compiler_charge(work);
                         (self.compiler_origins[origin], dimension, units)
@@ -1285,30 +1406,37 @@ impl Execution {
                         Ok(()) => Ok(()),
                         Err(LedgerError::Refused(_)) => {
                             let limit = match dimension {
-                                COMPILER_WORK => RuntimeLimitError::CompilerWork {
+                                ExecutionWork::CompilerWork => Some(RuntimeLimitError::CompilerWork {
                                     limit: self.compiler_work_limit,
-                                },
-                                SCOPE_WORK => RuntimeLimitError::ScopeWork {
+                                }),
+                                ExecutionWork::ScopeWork => Some(RuntimeLimitError::ScopeWork {
                                     limit: self.scope_work_limit,
-                                },
-                                NAME_VISIT => RuntimeLimitError::NameVisit {
+                                }),
+                                ExecutionWork::NameVisit => Some(RuntimeLimitError::NameVisit {
                                     limit: self.name_visit_limit,
-                                },
-                                NAME_RECORD => RuntimeLimitError::NameRecord {
+                                }),
+                                ExecutionWork::NameRecord => Some(RuntimeLimitError::NameRecord {
                                     limit: self.name_record_limit,
-                                },
-                                NAME_COMPARISON => RuntimeLimitError::NameComparison {
+                                }),
+                                ExecutionWork::NameComparison => Some(RuntimeLimitError::NameComparison {
                                     limit: self.name_comparison_limit,
-                                },
-                                _ => unreachable!("compiler uses its own and delegated dimensions"),
+                                }),
+                                _ => None,
                             };
-                            let error = JsError::from(limit);
+                            let error = limit.map_or_else(
+                                || JsError::from(EngineResourceError::LedgerInvariant),
+                                JsError::from,
+                            );
                             // Latch before returning to the producer or closing
                             // the timed phase. Later errors cannot replace it.
                             *stop = Some(error.clone());
                             Err(error)
                         }
-                        Err(_) => unreachable!("compiler work uses preallocated origins"),
+                        Err(error) => {
+                            let error = ledger_error(error);
+                            *stop = Some(error.clone());
+                            Err(error)
+                        }
                     }
                 };
                 let result = run(CompilerControl::new(Some(&mut admit), &depth));
@@ -1320,7 +1448,8 @@ impl Execution {
                 }
                 stop.as_ref().map_or(result, |error| Err(error.clone()))
             })
-            .expect("the ledger owns the compilation phase");
+            .map_err(ledger_error)
+            .and_then(|result| result);
         self.compiler_depth_peak = self.compiler_depth_peak.max(depth.peak());
         self.stop
             .as_ref()
@@ -1342,6 +1471,7 @@ impl Execution {
         self.ledger
             .with_phase(self.scope_phases[index], |phase| {
                 let mut refusal = None;
+                let mut fault = None;
                 let result = run(&mut |work| {
                     if let Some(error) = refusal {
                         return Err(error);
@@ -1349,7 +1479,7 @@ impl Execution {
                     let (origin, units) = scope_charge(work);
                     match phase.apply(
                         self.scope_origins[index][origin],
-                        Change::Work(SCOPE_WORK, units),
+                        Change::Work(ExecutionWork::ScopeWork, units),
                     ) {
                         Ok(()) => Ok(()),
                         Err(LedgerError::Refused(_)) => {
@@ -1357,12 +1487,24 @@ impl Execution {
                             refusal = Some(error);
                             Err(error)
                         }
-                        Err(_) => unreachable!("scope work uses preallocated origins"),
+                        Err(error) => {
+                            // The caller can only stop on a limit. This stand-in
+                            // ends the analysis and is replaced by the fault below.
+                            let stop = FrontendLimit::Scope(self.scope_work_limit);
+                            fault = Some(ledger_fault(error));
+                            refusal = Some(stop);
+                            Err(stop)
+                        }
                     }
                 });
-                refusal.map_or(result, |error| Err(RuntimeLimitError::from(error).into()))
+                match fault {
+                    Some(fault) => Err(fault.into()),
+                    None => {
+                        refusal.map_or(result, |error| Err(RuntimeLimitError::from(error).into()))
+                    }
+                }
             })
-            .expect("the ledger owns its scope work phase")
+            .map_err(ledger_error)?
     }
 
     pub(crate) const fn stop(&self) -> Option<&JsError> {
@@ -1373,16 +1515,16 @@ impl Execution {
         if let Some(stop) = &self.stop {
             return Err(stop.clone());
         }
-        match self
-            .ledger
-            .apply(self.ledger.root(), Change::Work(INSTRUCTION, 1))
-        {
+        match self.ledger.apply(
+            self.ledger.root(),
+            Change::Work(ExecutionWork::Instruction, 1),
+        ) {
             Ok(()) => Ok(()),
             Err(LedgerError::Refused(_)) => Err(RuntimeLimitError::Instruction {
                 limit: self.instruction_limit,
             }
             .into()),
-            Err(_) => unreachable!("charging the operation root requires no setup"),
+            Err(error) => Err(ledger_error(error)),
         }
     }
 
@@ -1392,19 +1534,19 @@ impl Execution {
         }
         let (work, refusal) = match action {
             JobAction::Preparation => (
-                JOB_PREPARATION,
+                ExecutionWork::JobPreparation,
                 RuntimeLimitError::JobPreparation {
                     limit: self.job_preparation_limit,
                 },
             ),
             JobAction::Invocation => (
-                JOB_INVOCATION,
+                ExecutionWork::JobInvocation,
                 RuntimeLimitError::JobInvocation {
                     limit: self.job_invocation_limit,
                 },
             ),
             JobAction::Poll => (
-                JOB_POLL,
+                ExecutionWork::JobPoll,
                 RuntimeLimitError::JobPoll {
                     limit: self.job_poll_limit,
                 },
@@ -1418,7 +1560,7 @@ impl Execution {
         match self.ledger.apply(scope, Change::Work(work, 1)) {
             Ok(()) => Ok(()),
             Err(LedgerError::Refused(_)) => Err(refusal.into()),
-            Err(_) => unreachable!("job admission uses its preallocated action scope"),
+            Err(error) => Err(ledger_error(error)),
         }
     }
 
@@ -1426,16 +1568,16 @@ impl Execution {
         if let Some(stop) = &self.stop {
             return Err(stop.clone());
         }
-        match self
-            .ledger
-            .apply(self.execution_phases[6], Change::Work(GENERATOR_REQUEST, 1))
-        {
+        match self.ledger.apply(
+            self.execution_phases[6],
+            Change::Work(ExecutionWork::GeneratorRequest, 1),
+        ) {
             Ok(()) => Ok(()),
             Err(LedgerError::Refused(_)) => Err(RuntimeLimitError::GeneratorRequest {
                 limit: self.generator_request_limit,
             }
             .into()),
-            Err(_) => unreachable!("generator admission uses its preallocated request scope"),
+            Err(error) => Err(ledger_error(error)),
         }
     }
 
@@ -1448,25 +1590,25 @@ impl Execution {
         };
         let (dimension, limit) = match work {
             crate::module::metadata::Work::Name(NameWork::Visit) => (
-                NAME_VISIT,
+                ExecutionWork::NameVisit,
                 RuntimeLimitError::NameVisit {
                     limit: self.name_visit_limit,
                 },
             ),
             crate::module::metadata::Work::Name(NameWork::Record) => (
-                NAME_RECORD,
+                ExecutionWork::NameRecord,
                 RuntimeLimitError::NameRecord {
                     limit: self.name_record_limit,
                 },
             ),
             crate::module::metadata::Work::Name(NameWork::Comparison) => (
-                NAME_COMPARISON,
+                ExecutionWork::NameComparison,
                 RuntimeLimitError::NameComparison {
                     limit: self.name_comparison_limit,
                 },
             ),
             _ => (
-                MODULE_METADATA_WORK,
+                ExecutionWork::ModuleMetadataWork,
                 RuntimeLimitError::ModuleMetadataWork {
                     limit: self.module_metadata_work_limit,
                 },
@@ -1478,7 +1620,7 @@ impl Execution {
         ) {
             Ok(()) => Ok(()),
             Err(LedgerError::Refused(_)) => Err(JsError::from(limit)),
-            Err(_) => unreachable!("metadata work uses its prepared origins"),
+            Err(error) => Err(ledger_error(error)),
         }
     }
 
@@ -1569,6 +1711,25 @@ mod compiler_admission_tests {
     use crate::error::{EngineResourceError, JsNativeError};
 
     #[test]
+    fn ledger_defect_is_reported_as_a_typed_failure_at_setup_and_runtime() {
+        let defect = Defect::ReservedCapacity;
+        assert_eq!(
+            Execution::setup_error(LedgerError::Defect(defect)),
+            ExecutionSetupError::LedgerDefect(defect)
+        );
+        assert_eq!(
+            ledger_fault(LedgerError::Defect(defect)),
+            EngineResourceError::LedgerDefect(defect)
+        );
+        assert_eq!(
+            ledger_error(LedgerError::Defect(defect)).as_engine(),
+            Some(&EngineError::Resource(EngineResourceError::LedgerDefect(
+                defect
+            )))
+        );
+    }
+
+    #[test]
     fn compiler_work_refusal_preserves_accepted_work_and_the_first_stop() {
         for profile in [
             ProfileMode::Off,
@@ -1620,9 +1781,9 @@ mod compiler_admission_tests {
                     RuntimeLimitError::CompilerWork { limit: 2 }
                 ))
             );
-            assert_eq!(outcome.report.compiler_work(), 2);
-            assert_eq!(outcome.report.scope_work(), 0);
-            assert_eq!(outcome.report.optimizer_work(), 0);
+            assert_eq!(outcome.report.compiler_work().unwrap(), 2);
+            assert_eq!(outcome.report.scope_work().unwrap(), 0);
+            assert_eq!(outcome.report.optimizer_work().unwrap(), 0);
         }
     }
 
@@ -1647,7 +1808,7 @@ mod compiler_admission_tests {
         let outcome = execution.finish(Ok(JsValue::new(42)));
         assert!(outcome.result.is_err());
         assert_eq!(outcome.report.compiler_depth_peak(), 2);
-        assert_eq!(outcome.report.compiler_work(), 0);
+        assert_eq!(outcome.report.compiler_work().unwrap(), 0);
     }
 
     #[test]
@@ -1677,12 +1838,12 @@ mod compiler_admission_tests {
             })
             .unwrap();
         let report = execution.finish(Ok(JsValue::new(42))).report;
-        assert_eq!(report.compiler_work(), 12);
-        assert_eq!(report.scope_work(), 1);
-        assert_eq!(report.name_visits(), 1);
-        assert_eq!(report.name_records(), 1);
-        assert_eq!(report.name_comparisons(), 1);
-        assert_eq!(report.optimizer_work(), 0);
+        assert_eq!(report.compiler_work().unwrap(), 12);
+        assert_eq!(report.scope_work().unwrap(), 1);
+        assert_eq!(report.name_visits().unwrap(), 1);
+        assert_eq!(report.name_records().unwrap(), 1);
+        assert_eq!(report.name_comparisons().unwrap(), 1);
+        assert_eq!(report.optimizer_work().unwrap(), 0);
     }
 
     #[test]
@@ -1722,7 +1883,8 @@ mod compiler_admission_tests {
                 execution
                     .finish(Ok(JsValue::new(42)))
                     .report
-                    .compiler_work(),
+                    .compiler_work()
+                    .unwrap(),
                 0
             );
         }

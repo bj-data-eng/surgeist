@@ -1,13 +1,29 @@
 use surgeist_ledger::{
-    Change, Error, EventFilter, Limits, Operation, ProfileMode, Resource, Tariff, Tariffs, Work,
+    Change, Error, EventFilter, Limits, NoDimension, Operation, ProfileMode, Tariff, Tariffs,
 };
-const WORK: Work<1> = Work::new(0).unwrap();
-const BYTES: Resource<2> = Resource::new(0).unwrap();
-const OTHER: Resource<2> = Resource::new(1).unwrap();
-fn operation() -> Operation<1, 2> {
+
+surgeist_ledger::dimensions! {
+    enum Work => WorkTable { Visit }
+}
+
+surgeist_ledger::dimensions! {
+    enum Resource => ResourceTable { Bytes, Other }
+}
+
+const WORK: Work = Work::Visit;
+const BYTES: Resource = Resource::Bytes;
+const OTHER: Resource = Resource::Other;
+
+fn operation() -> Operation<Work, Resource> {
     Operation::with_profile(
         "root",
-        Limits::new([10], [100, 100]),
+        Limits::new(
+            WorkTable { Visit: 10 },
+            ResourceTable {
+                Bytes: 100,
+                Other: 100,
+            },
+        ),
         4,
         ProfileMode::Detailed {
             timing: false,
@@ -133,8 +149,13 @@ fn child_creation_remapping_and_sibling_balances_define_ancestor_peak() {
             "child",
             Limits::unlimited(),
             Tariffs::new(
-                [Tariff::new(WORK, 2)],
-                [Tariff::new(OTHER, 2), Tariff::new(BYTES, 0)],
+                WorkTable {
+                    Visit: Tariff::new(WORK, 2),
+                },
+                ResourceTable {
+                    Bytes: Tariff::new(OTHER, 2),
+                    Other: Tariff::new(BYTES, 0),
+                },
             ),
         )
         .unwrap();
@@ -186,8 +207,13 @@ fn tariff_overflow_rolls_back_interval_maximum_and_direct_custody() {
             "overflow",
             Limits::unlimited(),
             Tariffs::new(
-                [Tariff::new(WORK, 1)],
-                [Tariff::new(BYTES, u64::MAX), Tariff::new(OTHER, 1)],
+                WorkTable {
+                    Visit: Tariff::new(WORK, 1),
+                },
+                ResourceTable {
+                    Bytes: Tariff::new(BYTES, u64::MAX),
+                    Other: Tariff::new(OTHER, 1),
+                },
             ),
         )
         .unwrap();
@@ -223,7 +249,7 @@ fn identities_bounds_and_reused_slots_preserve_other_live_intervals() {
         0
     );
     op.end_checkpoint(&c).unwrap();
-    let mut disabled = Operation::<0, 0>::new("zero", Limits::unlimited(), 1)
+    let mut disabled = Operation::<NoDimension, NoDimension>::new("zero", Limits::unlimited(), 1)
         .unwrap()
         .with_checkpoint_limit(0)
         .unwrap();
@@ -239,7 +265,7 @@ fn identities_bounds_and_reused_slots_preserve_other_live_intervals() {
 
 #[test]
 fn each_interval_retains_its_own_filtered_detail_after_lifetime_buffer_fills() {
-    let mut op = Operation::<1, 2>::with_profile(
+    let mut op = Operation::<Work, Resource>::with_profile(
         "root",
         Limits::unlimited(),
         2,
@@ -273,7 +299,7 @@ fn each_interval_retains_its_own_filtered_detail_after_lifetime_buffer_fills() {
 
 #[test]
 fn profile_off_intervals_still_expose_exact_balances() {
-    let mut op = Operation::<1, 2>::new("off", Limits::unlimited(), 1)
+    let mut op = Operation::<Work, Resource>::new("off", Limits::unlimited(), 1)
         .unwrap()
         .with_checkpoint_limit(1)
         .unwrap();

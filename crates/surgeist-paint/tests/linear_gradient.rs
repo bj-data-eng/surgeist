@@ -378,7 +378,7 @@ fn exact_cardinals_preserve_the_smallest_positive_and_largest_finite_dimensions(
 }
 
 fn assert_no_custody(report: &PaintReport) {
-    for resource in ResourceKind::ALL {
+    for &resource in ResourceKind::ALL {
         assert_eq!(report.live(resource), 0, "{resource:?}");
     }
 }
@@ -563,10 +563,10 @@ fn forbidden_clock() -> Duration {
 }
 
 fn accounting_equal(actual: &PaintReport, expected: &PaintReport) {
-    for kind in WorkKind::ALL {
+    for &kind in WorkKind::ALL {
         assert_eq!(actual.work(kind), expected.work(kind), "{kind:?}");
     }
-    for resource in ResourceKind::ALL {
+    for &resource in ResourceKind::ALL {
         assert_eq!(actual.live(resource), expected.live(resource));
         assert_eq!(actual.peak(resource), expected.peak(resource));
     }

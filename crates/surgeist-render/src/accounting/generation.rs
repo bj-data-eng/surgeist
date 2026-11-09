@@ -1,10 +1,10 @@
 //! One device generation's observed native-handle custody. Descriptor units
 //! include returned provisional handles, not proof of driver allocation.
 use super::{
-    Account, RESOURCE_COUNT, RenderAccountingError, RenderAccountingOptions, RenderClock,
-    RenderDeviceSnapshot, RenderGenerationIdentity, RenderGenerationInterval,
-    RenderGenerationScope, RenderLedger, RenderLifetimeUsage, RenderQuantity, RenderRefusalReason,
-    RenderResource, RenderWork, WORK_COUNT, map_ledger_failure,
+    Account, RenderAccountingError, RenderAccountingOptions, RenderClock, RenderDeviceSnapshot,
+    RenderGenerationIdentity, RenderGenerationInterval, RenderGenerationScope, RenderLedger,
+    RenderLifetimeUsage, RenderQuantity, RenderRefusalReason, RenderResource, RenderWork,
+    map_ledger_failure,
 };
 use crate::{Error, Result};
 use std::{
@@ -99,13 +99,13 @@ impl Generation {
         let mut op = match options.clock {
             RenderClock::Platform => Operation::with_profile(
                 "render.device",
-                Limits::<WORK_COUNT, RESOURCE_COUNT>::unlimited(),
+                Limits::<RenderWork, RenderResource>::unlimited(),
                 SCOPE_COUNT,
                 options.profile.ledger_generation(),
             ),
             RenderClock::Host(clock) => Operation::with_profile_clock(
                 "render.device",
-                Limits::<WORK_COUNT, RESOURCE_COUNT>::unlimited(),
+                Limits::<RenderWork, RenderResource>::unlimited(),
                 SCOPE_COUNT,
                 options.profile.ledger_generation(),
                 clock,
@@ -172,24 +172,8 @@ impl Generation {
             return map_ledger_failure(error);
         };
         let (quantity, amount) = match refusal.change {
-            Change::Work(d, n) => (
-                RenderQuantity::Work(
-                    RenderWork::ALL
-                        .into_iter()
-                        .find(|w| w.dimension() == d)
-                        .expect("fixed generation work schema"),
-                ),
-                n,
-            ),
-            Change::Acquire(d, n) | Change::Release(d, n) => (
-                RenderQuantity::Resource(
-                    RenderResource::ALL
-                        .into_iter()
-                        .find(|r| r.dimension() == d)
-                        .expect("fixed generation resource schema"),
-                ),
-                n,
-            ),
+            Change::Work(d, n) => (RenderQuantity::Work(d), n),
+            Change::Acquire(d, n) | Change::Release(d, n) => (RenderQuantity::Resource(d), n),
         };
         let reason = match refusal.reason {
             surgeist_ledger::RefusalReason::Limit { limit } => RenderRefusalReason::Limit { limit },
@@ -221,7 +205,7 @@ impl Generation {
     fn apply(
         &self,
         index: usize,
-        changes: &[Change<WORK_COUNT, RESOURCE_COUNT>],
+        changes: &[Change<RenderWork, RenderResource>],
         cleanup: bool,
     ) -> Result<()> {
         let mut life = self.lock();
@@ -240,7 +224,7 @@ impl Generation {
             .apply_batch(self.0.scopes[index], changes)
             .map_err(|e| self.record(&mut life, e))
     }
-    fn preview(&self, index: usize, changes: &[Change<WORK_COUNT, RESOURCE_COUNT>]) -> Result<()> {
+    fn preview(&self, index: usize, changes: &[Change<RenderWork, RenderResource>]) -> Result<()> {
         let life = self.lock();
         if life.retired {
             return Err(RenderAccountingError::GenerationRetired.into());
@@ -274,10 +258,10 @@ impl Generation {
                 .ok_or(RenderAccountingError::Invariant)?;
         }
         let changes = [
-            Change::Acquire(RenderResource::GpuBytes.dimension(), total_bytes),
-            Change::Work(RenderWork::ResourceAllocations.dimension(), count),
+            Change::Acquire(RenderResource::GpuBytes, total_bytes),
+            Change::Work(RenderWork::ResourceAllocations, count),
             Change::Work(
-                RenderWork::ResourceAllocationRequests.dimension(),
+                RenderWork::ResourceAllocationRequests,
                 if observer.is_none() { count } else { 0 },
             ),
         ];
@@ -322,8 +306,8 @@ impl Generation {
         let index = class.index();
         let resource = RenderResource::GpuBytes;
         let changes = [
-            Change::Acquire(resource.dimension(), bytes),
-            Change::Work(RenderWork::ResourceAllocations.dimension(), 1),
+            Change::Acquire(resource, bytes),
+            Change::Work(RenderWork::ResourceAllocations, 1),
         ];
         self.preview(index, &changes)?;
         if let Some(upload_bytes) = upload_bytes {
@@ -336,8 +320,8 @@ impl Generation {
                 self.apply(
                     index,
                     &[
-                        Change::Work(RenderWork::ResourceAllocationRequests.dimension(), 1),
-                        Change::Work(RenderWork::UploadBytes.dimension(), upload_bytes),
+                        Change::Work(RenderWork::ResourceAllocationRequests, 1),
+                        Change::Work(RenderWork::UploadBytes, upload_bytes),
                     ],
                     false,
                 )?;
@@ -367,8 +351,8 @@ impl Generation {
         let index = kind.index();
         let resource = RenderResource::OpaqueGpuObjects;
         let changes = [
-            Change::Acquire(resource.dimension(), 1),
-            Change::Work(RenderWork::GpuObjectsCreated.dimension(), 1),
+            Change::Acquire(resource, 1),
+            Change::Work(RenderWork::GpuObjectsCreated, 1),
         ];
         self.preview(index, &changes)?;
         self.forward_work(index, observer, RenderWork::ResourceAllocationRequests, 1)?;
@@ -396,7 +380,7 @@ impl Generation {
         self.apply(
             class.index(),
             &[Change::Acquire(
-                RenderResource::RegisteredCacheGpuBytes.dimension(),
+                RenderResource::RegisteredCacheGpuBytes,
                 bytes,
             )],
             false,
@@ -411,7 +395,7 @@ impl Generation {
     pub(crate) fn reuse(&self, class: GenerationClass) -> Result<()> {
         self.apply(
             class.index(),
-            &[Change::Work(RenderWork::ResourceReuses.dimension(), 1)],
+            &[Change::Work(RenderWork::ResourceReuses, 1)],
             false,
         )
     }
@@ -424,7 +408,7 @@ impl Generation {
             None => {
                 let _ = self.apply(
                     class.index(),
-                    &[Change::Work(RenderWork::ResourceProbes.dimension(), 1)],
+                    &[Change::Work(RenderWork::ResourceProbes, 1)],
                     true,
                 );
                 Ok(())
@@ -447,11 +431,7 @@ impl Generation {
         match observer {
             Some(observer) => observer.work(RenderWork::ResourceProbes, 1),
             None => {
-                let _ = self.apply(
-                    CACHE,
-                    &[Change::Work(RenderWork::ResourceProbes.dimension(), 1)],
-                    true,
-                );
+                let _ = self.apply(CACHE, &[Change::Work(RenderWork::ResourceProbes, 1)], true);
                 Ok(())
             }
         }
@@ -466,11 +446,7 @@ impl Generation {
         if let Some(observer) = observer {
             observer.work(work, amount)
         } else {
-            self.apply(
-                index,
-                &[Change::Work(work.dimension(), super::as_u64(amount)?)],
-                false,
-            )
+            self.apply(index, &[Change::Work(work, super::as_u64(amount)?)], false)
         }
     }
     fn phase_at<T>(&self, index: usize, run: impl FnOnce() -> T) -> Result<T> {
@@ -508,7 +484,11 @@ impl Generation {
             .snapshot()
             .map_err(|e| Error::from(map_ledger_failure(e)))?;
         let usage = match &profile {
-            Some(profile) => profile.scopes[0].usage,
+            Some(profile) => profile
+                .scopes
+                .first()
+                .map(|root| root.usage)
+                .ok_or(RenderAccountingError::Invariant)?,
             None => self
                 .0
                 .ledger
@@ -521,22 +501,19 @@ impl Generation {
             profile,
             life.retired,
             life.fault,
-        ))
+        )?)
     }
     pub(crate) fn lease_return(&self, class: GenerationClass) {
         let _ = self.apply(
             class.index(),
-            &[Change::Work(
-                RenderWork::ResourceLeaseReturns.dimension(),
-                1,
-            )],
+            &[Change::Work(RenderWork::ResourceLeaseReturns, 1)],
             true,
         );
     }
     pub(crate) fn eviction(&self, class: GenerationClass) {
         let _ = self.apply(
             class.index(),
-            &[Change::Work(RenderWork::ResourceEvictions.dimension(), 1)],
+            &[Change::Work(RenderWork::ResourceEvictions, 1)],
             true,
         );
     }
@@ -598,7 +575,7 @@ impl Generation {
                     ] {
                         if let Err(e) = self.0.ledger.apply(
                             self.0.scopes[index],
-                            Change::Release(resource.dimension(), usage.live(resource.dimension())),
+                            Change::Release(resource, usage.live(resource)),
                         ) {
                             self.record(life, e);
                         }
@@ -613,7 +590,7 @@ impl Generation {
         // Cleanup work cannot veto the releases above.
         if let Err(e) = self.0.ledger.apply(
             self.0.scopes[RETIREMENT],
-            Change::Work(RenderWork::ResourceRetirements.dimension(), 1),
+            Change::Work(RenderWork::ResourceRetirements, 1),
         ) {
             self.record(life, e);
         }
@@ -632,7 +609,7 @@ impl Generation {
     }
     #[cfg(test)]
     pub(crate) fn adjust_registered_cache_bytes_for_test(&self, value: u64) {
-        let resource = RenderResource::RegisteredCacheGpuBytes.dimension();
+        let resource = RenderResource::RegisteredCacheGpuBytes;
         let current = self.registered_cache_bytes().unwrap();
         if value >= current {
             let index = [2, 3, 4, 5]
@@ -722,7 +699,7 @@ impl Drop for NativeHold {
     fn drop(&mut self) {
         let _ = self.generation.apply(
             self.index,
-            &[Change::Release(self.resource.dimension(), self.amount)],
+            &[Change::Release(self.resource, self.amount)],
             true,
         );
     }
@@ -807,7 +784,7 @@ impl CacheRegistration {
         if idle == self.idle {
             return Ok(());
         }
-        let dimension = RenderResource::IdleCacheGpuBytes.dimension();
+        let dimension = RenderResource::IdleCacheGpuBytes;
         let change = if idle {
             Change::Acquire(dimension, self.bytes)
         } else {
@@ -825,7 +802,7 @@ impl Drop for CacheRegistration {
             let _ = self.generation.apply(
                 self.class.index(),
                 &[Change::Release(
-                    RenderResource::IdleCacheGpuBytes.dimension(),
+                    RenderResource::IdleCacheGpuBytes,
                     self.bytes,
                 )],
                 true,
@@ -834,25 +811,25 @@ impl Drop for CacheRegistration {
         let _ = self.generation.apply(
             self.class.index(),
             &[Change::Release(
-                RenderResource::RegisteredCacheGpuBytes.dimension(),
+                RenderResource::RegisteredCacheGpuBytes,
                 self.bytes,
             )],
             true,
         );
     }
 }
-pub(crate) struct GenerationUsage(Usage<WORK_COUNT, RESOURCE_COUNT>);
+pub(crate) struct GenerationUsage(Usage<RenderWork, RenderResource>);
 impl GenerationUsage {
     #[cfg(test)]
     pub(crate) fn work(&self, work: RenderWork) -> u64 {
-        self.0.work(work.dimension())
+        self.0.work(work)
     }
     pub(crate) fn live(&self, resource: RenderResource) -> u64 {
-        self.0.live(resource.dimension())
+        self.0.live(resource)
     }
     #[cfg(test)]
     pub(crate) fn peak(&self, resource: RenderResource) -> u64 {
-        self.0.peak(resource.dimension())
+        self.0.peak(resource)
     }
 }
 pub(crate) struct GenerationCheckpoint {
@@ -869,12 +846,15 @@ impl GenerationCheckpoint {
             .0
             .ledger
             .end_checkpoint(&checkpoint)
-            .map(|interval| {
-                RenderGenerationInterval::new(self.generation.0.identity.clone(), interval)
-            })
             .map_err(|e| {
                 let mut life = self.generation.lock();
                 self.generation.record(&mut life, e)
+            })
+            .and_then(|interval| {
+                Ok(RenderGenerationInterval::new(
+                    self.generation.0.identity.clone(),
+                    interval,
+                )?)
             })
     }
 }

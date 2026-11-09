@@ -106,7 +106,7 @@ fn deferred_preparation_is_unbound_and_only_a_later_admitted_factory_selects_the
             },
         )
         .unwrap();
-    assert_eq!(refused.report.job_preparations(), 0);
+    assert_eq!(refused.report.job_preparations().unwrap(), 0);
     assert_eq!(factories.get(), 0);
     assert_eq!(observer.status(), JobStatus::Pending);
     let mut b = Context::builder()
@@ -121,7 +121,7 @@ fn deferred_preparation_is_unbound_and_only_a_later_admitted_factory_selects_the
         })
         .unwrap();
     admitted.result.unwrap();
-    assert_eq!(admitted.report.job_preparations(), 1);
+    assert_eq!(admitted.report.job_preparations().unwrap(), 1);
     assert!(admitted.report.effects_started());
     assert_eq!(factories.get(), 1);
     let wrong = a
@@ -140,7 +140,7 @@ fn deferred_preparation_is_unbound_and_only_a_later_admitted_factory_selects_the
         })
         .unwrap();
     wrong.result.unwrap();
-    assert_eq!(wrong.report.job_polls(), 0);
+    assert_eq!(wrong.report.job_polls().unwrap(), 0);
     assert_eq!(observer.status(), JobStatus::Pending);
     {
         let host = b.host_access();
@@ -190,8 +190,8 @@ fn a_deferred_poll_keeps_the_exact_task_and_charges_only_its_later_operation() {
             limit: 0
         }))
     );
-    assert_eq!(first.report.job_preparations(), 1);
-    assert_eq!(first.report.job_polls(), 0);
+    assert_eq!(first.report.job_preparations().unwrap(), 1);
+    assert_eq!(first.report.job_polls().unwrap(), 0);
     assert_eq!(polls.get(), 0);
     assert_eq!(drops.get(), 0);
     assert_eq!(observer.status(), JobStatus::Pending);
@@ -201,9 +201,9 @@ fn a_deferred_poll_keeps_the_exact_task_and_charges_only_its_later_operation() {
         })
         .unwrap();
     assert_eq!(second.result.unwrap(), JsValue::new(42));
-    assert_eq!(second.report.job_preparations(), 0);
-    assert_eq!(second.report.job_polls(), 1);
-    assert_eq!(first.report.job_polls(), 0);
+    assert_eq!(second.report.job_preparations().unwrap(), 0);
+    assert_eq!(second.report.job_polls().unwrap(), 1);
+    assert_eq!(first.report.job_polls().unwrap(), 0);
     assert_eq!(polls.get(), 1);
     assert_eq!(drops.get(), 1);
     assert_eq!(observer.status(), JobStatus::Completed);
@@ -243,8 +243,8 @@ fn admitted_interruption_is_terminal_and_finished_steps_do_no_new_work() {
             Ok(())
         })
         .unwrap();
-    assert_eq!(first.report.job_preparations(), 1);
-    assert_eq!(first.report.job_polls(), 1);
+    assert_eq!(first.report.job_preparations().unwrap(), 1);
+    assert_eq!(first.report.job_polls().unwrap(), 1);
     assert_eq!(drops.get(), 1);
     assert_eq!(
         observer.status(),
@@ -260,8 +260,8 @@ fn admitted_interruption_is_terminal_and_finished_steps_do_no_new_work() {
         })
         .unwrap();
     next.result.unwrap();
-    assert_eq!(next.report.job_preparations(), 0);
-    assert_eq!(next.report.job_polls(), 0);
+    assert_eq!(next.report.job_preparations().unwrap(), 0);
+    assert_eq!(next.report.job_polls().unwrap(), 0);
     assert!(!next.report.effects_started());
     assert_eq!(drops.get(), 1);
 }
@@ -500,7 +500,7 @@ fn a_nonready_affinity_bound_task_refuses_a_peer_drain_then_resumes_on_its_owner
         })
         .unwrap();
     peer.result.unwrap();
-    assert_eq!(peer.report.job_polls(), 0);
+    assert_eq!(peer.report.job_polls().unwrap(), 0);
     let error = actual.into_inner().unwrap().unwrap_err();
     assert_eq!(
         error.as_engine(),
@@ -513,8 +513,8 @@ fn a_nonready_affinity_bound_task_refuses_a_peer_drain_then_resumes_on_its_owner
         .with_execution(ExecutionOptions::new(0), |mut access| access.run_jobs())
         .unwrap();
     drained.result.unwrap();
-    assert_eq!(drained.report.job_preparations(), 0);
-    assert_eq!(drained.report.job_polls(), 1);
+    assert_eq!(drained.report.job_preparations().unwrap(), 0);
+    assert_eq!(drained.report.job_polls().unwrap(), 1);
     assert_eq!(gate.polls.get(), 2);
     assert_eq!(gate.drops.get(), 1);
     assert_eq!(observer.status(), JobStatus::Completed);
@@ -696,7 +696,7 @@ fn an_owned_synchronous_deferred_callback_can_run_once_in_a_fresh_operation() {
             RuntimeLimitError::JobInvocation { limit: 0 }
         ))
     );
-    assert_eq!(first.report.job_invocations(), 0);
+    assert_eq!(first.report.job_invocations().unwrap(), 0);
     assert_eq!(calls.get(), 0);
     let second = owner
         .with_execution(
@@ -713,7 +713,7 @@ fn an_owned_synchronous_deferred_callback_can_run_once_in_a_fresh_operation() {
         )
         .unwrap();
     assert_eq!(second.result.unwrap(), JsValue::new(42));
-    assert_eq!(second.report.job_invocations(), 1);
+    assert_eq!(second.report.job_invocations().unwrap(), 1);
     assert_eq!(calls.get(), 1);
     assert_eq!(
         capture.borrow().as_ref(),
@@ -757,8 +757,11 @@ fn ordinary_factory_and_poll_errors_complete_once_without_retirement() {
             })
             .unwrap();
         outcome.result.unwrap();
-        assert_eq!(outcome.report.job_preparations(), 1);
-        assert_eq!(outcome.report.job_polls(), u64::from(!factory_error));
+        assert_eq!(outcome.report.job_preparations().unwrap(), 1);
+        assert_eq!(
+            outcome.report.job_polls().unwrap(),
+            u64::from(!factory_error)
+        );
         assert_eq!(observer.status(), JobStatus::Completed);
         drop(owner);
         assert_eq!(observer.status(), JobStatus::Completed);

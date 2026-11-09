@@ -1,22 +1,40 @@
 use surgeist_ledger::{
-    Change, Event, EventFilter, Limits, Operation, ProfileMode, Resource, Tariff, Tariffs, Work,
+    Change, Event, EventFilter, Limits, Operation, ProfileMode, Tariff, Tariffs,
 };
 
-const WORK: Work<1> = Work::new(0).unwrap();
-const BYTES: Resource<1> = Resource::new(0).unwrap();
+surgeist_ledger::dimensions! {
+    enum Work => WorkTable { Visit }
+}
+
+surgeist_ledger::dimensions! {
+    enum Resource => ResourceTable { Bytes }
+}
+
+const WORK: Work = Work::Visit;
+const BYTES: Resource = Resource::Bytes;
+
+fn limits(work: u64, bytes: u64) -> Limits<Work, Resource> {
+    Limits::new(WorkTable { Visit: work }, ResourceTable { Bytes: bytes })
+}
+
+fn tariffs(work_scale: u64, bytes_scale: u64) -> Tariffs<Work, Resource> {
+    Tariffs::new(
+        WorkTable {
+            Visit: Tariff::new(WORK, work_scale),
+        },
+        ResourceTable {
+            Bytes: Tariff::new(BYTES, bytes_scale),
+        },
+    )
+}
 
 #[test]
 fn profiling_modes_keep_outcomes_and_accounting_identical() {
-    fn run(mode: ProfileMode) -> (u64, u64, Option<surgeist_ledger::Report<1, 1>>) {
-        let mut ledger = Operation::with_profile("html", Limits::new([7], [8]), 2, mode).unwrap();
+    fn run(mode: ProfileMode) -> (u64, u64, Option<surgeist_ledger::Report<Work, Resource>>) {
+        let mut ledger = Operation::with_profile("html", limits(7, 8), 2, mode).unwrap();
         let root = ledger.root();
         let child = ledger
-            .child(
-                root,
-                "css",
-                Limits::new([4], [4]),
-                Tariffs::new([Tariff::new(WORK, 2)], [Tariff::new(BYTES, 2)]),
-            )
+            .child(root, "css", limits(4, 4), tariffs(2, 2))
             .unwrap();
         ledger.apply(root, Change::Work(WORK, 1)).unwrap();
         ledger
@@ -45,7 +63,11 @@ fn profiling_modes_keep_outcomes_and_accounting_identical() {
 
         let usage = *ledger.usage(root).unwrap();
         assert_eq!(usage.live(BYTES), 0);
-        (usage.work(WORK), usage.peak(BYTES), ledger.finish())
+        (
+            usage.work(WORK),
+            usage.peak(BYTES),
+            ledger.finish().unwrap(),
+        )
     }
 
     let (work, peak, off) = run(ProfileMode::Off);
@@ -94,7 +116,7 @@ fn profiling_modes_keep_outcomes_and_accounting_identical() {
 fn detailed_filter_keeps_selected_events_and_captures_refusal_context() {
     let mut ledger = Operation::with_profile(
         "root",
-        Limits::new([3], [0]),
+        limits(3, 0),
         2,
         ProfileMode::Detailed {
             timing: false,
@@ -114,7 +136,7 @@ fn detailed_filter_keeps_selected_events_and_captures_refusal_context() {
             .apply_batch(css, &[Change::Work(WORK, 0), Change::Work(WORK, 1)])
             .is_err()
     );
-    let report = ledger.finish().unwrap();
+    let report = ledger.finish().unwrap().unwrap();
 
     assert_eq!(report.dropped_events, 0);
     assert_eq!(report.events.len(), 2);

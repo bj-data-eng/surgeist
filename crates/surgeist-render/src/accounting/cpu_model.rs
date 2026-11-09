@@ -1,7 +1,7 @@
 //! Typed views of the renderer CPU owner's exact Ledger observations.
 use super::{
-    RESOURCE_COUNT, RenderAccountingError, RenderChangeKind, RenderQuantity, RenderResource,
-    RenderWork, WORK_COUNT,
+    RenderAccountingError, RenderChangeKind, RenderQuantity, RenderResource, RenderWork,
+    interval_resolves, profile_resolves,
 };
 use std::{fmt, time::Duration};
 use surgeist_ledger::{IntervalReport, IntervalUsage, Report, Scope, Usage};
@@ -73,44 +73,44 @@ impl fmt::Debug for RenderCpuIdentity {
 /// One owner's cumulative work, current live custody and lifetime maximum.
 /// This has no opening balance and is not a sum of frame intervals.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct RenderLifetimeUsage(Usage<WORK_COUNT, RESOURCE_COUNT>);
+pub struct RenderLifetimeUsage(Usage<RenderWork, RenderResource>);
 impl RenderLifetimeUsage {
-    pub(crate) const fn new(usage: Usage<WORK_COUNT, RESOURCE_COUNT>) -> Self {
+    pub(crate) const fn new(usage: Usage<RenderWork, RenderResource>) -> Self {
         Self(usage)
     }
     /// Cumulative admitted work in this owner's named unit.
-    pub const fn work(self, work: RenderWork) -> u64 {
-        self.0.work(work.dimension())
+    pub fn work(self, work: RenderWork) -> u64 {
+        self.0.work(work)
     }
     /// Current admitted custody.
-    pub const fn live(self, resource: RenderResource) -> u64 {
-        self.0.live(resource.dimension())
+    pub fn live(self, resource: RenderResource) -> u64 {
+        self.0.live(resource)
     }
     /// Highest admitted lifetime custody, including actual allocation overlap.
-    pub const fn peak(self, resource: RenderResource) -> u64 {
-        self.0.peak(resource.dimension())
+    pub fn peak(self, resource: RenderResource) -> u64 {
+        self.0.peak(resource)
     }
 }
 
 /// Exact inclusive CPU interval usage, including its preexisting opening custody.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct RenderCpuUsage(IntervalUsage<WORK_COUNT, RESOURCE_COUNT>);
+pub struct RenderCpuUsage(IntervalUsage<RenderWork, RenderResource>);
 impl RenderCpuUsage {
     /// Work admitted inside the interval.
-    pub const fn work(self, work: RenderWork) -> u64 {
-        self.0.work(work.dimension())
+    pub fn work(self, work: RenderWork) -> u64 {
+        self.0.work(work)
     }
     /// Custody already live when the interval opened.
-    pub const fn opening_live(self, resource: RenderResource) -> u64 {
-        self.0.opening_live(resource.dimension())
+    pub fn opening_live(self, resource: RenderResource) -> u64 {
+        self.0.opening_live(resource)
     }
     /// Custody live at the interval's actual closing boundary.
-    pub const fn live(self, resource: RenderResource) -> u64 {
-        self.0.live(resource.dimension())
+    pub fn live(self, resource: RenderResource) -> u64 {
+        self.0.live(resource)
     }
     /// Highest admitted custody during the interval, including its opening balance.
-    pub const fn peak(self, resource: RenderResource) -> u64 {
-        self.0.peak(resource.dimension())
+    pub fn peak(self, resource: RenderResource) -> u64 {
+        self.0.peak(resource)
     }
 }
 
@@ -150,73 +150,54 @@ pub enum RenderCpuEvent {
 }
 
 fn events<'a>(
-    profile: Option<&'a Report<WORK_COUNT, RESOURCE_COUNT>>,
-    scope: impl Fn(Scope) -> RenderCpuScope + 'a,
+    profile: Option<&'a Report<RenderWork, RenderResource>>,
+    scope: impl Fn(Scope) -> Option<RenderCpuScope> + 'a,
 ) -> impl Iterator<Item = RenderCpuEvent> + 'a {
     profile
         .into_iter()
         .flat_map(|p| p.events.iter())
-        .map(move |event| match *event {
-            surgeist_ledger::Event::Phase {
-                scope: origin,
-                duration,
-                elapsed,
-            } => RenderCpuEvent::Phase {
-                scope: scope(origin),
-                duration,
-                elapsed,
-            },
-            surgeist_ledger::Event::Refused {
-                origin, elapsed, ..
-            } => RenderCpuEvent::Refused {
-                scope: scope(origin),
-                elapsed,
-            },
-            surgeist_ledger::Event::Accepted {
-                scope: origin,
-                change,
-                elapsed,
-            } => {
-                let (quantity, amount, kind) = match change {
-                    surgeist_ledger::Change::Work(d, n) => (
-                        RenderQuantity::Work(
-                            RenderWork::ALL
-                                .into_iter()
-                                .find(|w| w.dimension() == d)
-                                .expect("CPU work schema"),
-                        ),
-                        n,
-                        RenderChangeKind::Work,
-                    ),
-                    surgeist_ledger::Change::Acquire(d, n) => (
-                        RenderQuantity::Resource(
-                            RenderResource::ALL
-                                .into_iter()
-                                .find(|r| r.dimension() == d)
-                                .expect("CPU resource schema"),
-                        ),
-                        n,
-                        RenderChangeKind::Acquire,
-                    ),
-                    surgeist_ledger::Change::Release(d, n) => (
-                        RenderQuantity::Resource(
-                            RenderResource::ALL
-                                .into_iter()
-                                .find(|r| r.dimension() == d)
-                                .expect("CPU resource schema"),
-                        ),
-                        n,
-                        RenderChangeKind::Release,
-                    ),
-                };
-                RenderCpuEvent::Change {
-                    scope: scope(origin),
-                    quantity,
-                    amount,
-                    kind,
+        .filter_map(move |event| {
+            Some(match *event {
+                surgeist_ledger::Event::Phase {
+                    scope: origin,
+                    duration,
                     elapsed,
+                } => RenderCpuEvent::Phase {
+                    scope: scope(origin)?,
+                    duration,
+                    elapsed,
+                },
+                surgeist_ledger::Event::Refused {
+                    origin, elapsed, ..
+                } => RenderCpuEvent::Refused {
+                    scope: scope(origin)?,
+                    elapsed,
+                },
+                surgeist_ledger::Event::Accepted {
+                    scope: origin,
+                    change,
+                    elapsed,
+                } => {
+                    let (quantity, amount, kind) = match change {
+                        surgeist_ledger::Change::Work(d, n) => {
+                            (RenderQuantity::Work(d), n, RenderChangeKind::Work)
+                        }
+                        surgeist_ledger::Change::Acquire(d, n) => {
+                            (RenderQuantity::Resource(d), n, RenderChangeKind::Acquire)
+                        }
+                        surgeist_ledger::Change::Release(d, n) => {
+                            (RenderQuantity::Resource(d), n, RenderChangeKind::Release)
+                        }
+                    };
+                    RenderCpuEvent::Change {
+                        scope: scope(origin)?,
+                        quantity,
+                        amount,
+                        kind,
+                        elapsed,
+                    }
                 }
-            }
+            })
         })
 }
 
@@ -225,9 +206,20 @@ fn events<'a>(
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RenderCpuInterval {
     pub(crate) identity: RenderCpuIdentity,
-    pub(crate) interval: IntervalReport<WORK_COUNT, RESOURCE_COUNT>,
+    pub(crate) interval: IntervalReport<RenderWork, RenderResource>,
 }
 impl RenderCpuInterval {
+    /// Builds an interval, or refuses one that does not hold the fixed roles.
+    pub(crate) fn new(
+        identity: RenderCpuIdentity,
+        interval: IntervalReport<RenderWork, RenderResource>,
+    ) -> Result<Self, RenderAccountingError> {
+        if interval_resolves(&interval, RenderCpuScope::ALL.len()) {
+            Ok(Self { identity, interval })
+        } else {
+            Err(RenderAccountingError::Invariant)
+        }
+    }
     /// Owner represented by the interval.
     pub const fn identity(&self) -> RenderCpuIdentity {
         self.identity
@@ -272,10 +264,12 @@ impl RenderCpuInterval {
     /// Bounded events projected without another allocation.
     pub fn events(&self) -> impl Iterator<Item = RenderCpuEvent> + '_ {
         events(self.interval.profile.as_ref(), |scope| {
-            RenderCpuScope::ALL
-                .into_iter()
-                .find(|s| self.interval.scopes[s.index()].scope == scope)
-                .expect("CPU interval scope")
+            RenderCpuScope::ALL.into_iter().find(|s| {
+                self.interval
+                    .scopes
+                    .get(s.index())
+                    .is_some_and(|entry| entry.scope == scope)
+            })
         })
     }
 }
@@ -286,10 +280,33 @@ impl RenderCpuInterval {
 pub struct RenderCpuSnapshot {
     pub(crate) identity: RenderCpuIdentity,
     pub(crate) usage: RenderLifetimeUsage,
-    pub(crate) profile: Option<Report<WORK_COUNT, RESOURCE_COUNT>>,
+    pub(crate) profile: Option<Report<RenderWork, RenderResource>>,
     pub(crate) fault: Option<RenderAccountingError>,
 }
 impl RenderCpuSnapshot {
+    /// Builds a snapshot, or refuses a profile that does not hold the fixed roles.
+    pub(crate) fn new(
+        identity: RenderCpuIdentity,
+        usage: RenderLifetimeUsage,
+        profile: Option<Report<RenderWork, RenderResource>>,
+        fault: Option<RenderAccountingError>,
+    ) -> Result<Self, RenderAccountingError> {
+        let resolves = profile.as_ref().is_none_or(|profile| {
+            profile_resolves(profile, RenderCpuScope::ALL.len(), |scope| {
+                profile.scopes.iter().any(|entry| entry.scope == scope)
+            })
+        });
+        if resolves {
+            Ok(Self {
+                identity,
+                usage,
+                profile,
+                fault,
+            })
+        } else {
+            Err(RenderAccountingError::Invariant)
+        }
+    }
     /// Owner represented by this immutable observation.
     pub const fn identity(&self) -> RenderCpuIdentity {
         self.identity
@@ -334,12 +351,13 @@ impl RenderCpuSnapshot {
     }
     /// Bounded lifetime events without another event-buffer copy.
     pub fn events(&self) -> impl Iterator<Item = RenderCpuEvent> + '_ {
-        events(self.profile.as_ref(), |scope| {
-            let profile = self.profile.as_ref().expect("event requires profile");
-            RenderCpuScope::ALL
-                .into_iter()
-                .find(|s| profile.scopes[s.index()].scope == scope)
-                .expect("CPU snapshot scope")
+        let profile = self.profile.as_ref();
+        events(profile, move |scope| {
+            RenderCpuScope::ALL.into_iter().find(|s| {
+                profile
+                    .and_then(|p| p.scopes.get(s.index()))
+                    .is_some_and(|entry| entry.scope == scope)
+            })
         })
     }
 }

@@ -214,7 +214,7 @@ impl RendererAttempt {
         status: RenderAttemptStatus,
         diagnostic: Option<RenderAccountingError>,
     ) -> (RendererReport, Option<RenderAccountingError>) {
-        let mut fault = self.cpu.fault();
+        let mut fault = self.cpu.fault().or(self.account.latched_fault());
         if let Some(generation) = &self.generation
             && let Err(error) = generation.ensure_healthy()
         {
@@ -255,6 +255,13 @@ impl RendererAttempt {
                     .ledger
                     .end_checkpoint(&checkpoint)
                     .map_err(map_ledger_failure)
+            })
+            .and_then(|interval| {
+                if super::interval_resolves(&interval, super::PHASE_COUNT) {
+                    Ok(interval)
+                } else {
+                    Err(RenderAccountingError::Invariant)
+                }
             });
         if let Err(error) = &interval {
             fault = fault.or(Some(*error));

@@ -1,15 +1,38 @@
 use surgeist_ledger::{
-    Change, Error, EventFilter, Limits, Operation, ProfileMode, RefusalReason, Resource, Tariff,
-    Tariffs, Work,
+    Change, Error, EventFilter, Limits, Operation, ProfileMode, RefusalReason, Tariff, Tariffs,
 };
-const WORK: Work<1> = Work::new(0).unwrap();
-const BYTES: Resource<1> = Resource::new(0).unwrap();
+
+surgeist_ledger::dimensions! {
+    enum Work => WorkTable { Visit }
+}
+
+surgeist_ledger::dimensions! {
+    enum Resource => ResourceTable { Bytes }
+}
+
+const WORK: Work = Work::Visit;
+const BYTES: Resource = Resource::Bytes;
+
+fn limits(work: u64, bytes: u64) -> Limits<Work, Resource> {
+    Limits::new(WorkTable { Visit: work }, ResourceTable { Bytes: bytes })
+}
+
+fn tariffs(work_scale: u64, bytes_scale: u64) -> Tariffs<Work, Resource> {
+    Tariffs::new(
+        WorkTable {
+            Visit: Tariff::new(WORK, work_scale),
+        },
+        ResourceTable {
+            Bytes: Tariff::new(BYTES, bytes_scale),
+        },
+    )
+}
 
 #[test]
 fn checking_limits_custody_and_success_changes_no_usage_profile_or_interval_peak() {
     let mut op = Operation::with_profile(
         "root",
-        Limits::new([10], [20]),
+        limits(10, 20),
         1,
         ProfileMode::Detailed {
             timing: false,
@@ -58,15 +81,10 @@ fn checking_limits_custody_and_success_changes_no_usage_profile_or_interval_peak
 
 #[test]
 fn checking_uses_parent_tariffs_and_origin_custody_without_reserving() {
-    let mut op = Operation::new("root", Limits::new([10], [20]), 3).unwrap();
+    let mut op = Operation::new("root", limits(10, 20), 3).unwrap();
     let root = op.root();
     let child = op
-        .child(
-            root,
-            "child",
-            Limits::unlimited(),
-            Tariffs::new([Tariff::new(WORK, 2)], [Tariff::new(BYTES, 3)]),
-        )
+        .child(root, "child", Limits::unlimited(), tariffs(2, 3))
         .unwrap();
     let sibling = op
         .child(root, "sibling", Limits::unlimited(), Tariffs::identity())
@@ -95,12 +113,7 @@ fn arithmetic_and_tariff_overflows_are_checked_without_observation() {
     let mut op = Operation::new("root", Limits::unlimited(), 2).unwrap();
     let root = op.root();
     let child = op
-        .child(
-            root,
-            "child",
-            Limits::unlimited(),
-            Tariffs::new([Tariff::new(WORK, 2)], [Tariff::new(BYTES, u64::MAX)]),
-        )
+        .child(root, "child", Limits::unlimited(), tariffs(2, u64::MAX))
         .unwrap();
     op.apply(root, Change::Work(WORK, u64::MAX)).unwrap();
     assert!(
@@ -109,7 +122,7 @@ fn arithmetic_and_tariff_overflows_are_checked_without_observation() {
     assert!(
         matches!(op.check_batch(child,&[Change::Acquire(BYTES,2)]),Err(Error::Refused(r)) if r.scope==child&&r.reason==RefusalReason::Overflow)
     );
-    let other = Operation::<1, 1>::new("other", Limits::unlimited(), 1).unwrap();
+    let other = Operation::<Work, Resource>::new("other", Limits::unlimited(), 1).unwrap();
     assert_eq!(op.check_batch(other.root(), &[]), Err(Error::ForeignScope));
     op.check_batch(root, &[]).unwrap();
     assert_eq!(op.usage(root).unwrap().work(WORK), u64::MAX);

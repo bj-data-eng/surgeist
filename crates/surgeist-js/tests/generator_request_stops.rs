@@ -157,7 +157,7 @@ fn after_retained_stop<T: Debug>(
         .unwrap();
     let first = first.unwrap();
     assert_eq!(outcome.result.unwrap_err(), first);
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
     let direct = direct.expect("the direct request must actually be attempted");
     assert_eq!(
         direct.as_ref().err(),

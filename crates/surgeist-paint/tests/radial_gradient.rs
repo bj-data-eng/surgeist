@@ -558,7 +558,7 @@ fn true_affine_cancellation_and_smallest_positive_radii_remain_distinct() {
 }
 
 fn no_custody(report: &PaintReport) {
-    for resource in ResourceKind::ALL {
+    for &resource in ResourceKind::ALL {
         assert_eq!(report.live(resource), 0, "{resource:?}");
     }
 }
@@ -857,7 +857,7 @@ fn phase_work(report: &PaintReport, phase: PaintPhase, kind: WorkKind) -> u64 {
 }
 
 fn usage_equal(actual: &PaintReport, expected: &PaintReport) {
-    for kind in WorkKind::ALL {
+    for &kind in WorkKind::ALL {
         assert_eq!(actual.work(kind), expected.work(kind), "{kind:?}");
         for phase in PHASES {
             assert_eq!(
@@ -867,7 +867,7 @@ fn usage_equal(actual: &PaintReport, expected: &PaintReport) {
             );
         }
     }
-    for resource in ResourceKind::ALL {
+    for &resource in ResourceKind::ALL {
         assert_eq!(actual.live(resource), expected.live(resource));
         assert_eq!(actual.peak(resource), expected.peak(resource));
     }
@@ -904,7 +904,7 @@ fn fixed_result_custody_and_named_work_are_attributed_without_geometry_heap_stor
         assert_eq!(report.work(WorkKind::OutputRecord), 1);
         assert!(report.work(WorkKind::GradientValidation) > 0);
         assert!(report.work(WorkKind::GradientCoordinate) > 0);
-        for kind in WorkKind::ALL {
+        for &kind in WorkKind::ALL {
             if !matches!(
                 kind,
                 WorkKind::GradientValidation

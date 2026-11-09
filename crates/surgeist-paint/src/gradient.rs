@@ -1,6 +1,6 @@
 use crate::{
     PaintError, PaintOptions, PaintReport, ResourceKind, WorkKind,
-    accounting::{Meter, OperationKind, PhaseMeter, apply, bytes, charge, setup_error},
+    accounting::{Meter, OperationKind, PhaseMeter, apply, bytes, charge, finish, setup_error},
 };
 use surgeist_layout::{Point, Size};
 use surgeist_ledger::{Change, Limits, Scope, Tariffs};
@@ -78,10 +78,8 @@ pub fn resolve_linear_gradient(
     let scopes = match setup_scopes(&mut meter) {
         Ok(scopes) => scopes,
         Err(error) => {
-            return LinearGradientOutcome {
-                result: Err(error),
-                report: meter.finish().map(PaintReport),
-            };
+            let (result, report) = finish(meter, Err(error));
+            return LinearGradientOutcome { result, report };
         }
     };
     let mut retained = false;
@@ -106,7 +104,7 @@ pub fn resolve_linear_gradient(
                     p,
                     root,
                     Change::Acquire(
-                        ResourceKind::RetainedResultBytes.dimension(),
+                        ResourceKind::RetainedResultBytes,
                         bytes::<LinearGradientLine>(1)?,
                     ),
                 )?;
@@ -117,26 +115,25 @@ pub fn resolve_linear_gradient(
             })
             .map_err(setup_error)?
     })();
-    meter
+    let cleanup = meter
         .with_phase(scopes[3], |p| {
             if result.is_err() && retained {
                 apply(
                     p,
                     root,
                     Change::Release(
-                        ResourceKind::RetainedResultBytes.dimension(),
-                        bytes::<LinearGradientLine>(1)
-                            .expect("admitted fixed result size remains representable"),
+                        ResourceKind::RetainedResultBytes,
+                        bytes::<LinearGradientLine>(1)?,
                     ),
-                )
-                .expect("release exact admitted result custody");
+                )?;
             }
+            Ok(())
         })
-        .expect("owned fixed cleanup scope");
-    LinearGradientOutcome {
-        result,
-        report: meter.finish().map(PaintReport),
-    }
+        .map_err(setup_error)
+        .and_then(|done| done);
+    let result = result.and_then(|value| cleanup.map(|()| value));
+    let (result, report) = finish(meter, result);
+    LinearGradientOutcome { result, report }
 }
 
 fn setup_scopes(meter: &mut Meter) -> Result<[Scope; 4], PaintError> {

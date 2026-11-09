@@ -137,7 +137,7 @@ impl ManualExecutor {
                 })
                 .unwrap();
             assert_eq!(
-                dispatched.report.generator_requests(),
+                dispatched.report.generator_requests().unwrap(),
                 0,
                 "resume and settlement are not new requests"
             );
@@ -249,7 +249,7 @@ fn release(context: &mut Context) {
         .eval_with_budget(Source::from_bytes("releaseRequestGate(1)"), options(0))
         .unwrap();
     released.result.unwrap();
-    assert_eq!(released.report.generator_requests(), 0);
+    assert_eq!(released.report.generator_requests().unwrap(), 0);
 }
 
 #[test]
@@ -264,7 +264,7 @@ fn every_native_and_guest_request_kind_has_one_attempt_unit_for_sync_and_async_g
                     .with_execution(options(1), |access| generator.call(request, &route, access))
                     .unwrap();
                 assert_eq!(
-                    outcome.report.generator_requests(),
+                    outcome.report.generator_requests().unwrap(),
                     1,
                     "{asynchronous}/{guest}/{request:?}"
                 );
@@ -297,11 +297,12 @@ fn zero_request_cap_preserves_unstarted_state_and_opens_no_request_phase() {
                     )
                     .unwrap();
                 refusal(&outcome.result.unwrap_err(), 0);
-                assert_eq!(outcome.report.generator_requests(), 0);
+                assert_eq!(outcome.report.generator_requests().unwrap(), 0);
                 assert_eq!(
                     outcome
                         .report
                         .profile()
+                        .unwrap()
                         .unwrap()
                         .scopes
                         .iter()
@@ -312,7 +313,7 @@ fn zero_request_cap_preserves_unstarted_state_and_opens_no_request_phase() {
                 );
                 if !guest {
                     assert!(!outcome.report.effects_started());
-                    assert_eq!(outcome.report.instructions(), 0);
+                    assert_eq!(outcome.report.instructions().unwrap(), 0);
                 }
                 assert_eq!(property(&mut context, "starts"), 0.into());
                 let fresh = context
@@ -320,7 +321,7 @@ fn zero_request_cap_preserves_unstarted_state_and_opens_no_request_phase() {
                         generator.call(Request::Next, &Route::Native, access)
                     })
                     .unwrap();
-                assert_eq!(fresh.report.generator_requests(), 1);
+                assert_eq!(fresh.report.generator_requests().unwrap(), 1);
                 iterator(
                     settle(fresh.result, &executor, &mut context).unwrap(),
                     10.into(),
@@ -356,7 +357,7 @@ fn one_accepted_request_then_refusal_keeps_the_exact_first_stop_and_accepted_asy
             })
             .unwrap();
         assert_eq!(outcome.result.unwrap_err(), stopped.unwrap());
-        assert_eq!(outcome.report.generator_requests(), 1);
+        assert_eq!(outcome.report.generator_requests().unwrap(), 1);
         iterator(
             settle(Ok(accepted.unwrap()), &executor, &mut context).unwrap(),
             10.into(),
@@ -392,7 +393,7 @@ fn a_preexisting_instruction_stop_precedes_a_zero_request_cap_without_an_attempt
                 )
                 .unwrap();
             assert_eq!(outcome.result.unwrap_err(), first.unwrap());
-            assert_eq!(outcome.report.generator_requests(), 0);
+            assert_eq!(outcome.report.generator_requests().unwrap(), 0);
             assert_eq!(property(&mut context, "starts"), 0.into());
         }
     }
@@ -420,9 +421,9 @@ fn completed_requests_still_enter_the_algorithm_and_count_once_without_vm_work()
                     generator.call(request, &Route::Native, access)
                 })
                 .unwrap();
-            assert_eq!(outcome.report.generator_requests(), 1);
+            assert_eq!(outcome.report.generator_requests().unwrap(), 1);
             assert!(outcome.report.effects_started());
-            assert_eq!(outcome.report.instructions(), 0);
+            assert_eq!(outcome.report.instructions().unwrap(), 0);
             let result = settle(outcome.result, &executor, &mut context);
             match request {
                 Request::Next => {
@@ -457,7 +458,7 @@ fn the_default_request_limit_accepts_three_completed_requests() {
         })
         .unwrap();
     outcome.result.unwrap();
-    assert_eq!(outcome.report.generator_requests(), 3);
+    assert_eq!(outcome.report.generator_requests().unwrap(), 3);
 }
 
 #[test]
@@ -477,7 +478,7 @@ fn wrong_brand_requests_are_charged_before_validation_for_every_prototype_method
                         function.call(&JsValue::undefined(), &[], access)
                     })
                     .unwrap();
-                assert_eq!(outcome.report.generator_requests(), cap);
+                assert_eq!(outcome.report.generator_requests().unwrap(), cap);
                 if cap == 0 {
                     refusal(&outcome.result.unwrap_err(), 0);
                     continue;
@@ -513,7 +514,7 @@ fn already_executing_sync_requests_count_before_their_guest_type_error() {
                 generator.next(JsValue::undefined(), access)
             })
             .unwrap();
-        assert_eq!(outcome.report.generator_requests(), 2);
+        assert_eq!(outcome.report.generator_requests().unwrap(), 2);
         iterator(outcome.result.unwrap(), 10.into(), false, &mut context);
         assert_eq!(property(&mut context, "busyType"), true.into());
     }
@@ -538,7 +539,7 @@ fn reentrant_requests_consume_the_same_operation_cap_without_consuming_a_refused
                 outer.next(JsValue::undefined(), access)
             })
             .unwrap();
-        assert_eq!(outcome.report.generator_requests(), cap);
+        assert_eq!(outcome.report.generator_requests().unwrap(), cap);
         if cap == 1 {
             refusal(&outcome.result.unwrap_err(), 1);
             let retry = context
@@ -573,7 +574,7 @@ fn async_requests_enqueued_while_executing_are_counted_once_before_later_cap_zer
                 Ok((first, second))
             })
             .unwrap();
-        assert_eq!(outcome.report.generator_requests(), 2);
+        assert_eq!(outcome.report.generator_requests().unwrap(), 2);
         let (first, second) = outcome.result.unwrap();
         assert_eq!(property(&mut context, "starts"), 1.into());
         release(&mut context);
@@ -621,7 +622,7 @@ fn refusing_a_new_async_request_does_not_revoke_an_older_pending_await_continuat
             })
             .unwrap();
         refusal(&refused.result.unwrap_err(), 0);
-        assert_eq!(refused.report.generator_requests(), 0);
+        assert_eq!(refused.report.generator_requests().unwrap(), 0);
         assert!(!refused.report.effects_started());
         release(&mut context);
         iterator(
@@ -663,7 +664,7 @@ fn an_admitted_body_host_error_remains_counted_and_preserves_its_original_payloa
         outcome.result.unwrap_err().as_engine(),
         Some(&EngineError::Resource(EngineResourceError::Allocation))
     );
-    assert_eq!(outcome.report.generator_requests(), 1);
+    assert_eq!(outcome.report.generator_requests().unwrap(), 1);
     assert!(outcome.report.effects_started());
 }
 
@@ -728,15 +729,15 @@ fn request_phases_end_on_return_before_pending_wait_and_all_untimed_modes_read_n
                 },
             )
             .unwrap();
-        assert_eq!(outcome.report.generator_requests(), 1);
+        assert_eq!(outcome.report.generator_requests().unwrap(), 1);
         if mode == ProfileMode::Off {
-            assert!(outcome.report.profile().is_none());
+            assert!(outcome.report.profile().unwrap().is_none());
         } else {
             let timed = matches!(
                 mode,
                 ProfileMode::Summary { timing: true } | ProfileMode::Detailed { timing: true, .. }
             );
-            let profile = outcome.report.profile().unwrap();
+            let profile = outcome.report.profile().unwrap().unwrap();
             assert_eq!(profile.elapsed, timed.then_some(Duration::from_millis(107)));
             let request = profile
                 .scopes
@@ -785,9 +786,9 @@ fn nested_inline_requests_have_two_inclusive_phases_and_two_admitted_units() {
             |access| generator.next(JsValue::undefined(), access),
         )
         .unwrap();
-    assert_eq!(outcome.report.generator_requests(), 2);
+    assert_eq!(outcome.report.generator_requests().unwrap(), 2);
     iterator(outcome.result.unwrap(), 10.into(), false, &mut context);
-    let profile = outcome.report.profile().unwrap();
+    let profile = outcome.report.profile().unwrap().unwrap();
     assert_eq!(profile.elapsed, Some(Duration::from_millis(7)));
     let request = profile
         .scopes
@@ -839,8 +840,8 @@ fn admitted_request_unwind_closes_its_phase_before_a_later_host_gap() {
     TIME.set(TIME.get() + Duration::from_millis(100));
     drop(task);
     let report = receipt.report().unwrap();
-    assert_eq!(report.generator_requests(), 1);
-    let profile = report.profile().unwrap();
+    assert_eq!(report.generator_requests().unwrap(), 1);
+    let profile = report.profile().unwrap().unwrap();
     let request = profile
         .scopes
         .iter()
@@ -878,10 +879,10 @@ fn an_admitted_completed_async_runtime_refusal_keeps_its_request_count_and_phase
         refused.result.unwrap_err().as_engine(),
         Some(&EngineError::RuntimeLimit(RuntimeLimitError::Recursion))
     );
-    assert_eq!(refused.report.generator_requests(), 1);
+    assert_eq!(refused.report.generator_requests().unwrap(), 1);
     assert!(refused.report.effects_started());
-    assert_eq!(refused.report.instructions(), 0);
-    let profile = refused.report.profile().unwrap();
+    assert_eq!(refused.report.instructions().unwrap(), 0);
+    let profile = refused.report.profile().unwrap().unwrap();
     let request = profile
         .scopes
         .iter()

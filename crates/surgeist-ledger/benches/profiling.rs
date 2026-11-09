@@ -1,15 +1,22 @@
 use std::{hint::black_box, mem::size_of, time::Instant};
 
 use surgeist_ledger::{
-    Change, Event, EventFilter, Limits, Operation, ProfileMode, Resource, ScopeReport, Tariffs,
-    Work,
+    Change, Event, EventFilter, Limits, Operation, ProfileMode, ScopeReport, Tariffs,
 };
+
+surgeist_ledger::dimensions! {
+    enum Work => WorkTable { Visit }
+}
+
+surgeist_ledger::dimensions! {
+    enum Resource => ResourceTable { Bytes }
+}
 
 const PHASES: usize = 1_000;
 const BATCHES: usize = 32;
 const ROUNDS: usize = 11;
-const WORK: Work<1> = Work::new(0).unwrap();
-const BYTES: Resource<1> = Resource::new(0).unwrap();
+const WORK: Work = Work::Visit;
+const BYTES: Resource = Resource::Bytes;
 
 #[derive(Clone, Copy)]
 enum Style {
@@ -61,7 +68,7 @@ fn measure(style: Style, mode: ProfileMode) -> (f64, usize, u64) {
     assert_eq!(usage.work(WORK), (PHASES * BATCHES) as u64);
     assert_eq!(usage.live(BYTES), 0);
     assert_eq!(usage.peak(BYTES), 8);
-    let (bytes, dropped) = operation.finish().map_or((0, 0), |report| {
+    let (bytes, dropped) = operation.finish().unwrap().map_or((0, 0), |report| {
         assert_eq!(report.scopes[1].phases, PHASES as u64);
         assert_eq!(report.scopes[1].accepted_batches, (PHASES * BATCHES) as u64);
         assert_eq!(
@@ -80,8 +87,8 @@ fn measure(style: Style, mode: ProfileMode) -> (f64, usize, u64) {
             assert!(report.events.is_empty());
             assert_eq!(report.dropped_events, 0);
         }
-        let bytes = report.scopes.capacity() * size_of::<ScopeReport<1, 1>>()
-            + report.events.capacity() * size_of::<Event<1, 1>>();
+        let bytes = report.scopes.capacity() * size_of::<ScopeReport<Work, Resource>>()
+            + report.events.capacity() * size_of::<Event<Work, Resource>>();
         (bytes, report.dropped_events)
     });
     (

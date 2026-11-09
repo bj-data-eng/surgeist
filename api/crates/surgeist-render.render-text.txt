@@ -646,6 +646,13 @@ pub surgeist_render::RenderResource::OpaqueGpuObjects
 pub surgeist_render::RenderResource::RegisteredCacheGpuBytes
 pub surgeist_render::RenderResource::RetainedCpuBytes
 pub surgeist_render::RenderResource::ScratchCpuBytes
+impl surgeist_ledger::__private::Sealed for surgeist_render::RenderResource
+impl surgeist_ledger::dimension::Dimension for surgeist_render::RenderResource
+pub type surgeist_render::RenderResource::Table<T: surgeist_ledger::dimension::TableValue> = surgeist_render::accounting::model::RenderResourceTable<T>
+pub const surgeist_render::RenderResource::ALL: &'static [Self]
+pub fn surgeist_render::RenderResource::from_fn<T: surgeist_ledger::dimension::TableValue>(value: impl core::ops::function::FnMut(Self) -> T) -> surgeist_render::accounting::model::RenderResourceTable<T>
+pub fn surgeist_render::RenderResource::get<T: surgeist_ledger::dimension::TableValue>(table: &surgeist_render::accounting::model::RenderResourceTable<T>, key: Self) -> &T
+pub fn surgeist_render::RenderResource::get_mut<T: surgeist_ledger::dimension::TableValue>(table: &mut surgeist_render::accounting::model::RenderResourceTable<T>, key: Self) -> &mut T
 pub enum surgeist_render::RenderRoute
 pub surgeist_render::RenderRoute::DirectVello
 pub surgeist_render::RenderRoute::GpuGraph
@@ -732,6 +739,13 @@ pub surgeist_render::RenderWork::TextRuns
 pub surgeist_render::RenderWork::UploadBytes
 pub surgeist_render::RenderWork::VariationTupleVisits
 pub surgeist_render::RenderWork::VelloPasses
+impl surgeist_ledger::__private::Sealed for surgeist_render::RenderWork
+impl surgeist_ledger::dimension::Dimension for surgeist_render::RenderWork
+pub type surgeist_render::RenderWork::Table<T: surgeist_ledger::dimension::TableValue> = surgeist_render::accounting::model::RenderWorkTable<T>
+pub const surgeist_render::RenderWork::ALL: &'static [Self]
+pub fn surgeist_render::RenderWork::from_fn<T: surgeist_ledger::dimension::TableValue>(value: impl core::ops::function::FnMut(Self) -> T) -> surgeist_render::accounting::model::RenderWorkTable<T>
+pub fn surgeist_render::RenderWork::get<T: surgeist_ledger::dimension::TableValue>(table: &surgeist_render::accounting::model::RenderWorkTable<T>, key: Self) -> &T
+pub fn surgeist_render::RenderWork::get_mut<T: surgeist_ledger::dimension::TableValue>(table: &mut surgeist_render::accounting::model::RenderWorkTable<T>, key: Self) -> &mut T
 pub enum surgeist_render::RepeatMode
 pub surgeist_render::RepeatMode::NoRepeat
 pub surgeist_render::RepeatMode::Repeat
@@ -1639,10 +1653,10 @@ pub fn surgeist_render::RenderCpuSnapshot::scope_usage(&self, scope: surgeist_re
 pub const fn surgeist_render::RenderCpuSnapshot::usage(&self) -> surgeist_render::RenderLifetimeUsage
 pub struct surgeist_render::RenderCpuUsage(_)
 impl surgeist_render::RenderCpuUsage
-pub const fn surgeist_render::RenderCpuUsage::live(self, resource: surgeist_render::RenderResource) -> u64
-pub const fn surgeist_render::RenderCpuUsage::opening_live(self, resource: surgeist_render::RenderResource) -> u64
-pub const fn surgeist_render::RenderCpuUsage::peak(self, resource: surgeist_render::RenderResource) -> u64
-pub const fn surgeist_render::RenderCpuUsage::work(self, work: surgeist_render::RenderWork) -> u64
+pub fn surgeist_render::RenderCpuUsage::live(self, resource: surgeist_render::RenderResource) -> u64
+pub fn surgeist_render::RenderCpuUsage::opening_live(self, resource: surgeist_render::RenderResource) -> u64
+pub fn surgeist_render::RenderCpuUsage::peak(self, resource: surgeist_render::RenderResource) -> u64
+pub fn surgeist_render::RenderCpuUsage::work(self, work: surgeist_render::RenderWork) -> u64
 pub struct surgeist_render::RenderDeviceSnapshot
 impl surgeist_render::RenderDeviceSnapshot
 pub fn surgeist_render::RenderDeviceSnapshot::dropped_events(&self) -> u64
@@ -1691,9 +1705,9 @@ pub fn surgeist_render::RenderGenerationInterval::scope_usage(&self, scope: surg
 pub fn surgeist_render::RenderGenerationInterval::usage(&self) -> surgeist_render::RenderUsage
 pub struct surgeist_render::RenderLifetimeUsage(_)
 impl surgeist_render::RenderLifetimeUsage
-pub const fn surgeist_render::RenderLifetimeUsage::live(self, resource: surgeist_render::RenderResource) -> u64
-pub const fn surgeist_render::RenderLifetimeUsage::peak(self, resource: surgeist_render::RenderResource) -> u64
-pub const fn surgeist_render::RenderLifetimeUsage::work(self, work: surgeist_render::RenderWork) -> u64
+pub fn surgeist_render::RenderLifetimeUsage::live(self, resource: surgeist_render::RenderResource) -> u64
+pub fn surgeist_render::RenderLifetimeUsage::peak(self, resource: surgeist_render::RenderResource) -> u64
+pub fn surgeist_render::RenderLifetimeUsage::work(self, work: surgeist_render::RenderWork) -> u64
 pub struct surgeist_render::RenderLimits
 impl surgeist_render::RenderLimits
 pub const fn surgeist_render::RenderLimits::new() -> Self
@@ -1702,7 +1716,7 @@ pub const fn surgeist_render::RenderLimits::scratch_bytes(self) -> u64
 pub const fn surgeist_render::RenderLimits::with_retained_bytes(self, bytes: u64) -> Self
 pub const fn surgeist_render::RenderLimits::with_scratch_bytes(self, bytes: u64) -> Self
 pub fn surgeist_render::RenderLimits::with_work_limit(self, work: surgeist_render::RenderWork, limit: u64) -> core::result::Result<Self, surgeist_render::RenderAccountingError>
-pub const fn surgeist_render::RenderLimits::work_limit(self, work: surgeist_render::RenderWork) -> u64
+pub fn surgeist_render::RenderLimits::work_limit(self, work: surgeist_render::RenderWork) -> u64
 impl core::default::Default for surgeist_render::RenderLimits
 pub fn surgeist_render::RenderLimits::default() -> Self
 pub struct surgeist_render::RenderReadbackReport(_)
@@ -1728,9 +1742,9 @@ pub const fn surgeist_render::RenderRefusal::quantity(self) -> surgeist_render::
 pub const fn surgeist_render::RenderRefusal::reason(self) -> surgeist_render::RenderRefusalReason
 pub struct surgeist_render::RenderUsage(_)
 impl surgeist_render::RenderUsage
-pub const fn surgeist_render::RenderUsage::live(self, resource: surgeist_render::RenderResource) -> u64
-pub const fn surgeist_render::RenderUsage::peak(self, resource: surgeist_render::RenderResource) -> u64
-pub const fn surgeist_render::RenderUsage::work(self, work: surgeist_render::RenderWork) -> u64
+pub fn surgeist_render::RenderUsage::live(self, resource: surgeist_render::RenderResource) -> u64
+pub fn surgeist_render::RenderUsage::peak(self, resource: surgeist_render::RenderResource) -> u64
+pub fn surgeist_render::RenderUsage::work(self, work: surgeist_render::RenderWork) -> u64
 pub struct surgeist_render::Renderer
 impl surgeist_render::Renderer
 pub const fn surgeist_render::Renderer::capabilities(&self) -> surgeist_render::Capabilities

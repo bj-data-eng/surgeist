@@ -5,11 +5,22 @@ use std::{
     task::{Context, Poll, Waker},
     time::Duration,
 };
-use surgeist_ledger::{
-    Change, Error, Limits, Operation, ProfileMode, Resource, SharedOperation, Work,
-};
-const WORK: Work<1> = Work::new(0).unwrap();
-const BYTES: Resource<1> = Resource::new(0).unwrap();
+use surgeist_ledger::{Change, Error, Limits, Operation, ProfileMode, SharedOperation};
+
+surgeist_ledger::dimensions! {
+    enum Work => WorkTable { Visit }
+}
+
+surgeist_ledger::dimensions! {
+    enum Resource => ResourceTable { Bytes }
+}
+
+const WORK: Work = Work::Visit;
+const BYTES: Resource = Resource::Bytes;
+
+fn limits(work: u64, bytes: u64) -> Limits<Work, Resource> {
+    Limits::new(WorkTable { Visit: work }, ResourceTable { Bytes: bytes })
+}
 thread_local! { static TIME:Cell<u64>=const {Cell::new(0)}; static READS:Cell<usize>=const{Cell::new(0)}; }
 fn clock() -> Duration {
     READS.set(READS.get() + 1);
@@ -18,10 +29,10 @@ fn clock() -> Duration {
 fn poll<F: Future>(f: Pin<&mut F>) -> Poll<F::Output> {
     f.poll(&mut Context::from_waker(Waker::noop()))
 }
-fn operation(mode: ProfileMode) -> SharedOperation<1, 1> {
+fn operation(mode: ProfileMode) -> SharedOperation<Work, Resource> {
     TIME.set(0);
     READS.set(0);
-    Operation::with_profile_clock("root", Limits::new([10], [20]), 2, mode, clock)
+    Operation::with_profile_clock("root", limits(10, 20), 2, mode, clock)
         .unwrap()
         .with_checkpoint_limit(2)
         .unwrap()

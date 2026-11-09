@@ -723,8 +723,11 @@ fn async_job_polls_share_first_stop_and_dispose_inner_work_before_receipt() {
             limit: 256
         }))
     );
-    assert_eq!(outcome.report.instructions(), 256);
-    assert_eq!(outcome.report.scope_work(), baseline.report.scope_work());
+    assert_eq!(outcome.report.instructions().unwrap(), 256);
+    assert_eq!(
+        outcome.report.scope_work().unwrap(),
+        baseline.report.scope_work().unwrap()
+    );
     assert!(matches!(
         outcome.report.termination(),
         ExecutionTermination::Completed

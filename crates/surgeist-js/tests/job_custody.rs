@@ -46,7 +46,7 @@ fn drain_in_zero_instruction_scope(context: &mut Context) -> JsResult<()> {
         outcome.result.unwrap_err().as_engine(),
         Some(&instruction_stop())
     );
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
     actual_drain
         .into_inner()
         .expect("the scoped host must call the executor")

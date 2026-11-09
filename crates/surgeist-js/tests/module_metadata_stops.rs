@@ -110,7 +110,7 @@ fn after_stop<T: Debug>(
         .unwrap();
     let first = first.unwrap();
     assert_eq!(outcome.result.unwrap_err(), first);
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
     (
         direct.expect("the direct constructor must return its own result"),
         first,

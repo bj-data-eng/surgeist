@@ -19,8 +19,8 @@ fn direct_eval_admits_lookup_of_an_ambient_private_name_absent_from_the_source()
                 ExecutionOptions::new(128).with_interner_byte_limit(limit),
             )
             .unwrap();
-        assert_eq!(evaluation.report.interner_bytes(), limit);
-        assert!(evaluation.report.instructions() > 0);
+        assert_eq!(evaluation.report.interner_bytes().unwrap(), limit);
+        assert!(evaluation.report.instructions().unwrap() > 0);
         if limit == 15 {
             assert_eq!(
                 evaluation.result.unwrap_err().as_engine(),
@@ -60,7 +60,7 @@ fn direct_eval_deduplicates_ambient_symbols_without_changing_shadowing() {
                 ExecutionOptions::new(128).with_name_comparison_limit(limit),
             )
             .unwrap();
-        assert_eq!(evaluation.report.name_comparisons(), limit);
+        assert_eq!(evaluation.report.name_comparisons().unwrap(), limit);
         if limit == 1 {
             assert_eq!(
                 evaluation.result.unwrap_err().as_engine(),
@@ -89,7 +89,7 @@ fn direct_eval_private_validation_precedes_environment_poisoning() {
                 ExecutionOptions::new(128).with_name_comparison_limit(limit),
             )
             .unwrap();
-        assert_eq!(evaluation.report.name_comparisons(), limit);
+        assert_eq!(evaluation.report.name_comparisons().unwrap(), limit);
         if limit == 3 {
             assert_eq!(
                 evaluation.result.unwrap_err().as_engine(),

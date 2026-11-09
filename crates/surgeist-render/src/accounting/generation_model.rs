@@ -1,7 +1,7 @@
 //! Typed observations of one retained native device-generation owner.
 use super::{
-    RESOURCE_COUNT, RenderAccountingError, RenderChangeKind, RenderLifetimeUsage, RenderQuantity,
-    RenderResource, RenderUsage, RenderWork, WORK_COUNT,
+    RenderAccountingError, RenderChangeKind, RenderLifetimeUsage, RenderQuantity, RenderResource,
+    RenderUsage, RenderWork, interval_resolves, profile_resolves,
 };
 use std::{fmt, sync::Arc, time::Duration};
 use surgeist_ledger::{Change, Event, IntervalReport, Report, Scope};
@@ -173,23 +173,23 @@ pub enum RenderGenerationEvent {
     },
 }
 fn project(
-    event: &Event<WORK_COUNT, RESOURCE_COUNT>,
-    scopes: impl Fn(Scope) -> RenderGenerationScope,
-) -> RenderGenerationEvent {
-    match *event {
+    event: &Event<RenderWork, RenderResource>,
+    scopes: impl Fn(Scope) -> Option<RenderGenerationScope>,
+) -> Option<RenderGenerationEvent> {
+    Some(match *event {
         Event::Phase {
             scope,
             duration,
             elapsed,
         } => RenderGenerationEvent::Phase {
-            scope: scopes(scope),
+            scope: scopes(scope)?,
             duration,
             elapsed,
         },
         Event::Refused {
             origin, elapsed, ..
         } => RenderGenerationEvent::Refused {
-            scope: scopes(origin),
+            scope: scopes(origin)?,
             elapsed,
         },
         Event::Accepted {
@@ -198,46 +198,23 @@ fn project(
             elapsed,
         } => {
             let (quantity, amount, kind) = match change {
-                Change::Work(d, n) => (
-                    RenderQuantity::Work(
-                        RenderWork::ALL
-                            .into_iter()
-                            .find(|w| w.dimension() == d)
-                            .expect("owned work dimension"),
-                    ),
-                    n,
-                    RenderChangeKind::Work,
-                ),
-                Change::Acquire(d, n) => (
-                    RenderQuantity::Resource(
-                        RenderResource::ALL
-                            .into_iter()
-                            .find(|r| r.dimension() == d)
-                            .expect("owned resource dimension"),
-                    ),
-                    n,
-                    RenderChangeKind::Acquire,
-                ),
-                Change::Release(d, n) => (
-                    RenderQuantity::Resource(
-                        RenderResource::ALL
-                            .into_iter()
-                            .find(|r| r.dimension() == d)
-                            .expect("owned resource dimension"),
-                    ),
-                    n,
-                    RenderChangeKind::Release,
-                ),
+                Change::Work(d, n) => (RenderQuantity::Work(d), n, RenderChangeKind::Work),
+                Change::Acquire(d, n) => {
+                    (RenderQuantity::Resource(d), n, RenderChangeKind::Acquire)
+                }
+                Change::Release(d, n) => {
+                    (RenderQuantity::Resource(d), n, RenderChangeKind::Release)
+                }
             };
             RenderGenerationEvent::Change {
-                scope: scopes(scope),
+                scope: scopes(scope)?,
                 quantity,
                 amount,
                 kind,
                 elapsed,
             }
         }
-    }
+    })
 }
 
 /// One exact generation checkpoint interval. Its peak and timing are distinct
@@ -245,14 +222,19 @@ fn project(
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RenderGenerationInterval {
     identity: RenderGenerationIdentity,
-    interval: IntervalReport<WORK_COUNT, RESOURCE_COUNT>,
+    interval: IntervalReport<RenderWork, RenderResource>,
 }
 impl RenderGenerationInterval {
+    /// Builds an interval, or refuses one that does not hold the fixed scopes.
     pub(crate) fn new(
         identity: RenderGenerationIdentity,
-        interval: IntervalReport<WORK_COUNT, RESOURCE_COUNT>,
-    ) -> Self {
-        Self { identity, interval }
+        interval: IntervalReport<RenderWork, RenderResource>,
+    ) -> Result<Self, RenderAccountingError> {
+        if interval_resolves(&interval, RenderGenerationScope::ALL.len()) {
+            Ok(Self { identity, interval })
+        } else {
+            Err(RenderAccountingError::Invariant)
+        }
     }
     /// Identity of the selected generation owner.
     pub const fn identity(&self) -> &RenderGenerationIdentity {
@@ -274,7 +256,7 @@ impl RenderGenerationInterval {
     pub fn scope_opening(&self, scope: RenderGenerationScope, resource: RenderResource) -> u64 {
         self.interval.scopes[scope.index()]
             .usage
-            .opening_live(resource.dimension())
+            .opening_live(resource)
     }
     /// This generation interval's host elapsed time, absent Off or untimed.
     pub fn elapsed(&self) -> Option<Duration> {
@@ -311,12 +293,14 @@ impl RenderGenerationInterval {
             .profile
             .iter()
             .flat_map(|p| &p.events)
-            .map(|e| {
+            .filter_map(|e| {
                 project(e, |s| {
-                    RenderGenerationScope::ALL
-                        .into_iter()
-                        .find(|r| self.interval.scopes[r.index()].scope == s)
-                        .expect("owned scope")
+                    RenderGenerationScope::ALL.into_iter().find(|r| {
+                        self.interval
+                            .scopes
+                            .get(r.index())
+                            .is_some_and(|entry| entry.scope == s)
+                    })
                 })
             })
     }
@@ -340,24 +324,34 @@ impl RenderGenerationInterval {
 pub struct RenderDeviceSnapshot {
     identity: RenderGenerationIdentity,
     usage: RenderLifetimeUsage,
-    profile: Option<Report<WORK_COUNT, RESOURCE_COUNT>>,
+    profile: Option<Report<RenderWork, RenderResource>>,
     retired: bool,
     fault: Option<RenderAccountingError>,
 }
 impl RenderDeviceSnapshot {
+    /// Builds a snapshot, or refuses a profile that does not hold the fixed scopes.
     pub(crate) fn new(
         identity: RenderGenerationIdentity,
         usage: RenderLifetimeUsage,
-        profile: Option<Report<WORK_COUNT, RESOURCE_COUNT>>,
+        profile: Option<Report<RenderWork, RenderResource>>,
         retired: bool,
         fault: Option<RenderAccountingError>,
-    ) -> Self {
-        Self {
-            identity,
-            usage,
-            profile,
-            retired,
-            fault,
+    ) -> Result<Self, RenderAccountingError> {
+        let resolves = profile.as_ref().is_none_or(|profile| {
+            profile_resolves(profile, RenderGenerationScope::ALL.len(), |scope| {
+                profile.scopes.iter().any(|entry| entry.scope == scope)
+            })
+        });
+        if resolves {
+            Ok(Self {
+                identity,
+                usage,
+                profile,
+                retired,
+                fault,
+            })
+        } else {
+            Err(RenderAccountingError::Invariant)
         }
     }
     /// Identity of the retained native generation owner.
@@ -409,13 +403,18 @@ impl RenderDeviceSnapshot {
     }
     /// Selected lifetime detail without allocating another event buffer.
     pub fn events(&self) -> impl Iterator<Item = RenderGenerationEvent> + '_ {
-        self.profile.iter().flat_map(|p| &p.events).map(|e| {
-            project(e, |s| {
-                RenderGenerationScope::ALL
-                    .into_iter()
-                    .find(|r| self.profile.as_ref().unwrap().scopes[r.index()].scope == s)
-                    .expect("owned scope")
+        let profile = self.profile.as_ref();
+        self.profile
+            .iter()
+            .flat_map(|p| &p.events)
+            .filter_map(move |e| {
+                project(e, |s| {
+                    RenderGenerationScope::ALL.into_iter().find(|r| {
+                        profile
+                            .and_then(|p| p.scopes.get(r.index()))
+                            .is_some_and(|entry| entry.scope == s)
+                    })
+                })
             })
-        })
     }
 }

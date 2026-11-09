@@ -48,7 +48,7 @@ fn assert_poll_returns_its_retained_stop(pending: bool) {
             limit: 0
         }))
     );
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
 
     // The outer scope already preserves its first stop. The job's own actual
     // poll must expose that stop, without a success or another Pending escaping.

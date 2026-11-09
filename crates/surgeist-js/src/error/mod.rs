@@ -641,6 +641,12 @@ pub enum EngineResourceError {
     /// A fallible storage reservation failed.
     #[error("could not allocate engine resource storage")]
     Allocation,
+    /// The execution ledger found a broken internal invariant.
+    #[error("execution ledger defect: {0}")]
+    LedgerDefect(surgeist_ledger::Defect),
+    /// The execution ledger rejected a call that its prepared scopes rule out.
+    #[error("execution ledger rejected a call its prepared scopes rule out")]
+    LedgerInvariant,
 }
 
 impl From<EngineResourceError> for JsError {

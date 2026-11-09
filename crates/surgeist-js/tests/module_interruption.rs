@@ -73,7 +73,7 @@ fn stop_evaluation(module: &Module, context: &mut Context, limit: u64) {
         })
         .unwrap();
     assert_instruction_stop(&outcome.result.unwrap_err(), limit);
-    assert_eq!(outcome.report.instructions(), limit);
+    assert_eq!(outcome.report.instructions().unwrap(), limit);
 }
 
 fn assert_later_evaluation_is_terminal(module: &Module, context: &mut Context) {
@@ -86,7 +86,7 @@ fn assert_later_evaluation_is_terminal(module: &Module, context: &mut Context) {
         .result
         .expect_err("an interrupted instance must refuse a fresh higher-budget evaluation");
     assert!(error.as_engine().is_some());
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
 }
 
 #[test]
@@ -197,7 +197,7 @@ fn stop_retained_before_evaluation_preserves_the_linked_instances_first_valid_at
         })
         .unwrap();
     assert_instruction_stop(&stopped.result.unwrap_err(), 0);
-    assert_eq!(stopped.report.instructions(), 0);
+    assert_eq!(stopped.report.instructions().unwrap(), 0);
     assert_eq!(effects(&mut context), 0.into());
 
     let first = evaluate_with_fresh_budget(&module, &mut context);
@@ -453,7 +453,7 @@ mod continuation {
                 .run_next(&mut self.context, INTERRUPTING_LIMIT);
             assert_instruction_stop(&direct.unwrap_err(), INTERRUPTING_LIMIT);
             assert_instruction_stop(&outcome.result.unwrap_err(), INTERRUPTING_LIMIT);
-            assert_eq!(outcome.report.instructions(), INTERRUPTING_LIMIT);
+            assert_eq!(outcome.report.instructions().unwrap(), INTERRUPTING_LIMIT);
             assert_eq!(effects(&mut self.context), 1.into());
             assert_eq!(self.evaluation.state(), PromiseState::Pending);
         }
@@ -657,7 +657,7 @@ mod continuation {
                 .result
                 .expect_err("every root and member alias must refuse native evaluation");
             assert!(error.as_engine().is_some());
-            assert_eq!(observation.report.instructions(), 0);
+            assert_eq!(observation.report.instructions().unwrap(), 0);
         }
         assert_eq!(effects(&mut graph.context), 1.into());
         assert_eq!(graph.count("parentEffects"), 0.into());
@@ -740,7 +740,7 @@ mod continuation {
                 .run_next(&mut self.graph.context, INTERRUPTING_LIMIT);
             assert_instruction_stop(&direct.unwrap_err(), INTERRUPTING_LIMIT);
             assert_instruction_stop(&outcome.result.unwrap_err(), INTERRUPTING_LIMIT);
-            assert_eq!(outcome.report.instructions(), INTERRUPTING_LIMIT);
+            assert_eq!(outcome.report.instructions().unwrap(), INTERRUPTING_LIMIT);
             assert_eq!(effects(&mut self.graph.context), 1.into());
             assert_eq!(self.graph.count("parentEffects"), 0.into());
             assert_eq!(self.graph.count("grandEffects"), 0.into());

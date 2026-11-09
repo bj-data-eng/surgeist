@@ -400,7 +400,7 @@ fn finite_extremes_allow_overflowing_spans_fused_cancellation_and_rounded_coinci
 }
 
 fn no_custody(report: &PaintReport) {
-    for resource in ResourceKind::ALL {
+    for &resource in ResourceKind::ALL {
         assert_eq!(report.live(resource), 0, "{resource:?}");
     }
 }
@@ -596,7 +596,7 @@ fn phase_work(report: &PaintReport, phase: PaintPhase, kind: WorkKind) -> u64 {
 }
 
 fn usage_equal(actual: &PaintReport, expected: &PaintReport) {
-    for kind in WorkKind::ALL {
+    for &kind in WorkKind::ALL {
         assert_eq!(actual.work(kind), expected.work(kind), "{kind:?}");
         for phase in PHASES {
             assert_eq!(
@@ -606,7 +606,7 @@ fn usage_equal(actual: &PaintReport, expected: &PaintReport) {
             );
         }
     }
-    for resource in ResourceKind::ALL {
+    for &resource in ResourceKind::ALL {
         assert_eq!(actual.live(resource), expected.live(resource));
         assert_eq!(actual.peak(resource), expected.peak(resource));
     }

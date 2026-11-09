@@ -431,12 +431,12 @@ mod tests {
         let (body, interner, name) = source(2);
         let (result, _, report) = run_with_limit(&body, &interner, u64::MAX, false);
         result.expect("calibrate eligible globals");
-        let exact = report.compiler_work();
+        let exact = report.compiler_work().unwrap();
         assert!(exact > 0);
         let (result, names, report) = run_with_limit(&body, &interner, exact, false);
         assert_eq!(result.expect("exact work").len(), 2);
         assert_eq!(names, [name, name]);
-        assert_eq!(report.compiler_work(), exact);
+        assert_eq!(report.compiler_work().unwrap(), exact);
         let limit = exact - 1;
         let (result, names, report) = run_with_limit(&body, &interner, limit, false);
         assert_eq!(
@@ -446,6 +446,6 @@ mod tests {
             ))
         );
         assert_eq!(names, [name]);
-        assert!(report.compiler_work() <= limit);
+        assert!(report.compiler_work().unwrap() <= limit);
     }
 }

@@ -28,6 +28,7 @@ fn ledger_failures_preserve_setup_causes_and_distinguish_private_invariants() {
         LedgerError::CheckpointLimit { limit: 1 },
         LedgerError::CheckpointsConfigured,
         LedgerError::ScopeLimit { limit: 12 },
+        LedgerError::Defect(surgeist_ledger::Defect::ScopeEntry),
     ] {
         assert_eq!(map_ledger_failure(ledger), RenderAccountingError::Invariant);
     }
@@ -351,4 +352,30 @@ fn retained_growth_admits_actual_overlap_and_transfers_only_final_backing() {
             assert_eq!(report.refusal().unwrap().phase(), RenderPhase::Attempt);
         }
     }
+}
+
+#[test]
+fn reports_refuse_ledger_intervals_that_lack_the_fixed_scopes() {
+    use surgeist_ledger::{IntervalReport, Limits, Operation};
+    let operation =
+        Operation::<RenderWork, RenderResource>::new("test", Limits::unlimited(), 1).unwrap();
+    let identity = RenderCpuIdentity(operation.root());
+    let empty = || IntervalReport {
+        scopes: Vec::new(),
+        profile: None,
+    };
+    assert_eq!(
+        RenderAttemptReport::new(
+            RenderAttemptKind::Frame,
+            RenderAttemptStatus::Succeeded,
+            empty(),
+            None
+        )
+        .unwrap_err(),
+        RenderAccountingError::Invariant
+    );
+    assert_eq!(
+        RenderCpuInterval::new(identity, empty()).unwrap_err(),
+        RenderAccountingError::Invariant
+    );
 }
