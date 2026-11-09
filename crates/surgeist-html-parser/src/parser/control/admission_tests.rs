@@ -303,7 +303,10 @@ fn hosted(
             )
             .unwrap();
     }
-    let request = crate::HtmlParseAccounting::host(ledger, scope).into_request();
+    let request = crate::HtmlParseAccounting::host(surgeist_html::accounting::HtmlHostScope::new(
+        ledger, scope,
+    ))
+    .into_request();
     let control = ParseControl::with_accounting(
         parse_limits.finish().unwrap(),
         HtmlParseCancellation::new(),
@@ -420,9 +423,11 @@ fn a_phase_the_ledger_cannot_observe_stops_the_parse_with_the_fault() {
         1,
     )
     .unwrap();
-    let request = crate::HtmlParseAccounting::host(ledger, root)
-        .observing_phases()
-        .into_request();
+    let request = crate::HtmlParseAccounting::host(surgeist_html::accounting::HtmlHostScope::new(
+        ledger, root,
+    ))
+    .observing_phases()
+    .into_request();
     let mut c = ParseControl::with_accounting(
         builder().finish().unwrap(),
         HtmlParseCancellation::new(),
@@ -498,7 +503,10 @@ fn a_refusal_whose_item_carries_nothing_reports_the_rate_as_one() {
     .unwrap()
     .share();
     let root = ledger.root();
-    let request = crate::HtmlParseAccounting::host(ledger, root).into_request();
+    let request = crate::HtmlParseAccounting::host(surgeist_html::accounting::HtmlHostScope::new(
+        ledger, root,
+    ))
+    .into_request();
     let mut c = ParseControl::with_accounting(
         builder().finish().unwrap(),
         HtmlParseCancellation::new(),

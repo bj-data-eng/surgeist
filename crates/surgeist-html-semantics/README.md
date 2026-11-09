@@ -188,11 +188,12 @@ and the controlled OptionValue owner charge their work and resources through a `
 operation of the HTML accounting schema (`HtmlWork` and `HtmlResource` of
 `surgeist_html::accounting`). Their limits are the caps of ledger scopes, and their usage types are
 typed reads of those scopes. Without accounting supplied, each builder, import, session and
-constructor charges an operation of its own that nothing observes. `HtmlSemanticAccounting::host`
-names a scope of an operation the host owns; `HtmlCaptureBuilder::with_accounting` and
-`HtmlSemanticSession::with_accounting` create their scopes below it, and an import charges a scope
-of its own below the scope its builder was given. `HtmlSemanticAccounting` documents the scope tree
-and the refusals a host cap reports. A ledger failure that is not a refused cap stops with
+constructor charges an operation of its own that nothing observes. `HtmlHostScope` of
+`surgeist_html::accounting` names a scope of an operation the host owns; `HtmlCaptureBuilder::with_accounting`
+and `HtmlSemanticSession::with_accounting` create their scopes below it, and an import charges a scope
+of its own below the scope its builder was given. The module documentation of `surgeist_html::accounting`
+documents the scope tree and the refusals a host cap reports.
+A ledger failure that is not a refused cap stops with
 `HtmlSemanticFailureKind::Accounting`, or with the `Accounting` variant of the error of the
 operation, which carries the `HtmlAccountingFault` of `surgeist_html::accounting`. The usage reads
 of a session and of the controlled OptionValue owner stay infallible and return the last usage

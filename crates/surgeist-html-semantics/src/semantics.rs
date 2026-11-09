@@ -116,7 +116,7 @@ use crate::{
     HtmlBaseFactsRevision, HtmlBaseMissing, HtmlBaseUrlRecord, HtmlCapture, HtmlCaptureError,
     HtmlCaptureId, HtmlCaptureSubjectId, HtmlCapturedBaseFacts, HtmlCapturedChildIds,
     HtmlCapturedChildren, HtmlCapturedElement, HtmlCapturedNode, HtmlCapturedNodeKind,
-    HtmlCapturedParent, HtmlDocumentClass, HtmlHostFactsRevision, HtmlSemanticAccounting,
+    HtmlCapturedParent, HtmlDocumentClass, HtmlHostFactsRevision,
 };
 use std::{
     error::Error,
@@ -127,7 +127,7 @@ use std::{
     },
 };
 use surgeist_html::accounting::{
-    HtmlAccountingFault, HtmlCapScope, HtmlLedgerOutcome, HtmlResource, classify,
+    HtmlAccountingFault, HtmlCapScope, HtmlHostScope, HtmlLedgerOutcome, HtmlResource, classify,
 };
 use surgeist_html::bounded::{
     numeric::{
@@ -147,8 +147,8 @@ use surgeist_ledger::Change;
 /// Finite cumulative admission for one semantic session.
 ///
 /// The limits are the caps of the session's ledger scope, `html-query`, and
-/// [`HtmlSemanticUsage`] is read from that scope and its observed sibling; see
-/// [`HtmlSemanticAccounting`](crate::HtmlSemanticAccounting).
+/// [`HtmlSemanticUsage`] is read from that scope and its observed sibling; see the schema module
+/// documentation of `surgeist_html::accounting`.
 ///
 /// Work charges visits, result writes, inspected UTF-16 units and conservative
 /// inspection envelopes for the existing intrinsic producers. Output counts
@@ -1455,15 +1455,15 @@ impl<'a> HtmlSemanticSession<'a> {
     ) -> Result<Self, HtmlSemanticFailure> {
         Self::open(capture, context, interpreter, limits, cancellation, None)
     }
-    /// A session that charges below the scope `accounting` names, in the host's operation. See
-    /// [`HtmlSemanticAccounting`] for the scopes it creates.
+    /// A session that charges below the scope `accounting` names, in the host's operation. The
+    /// schema module documentation of `surgeist_html::accounting` lists the scopes it creates.
     pub fn with_accounting(
         capture: &'a HtmlCapture,
         context: &'a HtmlSemanticContext,
         interpreter: HtmlValueInterpreter,
         limits: HtmlSemanticLimits,
         cancellation: HtmlSemanticCancellation,
-        accounting: &HtmlSemanticAccounting,
+        accounting: &HtmlHostScope,
     ) -> Result<Self, HtmlSemanticFailure> {
         Self::open(
             capture,
@@ -1480,7 +1480,7 @@ impl<'a> HtmlSemanticSession<'a> {
         interpreter: HtmlValueInterpreter,
         limits: HtmlSemanticLimits,
         cancellation: HtmlSemanticCancellation,
-        accounting: Option<&HtmlSemanticAccounting>,
+        accounting: Option<&HtmlHostScope>,
     ) -> Result<Self, HtmlSemanticFailure> {
         if capture.identity() != context.capture() {
             return Err(HtmlSemanticFailure {

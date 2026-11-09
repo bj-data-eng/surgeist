@@ -84,18 +84,18 @@ impl QueryAccount {
     /// of the session's own whose root carries the caps.
     pub(super) fn new(
         session: HtmlSemanticLimits,
-        accounting: Option<&HtmlSemanticAccounting>,
+        accounting: Option<&HtmlHostScope>,
     ) -> Result<Self, LedgerError> {
         let (mut operation, caps, parent) = match accounting {
             Some(host) => {
-                let mut operation = Ledger::Shared(host.ledger.clone());
+                let mut operation = Ledger::Shared(host.ledger().clone());
                 let caps = operation.child(
-                    host.scope,
+                    host.scope(),
                     HtmlCapScope::Query.name(),
                     limits(session),
                     aggregate_tariffs(),
                 )?;
-                (operation, caps, host.scope)
+                (operation, caps, host.scope())
             }
             None => {
                 let operation = Operation::new(HtmlCapScope::Query.name(), limits(session), 2)?;

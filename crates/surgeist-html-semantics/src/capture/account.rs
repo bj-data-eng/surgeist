@@ -7,8 +7,8 @@
 //! gauge: the scope records the deepest subject admitted.
 
 use super::*;
-use crate::HtmlSemanticAccounting;
 use crate::accounting::{Ledger, LedgerError, wide};
+use surgeist_html::accounting::HtmlHostScope;
 use surgeist_html::accounting::{
     HtmlAccountingFault, HtmlCapScope, HtmlChange, HtmlLedgerOutcome, HtmlLimits, HtmlResource,
     HtmlWork, aggregate_tariffs, classify,
@@ -118,7 +118,7 @@ pub(crate) struct CaptureAccount {
     scope: Scope,
     /// The host scope the builder charges below, which imports and other scopes of the builder
     /// share.
-    host: Option<HtmlSemanticAccounting>,
+    host: Option<HtmlHostScope>,
 }
 
 /// Where a builder's accounting is: not yet created, because a builder that charges its own
@@ -141,11 +141,11 @@ impl Account {
     /// The accounting of a builder that charges below the host's scope.
     pub(crate) fn hosted(
         limits: HtmlCaptureLimits,
-        host: &HtmlSemanticAccounting,
+        host: &HtmlHostScope,
     ) -> Result<Self, LedgerError> {
-        let mut ledger = Ledger::Shared(host.ledger.clone());
+        let mut ledger = Ledger::Shared(host.ledger().clone());
         let scope = ledger.child(
-            host.scope,
+            host.scope(),
             HtmlCapScope::Capture.name(),
             caps(limits),
             aggregate_tariffs(),
@@ -478,10 +478,10 @@ impl CaptureAccount {
     ) -> Result<ImportAccount, HtmlConstructionCaptureError> {
         let (ledger, scope) = match &self.host {
             Some(host) => {
-                let mut ledger = Ledger::Shared(host.ledger.clone());
+                let mut ledger = Ledger::Shared(host.ledger().clone());
                 let scope = ledger
                     .child(
-                        host.scope,
+                        host.scope(),
                         HtmlCapScope::CaptureImport.name(),
                         import_caps(limits),
                         aggregate_tariffs(),
