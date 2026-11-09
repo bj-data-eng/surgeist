@@ -28,10 +28,217 @@ fn ledger_failures_preserve_setup_causes_and_distinguish_private_invariants() {
         LedgerError::CheckpointLimit { limit: 1 },
         LedgerError::CheckpointsConfigured,
         LedgerError::ScopeLimit { limit: 12 },
-        LedgerError::Defect(surgeist_ledger::Defect::ScopeEntry),
     ] {
         assert_eq!(map_ledger_failure(ledger), RenderAccountingError::Invariant);
     }
+}
+
+// These fixtures deliberately misuse Ledger's public custody operations. Public
+// Render callers cannot access the operation or release an owned hold early.
+fn release_preparation_custody_before_hold_drop(account: &Account) {
+    let resource = RenderResource::RetainedCpuBytes;
+    let scope = account.scopes[RenderPhase::Preparation.index()];
+    let hold = account.acquire(resource, 1).unwrap();
+    account
+        .ledger
+        .apply(scope, Change::Release(resource, 1))
+        .unwrap();
+    // Establish the real public-Ledger refusal the actual destructor will meet.
+    assert!(matches!(
+        account.ledger.check_batch(scope, &[Change::Release(resource, 1)]),
+        Err(LedgerError::Refused(refusal))
+            if refusal.current == 0
+                && refusal.change == Change::Release(resource, 1)
+                && refusal.reason == surgeist_ledger::RefusalReason::Underflow
+    ));
+    drop(hold);
+}
+
+fn cancel_image_repeat_after_hold_underflow(context: &mut RenderAccountingContext) {
+    let attempt = Attempt::begin(
+        context,
+        RenderAttemptKind::ImageRepeat,
+        GlyphRunLimits::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX),
+        #[cfg(feature = "render-text")]
+        None,
+    )
+    .unwrap();
+    release_preparation_custody_before_hold_drop(&attempt.account);
+    drop(attempt);
+}
+
+fn assert_latched_underflow(account: &Account, phase: RenderPhase, resource: RenderResource) {
+    let Some(RenderAccountingError::Refused(refusal)) = account.latched_fault() else {
+        panic!(
+            "drop must retain the typed custody underflow: {:?}",
+            account.latched_fault()
+        );
+    };
+    assert_eq!(refusal.phase(), phase);
+    assert_eq!(refusal.quantity(), RenderQuantity::Resource(resource));
+    assert_eq!(refusal.current(), 0);
+    assert_eq!(refusal.amount(), 1);
+    assert_eq!(refusal.reason(), RenderRefusalReason::Underflow);
+}
+
+#[test]
+fn drop_fault_cancellation_replaces_prior_attempt_report() {
+    let mut context = RenderAccountingContext::default();
+    crate::Scene::new().inspect(&mut context).unwrap();
+    assert_eq!(
+        context.last_attempt().unwrap().kind(),
+        RenderAttemptKind::SceneInspection
+    );
+
+    cancel_image_repeat_after_hold_underflow(&mut context);
+
+    let report = context.last_attempt().unwrap();
+    assert_eq!(report.kind(), RenderAttemptKind::ImageRepeat);
+    assert_eq!(report.status(), RenderAttemptStatus::Canceled);
+}
+
+#[test]
+fn drop_fault_cancellation_does_not_fail_next_attempt() {
+    let mut context = RenderAccountingContext::default();
+    cancel_image_repeat_after_hold_underflow(&mut context);
+
+    crate::Scene::new()
+        .inspect(&mut context)
+        .expect("a canceled attempt's drop fault must not fail an unrelated inspection");
+    let report = context.last_attempt().unwrap();
+    assert_eq!(report.kind(), RenderAttemptKind::SceneInspection);
+    assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
+}
+
+#[test]
+fn drop_fault_preparation_hold_preserves_underflow_details() {
+    let mut context = RenderAccountingContext::default();
+    let attempt = Attempt::begin(
+        &mut context,
+        RenderAttemptKind::GlyphRun,
+        GlyphRunLimits::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX),
+        #[cfg(feature = "render-text")]
+        None,
+    )
+    .unwrap();
+    release_preparation_custody_before_hold_drop(&attempt.account);
+    assert_latched_underflow(
+        &attempt.account,
+        RenderPhase::Preparation,
+        RenderResource::RetainedCpuBytes,
+    );
+}
+
+fn account_with_child_below_repeat_quota() -> (Account, Scope) {
+    // Render's ordinary fixed table is full and its quota scopes are leaves.
+    // This valid Ledger fixture reserves one extra scope to exercise genuine
+    // inclusive-versus-direct custody refusal; no Scope identity is fabricated.
+    let mut operation =
+        Operation::new("drop-fault-fixture", Limits::unlimited(), PHASE_COUNT + 1).unwrap();
+    let mut scopes = [operation.root(); PHASE_COUNT];
+    for phase in RenderPhase::ALL.into_iter().skip(1) {
+        let limits = match phase {
+            RenderPhase::RepeatQuota => Limits::new(
+                RenderWorkTable::splat(u64::MAX),
+                RenderResourceTable {
+                    LocalRepeatTileQuota: 1_000_000,
+                    ..RenderResourceTable::splat(u64::MAX)
+                },
+            ),
+            RenderPhase::AtlasQuota => {
+                let texels = u64::from(u16::MAX) * u64::from(u16::MAX);
+                Limits::new(
+                    RenderWorkTable::splat(u64::MAX),
+                    RenderResourceTable {
+                        LocalAtlasSourceByteQuota: texels * 4,
+                        LocalAtlasTexelQuota: texels,
+                        ..RenderResourceTable::splat(u64::MAX)
+                    },
+                )
+            }
+            _ => Limits::unlimited(),
+        };
+        scopes[phase.index()] = operation
+            .child(
+                scopes[phase.parent().unwrap().index()],
+                phase.name(),
+                limits,
+                Tariffs::identity(),
+            )
+            .unwrap();
+    }
+    let child = operation
+        .child(
+            scopes[RenderPhase::RepeatQuota.index()],
+            "actual-child-custody",
+            Limits::unlimited(),
+            Tariffs::identity(),
+        )
+        .unwrap();
+    (
+        Account {
+            ledger: operation.share(),
+            scopes: Arc::new(scopes),
+            phase: RenderPhase::Preparation,
+            cpu: None,
+            history: None,
+            custody_open: Arc::new(AtomicBool::new(true)),
+            first_refusal: Arc::new(Mutex::new(None)),
+            fault: Arc::new(Mutex::new(None)),
+            kind: RenderAttemptKind::ImageRepeat,
+        },
+        child,
+    )
+}
+
+#[test]
+fn drop_fault_local_quota_preserves_underflow_details() {
+    let (account, child) = account_with_child_below_repeat_quota();
+    let resource = RenderResource::LocalRepeatTileQuota;
+    let quota = account
+        .local_quota(RenderPhase::Repeat, [1_000_000; 2])
+        .unwrap();
+    account
+        .ledger
+        .apply(child, Change::Acquire(resource, 1))
+        .unwrap();
+    let quota_scope = account.scopes[RenderPhase::RepeatQuota.index()];
+    assert_eq!(account.ledger.usage(quota_scope).unwrap().live(resource), 1);
+    // Ledger permits only the acquiring child to release this custody. The
+    // actual quota destructor will attempt the parent's inclusive balance.
+    assert!(matches!(
+        account.ledger.check_batch(quota_scope, &[Change::Release(resource, 1)]),
+        Err(LedgerError::Refused(refusal))
+            if refusal.current == 0
+                && refusal.change == Change::Release(resource, 1)
+                && refusal.reason == surgeist_ledger::RefusalReason::Underflow
+    ));
+
+    drop(quota);
+
+    // This fixture deliberately has an extra scope, so it observes the fault
+    // latch directly and never projects a fixed-table Render attempt report.
+    let fault = account.latched_fault();
+    account
+        .ledger
+        .apply(child, Change::Release(resource, 1))
+        .unwrap();
+    assert_eq!(account.ledger.usage(quota_scope).unwrap().live(resource), 0);
+    assert!(
+        fault.is_some(),
+        "quota drop discarded its real Ledger refusal"
+    );
+    assert_latched_underflow(&account, RenderPhase::RepeatQuota, resource);
+}
+
+#[test]
+fn drop_fault_distinct_ledger_defects_remain_distinct() {
+    // Valid Ledger sequencing cannot produce a Defect. This checks conversion
+    // of public error values only, not execution of a fabricated broken ledger.
+    assert_ne!(
+        map_ledger_failure(LedgerError::Defect(surgeist_ledger::Defect::ScopeEntry)),
+        map_ledger_failure(LedgerError::Defect(surgeist_ledger::Defect::ReportScope)),
+    );
 }
 use std::sync::atomic::{AtomicU64, Ordering};
 static TIME: AtomicU64 = AtomicU64::new(0);
