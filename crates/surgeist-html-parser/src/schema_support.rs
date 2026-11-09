@@ -2,7 +2,7 @@
 //! accounting schema.
 
 use crate::{HtmlParseWorkCategory, parser::control::ParseControl};
-use surgeist_html::accounting::{HtmlChange, HtmlLimits, HtmlResource, HtmlWork, charging_tariffs};
+use surgeist_html::accounting::{HtmlLimits, HtmlResource, HtmlWork, charging_tariffs};
 use surgeist_ledger::{Error, Operation, ScopeCharge};
 
 /// Each parser work category with the schema dimension that carries it.
@@ -27,25 +27,6 @@ pub(crate) struct Amounts {
     pub(crate) credits: u64,
 }
 
-/// The amounts the schema's changes produce through the schema's tariffs in a
-/// real ledger operation.
-pub(crate) fn through_schema(changes: &[HtmlChange]) -> Amounts {
-    let mut operation = Operation::new("cap", HtmlLimits::unlimited(), 2).unwrap();
-    let cap = operation.root();
-    let charging = operation
-        .child(cap, "charging", HtmlLimits::unlimited(), charging_tariffs())
-        .unwrap();
-    operation.apply_batch(charging, changes).unwrap();
-    let mut categories = [0; 8];
-    for (slot, (_, dimension)) in categories.iter_mut().zip(CATEGORIES) {
-        *slot = operation.usage(charging).unwrap().work(dimension);
-    }
-    Amounts {
-        categories,
-        credits: operation.usage(cap).unwrap().work(HtmlWork::Credits),
-    }
-}
-
 /// The amounts an operation of `surgeist-html` records when it charges a scope
 /// of a real ledger operation, the stock implementation of the charging trait.
 pub(crate) fn through_ledger(
@@ -67,6 +48,26 @@ pub(crate) fn through_ledger(
         categories,
         credits: operation.usage(cap).unwrap().work(HtmlWork::Credits),
     }
+}
+
+/// As [`through_ledger`], for an operation whose charge can also fault by itself. The fault is a
+/// failure of the test.
+pub(crate) fn through_charged<E: std::fmt::Debug>(
+    charge: impl FnOnce(
+        &mut ScopeCharge<'_, HtmlWork, HtmlResource>,
+    ) -> Result<
+        (),
+        surgeist_html::accounting::HtmlChargedError<Error<HtmlWork, HtmlResource>, E>,
+    >,
+) -> Amounts {
+    through_ledger(|scope| {
+        charge(scope).map_err(|error| match error {
+            surgeist_html::accounting::HtmlChargedError::Stopped(stop) => stop,
+            surgeist_html::accounting::HtmlChargedError::Faulted(fault) => {
+                panic!("the operation faulted: {fault:?}")
+            }
+        })
+    })
 }
 
 /// The amounts a controller has charged so far.

@@ -3,15 +3,15 @@
 //! controller charges today; the schema side runs through a real ledger.
 
 use crate::parser::control::{HtmlParseStop, ParseControl};
-use crate::schema_support::{CATEGORIES, charged, through_ledger, through_schema};
+use crate::schema_support::{CATEGORIES, charged, through_ledger};
 use crate::settings::RESOURCES;
 use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
 use surgeist_html::{
     accounting::{
-        HtmlChange, HtmlCustody, HtmlLimits, HtmlResource, HtmlWork, attribute_edit_entries,
-        attribute_edit_work, record_largest, retained_provider_storage,
+        HtmlChange, HtmlCustody, HtmlLimits, HtmlResource, HtmlWork, record_largest,
+        retained_provider_storage,
     },
-    bounded::{construction::HtmlConstructionAttributeWork, values::HtmlStringPool},
+    bounded::values::HtmlStringPool,
 };
 use surgeist_ledger::{Change, Dimension, Operation};
 
@@ -82,38 +82,6 @@ fn value_pool_charges_through_the_controller_match_the_stock_ledger_charger() {
     same!(charge_mark);
     same!(charge_seal);
     same!(charge_disposal);
-}
-
-#[test]
-fn attribute_edit_work_converts_to_the_charge_and_resources_of_the_controller() {
-    let work = HtmlConstructionAttributeWork {
-        record_visits: 3,
-        provider_calls: 5,
-        inspected_bytes: 7,
-        copied_bytes: 11,
-        record_writes: 13,
-        atomic_layout_bytes: 64,
-        auxiliary_entries: 4,
-    };
-    let mut c = control();
-    c.admit_attribute_work(work).unwrap();
-    assert_eq!(charged(&c), through_schema(&attribute_edit_work(&work)));
-    assert_eq!(
-        c.usage()
-            .resource(HtmlParseResource::AuxiliaryEntries)
-            .current(),
-        4
-    );
-    assert_eq!(
-        attribute_edit_entries(&work),
-        Change::Acquire(HtmlResource::AuxiliaryEntries, 4)
-    );
-    assert_eq!(
-        c.usage()
-            .resource(HtmlParseResource::AtomicLayoutBytes)
-            .high_water(),
-        64
-    );
 }
 
 #[test]

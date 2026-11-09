@@ -315,12 +315,18 @@ pub mod slots {
 #[derive(Debug, Default)]
 pub struct Recorder {
     batches: Vec<Vec<HtmlChange>>,
+    gauges: Vec<(HtmlResource, u64)>,
 }
 
 impl Recorder {
     /// Every batch charged so far, oldest first.
     pub fn batches(&self) -> &[Vec<HtmlChange>] {
         &self.batches
+    }
+
+    /// Every gauge recorded so far, oldest first.
+    pub fn gauges(&self) -> &[(HtmlResource, u64)] {
+        &self.gauges
     }
 
     /// The amount charged to one work dimension across all batches.
@@ -344,8 +350,9 @@ impl Charge<HtmlWork, HtmlResource> for Recorder {
         Ok(())
     }
 
-    fn record_largest(&mut self, _: HtmlResource, _: u64) -> Result<(), Infallible> {
-        panic!("this operation records no gauge");
+    fn record_largest(&mut self, resource: HtmlResource, value: u64) -> Result<(), Infallible> {
+        self.gauges.push((resource, value));
+        Ok(())
     }
 }
 
@@ -370,4 +377,21 @@ impl Charge<HtmlWork, HtmlResource> for Refuser {
     fn record_largest(&mut self, _: HtmlResource, _: u64) -> Result<(), Refused> {
         Err(Refused)
     }
+}
+
+/// The work a construction action description charges through `charge`, read from a recorder.
+pub fn charged_by(
+    charge: impl FnOnce(
+        &mut Recorder,
+    ) -> Result<
+        (),
+        surgeist_html::accounting::HtmlChargedError<
+            Infallible,
+            surgeist_html::bounded::construction::HtmlConstructionChargeFault,
+        >,
+    >,
+) -> Recorder {
+    let mut recorder = Recorder::default();
+    charge(&mut recorder).expect("the description charges the part it has");
+    recorder
 }

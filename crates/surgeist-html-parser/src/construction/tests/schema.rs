@@ -6,7 +6,7 @@ use super::*;
 use crate::meta_csp::{Account, Caller};
 use crate::schema_support::{charged, through_ledger};
 use surgeist_html::{
-    accounting::{HtmlChargedError, HtmlResource, HtmlWork, csp_storage},
+    accounting::{HtmlChargedError, HtmlWork},
     bounded::{
         script::HtmlScriptTypeCursor,
         values::{HtmlAttributeNameIndex, HtmlAttributeStorage, HtmlNameIndexSlot},
@@ -152,14 +152,12 @@ fn csp_actions_convert_to_the_work_layout_and_storage_the_account_admits() {
             .high_water(),
         layout_bytes
     );
-    for (resource, amount) in csp_storage(storage) {
-        let parse = match resource {
-            HtmlResource::ManagedCapacityBytes => HtmlParseResource::ManagedCapacityBytes,
-            HtmlResource::PeakTransientBytes => HtmlParseResource::PeakTransientBytes,
-            HtmlResource::ManagedUtf16Units => HtmlParseResource::ManagedUtf16Units,
-            HtmlResource::AuxiliaryEntries => HtmlParseResource::AuxiliaryEntries,
-            other => panic!("unexpected storage resource {other:?}"),
-        };
-        assert_eq!(c.usage().resource(parse).current(), amount, "{resource:?}");
+    for (parse, amount) in [
+        (HtmlParseResource::AuxiliaryEntries, 2),
+        (HtmlParseResource::ManagedUtf16Units, 8),
+        (HtmlParseResource::ManagedCapacityBytes, 64),
+        (HtmlParseResource::PeakTransientBytes, 64),
+    ] {
+        assert_eq!(c.usage().resource(parse).current(), amount, "{parse:?}");
     }
 }

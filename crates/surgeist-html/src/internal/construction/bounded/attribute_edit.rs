@@ -2,6 +2,7 @@
 
 use super::operations::attribute_units;
 use super::*;
+use crate::internal::accounting::{HtmlChargedError, HtmlResource, HtmlWork, wide};
 use crate::internal::values::attribute_name_index::{
     Binding, CLEAR_CHUNK, HtmlAttributeNameIndex, Occupant, entry, occupant, tag,
 };
@@ -13,6 +14,7 @@ use crate::internal::values::name_index::{
     HtmlNameIndexVacancy,
 };
 use crate::internal::values::{Attribute, ReserveOutcome};
+use surgeist_ledger::{Change, Charge};
 
 /// Which protocol an attribute edit follows. It is fixed when the edit begins.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -52,24 +54,71 @@ impl HtmlConstructionAttributeCapacity {
 /// Fixed bounds admitted before the action, excluding allocator internals.
 /// Comparison actions conservatively admit retained flags whose writes depend
 /// on the comparison outcome, before reading that outcome.
+///
+/// The amounts are not readable. A consumer charges them through
+/// [`HtmlConstructionAttributeDescription::charge`].
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct HtmlConstructionAttributeWork {
     /// The retained records the action reads or updates.
-    pub record_visits: usize,
+    pub(crate) record_visits: usize,
     /// The provider requests the action makes.
-    pub provider_calls: usize,
+    pub(crate) provider_calls: usize,
     /// The bytes of name text the action compares without copying.
-    pub inspected_bytes: usize,
+    pub(crate) inspected_bytes: usize,
     /// The bytes the action copies, including bookkeeping values it moves.
-    pub copied_bytes: usize,
+    pub(crate) copied_bytes: usize,
     /// The record fields the action writes.
-    pub record_writes: usize,
+    pub(crate) record_writes: usize,
     /// Largest indivisible physical transfer or individual fixed field write.
     /// This is a field-wise atomic maximum, not the sum of copied bytes.
-    pub atomic_layout_bytes: usize,
+    pub(crate) atomic_layout_bytes: usize,
     /// The name-witness entries the action creates or destroys. Only planning and plan cleanup use
     /// it.
-    pub auxiliary_entries: usize,
+    pub(crate) auxiliary_entries: usize,
+}
+
+impl HtmlConstructionAttributeWork {
+    /// Charges the step's work: the record visits, provider calls, inspected bytes, copied bytes
+    /// and record writes as one batch, then a nonzero atomic layout as the largest reached, then a
+    /// nonzero count of auxiliary entries as one acquisition. `prepaid_provider_calls` are calls
+    /// of the step that the caller has already charged, so they are left out of the batch.
+    pub(crate) fn charge<C: Charge<HtmlWork, HtmlResource>>(
+        self,
+        prepaid_provider_calls: u64,
+        charge: &mut C,
+    ) -> Result<(), HtmlChargedError<C::Stop, HtmlConstructionChargeFault>> {
+        let provider_calls = wide(self.provider_calls)
+            .checked_sub(prepaid_provider_calls)
+            .ok_or(HtmlChargedError::Faulted(
+                HtmlConstructionChargeFault::PrepaidCallsExceedPlan,
+            ))?;
+        charge
+            .charge(&[
+                Change::Work(HtmlWork::RecordVisit, wide(self.record_visits)),
+                Change::Work(HtmlWork::ProviderCall, provider_calls),
+                Change::Work(HtmlWork::InspectByte, wide(self.inspected_bytes)),
+                Change::Work(HtmlWork::CopyByte, wide(self.copied_bytes)),
+                Change::Work(HtmlWork::RecordWrite, wide(self.record_writes)),
+            ])
+            .map_err(HtmlChargedError::Stopped)?;
+        if self.atomic_layout_bytes != 0 {
+            charge
+                .record_largest(
+                    HtmlResource::AtomicLayoutBytes,
+                    wide(self.atomic_layout_bytes),
+                )
+                .map_err(HtmlChargedError::Stopped)?;
+        }
+        if self.auxiliary_entries != 0 {
+            charge
+                .charge(&[Change::Acquire(
+                    HtmlResource::AuxiliaryEntries,
+                    wide(self.auxiliary_entries),
+                )])
+                .map_err(HtmlChargedError::Stopped)?;
+        }
+        Ok(())
+    }
 }
 
 /// The fixed next step of an attribute edit, with the work the consumer admits before running it.
@@ -162,8 +211,19 @@ impl HtmlConstructionAttributeDescription<'_> {
             .max(size_of::<Option<HtmlConstructionError>>());
         self
     }
-    /// The work the consumer admits for this step, whichever step it is.
-    pub fn work(&self) -> HtmlConstructionAttributeWork {
+    /// Charges the work of this step, whichever step it is, as
+    /// [`HtmlConstructionAttributeWork`] describes. `prepaid_provider_calls` are provider calls of
+    /// the step that the caller has already charged, such as the one allocator call that its own
+    /// reservation policy admits.
+    pub fn charge<C: Charge<HtmlWork, HtmlResource>>(
+        &self,
+        prepaid_provider_calls: u64,
+        charge: &mut C,
+    ) -> Result<(), HtmlChargedError<C::Stop, HtmlConstructionChargeFault>> {
+        self.work().charge(prepaid_provider_calls, charge)
+    }
+    /// The work of this step, whichever step it is.
+    pub(crate) fn work(&self) -> HtmlConstructionAttributeWork {
         match self {
             Self::Inspect(v)
             | Self::UniqueBacking(v)

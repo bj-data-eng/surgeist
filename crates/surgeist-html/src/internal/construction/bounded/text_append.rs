@@ -1,6 +1,8 @@
 //! Bounded append to the actual construction owner's immutable text backing.
 
 use super::*;
+use crate::internal::accounting::{HtmlChargedError, HtmlResource, HtmlWork, wide};
+use surgeist_ledger::{Change, Charge};
 
 const CHUNK_UNITS: usize = 256 / size_of::<u16>();
 
@@ -51,24 +53,62 @@ impl HtmlConstructionTextAppendCapacity {
 }
 
 /// Bounds admitted before each action, excluding allocator internals.
+///
+/// The amounts are not readable. A consumer charges them through
+/// [`HtmlConstructionTextAppendDescription::charge`].
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct HtmlConstructionTextAppendWork {
     /// The retained records the action reads or updates.
-    pub record_visits: usize,
+    pub(crate) record_visits: usize,
     /// The provider requests the action makes.
-    pub provider_calls: usize,
+    pub(crate) provider_calls: usize,
     /// The bytes the action only reads, without copying them. The text-append steps copy rather
     /// than inspect, so every description reports zero.
-    pub inspected_bytes: usize,
+    pub(crate) inspected_bytes: usize,
     /// The bytes the action copies, including bookkeeping values it moves.
-    pub copied_bytes: usize,
+    pub(crate) copied_bytes: usize,
     /// The record fields the action writes.
-    pub record_writes: usize,
+    pub(crate) record_writes: usize,
     /// The size in bytes of the largest single layout the action initializes or moves as one unit.
     /// A text copy is split so that no unit exceeds this chunk size.
-    pub atomic_layout_bytes: usize,
+    pub(crate) atomic_layout_bytes: usize,
     /// Conservative allocator relocation bound, separate from explicit copies.
-    pub relocation_bound_bytes: usize,
+    pub(crate) relocation_bound_bytes: usize,
+}
+impl HtmlConstructionTextAppendWork {
+    /// Charges the step's work: its atomic layout as the largest reached, then the record visits,
+    /// provider calls, inspected bytes, copied bytes and record writes, each as its own change
+    /// in that order. The relocation bound is not charged: a consumer prices its own reservation
+    /// plan. `prepaid_provider_calls` are calls of the step that the caller has already charged.
+    pub(crate) fn charge<C: Charge<HtmlWork, HtmlResource>>(
+        self,
+        prepaid_provider_calls: u64,
+        charge: &mut C,
+    ) -> Result<(), HtmlChargedError<C::Stop, HtmlConstructionChargeFault>> {
+        charge
+            .record_largest(
+                HtmlResource::AtomicLayoutBytes,
+                wide(self.atomic_layout_bytes),
+            )
+            .map_err(HtmlChargedError::Stopped)?;
+        let provider_calls = wide(self.provider_calls)
+            .checked_sub(prepaid_provider_calls)
+            .ok_or(HtmlChargedError::Faulted(
+                HtmlConstructionChargeFault::PrepaidCallsExceedPlan,
+            ))?;
+        for change in [
+            Change::Work(HtmlWork::RecordVisit, wide(self.record_visits)),
+            Change::Work(HtmlWork::ProviderCall, provider_calls),
+            Change::Work(HtmlWork::InspectByte, wide(self.inspected_bytes)),
+            Change::Work(HtmlWork::CopyByte, wide(self.copied_bytes)),
+            Change::Work(HtmlWork::RecordWrite, wide(self.record_writes)),
+        ] {
+            charge
+                .charge(&[change])
+                .map_err(HtmlChargedError::Stopped)?;
+        }
+        Ok(())
+    }
 }
 
 /// The fixed next step of a text append, with the work the consumer admits before running it.
@@ -134,8 +174,18 @@ pub enum HtmlConstructionTextAppendDescription {
     },
 }
 impl HtmlConstructionTextAppendDescription {
-    /// The work that the consumer admits for this step, whichever step it is.
-    pub fn work(self) -> HtmlConstructionTextAppendWork {
+    /// Charges the work of this step, whichever step it is, as
+    /// [`HtmlConstructionTextAppendWork`] describes. `prepaid_provider_calls` are provider calls of
+    /// the step that the caller has already charged.
+    pub fn charge<C: Charge<HtmlWork, HtmlResource>>(
+        self,
+        prepaid_provider_calls: u64,
+        charge: &mut C,
+    ) -> Result<(), HtmlChargedError<C::Stop, HtmlConstructionChargeFault>> {
+        self.work().charge(prepaid_provider_calls, charge)
+    }
+    /// The work of this step, whichever step it is.
+    pub(crate) fn work(self) -> HtmlConstructionTextAppendWork {
         match self {
             Self::Inspect(w)
             | Self::SelectBacking(w)

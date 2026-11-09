@@ -430,11 +430,15 @@ fn work_limit_stop_before_an_insert_before_commit_leaves_the_order_and_the_stop_
     let copied = loop {
         let edges = pending.before_edges();
         let action = pending.action(&mut c).unwrap().unwrap();
-        if let surgeist_html::bounded::construction::HtmlConstructionActionDescription::Commit {
-            copied_bytes,
-            ..
-        } = action.description()
-        {
+        let description = action.description();
+        if matches!(
+            description,
+            surgeist_html::bounded::construction::HtmlConstructionActionDescription::Commit { .. }
+        ) {
+            // The commit charges the bytes it copies as the amount the stop is then asked to refuse.
+            let copied_bytes =
+                crate::schema_support::through_charged(|charge| description.charge_commit(charge))
+                    .categories[2] as usize;
             // Leave one credit too few for the commit's described writes.
             let before = c.usage().resource(HtmlParseResource::WorkCredits).current;
             c.charge(

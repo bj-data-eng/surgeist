@@ -181,8 +181,8 @@ pub(crate) use session_error::{
     ElementInsertionIgnored, SessionClass, SessionError, session_class,
 };
 use session_error::{
-    count_set, end_session_on, latch_creation_fault, latch_effect_fault, latch_owner_refusal,
-    latch_registry_row, next_cursor, plan_below_charge, session_fault_invariant, successor,
+    charge_fault, count_set, end_session_on, latch_creation_fault, latch_effect_fault,
+    latch_owner_refusal, latch_registry_row, next_cursor, session_fault_invariant, successor,
 };
 use string_storage::{AttributeStorage, ReleasedStorage, mirrored_position};
 pub(crate) use string_storage::{StringLocation, TextInsertion};

@@ -2,6 +2,7 @@
 
 pub(crate) mod bounded;
 
+use crate::internal::accounting::{HtmlCapScope, HtmlResource, HtmlWork, wide};
 #[cfg(test)]
 use crate::internal::values::Namespace;
 use crate::{
@@ -15,6 +16,7 @@ use std::{
     hash::{Hash, Hasher},
     sync::{Arc, Weak},
 };
+use surgeist_ledger::{Change, Charge, Error as LedgerError, Operation, RefusalReason, Scope};
 
 /// The HTML document's selected compatibility mode.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -190,6 +192,8 @@ pub(crate) enum HtmlConstructionErrorKind {
     RepresentationExhausted,
     /// Reserving arena or edge storage failed.
     AllocationFailed,
+    /// The ledger scope that enforces the limits reported a state its own sequencing rules out.
+    LedgerState,
 }
 impl HtmlConstructionErrorKind {
     /// Wraps this cause as the public error where inference cannot convert it.
@@ -340,6 +344,11 @@ impl HtmlConstructionError {
     pub fn is_allocation_failed(&self) -> bool {
         matches!(self.kind, HtmlConstructionErrorKind::AllocationFailed)
     }
+    /// Whether the cause is: the ledger scope that enforces the limits reported a state its own
+    /// sequencing rules out.
+    pub fn is_ledger_state(&self) -> bool {
+        matches!(self.kind, HtmlConstructionErrorKind::LedgerState)
+    }
     /// Whether two attributes share a namespace and local name.
     pub fn is_duplicate_attribute(&self) -> bool {
         matches!(
@@ -428,6 +437,9 @@ impl fmt::Display for HtmlConstructionError {
             Kind::InvalidOutputRoot => {
                 f.write_str("published output root is not a detached document or fragment")
             }
+            Kind::LedgerState => f.write_str(
+                "the ledger scope that enforces the limits reported an impossible state",
+            ),
             Kind::OperationNotReady => {
                 f.write_str("construction operation still has pending actions")
             }
@@ -1291,11 +1303,178 @@ enum BuilderStorage {
     Held(bounded::HtmlConstructionStorage),
     /// An operation took the storage and its abort was refused, so no storage remains. No native
     /// command can cause this, since only a publication shares its arena. Every handle operation
-    /// and `finish` report the shared-allocation cause, and `usage` reports what the storage held
-    /// when it was last held.
-    Lost {
-        usage: HtmlConstructionUsage,
-    },
+    /// and `finish` report the shared-allocation cause, and `usage` reports what the builder's
+    /// accounting admitted.
+    Lost,
+}
+
+/// The construction scope of a native builder: the caps of its limits, enforced by a ledger scope,
+/// and the typed usage read back from that scope after each charge.
+struct Accounting {
+    operation: Operation<HtmlWork, HtmlResource>,
+    scope: Scope,
+    usage: HtmlConstructionUsage,
+}
+impl fmt::Debug for Accounting {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Accounting")
+            .field("usage", &self.usage)
+            .finish_non_exhaustive()
+    }
+}
+/// What one admitted append charged, so a rejected append can give it back.
+#[derive(Clone, Copy, Debug)]
+struct Charged {
+    nodes: usize,
+    edges: usize,
+    attributes: usize,
+    units: usize,
+    /// The depth the append raised, with the depth it left behind.
+    depth: Option<usize>,
+}
+impl Accounting {
+    fn new(limits: HtmlConstructionLimits) -> Result<Self, HtmlConstructionError> {
+        let operation = Operation::new(
+            HtmlCapScope::Construction.name(),
+            crate::internal::accounting::construction_limits(limits),
+            1,
+        )
+        .map_err(ledger_error)?;
+        let scope = operation.root();
+        Ok(Self {
+            operation,
+            scope,
+            usage: HtmlConstructionUsage::default(),
+        })
+    }
+    /// Charges the amounts of one append as one all-or-nothing batch, in the order of the limits'
+    /// precedence: nodes, edges, attributes, UTF-16 units, then depth. A depth no deeper than the
+    /// deepest admitted node charges nothing.
+    fn admit(
+        &mut self,
+        nodes: usize,
+        edges: usize,
+        attributes: usize,
+        units: usize,
+        depth: usize,
+    ) -> Result<Charged, HtmlConstructionError> {
+        let held = self.usage.depth;
+        let raises = depth > held;
+        let batch = [
+            Change::Acquire(HtmlResource::ManagedNodes, wide(nodes)),
+            Change::Acquire(HtmlResource::ManagedEdges, wide(edges)),
+            Change::Acquire(HtmlResource::ManagedAttributes, wide(attributes)),
+            Change::Acquire(HtmlResource::ManagedUtf16Units, wide(units)),
+            Change::Release(HtmlResource::TreeDepth, wide(held)),
+            Change::Acquire(HtmlResource::TreeDepth, wide(depth)),
+        ];
+        let Some(batch) = batch.get(..if raises { 6 } else { 4 }) else {
+            return Err(HtmlConstructionErrorKind::LedgerState.into());
+        };
+        self.operation
+            .apply_batch(self.scope, batch)
+            .map_err(ledger_error)?;
+        self.read()?;
+        Ok(Charged {
+            nodes,
+            edges,
+            attributes,
+            units,
+            depth: raises.then_some(held),
+        })
+    }
+    /// Gives back what an append charged and restores the depth it raised.
+    fn release(&mut self, charged: Charged) -> Result<(), HtmlConstructionError> {
+        self.operation
+            .apply_batch(
+                self.scope,
+                &[
+                    Change::Release(HtmlResource::ManagedNodes, wide(charged.nodes)),
+                    Change::Release(HtmlResource::ManagedEdges, wide(charged.edges)),
+                    Change::Release(HtmlResource::ManagedAttributes, wide(charged.attributes)),
+                    Change::Release(HtmlResource::ManagedUtf16Units, wide(charged.units)),
+                ],
+            )
+            .map_err(ledger_error)?;
+        if let Some(previous) = charged.depth {
+            self.operation
+                .charge_at(self.scope)
+                .record_largest(HtmlResource::TreeDepth, wide(previous))
+                .map_err(ledger_error)?;
+        }
+        self.read()
+    }
+    /// Reads the typed usage from the scope.
+    fn read(&mut self) -> Result<(), HtmlConstructionError> {
+        let usage = self.operation.usage(self.scope).map_err(ledger_error)?;
+        let read = |value: u64| {
+            usize::try_from(value).map_err(|_| HtmlConstructionErrorKind::RepresentationExhausted)
+        };
+        self.usage = HtmlConstructionUsage {
+            nodes: read(usage.live(HtmlResource::ManagedNodes))?,
+            edges: read(usage.live(HtmlResource::ManagedEdges))?,
+            attributes: read(usage.live(HtmlResource::ManagedAttributes))?,
+            utf16_units: read(usage.live(HtmlResource::ManagedUtf16Units))?,
+            depth: read(usage.live(HtmlResource::TreeDepth))?,
+        };
+        Ok(())
+    }
+}
+/// The construction error of a ledger error: a refused limit keeps its resource, limit and the
+/// total the charge would have reached.
+fn ledger_error(error: LedgerError<HtmlWork, HtmlResource>) -> HtmlConstructionError {
+    let kind = match error {
+        LedgerError::Refused(refusal) => match refusal.reason {
+            RefusalReason::Overflow => HtmlConstructionErrorKind::RepresentationExhausted,
+            RefusalReason::Underflow => HtmlConstructionErrorKind::ReleaseUnderflow,
+            RefusalReason::Limit { limit } => {
+                let resource = match refusal.change {
+                    Change::Acquire(HtmlResource::ManagedNodes, _) => {
+                        Some(HtmlConstructionResource::Nodes)
+                    }
+                    Change::Acquire(HtmlResource::ManagedEdges, _) => {
+                        Some(HtmlConstructionResource::Edges)
+                    }
+                    Change::Acquire(HtmlResource::ManagedAttributes, _) => {
+                        Some(HtmlConstructionResource::Attributes)
+                    }
+                    Change::Acquire(HtmlResource::ManagedUtf16Units, _) => {
+                        Some(HtmlConstructionResource::Utf16Units)
+                    }
+                    Change::Acquire(HtmlResource::TreeDepth, _) => {
+                        Some(HtmlConstructionResource::Depth)
+                    }
+                    _ => None,
+                };
+                let amount = match refusal.change {
+                    Change::Work(_, amount)
+                    | Change::Acquire(_, amount)
+                    | Change::Release(_, amount) => amount,
+                };
+                match (
+                    resource,
+                    usize::try_from(limit),
+                    refusal
+                        .current
+                        .checked_add(amount)
+                        .and_then(|attempted| usize::try_from(attempted).ok()),
+                ) {
+                    (Some(resource), Ok(limit), Some(attempted)) => {
+                        HtmlConstructionErrorKind::LimitExceeded {
+                            resource,
+                            limit,
+                            attempted,
+                        }
+                    }
+                    (None, ..) => HtmlConstructionErrorKind::LedgerState,
+                    _ => HtmlConstructionErrorKind::RepresentationExhausted,
+                }
+            }
+        },
+        LedgerError::Allocation => HtmlConstructionErrorKind::AllocationFailed,
+        _ => HtmlConstructionErrorKind::LedgerState,
+    };
+    kind.into()
 }
 
 #[derive(Debug)]
@@ -1303,33 +1482,25 @@ struct Builder {
     storage: BuilderStorage,
     /// The root issued when the builder was created, which the storage keeps for its life.
     root: HtmlBuilderNode,
-    limits: HtmlConstructionLimits,
+    accounting: Accounting,
 }
 impl Builder {
     fn storage(&self) -> Result<&bounded::HtmlConstructionStorage, HtmlConstructionError> {
         match &self.storage {
             BuilderStorage::Held(storage) => Ok(storage),
-            BuilderStorage::Lost { .. } => {
-                Err(HtmlConstructionErrorKind::SharedAllocationAliased.into())
-            }
+            BuilderStorage::Lost => Err(HtmlConstructionErrorKind::SharedAllocationAliased.into()),
         }
     }
-    /// The usage of the held storage, or of the storage that was last held.
+    /// The usage the builder's accounting admitted.
     fn usage(&self) -> HtmlConstructionUsage {
-        match &self.storage {
-            BuilderStorage::Held(storage) => storage.usage(),
-            BuilderStorage::Lost { usage } => *usage,
-        }
+        self.accounting.usage
     }
     /// Hands the storage to an operation. The builder holds none until the operation hands it
     /// back.
     fn take_storage(&mut self) -> Result<bounded::HtmlConstructionStorage, HtmlConstructionError> {
-        let usage = self.usage();
-        match std::mem::replace(&mut self.storage, BuilderStorage::Lost { usage }) {
+        match std::mem::replace(&mut self.storage, BuilderStorage::Lost) {
             BuilderStorage::Held(storage) => Ok(storage),
-            BuilderStorage::Lost { .. } => {
-                Err(HtmlConstructionErrorKind::SharedAllocationAliased.into())
-            }
+            BuilderStorage::Lost => Err(HtmlConstructionErrorKind::SharedAllocationAliased.into()),
         }
     }
     fn new(
@@ -1344,7 +1515,8 @@ impl Builder {
             .try_ready()
             .map_err(|refusal| refusal.into_parts().1)?
             .commit();
-        admit(&storage, limits, 1, 0, 0, 0, 0)?;
+        let mut accounting = Accounting::new(limits)?;
+        accounting.admit(1, 0, 0, 0, 0)?;
         let command = match root {
             NativeRoot::Document(mode) => {
                 bounded::operations::HtmlConstructionCommand::CreateDocument { mode }
@@ -1358,31 +1530,12 @@ impl Builder {
                 storage.ok_or(HtmlConstructionErrorKind::SharedAllocationAliased)?,
             ),
             root,
-            limits,
+            accounting,
         })
     }
     fn index(&self, node: &HtmlBuilderNode) -> Result<usize, HtmlConstructionError> {
         self.storage()?.position(node)
     }
-    fn admit(
-        &self,
-        nodes: usize,
-        edges: usize,
-        attributes: usize,
-        units: usize,
-        depth: usize,
-    ) -> Result<HtmlConstructionUsage, HtmlConstructionError> {
-        admit(
-            self.storage()?,
-            self.limits,
-            nodes,
-            edges,
-            attributes,
-            units,
-            depth,
-        )
-    }
-
     /// Runs `command` on the storage. The storage moves into the operation and comes back on every
     /// outcome. It stays lost only if the operation could not hand it back, which no native command
     /// can cause.
@@ -1430,23 +1583,31 @@ impl Builder {
             .checked_add(1 + usize::from(template))
             .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
         let (attributes, units) = bounded::operations::created_usage(&kind)?;
-        self.admit(
+        let charged = self.accounting.admit(
             1 + usize::from(template),
             1 + usize::from(template),
             attributes,
             units,
             depth,
         )?;
-        let previous_usage = self.usage();
+        let previous_usage = self.storage()?.usage();
         let previous_len = self.storage()?.len();
-        let created =
-            self.apply_creating(bounded::operations::HtmlConstructionCommand::Create { kind })?;
+        let created = match self
+            .apply_creating(bounded::operations::HtmlConstructionCommand::Create { kind })
+        {
+            Ok(created) => created,
+            Err(error) => {
+                self.accounting.release(charged)?;
+                return Err(error);
+            }
+        };
         if let Err(error) = self.apply(bounded::operations::HtmlConstructionCommand::Insert {
             node: created.clone(),
             parent: parent.clone(),
             before: None,
         }) {
             self.roll_back_append(previous_len, previous_usage);
+            self.accounting.release(charged)?;
             return Err(error);
         }
         Ok(created)
@@ -1484,17 +1645,24 @@ impl Builder {
             .depth(host_position)?
             .checked_add(1)
             .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
-        self.admit(1, 1, 0, 0, depth)?;
-        let previous_usage = self.usage();
+        let charged = self.accounting.admit(1, 1, 0, 0, depth)?;
+        let previous_usage = self.storage()?.usage();
         let previous_len = self.storage()?.len();
-        let contents = self.apply_creating(
+        let contents = match self.apply_creating(
             bounded::operations::HtmlConstructionCommand::CreateShadowContents { properties },
-        )?;
+        ) {
+            Ok(contents) => contents,
+            Err(error) => {
+                self.accounting.release(charged)?;
+                return Err(error);
+            }
+        };
         if let Err(error) = self.apply(bounded::operations::HtmlConstructionCommand::AttachShadow {
             host: host.clone(),
             contents: contents.clone(),
         }) {
             self.roll_back_append(previous_len, previous_usage);
+            self.accounting.release(charged)?;
             return Err(error);
         }
         Ok(contents)
@@ -1532,55 +1700,6 @@ impl Builder {
             }
         }
     }
-}
-
-/// The usage after adding the given amounts to `storage`'s, if every limit still holds.
-fn admit(
-    storage: &bounded::HtmlConstructionStorage,
-    limits: HtmlConstructionLimits,
-    nodes: usize,
-    edges: usize,
-    attributes: usize,
-    units: usize,
-    depth: usize,
-) -> Result<HtmlConstructionUsage, HtmlConstructionError> {
-    let add = |left: usize, right| {
-        left.checked_add(right)
-            .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)
-    };
-    let usage = storage.usage();
-    let next = HtmlConstructionUsage {
-        nodes: add(usage.nodes, nodes)?,
-        edges: add(usage.edges, edges)?,
-        attributes: add(usage.attributes, attributes)?,
-        utf16_units: add(usage.utf16_units, units)?,
-        depth: usage.depth.max(depth),
-    };
-    for (resource, limit, attempted) in [
-        (HtmlConstructionResource::Nodes, limits.nodes, next.nodes),
-        (HtmlConstructionResource::Edges, limits.edges, next.edges),
-        (
-            HtmlConstructionResource::Attributes,
-            limits.attributes,
-            next.attributes,
-        ),
-        (
-            HtmlConstructionResource::Utf16Units,
-            limits.utf16_units,
-            next.utf16_units,
-        ),
-        (HtmlConstructionResource::Depth, limits.depth, next.depth),
-    ] {
-        if attempted > limit {
-            return Err(HtmlConstructionErrorKind::LimitExceeded {
-                resource,
-                limit,
-                attempted,
-            }
-            .into());
-        }
-    }
-    Ok(next)
 }
 
 /// A bounded append-only native document authoring session.
@@ -2005,6 +2124,90 @@ mod tests {
                 data.encode_utf16().collect::<Vec<_>>()
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod accounting_tests {
+    use super::*;
+
+    fn accounting(limits: HtmlConstructionLimits) -> Accounting {
+        Accounting::new(limits).unwrap()
+    }
+
+    fn refused(error: HtmlConstructionError) -> (HtmlConstructionResource, usize, usize) {
+        match error.kind {
+            HtmlConstructionErrorKind::LimitExceeded {
+                resource,
+                limit,
+                attempted,
+            } => (resource, limit, attempted),
+            other => panic!("expected a limit refusal, got {other:?}"),
+        }
+    }
+
+    /// Each limit is a cap of the construction scope. A charge that would pass a cap is refused with
+    /// that resource, the cap and the total the charge would have reached, and the refusal changes
+    /// nothing.
+    #[test]
+    fn each_limit_refuses_with_its_resource_cap_and_attempted_total() {
+        use HtmlConstructionResource as R;
+        let limits = HtmlConstructionLimits::new(3, 4, 5, 6, 7);
+        for (amounts, expected) in [
+            ((3, 0, 0, 0, 0), (R::Nodes, 3, 4)),
+            ((0, 4, 0, 0, 0), (R::Edges, 4, 5)),
+            ((0, 0, 5, 0, 0), (R::Attributes, 5, 6)),
+            ((0, 0, 0, 6, 0), (R::Utf16Units, 6, 7)),
+            ((0, 0, 0, 0, 7), (R::Depth, 7, 8)),
+        ] {
+            let mut accounting = accounting(limits);
+            // One of each resource is in place, so the exact cap is one more than fits.
+            accounting.admit(1, 1, 1, 1, 1).unwrap();
+            let before = accounting.usage;
+            let (nodes, edges, attributes, units, depth) = amounts;
+            let (resource, limit, attempted) = refused(
+                accounting
+                    .admit(
+                        nodes,
+                        edges,
+                        attributes,
+                        units,
+                        if depth == 0 { 1 } else { depth + 1 },
+                    )
+                    .unwrap_err(),
+            );
+            assert_eq!((resource, limit, attempted), expected, "{amounts:?}");
+            assert_eq!(accounting.usage, before, "a refusal changes nothing");
+        }
+    }
+
+    /// Exact limits admit, and the first limit in the order nodes, edges, attributes, UTF-16 units
+    /// and depth is the one reported when several would fail.
+    #[test]
+    fn exact_limits_admit_and_the_first_limit_in_order_is_reported() {
+        let mut accounting = accounting(HtmlConstructionLimits::new(2, 2, 2, 2, 2));
+        accounting.admit(2, 2, 2, 2, 2).unwrap();
+        assert_eq!(accounting.usage.nodes, 2);
+        assert_eq!(accounting.usage.depth, 2);
+        let mut accounting = self::accounting(HtmlConstructionLimits::new(1, 1, 1, 1, 1));
+        let (resource, ..) = refused(accounting.admit(2, 2, 2, 2, 2).unwrap_err());
+        assert_eq!(resource, HtmlConstructionResource::Nodes);
+    }
+
+    /// A rejected append gives back its amounts and the depth it raised.
+    #[test]
+    fn releasing_a_charge_restores_the_amounts_and_the_depth() {
+        let mut accounting = accounting(HtmlConstructionLimits::new(9, 9, 9, 9, 9));
+        accounting.admit(1, 1, 0, 0, 2).unwrap();
+        let before = accounting.usage;
+        let charged = accounting.admit(2, 1, 3, 4, 5).unwrap();
+        assert_eq!(accounting.usage.depth, 5);
+        accounting.release(charged).unwrap();
+        assert_eq!(accounting.usage, before);
+        // A depth no deeper than the deepest admitted node raises nothing and restores nothing.
+        let charged = accounting.admit(0, 0, 0, 0, 1).unwrap();
+        accounting.release(charged).unwrap();
+        assert_eq!(accounting.usage, before);
     }
 }
 

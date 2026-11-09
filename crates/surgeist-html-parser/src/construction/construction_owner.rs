@@ -380,23 +380,18 @@ impl ConstructionOwner {
         else {
             return Err(latch_owner_refusal(control));
         };
-        let HtmlConstructionActionDescription::InitializeIdentity {
-            payload_bytes,
-            initialized_bytes,
-            provider_calls,
-        } = action.description()
+        let description = action.description();
+        let HtmlConstructionActionDescription::InitializeIdentity { payload_bytes, .. } =
+            description
         else {
             return Err(latch_owner_refusal(control));
         };
         control.prepare_construction_share(payload_bytes)?;
         // The first call was charged above; a plan that counts none differs
         // from the work already charged for it.
-        let Some(further_calls) = provider_calls.checked_sub(1) else {
-            return Err(plan_below_charge(control));
-        };
-        control.charge(HtmlParseWorkCategory::ProviderCall, further_calls as u64)?;
-        control.admit_atomic_layout(initialized_bytes)?;
-        control.charge(HtmlParseWorkCategory::CopyByte, initialized_bytes as u64)?;
+        description
+            .charge_identity(1, control)
+            .map_err(|error| charge_fault(control, error))?;
         ticket_work(control)?;
         let observation = action.perform();
         let mut identity = None;
@@ -622,33 +617,24 @@ impl ConstructionOwner {
         let mut expected = 0;
         let mut reserved_capacity = None;
         let mut final_action = false;
-        match action.description() {
-            HtmlConstructionActionDescription::Inspect {
-                record_visits,
-                inspected_bytes,
-            } => {
-                control.charge(HtmlParseWorkCategory::RecordVisit, record_visits as u64)?;
-                control.charge(HtmlParseWorkCategory::InspectByte, inspected_bytes as u64)?;
-            }
-            HtmlConstructionActionDescription::Compare { inspected_bytes } => {
-                control.charge(HtmlParseWorkCategory::InspectByte, inspected_bytes as u64)?
-            }
-            HtmlConstructionActionDescription::PrepareAllocationReport {
-                record_visits,
-                provider_calls,
-                copied_bytes,
-            } => {
-                control.charge(HtmlParseWorkCategory::RecordVisit, record_visits as u64)?;
-                control.charge(HtmlParseWorkCategory::ProviderCall, provider_calls as u64)?;
-                control.charge(HtmlParseWorkCategory::CopyByte, copied_bytes as u64)?;
-            }
+        let description = action.description();
+        match &description {
+            HtmlConstructionActionDescription::Inspect { .. }
+            | HtmlConstructionActionDescription::Compare { .. } => description
+                .charge_inspection(control)
+                .map_err(|error| charge_fault(control, error))?,
+            HtmlConstructionActionDescription::PrepareAllocationReport { .. } => description
+                .charge_report_preparation(control)
+                .map_err(|error| charge_fault(control, error))?,
             HtmlConstructionActionDescription::Reserve {
-                report_provider_calls,
                 allocation: snapshot,
                 required_len,
                 minimum_capacity,
                 growth,
+                ..
             } => {
+                let (snapshot, required_len, minimum_capacity, growth) =
+                    (*snapshot, *required_len, *minimum_capacity, *growth);
                 control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
                 let bank = snapshot
                     .child_position()
@@ -683,46 +669,36 @@ impl ConstructionOwner {
                 let slot = self.allocation_slot(control, bank)?;
                 control.prepare_construction_reserve(snapshot, capacity, slot.as_ref())?;
                 ticket_work(control)?;
-                control.charge(
-                    HtmlParseWorkCategory::ProviderCall,
-                    report_provider_calls as u64,
-                )?;
+                description
+                    .charge_report_calls(control)
+                    .map_err(|error| charge_fault(control, error))?;
                 allocation = Some(bank);
             }
             HtmlConstructionActionDescription::Share {
-                report_provider_calls,
                 allocation: snapshot,
+                ..
             } => {
                 expected = snapshot.element_size();
                 control.prepare_construction_share(expected)?;
                 ticket_work(control)?;
-                control.charge(
-                    HtmlParseWorkCategory::ProviderCall,
-                    report_provider_calls as u64,
-                )?;
+                description
+                    .charge_report_calls(control)
+                    .map_err(|error| charge_fault(control, error))?;
                 allocation = Some(Bank::Wrapper);
             }
-            HtmlConstructionActionDescription::ShareReferences {
-                provider_calls,
-                copied_bytes,
-            } => {
-                control.charge(HtmlParseWorkCategory::ProviderCall, provider_calls as u64)?;
-                control.charge(HtmlParseWorkCategory::CopyByte, copied_bytes as u64)?;
-            }
-            HtmlConstructionActionDescription::InitializeChildren {
-                provider_calls,
-                copied_bytes,
-                record_writes,
-                position,
-                ..
-            } => {
+            HtmlConstructionActionDescription::ShareReferences { .. } => description
+                .charge_references(control)
+                .map_err(|error| charge_fault(control, error))?,
+            HtmlConstructionActionDescription::InitializeChildren { position, .. } => {
+                let position = *position;
                 control.reserve_vector_geometric(
                     &mut self.children,
                     &mut self.children_allocation,
                     1,
                 )?;
-                control.charge(HtmlParseWorkCategory::CopyByte, copied_bytes as u64)?;
-                control.charge(HtmlParseWorkCategory::RecordWrite, record_writes as u64)?;
+                description
+                    .charge_children_initialization(control)
+                    .map_err(|error| charge_fault(control, error))?;
                 control.charge(
                     HtmlParseWorkCategory::CopyByte,
                     const {
@@ -739,29 +715,23 @@ impl ConstructionOwner {
                 }
                 // The zero-capacity bank physically exists in the pending owner;
                 // retain its ticket even if a later post-call checkpoint refuses.
-                control.charge(HtmlParseWorkCategory::ProviderCall, provider_calls as u64)?;
+                description
+                    .charge_children_calls(control)
+                    .map_err(|error| charge_fault(control, error))?;
                 self.children.push(None);
                 allocation = Some(Bank::Children(position));
             }
-            HtmlConstructionActionDescription::Preflight { usage } => {
-                control.observe_tree_depth(usage.depth() as u64)?;
+            HtmlConstructionActionDescription::Preflight { .. } => {
+                description
+                    .charge_depth(control)
+                    .map_err(|error| charge_fault(control, error))?;
                 control.check_acquire_many(requests)?;
             }
-            HtmlConstructionActionDescription::Commit {
-                depth_observation,
-                record_visits,
-                record_writes,
-                copied_bytes,
-                initialized_bytes,
-                usage,
-            } => {
-                if let Some(depth) = depth_observation {
-                    control.observe_tree_depth(depth as u64)?;
-                }
-                control.admit_atomic_layout(initialized_bytes)?;
-                control.charge(HtmlParseWorkCategory::CopyByte, copied_bytes as u64)?;
-                control.charge(HtmlParseWorkCategory::RecordVisit, record_visits as u64)?;
-                control.charge(HtmlParseWorkCategory::RecordWrite, record_writes as u64)?;
+            HtmlConstructionActionDescription::Commit { usage, .. } => {
+                let usage = *usage;
+                description
+                    .charge_commit(control)
+                    .map_err(|error| charge_fault(control, error))?;
                 before_commit(control)?;
                 control.commit_construction_logical(
                     &self.control,

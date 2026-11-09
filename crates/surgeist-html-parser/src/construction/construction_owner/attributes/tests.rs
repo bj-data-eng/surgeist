@@ -366,3 +366,78 @@ fn a_refused_record_after_an_attribute_reserve_leaves_the_vector_ticket_releasab
     fixture.release(&mut c);
     crate::parser::tree_builder::tests::assert_released(&c);
 }
+
+/// The first action of an attribute edit qualifies the target and charges its record visits, an
+/// atomic layout and its auxiliary entries. Charged through the controller, the work is what the
+/// stock ledger charger records for the same description.
+#[test]
+fn an_attribute_edit_step_charges_the_controller_what_the_stock_charger_records() {
+    use crate::schema_support::{charged, through_charged};
+    use surgeist_html::bounded::construction::HtmlConstructionAttributeEdit;
+    let mut c = control();
+    let mut fixture = Fixture::new(&mut c, &["a", "b"], 4);
+    let storage = fixture.owner.owner.take().unwrap();
+    let handle = storage.node_at(0).unwrap().handle();
+    let mut edit = HtmlConstructionAttributeEdit::begin(
+        storage,
+        handle,
+        HtmlConstructionAttributeEditMode::Slots,
+    );
+    let action = edit.next_action().unwrap().unwrap();
+    let description = action.description();
+    let before = charged(&c);
+    description.charge(0, &mut c).unwrap();
+    let after = charged(&c);
+    let expected = through_charged(|charge| description.charge(0, charge));
+    for (index, category) in expected.categories.iter().enumerate() {
+        assert_eq!(
+            after.categories[index] - before.categories[index],
+            *category,
+            "category {index}"
+        );
+    }
+    assert_ne!(expected.credits, 0);
+    assert_ne!(
+        c.usage()
+            .resource(HtmlParseResource::AtomicLayoutBytes)
+            .high_water(),
+        0,
+        "the step's layout is recorded"
+    );
+    fixture
+        .owner
+        .adopt_attribute_completion(&mut c, edit.abort())
+        .unwrap();
+}
+
+/// A step that describes fewer provider calls than the caller says it prepaid is a disagreement
+/// between the plan and the charge, reported as the capacity mismatch invariant. No work is charged.
+#[test]
+fn prepaid_provider_calls_beyond_the_plan_are_the_capacity_mismatch_and_charge_nothing() {
+    use crate::schema_support::charged;
+    use surgeist_html::bounded::construction::HtmlConstructionAttributeEdit;
+    let mut c = control();
+    let mut fixture = Fixture::new(&mut c, &["a"], 2);
+    let storage = fixture.owner.owner.take().unwrap();
+    let handle = storage.node_at(0).unwrap().handle();
+    let mut edit = HtmlConstructionAttributeEdit::begin(
+        storage,
+        handle,
+        HtmlConstructionAttributeEditMode::Slots,
+    );
+    let action = edit.next_action().unwrap().unwrap();
+    let description = action.description();
+    let before = charged(&c);
+    let error = description.charge(u64::MAX, &mut c).unwrap_err();
+    let mismatch = HtmlParseStop::InternalInvariant(HtmlParseInvariant::CapacityMismatch);
+    assert_eq!(
+        crate::construction::charge_fault(&mut c, error),
+        SessionError::Stop(mismatch)
+    );
+    assert_eq!(c.stop(), Some(mismatch));
+    assert_eq!(charged(&c), before);
+    fixture
+        .owner
+        .adopt_attribute_completion(&mut c, edit.abort())
+        .unwrap();
+}

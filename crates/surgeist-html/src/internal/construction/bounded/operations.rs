@@ -1,4 +1,6 @@
 use super::*;
+use crate::internal::accounting::{HtmlChange, HtmlChargedError, HtmlResource, HtmlWork, wide};
+use surgeist_ledger::{Change, Charge};
 #[cfg(test)]
 mod charges;
 pub(crate) mod depth;
@@ -222,46 +224,71 @@ impl HtmlConstructionCommand {
     }
 }
 
+/// The work a construction step describes, which a consumer charges through the charge methods of
+/// [`HtmlConstructionActionDescription`]. The amounts are not readable.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct HtmlConstructionStepWork {
+    /// The retained records the step reads or updates.
+    pub(crate) record_visits: usize,
+    /// The bytes of expanded-name text the step compares.
+    pub(crate) inspected_bytes: usize,
+    /// The allocation-provider requests the step makes.
+    pub(crate) provider_calls: usize,
+    /// The bytes the step copies.
+    pub(crate) copied_bytes: usize,
+    /// The record fields the step writes.
+    pub(crate) record_writes: usize,
+    /// The bytes the step initializes.
+    pub(crate) initialized_bytes: usize,
+    /// The depth a command without an earlier usage boundary observes at its commit.
+    pub(crate) depth_observation: Option<usize>,
+}
+
 /// Fixed next work or the actual bank to reserve/share. Counts exclude allocator internals.
+///
+/// A step charges its own work in parts, each through a method that names what it charges, so a
+/// consumer that charges work of its own between the parts keeps its order. Calling a method on a
+/// description that has no such part is a [`HtmlConstructionChargeFault::WrongStep`].
 #[derive(Debug)]
 pub enum HtmlConstructionActionDescription<'a> {
-    /// Creates the shared identity allocation of a new construction owner.
+    /// Creates the shared identity allocation of a new construction owner. Charge it with
+    /// [`HtmlConstructionActionDescription::charge_identity`].
     InitializeIdentity {
         /// The identity allocation's payload size in bytes.
         payload_bytes: usize,
-        /// The bytes the action initializes in the new owner's arena.
-        initialized_bytes: usize,
-        /// The allocation-provider requests the action makes.
-        provider_calls: usize,
+        /// The work of the action: the bytes it initializes in the new owner's arena and its
+        /// allocation-provider requests.
+        work: HtmlConstructionStepWork,
     },
     /// Prepares the allocation snapshot that the next `Reserve` or `Share` action describes. It
-    /// copies a snapshot value and allocates nothing.
+    /// copies a snapshot value and allocates nothing. Charge it with
+    /// [`HtmlConstructionActionDescription::charge_report_preparation`].
     PrepareAllocationReport {
-        /// The retained records the action reads or updates.
-        record_visits: usize,
-        /// The provider requests the action makes.
-        provider_calls: usize,
-        /// The bytes copied into the snapshot.
-        copied_bytes: usize,
+        /// The retained records the action reads or updates, the provider requests it makes and
+        /// the bytes copied into the snapshot.
+        work: HtmlConstructionStepWork,
     },
     /// Reads retained records, without allocation, to qualify operands, names, order, ancestry,
-    /// publication membership or topology.
+    /// publication membership or topology. Charge it with
+    /// [`HtmlConstructionActionDescription::charge_inspection`].
     Inspect {
-        /// The retained records the action reads or updates.
-        record_visits: usize,
-        /// The bytes of expanded-name text the action compares; zero for record-only inspection.
-        inspected_bytes: usize,
+        /// The retained records the action reads or updates, and the bytes of expanded-name text
+        /// it compares; zero for record-only inspection.
+        work: HtmlConstructionStepWork,
     },
-    /// Compares one UTF-16 unit of an element's expanded name with its expected spelling.
+    /// Compares one UTF-16 unit of an element's expanded name with its expected spelling. Charge
+    /// it with [`HtmlConstructionActionDescription::charge_inspection`].
     Compare {
         /// The bytes the action compares.
-        inspected_bytes: usize,
+        work: HtmlConstructionStepWork,
     },
     /// Reserves capacity in the bank that `allocation` describes: the records vector for
     /// `ReserveRecords` and creation commands, or a parent's child-order deque for `Insert`.
+    /// Charge the provider requests that producing the allocation report costs with
+    /// [`HtmlConstructionActionDescription::charge_report_calls`].
     Reserve {
         /// The provider requests that producing the allocation report costs.
-        report_provider_calls: usize,
+        work: HtmlConstructionStepWork,
         /// The bank to reserve in, as reported just before the action.
         allocation: &'a HtmlConstructionAllocationSnapshot,
         /// The least length the bank must be able to hold afterwards.
@@ -273,30 +300,31 @@ pub enum HtmlConstructionActionDescription<'a> {
         /// larger, amortizing capacity with `perform_with_capacity` (`Geometric`).
         growth: HtmlConstructionGrowth,
     },
-    /// Creates the shared arena allocation that publication returns.
+    /// Creates the shared arena allocation that publication returns. Charge the provider requests
+    /// that producing the allocation report costs with
+    /// [`HtmlConstructionActionDescription::charge_report_calls`].
     Share {
         /// The provider requests that producing the allocation report costs.
-        report_provider_calls: usize,
+        work: HtmlConstructionStepWork,
         /// The allocation that the action creates, reported before it runs.
         allocation: &'a HtmlConstructionAllocationSnapshot,
     },
     /// Creates the shared node identities that the change stores: the identity of each record a
     /// creation command makes (two for a `template` and its contents), or the host, contents or
-    /// template identity of an association.
+    /// template identity of an association. Charge it with
+    /// [`HtmlConstructionActionDescription::charge_references`].
     ShareReferences {
-        /// The provider requests, one per identity created.
-        provider_calls: usize,
-        /// The bytes of identity references copied into the change.
-        copied_bytes: usize,
+        /// The provider requests, one per identity created, and the bytes of identity references
+        /// copied into the change.
+        work: HtmlConstructionStepWork,
     },
-    /// Initializes the child-order bank of a record the command is creating.
+    /// Initializes the child-order bank of a record the command is creating. Charge it with
+    /// [`HtmlConstructionActionDescription::charge_children_initialization`] and
+    /// [`HtmlConstructionActionDescription::charge_children_calls`].
     InitializeChildren {
-        /// The provider requests the action makes.
-        provider_calls: usize,
-        /// The bytes copied into the bank's bookkeeping.
-        copied_bytes: usize,
-        /// The record fields the action writes.
-        record_writes: usize,
+        /// The provider requests the action makes, the bytes copied into the bank's bookkeeping
+        /// and the record fields the action writes.
+        work: HtmlConstructionStepWork,
         /// The ordinal of the record whose child-order bank is initialized.
         position: usize,
         /// The size in bytes of one child-order entry.
@@ -304,7 +332,8 @@ pub enum HtmlConstructionActionDescription<'a> {
         /// The alignment in bytes of one child-order entry.
         element_alignment: usize,
     },
-    /// Computed Insert usage, before any child-order growth.
+    /// Computed Insert usage, before any child-order growth. Charge its depth with
+    /// [`HtmlConstructionActionDescription::charge_depth`].
     Preflight {
         /// The usage the command leaves in place, computed before any child-order growth. The
         /// consumer admits the node, edge, attribute, UTF-16 and depth limits against it.
@@ -313,21 +342,232 @@ pub enum HtmlConstructionActionDescription<'a> {
     /// Describes the prepaid writes and moves of the command. Performing this action applies no
     /// write: it makes the operation ready, after checking that the planned order edits still
     /// hold. The writes and moves are applied by `HtmlConstructionReadyOperation::commit`, which
-    /// follows `HtmlConstructionOperation::try_ready`.
+    /// follows `HtmlConstructionOperation::try_ready`. Charge it with
+    /// [`HtmlConstructionActionDescription::charge_commit`].
     Commit {
-        /// Commands without an earlier usage boundary observe depth here.
-        depth_observation: Option<usize>,
-        /// Records the commit's depth walk reads.
-        record_visits: usize,
-        /// The record fields the commit writes.
-        record_writes: usize,
-        /// The bytes the commit copies.
-        copied_bytes: usize,
-        /// The bytes the commit initializes.
-        initialized_bytes: usize,
+        /// The depth a command without an earlier usage boundary observes, the records the
+        /// commit's depth walk reads, the record fields it writes, the bytes it copies and the
+        /// bytes it initializes.
+        work: HtmlConstructionStepWork,
         /// The usage the commit leaves in place.
         usage: HtmlConstructionUsage,
     },
+}
+impl HtmlConstructionActionDescription<'_> {
+    /// Charges the identity allocation's provider requests beyond `prepaid_provider_calls`, as one
+    /// change, then the bytes it initializes as the layout reached, then those bytes as copied.
+    pub fn charge_identity<C: Charge<HtmlWork, HtmlResource>>(
+        &self,
+        prepaid_provider_calls: u64,
+        charge: &mut C,
+    ) -> Result<(), HtmlChargedError<C::Stop, HtmlConstructionChargeFault>> {
+        let Self::InitializeIdentity { work, .. } = self else {
+            return Err(HtmlChargedError::Faulted(
+                HtmlConstructionChargeFault::WrongStep,
+            ));
+        };
+        let calls = wide(work.provider_calls)
+            .checked_sub(prepaid_provider_calls)
+            .ok_or(HtmlChargedError::Faulted(
+                HtmlConstructionChargeFault::PrepaidCallsExceedPlan,
+            ))?;
+        let stopped = HtmlChargedError::Stopped;
+        charge
+            .charge(&[Change::Work(HtmlWork::ProviderCall, calls)])
+            .map_err(stopped)?;
+        charge
+            .record_largest(
+                HtmlResource::AtomicLayoutBytes,
+                wide(work.initialized_bytes),
+            )
+            .map_err(stopped)?;
+        charge
+            .charge(&[Change::Work(
+                HtmlWork::CopyByte,
+                wide(work.initialized_bytes),
+            )])
+            .map_err(stopped)
+    }
+    /// Charges the records read, the provider requests and the bytes copied while preparing an
+    /// allocation report, each as its own change.
+    pub fn charge_report_preparation<C: Charge<HtmlWork, HtmlResource>>(
+        &self,
+        charge: &mut C,
+    ) -> Result<(), HtmlChargedError<C::Stop, HtmlConstructionChargeFault>> {
+        let Self::PrepareAllocationReport { work } = self else {
+            return Err(HtmlChargedError::Faulted(
+                HtmlConstructionChargeFault::WrongStep,
+            ));
+        };
+        charge_each(
+            charge,
+            [
+                Change::Work(HtmlWork::RecordVisit, wide(work.record_visits)),
+                Change::Work(HtmlWork::ProviderCall, wide(work.provider_calls)),
+                Change::Work(HtmlWork::CopyByte, wide(work.copied_bytes)),
+            ],
+        )
+    }
+    /// Charges the records read, then the bytes compared, each as its own change. A comparison
+    /// reads no records.
+    pub fn charge_inspection<C: Charge<HtmlWork, HtmlResource>>(
+        &self,
+        charge: &mut C,
+    ) -> Result<(), HtmlChargedError<C::Stop, HtmlConstructionChargeFault>> {
+        match self {
+            Self::Inspect { work } => charge_each(
+                charge,
+                [
+                    Change::Work(HtmlWork::RecordVisit, wide(work.record_visits)),
+                    Change::Work(HtmlWork::InspectByte, wide(work.inspected_bytes)),
+                ],
+            ),
+            Self::Compare { work } => charge_each(
+                charge,
+                [Change::Work(
+                    HtmlWork::InspectByte,
+                    wide(work.inspected_bytes),
+                )],
+            ),
+            _ => Err(HtmlChargedError::Faulted(
+                HtmlConstructionChargeFault::WrongStep,
+            )),
+        }
+    }
+    /// Charges the provider requests that producing a `Reserve` or `Share` allocation report
+    /// costs, as one change.
+    pub fn charge_report_calls<C: Charge<HtmlWork, HtmlResource>>(
+        &self,
+        charge: &mut C,
+    ) -> Result<(), HtmlChargedError<C::Stop, HtmlConstructionChargeFault>> {
+        match self {
+            Self::Reserve { work, .. } | Self::Share { work, .. } => charge_each(
+                charge,
+                [Change::Work(
+                    HtmlWork::ProviderCall,
+                    wide(work.provider_calls),
+                )],
+            ),
+            _ => Err(HtmlChargedError::Faulted(
+                HtmlConstructionChargeFault::WrongStep,
+            )),
+        }
+    }
+    /// Charges the provider requests and then the bytes copied that sharing node identities
+    /// costs, each as its own change.
+    pub fn charge_references<C: Charge<HtmlWork, HtmlResource>>(
+        &self,
+        charge: &mut C,
+    ) -> Result<(), HtmlChargedError<C::Stop, HtmlConstructionChargeFault>> {
+        let Self::ShareReferences { work } = self else {
+            return Err(HtmlChargedError::Faulted(
+                HtmlConstructionChargeFault::WrongStep,
+            ));
+        };
+        charge_each(
+            charge,
+            [
+                Change::Work(HtmlWork::ProviderCall, wide(work.provider_calls)),
+                Change::Work(HtmlWork::CopyByte, wide(work.copied_bytes)),
+            ],
+        )
+    }
+    /// Charges the bytes copied and then the record fields written when a child-order bank is
+    /// initialized, each as its own change. Its provider requests are charged by
+    /// [`Self::charge_children_calls`].
+    pub fn charge_children_initialization<C: Charge<HtmlWork, HtmlResource>>(
+        &self,
+        charge: &mut C,
+    ) -> Result<(), HtmlChargedError<C::Stop, HtmlConstructionChargeFault>> {
+        let Self::InitializeChildren { work, .. } = self else {
+            return Err(HtmlChargedError::Faulted(
+                HtmlConstructionChargeFault::WrongStep,
+            ));
+        };
+        charge_each(
+            charge,
+            [
+                Change::Work(HtmlWork::CopyByte, wide(work.copied_bytes)),
+                Change::Work(HtmlWork::RecordWrite, wide(work.record_writes)),
+            ],
+        )
+    }
+    /// Charges the provider requests of initializing a child-order bank, as one change.
+    pub fn charge_children_calls<C: Charge<HtmlWork, HtmlResource>>(
+        &self,
+        charge: &mut C,
+    ) -> Result<(), HtmlChargedError<C::Stop, HtmlConstructionChargeFault>> {
+        let Self::InitializeChildren { work, .. } = self else {
+            return Err(HtmlChargedError::Faulted(
+                HtmlConstructionChargeFault::WrongStep,
+            ));
+        };
+        charge_each(
+            charge,
+            [Change::Work(
+                HtmlWork::ProviderCall,
+                wide(work.provider_calls),
+            )],
+        )
+    }
+    /// Records the depth of a `Preflight`'s usage as the largest tree depth reached.
+    pub fn charge_depth<C: Charge<HtmlWork, HtmlResource>>(
+        &self,
+        charge: &mut C,
+    ) -> Result<(), HtmlChargedError<C::Stop, HtmlConstructionChargeFault>> {
+        let Self::Preflight { usage } = self else {
+            return Err(HtmlChargedError::Faulted(
+                HtmlConstructionChargeFault::WrongStep,
+            ));
+        };
+        charge
+            .record_largest(HtmlResource::TreeDepth, wide(usage.depth))
+            .map_err(HtmlChargedError::Stopped)
+    }
+    /// Charges a commit: the depth that a command without an earlier usage boundary observes, as
+    /// the largest tree depth reached; the bytes it initializes, as the layout reached; then the
+    /// bytes copied, the records read and the record fields written, each as its own change.
+    pub fn charge_commit<C: Charge<HtmlWork, HtmlResource>>(
+        &self,
+        charge: &mut C,
+    ) -> Result<(), HtmlChargedError<C::Stop, HtmlConstructionChargeFault>> {
+        let Self::Commit { work, .. } = self else {
+            return Err(HtmlChargedError::Faulted(
+                HtmlConstructionChargeFault::WrongStep,
+            ));
+        };
+        if let Some(depth) = work.depth_observation {
+            charge
+                .record_largest(HtmlResource::TreeDepth, wide(depth))
+                .map_err(HtmlChargedError::Stopped)?;
+        }
+        charge
+            .record_largest(
+                HtmlResource::AtomicLayoutBytes,
+                wide(work.initialized_bytes),
+            )
+            .map_err(HtmlChargedError::Stopped)?;
+        charge_each(
+            charge,
+            [
+                Change::Work(HtmlWork::CopyByte, wide(work.copied_bytes)),
+                Change::Work(HtmlWork::RecordVisit, wide(work.record_visits)),
+                Change::Work(HtmlWork::RecordWrite, wide(work.record_writes)),
+            ],
+        )
+    }
+}
+/// Charges each change as its own batch, in order.
+fn charge_each<C: Charge<HtmlWork, HtmlResource>, const N: usize>(
+    charge: &mut C,
+    changes: [HtmlChange; N],
+) -> Result<(), HtmlChargedError<C::Stop, HtmlConstructionChargeFault>> {
+    for change in changes {
+        charge
+            .charge(&[change])
+            .map_err(HtmlChargedError::Stopped)?;
+    }
+    Ok(())
 }
 /// How a reserve action's capacity is selected.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -950,33 +1190,50 @@ impl<'a> HtmlConstructionAction<'a> {
         let operation = &self.operation;
         match &operation.phase {
             Phase::NamespaceUnit(_) | Phase::LocalUnit(_) => {
-                HtmlConstructionActionDescription::Compare { inspected_bytes: 3 }
+                HtmlConstructionActionDescription::Compare {
+                    work: HtmlConstructionStepWork {
+                        inspected_bytes: 3,
+                        ..HtmlConstructionStepWork::default()
+                    },
+                }
             }
             Phase::PrepareRecordsReport => {
                 HtmlConstructionActionDescription::PrepareAllocationReport {
-                    record_visits: 3,
-                    provider_calls: 1,
-                    copied_bytes: size_of::<HtmlConstructionAllocationSnapshot>(),
+                    work: HtmlConstructionStepWork {
+                        record_visits: 3,
+                        provider_calls: 1,
+                        copied_bytes: size_of::<HtmlConstructionAllocationSnapshot>(),
+                        ..HtmlConstructionStepWork::default()
+                    },
                 }
             }
             Phase::PrepareWrapperReport => {
                 HtmlConstructionActionDescription::PrepareAllocationReport {
-                    record_visits: 2,
-                    provider_calls: 1,
-                    copied_bytes: size_of::<HtmlConstructionAllocationSnapshot>(),
+                    work: HtmlConstructionStepWork {
+                        record_visits: 2,
+                        provider_calls: 1,
+                        copied_bytes: size_of::<HtmlConstructionAllocationSnapshot>(),
+                        ..HtmlConstructionStepWork::default()
+                    },
                 }
             }
             Phase::PrepareChildrenReport => {
                 HtmlConstructionActionDescription::PrepareAllocationReport {
-                    record_visits: 2,
-                    provider_calls: 1,
-                    copied_bytes: size_of::<HtmlConstructionAllocationSnapshot>(),
+                    work: HtmlConstructionStepWork {
+                        record_visits: 2,
+                        provider_calls: 1,
+                        copied_bytes: size_of::<HtmlConstructionAllocationSnapshot>(),
+                        ..HtmlConstructionStepWork::default()
+                    },
                 }
             }
             Phase::ReserveChildren(snapshot) => {
                 let required = operation.push_required();
                 HtmlConstructionActionDescription::Reserve {
-                    report_provider_calls: 1,
+                    work: HtmlConstructionStepWork {
+                        provider_calls: 1,
+                        ..HtmlConstructionStepWork::default()
+                    },
                     allocation: snapshot,
                     required_len: required,
                     minimum_capacity: required,
@@ -984,24 +1241,36 @@ impl<'a> HtmlConstructionAction<'a> {
                 }
             }
             Phase::ReserveRecords(snapshot) => HtmlConstructionActionDescription::Reserve {
-                report_provider_calls: 1,
+                work: HtmlConstructionStepWork {
+                    provider_calls: 1,
+                    ..HtmlConstructionStepWork::default()
+                },
                 allocation: snapshot,
                 required_len: operation.plan.reserve_required,
                 minimum_capacity: operation.plan.reserve_required,
                 growth: HtmlConstructionGrowth::Exact,
             },
             Phase::Share(snapshot) => HtmlConstructionActionDescription::Share {
-                report_provider_calls: 3,
+                work: HtmlConstructionStepWork {
+                    provider_calls: 3,
+                    ..HtmlConstructionStepWork::default()
+                },
                 allocation: snapshot,
             },
             Phase::References => HtmlConstructionActionDescription::ShareReferences {
-                provider_calls: operation.plan.references,
-                copied_bytes: operation.plan.references * size_of::<HtmlNodeId>(),
+                work: HtmlConstructionStepWork {
+                    provider_calls: operation.plan.references,
+                    copied_bytes: operation.plan.references * size_of::<HtmlNodeId>(),
+                    ..HtmlConstructionStepWork::default()
+                },
             },
             Phase::Children(offset) => HtmlConstructionActionDescription::InitializeChildren {
-                provider_calls: 1,
-                copied_bytes: 2 * size_of::<u64>(),
-                record_writes: 2,
+                work: HtmlConstructionStepWork {
+                    provider_calls: 1,
+                    copied_bytes: 2 * size_of::<u64>(),
+                    record_writes: 2,
+                    ..HtmlConstructionStepWork::default()
+                },
                 position: operation.plan.positions[0] + *offset,
                 element_size: size_of::<usize>(),
                 element_alignment: align_of::<usize>(),
@@ -1010,62 +1279,85 @@ impl<'a> HtmlConstructionAction<'a> {
                 usage: operation.plan.usage,
             },
             Phase::Commit => HtmlConstructionActionDescription::Commit {
-                depth_observation: (!matches!(
-                    operation.command(),
-                    HtmlConstructionCommand::Insert { .. }
-                ))
-                .then_some(operation.plan.usage.depth),
-                record_visits: operation.plan.record_visits,
-                record_writes: operation.plan.record_writes,
-                copied_bytes: operation.plan.copied_bytes,
-                initialized_bytes: operation.plan.initialized_bytes,
+                work: HtmlConstructionStepWork {
+                    depth_observation: (!matches!(
+                        operation.command(),
+                        HtmlConstructionCommand::Insert { .. }
+                    ))
+                    .then_some(operation.plan.usage.depth),
+                    record_visits: operation.plan.record_visits,
+                    record_writes: operation.plan.record_writes,
+                    copied_bytes: operation.plan.copied_bytes,
+                    initialized_bytes: operation.plan.initialized_bytes,
+                    ..HtmlConstructionStepWork::default()
+                },
                 usage: operation.plan.usage,
             },
             Phase::NewAttribute(_) => HtmlConstructionActionDescription::Inspect {
-                record_visits: 6,
-                inspected_bytes: 0,
+                work: HtmlConstructionStepWork {
+                    record_visits: 6,
+                    ..HtmlConstructionStepWork::default()
+                },
             },
             Phase::OldAttribute(_) => HtmlConstructionActionDescription::Inspect {
-                record_visits: 7,
-                inspected_bytes: 0,
+                work: HtmlConstructionStepWork {
+                    record_visits: 7,
+                    ..HtmlConstructionStepWork::default()
+                },
             },
             Phase::Operand(_) => HtmlConstructionActionDescription::Inspect {
-                record_visits: 2,
-                inspected_bytes: 0,
+                work: HtmlConstructionStepWork {
+                    record_visits: 2,
+                    ..HtmlConstructionStepWork::default()
+                },
             },
             Phase::PublishNode(_) => HtmlConstructionActionDescription::Inspect {
-                record_visits: 24,
-                inspected_bytes: 0,
+                work: HtmlConstructionStepWork {
+                    record_visits: 24,
+                    ..HtmlConstructionStepWork::default()
+                },
             },
             // One visit to read the record or entry, one to update a count.
             Phase::PublishReset(_) | Phase::PublishCount { .. } => {
                 HtmlConstructionActionDescription::Inspect {
-                    record_visits: 2,
-                    inspected_bytes: 0,
+                    work: HtmlConstructionStepWork {
+                        record_visits: 2,
+                        ..HtmlConstructionStepWork::default()
+                    },
                 }
             }
             Phase::Command => HtmlConstructionActionDescription::Inspect {
-                record_visits: 32,
-                inspected_bytes: 0,
+                work: HtmlConstructionStepWork {
+                    record_visits: 32,
+                    ..HtmlConstructionStepWork::default()
+                },
             },
             Phase::Layout | Phase::Topology => HtmlConstructionActionDescription::Inspect {
-                record_visits: 12,
-                inspected_bytes: 0,
+                work: HtmlConstructionStepWork {
+                    record_visits: 12,
+                    ..HtmlConstructionStepWork::default()
+                },
             },
             Phase::Cycle { .. } => HtmlConstructionActionDescription::Inspect {
-                record_visits: 12,
-                inspected_bytes: 0,
+                work: HtmlConstructionStepWork {
+                    record_visits: 12,
+                    ..HtmlConstructionStepWork::default()
+                },
             },
             Phase::PublishChild { .. }
             | Phase::Host { .. }
             | Phase::Shift { .. }
             | Phase::Settle { .. } => HtmlConstructionActionDescription::Inspect {
-                record_visits: 2,
-                inspected_bytes: 0,
+                work: HtmlConstructionStepWork {
+                    record_visits: 2,
+                    ..HtmlConstructionStepWork::default()
+                },
             },
             _ => HtmlConstructionActionDescription::Inspect {
-                record_visits: 1,
-                inspected_bytes: 0,
+                work: HtmlConstructionStepWork {
+                    record_visits: 1,
+                    ..HtmlConstructionStepWork::default()
+                },
             },
         }
     }

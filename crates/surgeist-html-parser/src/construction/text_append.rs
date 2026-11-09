@@ -1,36 +1,21 @@
 //! Real append ownership: one native backing, original registry and controller.
 use super::*;
 use construction_owner::construction_error;
-use surgeist_html::accounting::{HtmlWork, text_append_work};
 use surgeist_html::bounded::construction::{
     HtmlConstructionTextAppend as Append, HtmlConstructionTextAppendDescription as Description,
-    HtmlConstructionTextAppendWork as Work,
 };
 use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
-use surgeist_ledger::Change;
 
-fn admit_work(
+pub(super) fn admit_work(
     control: &mut ParseControl,
-    work: Work,
+    description: Description,
     wrapper_prepared: bool,
 ) -> Result<(), SessionError> {
-    control.admit_atomic_layout(work.atomic_layout_bytes)?;
-    // Each part of the plan is charged on its own, in order.
-    for change in text_append_work(&work) {
-        let change = match change {
-            Change::Work(HtmlWork::ProviderCall, calls) => {
-                let Some(calls) = calls.checked_sub(u64::from(wrapper_prepared)) else {
-                    // The wrapper's call was charged when it was prepared; a plan
-                    // that counts fewer differs from the work already charged for it.
-                    return Err(plan_below_charge(control));
-                };
-                Change::Work(HtmlWork::ProviderCall, calls)
-            }
-            other => other,
-        };
-        control.charge_change(change)?;
-    }
-    Ok(())
+    // The wrapper's call was charged when it was prepared; a plan that counts fewer differs from
+    // the work already charged for it.
+    description
+        .charge(u64::from(wrapper_prepared), control)
+        .map_err(|error| charge_fault(control, error))
 }
 
 /// One actual stopped pending allocation, kept until explicit owner cleanup.
@@ -376,7 +361,7 @@ impl SessionStorage {
                 match description {
                     Description::InitializeBacking(_) => {
                         // The wrapper preparation charges its actual Arc provider.
-                        admit_work(control, description.work(), true)?;
+                        admit_work(control, description, true)?;
                         pending_allocation = Some(control.prepare_text_append_allocation()?);
                     }
                     Description::Reserve {
@@ -398,10 +383,10 @@ impl SessionStorage {
                         )?;
                         minimum = Some(target);
                         expected_capacity = Some(target);
-                        admit_work(control, description.work(), false)?;
+                        admit_work(control, description, false)?;
                     }
                     Description::CopyPrefix { units, .. } | Description::CopyTail { units, .. } => {
-                        admit_work(control, description.work(), false)?;
+                        admit_work(control, description, false)?;
                         let Some(allocation) = (if preserve {
                             pending_allocation.as_mut()
                         } else {
@@ -435,9 +420,9 @@ impl SessionStorage {
                             payload_write::<Option<FormEffects>>(control, 1)?;
                         }
                         payload_write::<HtmlParseResource>(control, 1)?;
-                        admit_work(control, description.work(), false)?;
+                        admit_work(control, description, false)?;
                     }
-                    _ => admit_work(control, description.work(), false)?,
+                    _ => admit_work(control, description, false)?,
                 }
                 let performed = match &description {
                     // A test makes the backing fail: it was never created, so
@@ -660,59 +645,4 @@ struct StoppedAppend {
     pending: Option<DocumentStringAllocation>,
     original: Option<DocumentStringAllocation>,
     discarded: Option<DocumentString>,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// The wrapper's provider call was charged when it was prepared. A work
-    /// plan that counts none has nothing for that charge to be part of, so the
-    /// plan differs from the work already charged for it. No row is missing.
-    #[test]
-    fn a_work_plan_below_the_prepaid_provider_call_reports_the_capacity_mismatch() {
-        let mismatch = HtmlParseStop::InternalInvariant(
-            crate::parser::control::HtmlParseInvariant::CapacityMismatch,
-        );
-        let mut c = crate::construction::tests::control();
-        let before = c.usage().clone();
-        assert_eq!(
-            admit_work(&mut c, Work::default(), true),
-            Err(SessionError::Stop(mismatch))
-        );
-        assert_eq!(c.stop(), Some(mismatch));
-        assert_eq!(
-            c.usage().resource(HtmlParseResource::WorkCredits).current,
-            before.resource(HtmlParseResource::WorkCredits).current,
-            "no provider call is charged for the refused plan"
-        );
-    }
-
-    /// The relocation bound is not charged: the controller charges its own
-    /// reservation plan as reserved bytes, so the schema converts every other field.
-    #[test]
-    fn text_append_work_converts_to_the_charge_of_the_adapter() {
-        use crate::schema_support::{charged, through_schema};
-        let work = Work {
-            record_visits: 3,
-            provider_calls: 5,
-            inspected_bytes: 7,
-            copied_bytes: 11,
-            record_writes: 13,
-            atomic_layout_bytes: 64,
-            relocation_bound_bytes: 999,
-        };
-        let mut c = crate::construction::tests::control();
-        admit_work(&mut c, work, false).unwrap();
-        assert_eq!(
-            charged(&c),
-            through_schema(&surgeist_html::accounting::text_append_work(&work))
-        );
-        assert_eq!(
-            c.usage()
-                .resource(HtmlParseResource::AtomicLayoutBytes)
-                .high_water(),
-            64
-        );
-    }
 }

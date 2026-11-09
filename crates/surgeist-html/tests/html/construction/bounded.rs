@@ -3,9 +3,10 @@ mod focus;
 mod order;
 mod refusal;
 mod replace;
-use crate::html::support::{Cause, cause, has_cause, slots};
+use crate::html::support::{Cause, cause, charged_by, has_cause, slots};
 use std::sync::Arc;
 use surgeist_html::{
+    accounting::HtmlWork,
     bounded::construction::{
         HtmlConstructionActionDescription, HtmlConstructionAllocationRole,
         HtmlConstructionAttributeEdit, HtmlConstructionAttributeEditMode, HtmlConstructionCommand,
@@ -160,16 +161,21 @@ fn driven(
     let mut operation = Some(storage.prepare(command));
     let mut work = DescribedWork::default();
     while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
-        let (visits, copied, writes, growth) = match action.description() {
-            HtmlConstructionActionDescription::Inspect { record_visits, .. } => {
-                (record_visits, 0, 0, false)
+        let description = action.description();
+        let (visits, copied, writes, growth) = match &description {
+            HtmlConstructionActionDescription::Inspect { .. } => {
+                let charged = charged_by(|meter| description.charge_inspection(meter));
+                (charged.total(HtmlWork::RecordVisit) as usize, 0, 0, false)
             }
-            HtmlConstructionActionDescription::Commit {
-                record_visits,
-                record_writes,
-                copied_bytes,
-                ..
-            } => (record_visits, copied_bytes, record_writes, false),
+            HtmlConstructionActionDescription::Commit { .. } => {
+                let charged = charged_by(|meter| description.charge_commit(meter));
+                (
+                    charged.total(HtmlWork::RecordVisit) as usize,
+                    charged.total(HtmlWork::CopyByte) as usize,
+                    charged.total(HtmlWork::RecordWrite) as usize,
+                    false,
+                )
+            }
             // Reserving and reporting a bank's capacity is amortized growth.
             HtmlConstructionActionDescription::Reserve { .. }
             | HtmlConstructionActionDescription::PrepareAllocationReport { .. } => (0, 0, 0, true),
@@ -1559,4 +1565,112 @@ fn interrupted_element_creation_returns_original_command_without_publishing_a_no
         element.attributes().shared_attributes(),
         &backing
     ));
+}
+
+/// The charge of the Commit action of `command`, with the storage handed back after the command
+/// is applied.
+fn commit_charge(
+    storage: HtmlConstructionStorage,
+    command: HtmlConstructionCommand,
+) -> (HtmlConstructionStorage, crate::html::support::Recorder) {
+    let mut operation = Some(storage.prepare(command));
+    let mut charged = None;
+    while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
+        let description = action.description();
+        if matches!(
+            description,
+            HtmlConstructionActionDescription::Commit { .. }
+        ) {
+            charged = Some(charged_by(|meter| description.charge_commit(meter)));
+        }
+        action.perform().unwrap().accept();
+    }
+    let HtmlConstructionCommit::Changed { storage, .. } =
+        slots::operation(&mut operation).unwrap().commit().unwrap()
+    else {
+        panic!("mutation produced publication")
+    };
+    (
+        storage,
+        charged.expect("every operation ends in a Commit action"),
+    )
+}
+
+#[test]
+fn a_commit_records_the_largest_layout_and_observes_depth_only_without_an_earlier_usage_boundary() {
+    use surgeist_html::accounting::HtmlResource;
+    let (owner, root) = fragment(storage());
+    // A creation observes depth at its commit. The layout is the bytes the commit initializes.
+    let (owner, created) = {
+        let (owner, charged) = commit_charge(owner, element("leaf"));
+        let layouts: Vec<_> = charged
+            .gauges()
+            .iter()
+            .filter(|(resource, _)| *resource == HtmlResource::AtomicLayoutBytes)
+            .collect();
+        assert_eq!(layouts.len(), 1);
+        assert_eq!(
+            charged
+                .gauges()
+                .iter()
+                .filter(|(resource, _)| *resource == HtmlResource::TreeDepth)
+                .count(),
+            1
+        );
+        // The gauges come first, then the three work changes in their order.
+        assert_eq!(charged.batches().len(), 3);
+        let created = owner.node_at(owner.len() - 1).unwrap().handle();
+        (owner, created)
+    };
+    // An insert reaches its depth through the usage its preflight charged, not at the commit.
+    let (_, charged) = commit_charge(
+        owner,
+        HtmlConstructionCommand::Insert {
+            node: created,
+            parent: root,
+            before: None,
+        },
+    );
+    assert_eq!(
+        charged
+            .gauges()
+            .iter()
+            .filter(|(resource, _)| *resource == HtmlResource::TreeDepth)
+            .count(),
+        0
+    );
+    assert_eq!(
+        charged
+            .gauges()
+            .iter()
+            .filter(|(resource, _)| *resource == HtmlResource::AtomicLayoutBytes)
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn a_description_charges_only_the_parts_it_has() {
+    use surgeist_html::{
+        accounting::HtmlChargedError, bounded::construction::HtmlConstructionChargeFault,
+    };
+    let (owner, _) = fragment(storage());
+    let mut operation = Some(owner.prepare(element("probe")));
+    let action = operation.as_mut().unwrap().next_action().unwrap().unwrap();
+    let description = action.description();
+    let mut meter = crate::html::support::Recorder::default();
+    assert!(matches!(
+        description,
+        HtmlConstructionActionDescription::Inspect { .. }
+    ));
+    assert_eq!(
+        description.charge_commit(&mut meter),
+        Err(HtmlChargedError::Faulted(
+            HtmlConstructionChargeFault::WrongStep
+        ))
+    );
+    assert!(meter.batches().is_empty() && meter.gauges().is_empty());
+    description.charge_inspection(&mut meter).unwrap();
+    // The records visited, then the bytes inspected, each their own batch.
+    assert_eq!(meter.batches().len(), 2);
 }

@@ -3,8 +3,8 @@
 //! custody policy, conversion rate and cap scope.
 //!
 //! Three crates charge these dimensions. The parser charges work categories and
-//! parse resources, `surgeist-html` describes the work of its bounded
-//! operations, and semantics charges query, fact and capture dimensions. One pair
+//! parse resources, `surgeist-html` charges the work of its bounded operations,
+//! and semantics charges query, fact and capture dimensions. One pair
 //! of dimension sets, [`HtmlWork`] and [`HtmlResource`], covers all of them, so
 //! one ledger operation can hold every HTML charge and a host can read them in
 //! its own scope tree.
@@ -127,26 +127,27 @@
 //! recomputes those two figures from the usage it read before the batch and the
 //! batch's amounts.
 //!
-//! # Conversions
+//! # Charging
 //!
-//! Each function below converts one existing work, layout or limits shape into
-//! ledger changes or limits, with the amounts a consumer charges for that shape.
-//! Fields that no consumer charges are named in the function that skips them.
+//! A bounded operation of this crate charges its own work through a
+//! [`surgeist_ledger::Charge`] that its caller supplies, before the work runs. A
+//! cursor charges in its advancing call, and a description, pool action or layout
+//! has a charging method. Each charges the dimensions of this schema in the
+//! batches and the order the consumers charge them. The parser, the DOM and
+//! semantics implement the trait over their own accounting. An operation that can
+//! find a fault of its own reports [`HtmlChargedError`], which keeps the caller's
+//! stop and the operation's fault apart.
 //!
-//! Three shapes have no conversion. `HtmlRangeNumericLayout` and the request
-//! byte accessors of the range numeric machine describe register and buffer
-//! sizes whose charges the parser composes from its own record sizes, so they
-//! carry no amount rule of their own. `HtmlCspArtifactLayout` and
-//! `HtmlValuePoolLayout` bundle storage and work already converted through
-//! [`csp_storage`], [`csp_work`], [`value_pool_usage`] and [`value_pool_work`].
+//! The native builders and the controlled autocomplete materialization enforce
+//! their typed limits with a private ledger scope built from the caps below, and
+//! read their typed usage back from it.
+//!
+//! `HtmlRangeNumericLayout` and the request byte accessors of the range numeric
+//! machine describe register and buffer sizes whose charges the consumers compose
+//! from their own record sizes, so they carry no amount rule of their own.
 
-use crate::bounded::{
-    attributes::HtmlAutocompleteMaterializationLimits,
-    construction::{HtmlConstructionAttributeWork, HtmlConstructionTextAppendWork},
-    values::HtmlValuePoolUsage,
-};
+use crate::bounded::attributes::HtmlAutocompleteMaterializationLimits;
 use crate::construction::HtmlConstructionLimits;
-use crate::security::csp::HtmlCspStorage;
 use std::{error::Error, fmt};
 use surgeist_ledger::{Change, Limits, Tariff, Tariffs, dimensions};
 
@@ -721,54 +722,8 @@ pub fn retained_provider_storage(bytes: u64, units: u64, entries: u64) -> [(Html
     ]
 }
 
-/// The retained storage of a content security policy graph.
-pub fn csp_storage(storage: HtmlCspStorage) -> [(HtmlResource, u64); 4] {
-    retained_provider_storage(
-        wide(storage.bytes()),
-        wide(storage.utf16_units()),
-        wide(storage.entries()),
-    )
-}
-
-/// The retained storage of a value pool.
-pub fn value_pool_usage(usage: HtmlValuePoolUsage) -> [(HtmlResource, u64); 4] {
-    retained_provider_storage(wide(usage.bytes()), wide(usage.utf16_units()), 0)
-}
-
-/// The work of an attribute edit step. The step's atomic layout is recorded
-/// with [`record_largest`] on [`HtmlResource::AtomicLayoutBytes`] and its
-/// auxiliary entries are acquired through [`attribute_edit_entries`].
-pub fn attribute_edit_work(work: &HtmlConstructionAttributeWork) -> [HtmlChange; 5] {
-    [
-        Change::Work(HtmlWork::RecordVisit, wide(work.record_visits)),
-        Change::Work(HtmlWork::ProviderCall, wide(work.provider_calls)),
-        Change::Work(HtmlWork::InspectByte, wide(work.inspected_bytes)),
-        Change::Work(HtmlWork::CopyByte, wide(work.copied_bytes)),
-        Change::Work(HtmlWork::RecordWrite, wide(work.record_writes)),
-    ]
-}
-
-/// The name-witness entries an attribute edit step creates, acquired as
-/// [`HtmlResource::AuxiliaryEntries`].
-pub fn attribute_edit_entries(work: &HtmlConstructionAttributeWork) -> HtmlChange {
-    Change::Acquire(HtmlResource::AuxiliaryEntries, wide(work.auxiliary_entries))
-}
-
-/// The work of a text append step. The relocation bound is not charged: the
-/// parser charges its own reservation plan as [`HtmlWork::ReserveByte`]. The step's
-/// atomic layout is recorded with [`record_largest`].
-pub fn text_append_work(work: &HtmlConstructionTextAppendWork) -> [HtmlChange; 5] {
-    [
-        Change::Work(HtmlWork::RecordVisit, wide(work.record_visits)),
-        Change::Work(HtmlWork::ProviderCall, wide(work.provider_calls)),
-        Change::Work(HtmlWork::InspectByte, wide(work.inspected_bytes)),
-        Change::Work(HtmlWork::CopyByte, wide(work.copied_bytes)),
-        Change::Work(HtmlWork::RecordWrite, wide(work.record_writes)),
-    ]
-}
-
 /// The caps of a construction arena.
-pub fn construction_limits(limits: HtmlConstructionLimits) -> HtmlLimits {
+pub(crate) fn construction_limits(limits: HtmlConstructionLimits) -> HtmlLimits {
     Limits::from_fn(
         |_| u64::MAX,
         |resource| match resource {
@@ -783,7 +738,7 @@ pub fn construction_limits(limits: HtmlConstructionLimits) -> HtmlLimits {
 }
 
 /// The caps of a controlled autocomplete materialization.
-pub fn autocomplete_limits(limits: HtmlAutocompleteMaterializationLimits) -> HtmlLimits {
+pub(crate) fn autocomplete_limits(limits: HtmlAutocompleteMaterializationLimits) -> HtmlLimits {
     Limits::from_fn(
         |_| u64::MAX,
         |resource| match resource {

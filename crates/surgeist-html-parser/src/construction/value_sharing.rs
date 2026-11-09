@@ -1876,15 +1876,12 @@ mod tests {
     }
 
     /// The usage a pool action reports, retained as provider storage, is the
-    /// schema's `value_pool_usage`: the controller acquires its bytes as capacity
+    /// pool's storage: the controller acquires its bytes as capacity
     /// and peak bytes and its UTF-16 units as managed units.
     #[test]
     fn value_pool_usage_converts_to_the_resources_the_controller_acquires() {
-        use surgeist_html::{
-            accounting::value_pool_usage,
-            bounded::values::{
-                HtmlStringPoolOperation, HtmlValuePoolActionKind, HtmlValuePoolUsage,
-            },
+        use surgeist_html::bounded::values::{
+            HtmlStringPoolOperation, HtmlValuePoolActionKind, HtmlValuePoolUsage,
         };
         let input = DocumentString::from("provider storage of a pooled string");
         let equal = DocumentString::from_utf16(input.code_units().to_vec());
@@ -1923,9 +1920,14 @@ mod tests {
                 crate::HtmlParseCancellation::new(),
             );
             Usage::pool(usage).retain(&mut c).unwrap();
-            for (resource, amount) in value_pool_usage(usage) {
-                let parse = crate::settings::RESOURCES[resource as usize];
-                assert_eq!(c.usage().resource(parse).current(), amount, "{resource:?}");
+            let (bytes, units) = (usage.bytes() as u64, usage.utf16_units() as u64);
+            for (parse, amount) in [
+                (HtmlParseResource::AuxiliaryEntries, 0),
+                (HtmlParseResource::ManagedUtf16Units, units),
+                (HtmlParseResource::ManagedCapacityBytes, bytes),
+                (HtmlParseResource::PeakTransientBytes, bytes),
+            ] {
+                assert_eq!(c.usage().resource(parse).current(), amount, "{parse:?}");
             }
         }
     }

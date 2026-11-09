@@ -771,3 +771,82 @@ fn a_refused_record_after_a_text_reserve_leaves_the_ticket_releasable_for_what_w
     storage_zero(&c);
     crate::parser::tree_builder::tests::assert_released(&c);
 }
+
+/// The first action of a text append, with the owner that holds the storage until the test hands
+/// it back.
+fn first_description(
+    c: &mut ParseControl,
+) -> (
+    ParserArenaSession,
+    surgeist_html::bounded::construction::HtmlConstructionTextAppend,
+) {
+    use surgeist_html::bounded::construction::HtmlConstructionTextAppend as Append;
+    let (mut session, _root, node) = aggregate(c);
+    let storage = session.active_mut().unwrap();
+    let slot = storage.payloads.node_joins[node.index].text().unwrap();
+    let RetainedPayload::String { value, .. } =
+        mem::replace(&mut storage.payloads.values[slot], RetainedPayload::Retired)
+    else {
+        panic!("registered text")
+    };
+    // Without the registry's strong handle the original is exclusive, as it is when the real
+    // append starts.
+    drop(value);
+    let append = Append::begin(
+        storage.construction.owner.take().unwrap(),
+        node.handle.clone(),
+        DocumentString::from("C"),
+    );
+    (session, append)
+}
+
+/// Charged through the controller, a text append step is what the stock ledger charger records
+/// for the same description, including the layout gauge it records first.
+#[test]
+fn a_text_append_step_charges_the_controller_what_the_stock_charger_records() {
+    use crate::schema_support::{charged, through_charged};
+    let mut c = control();
+    let (mut session, mut append) = first_description(&mut c);
+    let action = append.next_action().unwrap().unwrap();
+    let description = action.description();
+    let before = charged(&c);
+    super::text_append::admit_work(&mut c, description, false).unwrap();
+    let after = charged(&c);
+    let expected = through_charged(|charge| description.charge(0, charge));
+    for (index, category) in expected.categories.iter().enumerate() {
+        assert_eq!(
+            after.categories[index] - before.categories[index],
+            *category,
+            "category {index}"
+        );
+    }
+    assert_ne!(expected.credits, 0);
+    let (owner, ..) = append.abort().unwrap().into_parts();
+    session.active_mut().unwrap().construction.owner = Some(owner);
+}
+
+/// The wrapper's provider call was charged when it was prepared. A step that describes fewer calls
+/// than that has nothing for the charge to be part of, so the plan differs from the work already
+/// charged for it. No row is missing, and no work is charged for the refused step.
+#[test]
+fn a_text_append_step_below_the_prepaid_provider_call_is_the_capacity_mismatch() {
+    use crate::schema_support::charged;
+    let mismatch = HtmlParseStop::InternalInvariant(
+        crate::parser::control::HtmlParseInvariant::CapacityMismatch,
+    );
+    let mut c = control();
+    let (mut session, mut append) = first_description(&mut c);
+    let action = append.next_action().unwrap().unwrap();
+    let description = action.description();
+    let before = charged(&c);
+    // More prepaid provider calls than the step plans.
+    let error = description.charge(u64::MAX, &mut c).unwrap_err();
+    assert_eq!(
+        crate::construction::charge_fault(&mut c, error),
+        SessionError::Stop(mismatch)
+    );
+    assert_eq!(c.stop(), Some(mismatch));
+    assert_eq!(charged(&c).credits, before.credits);
+    let (owner, ..) = append.abort().unwrap().into_parts();
+    session.active_mut().unwrap().construction.owner = Some(owner);
+}
