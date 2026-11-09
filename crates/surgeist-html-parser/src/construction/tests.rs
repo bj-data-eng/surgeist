@@ -23,6 +23,7 @@ mod prologue;
 mod radio_groups;
 mod record_reserve;
 mod root_merge;
+mod schema;
 mod script;
 mod shared_history;
 mod table_implied;

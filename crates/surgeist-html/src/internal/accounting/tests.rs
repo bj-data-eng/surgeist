@@ -403,3 +403,34 @@ fn csp_work_sums_its_own_and_closing_credits() {
         ]
     );
 }
+
+/// The schema dimension of each construction limit resource.
+fn construction(resource: crate::construction::HtmlConstructionResource) -> HtmlResource {
+    use crate::construction::HtmlConstructionResource as Resource;
+    match resource {
+        Resource::Nodes => HtmlResource::ManagedNodes,
+        Resource::Edges => HtmlResource::ManagedEdges,
+        Resource::Attributes => HtmlResource::ManagedAttributes,
+        Resource::Utf16Units => HtmlResource::ManagedUtf16Units,
+        Resource::Depth => HtmlResource::TreeDepth,
+    }
+}
+
+#[test]
+fn the_construction_scope_caps_exactly_the_construction_resources() {
+    use crate::construction::HtmlConstructionResource as Resource;
+    let capped: Vec<HtmlResource> = [
+        Resource::Nodes,
+        Resource::Edges,
+        Resource::Attributes,
+        Resource::Utf16Units,
+        Resource::Depth,
+    ]
+    .into_iter()
+    .map(construction)
+    .collect();
+    assert_eq!(
+        HtmlCapScope::Construction.capped_resources(),
+        capped.as_slice()
+    );
+}

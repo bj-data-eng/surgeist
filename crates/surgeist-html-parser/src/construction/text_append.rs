@@ -692,4 +692,32 @@ mod tests {
             "no provider call is charged for the refused plan"
         );
     }
+
+    /// The relocation bound is not charged: the controller charges its own
+    /// reservation plan as reserved bytes, so the schema converts every other field.
+    #[test]
+    fn text_append_work_converts_to_the_charge_of_the_adapter() {
+        use crate::schema_support::{charged, through_schema};
+        let work = Work {
+            record_visits: 3,
+            provider_calls: 5,
+            inspected_bytes: 7,
+            copied_bytes: 11,
+            record_writes: 13,
+            atomic_layout_bytes: 64,
+            relocation_bound_bytes: 999,
+        };
+        let mut c = crate::construction::tests::control();
+        admit_work(&mut c, work, false).unwrap();
+        assert_eq!(
+            charged(&c),
+            through_schema(&surgeist_html::accounting::text_append_work(&work))
+        );
+        assert_eq!(
+            c.usage()
+                .resource(HtmlParseResource::AtomicLayoutBytes)
+                .high_water(),
+            64
+        );
+    }
 }
