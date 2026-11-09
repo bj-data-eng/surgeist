@@ -1321,8 +1321,9 @@ pub enum HtmlSemanticFailureKind {
     /// defect in this crate, as `ProtocolViolated` does for the value interpretations.
     ProtocolViolated,
     /// The ledger that carries the session's accounting failed in a way that is not a refused
-    /// cap: a host scope that is not the host operation's, no room for the session's scopes, an
-    /// exhausted ledger resource or a ledger defect.
+    /// cap: a host scope that is not the host operation's, no room for the session's scopes, a
+    /// ledger that cannot allocate, a release that matches nothing held, an exhausted ledger
+    /// resource or a ledger defect.
     Accounting(HtmlAccountingFault),
     Capture(HtmlCaptureError),
     ContextCaptureMismatch,
