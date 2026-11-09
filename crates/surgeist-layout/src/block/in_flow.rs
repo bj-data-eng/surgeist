@@ -152,24 +152,20 @@ where
     let logical_node_inner_size =
         LogicalSizeOf::new(inner_inline, constants.logical_node_inner_size().block);
     let node_inner_size = constants.flow_axes.physical_size(logical_node_inner_size);
-    let mut cursor_block = projection.map_or(
+    let cursor = projection.map_or(
         constants.logical_content_box_inset().block_start,
         |reference| reference.content_origin,
     );
+    let mut adjoining = entry::AdjoiningFlow::new(cursor, constants.collapse_top_margin);
     let mut occupied_block_end = S::ZERO;
     let mut intrinsic_inline_demand = S::ZERO;
-    let mut owned_float_block_end = cursor_block;
+    let mut owned_float_block_end = adjoining.cursor;
     let mut resolved_terminal_float_block_end = None;
     let mut baselines = super::baseline_frame::PendingBaselines::new();
     let mut static_positions = Vec::new();
     let mut fragment_margins = tree
         .fragment_margin_state()
         .map(|_| super::fragment_margins::Flow::default());
-    let mut active_margin = CollapsibleMarginOf::<S>::ZERO;
-    let mut top_margin = CollapsibleMarginOf::<S>::ZERO;
-    let mut start_component_open = constants.collapse_top_margin;
-    let mut all_in_flow_children_can_collapse_through = true;
-    let mut active_margin_can_collapse_with_parent = constants.collapse_top_margin;
     let mut pending_floats = Vec::new();
     let mut requests = constants.sizing_request.axes();
     let inline = constants
@@ -350,7 +346,7 @@ where
                             static_positions.push((
                                 child,
                                 absolute_static_position(
-                                    cursor_block + active_margin.resolve(),
+                                    adjoining.cursor + adjoining.active.resolve(),
                                     constants,
                                     containing_size,
                                     geometry,
@@ -478,7 +474,7 @@ where
                         hyphenation_state,
                         line_box_context,
                         source_index_start: run_start,
-                        cursor_block,
+                        cursor_block: adjoining.cursor,
                         owned_float_block_end,
                         constants,
                         input,
@@ -497,17 +493,11 @@ where
                         line_box_context: &mut line_box_context,
                         hyphenation_state: &mut hyphenation_state,
                         tail_ledger: &mut tail_ledger,
-                        cursor_block: &mut cursor_block,
+                        adjoining: &mut adjoining,
                         intrinsic_inline_demand: &mut intrinsic_inline_demand,
                         baselines: &mut baselines,
                         static_positions: &mut static_positions,
                         resolved_terminal_float_block_end: &mut resolved_terminal_float_block_end,
-                        active_margin: &mut active_margin,
-                        start_component_open: &mut start_component_open,
-                        active_margin_can_collapse_with_parent:
-                            &mut active_margin_can_collapse_with_parent,
-                        all_in_flow_children_can_collapse_through:
-                            &mut all_in_flow_children_can_collapse_through,
                         float_exclusions: &mut float_exclusions,
                         float_intrinsics: &mut float_intrinsics,
                         pending_floats: &mut pending_floats,
@@ -602,11 +592,11 @@ where
                 &prepared,
                 scope::ParentEntry {
                     reference: containing_size,
-                    cursor: cursor_block,
+                    cursor: adjoining.cursor,
                     occupied: occupied_block_end,
-                    active: active_margin,
-                    top: top_margin,
-                    first: start_component_open,
+                    active: adjoining.active,
+                    top: adjoining.top,
+                    first: adjoining.start_open,
                 },
             )?;
             if tree.block_scope_child(child) {
@@ -643,14 +633,12 @@ where
                 );
             let child_margin_can_collapse_with_parent =
                 child_margin_can_collapse_with_parent(&child_style);
-            let start = entry::reduce_start(
-                start_component_open,
+            let start = adjoining.reduce_start(
                 constants.collapse_top_margin,
                 child_margin_can_collapse_with_parent,
-                active_margin,
                 preview_top_margin,
             );
-            let preview_cursor_block = cursor_block + start.offset;
+            let preview_cursor_block = adjoining.cursor + start.offset;
             let child_logical_location = LogicalPointOf::new(
                 in_flow_child_inline_offset(
                     logical_child_size.inline,
@@ -697,14 +685,12 @@ where
                     .collapse_with_margin(
                         margin.at_physical_side(constants.flow_axes.block_start()),
                     );
-                let start = entry::reduce_start(
-                    start_component_open,
+                let start = adjoining.reduce_start(
                     constants.collapse_top_margin,
                     child_margin_can_collapse_with_parent(&child_style),
-                    active_margin,
                     preview_top_margin,
                 );
-                cursor_block + start.offset
+                adjoining.cursor + start.offset
             };
             let preview_cursor_block = block_start_for(output, child_margin);
             let inline_size_can_shrink =
@@ -866,11 +852,9 @@ where
             // consuming the component. Exported start groups stay outside;
             // internal groups precede its own zero top margin, not a later
             // in-flow sibling's margin.
-            let anonymous_start = entry::reduce_start(
-                start_component_open,
+            let anonymous_start = adjoining.reduce_start(
                 constants.collapse_top_margin,
                 true,
-                active_margin,
                 CollapsibleMarginOf::ZERO,
             );
             let mut pending_float = PendingFloat {
@@ -879,7 +863,7 @@ where
                 source_index,
                 side: child_style.float,
                 clear: child_style.clear,
-                block_start: cursor_block + anonymous_start.offset,
+                block_start: adjoining.cursor + anonymous_start.offset,
                 size: output.size,
                 named_baselines: output.named_baselines,
                 content_size: output.content_size,
@@ -979,12 +963,10 @@ where
                 flow.started = true;
             }
         }
-        let base_block = cursor_block;
-        let start = entry::reduce_start(
-            start_component_open,
+        let base_block = adjoining.cursor;
+        let start = adjoining.reduce_start(
             constants.collapse_top_margin,
             child_margin_can_collapse_with_parent,
-            active_margin,
             top_margin_set,
         );
         if let (Some(flow), Some((top, _)), Some(state)) = (
@@ -999,29 +981,23 @@ where
             };
             state.record_entry(child, constants.flow_axes, group);
         }
-        if start_component_open {
-            if start.exposes_child {
-                top_margin = top_margin.collapse_with(top_margin_set);
-                if collapses_through {
-                    top_margin = top_margin.collapse_with(bottom_margin_set);
-                }
-                if let (Some(flow), Some((top, bottom)), Some(state)) = (
-                    &mut fragment_margins,
-                    margin_groups,
-                    tree.fragment_margin_state(),
-                ) {
-                    flow.top = state.join(flow.top, top);
-                    if collapses_through {
-                        flow.top = state.join(flow.top, bottom);
-                    }
-                }
+        if adjoining.start_open
+            && start.exposes_child
+            && let (Some(flow), Some((top, bottom)), Some(state)) = (
+                &mut fragment_margins,
+                margin_groups,
+                tree.fragment_margin_state(),
+            )
+        {
+            flow.top = state.join(flow.top, top);
+            if collapses_through {
+                flow.top = state.join(flow.top, bottom);
             }
-            start_component_open = start.exposes_child && collapses_through;
         }
-        cursor_block = cursor_block + start.offset;
+        adjoining.begin_child(&start, top_margin_set, bottom_margin_set, collapses_through);
         let logical_location = LogicalPointOf::new(
             in_flow_child_inline_offset(logical_child_size.inline, logical_child_margin, constants),
-            cursor_block,
+            adjoining.cursor,
         );
         let fallback_location = constants.flow_axes.physical_point(
             logical_location,
@@ -1034,7 +1010,7 @@ where
                 .physical_point(location, logical_child_size, containing_size)
         } else if avoids_float_exclusions {
             let location = float_exclusions.place_bfc_block(
-                cursor_block,
+                adjoining.cursor,
                 logical_child_size,
                 logical_child_margin,
                 child_style.clear,
@@ -1046,7 +1022,7 @@ where
         } else if child_style.clear != Clear::None {
             let cleared_logical_location = LogicalPointOf::new(
                 logical_location.inline,
-                float_exclusions.clearance_block(cursor_block, child_style.clear),
+                float_exclusions.clearance_block(adjoining.cursor, child_style.clear),
             );
             constants.flow_axes.physical_point(
                 cleared_logical_location,
@@ -1066,7 +1042,7 @@ where
                 if child_style.clear == Clear::None {
                     logical_location.block
                 } else {
-                    float_exclusions.clearance_block(cursor_block, child_style.clear)
+                    float_exclusions.clearance_block(adjoining.cursor, child_style.clear)
                 },
             );
             if !float_exclusions.import_child(&shared, flow_origin) {
@@ -1166,11 +1142,6 @@ where
                 )
             })?;
         if collapses_through {
-            cursor_block = if child_style.clear == Clear::None {
-                base_block + logical_child_size.block
-            } else {
-                child_block_end
-            };
             if let (Some(flow), Some((top, bottom)), Some(state)) = (
                 &mut fragment_margins,
                 margin_groups,
@@ -1179,19 +1150,21 @@ where
                 let joined = state.join(flow.active, top);
                 flow.active = state.join(joined, bottom);
             }
-            active_margin = active_margin
-                .collapse_with(top_margin_set)
-                .collapse_with(bottom_margin_set);
-            active_margin_can_collapse_with_parent = child_margin_can_collapse_with_parent;
-        } else {
-            all_in_flow_children_can_collapse_through = false;
-            cursor_block = child_block_end;
-            if let (Some(flow), Some((_, bottom))) = (&mut fragment_margins, margin_groups) {
-                flow.active = bottom;
-            }
-            active_margin = bottom_margin_set;
-            active_margin_can_collapse_with_parent = child_margin_can_collapse_with_parent;
+        } else if let (Some(flow), Some((_, bottom))) = (&mut fragment_margins, margin_groups) {
+            flow.active = bottom;
         }
+        let next_cursor = if collapses_through && child_style.clear == Clear::None {
+            base_block + logical_child_size.block
+        } else {
+            child_block_end
+        };
+        adjoining.finish_child(
+            next_cursor,
+            top_margin_set,
+            bottom_margin_set,
+            collapses_through,
+            child_margin_can_collapse_with_parent,
+        );
         index += 1;
     }
 
@@ -1221,14 +1194,14 @@ where
         baselines,
         static_positions,
         pending_floats,
-        cursor_block,
+        cursor_block: adjoining.cursor,
         occupied_block_end,
         participated: !first_in_flow,
-        top_margin,
-        active_margin,
-        active_margin_at_start: start_component_open,
-        active_margin_can_collapse_with_parent,
-        all_in_flow_children_can_collapse_through,
+        top_margin: adjoining.top,
+        active_margin: adjoining.active,
+        active_margin_at_start: adjoining.start_open,
+        active_margin_can_collapse_with_parent: adjoining.end_adjoins_parent,
+        all_in_flow_children_can_collapse_through: adjoining.all_through,
     })
 }
 

@@ -211,27 +211,19 @@ impl VisibleInlineRunTransition {
             line_box_context,
             hyphenation_state,
             tail_ledger,
-            cursor_block,
+            adjoining,
             intrinsic_inline_demand,
             baselines,
             static_positions,
             resolved_terminal_float_block_end,
-            active_margin,
-            start_component_open,
-            active_margin_can_collapse_with_parent,
-            all_in_flow_children_can_collapse_through,
             float_exclusions,
             float_intrinsics,
             pending_floats,
             owned_float_block_end,
             contributions,
         } = state;
-        let adjoining_margin = if *start_component_open {
-            S::ZERO
-        } else {
-            active_margin.resolve()
-        };
-        context.cursor_block = *cursor_block;
+        let adjoining_margin = adjoining.adjoining_displacement();
+        context.cursor_block = adjoining.cursor;
         let constants = context.constants;
         let semantic = self.semantic.as_ref().map(|segment| {
             tree.text_computation()
@@ -261,9 +253,6 @@ impl VisibleInlineRunTransition {
             )?;
         }
 
-        if placement.margin == InlineRunMargin::Separates {
-            *start_component_open = false;
-        }
         if let (Some(flow), Some(item)) = (formatted.as_mut(), placement.formatted.take()) {
             flow.items.push(item);
         }
@@ -309,14 +298,14 @@ impl VisibleInlineRunTransition {
                 contribution.last_named,
             )
             .map_err(|error| error.layout(node))?;
-        *cursor_block = placement.cursor_end;
+        adjoining.finish_run(
+            placement.cursor_end,
+            placement.margin == InlineRunMargin::Separates,
+        );
         pending_floats.extend(placement.floats);
         static_positions.extend(placement.static_positions);
         if placement.margin == InlineRunMargin::Separates {
             *resolved_terminal_float_block_end = placement.resolved_float_terminal_block_end;
-            *active_margin = CollapsibleMarginOf::<S>::ZERO;
-            *active_margin_can_collapse_with_parent = false;
-            *all_in_flow_children_can_collapse_through = false;
         }
         Ok(())
     }
@@ -329,15 +318,11 @@ pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
     pub(super) indent_state: &'a mut Option<crate::text_indent::IndentLineState>,
     pub(super) hyphenation_state: &'a mut crate::hyphenation::LineHyphenationState,
     pub(super) tail_ledger: &'a mut crate::hyphenation::BlockTailLedger,
-    pub(super) cursor_block: &'a mut S,
+    pub(super) adjoining: &'a mut entry::AdjoiningFlow<S>,
     pub(super) intrinsic_inline_demand: &'a mut S,
     pub(super) baselines: &'a mut super::baseline_frame::PendingBaselines,
     pub(super) static_positions: &'a mut Vec<(Node, StaticPositionOf<S>)>,
     pub(super) resolved_terminal_float_block_end: &'a mut Option<S>,
-    pub(super) active_margin: &'a mut CollapsibleMarginOf<S>,
-    pub(super) start_component_open: &'a mut bool,
-    pub(super) active_margin_can_collapse_with_parent: &'a mut bool,
-    pub(super) all_in_flow_children_can_collapse_through: &'a mut bool,
     pub(super) float_exclusions: &'a mut FloatExclusions<S, Node>,
     pub(super) float_intrinsics: &'a mut super::floats::FloatIntrinsics<S>,
     pub(super) pending_floats: &'a mut Vec<PendingFloat<Node, S>>,

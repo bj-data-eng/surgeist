@@ -1,6 +1,9 @@
 //! Entry facts that do not require the completed descendant body.
 use super::*;
 
+mod adjoining;
+pub(super) use adjoining::AdjoiningFlow;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct StartFact<S: LayoutScalar> {
     pub(crate) margin: CollapsibleMarginOf<S>,
