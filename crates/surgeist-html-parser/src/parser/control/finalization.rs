@@ -152,12 +152,6 @@ impl ParseControl {
     pub(crate) fn finalization_observation(&self) -> Option<FinalizationObservation> {
         self.finalization_observation
     }
-    pub(crate) fn admit_pool_work(
-        &mut self,
-        work: surgeist_html::bounded::values::HtmlValuePoolWork,
-    ) -> Result<(), HtmlParseStop> {
-        self.charge_changes(&value_pool_work(work))
-    }
     /// Credits a finalized vector ticket. A ticket of another controller or a
     /// capacity that does not fit the ledger is refused with a latched stop,
     /// credits nothing and is handed back.

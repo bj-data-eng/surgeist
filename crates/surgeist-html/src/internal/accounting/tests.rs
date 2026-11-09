@@ -112,7 +112,7 @@ fn the_credit_cap_refuses_the_charge_that_exceeds_it() {
 }
 
 #[test]
-fn value_pool_actions_convert_to_the_sum_of_their_five_fields() {
+fn value_pool_work_charges_the_sum_of_its_five_fields_as_credits() {
     for work in [
         HtmlStringPool::root_work(),
         HtmlStringPool::mark_work(),
@@ -125,9 +125,7 @@ fn value_pool_actions_convert_to_the_sum_of_their_five_fields() {
             + work.provider_calls() as u64
             + work.reserve_bytes() as u64;
         let (mut operation, cap, charging) = charging(HtmlLimits::unlimited());
-        operation
-            .apply_batch(charging, &value_pool_work(work))
-            .unwrap();
+        work.charge(&mut operation.charge_at(charging)).unwrap();
         assert_eq!(
             operation.usage(cap).unwrap().work(HtmlWork::Credits),
             expected

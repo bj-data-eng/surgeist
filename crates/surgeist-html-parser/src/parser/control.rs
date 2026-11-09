@@ -17,7 +17,7 @@ use std::{
 };
 use surgeist_html::accounting::{
     HtmlChange, HtmlResource, HtmlWork, attribute_edit_entries, attribute_edit_work,
-    record_largest, retained_provider_storage, value_pool_work,
+    record_largest, retained_provider_storage,
 };
 use surgeist_ledger::{Change, Refusal, RefusalReason};
 

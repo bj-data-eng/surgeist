@@ -18,5 +18,5 @@ pub use crate::internal::values::sharing::{
     HtmlStringPoolResult, HtmlValuePoolAction, HtmlValuePoolActionKind, HtmlValuePoolChange,
     HtmlValuePoolError, HtmlValuePoolLayout, HtmlValuePoolMark, HtmlValuePoolOccurrence,
     HtmlValuePoolProgress, HtmlValuePoolRoot, HtmlValuePoolSeal, HtmlValuePoolSealRefusal,
-    HtmlValuePoolUsage, HtmlValuePoolWork,
+    HtmlValuePoolUsage,
 };

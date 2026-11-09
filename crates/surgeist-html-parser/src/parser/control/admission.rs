@@ -7,7 +7,7 @@
 use super::*;
 #[cfg(test)]
 use surgeist_html::accounting::HtmlCustody;
-use surgeist_ledger::Dimension;
+use surgeist_ledger::{Charge, Dimension};
 
 /// How a refusal at one of the parse's own scopes is reported.
 #[derive(Clone, Copy)]
@@ -339,6 +339,43 @@ impl ParseControl {
             *deltas.get_mut(resource) = sum;
         }
         None
+    }
+}
+
+/// How `surgeist-html` charges the bounded operations it describes: through the
+/// controller, so every batch reaches the same cancellation check, admission
+/// rules and stop mapping as the parser's own charges.
+impl Charge<HtmlWork, HtmlResource> for ParseControl {
+    type Stop = HtmlParseStop;
+
+    /// A batch of work changes is one work charge. One acquisition is one
+    /// resource charge. Any other batch is not one the parser charges for
+    /// `surgeist-html`, so the ledger state it implies is an invariant stop.
+    fn charge(&mut self, batch: &[HtmlChange]) -> Result<(), HtmlParseStop> {
+        match batch {
+            [change @ Change::Acquire(..)] => self.acquire_change(*change),
+            _ if batch
+                .iter()
+                .all(|change| matches!(change, Change::Work(..))) =>
+            {
+                self.charge_changes(batch)
+            }
+            _ => Err(self.fail_invariant(HtmlParseInvariant::LedgerState)),
+        }
+    }
+
+    fn record_largest(&mut self, resource: HtmlResource, value: u64) -> Result<(), HtmlParseStop> {
+        match resource {
+            HtmlResource::AtomicLayoutBytes => match usize::try_from(value) {
+                Ok(bytes) => self.admit_atomic_layout(bytes),
+                Err(_) => {
+                    self.checkpoint()?;
+                    self.representation(HtmlParseResource::AtomicLayoutBytes)
+                }
+            },
+            HtmlResource::TreeDepth => self.observe_tree_depth(value),
+            _ => Err(self.fail_invariant(HtmlParseInvariant::LedgerState)),
+        }
     }
 }
 

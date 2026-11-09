@@ -422,6 +422,11 @@ pub enum DomError {
     InvalidLimit(DomResource),
     AllocationFailed,
     RepresentationExhausted,
+    /// An HTML operation charged a change that the DOM's work owner does not
+    /// admit: a resource change, a gauge record or a dimension with no credit
+    /// rate. The DOM charges only work, so an HTML operation that does this
+    /// breaks its contract with this adapter.
+    HtmlChargeProtocol,
     /// The processing-instruction pseudo-attribute driver and its cursor disagree about the
     /// committed names or the cursor's own replies. A driver that answers only what the cursor asks
     /// cannot produce it.

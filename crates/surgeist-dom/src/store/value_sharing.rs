@@ -8,10 +8,12 @@ use super::{DomError, custody};
 use crate::DomAttribute;
 use crate::name::AttributeStorage;
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use surgeist_html::accounting::{HtmlChange, HtmlResource, HtmlWork};
 use surgeist_html::bounded::values::{
     HtmlStringPool, HtmlValuePoolMark, HtmlValuePoolRoot, HtmlValuePoolSeal,
 };
 use surgeist_html::values::DocumentString;
+use surgeist_ledger::{Change, Charge};
 
 mod banks;
 #[cfg(test)]
@@ -156,18 +158,68 @@ fn lock(owner: &Mutex<State>) -> MutexGuard<'_, State> {
 fn protocol<T>(result: Result<T, surgeist_html::bounded::values::HtmlValuePoolError>) -> T {
     result.expect("owned optional value protocol")
 }
-fn html_work(work: surgeist_html::bounded::values::HtmlValuePoolWork) -> Result<usize, DomError> {
-    [
-        work.record_visits(),
-        work.inspected_bytes(),
-        work.copied_bytes(),
-        work.provider_calls(),
-        work.reserve_bytes(),
-    ]
-    .into_iter()
-    .try_fold(0usize, |sum, n| {
-        sum.checked_add(n).ok_or(DomError::RepresentationExhausted)
-    })
+/// Charges the work of `surgeist-html`'s pool operations into the DOM's
+/// cumulative work owner. A batch is the sum of its work dimensions, each weighed
+/// by the schema's credit rate, and the owner steps once per credit. Pool
+/// operations charge nothing else.
+struct PoolCharge<'a, 'b> {
+    admission: &'a mut Admission<'b>,
+    #[cfg(test)]
+    closing: bool,
+}
+impl<'a, 'b> PoolCharge<'a, 'b> {
+    fn new(admission: &'a mut Admission<'b>) -> Self {
+        Self {
+            admission,
+            #[cfg(test)]
+            closing: false,
+        }
+    }
+    #[cfg(test)]
+    fn closing(&mut self, closing: bool) {
+        self.closing = closing;
+    }
+}
+impl Charge<HtmlWork, HtmlResource> for PoolCharge<'_, '_> {
+    type Stop = DomError;
+
+    fn charge(&mut self, batch: &[HtmlChange]) -> Result<(), DomError> {
+        let mut credits = 0_u64;
+        #[cfg(test)]
+        let mut coordinates = [0_usize; 5];
+        for change in batch {
+            let Change::Work(dimension, amount) = *change else {
+                return Err(DomError::HtmlChargeProtocol);
+            };
+            let Some(rate) = dimension.credits_per_unit() else {
+                return Err(DomError::HtmlChargeProtocol);
+            };
+            credits = amount
+                .checked_mul(rate)
+                .and_then(|weighed| credits.checked_add(weighed))
+                .ok_or(DomError::RepresentationExhausted)?;
+            #[cfg(test)]
+            if let Some(slot) = match dimension {
+                HtmlWork::RecordVisit => coordinates.get_mut(0),
+                HtmlWork::InspectByte => coordinates.get_mut(1),
+                HtmlWork::CopyByte => coordinates.get_mut(2),
+                HtmlWork::ProviderCall => coordinates.get_mut(3),
+                HtmlWork::ReserveByte => coordinates.get_mut(4),
+                _ => None,
+            } {
+                *slot = usize::try_from(amount).unwrap_or(usize::MAX);
+            }
+        }
+        let credits = usize::try_from(credits).map_err(|_| DomError::RepresentationExhausted)?;
+        self.admission.work(credits)?;
+        #[cfg(test)]
+        admitted_html(coordinates, self.closing);
+        Ok(())
+    }
+
+    fn record_largest(&mut self, _: HtmlResource, _: u64) -> Result<(), DomError> {
+        Err(DomError::HtmlChargeProtocol)
+    }
 }
 fn html_usage(value: surgeist_html::bounded::values::HtmlValuePoolUsage) -> custody::Usage {
     custody::Usage::new(value.bytes(), value.utf16_units())
@@ -179,17 +231,11 @@ fn metric(event: Event) {
     }
 }
 #[cfg(test)]
-fn admitted_html(work: surgeist_html::bounded::values::HtmlValuePoolWork, closing: bool) {
+fn admitted_html(coordinates: [usize; 5], closing: bool) {
     if super::scale_metrics::ENABLED {
         metric(Event::SharingHtmlAdmitted {
             closing,
-            coordinates: [
-                work.record_visits(),
-                work.inspected_bytes(),
-                work.copied_bytes(),
-                work.provider_calls(),
-                work.reserve_bytes(),
-            ],
+            coordinates,
         });
     }
 }
@@ -242,9 +288,10 @@ impl Owner {
         ledger: custody::Ledger,
         admission: &mut Admission<'_>,
     ) -> Result<Self, DomError> {
-        admission.work(html_work(HtmlStringPool::disposal_work())?)?;
+        let mut charge = PoolCharge::new(admission);
         #[cfg(test)]
-        admitted_html(HtmlStringPool::disposal_work(), true);
+        charge.closing(true);
+        HtmlStringPool::charge_disposal(&mut charge)?;
         admission.work(banks::DISPOSAL_WORK)?;
         let storage = ledger.retain(
             custody::Usage::new(size_of::<Mutex<State>>(), 0),
@@ -368,9 +415,7 @@ impl Session {
             acquiring.finish(Phase::Bypassed);
             return Ok(None);
         }
-        admission.work(html_work(HtmlStringPool::root_work())?)?;
-        #[cfg(test)]
-        admitted_html(HtmlStringPool::root_work(), false);
+        HtmlStringPool::charge_root(&mut PoolCharge::new(admission))?;
         admission.work(banks::ROOT_WORK)?;
         let mut state = lock(&owner);
         if state.banks.occupied() {
@@ -419,9 +464,7 @@ impl Session {
         if !lock(&owner).mutable(id) {
             return Ok(empty());
         }
-        admission.work(html_work(HtmlStringPool::mark_work())?)?;
-        #[cfg(test)]
-        admitted_html(HtmlStringPool::mark_work(), false);
+        HtmlStringPool::charge_mark(&mut PoolCharge::new(admission))?;
         admission.work(banks::MARK_WORK)?;
         let ledger = lock(&owner).ledger.clone();
         let authority = ledger.retain(
@@ -484,9 +527,10 @@ impl Session {
             .marks;
         // Price both verification passes and the protected close selection
         // before traversing nominations. Only scalar shape is read above.
-        admission.work(html_work(HtmlStringPool::seal_work())?)?;
+        let mut charge = PoolCharge::new(admission);
         #[cfg(test)]
-        admitted_html(HtmlStringPool::seal_work(), true);
+        charge.closing(true);
+        HtmlStringPool::charge_seal(&mut charge)?;
         admission.work(banks::close_work(marks.len(), live)?)?;
         let verify = |state: &State| {
             let root = state

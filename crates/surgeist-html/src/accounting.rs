@@ -13,5 +13,5 @@ pub use crate::internal::accounting::{
     attribute_edit_entries, attribute_edit_work, attribute_validation_work, autocomplete_limits,
     charging_tariffs, construction_limits, csp_storage, csp_work, input_rule_work, record_largest,
     retained_provider_storage, script_type_work, text_append_work, time_interpretation_work,
-    value_pool_usage, value_pool_work,
+    value_pool_usage,
 };

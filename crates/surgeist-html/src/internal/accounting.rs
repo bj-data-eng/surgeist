@@ -145,7 +145,7 @@ use crate::bounded::{
     construction::{HtmlConstructionAttributeWork, HtmlConstructionTextAppendWork},
     script::HtmlScriptTypeWork,
     temporal::HtmlTimeElementInterpretationLayout,
-    values::{HtmlAttributeValidationLayout, HtmlValuePoolUsage, HtmlValuePoolWork},
+    values::{HtmlAttributeValidationLayout, HtmlValuePoolUsage},
 };
 use crate::construction::HtmlConstructionLimits;
 use crate::elements::input::HtmlInputRuleWork;
@@ -344,8 +344,10 @@ impl HtmlWork {
         }
     }
 
-    /// The tariff of this dimension from a charging scope to its cap scope.
-    pub const fn charging_tariff(self) -> Tariff<HtmlWork> {
+    /// How many credits one unit of this dimension counts in a cap scope, or
+    /// `None` for a dimension that has no conversion into credits. Each of the
+    /// eight parser categories and the credits themselves weigh one.
+    pub const fn credits_per_unit(self) -> Option<u64> {
         match self {
             Self::InputUnitRead
             | Self::InspectByte
@@ -355,8 +357,16 @@ impl HtmlWork {
             | Self::RecordWrite
             | Self::ReserveByte
             | Self::ProviderCall
-            | Self::Credits => Tariff::new(Self::Credits, 1),
-            Self::SemanticStep => Tariff::new(Self::SemanticStep, 1),
+            | Self::Credits => Some(1),
+            Self::SemanticStep => None,
+        }
+    }
+
+    /// The tariff of this dimension from a charging scope to its cap scope.
+    pub const fn charging_tariff(self) -> Tariff<HtmlWork> {
+        match self.credits_per_unit() {
+            Some(rate) => Tariff::new(Self::Credits, rate),
+            None => Tariff::new(Self::SemanticStep, 1),
         }
     }
 }
@@ -644,7 +654,7 @@ impl Error for HtmlChargeOverflow {}
 
 /// Widens a platform amount. An amount beyond `u64` saturates, and every finite
 /// cap refuses `u64::MAX`.
-fn wide(value: usize) -> u64 {
+pub(crate) fn wide(value: usize) -> u64 {
     u64::try_from(value).unwrap_or(u64::MAX)
 }
 
@@ -694,18 +704,6 @@ pub fn csp_storage(storage: HtmlCspStorage) -> [(HtmlResource, u64); 4] {
 /// The retained storage of a value pool.
 pub fn value_pool_usage(usage: HtmlValuePoolUsage) -> [(HtmlResource, u64); 4] {
     retained_provider_storage(wide(usage.bytes()), wide(usage.utf16_units()), 0)
-}
-
-/// The work of a value pool action. Their sum is the single pool-work count of
-/// the DOM adapter once converted through [`charging_tariffs`].
-pub fn value_pool_work(work: HtmlValuePoolWork) -> [HtmlChange; 5] {
-    [
-        Change::Work(HtmlWork::RecordVisit, wide(work.record_visits())),
-        Change::Work(HtmlWork::InspectByte, wide(work.inspected_bytes())),
-        Change::Work(HtmlWork::CopyByte, wide(work.copied_bytes())),
-        Change::Work(HtmlWork::ProviderCall, wide(work.provider_calls())),
-        Change::Work(HtmlWork::ReserveByte, wide(work.reserve_bytes())),
-    ]
 }
 
 /// The work of an attribute edit step. The step's atomic layout is recorded

@@ -118,12 +118,11 @@ impl Session {
                     break;
                 };
                 let layout = action.layout();
-                admission.work(html_work(layout.work())?)?;
+                let mut charge = PoolCharge::new(admission);
+                layout.charge_work(&mut charge)?;
                 #[cfg(test)]
-                admitted_html(layout.work(), false);
-                admission.work(html_work(layout.closing_work())?)?;
-                #[cfg(test)]
-                admitted_html(layout.closing_work(), true);
+                charge.closing(true);
+                layout.charge_closing_work(&mut charge)?;
                 let extra = {
                     let state = lock(&owner);
                     let target = custody::Usage::new(size_of::<Mutex<State>>(), 0)

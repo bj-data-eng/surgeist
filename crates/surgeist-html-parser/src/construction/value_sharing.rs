@@ -7,7 +7,6 @@ use surgeist_html::bounded::values::{
     HtmlAttributePool, HtmlAttributePoolOperation, HtmlAttributePoolResult, HtmlStringPool,
     HtmlStringPoolOperation, HtmlStringPoolResult, HtmlValuePoolActionKind, HtmlValuePoolError,
     HtmlValuePoolProgress, HtmlValuePoolRoot, HtmlValuePoolSeal, HtmlValuePoolUsage,
-    HtmlValuePoolWork,
 };
 #[cfg(test)]
 use surgeist_html::construction::HtmlNodeId;
@@ -28,10 +27,6 @@ fn pool_stop(c: &mut ParseControl, error: HtmlValuePoolError) -> HtmlParseStop {
 }
 fn pool_error(c: &mut ParseControl, error: HtmlValuePoolError) -> SessionError {
     pool_stop(c, error).into()
-}
-fn work(c: &mut ParseControl, work: HtmlValuePoolWork) -> Result<(), SessionError> {
-    c.admit_pool_work(work)?;
-    Ok(())
 }
 #[derive(Clone, Copy, Default)]
 struct Usage {
@@ -314,8 +309,7 @@ macro_rules! drive {
                     .map_err(|e| pool_error(control, e))?
                 {
                     let layout = action.layout();
-                    work(control, layout.work())?;
-                    work(control, layout.closing_work())?;
+                    layout.charge(control)?;
                     self.$usage.grow(Usage::pool(layout.pool()), control)?;
                     candidate.grow(Usage::pool(layout.candidate()), control)?;
                     let progress = match action.kind() {
@@ -382,8 +376,8 @@ impl Pools {
     ) -> Result<Self, SessionError> {
         // This fixed producer envelope covers final destruction even if a
         // later admission refuses. No terminal cleanup callback is required.
-        work(c, HtmlStringPool::disposal_work())?;
-        work(c, HtmlAttributePool::disposal_work())?;
+        HtmlStringPool::charge_disposal(c)?;
+        HtmlAttributePool::charge_disposal(c)?;
         Usage {
             bytes: mem::size_of::<Self>() as u64,
             units: 0,
@@ -468,8 +462,8 @@ impl Pools {
         self.enabled()
     }
     fn open(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
-        work(c, HtmlStringPool::root_work())?;
-        work(c, HtmlAttributePool::root_work())?;
+        HtmlStringPool::charge_root(c)?;
+        HtmlAttributePool::charge_root(c)?;
         if let Some(root) = self.strings.begin_root() {
             self.strings_root = Authority::Open(root);
         } else {
@@ -488,8 +482,8 @@ impl Pools {
         }
         // Both closing allowances precede either freeze. A later refusal still
         // leaves every already-owned root/plan abortable without admission.
-        work(c, HtmlStringPool::seal_work())?;
-        work(c, HtmlAttributePool::seal_work())?;
+        HtmlStringPool::charge_seal(c)?;
+        HtmlAttributePool::charge_seal(c)?;
         // Both roots were open when this began and nothing since has moved
         // them, so a root that is not open breaks the pool protocol.
         let Some(root) = self.strings_root.take_open() else {
@@ -1967,7 +1961,7 @@ mod tests {
             pools.offer_attributes(&bank, sharing.control).unwrap();
             assert!(pools.strings.heap_usage().bytes() > 0);
             assert!(pools.attributes.heap_usage().bytes() > 0);
-            work(sharing.control, HtmlAttributePool::mark_work()).unwrap();
+            HtmlAttributePool::charge_mark(sharing.control).unwrap();
             let Authority::Open(root) = &pools.attributes_root else {
                 panic!("open pair")
             };
