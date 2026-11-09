@@ -91,11 +91,11 @@ fn every_reaction_survives_collection_during_job_enqueue() {
         .unwrap()
         .expect("live captured value");
     assert_eq!(
-        first.state(),
+        first.state().unwrap(),
         PromiseState::Fulfilled(expected_result.into())
     );
     assert_eq!(
-        second.state(),
+        second.state().unwrap(),
         PromiseState::Fulfilled(expected_capture.into())
     );
 }
@@ -359,7 +359,7 @@ fn foreign_async_outcomes_reject_instead_of_leaving_a_pending_promise() {
     )
     .unwrap();
     context.run_jobs().unwrap();
-    assert!(promise.state().as_rejected().is_some());
+    assert!(promise.state().unwrap().as_rejected().is_some());
 }
 
 #[test]

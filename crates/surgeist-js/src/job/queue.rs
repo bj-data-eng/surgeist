@@ -525,7 +525,15 @@ impl JobExecutor for SimpleJobExecutor {
                                 queues.finish(slot);
                                 result?;
                             }
-                            JobStep::Finished(_) => queues.finish(slot),
+                            JobStep::Finished(status) => {
+                                queues.finish(slot);
+                                if let Err(fault) = status {
+                                    return host.with(|access| {
+                                        access.into_owner().check_execution_stop()?;
+                                        Err(fault.into())
+                                    });
+                                }
+                            }
                             JobStep::Pending => unreachable!("factory step cannot poll"),
                         }
                     } else if let Some(required) = job.owner() {
@@ -639,7 +647,15 @@ impl JobExecutor for SimpleJobExecutor {
                             queues.finish(slot);
                             result?;
                         }
-                        Some(JobStep::Finished(_)) => queues.finish(slot),
+                        Some(JobStep::Finished(status)) => {
+                            queues.finish(slot);
+                            if let Err(fault) = status {
+                                return host.with(|access| {
+                                    access.into_owner().check_execution_stop()?;
+                                    Err(fault.into())
+                                });
+                            }
+                        }
                     }
                 }
             }

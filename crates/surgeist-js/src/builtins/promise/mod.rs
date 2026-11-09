@@ -364,16 +364,22 @@ impl NativeCapture for CombinatorElementCaptures {
 }
 
 impl PromiseCapability {
+    fn native_promise(&self) -> JsResult<JsObject<Promise>> {
+        self.promise.clone().downcast::<Promise>().map_err(|_| {
+            crate::job::JobFault::new(
+                crate::job::JobFaultOwner::NativeSignal,
+                crate::job::JobFaultCause::StateInconsistency,
+            )
+            .into()
+        })
+    }
     pub(crate) fn associate_primary_job(
         &self,
         observer: &crate::job::JobObserver,
         context: &mut Context,
     ) -> JsResult<()> {
-        let promise = self
-            .promise
-            .clone()
-            .downcast::<Promise>()
-            .expect("intrinsic promise capability");
+        context.check_execution_stop()?;
+        let promise = self.native_promise()?;
         Promise::ensure_native_association(&promise, context)?.bind_job(observer, true)
     }
     pub(crate) fn associate_required_job(
@@ -381,11 +387,8 @@ impl PromiseCapability {
         observer: &crate::job::JobObserver,
         context: &mut Context,
     ) -> JsResult<()> {
-        let promise = self
-            .promise
-            .clone()
-            .downcast::<Promise>()
-            .expect("intrinsic promise capability");
+        context.check_execution_stop()?;
+        let promise = self.native_promise()?;
         Promise::ensure_native_association(&promise, context)?.bind_job(observer, false)
     }
 
@@ -641,13 +644,16 @@ impl BuiltInConstructor for Promise {
 impl Promise {
     pub(crate) fn native_association(
         promise: &JsObject<Self>,
-    ) -> Option<Rooted<native_settlement::Association>> {
-        promise
-            .borrow()
+    ) -> JsResult<Option<Rooted<native_settlement::Association>>> {
+        let edge = promise
+            .try_borrow()
+            .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?
             .data()
             .native_settlement
-            .as_ref()
+            .clone();
+        edge.as_ref()
             .map(native_settlement::AssociationEdge::root)
+            .transpose()
     }
     pub(crate) fn ensure_native_association(
         promise: &JsObject<Self>,
@@ -655,16 +661,24 @@ impl Promise {
     ) -> JsResult<Rooted<native_settlement::Association>> {
         context.check_execution_stop()?;
         promise.check_runtime(context.runtime())?;
-        if let Some(association) = Self::native_association(promise) {
+        if let Some(association) = Self::native_association(promise)? {
+            association.check()?;
             return Ok(association);
         }
         let pending = matches!(
-            promise.borrow().data().state,
+            promise
+                .try_borrow()
+                .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?
+                .data()
+                .state,
             StoredPromiseState::Pending { .. }
         );
         let association = native_settlement::Association::new(context)?;
-        promise.borrow_mut().data_mut().native_settlement =
-            Some(native_settlement::Association::edge(&association));
+        promise
+            .try_borrow_mut()
+            .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?
+            .data_mut()
+            .native_settlement = Some(native_settlement::Association::edge(&association));
         if !pending {
             association.settle();
         }
@@ -674,7 +688,7 @@ impl Promise {
         promise: &JsObject<Self>,
         observer: &crate::job::JobObserver,
     ) -> JsResult<Option<native_settlement::PreparedHandoff>> {
-        Self::native_association(promise)
+        Self::native_association(promise)?
             .map(|owner| native_settlement::Association::prepare_handoff(&owner, observer))
             .transpose()
     }
@@ -2385,7 +2399,7 @@ impl Promise {
         // 4. Let resultCapability be ? NewPromiseCapability(C).
         let result_capability = PromiseCapability::new(&c, context)?;
         let result_promise = result_capability.promise.clone();
-        if Self::native_association(promise).is_some()
+        if Self::native_association(promise)?.is_some()
             && let Ok(result) = result_promise.clone().downcast::<Self>()
         {
             Self::ensure_native_association(&result, context)?;
@@ -2425,7 +2439,10 @@ impl Promise {
                     .as_ref()
                     .and_then(|cap| cap.promise.clone().downcast::<Self>().ok())
             });
-        let target = target.filter(|target| Self::native_association(target).is_some());
+        let target = match target {
+            Some(target) if Self::native_association(&target)?.is_some() => Some(target),
+            _ => None,
+        };
         Self::perform_promise_then_target(
             promise,
             on_fulfilled,
@@ -2462,11 +2479,8 @@ impl Promise {
         target: &PromiseCapability,
         context: &mut Context,
     ) -> JsResult<()> {
-        let target = target
-            .promise
-            .clone()
-            .downcast::<Self>()
-            .expect("native target is an intrinsic promise");
+        context.check_execution_stop()?;
+        let target = target.native_promise()?;
         Self::ensure_native_association(&target, context)?;
         Self::perform_promise_then_target(
             promise,
@@ -2525,13 +2539,16 @@ impl Promise {
         context.check_execution_stop()?;
         let native_result_target = result_capability
             .as_ref()
-            .and_then(|cap| cap.promise.clone().downcast::<Self>().ok())
-            .filter(|target| Self::native_association(target).is_some())
-            .filter(|target| {
-                native_target
-                    .as_ref()
-                    .is_none_or(|primary| primary.identity() != target.identity())
-            });
+            .and_then(|cap| cap.promise.clone().downcast::<Self>().ok());
+        let native_result_target = match native_result_target {
+            Some(target) if Self::native_association(&target)?.is_some() => Some(target),
+            _ => None,
+        }
+        .filter(|target| {
+            native_target
+                .as_ref()
+                .is_none_or(|primary| primary.identity() != target.identity())
+        });
         // 7. Let fulfillReaction be the PromiseReaction { [[Capability]]: resultCapability, [[Type]]: Fulfill, [[Handler]]: onFulfilledJobCallback }.
         let fulfill_reaction = ReactionRecord {
             module_action: module_action.clone(),
@@ -2554,7 +2571,9 @@ impl Promise {
 
         Ok((fulfill_reaction, reject_reaction))
     }
-    /// Prepares the actual bridge pair for a new, unexposed intrinsic pending promise.
+    /// Installs the actual bridge pair while the source module's new canonical
+    /// promise remains private. Only the source-module owner calls this command;
+    /// target handoff remains uncommitted until canonical publication completes.
     pub(crate) fn prepare_pending_then(
         promise: &JsObject<Self>,
         fulfilled: JsFunction,
@@ -2562,11 +2581,8 @@ impl Promise {
         target: &PromiseCapability,
         context: &mut Context,
     ) -> JsResult<PreparedPendingReactions> {
-        let target_promise = target
-            .promise()
-            .clone()
-            .downcast::<Self>()
-            .expect("intrinsic bridge target");
+        context.check_execution_stop()?;
+        let target_promise = target.native_promise()?;
         let (fulfill, reject) = Self::prepare_then_records(
             promise,
             Some(fulfilled),
@@ -2581,31 +2597,56 @@ impl Promise {
             .runtime()
             .heap
             .with_pending_edges(stored, |stored| stored)
-            .map_err(|error| JsNativeError::typ().with_message(error.to_string()))?;
+            .map_err(|error| {
+                crate::job::JobFault::new(
+                    crate::job::JobFaultOwner::NativeSignal,
+                    match error {
+                        surgeist_js_gc::heap::AccessError::ForeignHeap
+                        | surgeist_js_gc::heap::AccessError::StaleHandle
+                        | surgeist_js_gc::heap::AccessError::WrongType => {
+                            crate::job::JobFaultCause::OwnerMismatch
+                        }
+                        surgeist_js_gc::heap::AccessError::HeapBorrowed
+                        | surgeist_js_gc::heap::AccessError::PayloadBorrowed => {
+                            crate::job::JobFaultCause::InaccessibleRegistry
+                        }
+                    },
+                )
+            })?;
+        let owner = Self::ensure_native_association(&target_promise, context)?;
+        let source = Self::ensure_native_association(promise, context)?;
+        let handoff = native_settlement::Association::prepare_follow(&owner, &source)?;
+        context.check_execution_stop()?;
         {
-            let mut promise = promise.borrow_mut();
+            let mut promise = promise
+                .try_borrow_mut()
+                .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?;
             let StoredPromiseState::Pending {
                 fulfill_reactions,
                 reject_reactions,
             } = &mut promise.data_mut().state
             else {
-                unreachable!("new canonical promise is not exposed before publication");
+                return Err(crate::job::JobFault::new(
+                    crate::job::JobFaultOwner::NativeSignal,
+                    crate::job::JobFaultCause::StateInconsistency,
+                )
+                .into());
             };
+            // Validate both stored records and reserve both destinations before
+            // installing either record or changing the handled disposition.
             fulfill_reactions
                 .try_reserve(1)
                 .map_err(|_| crate::error::EngineResourceError::Allocation)?;
             reject_reactions
                 .try_reserve(1)
                 .map_err(|_| crate::error::EngineResourceError::Allocation)?;
+            fulfill_reactions.push(stored.0);
+            reject_reactions.push(stored.1);
+            promise.data_mut().handled = true;
         }
-        let owner = Self::ensure_native_association(&target_promise, context)?;
-        let source = Self::ensure_native_association(promise, context)?;
-        let handoff = native_settlement::Association::prepare_follow(&owner, &source)?;
-        context.check_execution_stop()?;
         Ok(PreparedPendingReactions {
             promise: promise.clone(),
             roots: (fulfill, reject),
-            stored: Some(stored),
             handoff,
         })
     }
@@ -2635,7 +2676,7 @@ impl Promise {
 
         let mut dependency_handoffs = [None, None];
         if matches!(state, PromiseState::Pending)
-            && let Some(source) = Self::native_association(promise)
+            && let Some(source) = Self::native_association(promise)?
         {
             for (slot, target) in dependency_handoffs.iter_mut().zip([
                 fulfill_reaction.native_target.as_ref(),
@@ -2791,10 +2832,10 @@ impl Promise {
             context: &mut Context,
             run: impl FnOnce(&mut Context) -> JsResult<JsValue>,
         ) -> JsResult<JsValue> {
-            let attempt = Promise::native_association(promise).map(|owner| {
-                let lease = owner.resolution_lease();
-                (owner, lease)
-            });
+            context.check_execution_stop()?;
+            let attempt = Promise::native_association(promise)?
+                .map(|owner| owner.resolution_lease().map(|lease| (owner, lease)))
+                .transpose()?;
             let result = run(context);
             let result = context.check_execution_stop().and(result);
             if result
@@ -2830,7 +2871,7 @@ impl Promise {
         /// [spec]: https://tc39.es/ecma262/#sec-triggerpromisereactions
         fn prepare_promise_reactions(
             reactions: Vec<ReactionRecord>,
-            source: &JsObject<Promise>,
+            association: Option<&Rooted<native_settlement::Association>>,
             argument: &JsValue,
             context: &mut Context,
         ) -> JsResult<Vec<PreparedReactionJob>> {
@@ -2850,7 +2891,7 @@ impl Promise {
             if let Err(error) = prepared {
                 // The source resolving capability has already been consumed.
                 // Its accepted native-target pairs cannot silently wait forever.
-                if let Some(association) = Promise::native_association(source) {
+                if let Some(association) = association {
                     association.retire_pending(crate::job::JobRetirement::Interrupted);
                 }
                 return Err(error);
@@ -2888,8 +2929,9 @@ impl Promise {
             context: &mut Context,
         ) -> JsResult<()> {
             context.check_execution_stop()?;
-            if let Some(association) = Promise::native_association(promise)
-                && let Some(error) = native_settlement::Association::module_error(&association)
+            let association = Promise::native_association(promise)?;
+            if let Some(association) = &association
+                && let Some(error) = native_settlement::Association::module_error(association)
             {
                 return Err(error);
             }
@@ -2909,7 +2951,8 @@ impl Promise {
                     .collect()
             };
 
-            let mut jobs = prepare_promise_reactions(reactions, promise, &value, context)?;
+            let mut jobs =
+                prepare_promise_reactions(reactions, association.as_ref(), &value, context)?;
             for job in &mut jobs {
                 job.commit();
             }
@@ -2920,7 +2963,7 @@ impl Promise {
             );
 
             // 7. Perform TriggerPromiseReactions(reactions, value).
-            if let Some(association) = Promise::native_association(promise) {
+            if let Some(association) = association {
                 association.settle();
             }
             trigger_promise_reactions(jobs, context);
@@ -2947,8 +2990,9 @@ impl Promise {
             context: &mut Context,
         ) -> JsResult<()> {
             context.check_execution_stop()?;
-            if let Some(association) = Promise::native_association(promise)
-                && let Some(error) = native_settlement::Association::module_error(&association)
+            let association = Promise::native_association(promise)?;
+            if let Some(association) = &association
+                && let Some(error) = native_settlement::Association::module_error(association)
             {
                 return Err(error);
             }
@@ -2970,7 +3014,8 @@ impl Promise {
                 (reactions, promise.handled)
             };
 
-            let mut jobs = prepare_promise_reactions(reactions, promise, &reason, context)?;
+            let mut jobs =
+                prepare_promise_reactions(reactions, association.as_ref(), &reason, context)?;
             for job in &mut jobs {
                 job.commit();
             }
@@ -2980,7 +3025,7 @@ impl Promise {
                 StoredPromiseState::Rejected(reason.clone().into_stored()),
             );
 
-            if let Some(association) = Promise::native_association(promise) {
+            if let Some(association) = association {
                 association.settle();
             }
 
@@ -3187,54 +3232,40 @@ impl Promise {
 ///  - [ECMAScript reference][spec]
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-newpromisereactionjob
-/// A prepared pair owns its live callback roots until atomic pending publication.
-/// Only the source-module canonical promise uses this unexposed-pending command.
+/// A private canonical promise already holds the installed pair. This command
+/// retains its live roots and uncommitted handoff until publication has finished.
 pub(crate) struct PreparedPendingReactions {
     promise: JsObject<Promise>,
     roots: (ReactionRecord, ReactionRecord),
-    stored: Option<(StoredReactionRecord, StoredReactionRecord)>,
     handoff: native_settlement::PreparedHandoff,
 }
 impl PreparedPendingReactions {
-    pub(crate) fn publish(&mut self) {
-        let (fulfilled, rejected) = self.stored.take().expect("pending pair published once");
-        let mut promise = self.promise.borrow_mut();
-        let StoredPromiseState::Pending {
-            fulfill_reactions,
-            reject_reactions,
-        } = &mut promise.data_mut().state
-        else {
-            unreachable!("unexposed canonical promise remains pending");
-        };
-        fulfill_reactions.push(fulfilled);
-        reject_reactions.push(rejected);
-        promise.data_mut().handled = true;
-    }
     pub(crate) fn notify(self) {
         // The caller has released all status/promise/cell borrows before disposal
         // of the previous native binding or arbitrary native wake callbacks.
         let Self {
             promise,
             roots,
-            stored,
             handoff,
         } = self;
-        handoff.commit().notify();
-        drop((promise, roots, stored));
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        cleanup.run(|| handoff.commit().notify());
+        cleanup.run(|| drop((promise, roots)));
+        cleanup.finish();
     }
 }
 
 struct PreparedReactionJob {
     job: PromiseJob,
     handoffs: [Option<native_settlement::PreparedHandoff>; 2],
-    notifications: [Option<Rooted<native_settlement::Association>>; 2],
+    notifications: [Option<native_settlement::HandoffNotification>; 2],
 }
 impl PreparedReactionJob {
     fn commit(&mut self) {
         for (notification, handoff) in self.notifications.iter_mut().zip(self.handoffs.iter_mut()) {
-            *notification = handoff
-                .take()
-                .map(native_settlement::PreparedHandoff::commit);
+            if let Some(handoff) = handoff.take() {
+                *notification = Some(handoff.commit());
+            }
         }
     }
 }

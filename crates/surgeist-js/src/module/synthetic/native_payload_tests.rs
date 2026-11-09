@@ -89,7 +89,7 @@ fn stored_native_exports_preserve_duplicate_request_order_and_final_function_ide
         })
         .unwrap();
     assert_eq!(
-        initialized.result.unwrap().state(),
+        initialized.result.unwrap().state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     assert_eq!(

@@ -226,13 +226,13 @@ fn selected_realm_poll_cleanup_preserves_transferred_guest_await_continuations()
                 if promise.is_none() {
                     let value=host.with(|mut access|access.eval(Source::from_bytes("globalThis.acceptedValue = 0; (async function transferredContinuation() { const before = 40; const extra = { answer: 2 }; await Promise.resolve(0); globalThis.acceptedValue = before + extra.answer; return acceptedValue; })()")))?;
                     let accepted = JsPromise::from_object(value.as_object().unwrap())?;
-                    assert_eq!(accepted.state(), PromiseState::Pending);
+                    assert_eq!(accepted.state().unwrap(), PromiseState::Pending);
                     promise = Some(accepted);
                     cx.waker().wake_by_ref();
                     Poll::Pending
                 } else {
                     let accepted = promise.take().unwrap();
-                    assert_eq!(accepted.state(), PromiseState::Pending);
+                    assert_eq!(accepted.state().unwrap(), PromiseState::Pending);
                     Poll::Ready(Ok(accepted.into()))
                 }
             }))
@@ -258,9 +258,12 @@ fn selected_realm_poll_cleanup_preserves_transferred_guest_await_continuations()
         .unwrap();
         JsPromise::from_object(value.as_object().unwrap()).unwrap()
     };
-    assert_eq!(promise.state(), PromiseState::Pending);
+    assert_eq!(promise.state().unwrap(), PromiseState::Pending);
     context.run_jobs().unwrap();
-    assert_eq!(promise.state(), PromiseState::Fulfilled(JsValue::new(42)));
+    assert_eq!(
+        promise.state().unwrap(),
+        PromiseState::Fulfilled(JsValue::new(42))
+    );
     assert_eq!(context.realm(), &caller);
     assert_eq!(context.stack_trace().count(), 0);
     context.enter_realm(selected).unwrap();
@@ -474,8 +477,14 @@ fn native_async_pointer_and_capture_factories_and_polls_can_take_short_leases() 
     context.enter_realm(caller.clone()).unwrap();
     context.run_jobs().unwrap();
     assert_eq!(context.realm(), &caller);
-    assert_eq!(plain.state(), PromiseState::Fulfilled(JsValue::new(42)));
-    assert_eq!(captured.state(), PromiseState::Fulfilled(JsValue::new(42)));
+    assert_eq!(
+        plain.state().unwrap(),
+        PromiseState::Fulfilled(JsValue::new(42))
+    );
+    assert_eq!(
+        captured.state().unwrap(),
+        PromiseState::Fulfilled(JsValue::new(42))
+    );
     context.enter_realm(selected).unwrap();
     assert_eq!(
         context.eval(Source::from_bytes("factories")).unwrap(),
@@ -537,7 +546,7 @@ fn async_promise_host_errors_reach_the_driver_without_guest_rejection() {
             returned.get(),
             "{name}: the host callback must return its actual error"
         );
-        assert_eq!(promise.state(), PromiseState::Pending);
+        assert_eq!(promise.state().unwrap(), PromiseState::Pending);
         assert_eq!(
             context.eval(Source::from_bytes("caught")).unwrap(),
             JsValue::new(false)
@@ -605,8 +614,14 @@ fn async_promise_success_and_catchable_error_use_the_ordinary_guest_paths() {
         ))
         .unwrap();
     context.run_jobs().unwrap();
-    assert_eq!(success.state(), PromiseState::Fulfilled(JsValue::new(42)));
-    assert_eq!(failure.state(), PromiseState::Rejected(JsValue::new(7)));
+    assert_eq!(
+        success.state().unwrap(),
+        PromiseState::Fulfilled(JsValue::new(42))
+    );
+    assert_eq!(
+        failure.state().unwrap(),
+        PromiseState::Rejected(JsValue::new(7))
+    );
     assert_eq!(
         context.eval(Source::from_bytes("caught")).unwrap(),
         JsValue::new(7)
@@ -806,7 +821,10 @@ fn source_graph_and_dynamic_import_loader_owned_stages_can_lease() {
             module.load_link_evaluate(context.access()).unwrap()
         };
         context.run_jobs().unwrap();
-        assert!(matches!(promise.state(), PromiseState::Fulfilled(_)));
+        assert!(matches!(
+            promise.state().unwrap(),
+            PromiseState::Fulfilled(_)
+        ));
         assert_eq!(
             context.eval(Source::from_bytes("answer")).unwrap(),
             JsValue::new(42)
@@ -880,7 +898,7 @@ fn source_graph_and_dynamic_import_loader_host_errors_do_not_reject_in_guest() {
                 JsValue::new(js_string!("fpr")),
                 "{name}: the actual loader factory and resumed future must run"
             );
-            assert_eq!(promise.state(), PromiseState::Pending);
+            assert_eq!(promise.state().unwrap(), PromiseState::Pending);
             assert_eq!(
                 context.eval(Source::from_bytes("caught")).unwrap(),
                 JsValue::new(false)

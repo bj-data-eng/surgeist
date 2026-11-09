@@ -52,14 +52,11 @@ pub(super) struct PreparedEvaluation {
     bridge: Option<PreparedPendingReactions>,
 }
 impl PreparedEvaluation {
-    fn publish(&mut self, evaluation: &EvaluationRef) {
+    fn publish(&self, evaluation: &EvaluationRef) {
         self.association.attach_module(evaluation.clone());
         evaluation.issue(self.association.signal());
         if let Some(target) = &self.target {
             target.bind_module(evaluation.clone());
-        }
-        if let Some(bridge) = &mut self.bridge {
-            bridge.publish();
         }
     }
     fn notify(self) {
@@ -982,7 +979,7 @@ impl SourceTextModule {
             }
             return JsPromise::from_object(existing.promise().clone());
         }
-        let mut prepared = PreparedEvaluation {
+        let prepared = PreparedEvaluation {
             capability: capability.clone(),
             association,
             target: target_owner,
@@ -1109,7 +1106,7 @@ impl SourceTextModule {
         module_self: &Module,
         stack: &mut EvaluationStack,
         mut index: usize,
-        mut prepared: Option<PreparedEvaluation>,
+        prepared: Option<PreparedEvaluation>,
         context: &mut Context,
     ) -> JsResult<usize> {
         context.check_execution_stop()?;
@@ -1187,7 +1184,7 @@ impl SourceTextModule {
             _ => unreachable!("already asserted that this state is `Linked`. "),
         });
 
-        if let Some(prepared) = &mut prepared {
+        if let Some(prepared) = &prepared {
             prepared.publish(&self.evaluation);
         }
         self.evaluation.enter();

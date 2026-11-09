@@ -41,9 +41,9 @@ fn main() {
         panic!("ready owned task must complete on its first poll");
     };
     assert_eq!(result.unwrap().as_number(), Some(42.0));
-    assert_eq!(observer.status(), JobStatus::Completed);
+    assert_eq!(observer.status().unwrap(), JobStatus::Completed);
     assert!(matches!(
         job.run_step(&mut task, &host),
-        JobStep::Finished(JobStatus::Completed)
+        JobStep::Finished(Ok(JobStatus::Completed))
     ));
 }

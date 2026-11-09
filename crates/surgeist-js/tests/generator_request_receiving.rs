@@ -64,7 +64,7 @@ impl JobExecutor for ManualExecutor {
 impl ManualExecutor {
     fn settle(&self, promise: &JsPromise, context: &mut Context) -> JsValue {
         for _ in 0..32 {
-            match promise.state() {
+            match promise.state().unwrap() {
                 PromiseState::Fulfilled(value) => return value,
                 PromiseState::Rejected(reason) => panic!("accepted request rejected: {reason:?}"),
                 PromiseState::Pending => {}
@@ -308,7 +308,7 @@ fn async_requests_refuse_foreign_payloads_without_adding_a_waiting_request() {
         let generator = async_generator(&mut owner, true);
         let first =
             async_request(Request::Next, &generator, JsValue::undefined(), &mut owner).unwrap();
-        assert_eq!(first.state(), PromiseState::Pending);
+        assert_eq!(first.state().unwrap(), PromiseState::Pending);
         assert_foreign_runtime(
             async_request(request, &generator, payload, &mut owner).unwrap_err(),
         );

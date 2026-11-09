@@ -120,19 +120,19 @@ fn after_stop<T: Debug>(
 fn finish(module: &Module, context: &mut Context) {
     let loaded = in_scope(context, |access| module.load(access)).unwrap();
     assert_eq!(
-        loaded.state(),
+        loaded.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     in_scope(context, |access| module.link(access)).unwrap();
     let evaluation = in_scope(context, |access| module.evaluate(access)).unwrap();
     assert_eq!(
-        evaluation.state(),
+        evaluation.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     let cached = in_scope(context, |access| module.evaluate(access)).unwrap();
     assert_eq!(cached.identity(), evaluation.identity());
     assert_eq!(
-        cached.state(),
+        cached.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
 }
@@ -414,7 +414,7 @@ fn retained_stop_refuses_native_export_construction_before_pulling_its_input() {
         .unwrap();
     let repeated = in_scope(&mut context, |access| module.evaluate(access)).unwrap();
     assert_eq!(
-        repeated.state(),
+        repeated.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     let cached = module

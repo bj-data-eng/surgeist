@@ -74,7 +74,7 @@ fn interrupt(
         "export const moduleOnlyMarker = takeModuleMarker(); globalThis.custodyEffects += 1; stopForCustody(); globalThis.custodyEffects += 100;"
     ), None, context.access()).unwrap();
     assert_eq!(
-        module.load(context.access()).unwrap().state(),
+        module.load(context.access()).unwrap().state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     module.link(context.access()).unwrap();
@@ -630,7 +630,7 @@ fn preexisting_native_future_polls_terminal_cause_under_a_held_heap_read_without
     )
     .unwrap();
     assert_eq!(
-        module.load(context.access()).unwrap().state(),
+        module.load(context.access()).unwrap().state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     module.link(context.access()).unwrap();
@@ -641,7 +641,7 @@ fn preexisting_native_future_polls_terminal_cause_under_a_held_heap_read_without
         .unwrap()
         .result
         .unwrap();
-    assert_eq!(promise.state(), PromiseState::Pending);
+    assert_eq!(promise.state().unwrap(), PromiseState::Pending);
     let mut future = promise.clone().into_js_future(context.access()).unwrap();
     let mut task = TaskContext::from_waker(Waker::noop());
     assert!(Pin::new(&mut future).poll(&mut task).is_pending());
@@ -658,7 +658,7 @@ fn preexisting_native_future_polls_terminal_cause_under_a_held_heap_read_without
         .unwrap();
     assert_eq!(stopped.result.unwrap_err(), original);
     drop(stopped.report);
-    assert_eq!(promise.state(), PromiseState::Pending);
+    assert_eq!(promise.state().unwrap(), PromiseState::Pending);
     assert_eq!(
         context
             .global_object()

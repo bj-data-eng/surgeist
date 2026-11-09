@@ -51,13 +51,13 @@ impl ManualExecutor {
 
     fn finish(&self, promise: &JsPromise, context: &mut Context) {
         for _ in 0..8 {
-            if promise.state() != PromiseState::Pending {
+            if promise.state().unwrap() != PromiseState::Pending {
                 return;
             }
             invoke(self.take_promise(), context);
         }
         assert_ne!(
-            promise.state(),
+            promise.state().unwrap(),
             PromiseState::Pending,
             "the selected reactions must finish within eight dispatches"
         );
@@ -82,7 +82,7 @@ fn linked(source: &str, context: &mut Context) -> Module {
     let module = Module::parse(Source::from_bytes(source), None, context.access()).unwrap();
     let loaded = module.load(context.access()).unwrap();
     assert_eq!(
-        loaded.state(),
+        loaded.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     module.link(context.access()).unwrap();
@@ -219,7 +219,7 @@ fn suspended_async_function_created_by_a_module_survives_that_modules_own_stop()
     assert_eq!(count("moduleEffects", &mut context), 1.into());
     assert_eq!(count("innerStarts", &mut context), 1.into());
     assert_eq!(count("innerFinishes", &mut context), 0.into());
-    assert_eq!(gate.state(), PromiseState::Pending);
+    assert_eq!(gate.state().unwrap(), PromiseState::Pending);
     let inner = JsPromise::from_object(
         context
             .global_object()
@@ -237,7 +237,7 @@ fn suspended_async_function_created_by_a_module_survives_that_modules_own_stop()
         .call(&JsValue::undefined(), &[1.into()], context.access())
         .unwrap();
     executor.finish(&inner, &mut context);
-    assert_eq!(inner.state(), PromiseState::Fulfilled(42.into()));
+    assert_eq!(inner.state().unwrap(), PromiseState::Fulfilled(42.into()));
     wait.assert_fulfilled(42.into());
     assert_eq!(count("innerStarts", &mut context), 1.into());
     assert_eq!(count("innerFinishes", &mut context), 1.into());
@@ -260,7 +260,7 @@ fn outer_await_job_admission_refusal_returns_the_same_viable_continuation() {
         .resolve
         .call(&JsValue::undefined(), &[1.into()], context.access())
         .unwrap();
-    assert_eq!(gate.state(), PromiseState::Fulfilled(1.into()));
+    assert_eq!(gate.state().unwrap(), PromiseState::Fulfilled(1.into()));
     let job = executor.take_promise();
     let observer = job.observer();
     let mut returned = None;
@@ -284,9 +284,9 @@ fn outer_await_job_admission_refusal_returns_the_same_viable_continuation() {
     );
     assert_eq!(refused.report.job_invocations().unwrap(), 0);
     assert_eq!(refused.report.instructions().unwrap(), 0);
-    assert_eq!(observer.status(), JobStatus::Pending);
+    assert_eq!(observer.status().unwrap(), JobStatus::Pending);
     assert_eq!(count("moduleEffects", &mut context), 1.into());
-    assert_eq!(evaluation.state(), PromiseState::Pending);
+    assert_eq!(evaluation.state().unwrap(), PromiseState::Pending);
     wait.assert_pending();
     let cached = evaluate(&module, &mut context);
     assert_eq!(cached.identity(), evaluation.identity());
@@ -294,9 +294,9 @@ fn outer_await_job_admission_refusal_returns_the_same_viable_continuation() {
     // This is the exact wrapper returned by Deferred, not a recreated callback.
     invoke(returned.unwrap(), &mut context);
     executor.finish(&evaluation, &mut context);
-    assert_eq!(observer.status(), JobStatus::Completed);
+    assert_eq!(observer.status().unwrap(), JobStatus::Completed);
     assert_eq!(
-        evaluation.state(),
+        evaluation.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     wait.assert_fulfilled(JsValue::undefined());
@@ -346,10 +346,10 @@ fn consumed_await_reaction_whose_handler_entry_is_refused_interrupts_its_module(
     assert_eq!(outcome.report.job_invocations().unwrap(), 1);
     assert_eq!(outcome.report.instructions().unwrap(), 0);
     assert_eq!(
-        observer.status(),
+        observer.status().unwrap(),
         JobStatus::Retired(JobRetirement::Interrupted)
     );
-    assert_eq!(evaluation.state(), PromiseState::Pending);
+    assert_eq!(evaluation.state().unwrap(), PromiseState::Pending);
     wait.assert_interrupted();
     assert_terminal(&module, &mut context);
     assert_eq!(count("moduleEffects", &mut context), 1.into());
@@ -419,11 +419,11 @@ fn inline_resume_transfers_a_new_module_await_before_enclosing_publication_stops
     assert_eq!(stopped.result.unwrap_err(), original);
     assert_eq!(stopped.report.instructions().unwrap(), STOP_LIMIT);
     assert_eq!(count("moduleEffects", &mut context), 1.into());
-    assert_eq!(gate.state(), PromiseState::Pending);
+    assert_eq!(gate.state().unwrap(), PromiseState::Pending);
 
     // The inline action already transferred a valid newer module continuation.
     let evaluation = evaluate(&module, &mut context);
-    assert_eq!(evaluation.state(), PromiseState::Pending);
+    assert_eq!(evaluation.state().unwrap(), PromiseState::Pending);
     let mut wait = NativeWait::subscribe(&evaluation, &mut context);
     resolvers
         .resolve
@@ -431,7 +431,7 @@ fn inline_resume_transfers_a_new_module_await_before_enclosing_publication_stops
         .unwrap();
     executor.queue.finish(&evaluation, &mut context);
     assert_eq!(
-        evaluation.state(),
+        evaluation.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     wait.assert_fulfilled(JsValue::undefined());
@@ -488,7 +488,7 @@ fn assert_adapter_interrupted(
     module: &Module,
     context: &mut Context,
 ) {
-    assert_eq!(adapter.state(), PromiseState::Pending);
+    assert_eq!(adapter.state().unwrap(), PromiseState::Pending);
     let Poll::Ready(Err(error)) = wait.poll() else {
         panic!("the preexisting native adapter wait must observe the module interruption")
     };
@@ -509,7 +509,7 @@ fn assert_adapter_interrupted(
         unreachable!()
     };
     assert_eq!(interruption.identity(), original_identity);
-    assert_eq!(adapter.state(), PromiseState::Pending);
+    assert_eq!(adapter.state().unwrap(), PromiseState::Pending);
     assert_eq!(count("moduleEffects", context), 1.into());
 }
 
@@ -606,7 +606,7 @@ fn combined_evaluation_rejects_foreign_runtime_preparation_with_a_guest_type_err
     let adapter = module
         .load_link_evaluate(receiver.access())
         .expect("catchable preparation failure must return a guest promise");
-    let PromiseState::Rejected(reason) = adapter.state() else {
+    let PromiseState::Rejected(reason) = adapter.state().unwrap() else {
         panic!("a foreign-runtime module must reject the combined evaluation promise")
     };
     let error = JsError::from_opaque(reason)
@@ -660,7 +660,7 @@ impl FullyInlineExecutor {
             let next = self.deferred.borrow_mut().pop_front();
             let Some(job) = next else {
                 assert_ne!(
-                    promise.state(),
+                    promise.state().unwrap(),
                     PromiseState::Pending,
                     "the original promise must settle after its accepted continuations finish"
                 );
@@ -673,7 +673,7 @@ impl FullyInlineExecutor {
             "saved dispatch bound exhausted"
         );
         assert_ne!(
-            promise.state(),
+            promise.state().unwrap(),
             PromiseState::Pending,
             "saved accepted continuations must settle within sixteen fresh dispatches"
         );
@@ -710,7 +710,7 @@ fn assert_inline_completion(source: &str) {
     let module = linked(source, &mut context);
     let evaluation = evaluate(&module, &mut context);
     assert_eq!(
-        evaluation.state(),
+        evaluation.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     executor.assert_clean();
@@ -718,7 +718,7 @@ fn assert_inline_completion(source: &str) {
     let cached = evaluate(&module, &mut context);
     assert_eq!(cached.identity(), evaluation.identity());
     assert_eq!(
-        cached.state(),
+        cached.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     assert_eq!(count("moduleEffects", &mut context), 1.into());
@@ -753,11 +753,14 @@ fn fully_inline_initial_await_preserves_the_authored_guest_rejection_and_cached_
         &mut context,
     );
     let evaluation = evaluate(&module, &mut context);
-    assert_eq!(evaluation.state(), PromiseState::Rejected(reason.clone()));
+    assert_eq!(
+        evaluation.state().unwrap(),
+        PromiseState::Rejected(reason.clone())
+    );
     executor.assert_clean();
     let cached = evaluate(&module, &mut context);
     assert_eq!(cached.identity(), evaluation.identity());
-    assert_eq!(cached.state(), PromiseState::Rejected(reason));
+    assert_eq!(cached.state().unwrap(), PromiseState::Rejected(reason));
     assert_eq!(count("moduleEffects", &mut context), 1.into());
     assert_vm_usable(&mut context);
 }
@@ -783,17 +786,17 @@ fn initial_immediate_await_keeps_the_exact_deferred_job_viable_after_publication
     assert_eq!(count("moduleEffects", &mut context), 0.into());
     let continuation = executor.take_deferred();
     let observer = continuation.observer();
-    assert_eq!(observer.status(), JobStatus::Pending);
+    assert_eq!(observer.status().unwrap(), JobStatus::Pending);
     let evaluation = evaluate(&module, &mut context);
-    assert_eq!(evaluation.state(), PromiseState::Pending);
+    assert_eq!(evaluation.state().unwrap(), PromiseState::Pending);
     let mut wait = NativeWait::subscribe(&evaluation, &mut context);
 
     executor.errors.borrow_mut().clear();
     invoke(continuation, &mut context);
     executor.finish_deferred(&evaluation, &mut context);
-    assert_eq!(observer.status(), JobStatus::Completed);
+    assert_eq!(observer.status().unwrap(), JobStatus::Completed);
     assert_eq!(
-        evaluation.state(),
+        evaluation.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     wait.assert_fulfilled(JsValue::undefined());
@@ -848,15 +851,15 @@ fn complete_initial_transfer(
 ) {
     let continuation = executor.take_deferred();
     let observer = continuation.observer();
-    assert_eq!(observer.status(), JobStatus::Pending);
+    assert_eq!(observer.status().unwrap(), JobStatus::Pending);
     let evaluation = evaluate(module, context);
-    assert_eq!(evaluation.state(), PromiseState::Pending);
+    assert_eq!(evaluation.state().unwrap(), PromiseState::Pending);
     executor.errors.borrow_mut().clear();
     invoke(continuation, context);
     executor.finish_deferred(&evaluation, context);
-    assert_eq!(observer.status(), JobStatus::Completed);
+    assert_eq!(observer.status().unwrap(), JobStatus::Completed);
     assert_eq!(
-        evaluation.state(),
+        evaluation.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     let cached = evaluate(module, context);
@@ -877,13 +880,13 @@ fn combined_native_adapter_survives_initial_await_transfer_followed_by_outer_ref
     // evaluation invocation. The initial await's actual inline job is deferred.
     invoke(executor.queued.take_promise(), &mut context);
     refuse_initial_adapter_resume(&executor, &mut context);
-    assert_eq!(adapter.state(), PromiseState::Pending);
+    assert_eq!(adapter.state().unwrap(), PromiseState::Pending);
     wait.assert_pending();
 
     complete_initial_transfer(&executor, &module, &mut context);
     executor.finish_deferred(&adapter, &mut context);
     assert_eq!(
-        adapter.state(),
+        adapter.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     wait.assert_fulfilled(JsValue::undefined());
@@ -942,12 +945,12 @@ fn dynamic_import_native_adapter_survives_initial_await_transfer_followed_by_out
     loaded.result.unwrap();
     assert_eq!(count("moduleEffects", &mut context), 0.into());
     refuse_initial_adapter_resume(&executor, &mut context);
-    assert_eq!(adapter.state(), PromiseState::Pending);
+    assert_eq!(adapter.state().unwrap(), PromiseState::Pending);
     wait.assert_pending();
 
     complete_initial_transfer(&executor, &module, &mut context);
     executor.finish_deferred(&adapter, &mut context);
-    let PromiseState::Fulfilled(namespace) = adapter.state() else {
+    let PromiseState::Fulfilled(namespace) = adapter.state().unwrap() else {
         panic!("the original import adapter must publish its canonical module namespace")
     };
     assert_eq!(
@@ -1024,7 +1027,7 @@ impl InlineGraph {
             .result
             .unwrap();
         for _ in 0..32 {
-            if loaded.state() != PromiseState::Pending {
+            if loaded.state().unwrap() != PromiseState::Pending {
                 break;
             }
             let queued = self.executor.queued.jobs.borrow_mut().pop_front();
@@ -1052,7 +1055,7 @@ impl InlineGraph {
             outcome.result.unwrap();
         }
         assert_eq!(
-            loaded.state(),
+            loaded.state().unwrap(),
             PromiseState::Fulfilled(JsValue::undefined())
         );
         self.context
@@ -1071,18 +1074,18 @@ impl InlineGraph {
     fn assert_success_once(&mut self, root: &Module, child: &Module, order: &str) {
         let evaluation = evaluate(root, &mut self.context);
         assert_eq!(
-            evaluation.state(),
+            evaluation.state().unwrap(),
             PromiseState::Fulfilled(JsValue::undefined())
         );
         let cached = evaluate(root, &mut self.context);
         assert_eq!(cached.identity(), evaluation.identity());
         assert_eq!(
-            cached.state(),
+            cached.state().unwrap(),
             PromiseState::Fulfilled(JsValue::undefined())
         );
         let child_result = evaluate(child, &mut self.context);
         assert_eq!(
-            child_result.state(),
+            child_result.state().unwrap(),
             PromiseState::Fulfilled(JsValue::undefined())
         );
         assert_eq!(
@@ -1104,7 +1107,7 @@ impl InlineGraph {
         let gate =
             JsPromise::from_object(count("graphGate", &mut self.context).as_object().unwrap())
                 .unwrap();
-        assert_eq!(gate.state(), PromiseState::Fulfilled(1.into()));
+        assert_eq!(gate.state().unwrap(), PromiseState::Fulfilled(1.into()));
     }
 }
 
@@ -1214,12 +1217,21 @@ fn inline_rejection_of_an_older_child_preserves_the_reason_and_never_runs_its_im
     );
     graph.load_and_link(&parent);
     let evaluation = evaluate(&parent, &mut graph.context);
-    assert_eq!(evaluation.state(), PromiseState::Rejected(reason.clone()));
+    assert_eq!(
+        evaluation.state().unwrap(),
+        PromiseState::Rejected(reason.clone())
+    );
     let cached = evaluate(&parent, &mut graph.context);
     assert_eq!(cached.identity(), evaluation.identity());
-    assert_eq!(cached.state(), PromiseState::Rejected(reason.clone()));
+    assert_eq!(
+        cached.state().unwrap(),
+        PromiseState::Rejected(reason.clone())
+    );
     let child_result = evaluate(&child, &mut graph.context);
-    assert_eq!(child_result.state(), PromiseState::Rejected(reason));
+    assert_eq!(
+        child_result.state().unwrap(),
+        PromiseState::Rejected(reason)
+    );
     assert_eq!(
         evaluate(&child, &mut graph.context).identity(),
         child_result.identity()
@@ -1292,7 +1304,7 @@ fn native_waiter_finds_the_retained_module_cause_through_a_public_promise_follow
         .result
         .unwrap();
     for promise in [&a, &b, &c, &d] {
-        assert_eq!(promise.state(), PromiseState::Pending);
+        assert_eq!(promise.state().unwrap(), PromiseState::Pending);
     }
     a_wait.assert_pending();
 
@@ -1322,7 +1334,7 @@ fn native_waiter_finds_the_retained_module_cause_through_a_public_promise_follow
     assert_eq!(observed.identity(), retained.identity());
     assert_eq!(observed.cause().kind(), retained.cause().kind());
     for promise in [&a, &b, &c, &d] {
-        assert_eq!(promise.state(), PromiseState::Pending);
+        assert_eq!(promise.state().unwrap(), PromiseState::Pending);
     }
     assert_eq!(count("moduleEffects", &mut context), 1.into());
 }

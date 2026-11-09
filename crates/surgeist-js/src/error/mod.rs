@@ -658,6 +658,9 @@ impl From<EngineResourceError> for JsError {
 /// An invalid dynamic operation on owned job state.
 #[derive(Debug, Clone, Copy, Error, Eq, PartialEq)]
 pub enum JobError {
+    /// A job owner found a structural invariant failure.
+    #[error("job owner fault: {0}")]
+    Fault(#[from] crate::job::JobFault),
     /// A task already returned Ready or unwound from its poll command.
     #[error("the context task has already completed")]
     TaskCompleted,
@@ -669,6 +672,26 @@ pub enum JobError {
 impl From<JobError> for JsError {
     fn from(error: JobError) -> Self {
         EngineError::Job(error).into()
+    }
+}
+
+impl From<crate::job::JobFault> for JsError {
+    fn from(fault: crate::job::JobFault) -> Self {
+        JobError::Fault(fault).into()
+    }
+}
+
+impl From<crate::job::JobRegistrationError> for JsError {
+    fn from(error: crate::job::JobRegistrationError) -> Self {
+        match error {
+            crate::job::JobRegistrationError::Fault(fault) => fault.into(),
+            crate::job::JobRegistrationError::Resource(resource) => match resource {
+                crate::job::JobResourceError::Allocation => EngineResourceError::Allocation.into(),
+                crate::job::JobResourceError::SizeOverflow => {
+                    EngineResourceError::SizeOverflow.into()
+                }
+            },
+        }
     }
 }
 
@@ -689,6 +712,10 @@ pub enum EngineError {
     /// The host context's access capability is already leased.
     #[error("ContextAccessBusy: host context access is already leased")]
     ContextAccessBusy,
+
+    /// An object alias currently holds incompatible access to the same object.
+    #[error("ObjectAccessBusy: object access is already borrowed")]
+    ObjectAccessBusy,
 
     /// A retained task requires another exact Context instance.
     #[error("JobContextRequired: task requires Context {required}")]
@@ -739,6 +766,7 @@ impl EngineError {
             EngineError::Resource(error) => ErasedEngineError::Resource(error),
             EngineError::InvalidEntryPermit => ErasedEngineError::InvalidEntryPermit,
             EngineError::ContextAccessBusy => ErasedEngineError::ContextAccessBusy,
+            EngineError::ObjectAccessBusy => ErasedEngineError::ObjectAccessBusy,
             EngineError::JobContextRequired { required } => {
                 ErasedEngineError::JobContextRequired { required }
             }
@@ -774,6 +802,7 @@ enum StoredErrorRepr {
     Resource(#[heap_trace(skip)] EngineResourceError),
     InvalidEntryPermit,
     ContextAccessBusy,
+    ObjectAccessBusy,
     JobContextRequired(#[heap_trace(skip)] crate::job::ContextId),
     JobRetired(#[heap_trace(skip)] crate::job::JobRetirement),
     Job(#[heap_trace(skip)] JobError),
@@ -824,6 +853,7 @@ impl StoredJsError {
             }
             StoredErrorRepr::InvalidEntryPermit => Repr::Engine(EngineError::InvalidEntryPermit),
             StoredErrorRepr::ContextAccessBusy => Repr::Engine(EngineError::ContextAccessBusy),
+            StoredErrorRepr::ObjectAccessBusy => Repr::Engine(EngineError::ObjectAccessBusy),
             StoredErrorRepr::JobContextRequired(required) => {
                 Repr::Engine(EngineError::JobContextRequired {
                     required: required.clone(),
@@ -967,6 +997,7 @@ impl JsError {
             })),
             Repr::Engine(EngineError::InvalidEntryPermit) => StoredErrorRepr::InvalidEntryPermit,
             Repr::Engine(EngineError::ContextAccessBusy) => StoredErrorRepr::ContextAccessBusy,
+            Repr::Engine(EngineError::ObjectAccessBusy) => StoredErrorRepr::ObjectAccessBusy,
             Repr::Engine(EngineError::JobContextRequired { required }) => {
                 StoredErrorRepr::JobContextRequired(required)
             }
@@ -2249,6 +2280,10 @@ pub enum ErasedEngineError {
     /// The host context's access capability is already leased.
     #[error("ContextAccessBusy: host context access is already leased")]
     ContextAccessBusy,
+
+    /// An object alias currently holds incompatible access to the same object.
+    #[error("ObjectAccessBusy: object access is already borrowed")]
+    ObjectAccessBusy,
 
     /// A retained task requires another exact Context instance.
     #[error("JobContextRequired: task requires Context {required}")]

@@ -753,7 +753,7 @@ impl Module {
             ModuleKind::Synthetic(synth) => {
                 // a. Let promise be ! module.Evaluate().
                 let promise: JsPromise = synth.evaluate(self, context)?;
-                let state = promise.state();
+                let state = promise.state()?;
                 match state {
                     PromiseState::Pending => {
                         unreachable!("b. Assert: promise.[[PromiseState]] is not pending.")
@@ -794,7 +794,7 @@ impl Module {
     /// context.run_jobs().unwrap();
     ///
     /// assert_eq!(
-    ///     promise.state(),
+    ///     promise.state().unwrap(),
     ///     PromiseState::Fulfilled(JsValue::undefined())
     /// );
     /// ```
@@ -1056,7 +1056,7 @@ fn module_execution_rejects_a_foreign_context() {
         module.load(foreign.access()).unwrap(),
         module.load_link_evaluate(foreign.access()).unwrap(),
     ] {
-        let PromiseState::Rejected(reason) = promise.state() else {
+        let PromiseState::Rejected(reason) = promise.state().unwrap() else {
             panic!("module execution accepted a foreign context");
         };
         let error = JsError::from_opaque(reason)
@@ -1084,7 +1084,7 @@ fn module_execution_rejects_a_foreign_context() {
     let promise = module.load_link_evaluate(owner.access()).unwrap();
     owner.run_jobs().unwrap();
     assert_eq!(
-        promise.state(),
+        promise.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
 }
@@ -1134,7 +1134,7 @@ fn module_construction_rejects_a_foreign_realm_before_parsing() {
     let promise = module.load_link_evaluate(owner.access()).unwrap();
     owner.run_jobs().unwrap();
     assert_eq!(
-        promise.state(),
+        promise.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     assert_eq!(
@@ -1172,7 +1172,7 @@ fn module_namespace_rejects_foreign_contexts_before_and_after_caching() {
     let promise = module.load_link_evaluate(owner.access()).unwrap();
     owner.run_jobs().unwrap();
     assert_eq!(
-        promise.state(),
+        promise.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
 
@@ -1209,7 +1209,7 @@ fn synthetic_module_rejects_foreign_exports_without_overwriting_the_binding() {
     let promise = module.load_link_evaluate(owner.access()).unwrap();
     owner.run_jobs().unwrap();
     assert_eq!(
-        promise.state(),
+        promise.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
 
@@ -1246,7 +1246,7 @@ fn static_module_loading_rejects_foreign_dependencies_and_allows_retry() {
 
     let promise = module.load(owner.access()).unwrap();
     owner.run_jobs().unwrap();
-    let PromiseState::Rejected(reason) = promise.state() else {
+    let PromiseState::Rejected(reason) = promise.state().unwrap() else {
         panic!("module loading accepted a foreign dependency");
     };
     assert!(
@@ -1262,7 +1262,7 @@ fn static_module_loading_rejects_foreign_dependencies_and_allows_retry() {
     let promise = module.load_link_evaluate(owner.access()).unwrap();
     owner.run_jobs().unwrap();
     assert_eq!(
-        promise.state(),
+        promise.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     assert_eq!(
@@ -1306,7 +1306,7 @@ fn module_loading_rejects_a_foreign_loader_error_in_static_and_dynamic_imports()
     owner.run_jobs().unwrap();
 
     for promise in [static_import, dynamic_import] {
-        let PromiseState::Rejected(reason) = promise.state() else {
+        let PromiseState::Rejected(reason) = promise.state().unwrap() else {
             panic!("module loading failed to reject a foreign loader error");
         };
         let error = JsError::from_opaque(reason)
@@ -1347,13 +1347,16 @@ fn module_promises_reject_foreign_host_job_callback_data() {
     let async_module = Module::parse(Source::from_bytes("await 0;"), None, owner.access()).unwrap();
     let load = async_module.load(owner.access()).unwrap();
     owner.run_jobs().unwrap();
-    assert_eq!(load.state(), PromiseState::Fulfilled(JsValue::undefined()));
+    assert_eq!(
+        load.state().unwrap(),
+        PromiseState::Fulfilled(JsValue::undefined())
+    );
     async_module.link(owner.access()).unwrap();
     let async_evaluation = async_module.evaluate(owner.access()).unwrap();
     owner.run_jobs().unwrap();
 
     for promise in [load_link_evaluate, dynamic_import, async_evaluation] {
-        let PromiseState::Rejected(reason) = promise.state() else {
+        let PromiseState::Rejected(reason) = promise.state().unwrap() else {
             panic!("module promise accepted foreign host job callback data");
         };
         let error = JsError::from_opaque(reason)
@@ -1396,7 +1399,7 @@ fn synthetic_module_foreign_failures_reject_dynamic_import() {
         let import = JsPromise::from_object(import.as_object().unwrap()).unwrap();
         context.run_jobs().unwrap();
 
-        let PromiseState::Rejected(reason) = import.state() else {
+        let PromiseState::Rejected(reason) = import.state().unwrap() else {
             panic!("foreign initializer failure did not reject dynamic import");
         };
         let error = JsError::from_opaque(reason)
@@ -1509,9 +1512,9 @@ fn into_js_module() {
 
     // Checking if the final promise didn't return an error.
     assert!(
-        promise_result.state().as_fulfilled().is_some(),
+        promise_result.state().unwrap().as_fulfilled().is_some(),
         "module didn't execute successfully! Promise: {:?}",
-        promise_result.state()
+        promise_result.state().unwrap()
     );
 
     let result = context.get_data::<ResultType>().unwrap().0.get();
@@ -1562,7 +1565,7 @@ fn can_throw_exception() {
 
     // Checking if the final promise didn't return an error.
     assert_eq!(
-        promise_result.state().as_rejected(),
+        promise_result.state().unwrap().as_rejected(),
         Some(&js_string!("from javascript").into())
     );
 }

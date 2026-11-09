@@ -298,11 +298,11 @@ impl Test {
                     }
 
                     match promise.state() {
-                        PromiseState::Pending => {
+                        Ok(PromiseState::Pending) => {
                             return (false, "module should have been executed".to_string());
                         }
-                        PromiseState::Fulfilled(v) => v,
-                        PromiseState::Rejected(err) => {
+                        Ok(PromiseState::Fulfilled(v)) => v,
+                        Ok(PromiseState::Rejected(err)) => {
                             let output = JsError::from_opaque(err.clone())
                                 .try_native(context.access())
                                 .map_or_else(
@@ -319,6 +319,7 @@ impl Test {
 
                             return (false, output);
                         }
+                        Err(err) => return (false, format!("Uncaught {err}")),
                     }
                 } else {
                     context.strict(strict);
@@ -404,19 +405,20 @@ impl Test {
                 }
 
                 match promise.state() {
-                    PromiseState::Pending => {
+                    Ok(PromiseState::Pending) => {
                         return (false, "module didn't try to load".to_string());
                     }
-                    PromiseState::Fulfilled(_) => {
+                    Ok(PromiseState::Fulfilled(_)) => {
                         // Try to link to see if the resolution error shows there.
                     }
-                    PromiseState::Rejected(err) => {
+                    Ok(PromiseState::Rejected(err)) => {
                         let err = JsError::from_opaque(err);
                         return (
                             is_error_type(&err, error_type, context),
                             format!("Uncaught {err}"),
                         );
                     }
+                    Err(err) => return (false, format!("Uncaught {err}")),
                 }
 
                 if let Err(err) = module.link(context.access()) {
@@ -454,13 +456,14 @@ impl Test {
                     }
 
                     match promise.state() {
-                        PromiseState::Pending => {
+                        Ok(PromiseState::Pending) => {
                             return (false, "module didn't try to load".to_string());
                         }
-                        PromiseState::Fulfilled(_) => {}
-                        PromiseState::Rejected(err) => {
+                        Ok(PromiseState::Fulfilled(_)) => {}
+                        Ok(PromiseState::Rejected(err)) => {
                             return (false, format!("Uncaught {}", err.display()));
                         }
+                        Err(err) => return (false, format!("Uncaught {err}")),
                     }
 
                     if let Err(err) = module.link(context.access()) {
@@ -477,11 +480,14 @@ impl Test {
                     }
 
                     match promise.state() {
-                        PromiseState::Pending => {
+                        Ok(PromiseState::Pending) => {
                             return (false, "module didn't try to evaluate".to_string());
                         }
-                        PromiseState::Fulfilled(val) => return (false, val.display().to_string()),
-                        PromiseState::Rejected(err) => JsError::from_opaque(err),
+                        Ok(PromiseState::Fulfilled(val)) => {
+                            return (false, val.display().to_string());
+                        }
+                        Ok(PromiseState::Rejected(err)) => JsError::from_opaque(err),
+                        Err(err) => return (false, format!("Uncaught {err}")),
                     }
                 } else {
                     context.strict(strict);

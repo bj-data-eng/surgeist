@@ -901,7 +901,7 @@ mod tests {
         let loaded = module.load(context.access()).unwrap();
         context.run_jobs().unwrap();
         assert_eq!(
-            loaded.state(),
+            loaded.state().unwrap(),
             PromiseState::Fulfilled(JsValue::undefined())
         );
         let peer = Context::builder()
@@ -949,7 +949,7 @@ mod tests {
         let loaded = module.load(context.access()).unwrap();
         context.run_jobs().unwrap();
         assert_eq!(
-            loaded.state(),
+            loaded.state().unwrap(),
             PromiseState::Fulfilled(JsValue::undefined())
         );
         let mut peer = Context::builder()

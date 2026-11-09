@@ -412,7 +412,7 @@ fn load(module: &Module, context: &mut Context) {
     let loaded = module.load(context.access()).unwrap();
     context.run_jobs().unwrap();
     assert_eq!(
-        loaded.state(),
+        loaded.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
 }
@@ -466,7 +466,7 @@ fn module_harness(case: ModuleCase) -> ModuleHarness {
                 let initialized = dependency.evaluate(context.access()).unwrap();
                 context.run_jobs().unwrap();
                 assert_eq!(
-                    initialized.state(),
+                    initialized.state().unwrap(),
                     PromiseState::Fulfilled(JsValue::undefined())
                 );
             }
@@ -528,7 +528,7 @@ fn evaluate_module(module: &Module, context: &mut Context) {
     let evaluated = module.evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
     assert_eq!(
-        evaluated.state(),
+        evaluated.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     assert_eq!(
@@ -644,7 +644,7 @@ fn constructor_context(expression: &str) -> (Context, JsFunction, RealmSnapshot)
 fn fulfilled(value: JsValue, context: &mut Context) -> JsValue {
     let promise = JsPromise::from_object(value.as_object().unwrap()).unwrap();
     context.run_jobs().unwrap();
-    let PromiseState::Fulfilled(value) = promise.state() else {
+    let PromiseState::Fulfilled(value) = promise.state().unwrap() else {
         panic!("the generated async body must fulfill");
     };
     value

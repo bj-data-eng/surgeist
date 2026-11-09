@@ -42,7 +42,7 @@ fn pending_receiver_survives_a_dropped_drain_and_completes_when_its_channel_clos
     let mut wait = Box::pin(observer.wait().unwrap());
     assert!(future::block_on(future::poll_once(wait.as_mut())).is_none());
     poll_receiver_once(&mut context, executor.clone());
-    assert_eq!(observer.status(), JobStatus::Pending);
+    assert_eq!(observer.status().unwrap(), JobStatus::Pending);
 
     let value = JsValueStore::try_from_js(&JsValue::new(42), context.access(), Vec::new()).unwrap();
     sender.send(value, None).unwrap();
@@ -51,12 +51,12 @@ fn pending_receiver_survives_a_dropped_drain_and_completes_when_its_channel_clos
         context.eval(Source::from_bytes("received")).unwrap(),
         JsValue::new(42)
     );
-    assert_eq!(observer.status(), JobStatus::Pending);
+    assert_eq!(observer.status().unwrap(), JobStatus::Pending);
     sender.stop().unwrap();
     context.run_jobs().unwrap();
-    assert_eq!(observer.status(), JobStatus::Completed);
+    assert_eq!(observer.status().unwrap(), JobStatus::Completed);
     assert_eq!(
-        future::block_on(future::poll_once(wait.as_mut())),
+        future::block_on(future::poll_once(wait.as_mut())).map(Result::unwrap),
         Some(JobStatus::Completed)
     );
 }
@@ -78,9 +78,9 @@ fn pending_receiver_reports_executor_cancellation_to_its_native_waiter() {
         .store(true, Ordering::Relaxed);
     context.run_jobs().unwrap();
     let retired = JobStatus::Retired(JobRetirement::Cancelled);
-    assert_eq!(observer.status(), retired);
+    assert_eq!(observer.status().unwrap(), retired);
     assert_eq!(
-        future::block_on(future::poll_once(wait.as_mut())),
+        future::block_on(future::poll_once(wait.as_mut())).map(Result::unwrap),
         Some(retired)
     );
     let value = JsValueStore::try_from_js(&JsValue::new(42), context.access(), Vec::new()).unwrap();
@@ -101,9 +101,9 @@ fn pending_receiver_reports_its_exact_owners_loss_to_its_native_waiter() {
     assert!(future::block_on(future::poll_once(wait.as_mut())).is_none());
     drop(context);
     let retired = JobStatus::Retired(JobRetirement::OwnerDropped);
-    assert_eq!(observer.status(), retired);
+    assert_eq!(observer.status().unwrap(), retired);
     assert_eq!(
-        future::block_on(future::poll_once(wait.as_mut())),
+        future::block_on(future::poll_once(wait.as_mut())).map(Result::unwrap),
         Some(retired)
     );
 }

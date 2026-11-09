@@ -41,12 +41,15 @@ use std::rc::Rc;
 use surgeist_js_gc::heap::{AccessError, EdgeVisitor, Trace as HeapTrace};
 
 mod asynchronous;
+mod fault;
 mod identity;
 mod observer;
 mod queue;
 mod task;
 
 pub use asynchronous::{JobStep, NativeAsyncJob};
+pub use fault::{JobFault, JobFaultCause, JobFaultOwner, JobRegistrationError, JobResourceError};
+pub(crate) use fault::{UnwindCleanup, reserve_registration};
 pub use identity::ContextId;
 pub(crate) use identity::ContextLifetime;
 pub use observer::{JobObserver, JobRetirement, JobStatus, JobWait};
@@ -77,6 +80,8 @@ pub enum JobInvocation {
 
 pub use crate::builtins::finalization_registry::FinalizationRegistryCleanupJob;
 
+type NativeCallback = Box<dyn for<'call> FnOnce(ContextAccess<'call>) -> JsResult<JsValue>>;
+
 /// An ECMAScript [Job Abstract Closure].
 ///
 /// This is basically a synchronous task that needs to be run to progress [`Promise`] objects,
@@ -86,9 +91,8 @@ pub use crate::builtins::finalization_registry::FinalizationRegistryCleanupJob;
 /// [`Promise`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise
 /// [`Atomics.waitAsync`]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Atomics/waitAsync
 pub struct NativeJob {
-    #[allow(clippy::type_complexity)]
-    f: Option<Box<dyn for<'call> FnOnce(ContextAccess<'call>) -> JsResult<JsValue>>>,
-    observer: JobObserver,
+    custody: InvocationCustody,
+    f: NativeCallback,
     module_action: Option<crate::module::lifecycle::ModuleActionRoot>,
     realm: Option<Realm>,
 }
@@ -117,6 +121,7 @@ fn invoke_native_job(
         }
         context.end_execution_phase(observation);
     });
+    active.check_execution_stop()?;
     active.note_execution_effect();
     let result = call(active.access());
     drop(active);
@@ -124,12 +129,16 @@ fn invoke_native_job(
     result
 }
 
-impl Drop for NativeJob {
+struct InvocationCustody {
+    observer: JobObserver,
+    entered: bool,
+}
+impl Drop for InvocationCustody {
     fn drop(&mut self) {
-        self.observer.retire(if self.f.is_some() {
-            JobRetirement::Dropped
-        } else {
+        self.observer.retire(if self.entered {
             JobRetirement::Interrupted
+        } else {
+            JobRetirement::Dropped
         });
     }
 }
@@ -147,8 +156,11 @@ impl NativeJob {
         F: for<'call> FnOnce(ContextAccess<'call>) -> JsResult<JsValue> + 'static,
     {
         Self {
-            f: Some(Box::new(f)),
-            observer: JobObserver::new(),
+            custody: InvocationCustody {
+                observer: JobObserver::new(),
+                entered: false,
+            },
+            f: Box::new(f),
             module_action: None,
             realm: None,
         }
@@ -160,8 +172,11 @@ impl NativeJob {
         F: for<'call> FnOnce(ContextAccess<'call>) -> JsResult<JsValue> + 'static,
     {
         Self {
-            f: Some(Box::new(f)),
-            observer: JobObserver::new(),
+            custody: InvocationCustody {
+                observer: JobObserver::new(),
+                entered: false,
+            },
+            f: Box::new(f),
             module_action: None,
             realm: Some(realm),
         }
@@ -186,37 +201,72 @@ impl NativeJob {
     ///
     /// Before-action refusal returns [`JobCall::Deferred`] with this original
     /// uncalled wrapper. [`JobCall::Complete`] owns the admitted invocation result.
-    pub fn call(mut self, context: ContextAccess<'_>) -> JobCall<Self> {
+    pub fn call(self, context: ContextAccess<'_>) -> JobCall<Self> {
         let context = context.into_owner();
+        if let Err(error) = context.check_execution_stop() {
+            return JobCall::Deferred { job: self, error };
+        }
+        let fault =
+            self.custody
+                .observer
+                .fault()
+                .or_else(|| match self.custody.observer.status() {
+                    Ok(JobStatus::Pending) => None,
+                    Err(fault) => Some(fault),
+                    Ok(_) => Some(self.custody.observer.record_fault(JobFault::new(
+                        JobFaultOwner::Task,
+                        JobFaultCause::StateInconsistency,
+                    ))),
+                });
+        if let Some(fault) = fault {
+            return JobCall::Deferred {
+                job: self,
+                error: fault.into(),
+            };
+        }
         if let Err(error) = admit_native_job(context, self.realm.as_ref()) {
             return JobCall::Deferred { job: self, error };
         }
-        let call = self.f.take().expect("native job callback runs once");
-        let result = if let Some(action) = &self.module_action {
+        let Self {
+            mut custody,
+            f: call,
+            module_action,
+            realm,
+        } = self;
+        custody.entered = true;
+        let mut result = if let Some(action) = &module_action {
             match action.check() {
-                Ok(()) => invoke_native_job(context, self.realm.take(), call),
+                Ok(()) => invoke_native_job(context, realm, call),
                 Err(error) => Err(error),
             }
         } else {
-            invoke_native_job(context, self.realm.take(), call)
+            invoke_native_job(context, realm, call)
         };
-        if let (Some(action), Err(error)) = (&self.module_action, &result) {
+        if let (Some(action), Err(error)) = (&module_action, &result) {
             action.finish(error);
         }
         if result
             .as_ref()
             .is_err_and(|error| error.as_engine().is_some())
         {
-            self.observer.retire(JobRetirement::Interrupted);
+            custody.observer.retire(JobRetirement::Interrupted);
         } else {
-            self.observer.complete();
+            custody.observer.complete();
         }
-        JobCall::Complete(result)
+        // Observer failure is not authority to revoke a committed module successor.
+        if let Some(fault) = custody.observer.fault()
+            && !result
+                .as_ref()
+                .is_err_and(|error| error.as_engine().is_some())
+        {
+            result = Err(fault.into());
+        }
+        JobCall::Complete(context.check_execution_stop().and(result))
     }
 
     /// Observes this task without retaining its callback captures.
     pub fn observer(&self) -> JobObserver {
-        self.observer.clone()
+        self.custody.observer.clone()
     }
 }
 
@@ -384,18 +434,19 @@ impl CancellationToken {
 /// [HostEnqueueTimeoutJob]: https://tc39.es/ecma262/#sec-hostenqueuetimeoutjob
 #[derive(Debug)]
 pub struct TimeoutJob {
+    cancellation: CancellationLease,
     /// The distance in milliseconds in the future when the job should run.
     /// This will be added to the current time when the job is enqueued.
     timeout: JsDuration,
     /// The job to run after the specified timeout.
-    job: Option<NativeJob>,
-    /// Signals if the timeout job was cancelled.
-    cancellation_token: CancellationToken,
+    job: NativeJob,
 }
 
-impl Drop for TimeoutJob {
+#[derive(Debug)]
+struct CancellationLease(CancellationToken);
+impl Drop for CancellationLease {
     fn drop(&mut self) {
-        self.cancellation_token.revoke();
+        self.0.revoke();
     }
 }
 
@@ -404,9 +455,9 @@ impl TimeoutJob {
     #[must_use]
     pub fn new(job: NativeJob, timeout_in_millis: u64) -> Self {
         Self {
+            cancellation: CancellationLease(CancellationToken::new()),
             timeout: JsDuration::from_millis(timeout_in_millis),
-            job: Some(job),
-            cancellation_token: CancellationToken::new(),
+            job,
         }
     }
 
@@ -437,27 +488,28 @@ impl TimeoutJob {
     ///
     /// Before-action refusal returns [`JobCall::Deferred`] with this original
     /// uncalled wrapper. [`JobCall::Complete`] owns the admitted invocation result.
-    pub fn call(mut self, context: ContextAccess<'_>) -> JobCall<Self> {
-        match self
-            .job
-            .take()
-            .expect("timeout owns native job")
-            .call(context)
-        {
-            JobCall::Deferred { job, error } => {
-                self.job = Some(job);
-                JobCall::Deferred { job: self, error }
-            }
+    pub fn call(self, context: ContextAccess<'_>) -> JobCall<Self> {
+        let Self {
+            cancellation,
+            timeout,
+            job,
+        } = self;
+        match job.call(context) {
+            JobCall::Deferred { job, error } => JobCall::Deferred {
+                job: Self {
+                    cancellation,
+                    timeout,
+                    job,
+                },
+                error,
+            },
             JobCall::Complete(result) => JobCall::Complete(result),
         }
     }
 
     /// Observes the timeout callback's disposition.
     pub fn observer(&self) -> JobObserver {
-        self.job
-            .as_ref()
-            .expect("timeout owns native job")
-            .observer()
+        self.job.observer()
     }
 
     /// Returns the timeout value in milliseconds since epoch.
@@ -471,13 +523,13 @@ impl TimeoutJob {
     #[inline]
     #[must_use]
     pub fn cancelled(&self) -> bool {
-        self.cancellation_token.revoked()
+        self.cancellation.0.revoked()
     }
 
     /// Returns the [`CancellationToken`] for this timeout job.
     #[must_use]
     pub fn cancellation_token(&self) -> &CancellationToken {
-        &self.cancellation_token
+        &self.cancellation.0
     }
 }
 

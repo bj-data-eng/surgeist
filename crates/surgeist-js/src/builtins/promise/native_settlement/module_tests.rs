@@ -59,7 +59,9 @@ fn arm<W: Wake + Send + Sync + 'static>(signal: &Arc<Signal>, wake: Arc<W>) -> S
 }
 
 fn observed(waiter: &mut SettlementWait) -> Poll<SettlementStatus> {
-    waiter.poll(&mut TaskContext::from_waker(Waker::noop()))
+    waiter
+        .poll(&mut TaskContext::from_waker(Waker::noop()))
+        .map(|status| status.expect("the healthy signal must retain its ordinary result"))
 }
 
 fn connect(source: &Arc<Signal>, target: &Arc<Signal>) -> DependencyGuard {
@@ -69,22 +71,13 @@ fn connect(source: &Arc<Signal>, target: &Arc<Signal>) -> DependencyGuard {
 }
 
 fn isolated_domain() -> Arc<Domain> {
-    Arc::new(Domain {
-        queue: Mutex::new(NoticeQueue {
-            head: None,
-            tail: None,
-            wake_head: None,
-            wake_tail: None,
-            driving: false,
-        }),
-        empty_notice_hook: None,
-    })
+    Arc::new(Domain::new())
 }
 
 // Module notices may be driven by another thread. The real driver prioritizes
 // all queued notices, including their descendants, before this barrier's wake.
 fn await_module_notices() {
-    let barrier = Signal::new();
+    let barrier = Signal::new().unwrap();
     let wakes = Arc::new(WakeCount::default());
     let mut waiter = arm(&barrier, wakes.clone());
     barrier.mark_module();
@@ -109,7 +102,7 @@ impl Wake for CheckModuleWake {
         let all_terminal = self
             .signals
             .iter()
-            .all(|signal| signal.status() == SettlementStatus::ModuleInterrupted);
+            .all(|signal| signal.status().unwrap() == SettlementStatus::ModuleInterrupted);
         self.all_terminal.fetch_and(all_terminal, Ordering::SeqCst);
         self.calls.fetch_add(1, Ordering::SeqCst);
         self.completion.record();
@@ -118,7 +111,7 @@ impl Wake for CheckModuleWake {
 
 #[test]
 fn module_notice_marks_every_active_descendant_before_any_native_wake() {
-    let signals: Vec<_> = (0..16).map(|_| Signal::new()).collect();
+    let signals: Vec<_> = (0..16).map(|_| Signal::new().unwrap()).collect();
     let _subscriptions: Vec<_> = signals
         .windows(2)
         .map(|pair| connect(&pair[0], &pair[1]))
@@ -145,7 +138,10 @@ fn module_notice_marks_every_active_descendant_before_any_native_wake() {
     signals[0].notify_module();
     completion.await_count(signals.len());
     for (signal, (probe, waiter)) in signals.iter().zip(probes.iter().zip(&mut waiters)) {
-        assert_eq!(signal.status(), SettlementStatus::ModuleInterrupted);
+        assert_eq!(
+            signal.status().unwrap(),
+            SettlementStatus::ModuleInterrupted
+        );
         assert!(probe.all_terminal.load(Ordering::SeqCst));
         assert_eq!(probe.calls.load(Ordering::SeqCst), 1);
         assert_eq!(
@@ -164,7 +160,7 @@ fn module_notice_marks_every_active_descendant_before_any_native_wake() {
 fn an_explicit_module_notice_upgrades_prior_generic_retirement_through_the_active_chain() {
     let domain = isolated_domain();
     let signals: Vec<_> = (0..4)
-        .map(|_| Signal::in_isolated_domain(domain.clone()))
+        .map(|_| Signal::in_isolated_domain(domain.clone()).unwrap())
         .collect();
     let _subscriptions: Vec<_> = signals
         .windows(2)
@@ -173,7 +169,7 @@ fn an_explicit_module_notice_upgrades_prior_generic_retirement_through_the_activ
     signals[0].retire_pending(JobRetirement::Dropped);
     for signal in &signals {
         assert_eq!(
-            signal.status(),
+            signal.status().unwrap(),
             SettlementStatus::Retired(JobRetirement::Dropped)
         );
     }
@@ -184,7 +180,10 @@ fn an_explicit_module_notice_upgrades_prior_generic_retirement_through_the_activ
     signals[0].notify_module();
     await_module_notices();
     for signal in &signals {
-        assert_eq!(signal.status(), SettlementStatus::ModuleInterrupted);
+        assert_eq!(
+            signal.status().unwrap(),
+            SettlementStatus::ModuleInterrupted
+        );
     }
 }
 
@@ -209,7 +208,10 @@ fn module_terminal_status_survives_late_successor_handoff_and_settlement() {
     predecessor.retire(JobRetirement::OwnerDropped);
     owner.settle();
     await_module_notices();
-    assert_eq!(owner.signal.status(), SettlementStatus::ModuleInterrupted);
+    assert_eq!(
+        owner.signal.status().unwrap(),
+        SettlementStatus::ModuleInterrupted
+    );
     assert_eq!(
         observed(&mut waiter),
         Poll::Ready(SettlementStatus::ModuleInterrupted)
@@ -223,7 +225,7 @@ fn selected_delivery(prepared: &PreparedHandoff) -> Arc<Dependency> {
         ._dependency
         .as_ref()
         .unwrap()
-        ._dependency
+        .dependency
         .clone()
 }
 
@@ -249,13 +251,13 @@ fn abandoned_follow_preparation_cannot_deliver_a_module_notice_to_the_valid_succ
     delivery.module_interrupt();
     await_module_notices();
     assert_eq!(
-        obsolete.signal.status(),
+        obsolete.signal.status().unwrap(),
         SettlementStatus::ModuleInterrupted
     );
-    assert_eq!(owner.signal.status(), SettlementStatus::Pending);
+    assert_eq!(owner.signal.status().unwrap(), SettlementStatus::Pending);
     successor.complete();
     owner.settle();
-    assert_eq!(owner.signal.status(), SettlementStatus::Settled);
+    assert_eq!(owner.signal.status().unwrap(), SettlementStatus::Settled);
 }
 
 #[test]
@@ -278,13 +280,13 @@ fn replaced_follow_epoch_cannot_deliver_a_module_notice_to_the_committed_success
     delivery.module_interrupt();
     await_module_notices();
     assert_eq!(
-        obsolete.signal.status(),
+        obsolete.signal.status().unwrap(),
         SettlementStatus::ModuleInterrupted
     );
-    assert_eq!(owner.signal.status(), SettlementStatus::Pending);
+    assert_eq!(owner.signal.status().unwrap(), SettlementStatus::Pending);
     successor.complete();
     owner.settle();
-    assert_eq!(owner.signal.status(), SettlementStatus::Settled);
+    assert_eq!(owner.signal.status().unwrap(), SettlementStatus::Settled);
 }
 
 #[derive(Debug)]
@@ -317,12 +319,13 @@ fn panicking_reentrant_module_waker_preserves_remaining_notices_and_driver_reuse
     // Isolate driver/unwind ownership. This exercises the actual module notice
     // driver, independently of global notify_module routing or module causes.
     let domain = isolated_domain();
-    let source = Signal::in_isolated_domain(domain.clone());
-    let successor = Signal::in_isolated_domain(domain.clone());
+    let source = Signal::in_isolated_domain(domain.clone()).unwrap();
+    let successor = Signal::in_isolated_domain(domain.clone()).unwrap();
+    let module_domain = domain.isolated_module.get().unwrap().clone();
     let panic_wake = Arc::new(ReentrantPanickingWake {
         source: source.clone(),
         successor: successor.clone(),
-        domain: domain.clone(),
+        domain: module_domain.clone(),
         effects: AtomicUsize::new(0),
     });
     let completion = Arc::new(WakeCount::default());
@@ -331,7 +334,7 @@ fn panicking_reentrant_module_waker_preserves_remaining_notices_and_driver_reuse
     let mut reentrant = arm(&successor, completion.clone());
 
     source.mark_module();
-    let panic = catch_unwind(AssertUnwindSafe(|| source.notice_in(&domain, true)))
+    let panic = catch_unwind(AssertUnwindSafe(|| source.notice_in(&module_domain, true)))
         .expect_err("the authored waker panic must resume after notification cleanup");
     assert!(panic.is::<AuthoredWakePanic>());
     assert_eq!(panic_wake.effects.load(Ordering::SeqCst), 1);
@@ -343,11 +346,11 @@ fn panicking_reentrant_module_waker_preserves_remaining_notices_and_driver_reuse
         );
     }
 
-    let later = Signal::in_isolated_domain(domain.clone());
+    let later = Signal::in_isolated_domain(domain.clone()).unwrap();
     let later_wakes = Arc::new(WakeCount::default());
     let mut later_waiter = arm(&later, later_wakes.clone());
     later.mark_module();
-    later.notice_in(&domain, true);
+    later.notice_in(&module_domain, true);
     later_wakes.await_count(1);
     assert_eq!(
         observed(&mut later_waiter),
@@ -380,7 +383,7 @@ fn native_association_finds_a_retained_module_cause_at_the_last_vertex_of_a_foll
     .unwrap();
     let loaded = module.load(context.access()).unwrap();
     assert_eq!(
-        loaded.state(),
+        loaded.state().unwrap(),
         crate::builtins::promise::PromiseState::Fulfilled(JsValue::undefined())
     );
     module.link(context.access()).unwrap();

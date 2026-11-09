@@ -71,7 +71,7 @@ fn retained_stop_prevents_async_error_materialization_from_mutating_saved_stack(
         context.access(),
     )
     .unwrap();
-    assert_eq!(promise.state(), PromiseState::Pending);
+    assert_eq!(promise.state().unwrap(), PromiseState::Pending);
     let outcome = context
         .with_execution(ExecutionOptions::new(0), |mut access| access.run_jobs())
         .unwrap();
@@ -82,7 +82,7 @@ fn retained_stop_prevents_async_error_materialization_from_mutating_saved_stack(
         }))
     );
     assert_eq!(outcome.report.instructions().unwrap(), 0);
-    assert_eq!(promise.state(), PromiseState::Pending);
+    assert_eq!(promise.state().unwrap(), PromiseState::Pending);
     assert_eq!(
         saved_object
             .get(js_string!("stack"), context.access())
