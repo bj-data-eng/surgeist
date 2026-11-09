@@ -327,6 +327,59 @@ impl HtmlControlFacts {
         textareas: Vec<HtmlTextareaControlState>,
         limits: HtmlControlFactsLimits,
     ) -> Result<Self, HtmlControlFactsError> {
+        Self::build(
+            capture,
+            host_revision,
+            associations,
+            inputs,
+            options,
+            textareas,
+            limits,
+            None,
+        )
+    }
+    /// Charges below the scope `accounting` names, in the host's operation, as [`Self::new`]
+    /// charges an operation of its own. The schema module documentation of
+    /// `surgeist_html::accounting` lists the scopes it creates and what the host keeps.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the arguments of the constructor and the host scope"
+    )]
+    pub fn with_accounting(
+        capture: &HtmlCapture,
+        host_revision: HtmlHostFactsRevision,
+        associations: Vec<HtmlFormAssociation>,
+        inputs: Vec<HtmlInputControlState>,
+        options: Vec<HtmlOptionControlState>,
+        textareas: Vec<HtmlTextareaControlState>,
+        limits: HtmlControlFactsLimits,
+        accounting: &HtmlHostScope,
+    ) -> Result<Self, HtmlControlFactsError> {
+        Self::build(
+            capture,
+            host_revision,
+            associations,
+            inputs,
+            options,
+            textareas,
+            limits,
+            Some(accounting),
+        )
+    }
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the arguments of the constructor and the host scope"
+    )]
+    fn build(
+        capture: &HtmlCapture,
+        host_revision: HtmlHostFactsRevision,
+        associations: Vec<HtmlFormAssociation>,
+        inputs: Vec<HtmlInputControlState>,
+        options: Vec<HtmlOptionControlState>,
+        textareas: Vec<HtmlTextareaControlState>,
+        limits: HtmlControlFactsLimits,
+        hosted: Option<&HtmlHostScope>,
+    ) -> Result<Self, HtmlControlFactsError> {
         if capture.host_facts_revision() != &host_revision {
             return Err(HtmlControlFactsError::HostRevisionMismatch);
         }
@@ -336,9 +389,10 @@ impl HtmlControlFacts {
             .and_then(|n| n.checked_add(options.capacity()))
             .and_then(|n| n.checked_add(textareas.capacity()))
             .ok_or(HtmlControlFactsError::RepresentationExhausted)?;
-        let mut validation = ScanMeter::new(
+        let mut validation = ScanMeter::charging(
             HtmlCapScope::ControlFacts,
             Caps::work(limits.validation_work).records(limits.records),
+            hosted,
         )?;
         validation.acquire(HtmlResource::FactRecords, required, |limit, required| {
             HtmlControlFactsError::RecordCapacity { limit, required }

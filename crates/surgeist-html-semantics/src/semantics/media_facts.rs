@@ -264,9 +264,32 @@ impl HtmlMediaFacts {
         facts: Vec<HtmlMediaFact>,
         limits: HtmlMediaFactsLimits,
     ) -> Result<Self, HtmlMediaFactsError> {
+        Self::build(capture, host, revision, facts, limits, None)
+    }
+    /// Charges below the scope `accounting` names, in the host's operation, as [`Self::new`]
+    /// charges an operation of its own. The schema module documentation of
+    /// `surgeist_html::accounting` lists the scopes it creates and what the host keeps.
+    pub fn with_accounting(
+        capture: &HtmlCapture,
+        host: HtmlHostFactsRevision,
+        revision: HtmlMediaContextRevision,
+        facts: Vec<HtmlMediaFact>,
+        limits: HtmlMediaFactsLimits,
+        accounting: &HtmlHostScope,
+    ) -> Result<Self, HtmlMediaFactsError> {
+        Self::build(capture, host, revision, facts, limits, Some(accounting))
+    }
+    fn build(
+        capture: &HtmlCapture,
+        host: HtmlHostFactsRevision,
+        revision: HtmlMediaContextRevision,
+        facts: Vec<HtmlMediaFact>,
+        limits: HtmlMediaFactsLimits,
+        hosted: Option<&HtmlHostScope>,
+    ) -> Result<Self, HtmlMediaFactsError> {
         use HtmlMediaFactsError as E;
         FactAdmission::<E>::host(capture, &host)?;
-        let mut a = FactAdmission::<E>::new(HtmlCapScope::MediaFacts, limits)?;
+        let mut a = FactAdmission::<E>::charging(HtmlCapScope::MediaFacts, limits, hosted)?;
         a.add_records(facts.capacity())?;
         a.add_bytes(
             facts

@@ -479,6 +479,62 @@ impl<W: Dimension, R: Dimension> Operation<W, R> {
         Ok(&self.entry(self.index(scope)?)?.limits)
     }
 
+    /// The most of a resource that an acquisition at `scope` could take before a cap on the
+    /// chain from `scope` to the root refuses it.
+    ///
+    /// Each scope on the chain contributes its cap on the resource minus the live usage it
+    /// holds, which includes its descendants. The contribution of an ancestor is expressed in the
+    /// units of `scope` by dividing by the product of the tariff scales between them, rounding
+    /// down, so `Acquire(resource, n)` at `scope` is admitted exactly when `n` is no more than
+    /// the result. A tariff of scale zero stops the ancestors above it from bounding the
+    /// change, because they receive an amount of zero, but admission still checks them with that
+    /// amount: an ancestor above it that holds more than its cap, which
+    /// [`Operation::set_limits`] can produce, refuses every acquisition, and the headroom is
+    /// zero. A resource that no cap on the chain bounds reports `u64::MAX`. A scope that already
+    /// holds more than its own cap reports zero as well, though even a zero acquisition is
+    /// refused there.
+    ///
+    /// The value is a read: it reserves nothing, and a later admission checks again.
+    pub fn headroom(&self, scope: Scope, resource: R) -> Result<u64, Error<W, R>> {
+        let mut index = self.index(scope)?;
+        let mut dimension = resource;
+        // The product of the scales from `scope` to the scope being read. It saturates, and a
+        // product beyond `u64::MAX` divides every cap down to zero, as the product itself would.
+        let mut scale = 1_u128;
+        let mut headroom = u64::MAX;
+        // Past a tariff of scale zero the amount is zero, so an ancestor bounds nothing, but it
+        // still refuses when it holds more than its cap.
+        let mut zeroed = false;
+        // A chain is shorter than the number of scopes, so this bound is never reached.
+        for _ in 0..self.scopes.len() {
+            let entry = self.entry(index)?;
+            let cap = entry.limits.live(dimension);
+            let live = entry.usage.live(dimension);
+            if zeroed {
+                if live > cap {
+                    return Ok(0);
+                }
+            } else {
+                let share = u128::from(cap.saturating_sub(live))
+                    .checked_div(scale)
+                    .unwrap_or(0);
+                headroom = headroom.min(u64::try_from(share).unwrap_or(u64::MAX));
+            }
+            let Some(parent) = &entry.parent else {
+                break;
+            };
+            let tariff = R::get(&parent.tariffs.resources, dimension);
+            if tariff.scale == 0 {
+                zeroed = true;
+            } else {
+                scale = scale.saturating_mul(u128::from(tariff.scale));
+            }
+            dimension = tariff.target;
+            index = parent.index;
+        }
+        Ok(headroom)
+    }
+
     /// Replaces the caps of a scope, for the batches admitted after this call.
     ///
     /// Usage, peaks, direct custody, the profile and open intervals stay as they

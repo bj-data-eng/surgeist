@@ -8,12 +8,12 @@
 //! each caller's charge order and first reached failure.
 
 use super::*;
-use crate::accounting::wide;
+use crate::accounting::{Ledger, wide};
 use crate::{HtmlCapture, HtmlCaptureError, HtmlCapturedElement, HtmlCapturedNode};
 use std::{fmt, marker::PhantomData};
 use surgeist_html::accounting::{
     HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapScope, HtmlLedgerOutcome, HtmlLimits,
-    HtmlResource, HtmlWork, classify,
+    HtmlResource, HtmlWork, aggregate_tariffs, classify,
 };
 use surgeist_html::vocabulary::KnownHtmlElement;
 use surgeist_ledger::{Change, Error, Operation, Scope, Tariff, Tariffs};
@@ -130,11 +130,11 @@ impl Caps {
 
 /// A validation-work total and the fact counts of one constructor, charged to a ledger scope.
 ///
-/// The scope belongs to an operation of the meter's own and carries the constructor's caps. The
-/// meter reports refusals as the constructor's own error `E`. A refused charge leaves the total
+/// The scope belongs to an operation of the meter's own, or is a child of a scope a host supplies,
+/// and carries the constructor's caps. The meter reports refusals as the constructor's own error `E`. A refused charge leaves the total
 /// unchanged, so a refusal reports exactly the work that was admitted before it.
 pub(crate) struct ScanMeter<E> {
-    operation: Operation<HtmlWork, HtmlResource>,
+    operation: Ledger,
     /// The scope that carries the caps.
     scope: Scope,
     /// The scope that takes every fact amount first, whether or not the caps admit it yet. It
@@ -148,11 +148,37 @@ impl<E> fmt::Debug for ScanMeter<E> {
     }
 }
 impl<E: ScanError> ScanMeter<E> {
-    /// A meter in a scope named for `kind` that carries `caps`.
+    /// A meter in a scope named for `kind` that carries `caps`, in an operation of its own.
     pub(crate) fn new(kind: HtmlCapScope, caps: Caps) -> Result<Self, E> {
-        let mut operation =
-            Operation::new(kind.name(), caps.limits(), 2).map_err(Self::refusal_of)?;
-        let scope = operation.root();
+        Self::charging(kind, caps, None)
+    }
+    /// A meter in a scope named for `kind` that carries `caps`: a child of the scope `host`
+    /// supplies when it is `Some`, else the root of an operation of its own.
+    pub(crate) fn charging(
+        kind: HtmlCapScope,
+        caps: Caps,
+        host: Option<&HtmlHostScope>,
+    ) -> Result<Self, E> {
+        let (mut operation, scope) = match host {
+            Some(host) => {
+                let mut operation = Ledger::Shared(host.ledger().clone());
+                let scope = operation
+                    .child(
+                        host.scope(),
+                        kind.name(),
+                        caps.limits(),
+                        aggregate_tariffs(),
+                    )
+                    .map_err(Self::refusal_of)?;
+                (operation, scope)
+            }
+            None => {
+                let operation =
+                    Operation::new(kind.name(), caps.limits(), 2).map_err(Self::refusal_of)?;
+                let scope = operation.root();
+                (Ledger::Owned(operation), scope)
+            }
+        };
         let grown = operation
             .child(
                 scope,
@@ -211,9 +237,8 @@ impl<E: ScanError> ScanMeter<E> {
     pub(crate) fn work(&self) -> Result<usize, E> {
         let work = self
             .operation
-            .usage(self.scope)
-            .map_err(Self::refusal_of)?
-            .work(HtmlWork::SemanticStep);
+            .read(self.scope, |usage| usage.work(HtmlWork::SemanticStep))
+            .map_err(Self::refusal_of)?;
         usize::try_from(work).map_err(|_| E::representation_exhausted())
     }
     pub(crate) fn charge(&mut self, amount: usize) -> Result<(), E> {
@@ -241,8 +266,7 @@ impl<E: ScanError> ScanMeter<E> {
         let live = |meter: &Self, scope| {
             meter
                 .operation
-                .usage(scope)
-                .map(|usage| usage.live(resource))
+                .read(scope, |usage| usage.live(resource))
                 .map_err(Self::refusal_of)
         };
         let owed = live(self, self.grown)?.saturating_sub(live(self, self.scope)?);
@@ -279,9 +303,8 @@ impl<E: ScanError> ScanMeter<E> {
     pub(crate) fn taken(&self, resource: HtmlResource) -> Result<usize, E> {
         let live = self
             .operation
-            .usage(self.grown)
-            .map_err(Self::refusal_of)?
-            .live(resource);
+            .read(self.grown, |usage| usage.live(resource))
+            .map_err(Self::refusal_of)?;
         usize::try_from(live).map_err(|_| E::representation_exhausted())
     }
     /// Looks up a node, charging 1 before the lookup.

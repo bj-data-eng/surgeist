@@ -146,8 +146,10 @@ impl HtmlSemanticSession<'_> {
                 break;
             };
             let baseline = self.snapshot().allocated_bytes;
-            let (digits, remaining) =
-                (self.limits.integer_digits, self.remaining_allocated_bytes());
+            let (digits, remaining) = (
+                self.limits.integer_digits,
+                self.remaining_allocated_bytes()?,
+            );
             // The action charges its own semantic work before it runs. Fixed continuations after a
             // numeric poll belong to the already admitted operation and charge nothing.
             let step = action.advance(&mut StepCharge(self), digits, remaining)?;
@@ -194,11 +196,7 @@ impl HtmlSemanticSession<'_> {
                     HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded {
                         required, ..
                     } => match baseline.checked_add(required) {
-                        Some(required) => HtmlSemanticFailureKind::LimitExceeded {
-                            resource: HtmlSemanticResource::AllocatedBytes,
-                            limit: self.limits.allocated_bytes,
-                            required,
-                        },
+                        Some(total) => return self.requested_capacity_stop(required, total),
                         None => HtmlSemanticFailureKind::RepresentationExhausted,
                     },
                     HtmlIntegerUnitStepError::ActualCapacityLimitExceeded { .. } => {

@@ -4,9 +4,9 @@
 
 use super::*;
 use crate::internal::accounting::{
-    HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapScope, HtmlChange, HtmlLedgerOutcome,
-    HtmlLimits, HtmlRefusalFigures, HtmlResource, HtmlTariffs, HtmlWork, autocomplete_limits,
-    classify, wide,
+    HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapScope, HtmlChange, HtmlHostScope,
+    HtmlLedgerOutcome, HtmlLimits, HtmlRefusalFigures, HtmlResource, HtmlTariffs, HtmlWork,
+    aggregate_tariffs, autocomplete_limits, classify, wide,
 };
 use crate::{
     internal::microsyntax::tokens::DeclaredKeyword,
@@ -15,7 +15,10 @@ use crate::{
     internal::microsyntax::tokens::declared_keyword,
 };
 use std::{error::Error, fmt};
-use surgeist_ledger::{Change, Error as LedgerError, Operation, Scope, ScopeLedger, Usage};
+use surgeist_ledger::{
+    Change, Error as LedgerError, Operation, Scope, ScopeLedger, SharedOperation, Tariff, Tariffs,
+    Usage,
+};
 
 const RULE: RuleMetadata = RuleMetadata {
     attribute: KnownHtmlAttribute::Autocomplete,
@@ -362,6 +365,38 @@ impl Materialization<Operation<HtmlWork, HtmlResource>> {
             )
             .map_err(Self::refused)?;
         Self::in_scopes(operation, caps, observed)
+    }
+}
+
+impl Materialization<SharedOperation<HtmlWork, HtmlResource>> {
+    /// A materialization in two scopes it opens below the scope a host supplies: `html-autocomplete`
+    /// carries the allowances and converts into the host's scope, and
+    /// `html-autocomplete-observed` records the allocator's growth and projects nothing into it.
+    fn below(
+        host: &HtmlHostScope,
+        limits: HtmlAutocompleteMaterializationLimits,
+    ) -> Result<Self, HtmlAutocompleteMaterializationError> {
+        let ledger = host.ledger().clone();
+        let caps = ledger
+            .child(
+                host.scope(),
+                HtmlCapScope::Autocomplete.name(),
+                autocomplete_limits(limits),
+                aggregate_tariffs(),
+            )
+            .map_err(Self::refused)?;
+        let observed = ledger
+            .child(
+                host.scope(),
+                HtmlAuxiliaryScope::AutocompleteObserved.name(),
+                HtmlLimits::unlimited(),
+                Tariffs::from_fn(
+                    |work| Tariff::new(work, 0),
+                    |resource| Tariff::new(resource, 0),
+                ),
+            )
+            .map_err(Self::refused)?;
+        Self::in_scopes(ledger, caps, observed)
     }
 }
 
@@ -1869,12 +1904,49 @@ impl HtmlValueInterpreter {
         state: Option<HtmlInputType>,
         limits: HtmlAutocompleteMaterializationLimits,
     ) -> Result<HtmlAutocompleteMaterialized, HtmlAutocompleteMaterializationFailure> {
-        let mut storage = Materialization::new(Some(limits)).map_err(|kind| {
-            HtmlAutocompleteMaterializationFailure {
-                kind,
-                usage: HtmlAutocompleteMaterializationUsage::default(),
-            }
-        })?;
+        let storage = Materialization::new(Some(limits)).map_err(Self::setup_failure)?;
+        self.materialize_controlled(element, raw, state, storage)
+    }
+
+    /// Materializes as [`Self::control_autocomplete_controlled`] does, charging scopes it opens
+    /// below the scope `host` supplies instead of an operation of its own.
+    ///
+    /// `html-autocomplete` carries the allowances of `limits` and converts into the host's
+    /// scope by [`aggregate_tariffs`], so a cap of that scope or of an ancestor refuses growth
+    /// with the limit that scope carries. `html-autocomplete-observed` records every
+    /// reservation the allocator made before the capped scope admits or refuses it and projects
+    /// nothing into the host's scope. The host operation keeps the allocated bytes and nested
+    /// output records the materialization admitted, and the scratch records return to zero at
+    /// the end of each processing step. The host operation keeps both scopes.
+    pub fn control_autocomplete_controlled_with_accounting(
+        &self,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
+        state: Option<HtmlInputType>,
+        limits: HtmlAutocompleteMaterializationLimits,
+        host: &HtmlHostScope,
+    ) -> Result<HtmlAutocompleteMaterialized, HtmlAutocompleteMaterializationFailure> {
+        let storage = Materialization::below(host, limits).map_err(Self::setup_failure)?;
+        self.materialize_controlled(element, raw, state, storage)
+    }
+
+    /// The failure of a materialization that could not set up its scopes.
+    fn setup_failure(
+        kind: HtmlAutocompleteMaterializationError,
+    ) -> HtmlAutocompleteMaterializationFailure {
+        HtmlAutocompleteMaterializationFailure {
+            kind,
+            usage: HtmlAutocompleteMaterializationUsage::default(),
+        }
+    }
+
+    fn materialize_controlled(
+        &self,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
+        state: Option<HtmlInputType>,
+        mut storage: Materialization<impl ScopeLedger<HtmlWork, HtmlResource>>,
+    ) -> Result<HtmlAutocompleteMaterialized, HtmlAutocompleteMaterializationFailure> {
         let result = self.materialize_autocomplete(element, raw, state, &mut storage);
         debug_assert_eq!(storage.scratch, 0);
         result

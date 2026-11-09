@@ -84,18 +84,18 @@ impl QueryAccount {
     /// of the session's own whose root carries the caps.
     pub(super) fn new(
         session: HtmlSemanticLimits,
-        accounting: Option<&HtmlSemanticAccounting>,
+        accounting: Option<&HtmlHostScope>,
     ) -> Result<Self, LedgerError> {
         let (mut operation, caps, parent) = match accounting {
             Some(host) => {
-                let mut operation = Ledger::Shared(host.ledger.clone());
+                let mut operation = Ledger::Shared(host.ledger().clone());
                 let caps = operation.child(
-                    host.scope,
+                    host.scope(),
                     HtmlCapScope::Query.name(),
                     limits(session),
                     aggregate_tariffs(),
                 )?;
-                (operation, caps, host.scope)
+                (operation, caps, host.scope())
             }
             None => {
                 let operation = Operation::new(HtmlCapScope::Query.name(), limits(session), 2)?;
@@ -133,6 +133,15 @@ impl QueryAccount {
     pub(super) fn work(&mut self, work: usize) -> Result<(), LedgerError> {
         self.operation
             .apply(self.caps, Change::Work(HtmlWork::SemanticStep, wide(work)))
+    }
+
+    /// The allocated bytes an allocation may still take before a cap of the session's scope or of
+    /// one of its ancestors refuses it.
+    pub(super) fn allocated_headroom(&self) -> Result<usize, LedgerError> {
+        let room = self
+            .operation
+            .headroom(self.caps, HtmlResource::AllocatedBytes)?;
+        Ok(usize::try_from(room).unwrap_or(usize::MAX))
     }
 
     /// Checks a batch against the capped scope without recording it.

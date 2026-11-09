@@ -7,8 +7,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, PoisonError};
 use std::{error::Error, fmt};
 use surgeist_html::accounting::{
-    HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapRefusal, HtmlCapScope, HtmlLedgerOutcome,
-    HtmlLimits, HtmlResource, HtmlWork, classify,
+    HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapRefusal, HtmlCapScope, HtmlHostScope,
+    HtmlLedgerOutcome, HtmlLimits, HtmlResource, HtmlWork, classify,
 };
 use surgeist_html::{
     construction::{HtmlDoctype, HtmlDocumentMode},
@@ -1462,8 +1462,7 @@ impl HtmlControlledOptionValueCapture {
                 0,
             )
             .map_err(HtmlControlledOptionValueError::Context)?;
-            let accounting =
-                HtmlSemanticAccounting::host(self.control.ledger.clone(), self.control.gate);
+            let accounting = HtmlHostScope::new(self.control.ledger.clone(), self.control.gate);
             let mut session = HtmlSemanticSession::with_accounting(
                 capture,
                 &context,

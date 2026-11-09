@@ -716,7 +716,7 @@ pub fn surgeist_html_parser::HtmlFragmentParseRequest::with_parser_document_base
 pub fn surgeist_html_parser::HtmlFragmentParseRequest::with_template_base_facts(self, facts: surgeist_html_semantics::base::HtmlParseBaseFacts) -> core::result::Result<Self, surgeist_html_parser::HtmlParseRequestError>
 pub struct surgeist_html_parser::HtmlParseAccounting
 impl surgeist_html_parser::HtmlParseAccounting
-pub fn surgeist_html_parser::HtmlParseAccounting::host(ledger: surgeist_ledger::shared::SharedOperation<surgeist_html::internal::accounting::HtmlWork, surgeist_html::internal::accounting::HtmlResource>, scope: surgeist_ledger::Scope) -> Self
+pub fn surgeist_html_parser::HtmlParseAccounting::host(host: surgeist_html::internal::accounting::host::HtmlHostScope) -> Self
 pub fn surgeist_html_parser::HtmlParseAccounting::observing_phases(self) -> Self
 pub fn surgeist_html_parser::HtmlParseAccounting::profiled(mode: surgeist_ledger::profile::ProfileMode) -> Self
 impl core::fmt::Debug for surgeist_html_parser::HtmlParseAccounting

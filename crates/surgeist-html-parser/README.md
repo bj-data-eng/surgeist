@@ -214,7 +214,7 @@ probes it admits, and so its work, can differ by a small share.
 A parse charges its work and resources through a `surgeist-ledger` operation of the HTML
 accounting schema (`HtmlWork` and `HtmlResource` of `surgeist_html::accounting`). A request
 that sets nothing charges an operation of its own that nothing observes. `with_accounting`
-takes one `HtmlParseAccounting`: `host(ledger, scope)` charges a scope of an operation the
+takes one `HtmlParseAccounting`: `host(scope)` charges the `HtmlHostScope` of an operation the
 host owns, so the parse is charged once in the host's totals, and `profiled(mode)` charges
 the parse's own operation under a ledger profile mode, read back from the report's or
 failure's `profile()`. `observing_phases()` adds a scope and a ledger phase for each parse

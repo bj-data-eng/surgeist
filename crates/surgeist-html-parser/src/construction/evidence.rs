@@ -1818,7 +1818,10 @@ mod tests {
                 Tariffs::identity(),
             )
             .unwrap();
-        let request = crate::HtmlParseAccounting::host(ledger.clone(), root).into_request();
+        let request = crate::HtmlParseAccounting::host(
+            surgeist_html::accounting::HtmlHostScope::new(ledger.clone(), root),
+        )
+        .into_request();
         let source = HtmlSource::utf8("\0");
         let mut c = ParseControl::with_accounting(
             limits(100),

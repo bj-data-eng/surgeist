@@ -47,11 +47,64 @@ impl HtmlRelNoopenerInput {
         target: DocumentString,
         limits: HtmlRelFactsLimits,
     ) -> Result<Self, HtmlRelFactsError> {
+        Self::build(
+            capture,
+            expected_host,
+            subject,
+            expected_url,
+            url,
+            target,
+            limits,
+            None,
+        )
+    }
+    /// Charges below the scope `accounting` names, in the host's operation, as [`Self::new`]
+    /// charges an operation of its own. The schema module documentation of
+    /// `surgeist_html::accounting` lists the scopes it creates and what the host keeps.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the arguments of the constructor and the host scope"
+    )]
+    pub fn with_accounting(
+        capture: &HtmlCapture,
+        expected_host: &HtmlHostFactsRevision,
+        subject: HtmlCaptureSubjectId,
+        expected_url: &HtmlRelRevision,
+        url: HtmlRelUrlKey,
+        target: DocumentString,
+        limits: HtmlRelFactsLimits,
+        accounting: &HtmlHostScope,
+    ) -> Result<Self, HtmlRelFactsError> {
+        Self::build(
+            capture,
+            expected_host,
+            subject,
+            expected_url,
+            url,
+            target,
+            limits,
+            Some(accounting),
+        )
+    }
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the arguments of the constructor and the host scope"
+    )]
+    fn build(
+        capture: &HtmlCapture,
+        expected_host: &HtmlHostFactsRevision,
+        subject: HtmlCaptureSubjectId,
+        expected_url: &HtmlRelRevision,
+        url: HtmlRelUrlKey,
+        target: DocumentString,
+        limits: HtmlRelFactsLimits,
+        hosted: Option<&HtmlHostScope>,
+    ) -> Result<Self, HtmlRelFactsError> {
         FactsAdmission::host(capture, expected_host)?;
         if &url.revision != expected_url {
             return Err(HtmlRelFactsError::UrlRevisionMismatch);
         }
-        let mut a = FactsAdmission::new(HtmlCapScope::LinkRelationshipFacts, limits)?;
+        let mut a = FactsAdmission::charging(HtmlCapScope::LinkRelationshipFacts, limits, hosted)?;
         a.work(1)?;
         a.fit_records(1)?;
         a.add_bytes(std::mem::size_of::<Self>())?;

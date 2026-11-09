@@ -301,6 +301,47 @@ impl HtmlInertFacts {
         documents: Vec<HtmlDocumentModalFact>,
         limits: HtmlInertFactLimits,
     ) -> Result<Self, HtmlInertFactError> {
+        Self::build(
+            capture,
+            host_revision,
+            flat_revision,
+            nodes,
+            documents,
+            limits,
+            None,
+        )
+    }
+    /// Charges below the scope `accounting` names, in the host's operation, as [`Self::new`]
+    /// charges an operation of its own. The schema module documentation of
+    /// `surgeist_html::accounting` lists the scopes it creates and what the host keeps.
+    pub fn with_accounting(
+        capture: &HtmlCapture,
+        host_revision: HtmlHostFactsRevision,
+        flat_revision: HtmlFlatTreeRevision,
+        nodes: Vec<HtmlInertNodeFact>,
+        documents: Vec<HtmlDocumentModalFact>,
+        limits: HtmlInertFactLimits,
+        accounting: &HtmlHostScope,
+    ) -> Result<Self, HtmlInertFactError> {
+        Self::build(
+            capture,
+            host_revision,
+            flat_revision,
+            nodes,
+            documents,
+            limits,
+            Some(accounting),
+        )
+    }
+    fn build(
+        capture: &HtmlCapture,
+        host_revision: HtmlHostFactsRevision,
+        flat_revision: HtmlFlatTreeRevision,
+        nodes: Vec<HtmlInertNodeFact>,
+        documents: Vec<HtmlDocumentModalFact>,
+        limits: HtmlInertFactLimits,
+        hosted: Option<&HtmlHostScope>,
+    ) -> Result<Self, HtmlInertFactError> {
         if capture.host_facts_revision() != &host_revision {
             return Err(HtmlInertFactError::HostRevisionMismatch);
         }
@@ -308,9 +349,10 @@ impl HtmlInertFacts {
             .capacity()
             .checked_add(documents.capacity())
             .ok_or(HtmlInertFactError::RepresentationExhausted)?;
-        let mut validation = InertMeter::new(
+        let mut validation = InertMeter::charging(
             HtmlCapScope::InertFacts,
             Caps::work(limits.validation_work).records(limits.record_capacity),
+            hosted,
         )?;
         validation.acquire(HtmlResource::FactRecords, required, |limit, required| {
             HtmlInertFactError::RecordCapacity { limit, required }

@@ -463,6 +463,13 @@ over its own accounting. An operation that can fault by itself reports
 
 The native builders and the controlled autocomplete materialization enforce their
 typed limits with a private ledger scope and read their typed usage back from it.
+`HtmlHostScope` names a scope of a host's shared ledger operation. The document and
+fragment `builder_with_accounting` and
+`control_autocomplete_controlled_with_accounting` charge scopes they open below it
+instead, and the parser and semantics crates take the same value for a parse, a
+capture, a session, a fact constructor and a registry formation. The module
+documentation of `surgeist_html::accounting` lists the scopes each opens, the charges
+a host operation keeps and the charges it releases.
 
 Every HTML crate reports a ledger condition under one name. `HtmlAccountingFault`
 covers a release that matches nothing held, a ledger that cannot allocate, a scope of

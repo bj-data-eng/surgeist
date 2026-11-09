@@ -271,6 +271,47 @@ impl HtmlLanguageDirectionFacts {
         assignments: Vec<HtmlSlotAssignedNodes>,
         limits: HtmlLanguageDirectionLimits,
     ) -> Result<Self, HtmlLanguageDirectionError> {
+        Self::build(
+            capture,
+            host_revision,
+            fallbacks,
+            current_values,
+            assignments,
+            limits,
+            None,
+        )
+    }
+    /// Charges below the scope `accounting` names, in the host's operation, as [`Self::new`]
+    /// charges an operation of its own. The schema module documentation of
+    /// `surgeist_html::accounting` lists the scopes it creates and what the host keeps.
+    pub fn with_accounting(
+        capture: &HtmlCapture,
+        host_revision: HtmlHostFactsRevision,
+        fallbacks: Vec<HtmlDocumentLanguageFallback>,
+        current_values: Vec<HtmlControlCurrentValue>,
+        assignments: Vec<HtmlSlotAssignedNodes>,
+        limits: HtmlLanguageDirectionLimits,
+        accounting: &HtmlHostScope,
+    ) -> Result<Self, HtmlLanguageDirectionError> {
+        Self::build(
+            capture,
+            host_revision,
+            fallbacks,
+            current_values,
+            assignments,
+            limits,
+            Some(accounting),
+        )
+    }
+    fn build(
+        capture: &HtmlCapture,
+        host_revision: HtmlHostFactsRevision,
+        fallbacks: Vec<HtmlDocumentLanguageFallback>,
+        current_values: Vec<HtmlControlCurrentValue>,
+        assignments: Vec<HtmlSlotAssignedNodes>,
+        limits: HtmlLanguageDirectionLimits,
+        hosted: Option<&HtmlHostScope>,
+    ) -> Result<Self, HtmlLanguageDirectionError> {
         if capture.host_facts_revision() != &host_revision {
             return Err(HtmlLanguageDirectionError::HostRevisionMismatch);
         }
@@ -278,12 +319,13 @@ impl HtmlLanguageDirectionFacts {
             language_sum(fallbacks.capacity(), current_values.capacity())?,
             assignments.capacity(),
         )?;
-        let mut validation = LanguageMeter::new(
+        let mut validation = LanguageMeter::charging(
             HtmlCapScope::LanguageDirection,
             Caps::work(limits.validation_work)
                 .records(limits.records)
                 .assigned_nodes(limits.assigned_nodes)
                 .code_units(limits.code_units),
+            hosted,
         )?;
         validation.acquire(HtmlResource::FactRecords, records, |limit, required| {
             HtmlLanguageDirectionError::RecordCapacity { limit, required }

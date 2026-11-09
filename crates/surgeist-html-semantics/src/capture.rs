@@ -3,9 +3,9 @@
 //! Fragment queries follow HTML 877d6146487f §13.4 and §13.2.4–6. Captured
 //! availability describes producer evidence; it never advertises host execution.
 
-use crate::HtmlSemanticAccounting;
 use std::{collections::HashSet, error::Error, fmt, hash::Hash, sync::Arc};
 use surgeist_html::accounting::HtmlAccountingFault;
+use surgeist_html::accounting::HtmlHostScope;
 use surgeist_html::bounded::lexical::validate_custom_element_name;
 use surgeist_html::{
     construction::{HtmlDoctype, HtmlDocumentMode, HtmlShadowRootMode, HtmlShadowRootProperties},
@@ -1120,13 +1120,13 @@ impl HtmlCaptureBuilder {
             account: account::Account::Pending,
         }
     }
-    /// A builder that charges below the scope `accounting` names, in the host's operation. See
-    /// [`HtmlSemanticAccounting`] for the scopes it creates. Without accounting a builder charges
+    /// A builder that charges below the scope `accounting` names, in the host's operation. The
+    /// schema module documentation of `surgeist_html::accounting` lists the scopes it creates. Without accounting a builder charges
     /// an operation of its own, which it creates at its first charge.
     pub fn with_accounting(
         limits: HtmlCaptureLimits,
         host_revision: HtmlHostFactsRevision,
-        accounting: &HtmlSemanticAccounting,
+        accounting: &HtmlHostScope,
     ) -> Result<Self, HtmlAccountingFault> {
         let mut builder = Self::new(limits, host_revision);
         builder.account = account::Account::hosted(limits, accounting)

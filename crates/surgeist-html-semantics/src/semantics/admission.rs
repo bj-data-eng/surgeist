@@ -122,14 +122,25 @@ pub(super) struct FactAdmission<E> {
 }
 impl<E: FactError> FactAdmission<E> {
     /// An admission with nothing admitted yet, in a scope named for `kind`.
+    #[cfg(test)]
     pub(super) fn new(kind: HtmlCapScope, limits: impl Into<FactLimits>) -> Result<Self, E> {
+        Self::charging(kind, limits, None)
+    }
+    /// An admission in a scope named for `kind`: below the scope `host` supplies when it is
+    /// `Some`, else in an operation of its own.
+    pub(super) fn charging(
+        kind: HtmlCapScope,
+        limits: impl Into<FactLimits>,
+        host: Option<&HtmlHostScope>,
+    ) -> Result<Self, E> {
         let limits = limits.into();
         Ok(Self {
-            meter: ScanMeter::new(
+            meter: ScanMeter::charging(
                 kind,
                 Caps::work(limits.work)
                     .records(limits.records)
                     .bytes(limits.bytes),
+                host,
             )?,
         })
     }

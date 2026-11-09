@@ -1702,6 +1702,7 @@ pub fn surgeist_html_semantics::HtmlBooleanAuthorContextReadback::evidence(&self
 pub struct surgeist_html_semantics::HtmlCapture(_)
 impl surgeist_html_semantics::HtmlCapture
 pub fn surgeist_html_semantics::HtmlCapture::complete_empty_global_registry_with<E>(host_revision: surgeist_html_semantics::HtmlHostFactsRevision, formation_bytes: usize, step: impl core::ops::function::FnMut(usize) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html_semantics::HtmlEmptyGlobalRegistryCapture, surgeist_html_semantics::HtmlEmptyGlobalRegistryError<E>>
+pub fn surgeist_html_semantics::HtmlCapture::complete_empty_global_registry_with_accounting<E>(host_revision: surgeist_html_semantics::HtmlHostFactsRevision, formation_bytes: usize, step: impl core::ops::function::FnMut(usize) -> core::result::Result<(), E>, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<surgeist_html_semantics::HtmlEmptyGlobalRegistryCapture, surgeist_html_semantics::HtmlEmptyGlobalRegistryError<E>>
 impl surgeist_html_semantics::HtmlCapture
 pub fn surgeist_html_semantics::HtmlCapture::definition(&self, id: &surgeist_html_semantics::HtmlCaptureDefinitionId) -> core::result::Result<&surgeist_html_semantics::HtmlCustomElementDefinition, surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCapture::definition_id(&self, handle: &surgeist_html_semantics::HtmlCaptureBuilderDefinition) -> core::result::Result<surgeist_html_semantics::HtmlCaptureDefinitionId, surgeist_html_semantics::HtmlCaptureError>
@@ -1762,7 +1763,7 @@ pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_unhosted(&mut self
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::finish(self) -> core::result::Result<surgeist_html_semantics::HtmlCapture, surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::new(limits: surgeist_html_semantics::HtmlCaptureLimits, host_revision: surgeist_html_semantics::HtmlHostFactsRevision) -> Self
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::usage(&self) -> surgeist_html_semantics::HtmlCaptureUsage
-pub fn surgeist_html_semantics::HtmlCaptureBuilder::with_accounting(limits: surgeist_html_semantics::HtmlCaptureLimits, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, accounting: &surgeist_html_semantics::HtmlSemanticAccounting) -> core::result::Result<Self, surgeist_html::internal::accounting::fault::HtmlAccountingFault>
+pub fn surgeist_html_semantics::HtmlCaptureBuilder::with_accounting(limits: surgeist_html_semantics::HtmlCaptureLimits, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<Self, surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl surgeist_html_semantics::HtmlCaptureBuilder
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::add_element_from_inputs<E>(&mut self, document: &surgeist_html_semantics::HtmlCaptureBuilderSubject, name: &impl surgeist_html::internal::values::semantic_input::HtmlNameInput + ?core::marker::Sized, attributes: &impl surgeist_html::internal::values::semantic_input::HtmlAttributesInput + ?core::marker::Sized, is_value: surgeist_html_semantics::HtmlCapturedIsValue, registry: surgeist_html_semantics::HtmlCaptureRegistryInput, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_html_semantics::HtmlCaptureBuilderSubject, surgeist_html_semantics::HtmlCaptureElementError<E>>
 pub struct surgeist_html_semantics::HtmlCaptureBuilderDefinition
@@ -1827,6 +1828,7 @@ pub fn surgeist_html_semantics::HtmlCapturedBaseFacts::host_revision(&self) -> &
 pub fn surgeist_html_semantics::HtmlCapturedBaseFacts::new(capture: &surgeist_html_semantics::HtmlCapture, host: surgeist_html_semantics::HtmlHostFactsRevision, revision: surgeist_html_semantics::HtmlBaseFactsRevision, documents: alloc::vec::Vec<surgeist_html_semantics::HtmlCapturedBaseDocument>, frozen: alloc::vec::Vec<surgeist_html_semantics::HtmlCapturedFrozenBase>, limits: surgeist_html_semantics::HtmlBaseFactsLimits) -> core::result::Result<Self, surgeist_html_semantics::HtmlBaseFactsError>
 pub fn surgeist_html_semantics::HtmlCapturedBaseFacts::retained_storage_usage(&self) -> surgeist_html_semantics::HtmlBaseRetainedStorageUsage
 pub fn surgeist_html_semantics::HtmlCapturedBaseFacts::revision(&self) -> &surgeist_html_semantics::HtmlBaseFactsRevision
+pub fn surgeist_html_semantics::HtmlCapturedBaseFacts::with_accounting(capture: &surgeist_html_semantics::HtmlCapture, host: surgeist_html_semantics::HtmlHostFactsRevision, revision: surgeist_html_semantics::HtmlBaseFactsRevision, documents: alloc::vec::Vec<surgeist_html_semantics::HtmlCapturedBaseDocument>, frozen: alloc::vec::Vec<surgeist_html_semantics::HtmlCapturedFrozenBase>, limits: surgeist_html_semantics::HtmlBaseFactsLimits, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<Self, surgeist_html_semantics::HtmlBaseFactsError>
 pub struct surgeist_html_semantics::HtmlCapturedChildIds<'a>
 impl core::iter::traits::double_ended::DoubleEndedIterator for surgeist_html_semantics::HtmlCapturedChildIds<'_>
 pub fn surgeist_html_semantics::HtmlCapturedChildIds<'_>::next_back(&mut self) -> core::option::Option<Self::Item>
@@ -2005,6 +2007,7 @@ pub fn surgeist_html_semantics::HtmlControlFacts::inputs(&self) -> &[surgeist_ht
 pub fn surgeist_html_semantics::HtmlControlFacts::new(capture: &surgeist_html_semantics::HtmlCapture, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, associations: alloc::vec::Vec<surgeist_html_semantics::HtmlFormAssociation>, inputs: alloc::vec::Vec<surgeist_html_semantics::HtmlInputControlState>, options: alloc::vec::Vec<surgeist_html_semantics::HtmlOptionControlState>, textareas: alloc::vec::Vec<surgeist_html_semantics::HtmlTextareaControlState>, limits: surgeist_html_semantics::HtmlControlFactsLimits) -> core::result::Result<Self, surgeist_html_semantics::HtmlControlFactsError>
 pub fn surgeist_html_semantics::HtmlControlFacts::options(&self) -> &[surgeist_html_semantics::HtmlOptionControlState]
 pub fn surgeist_html_semantics::HtmlControlFacts::textareas(&self) -> &[surgeist_html_semantics::HtmlTextareaControlState]
+pub fn surgeist_html_semantics::HtmlControlFacts::with_accounting(capture: &surgeist_html_semantics::HtmlCapture, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, associations: alloc::vec::Vec<surgeist_html_semantics::HtmlFormAssociation>, inputs: alloc::vec::Vec<surgeist_html_semantics::HtmlInputControlState>, options: alloc::vec::Vec<surgeist_html_semantics::HtmlOptionControlState>, textareas: alloc::vec::Vec<surgeist_html_semantics::HtmlTextareaControlState>, limits: surgeist_html_semantics::HtmlControlFactsLimits, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<Self, surgeist_html_semantics::HtmlControlFactsError>
 pub struct surgeist_html_semantics::HtmlControlFactsLimits
 impl surgeist_html_semantics::HtmlControlFactsLimits
 pub fn surgeist_html_semantics::HtmlControlFactsLimits::new(record_capacity: usize, validation_work: usize) -> Self
@@ -2075,6 +2078,7 @@ pub struct surgeist_html_semantics::HtmlDefaultFeedInput
 impl surgeist_html_semantics::HtmlDefaultFeedInput
 pub fn surgeist_html_semantics::HtmlDefaultFeedInput::document(&self) -> &surgeist_html_semantics::HtmlCaptureSubjectId
 pub fn surgeist_html_semantics::HtmlDefaultFeedInput::new(capture: &surgeist_html_semantics::HtmlCapture, context: &surgeist_html_semantics::HtmlSemanticContext, document: surgeist_html_semantics::HtmlCaptureSubjectId, applicability: surgeist_html_semantics::HtmlDefaultFeedApplicability, limits: surgeist_html_semantics::HtmlRelFactsLimits) -> core::result::Result<Self, surgeist_html_semantics::HtmlRelFactsError>
+pub fn surgeist_html_semantics::HtmlDefaultFeedInput::with_accounting(capture: &surgeist_html_semantics::HtmlCapture, context: &surgeist_html_semantics::HtmlSemanticContext, document: surgeist_html_semantics::HtmlCaptureSubjectId, applicability: surgeist_html_semantics::HtmlDefaultFeedApplicability, limits: surgeist_html_semantics::HtmlRelFactsLimits, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<Self, surgeist_html_semantics::HtmlRelFactsError>
 pub struct surgeist_html_semantics::HtmlDefiningTerm
 impl surgeist_html_semantics::HtmlDefiningTerm
 pub fn surgeist_html_semantics::HtmlDefiningTerm::origin(&self) -> &surgeist_html_semantics::HtmlDefiningTermOrigin
@@ -2144,6 +2148,7 @@ impl surgeist_html_semantics::HtmlDocumentIconInput
 pub fn surgeist_html_semantics::HtmlDocumentIconInput::collection(&self) -> &surgeist_html_semantics::HtmlDocumentIconCollection
 pub fn surgeist_html_semantics::HtmlDocumentIconInput::expected(&self) -> &surgeist_html_semantics::HtmlIconExpectedRevisions
 pub fn surgeist_html_semantics::HtmlDocumentIconInput::new(capture: &surgeist_html_semantics::HtmlCapture, context: &surgeist_html_semantics::HtmlSemanticContext, collection: surgeist_html_semantics::HtmlDocumentIconCollection, expected: surgeist_html_semantics::HtmlIconExpectedRevisions, observations: alloc::vec::Vec<surgeist_html_semantics::HtmlIconSuitabilityObservation>, ordering: surgeist_html_semantics::HtmlIconOrdering, limits: surgeist_html_semantics::HtmlRelFactsLimits) -> core::result::Result<Self, surgeist_html_semantics::HtmlRelFactsError>
+pub fn surgeist_html_semantics::HtmlDocumentIconInput::with_accounting(capture: &surgeist_html_semantics::HtmlCapture, context: &surgeist_html_semantics::HtmlSemanticContext, collection: surgeist_html_semantics::HtmlDocumentIconCollection, expected: surgeist_html_semantics::HtmlIconExpectedRevisions, observations: alloc::vec::Vec<surgeist_html_semantics::HtmlIconSuitabilityObservation>, ordering: surgeist_html_semantics::HtmlIconOrdering, limits: surgeist_html_semantics::HtmlRelFactsLimits, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<Self, surgeist_html_semantics::HtmlRelFactsError>
 pub struct surgeist_html_semantics::HtmlDocumentLanguageFallback
 impl surgeist_html_semantics::HtmlDocumentLanguageFallback
 pub fn surgeist_html_semantics::HtmlDocumentLanguageFallback::document(&self) -> &surgeist_html_semantics::HtmlCaptureSubjectId
@@ -2175,6 +2180,7 @@ pub fn surgeist_html_semantics::HtmlElementReferenceFacts::capture(&self) -> &su
 pub fn surgeist_html_semantics::HtmlElementReferenceFacts::host_revision(&self) -> &surgeist_html_semantics::HtmlHostFactsRevision
 pub fn surgeist_html_semantics::HtmlElementReferenceFacts::new(capture: &surgeist_html_semantics::HtmlCapture, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, records: alloc::vec::Vec<surgeist_html_semantics::HtmlElementReferenceFact>, limits: surgeist_html_semantics::HtmlElementReferenceFactsLimits) -> core::result::Result<Self, surgeist_html_semantics::HtmlElementReferenceFactsError>
 pub fn surgeist_html_semantics::HtmlElementReferenceFacts::records(&self) -> &[surgeist_html_semantics::HtmlElementReferenceFact]
+pub fn surgeist_html_semantics::HtmlElementReferenceFacts::with_accounting(capture: &surgeist_html_semantics::HtmlCapture, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, records: alloc::vec::Vec<surgeist_html_semantics::HtmlElementReferenceFact>, limits: surgeist_html_semantics::HtmlElementReferenceFactsLimits, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<Self, surgeist_html_semantics::HtmlElementReferenceFactsError>
 pub struct surgeist_html_semantics::HtmlElementReferenceFactsLimits
 impl surgeist_html_semantics::HtmlElementReferenceFactsLimits
 pub fn surgeist_html_semantics::HtmlElementReferenceFactsLimits::new(record_capacity: usize, validation_work: usize) -> Self
@@ -2214,6 +2220,7 @@ pub fn surgeist_html_semantics::HtmlEncodingUrlParseFacts::retained_storage_usag
 pub fn surgeist_html_semantics::HtmlEncodingUrlParseFacts::revision(&self) -> &surgeist_html_semantics::HtmlBaseFactsRevision
 pub fn surgeist_html_semantics::HtmlEncodingUrlParseFacts::same_owner(&self, other: &Self) -> bool
 pub fn surgeist_html_semantics::HtmlEncodingUrlParseFacts::validate_inputs(&self, base: &surgeist_html_semantics::HtmlBaseUrlRecord, encoding: &surgeist_html_semantics::HtmlBaseEncoding, expected: &surgeist_html_semantics::HtmlBaseFactsRevision) -> core::result::Result<(), surgeist_html_semantics::HtmlEncodingUrlFactsError>
+pub fn surgeist_html_semantics::HtmlEncodingUrlParseFacts::with_accounting(base: surgeist_html_semantics::HtmlBaseUrlRecord, encoding: surgeist_html_semantics::HtmlBaseEncoding, revision: surgeist_html_semantics::HtmlBaseFactsRevision, observations: alloc::vec::Vec<surgeist_html_semantics::HtmlEncodingUrlParseObservation>, limits: surgeist_html_semantics::HtmlBaseFactsLimits, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<Self, surgeist_html_semantics::HtmlEncodingUrlFactsError>
 impl core::cmp::Eq for surgeist_html_semantics::HtmlEncodingUrlParseFacts
 impl core::cmp::PartialEq for surgeist_html_semantics::HtmlEncodingUrlParseFacts
 pub fn surgeist_html_semantics::HtmlEncodingUrlParseFacts::eq(&self, other: &Self) -> bool
@@ -2277,6 +2284,7 @@ pub fn surgeist_html_semantics::HtmlGlobalInheritanceFacts::host_revision(&self)
 pub fn surgeist_html_semantics::HtmlGlobalInheritanceFacts::new(capture: &surgeist_html_semantics::HtmlCapture, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, revision: surgeist_html_semantics::HtmlGlobalInheritanceRevision, design_modes: alloc::vec::Vec<surgeist_html_semantics::HtmlDocumentDesignModeFact>, spellcheck_defaults: alloc::vec::Vec<surgeist_html_semantics::HtmlSpellcheckDefaultFact>, limits: surgeist_html_semantics::HtmlGlobalInheritanceLimits) -> core::result::Result<Self, surgeist_html_semantics::HtmlGlobalInheritanceError>
 pub fn surgeist_html_semantics::HtmlGlobalInheritanceFacts::revision(&self) -> &surgeist_html_semantics::HtmlGlobalInheritanceRevision
 pub fn surgeist_html_semantics::HtmlGlobalInheritanceFacts::spellcheck_defaults(&self) -> &[surgeist_html_semantics::HtmlSpellcheckDefaultFact]
+pub fn surgeist_html_semantics::HtmlGlobalInheritanceFacts::with_accounting(capture: &surgeist_html_semantics::HtmlCapture, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, revision: surgeist_html_semantics::HtmlGlobalInheritanceRevision, design_modes: alloc::vec::Vec<surgeist_html_semantics::HtmlDocumentDesignModeFact>, spellcheck_defaults: alloc::vec::Vec<surgeist_html_semantics::HtmlSpellcheckDefaultFact>, limits: surgeist_html_semantics::HtmlGlobalInheritanceLimits, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<Self, surgeist_html_semantics::HtmlGlobalInheritanceError>
 pub struct surgeist_html_semantics::HtmlGlobalInheritanceLimits
 impl surgeist_html_semantics::HtmlGlobalInheritanceLimits
 pub fn surgeist_html_semantics::HtmlGlobalInheritanceLimits::new(record_capacity: usize, validation_work: usize) -> Self
@@ -2419,6 +2427,7 @@ pub fn surgeist_html_semantics::HtmlImageDimensionFacts::host_revision(&self) ->
 pub fn surgeist_html_semantics::HtmlImageDimensionFacts::new(capture: &surgeist_html_semantics::HtmlCapture, host: surgeist_html_semantics::HtmlHostFactsRevision, revision: surgeist_html_semantics::HtmlImageDimensionRevision, expected: alloc::vec::Vec<surgeist_html_semantics::HtmlImageDimensionExpectation>, resources: alloc::vec::Vec<surgeist_html_semantics::HtmlImageDimensionResourceObservation>, boxes: alloc::vec::Vec<surgeist_html_semantics::HtmlImageContentBoxObservation>, limits: surgeist_html_semantics::HtmlImageDimensionFactsLimits) -> core::result::Result<Self, surgeist_html_semantics::HtmlImageDimensionFactsError>
 pub fn surgeist_html_semantics::HtmlImageDimensionFacts::resource_observations(&self) -> &[surgeist_html_semantics::HtmlImageDimensionResourceObservation]
 pub fn surgeist_html_semantics::HtmlImageDimensionFacts::revision(&self) -> &surgeist_html_semantics::HtmlImageDimensionRevision
+pub fn surgeist_html_semantics::HtmlImageDimensionFacts::with_accounting(capture: &surgeist_html_semantics::HtmlCapture, host: surgeist_html_semantics::HtmlHostFactsRevision, revision: surgeist_html_semantics::HtmlImageDimensionRevision, expected: alloc::vec::Vec<surgeist_html_semantics::HtmlImageDimensionExpectation>, resources: alloc::vec::Vec<surgeist_html_semantics::HtmlImageDimensionResourceObservation>, boxes: alloc::vec::Vec<surgeist_html_semantics::HtmlImageContentBoxObservation>, limits: surgeist_html_semantics::HtmlImageDimensionFactsLimits, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<Self, surgeist_html_semantics::HtmlImageDimensionFactsError>
 pub struct surgeist_html_semantics::HtmlImageDimensionFactsLimits
 impl surgeist_html_semantics::HtmlImageDimensionFactsLimits
 pub fn surgeist_html_semantics::HtmlImageDimensionFactsLimits::bytes(self) -> usize
@@ -2478,6 +2487,7 @@ pub fn surgeist_html_semantics::HtmlInertFacts::flat_revision(&self) -> &surgeis
 pub fn surgeist_html_semantics::HtmlInertFacts::host_revision(&self) -> &surgeist_html_semantics::HtmlHostFactsRevision
 pub fn surgeist_html_semantics::HtmlInertFacts::new(capture: &surgeist_html_semantics::HtmlCapture, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, flat_revision: surgeist_html_semantics::HtmlFlatTreeRevision, nodes: alloc::vec::Vec<surgeist_html_semantics::HtmlInertNodeFact>, documents: alloc::vec::Vec<surgeist_html_semantics::HtmlDocumentModalFact>, limits: surgeist_html_semantics::HtmlInertFactLimits) -> core::result::Result<Self, surgeist_html_semantics::HtmlInertFactError>
 pub fn surgeist_html_semantics::HtmlInertFacts::nodes(&self) -> &[surgeist_html_semantics::HtmlInertNodeFact]
+pub fn surgeist_html_semantics::HtmlInertFacts::with_accounting(capture: &surgeist_html_semantics::HtmlCapture, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, flat_revision: surgeist_html_semantics::HtmlFlatTreeRevision, nodes: alloc::vec::Vec<surgeist_html_semantics::HtmlInertNodeFact>, documents: alloc::vec::Vec<surgeist_html_semantics::HtmlDocumentModalFact>, limits: surgeist_html_semantics::HtmlInertFactLimits, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<Self, surgeist_html_semantics::HtmlInertFactError>
 pub struct surgeist_html_semantics::HtmlInertNodeFact
 impl surgeist_html_semantics::HtmlInertNodeFact
 pub fn surgeist_html_semantics::HtmlInertNodeFact::connected(&self) -> core::option::Option<bool>
@@ -2505,6 +2515,7 @@ pub fn surgeist_html_semantics::HtmlLanguageDirectionFacts::current_values(&self
 pub fn surgeist_html_semantics::HtmlLanguageDirectionFacts::fallbacks(&self) -> &[surgeist_html_semantics::HtmlDocumentLanguageFallback]
 pub fn surgeist_html_semantics::HtmlLanguageDirectionFacts::host_revision(&self) -> &surgeist_html_semantics::HtmlHostFactsRevision
 pub fn surgeist_html_semantics::HtmlLanguageDirectionFacts::new(capture: &surgeist_html_semantics::HtmlCapture, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, fallbacks: alloc::vec::Vec<surgeist_html_semantics::HtmlDocumentLanguageFallback>, current_values: alloc::vec::Vec<surgeist_html_semantics::HtmlControlCurrentValue>, assignments: alloc::vec::Vec<surgeist_html_semantics::HtmlSlotAssignedNodes>, limits: surgeist_html_semantics::HtmlLanguageDirectionLimits) -> core::result::Result<Self, surgeist_html_semantics::HtmlLanguageDirectionError>
+pub fn surgeist_html_semantics::HtmlLanguageDirectionFacts::with_accounting(capture: &surgeist_html_semantics::HtmlCapture, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, fallbacks: alloc::vec::Vec<surgeist_html_semantics::HtmlDocumentLanguageFallback>, current_values: alloc::vec::Vec<surgeist_html_semantics::HtmlControlCurrentValue>, assignments: alloc::vec::Vec<surgeist_html_semantics::HtmlSlotAssignedNodes>, limits: surgeist_html_semantics::HtmlLanguageDirectionLimits, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<Self, surgeist_html_semantics::HtmlLanguageDirectionError>
 pub struct surgeist_html_semantics::HtmlLanguageDirectionLimits
 impl surgeist_html_semantics::HtmlLanguageDirectionLimits
 pub fn surgeist_html_semantics::HtmlLanguageDirectionLimits::assigned_node_capacity(self) -> usize
@@ -2584,6 +2595,7 @@ pub fn surgeist_html_semantics::HtmlMediaFacts::facts(&self) -> &[surgeist_html_
 pub fn surgeist_html_semantics::HtmlMediaFacts::host_revision(&self) -> &surgeist_html_semantics::HtmlHostFactsRevision
 pub fn surgeist_html_semantics::HtmlMediaFacts::new(capture: &surgeist_html_semantics::HtmlCapture, host: surgeist_html_semantics::HtmlHostFactsRevision, revision: surgeist_html_semantics::HtmlMediaContextRevision, facts: alloc::vec::Vec<surgeist_html_semantics::HtmlMediaFact>, limits: surgeist_html_semantics::HtmlMediaFactsLimits) -> core::result::Result<Self, surgeist_html_semantics::HtmlMediaFactsError>
 pub fn surgeist_html_semantics::HtmlMediaFacts::revision(&self) -> &surgeist_html_semantics::HtmlMediaContextRevision
+pub fn surgeist_html_semantics::HtmlMediaFacts::with_accounting(capture: &surgeist_html_semantics::HtmlCapture, host: surgeist_html_semantics::HtmlHostFactsRevision, revision: surgeist_html_semantics::HtmlMediaContextRevision, facts: alloc::vec::Vec<surgeist_html_semantics::HtmlMediaFact>, limits: surgeist_html_semantics::HtmlMediaFactsLimits, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<Self, surgeist_html_semantics::HtmlMediaFactsError>
 pub struct surgeist_html_semantics::HtmlMediaFactsLimits
 impl surgeist_html_semantics::HtmlMediaFactsLimits
 pub fn surgeist_html_semantics::HtmlMediaFactsLimits::bytes(self) -> usize
@@ -2784,6 +2796,7 @@ pub fn surgeist_html_semantics::HtmlNaturalDimensions::facts(&self) -> &[surgeis
 pub fn surgeist_html_semantics::HtmlNaturalDimensions::host_revision(&self) -> &surgeist_html_semantics::HtmlHostFactsRevision
 pub fn surgeist_html_semantics::HtmlNaturalDimensions::new(capture: &surgeist_html_semantics::HtmlCapture, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, revision: surgeist_html_semantics::HtmlNaturalDimensionRevision, expected: alloc::vec::Vec<surgeist_html_semantics::HtmlNaturalDimensionFact>, observations: alloc::vec::Vec<surgeist_html_semantics::HtmlNaturalDimensionFact>, limits: surgeist_html_semantics::HtmlNaturalDimensionLimits) -> core::result::Result<Self, surgeist_html_semantics::HtmlNaturalDimensionFactsError>
 pub fn surgeist_html_semantics::HtmlNaturalDimensions::revision(&self) -> &surgeist_html_semantics::HtmlNaturalDimensionRevision
+pub fn surgeist_html_semantics::HtmlNaturalDimensions::with_accounting(capture: &surgeist_html_semantics::HtmlCapture, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, revision: surgeist_html_semantics::HtmlNaturalDimensionRevision, expected: alloc::vec::Vec<surgeist_html_semantics::HtmlNaturalDimensionFact>, observations: alloc::vec::Vec<surgeist_html_semantics::HtmlNaturalDimensionFact>, limits: surgeist_html_semantics::HtmlNaturalDimensionLimits, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<Self, surgeist_html_semantics::HtmlNaturalDimensionFactsError>
 pub struct surgeist_html_semantics::HtmlNaturalResourceId(_)
 impl surgeist_html_semantics::HtmlNaturalResourceId
 pub fn surgeist_html_semantics::HtmlNaturalResourceId::fresh() -> Self
@@ -2800,6 +2813,7 @@ pub struct surgeist_html_semantics::HtmlNextDocumentIconInput
 impl surgeist_html_semantics::HtmlNextDocumentIconInput
 pub fn surgeist_html_semantics::HtmlNextDocumentIconInput::document(&self) -> &surgeist_html_semantics::HtmlCaptureSubjectId
 pub fn surgeist_html_semantics::HtmlNextDocumentIconInput::new(previous: surgeist_html_semantics::HtmlDocumentIconChoice, expected_examination: &surgeist_html_semantics::HtmlRelRevision, examination: surgeist_html_semantics::HtmlIconExaminationObservation, limits: surgeist_html_semantics::HtmlRelFactsLimits) -> core::result::Result<Self, surgeist_html_semantics::HtmlRelFactsError>
+pub fn surgeist_html_semantics::HtmlNextDocumentIconInput::with_accounting(previous: surgeist_html_semantics::HtmlDocumentIconChoice, expected_examination: &surgeist_html_semantics::HtmlRelRevision, examination: surgeist_html_semantics::HtmlIconExaminationObservation, limits: surgeist_html_semantics::HtmlRelFactsLimits, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<Self, surgeist_html_semantics::HtmlRelFactsError>
 pub struct surgeist_html_semantics::HtmlOptionCollection
 impl surgeist_html_semantics::HtmlOptionCollection
 pub fn surgeist_html_semantics::HtmlOptionCollection::options(&self) -> &[surgeist_html_semantics::HtmlCaptureSubjectId]
@@ -2836,6 +2850,7 @@ pub fn surgeist_html_semantics::HtmlOutputDefaultFacts::host_revision(&self) -> 
 pub fn surgeist_html_semantics::HtmlOutputDefaultFacts::new(capture: &surgeist_html_semantics::HtmlCapture, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, records: alloc::vec::Vec<surgeist_html_semantics::HtmlOutputDefaultFact>, limits: surgeist_html_semantics::HtmlOutputDefaultLimits) -> core::result::Result<Self, surgeist_html_semantics::HtmlOutputDefaultError>
 pub fn surgeist_html_semantics::HtmlOutputDefaultFacts::records(&self) -> &[surgeist_html_semantics::HtmlOutputDefaultFact]
 pub fn surgeist_html_semantics::HtmlOutputDefaultFacts::validation_work(&self) -> usize
+pub fn surgeist_html_semantics::HtmlOutputDefaultFacts::with_accounting(capture: &surgeist_html_semantics::HtmlCapture, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, records: alloc::vec::Vec<surgeist_html_semantics::HtmlOutputDefaultFact>, limits: surgeist_html_semantics::HtmlOutputDefaultLimits, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<Self, surgeist_html_semantics::HtmlOutputDefaultError>
 pub struct surgeist_html_semantics::HtmlOutputDefaultLimits
 impl surgeist_html_semantics::HtmlOutputDefaultLimits
 pub fn surgeist_html_semantics::HtmlOutputDefaultLimits::code_units(self) -> usize
@@ -2859,6 +2874,7 @@ pub fn surgeist_html_semantics::HtmlParseBaseFacts::new(document: surgeist_html_
 pub fn surgeist_html_semantics::HtmlParseBaseFacts::observations(&self) -> &[surgeist_html_semantics::HtmlBaseParseObservation]
 pub fn surgeist_html_semantics::HtmlParseBaseFacts::retained_storage_usage(&self) -> surgeist_html_semantics::HtmlBaseRetainedStorageUsage
 pub fn surgeist_html_semantics::HtmlParseBaseFacts::same_owner(&self, other: &Self) -> bool
+pub fn surgeist_html_semantics::HtmlParseBaseFacts::with_accounting(document: surgeist_html_semantics::HtmlBaseDocumentFacts, observations: alloc::vec::Vec<surgeist_html_semantics::HtmlBaseParseObservation>, limits: surgeist_html_semantics::HtmlBaseFactsLimits, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<Self, surgeist_html_semantics::HtmlBaseFactsError>
 pub struct surgeist_html_semantics::HtmlParticipationProducerId(_)
 impl surgeist_html_semantics::HtmlParticipationProducerId
 pub fn surgeist_html_semantics::HtmlParticipationProducerId::fresh() -> Self
@@ -2931,6 +2947,7 @@ pub fn surgeist_html_semantics::HtmlRelFacts::capture(&self) -> &surgeist_html_s
 pub fn surgeist_html_semantics::HtmlRelFacts::host_revision(&self) -> &surgeist_html_semantics::HtmlHostFactsRevision
 pub fn surgeist_html_semantics::HtmlRelFacts::new(capture: &surgeist_html_semantics::HtmlCapture, expected_host: &surgeist_html_semantics::HtmlHostFactsRevision, input: surgeist_html_semantics::HtmlRelFactsInput, limits: surgeist_html_semantics::HtmlRelFactsLimits) -> core::result::Result<Self, surgeist_html_semantics::HtmlRelFactsError>
 pub fn surgeist_html_semantics::HtmlRelFacts::revisions(&self) -> &surgeist_html_semantics::HtmlRelExpectedRevisions
+pub fn surgeist_html_semantics::HtmlRelFacts::with_accounting(capture: &surgeist_html_semantics::HtmlCapture, expected_host: &surgeist_html_semantics::HtmlHostFactsRevision, input: surgeist_html_semantics::HtmlRelFactsInput, limits: surgeist_html_semantics::HtmlRelFactsLimits, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<Self, surgeist_html_semantics::HtmlRelFactsError>
 pub struct surgeist_html_semantics::HtmlRelFactsInput
 impl surgeist_html_semantics::HtmlRelFactsInput
 pub fn surgeist_html_semantics::HtmlRelFactsInput::new() -> Self
@@ -2956,6 +2973,7 @@ pub fn surgeist_html_semantics::HtmlRelNoopenerInput::new(capture: &surgeist_htm
 pub fn surgeist_html_semantics::HtmlRelNoopenerInput::subject(&self) -> &surgeist_html_semantics::HtmlCaptureSubjectId
 pub fn surgeist_html_semantics::HtmlRelNoopenerInput::target(&self) -> &surgeist_html::internal::values::DocumentString
 pub fn surgeist_html_semantics::HtmlRelNoopenerInput::url(&self) -> &surgeist_html_semantics::HtmlRelUrlKey
+pub fn surgeist_html_semantics::HtmlRelNoopenerInput::with_accounting(capture: &surgeist_html_semantics::HtmlCapture, expected_host: &surgeist_html_semantics::HtmlHostFactsRevision, subject: surgeist_html_semantics::HtmlCaptureSubjectId, expected_url: &surgeist_html_semantics::HtmlRelRevision, url: surgeist_html_semantics::HtmlRelUrlKey, target: surgeist_html::internal::values::DocumentString, limits: surgeist_html_semantics::HtmlRelFactsLimits, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<Self, surgeist_html_semantics::HtmlRelFactsError>
 pub struct surgeist_html_semantics::HtmlRelOriginId(_)
 impl surgeist_html_semantics::HtmlRelOriginId
 pub fn surgeist_html_semantics::HtmlRelOriginId::fresh() -> Self
@@ -3021,11 +3039,6 @@ pub struct surgeist_html_semantics::HtmlSelectValue
 impl surgeist_html_semantics::HtmlSelectValue
 pub fn surgeist_html_semantics::HtmlSelectValue::selected_option(&self) -> core::option::Option<&surgeist_html_semantics::HtmlCaptureSubjectId>
 pub fn surgeist_html_semantics::HtmlSelectValue::value(&self) -> &surgeist_html::internal::values::DocumentString
-pub struct surgeist_html_semantics::HtmlSemanticAccounting
-impl surgeist_html_semantics::HtmlSemanticAccounting
-pub fn surgeist_html_semantics::HtmlSemanticAccounting::host(ledger: surgeist_ledger::shared::SharedOperation<surgeist_html::internal::accounting::HtmlWork, surgeist_html::internal::accounting::HtmlResource>, scope: surgeist_ledger::Scope) -> Self
-impl core::fmt::Debug for surgeist_html_semantics::HtmlSemanticAccounting
-pub fn surgeist_html_semantics::HtmlSemanticAccounting::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_html_semantics::HtmlSemanticCancellation(_)
 impl surgeist_html_semantics::HtmlSemanticCancellation
 pub fn surgeist_html_semantics::HtmlSemanticCancellation::cancel(&self)
@@ -3147,7 +3160,7 @@ pub fn surgeist_html_semantics::HtmlSemanticSession<'a>::failure(&self) -> core:
 pub fn surgeist_html_semantics::HtmlSemanticSession<'a>::new(capture: &'a surgeist_html_semantics::HtmlCapture, context: &'a surgeist_html_semantics::HtmlSemanticContext, interpreter: surgeist_html::internal::values::interpretation::HtmlValueInterpreter, limits: surgeist_html_semantics::HtmlSemanticLimits, cancellation: surgeist_html_semantics::HtmlSemanticCancellation) -> core::result::Result<Self, surgeist_html_semantics::HtmlSemanticFailure>
 pub fn surgeist_html_semantics::HtmlSemanticSession<'a>::query(&mut self, requests: &[surgeist_html_semantics::HtmlSemanticRequest]) -> core::result::Result<surgeist_html_semantics::HtmlSemanticReport, surgeist_html_semantics::HtmlSemanticFailure>
 pub fn surgeist_html_semantics::HtmlSemanticSession<'a>::usage(&self) -> surgeist_html_semantics::HtmlSemanticUsage
-pub fn surgeist_html_semantics::HtmlSemanticSession<'a>::with_accounting(capture: &'a surgeist_html_semantics::HtmlCapture, context: &'a surgeist_html_semantics::HtmlSemanticContext, interpreter: surgeist_html::internal::values::interpretation::HtmlValueInterpreter, limits: surgeist_html_semantics::HtmlSemanticLimits, cancellation: surgeist_html_semantics::HtmlSemanticCancellation, accounting: &surgeist_html_semantics::HtmlSemanticAccounting) -> core::result::Result<Self, surgeist_html_semantics::HtmlSemanticFailure>
+pub fn surgeist_html_semantics::HtmlSemanticSession<'a>::with_accounting(capture: &'a surgeist_html_semantics::HtmlCapture, context: &'a surgeist_html_semantics::HtmlSemanticContext, interpreter: surgeist_html::internal::values::interpretation::HtmlValueInterpreter, limits: surgeist_html_semantics::HtmlSemanticLimits, cancellation: surgeist_html_semantics::HtmlSemanticCancellation, accounting: &surgeist_html::internal::accounting::host::HtmlHostScope) -> core::result::Result<Self, surgeist_html_semantics::HtmlSemanticFailure>
 impl surgeist_html::internal::attributes::microdata::HtmlMicrodataTokenMeter for surgeist_html_semantics::HtmlSemanticSession<'_>
 pub type surgeist_html_semantics::HtmlSemanticSession<'_>::Error = surgeist_html_semantics::HtmlSemanticFailure
 pub fn surgeist_html_semantics::HtmlSemanticSession<'_>::reserve(&mut self, reservation: &mut surgeist_html::internal::attributes::microdata::HtmlMicrodataTokenReservation<'_>) -> core::result::Result<(), Self::Error>

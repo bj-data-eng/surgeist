@@ -84,6 +84,15 @@ through a `Phase` as well, and `SharedOperation::limits` returns a copy. It repo
 that scope's own caps, not those of its ancestors, so a consumer that runs inside a
 scope its caller supplied can read the caps it works under.
 
+`Operation::headroom` and `SharedOperation::headroom` read how much of a resource an
+acquisition at a scope can still take before a cap on its chain to the root refuses it. Each
+scope contributes its cap minus its live usage, and an ancestor's contribution is divided by
+the product of the tariff scales between it and the scope, rounding down, so an acquisition
+of the headroom is admitted and one more is refused. A tariff of scale zero leaves the
+ancestors above it unbounding, but one that holds more than its cap still refuses every
+acquisition, so the headroom is zero. A resource that no cap bounds reports `u64::MAX`. A consumer that sizes an allocation
+before it makes it uses this to stay within the caps of a scope its caller supplied.
+
 `Operation::set_limits` and `SharedOperation::set_limits` replace a scope's caps for
 the batches admitted after the call, for a consumer whose allowance changes between
 calls. Usage, peaks, direct custody, the profile and open intervals stay as they are.

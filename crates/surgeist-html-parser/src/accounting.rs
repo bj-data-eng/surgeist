@@ -3,8 +3,8 @@
 //! A parse charges every work category and resource through a `surgeist-ledger`
 //! operation of the HTML schema pair, [`HtmlWork`] and [`HtmlResource`]. Without
 //! a request setting the parse builds its own operation. A host that attributes
-//! HTML work to its own operation supplies a [`HtmlParseAccounting`], which names
-//! a shared operation and a scope of it.
+//! HTML work to its own operation supplies a [`HtmlParseAccounting`], which takes
+//! the [`HtmlHostScope`] naming a shared operation and a scope of it.
 //!
 //! The scope tree a parse creates and the custody its report keeps are described
 //! on [`HtmlParseAccounting`].
@@ -12,8 +12,8 @@
 use crate::{HtmlParseLimits, HtmlParseStop};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use surgeist_html::accounting::{
-    HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapScope, HtmlChange, HtmlLimits, HtmlResource,
-    HtmlWork, aggregate_tariffs, charging_tariffs, fault_of,
+    HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapScope, HtmlChange, HtmlHostScope, HtmlLimits,
+    HtmlResource, HtmlWork, aggregate_tariffs, charging_tariffs, fault_of,
 };
 use surgeist_ledger::{
     Change, Dimension, Error, Operation, ProfileMode, Report, Scope, SharedOperation, Tariffs,
@@ -353,18 +353,21 @@ enum AccountingSource {
 }
 
 impl HtmlParseAccounting {
-    /// Charges in `scope` of `ledger`, an operation of the HTML schema pair that
+    /// Charges in the scope `host` names, of an operation of the HTML schema pair that
     /// the host owns.
     ///
-    /// The tariffs between `scope` and the scopes above it must map each parse
+    /// The tariffs between the scope of `host` and the scopes above it must map each parse
     /// resource to a parse resource. The schema does not promise a retargeting
     /// to another dimension. A cap of a scope above such a tariff that refuses a
     /// parse charge stops the parse with `HtmlParseStop::Accounting`
     /// (`HtmlAccountingFault::UnexpectedChange`), because the refusal names a
     /// dimension the parse does not report.
-    pub fn host(ledger: SharedOperation<HtmlWork, HtmlResource>, scope: Scope) -> Self {
+    pub fn host(host: HtmlHostScope) -> Self {
         Self {
-            source: AccountingSource::Host { ledger, scope },
+            source: AccountingSource::Host {
+                ledger: host.ledger().clone(),
+                scope: host.scope(),
+            },
             phases: false,
         }
     }
@@ -491,7 +494,7 @@ mod tests {
     #[test]
     fn a_lease_serves_one_parse() {
         let (ledger, root) = host(8);
-        let request = HtmlParseAccounting::host(ledger, root).into_request();
+        let request = HtmlParseAccounting::host(HtmlHostScope::new(ledger, root)).into_request();
         let mut first =
             ParseControl::with_accounting(limits(), HtmlParseCancellation::new(), request.lease());
         let mut second =
@@ -533,7 +536,8 @@ mod tests {
         .unwrap()
         .share();
         let root = ledger.root();
-        let request = HtmlParseAccounting::host(ledger.clone(), root).into_request();
+        let request =
+            HtmlParseAccounting::host(HtmlHostScope::new(ledger.clone(), root)).into_request();
         let lease = request.lease().unwrap();
         let barrier = Barrier::new(RACERS);
         let limits = limits();

@@ -62,10 +62,41 @@
 //!
 //! A ledger operation has one pair of dimension sets, so a host that attributes
 //! HTML work to its own operation runs an operation of the pair
-//! `Operation<HtmlWork, HtmlResource>` and creates the cap scope below its own
-//! scope with [`aggregate_tariffs`]. The HTML crates take the scope the host
-//! supplies. A host that needs its own dimensions as well keeps a separate
-//! operation for them; the schema defines no conversion between dimension sets.
+//! `Operation<HtmlWork, HtmlResource>`, shares it, and names a scope of it with
+//! [`HtmlHostScope`]. Each operation below that takes the scope opens its own
+//! scopes under it with [`aggregate_tariffs`], unless the table says otherwise. A
+//! host that needs its own dimensions as well keeps a separate operation for
+//! them; the schema defines no conversion between dimension sets.
+//!
+//! A cap of the supplied scope or of one of its ancestors refuses a charge with
+//! the typed stop of the operation, carrying the limit of the scope that
+//! refused and the total it would have reached. A refusal names the dimension of
+//! the charged change, so the tariffs from the supplied scope to its ancestors
+//! must map each dimension to itself. A host operation never frees a scope: each
+//! call below adds its scopes, and the operation's scope bound must cover them
+//! all. A hosted numeric materialization of a semantic session is sized by the
+//! tighter of the session's own limit and the room that
+//! [`surgeist_ledger::Operation::headroom`] reports along the chain of the
+//! session's scope, so a cap of the host refuses before the allocation, and the
+//! stop carries that cap's limit and total.
+//!
+//! | Operation | Entry | Scopes opened below the host scope | Charges the host operation keeps | Released |
+//! | --- | --- | --- | --- | --- |
+//! | Parse | `HtmlParseAccounting::host` | `html-parse`, `html-parse-charging` (four phase scopes with phase observation) | Work and credits | Every live resource, permanent ones included, when the report or failure drops |
+//! | Capture | `HtmlCaptureBuilder::with_accounting` | `html-capture` | Captured subjects, relationships, attributes, UTF-16 units, registries, definitions and element value bytes | None; a capture holds no custody |
+//! | Construction import | `HtmlConstructionCaptureAdapter` with a hosted builder | `html-capture-import`, a sibling of `html-capture` | Semantic steps and mapping entries | Scratch records, as the import returns them |
+//! | Semantic session | `HtmlSemanticSession::with_accounting` | `html-query`, `html-query-observed` (scale zero into the host scope) | Semantic steps, output and nested output records, allocated bytes | Scratch records, as each scratch vector is returned |
+//! | Fact constructor | `with_accounting` of each fact family | the family's `html-*-facts` scope and `html-fact-grown` (scale zero) | Semantic steps, fact records, code units, bytes and assigned nodes | None |
+//! | Empty Global registry | `HtmlCapture::complete_empty_global_registry_with_accounting` | `html-registry-formation`, and the `html-capture` of its builder | Captured registries and the formation backing of the registry | None; a capture holds no custody |
+//! | Native construction | `builder_with_accounting` of `HtmlDocument` and `HtmlFragment` | `html-construction` | Nodes, edges, attributes and UTF-16 units of every admitted append | None; a rejected append releases its own charge |
+//! | Controlled autocomplete | `control_autocomplete_controlled_with_accounting` | `html-autocomplete`, `html-autocomplete-observed` (scale zero) | Allocated bytes and nested output records | Scratch records, at the end of each processing step |
+//!
+//! Gauge dimensions stay in the scope that observed them, so the host scope sees
+//! no tree depth, no atomic layout bytes and no formation peak. The controlled
+//! option value owner and the capacity check of the semantic context charge an
+//! operation of their own: the owner's caps are an envelope it replaces on every
+//! call, and the context check admits nothing, so neither has charges for a host
+//! to see.
 //!
 //! # Caps that stay local to their scope
 //!
@@ -879,6 +910,9 @@ pub(crate) fn autocomplete_limits(limits: HtmlAutocompleteMaterializationLimits)
         },
     )
 }
+
+mod host;
+pub use host::HtmlHostScope;
 
 mod fault;
 pub use fault::{

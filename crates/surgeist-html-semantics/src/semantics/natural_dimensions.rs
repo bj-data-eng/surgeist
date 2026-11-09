@@ -260,13 +260,55 @@ impl HtmlNaturalDimensions {
         capture: &HtmlCapture,
         host_revision: HtmlHostFactsRevision,
         revision: HtmlNaturalDimensionRevision,
+        expected: Vec<HtmlNaturalDimensionFact>,
+        observations: Vec<HtmlNaturalDimensionFact>,
+        limits: HtmlNaturalDimensionLimits,
+    ) -> Result<Self, HtmlNaturalDimensionFactsError> {
+        Self::build(
+            capture,
+            host_revision,
+            revision,
+            expected,
+            observations,
+            limits,
+            None,
+        )
+    }
+    /// Charges below the scope `accounting` names, in the host's operation, as [`Self::new`]
+    /// charges an operation of its own. The schema module documentation of
+    /// `surgeist_html::accounting` lists the scopes it creates and what the host keeps.
+    pub fn with_accounting(
+        capture: &HtmlCapture,
+        host_revision: HtmlHostFactsRevision,
+        revision: HtmlNaturalDimensionRevision,
+        expected: Vec<HtmlNaturalDimensionFact>,
+        observations: Vec<HtmlNaturalDimensionFact>,
+        limits: HtmlNaturalDimensionLimits,
+        accounting: &HtmlHostScope,
+    ) -> Result<Self, HtmlNaturalDimensionFactsError> {
+        Self::build(
+            capture,
+            host_revision,
+            revision,
+            expected,
+            observations,
+            limits,
+            Some(accounting),
+        )
+    }
+    fn build(
+        capture: &HtmlCapture,
+        host_revision: HtmlHostFactsRevision,
+        revision: HtmlNaturalDimensionRevision,
         mut expected: Vec<HtmlNaturalDimensionFact>,
         mut observations: Vec<HtmlNaturalDimensionFact>,
         limits: HtmlNaturalDimensionLimits,
+        hosted: Option<&HtmlHostScope>,
     ) -> Result<Self, HtmlNaturalDimensionFactsError> {
         use HtmlNaturalDimensionFactsError as E;
         FactAdmission::<E>::host(capture, &host_revision)?;
-        let mut a = FactAdmission::<E>::new(HtmlCapScope::NaturalDimensionFacts, limits)?;
+        let mut a =
+            FactAdmission::<E>::charging(HtmlCapScope::NaturalDimensionFacts, limits, hosted)?;
         let records = expected
             .capacity()
             .checked_add(observations.capacity())
@@ -678,7 +720,7 @@ impl<'a> HtmlSemanticSession<'a> {
         let work = HtmlNonNegativeInteger::from_borrowed_digits_work_bound(units.len())
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
         self.charge(work)?;
-        let remaining = self.remaining_allocated_bytes();
+        let remaining = self.remaining_allocated_bytes()?;
         let materialized = HtmlNonNegativeInteger::try_from_borrowed_digits(
             units,
             self.limits.integer_digits,
@@ -699,7 +741,7 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let value = materialized
             .map_err(|failure| {
-                self.stop(match failure.kind() {
+                let kind = match failure.kind() {
                     E::Digits(_) => HtmlSemanticFailureKind::IntrinsicUnavailable,
                     E::Boundary(B::RepresentationExhausted) => {
                         HtmlSemanticFailureKind::RepresentationExhausted
@@ -716,11 +758,7 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     E::Boundary(B::RequestedCapacityLimitExceeded { required, .. }) => {
                         match baseline.checked_add(required) {
-                            Some(required) => HtmlSemanticFailureKind::LimitExceeded {
-                                resource: HtmlSemanticResource::AllocatedBytes,
-                                limit: self.limits.allocated_bytes,
-                                required,
-                            },
+                            Some(total) => return self.requested_capacity_stop(required, total),
                             None => HtmlSemanticFailureKind::RepresentationExhausted,
                         }
                     }
@@ -731,7 +769,8 @@ impl<'a> HtmlSemanticSession<'a> {
                             required: self.snapshot().allocated_bytes,
                         }
                     }
-                })
+                };
+                self.stop(kind)
             })?
             .into_parts()
             .0;

@@ -4,15 +4,16 @@
 use crate::semantics::support::{builder, context, semantic_limits};
 use surgeist_html::{
     accounting::{
-        HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapScope, HtmlLimits, HtmlResource, HtmlWork,
+        HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapScope, HtmlHostScope, HtmlLimits,
+        HtmlResource, HtmlWork, aggregate_tariffs,
     },
-    values::{Namespace, OrderedAttributes, QualifiedName},
+    values::{Attribute, Namespace, OrderedAttributes, QualifiedName},
 };
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCapturedIsValue, HtmlSemanticAccounting, HtmlSemanticCancellation, HtmlSemanticFailureKind,
-    HtmlSemanticLimits, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
-    HtmlSemanticResource, HtmlSemanticSession,
+    HtmlCapturedIsValue, HtmlSemanticCancellation, HtmlSemanticFailureKind, HtmlSemanticLimits,
+    HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource,
+    HtmlSemanticSession,
 };
 use surgeist_ledger::{Operation, ProfileMode, Report, Scope, SharedOperation};
 
@@ -82,7 +83,7 @@ fn open<'a>(
     c: &'a HtmlCapture,
     cx: &'a surgeist_html_semantics::HtmlSemanticContext,
     limits: HtmlSemanticLimits,
-    accounting: &HtmlSemanticAccounting,
+    accounting: &HtmlHostScope,
 ) -> Result<HtmlSemanticSession<'a>, surgeist_html_semantics::HtmlSemanticFailure> {
     HtmlSemanticSession::with_accounting(
         c,
@@ -131,7 +132,7 @@ fn queried(
 ) -> (HtmlSemanticReport, Ledger, Scope) {
     let cx = context(c);
     let (ledger, root) = host(HtmlLimits::unlimited(), 8);
-    let accounting = HtmlSemanticAccounting::host(ledger.clone(), root);
+    let accounting = HtmlHostScope::new(ledger.clone(), root);
     let report = open(c, &cx, limits, &accounting)
         .unwrap()
         .query(requests)
@@ -274,7 +275,7 @@ fn every_stop_leaves_no_scratch_and_the_same_failure_in_a_host_and_a_private_ses
         let limits = capped(resource, exact - 1);
         let expected = private(&c, &cx, limits).query(&requests).unwrap_err();
         let (ledger, root) = host(HtmlLimits::unlimited(), 8);
-        let accounting = HtmlSemanticAccounting::host(ledger.clone(), root);
+        let accounting = HtmlHostScope::new(ledger.clone(), root);
         let mut session = open(&c, &cx, limits, &accounting).unwrap();
         let failure = session.query(&requests).unwrap_err();
         assert_eq!(failure.kind(), expected.kind(), "{resource:?}");
@@ -309,7 +310,7 @@ fn a_host_cap_refuses_with_the_host_limit_and_the_value_it_would_have_reached() 
         |_| u64::MAX,
     );
     let (ledger, root) = host(caps, 8);
-    let accounting = HtmlSemanticAccounting::host(ledger.clone(), root);
+    let accounting = HtmlHostScope::new(ledger.clone(), root);
     let failure = open(&c, &cx, semantic_limits(), &accounting)
         .unwrap()
         .query(&requests)
@@ -344,7 +345,7 @@ fn a_scope_of_another_operation_is_an_accounting_fault() {
     let cx = context(&c);
     let (ledger, _) = host(HtmlLimits::unlimited(), 8);
     let (_, foreign) = host(HtmlLimits::unlimited(), 8);
-    let accounting = HtmlSemanticAccounting::host(ledger, foreign);
+    let accounting = HtmlHostScope::new(ledger, foreign);
     let failure = open(&c, &cx, semantic_limits(), &accounting)
         .err()
         .expect("a foreign scope is refused");
@@ -360,7 +361,7 @@ fn a_scope_bound_without_room_for_the_session_is_an_accounting_fault() {
     let (c, _) = table();
     let cx = context(&c);
     let (ledger, root) = host(HtmlLimits::unlimited(), 2);
-    let accounting = HtmlSemanticAccounting::host(ledger, root);
+    let accounting = HtmlHostScope::new(ledger, root);
     let failure = open(&c, &cx, semantic_limits(), &accounting)
         .err()
         .expect("the scope bound is exhausted");
@@ -404,7 +405,7 @@ mod capture {
         revision: HtmlHostFactsRevision,
     ) -> (HtmlCaptureBuilder, Ledger, Scope) {
         let (ledger, root) = host(HtmlLimits::unlimited(), scopes);
-        let accounting = HtmlSemanticAccounting::host(ledger.clone(), root);
+        let accounting = HtmlHostScope::new(ledger.clone(), root);
         let builder =
             HtmlCaptureBuilder::with_accounting(capture_limits, revision, &accounting).unwrap();
         (builder, ledger, root)
@@ -525,7 +526,7 @@ mod capture {
             },
         );
         let (ledger, root) = host(caps, 4);
-        let accounting = HtmlSemanticAccounting::host(ledger, root);
+        let accounting = HtmlHostScope::new(ledger, root);
         let mut builder = HtmlCaptureBuilder::with_accounting(
             limits(),
             HtmlHostFactsRevision::fresh(),
@@ -584,7 +585,7 @@ mod capture {
     fn a_scope_of_another_operation_is_an_accounting_fault_for_a_builder() {
         let (ledger, _) = host(HtmlLimits::unlimited(), 4);
         let (_, foreign) = host(HtmlLimits::unlimited(), 4);
-        let accounting = HtmlSemanticAccounting::host(ledger, foreign);
+        let accounting = HtmlHostScope::new(ledger, foreign);
         let error = HtmlCaptureBuilder::with_accounting(
             limits(),
             HtmlHostFactsRevision::fresh(),
@@ -631,7 +632,7 @@ mod capture {
     #[test]
     fn a_finished_import_leaves_no_scratch_and_reports_the_work_and_peak_it_charged() {
         let (ledger, root) = host(HtmlLimits::unlimited(), 4);
-        let accounting = HtmlSemanticAccounting::host(ledger.clone(), root);
+        let accounting = HtmlHostScope::new(ledger.clone(), root);
         let revision = HtmlHostFactsRevision::fresh();
         let builder =
             HtmlCaptureBuilder::with_accounting(limits(), revision.clone(), &accounting).unwrap();
@@ -666,7 +667,7 @@ mod capture {
 #[test]
 fn a_scope_bound_too_small_for_a_builder_is_an_accounting_fault() {
     let (ledger, root) = host(HtmlLimits::unlimited(), 1);
-    let accounting = HtmlSemanticAccounting::host(ledger, root);
+    let accounting = HtmlHostScope::new(ledger, root);
     let error = HtmlCaptureBuilder::with_accounting(
         surgeist_html_semantics::HtmlCaptureLimits::new(10, 100, 10, 1000, 10, 0, 0, 16_777_216),
         surgeist_html_semantics::HtmlHostFactsRevision::fresh(),
@@ -680,7 +681,7 @@ fn a_scope_bound_too_small_for_a_builder_is_an_accounting_fault() {
 #[test]
 fn a_hosted_builder_names_its_scope_by_the_schema() {
     let (ledger, root) = host(HtmlLimits::unlimited(), 4);
-    let accounting = HtmlSemanticAccounting::host(ledger.clone(), root);
+    let accounting = HtmlHostScope::new(ledger.clone(), root);
     let _builder = HtmlCaptureBuilder::with_accounting(
         surgeist_html_semantics::HtmlCaptureLimits::new(10, 100, 10, 1000, 10, 0, 0, 16_777_216),
         surgeist_html_semantics::HtmlHostFactsRevision::fresh(),
@@ -689,4 +690,92 @@ fn a_hosted_builder_names_its_scope_by_the_schema() {
     .unwrap();
     let names: Vec<_> = report(&ledger).scopes.iter().map(|s| s.name).collect();
     assert_eq!(names, ["host", HtmlCapScope::Capture.name()]);
+}
+
+/// A `time` element whose `datetime` attribute is parsed by the numeric owner, and the request
+/// that reads it.
+fn time() -> (HtmlCapture, HtmlSemanticRequest) {
+    let (mut b, d) = builder();
+    let time = b
+        .add_element(
+            &d,
+            QualifiedName::new(Namespace::html(), None, "time"),
+            OrderedAttributes::new([Attribute::new(
+                QualifiedName::new(Namespace::none(), None, "datetime"),
+                "2011-11-18",
+            )])
+            .unwrap(),
+            HtmlCapturedIsValue::Unavailable,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    b.establish_children(&time, &[]).unwrap();
+    b.establish_root(&time).unwrap();
+    let capture = b.finish().unwrap();
+    let request = HtmlSemanticRequest::new(
+        capture.subject_id(&time).unwrap(),
+        HtmlSemanticQuery::TimeElement,
+    );
+    (capture, request)
+}
+
+fn time_limits(bytes: usize) -> HtmlSemanticLimits {
+    HtmlSemanticLimits::new(100_000_000, 100, 1_000, 10_000, bytes, 1_000_000)
+}
+
+/// A host cap on the allocated bytes tighter than the session's own limit bounds the numeric
+/// materialization as a session limit of that size does: the same stop, with the same usage,
+/// because the numeric owner refuses before it allocates beyond the cap. The cap sits on the
+/// supplied scope, or on its parent so that the supplied scope reaches it through a tariff.
+#[test]
+fn a_host_byte_cap_bounds_a_numeric_materialization_as_a_session_limit_of_that_size_does() {
+    let (c, request) = time();
+    let cx = context(&c);
+    let requests = [request];
+    let baseline = private(&c, &cx, time_limits(10_000_000))
+        .query(&requests)
+        .unwrap()
+        .usage()
+        .allocated_bytes();
+    assert!(baseline > 0);
+    let capped = |cap: usize| {
+        HtmlLimits::from_fn(
+            |_| u64::MAX,
+            |resource| {
+                if resource == HtmlResource::AllocatedBytes {
+                    cap as u64
+                } else {
+                    u64::MAX
+                }
+            },
+        )
+    };
+    for cap in 0..baseline {
+        let expected = private(&c, &cx, time_limits(cap))
+            .query(&requests)
+            .unwrap_err();
+        for below_root in [false, true] {
+            let (ledger, root) = host(capped(cap), 8);
+            let scope = if below_root {
+                ledger
+                    .child(root, "tenant", HtmlLimits::unlimited(), aggregate_tariffs())
+                    .unwrap()
+            } else {
+                root
+            };
+            let accounting = HtmlHostScope::new(ledger, scope);
+            let mut session = open(&c, &cx, time_limits(10_000_000), &accounting).unwrap();
+            let failure = session.query(&requests).unwrap_err();
+            assert_eq!(
+                failure.kind(),
+                expected.kind(),
+                "host cap {cap} below root {below_root}"
+            );
+            assert_eq!(
+                failure.usage(),
+                expected.usage(),
+                "host cap {cap} below root {below_root}"
+            );
+        }
+    }
 }

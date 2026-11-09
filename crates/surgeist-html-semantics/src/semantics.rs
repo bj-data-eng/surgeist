@@ -116,7 +116,7 @@ use crate::{
     HtmlBaseFactsRevision, HtmlBaseMissing, HtmlBaseUrlRecord, HtmlCapture, HtmlCaptureError,
     HtmlCaptureId, HtmlCaptureSubjectId, HtmlCapturedBaseFacts, HtmlCapturedChildIds,
     HtmlCapturedChildren, HtmlCapturedElement, HtmlCapturedNode, HtmlCapturedNodeKind,
-    HtmlCapturedParent, HtmlDocumentClass, HtmlHostFactsRevision, HtmlSemanticAccounting,
+    HtmlCapturedParent, HtmlDocumentClass, HtmlHostFactsRevision,
 };
 use std::{
     error::Error,
@@ -127,7 +127,7 @@ use std::{
     },
 };
 use surgeist_html::accounting::{
-    HtmlAccountingFault, HtmlCapScope, HtmlLedgerOutcome, HtmlResource, classify,
+    HtmlAccountingFault, HtmlCapScope, HtmlHostScope, HtmlLedgerOutcome, HtmlResource, classify,
 };
 use surgeist_html::bounded::{
     numeric::{
@@ -147,8 +147,8 @@ use surgeist_ledger::Change;
 /// Finite cumulative admission for one semantic session.
 ///
 /// The limits are the caps of the session's ledger scope, `html-query`, and
-/// [`HtmlSemanticUsage`] is read from that scope and its observed sibling; see
-/// [`HtmlSemanticAccounting`](crate::HtmlSemanticAccounting).
+/// [`HtmlSemanticUsage`] is read from that scope and its observed sibling; see the schema module
+/// documentation of `surgeist_html::accounting`.
 ///
 /// Work charges visits, result writes, inspected UTF-16 units and conservative
 /// inspection envelopes for the existing intrinsic producers. Output counts
@@ -1455,15 +1455,15 @@ impl<'a> HtmlSemanticSession<'a> {
     ) -> Result<Self, HtmlSemanticFailure> {
         Self::open(capture, context, interpreter, limits, cancellation, None)
     }
-    /// A session that charges below the scope `accounting` names, in the host's operation. See
-    /// [`HtmlSemanticAccounting`] for the scopes it creates.
+    /// A session that charges below the scope `accounting` names, in the host's operation. The
+    /// schema module documentation of `surgeist_html::accounting` lists the scopes it creates.
     pub fn with_accounting(
         capture: &'a HtmlCapture,
         context: &'a HtmlSemanticContext,
         interpreter: HtmlValueInterpreter,
         limits: HtmlSemanticLimits,
         cancellation: HtmlSemanticCancellation,
-        accounting: &HtmlSemanticAccounting,
+        accounting: &HtmlHostScope,
     ) -> Result<Self, HtmlSemanticFailure> {
         Self::open(
             capture,
@@ -1480,7 +1480,7 @@ impl<'a> HtmlSemanticSession<'a> {
         interpreter: HtmlValueInterpreter,
         limits: HtmlSemanticLimits,
         cancellation: HtmlSemanticCancellation,
-        accounting: Option<&HtmlSemanticAccounting>,
+        accounting: Option<&HtmlHostScope>,
     ) -> Result<Self, HtmlSemanticFailure> {
         if capture.identity() != context.capture() {
             return Err(HtmlSemanticFailure {
@@ -2204,12 +2204,45 @@ impl<'a> HtmlSemanticSession<'a> {
             .and_then(|n| n.checked_add(8))
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
         self.charge(work)?;
-        Ok(self.remaining_allocated_bytes())
+        self.remaining_allocated_bytes()
     }
-    fn remaining_allocated_bytes(&self) -> usize {
-        self.limits
+    /// The allocated bytes a numeric materialization may take: the tighter of what the session's
+    /// own limit leaves and what the caps of its scope and of the scopes above it leave.
+    fn remaining_allocated_bytes(&mut self) -> Result<usize, HtmlSemanticFailure> {
+        let own = self
+            .limits
             .allocated_bytes
-            .saturating_sub(self.snapshot().allocated_bytes)
+            .saturating_sub(self.snapshot().allocated_bytes);
+        let chain = self
+            .account
+            .allocated_headroom()
+            .map_err(|error| self.ledger_stop(error))?;
+        Ok(own.min(chain))
+    }
+    /// The stop of a numeric request for `required` bytes that the numeric owner refused before it
+    /// allocated them, when the request would have brought the session's allocated bytes to
+    /// `total`. A cap of the host's scope or of one above it that is tighter than what the
+    /// session's own limit leaves refuses the request as the ledger reports it, with that cap's
+    /// limit and total, mapped as every other ledger stop is; otherwise the session's limit does.
+    fn requested_capacity_stop(&mut self, required: usize, total: usize) -> HtmlSemanticFailure {
+        let own = self
+            .limits
+            .allocated_bytes
+            .saturating_sub(self.snapshot().allocated_bytes);
+        if let Ok(chain) = self.account.allocated_headroom()
+            && chain < own
+            && let Err(error) = self.account.check(&[Change::Acquire(
+                HtmlResource::AllocatedBytes,
+                query_account::wide(required),
+            )])
+        {
+            return self.ledger_stop(error);
+        }
+        self.stop(HtmlSemanticFailureKind::LimitExceeded {
+            resource: HtmlSemanticResource::AllocatedBytes,
+            limit: self.limits.allocated_bytes,
+            required: total,
+        })
     }
     /// Records actual capacity after an admitted allocation, including an
     /// allocator overshoot. Accounting precedes the next cancellation poll.
@@ -2249,11 +2282,8 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                 }
                 HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded { required, .. } => {
-                    HtmlSemanticFailureKind::LimitExceeded {
-                        resource: HtmlSemanticResource::AllocatedBytes,
-                        limit: self.limits.allocated_bytes,
-                        required: self.snapshot().allocated_bytes.saturating_add(required),
-                    }
+                    let total = self.snapshot().allocated_bytes.saturating_add(required);
+                    return self.requested_capacity_stop(required, total);
                 }
                 HtmlIntegerUnitStepError::ActualCapacityLimitExceeded { .. } => {
                     HtmlSemanticFailureKind::LimitExceeded {

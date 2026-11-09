@@ -11,6 +11,7 @@ mod duplicate_work;
 mod elements;
 mod global;
 mod held_graph;
+mod host_facts;
 mod links;
 mod lookup_work;
 mod media;
