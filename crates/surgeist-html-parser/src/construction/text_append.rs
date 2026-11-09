@@ -4,7 +4,10 @@ use construction_owner::construction_error;
 use surgeist_html::bounded::construction::{
     HtmlConstructionTextAppend as Append, HtmlConstructionTextAppendDescription as Description,
 };
-use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
+use surgeist_html::{
+    construction::{HtmlConstructionCause, HtmlNodeKind},
+    values::DocumentString,
+};
 
 pub(super) fn admit_work(
     control: &mut ParseControl,
@@ -492,7 +495,9 @@ impl SessionStorage {
                         // `None` is the test-injected backing fault, which reports the
                         // same refusal as a real failed reservation.
                         return Err(match error {
-                            Some(error) if !error.is_allocation_failed() => {
+                            Some(error)
+                                if error.cause() != HtmlConstructionCause::AllocationFailed =>
+                            {
                                 construction_error(control, error)
                             }
                             _ => control

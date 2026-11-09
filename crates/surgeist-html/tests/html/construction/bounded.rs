@@ -16,8 +16,9 @@ use surgeist_html::{
         HtmlConstructionStorage, HtmlConstructionTextAppend,
     },
     construction::{
-        HtmlBuilderNode, HtmlDocumentMode, HtmlElement, HtmlFragmentOwner, HtmlNodeKind,
-        HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment, HtmlTemplateContentsKind,
+        HtmlBuilderNode, HtmlConstructionCause, HtmlDocumentMode, HtmlElement, HtmlFragmentOwner,
+        HtmlNodeKind, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
+        HtmlTemplateContentsKind,
     },
     values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };

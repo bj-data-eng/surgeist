@@ -77,8 +77,8 @@ impl DepthPlan {
         match self {
             Self::Moves { moves, count } if slot < *count => moves
                 .get_mut(slot)
-                .ok_or(HtmlConstructionErrorKind::OperationNotReady.error()),
-            _ => Err(HtmlConstructionErrorKind::OperationNotReady.into()),
+                .ok_or(HtmlConstructionCause::OperationNotReady.error()),
+            _ => Err(HtmlConstructionCause::OperationNotReady.into()),
         }
     }
     /// The record visits and writes the commit's depth work performs: per
@@ -103,7 +103,7 @@ impl DepthPlan {
     }
 }
 
-const OVERFLOW: HtmlConstructionError = HtmlConstructionErrorKind::RepresentationExhausted.error();
+const OVERFLOW: HtmlConstructionError = HtmlConstructionCause::RepresentationExhausted.error();
 
 /// The most steps a walk of an arena of `records` can take: each record is
 /// entered and left once, and a record names at most three kinds of edge.
@@ -134,7 +134,7 @@ fn next_edge(
     let record = arena
         .records
         .get_mut(node)
-        .ok_or(HtmlConstructionErrorKind::UnknownNode)?;
+        .ok_or(HtmlConstructionCause::UnknownNode)?;
     let children = record.children.len();
     let mut cursor = record.walk_cursor;
     let edge = loop {
@@ -203,7 +203,7 @@ impl HtmlConstructionOperation {
         use HtmlConstructionCommand as Command;
         let p = self.plan.positions;
         let old = self.plan.old_contents;
-        let missing = HtmlConstructionErrorKind::InvalidTemplateAssociation;
+        let missing = HtmlConstructionCause::InvalidTemplateAssociation;
         // The roots to move and where each goes: below a record, or detached.
         let (detached, attached): (Option<usize>, Option<(usize, usize)>) = match self.command() {
             Command::Publish { .. } => return Ok(Phase::Layout),
@@ -227,7 +227,7 @@ impl HtmlConstructionOperation {
                 from: arena
                     .records
                     .get(root)
-                    .ok_or(HtmlConstructionErrorKind::UnknownNode)?
+                    .ok_or(HtmlConstructionCause::UnknownNode)?
                     .depth,
                 to,
                 height: 0,
@@ -240,7 +240,7 @@ impl HtmlConstructionOperation {
                 .records
                 .get(index)
                 .map(|record| record.depth)
-                .ok_or(HtmlConstructionErrorKind::UnknownNode)
+                .ok_or(HtmlConstructionCause::UnknownNode)
         };
         let first = detached.map(|root| root_move(root, 0)).transpose()?;
         // The host of a template shadow may sit inside the contents the template
@@ -258,7 +258,7 @@ impl HtmlConstructionOperation {
                 if arena
                     .records
                     .get(old)
-                    .ok_or(HtmlConstructionErrorKind::UnknownNode)?
+                    .ok_or(HtmlConstructionCause::UnknownNode)?
                     .children
                     .is_empty() =>
             {
@@ -299,7 +299,7 @@ impl HtmlConstructionOperation {
         let record = arena
             .records
             .get(node)
-            .ok_or(HtmlConstructionErrorKind::UnknownNode)?;
+            .ok_or(HtmlConstructionCause::UnknownNode)?;
         let contents = record.template_contents.and_then(|value| match value {
             TemplateContents::Owned(index) => Some(index),
             TemplateContents::ShadowReference(_) => None,
@@ -318,7 +318,7 @@ impl HtmlConstructionOperation {
             arena
                 .records
                 .get(parent)
-                .ok_or(HtmlConstructionErrorKind::UnknownNode)?
+                .ok_or(HtmlConstructionCause::UnknownNode)?
                 .depth,
             1,
         )?;
@@ -341,10 +341,10 @@ impl HtmlConstructionOperation {
     ) -> Result<Phase, HtmlConstructionError> {
         let records = self.arena().records.len();
         if cursor >= records {
-            return Err(HtmlConstructionErrorKind::UnknownNode.into());
+            return Err(HtmlConstructionCause::UnknownNode.into());
         }
         if steps >= records {
-            return Err(HtmlConstructionErrorKind::Cycle.into());
+            return Err(HtmlConstructionCause::Cycle.into());
         }
         // The contents the template gives up stop being owned by it.
         let parent = if Some(cursor) == self.plan.old_contents {
@@ -379,12 +379,12 @@ impl HtmlConstructionOperation {
             let root = arena
                 .records
                 .get_mut(mov.root)
-                .ok_or(HtmlConstructionErrorKind::UnknownNode)?;
+                .ok_or(HtmlConstructionCause::UnknownNode)?;
             root.walk_cursor = 0;
             arena
                 .records
                 .get_mut(mov.from)
-                .ok_or(HtmlConstructionErrorKind::UnknownNode)?
+                .ok_or(HtmlConstructionCause::UnknownNode)?
                 .level_count = 1;
             return Ok(Phase::Shift {
                 slot,
@@ -406,7 +406,7 @@ impl HtmlConstructionOperation {
     ) -> Result<Phase, HtmlConstructionError> {
         let mut mov = *self.plan.depth.mov(slot)?;
         if steps > walk_budget(self.arena().records.len()) {
-            return Err(HtmlConstructionErrorKind::Cycle.into());
+            return Err(HtmlConstructionCause::Cycle.into());
         }
         let skip = self.plan.old_contents;
         let edge = next_edge(self.arena_mut()?, node, skip)?;
@@ -420,13 +420,13 @@ impl HtmlConstructionOperation {
                 .records
                 .get(node)
                 .and_then(owning_parent)
-                .ok_or(HtmlConstructionErrorKind::ParentChildConflict)?;
+                .ok_or(HtmlConstructionCause::ParentChildConflict)?;
             return Ok(Phase::Shift {
                 slot,
                 node: up,
                 level: level
                     .checked_sub(1)
-                    .ok_or(HtmlConstructionErrorKind::ParentChildConflict)?,
+                    .ok_or(HtmlConstructionCause::ParentChildConflict)?,
                 steps: add(steps, 1)?,
             });
         };
@@ -441,12 +441,12 @@ impl HtmlConstructionOperation {
         arena
             .records
             .get_mut(child)
-            .ok_or(HtmlConstructionErrorKind::UnknownNode)?
+            .ok_or(HtmlConstructionCause::UnknownNode)?
             .walk_cursor = 0;
         let bucket = arena
             .records
             .get_mut(absolute)
-            .ok_or(HtmlConstructionErrorKind::UnknownNode)?;
+            .ok_or(HtmlConstructionCause::UnknownNode)?;
         if fresh {
             bucket.level_count = 0;
         }

@@ -871,7 +871,7 @@ impl StorageOwner {
     fn mutable(&mut self) -> Result<&mut HtmlConstructionStorage, HtmlConstructionError> {
         match self {
             Self::Mutable(v) => Ok(v),
-            Self::Shared { .. } => Err(HtmlConstructionErrorKind::OperationNotReady.into()),
+            Self::Shared { .. } => Err(HtmlConstructionCause::OperationNotReady.into()),
         }
     }
 }
@@ -1060,7 +1060,7 @@ impl HtmlConstructionOperation {
             return Err(error.clone());
         }
         if matches!(self.phase, Phase::Observing) {
-            return Err(HtmlConstructionErrorKind::OperationNotReady.into());
+            return Err(HtmlConstructionCause::OperationNotReady.into());
         }
         if matches!(self.phase, Phase::Ready) {
             return Ok(None);
@@ -1086,7 +1086,7 @@ impl HtmlConstructionOperation {
         if !matches!(self.phase, Phase::Ready) {
             return Err(HtmlConstructionRefusal::new(
                 self,
-                HtmlConstructionErrorKind::OperationNotReady,
+                HtmlConstructionCause::OperationNotReady,
             ));
         }
         // Only publication shares the arena, and its last action does. A ready operation whose
@@ -1097,7 +1097,7 @@ impl HtmlConstructionOperation {
         if publishes != shared {
             return Err(HtmlConstructionRefusal::new(
                 self,
-                HtmlConstructionErrorKind::OperationNotReady,
+                HtmlConstructionCause::OperationNotReady,
             ));
         }
         // The commit applies its order edits exactly where planning located them. The operation owns
@@ -1119,7 +1119,7 @@ impl HtmlConstructionOperation {
                 self.plan.staged = staged;
                 Err(HtmlConstructionRefusal::new(
                     self,
-                    HtmlConstructionErrorKind::OperationNotReady,
+                    HtmlConstructionCause::OperationNotReady,
                 ))
             }
         }
@@ -1159,7 +1159,7 @@ impl HtmlConstructionOperation {
                             failure,
                             plan,
                         },
-                        HtmlConstructionErrorKind::SharedAllocationAliased,
+                        HtmlConstructionCause::SharedAllocationAliased,
                     ));
                 }
             },
@@ -1373,7 +1373,7 @@ impl<'a> HtmlConstructionAction<'a> {
         if !matches!(operation.phase, Phase::ReserveChildren(_))
             || capacity < operation.push_required()
         {
-            let reason = operation.fail(HtmlConstructionErrorKind::CapacityMismatch.error());
+            let reason = operation.fail(HtmlConstructionCause::CapacityMismatch.error());
             return Err(HtmlConstructionActionFailure {
                 reason,
                 allocation: None,
@@ -1405,17 +1405,17 @@ impl<'a> HtmlConstructionAction<'a> {
 
 fn add(left: usize, right: usize) -> Result<usize, HtmlConstructionError> {
     left.checked_add(right)
-        .ok_or(HtmlConstructionErrorKind::RepresentationExhausted.error())
+        .ok_or(HtmlConstructionCause::RepresentationExhausted.error())
 }
 fn subtract(left: usize, right: usize) -> Result<usize, HtmlConstructionError> {
     left.checked_sub(right)
-        .ok_or(HtmlConstructionErrorKind::ReleaseUnderflow.error())
+        .ok_or(HtmlConstructionCause::ReleaseUnderflow.error())
 }
 fn checked_layout(slots: usize, element_size: usize) -> Result<usize, HtmlConstructionError> {
     slots
         .checked_mul(element_size)
         .filter(|bytes| *bytes <= isize::MAX as usize)
-        .ok_or(HtmlConstructionErrorKind::RepresentationExhausted.error())
+        .ok_or(HtmlConstructionCause::RepresentationExhausted.error())
 }
 fn name_units(name: &QualifiedName) -> Result<usize, HtmlConstructionError> {
     add(
@@ -1473,10 +1473,10 @@ fn structural_parent(arena: &Arena, index: usize) -> Option<usize> {
 fn ordinary_owned_contents(arena: &Arena, template: usize) -> Result<usize, HtmlConstructionError> {
     let record = &arena.records[template];
     if !matches!(record.kind, HtmlNodeKind::Element(_)) {
-        return Err(HtmlConstructionErrorKind::InvalidTemplateAssociation.into());
+        return Err(HtmlConstructionCause::InvalidTemplateAssociation.into());
     }
     let Some(TemplateContents::Owned(contents)) = record.template_contents else {
-        return Err(HtmlConstructionErrorKind::InvalidTemplateAssociation.into());
+        return Err(HtmlConstructionCause::InvalidTemplateAssociation.into());
     };
     let target = &arena.records[contents];
     if !matches!(target.kind, HtmlNodeKind::Fragment)
@@ -1484,7 +1484,7 @@ fn ordinary_owned_contents(arena: &Arena, template: usize) -> Result<usize, Html
         || target.parent.is_some()
         || !matches!(&target.owner, Some(HtmlFragmentOwner::Template(owner)) if owner.index == template && Arc::ptr_eq(&owner.identity, &arena.identity))
     {
-        return Err(HtmlConstructionErrorKind::InvalidTemplateAssociation.into());
+        return Err(HtmlConstructionCause::InvalidTemplateAssociation.into());
     }
     Ok(contents)
 }
@@ -1499,13 +1499,13 @@ fn unowned_fragment(
         || target.shadow_properties.is_some() != shadow
     {
         return Err(if shadow {
-            HtmlConstructionErrorKind::InvalidContentsReference.error()
+            HtmlConstructionCause::InvalidContentsReference.error()
         } else {
-            HtmlConstructionErrorKind::InvalidTemplateAssociation.error()
+            HtmlConstructionCause::InvalidTemplateAssociation.error()
         });
     }
     if target.owner.is_some() {
-        return Err(HtmlConstructionErrorKind::AssociationAlreadyOwned.into());
+        return Err(HtmlConstructionCause::AssociationAlreadyOwned.into());
     }
     Ok(())
 }
@@ -1527,7 +1527,7 @@ impl HtmlConstructionOperation {
                     plan.new_units = match self.command() {
                         Command::Create { kind } => {
                             if matches!(kind, HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment) {
-                                return Err(HtmlConstructionErrorKind::WrongNodeKind.into());
+                                return Err(HtmlConstructionCause::WrongNodeKind.into());
                             }
                             if let HtmlNodeKind::Element(element) = kind {
                                 plan.new_attributes = element.attributes().len();
@@ -1540,13 +1540,13 @@ impl HtmlConstructionOperation {
                             link_flags,
                         } => {
                             if link_flags.is_some() && !plan.link {
-                                return Err(HtmlConstructionErrorKind::WrongNodeKind.into());
+                                return Err(HtmlConstructionCause::WrongNodeKind.into());
                             }
                             plan.new_attributes = attributes.len();
                             name_units(name)?
                         }
                         // The outer arm admits only the two creation commands.
-                        _ => return Err(HtmlConstructionErrorKind::OperationNotReady.into()),
+                        _ => return Err(HtmlConstructionCause::OperationNotReady.into()),
                     };
                     plan.record_count = 1 + usize::from(plan.template);
                     plan.positions[0] = arena.records.len();
@@ -1614,7 +1614,7 @@ impl HtmlConstructionOperation {
                         ) => {
                             if arena.records[a].template_contents.is_some() != plan.template {
                                 return Err(
-                                    HtmlConstructionErrorKind::InvalidTemplateAssociation.into()
+                                    HtmlConstructionCause::InvalidTemplateAssociation.into()
                                 );
                             }
                             plan.old_units = name_units(element.name())?;
@@ -1636,7 +1636,7 @@ impl HtmlConstructionOperation {
                             plan.old_units = doctype_units(old)?;
                             plan.new_units = doctype_units(new)?;
                         }
-                        _ => return Err(HtmlConstructionErrorKind::WrongNodeKind.into()),
+                        _ => return Err(HtmlConstructionCause::WrongNodeKind.into()),
                     }
                     // A name replacement assigns the name, and clears the link
                     // history unless the new name keeps it; every other payload
@@ -1660,7 +1660,7 @@ impl HtmlConstructionOperation {
                 }
                 Command::ReplaceAttributes { attributes, .. } => {
                     let HtmlNodeKind::Element(old) = &arena.records[a].kind else {
-                        return Err(HtmlConstructionErrorKind::WrongNodeKind.into());
+                        return Err(HtmlConstructionCause::WrongNodeKind.into());
                     };
                     plan.new_attributes = attributes.as_slice().len();
                     plan.old_attributes = old.attributes().len();
@@ -1674,10 +1674,10 @@ impl HtmlConstructionOperation {
                 }
                 Command::AttachShadow { .. } => {
                     if !matches!(arena.records[a].kind, HtmlNodeKind::Element(_)) {
-                        return Err(HtmlConstructionErrorKind::ShadowHostMustBeElement.into());
+                        return Err(HtmlConstructionCause::ShadowHostMustBeElement.into());
                     }
                     if arena.records[a].shadow.is_some() {
-                        return Err(HtmlConstructionErrorKind::ShadowAlreadyAttached.into());
+                        return Err(HtmlConstructionCause::ShadowAlreadyAttached.into());
                     }
                     unowned_fragment(arena, b, true)?;
                     plan.usage.edges = add(plan.usage.edges, 1)?;
@@ -1685,27 +1685,27 @@ impl HtmlConstructionOperation {
                 Command::AttachTemplateShadow { .. } => {
                     plan.old_contents = Some(ordinary_owned_contents(arena, a)?);
                     if !matches!(arena.records[b].kind, HtmlNodeKind::Element(_)) {
-                        return Err(HtmlConstructionErrorKind::ShadowHostMustBeElement.into());
+                        return Err(HtmlConstructionCause::ShadowHostMustBeElement.into());
                     }
                     if arena.records[b].shadow.is_some() {
-                        return Err(HtmlConstructionErrorKind::ShadowAlreadyAttached.into());
+                        return Err(HtmlConstructionCause::ShadowAlreadyAttached.into());
                     }
                     unowned_fragment(arena, c, true)?;
                     if Some(c) == plan.old_contents {
-                        return Err(HtmlConstructionErrorKind::InvalidContentsReference.into());
+                        return Err(HtmlConstructionCause::InvalidContentsReference.into());
                     }
                 }
                 Command::SetTemplateShadowContents { .. } => {
                     plan.old_contents = Some(ordinary_owned_contents(arena, a)?);
                     unowned_fragment(arena, b, true)?;
                     if Some(b) == plan.old_contents {
-                        return Err(HtmlConstructionErrorKind::InvalidContentsReference.into());
+                        return Err(HtmlConstructionCause::InvalidContentsReference.into());
                     }
                     plan.usage.edges = subtract(plan.usage.edges, 1)?;
                 }
                 Command::ReassignTemplateContents { .. } => {
                     if !matches!(arena.records[a].kind, HtmlNodeKind::Element(_)) {
-                        return Err(HtmlConstructionErrorKind::InvalidTemplateAssociation.into());
+                        return Err(HtmlConstructionCause::InvalidTemplateAssociation.into());
                     }
                     match arena.records[a].template_contents {
                         Some(TemplateContents::Owned(old)) => {
@@ -1720,27 +1720,25 @@ impl HtmlConstructionOperation {
                         Some(TemplateContents::ShadowReference(old)) => {
                             if old == b {
                                 return Err(
-                                    HtmlConstructionErrorKind::InvalidTemplateAssociation.into()
+                                    HtmlConstructionCause::InvalidTemplateAssociation.into()
                                 );
                             }
                             unowned_fragment(arena, b, false)?;
                             plan.usage.edges = add(plan.usage.edges, 1)?;
                         }
                         None => {
-                            return Err(
-                                HtmlConstructionErrorKind::InvalidTemplateAssociation.into()
-                            );
+                            return Err(HtmlConstructionCause::InvalidTemplateAssociation.into());
                         }
                     }
                 }
                 Command::SetDocumentMode { .. } => {
                     if !matches!(arena.records[a].kind, HtmlNodeKind::Document(_)) {
-                        return Err(HtmlConstructionErrorKind::WrongNodeKind.into());
+                        return Err(HtmlConstructionCause::WrongNodeKind.into());
                     }
                 }
                 Command::SetLinkFlags { .. } => {
                     if !plan.link {
-                        return Err(HtmlConstructionErrorKind::WrongNodeKind.into());
+                        return Err(HtmlConstructionCause::WrongNodeKind.into());
                     }
                 }
                 Command::Publish { .. } => {
@@ -1749,7 +1747,7 @@ impl HtmlConstructionOperation {
                         HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment
                     ) || arena.records[a].parent.is_some()
                     {
-                        return Err(HtmlConstructionErrorKind::InvalidOutputRoot.into());
+                        return Err(HtmlConstructionCause::InvalidOutputRoot.into());
                     }
                     plan.output_document = match arena.records[a].kind {
                         HtmlNodeKind::Document(mode) => Some(mode),
@@ -1796,7 +1794,7 @@ impl HtmlConstructionOperation {
                 .arena()
                 .records
                 .get(parent)
-                .ok_or(HtmlConstructionErrorKind::UnknownNode)?
+                .ok_or(HtmlConstructionCause::UnknownNode)?
                 .children
                 .len();
             return Ok(Phase::order(parent, remaining, true));
@@ -1814,7 +1812,7 @@ impl HtmlConstructionOperation {
                     .arena()
                     .records
                     .get(plan.positions[1])
-                    .ok_or(HtmlConstructionErrorKind::UnknownNode)?
+                    .ok_or(HtmlConstructionCause::UnknownNode)?
                     .children
                     .len();
                 Ok(Phase::order(plan.positions[1], remaining, false))
@@ -1879,7 +1877,7 @@ impl HtmlConstructionOperation {
                         plan.copied_bytes,
                         writes
                             .checked_mul(size_of::<usize>())
-                            .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?,
+                            .ok_or(HtmlConstructionCause::RepresentationExhausted)?,
                     )?;
                 }
                 // Each arm below charges the fields its commit arm assigns, and
@@ -1949,18 +1947,18 @@ impl HtmlConstructionOperation {
                 plan.copied_bytes,
                 writes
                     .checked_mul(size_of::<usize>())
-                    .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?,
+                    .ok_or(HtmlConstructionCause::RepresentationExhausted)?,
             )?;
             if self.command().creates() {
                 plan.initialized_bytes = plan
                     .record_count
                     .checked_mul(size_of::<Record>())
-                    .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
+                    .ok_or(HtmlConstructionCause::RepresentationExhausted)?;
                 // Each record, and the histogram count of its depth, one word.
                 let counts = plan
                     .record_count
                     .checked_mul(size_of::<usize>())
-                    .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
+                    .ok_or(HtmlConstructionCause::RepresentationExhausted)?;
                 plan.copied_bytes = add(add(plan.copied_bytes, plan.initialized_bytes)?, counts)?;
                 plan.record_writes = add(plan.record_writes, 2 * plan.record_count)?;
                 plan.references = 1 + usize::from(plan.template);
@@ -1979,7 +1977,7 @@ impl HtmlConstructionOperation {
                             .arena()
                             .records
                             .get(target)
-                            .ok_or(HtmlConstructionErrorKind::UnknownNode)?
+                            .ok_or(HtmlConstructionCause::UnknownNode)?
                             .children;
                         children.len() >= children.capacity()
                     }
@@ -2028,10 +2026,10 @@ impl HtmlConstructionOperation {
             }
             Phase::PrepareWrapperReport => {
                 let arena = self.arena();
-                let generation = arena.wrapper_generation.checked_add(1).ok_or((
-                    HtmlConstructionErrorKind::RepresentationExhausted.error(),
-                    None,
-                ))?;
+                let generation = arena
+                    .wrapper_generation
+                    .checked_add(1)
+                    .ok_or((HtmlConstructionCause::RepresentationExhausted.error(), None))?;
                 let mut snapshot = HtmlConstructionAllocationSnapshot::shared::<Arena>(
                     &arena.identity,
                     AllocationRole::ArenaWrapper,
@@ -2048,7 +2046,7 @@ impl HtmlConstructionOperation {
                 let record = arena
                     .records
                     .get(parent)
-                    .ok_or((HtmlConstructionErrorKind::UnknownNode.error(), None))?;
+                    .ok_or((HtmlConstructionCause::UnknownNode.error(), None))?;
                 let snapshot = HtmlConstructionAllocationSnapshot::deque(
                     &arena.identity,
                     AllocationRole::Children(parent),
@@ -2066,19 +2064,15 @@ impl HtmlConstructionOperation {
                     HtmlConstructionCommand::ReserveRecords { .. }
                 );
                 let storage = self.owner.mutable().map_err(|error| (error, None))?;
-                let count = required.checked_sub(storage.arena.records.len()).ok_or((
-                    HtmlConstructionErrorKind::RepresentationExhausted.error(),
-                    None,
-                ))?;
+                let count = required
+                    .checked_sub(storage.arena.records.len())
+                    .ok_or((HtmlConstructionCause::RepresentationExhausted.error(), None))?;
                 let changed = required > storage.arena.records.capacity();
                 let next_generation = storage
                     .arena
                     .records_generation
                     .checked_add(u64::from(changed))
-                    .ok_or((
-                        HtmlConstructionErrorKind::RepresentationExhausted.error(),
-                        None,
-                    ))?;
+                    .ok_or((HtmlConstructionCause::RepresentationExhausted.error(), None))?;
                 checked_layout(required, size_of::<Record>()).map_err(|error| (error, None))?;
                 let result = storage.arena.records.try_reserve_exact(count);
                 if result.is_ok() {
@@ -2095,7 +2089,7 @@ impl HtmlConstructionOperation {
                         Some(snapshot),
                     )),
                     Err(_) => Err((
-                        HtmlConstructionErrorKind::AllocationFailed.error(),
+                        HtmlConstructionCause::AllocationFailed.error(),
                         Some(snapshot),
                     )),
                 }
@@ -2127,10 +2121,10 @@ impl HtmlConstructionOperation {
             }
             Phase::Children(offset) => {
                 let arena = &mut self.owner.mutable().map_err(|error| (error, None))?.arena;
-                let generation = arena.temporary_generation.checked_add(1).ok_or((
-                    HtmlConstructionErrorKind::RepresentationExhausted.error(),
-                    None,
-                ))?;
+                let generation = arena
+                    .temporary_generation
+                    .checked_add(1)
+                    .ok_or((HtmlConstructionCause::RepresentationExhausted.error(), None))?;
                 let snapshot = HtmlConstructionAllocationSnapshot::deque(
                     &arena.identity,
                     AllocationRole::Children(self.plan.positions[0] + offset),
@@ -2163,13 +2157,13 @@ impl HtmlConstructionOperation {
                 let handle = self
                     .command()
                     .operand(index)
-                    .ok_or(HtmlConstructionErrorKind::OperationNotReady)?;
+                    .ok_or(HtmlConstructionCause::OperationNotReady)?;
                 let arena = self.arena();
                 if handle.identity.as_ptr() != Arc::as_ptr(&arena.identity) {
-                    return Err(HtmlConstructionErrorKind::ForeignBuilder.into());
+                    return Err(HtmlConstructionCause::ForeignBuilder.into());
                 }
                 if handle.index >= arena.records.len() {
-                    return Err(HtmlConstructionErrorKind::UnknownNode.into());
+                    return Err(HtmlConstructionCause::UnknownNode.into());
                 }
                 self.plan.positions[index] = handle.index;
                 Ok(if self.command().operand(index + 1).is_some() {
@@ -2200,7 +2194,7 @@ impl HtmlConstructionOperation {
                 let uri = self
                     .name()
                     .and_then(|name| name.namespace().uri())
-                    .ok_or(HtmlConstructionErrorKind::OperationNotReady)?;
+                    .ok_or(HtmlConstructionCause::OperationNotReady)?;
                 Ok(if uri.code_units()[offset] != u16::from(HTML[offset]) {
                     Phase::Command
                 } else if offset + 1 == HTML.len() {
@@ -2212,7 +2206,7 @@ impl HtmlConstructionOperation {
             Phase::ClassifyLocal => {
                 let name = self
                     .name()
-                    .ok_or(HtmlConstructionErrorKind::OperationNotReady)?;
+                    .ok_or(HtmlConstructionCause::OperationNotReady)?;
                 self.plan.local_expected = match name.local_name().len() {
                     8 => b"template",
                     4 => b"link",
@@ -2223,7 +2217,7 @@ impl HtmlConstructionOperation {
             Phase::LocalUnit(offset) => {
                 let local = self
                     .name()
-                    .ok_or(HtmlConstructionErrorKind::OperationNotReady)?
+                    .ok_or(HtmlConstructionCause::OperationNotReady)?
                     .local_name();
                 let expected = self.plan.local_expected;
                 if local.code_units()[offset] != u16::from(expected[offset]) {
@@ -2293,7 +2287,7 @@ impl HtmlConstructionOperation {
                         self.plan.staged = Staged::Template(arena.id(p[0]));
                     }
                     // Only the commands above plan reference sharing.
-                    _ => return Err(HtmlConstructionErrorKind::OperationNotReady.into()),
+                    _ => return Err(HtmlConstructionCause::OperationNotReady.into()),
                 }
                 Ok(Phase::Commit)
             }
@@ -2305,7 +2299,7 @@ impl HtmlConstructionOperation {
                     Command::CreateElement { attributes, .. } => &attributes.as_slice()[index],
                     Command::ReplaceAttributes { attributes, .. } => &attributes.as_slice()[index],
                     // Only a command with new attributes enters this phase.
-                    _ => return Err(HtmlConstructionErrorKind::OperationNotReady.into()),
+                    _ => return Err(HtmlConstructionCause::OperationNotReady.into()),
                 };
                 self.plan.new_units = add(self.plan.new_units, attribute_units(attribute)?)?;
                 if index + 1 < self.plan.new_attributes {
@@ -2324,7 +2318,7 @@ impl HtmlConstructionOperation {
                     &self.arena().records[self.plan.positions[0]].kind
                 else {
                     // The command phase checked that the target is an element.
-                    return Err(HtmlConstructionErrorKind::OperationNotReady.into());
+                    return Err(HtmlConstructionCause::OperationNotReady.into());
                 };
                 self.plan.old_units = add(
                     self.plan.old_units,
@@ -2351,7 +2345,7 @@ impl HtmlConstructionOperation {
                     return result;
                 };
                 if cursor == target || steps >= self.arena().records.len() {
-                    return Err(HtmlConstructionErrorKind::Cycle.into());
+                    return Err(HtmlConstructionCause::Cycle.into());
                 }
                 if steps == 0 && !matches!(self.command(), Command::CheckChildTransfer { .. }) {
                     let record = &self.arena().records[target];
@@ -2367,7 +2361,7 @@ impl HtmlConstructionOperation {
                         });
                     if shallow {
                         if contents == Some(cursor) {
-                            return Err(HtmlConstructionErrorKind::Cycle.into());
+                            return Err(HtmlConstructionCause::Cycle.into());
                         }
                         let mut plan = std::mem::take(&mut self.plan);
                         let result = self.after_topology(&mut plan);
@@ -2434,13 +2428,13 @@ impl HtmlConstructionOperation {
                     .arena()
                     .records
                     .get(parent)
-                    .ok_or(HtmlConstructionErrorKind::UnknownNode)?;
+                    .ok_or(HtmlConstructionCause::UnknownNode)?;
                 if let Some(&child) = record.children.get(offset) {
                     let target = self
                         .arena()
                         .records
                         .get(child)
-                        .ok_or(HtmlConstructionErrorKind::UnknownNode)?;
+                        .ok_or(HtmlConstructionCause::UnknownNode)?;
                     if target.parent != Some(parent)
                         || target.owner.is_some()
                         || matches!(
@@ -2448,7 +2442,7 @@ impl HtmlConstructionOperation {
                             HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment
                         )
                     {
-                        return Err(HtmlConstructionErrorKind::ParentChildConflict.into());
+                        return Err(HtmlConstructionCause::ParentChildConflict.into());
                     }
                     Ok(Phase::PublishChild {
                         parent,
@@ -2458,7 +2452,7 @@ impl HtmlConstructionOperation {
                     // Every entry of the parent's list was counted before this
                     // pass: the record must appear in it exactly once.
                     if record.parent.is_some() && record.publish_found != 1 {
-                        return Err(HtmlConstructionErrorKind::ParentChildConflict.into());
+                        return Err(HtmlConstructionCause::ParentChildConflict.into());
                     }
                     Ok(Phase::PublishNode(parent + 1))
                 }
@@ -2472,7 +2466,7 @@ impl HtmlConstructionOperation {
                 }
                 Ok(Phase::Ready)
             }
-            _ => Err(HtmlConstructionErrorKind::OperationNotReady.into()),
+            _ => Err(HtmlConstructionCause::OperationNotReady.into()),
         }
     }
 }
@@ -2483,13 +2477,13 @@ fn validate_record(arena: &Arena, index: usize) -> Result<(), HtmlConstructionEr
         let parent = arena
             .records
             .get(parent)
-            .ok_or(HtmlConstructionErrorKind::UnknownNode)?;
+            .ok_or(HtmlConstructionCause::UnknownNode)?;
         if !matches!(
             parent.kind,
             HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment | HtmlNodeKind::Element(_)
         ) || parent.template_contents.is_some()
         {
-            return Err(HtmlConstructionErrorKind::ParentChildConflict.into());
+            return Err(HtmlConstructionCause::ParentChildConflict.into());
         }
     }
     if !record.children.is_empty()
@@ -2498,33 +2492,33 @@ fn validate_record(arena: &Arena, index: usize) -> Result<(), HtmlConstructionEr
             HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment | HtmlNodeKind::Element(_)
         ) || record.template_contents.is_some())
     {
-        return Err(HtmlConstructionErrorKind::ParentChildConflict.into());
+        return Err(HtmlConstructionCause::ParentChildConflict.into());
     }
     if record.shadow_properties.is_some() && !matches!(record.kind, HtmlNodeKind::Fragment) {
-        return Err(HtmlConstructionErrorKind::InvalidShadowAssociation.into());
+        return Err(HtmlConstructionCause::InvalidShadowAssociation.into());
     }
     if let Some(contents) = record.template_contents {
         if !matches!(record.kind, HtmlNodeKind::Element(_)) {
-            return Err(HtmlConstructionErrorKind::InvalidTemplateAssociation.into());
+            return Err(HtmlConstructionCause::InvalidTemplateAssociation.into());
         }
         let target = arena
             .records
             .get(contents.position())
-            .ok_or(HtmlConstructionErrorKind::UnknownNode)?;
+            .ok_or(HtmlConstructionCause::UnknownNode)?;
         if !matches!(target.kind, HtmlNodeKind::Fragment) || target.parent.is_some() {
-            return Err(HtmlConstructionErrorKind::InvalidTemplateAssociation.into());
+            return Err(HtmlConstructionCause::InvalidTemplateAssociation.into());
         }
         match contents {
             TemplateContents::Owned(_) => {
                 if target.shadow_properties.is_some()
                     || !matches!(&target.owner,Some(HtmlFragmentOwner::Template(owner)) if owner.index==index && Arc::ptr_eq(&owner.identity,&arena.identity))
                 {
-                    return Err(HtmlConstructionErrorKind::InvalidTemplateAssociation.into());
+                    return Err(HtmlConstructionCause::InvalidTemplateAssociation.into());
                 }
             }
             TemplateContents::ShadowReference(_) => {
                 if target.shadow_properties.is_none() {
-                    return Err(HtmlConstructionErrorKind::InvalidContentsReference.into());
+                    return Err(HtmlConstructionCause::InvalidContentsReference.into());
                 }
             }
         }
@@ -2535,46 +2529,46 @@ fn validate_record(arena: &Arena, index: usize) -> Result<(), HtmlConstructionEr
             || !Arc::ptr_eq(&shadow.host.identity, &arena.identity)
             || !Arc::ptr_eq(&shadow.contents.identity, &arena.identity)
         {
-            return Err(HtmlConstructionErrorKind::InvalidShadowAssociation.into());
+            return Err(HtmlConstructionCause::InvalidShadowAssociation.into());
         }
         let target = arena
             .records
             .get(shadow.contents.index)
-            .ok_or(HtmlConstructionErrorKind::UnknownNode)?;
+            .ok_or(HtmlConstructionCause::UnknownNode)?;
         if target.shadow_properties.is_none()
             || target.parent.is_some()
             || !matches!(&target.owner,Some(HtmlFragmentOwner::ShadowHost(owner)) if owner==&shadow.host)
         {
-            return Err(HtmlConstructionErrorKind::InvalidShadowAssociation.into());
+            return Err(HtmlConstructionCause::InvalidShadowAssociation.into());
         }
     }
     if let Some(owner) = &record.owner {
         if !matches!(record.kind, HtmlNodeKind::Fragment) || record.parent.is_some() {
-            return Err(HtmlConstructionErrorKind::AssociationAlreadyOwned.into());
+            return Err(HtmlConstructionCause::AssociationAlreadyOwned.into());
         }
         let id = match owner {
             HtmlFragmentOwner::Template(id) | HtmlFragmentOwner::ShadowHost(id) => id,
         };
         if !Arc::ptr_eq(&id.identity, &arena.identity) {
-            return Err(HtmlConstructionErrorKind::ForeignBuilder.into());
+            return Err(HtmlConstructionCause::ForeignBuilder.into());
         }
         let target = arena
             .records
             .get(id.index)
-            .ok_or(HtmlConstructionErrorKind::UnknownNode)?;
+            .ok_or(HtmlConstructionCause::UnknownNode)?;
         match owner {
             HtmlFragmentOwner::Template(_) => {
                 if target.template_contents != Some(TemplateContents::Owned(index))
                     || record.shadow_properties.is_some()
                 {
-                    return Err(HtmlConstructionErrorKind::InvalidTemplateAssociation.into());
+                    return Err(HtmlConstructionCause::InvalidTemplateAssociation.into());
                 }
             }
             HtmlFragmentOwner::ShadowHost(_) => {
                 if !matches!(&target.shadow,Some(shadow) if shadow.contents.index==index)
                     || record.shadow_properties.is_none()
                 {
-                    return Err(HtmlConstructionErrorKind::InvalidShadowAssociation.into());
+                    return Err(HtmlConstructionCause::InvalidShadowAssociation.into());
                 }
             }
         }
@@ -2888,7 +2882,7 @@ fn write_element(
             | Command::ReplaceAttributes { .. }
             | Command::SetLinkFlags { .. }),
             None,
-        ) => Err((command, HtmlConstructionErrorKind::WrongNodeKind.into())),
+        ) => Err((command, HtmlConstructionCause::WrongNodeKind.into())),
         (command, _) => Ok(Some(command)),
     }
 }
@@ -3211,7 +3205,7 @@ mod publish_membership_tests {
         storage.arena.records[0].children = VecDeque::from([1, 1, 2]);
         assert_eq!(
             publish(storage, root).1,
-            Err(HtmlConstructionErrorKind::ParentChildConflict.into())
+            Err(HtmlConstructionCause::ParentChildConflict.into())
         );
     }
 
@@ -3222,7 +3216,7 @@ mod publish_membership_tests {
         storage.arena.records[2].publish_found = 1;
         assert_eq!(
             publish(storage, root).1,
-            Err(HtmlConstructionErrorKind::ParentChildConflict.into())
+            Err(HtmlConstructionCause::ParentChildConflict.into())
         );
     }
 
@@ -3234,7 +3228,7 @@ mod publish_membership_tests {
         storage.arena.records[1].children = VecDeque::from([2]);
         assert_eq!(
             publish(storage, root).1,
-            Err(HtmlConstructionErrorKind::ParentChildConflict.into())
+            Err(HtmlConstructionCause::ParentChildConflict.into())
         );
     }
 }
@@ -3410,11 +3404,11 @@ mod order_commit_guard_tests {
             let failure = action.perform().expect_err("guarded commit");
             assert_eq!(
                 failure.reason(),
-                &HtmlConstructionErrorKind::CapacityMismatch.error()
+                &HtmlConstructionCause::CapacityMismatch.error()
             );
             assert_eq!(
                 operation.next_action().err(),
-                Some(HtmlConstructionErrorKind::CapacityMismatch.error())
+                Some(HtmlConstructionCause::CapacityMismatch.error())
             );
             let storage = operation.abort().unwrap().storage;
             assert_eq!(storage.arena.records[0].children, children);
@@ -3435,7 +3429,7 @@ mod order_commit_guard_tests {
             };
             assert_eq!(
                 refusal.reason(),
-                &HtmlConstructionErrorKind::CapacityMismatch.error()
+                &HtmlConstructionCause::CapacityMismatch.error()
             );
             let storage = refusal.into_parts().0.abort().unwrap().storage;
             assert_eq!(storage.arena.records[0].children, children);
@@ -3463,7 +3457,7 @@ mod order_commit_guard_tests {
             let failure = action.perform().expect_err("guarded commit");
             assert_eq!(
                 failure.reason(),
-                &HtmlConstructionErrorKind::ParentChildConflict.error()
+                &HtmlConstructionCause::ParentChildConflict.error()
             );
             let storage = operation.abort().unwrap().storage;
             assert_eq!(storage.arena.records[0].children, children);
@@ -3487,7 +3481,7 @@ mod order_commit_guard_tests {
             };
             assert_eq!(
                 refusal.reason(),
-                &HtmlConstructionErrorKind::ParentChildConflict.error()
+                &HtmlConstructionCause::ParentChildConflict.error()
             );
             let storage = refusal.into_parts().0.abort().unwrap().storage;
             assert_eq!(storage.arena.records[0].children, children);
@@ -3555,7 +3549,10 @@ mod pairing_tests {
         assert!(matches!(operation.phase, Phase::Ready));
         operation.plan.staged = Staged::Nothing;
         let refusal = operation.try_ready().unwrap_err();
-        assert!(refusal.reason().is_operation_not_ready());
+        assert!(matches!(
+            refusal.reason().cause(),
+            HtmlConstructionCause::OperationNotReady
+        ));
         assert!(matches!(refusal.owner().plan.staged, Staged::Nothing));
         // The refusal handed the operation back intact: restoring what the creation staged
         // lets the same operation commit.
@@ -3603,7 +3600,10 @@ mod native_finish_tests {
             panic!("finish panicked on a refused publication");
         };
         let error = result.expect_err("a tree with a lost parent link is refused");
-        assert!(error.is_parent_child_conflict(), "{error}");
+        assert!(
+            matches!(error.cause(), HtmlConstructionCause::ParentChildConflict),
+            "{error}"
+        );
     }
 }
 
@@ -3700,7 +3700,13 @@ mod unreachable_state_tests {
             let Err(refusal) = ready.commit() else {
                 panic!("{local}: a write through an element whose target is a comment is refused");
             };
-            assert!(refusal.reason().is_wrong_node_kind(), "{local}");
+            assert!(
+                matches!(
+                    refusal.reason().cause(),
+                    HtmlConstructionCause::WrongNodeKind
+                ),
+                "{local}"
+            );
             let (ready, _) = refusal.into_parts();
             let (storage, _, _) = ready.abort().unwrap().into_parts();
             assert!(
@@ -3732,7 +3738,10 @@ mod unreachable_state_tests {
         let Err(refusal) = ready.abort() else {
             panic!("a publication another owner holds cannot be reclaimed");
         };
-        assert!(refusal.reason().is_shared_allocation_aliased());
+        assert!(matches!(
+            refusal.reason().cause(),
+            HtmlConstructionCause::SharedAllocationAliased
+        ));
         drop(alias);
         let (ready, _) = refusal.into_parts();
         let (storage, command, retired) = ready.abort().unwrap().into_parts();

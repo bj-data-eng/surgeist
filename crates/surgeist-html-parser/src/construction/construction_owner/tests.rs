@@ -5,7 +5,7 @@ use surgeist_html::{
         HtmlConstructionActionDescription, HtmlConstructionAttributeEditMode,
         HtmlConstructionCommand,
     },
-    construction::{HtmlBuilderNode, HtmlElement, HtmlNodeKind},
+    construction::{HtmlBuilderNode, HtmlConstructionResource, HtmlElement, HtmlNodeKind},
     values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 #[test]
@@ -625,8 +625,54 @@ fn putting_an_attribute_edit_back_into_an_occupied_slot_reports_the_registry_row
     drained(owner, &mut control);
 }
 
-/// Every fault the session names for HTML's construction owner, with the error
-/// it reports and whether that error latches a stop.
+/// The cause values of HTML's construction owner's error, one per variant. A cause added to
+/// the owner's enum does not compile in [`disposition`] until it has a row there, and a row
+/// here is what this test file then pins.
+fn every_cause() -> [HtmlConstructionCause; 30] {
+    use HtmlConstructionCause as C;
+    [
+        C::ForeignBuilder,
+        C::ParentCannotHaveChildren,
+        C::TemplateContentsRequired,
+        C::ShadowHostMustBeElement,
+        C::ShadowAlreadyAttached,
+        C::UnknownNode,
+        C::WrongNodeKind,
+        C::RootMove,
+        C::AssociationMove,
+        C::WrongSibling,
+        C::Cycle,
+        C::AssociationAlreadyOwned,
+        C::InvalidTemplateAssociation,
+        C::DuplicateAttribute {
+            first: 0,
+            duplicate: 1,
+        },
+        C::AttributeNameMismatch,
+        C::AttributeOrderMismatch,
+        C::InvalidShadowAssociation,
+        C::InvalidContentsReference,
+        C::ParentChildConflict,
+        C::InvalidOutputRoot,
+        C::OperationNotReady,
+        C::ForeignAllocation,
+        C::CapacityMismatch,
+        C::IndexUnavailable,
+        C::SharedAllocationAliased,
+        C::ReleaseUnderflow,
+        C::LimitExceeded {
+            resource: HtmlConstructionResource::Nodes,
+            limit: 1,
+            attempted: 2,
+        },
+        C::RepresentationExhausted,
+        C::AllocationFailed,
+        C::Accounting(HtmlAccountingFault::ForeignScope),
+    ]
+}
+
+/// Every cause of HTML's construction owner's error, with the error the parser reports for it
+/// and whether that error latches a stop.
 ///
 /// - Handle, placement and cycle refusals are document-shaped errors the
 ///   callers classify themselves and latch nothing.
@@ -635,11 +681,12 @@ fn putting_an_attribute_edit_back_into_an_occupied_slot_reports_the_registry_row
 /// - A ticket, layout or release that disagrees with what was charged is the
 ///   charged-accounting fault, and an allocation that failed is a reached
 ///   environment stop, not an invariant.
+/// - A failure of the ledger scope stops with its accounting fault.
 /// - Every other refusal is the owner declining a request that the parser's
 ///   sequencing guarantees valid.
 #[test]
-fn every_owner_fault_reports_what_it_violates() {
-    use OwnerFault as F;
+fn every_owner_cause_reports_what_it_violates() {
+    use HtmlConstructionCause as C;
     let invariant = |invariant| SessionError::Stop(HtmlParseStop::InternalInvariant(invariant));
     let mismatch = invariant(HtmlParseInvariant::CapacityMismatch);
     let refusal = invariant(HtmlParseInvariant::ConstructionOwnerRefusal);
@@ -650,207 +697,148 @@ fn every_owner_fault_reports_what_it_violates() {
     let exhausted = SessionError::Stop(HtmlParseStop::RepresentationExhausted {
         resource: HtmlParseResource::ManagedCapacityBytes,
     });
-    for (fault, expected, latched) in [
-        (F::ForeignBuilder, SessionError::ForeignNode, false),
-        (F::UnknownNode, SessionError::ForeignNode, false),
-        (F::RootMove, SessionError::RootMove, false),
-        (F::AssociationMove, SessionError::AssociationMove, false),
+    let limit = C::LimitExceeded {
+        resource: HtmlConstructionResource::Nodes,
+        limit: 1,
+        attempted: 2,
+    };
+    let duplicate = C::DuplicateAttribute {
+        first: 0,
+        duplicate: 1,
+    };
+    let scope_fault = HtmlAccountingFault::ForeignScope;
+    let rows = [
+        (C::ForeignBuilder, SessionError::ForeignNode, false),
+        (C::UnknownNode, SessionError::ForeignNode, false),
+        (C::RootMove, SessionError::RootMove, false),
+        (C::AssociationMove, SessionError::AssociationMove, false),
         (
-            F::ParentCannotHaveChildren,
+            C::ParentCannotHaveChildren,
             SessionError::NotContainer,
             false,
         ),
         (
-            F::TemplateContentsRequired,
+            C::TemplateContentsRequired,
             SessionError::TemplateContentsRequired,
             false,
         ),
-        (F::WrongSibling, SessionError::WrongSibling, false),
-        (F::ParentChildConflict, SessionError::WrongSibling, false),
-        (F::Cycle, SessionError::Cycle, false),
+        (C::WrongSibling, SessionError::WrongSibling, false),
+        (C::ParentChildConflict, SessionError::WrongSibling, false),
+        (C::Cycle, SessionError::Cycle, false),
         (
-            F::SharedAllocationAliased,
+            C::SharedAllocationAliased,
             invariant(HtmlParseInvariant::SharedAllocationAliased),
             true,
         ),
-        (F::RepresentationExhausted, exhausted, true),
-        (F::CapacityMismatch, mismatch, true),
-        (F::IndexUnavailable, refusal, true),
-        (F::ForeignAllocation, mismatch, true),
-        (F::LimitExceeded, mismatch, true),
+        (C::RepresentationExhausted, exhausted, true),
+        (C::CapacityMismatch, mismatch, true),
+        (C::IndexUnavailable, refusal, true),
+        (C::ForeignAllocation, mismatch, true),
+        (limit, mismatch, true),
         (
-            F::ReleaseUnderflow,
+            C::ReleaseUnderflow,
             invariant(HtmlParseInvariant::ReleaseUnderflow),
             true,
         ),
-        (F::AllocationFailed, allocation_failed, true),
-        (F::ShadowHostMustBeElement, refusal, true),
-        (F::ShadowAlreadyAttached, refusal, true),
-        (F::WrongNodeKind, refusal, true),
-        (F::AssociationAlreadyOwned, refusal, true),
-        (F::InvalidTemplateAssociation, refusal, true),
-        (F::DuplicateAttribute, refusal, true),
-        (F::AttributeNameMismatch, refusal, true),
-        (F::AttributeOrderMismatch, refusal, true),
-        (F::InvalidShadowAssociation, refusal, true),
-        (F::InvalidContentsReference, refusal, true),
-        (F::InvalidOutputRoot, refusal, true),
-        (F::OperationNotReady, refusal, true),
-        (F::Unlisted, refusal, true),
-    ] {
+        (C::AllocationFailed, allocation_failed, true),
+        (
+            C::Accounting(scope_fault),
+            SessionError::Stop(HtmlParseStop::Accounting(scope_fault)),
+            true,
+        ),
+        (C::ShadowHostMustBeElement, refusal, true),
+        (C::ShadowAlreadyAttached, refusal, true),
+        (C::WrongNodeKind, refusal, true),
+        (C::AssociationAlreadyOwned, refusal, true),
+        (C::InvalidTemplateAssociation, refusal, true),
+        (duplicate, refusal, true),
+        (C::AttributeNameMismatch, refusal, true),
+        (C::AttributeOrderMismatch, refusal, true),
+        (C::InvalidShadowAssociation, refusal, true),
+        (C::InvalidContentsReference, refusal, true),
+        (C::InvalidOutputRoot, refusal, true),
+        (C::OperationNotReady, refusal, true),
+    ];
+    assert_eq!(rows.len(), every_cause().len());
+    for cause in every_cause() {
+        assert_eq!(
+            rows.iter().filter(|(row, _, _)| *row == cause).count(),
+            1,
+            "{cause:?} has one row"
+        );
+    }
+    for (cause, expected, latched) in rows {
         let mut c = crate::construction::tests::control();
-        assert_eq!(report(&mut c, disposition(fault)), expected, "{fault:?}");
+        assert_eq!(report(&mut c, disposition(cause)), expected, "{cause:?}");
         let stop = match expected {
             SessionError::Stop(stop) => Some(stop),
             _ => None,
         };
-        assert_eq!(c.stop(), stop.filter(|_| latched), "{fault:?}");
+        assert_eq!(c.stop(), stop.filter(|_| latched), "{cause:?}");
+    }
+}
+
+/// A failure of the ledger scope that the owner reports stops the parse with that accounting
+/// fault, as every other ledger fault of the parser does. The parser's bounded storage cannot
+/// produce this cause, so the test reports a constructed one.
+#[test]
+fn an_owner_accounting_cause_stops_with_its_accounting_fault() {
+    for fault in [
+        HtmlAccountingFault::ForeignScope,
+        HtmlAccountingFault::Allocation,
+        HtmlAccountingFault::ReleaseUnderflow,
+        HtmlAccountingFault::ScopeLimit { limit: 2 },
+    ] {
+        let mut c = crate::construction::tests::control();
+        let reported = report(
+            &mut c,
+            disposition(HtmlConstructionCause::Accounting(fault)),
+        );
+        assert_eq!(
+            reported,
+            SessionError::Stop(HtmlParseStop::Accounting(fault))
+        );
+        assert_eq!(c.stop(), Some(HtmlParseStop::Accounting(fault)));
     }
 }
 
 /// The construction path has no classification of its own: a document-shaped
-/// fault is a session error that `session_class` classifies as a fault of the
+/// cause is a session error that `session_class` classifies as a fault of the
 /// parser, an accounting fault is the class a stage error would carry, and the
 /// error returned for a latched stop is the outcome `session_class` assigns to
-/// that stop. The unnamed cause is a parser fault, never a document outcome.
+/// that stop.
 #[test]
 fn owner_dispositions_agree_with_the_session_classification() {
-    let faults = OWNER_CAUSES
-        .iter()
-        .map(|(_, fault)| *fault)
-        .chain([OwnerFault::Unlisted]);
-    for fault in faults {
+    for cause in every_cause() {
         let mut c = crate::construction::tests::control();
-        let reported = report(&mut c, disposition(fault));
-        match disposition(fault) {
+        let reported = report(&mut c, disposition(cause));
+        match disposition(cause) {
             Disposition::Session(error) => {
-                assert_eq!(reported, error, "{fault:?}");
+                assert_eq!(reported, error, "{cause:?}");
                 assert!(
                     matches!(session_class(&error), SessionClass::Fault(_)),
-                    "{fault:?}"
+                    "{cause:?}"
                 );
-                assert_eq!(c.stop(), None, "{fault:?}");
+                assert_eq!(c.stop(), None, "{cause:?}");
             }
             Disposition::Class(class) => {
-                assert!(matches!(class, SessionClass::Fault(_)), "{fault:?}");
+                assert!(matches!(class, SessionClass::Fault(_)), "{cause:?}");
                 let SessionError::Stop(stop) = reported else {
-                    panic!("{fault:?} did not latch a stop");
+                    panic!("{cause:?} did not latch a stop");
                 };
                 assert_eq!(session_class(&reported), SessionClass::Outcome(stop));
-                assert_eq!(c.stop(), Some(stop), "{fault:?}");
+                assert_eq!(c.stop(), Some(stop), "{cause:?}");
             }
-            Disposition::Representation | Disposition::AllocationFailed => {
+            Disposition::Representation
+            | Disposition::AllocationFailed
+            | Disposition::Accounting(_) => {
                 let SessionError::Stop(stop) = reported else {
-                    panic!("{fault:?} did not latch a stop");
+                    panic!("{cause:?} did not latch a stop");
                 };
                 assert_eq!(session_class(&reported), SessionClass::Outcome(stop));
-                assert_eq!(c.stop(), Some(stop), "{fault:?}");
+                assert_eq!(c.stop(), Some(stop), "{cause:?}");
             }
         }
-    }
-    assert_eq!(
-        disposition(OwnerFault::Unlisted),
-        Disposition::Class(SessionClass::Fault(
-            HtmlParseInvariant::ConstructionOwnerRefusal
-        ))
-    );
-}
-
-/// The cause table lists each fault once, so no two causes share a report by
-/// accident and the unlisted fault is reachable only for an unnamed cause.
-#[test]
-fn owner_cause_table_names_each_fault_once() {
-    for (index, (_, fault)) in OWNER_CAUSES.iter().enumerate() {
-        assert_ne!(*fault, OwnerFault::Unlisted);
-        assert!(
-            OWNER_CAUSES[index + 1..]
-                .iter()
-                .all(|(_, other)| other != fault),
-            "{fault:?} is named twice"
-        );
-    }
-}
-
-/// Errors that a builder provokes, each with the fault it must classify as and
-/// the check that exactly one of the owner's predicates recognizes it.
-#[test]
-fn provoked_owner_errors_classify_as_exactly_one_fault() {
-    use surgeist_html::{
-        construction::{
-            HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode, HtmlFragment,
-            HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
-        },
-        values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
-    };
-    let name = |local: &str| QualifiedName::new(Namespace::html(), None, local);
-    let limits = HtmlConstructionLimits::new(100, 100, 100, 100_000, 100);
-    let properties = HtmlShadowRootProperties::new(
-        HtmlShadowRootMode::Open,
-        HtmlSlotAssignment::Named,
-        false,
-        false,
-        false,
-    );
-    let mut provoked = Vec::new();
-
-    let mut other = HtmlFragment::builder(limits).unwrap();
-    let mut builder = HtmlFragment::builder(limits).unwrap();
-    let foreign_root = other.root();
-    provoked.push((
-        OwnerFault::ForeignBuilder,
-        builder.append_text(&foreign_root, "x").unwrap_err(),
-    ));
-    let _ = &mut other;
-
-    let mut builder = HtmlDocument::builder(limits, HtmlDocumentMode::NoQuirks).unwrap();
-    let root = builder.root();
-    let leaf = builder.append_comment(&root, "").unwrap();
-    provoked.push((
-        OwnerFault::ParentCannotHaveChildren,
-        builder.append_text(&leaf, "x").unwrap_err(),
-    ));
-    provoked.push((
-        OwnerFault::ShadowHostMustBeElement,
-        builder
-            .attach_declarative_shadow(&leaf, properties)
-            .unwrap_err(),
-    ));
-    let template = builder
-        .append_element(&root, name("template"), OrderedAttributes::default())
-        .unwrap();
-    provoked.push((
-        OwnerFault::TemplateContentsRequired,
-        builder.append_text(&template, "x").unwrap_err(),
-    ));
-    let host = builder
-        .append_element(&root, name("div"), OrderedAttributes::default())
-        .unwrap();
-    builder
-        .attach_declarative_shadow(&host, properties)
-        .unwrap();
-    provoked.push((
-        OwnerFault::ShadowAlreadyAttached,
-        builder
-            .attach_declarative_shadow(&host, properties)
-            .unwrap_err(),
-    ));
-
-    let mut small = HtmlFragment::builder(HtmlConstructionLimits::new(3, 2, 0, 2, 2)).unwrap();
-    let small_root = small.root();
-    provoked.push((
-        OwnerFault::LimitExceeded,
-        small
-            .append_text(&small_root, DocumentString::from("too long"))
-            .unwrap_err(),
-    ));
-
-    for (fault, error) in provoked {
-        let matching = OWNER_CAUSES
-            .iter()
-            .filter(|(recognizes, _)| recognizes(&error))
-            .count();
-        assert_eq!(matching, 1, "{fault:?}: {error}");
-        assert_eq!(classify(&error), fault, "{error}");
     }
 }
 

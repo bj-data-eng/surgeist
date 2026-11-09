@@ -18,8 +18,8 @@ use surgeist_html::{
     },
     bounded::construction::HtmlConstructionResult,
     construction::{
-        HtmlConstructionLimits, HtmlConstructionResource, HtmlDocument, HtmlDocumentMode,
-        HtmlNodeId, HtmlNodeKind,
+        HtmlConstructionCause, HtmlConstructionLimits, HtmlConstructionResource, HtmlDocument,
+        HtmlDocumentMode, HtmlNodeId, HtmlNodeKind,
     },
     values::{
         Attribute, DocumentString, HtmlValueInterpreter, Namespace, OrderedAttributes,
@@ -558,13 +558,12 @@ fn a_host_node_cap_counts_the_parse_before_it_and_stops_the_construction() {
     let _parse = parse(&host).unwrap();
     let error = construct(&host).unwrap_err();
     assert_eq!(
-        error.exceeded_resource(),
-        Some(HtmlConstructionResource::Nodes)
-    );
-    assert_eq!(error.limit(), Some(usize::try_from(cap).unwrap()));
-    assert_eq!(
-        error.attempted(),
-        Some(usize::try_from(base.parse_nodes + base.construction_nodes).unwrap())
+        error.cause(),
+        HtmlConstructionCause::LimitExceeded {
+            resource: HtmlConstructionResource::Nodes,
+            limit: usize::try_from(cap).unwrap(),
+            attempted: usize::try_from(base.parse_nodes + base.construction_nodes).unwrap(),
+        }
     );
 }
 

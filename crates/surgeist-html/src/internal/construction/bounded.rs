@@ -266,7 +266,7 @@ impl HtmlConstructionAllocationSnapshot {
     ) -> Result<Self, HtmlConstructionError> {
         let payload_bytes = capacity
             .checked_mul(size_of::<T>())
-            .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
+            .ok_or(HtmlConstructionCause::RepresentationExhausted)?;
         Ok(Self {
             id: HtmlConstructionAllocationId {
                 identity: Arc::downgrade(identity),
@@ -347,10 +347,10 @@ impl HtmlConstructionResult {
     /// error for an ordinal past the retained records.
     pub fn position(&self, handle: &HtmlBuilderNode) -> Result<usize, HtmlConstructionError> {
         if handle.identity.as_ptr() != Arc::as_ptr(&self.arena().identity) {
-            return Err(HtmlConstructionErrorKind::ForeignBuilder.into());
+            return Err(HtmlConstructionCause::ForeignBuilder.into());
         }
         if handle.index >= self.arena().records.len() {
-            return Err(HtmlConstructionErrorKind::UnknownNode.into());
+            return Err(HtmlConstructionCause::UnknownNode.into());
         }
         Ok(handle.index)
     }
@@ -421,36 +421,36 @@ impl<'a> HtmlConstructionNode<'a> {
     /// Checks only this retained record's generic container invariant.
     pub fn check_container(self) -> Result<(), HtmlConstructionError> {
         if self.arena.records[self.index].template_contents.is_some() {
-            return Err(HtmlConstructionErrorKind::TemplateContentsRequired.into());
+            return Err(HtmlConstructionCause::TemplateContentsRequired.into());
         }
         if !matches!(
             self.kind(),
             HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment | HtmlNodeKind::Element(_)
         ) {
-            return Err(HtmlConstructionErrorKind::ParentCannotHaveChildren.into());
+            return Err(HtmlConstructionCause::ParentCannotHaveChildren.into());
         }
         Ok(())
     }
     /// Checks the fixed movable-node invariant, without scanning ancestry or order.
     pub fn check_detachment(self) -> Result<(), HtmlConstructionError> {
         if matches!(self.kind(), HtmlNodeKind::Document(_)) {
-            return Err(HtmlConstructionErrorKind::RootMove.into());
+            return Err(HtmlConstructionCause::RootMove.into());
         }
         if self.fragment_owner().is_some() {
-            return Err(HtmlConstructionErrorKind::AssociationMove.into());
+            return Err(HtmlConstructionCause::AssociationMove.into());
         }
         if matches!(self.kind(), HtmlNodeKind::Fragment) {
-            return Err(HtmlConstructionErrorKind::RootMove.into());
+            return Err(HtmlConstructionCause::RootMove.into());
         }
         Ok(())
     }
     /// Qualifies an actual retained reference child against the supplied parent.
     pub fn check_reference_child_of(self, parent: Self) -> Result<(), HtmlConstructionError> {
         if !std::ptr::eq(self.arena, parent.arena) {
-            return Err(HtmlConstructionErrorKind::ForeignBuilder.into());
+            return Err(HtmlConstructionCause::ForeignBuilder.into());
         }
         if self.arena.records[self.index].parent != Some(parent.index) {
-            return Err(HtmlConstructionErrorKind::WrongSibling.into());
+            return Err(HtmlConstructionCause::WrongSibling.into());
         }
         Ok(())
     }
@@ -599,10 +599,10 @@ impl HtmlConstructionStorage {
     /// Resolves a builder handle to its record ordinal. Errors as `node` does.
     pub fn position(&self, handle: &HtmlBuilderNode) -> Result<usize, HtmlConstructionError> {
         if handle.identity.as_ptr() != Arc::as_ptr(&self.arena.identity) {
-            return Err(HtmlConstructionErrorKind::ForeignBuilder.into());
+            return Err(HtmlConstructionCause::ForeignBuilder.into());
         }
         if handle.index >= self.arena.records.len() {
-            return Err(HtmlConstructionErrorKind::UnknownNode.into());
+            return Err(HtmlConstructionCause::UnknownNode.into());
         }
         Ok(handle.index)
     }
@@ -723,7 +723,7 @@ impl HtmlConstructionInitialization {
             Some(CreatedIdentity { accepted: true, .. }) => Ok(None),
             Some(CreatedIdentity {
                 accepted: false, ..
-            }) => Err(HtmlConstructionErrorKind::OperationNotReady.into()),
+            }) => Err(HtmlConstructionCause::OperationNotReady.into()),
         }
     }
     /// Consumes a ready initialization. Returns the not-ready error, with the initialization
@@ -738,7 +738,7 @@ impl HtmlConstructionInitialization {
             }) => Ok(HtmlConstructionReadyInitialization { identity }),
             created => Err(HtmlConstructionRefusal::new(
                 Self { created },
-                HtmlConstructionErrorKind::OperationNotReady,
+                HtmlConstructionCause::OperationNotReady,
             )),
         }
     }
@@ -910,7 +910,7 @@ impl HtmlConstructionLease {
         if lease.arena.as_ptr() != Arc::as_ptr(result.arena()) {
             return Err(HtmlConstructionRefusal::new(
                 (result, lease),
-                HtmlConstructionErrorKind::ForeignAllocation,
+                HtmlConstructionCause::ForeignAllocation,
             ));
         }
         match result.try_unwrap_arena() {
@@ -922,7 +922,7 @@ impl HtmlConstructionLease {
             }),
             Err(result) => Err(HtmlConstructionRefusal::new(
                 (result, lease),
-                HtmlConstructionErrorKind::SharedAllocationAliased,
+                HtmlConstructionCause::SharedAllocationAliased,
             )),
         }
     }
