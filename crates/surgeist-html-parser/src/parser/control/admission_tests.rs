@@ -413,7 +413,7 @@ fn a_phase_the_ledger_cannot_observe_stops_the_parse_with_the_fault() {
         request.lease(),
     );
     assert_eq!(c.stop(), None);
-    // The phase scopes now name a scope of another operation.
+    // The phase scopes name a scope of another operation.
     c.accounts
         .as_mut()
         .unwrap()

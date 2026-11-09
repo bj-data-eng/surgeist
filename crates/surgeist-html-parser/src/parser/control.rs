@@ -652,7 +652,7 @@ impl ParseControl {
         hook.prepared = hook.prepared.saturating_add(1);
         PREPARED_SLOT_STOP.set(hook);
     }
-    /// The usage the ledger holds now. A ledger that cannot be read has found a
+    /// The usage the ledger holds. A ledger that cannot be read has found a
     /// defect of its own, which the next admission reports as the stop; the
     /// usage then reads as empty.
     pub(crate) fn usage(&self) -> HtmlParseUsage {
@@ -1254,7 +1254,7 @@ impl ParseControl {
     /// Gives back the slot of a diagnostic [`Self::try_retain_diagnostic`]
     /// acquired and a later failure kept from being retained.
     pub(crate) fn release_unretained_diagnostic(&mut self) {
-        // A slot just acquired is held, so the release is not refused; a
+        // A slot acquired by the caller is held, so the release is not refused; a
         // ledger fault is latched as the stop.
         let _ = self.release_storage(HtmlParseResource::Diagnostics, 1);
     }
@@ -2032,16 +2032,15 @@ impl ParseControl {
             Site::RELEASE,
         )
     }
-    /// Records the capacity an allocation actually holds in place of the `old`
-    /// bytes it was charged. The allocation exists whatever its size, so the
-    /// record is not refused for exceeding the planned `expected` layout: an
-    /// overshoot is recorded and the caller stops. The result is the bytes the
-    /// ledger now holds for the allocation. When the ledger cannot hold an
-    /// overshoot under the cap the stop names the overshoot and the ledger keeps
-    /// the `old` bytes: the caller records the physical capacity in its ticket
-    /// and keeps `old` as the admitted bytes, so that cleanup credits exactly
-    /// what the ledger holds. The first-stop usage then shows that custody
-    /// without the refused overshoot.
+    /// Records the capacity an allocation holds in place of the `old` bytes it
+    /// was charged. The allocation exists whatever its size, so the record is
+    /// not refused for exceeding the planned `expected` layout: an overshoot is
+    /// recorded and the caller stops. The result is the bytes the ledger holds
+    /// for the allocation. When the ledger cannot hold an overshoot under the
+    /// cap the stop names the overshoot and the ledger keeps the `old` bytes:
+    /// the caller records the physical capacity in its ticket and keeps `old` as
+    /// the admitted bytes, so that cleanup credits what the ledger holds. The
+    /// first-stop usage shows that custody without the refused overshoot.
     pub(super) fn record_capacity(
         &mut self,
         old: u64,

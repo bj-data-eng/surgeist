@@ -1112,7 +1112,7 @@ mod tests {
                 PreparedReportStorage::prepare(&mut sealed.parts.arena, c, None, true).unwrap();
             // The same original controller has completed all strict alias/history
             // qualification. Deny new finalization custody, without re-forming it.
-            // The cap is the custody held now, so any further capacity is denied.
+            // The cap is the custody held, so any further capacity is denied.
             let held = c
                 .usage()
                 .resource(HtmlParseResource::ManagedCapacityBytes)

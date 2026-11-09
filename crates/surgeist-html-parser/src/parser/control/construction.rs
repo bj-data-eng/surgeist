@@ -203,7 +203,7 @@ impl ParseControl {
     /// Records actual provider ownership *before* the post-call checkpoint. The
     /// ticket describes the bank the provider holds, and carries the bytes the
     /// ledger admitted for it: a record the ledger refuses leaves those bytes as
-    /// they were, and retirement credits exactly them.
+    /// they were, and retirement credits them.
     pub(crate) fn observe_construction_allocation(
         &mut self,
         snapshot: &Snapshot,

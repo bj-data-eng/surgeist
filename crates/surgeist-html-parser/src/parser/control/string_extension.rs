@@ -3,7 +3,7 @@ use super::*;
 use surgeist_html::values::DocumentString;
 
 /// A refused extension. The string is handed back with its ticket still
-/// describing it exactly: spare capacity the refusal had already reserved
+/// describing it: spare capacity the refusal had already reserved
 /// stays reserved and recorded, and no unit was appended.
 pub(crate) struct StringExtensionRefused {
     pub(crate) stop: HtmlParseStop,

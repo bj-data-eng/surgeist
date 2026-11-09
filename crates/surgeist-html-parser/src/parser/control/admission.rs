@@ -175,10 +175,10 @@ impl ParseControl {
             }
             RefusalReason::Limit { limit } if !owned => {
                 // A scope above the parse's own refused. The refused batch
-                // changed nothing there either, so its value now is its value
-                // before the batch, and the figures are in its own units: the
-                // rate its tariffs apply to the refused item is the rate of the
-                // whole batch.
+                // changed nothing there either, so its value is its value before
+                // the batch, and the figures are in its own units: the rate its
+                // tariffs apply to the refused item is the rate of the whole
+                // batch.
                 let current = self
                     .accounts
                     .as_ref()
@@ -214,8 +214,8 @@ impl ParseControl {
                 })
             }
             RefusalReason::Limit { limit } => {
-                // The refused batch changed nothing, so the live value now is
-                // the value before the batch.
+                // The refused batch changed nothing, so the live value is the
+                // value before the batch.
                 let current = match self.live(resource) {
                     Ok(current) => current,
                     Err(stop) => return stop,

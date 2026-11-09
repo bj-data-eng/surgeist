@@ -341,7 +341,7 @@ impl Drop for Lease {
             }
         }
         if let Some(batch) = changes.get(..count) {
-            // The batch releases exactly the live balances read above, and the
+            // The batch releases the live balances read above, and the
             // only writer of the charging scope is the parse that has ended. A
             // refusal leaves the ledger unchanged; a defect is latched there.
             let _ = ledger.apply_batch(charging, batch);
@@ -414,6 +414,13 @@ enum AccountingSource {
 impl HtmlParseAccounting {
     /// Charges in `scope` of `ledger`, an operation of the HTML schema pair that
     /// the host owns.
+    ///
+    /// The tariffs between `scope` and the scopes above it must map each parse
+    /// resource to a parse resource. The schema does not promise a retargeting
+    /// to another dimension. A cap of a scope above such a tariff that refuses a
+    /// parse charge stops the parse with `HtmlParseStop::InternalInvariant`
+    /// (`HtmlParseInvariant::LedgerState`), because the refusal names a
+    /// dimension the parse does not report.
     pub fn host(ledger: SharedOperation<HtmlWork, HtmlResource>, scope: Scope) -> Self {
         Self {
             source: AccountingSource::Host { ledger, scope },
@@ -433,7 +440,7 @@ impl HtmlParseAccounting {
     /// Also creates the four phase scopes and observes each parse phase as a
     /// ledger phase. For a host operation the host's profile reports them. For a
     /// profiled operation the report's or failure's `profile()` does; without
-    /// this the profile reports the two parse scopes only.
+    /// this the profile reports `html-parse-host` and the two parse scopes.
     #[must_use]
     pub fn observing_phases(mut self) -> Self {
         self.phases = true;
