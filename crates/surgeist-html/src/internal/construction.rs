@@ -1225,6 +1225,11 @@ enum NativeRoot {
 /// bank, never above `ceiling`, the most entries the limits admit, and never below what the action
 /// needs. The target depends on the bank and the limits only, and the reservation takes exactly
 /// it. `None` for an action that reserves no such bank.
+///
+/// Unlike [`crate::internal::amortized::amortized_capacity`], whose result never depends on a
+/// limit, this target is capped at a limit. The native builder admits nothing beyond its node and
+/// edge limits and has no capacity-bytes limit, so a capacity above the entries those limits admit
+/// is spare room that no append can use; capping it there is the admission of the allocation.
 fn amortized_target(
     action: &bounded::operations::HtmlConstructionAction<'_>,
     ceiling: usize,
@@ -1624,7 +1629,8 @@ impl Builder {
         .map(|_| ())
     }
     /// Makes room in the record bank for `additional` more records, with the amortized spare room
-    /// that the node limit allows. A refusal of the spare room is retried with the least capacity
+    /// that the node limit allows (capped at the limit for the reason given at
+    /// [`amortized_target`]). A refusal of the spare room is retried with the least capacity
     /// that suffices. A bank that already has the room is left as it is.
     fn reserve_records(&mut self, additional: usize) -> Result<(), HtmlConstructionError> {
         let storage = self.storage()?;

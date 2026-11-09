@@ -216,9 +216,12 @@ builder keeps its storage through every refused step of an append.
 A native append that finds the record bank or the parent's child order full grows it to the
 amortized capacity of the bank, from a minimum, so `n` appends change each capacity `O(log n)`
 times. The target never exceeds the node limit for records or the edge limit for a child order, and
-never falls below what the append needs. The record bank grows through a `ReserveRecords` command
-and the child order through `perform_with_capacity`. An allocator refusal of the spare room retries
-the least capacity that suffices, so an append fails only where growing by one slot fails.
+never falls below what the append needs. Unlike the amortized capacity of the bounded consumers,
+which never depends on a limit, the cap is the admission: the native builder has no
+capacity-bytes limit and admits nothing beyond its node and edge limits, so spare room above them
+could never be used. The record bank grows through a `ReserveRecords` command and the child order
+through `perform_with_capacity`. An allocator refusal of the spare room retries the least capacity
+that suffices, so an append fails only where growing by one slot fails.
 
 `HtmlConstructionStorage::prepare_finish(self, root: HtmlBuilderNode) ->
 HtmlConstructionOperation` is the `Publish` command's consuming convenience
