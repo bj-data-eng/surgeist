@@ -364,6 +364,170 @@ fn variation_report_counts_each_qualifier_axis_and_converted_coordinate() {
 }
 
 #[test]
+fn intermediate_region_preserves_literal_geometry_and_axis_work_across_profiles() {
+    use surgeist_render::{
+        RenderAccountingContext, RenderAccountingOptions, RenderPhase, RenderPhaseFilter,
+        RenderProfile, RenderWork,
+    };
+    let face = font(&variable_ahem_with_intermediate(0, 8192, 16384));
+    for (bits, width) in [
+        (0, 1000.0),
+        (4096, 1050.0),
+        (8192, 1100.0),
+        (12288, 1050.0),
+        (16384, 1000.0),
+    ] {
+        let mut previous = None;
+        for profile in [
+            RenderProfile::Off,
+            RenderProfile::Summary { timing: false },
+            RenderProfile::Detailed {
+                timing: true,
+                event_limit: 512,
+                filter: RenderPhaseFilter::All,
+            },
+        ] {
+            let mut context =
+                RenderAccountingContext::new(RenderAccountingOptions::new().with_profile(profile));
+            let selected = instance(
+                1000.0,
+                vec![NormalizedCoordinate::try_from_bits(bits).unwrap()],
+                0.0,
+            );
+            let prepared = face
+                .prepare_glyph_run(&selected, &[glyph()], limits(), &mut context)
+                .unwrap();
+            // The intermediate scalar is triangular about .5. Only X's two
+            // right-edge points move, by 100 times that scalar at UPEM 1000.
+            assert_eq!(
+                prepared.bounds().ink_rect(),
+                Some(Rect::try_new(-20.0, -770.0, width, 1000.0).unwrap())
+            );
+            let elements: Vec<_> = prepared.path_elements().collect();
+            assert_eq!(elements.len(), 5);
+            assert!(
+                matches!(elements[0], PathElement::MoveTo(p) if p.x() == -20.0 && p.y() == -770.0)
+            );
+            assert!(
+                matches!(elements[1], PathElement::LineTo(p) if p.x() == width - 20.0 && p.y() == -770.0)
+            );
+            assert_eq!(prepared.instance(), &selected);
+            assert_eq!(prepared.glyphs(), &[glyph()]);
+            let report = context.last_attempt().unwrap().attempt().unwrap();
+            // fvar axis 1 + converted coordinate 1 + peak/start/end 3 +
+            // three-coordinate interval comparison 3 = 8 actual visits.
+            assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 8);
+            assert_eq!(
+                report
+                    .phase_usage(RenderPhase::Qualify)
+                    .work(RenderWork::CoordinateVisits),
+                7
+            );
+            assert_eq!(
+                report
+                    .phase_usage(RenderPhase::Coordinates)
+                    .work(RenderWork::CoordinateVisits),
+                1
+            );
+            assert_eq!(report.usage().work(RenderWork::VariationTupleVisits), 1);
+            if let Some(previous) = previous {
+                assert_eq!(report.usage(), previous);
+            }
+            previous = Some(report.usage());
+        }
+    }
+}
+
+#[test]
+fn malformed_intermediate_region_keeps_typed_failure_and_releases_custody() {
+    use surgeist_render::{RenderAccountingContext, RenderResource, RenderWork};
+    let selected = instance(
+        1000.0,
+        vec![NormalizedCoordinate::try_from_bits(8192).unwrap()],
+        0.0,
+    );
+    for (start, peak, end) in [(12288, 8192, 16384), (0, 8192, 4096), (-16385, 8192, 16384)] {
+        let face = font(&variable_ahem_with_intermediate(start, peak, end));
+        let mut context = RenderAccountingContext::default();
+        let error = face
+            .prepare_glyph_run(&selected, &[glyph()], limits(), &mut context)
+            .unwrap_err();
+        assert_eq!(
+            diagnostic(&error),
+            GlyphPreparationError::InvalidVariation {
+                table: VariationTable::Gvar
+            }
+        );
+        let standalone = context.last_attempt().unwrap();
+        assert_eq!(standalone.cleanup_fault(), None);
+        let usage = standalone.attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
+        assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+    }
+}
+
+#[test]
+fn intermediate_region_comparison_refuses_three_visits_atomically_and_retries() {
+    use surgeist_render::{
+        RenderAccountingContext, RenderAccountingError, RenderAccountingOptions, RenderLimits,
+        RenderPhase, RenderQuantity, RenderResource, RenderWork,
+    };
+    let face = font(&variable_ahem_with_intermediate(0, 8192, 16384));
+    let selected = instance(
+        1000.0,
+        vec![NormalizedCoordinate::try_from_bits(8192).unwrap()],
+        0.0,
+    );
+    for cap in [5, 6, 7] {
+        let mut context = RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::CoordinateVisits, cap)
+                    .unwrap(),
+            ),
+        );
+        let error = face
+            .prepare_glyph_run(&selected, &[glyph()], limits(), &mut context)
+            .unwrap_err();
+        let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic() else {
+            panic!("expected coordinate admission refusal");
+        };
+        assert_eq!(
+            refusal.quantity(),
+            RenderQuantity::Work(RenderWork::CoordinateVisits)
+        );
+        assert_eq!(refusal.phase(), RenderPhase::Attempt);
+        assert_eq!(refusal.current(), 5);
+        assert_eq!(refusal.amount(), 3);
+        let standalone = context.last_attempt().unwrap();
+        assert_eq!(standalone.cleanup_fault(), None);
+        let report = standalone.attempt().unwrap();
+        assert_eq!(report.refusal(), Some(refusal));
+        assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 5);
+        assert_eq!(
+            report
+                .phase_usage(RenderPhase::Qualify)
+                .work(RenderWork::CoordinateVisits),
+            4
+        );
+        assert_eq!(report.usage().work(RenderWork::PathElementsEmitted), 0);
+        assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
+        assert_eq!(report.usage().live(RenderResource::RetainedCpuBytes), 0);
+        assert_eq!(report.usage().live(RenderResource::ScratchCpuBytes), 0);
+        context.set_options(RenderAccountingOptions::default());
+        let retry = face
+            .prepare_glyph_run(&selected, &[glyph()], limits(), &mut context)
+            .unwrap();
+        assert_eq!(
+            retry.bounds().ink_rect(),
+            Some(Rect::try_new(-20.0, -770.0, 1100.0, 1000.0).unwrap())
+        );
+        assert_eq!(retry.path_elements().count(), 5);
+    }
+}
+
+#[test]
 fn prepared_glyph_run_present_malformed_variation_metadata_cannot_become_default_success() {
     let coordinate = vec![NormalizedCoordinate::try_from_bits(16384).unwrap()];
     for (tag, table) in [
@@ -850,6 +1014,18 @@ fn variable_ahem() -> Vec<u8> {
         0, 1, 0, 10, 0, 11, 0xA0, 0, 0x40, 0, 0, 7, 0, 100, 100, 0, 0, 0, 0, 0, 0x87,
     ])
 }
+
+fn variable_ahem_with_intermediate(start: i16, peak: i16, end: i16) -> Vec<u8> {
+    // One tuple, 14-byte header, 11-byte dense delta stream. Flags select an
+    // embedded peak, explicit intermediate region and private all-point list.
+    let mut tuple = vec![0, 1, 0, 14, 0, 11, 0xE0, 0];
+    for coordinate in [peak, start, end] {
+        tuple.extend(coordinate.to_be_bytes());
+    }
+    tuple.extend([0, 7, 0, 100, 100, 0, 0, 0, 0, 0, 0x87]);
+    variable_ahem_with_tuple(&tuple)
+}
+
 fn variable_ahem_with_tuple(tuple: &[u8]) -> Vec<u8> {
     let mut fvar = vec![];
     fvar.extend(0x00010000u32.to_be_bytes());
