@@ -440,6 +440,65 @@ fn every_effect_boundary_is_visible_before_an_adapter_refuses_it() {
     }
 }
 
+/// A consumer that keeps incoming nodes by number and answers every identity question from its
+/// own records. Returns the number of replies one `slot.assign()` takes and the resulting set.
+fn identity_map_replies(incoming: &[usize]) -> (usize, Vec<usize>) {
+    use std::collections::HashSet;
+    let mut cursor = HtmlSlotAssignCursor::new(0, incoming.len());
+    let mut assigned_to_target = HashSet::new();
+    let mut pending: Vec<usize> = Vec::new();
+    let mut members = HashSet::new();
+    let mut replies = 0;
+    while cursor.action() != Action::Complete {
+        let reply = match cursor.action() {
+            Action::ReadIncomingManualAssignment { ordinal } => {
+                Reply::ManualAssignmentPresent(assigned_to_target.contains(&incoming[ordinal]))
+            }
+            Action::SetIncomingManualAssignmentToTarget { ordinal } => {
+                assigned_to_target.insert(incoming[ordinal]);
+                Reply::Applied
+            }
+            Action::CompareIncoming {
+                ordinal,
+                previous_ordinal,
+            } => Reply::SameNode(incoming[ordinal] == incoming[previous_ordinal]),
+            Action::AppendIncomingToPendingSet { ordinal } => {
+                if members.insert(incoming[ordinal]) {
+                    pending.push(incoming[ordinal]);
+                }
+                Reply::Applied
+            }
+            _ => Reply::Applied,
+        };
+        cursor.reply(reply).unwrap();
+        replies += 1;
+    }
+    (replies, pending)
+}
+
+#[test]
+fn a_consumer_with_an_identity_map_takes_a_bounded_number_of_replies_per_incoming_node() {
+    let mut previous = None;
+    for distinct in [32_usize, 64, 128, 256] {
+        // Every node twice: the first occurrences are distinct, the second ones duplicates.
+        let incoming: Vec<usize> = (0..distinct).chain(0..distinct).collect();
+        let (replies, set) = identity_map_replies(&incoming);
+        assert_eq!(set, (0..distinct).collect::<Vec<_>>());
+        assert!(
+            replies <= 5 * incoming.len() + 4,
+            "{} incoming nodes took {replies} replies",
+            incoming.len()
+        );
+        if let Some(earlier) = previous {
+            assert!(
+                replies * 10 <= earlier * 22,
+                "doubling the incoming nodes took {earlier} then {replies} replies"
+            );
+        }
+        previous = Some(replies);
+    }
+}
+
 #[test]
 fn maximum_extents_do_not_require_a_product_allocation_or_overflow_at_construction() {
     let previous = HtmlSlotAssignCursor::new(usize::MAX, usize::MAX);
