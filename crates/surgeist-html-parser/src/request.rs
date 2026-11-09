@@ -199,24 +199,15 @@ pub struct HtmlDocumentParseRequest {
     value_sharing: ValueSharingMode,
 }
 impl HtmlDocumentParseRequest {
-    /// Charges the parse in the operation and scope of `accounting` instead of
-    /// an operation of its own. See [`HtmlParseAccounting`](crate::HtmlParseAccounting)
-    /// for the scopes the parse adds and the custody its report keeps.
+    /// Charges the parse as `accounting` says: in a host's operation and scope,
+    /// or in an operation of its own under a profile mode. The last call is the
+    /// one that applies, and it is the only setting there is: a request that
+    /// never calls it charges an operation of its own that nothing observes. See
+    /// [`HtmlParseAccounting`](crate::HtmlParseAccounting) for the scopes the
+    /// parse adds and the custody its report keeps.
     #[must_use]
     pub fn with_accounting(mut self, accounting: crate::HtmlParseAccounting) -> Self {
-        self.accounting = RequestAccounting::host(accounting);
-        self
-    }
-    /// Profiles the parse's own operation in `mode`;
-    /// [`ProfileMode::Off`](surgeist_ledger::ProfileMode::Off) reads no clock and
-    /// keeps no observation. The profiled operation has the scopes
-    /// `html-parse-host`, `html-parse`, `html-parse-charging` and one scope for
-    /// each of four parse phases, all observed. The profile is read from the
-    /// report or failure. A request that supplies accounting is profiled by the
-    /// operation of its host instead.
-    #[must_use]
-    pub fn with_profile(mut self, mode: surgeist_ledger::ProfileMode) -> Self {
-        self.accounting = RequestAccounting::profiled(mode);
+        self.accounting = accounting.into_request();
         self
     }
     pub(crate) fn accounting(&self) -> &RequestAccounting {
@@ -525,18 +516,11 @@ pub struct HtmlFragmentParseRequest {
     value_sharing: ValueSharingMode,
 }
 impl HtmlFragmentParseRequest {
-    /// Charges the parse in the operation and scope of `accounting` instead of
-    /// an operation of its own; see [`HtmlDocumentParseRequest::with_accounting`].
+    /// Charges the parse as `accounting` says; see
+    /// [`HtmlDocumentParseRequest::with_accounting`].
     #[must_use]
     pub fn with_accounting(mut self, accounting: crate::HtmlParseAccounting) -> Self {
-        self.accounting = RequestAccounting::host(accounting);
-        self
-    }
-    /// Profiles the parse's own operation in `mode`; see
-    /// [`HtmlDocumentParseRequest::with_profile`].
-    #[must_use]
-    pub fn with_profile(mut self, mode: surgeist_ledger::ProfileMode) -> Self {
-        self.accounting = RequestAccounting::profiled(mode);
+        self.accounting = accounting.into_request();
         self
     }
     pub(crate) fn accounting(&self) -> &RequestAccounting {

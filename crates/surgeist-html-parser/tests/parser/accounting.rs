@@ -72,7 +72,7 @@ fn a_parse_in_a_host_operation_has_the_usage_of_the_same_parse_alone() {
     let alone = request().parse().unwrap();
     let (ledger, root) = host(3);
     let hosted = request()
-        .with_accounting(HtmlParseAccounting::new(ledger.clone(), root))
+        .with_accounting(HtmlParseAccounting::host(ledger.clone(), root))
         .parse()
         .unwrap();
     assert_eq!(hosted.usage(), alone.usage());
@@ -169,7 +169,7 @@ const CATEGORIES: [(HtmlParseWorkCategory, HtmlWork); 8] = [
 fn the_gauges_of_a_parse_stay_below_the_host_scope() {
     let (ledger, root) = host(3);
     let report = request()
-        .with_accounting(HtmlParseAccounting::new(ledger.clone(), root))
+        .with_accounting(HtmlParseAccounting::host(ledger.clone(), root))
         .parse()
         .unwrap();
     let usage = ledger.usage(root).unwrap();
@@ -206,7 +206,7 @@ fn a_credit_cap_of_the_host_scope_stops_the_parse_with_the_hosts_limit() {
     );
     let (ledger, root) = host_with(limits, 3, ProfileMode::Off);
     let Err(failure) = request()
-        .with_accounting(HtmlParseAccounting::new(ledger.clone(), root))
+        .with_accounting(HtmlParseAccounting::host(ledger.clone(), root))
         .parse()
     else {
         panic!("the host cap is below the work the parse needs");
@@ -242,7 +242,7 @@ fn a_resource_cap_of_the_host_scope_stops_the_parse_with_the_hosts_limit() {
     );
     let (ledger, root) = host_with(limits, 3, ProfileMode::Off);
     let Err(failure) = request()
-        .with_accounting(HtmlParseAccounting::new(ledger.clone(), root))
+        .with_accounting(HtmlParseAccounting::host(ledger.clone(), root))
         .parse()
     else {
         panic!("the host holds three nodes and the document has more");
@@ -262,7 +262,7 @@ fn a_resource_cap_of_the_host_scope_stops_the_parse_with_the_hosts_limit() {
 fn a_parse_adds_two_scopes_and_phase_observation_adds_four() {
     let (ledger, root) = host(3);
     let _kept = request()
-        .with_accounting(HtmlParseAccounting::new(ledger.clone(), root))
+        .with_accounting(HtmlParseAccounting::host(ledger.clone(), root))
         .parse()
         .unwrap();
     assert_eq!(
@@ -272,7 +272,7 @@ fn a_parse_adds_two_scopes_and_phase_observation_adds_four() {
 
     let (ledger, root) = host(7);
     let parsed = request()
-        .with_accounting(HtmlParseAccounting::new(ledger.clone(), root).observing_phases())
+        .with_accounting(HtmlParseAccounting::host(ledger.clone(), root).observing_phases())
         .parse()
         .unwrap();
     let report = report_of(&ledger);
@@ -322,7 +322,7 @@ fn a_parse_adds_two_scopes_and_phase_observation_adds_four() {
 fn a_scope_bound_too_small_for_the_parse_stops_it_with_a_typed_fault() {
     let (ledger, root) = host(2);
     let Err(failure) = request()
-        .with_accounting(HtmlParseAccounting::new(ledger, root))
+        .with_accounting(HtmlParseAccounting::host(ledger, root))
         .parse()
     else {
         panic!("the host has room for one scope below its root");
@@ -340,7 +340,7 @@ fn a_scope_of_another_operation_stops_the_parse_without_a_report() {
     let (ledger, _) = host(3);
     let (_, foreign) = host(3);
     let Err(failure) = request()
-        .with_accounting(HtmlParseAccounting::new(ledger, foreign))
+        .with_accounting(HtmlParseAccounting::host(ledger, foreign))
         .parse()
     else {
         panic!("a foreign scope serves no parse");
@@ -373,7 +373,7 @@ fn profiling_off_reads_no_clock_and_timed_profiling_reads_it() {
     let before = CLOCK_READS.load(Ordering::SeqCst);
     let (ledger, root) = host_with_clock(ProfileMode::Off);
     request()
-        .with_accounting(HtmlParseAccounting::new(ledger.clone(), root).observing_phases())
+        .with_accounting(HtmlParseAccounting::host(ledger.clone(), root).observing_phases())
         .parse()
         .unwrap();
     assert_eq!(CLOCK_READS.load(Ordering::SeqCst), before);
@@ -381,7 +381,7 @@ fn profiling_off_reads_no_clock_and_timed_profiling_reads_it() {
 
     let (ledger, root) = host_with_clock(ProfileMode::Summary { timing: true });
     request()
-        .with_accounting(HtmlParseAccounting::new(ledger, root).observing_phases())
+        .with_accounting(HtmlParseAccounting::host(ledger, root).observing_phases())
         .parse()
         .unwrap();
     assert!(CLOCK_READS.load(Ordering::SeqCst) > before);
@@ -391,11 +391,17 @@ fn profiling_off_reads_no_clock_and_timed_profiling_reads_it() {
 fn a_parse_profiles_its_own_operation_when_its_request_selects_a_mode() {
     let report = request().parse().unwrap();
     assert!(report.profile().unwrap().is_none());
-    let report = request().with_profile(ProfileMode::Off).parse().unwrap();
+    let report = request()
+        .with_accounting(HtmlParseAccounting::profiled(ProfileMode::Off))
+        .parse()
+        .unwrap();
     assert!(report.profile().unwrap().is_none());
 
     let report = request()
-        .with_profile(ProfileMode::Summary { timing: false })
+        .with_accounting(
+            HtmlParseAccounting::profiled(ProfileMode::Summary { timing: false })
+                .observing_phases(),
+        )
         .parse()
         .unwrap();
     let profile = report.profile().unwrap().expect("a summary was selected");
@@ -421,7 +427,10 @@ fn a_parse_profiles_its_own_operation_when_its_request_selects_a_mode() {
 fn a_failed_parse_profiles_its_own_operation_too() {
     let limits = limits().into_builder().work_credits(50).finish().unwrap();
     let Err(failure) = HtmlDocumentParseRequest::offline(HtmlSource::utf8(SOURCE), limits)
-        .with_profile(ProfileMode::Summary { timing: false })
+        .with_accounting(
+            HtmlParseAccounting::profiled(ProfileMode::Summary { timing: false })
+                .observing_phases(),
+        )
         .parse()
     else {
         panic!("fifty credits cannot parse the document");
@@ -437,7 +446,7 @@ fn a_failed_parse_profiles_its_own_operation_too() {
 fn dropping_the_report_releases_what_the_parse_still_held_in_the_host() {
     let (ledger, root) = host(3);
     let report = request()
-        .with_accounting(HtmlParseAccounting::new(ledger.clone(), root))
+        .with_accounting(HtmlParseAccounting::host(ledger.clone(), root))
         .parse()
         .unwrap();
     let charging = scope_named(&ledger, "html-parse-charging");
@@ -468,7 +477,7 @@ fn dropping_a_failure_releases_what_the_stopped_parse_still_held_in_the_host() {
         .unwrap();
     let Err(failure) =
         HtmlDocumentParseRequest::offline(HtmlSource::utf8(SOURCE.repeat(40)), limits)
-            .with_accounting(HtmlParseAccounting::new(ledger.clone(), root))
+            .with_accounting(HtmlParseAccounting::host(ledger.clone(), root))
             .parse()
     else {
         panic!("five thousand credits cannot parse forty copies");
@@ -483,7 +492,7 @@ fn dropping_a_failure_releases_what_the_stopped_parse_still_held_in_the_host() {
 fn a_release_the_ledger_refuses_leaves_the_custody_and_does_not_panic() {
     let (ledger, root) = host(4);
     let report = request()
-        .with_accounting(HtmlParseAccounting::new(ledger.clone(), root))
+        .with_accounting(HtmlParseAccounting::host(ledger.clone(), root))
         .parse()
         .unwrap();
     let charging = scope_named(&ledger, "html-parse-charging");
@@ -519,7 +528,7 @@ fn a_fragment_parse_charges_a_host_operation_once_and_releases_it_on_drop() {
     let alone = fragment_request().parse().unwrap();
     let (ledger, root) = host(7);
     let hosted = fragment_request()
-        .with_accounting(HtmlParseAccounting::new(ledger.clone(), root).observing_phases())
+        .with_accounting(HtmlParseAccounting::host(ledger.clone(), root).observing_phases())
         .parse()
         .unwrap();
     assert_eq!(hosted.usage(), alone.usage());
@@ -537,7 +546,10 @@ fn a_fragment_parse_charges_a_host_operation_once_and_releases_it_on_drop() {
 #[test]
 fn a_fragment_parse_profiles_its_own_operation_when_its_request_selects_a_mode() {
     let report = fragment_request()
-        .with_profile(ProfileMode::Summary { timing: false })
+        .with_accounting(
+            HtmlParseAccounting::profiled(ProfileMode::Summary { timing: false })
+                .observing_phases(),
+        )
         .parse()
         .unwrap();
     let profile = report.profile().unwrap().expect("a summary was selected");
@@ -557,10 +569,77 @@ fn a_fragment_parse_profiles_its_own_operation_when_its_request_selects_a_mode()
         limits().into_builder().work_credits(50).finish().unwrap(),
     )
     .unwrap()
-    .with_profile(ProfileMode::Summary { timing: false })
+    .with_accounting(
+        HtmlParseAccounting::profiled(ProfileMode::Summary { timing: false }).observing_phases(),
+    )
     .parse();
     let Err(failure) = failed else {
         panic!("fifty credits cannot parse the fragment");
     };
     assert!(failure.profile().unwrap().is_some());
+}
+
+#[test]
+fn the_last_accounting_a_request_names_is_the_only_one_that_applies() {
+    let (ledger, root) = host(3);
+    let report = request()
+        .with_accounting(HtmlParseAccounting::host(ledger.clone(), root))
+        .with_accounting(HtmlParseAccounting::profiled(ProfileMode::Summary {
+            timing: false,
+        }))
+        .parse()
+        .unwrap();
+    // The host named first is not charged, and the parse profiled its own
+    // operation.
+    assert_eq!(ledger.usage(root).unwrap().work(HtmlWork::Credits), 0);
+    assert_eq!(names(&report_of(&ledger)), ["host"]);
+    assert!(report.profile().unwrap().is_some());
+
+    let (ledger, root) = host(3);
+    let report = request()
+        .with_accounting(HtmlParseAccounting::profiled(ProfileMode::Summary {
+            timing: false,
+        }))
+        .with_accounting(HtmlParseAccounting::host(ledger.clone(), root))
+        .parse()
+        .unwrap();
+    assert_eq!(
+        ledger.usage(root).unwrap().work(HtmlWork::Credits),
+        credits(report.usage())
+    );
+    assert!(report.profile().unwrap().is_none());
+}
+
+#[test]
+fn a_profiled_request_reports_the_two_parse_scopes_and_phases_only_when_observed() {
+    let report = request()
+        .with_accounting(HtmlParseAccounting::profiled(ProfileMode::Summary {
+            timing: false,
+        }))
+        .parse()
+        .unwrap();
+    let profile = report.profile().unwrap().expect("a summary was selected");
+    assert_eq!(
+        names(&profile),
+        ["html-parse-host", "html-parse", "html-parse-charging"]
+    );
+    assert_eq!(
+        profile
+            .scopes
+            .first()
+            .unwrap()
+            .usage
+            .work(HtmlWork::Credits),
+        credits(report.usage())
+    );
+}
+
+#[test]
+fn phase_observation_of_a_profiled_operation_that_profiles_nothing_still_charges_it() {
+    let report = request()
+        .with_accounting(HtmlParseAccounting::profiled(ProfileMode::Off).observing_phases())
+        .parse()
+        .unwrap();
+    assert!(report.profile().unwrap().is_none());
+    assert_eq!(report.usage(), request().parse().unwrap().usage());
 }

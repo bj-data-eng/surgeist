@@ -10,7 +10,11 @@
 //! on [`HtmlParseAccounting`].
 
 use crate::HtmlParseLimits;
-use std::sync::{Arc, OnceLock};
+use std::{
+    error::Error as StdError,
+    fmt,
+    sync::{Arc, Mutex, OnceLock, PoisonError},
+};
 use surgeist_html::accounting::{
     HtmlChange, HtmlLimits, HtmlResource, HtmlWork, aggregate_tariffs, charging_tariffs,
 };
@@ -28,6 +32,7 @@ pub(crate) type LedgerError = Error<HtmlWork, HtmlResource>;
 /// [`HtmlParseStop::LimitExceeded`](crate::HtmlParseStop::LimitExceeded). Every
 /// other ledger error stops the parse with one of these.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
 pub enum HtmlParseAccountingFault {
     /// The supplied scope belongs to another operation.
     ForeignScope,
@@ -54,6 +59,31 @@ pub enum HtmlParseAccountingFault {
     /// operation.
     Defect(Defect),
 }
+
+impl fmt::Display for HtmlParseAccountingFault {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ForeignScope => f.write_str("the supplied scope belongs to another operation"),
+            Self::ScopeLimit { limit } => {
+                write!(
+                    f,
+                    "the operation's scope bound of {limit} leaves no room for the parse"
+                )
+            }
+            Self::Allocation => f.write_str("the ledger could not allocate its storage"),
+            Self::IdentityExhausted => f.write_str("the ledger's identities are exhausted"),
+            Self::TimingUnavailable => f.write_str("timed profiling needs a host clock"),
+            Self::InUse => f.write_str("the supplied accounting already serves another parse"),
+            Self::Checkpoint => f.write_str("a ledger checkpoint operation failed"),
+            Self::UnexpectedRefusal => {
+                f.write_str("the ledger refused a change where the parser charges none")
+            }
+            Self::Defect(defect) => write!(f, "the ledger found a defect: {defect}"),
+        }
+    }
+}
+
+impl StdError for HtmlParseAccountingFault {}
 
 /// The split of a ledger error: a refusal the parser maps to a limit stop, or a
 /// fault.
@@ -103,8 +133,11 @@ impl ParsePhase {
 /// still holds for the parse.
 pub(crate) struct Lease {
     kind: LeaseKind,
-    /// The charging scope, set when a parse binds the lease.
-    charging: OnceLock<Scope>,
+    /// Whether the parse creates and observes the phase scopes.
+    phases: bool,
+    /// The charging scope, set when a parse binds the lease. Binding holds the
+    /// lock from the check to the end of scope creation, so one parse binds.
+    charging: Mutex<Option<Scope>>,
 }
 
 enum LeaseKind {
@@ -112,7 +145,6 @@ enum LeaseKind {
     Host {
         ledger: SharedOperation<HtmlWork, HtmlResource>,
         scope: Scope,
-        phases: bool,
     },
     /// The parse's own operation, shared so that its profile outlives the
     /// parse.
@@ -123,28 +155,11 @@ enum LeaseKind {
 }
 
 impl Lease {
-    fn host(
-        ledger: SharedOperation<HtmlWork, HtmlResource>,
-        scope: Scope,
-        phases: bool,
-    ) -> Arc<Self> {
+    fn new(kind: LeaseKind, phases: bool) -> Arc<Self> {
         Arc::new(Self {
-            kind: LeaseKind::Host {
-                ledger,
-                scope,
-                phases,
-            },
-            charging: OnceLock::new(),
-        })
-    }
-
-    pub(crate) fn profiled(mode: ProfileMode) -> Arc<Self> {
-        Arc::new(Self {
-            kind: LeaseKind::Profiled {
-                mode,
-                ledger: OnceLock::new(),
-            },
-            charging: OnceLock::new(),
+            kind,
+            phases,
+            charging: Mutex::new(None),
         })
     }
 
@@ -189,19 +204,16 @@ impl PhaseScopes {
 
 impl Lease {
     /// Creates the parse's scopes and records its charging scope, once. A lease
-    /// serves one parse.
+    /// serves one parse: the check and the creation of the scopes happen under
+    /// one lock, so a second parse creates none.
     pub(crate) fn bind(&self, limits: &HtmlParseLimits) -> Result<Bound, HtmlParseAccountingFault> {
-        if self.charging.get().is_some() {
+        let mut charging = self.charging.lock().unwrap_or_else(PoisonError::into_inner);
+        if charging.is_some() {
             return Err(HtmlParseAccountingFault::InUse);
         }
-        let (ledger, parent, phases) = match &self.kind {
-            LeaseKind::Host {
-                ledger,
-                scope,
-                phases,
-            } => (ledger.clone(), *scope, *phases),
+        let (ledger, parent) = match &self.kind {
+            LeaseKind::Host { ledger, scope } => (ledger.clone(), *scope),
             LeaseKind::Profiled { mode, ledger } => {
-                let phases = !matches!(mode, ProfileMode::Off);
                 // The root, the two parse scopes and the four phase scopes.
                 let operation =
                     Operation::with_profile("html-parse-host", HtmlLimits::unlimited(), 7, *mode)
@@ -211,17 +223,15 @@ impl Lease {
                 if ledger.set(shared.clone()).is_err() {
                     return Err(HtmlParseAccountingFault::InUse);
                 }
-                (shared, root, phases)
+                (shared, root)
             }
         };
-        let (cap, charging, phases) = scopes(&ledger, parent, limits, phases)?;
-        self.charging
-            .set(charging)
-            .map_err(|_| HtmlParseAccountingFault::InUse)?;
+        let (cap, scope, phases) = scopes(&ledger, parent, limits, self.phases)?;
+        *charging = Some(scope);
         Ok(Bound {
             ledger,
             cap,
-            charging,
+            charging: scope,
             phases,
         })
     }
@@ -298,7 +308,8 @@ impl Drop for Lease {
         let LeaseKind::Host { ledger, .. } = &self.kind else {
             return;
         };
-        let Some(&charging) = self.charging.get() else {
+        let charging = *self.charging.lock().unwrap_or_else(PoisonError::into_inner);
+        let Some(charging) = charging else {
             return;
         };
         // A usage the ledger cannot read is a latched defect; the operation's
@@ -328,15 +339,20 @@ impl Drop for Lease {
     }
 }
 
-/// Where a parse charges its work: an operation and a scope the host owns.
+/// Where a parse charges its work and resources.
 ///
-/// A request takes one through `with_accounting`. The parse charges everything
-/// once, in the supplied scope's operation, instead of in an operation of its
-/// own.
+/// A request takes one through `with_accounting`; without one the parse charges
+/// an operation of its own that nothing observes. There are two kinds:
+///
+/// - [`Self::host`] charges a scope of an operation the host owns, so the host
+///   sees the parse once in its own totals.
+/// - [`Self::profiled`] charges the parse's own operation under a ledger profile
+///   mode, read back from the report's or failure's `profile()`.
 ///
 /// # Scope tree
 ///
-/// Under the supplied scope the parse creates two scopes:
+/// Under the supplied scope, or under the root `html-parse-host` of a profiled
+/// operation, the parse creates two scopes:
 ///
 /// ```text
 /// supplied scope                  (the host's)
@@ -351,58 +367,97 @@ impl Drop for Lease {
 /// [`Self::observing_phases`], four more unlimited scopes below
 /// `html-parse-charging` receive the work of the parse phases:
 /// `html-parse-admission`, `html-parse-construction`, `html-parse-finalization`
-/// and `html-parse-publication`.
+/// and `html-parse-publication`. Each phase is observed as a ledger phase, so a
+/// profile of the operation reports the time and admissions of each.
 ///
 /// A refusal by a cap of the supplied scope or of an ancestor stops the parse
-/// with a limit stop that carries that scope's limit.
+/// with a limit stop that carries that scope's limit and value.
 ///
-/// The ledger never frees a scope. A parse adds two scopes to the host's
-/// operation, six with phase observation, so an operation that runs several
-/// parses sizes its scope bound for all of them.
+/// A host operation never frees a scope. A parse adds two scopes to it, six with
+/// phase observation, so an operation that runs several parses sizes its scope
+/// bound for all of them. A profiled operation holds the root and the scopes of
+/// its one parse.
 ///
 /// # Custody
 ///
-/// A report or failure of the parse keeps the accounting handle. When the last
-/// holder drops, the live balances that remain in `html-parse-charging` are
+/// A report or failure of a hosted parse keeps the accounting handle. When the
+/// last holder drops, the live balances that remain in `html-parse-charging` are
 /// released into the operation, once, so the operation shows no live custody of
 /// the parse afterward. A release the ledger refuses cannot panic; the custody
 /// stays, and a defect found there latches in the operation and is returned by
 /// its next fallible call.
+///
+/// A value serves one parse; it is not `Clone`.
 pub struct HtmlParseAccounting {
-    ledger: SharedOperation<HtmlWork, HtmlResource>,
-    scope: Scope,
+    source: AccountingSource,
     phases: bool,
 }
 
+enum AccountingSource {
+    Host {
+        ledger: SharedOperation<HtmlWork, HtmlResource>,
+        scope: Scope,
+    },
+    Profiled(ProfileMode),
+}
+
 impl HtmlParseAccounting {
-    /// Charges in `scope` of `ledger`.
-    pub fn new(ledger: SharedOperation<HtmlWork, HtmlResource>, scope: Scope) -> Self {
+    /// Charges in `scope` of `ledger`, an operation of the HTML schema pair that
+    /// the host owns.
+    pub fn host(ledger: SharedOperation<HtmlWork, HtmlResource>, scope: Scope) -> Self {
         Self {
-            ledger,
-            scope,
+            source: AccountingSource::Host { ledger, scope },
+            phases: false,
+        }
+    }
+
+    /// Charges the parse's own operation, profiled in `mode`.
+    /// [`ProfileMode::Off`] reads no clock and keeps no observation.
+    pub fn profiled(mode: ProfileMode) -> Self {
+        Self {
+            source: AccountingSource::Profiled(mode),
             phases: false,
         }
     }
 
     /// Also creates the four phase scopes and observes each parse phase as a
-    /// ledger phase, so a profiled operation reports them.
+    /// ledger phase. For a host operation the host's profile reports them. For a
+    /// profiled operation the report's or failure's `profile()` does; without
+    /// this the profile reports the two parse scopes only.
     #[must_use]
     pub fn observing_phases(mut self) -> Self {
         self.phases = true;
         self
     }
 
-    pub(crate) fn into_lease(self) -> Arc<Lease> {
-        Lease::host(self.ledger, self.scope, self.phases)
+    /// What a request keeps: nothing for a profile mode that observes nothing,
+    /// else the lease the parse and its report share.
+    pub(crate) fn into_request(self) -> RequestAccounting {
+        let phases = self.phases;
+        match self.source {
+            AccountingSource::Host { ledger, scope } => {
+                RequestAccounting(Some(Lease::new(LeaseKind::Host { ledger, scope }, phases)))
+            }
+            AccountingSource::Profiled(ProfileMode::Off) if !phases => RequestAccounting(None),
+            AccountingSource::Profiled(mode) => RequestAccounting(Some(Lease::new(
+                LeaseKind::Profiled {
+                    mode,
+                    ledger: OnceLock::new(),
+                },
+                phases,
+            ))),
+        }
     }
 }
 
 impl std::fmt::Debug for HtmlParseAccounting {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("HtmlParseAccounting")
-            .field("scope", &self.scope)
-            .field("phases", &self.phases)
-            .finish_non_exhaustive()
+        let mut debug = f.debug_struct("HtmlParseAccounting");
+        match &self.source {
+            AccountingSource::Host { scope, .. } => debug.field("scope", scope),
+            AccountingSource::Profiled(mode) => debug.field("profile", mode),
+        };
+        debug.field("phases", &self.phases).finish_non_exhaustive()
     }
 }
 
@@ -418,18 +473,6 @@ impl std::fmt::Debug for Lease {
 pub(crate) struct RequestAccounting(Option<Arc<Lease>>);
 
 impl RequestAccounting {
-    pub(crate) fn host(accounting: HtmlParseAccounting) -> Self {
-        Self(Some(accounting.into_lease()))
-    }
-    /// A parse of its own operation under `mode`; no profiling is the default.
-    pub(crate) fn profiled(mode: ProfileMode) -> Self {
-        match mode {
-            ProfileMode::Off => Self(None),
-            ProfileMode::Summary { .. } | ProfileMode::Detailed { .. } => {
-                Self(Some(Lease::profiled(mode)))
-            }
-        }
-    }
     pub(crate) fn lease(&self) -> Option<&Arc<Lease>> {
         self.0.as_ref()
     }
@@ -490,7 +533,7 @@ mod tests {
     #[test]
     fn a_lease_serves_one_parse() {
         let (ledger, root) = host(8);
-        let request = RequestAccounting::host(HtmlParseAccounting::new(ledger, root));
+        let request = HtmlParseAccounting::host(ledger, root).into_request();
         let mut first =
             ParseControl::with_accounting(limits(), HtmlParseCancellation::new(), request.lease());
         let mut second =
@@ -509,10 +552,11 @@ mod tests {
 
     #[test]
     fn an_owned_operation_takes_no_lease_and_a_profile_off_request_selects_none() {
-        let request = RequestAccounting::profiled(ProfileMode::Off);
+        let request = HtmlParseAccounting::profiled(ProfileMode::Off).into_request();
         assert!(request.lease().is_none());
         assert!(request.profile().unwrap().is_none());
-        let profiled = RequestAccounting::profiled(ProfileMode::Summary { timing: false });
+        let profiled =
+            HtmlParseAccounting::profiled(ProfileMode::Summary { timing: false }).into_request();
         assert!(profiled.lease().is_some());
         // No parse has run, so the operation does not exist yet.
         assert!(profiled.profile().unwrap().is_none());
