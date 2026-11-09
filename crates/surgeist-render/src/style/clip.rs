@@ -50,10 +50,15 @@ impl ClipInput {
     /// Returns [`crate::ErrorCode::InvalidInput`] when the shape is invalid.
     pub fn try_shape(shape: Shape) -> Result<Self> {
         validate_shape(&shape)?;
-        Ok(Self {
+        Ok(Self::from_validated_shape(shape))
+    }
+
+    /// Stores the intrinsic invariants established by public Shape construction.
+    pub(crate) fn from_validated_shape(shape: Shape) -> Self {
+        Self {
             kind: ClipInputKind::Shape(shape),
             coordinate_space: None,
-        })
+        }
     }
 
     /// Creates a clip from a filled logical path.

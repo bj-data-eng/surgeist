@@ -36,10 +36,15 @@ impl Layer {
     /// Returns this layer with an authored shape clip, replacing any prior clip.
     ///
     /// Returns [`crate::ErrorCode::InvalidInput`] when the shape is invalid.
-    pub fn try_clip(mut self, clip: Shape) -> Result<Self> {
+    pub fn try_clip(self, clip: Shape) -> Result<Self> {
         validate_shape(&clip)?;
-        self.clip = Some(ClipInput::try_shape(clip)?);
-        Ok(self)
+        Ok(self.with_shape_clip(clip))
+    }
+
+    /// Installs a Shape whose construction already establishes intrinsic validity.
+    pub(crate) fn with_shape_clip(mut self, clip: Shape) -> Self {
+        self.clip = Some(ClipInput::from_validated_shape(clip));
+        self
     }
 
     /// Returns this layer with a validated authored clip input, replacing any prior clip.

@@ -882,6 +882,15 @@ options for the next call, inspect `last_attempt`, or move its report with
 `take_last_attempt`. Returned values and later caller clones do not retain its
 participant.
 
+Derived image tiles and outline targets preserve `Rect`'s finite maximum
+coordinates as well as its component constraints. Intrinsic overflow returns
+the owning numeric input diagnostic before any result is published. Accounted
+placement proves two maximum coordinates; each repeated tile proves two more
+before its quota and `RepeatTiles` emission admission. Outline targets admit
+four component derivations and then two maximum-coordinate proofs. Numeric
+failure retains completed work, releases operation backing, and transfers no
+output. Standalone image placement performs the same proof without a context.
+
 ## Preparation accounting
 
 `FontData::prepare_glyph_run` and `prepare_text_layout` take a mutable

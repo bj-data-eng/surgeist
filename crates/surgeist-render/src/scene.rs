@@ -181,9 +181,7 @@ impl Scene {
         shape: impl Into<Shape>,
         children: impl FnOnce(&mut Scene),
     ) -> &mut Self {
-        let layer = Layer::new()
-            .try_clip(shape.into())
-            .expect("Shape constructors validate layer clip values");
+        let layer = Layer::new().with_shape_clip(shape.into());
         self.layer(layer, children)
     }
 
