@@ -898,6 +898,102 @@ fn context_admission_refuses_the_first_oversized_read_attribute_in_attribute_ord
     );
 }
 
+/// The rules read attributes with no namespace; an attribute of the same local name in a
+/// namespace is another attribute, so its value is not admitted, while a prefix on an attribute
+/// with no namespace does not change its name.
+#[test]
+fn context_admission_matches_read_names_by_namespace() {
+    let interpreter = HtmlValueInterpreter::new(16);
+    let large = "x".repeat(17);
+    let named = |namespace: Namespace, prefix: Option<&str>, local: &str| {
+        Attribute::new(
+            QualifiedName::new(namespace, prefix.map(DocumentString::from), local),
+            large.as_str(),
+        )
+    };
+    let with = |base: &[(&str, &str)], extra: Attribute| {
+        OrderedAttributes::new(
+            base.iter()
+                .map(|&(name, value)| attr(name, value))
+                .chain([extra]),
+        )
+        .unwrap()
+    };
+    let namespaces = [
+        Namespace::from_uri("http://www.w3.org/1999/xlink"),
+        Namespace::svg(),
+        Namespace::html(),
+    ];
+    for namespace in namespaces {
+        let cases = [
+            (
+                "img",
+                "sizes",
+                HtmlSrcsetContext::Img {
+                    attributes: with(
+                        &[("srcset", "a 1x")],
+                        named(namespace.clone(), Some("xlink"), "sizes"),
+                    ),
+                },
+            ),
+            (
+                "img",
+                "src",
+                HtmlSrcsetContext::Img {
+                    attributes: with(
+                        &[("srcset", "a 1x")],
+                        named(namespace.clone(), Some("xlink"), "src"),
+                    ),
+                },
+            ),
+            (
+                "link",
+                "rel",
+                HtmlSrcsetContext::Link {
+                    attributes: with(
+                        &[("imagesrcset", "a 1x")],
+                        named(namespace.clone(), Some("xlink"), "rel"),
+                    ),
+                },
+            ),
+            (
+                "source",
+                "loading",
+                HtmlSrcsetContext::Source {
+                    attributes: with(&[("srcset", "a 1x")], attr("title", "t")),
+                    parent: HtmlSrcsetParentObservation::Element(element("picture")),
+                    following_image: HtmlSrcsetFollowingImageObservation::Element {
+                        name: element("img"),
+                        attributes: with(
+                            &[("sizes", "auto")],
+                            named(namespace.clone(), None, "loading"),
+                        ),
+                    },
+                },
+            ),
+        ];
+        for (role, name, context) in cases {
+            assert!(
+                with_context(&interpreter, role, &context).is_ok(),
+                "{role} admitted {name} in a namespace"
+            );
+        }
+    }
+    // The same names with no namespace are admitted, with or without a prefix.
+    for prefix in [None, Some("p")] {
+        let context = HtmlSrcsetContext::Img {
+            attributes: with(
+                &[("srcset", "a 1x")],
+                named(Namespace::none(), prefix, "sizes"),
+            ),
+        };
+        assert!(matches!(
+            with_context(&interpreter, "img", &context),
+            Err(HtmlSrcsetInterpretationError::RawAdmission(error)) if error.required() == 17
+        ));
+    }
+}
+
 #[test]
 fn unavailable_and_absent_parent_facts_are_distinct_and_prefixed_raw_attributes_stay_exact() {
     let interpreter = HtmlValueInterpreter::new(100);
