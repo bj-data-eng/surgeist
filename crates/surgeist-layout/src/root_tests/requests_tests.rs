@@ -6761,8 +6761,8 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
             node: Self::Node,
             input: &ComputeInput,
             context: crate::CacheKeyContext,
-        ) -> Option<ComputeOutput> {
-            self.caches[&node].get_with_context(input, context)
+        ) -> crate::engine::contracts::CacheLookupResult<Self::Node, Self::Scalar> {
+            Ok(self.caches[&node].get_with_context(input, context))
         }
 
         fn cache_store(
@@ -6771,15 +6771,20 @@ fn hidden_layout_writes_zero_line_break_output_without_box_compute() {
             input: &ComputeInput,
             context: crate::CacheKeyContext,
             output: ComputeOutput,
-        ) {
+        ) -> crate::LayoutResultOf<Self::Node, (), Self::Scalar> {
             self.caches
                 .get_mut(&node)
                 .unwrap()
                 .store_with_context(input, context, output);
+            Ok(())
         }
 
-        fn cache_clear(&mut self, node: Self::Node) {
+        fn cache_clear(
+            &mut self,
+            node: Self::Node,
+        ) -> crate::LayoutResultOf<Self::Node, (), Self::Scalar> {
             self.caches.get_mut(&node).unwrap().clear();
+            Ok(())
         }
     }
 
@@ -6982,8 +6987,8 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
             node: Self::Node,
             input: &ComputeInput,
             context: crate::CacheKeyContext,
-        ) -> Option<ComputeOutput> {
-            self.caches[&node].get_with_context(input, context)
+        ) -> crate::engine::contracts::CacheLookupResult<Self::Node, Self::Scalar> {
+            Ok(self.caches[&node].get_with_context(input, context))
         }
 
         fn cache_store(
@@ -6992,15 +6997,20 @@ fn hidden_compute_sets_inline_boundary_children_to_hidden_output() {
             input: &ComputeInput,
             context: crate::CacheKeyContext,
             output: ComputeOutput,
-        ) {
+        ) -> crate::LayoutResultOf<Self::Node, (), Self::Scalar> {
             self.caches
                 .get_mut(&node)
                 .unwrap()
                 .store_with_context(input, context, output);
+            Ok(())
         }
 
-        fn cache_clear(&mut self, node: Self::Node) {
+        fn cache_clear(
+            &mut self,
+            node: Self::Node,
+        ) -> crate::LayoutResultOf<Self::Node, (), Self::Scalar> {
             self.caches.get_mut(&node).unwrap().clear();
+            Ok(())
         }
     }
 

@@ -117,7 +117,7 @@ where
         &[surgeist_text::LineBoxStrut],
     ) -> Result<LineAllocations, FitError>,
     R: FnMut(&FinalizedLine, EncounterReplay) -> Result<Vec<EncounterBasis>, FitError>,
-    X: FnMut(EncounterReset),
+    X: FnMut(EncounterReset) -> Result<(), FitError>,
     Accept: FnMut() -> Result<(), FitError>,
     Clear: FnMut(f64, &LineSelectionRequest) -> Result<Option<f64>, FitError>,
 {
@@ -220,13 +220,13 @@ where
         &mut self,
         initial: &SequenceEntry,
         windows: &[GroupWindow],
-        checkpoint: &mut impl FnMut(),
+        checkpoint: &mut impl FnMut() -> Result<(), FitError>,
         result: &mut Vec<FittedLine>,
     ) -> Result<StreamOutcome, FitError> {
         let mut groups = Vec::with_capacity(windows.len());
         let mut entry = initial.clone();
         for window in windows {
-            checkpoint();
+            checkpoint()?;
             let ordinary = match self.pretty_group(
                 GroupAttempt {
                     entry: &entry,
@@ -391,10 +391,10 @@ where
     pub(super) fn pretty(
         &mut self,
         initial: SequenceEntry,
-        mut checkpoint: impl FnMut(),
+        mut checkpoint: impl FnMut() -> Result<(), FitError>,
     ) -> Result<Vec<FittedLine>, FitError> {
         self.environment.observed = Some(Observations::default());
-        (self.environment.reset)(EncounterReset::Sequence);
+        (self.environment.reset)(EncounterReset::Sequence)?;
         let windows = windows(&self.opportunities);
         if windows
             .last()
@@ -435,14 +435,14 @@ where
                 // Reestablish ordinary and phase references under the same real
                 // entries, then verify the selected goals. No stale global-Auto
                 // count/frame is imported into the streaming program.
-                (self.environment.reset)(EncounterReset::Sequence);
+                (self.environment.reset)(EncounterReset::Sequence)?;
                 result.clear();
                 let mut entry = initial.clone();
                 for group in &groups {
                     if entry != group.basis.entry {
                         return Err(FitError::InvalidPrettyBasis);
                     }
-                    checkpoint();
+                    checkpoint()?;
                     let mut phase = self.pretty_replay(
                         GroupAttempt {
                             entry: &entry,
@@ -506,7 +506,7 @@ where
             .observed
             .take()
             .ok_or(FitError::InvalidPrettyBasis)?
-            .attach(&mut result);
+            .attach(&mut result, self.input.entry_funding)?;
         Ok(result)
     }
 }

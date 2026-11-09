@@ -5,6 +5,7 @@ use crate::error::{layout_child_geometry_error, value_resolution_error};
 use crate::geometry::{LogicalEdgesOf, LogicalPointOf, LogicalSizeOf, PhysicalAxis};
 use crate::inline::PostLineClearIntent;
 use crate::output::MeasuredInsetBasisOf;
+use crate::text_layout::scope_alignment::{EntryBacking, EntryFunding, ScopeLease};
 use crate::value::ResolvedLengthAutoOf;
 use crate::{
     AxisSizingRequestOf, Clear, Compute, Edges, Float, FloatExclusion,
@@ -13,6 +14,10 @@ use crate::{
     LayoutMissingContext, LayoutOperation, LayoutResultOf, LayoutScalar, LengthResolutionStatus,
     NodeOutputOf, Point, ScrollGeometryOf, ScrollRectOf, Size, Traverse,
 };
+
+#[cfg(test)]
+#[path = "floats/funding_tests.rs"]
+mod funding_tests;
 
 #[derive(Clone)]
 pub(super) struct PendingFloat<Node, S: LayoutScalar> {
@@ -258,24 +263,262 @@ enum FloatBandQueryPurpose {
     ProviderBand,
 }
 
-#[derive(Clone, Debug)]
 pub(crate) struct FloatExclusions<S: LayoutScalar, Node = ()> {
     flow_axes: crate::geometry::FlowAxes,
     containing_size: Size<S>,
+    common_block_origin: S,
     pub(super) containing_inline_start: S,
     pub(super) containing_inline_end: S,
     ledger: Vec<FloatLedgerEntry<S, Node>>,
+    backing: EntryBacking,
+    funding: Option<EntryFunding<S>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub(crate) struct InheritedFloatExclusions<S: LayoutScalar, Node> {
     parent_flow_axes: crate::geometry::FlowAxes,
     parent_containing_size: Size<S>,
+    parent_common_block_origin: S,
     child_logical_location: LogicalPointOf<S>,
     ledger: Vec<FloatLedgerEntry<S, Node>>,
+    _ledger_storage: Option<ScopeLease>,
+    _owner_storage: Option<ScopeLease>,
+}
+
+/// A prospective entry projection has fixed admitted storage. It cannot use
+/// allocator slack as another funded source row or escape as a completed BFC.
+pub(in crate::block) struct EntryFloatLedger<S: LayoutScalar, Node> {
+    ledger: FloatExclusions<S, Node>,
+    admitted: usize,
+}
+
+fn entry_visit<Node, S: LayoutScalar, M>(
+    node: Node,
+    funding: Option<&EntryFunding<S>>,
+    count: usize,
+) -> LayoutResultOf<Node, (), S, M> {
+    funding
+        .map_or(Ok(()), |funding| funding.visit(count))
+        .map_err(|error| {
+            LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(node),
+                LayoutOperation::ChildLayout,
+                LayoutErrorKindOf::Text(error),
+            )
+        })
+}
+
+fn entry_bound<Node: Copy, S: LayoutScalar, M>(
+    node: Node,
+    ledger: &[FloatLedgerEntry<S, Node>],
+    clear: Clear,
+    axes: crate::FlowAxes,
+    receiver: crate::FlowAxes,
+    origin: S,
+    funding: Option<&EntryFunding<S>>,
+) -> LayoutResultOf<Node, Option<CommonBfcPosition<S>>, S, M> {
+    let clear = if receiver.inline_start() == axes.inline_start() {
+        clear
+    } else {
+        match clear {
+            Clear::Left => Clear::Right,
+            Clear::Right => Clear::Left,
+            value => value,
+        }
+    };
+    let mut bound: Option<S> = None;
+    for row in ledger {
+        entry_visit(node, funding, 1)?;
+        if row.side.is_cleared_by(clear) {
+            bound = Some(bound.map_or(row.block_end, |old| old.max(row.block_end)));
+        }
+    }
+    bound
+        .map(|bound| {
+            let value = origin + bound;
+            if value.is_finite() {
+                Ok(CommonBfcPosition(value))
+            } else {
+                Err(crate::error::sizing_resolution_error(
+                    node,
+                    LengthResolutionStatus::InvalidNumeric { value }.into(),
+                ))
+            }
+        })
+        .transpose()
+}
+
+impl<S: LayoutScalar, Node: Copy> EntryFloatLedger<S, Node> {
+    pub(in crate::block) fn entry_inline_window(&mut self, start: S, end: S) {
+        self.ledger.entry_inline_window(start, end);
+    }
+    pub(in crate::block) fn entry_place_float<M>(
+        &mut self,
+        node: Node,
+        pending: &PendingFloat<Node, S>,
+        funding: Option<&EntryFunding<S>>,
+    ) -> LayoutResultOf<Node, FloatPlacement<S>, S, M> {
+        assert!(
+            self.ledger.ledger.len() < self.admitted,
+            "a projected source row has admitted backing"
+        );
+        self.ledger
+            .place_float_in_space(node, pending, None, FloatInlineSpace::Finite, funding)
+    }
+    pub(in crate::block) fn entry_relevant_bound<M>(
+        &self,
+        node: Node,
+        clear: Clear,
+        receiver: crate::FlowAxes,
+        funding: Option<&EntryFunding<S>>,
+    ) -> LayoutResultOf<Node, Option<CommonBfcPosition<S>>, S, M> {
+        entry_bound(
+            node,
+            &self.ledger.ledger,
+            clear,
+            self.ledger.flow_axes,
+            receiver,
+            self.ledger.common_block_origin,
+            funding,
+        )
+    }
+}
+
+/// A logical block coordinate in the common BFC, independent of physical-axis
+/// orientation and of a receiving child's later settled origin.
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+pub(crate) struct CommonBfcPosition<S: LayoutScalar>(S);
+impl<S: LayoutScalar> CommonBfcPosition<S> {
+    pub(in crate::block) fn get(self) -> S {
+        self.0
+    }
+}
+
+impl<S: LayoutScalar, Node> InheritedFloatExclusions<S, Node> {
+    pub(in crate::block) fn common_border(
+        &self,
+        parent_local: S,
+    ) -> Result<CommonBfcPosition<S>, LengthResolutionStatus<S>> {
+        let value = self.parent_common_block_origin + parent_local;
+        if value.is_finite() {
+            Ok(CommonBfcPosition(value))
+        } else {
+            Err(LengthResolutionStatus::InvalidNumeric { value })
+        }
+    }
+
+    pub(in crate::block) fn parent_axes(&self) -> crate::FlowAxes {
+        self.parent_flow_axes
+    }
+    pub(in crate::block) fn entry_ledger_funded(
+        &self,
+        inline_start: S,
+        inline_end: S,
+        additional: usize,
+        funding: Option<&EntryFunding<S>>,
+    ) -> surgeist_text::Result<(EntryFloatLedger<S, Node>, Option<ScopeLease>)>
+    where
+        Node: Copy,
+    {
+        let admitted = self.ledger.len().checked_add(additional).ok_or_else(|| {
+            crate::text_layout::scope_alignment::refusal(
+                surgeist_text::ScopeAlignmentError::Overflow {
+                    kind: surgeist_text::ScopeAlignmentLimitKind::Records,
+                },
+            )
+        })?;
+        let lease;
+        let mut ledger = if let Some(funding) = funding.filter(|_| admitted != 0) {
+            let (ledger, storage) = funding.buffer(admitted)?;
+            lease = Some(storage);
+            ledger
+        } else {
+            let mut ledger = Vec::new();
+            ledger.try_reserve_exact(admitted).map_err(|_| {
+                crate::text_layout::scope_alignment::refusal(
+                    surgeist_text::ScopeAlignmentError::Allocation {
+                        kind: surgeist_text::ScopeAlignmentLimitKind::PayloadBytes,
+                    },
+                )
+            })?;
+            lease = None;
+            ledger
+        };
+        for row in &self.ledger {
+            if let Some(funding) = funding {
+                funding.visit(1)?;
+            }
+            ledger.push(row.clone());
+        }
+        Ok((
+            EntryFloatLedger {
+                admitted,
+                ledger: FloatExclusions {
+                    flow_axes: self.parent_flow_axes,
+                    containing_size: self.parent_containing_size,
+                    common_block_origin: self.parent_common_block_origin,
+                    containing_inline_start: inline_start,
+                    containing_inline_end: inline_end,
+                    ledger,
+                    backing: EntryBacking::default(),
+                    funding: None,
+                },
+            },
+            lease,
+        ))
+    }
+
+    pub(in crate::block) fn entry_relevant_bound<M>(
+        &self,
+        node: Node,
+        clear: Clear,
+        receiver: crate::FlowAxes,
+        funding: Option<&EntryFunding<S>>,
+    ) -> LayoutResultOf<Node, Option<CommonBfcPosition<S>>, S, M>
+    where
+        Node: Copy,
+    {
+        entry_bound(
+            node,
+            &self.ledger,
+            clear,
+            self.parent_flow_axes,
+            receiver,
+            self.parent_common_block_origin,
+            funding,
+        )
+    }
 }
 
 impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
+    pub(in crate::block) fn common_border(
+        &self,
+        local: S,
+    ) -> Result<CommonBfcPosition<S>, LengthResolutionStatus<S>> {
+        let value = self.common_block_origin + local;
+        if value.is_finite() {
+            Ok(CommonBfcPosition(value))
+        } else {
+            Err(LengthResolutionStatus::InvalidNumeric { value })
+        }
+    }
+    pub(in crate::block) fn entry_relevant_bound<M>(
+        &self,
+        node: Node,
+        clear: Clear,
+        receiver: crate::FlowAxes,
+        funding: Option<&EntryFunding<S>>,
+    ) -> LayoutResultOf<Node, Option<CommonBfcPosition<S>>, S, M> {
+        entry_bound(
+            node,
+            &self.ledger,
+            clear,
+            self.flow_axes,
+            receiver,
+            self.common_block_origin,
+            funding,
+        )
+    }
     pub(crate) fn new(
         flow_axes: crate::geometry::FlowAxes,
         containing_size: Size<S>,
@@ -285,10 +528,50 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         Self {
             flow_axes,
             containing_size,
+            common_block_origin: S::ZERO,
             containing_inline_start: inset.inline_start,
             containing_inline_end: inset.inline_start + content_inline_size,
             ledger: Vec::new(),
+            backing: EntryBacking::default(),
+            funding: None,
         }
+    }
+
+    pub(super) fn fund_entry(&mut self, funding: Option<&EntryFunding<S>>) {
+        debug_assert!(self.ledger.is_empty());
+        self.funding = funding.cloned();
+    }
+
+    pub(super) fn try_clone(&self) -> surgeist_text::Result<Self> {
+        let mut result = Self {
+            flow_axes: self.flow_axes,
+            containing_size: self.containing_size,
+            common_block_origin: self.common_block_origin,
+            containing_inline_start: self.containing_inline_start,
+            containing_inline_end: self.containing_inline_end,
+            ledger: Vec::new(),
+            backing: EntryBacking::default(),
+            funding: self.funding.clone(),
+        };
+        if self.funding.is_none() {
+            result.ledger = self.ledger.clone();
+            return Ok(result);
+        }
+        for row in &self.ledger {
+            if let Some(funding) = &self.funding {
+                funding.visit(1)?;
+            }
+            result
+                .backing
+                .reserve_push(&mut result.ledger, result.funding.as_ref())?;
+            result.ledger.push(row.clone());
+        }
+        Ok(result)
+    }
+
+    pub(in crate::block) fn entry_inline_window(&mut self, start: S, end: S) {
+        self.containing_inline_start = start;
+        self.containing_inline_end = end;
     }
 
     /// Rebase this actual influencing float ledger to the preceding canonical
@@ -301,7 +584,21 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
     where
         Node: Eq,
     {
-        let Some(container) = frames.iter().find(|frame| frame.node == container) else {
+        let frame_for = |node| -> Result<
+            Option<&crate::text_layout::state::CanonicalFrame<Node, S>>,
+            crate::text_layout::fit::FitError,
+        > {
+            for frame in frames {
+                if let Some(funding) = &self.funding {
+                    funding.visit(1)?;
+                }
+                if frame.node == node {
+                    return Ok(Some(frame));
+                }
+            }
+            Ok(None)
+        };
+        let Some(container) = frame_for(container)? else {
             return Ok(None);
         };
         let content = container
@@ -312,15 +609,16 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             self.flow_axes
                 .logical_point(content.origin(), content.size(), container.normal.size);
         let logical_content = self.flow_axes.logical_size(content.size());
-        let mut result = self.clone();
+        let mut result = self.try_clone()?;
         result.containing_size = container.normal.size;
         result.containing_inline_start = logical_content_origin.inline;
         result.containing_inline_end = logical_content_origin.inline + logical_content.inline;
         for entry in &mut result.ledger {
-            let frame = frames
-                .iter()
-                .find(|frame| frame.node == entry.node)
-                .ok_or(crate::text_layout::fit::FitError::InvalidGeometry)?;
+            if let Some(funding) = &self.funding {
+                funding.visit(1)?;
+            }
+            let frame =
+                frame_for(entry.node)?.ok_or(crate::text_layout::fit::FitError::InvalidGeometry)?;
             let margin = frame.output.margin;
             let origin = Point::new(
                 crate::text_layout::run::number::<S>(
@@ -373,12 +671,56 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         InheritedFloatExclusions {
             parent_flow_axes: self.flow_axes,
             parent_containing_size: self.containing_size,
+            parent_common_block_origin: self.common_block_origin,
             child_logical_location,
             ledger: self.ledger.clone(),
+            _ledger_storage: None,
+            _owner_storage: None,
         }
     }
 
-    pub(super) fn inherit_into_child(&mut self, inherited: &InheritedFloatExclusions<S, Node>) {
+    /// The frame's own Arc retains the two allocation leases. Cloning an
+    /// Incoming handle therefore pins the actual shared backing only once.
+    pub(super) fn for_entry_child(
+        &self,
+        location: LogicalPointOf<S>,
+        funding: Option<&EntryFunding<S>>,
+    ) -> surgeist_text::Result<InheritedFloatExclusions<S, Node>> {
+        let Some(funding) = funding else {
+            return Ok(self.for_ordinary_child(location));
+        };
+        let owner = funding.header::<(usize, usize, InheritedFloatExclusions<S, Node>)>()?;
+        let storage;
+        let ledger = if self.ledger.is_empty() {
+            storage = None;
+            Vec::new()
+        } else {
+            let (rows, lease) = funding.buffer(self.ledger.len())?;
+            storage = Some(lease);
+            rows
+        };
+        let mut frame = InheritedFloatExclusions {
+            parent_flow_axes: self.flow_axes,
+            parent_containing_size: self.containing_size,
+            parent_common_block_origin: self.common_block_origin,
+            child_logical_location: location,
+            ledger,
+            _ledger_storage: storage,
+            _owner_storage: Some(owner),
+        };
+        for row in &self.ledger {
+            funding.visit(1)?;
+            frame.ledger.push(row.clone());
+        }
+        Ok(frame)
+    }
+
+    pub(super) fn inherit_into_child(
+        &mut self,
+        inherited: &InheritedFloatExclusions<S, Node>,
+    ) -> surgeist_text::Result<()> {
+        self.common_block_origin =
+            inherited.parent_common_block_origin + inherited.child_logical_location.block;
         let child_size = self.containing_size;
         let child_logical_size = inherited.parent_flow_axes.logical_size(child_size);
         let child_physical_origin = inherited.parent_flow_axes.physical_point(
@@ -386,8 +728,12 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             child_logical_size,
             inherited.parent_containing_size,
         );
-        let mut inherited_order = self.ledger.len();
-        self.ledger.extend(inherited.ledger.iter().map(|entry| {
+        for (inherited_order, entry) in (self.ledger.len()..).zip(&inherited.ledger) {
+            if let Some(funding) = &self.funding {
+                funding.visit(1)?;
+            }
+            self.backing
+                .reserve_push(&mut self.ledger, self.funding.as_ref())?;
             let physical_origin = Point::new(
                 entry.physical_margin_box.origin.x - child_physical_origin.x,
                 entry.physical_margin_box.origin.y - child_physical_origin.y,
@@ -418,8 +764,7 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
                 }
             };
             let ledger_order = FloatLedgerOrder(inherited_order);
-            inherited_order += 1;
-            FloatLedgerEntry {
+            self.ledger.push(FloatLedgerEntry {
                 node: entry.node,
                 side,
                 physical_margin_box: PhysicalMarginBox {
@@ -432,8 +777,9 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
                 block_end: logical_origin.block + logical_size.block,
                 ledger_order,
                 exclusion: entry.exclusion,
-            }
-        }));
+            });
+        }
+        Ok(())
     }
 
     pub(super) fn retain_native(
@@ -465,37 +811,48 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         &mut self,
         child: &super::float_context::Completed<Node, S>,
         location: LogicalPointOf<S>,
-    ) -> bool
+    ) -> surgeist_text::Result<bool>
     where
         Node: Eq,
     {
         let Some(incoming) = &child.frame else {
-            return false;
+            return Ok(false);
         };
         if incoming.parent_flow_axes != self.flow_axes
             || incoming.parent_containing_size != self.containing_size
             || incoming.child_logical_location != location
             || child.inherited != incoming.ledger.len()
             || child.ledger.ledger.len() < child.inherited
-            || !child
-                .ledger
-                .ledger
-                .iter()
-                .take(child.inherited)
-                .zip(&incoming.ledger)
-                .all(|(left, right)| left.node == right.node && left.exclusion == right.exclusion)
-            || incoming.ledger.len() != self.ledger.len()
-            || !incoming
-                .ledger
-                .iter()
-                .zip(&self.ledger)
-                .all(|(left, right)| {
-                    left.node == right.node
-                        && left.side == right.side
-                        && left.ledger_order == right.ledger_order
-                })
         {
-            return false;
+            return Ok(false);
+        }
+        for (left, right) in child
+            .ledger
+            .ledger
+            .iter()
+            .take(child.inherited)
+            .zip(&incoming.ledger)
+        {
+            if let Some(funding) = &self.funding {
+                funding.visit(1)?;
+            }
+            if left.node != right.node || left.exclusion != right.exclusion {
+                return Ok(false);
+            }
+        }
+        if incoming.ledger.len() != self.ledger.len() {
+            return Ok(false);
+        }
+        for (left, right) in incoming.ledger.iter().zip(&self.ledger) {
+            if let Some(funding) = &self.funding {
+                funding.visit(1)?;
+            }
+            if left.node != right.node
+                || left.side != right.side
+                || left.ledger_order != right.ledger_order
+            {
+                return Ok(false);
+            }
         }
         let child_origin = self.flow_axes.physical_point(
             location,
@@ -503,6 +860,11 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             self.containing_size,
         );
         for entry in child.ledger.ledger.iter().skip(child.inherited) {
+            if let Some(funding) = &self.funding {
+                funding.visit(1)?;
+            }
+            self.backing
+                .reserve_push(&mut self.ledger, self.funding.as_ref())?;
             let mut entry = entry.clone();
             let physical_origin = Point::new(
                 entry.physical_margin_box.origin.x + child_origin.x,
@@ -530,13 +892,19 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             entry.ledger_order = FloatLedgerOrder(self.ledger.len());
             self.ledger.push(entry);
         }
-        true
+        Ok(true)
     }
 
     /// Record an already accepted border-box origin in this exact ledger frame.
     /// The same operation serves ordinary placement and publication of a plan
     /// that was accepted with its real preceding-inline constraint.
-    fn record_placement(&mut self, float: &PendingFloat<Node, S>, border: LogicalPointOf<S>) {
+    fn record_placement(
+        &mut self,
+        float: &PendingFloat<Node, S>,
+        border: LogicalPointOf<S>,
+    ) -> surgeist_text::Result<()> {
+        self.backing
+            .reserve_push(&mut self.ledger, self.funding.as_ref())?;
         let margin = self.flow_axes.logical_edges(float.margin);
         let size = self.flow_axes.logical_size(float.size);
         let origin = LogicalPointOf::new(
@@ -563,6 +931,7 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             block_end: origin.block + size.block,
             ledger_order: FloatLedgerOrder(self.ledger.len()),
         });
+        Ok(())
     }
 
     pub(super) fn place_float_for_line<M>(
@@ -571,7 +940,7 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         float: &PendingFloat<Node, S>,
         line: Option<(f64, S)>,
     ) -> LayoutResultOf<Node, FloatPlacement<S>, S, M> {
-        self.place_float_in_space(container, float, line, FloatInlineSpace::Finite)
+        self.place_float_in_space(container, float, line, FloatInlineSpace::Finite, None)
     }
 
     pub(super) fn place_float_intrinsic<M>(
@@ -579,7 +948,13 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         container: Node,
         float: &PendingFloat<Node, S>,
     ) -> LayoutResultOf<Node, FloatPlacement<S>, S, M> {
-        self.place_float_in_space(container, float, None, FloatInlineSpace::IntrinsicMaximum)
+        self.place_float_in_space(
+            container,
+            float,
+            None,
+            FloatInlineSpace::IntrinsicMaximum,
+            None,
+        )
     }
 
     /// End-side occupation from the same raw, height-qualified ledger query.
@@ -594,7 +969,10 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         float: &PendingFloat<Node, S>,
         line: Option<(f64, S)>,
         inline_space: FloatInlineSpace,
+        funding: Option<&EntryFunding<S>>,
     ) -> LayoutResultOf<Node, FloatPlacement<S>, S, M> {
+        let owned_funding = self.funding.clone();
+        let funding = owned_funding.as_ref().or(funding);
         let side = FloatLedgerSide::from_float(float.side);
         let logical_size = self.flow_axes.logical_size(float.size);
         let logical_margin = self.flow_axes.logical_edges(float.margin);
@@ -602,15 +980,31 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             logical_size.inline + logical_margin.inline_sum(),
             logical_size.block + logical_margin.block_sum(),
         );
-        let source_block = self
-            .preceding_float_top()
-            .map_or(float.block_start, |top| float.block_start.max(top));
-        let mut candidate_block = self.clearance_block(source_block, float.clear);
+        let mut preceding: Option<S> = None;
+        for row in &self.ledger {
+            entry_visit(container, funding, 1)?;
+            preceding = Some(preceding.map_or(row.block_start, |old| old.max(row.block_start)));
+        }
+        let source_block = preceding.map_or(float.block_start, |top| float.block_start.max(top));
+        let mut candidate_block = source_block;
+        for row in &self.ledger {
+            entry_visit(container, funding, 1)?;
+            if row.side.is_cleared_by(float.clear) {
+                candidate_block = candidate_block.max(row.block_end);
+            }
+        }
 
         loop {
             let candidate_block_end = candidate_block + margin_box_size.block;
-            let band =
-                self.query_physical_margin_box_collisions(candidate_block, candidate_block_end);
+            let band = self.query_band_for(
+                candidate_block,
+                candidate_block_end,
+                FloatBandQueryPurpose::PhysicalMarginBoxCollision,
+                |_, _| -> LayoutResultOf<Node, Option<FloatExclusionIntervalOf<S>>, S, M> {
+                    unreachable!("physical float placement never requests a shape contour")
+                },
+                || entry_visit(container, funding, 1),
+            )?;
             let available_inline = (band.inline_end - band.inline_start).max(S::ZERO);
             if inline_space == FloatInlineSpace::Finite
                 && let Some((prefix, line_end)) = line
@@ -648,7 +1042,9 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
                 } else {
                     None
                 };
-                self.record_placement(float, content_origin);
+                entry_visit(container, funding, 1)?;
+                self.record_placement(float, content_origin)
+                    .map_err(|error| super::inline_run::text_run_error(container, error.into()))?;
                 return Ok(FloatPlacement {
                     margin_block_start: candidate_block,
                     intrinsic_inline_demand,
@@ -821,11 +1217,21 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         )
     }
 
-    pub(crate) fn query_rectangular_line_band(&self, block_start: S, block_end: S) -> FloatBand<S> {
-        self.query_band_without_provider(
+    pub(crate) fn query_rectangular_line_band(
+        &self,
+        block_start: S,
+        block_end: S,
+    ) -> surgeist_text::Result<FloatBand<S>> {
+        self.query_band_for(
             block_start,
             block_end,
             FloatBandQueryPurpose::RectangularLineBand,
+            |_, _| unreachable!("rectangular line bands never request a shape contour"),
+            || {
+                self.funding
+                    .as_ref()
+                    .map_or(Ok(()), |funding| funding.visit(1))
+            },
         )
     }
 
@@ -879,6 +1285,7 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
                     }
                 }
             },
+            || entry_visit(container, self.funding.as_ref(), 1),
         )
     }
 
@@ -895,6 +1302,7 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             |_, _| -> Result<Option<FloatExclusionIntervalOf<S>>, core::convert::Infallible> {
                 unreachable!("provider-free band purposes never request a shape interval")
             },
+            || Ok(()),
         );
         match result {
             Ok(band) => band,
@@ -911,13 +1319,16 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
             Node,
             FloatExclusionQueryOf<S>,
         ) -> Result<Option<FloatExclusionIntervalOf<S>>, E>,
+        mut inspect: impl FnMut() -> Result<(), E>,
     ) -> Result<FloatBand<S>, E> {
-        debug_assert!(
-            self.ledger
-                .windows(2)
-                .all(|pair| pair[0].ledger_order <= pair[1].ledger_order),
-            "float ledger remains in source order"
-        );
+        #[cfg(debug_assertions)]
+        for pair in self.ledger.windows(2) {
+            inspect()?;
+            debug_assert!(
+                pair[0].ledger_order <= pair[1].ledger_order,
+                "float ledger remains in source order"
+            );
+        }
         let mut inline_start = self.containing_inline_start;
         let mut inline_end = self.containing_inline_end;
         let mut next_transition = None;
@@ -925,6 +1336,7 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         let mut evaluated = 0;
 
         for entry in &self.ledger {
+            inspect()?;
             #[cfg(test)]
             {
                 evaluated += 1;
@@ -1101,7 +1513,9 @@ where
                     crate::text_layout::fit::FitError::InvalidGeometry,
                 ));
             }
-            float_exclusions.record_placement(float, accepted.logical_origin);
+            float_exclusions
+                .record_placement(float, accepted.logical_origin)
+                .map_err(|error| super::inline_run::text_run_error(container, error.into()))?;
             constants.flow_axes.physical_point(
                 accepted.logical_origin,
                 constants.flow_axes.logical_size(float.size),
@@ -1117,7 +1531,9 @@ where
             if !receipt.basis.matches(float) || !frame_matches {
                 return Err(super::float_context::missing(float.node));
             }
-            float_exclusions.record_placement(float, receipt.logical);
+            float_exclusions
+                .record_placement(float, receipt.logical)
+                .map_err(|error| super::inline_run::text_run_error(container, error.into()))?;
             // Block auto size may settle after placement. The accepted logical
             // position belongs to the unchanged inline frame; project it once
             // against the final block extent, including decreasing block flow.

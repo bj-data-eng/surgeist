@@ -179,6 +179,7 @@ fn exercise<S: LayoutScalar>(
         |_, _| Ok(None),
         |receipt| Ok(receipt.summary.used_inline_extent <= S::from_f64(25.0)),
     )
+    .map_err(NumericRunError::into_numeric)
     .unwrap() else {
         panic!("resolved metric-only selection does not retry its receiver")
     };
@@ -213,6 +214,7 @@ fn exercise<S: LayoutScalar>(
         |_, _| Ok(None),
         |receipt| Ok(receipt.summary.used_inline_extent <= S::from_f64(25.0)),
     )
+    .map_err(NumericRunError::into_numeric)
     .unwrap() else {
         panic!("resolved metric-only selection does not retry its receiver")
     };
@@ -331,10 +333,12 @@ fn actual_numeric_receipts_use_their_own_height_qualified_float_band() {
             None,
             3,
         );
-        let band = |_: S, end: S| LogicalLineBandQueryResultOf {
-            inline_start: S::ZERO,
-            inline_end: S::from_f64(if end > S::from_f64(20.0) { 5.0 } else { 25.0 }),
-            next_transition: (end > S::from_f64(20.0)).then_some(S::from_f64(40.0)),
+        let band = |_: S, end: S| {
+            Ok(LogicalLineBandQueryResultOf {
+                inline_start: S::ZERO,
+                inline_end: S::from_f64(if end > S::from_f64(20.0) { 5.0 } else { 25.0 }),
+                next_transition: (end > S::from_f64(20.0)).then_some(S::from_f64(40.0)),
+            })
         };
         let carried = Some(ActiveInlineStrutOf {
             metrics: InlineMetricContributionOf {
@@ -352,6 +356,7 @@ fn actual_numeric_receipts_use_their_own_height_qualified_float_band() {
                 S::from_f64(25.0),
                 band
             )
+            .map_err(NumericRunError::into_numeric)
             .unwrap()
         );
         assert!(
@@ -363,6 +368,7 @@ fn actual_numeric_receipts_use_their_own_height_qualified_float_band() {
                 S::from_f64(25.0),
                 band
             )
+            .map_err(NumericRunError::into_numeric)
             .unwrap()
         );
         // Closing the carried scope does not erase the actual End strut's
@@ -428,6 +434,7 @@ fn actual_numeric_receipts_use_their_own_height_qualified_float_band() {
         );
         assert!(
             resolve_numeric_candidate(&mut short, None, S::ZERO, S::ZERO, S::from_f64(25.0), band)
+                .map_err(NumericRunError::into_numeric)
                 .unwrap()
         );
         assert_eq!(
@@ -484,12 +491,15 @@ fn actual_numeric_fallback_envelope_cycle_refuses_without_a_retry_threshold() {
             S::ZERO,
             S::ZERO,
             S::from_f64(25.0),
-            |_: S, end: S| LogicalLineBandQueryResultOf {
-                inline_start: S::ZERO,
-                inline_end: S::from_f64(25.0),
-                next_transition: (end > S::from_f64(22.0)).then_some(S::from_f64(40.0)),
+            |_: S, end: S| {
+                Ok(LogicalLineBandQueryResultOf {
+                    inline_start: S::ZERO,
+                    inline_end: S::from_f64(25.0),
+                    next_transition: (end > S::from_f64(22.0)).then_some(S::from_f64(40.0)),
+                })
             },
         )
+        .map_err(NumericRunError::into_numeric)
         .unwrap_err();
         assert_eq!(
             error,

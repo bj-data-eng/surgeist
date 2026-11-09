@@ -237,6 +237,7 @@ fn fitting_ordinary_trials(
     );
     let lines = super::super::fit(
         FitInput {
+            entry_funding: None,
             adjoining_displacement: 0.0,
             inline_boxes: None,
             groups: crate::group_alignment::Snapshot::default(),
@@ -303,8 +304,8 @@ fn fitting_ordinary_trials(
                 Ok(Vec::new())
             },
             accept: || Ok(()),
-            reset: |_| {},
-            checkpoint_group: || {},
+            reset: |_| Ok(()),
+            checkpoint_group: || Ok(()),
         },
     )
     .unwrap_or_else(|error| match error {

@@ -60,6 +60,7 @@ pub(in super::super) fn fit_with_allocation(
     );
     super::super::fit(
         FitInput {
+            entry_funding: None,
             adjoining_displacement: 0.0,
             inline_boxes: None,
             groups: crate::group_alignment::Snapshot::default(),
@@ -113,8 +114,8 @@ pub(in super::super) fn fit_with_allocation(
         EncounterCallbacks {
             replay: |_: &FinalizedLine, _: EncounterReplay| Ok(Vec::new()),
             accept: || Ok(()),
-            reset: |_| {},
-            checkpoint_group: || {},
+            reset: |_| Ok(()),
+            checkpoint_group: || Ok(()),
         },
     )
 }

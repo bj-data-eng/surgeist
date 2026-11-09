@@ -20,6 +20,13 @@ pub(super) fn trimmed<Node: Copy + Eq, S: LayoutScalar, M>(
             LayoutErrorKindOf::BlockFragmentation(BlockFragmentationFailure::InvalidSource),
         )
     };
+    let text_error = |error| {
+        LayoutErrorOf::new(
+            LayoutErrorSiteOf::Node(root),
+            LayoutOperation::RootLayout,
+            LayoutErrorKindOf::Text(error),
+        )
+    };
     let forced = matches!(
         provenance,
         FragmentationStart::AfterBreak(FragmentationBreakReason::Forced { .. })
@@ -76,8 +83,7 @@ pub(super) fn trimmed<Node: Copy + Eq, S: LayoutScalar, M>(
                 {
                     break;
                 }
-                let mut contributors = Vec::new();
-                actual.margins.entry(source.node, &mut contributors);
+                let contributors = actual.margins.entry(source.node).map_err(text_error)?;
                 entries.extend(
                     contributors
                         .into_iter()
@@ -104,10 +110,10 @@ pub(super) fn trimmed<Node: Copy + Eq, S: LayoutScalar, M>(
                 || local.end > key.range.end
                 || key.partial.is_some_and(|unit| local.end == unit + 1))
         {
-            let mut contributors = Vec::new();
-            packet
+            let contributors = packet
                 .margins
-                .boundary(source.node, false, &mut contributors);
+                .boundary(source.node, false)
+                .map_err(text_error)?;
             pending.extend(
                 contributors
                     .into_iter()
@@ -120,10 +126,10 @@ pub(super) fn trimmed<Node: Copy + Eq, S: LayoutScalar, M>(
                 || local.start < key.range.start
                 || key.resumed == Some(local.start))
         {
-            let mut contributors = Vec::new();
-            packet
+            let contributors = packet
                 .margins
-                .boundary(source.node, true, &mut contributors);
+                .boundary(source.node, true)
+                .map_err(text_error)?;
             pending.extend(
                 contributors
                     .into_iter()
@@ -186,11 +192,11 @@ pub(super) fn trimmed<Node: Copy + Eq, S: LayoutScalar, M>(
                 {
                     return Err(invalid());
                 }
-                let mut contributors = Vec::new();
-                production
+                let contributors = production
                     .packet
                     .margins
-                    .reported(owner.node, owner.side, &mut contributors);
+                    .reported(owner.node, owner.side)
+                    .map_err(text_error)?;
                 pending.extend(
                     contributors
                         .into_iter()

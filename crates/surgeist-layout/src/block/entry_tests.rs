@@ -3,6 +3,9 @@ use crate::engine::ComputeSession;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use std::cell::Cell;
 
+#[path = "../block_tests/clearance_frontier_tests.rs"]
+mod clearance_frontier;
+
 thread_local! {
     static MEASUREMENTS: Cell<usize> = const { Cell::new(0) };
 }

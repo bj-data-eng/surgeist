@@ -293,10 +293,15 @@ impl<Node: Copy + Eq, S: LayoutScalar> State<Node, S> {
             .next_namespace
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Self {
+            active: Vec::new(),
+            completed: None,
+            roots: Vec::new(),
             plan: self.plan.clone(),
+            next_issued: 0,
             namespace,
             next_namespace: self.next_namespace.clone(),
-            ..Self::new()
+            owners: Vec::new(),
+            accepted_owners: Vec::new(),
         }
     }
     pub(crate) fn same_plan(&self, other: &Self) -> bool {

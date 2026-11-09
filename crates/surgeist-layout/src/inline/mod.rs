@@ -15,6 +15,37 @@ use std::cell::Cell;
 use std::ops::Range;
 use surgeist_text::{BidiLevel, SuppliedInlineParticipant, SuppliedLine};
 
+/// Numerical failure and an actual external band refusal retain separate causes.
+#[derive(Debug)]
+pub(super) enum NumericRunError<BandError> {
+    Numeric(NumericWrappingError),
+    Band(BandError),
+}
+impl<BandError> From<NumericWrappingError> for NumericRunError<BandError> {
+    fn from(error: NumericWrappingError) -> Self {
+        Self::Numeric(error)
+    }
+}
+impl<BandError> From<crate::group_alignment::NumericError> for NumericRunError<BandError> {
+    fn from(error: crate::group_alignment::NumericError) -> Self {
+        Self::Numeric(error.into())
+    }
+}
+impl<BandError> From<crate::inline_wrapping::WrappingScopeError> for NumericRunError<BandError> {
+    fn from(error: crate::inline_wrapping::WrappingScopeError) -> Self {
+        Self::Numeric(error.into())
+    }
+}
+#[cfg(test)]
+impl NumericRunError<core::convert::Infallible> {
+    pub(super) fn into_numeric(self) -> NumericWrappingError {
+        match self {
+            Self::Numeric(error) => error,
+            Self::Band(never) => match never {},
+        }
+    }
+}
+
 mod input;
 mod parent_edges;
 
@@ -32,7 +63,8 @@ mod wrap_inside_auto_tests;
 mod wrap_inside_tests;
 
 pub(crate) use input::{
-    InlineParticipantKindOf, InlineParticipantProjection, continues_run, run_ranges, starts_run,
+    InlineParticipantKindOf, InlineParticipantProjection, continues_run, entry_participation,
+    run_ranges, starts_run,
 };
 
 #[cfg(test)]
@@ -1597,14 +1629,14 @@ fn allocate_numeric_box_metrics<S: LayoutScalar>(
     Ok(())
 }
 
-fn resolve_numeric_candidate<S: LayoutScalar>(
+fn resolve_numeric_candidate<S: LayoutScalar, BandError>(
     receipt: &mut NumericCandidateReceiptOf<S>,
     carried: Option<ActiveInlineStrutOf<S>>,
     block: S,
     indent: S,
     available: S,
-    mut band_source: impl FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
-) -> Result<bool, crate::inline_wrapping::NumericWrappingError> {
+    mut band_source: impl FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
+) -> Result<bool, NumericRunError<BandError>> {
     if NumericLineDisposition::for_line(receipt.end.line_end(), receipt.summary.has_in_flow_content)
         == NumericLineDisposition::NonFormatted
     {
@@ -1662,7 +1694,7 @@ fn resolve_numeric_candidate<S: LayoutScalar>(
             metrics.after_baseline,
             receipt.summary.has_displacement,
         )?;
-        let band = band_source(block, end);
+        let band = band_source(block, end).map_err(NumericRunError::Band)?;
         let basis = (
             metrics.baseline,
             metrics.after_baseline,
@@ -1674,7 +1706,7 @@ fn resolve_numeric_candidate<S: LayoutScalar>(
         let next = band.next_transition.is_some();
         if next != floating {
             if seen.contains(&basis) {
-                return Err(crate::inline_wrapping::NumericWrappingError::FeedbackCycle);
+                return Err(crate::inline_wrapping::NumericWrappingError::FeedbackCycle.into());
             }
             seen.push(basis);
             floating = next;
@@ -1773,7 +1805,7 @@ impl<S: LayoutScalar> NumericCandidatePreference<S> {
     }
 }
 
-fn select_scope_inline_line<S: LayoutScalar>(
+fn select_scope_inline_line<S: LayoutScalar, BandError>(
     query: NumericLineQuery<'_, S>,
     wrapping: Option<&crate::inline_wrapping::NumericWrapping>,
     mut prepare_receiver: impl FnMut(
@@ -1785,8 +1817,8 @@ fn select_scope_inline_line<S: LayoutScalar>(
     >,
     mut native_fits: impl FnMut(
         &mut NumericCandidateReceiptOf<S>,
-    ) -> Result<bool, crate::inline_wrapping::NumericWrappingError>,
-) -> Result<InlineSelectionStep<S>, crate::inline_wrapping::NumericWrappingError> {
+    ) -> Result<bool, NumericRunError<BandError>>,
+) -> Result<InlineSelectionStep<S>, NumericRunError<BandError>> {
     let NumericLineQuery {
         goal,
         indent,
@@ -1884,7 +1916,8 @@ fn select_scope_inline_line<S: LayoutScalar>(
         }
     });
     if cursor.source == run.participants.len() && edge_stop.is_none() {
-        return prepare_selected_receiver(baseline(), &mut prepare_receiver);
+        return prepare_selected_receiver(baseline(), &mut prepare_receiver)
+            .map_err(NumericRunError::Numeric);
     }
     let mut stop = run.participants.len();
     let mut forced = None;
@@ -1975,9 +2008,9 @@ fn select_scope_inline_line<S: LayoutScalar>(
     let completion_fits = match fits(&mut completion) {
         Ok(fits) => fits,
         Err(
-            error @ NumericWrappingError::Scope(
+            error @ NumericRunError::Numeric(NumericWrappingError::Scope(
                 crate::inline_wrapping::WrappingScopeError::GapOutsideSelection,
-            ),
+            )),
         ) => {
             gap_failure = Some(error);
             false
@@ -2135,9 +2168,9 @@ fn select_scope_inline_line<S: LayoutScalar>(
         let candidate_fits = match fits(&mut candidate) {
             Ok(fits) => fits,
             Err(
-                error @ NumericWrappingError::Scope(
+                error @ NumericRunError::Numeric(NumericWrappingError::Scope(
                     crate::inline_wrapping::WrappingScopeError::GapOutsideSelection,
-                ),
+                )),
             ) => {
                 gap_failure = Some(error);
                 continue;
@@ -2468,21 +2501,24 @@ pub(super) fn layout_mixed_inline_run<S: LayoutScalar>(
         input,
         supplied,
         available,
-        |_, _| LogicalLineBandQueryResultOf {
-            inline_start: S::ZERO,
-            inline_end: available,
-            next_transition: None,
+        |_, _| {
+            Ok(LogicalLineBandQueryResultOf {
+                inline_start: S::ZERO,
+                inline_end: available,
+                next_transition: None,
+            })
         },
         |block, _| block,
         false,
         unavailable_atomic_receiver,
     )
+    .map_err(NumericRunError::into_numeric)
 }
 
 #[cfg(test)]
 pub(super) fn layout_mixed_inline_run_with_band_source<S, BandSource, ClearSource>(
     input: MixedInlineRunInputOf<S>,
-    band_source: BandSource,
+    mut band_source: BandSource,
     clear_source: ClearSource,
 ) -> Result<MixedInlineRunReportOf<S>, crate::inline_wrapping::NumericWrappingError>
 where
@@ -2496,11 +2532,12 @@ where
         input,
         supplied,
         available,
-        band_source,
+        |start, end| Ok(band_source(start, end)),
         clear_source,
         false,
         unavailable_atomic_receiver,
     )
+    .map_err(NumericRunError::into_numeric)
 }
 
 pub(super) fn layout_mixed_inline_run_with_formatted_observation<
@@ -2508,16 +2545,17 @@ pub(super) fn layout_mixed_inline_run_with_formatted_observation<
     BandSource,
     ClearSource,
     ReceiverSource,
+    BandError,
 >(
     input: MixedInlineRunInputOf<S>,
     band_source: BandSource,
     clear_source: ClearSource,
     observe: bool,
     receiver_source: ReceiverSource,
-) -> Result<MixedInlineRunReportOf<S>, crate::inline_wrapping::NumericWrappingError>
+) -> Result<MixedInlineRunReportOf<S>, NumericRunError<BandError>>
 where
     S: LayoutScalar,
-    BandSource: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    BandSource: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
     ClearSource: FnMut(S, PostLineClearIntent) -> S,
     ReceiverSource:
         FnMut(
@@ -2675,17 +2713,17 @@ enum NumericWalkOutcome {
     CountExceeded,
 }
 
-fn walk_numeric_sequence<S, B, C>(
+fn walk_numeric_sequence<S, B, C, BandError>(
     request: NumericWalkInput<'_, S>,
     sequence: &mut NumericSequence<S>,
     line_boundaries: &mut std::iter::Peekable<impl Iterator<Item = InlineSourceCursor>>,
     control: NumericWalkControl,
     mut band_source: B,
     mut clear_source: C,
-) -> Result<NumericWalkOutcome, crate::inline_wrapping::NumericWrappingError>
+) -> Result<NumericWalkOutcome, NumericRunError<BandError>>
 where
     S: LayoutScalar,
-    B: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
     C: FnMut(S, PostLineClearIntent) -> S,
 {
     let NumericWalkInput {
@@ -2839,7 +2877,8 @@ where
             provisional.line.after_baseline,
             provisional.line.has_displacement,
         )?;
-        let mut queried_band = band_source(block_cursor, provisional_block_end);
+        let mut queried_band =
+            band_source(block_cursor, provisional_block_end).map_err(NumericRunError::Band)?;
         let band_inline_end = queried_band.inline_end.max(queried_band.inline_start);
         let band_available = band_inline_end - queried_band.inline_start;
         let mut has_float_transition = queried_band.next_transition.is_some();
@@ -3136,7 +3175,7 @@ fn numeric_reference_groups<S: LayoutScalar>(
         })
         .collect()
 }
-fn numeric_group_trial<S, B, C>(
+fn numeric_group_trial<S, B, C, BandError>(
     request: NumericWalkInput<'_, S>,
     boundaries: &[InlineSourceCursor],
     sequence: &mut NumericSequence<S>,
@@ -3145,11 +3184,11 @@ fn numeric_group_trial<S, B, C>(
     clear_source: &mut C,
 ) -> Result<
     Option<crate::inline_wrapping::balance::GroupTrial<NumericGroupBasis<S>>>,
-    crate::inline_wrapping::NumericWrappingError,
+    NumericRunError<BandError>,
 >
 where
     S: LayoutScalar,
-    B: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
     C: FnMut(S, PostLineClearIntent) -> S,
 {
     let NumericGroupAttempt {
@@ -3203,17 +3242,17 @@ where
         },
     }))
 }
-fn replay_numeric_auto<S, B, C>(
+fn replay_numeric_auto<S, B, C, BandError>(
     request: NumericWalkInput<'_, S>,
     boundaries: &[InlineSourceCursor],
     sequence: &mut NumericSequence<S>,
     initial: NumericGroupEntry<S>,
     band_source: &mut B,
     clear_source: &mut C,
-) -> Result<(), crate::inline_wrapping::NumericWrappingError>
+) -> Result<(), NumericRunError<BandError>>
 where
     S: LayoutScalar,
-    B: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
     C: FnMut(S, PostLineClearIntent) -> S,
 {
     sequence.restore(initial);
@@ -3228,16 +3267,16 @@ where
     )?;
     Ok(())
 }
-fn balance_numeric_sequence<S, B, C>(
+fn balance_numeric_sequence<S, B, C, BandError>(
     request: NumericWalkInput<'_, S>,
     boundaries: &[InlineSourceCursor],
     sequence: &mut NumericSequence<S>,
     mut band_source: B,
     mut clear_source: C,
-) -> Result<(), crate::inline_wrapping::NumericWrappingError>
+) -> Result<(), NumericRunError<BandError>>
 where
     S: LayoutScalar,
-    B: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
     C: FnMut(S, PostLineClearIntent) -> S,
 {
     use crate::inline_wrapping::balance::{choose_group, variance_order};
@@ -3340,7 +3379,7 @@ where
             );
         };
         if replay.value != trial.value {
-            return Err(invalid);
+            return Err(invalid.into());
         }
         program.push(NumericGroupProgram {
             goal,
@@ -3376,7 +3415,7 @@ where
             );
         };
         if replay.value != program.basis {
-            return Err(invalid);
+            return Err(invalid.into());
         }
         if let Some(reference) = &reference.residuals
             && variance_order(&replay.residuals, reference).ok_or(invalid)? == Ordering::Greater
@@ -3406,7 +3445,7 @@ where
     )? != NumericWalkOutcome::Exhausted
         || sequence.selected_lines.len() != before
     {
-        return Err(invalid);
+        return Err(invalid.into());
     }
     if !improved {
         return replay_numeric_auto(
@@ -3421,7 +3460,7 @@ where
     Ok(())
 }
 
-fn layout_mixed_inline_run_from_available<S, BandSource, ClearSource, ReceiverSource>(
+fn layout_mixed_inline_run_from_available<S, BandSource, ClearSource, ReceiverSource, BandError>(
     input: MixedInlineRunInputOf<S>,
     supplied: Vec<SuppliedInlineParticipant>,
     available: S,
@@ -3429,10 +3468,10 @@ fn layout_mixed_inline_run_from_available<S, BandSource, ClearSource, ReceiverSo
     mut clear_source: ClearSource,
     observe_formatted: bool,
     receiver_source: ReceiverSource,
-) -> Result<MixedInlineRunReportOf<S>, crate::inline_wrapping::NumericWrappingError>
+) -> Result<MixedInlineRunReportOf<S>, NumericRunError<BandError>>
 where
     S: LayoutScalar,
-    BandSource: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    BandSource: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
     ClearSource: FnMut(S, PostLineClearIntent) -> S,
     ReceiverSource:
         FnMut(

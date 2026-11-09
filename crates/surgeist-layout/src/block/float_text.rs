@@ -217,7 +217,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
         inline_space: FloatInlineSpace,
         restart_sequence: bool,
         group_replay: bool,
-    ) -> Self {
+    ) -> Result<Self, FitError> {
         let count = events.len();
         let journal = group_replay.then(|| {
             let earlier_float_top = base.preceding_float_top();
@@ -234,10 +234,10 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 group: None,
             }
         });
-        Self {
+        Ok(Self {
             events,
-            incoming: restart_sequence.then(|| base.clone()),
-            current: base.clone(),
+            incoming: restart_sequence.then(|| base.try_clone()).transpose()?,
+            current: base.try_clone()?,
             base,
             accepted: vec![None; count],
             tentative: vec![None; count],
@@ -246,17 +246,16 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             journal,
             #[cfg(test)]
             replay_event_visits: 0,
-        }
+        })
     }
     /// Roll back the entire unpublished branch to this run's incoming ledger.
     /// Finite complete-tail search and group-quality selection retain the snapshot.
-    pub fn restart_sequence(&mut self) {
+    pub fn restart_sequence(&mut self) -> Result<(), FitError> {
         let Some(incoming) = &self.incoming else {
-            self.reset_candidate();
-            return;
+            return self.reset_candidate();
         };
-        self.base = incoming.clone();
-        self.current = incoming.clone();
+        self.base = incoming.try_clone()?;
+        self.current = incoming.try_clone()?;
         if let Some(journal) = &mut self.journal {
             for index in journal.tentative.drain(..) {
                 self.tentative[index] = None;
@@ -273,28 +272,30 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             self.accepted.fill(None);
             self.tentative.fill(None);
         }
+        Ok(())
     }
     /// Mark the actual resolved group entry after the preceding winning replay.
-    pub fn checkpoint_group(&mut self) {
-        self.reset_candidate();
+    pub fn checkpoint_group(&mut self) -> Result<(), FitError> {
+        self.reset_candidate()?;
         if let Some(journal) = &mut self.journal {
             journal.group = Some(GroupCheckpoint {
-                ledger: self.base.clone(),
+                ledger: self.base.try_clone()?,
                 accepted_len: journal.accepted.len(),
                 earlier_float_top: journal.earlier_float_top,
             });
         }
+        Ok(())
     }
     /// Restore only this group's accepted suffix and provisional candidate rows.
-    pub fn restart_group(&mut self) {
-        self.reset_candidate();
+    pub fn restart_group(&mut self) -> Result<(), FitError> {
+        self.reset_candidate()?;
         if let Some(journal) = &mut self.journal {
             let group = journal
                 .group
                 .as_ref()
                 .expect("group reset follows an actual group-entry checkpoint");
-            self.base = group.ledger.clone();
-            self.current = group.ledger.clone();
+            self.base = group.ledger.try_clone()?;
+            self.current = group.ledger.try_clone()?;
             for index in journal.accepted.drain(group.accepted_len..) {
                 self.accepted[index] = None;
                 journal
@@ -303,10 +304,11 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             }
             journal.earlier_float_top = group.earlier_float_top;
         }
+        Ok(())
     }
     /// Discard provisional state while retaining the accepted line prefix.
-    pub fn reset_candidate(&mut self) {
-        self.current = self.base.clone();
+    pub fn reset_candidate(&mut self) -> Result<(), FitError> {
+        self.current = self.base.try_clone()?;
         if let Some(journal) = &mut self.journal {
             for index in journal.tentative.drain(..) {
                 self.tentative[index] = None;
@@ -314,6 +316,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
         } else {
             self.tentative = self.accepted.clone();
         }
+        Ok(())
     }
     pub fn band(&self) -> &FloatExclusions<S, Node> {
         &self.current
@@ -324,7 +327,8 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
         line: &FinalizedLine,
         replay: EncounterReplay,
     ) -> crate::LayoutResultOf<Node, Vec<EncounterBasis>, S, M> {
-        self.reset_candidate();
+        self.reset_candidate()
+            .map_err(|error| super::inline_run::text_run_error(container, error))?;
         let portion_start = line
             .selected_line()
             .request()
@@ -554,8 +558,8 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
         }
         Ok(basis)
     }
-    pub fn accept(&mut self) {
-        self.base = self.current.clone();
+    pub fn accept(&mut self) -> Result<(), FitError> {
+        self.base = self.current.try_clone()?;
         if let Some(journal) = &mut self.journal {
             for index in journal.tentative.drain(..) {
                 let pending = self.tentative[index]
@@ -580,6 +584,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
         } else {
             self.accepted = self.tentative.clone();
         }
+        Ok(())
     }
     pub fn finish(self) -> EncounterOutput<Node, S> {
         let children = self

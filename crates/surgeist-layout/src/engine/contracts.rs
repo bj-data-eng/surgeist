@@ -38,7 +38,7 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
     }
     fn fragment_margin_state(
         &mut self,
-    ) -> Option<&mut crate::block::fragment_margins::State<Self::Node>> {
+    ) -> Option<&mut crate::block::fragment_margins::State<Self::Node, Self::Scalar>> {
         None
     }
     fn fragment_minimum(
@@ -50,6 +50,38 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
     fn has_leaf_measurement(&self, _node: Self::Node) -> bool {
         false
     }
+    fn qualify_entry(
+        &mut self,
+        query: crate::block::entry::EntryQuery<Self::Node, Self::Scalar>,
+    ) -> crate::block::entry::EntryResult<Self::Node, Self::Scalar, M>
+    where
+        Self: Sized,
+    {
+        crate::block::entry::observe(self, query)
+    }
+    /// A framed entry demand samples the actual leaf producer, without host
+    /// geometry-cache authority. Executors with such a cache override this.
+    fn measure_entry_leaf(
+        &mut self,
+        node: Self::Node,
+        input: ComputeInputOf<Self::Scalar>,
+    ) -> LayoutResultOf<Self::Node, ComputeOutputOf<Self::Scalar>, Self::Scalar, M> {
+        if !self.has_leaf_measurement(node) {
+            return Err(crate::block::float_context::missing(node));
+        }
+        self.compute_child(node, input.with_run_mode(crate::RunMode::ComputeSize))
+    }
+    /// Real used-box sizing of an independent source float in a disposable
+    /// entry traversal. The packet producer retains its detached body policy;
+    /// no complete packet or descendant publication escapes entry qualification.
+    fn measure_entry_float(
+        &mut self,
+        node: Self::Node,
+        input: ComputeInputOf<Self::Scalar>,
+    ) -> LayoutResultOf<Self::Node, ComputeOutputOf<Self::Scalar>, Self::Scalar, M> {
+        self.probe_float_child(node, input, super::session::FloatChildTrial::Detached)
+            .map(|packet| packet.output)
+    }
     fn block_float_work(&self, node: Self::Node) -> bool {
         crate::block::float_context::discover_work(self, node)
     }
@@ -58,10 +90,18 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
         node: Self::Node,
         input: ComputeInputOf<Self::Scalar>,
         frame: crate::block::InheritedFloatExclusions<Self::Scalar, Self::Node>,
+        cut: Option<crate::block::entry::canonical::Separation<Self::Node, Self::Scalar>>,
     ) -> FloatContextChildResult<Self::Node, Self::Scalar, M> {
         self.block_float_state()
             .ok_or_else(|| crate::block::float_context::missing(node))?
-            .push(node, input, frame);
+            .push(node, input, frame, cut)
+            .map_err(|error| {
+                crate::LayoutErrorOf::new(
+                    crate::LayoutErrorSiteOf::Node(node),
+                    crate::LayoutOperation::ChildLayout,
+                    crate::LayoutErrorKindOf::Text(error),
+                )
+            })?;
         let result = self.compute_child(node, input);
         let completed = self
             .block_float_state()
@@ -255,6 +295,9 @@ pub(crate) enum UnroundedInlineFragmentState<'a, S: LayoutScalar> {
     Present(&'a [InlineFragmentOutputOf<S>]),
 }
 
+pub(crate) type CacheLookupResult<Node, S, M = core::convert::Infallible> =
+    LayoutResultOf<Node, Option<ComputeOutputOf<S>>, S, M>;
+
 pub(crate) trait CacheAccess<M = core::convert::Infallible> {
     type Node: Copy + Eq;
     type Scalar: LayoutScalar;
@@ -265,24 +308,24 @@ pub(crate) trait CacheAccess<M = core::convert::Infallible> {
         node: Self::Node,
         input: &ComputeInputOf<Self::Scalar>,
         context: CacheKeyContext,
-    ) -> Option<ComputeOutputOf<Self::Scalar>>;
+    ) -> CacheLookupResult<Self::Node, Self::Scalar, M>;
     fn cache_store(
         &mut self,
         node: Self::Node,
         input: &ComputeInputOf<Self::Scalar>,
         context: CacheKeyContext,
         output: ComputeOutputOf<Self::Scalar>,
-    );
+    ) -> LayoutResultOf<Self::Node, (), Self::Scalar, M>;
     /// Restore invocation-local semantic receipts accompanying an admitted
     /// geometry hit. Box-only executors have no such additional state.
     fn cache_restore_semantics(
         &mut self,
         _node: Self::Node,
         _input: &ComputeInputOf<Self::Scalar>,
-    ) -> bool {
-        true
+    ) -> LayoutResultOf<Self::Node, bool, Self::Scalar, M> {
+        Ok(true)
     }
-    fn cache_clear(&mut self, node: Self::Node);
+    fn cache_clear(&mut self, node: Self::Node) -> LayoutResultOf<Self::Node, (), Self::Scalar, M>;
 }
 
 pub(crate) fn compute_cached<Tree, ComputeFn, M>(
@@ -305,13 +348,13 @@ where
     }
 
     let context = tree.cache_context();
-    if let Some(output) = tree.cache_get(node, &input, context)
-        && tree.cache_restore_semantics(node, &input)
+    if let Some(output) = tree.cache_get(node, &input, context)?
+        && tree.cache_restore_semantics(node, &input)?
     {
         return Ok(output);
     }
 
     let output = compute(tree, node, input)?;
-    tree.cache_store(node, &input, context, output);
+    tree.cache_store(node, &input, context, output)?;
     Ok(output)
 }

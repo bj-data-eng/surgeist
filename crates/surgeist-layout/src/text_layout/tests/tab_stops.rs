@@ -320,6 +320,7 @@ fn intrinsic_with_indent(
         &[],
         &[],
         super::super::run::Context {
+            entry_funding: None,
             scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
                 flow.scope_alignments.clone(),
                 crate::text_layout::fragmentation::InlineBoxFamilies::default(),
@@ -378,8 +379,8 @@ fn intrinsic_with_indent(
         },
         &[],
         super::super::run::LineEnvironment {
-            checkpoint_group: || {},
-            reset: |_| {},
+            checkpoint_group: || Ok(()),
+            reset: |_| Ok(()),
             band: |_, _| {
                 Ok(super::super::fit::Band {
                     start: 0.0,

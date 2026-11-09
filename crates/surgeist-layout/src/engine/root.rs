@@ -36,7 +36,7 @@ where
     Tree: Compute<'input, M>
         + CacheAccess<M, Node = <Tree as Traverse>::Node, Scalar = <Tree as Traverse>::Scalar>,
 {
-    tree.cache_clear(node);
+    tree.cache_clear(node)?;
     tree.set_unrounded_inline_fragment_state(node, None);
     tree.set_unrounded(crate::LayoutOutputEntryOf::hidden_unrounded(
         node,
@@ -67,7 +67,7 @@ where
             | LayoutInputViewOf::LineBreak(_)
             | LayoutInputViewOf::InlineBoundary(_)
             | LayoutInputViewOf::TextControl(_) => {
-                tree.cache_clear(child);
+                tree.cache_clear(child)?;
                 tree.set_unrounded_inline_fragment_state(child, None);
                 tree.set_unrounded(crate::LayoutOutputEntryOf::hidden_unrounded(
                     child,

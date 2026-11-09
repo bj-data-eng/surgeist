@@ -132,15 +132,18 @@ fn run<S: LayoutScalar>(input: MixedInlineRunInputOf<S>) -> MixedInlineRunReport
     let available = resolved_inline_available(&input, &supplied).unwrap();
     layout_mixed_inline_run_with_formatted_observation(
         input,
-        |_, _| LogicalLineBandQueryResultOf {
-            inline_start: S::ZERO,
-            inline_end: available,
-            next_transition: None,
+        |_, _| {
+            Ok(LogicalLineBandQueryResultOf {
+                inline_start: S::ZERO,
+                inline_end: available,
+                next_transition: None,
+            })
         },
         |block, _| block,
         true,
         unavailable_atomic_receiver,
     )
+    .map_err(crate::inline::NumericRunError::into_numeric)
     .unwrap()
 }
 
@@ -652,20 +655,23 @@ fn pretty_does_not_replay_unrelated_prefix_groups_for_body_targets() {
         let result = layout_mixed_inline_run_with_formatted_observation(
             request,
             |start, _| {
-                let index = (start / 10.0) as usize;
-                if index < visits.len() {
-                    visits[index] += 1;
-                }
-                LogicalLineBandQueryResultOf {
-                    inline_start: 0.0,
-                    inline_end: 60.0,
-                    next_transition: None,
-                }
+                Ok({
+                    let index = (start / 10.0) as usize;
+                    if index < visits.len() {
+                        visits[index] += 1;
+                    }
+                    LogicalLineBandQueryResultOf {
+                        inline_start: 0.0,
+                        inline_end: 60.0,
+                        next_transition: None,
+                    }
+                })
             },
             |block, _| block,
             true,
             unavailable_atomic_receiver,
         )
+        .map_err(crate::inline::NumericRunError::into_numeric)
         .unwrap();
         (result.line_bands.len(), visits)
     }

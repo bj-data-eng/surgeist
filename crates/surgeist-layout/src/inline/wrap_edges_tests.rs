@@ -666,6 +666,7 @@ fn propagation<S: LayoutScalar>() {
                     |_, _| Ok(None),
                     |r| Ok(r.summary.used_inline_extent <= n(100.0)),
                 )
+                .map_err(NumericRunError::into_numeric)
                 .unwrap() else {
                     panic!("resolved metric-only selection does not retry its receiver")
                 };
@@ -1382,15 +1383,18 @@ fn separated_numeric_runs<S: LayoutScalar>() {
                             participation: participation(InlineBreakOpportunity::Allowed),
                         }],
                     },
-                    |_, _| LogicalLineBandQueryResultOf {
-                        inline_start: S::ZERO,
-                        inline_end: n(100.0),
-                        next_transition: None,
+                    |_, _| {
+                        Ok(LogicalLineBandQueryResultOf {
+                            inline_start: S::ZERO,
+                            inline_end: n(100.0),
+                            next_transition: None,
+                        })
                     },
                     |block, _| block,
                     true,
                     crate::inline::unavailable_atomic_receiver,
                 )
+                .map_err(crate::inline::NumericRunError::into_numeric)
                 .unwrap();
                 let mut expected_endings = Vec::new();
                 if edges.before == WrapEdge::Line {

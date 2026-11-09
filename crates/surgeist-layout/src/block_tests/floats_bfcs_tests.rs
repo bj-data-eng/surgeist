@@ -1932,7 +1932,9 @@ fn fri06_c04_float_ledger_evaluates_each_float_span_pair_once_per_candidate_pass
             crate::geometry::LogicalSizeOf::new(scalar_value(30.0), scalar_value(40.0)),
         );
 
-        let band = exclusions.query_rectangular_line_band(S::ZERO, scalar_value(40.0));
+        let band = exclusions
+            .query_rectangular_line_band(S::ZERO, scalar_value(40.0))
+            .unwrap();
         assert_eq!(band.inline_start, scalar_value(50.0));
         assert_eq!(band.inline_end, scalar_value(70.0));
         assert_eq!(band.next_transition, Some(scalar_value(20.0)));
@@ -1959,7 +1961,7 @@ fn fri06_c04_float_ledger_shape_is_not_approximated_by_rectangular_line_band() {
         crate::geometry::LogicalSizeOf::new(80.0, 50.0),
     );
 
-    let band = exclusions.query_rectangular_line_band(0.0, 20.0);
+    let band = exclusions.query_rectangular_line_band(0.0, 20.0).unwrap();
     assert_eq!(band.inline_start, 0.0);
     assert_eq!(band.inline_end, 100.0);
     assert_eq!(band.next_transition, None);

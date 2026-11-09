@@ -253,7 +253,7 @@ fn normalization_error(
     })
 }
 
-pub(super) fn refusal(reason: ScopeAlignmentError) -> surgeist_text::Error {
+pub(crate) fn refusal(reason: ScopeAlignmentError) -> surgeist_text::Error {
     surgeist_text::Error::new(
         surgeist_text::ErrorCode::ScopeAlignmentRefused,
         "captured scope alignment refused",
@@ -823,7 +823,199 @@ pub(super) fn overflow(kind: ScopeAlignmentLimitKind) -> surgeist_text::Error {
 
 mod custody;
 pub(super) use custody::ScopeCensus;
+pub(crate) use custody::semantic::SemanticWindowProof;
 pub(crate) use custody::{ScopeAlignmentResources, ScopeLease, ScopeOperation};
+
+/// One entry operation's actual captured anchor and shared cumulative owner.
+/// Native preparation never creates a funding context.
+#[derive(Clone)]
+pub(crate) struct EntryFunding<S: LayoutScalar> {
+    resources: ScopeAlignmentResources<S>,
+    prepared: PreparedText,
+    limits: ScopeAlignmentLimits,
+}
+
+impl<S: LayoutScalar> EntryFunding<S> {
+    pub(crate) fn new(
+        resources: ScopeAlignmentResources<S>,
+        prepared: PreparedText,
+    ) -> surgeist_text::Result<Option<Self>> {
+        if prepared.scope_alignment_retention().is_none() {
+            return Ok(None);
+        }
+        if resources.census().bytes == 0 {
+            return Err(refusal(ScopeAlignmentError::MissingCapture));
+        }
+        let limits = prepared
+            .captured_owner()
+            .ok_or_else(|| refusal(ScopeAlignmentError::MissingCapture))?
+            .domain()
+            .scope_alignment_limits()
+            .ok_or_else(|| refusal(ScopeAlignmentError::LimitsRequired))?;
+        Ok(Some(Self {
+            resources,
+            prepared,
+            limits,
+        }))
+    }
+
+    pub(crate) fn as_ref(&self) -> EntryFundingRef<'_> {
+        EntryFundingRef {
+            facts: &self.resources,
+            prepared: &self.prepared,
+            limits: self.limits,
+        }
+    }
+    pub(crate) fn visit(&self, count: usize) -> surgeist_text::Result<()> {
+        self.as_ref().visit(count)
+    }
+    pub(crate) fn buffer<T>(&self, count: usize) -> surgeist_text::Result<(Vec<T>, ScopeLease)> {
+        self.as_ref().buffer(count)
+    }
+    pub(crate) fn materialize(&self, count: usize) -> surgeist_text::Result<()> {
+        self.as_ref().materialize(count)
+    }
+    pub(crate) fn header<T>(&self) -> surgeist_text::Result<ScopeLease> {
+        self.as_ref().header::<T>()
+    }
+}
+
+/// Borrow the same actual entry owner across the f64 Text adapter boundary.
+#[derive(Clone, Copy)]
+pub(crate) struct EntryFundingRef<'a> {
+    facts: &'a dyn ScopeAlignmentFacts,
+    prepared: &'a PreparedText,
+    limits: ScopeAlignmentLimits,
+}
+impl<'a> EntryFundingRef<'a> {
+    pub(crate) fn visit(self, count: usize) -> surgeist_text::Result<()> {
+        self.facts.visit(self.limits, count)
+    }
+    pub(crate) fn buffer<T>(self, count: usize) -> surgeist_text::Result<(Vec<T>, ScopeLease)> {
+        let operation = self.operation()?;
+        allocation_buffer(self.facts, &operation, count)
+    }
+    pub(crate) fn materialize(self, count: usize) -> surgeist_text::Result<()> {
+        let operation = self.operation()?;
+        self.facts
+            .materialize(self.limits, operation.input_union()?.records, count)
+    }
+    pub(crate) fn header<T>(self) -> surgeist_text::Result<ScopeLease> {
+        let operation = self.operation()?;
+        allocation_header::<T>(self.facts, &operation)
+    }
+    fn operation(self) -> surgeist_text::Result<ScopeOperation<'a>> {
+        self.facts
+            .begin(
+                surgeist_text::ScopeAlignmentCensusInput::Product(
+                    surgeist_text::ScopeAlignmentProduct::Prepared(self.prepared),
+                ),
+                0,
+            )?
+            .ok_or_else(|| refusal(ScopeAlignmentError::MissingCapture))
+    }
+    fn unrepresented(self) -> surgeist_text::Error {
+        let scope = self
+            .prepared
+            .captured_owner()
+            .expect("entry funding retains its admitted captured owner")
+            .domain()
+            .capture_ordinal();
+        refusal(ScopeAlignmentError::UnrepresentedOwnership { scope })
+    }
+}
+
+/// Leased backing for entry-case and staging row buffers. Replacement storage
+/// coexists with its predecessor until the old Vec is dropped.
+#[derive(Default)]
+pub(crate) struct EntryBacking {
+    initialized: usize,
+    lease: Option<ScopeLease>,
+}
+impl EntryBacking {
+    /// Adopt the affine custody returned with this actual funded buffer.
+    /// Existing initialized rows and the lease keep their completed charges.
+    pub(crate) fn from_buffer<T, S: LayoutScalar>(
+        values: Vec<T>,
+        admitted: usize,
+        lease: ScopeLease,
+        funding: &EntryFunding<S>,
+    ) -> surgeist_text::Result<(Vec<T>, Self)> {
+        Self::from_buffer_ref(values, admitted, lease, funding.as_ref())
+    }
+    pub(crate) fn from_buffer_ref<T>(
+        values: Vec<T>,
+        admitted: usize,
+        lease: ScopeLease,
+        funding: EntryFundingRef<'_>,
+    ) -> surgeist_text::Result<(Vec<T>, Self)> {
+        let retained = lease.retained();
+        if values.len() > admitted
+            || admitted > values.capacity()
+            || retained.records != admitted
+            || values.capacity().checked_mul(size_of::<T>()) != Some(retained.bytes)
+        {
+            let error = funding.unrepresented();
+            drop(values);
+            drop(lease);
+            return Err(error);
+        }
+        let initialized = values.len();
+        Ok((
+            values,
+            Self {
+                initialized,
+                lease: Some(lease),
+            },
+        ))
+    }
+
+    /// Admit one push before publishing its row. Spare admitted slots are
+    /// already materialized; initializing a popped slot again is a new charge.
+    /// Keep this custody beside its Vec until that Vec's backing is dropped.
+    pub(crate) fn reserve_push<T, S: LayoutScalar>(
+        &mut self,
+        values: &mut Vec<T>,
+        funding: Option<&EntryFunding<S>>,
+    ) -> surgeist_text::Result<()> {
+        self.reserve_push_ref(values, funding.map(EntryFunding::as_ref))
+    }
+    pub(crate) fn reserve_push_ref<T>(
+        &mut self,
+        values: &mut Vec<T>,
+        funding: Option<EntryFundingRef<'_>>,
+    ) -> surgeist_text::Result<()> {
+        let Some(funding) = funding else {
+            return Ok(());
+        };
+        funding.visit(1)?;
+        let required = values
+            .len()
+            .checked_add(1)
+            .ok_or_else(|| overflow(ScopeAlignmentLimitKind::Records))?;
+        let admitted = self
+            .lease
+            .as_ref()
+            .map_or(0, |lease| lease.retained().records);
+        if values.len() < admitted {
+            if values.len() < self.initialized {
+                funding.materialize(1)?;
+            } else {
+                self.initialized = required;
+            }
+            return Ok(());
+        }
+        let count = admitted.saturating_mul(2).max(4).max(required);
+        let (lease, mut next) = funding.buffer(count).map(|(rows, lease)| (lease, rows))?;
+        funding.visit(values.len())?;
+        next.append(values);
+        let prior = std::mem::replace(values, next);
+        drop(prior);
+        self.lease = Some(lease);
+        self.initialized = required;
+        Ok(())
+    }
+}
 
 fn reserve_buffer<T>(
     limits: ScopeAlignmentLimits,
@@ -887,6 +1079,21 @@ pub(crate) fn allocation_buffer<T>(
         reserve_buffer::<T>(operation.limits(), retained, facts.retention(), count, 0)?;
     let lease = facts.retain_payload(census)?;
     Ok((values, lease))
+}
+
+/// Admit an actual Layout owner header without inventing a structural row.
+pub(crate) fn allocation_header<T>(
+    facts: &dyn ScopeAlignmentFacts,
+    operation: &ScopeOperation<'_>,
+) -> surgeist_text::Result<ScopeLease> {
+    let (_, census) = reserve_buffer::<()>(
+        operation.limits(),
+        operation.input_union()?,
+        facts.retention(),
+        0,
+        size_of::<T>(),
+    )?;
+    facts.retain_payload(census)
 }
 
 /// The native fitter consumes f64 facts without erasing the scalar ownership of

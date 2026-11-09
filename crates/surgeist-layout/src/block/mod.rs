@@ -76,8 +76,8 @@ use in_flow::{
 
 #[cfg(test)]
 pub(crate) use floats::FloatLedgerSide;
-use floats::{FloatBand, FloatIntrinsics, PendingFloat, layout_floats};
 pub(crate) use floats::{FloatExclusions, InheritedFloatExclusions};
+use floats::{FloatIntrinsics, PendingFloat, layout_floats};
 
 pub(crate) fn measure_definite_inline_atomic<'input, Tree, M>(
     tree: &mut Tree,
@@ -171,6 +171,7 @@ struct BlockResult<Node, S: LayoutScalar> {
     output: ComputeOutputOf<S>,
     used: ComputeInputOf<S>,
     floats: Option<(FloatExclusions<S, Node>, usize)>,
+    remaining_cut: Option<entry::canonical::Separation<Node, S>>,
 }
 
 /// Actual empty-box sizing supplied by the containment owner. Scalar demand
@@ -257,7 +258,10 @@ where
     }
     let formatted = tree
         .text_computation()
-        .is_some_and(|text| text.formatted_begin_block(node, input, anonymous));
+        .map_or(Ok(false), |text| {
+            text.formatted_begin_block(node, input, anonymous)
+        })
+        .map_err(|error| inline_run::text_run_error(node, error.into()))?;
     let result = (|| {
         let scrollbar_width = block_container_projection::<Tree, M>(tree, node)
             .scrollbar_width
@@ -290,12 +294,21 @@ where
             pass_input = input.with_settled_auto_scrollbars(next_state);
         }
     })();
-    if formatted && let Some(text) = tree.text_computation() {
-        text.formatted_end_block(node, input, anonymous, result.is_ok());
-    }
+    let formatted_result = if formatted && let Some(text) = tree.text_computation() {
+        text.formatted_end_block(node, input, anonymous, result.is_ok())
+            .map_err(|error| inline_run::text_run_error(node, error.into()))
+    } else {
+        Ok(())
+    };
     if let Some(groups) = tree.group_computation() {
         groups.end(result.is_ok());
     }
+    // Completion bookkeeping must not replace the already established body
+    // failure; any resource exhaustion remains in the shared resource owner.
+    let result = result.and_then(|output| {
+        formatted_result?;
+        Ok(output)
+    });
     result.and_then(|result| {
         if incoming.is_none()
             && float_context::Role::for_input(tree.node_input(node), input)
@@ -318,6 +331,7 @@ where
                 ledger,
                 inherited,
                 frame: incoming.map(|incoming| incoming.frame),
+                remaining_cut: result.remaining_cut,
             });
         }
         Ok(result.output)
@@ -369,6 +383,7 @@ where
                 )?),
             used: input,
             floats: None,
+            remaining_cut: None,
         });
     }
     if contained_size == Size::NONE
@@ -394,6 +409,7 @@ where
                 )?),
             used: input,
             floats: None,
+            remaining_cut: None,
         });
     }
     let logical_inner_size = constants.logical_node_inner_size();
@@ -607,7 +623,8 @@ where
         (normal_constants, normal_pass)
     };
     if let Some(text) = tree.text_computation() {
-        text.formatted_record_flow(final_pass.formatted.clone());
+        text.formatted_record_flow(&final_pass.formatted)
+            .map_err(|error| inline_run::text_run_error(node, error.into()))?;
     }
     if let Some(groups) = tree.group_computation() {
         groups.select(final_pass.groups.clone());
@@ -682,13 +699,15 @@ where
     if let Some(flow) = final_pass.fragment_margins
         && let Some(state) = tree.fragment_margin_state()
     {
-        state.record(
-            node,
-            final_constants.flow_axes,
-            flow,
-            final_constants.collapse_top_margin,
-            final_pass.collapses_end_margin(final_constants),
-        );
+        state
+            .record(
+                node,
+                final_constants.flow_axes,
+                flow,
+                final_constants.collapse_top_margin,
+                final_pass.collapses_end_margin(final_constants),
+            )
+            .map_err(|error| inline_run::text_run_error(node, error.into()))?;
     }
 
     let (baselines, named_baselines) =
@@ -718,6 +737,7 @@ where
             output,
             used: input,
             floats: Some((final_pass.float_context, final_pass.inherited_floats)),
+            remaining_cut: final_pass.remaining_cut,
         })
     } else {
         let mut accepted_contributions = final_pass.contributions;
@@ -796,6 +816,7 @@ where
             output,
             used: input,
             floats: Some((final_pass.float_context, final_pass.inherited_floats)),
+            remaining_cut: final_pass.remaining_cut,
         })
     }
 }

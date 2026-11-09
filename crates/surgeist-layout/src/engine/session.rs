@@ -2,11 +2,13 @@
 mod scope_resource_tests;
 
 use super::contracts::{CacheAccess, Compute, Round, UnroundedInlineFragmentState};
+use super::entry_staging::{self, Rows};
 use crate::error::{
     LayoutErrorKindOf, LayoutErrorOf, LayoutErrorSiteOf, LayoutInternalInvariant, LayoutOperation,
     LayoutResultOf,
 };
 use crate::scroll::SettledAutoScrollbarState;
+use crate::text_layout::scope_alignment::EntryBacking;
 use crate::{
     CompletedLayoutBatchOf, ComputeInputOf, ComputeOutputOf, InlineFragmentOutputEntryOf,
     InlineFragmentOutputOf, LayoutCacheClearEntry, LayoutCacheStoreEntryOf, LayoutInputViewOf,
@@ -23,6 +25,14 @@ type SessionResult<Tree, T> = LayoutResultOf<
 type CanonicalFrames<Tree> = Vec<
     crate::text_layout::state::CanonicalFrame<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
 >;
+
+type EntrySources<Tree> = std::sync::Arc<
+    std::sync::Mutex<
+        super::entry_sources::SourceMemo<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+    >,
+>;
+type EntryFunding<Tree> =
+    Option<crate::text_layout::scope_alignment::EntryFunding<<Tree as Traverse>::Scalar>>;
 
 type GroupBasis<Tree> =
     Option<crate::group_alignment::Basis<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>>;
@@ -60,12 +70,13 @@ where
     block_frames: Vec<super::block_scope::Frame<Tree::Node, Tree::Scalar>>,
     record_block_bodies: bool,
     block_bodies: Vec<super::block_scope::Body<Tree::Node, Tree::Scalar>>,
-    fragment_margins: Option<crate::block::fragment_margins::State<Tree::Node>>,
+    fragment_margins: Option<crate::block::fragment_margins::State<Tree::Node, Tree::Scalar>>,
     fragment_allocations:
         Vec<crate::block_fragmentation::FragmentBoxAllocation<Tree::Node, Tree::Scalar>>,
     fragment_intrinsics:
         Option<std::sync::Arc<crate::block::intrinsic::FragmentContext<Tree::Node, Tree::Scalar>>>,
     block_floats: crate::block::float_context::State<Tree::Node, Tree::Scalar>,
+    entry_sources: Option<EntrySources<Tree>>,
     wrapping: Option<std::sync::Arc<crate::inline_wrapping::WrappingContext<Tree::Node>>>,
     flow_graph: Option<&'a crate::engine::validation::ValidationGraph<Tree::Node>>,
     wrapping_uncached: Vec<Tree::Node>,
@@ -81,6 +92,15 @@ where
     cache_store_entries: Vec<LayoutCacheStoreEntryOf<Tree::Node, Tree::Scalar>>,
     cache_clear_entries: Vec<LayoutCacheClearEntry<Tree::Node>>,
     invalidated_nodes: Vec<Tree::Node>,
+    entry_storage: Option<EntryStorage>,
+}
+
+struct EntryStorage {
+    _dirty: EntryBacking,
+    clears: EntryBacking,
+    stores: EntryBacking,
+    _fragments: EntryBacking,
+    _wrapping: EntryBacking,
 }
 
 #[derive(Clone)]
@@ -100,14 +120,13 @@ pub(crate) enum FloatChildTrial {
 pub(crate) struct FloatChildPacket<Node, S: LayoutScalar> {
     groups: Option<crate::group_alignment::State<Node, S>>,
     wrapping: Option<std::sync::Arc<crate::inline_wrapping::WrappingContext<Node>>>,
-    formatted_basis: Vec<crate::text_layout::formatted::BoundAssignment<Node, S>>,
-    formatted_parent: Option<Vec<crate::text_layout::formatted::ComputeScope<Node, S>>>,
+    formatted_basis: Option<crate::text_layout::formatted::EntryFormattedBasis<Node, S>>,
     boxes: Vec<crate::text_layout::boxes::BoxRunUse<Node, S>>,
     formatted: Option<crate::text_layout::formatted::FormattedState<Node, S>>,
     pub(crate) node: Node,
     pub(crate) input: ComputeInputOf<S>,
     pub(crate) output: ComputeOutputOf<S>,
-    frames: std::sync::Arc<[crate::text_layout::state::CanonicalFrame<Node, S>]>,
+    frames: Option<std::sync::Arc<[crate::text_layout::state::CanonicalFrame<Node, S>]>>,
     associations: Option<std::sync::Arc<crate::text_layout::capture::ScopeAssociations<Node>>>,
     entries: Vec<LayoutOutputEntryOf<Node, S>>,
     fragments: Vec<StagedInlineFragmentGroup<Node, S>>,
@@ -118,6 +137,9 @@ pub(crate) struct FloatChildPacket<Node, S: LayoutScalar> {
     pending: Vec<crate::text_layout::state::PendingParagraph<Node>>,
     absolute_baselines: Vec<(Node, f64)>,
     scope_fragments: Vec<crate::text_layout::state::ScopeFragmentGroup<Node, S>>,
+    _entry_clears: Option<EntryBacking>,
+    _entry_stores: Option<EntryBacking>,
+    _entry_owner: Option<crate::text_layout::scope_alignment::ScopeLease>,
 }
 
 pub(crate) type FloatProbeResult<Tree, M> = LayoutResultOf<
@@ -204,6 +226,14 @@ where
             .copied()
             .map(LayoutCacheClearEntry::new)
             .collect();
+        Self::with_invalidations(tree, invalidated_nodes, cache_clear_entries)
+    }
+
+    fn with_invalidations(
+        tree: &'a Tree,
+        invalidated_nodes: Vec<Tree::Node>,
+        cache_clear_entries: Vec<LayoutCacheClearEntry<Tree::Node>>,
+    ) -> Self {
         Self {
             tree,
             bound: None,
@@ -217,6 +247,7 @@ where
             fragment_allocations: Vec::new(),
             fragment_intrinsics: None,
             block_floats: crate::block::float_context::State::new(),
+            entry_sources: None,
             wrapping: None,
             flow_graph: None,
             wrapping_uncached: Vec::new(),
@@ -231,7 +262,132 @@ where
             cache_store_entries: Vec::new(),
             cache_clear_entries,
             invalidated_nodes,
+            entry_storage: None,
         }
+    }
+
+    fn entry_funding(&self, node: Tree::Node) -> SessionResult<Tree, EntryFunding<Tree>> {
+        let Some(text) = &self.text else {
+            return Ok(None);
+        };
+        text.entry_funding().map_err(|error| {
+            LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(node),
+                LayoutOperation::ChildLayout,
+                LayoutErrorKindOf::Text(error),
+            )
+        })
+    }
+
+    /// Disposable custody for an exact native child trial. A framed caller
+    /// installs its authenticated resident chain before any child dispatch.
+    pub(crate) fn child_staging(
+        &self,
+        node: Tree::Node,
+        trial: FloatChildTrial,
+        incoming: Option<crate::block::float_context::Incoming<Tree::Node, Tree::Scalar>>,
+    ) -> SessionResult<Tree, Self> {
+        if incoming
+            .as_ref()
+            .is_some_and(|entry| entry.node != node || trial != FloatChildTrial::InFlow)
+        {
+            return Err(crate::block::float_context::missing(node));
+        }
+        let error = |error| {
+            LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(node),
+                LayoutOperation::ChildLayout,
+                LayoutErrorKindOf::Text(error),
+            )
+        };
+        let funding = if self.entry_sources.is_some() {
+            self.entry_funding(node)?
+        } else {
+            None
+        };
+        let funding_ref = funding.as_ref();
+        let mut scope = Rows::new();
+        let mut visit = Rows::new();
+        visit.push(node, funding_ref).map_err(error)?;
+        while !visit.values.is_empty() {
+            entry_staging::inspect(funding_ref, 1).map_err(error)?;
+            let subject = visit.values.pop().expect("nonempty pending source stack");
+            if !entry_staging::contains(&scope.values, &subject, funding_ref).map_err(error)? {
+                scope.push(subject, funding_ref).map_err(error)?;
+                for child in self.tree.children(subject) {
+                    entry_staging::inspect(funding_ref, 1).map_err(error)?;
+                    visit.push(child, funding_ref).map_err(error)?;
+                }
+            }
+        }
+        let mut dirty = Rows::new();
+        for &subject in &self.invalidated_nodes {
+            entry_staging::inspect(funding_ref, 1).map_err(error)?;
+            if entry_staging::contains(&scope.values, &subject, funding_ref).map_err(error)? {
+                dirty.push(subject, funding_ref).map_err(error)?;
+            }
+        }
+        let mut clears = Rows::new();
+        for &subject in &dirty.values {
+            entry_staging::inspect(funding_ref, 1).map_err(error)?;
+            clears
+                .push(LayoutCacheClearEntry::new(subject), funding_ref)
+                .map_err(error)?;
+        }
+        let (dirty, dirty_storage) = dirty.into_parts();
+        let (clears, clears_storage) = clears.into_parts();
+        let mut probe = Self::with_invalidations(self.tree, dirty, clears);
+        probe.entry_sources = self.entry_sources.clone();
+        probe.block_floats = self
+            .block_floats
+            .fork_entry(incoming, funding_ref)
+            .map_err(error)?;
+        probe.groups = self
+            .groups
+            .as_ref()
+            .map(|groups| {
+                entry_staging::inspect(funding_ref, 1)?;
+                Ok(groups.fork())
+            })
+            .transpose()
+            .map_err(error)?;
+        probe.wrapping = self.wrapping.clone();
+        probe.flow_graph = self.flow_graph;
+        probe.bound = self.bound.clone();
+        let fragments =
+            entry_staging::copy(&self.fragment_allocations, funding_ref).map_err(error)?;
+        let (fragments, fragment_storage) = fragments.into_parts();
+        probe.fragment_allocations = fragments;
+        probe.fragment_intrinsics = self.fragment_intrinsics.clone();
+        let margins = self
+            .fragment_margins
+            .as_ref()
+            .map(|margins| margins.fork_entry(funding_ref))
+            .transpose()
+            .map_err(error)?;
+        if let Some(margins) = margins {
+            probe.fragment_margins = Some(margins);
+        }
+        let wrapping = entry_staging::copy(&self.wrapping_uncached, funding_ref).map_err(error)?;
+        let (wrapping, wrapping_storage) = wrapping.into_parts();
+        probe.wrapping_uncached = wrapping;
+        if let Some(text) = &self.text {
+            let formatted = text
+                .formatted
+                .as_ref()
+                .map(|state| state.fork_entry(funding_ref, trial == FloatChildTrial::InFlow))
+                .transpose()
+                .map_err(error)?;
+            probe.text = Some(text.staging(formatted, funding_ref));
+        }
+        probe.entry_storage = funding_ref.map(|_| EntryStorage {
+            _dirty: dirty_storage,
+            clears: clears_storage,
+            stores: EntryBacking::default(),
+            _fragments: fragment_storage,
+            _wrapping: wrapping_storage,
+        });
+        Ok(probe)
     }
 
     pub(super) fn bind_fragment_frame(
@@ -520,16 +676,32 @@ where
             .frames
     }
 
-    pub(super) fn formatted_text_valid(&self) -> bool {
-        self.text.as_ref().is_none_or(|text| text.formatted_valid())
+    pub(super) fn formatted_text_valid(&self, node: Tree::Node) -> SessionResult<Tree, bool> {
+        self.text
+            .as_ref()
+            .map_or(Ok(true), |text| text.formatted_valid())
+            .map_err(|error| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::TextPlacement,
+                    LayoutErrorKindOf::Text(error),
+                )
+            })
     }
 
     pub(super) fn begin_text_pass(
         &mut self,
+        node: Tree::Node,
         frames: Vec<crate::text_layout::state::CanonicalFrame<Tree::Node, Tree::Scalar>>,
-    ) {
+    ) -> SessionResult<Tree, ()> {
         if let Some(text) = self.text.as_mut() {
-            text.formatted_next_pass();
+            text.formatted_next_pass().map_err(|error| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::TextPlacement,
+                    LayoutErrorKindOf::Text(error),
+                )
+            })?;
             text.frames = frames.into();
             if let Some(formatted) = &mut text.formatted {
                 formatted.frames = text.frames.clone();
@@ -563,6 +735,7 @@ where
         self.unrounded_inline_fragment_groups.clear();
         self.final_inline_fragment_groups.clear();
         self.cache_store_entries.clear();
+        Ok(())
     }
 
     pub(super) fn begin_content_scope(
@@ -1032,15 +1205,60 @@ where
         }
         let style = self.tree.node_input(node);
         if self.tree.has_leaf_measurement(node) {
-            let result = if let Some(context) = &self.fragment_intrinsics {
-                let icb = context
+            let icb = self.fragment_intrinsics.as_ref().map(|context| {
+                context
                     .request
                     .sizing_request()
                     .orthogonal_fallback()
                     .initial_containing_block()
                     .map(|value| {
                         value.expect("native intrinsic context has first-frame ICB authority")
-                    });
+                    })
+            });
+            let result = if let Some(memo) = &self.entry_sources {
+                let funding = self.entry_funding(node)?;
+                crate::measurement::compute_leaf_with_sampler(node, input, style, icb, |request| {
+                    let mut memo = memo
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    let error = |error| {
+                        LayoutErrorOf::new(
+                            LayoutErrorSiteOf::Node(node),
+                            LayoutOperation::ChildLayout,
+                            LayoutErrorKindOf::Text(error),
+                        )
+                    };
+                    if let Some(result) =
+                        memo.find(node, request, funding.as_ref()).map_err(error)?
+                    {
+                        return Ok(result);
+                    }
+                    memo.reserve(funding.as_ref()).map_err(error)?;
+                    let result = self
+                        .tree
+                        .measure_leaf(node, request)
+                        .ok_or_else(|| {
+                            LayoutErrorOf::new(
+                                LayoutErrorSiteOf::Node(node),
+                                LayoutOperation::LeafMeasurement,
+                                LayoutErrorKindOf::InternalInvariant(
+                                    LayoutInternalInvariant::MissingLeafMeasurementProvider,
+                                ),
+                            )
+                        })?
+                        .map_err(|error| {
+                            LayoutErrorOf::new(
+                                LayoutErrorSiteOf::Node(node),
+                                LayoutOperation::LeafMeasurement,
+                                LayoutErrorKindOf::Measurement(error),
+                            )
+                        })?;
+                    let result = crate::measurement::validate_native_sample(node, result)?;
+                    memo.record(node, request, result, funding.as_ref())
+                        .map_err(error)?;
+                    Ok(result)
+                })
+            } else if let Some(icb) = icb {
                 crate::measurement::compute_tree_leaf_with_intrinsic_icb(
                     self.tree,
                     node,
@@ -1055,12 +1273,23 @@ where
                 && let Some(text) = &mut self.text
             {
                 let anonymous = style.block_generation == crate::BlockGeneration::Anonymous;
-                if text.formatted_begin_block(node, input, anonymous) {
+                let error = |error| {
+                    LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(node),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::Text(error),
+                    )
+                };
+                if text
+                    .formatted_begin_block(node, input, anonymous)
+                    .map_err(error)?
+                {
                     // The actual host leaf operation emits no line-box API.
                     // A positive measured size is not a formatted line.
                     let flow = text.formatted_new_flow();
-                    text.formatted_record_flow(flow);
-                    text.formatted_end_block(node, input, anonymous, true);
+                    text.formatted_record_flow(&flow).map_err(error)?;
+                    text.formatted_end_block(node, input, anonymous, true)
+                        .map_err(error)?;
                 }
             }
             if let Ok(output) = &result {
@@ -1160,11 +1389,75 @@ where
     }
     fn fragment_margin_state(
         &mut self,
-    ) -> Option<&mut crate::block::fragment_margins::State<Self::Node>> {
+    ) -> Option<&mut crate::block::fragment_margins::State<Self::Node, Self::Scalar>> {
         self.fragment_margins.as_mut()
     }
     fn has_leaf_measurement(&self, node: Self::Node) -> bool {
         self.tree.has_leaf_measurement(node)
+    }
+    fn qualify_entry(
+        &mut self,
+        query: crate::block::entry::EntryQuery<Self::Node, Self::Scalar>,
+    ) -> SessionResult<Tree, crate::block::entry::EntryObservation<Self::Node, Self::Scalar>> {
+        use crate::block::entry::EntryPurpose;
+        if query.purpose == EntryPurpose::StartOnly {
+            return crate::block::entry::observe(self, query);
+        }
+        if !query
+            .incoming
+            .as_ref()
+            .is_some_and(|incoming| incoming.node == query.node && incoming.request == query.input)
+        {
+            return Err(crate::block::float_context::missing(query.node));
+        }
+        if let Some(text) = &mut self.text {
+            text.prepare_entry().map_err(|error| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(query.node),
+                    LayoutOperation::ChildLayout,
+                    LayoutErrorKindOf::Text(error),
+                )
+            })?;
+        }
+        if self.entry_sources.is_none() {
+            let header = self
+                .entry_funding(query.node)?
+                .as_ref()
+                .map(|funding| {
+                    funding.header::<(
+                        usize,
+                        usize,
+                        std::sync::Mutex<
+                            super::entry_sources::SourceMemo<Tree::Node, Tree::Scalar>,
+                        >,
+                    )>()
+                })
+                .transpose()
+                .map_err(|error| {
+                    LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(query.node),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::Text(error),
+                    )
+                })?;
+            self.entry_sources = Some(std::sync::Arc::new(std::sync::Mutex::new(
+                super::entry_sources::SourceMemo::new(header),
+            )));
+        }
+        let mut trial =
+            self.child_staging(query.node, FloatChildTrial::InFlow, query.incoming.clone())?;
+        crate::block::entry::resolve_framed(&mut trial, query)
+    }
+    fn measure_entry_leaf(
+        &mut self,
+        node: Self::Node,
+        input: ComputeInputOf<Self::Scalar>,
+    ) -> SessionResult<Tree, ComputeOutputOf<Self::Scalar>> {
+        if !self.tree.has_leaf_measurement(node) {
+            return Err(crate::block::float_context::missing(node));
+        }
+        let input = self.prepare_child_input(node, input)?;
+        self.compute_child_uncached(node, input.with_run_mode(RunMode::ComputeSize))
     }
     fn block_float_work(&self, node: Self::Node) -> bool {
         if let Some(graph) = self.flow_graph {
@@ -1442,7 +1735,14 @@ where
                         self.fragment_margins
                             .as_mut()
                             .expect("bound Block retains margins")
-                            .bind(node, projection);
+                            .bind(node, projection)
+                            .map_err(|error| {
+                                LayoutErrorOf::new(
+                                    LayoutErrorSiteOf::Node(node),
+                                    LayoutOperation::ChildLayout,
+                                    LayoutErrorKindOf::Text(error),
+                                )
+                            })?;
                     }
                     let adoption = super::block_scope::Adoption {
                         receipt: ready.id,
@@ -1572,13 +1872,31 @@ where
             );
         }
 
+        if let Some(memo) = &self.entry_sources {
+            let funding = self.entry_funding(node)?;
+            let measured = memo
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .contains(node, funding.as_ref())
+                .map_err(|error| {
+                    LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(node),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::Text(error),
+                    )
+                })?;
+            if measured {
+                return self.compute_child_uncached(node, input);
+            }
+        }
+
         if input.run_mode().is_perform_layout() && self.child_count(node) != 0 {
             let input = input.with_settled_auto_scrollbars(SettledAutoScrollbarState::INITIAL);
             if self.subtree_uses_shape_provider(node) {
                 let context = <Self as CacheAccess<Tree::MeasureError>>::cache_context(self);
                 if let Some(output) = <Self as CacheAccess<Tree::MeasureError>>::cache_get(
                     self, node, &input, context,
-                ) && self.cache_restore_semantics(node, &input)
+                )? && self.cache_restore_semantics(node, &input)?
                     && self.restore_committed_subtree(node)
                 {
                     return Ok(output);
@@ -1586,7 +1904,7 @@ where
                 let output = self.compute_child_uncached(node, input)?;
                 <Self as CacheAccess<Tree::MeasureError>>::cache_store(
                     self, node, &input, context, output,
-                );
+                )?;
                 return Ok(output);
             }
             return self.compute_child_uncached(node, input);
@@ -1612,12 +1930,24 @@ where
     > {
         let mut observation = Self::new(self.tree, self.invalidated_nodes.clone());
         observation.block_floats = self.block_floats.fork();
+        observation.entry_sources = self.entry_sources.clone();
         observation.wrapping = self.wrapping.clone();
         observation.flow_graph = self.flow_graph;
         observation.bound = self.bound.clone();
         observation.fragment_allocations = self.fragment_allocations.clone();
         observation.fragment_intrinsics = self.fragment_intrinsics.clone();
-        observation.fragment_margins = self.fragment_margins.clone();
+        observation.fragment_margins = self
+            .fragment_margins
+            .as_ref()
+            .map(|margins| margins.fork_entry(None))
+            .transpose()
+            .map_err(|error| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ChildLayout,
+                    LayoutErrorKindOf::Text(error),
+                )
+            })?;
         observation.wrapping_uncached = self.wrapping_uncached.clone();
         if let Some(text) = &self.text {
             let mut state = crate::text_layout::state::TextComputation::new(
@@ -1642,12 +1972,13 @@ where
             // A consumed probe can affect the parent's sizing decision. Retain
             // only its purpose-scoped semantic dependencies; none of its
             // geometry, pending Text, fragments or cache writes are published.
-            let state = text
-                .formatted
-                .get_or_insert_with(crate::text_layout::formatted::FormattedState::new);
-            state.frames = text.frames.clone();
-            state.wrapping = text.wrapping.clone();
-            state.accept(formatted);
+            text.formatted_accept(formatted).map_err(|error| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ChildLayout,
+                    LayoutErrorKindOf::Text(error),
+                )
+            })?;
         }
         result
     }
@@ -1663,53 +1994,11 @@ where
         Self::Scalar,
         Tree::MeasureError,
     > {
-        // The request is the block owner's complete child request. Reuse the
-        // validated topology and the same dependency/phase-bearing input; do
-        // not enter a fresh public root computation or reset a Grid probe.
-        let mut scope = Vec::new();
-        let mut visit = vec![node];
-        while let Some(subject) = visit.pop() {
-            if !scope.contains(&subject) {
-                scope.push(subject);
-                visit.extend(self.tree.children(subject));
-            }
-        }
-        let dirty = self
-            .invalidated_nodes
-            .iter()
-            .copied()
-            .filter(|node| scope.contains(node))
-            .collect();
-        let mut probe = Self::new(self.tree, dirty);
-        probe.block_floats = self.block_floats.fork();
-        probe.groups = self.groups.as_ref().map(|groups| groups.fork());
-        probe.wrapping = self.wrapping.clone();
-        probe.flow_graph = self.flow_graph;
-        probe.bound = self.bound.clone();
-        probe.fragment_allocations = self.fragment_allocations.clone();
-        probe.fragment_intrinsics = self.fragment_intrinsics.clone();
-        probe.fragment_margins = self.fragment_margins.clone();
-        probe.wrapping_uncached = self.wrapping_uncached.clone();
-        let frames = if let Some(text) = &self.text {
-            let mut state = crate::text_layout::state::TextComputation::new(
-                text.paragraphs,
-                text.associations.clone(),
-                text.scope_resources.clone(),
-            );
-            state.frames = std::sync::Arc::clone(&text.frames);
-            state.wrapping = text.wrapping.clone();
-            state.reusable = std::sync::Arc::clone(&text.reusable);
-            state.graph = text.graph;
-            state.formatted = text.formatted.as_ref().map(|state| match trial {
-                FloatChildTrial::Detached => state.fork(),
-                FloatChildTrial::InFlow => state.fork_in_flow(),
-            });
-            let frames = std::sync::Arc::clone(&state.frames);
-            probe.text = Some(state);
-            frames
-        } else {
-            std::sync::Arc::from([])
-        };
+        let mut probe = self.child_staging(node, trial, None)?;
+        let frames = probe
+            .text
+            .as_ref()
+            .map(|state| std::sync::Arc::clone(&state.frames));
         let output = probe.compute_child(node, input)?;
         let (pending, absolute_baselines, scope_fragments, formatted, boxes) =
             probe.text.map_or_else(
@@ -1725,23 +2014,42 @@ where
                 },
             );
         let associations = self.text.as_ref().map(|text| text.associations.clone());
+        let funding = if self.entry_sources.is_some() {
+            self.entry_funding(node)?
+        } else {
+            None
+        };
+        let formatted_basis = self
+            .text
+            .as_ref()
+            .and_then(|text| text.formatted.as_ref())
+            .map(|state| state.entry_basis(funding.as_ref(), trial == FloatChildTrial::InFlow))
+            .transpose()
+            .map_err(|error| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ChildLayout,
+                    LayoutErrorKindOf::Text(error),
+                )
+            })?;
+        let packet_owner = funding
+            .as_ref()
+            .map(|funding| {
+                funding.header::<(usize, usize, FloatChildPacket<Self::Node, Self::Scalar>)>()
+            })
+            .transpose()
+            .map_err(|error| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ChildLayout,
+                    LayoutErrorKindOf::Text(error),
+                )
+            })?;
         Ok(std::sync::Arc::new(FloatChildPacket {
             groups: probe.groups,
             boxes,
             wrapping: self.wrapping.clone(),
-            formatted_basis: self
-                .text
-                .as_ref()
-                .and_then(|text| text.formatted.as_ref())
-                .map_or_else(Vec::new, |state| state.assignments.clone()),
-            formatted_parent: if trial == FloatChildTrial::InFlow {
-                self.text
-                    .as_ref()
-                    .and_then(|text| text.formatted.as_ref())
-                    .map(|state| state.stack.clone())
-            } else {
-                None
-            },
+            formatted_basis,
             formatted,
             node,
             input,
@@ -1757,6 +2065,15 @@ where
             pending,
             absolute_baselines,
             scope_fragments,
+            _entry_clears: probe
+                .entry_storage
+                .as_mut()
+                .map(|storage| std::mem::take(&mut storage.clears)),
+            _entry_stores: probe
+                .entry_storage
+                .as_mut()
+                .map(|storage| std::mem::take(&mut storage.stores)),
+            _entry_owner: packet_owner,
         }))
     }
 
@@ -1782,7 +2099,10 @@ where
             ));
         }
         if let Some(text) = &self.text
-            && (!std::sync::Arc::ptr_eq(&text.frames, &packet.frames)
+            && (!packet
+                .frames
+                .as_ref()
+                .is_some_and(|frames| std::sync::Arc::ptr_eq(&text.frames, frames))
                 || !packet
                     .associations
                     .as_ref()
@@ -1794,12 +2114,33 @@ where
                 LayoutErrorKindOf::TextFeedbackCycle,
             ));
         }
+        let funding = if self.entry_sources.is_some() {
+            self.entry_funding(packet.node)?
+        } else {
+            None
+        };
         let formatted = self.text.as_ref().and_then(|text| text.formatted.as_ref());
-        if formatted.map_or(&[][..], |state| state.assignments.as_slice()) != packet.formatted_basis
-            || packet.formatted_parent.as_deref().is_some_and(|parent| {
-                formatted.is_none_or(|state| state.stack.as_slice() != parent)
-            })
-        {
+        let assignments = formatted.map_or(&[][..], |state| state.assignments.as_slice());
+        let matches = if let Some(basis) = &packet.formatted_basis {
+            basis
+                .matches(
+                    assignments,
+                    formatted.map(|state| state.stack.as_slice()),
+                    funding
+                        .as_ref()
+                        .map(crate::text_layout::scope_alignment::EntryFunding::as_ref),
+                )
+                .map_err(|error| {
+                    LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(packet.node),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::Text(error),
+                    )
+                })?
+        } else {
+            assignments.is_empty()
+        };
+        if !matches {
             return Err(LayoutErrorOf::new(
                 LayoutErrorSiteOf::Node(packet.node),
                 LayoutOperation::ChildLayout,
@@ -1845,19 +2186,20 @@ where
             self.replace_native_run(packet.node, accepted)?;
         }
         for entry in &packet.stores {
-            self.cache_store(entry.node(), entry.input(), entry.context(), entry.output());
+            self.cache_store(entry.node(), entry.input(), entry.context(), entry.output())?;
         }
         for entry in &packet.clears {
-            self.cache_clear(entry.node());
+            self.cache_clear(entry.node())?;
         }
         if let Some(text) = &mut self.text {
             if let Some(observed) = &packet.formatted {
-                let state = text
-                    .formatted
-                    .get_or_insert_with(crate::text_layout::formatted::FormattedState::new);
-                state.frames = text.frames.clone();
-                state.wrapping = text.wrapping.clone();
-                state.accept(observed);
+                text.formatted_accept(observed).map_err(|error| {
+                    LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(packet.node),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::Text(error),
+                    )
+                })?;
             }
             for group in &packet.scope_fragments {
                 text.record_scope_fragments(
@@ -2023,36 +2365,57 @@ where
         node: Self::Node,
         input: &ComputeInputOf<Self::Scalar>,
         context: crate::CacheKeyContext,
-    ) -> Option<ComputeOutputOf<Self::Scalar>> {
+    ) -> SessionResult<Tree, Option<ComputeOutputOf<Self::Scalar>>> {
         if self.bound.is_some()
             || self.invalidated_nodes.contains(&node)
             || self.block_floats.blocks_cache(node, input)
             || self.wrapping_uncached.contains(&node)
-            || self
-                .text
-                .as_ref()
-                .is_some_and(|text| !text.formatted_cache_available(node, input))
         {
-            return None;
+            return Ok(None);
         }
-        let output = self.tree.cache_get(node, input, context)?;
-        self.text
+        let error = |error| {
+            LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(node),
+                LayoutOperation::ChildLayout,
+                LayoutErrorKindOf::Text(error),
+            )
+        };
+        if let Some(text) = &self.text
+            && !text.formatted_cache_available(node, input).map_err(error)?
+        {
+            return Ok(None);
+        }
+        let Some(output) = self.tree.cache_get(node, input, context) else {
+            return Ok(None);
+        };
+        let matches = self
+            .text
             .as_ref()
-            .is_none_or(|text| text.formatted_cache_matches(node, input, context, output))
-            .then_some(output)
+            .map_or(Ok(true), |text| {
+                text.formatted_cache_matches(node, input, context, output)
+            })
+            .map_err(error)?;
+        Ok(matches.then_some(output))
     }
 
     fn cache_restore_semantics(
         &mut self,
         node: Self::Node,
         input: &ComputeInputOf<Self::Scalar>,
-    ) -> bool {
+    ) -> SessionResult<Tree, bool> {
         if self.bound.is_some() {
-            return false;
+            return Ok(false);
         }
         self.text
             .as_mut()
-            .is_none_or(|text| text.formatted_restore_cache(node, input))
+            .map_or(Ok(true), |text| text.formatted_restore_cache(node, input))
+            .map_err(|error| {
+                LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::ChildLayout,
+                    LayoutErrorKindOf::Text(error),
+                )
+            })
     }
 
     fn cache_store(
@@ -2061,40 +2424,92 @@ where
         input: &ComputeInputOf<Self::Scalar>,
         context: crate::CacheKeyContext,
         output: ComputeOutputOf<Self::Scalar>,
-    ) {
+    ) -> SessionResult<Tree, ()> {
         if let Some(formatted) = self.text.as_mut().and_then(|text| text.formatted.as_mut()) {
-            formatted.bind_output(node, input, context, output);
+            formatted
+                .bind_output(node, input, context, output)
+                .map_err(|error| {
+                    LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(node),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::Text(error),
+                    )
+                })?;
         }
         if self.bound.is_some() {
-            return;
+            return Ok(());
         }
         if self.wrapping_uncached.contains(&node) {
-            self.cache_clear(node);
-            return;
+            return self.cache_clear(node);
         }
         if self.block_floats.blocks_cache(node, input) {
-            return;
+            return Ok(());
         }
 
-        if let Some(index) = self.cache_store_entries.iter().position(|entry| {
-            entry.node() == node && entry.input() == input && entry.context() == context
-        }) {
+        let funding = if self.entry_storage.is_some() {
+            self.entry_funding(node)?
+        } else {
+            None
+        };
+        let error = |error| {
+            LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(node),
+                LayoutOperation::ChildLayout,
+                LayoutErrorKindOf::Text(error),
+            )
+        };
+        let mut previous = None;
+        for (index, entry) in self.cache_store_entries.iter().enumerate() {
+            entry_staging::inspect(funding.as_ref(), 1).map_err(error)?;
+            if entry.node() == node && entry.input() == input && entry.context() == context {
+                previous = Some(index);
+                break;
+            }
+        }
+        if let Some(index) = previous {
+            entry_staging::inspect(funding.as_ref(), self.cache_store_entries.len() - index - 1)
+                .map_err(error)?;
             self.cache_store_entries.remove(index);
+        }
+        if let Some(storage) = &mut self.entry_storage {
+            storage
+                .stores
+                .reserve_push(&mut self.cache_store_entries, funding.as_ref())
+                .map_err(error)?;
         }
         self.cache_store_entries
             .push(LayoutCacheStoreEntryOf::new(node, *input, context, output));
+        Ok(())
     }
 
-    fn cache_clear(&mut self, node: Self::Node) {
-        if self
-            .cache_clear_entries
-            .iter()
-            .any(|entry| entry.node() == node)
-        {
-            return;
+    fn cache_clear(&mut self, node: Self::Node) -> SessionResult<Tree, ()> {
+        let funding = if self.entry_storage.is_some() {
+            self.entry_funding(node)?
+        } else {
+            None
+        };
+        let error = |error| {
+            LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(node),
+                LayoutOperation::ChildLayout,
+                LayoutErrorKindOf::Text(error),
+            )
+        };
+        for entry in &self.cache_clear_entries {
+            entry_staging::inspect(funding.as_ref(), 1).map_err(error)?;
+            if entry.node() == node {
+                return Ok(());
+            }
+        }
+        if let Some(storage) = &mut self.entry_storage {
+            storage
+                .clears
+                .reserve_push(&mut self.cache_clear_entries, funding.as_ref())
+                .map_err(error)?;
         }
         self.cache_clear_entries
             .push(LayoutCacheClearEntry::new(node));
+        Ok(())
     }
 }
 
@@ -3082,7 +3497,7 @@ mod grid_overflow_observation_tests {
                 .x,
             25.0
         );
-        session.begin_text_pass(frames);
+        session.begin_text_pass(0, frames).unwrap();
         super::super::root::compute_root(&mut session, 0, request).unwrap();
         super::super::rounding::round_layout(&mut session, 0).unwrap();
         let surgeist_text::PlacementEntry::Formatted(canonical) =

@@ -1,5 +1,6 @@
 //! Request-bound shared-BFC float handoffs through the ordinary child dispatcher.
 use super::floats::{FloatExclusions, InheritedFloatExclusions};
+use crate::text_layout::scope_alignment::{EntryBacking, EntryFunding};
 use crate::{
     ComputeInputOf, ComputeOutputOf, FlowAxes, LayoutScalar, NodeInputOf, ParentFormattingContext,
 };
@@ -61,8 +62,8 @@ pub(crate) struct Incoming<Node, S: LayoutScalar> {
     pub(crate) node: Node,
     pub(crate) request: ComputeInputOf<S>,
     pub(crate) frame: std::sync::Arc<InheritedFloatExclusions<S, Node>>,
+    pub(crate) cut: Option<super::entry::canonical::Separation<Node, S>>,
 }
-#[derive(Clone)]
 pub(crate) struct Completed<Node, S: LayoutScalar> {
     pub(crate) node: Node,
     pub(crate) request: ComputeInputOf<S>,
@@ -71,6 +72,7 @@ pub(crate) struct Completed<Node, S: LayoutScalar> {
     pub(crate) ledger: FloatExclusions<S, Node>,
     pub(crate) inherited: usize,
     pub(crate) frame: Option<std::sync::Arc<InheritedFloatExclusions<S, Node>>>,
+    pub(crate) remaining_cut: Option<super::entry::canonical::Separation<Node, S>>,
 }
 pub(crate) struct ChildOutput<Node, S: LayoutScalar> {
     pub(crate) output: ComputeOutputOf<S>,
@@ -80,6 +82,8 @@ pub(crate) struct State<Node, S: LayoutScalar> {
     incoming: Vec<Incoming<Node, S>>,
     completed: Option<Completed<Node, S>>,
     work: Option<std::sync::Arc<[bool]>>,
+    incoming_backing: EntryBacking,
+    entry_funding: Option<EntryFunding<S>>,
 }
 impl<Node: Copy + Eq, S: LayoutScalar> State<Node, S> {
     pub(crate) fn new() -> Self {
@@ -87,6 +91,8 @@ impl<Node: Copy + Eq, S: LayoutScalar> State<Node, S> {
             incoming: Vec::new(),
             completed: None,
             work: None,
+            incoming_backing: EntryBacking::default(),
+            entry_funding: None,
         }
     }
     pub(crate) fn configure<Tree: crate::LayoutTree<Node = Node, Scalar = S>>(
@@ -127,6 +133,51 @@ impl<Node: Copy + Eq, S: LayoutScalar> State<Node, S> {
             ..Self::new()
         }
     }
+    /// A partial entry trial is resident in the original same-BFC ancestry.
+    /// Its own completion and request stack remain private to the trial.
+    pub(crate) fn fork_framed(&self, entry: Incoming<Node, S>) -> Self {
+        let mut trial = self.fork();
+        trial.incoming = Vec::with_capacity(self.incoming.len() + 1);
+        trial.incoming.extend(self.incoming.iter().cloned());
+        trial.incoming.push(entry);
+        trial
+    }
+    pub(crate) fn fork_entry(
+        &self,
+        entry: Option<Incoming<Node, S>>,
+        funding: Option<&EntryFunding<S>>,
+    ) -> surgeist_text::Result<Self> {
+        let Some(funding) = funding else {
+            return Ok(entry.map_or_else(|| self.fork(), |entry| self.fork_framed(entry)));
+        };
+        let mut trial = self.fork();
+        trial.entry_funding = Some(funding.clone());
+        if let Some(entry) = entry {
+            let count = self.incoming.len().checked_add(1).ok_or_else(|| {
+                crate::text_layout::scope_alignment::refusal(
+                    surgeist_text::ScopeAlignmentError::Overflow {
+                        kind: surgeist_text::ScopeAlignmentLimitKind::Records,
+                    },
+                )
+            })?;
+            let lease;
+            let mut rows = {
+                let (rows, storage) = funding.buffer(count)?;
+                lease = storage;
+                rows
+            };
+            for incoming in &self.incoming {
+                funding.visit(1)?;
+                rows.push(incoming.clone());
+            }
+            funding.visit(1)?;
+            rows.push(entry);
+            let (rows, backing) = EntryBacking::from_buffer(rows, count, lease, funding)?;
+            trial.incoming_backing = backing;
+            trial.incoming = rows;
+        }
+        Ok(trial)
+    }
     pub(crate) fn reset(&mut self) {
         self.incoming.clear();
         self.completed = None;
@@ -136,13 +187,30 @@ impl<Node: Copy + Eq, S: LayoutScalar> State<Node, S> {
         node: Node,
         request: ComputeInputOf<S>,
         frame: InheritedFloatExclusions<S, Node>,
-    ) {
+        cut: Option<super::entry::canonical::Separation<Node, S>>,
+    ) -> surgeist_text::Result<()> {
+        self.incoming_backing
+            .reserve_push(&mut self.incoming, self.entry_funding.as_ref())?;
         self.completed = None;
         self.incoming.push(Incoming {
             node,
             request,
             frame: std::sync::Arc::new(frame),
+            cut,
         });
+        Ok(())
+    }
+    /// The outer dispatcher authenticated the resident request. Each internal
+    /// sizing/geometry pass starts from that same immutable cut; only the final
+    /// completion returns its progress to the containing traversal.
+    pub(crate) fn entry_cut(
+        &self,
+        node: Node,
+    ) -> Option<super::entry::canonical::Separation<Node, S>> {
+        self.incoming
+            .last()
+            .filter(|entry| entry.node == node)
+            .and_then(|entry| entry.cut)
     }
     pub(crate) fn incoming(
         &self,
@@ -183,6 +251,9 @@ impl<Node: Copy + Eq, S: LayoutScalar> State<Node, S> {
         self.completed.take().filter(|completed| {
             completed.node == node
                 && completed.request == request
+                && completed
+                    .remaining_cut
+                    .is_none_or(|remaining| incoming.cut.is_some_and(|cut| cut.same_cut(remaining)))
                 && completed
                     .used
                     .with_settled_auto_scrollbars(crate::scroll::SettledAutoScrollbarState::INITIAL)
@@ -229,6 +300,10 @@ pub(crate) fn missing<Node, S: LayoutScalar, M>(node: Node) -> crate::LayoutErro
         crate::LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::RequiredBasis),
     )
 }
+
+#[cfg(test)]
+#[path = "float_context/staging_tests.rs"]
+mod staging_tests;
 
 #[cfg(test)]
 mod tests {

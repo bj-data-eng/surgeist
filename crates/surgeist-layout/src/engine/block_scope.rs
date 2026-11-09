@@ -141,7 +141,7 @@ pub(crate) struct Body<Node, S: LayoutScalar> {
 pub(crate) struct Packet<Node, S: LayoutScalar> {
     pub(crate) target: crate::LayoutTargetBasis,
     pub(crate) entries: Vec<crate::LayoutOutputEntryOf<Node, S>>,
-    pub(crate) margins: crate::block::fragment_margins::State<Node>,
+    pub(crate) margins: crate::block::fragment_margins::State<Node, S>,
     pub(crate) bodies: Vec<Body<Node, S>>,
     pub(crate) projections: Vec<(Node, ProductionId)>,
     pub(crate) receipts: Vec<ReceiptId>,

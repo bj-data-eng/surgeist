@@ -21,6 +21,8 @@ mod fixtures;
 
 #[path = "block_tests/absolute_tests.rs"]
 mod absolute;
+#[path = "block_tests/clearance_cache_tests.rs"]
+mod clearance_cache;
 #[path = "block_tests/floats_bfcs_tests.rs"]
 mod floats_bfcs;
 #[path = "block_tests/in_flow_margins_tests.rs"]

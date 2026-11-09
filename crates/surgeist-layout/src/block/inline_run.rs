@@ -36,16 +36,23 @@ pub(super) fn inline_run_end<'input, Tree, M>(
     constants: &Constants<<Tree as Traverse>::Scalar>,
     mut index: usize,
     semantic_end: usize,
+    funding: Option<&crate::text_layout::scope_alignment::EntryFunding<Tree::Scalar>>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, usize, <Tree as Traverse>::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
-    let captured_end = tree.text_computation().and_then(|state| {
-        state
-            .run_starting(container, &children[index - 1..])
-            .map(|run| index - 1 + run.nodes().len())
-    });
+    let error = |error| text_run_error(container, crate::text_layout::fit::FitError::Text(error));
+    let captured_end = match tree.text_computation() {
+        Some(state) => state
+            .entry_run_starting(container, &children[index - 1..], funding)
+            .map_err(error)?
+            .map(|run| index - 1 + run.nodes().len()),
+        None => None,
+    };
     while index < captured_end.unwrap_or(children.len()).min(semantic_end) {
+        if let Some(funding) = funding {
+            funding.visit(1).map_err(error)?;
+        }
         if captured_end.is_none()
             && !crate::inline::continues_run(tree.layout_input(children[index]))
         {
@@ -211,27 +218,20 @@ impl VisibleInlineRunTransition {
             line_box_context,
             hyphenation_state,
             tail_ledger,
-            cursor_block,
+            adjoining,
+            fragment_margins,
             intrinsic_inline_demand,
             baselines,
             static_positions,
             resolved_terminal_float_block_end,
-            active_margin,
-            start_component_open,
-            active_margin_can_collapse_with_parent,
-            all_in_flow_children_can_collapse_through,
             float_exclusions,
             float_intrinsics,
             pending_floats,
             owned_float_block_end,
             contributions,
         } = state;
-        let adjoining_margin = if *start_component_open {
-            S::ZERO
-        } else {
-            active_margin.resolve()
-        };
-        context.cursor_block = *cursor_block;
+        let adjoining_margin = adjoining.adjoining_displacement();
+        context.cursor_block = adjoining.cursor;
         let constants = context.constants;
         let semantic = self.semantic.as_ref().map(|segment| {
             tree.text_computation()
@@ -261,11 +261,9 @@ impl VisibleInlineRunTransition {
             )?;
         }
 
-        if placement.margin == InlineRunMargin::Separates {
-            *start_component_open = false;
-        }
         if let (Some(flow), Some(item)) = (formatted.as_mut(), placement.formatted.take()) {
-            flow.items.push(item);
+            flow.push(item)
+                .map_err(|error| text_run_error(node, error.into()))?;
         }
 
         if !placement.lines.is_empty() {
@@ -309,14 +307,20 @@ impl VisibleInlineRunTransition {
                 contribution.last_named,
             )
             .map_err(|error| error.layout(node))?;
-        *cursor_block = placement.cursor_end;
+        adjoining.finish_run(
+            placement.cursor_end,
+            placement.margin == InlineRunMargin::Separates,
+        );
         pending_floats.extend(placement.floats);
         static_positions.extend(placement.static_positions);
         if placement.margin == InlineRunMargin::Separates {
+            // Contributor groups end at the same participating line as the
+            // scalar adjoining component, including a line with zero extent.
+            if let Some(flow) = fragment_margins {
+                flow.started = true;
+                flow.active = None;
+            }
             *resolved_terminal_float_block_end = placement.resolved_float_terminal_block_end;
-            *active_margin = CollapsibleMarginOf::<S>::ZERO;
-            *active_margin_can_collapse_with_parent = false;
-            *all_in_flow_children_can_collapse_through = false;
         }
         Ok(())
     }
@@ -329,15 +333,12 @@ pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
     pub(super) indent_state: &'a mut Option<crate::text_indent::IndentLineState>,
     pub(super) hyphenation_state: &'a mut crate::hyphenation::LineHyphenationState,
     pub(super) tail_ledger: &'a mut crate::hyphenation::BlockTailLedger,
-    pub(super) cursor_block: &'a mut S,
+    pub(super) adjoining: &'a mut entry::AdjoiningFlow<S>,
+    pub(super) fragment_margins: &'a mut Option<super::fragment_margins::Flow>,
     pub(super) intrinsic_inline_demand: &'a mut S,
     pub(super) baselines: &'a mut super::baseline_frame::PendingBaselines,
     pub(super) static_positions: &'a mut Vec<(Node, StaticPositionOf<S>)>,
     pub(super) resolved_terminal_float_block_end: &'a mut Option<S>,
-    pub(super) active_margin: &'a mut CollapsibleMarginOf<S>,
-    pub(super) start_component_open: &'a mut bool,
-    pub(super) active_margin_can_collapse_with_parent: &'a mut bool,
-    pub(super) all_in_flow_children_can_collapse_through: &'a mut bool,
     pub(super) float_exclusions: &'a mut FloatExclusions<S, Node>,
     pub(super) float_intrinsics: &'a mut super::floats::FloatIntrinsics<S>,
     pub(super) pending_floats: &'a mut Vec<PendingFloat<Node, S>>,
@@ -922,7 +923,7 @@ where
     let mut text_progress = None;
     let mut formatted_item = None;
     let mut report = if let Some(binding) = text_binding {
-        let (frame, frames, reusable, associations, scope_alignments) = {
+        let (frame, frames, reusable, associations, scope_alignments, entry_funding) = {
             let state = tree
                 .text_computation()
                 .expect("capture-backed branch retains its session state");
@@ -932,6 +933,7 @@ where
                 state.reusable.clone(),
                 state.associations.clone(),
                 state.scope_resources.clone(),
+                state.entry_case_funding().cloned(),
             )
         };
         let canonical_exclusions = float_exclusions
@@ -976,6 +978,8 @@ where
                     formatted_mode,
                 )
             })
+            .transpose()
+            .map_err(|error| text_run_error(container, error.into()))?
             .unwrap_or_default();
         let group_snapshot = tree
             .group_computation()
@@ -1024,6 +1028,7 @@ where
         };
         let context = crate::text_layout::run::Context {
             scope_alignments,
+            entry_funding,
             orientation: text_orientation
                 .expect("the actual Text binding has its resolved orientation"),
             inline_baseline_context: constants.inline_baseline_context,
@@ -1092,53 +1097,14 @@ where
                     _ => unreachable!("validated actual control retains its normalized role"),
                 };
                 let boundary = endpoint
-                    .map(|endpoint| {
-                        let advance = endpoint.edge.border_padding_advance().to_f64();
-                        let crate::LayoutInputViewOf::InlineBoundary(input) = tree.layout_input(node) else { unreachable!("an endpoint retains its normalized input"); };
-                        let Some(parent_axes) = input.parent_edge_axes() else {
-                            return surgeist_text::InlineBoundaryAllocation::contribution(advance)
-                                .map_err(|error| text_run_error(container, error.into()));
-                        };
-                        let limits = binding.occurrence.captured_control().and_then(|control| control.scope().scope_alignment_limits());
-                        let inspect = || {
-                            if let Some(limits) = limits {
-                                crate::text_layout::scope_alignment::ScopeAlignmentFacts::visit(&context.scope_alignments, limits, 1)?;
-                            }
-                            Ok::<_, surgeist_text::Error>(())
-                        };
-                        let fallback = associations.box_for_endpoint(node, inspect)
-                            .map_err(|error| text_run_error(container, error.into()))?;
-                        let (wrapping, _) = tree.wrapping_context().ok_or_else(|| crate::inline_wrapping::wrapping_error(container, crate::WrappingScopeError::MissingCapture))?;
-                        let (owner, parent) = wrapping.text_box_edge_sources(container, node, fallback.as_ref(), &text_binding.expect("the actual Text branch retains its binding").prepared, inspect)
-                            .map_err(|error| text_run_error(container, error.into()))?
-                            .ok_or_else(|| crate::inline_wrapping::wrapping_error(container, crate::WrappingScopeError::MissingCapture))?;
-                        if let Some(scope) = parent.captured_scope().filter(|scope| scope.role() == surgeist_text::ScopeRole::Domain) {
-                            if let Some(limits) = scope.scope_alignment_limits() {
-                                crate::text_layout::scope_alignment::ScopeAlignmentFacts::visit(&context.scope_alignments, limits, associations.captured_binding_work(scope))
-                                    .map_err(|error| text_run_error(container, error.into()))?;
-                            }
-                            if let Some(crate::TextScopeAssociation::ParagraphContainer(parent_node)) = associations.captured_binding(scope) {
-                            let parent_input = tree.layout_input(parent_node).as_box().ok_or_else(|| crate::inline_wrapping::wrapping_error(parent_node, crate::WrappingScopeError::CaptureAssociation))?;
-                            let expected = crate::FlowAxes::new(parent_input.writing_mode, parent_input.direction);
-                            if parent_axes != expected {
-                                return Err(LayoutErrorOf::new(LayoutErrorSiteOf::Node(node), LayoutOperation::TextCapture,
-                                    LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InlineBoundaryParentMismatch { expected: Some(expected), actual: Some(parent_axes) })));
-                            }
-                        }
-                        }
-                        let side = match (context.orientation, parent_axes.inline_start()) {
-                            (surgeist_text::LineOrientation::Horizontal, crate::PhysicalSide::Left)
-                            | (surgeist_text::LineOrientation::Vertical | surgeist_text::LineOrientation::SidewaysClockwise | surgeist_text::LineOrientation::SidewaysCounterclockwise, crate::PhysicalSide::Top) => surgeist_text::LineEdgeSide::Start,
-                            (surgeist_text::LineOrientation::Horizontal, crate::PhysicalSide::Right)
-                            | (surgeist_text::LineOrientation::Vertical | surgeist_text::LineOrientation::SidewaysClockwise | surgeist_text::LineOrientation::SidewaysCounterclockwise, crate::PhysicalSide::Bottom) => surgeist_text::LineEdgeSide::End,
-                            _ => return Err(LayoutErrorOf::new(LayoutErrorSiteOf::Node(node), LayoutOperation::TextCapture,
-                                LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InlineBoundaryParentAxis { parent: parent_axes, formatter: constants.flow_axes }))),
-                        };
-                        let context = text_binding.expect("the actual Text branch retains its binding").prepared.inline_box_edge_context(owner, parent, side)
-                            .map_err(|error| text_run_error(container, error.into()))?;
-                        let components = crate::text_layout::edge_components::from_native(endpoint.edge).map_err(|error| text_run_error(container, error.into()))?;
-                        Ok(surgeist_text::InlineBoundaryAllocation::box_edge(context, components))
-                    })
+                    .map(|endpoint| BoundaryAllocationContext {
+                        container,
+                        prepared: &text_binding.expect("the actual Text branch retains its binding").prepared,
+                        associations: &associations,
+                        resources: &context.scope_alignments,
+                        orientation: context.orientation,
+                        axes: constants.flow_axes,
+                    }.allocate(tree, node, &binding.occurrence, endpoint))
                     .transpose()?;
                 Ok(crate::text_layout::run::Control {
                     node,
@@ -1179,20 +1145,25 @@ where
                 | crate::TextWrapStyle::AvoidShortLastLine
                 | crate::TextWrapStyle::Pretty
         ) && crate::layout_math::normal_available_size(available).is_some();
-        let encounters = std::cell::RefCell::new(super::float_text::Encounters::new(
-            float_events,
-            exclusions.clone(),
-            cursor_block,
-            if intrinsic_max {
-                super::floats::FloatInlineSpace::IntrinsicMaximum
-            } else {
-                super::floats::FloatInlineSpace::Finite
-            },
-            quality_replay
-                || tail == crate::text_layout::fit::TailContext::CompleteBlock
-                    && crate::layout_math::normal_available_size(available).is_some(),
-            quality_replay,
-        ));
+        let encounters = std::cell::RefCell::new(
+            super::float_text::Encounters::new(
+                float_events,
+                exclusions
+                    .try_clone()
+                    .map_err(|error| text_run_error(container, error.into()))?,
+                cursor_block,
+                if intrinsic_max {
+                    super::floats::FloatInlineSpace::IntrinsicMaximum
+                } else {
+                    super::floats::FloatInlineSpace::Finite
+                },
+                quality_replay
+                    || tail == crate::text_layout::fit::TailContext::CompleteBlock
+                        && crate::layout_math::normal_available_size(available).is_some(),
+                quality_replay,
+            )
+            .map_err(|error| text_run_error(container, error))?,
+        );
         let result = crate::text_layout::run::layout(
             text_run.as_ref().expect("actual admitted native run"),
             &associations,
@@ -1234,7 +1205,7 @@ where
                         encounters
                             .borrow()
                             .band()
-                            .query_rectangular_line_band(start, end)
+                            .query_rectangular_line_band(start, end)?
                     };
                     let inset_inline = constants
                         .flow_axes
@@ -1288,29 +1259,31 @@ where
                         Err(crate::text_layout::fit::FitError::Dependency)
                     }
                 },
-                accept: || {
-                    encounters.borrow_mut().accept();
-                    Ok(())
-                },
+                accept: || encounters.borrow_mut().accept(),
             },
         );
         if let Some(error) = provider_error.borrow_mut().take() {
             return Err(error);
         }
-        let output = result.map_err(|error| text_run_error(container, error))?;
-        formatted_item = tree.text_computation().and_then(|state| {
-            state.formatted_merge_run(
-                container,
-                run,
-                &text_run
-                    .as_ref()
-                    .expect("actual native source segment")
-                    .segment,
-                input,
-                formatted_mode,
-                output.formatted.clone(),
-            )
-        });
+        let mut output = result.map_err(|error| text_run_error(container, error))?;
+        formatted_item = tree
+            .text_computation()
+            .map(|state| {
+                state.formatted_merge_run(
+                    container,
+                    run,
+                    &text_run
+                        .as_ref()
+                        .expect("actual native source segment")
+                        .segment,
+                    input,
+                    formatted_mode,
+                    core::mem::take(&mut output.formatted),
+                )
+            })
+            .transpose()
+            .map_err(|error| text_run_error(container, error.into()))?
+            .flatten();
         let accepted = encounters.into_inner().finish();
         for child in accepted.children {
             tree.accept_float_child(&child.packet)?;
@@ -1411,37 +1384,31 @@ where
         let result = layout_mixed_inline_run_with_formatted_observation(
             numeric_input,
             |block_start, block_end| {
+                if let Some(error) = provider_error.borrow_mut().take() {
+                    return Err(error);
+                }
                 let query_block_start = cursor_block + block_start;
                 let query_block_end = cursor_block + block_end;
-                let band = if !provider_enabled || provider_error.borrow().is_some() {
-                    float_exclusions.query_rectangular_line_band(query_block_start, query_block_end)
+                let query = if !provider_enabled {
+                    float_exclusions
+                        .query_rectangular_line_band(query_block_start, query_block_end)
+                        .map_err(|error| text_run_error(container, error.into()))
                 } else {
-                    match float_exclusions.query_provider_band(
+                    float_exclusions.query_provider_band(
                         &**numeric_tree.borrow(),
                         container,
                         query_block_start,
                         query_block_end,
-                    ) {
-                        Ok(band) => band,
-                        Err(error) => {
-                            *provider_error.borrow_mut() = Some(error);
-                            FloatBand {
-                                inline_start: float_exclusions.containing_inline_start,
-                                inline_end: float_exclusions.containing_inline_end,
-                                next_transition: None,
-                                #[cfg(test)]
-                                evaluated: 0,
-                            }
-                        }
-                    }
+                    )
                 };
-                LogicalLineBandQueryResultOf {
+                let band = query?;
+                Ok(LogicalLineBandQueryResultOf {
                     inline_start: band.inline_start - logical_content_box_inset.inline_start,
                     inline_end: band.inline_end - logical_content_box_inset.inline_start,
                     next_transition: band
                         .next_transition
                         .map(|transition| transition - cursor_block),
-                }
+                })
             },
             |block, clear| {
                 float_exclusions.clearance_for_line_intent(cursor_block + block, clear)
@@ -1475,7 +1442,12 @@ where
         if let Some(error) = provider_error.borrow_mut().take() {
             return Err(error);
         }
-        result.map_err(|error| crate::inline_wrapping::numeric_wrapping_error(container, error))?
+        result.map_err(|error| match error {
+            crate::inline::NumericRunError::Numeric(error) => {
+                crate::inline_wrapping::numeric_wrapping_error(container, error)
+            }
+            crate::inline::NumericRunError::Band(error) => error,
+        })?
     };
     // Native outflows without a Text occurrence use the accepted run entry.
     // Their static position consumes adjoining displacement only with an actual
@@ -1501,10 +1473,17 @@ where
     }
     if text_output.is_none() {
         if let Some(lines) = &report.formatted_lines {
-            formatted_item = Some(crate::text_layout::formatted::FormattedFlowItem::Numeric(
-                run.to_vec(),
-                lines.clone(),
-            ));
+            let funding = tree
+                .text_computation()
+                .and_then(|state| state.entry_case_funding().cloned());
+            formatted_item = Some(
+                crate::text_layout::formatted::FormattedFlowItem::numeric(
+                    run,
+                    lines,
+                    funding.as_ref(),
+                )
+                .map_err(|error| text_run_error(container, error.into()))?,
+            );
         }
         report.hyphenation_state = hyphenation_state;
         if crate::layout_math::normal_available_size(available_inline_extent).is_some()
@@ -2481,6 +2460,152 @@ where
 
 fn resolve_atomic_inline_margin<S: LayoutScalar>(margin: Edges<Option<S>>) -> Edges<S> {
     margin.map(|value| value.unwrap_or(S::ZERO))
+}
+
+/// One source-backed endpoint allocation shared by actual fitting and entry
+/// semantics. Struts and metrics are deliberately outside this operation.
+pub(super) struct BoundaryAllocationContext<'a, Node> {
+    pub(super) container: Node,
+    pub(super) prepared: &'a surgeist_text::PreparedText,
+    pub(super) associations: &'a crate::text_layout::capture::ScopeAssociations<Node>,
+    pub(super) resources: &'a dyn crate::text_layout::scope_alignment::ScopeAlignmentFacts,
+    pub(super) orientation: surgeist_text::LineOrientation,
+    pub(super) axes: crate::FlowAxes,
+}
+impl<Node: Copy + Eq> BoundaryAllocationContext<'_, Node> {
+    pub(super) fn allocate<'input, Tree, S, M>(
+        &self,
+        tree: &Tree,
+        node: Node,
+        occurrence: &surgeist_text::PreparedControl,
+        endpoint: crate::inline::InlineEndpointOf<S>,
+    ) -> LayoutResultOf<Node, surgeist_text::InlineBoundaryAllocation, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+        Node: 'input,
+        S: LayoutScalar,
+    {
+        let advance = endpoint.edge.border_padding_advance().to_f64();
+        let crate::LayoutInputViewOf::InlineBoundary(input) = tree.layout_input(node) else {
+            unreachable!("an endpoint retains its normalized input");
+        };
+        let Some(parent_axes) = input.parent_edge_axes() else {
+            return surgeist_text::InlineBoundaryAllocation::contribution(advance)
+                .map_err(|error| text_run_error(self.container, error.into()));
+        };
+        let limits = occurrence
+            .captured_control()
+            .and_then(|control| control.scope().scope_alignment_limits());
+        let inspect = || {
+            if let Some(limits) = limits {
+                crate::text_layout::scope_alignment::ScopeAlignmentFacts::visit(
+                    self.resources,
+                    limits,
+                    1,
+                )?;
+            }
+            Ok::<_, surgeist_text::Error>(())
+        };
+        let fallback = self
+            .associations
+            .box_for_endpoint(node, inspect)
+            .map_err(|error| text_run_error(self.container, error.into()))?;
+        let (wrapping, _) = tree.wrapping_context().ok_or_else(|| {
+            crate::inline_wrapping::wrapping_error(
+                self.container,
+                crate::WrappingScopeError::MissingCapture,
+            )
+        })?;
+        let (owner, parent) = wrapping
+            .text_box_edge_sources(
+                self.container,
+                node,
+                fallback.as_ref(),
+                self.prepared,
+                inspect,
+            )
+            .map_err(|error| text_run_error(self.container, error.into()))?
+            .ok_or_else(|| {
+                crate::inline_wrapping::wrapping_error(
+                    self.container,
+                    crate::WrappingScopeError::MissingCapture,
+                )
+            })?;
+        if let Some(scope) = parent
+            .captured_scope()
+            .filter(|scope| scope.role() == surgeist_text::ScopeRole::Domain)
+        {
+            if let Some(limits) = scope.scope_alignment_limits() {
+                crate::text_layout::scope_alignment::ScopeAlignmentFacts::visit(
+                    self.resources,
+                    limits,
+                    self.associations.captured_binding_work(scope),
+                )
+                .map_err(|error| text_run_error(self.container, error.into()))?;
+            }
+            if let Some(crate::TextScopeAssociation::ParagraphContainer(parent_node)) =
+                self.associations.captured_binding(scope)
+            {
+                let parent_input = tree.layout_input(parent_node).as_box().ok_or_else(|| {
+                    crate::inline_wrapping::wrapping_error(
+                        parent_node,
+                        crate::WrappingScopeError::CaptureAssociation,
+                    )
+                })?;
+                let expected =
+                    crate::FlowAxes::new(parent_input.writing_mode, parent_input.direction);
+                if parent_axes != expected {
+                    return Err(LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(node),
+                        LayoutOperation::TextCapture,
+                        LayoutErrorKindOf::InvalidInput(
+                            LayoutInvalidInputOf::InlineBoundaryParentMismatch {
+                                expected: Some(expected),
+                                actual: Some(parent_axes),
+                            },
+                        ),
+                    ));
+                }
+            }
+        }
+        let side = match (self.orientation, parent_axes.inline_start()) {
+            (surgeist_text::LineOrientation::Horizontal, crate::PhysicalSide::Left)
+            | (
+                surgeist_text::LineOrientation::Vertical
+                | surgeist_text::LineOrientation::SidewaysClockwise
+                | surgeist_text::LineOrientation::SidewaysCounterclockwise,
+                crate::PhysicalSide::Top,
+            ) => surgeist_text::LineEdgeSide::Start,
+            (surgeist_text::LineOrientation::Horizontal, crate::PhysicalSide::Right)
+            | (
+                surgeist_text::LineOrientation::Vertical
+                | surgeist_text::LineOrientation::SidewaysClockwise
+                | surgeist_text::LineOrientation::SidewaysCounterclockwise,
+                crate::PhysicalSide::Bottom,
+            ) => surgeist_text::LineEdgeSide::End,
+            _ => {
+                return Err(LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::TextCapture,
+                    LayoutErrorKindOf::InvalidInput(
+                        LayoutInvalidInputOf::InlineBoundaryParentAxis {
+                            parent: parent_axes,
+                            formatter: self.axes,
+                        },
+                    ),
+                ));
+            }
+        };
+        let context = self
+            .prepared
+            .inline_box_edge_context(owner, parent, side)
+            .map_err(|error| text_run_error(self.container, error.into()))?;
+        let components = crate::text_layout::edge_components::from_native(endpoint.edge)
+            .map_err(|error| text_run_error(self.container, error.into()))?;
+        Ok(surgeist_text::InlineBoundaryAllocation::box_edge(
+            context, components,
+        ))
+    }
 }
 
 pub(super) fn text_run_error<Node: Copy, S: LayoutScalar, M>(

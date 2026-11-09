@@ -6225,3 +6225,1012 @@ fn ordinary_float_adjoining_outside_processed_window_f32() {
 fn ordinary_float_adjoining_outside_processed_window_f64() {
     assert_ordinary_float_outside_processed_window::<f64>();
 }
+
+fn actual_clearance_auto_root_request<S: LayoutScalar>() -> LayoutRootRequestOf<S> {
+    let width = NonNegativeFiniteOf::new(S::from_f64(100.0)).unwrap();
+    crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::new(Some(width), None),
+        OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::new(
+        AxisSizingRequestOf::new(AvailableSpaceOf::Definite(width), SizingOperation::Normal),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+    ))
+}
+
+fn assert_actual_clearance_empty_block_without_floats<S: LayoutScalar>(clear: Clear) {
+    let px = S::from_f64;
+    for clear in [Clear::None, clear] {
+        let ordinary = NodeInputOf {
+            display: Display::Block,
+            size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+            min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+            ..NodeInputOf::default()
+        };
+        let tree = PublicBlockTree::default()
+            .with_children(0, [1, 2])
+            .with_children(1, [])
+            .with_children(2, [])
+            .with_style(
+                0,
+                NodeInputOf {
+                    border: Edges {
+                        top: LengthOf::px(px(1.0)),
+                        bottom: LengthOf::px(px(1.0)),
+                        ..Edges::all(LengthOf::ZERO)
+                    },
+                    ..ordinary.clone()
+                },
+            )
+            .with_style(
+                1,
+                NodeInputOf {
+                    clear,
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(10.0)),
+                        bottom: LengthAutoOf::px(px(5.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary.clone()
+                },
+            )
+            .with_style(
+                2,
+                NodeInputOf {
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(10.0)),
+                    ),
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(7.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary
+                },
+            );
+        let batch = compute_layout(&tree, 0, actual_clearance_auto_root_request()).unwrap();
+        let root = public_final_output(&batch, 0);
+        let empty = public_final_output(&batch, 1);
+        let following = public_final_output(&batch, 2);
+        // No float introduces clearance. The adjoining 10/5/7 margins form
+        // one 10px margin, and the empty box does not advance the flow cursor.
+        assert_eq!(
+            (
+                empty.location,
+                empty.size,
+                following.location,
+                following.size,
+                root.size
+            ),
+            (
+                Point::new(S::ZERO, px(11.0)),
+                Size::new(px(100.0), S::ZERO),
+                Point::new(S::ZERO, px(11.0)),
+                Size::new(px(100.0), px(10.0)),
+                Size::new(px(100.0), px(22.0)),
+            ),
+            "clear {clear:?}: empty/following/root geometry"
+        );
+    }
+}
+
+#[test]
+fn actual_clearance_empty_left_without_floats_f32() {
+    assert_actual_clearance_empty_block_without_floats::<f32>(Clear::Left);
+}
+#[test]
+fn actual_clearance_empty_left_without_floats_f64() {
+    assert_actual_clearance_empty_block_without_floats::<f64>(Clear::Left);
+}
+#[test]
+fn actual_clearance_empty_right_without_floats_f32() {
+    assert_actual_clearance_empty_block_without_floats::<f32>(Clear::Right);
+}
+#[test]
+fn actual_clearance_empty_right_without_floats_f64() {
+    assert_actual_clearance_empty_block_without_floats::<f64>(Clear::Right);
+}
+#[test]
+fn actual_clearance_empty_both_without_floats_f32() {
+    assert_actual_clearance_empty_block_without_floats::<f32>(Clear::Both);
+}
+#[test]
+fn actual_clearance_empty_both_without_floats_f64() {
+    assert_actual_clearance_empty_block_without_floats::<f64>(Clear::Both);
+}
+
+fn assert_actual_clearance_parent_geometry<S: LayoutScalar>(float_height: f64) {
+    let px = S::from_f64;
+    for clear in [Clear::None, Clear::Left] {
+        let ordinary = NodeInputOf {
+            display: Display::Block,
+            size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+            min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+            ..NodeInputOf::default()
+        };
+        let tree = PublicBlockTree::default()
+            .with_children(0, [1, 2])
+            .with_children(1, [])
+            .with_children(2, [3])
+            .with_children(3, [])
+            .with_style(0, ordinary.clone())
+            .with_style(
+                1,
+                NodeInputOf {
+                    float: Float::Left,
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(float_height)),
+                    ),
+                    ..ordinary.clone()
+                },
+            )
+            .with_style(2, ordinary.clone())
+            .with_style(
+                3,
+                NodeInputOf {
+                    clear,
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(10.0)),
+                    ),
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(10.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary
+                },
+            );
+        let batch = compute_layout(&tree, 0, actual_clearance_auto_root_request()).unwrap();
+        let float = public_final_output(&batch, 1);
+        assert_eq!(float.location, Point::ZERO);
+        assert_eq!(float.size, Size::new(px(100.0), px(float_height)));
+        let parent = public_final_output(&batch, 2);
+        let child = public_final_output(&batch, 3);
+        let introduced = clear == Clear::Left && float_height == 20.0;
+        // Hypothetical child border y10 already clears a 5px float. A 20px
+        // float introduces clearance, separating the child's margin from P.
+        let (parent_y, parent_height, child_y) = if introduced {
+            (0.0, 30.0, 20.0)
+        } else {
+            (10.0, 10.0, 0.0)
+        };
+        assert_eq!(
+            (parent.location, parent.size, child.location, child.size),
+            (
+                Point::new(S::ZERO, px(parent_y)),
+                Size::new(px(100.0), px(parent_height)),
+                Point::new(S::ZERO, px(child_y)),
+                Size::new(px(100.0), px(10.0)),
+            ),
+            "float height {float_height}, clear {clear:?}: parent/child geometry"
+        );
+    }
+}
+
+#[test]
+fn actual_clearance_short_float_preserves_parent_child_collapse_f32() {
+    assert_actual_clearance_parent_geometry::<f32>(5.0);
+}
+#[test]
+fn actual_clearance_short_float_preserves_parent_child_collapse_f64() {
+    assert_actual_clearance_parent_geometry::<f64>(5.0);
+}
+#[test]
+fn actual_clearance_tall_float_separates_parent_child_margin_f32() {
+    assert_actual_clearance_parent_geometry::<f32>(20.0);
+}
+#[test]
+fn actual_clearance_tall_float_separates_parent_child_margin_f64() {
+    assert_actual_clearance_parent_geometry::<f64>(20.0);
+}
+
+// CSS2 9.5.2 (references/css2--visuren.html--3f334c530cf4.md,
+// clearance/float-rules) and 8.3.1 (css2--box.html--8875bbcdefe6.md).
+// #2125 comments 6728652731/6728787611 adopt strict hypothetical H < F
+// admission and the greater-of-two amount in a common BFC coordinate frame.
+// These are real public Block/Normal trees, without supplied collapse results.
+fn policy_clearance_block<S: LayoutScalar>(height: Option<f64>) -> NodeInputOf<S> {
+    NodeInputOf {
+        display: Display::Block,
+        size: Size::new(
+            PreferredSizeOf::px(S::from_f64(100.0)),
+            height.map_or(PreferredSizeOf::AUTO, |h| {
+                PreferredSizeOf::px(S::from_f64(h))
+            }),
+        ),
+        min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+        ..NodeInputOf::default()
+    }
+}
+
+fn policy_clearance_margins<S: LayoutScalar>(top: f64, bottom: f64) -> Edges<LengthAutoOf<S>> {
+    Edges {
+        top: LengthAutoOf::px(S::from_f64(top)),
+        bottom: LengthAutoOf::px(S::from_f64(bottom)),
+        ..Edges::all(LengthAutoOf::ZERO)
+    }
+}
+
+fn policy_clearance_float<S: LayoutScalar>(side: Float, height: f64) -> NodeInputOf<S> {
+    NodeInputOf {
+        float: side,
+        size: Size::new(
+            PreferredSizeOf::px(S::from_f64(20.0)),
+            PreferredSizeOf::px(S::from_f64(height)),
+        ),
+        ..policy_clearance_block(None)
+    }
+}
+
+fn policy_clearance_box<S: LayoutScalar>(
+    batch: &CompletedLayoutBatchOf<u32, S>,
+    node: u32,
+    y: S,
+    height: S,
+) {
+    // Exact-contact admission uses authoritative unrounded geometry. The
+    // final pixel-rounding stage intentionally erases adjacent scalar values.
+    let output = batch
+        .node_layout(node)
+        .unwrap()
+        .single_box()
+        .unwrap()
+        .unrounded_output();
+    assert_eq!(
+        (output.location.y, output.size.height),
+        (y, height),
+        "node {node}"
+    );
+}
+
+fn assert_policy_clearance_contact<S: LayoutScalar>(float_height: S, introduced: bool) {
+    let px = S::from_f64;
+    for clear in [Clear::None, Clear::Left] {
+        let tree = PublicBlockTree::default()
+            .with_children(0, [1, 2, 4])
+            .with_children(1, [])
+            .with_children(2, [3])
+            .with_children(3, [])
+            .with_children(4, [])
+            .with_style(0, policy_clearance_block(None))
+            .with_style(
+                1,
+                NodeInputOf {
+                    size: Size::new(
+                        PreferredSizeOf::px(px(20.0)),
+                        PreferredSizeOf::px(float_height),
+                    ),
+                    ..policy_clearance_float(Float::Left, 0.0)
+                },
+            )
+            .with_style(2, policy_clearance_block(None))
+            .with_style(
+                3,
+                NodeInputOf {
+                    clear,
+                    margin: policy_clearance_margins(10.0, 0.0),
+                    ..policy_clearance_block(Some(10.0))
+                },
+            )
+            .with_style(4, policy_clearance_block(Some(1.0)));
+        let batch = compute_layout(&tree, 0, actual_clearance_auto_root_request()).unwrap();
+        let separated = clear == Clear::Left && introduced;
+        let (parent_y, child_y, height) = if separated {
+            (S::ZERO, float_height, float_height + px(10.0))
+        } else {
+            (px(10.0), S::ZERO, px(10.0))
+        };
+        // H=10 exactly. Equality and its adjacent representable values are
+        // compared without a tolerance; parent origin reveals collapse state.
+        policy_clearance_box(&batch, 1, S::ZERO, float_height);
+        policy_clearance_box(&batch, 2, parent_y, height);
+        policy_clearance_box(&batch, 3, child_y, px(10.0));
+        policy_clearance_box(&batch, 4, parent_y + height, px(1.0));
+        policy_clearance_box(&batch, 0, S::ZERO, parent_y + height + px(1.0));
+    }
+}
+
+fn assert_policy_clearance_local_float<S: LayoutScalar>(
+    nested: bool,
+    translated: bool,
+    clear: Clear,
+) {
+    let px = S::from_f64;
+    // Independent container 10 makes translation a translation of the whole
+    // BFC, rather than a change to the parent transform within that BFC.
+    let tree = PublicBlockTree::default()
+        .with_children(0, if translated { vec![9, 10] } else { vec![10] })
+        .with_children(9, [])
+        .with_children(10, [1, 4])
+        .with_children(1, if nested { vec![5] } else { vec![2, 3] })
+        .with_children(5, [2, 3])
+        .with_children(2, [])
+        .with_children(3, [])
+        .with_children(4, [])
+        .with_style(0, policy_clearance_block(None))
+        .with_style(9, policy_clearance_block(Some(37.0)))
+        .with_style(
+            10,
+            NodeInputOf {
+                block_flow_context: crate::BlockFlowContext::Independent,
+                ..policy_clearance_block(None)
+            },
+        )
+        .with_style(1, policy_clearance_block(None))
+        .with_style(5, policy_clearance_block(None))
+        .with_style(2, policy_clearance_float(Float::Left, 5.0))
+        .with_style(
+            3,
+            NodeInputOf {
+                clear,
+                margin: policy_clearance_margins(10.0, 0.0),
+                ..policy_clearance_block(Some(10.0))
+            },
+        )
+        .with_style(4, policy_clearance_block(Some(2.0)));
+    let batch = compute_layout(&tree, 0, actual_clearance_auto_root_request()).unwrap();
+    let (parent_y, height, child_y) = if clear == Clear::None {
+        (10.0, 10.0, 0.0)
+    } else {
+        (0.0, 20.0, 10.0)
+    };
+    // None: P=10,H=10,Fh=15. Introduced: P=0,Fs=5,S=10;
+    // C=max(5-10,10-10)=0, so the retained hypothetical bound wins.
+    policy_clearance_box(&batch, 1, px(parent_y), px(height));
+    if nested {
+        policy_clearance_box(&batch, 5, S::ZERO, px(height));
+    }
+    policy_clearance_box(&batch, 2, S::ZERO, px(5.0));
+    policy_clearance_box(&batch, 3, px(child_y), px(10.0));
+    policy_clearance_box(&batch, 4, px(20.0), px(2.0));
+    policy_clearance_box(
+        &batch,
+        10,
+        px(if translated { 37.0 } else { 0.0 }),
+        px(22.0),
+    );
+    policy_clearance_box(&batch, 0, S::ZERO, px(if translated { 59.0 } else { 22.0 }));
+}
+
+fn assert_policy_clearance_empty_prefix<S: LayoutScalar>(clear: Clear, ancestor_margin: bool) {
+    let px = S::from_f64;
+    let tree = PublicBlockTree::default()
+        .with_children(
+            0,
+            if ancestor_margin {
+                vec![1, 6, 2]
+            } else {
+                vec![1, 2]
+            },
+        )
+        .with_children(1, [])
+        .with_children(6, [])
+        .with_children(2, [3, 4])
+        .with_children(3, [])
+        .with_children(4, [])
+        .with_style(0, policy_clearance_block(None))
+        .with_style(1, policy_clearance_float(Float::Left, 30.0))
+        .with_style(
+            6,
+            NodeInputOf {
+                margin: policy_clearance_margins(40.0, 0.0),
+                ..policy_clearance_block(None)
+            },
+        )
+        .with_style(2, policy_clearance_block(None))
+        .with_style(
+            3,
+            NodeInputOf {
+                margin: policy_clearance_margins(8.0, 12.0),
+                ..policy_clearance_block(None)
+            },
+        )
+        .with_style(
+            4,
+            NodeInputOf {
+                clear,
+                margin: policy_clearance_margins(20.0, 0.0),
+                ..policy_clearance_block(Some(10.0))
+            },
+        );
+    let batch = compute_layout(&tree, 0, actual_clearance_auto_root_request()).unwrap();
+    // Without ancestor40, H=20<F30. Separation exposes max(8,12)=12
+    // above P; B's separated S=12+20=32. Both candidates are negative:
+    // Cfloat=-2, Chyp=-12, so Bglobal30/local18 and Pheight28.
+    // The earlier empty sibling's40 joins the entire hypothetical margin set;
+    // H=40 already clears F30, so no clearance and no separation are admitted.
+    let (parent_y, height, child_y, root_height) = if ancestor_margin {
+        (40.0, 10.0, 0.0, 50.0)
+    } else if clear == Clear::None {
+        (20.0, 10.0, 0.0, 30.0)
+    } else {
+        (12.0, 28.0, 18.0, 40.0)
+    };
+    policy_clearance_box(&batch, 1, S::ZERO, px(30.0));
+    if ancestor_margin {
+        policy_clearance_box(&batch, 6, px(40.0), S::ZERO);
+    }
+    policy_clearance_box(&batch, 2, px(parent_y), px(height));
+    policy_clearance_box(&batch, 3, S::ZERO, S::ZERO);
+    policy_clearance_box(&batch, 4, px(child_y), px(10.0));
+    policy_clearance_box(&batch, 0, S::ZERO, px(root_height));
+}
+
+fn assert_policy_clearance_zero_float<S: LayoutScalar>(
+    side: Float,
+    clear: Clear,
+    block_margin: f64,
+    float_margin: f64,
+    present: bool,
+) {
+    let px = S::from_f64;
+    let tree = PublicBlockTree::default()
+        .with_children(0, if present { vec![1, 2] } else { vec![2] })
+        .with_children(1, [])
+        .with_children(2, [])
+        .with_style(
+            0,
+            NodeInputOf {
+                border: Edges {
+                    top: LengthOf::px(px(1.0)),
+                    ..Edges::all(LengthOf::ZERO)
+                },
+                ..policy_clearance_block(None)
+            },
+        )
+        .with_style(
+            1,
+            NodeInputOf {
+                margin: policy_clearance_margins(float_margin, -float_margin),
+                ..policy_clearance_float(side, 0.0)
+            },
+        )
+        .with_style(
+            2,
+            NodeInputOf {
+                clear,
+                margin: policy_clearance_margins(block_margin, 0.0),
+                ..policy_clearance_block(Some(10.0))
+            },
+        );
+    let batch = compute_layout(&tree, 0, actual_clearance_auto_root_request()).unwrap();
+    let relevant = present
+        && match clear {
+            Clear::Left => side == Float::Left,
+            Clear::Right => side == Float::Right,
+            Clear::Both => true,
+            Clear::None => false,
+        };
+    // Source-before F has outer top/bottom1; MT+MB=0 even for signed
+    // float margins. The subsequent negative in-flow margin cannot raise F:
+    // its outer anchor is still1 when all negative in-flow margins become0,
+    // so CSS2's undefined negative-raised-float exception does not apply.
+    // H=1+MT(B); no relevant float is an absent bound, never implicit F=0.
+    let block_y = if relevant && block_margin < 0.0 {
+        1.0
+    } else {
+        1.0 + block_margin
+    };
+    if present {
+        let float = public_final_output(&batch, 1);
+        assert_eq!(
+            float.location,
+            Point::new(
+                px(if side == Float::Right { 80.0 } else { 0.0 }),
+                px(1.0 + float_margin)
+            )
+        );
+        assert_eq!(float.size, Size::new(px(20.0), S::ZERO));
+        assert_eq!(
+            float.location.y + px(-float_margin),
+            px(1.0),
+            "actual float bottom margin edge"
+        );
+    }
+    policy_clearance_box(&batch, 2, px(block_y), px(10.0));
+    policy_clearance_box(&batch, 0, S::ZERO, px(block_y + 10.0));
+}
+
+fn assert_policy_clearance_foreign_zero_float<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let tree = PublicBlockTree::default()
+        .with_children(0, [1, 3])
+        .with_children(1, [2])
+        .with_children(2, [])
+        .with_children(3, [])
+        .with_style(
+            0,
+            NodeInputOf {
+                border: Edges {
+                    top: LengthOf::px(px(1.0)),
+                    ..Edges::all(LengthOf::ZERO)
+                },
+                ..policy_clearance_block(None)
+            },
+        )
+        .with_style(
+            1,
+            NodeInputOf {
+                block_flow_context: crate::BlockFlowContext::Independent,
+                ..policy_clearance_block(Some(0.0))
+            },
+        )
+        .with_style(2, policy_clearance_float(Float::Left, 0.0))
+        .with_style(
+            3,
+            NodeInputOf {
+                clear: Clear::Both,
+                margin: policy_clearance_margins(-5.0, 0.0),
+                ..policy_clearance_block(Some(10.0))
+            },
+        );
+    let batch = compute_layout(&tree, 0, actual_clearance_auto_root_request()).unwrap();
+    // Fglobal1 lies in a foreign independent BFC and supplies no root bound.
+    policy_clearance_box(&batch, 1, px(1.0), S::ZERO);
+    policy_clearance_box(&batch, 2, S::ZERO, S::ZERO);
+    policy_clearance_box(&batch, 3, px(-4.0), px(10.0));
+    policy_clearance_box(&batch, 0, S::ZERO, px(6.0));
+}
+
+fn assert_policy_clearance_later_zero_float<S: LayoutScalar>(clear: Clear) {
+    let px = S::from_f64;
+    let tree = PublicBlockTree::default()
+        .with_children(0, [1, 2])
+        .with_children(1, [])
+        .with_children(2, [])
+        .with_style(
+            0,
+            NodeInputOf {
+                border: Edges {
+                    top: LengthOf::px(px(1.0)),
+                    ..Edges::all(LengthOf::ZERO)
+                },
+                ..policy_clearance_block(None)
+            },
+        )
+        .with_style(
+            1,
+            NodeInputOf {
+                clear,
+                margin: policy_clearance_margins(5.0, 0.0),
+                ..policy_clearance_block(Some(10.0))
+            },
+        )
+        .with_style(2, policy_clearance_float(Float::Left, 0.0));
+    let batch = compute_layout(&tree, 0, actual_clearance_auto_root_request()).unwrap();
+    // All margins positive: the later-source F is unambiguously anchored
+    // after B at16; it cannot constrain B's earlier hypothetical border6.
+    policy_clearance_box(&batch, 1, px(6.0), px(10.0));
+    policy_clearance_box(&batch, 2, px(16.0), S::ZERO);
+    policy_clearance_box(&batch, 0, S::ZERO, px(16.0));
+}
+
+#[test]
+fn policy_clearance_contact_below_f32() {
+    assert_policy_clearance_contact::<f32>(<f32>::from_bits(10.0f32.to_bits() - 1), false);
+}
+
+#[test]
+fn policy_clearance_contact_below_f64() {
+    assert_policy_clearance_contact::<f64>(<f64>::from_bits(10.0f64.to_bits() - 1), false);
+}
+
+#[test]
+fn policy_clearance_contact_equal_f32() {
+    assert_policy_clearance_contact::<f32>(10.0, false);
+}
+
+#[test]
+fn policy_clearance_contact_equal_f64() {
+    assert_policy_clearance_contact::<f64>(10.0, false);
+}
+
+#[test]
+fn policy_clearance_contact_above_f32() {
+    assert_policy_clearance_contact::<f32>(<f32>::from_bits(10.0f32.to_bits() + 1), true);
+}
+
+#[test]
+fn policy_clearance_contact_above_f64() {
+    assert_policy_clearance_contact::<f64>(<f64>::from_bits(10.0f64.to_bits() + 1), true);
+}
+
+#[test]
+fn policy_clearance_local_float_none_f32() {
+    assert_policy_clearance_local_float::<f32>(false, false, Clear::None);
+}
+
+#[test]
+fn policy_clearance_local_float_none_f64() {
+    assert_policy_clearance_local_float::<f64>(false, false, Clear::None);
+}
+
+#[test]
+fn policy_clearance_local_float_introduced_zero_f32() {
+    assert_policy_clearance_local_float::<f32>(false, false, Clear::Left);
+}
+
+#[test]
+fn policy_clearance_local_float_introduced_zero_f64() {
+    assert_policy_clearance_local_float::<f64>(false, false, Clear::Left);
+}
+
+#[test]
+fn policy_clearance_local_float_nested_none_f32() {
+    assert_policy_clearance_local_float::<f32>(true, false, Clear::None);
+}
+
+#[test]
+fn policy_clearance_local_float_nested_none_f64() {
+    assert_policy_clearance_local_float::<f64>(true, false, Clear::None);
+}
+
+#[test]
+fn policy_clearance_local_float_nested_introduced_zero_f32() {
+    assert_policy_clearance_local_float::<f32>(true, false, Clear::Left);
+}
+
+#[test]
+fn policy_clearance_local_float_nested_introduced_zero_f64() {
+    assert_policy_clearance_local_float::<f64>(true, false, Clear::Left);
+}
+
+#[test]
+fn policy_clearance_local_float_translated_none_f32() {
+    assert_policy_clearance_local_float::<f32>(false, true, Clear::None);
+}
+
+#[test]
+fn policy_clearance_local_float_translated_none_f64() {
+    assert_policy_clearance_local_float::<f64>(false, true, Clear::None);
+}
+
+#[test]
+fn policy_clearance_local_float_translated_introduced_zero_f32() {
+    assert_policy_clearance_local_float::<f32>(false, true, Clear::Left);
+}
+
+#[test]
+fn policy_clearance_local_float_translated_introduced_zero_f64() {
+    assert_policy_clearance_local_float::<f64>(false, true, Clear::Left);
+}
+
+#[test]
+fn policy_clearance_empty_prefix_none_f32() {
+    assert_policy_clearance_empty_prefix::<f32>(Clear::None, false);
+}
+
+#[test]
+fn policy_clearance_empty_prefix_none_f64() {
+    assert_policy_clearance_empty_prefix::<f64>(Clear::None, false);
+}
+
+#[test]
+fn policy_clearance_empty_prefix_introduced_negative_f32() {
+    assert_policy_clearance_empty_prefix::<f32>(Clear::Left, false);
+}
+
+#[test]
+fn policy_clearance_empty_prefix_introduced_negative_f64() {
+    assert_policy_clearance_empty_prefix::<f64>(Clear::Left, false);
+}
+
+#[test]
+fn policy_clearance_ancestor_margin_none_f32() {
+    assert_policy_clearance_empty_prefix::<f32>(Clear::None, true);
+}
+
+#[test]
+fn policy_clearance_ancestor_margin_none_f64() {
+    assert_policy_clearance_empty_prefix::<f64>(Clear::None, true);
+}
+
+#[test]
+fn policy_clearance_ancestor_margin_removes_admission_f32() {
+    assert_policy_clearance_empty_prefix::<f32>(Clear::Left, true);
+}
+
+#[test]
+fn policy_clearance_ancestor_margin_removes_admission_f64() {
+    assert_policy_clearance_empty_prefix::<f64>(Clear::Left, true);
+}
+
+#[test]
+fn policy_clearance_zero_float_absent_signed_h_f32() {
+    assert_policy_clearance_zero_float::<f32>(Float::Left, Clear::Both, -5.0, 0.0, false);
+}
+
+#[test]
+fn policy_clearance_zero_float_absent_signed_h_f64() {
+    assert_policy_clearance_zero_float::<f64>(Float::Left, Clear::Both, -5.0, 0.0, false);
+}
+
+#[test]
+fn policy_clearance_zero_float_none_signed_h_f32() {
+    assert_policy_clearance_zero_float::<f32>(Float::Left, Clear::None, -5.0, 0.0, true);
+}
+
+#[test]
+fn policy_clearance_zero_float_none_signed_h_f64() {
+    assert_policy_clearance_zero_float::<f64>(Float::Left, Clear::None, -5.0, 0.0, true);
+}
+
+#[test]
+fn policy_clearance_zero_float_wrong_side_signed_h_f32() {
+    assert_policy_clearance_zero_float::<f32>(Float::Left, Clear::Right, -5.0, 0.0, true);
+}
+
+#[test]
+fn policy_clearance_zero_float_wrong_side_signed_h_f64() {
+    assert_policy_clearance_zero_float::<f64>(Float::Left, Clear::Right, -5.0, 0.0, true);
+}
+
+#[test]
+fn policy_clearance_zero_float_earlier_bound_f32() {
+    assert_policy_clearance_zero_float::<f32>(Float::Left, Clear::Left, 5.0, 0.0, true);
+}
+
+#[test]
+fn policy_clearance_zero_float_earlier_bound_f64() {
+    assert_policy_clearance_zero_float::<f64>(Float::Left, Clear::Left, 5.0, 0.0, true);
+}
+
+#[test]
+fn policy_clearance_zero_float_equal_bound_f32() {
+    assert_policy_clearance_zero_float::<f32>(Float::Left, Clear::Left, 0.0, 0.0, true);
+}
+
+#[test]
+fn policy_clearance_zero_float_equal_bound_f64() {
+    assert_policy_clearance_zero_float::<f64>(Float::Left, Clear::Left, 0.0, 0.0, true);
+}
+
+#[test]
+fn policy_clearance_zero_float_later_bound_left_f32() {
+    assert_policy_clearance_zero_float::<f32>(Float::Left, Clear::Left, -5.0, 0.0, true);
+}
+
+#[test]
+fn policy_clearance_zero_float_later_bound_left_f64() {
+    assert_policy_clearance_zero_float::<f64>(Float::Left, Clear::Left, -5.0, 0.0, true);
+}
+
+#[test]
+fn policy_clearance_zero_float_later_bound_right_f32() {
+    assert_policy_clearance_zero_float::<f32>(Float::Right, Clear::Right, -5.0, 0.0, true);
+}
+
+#[test]
+fn policy_clearance_zero_float_later_bound_right_f64() {
+    assert_policy_clearance_zero_float::<f64>(Float::Right, Clear::Right, -5.0, 0.0, true);
+}
+
+#[test]
+fn policy_clearance_zero_float_later_bound_both_f32() {
+    assert_policy_clearance_zero_float::<f32>(Float::Right, Clear::Both, -5.0, 0.0, true);
+}
+
+#[test]
+fn policy_clearance_zero_float_later_bound_both_f64() {
+    assert_policy_clearance_zero_float::<f64>(Float::Right, Clear::Both, -5.0, 0.0, true);
+}
+
+#[test]
+fn policy_clearance_zero_float_positive_top_margin_f32() {
+    assert_policy_clearance_zero_float::<f32>(Float::Left, Clear::Left, -5.0, 3.0, true);
+}
+
+#[test]
+fn policy_clearance_zero_float_positive_top_margin_f64() {
+    assert_policy_clearance_zero_float::<f64>(Float::Left, Clear::Left, -5.0, 3.0, true);
+}
+
+#[test]
+fn policy_clearance_zero_float_negative_top_margin_f32() {
+    assert_policy_clearance_zero_float::<f32>(Float::Right, Clear::Both, -5.0, -3.0, true);
+}
+
+#[test]
+fn policy_clearance_zero_float_negative_top_margin_f64() {
+    assert_policy_clearance_zero_float::<f64>(Float::Right, Clear::Both, -5.0, -3.0, true);
+}
+
+#[test]
+fn policy_clearance_zero_float_foreign_bfc_f32() {
+    assert_policy_clearance_foreign_zero_float::<f32>();
+}
+
+#[test]
+fn policy_clearance_zero_float_foreign_bfc_f64() {
+    assert_policy_clearance_foreign_zero_float::<f64>();
+}
+
+#[test]
+fn policy_clearance_zero_float_later_source_none_f32() {
+    assert_policy_clearance_later_zero_float::<f32>(Clear::None);
+}
+
+#[test]
+fn policy_clearance_zero_float_later_source_none_f64() {
+    assert_policy_clearance_later_zero_float::<f64>(Clear::None);
+}
+
+#[test]
+fn policy_clearance_zero_float_later_source_ignored_f32() {
+    assert_policy_clearance_later_zero_float::<f32>(Clear::Left);
+}
+
+#[test]
+fn policy_clearance_zero_float_later_source_ignored_f64() {
+    assert_policy_clearance_later_zero_float::<f64>(Clear::Left);
+}
+
+#[derive(Clone, Copy)]
+enum PolicyClearanceMultiOfferCase {
+    RightBelowHypothetical,
+    RightAtHypothetical,
+    RightAboveHypothetical,
+    EmptyAuthoredNone,
+    BlockAuthoredNone,
+}
+
+fn assert_policy_clearance_multioffer<S: LayoutScalar>(case: PolicyClearanceMultiOfferCase) {
+    use PolicyClearanceMultiOfferCase::*;
+    let px = S::from_f64;
+    let (right_height, empty_clear, block_clear) = match case {
+        RightBelowHypothetical => (25.0, Clear::Left, Clear::Right),
+        RightAtHypothetical => (27.0, Clear::Left, Clear::Right),
+        RightAboveHypothetical => (30.0, Clear::Left, Clear::Right),
+        EmptyAuthoredNone => (25.0, Clear::None, Clear::Right),
+        BlockAuthoredNone => (25.0, Clear::Left, Clear::None),
+    };
+    let half_width_float = |side, height| NodeInputOf {
+        size: Size::new(
+            PreferredSizeOf::px(px(50.0)),
+            PreferredSizeOf::px(px(height)),
+        ),
+        ..policy_clearance_float(side, height)
+    };
+    let tree = PublicBlockTree::default()
+        .with_children(0, [1, 2, 3, 6])
+        .with_children(1, [])
+        .with_children(2, [])
+        .with_children(3, [4, 5])
+        .with_children(4, [])
+        .with_children(5, [])
+        .with_children(6, [])
+        .with_style(0, policy_clearance_block(None))
+        .with_style(1, half_width_float(Float::Left, 15.0))
+        .with_style(2, half_width_float(Float::Right, right_height))
+        .with_style(3, policy_clearance_block(None))
+        .with_style(
+            4,
+            NodeInputOf {
+                clear: empty_clear,
+                margin: policy_clearance_margins(8.0, 12.0),
+                ..policy_clearance_block(None)
+            },
+        )
+        .with_style(
+            5,
+            NodeInputOf {
+                clear: block_clear,
+                margin: policy_clearance_margins(20.0, 0.0),
+                ..policy_clearance_block(Some(10.0))
+            },
+        )
+        .with_style(6, policy_clearance_block(Some(2.0)));
+    let batch = compute_layout(&tree, 0, actual_clearance_auto_root_request()).unwrap();
+
+    // #2125 comment 6733332381 adopts a source-ordered qualified-prefix
+    // policy; CSS2 alone does not uniquely select this dependency ordering.
+    // With E suppressed, provisional B separates P to12. Actual E therefore
+    // has H=12<Fleft15 and C_E=max(15-8,12-8)=7. B's later contextual
+    // hypothetical retains E's qualified decision: H_B=7+max(8,12,20)=27.
+    // E's border15 differs from its own through-group end7+max(8,12)=19.
+    // R25 and R27 leave B adjoining. R30 separates at S_B=19+20=39,
+    // C_B=max(30-39,27-39)=-9; Bglobal30 and Pheight40.
+    let (parent_y, parent_height, empty_global_y, block_global_y) = match case {
+        RightBelowHypothetical | RightAtHypothetical => (0.0, 37.0, 15.0, 27.0),
+        RightAboveHypothetical => (0.0, 40.0, 15.0, 30.0),
+        // Authored E:none is a distinct whole-layout input. Only B clears:
+        // P12, S_B=32, C_B=-7, B25; its bottom35 gives Pheight23.
+        EmptyAuthoredNone => (12.0, 23.0, 12.0, 25.0),
+        // A fresh authored B:none input requalifies E. Its H=20 already
+        // clears left15: neither offer introduces clearance, P=E=B=20.
+        // This differs from B's contextual none probe with E already retained.
+        BlockAuthoredNone => (20.0, 10.0, 20.0, 20.0),
+    };
+    for (node, x, height) in [(1, 0.0, 15.0), (2, 50.0, right_height)] {
+        let float = batch
+            .node_layout(node)
+            .unwrap()
+            .single_box()
+            .unwrap()
+            .unrounded_output();
+        assert_eq!(
+            float.location,
+            Point::new(px(x), S::ZERO),
+            "float {node} origin"
+        );
+        assert_eq!(
+            float.size,
+            Size::new(px(50.0), px(height)),
+            "float {node} size"
+        );
+    }
+    policy_clearance_box(&batch, 3, px(parent_y), px(parent_height));
+    policy_clearance_box(&batch, 4, px(empty_global_y - parent_y), S::ZERO);
+    policy_clearance_box(&batch, 5, px(block_global_y - parent_y), px(10.0));
+    // Zero bottom/top margins let ordinary normal flow place the following
+    // sibling at P's bottom; its own2px height determines the root extent.
+    let following_y = parent_y + parent_height;
+    policy_clearance_box(&batch, 6, px(following_y), px(2.0));
+    policy_clearance_box(&batch, 0, S::ZERO, px(following_y + 2.0));
+    // Public geometry for R27 cannot distinguish an introduced zero amount
+    // from no clearance. This test asserts geometry, not a private receipt flag.
+}
+
+#[test]
+fn policy_clearance_multioffer_preserves_earlier_prefix_right25_f32() {
+    assert_policy_clearance_multioffer::<f32>(
+        PolicyClearanceMultiOfferCase::RightBelowHypothetical,
+    );
+}
+
+#[test]
+fn policy_clearance_multioffer_preserves_earlier_prefix_right25_f64() {
+    assert_policy_clearance_multioffer::<f64>(
+        PolicyClearanceMultiOfferCase::RightBelowHypothetical,
+    );
+}
+
+#[test]
+fn policy_clearance_multioffer_exact_contact_right27_f32() {
+    assert_policy_clearance_multioffer::<f32>(PolicyClearanceMultiOfferCase::RightAtHypothetical);
+}
+
+#[test]
+fn policy_clearance_multioffer_exact_contact_right27_f64() {
+    assert_policy_clearance_multioffer::<f64>(PolicyClearanceMultiOfferCase::RightAtHypothetical);
+}
+
+#[test]
+fn policy_clearance_multioffer_introduced_negative_right30_f32() {
+    assert_policy_clearance_multioffer::<f32>(
+        PolicyClearanceMultiOfferCase::RightAboveHypothetical,
+    );
+}
+
+#[test]
+fn policy_clearance_multioffer_introduced_negative_right30_f64() {
+    assert_policy_clearance_multioffer::<f64>(
+        PolicyClearanceMultiOfferCase::RightAboveHypothetical,
+    );
+}
+
+#[test]
+fn policy_clearance_multioffer_empty_authored_none_control_f32() {
+    assert_policy_clearance_multioffer::<f32>(PolicyClearanceMultiOfferCase::EmptyAuthoredNone);
+}
+
+#[test]
+fn policy_clearance_multioffer_empty_authored_none_control_f64() {
+    assert_policy_clearance_multioffer::<f64>(PolicyClearanceMultiOfferCase::EmptyAuthoredNone);
+}
+
+#[test]
+fn policy_clearance_multioffer_block_authored_none_fresh_control_f32() {
+    assert_policy_clearance_multioffer::<f32>(PolicyClearanceMultiOfferCase::BlockAuthoredNone);
+}
+
+#[test]
+fn policy_clearance_multioffer_block_authored_none_fresh_control_f64() {
+    assert_policy_clearance_multioffer::<f64>(PolicyClearanceMultiOfferCase::BlockAuthoredNone);
+}

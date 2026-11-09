@@ -1,8 +1,58 @@
 //! Off-side Text progress retained by the existing Layout computation session.
 
 use super::TextParagraphBinding;
+use super::scope_alignment::{EntryBacking, EntryFunding, ScopeAlignmentFacts, ScopeLease};
 use crate::{LayoutScalar, NodeOutputOf, Point};
 use surgeist_text::{PlacementCoverage, PlacementEntry, PlacementRequest};
+
+enum RunLookup<'a, Node> {
+    Exact(&'a [Node]),
+    Starting(&'a [Node]),
+    Segment(&'a surgeist_text::PreparedSourceSegment),
+    EmptySegment(&'a surgeist_text::PreparedSourceSegment),
+}
+
+/// In-place sorting with fallible comparisons and moves. A refused inspection
+/// stops before that source operation; no uncharged comparison follows it.
+fn checked_sort<T, E>(
+    values: &mut [T],
+    mut compare: impl FnMut(&T, &T) -> Result<std::cmp::Ordering, E>,
+    mut moving: impl FnMut() -> Result<(), E>,
+) -> Result<(), E> {
+    fn sift<T, E>(
+        values: &mut [T],
+        mut root: usize,
+        end: usize,
+        compare: &mut impl FnMut(&T, &T) -> Result<std::cmp::Ordering, E>,
+        moving: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<(), E> {
+        while let Some(mut child) = root.checked_mul(2).and_then(|value| value.checked_add(1)) {
+            if child >= end {
+                break;
+            }
+            if child + 1 < end && compare(&values[child], &values[child + 1])?.is_lt() {
+                child += 1;
+            }
+            if !compare(&values[root], &values[child])?.is_lt() {
+                break;
+            }
+            moving()?;
+            values.swap(root, child);
+            root = child;
+        }
+        Ok(())
+    }
+    let len = values.len();
+    for root in (0..len / 2).rev() {
+        sift(values, root, len, &mut compare, &mut moving)?;
+    }
+    for end in (1..values.len()).rev() {
+        moving()?;
+        values.swap(0, end);
+        sift(values, 0, end, &mut compare, &mut moving)?;
+    }
+    Ok(())
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct CanonicalFrame<Node, S: LayoutScalar> {
@@ -172,6 +222,7 @@ pub(crate) struct TextComputation<'input, Node, S: LayoutScalar> {
     pub paragraphs: &'input [TextParagraphBinding<Node>],
     pub associations: std::sync::Arc<super::capture::ScopeAssociations<Node>>,
     pub scope_resources: super::scope_alignment::ScopeAlignmentResources<S>,
+    entry_funding: Option<EntryFunding<S>>,
     pub frames: std::sync::Arc<[CanonicalFrame<Node, S>]>,
     pub pending: Vec<PendingParagraph<Node>>,
     pub boxes: Vec<super::boxes::BoxRunUse<Node, S>>,
@@ -187,10 +238,36 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
             .is_some_and(|state| !state.demanded.is_empty())
     }
 
-    pub(crate) fn formatted_valid(&self) -> bool {
+    pub(crate) fn formatted_valid(&self) -> surgeist_text::Result<bool> {
         self.formatted
             .as_ref()
-            .is_none_or(super::formatted::FormattedState::valid)
+            .map_or(Ok(true), super::formatted::FormattedState::valid)
+    }
+
+    fn formatted_state(
+        &mut self,
+    ) -> surgeist_text::Result<&mut super::formatted::FormattedState<Node, S>> {
+        if self.formatted.is_none() {
+            self.formatted = Some(super::formatted::FormattedState::new_entry(
+                self.entry_funding.as_ref(),
+                self.frames.clone(),
+                self.wrapping.clone(),
+            )?);
+        }
+        let state = self
+            .formatted
+            .as_mut()
+            .expect("installed actual Formatted state");
+        state.frames = self.frames.clone();
+        state.wrapping = self.wrapping.clone();
+        Ok(state)
+    }
+
+    pub(crate) fn formatted_accept(
+        &mut self,
+        observed: &super::formatted::FormattedState<Node, S>,
+    ) -> surgeist_text::Result<()> {
+        self.formatted_state()?.accept(observed)
     }
 
     pub(crate) fn formatted_snapshot(
@@ -200,13 +277,16 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         segment: &surgeist_text::PreparedSourceSegment,
         input: crate::ComputeInputOf<S>,
         mode: crate::AxisSizingRequestOf<f64>,
-    ) -> super::formatted::FormattedTailSnapshot {
+    ) -> surgeist_text::Result<super::formatted::FormattedTailSnapshot> {
         if let Some(state) = &self.formatted {
-            state.snapshot(&state.binding(container, nodes, segment, input, mode))
+            state.snapshot_run(container, nodes, segment, input, mode)
         } else {
             // A checked Layout run has actual complete tree authority. No tail
             // collection or sidecar lookup is performed until a reached demand.
-            super::formatted::FormattedTailSnapshot::known(segment.clone(), None)
+            Ok(super::formatted::FormattedTailSnapshot::known(
+                segment.clone(),
+                None,
+            ))
         }
     }
 
@@ -218,20 +298,14 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         input: crate::ComputeInputOf<S>,
         mode: crate::AxisSizingRequestOf<f64>,
         uses: super::formatted::FormattedTailUses,
-    ) -> Option<super::formatted::FormattedFlowItem<Node, S>> {
+    ) -> surgeist_text::Result<Option<super::formatted::FormattedFlowItem<Node, S>>> {
         if self.formatted.is_none() && uses.demands.is_empty() && uses.roles.is_empty() {
-            return None;
+            return Ok(None);
         }
-        let state = self
-            .formatted
-            .get_or_insert_with(super::formatted::FormattedState::new);
-        state.frames = self.frames.clone();
-        state.wrapping = self.wrapping.clone();
-        let binding = state.binding(container, nodes, segment, input, mode);
-        let item =
-            super::formatted::FormattedFlowItem::Text(binding.clone(), uses.accepted.clone());
-        state.merge(binding, uses);
-        self.formatted_active().then_some(item)
+        let item = self
+            .formatted_state()?
+            .merge_run(container, nodes, segment, input, mode, uses)?;
+        Ok(self.formatted_active().then_some(item))
     }
 
     pub(crate) fn formatted_begin_block(
@@ -239,21 +313,20 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         node: Node,
         input: crate::ComputeInputOf<S>,
         anonymous: bool,
-    ) -> bool {
+    ) -> surgeist_text::Result<bool> {
         if !self.formatted_active() {
-            return false;
+            return Ok(false);
         }
         self.formatted
             .as_mut()
             .unwrap()
-            .stack
-            .push(super::formatted::ComputeScope {
+            .push_scope(super::formatted::ComputeScope {
                 node,
                 input,
                 anonymous,
                 frame: None,
-            });
-        true
+            })?;
+        Ok(true)
     }
 
     pub(crate) fn formatted_end_block(
@@ -262,7 +335,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         input: crate::ComputeInputOf<S>,
         anonymous: bool,
         success: bool,
-    ) {
+    ) -> surgeist_text::Result<()> {
         if let Some(state) = &mut self.formatted {
             state.finish_block(
                 super::formatted::ComputeScope {
@@ -272,20 +345,21 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                     frame: None,
                 },
                 success,
-            );
+            )?;
         }
+        Ok(())
     }
 
     pub(crate) fn formatted_new_flow(&self) -> Option<super::formatted::FormattedFlow<Node, S>> {
-        self.formatted_active()
-            .then(|| super::formatted::FormattedFlow {
-                frame: self
-                    .formatted
+        self.formatted_active().then(|| {
+            super::formatted::FormattedFlow::new(
+                self.formatted
                     .as_ref()
                     .and_then(|state| state.stack.last())
                     .and_then(|scope| scope.frame),
-                items: Vec::new(),
-            })
+                self.entry_funding.as_ref(),
+            )
+        })
     }
 
     pub(crate) fn formatted_begin_flow(
@@ -293,37 +367,38 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         input: crate::ComputeInputOf<S>,
         available: crate::AxisSizingRequestOf<S>,
         publication: bool,
-    ) {
-        if self.formatted_active()
-            && let Some(scope) = self
-                .formatted
+    ) -> surgeist_text::Result<()> {
+        if self.formatted_active() {
+            self.formatted
                 .as_mut()
-                .and_then(|state| state.stack.last_mut())
-        {
-            scope.frame = Some(super::formatted::FlowFrame {
-                input,
-                available,
-                publication,
-            });
+                .expect("active Formatted owner")
+                .begin_flow(super::formatted::FlowFrame {
+                    input,
+                    available,
+                    publication,
+                })?;
         }
+        Ok(())
     }
 
     pub(crate) fn formatted_record_traversal(
         &mut self,
         flow: &Option<super::formatted::FormattedFlow<Node, S>>,
-    ) {
+    ) -> surgeist_text::Result<()> {
         if let (Some(state), Some(flow)) = (&mut self.formatted, flow) {
-            state.record(flow.clone());
+            state.record(flow.try_clone(self.entry_funding.as_ref())?)?;
         }
+        Ok(())
     }
 
     pub(crate) fn formatted_record_flow(
         &mut self,
-        flow: Option<super::formatted::FormattedFlow<Node, S>>,
-    ) {
+        flow: &Option<super::formatted::FormattedFlow<Node, S>>,
+    ) -> surgeist_text::Result<()> {
         if let (Some(state), Some(flow)) = (&mut self.formatted, flow) {
-            state.select(flow);
+            state.select(flow.try_clone(self.entry_funding.as_ref())?)?;
         }
+        Ok(())
     }
 
     pub(crate) fn formatted_child(
@@ -331,71 +406,102 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         node: Node,
         input: crate::ComputeInputOf<S>,
         anonymous: bool,
-    ) -> Option<super::formatted::FormattedFlowItem<Node, S>> {
+    ) -> surgeist_text::Result<Option<super::formatted::FormattedFlowItem<Node, S>>> {
         if !self.formatted_active() {
-            return None;
+            return Ok(None);
         }
-        let mut scope = self.formatted.as_ref()?.stack.clone();
-        scope.push(super::formatted::ComputeScope {
-            node,
-            input,
-            anonymous,
-            frame: None,
-        });
-        Some(super::formatted::FormattedFlowItem::Child(scope))
+        self.formatted
+            .as_ref()
+            .expect("active Formatted owner")
+            .child(super::formatted::ComputeScope {
+                node,
+                input,
+                anonymous,
+                frame: None,
+            })
+            .map(Some)
     }
 
     /// Required ancestors must execute to reach the demanded owner. Descendant
     /// summaries are needed only inside that owner; unrelated sibling caches
     /// retain the ordinary geometry-only path.
-    pub(crate) fn formatted_cache_required(&self, node: Node) -> bool {
+    pub(crate) fn formatted_cache_required(&self, node: Node) -> surgeist_text::Result<bool> {
         if !self.formatted_active() {
-            return false;
+            return Ok(false);
         }
         let Some(graph) = self.graph else {
-            return true;
+            return Ok(true);
         };
-        let Some(subject) = graph.index(node) else {
-            return true;
+        let funding = self.entry_funding.as_ref();
+        let inspect = || funding.map_or(Ok(()), |funding| funding.visit(1));
+        let index = |node| {
+            for (index, &candidate) in graph.nodes.iter().enumerate() {
+                inspect()?;
+                if candidate == node {
+                    return Ok::<_, surgeist_text::Error>(Some(index));
+                }
+            }
+            Ok(None)
         };
-        self.formatted
-            .as_ref()
-            .unwrap()
-            .demanded
-            .iter()
-            .any(|owner| {
-                let Some(owner) = graph.index(*owner) else {
-                    return true;
-                };
-                let reaches = |start: usize, end: usize| {
-                    let mut pending = vec![start];
-                    let mut seen = Vec::new();
-                    while let Some(at) = pending.pop() {
-                        if at == end {
-                            return true;
-                        }
-                        if !seen.contains(&at) {
-                            seen.push(at);
-                            pending.extend(&graph.children[at]);
-                        }
+        let Some(subject) = index(node)? else {
+            return Ok(true);
+        };
+        let reaches = |start: usize, end: usize| {
+            let mut pending_backing = EntryBacking::default();
+            let mut pending = Vec::new();
+            let mut seen_backing = EntryBacking::default();
+            let mut seen = Vec::new();
+            pending_backing.reserve_push(&mut pending, funding)?;
+            pending.push(start);
+            while !pending.is_empty() {
+                inspect()?;
+                let at = pending.pop().expect("nonempty pending ancestry");
+                if at == end {
+                    return Ok::<_, surgeist_text::Error>(true);
+                }
+                let mut visited = false;
+                for &previous in &seen {
+                    inspect()?;
+                    if previous == at {
+                        visited = true;
+                        break;
                     }
-                    false
-                };
-                reaches(owner, subject) || reaches(subject, owner)
-            })
+                }
+                if !visited {
+                    seen_backing.reserve_push(&mut seen, funding)?;
+                    seen.push(at);
+                    for &child in &graph.children[at] {
+                        inspect()?;
+                        pending_backing.reserve_push(&mut pending, funding)?;
+                        pending.push(child);
+                    }
+                }
+            }
+            Ok(false)
+        };
+        for &owner in &self.formatted.as_ref().unwrap().demanded {
+            inspect()?;
+            let Some(owner) = index(owner)? else {
+                return Ok(true);
+            };
+            if reaches(owner, subject)? || reaches(subject, owner)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     pub(crate) fn formatted_cache_available(
         &self,
         node: Node,
         input: &crate::ComputeInputOf<S>,
-    ) -> bool {
-        !self.formatted_cache_required(node)
-            || self
-                .formatted
-                .as_ref()
-                .and_then(|state| state.receipt(node, input))
-                .is_some_and(|receipt| receipt.output.is_some())
+    ) -> surgeist_text::Result<bool> {
+        if !self.formatted_cache_required(node)? {
+            return Ok(true);
+        }
+        self.formatted
+            .as_ref()
+            .map_or(Ok(false), |state| state.cache_available(node, input))
     }
 
     pub(crate) fn formatted_cache_matches(
@@ -404,31 +510,33 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         input: &crate::ComputeInputOf<S>,
         context: crate::CacheKeyContext,
         output: crate::ComputeOutputOf<S>,
-    ) -> bool {
-        !self.formatted_cache_required(node)
-            || self
-                .formatted
-                .as_ref()
-                .is_some_and(|state| state.cache_matches(node, input, context, output))
+    ) -> surgeist_text::Result<bool> {
+        if !self.formatted_cache_required(node)? {
+            return Ok(true);
+        }
+        self.formatted.as_ref().map_or(Ok(false), |state| {
+            state.cache_matches(node, input, context, output)
+        })
     }
 
     pub(crate) fn formatted_restore_cache(
         &mut self,
         node: Node,
         input: &crate::ComputeInputOf<S>,
-    ) -> bool {
-        if !self.formatted_cache_required(node) {
-            return true;
+    ) -> surgeist_text::Result<bool> {
+        if !self.formatted_cache_required(node)? {
+            return Ok(true);
         }
         self.formatted
             .as_mut()
-            .is_some_and(|state| state.restore(node, input))
+            .map_or(Ok(false), |state| state.restore(node, input))
     }
 
-    pub(crate) fn formatted_next_pass(&mut self) {
+    pub(crate) fn formatted_next_pass(&mut self) -> surgeist_text::Result<()> {
         if let Some(state) = &mut self.formatted {
-            state.next_pass();
+            state.next_pass()?;
         }
+        Ok(())
     }
 
     pub fn new(
@@ -443,6 +551,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
             paragraphs,
             associations,
             scope_resources,
+            entry_funding: None,
             frames: std::sync::Arc::from([]),
             pending: Vec::new(),
             boxes: Vec::new(),
@@ -452,18 +561,186 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         }
     }
 
+    /// Share the existing immutable preparation/frame owners directly instead
+    /// of allocating empty Arc owners and immediately overwriting them.
+    pub(crate) fn staging(
+        &self,
+        formatted: Option<super::formatted::FormattedState<Node, S>>,
+        entry_funding: Option<&EntryFunding<S>>,
+    ) -> Self {
+        Self {
+            wrapping: self.wrapping.clone(),
+            formatted,
+            graph: self.graph,
+            paragraphs: self.paragraphs,
+            associations: self.associations.clone(),
+            scope_resources: self.scope_resources.clone(),
+            frames: self.frames.clone(),
+            entry_funding: entry_funding.cloned(),
+            pending: Vec::new(),
+            boxes: Vec::new(),
+            reusable: self.reusable.clone(),
+            absolute_baselines: Vec::new(),
+            scope_fragments: Vec::new(),
+        }
+    }
+
+    fn entry_anchor(&self) -> surgeist_text::Result<Option<&'input surgeist_text::PreparedText>> {
+        let limits = self.scope_resources.key_limits()?;
+        for binding in self.paragraphs {
+            if let Some(limits) = limits {
+                self.scope_resources.visit(limits, 1)?;
+            }
+            if binding.prepared.scope_alignment_retention().is_some() {
+                return Ok(Some(&binding.prepared));
+            }
+        }
+        if limits.is_some() {
+            return Err(super::scope_alignment::refusal(
+                surgeist_text::ScopeAlignmentError::MissingCapture,
+            ));
+        }
+        Ok(self.paragraphs.first().map(|binding| &binding.prepared))
+    }
+
+    pub(crate) fn prepare_entry(&mut self) -> surgeist_text::Result<()> {
+        if let Some(prepared) = self.entry_anchor()? {
+            self.scope_resources = self.scope_resources.entry_view(prepared)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn entry_funding(&self) -> surgeist_text::Result<Option<EntryFunding<S>>> {
+        self.entry_anchor()?.map_or(Ok(None), |prepared| {
+            EntryFunding::new(self.scope_resources.clone(), prepared.clone())
+        })
+    }
+
+    pub(crate) fn entry_case_funding(&self) -> Option<&EntryFunding<S>> {
+        self.entry_funding.as_ref()
+    }
+
+    fn lookup_row<E>(
+        &self,
+        container: Node,
+        lookup: RunLookup<'_, Node>,
+        mut inspect: impl FnMut() -> Result<(), E>,
+    ) -> Result<Option<&super::capture::NativeRun>, E> {
+        for row in self.associations.runs() {
+            inspect()?;
+            inspect()?;
+            let binding = &self.paragraphs[row.paragraph];
+            if binding.container != container {
+                continue;
+            }
+            let matches = match &lookup {
+                RunLookup::Exact(nodes) | RunLookup::Starting(nodes) => {
+                    if row.nodes.is_empty() {
+                        false
+                    } else {
+                        let expected = &binding.nodes[row.nodes.clone()];
+                        let length_matches = match &lookup {
+                            RunLookup::Exact(_) => expected.len() == nodes.len(),
+                            _ => expected.len() <= nodes.len(),
+                        };
+                        let mut equal = length_matches;
+                        if equal {
+                            for (actual, expected) in nodes.iter().zip(expected) {
+                                inspect()?;
+                                if actual != expected {
+                                    equal = false;
+                                    break;
+                                }
+                            }
+                        }
+                        equal
+                    }
+                }
+                RunLookup::Segment(segment) => row.segment == **segment,
+                RunLookup::EmptySegment(segment) => {
+                    row.nodes.is_empty() && row.segment == **segment
+                }
+            };
+            if matches {
+                return Ok(Some(row));
+            }
+        }
+        Ok(None)
+    }
+
+    fn ordinary_run(
+        &self,
+        container: Node,
+        lookup: RunLookup<'_, Node>,
+    ) -> Option<super::AdmittedRun<'input, Node>> {
+        match self.lookup_row(
+            container,
+            lookup,
+            || Ok::<(), core::convert::Infallible>(()),
+        ) {
+            Ok(row) => row.map(|row| self.associations.admitted_run(self.paragraphs, row)),
+            Err(never) => match never {},
+        }
+    }
+
+    fn entry_lookup(
+        &self,
+        container: Node,
+        lookup: RunLookup<'_, Node>,
+        funding: Option<&EntryFunding<S>>,
+    ) -> surgeist_text::Result<Option<super::AdmittedRun<'input, Node>>> {
+        let mut inspect = || funding.map_or(Ok(()), |funding| funding.visit(1));
+        let Some(row) = self.lookup_row(container, lookup, &mut inspect)? else {
+            return Ok(None);
+        };
+        self.associations
+            .try_admitted_run(self.paragraphs, row, inspect)
+            .map(Some)
+    }
+
+    pub(crate) fn entry_run(
+        &self,
+        container: Node,
+        nodes: &[Node],
+        funding: Option<&EntryFunding<S>>,
+    ) -> surgeist_text::Result<Option<super::AdmittedRun<'input, Node>>> {
+        self.entry_lookup(container, RunLookup::Exact(nodes), funding)
+    }
+
+    pub(crate) fn entry_run_starting(
+        &self,
+        container: Node,
+        nodes: &[Node],
+        funding: Option<&EntryFunding<S>>,
+    ) -> surgeist_text::Result<Option<super::AdmittedRun<'input, Node>>> {
+        self.entry_lookup(container, RunLookup::Starting(nodes), funding)
+    }
+
+    /// The issued section is the authority even for an empty native window.
+    pub(crate) fn entry_run_from_segment(
+        &self,
+        container: Node,
+        segment: &surgeist_text::PreparedSourceSegment,
+        funding: Option<&EntryFunding<S>>,
+    ) -> surgeist_text::Result<Option<super::AdmittedRun<'input, Node>>> {
+        self.entry_lookup(container, RunLookup::Segment(segment), funding)
+    }
+
+    pub(crate) fn entry_semantic_run(
+        &self,
+        container: Node,
+        segment: &surgeist_text::PreparedSourceSegment,
+        funding: Option<&EntryFunding<S>>,
+    ) -> surgeist_text::Result<Option<super::AdmittedRun<'input, Node>>> {
+        self.entry_lookup(container, RunLookup::EmptySegment(segment), funding)
+    }
+
     pub(crate) fn run(
         &self,
         container: Node,
         nodes: &[Node],
     ) -> Option<super::AdmittedRun<'input, Node>> {
-        self.associations.runs().iter().find_map(|row| {
-            let binding = &self.paragraphs[row.paragraph];
-            (binding.container == container
-                && !row.nodes.is_empty()
-                && binding.nodes[row.nodes.clone()] == *nodes)
-                .then(|| self.associations.admitted_run(self.paragraphs, row))
-        })
+        self.ordinary_run(container, RunLookup::Exact(nodes))
     }
 
     pub(crate) fn run_starting(
@@ -471,88 +748,136 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         container: Node,
         nodes: &[Node],
     ) -> Option<super::AdmittedRun<'input, Node>> {
-        self.associations.runs().iter().find_map(|row| {
-            let binding = &self.paragraphs[row.paragraph];
-            (binding.container == container
-                && !row.nodes.is_empty()
-                && nodes.starts_with(&binding.nodes[row.nodes.clone()]))
-            .then(|| self.associations.admitted_run(self.paragraphs, row))
-        })
+        self.ordinary_run(container, RunLookup::Starting(nodes))
     }
 
     pub(crate) fn semantic_slots<M>(
         &self,
         container: Node,
-    ) -> crate::LayoutResultOf<Node, Vec<super::capture::NativeRunSlot>, S, M> {
-        let count = self
-            .associations
-            .runs()
-            .iter()
-            .filter(|row| {
-                row.nodes.is_empty() && self.paragraphs[row.paragraph].container == container
-            })
-            .count();
-        let mut slots = Vec::new();
-        slots.try_reserve_exact(count).map_err(|_| {
-            crate::LayoutErrorOf::new(
-                crate::LayoutErrorSiteOf::Node(container),
-                crate::LayoutOperation::TextCapture,
-                crate::LayoutErrorKindOf::Allocation,
-            )
-        })?;
-        slots.extend(
-            self.associations
-                .runs()
-                .iter()
-                .filter(|row| {
-                    row.nodes.is_empty() && self.paragraphs[row.paragraph].container == container
+        funding: Option<&EntryFunding<S>>,
+    ) -> crate::LayoutResultOf<Node, (Vec<super::capture::NativeRunSlot>, Option<ScopeLease>), S, M>
+    {
+        let inspect = |count| -> crate::LayoutResultOf<Node, (), S, M> {
+            funding
+                .map_or(Ok(()), |funding| funding.visit(count))
+                .map_err(|error| {
+                    crate::LayoutErrorOf::new(
+                        crate::LayoutErrorSiteOf::Node(container),
+                        crate::LayoutOperation::TextCapture,
+                        crate::LayoutErrorKindOf::Text(error),
+                    )
                 })
-                .map(|row| super::capture::NativeRunSlot {
-                    gap: row.children.start,
-                    segment: row.segment.clone(),
-                }),
-        );
-        slots.sort_unstable_by_key(|slot| slot.gap);
+        };
+        let mut count = 0;
+        for row in self.associations.runs() {
+            inspect(1)?;
+            if row.nodes.is_empty() {
+                inspect(1)?;
+                if self.paragraphs[row.paragraph].container == container {
+                    count += 1;
+                }
+            }
+        }
+        let lease;
+        let mut slots = if let Some(funding) = funding.filter(|_| count != 0) {
+            let (slots, storage) = funding.buffer(count).map_err(|error| {
+                crate::LayoutErrorOf::new(
+                    crate::LayoutErrorSiteOf::Node(container),
+                    crate::LayoutOperation::TextCapture,
+                    crate::LayoutErrorKindOf::Text(error),
+                )
+            })?;
+            lease = Some(storage);
+            slots
+        } else {
+            let mut slots = Vec::new();
+            slots.try_reserve_exact(count).map_err(|_| {
+                crate::LayoutErrorOf::new(
+                    crate::LayoutErrorSiteOf::Node(container),
+                    crate::LayoutOperation::TextCapture,
+                    crate::LayoutErrorKindOf::Allocation,
+                )
+            })?;
+            lease = None;
+            slots
+        };
+        for row in self.associations.runs() {
+            inspect(1)?;
+            if row.nodes.is_empty() {
+                inspect(1)?;
+                if self.paragraphs[row.paragraph].container == container {
+                    inspect(1)?;
+                    slots.push(super::capture::NativeRunSlot {
+                        gap: row.children.start,
+                        segment: row.segment.clone(),
+                    });
+                }
+            }
+        }
+        checked_sort(
+            &mut slots,
+            |a, b| {
+                inspect(2)?;
+                Ok(a.gap.cmp(&b.gap))
+            },
+            || inspect(2),
+        )?;
         let ordering_error =
             || super::binding_error(container, super::TextBindingError::ScopeAssociation);
         let mut first = 0;
         while first < slots.len() {
+            inspect(1)?;
             let gap = slots[first].gap;
-            let end = first + slots[first..].partition_point(|slot| slot.gap == gap);
+            let mut end = first + 1;
+            while end < slots.len() {
+                inspect(1)?;
+                if slots[end].gap != gap {
+                    break;
+                }
+                end += 1;
+            }
             if end - first > 1 {
                 // A native gap alone cannot order distinct source operations.
                 // Admit the actual issued positions before the pure comparison;
                 // a sole scheduled slot has no such ordering dependency.
+                inspect(1)?;
                 let position = slots[first]
                     .segment
                     .entry_position()
                     .ok_or_else(ordering_error)?;
                 for slot in &slots[first + 1..end] {
+                    inspect(1)?;
                     let other = slot.segment.entry_position().ok_or_else(ordering_error)?;
                     if !position.same_capture(&other) {
                         return Err(ordering_error());
                     }
                 }
-                slots[first..end].sort_unstable_by(|a, b| {
-                    a.segment
-                        .entry_position()
-                        .expect("admitted source ordering position")
-                        .partial_cmp(
-                            &b.segment
-                                .entry_position()
-                                .expect("admitted source ordering position"),
-                        )
-                        .expect("same immutable capture establishes comparison")
-                });
-                if slots[first..end].windows(2).any(|pair| {
-                    pair[0].segment.entry_position() == pair[1].segment.entry_position()
-                }) {
-                    return Err(ordering_error());
+                checked_sort(
+                    &mut slots[first..end],
+                    |a, b| {
+                        inspect(2)?;
+                        Ok(a.segment
+                            .entry_position()
+                            .expect("admitted source ordering position")
+                            .partial_cmp(
+                                &b.segment
+                                    .entry_position()
+                                    .expect("admitted source ordering position"),
+                            )
+                            .expect("same immutable capture establishes comparison"))
+                    },
+                    || inspect(2),
+                )?;
+                for pair in slots[first..end].windows(2) {
+                    inspect(2)?;
+                    if pair[0].segment.entry_position() == pair[1].segment.entry_position() {
+                        return Err(ordering_error());
+                    }
                 }
             }
             first = end;
         }
-        Ok(slots)
+        Ok((slots, lease))
     }
 
     pub(crate) fn has_semantic(&self, container: Node) -> bool {
@@ -566,15 +891,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         container: Node,
         segment: &surgeist_text::PreparedSourceSegment,
     ) -> Option<super::AdmittedRun<'input, Node>> {
-        self.associations
-            .runs()
-            .iter()
-            .find(|row| {
-                self.paragraphs[row.paragraph].container == container
-                    && row.nodes.is_empty()
-                    && row.segment == *segment
-            })
-            .map(|row| self.associations.admitted_run(self.paragraphs, row))
+        self.ordinary_run(container, RunLookup::EmptySegment(segment))
     }
     pub fn frame(&self, node: Node) -> Option<CanonicalFrame<Node, S>> {
         self.frames.iter().find(|frame| frame.node == node).copied()
@@ -665,7 +982,8 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
             formatted: self
                 .formatted
                 .as_ref()
-                .map(super::formatted::FormattedState::basis),
+                .map(super::formatted::FormattedState::basis)
+                .transpose()?,
             line_boxes: self
                 .pending
                 .iter()

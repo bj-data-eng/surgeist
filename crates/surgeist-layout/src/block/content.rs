@@ -265,13 +265,15 @@ where
     if let Some(flow_margins) = flow.fragment_margins
         && let Some(state) = tree.fragment_margin_state()
     {
-        state.record(
-            node,
-            constants.flow_axes,
-            flow_margins,
-            constants.collapse_top_margin,
-            constants.collapse_bottom_margin && flow.active_margin_can_collapse_with_parent,
-        );
+        state
+            .record(
+                node,
+                constants.flow_axes,
+                flow_margins,
+                constants.collapse_top_margin,
+                constants.collapse_bottom_margin && flow.active_margin_can_collapse_with_parent,
+            )
+            .map_err(|error| super::inline_run::text_run_error(node, error.into()))?;
     }
     let block_extent = flow.content_end(constants, float_context::Role::Owner);
     let block_extent = (block_extent - projection.content_origin).max(Tree::Scalar::ZERO);

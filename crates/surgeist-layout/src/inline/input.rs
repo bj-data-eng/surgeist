@@ -75,6 +75,28 @@ pub(crate) fn continues_run<S: LayoutScalar>(input: LayoutInputViewOf<'_, S>) ->
     }
 }
 
+/// Source-role projection for the box/control-only fitter. It uses the same
+/// atomic/Forced/boundary participation as the actual supplied-line reducer;
+/// a Text occurrence still requires its issued semantic authority.
+pub(crate) fn entry_participation<'input, S: LayoutScalar>(
+    inputs: impl Iterator<Item = LayoutInputViewOf<'input, S>>,
+) -> Option<bool> {
+    let mut participates = false;
+    for input in inputs {
+        participates |= match input {
+            LayoutInputViewOf::Box(input) => {
+                input.display != crate::Display::None
+                    && input.position != crate::Position::Absolute
+                    && input.float.is_none()
+            }
+            LayoutInputViewOf::LineBreak(input) => !input.display().is_none(),
+            LayoutInputViewOf::InlineBoundary(input) => input.edge().participates(),
+            LayoutInputViewOf::InlineText(_) | LayoutInputViewOf::TextControl(_) => return None,
+        };
+    }
+    Some(participates)
+}
+
 pub(crate) fn run_ranges<'input, Node: Copy, S: LayoutScalar>(
     nodes: &[Node],
     mut input: impl FnMut(Node) -> LayoutInputViewOf<'input, S>,

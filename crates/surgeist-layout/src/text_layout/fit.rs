@@ -4,7 +4,7 @@ use super::boxes::{
     BoxAssignment, BoxAuthority, BoxChoice, BoxEntry, BoxResolver, FinalizedBoxReceipt,
 };
 use super::formatted::FormattedTailSnapshot;
-pub(crate) use super::roles::{RoleBasis, RoleUse};
+pub(crate) use super::roles::{RoleBasis, RoleUse, RoleUseRows};
 use crate::inline_wrapping::balance::{BalanceGoal, NaturalResidual};
 use crate::inline_wrapping::quality::{LineQualityGoal, LineQualityKey};
 use crate::{TextAlign, TextAlignLast, TextJustification};
@@ -252,19 +252,25 @@ impl LineDisposition {
     pub(crate) fn resolve(line: &FinalizedLine) -> Result<Self, FitError> {
         let selected = line.selected_line();
         let request = selected.request();
-        if request.context.end == LineEnd::Forced
-            || line.has_in_flow_content()
-            || request.controls.iter().any(|control| {
+        if Self::participates(
+            request.context.end,
+            line.has_in_flow_content(),
+            request.controls.iter().any(|control| {
                 control
                     .boundary
                     .as_ref()
                     .is_some_and(|edge| edge.participates())
-            })
-        {
+            }),
+        ) {
             Ok(Self::Formatted)
         } else {
             Ok(Self::NonFormatted(line.nonformatted()?))
         }
+    }
+    /// Layout's line-existence rule consumes Text-owned semantic content and
+    /// actual termination/edge authority, never numerical height or advance.
+    pub(crate) fn participates(end: LineEnd, content: bool, boundary: bool) -> bool {
+        end == LineEnd::Forced || content || boundary
     }
     pub(crate) fn is_formatted(&self) -> bool {
         matches!(self, Self::Formatted)
@@ -291,7 +297,7 @@ pub(crate) struct FittedLine {
     pub boxes: Option<BoxAssignment>,
     pub box_uses: Vec<super::boxes::BoxTrialUse>,
     pub first_formatted: bool,
-    pub role_uses: Vec<RoleUse>,
+    pub role_uses: RoleUseRows,
     pub line_box_end: crate::line_box::LineBoxContext,
     pub zone_basis: ZoneBasis,
     pub phrase_basis: Vec<PhraseBasis>,
@@ -357,6 +363,7 @@ impl From<crate::inline_wrapping::WrappingScopeError> for FitError {
 pub(crate) type WrappingClassifier<'a> = dyn BoxResolver + 'a;
 
 pub(crate) struct FitInput<'a> {
+    pub entry_funding: Option<super::scope_alignment::EntryFundingRef<'a>>,
     pub adjoining_displacement: f64,
     pub groups: crate::group_alignment::Snapshot,
     pub wrapping: Option<&'a WrappingClassifier<'a>>,
@@ -1272,6 +1279,7 @@ struct EndpointChoice {
 /// restores its accepted encounter checkpoint; it is not a child publication.
 struct CandidateEnvironment<B, C, A, R, X> {
     roles: Vec<RoleUse>,
+    roles_backing: super::scope_alignment::EntryBacking,
     box_uses: Vec<super::boxes::BoxTrialUse>,
     observed: Option<balance::Observations>,
     band: B,
@@ -1292,7 +1300,7 @@ where
         &[surgeist_text::LineBoxStrut],
     ) -> Result<LineAllocations, FitError>,
     R: FnMut(&FinalizedLine, EncounterReplay) -> Result<Vec<EncounterBasis>, FitError>,
-    X: FnMut(EncounterReset),
+    X: FnMut(EncounterReset) -> Result<(), FitError>,
 {
     fn evaluate(
         &mut self,
@@ -1427,7 +1435,7 @@ where
                 )
             }),
         };
-        (self.reset)(EncounterReset::Candidate);
+        (self.reset)(EncounterReset::Candidate)?;
         let mut height = 0.0;
         let mut frame = CandidateFrame::project(position, input.adjoining_displacement, true)?;
         let mut placed_start = frame.logical_start;
@@ -1482,7 +1490,7 @@ where
                         CandidateOperation::OrdinaryFallback,
                     )?;
                     candidate.conditional_trial = Some(primary);
-                    (self.reset)(EncounterReset::Candidate);
+                    (self.reset)(EncounterReset::Candidate)?;
                 }
                 request = candidate.request;
                 (self.replay)(
@@ -1592,7 +1600,7 @@ where
                 }
                 rejected.push(basis);
                 if frame != actual_frame {
-                    (self.reset)(EncounterReset::Candidate);
+                    (self.reset)(EncounterReset::Candidate)?;
                 }
                 frame = actual_frame;
                 height = actual_height;
@@ -1625,23 +1633,34 @@ where
             let usage = finalized.measurements().formatted_line_usage();
             if usage.first() || usage.last() {
                 let basis = role_basis.ok_or(FitError::InvalidGeometry)?;
-                let used = RoleUse {
-                    disposition: disposition.clone(),
-                    request: request.clone(),
-                    boxes: boxes.clone(),
-                    amounts: amounts.clone(),
-                    usage,
-                    outgoing: finalized.hyphenation_continuation(),
-                    basis,
-                    bands,
-                    encounters: encounters.clone(),
-                    frame: frame.clone(),
-                    placed_start,
-                };
+                let mut copies = super::formatted::EntryCopies::default();
+                let role_amounts =
+                    super::roles::copied_rows(&mut copies, input.entry_funding, &amounts)?;
+                let role_encounters =
+                    super::roles::copied_rows(&mut copies, input.entry_funding, &encounters)?;
+                let used = RoleUse::new(
+                    super::roles::RoleUseData {
+                        disposition: disposition.clone(),
+                        request: request.clone(),
+                        boxes: boxes.clone(),
+                        amounts: role_amounts,
+                        usage,
+                        outgoing: finalized.hyphenation_continuation(),
+                        basis,
+                        bands,
+                        encounters: role_encounters,
+                        frame: frame.clone(),
+                        placed_start,
+                    },
+                    copies,
+                    input.entry_funding,
+                )?;
                 if let Some(observed) = &mut self.observed {
-                    observed.role(&used);
+                    observed.role(&used, input.entry_funding)?;
                 }
-                if !self.roles.contains(&used) {
+                if !super::roles::contains(&self.roles, &used, input.entry_funding)? {
+                    self.roles_backing
+                        .reserve_push_ref(&mut self.roles, input.entry_funding)?;
                     self.roles.push(used);
                 }
             }
@@ -2131,7 +2150,7 @@ where
         input: &FitInput<'_>,
         candidate: &EvaluatedCandidate,
     ) -> Result<(), FitError> {
-        (self.reset)(EncounterReset::Candidate);
+        (self.reset)(EncounterReset::Candidate)?;
         let encounters = (self.replay)(
             &candidate.finalized,
             candidate
@@ -2381,8 +2400,8 @@ pub(crate) fn fit(
     encounters: EncounterCallbacks<
         impl FnMut(&FinalizedLine, EncounterReplay) -> Result<Vec<EncounterBasis>, FitError>,
         impl FnMut() -> Result<(), FitError>,
-        impl FnMut(EncounterReset),
-        impl FnMut(),
+        impl FnMut(EncounterReset) -> Result<(), FitError>,
+        impl FnMut() -> Result<(), FitError>,
     >,
 ) -> Result<Vec<FittedLine>, FitError> {
     let EncounterCallbacks {
@@ -2409,6 +2428,7 @@ pub(crate) fn fit(
         .collect();
     let environment = CandidateEnvironment {
         roles: Vec::new(),
+        roles_backing: super::scope_alignment::EntryBacking::default(),
         box_uses: Vec::new(),
         observed: None,
         band: band_source,
@@ -2543,7 +2563,7 @@ where
         &[surgeist_text::LineBoxStrut],
     ) -> Result<LineAllocations, FitError>,
     R: FnMut(&FinalizedLine, EncounterReplay) -> Result<Vec<EncounterBasis>, FitError>,
-    X: FnMut(EncounterReset),
+    X: FnMut(EncounterReset) -> Result<(), FitError>,
     Accept: FnMut() -> Result<(), FitError>,
     Clear: FnMut(f64, &LineSelectionRequest) -> Result<Option<f64>, FitError>,
 {
@@ -2574,7 +2594,7 @@ where
         'sequence: loop {
             environment.roles.clear();
             environment.box_uses.clear();
-            (environment.reset)(scope.reset);
+            (environment.reset)(scope.reset)?;
             result.truncate(entry.prefix_len);
             let mut start = entry.boundary.view().participant_offset();
             let mut logical_start = entry.logical_start;
@@ -3113,12 +3133,19 @@ where
                     // state; only the accepted outgoing ending replaces it.
                     incoming = candidate.finalized.hyphenation_continuation();
                     let available = candidate.finalized.metric_bounds().size.width;
+                    let mut role_copies = super::formatted::EntryCopies::default();
+                    let mut role_uses = role_copies
+                        .rows_ref(input.entry_funding, environment.roles.len() - role_start)?;
+                    super::roles::visit(input.entry_funding, environment.roles.len() - role_start)?;
+                    role_uses.extend(environment.roles.drain(role_start..));
+                    let role_uses =
+                        super::roles::retained_rows(role_uses, role_copies, input.entry_funding)?;
                     result.push(FittedLine {
                         disposition: candidate.disposition,
                         boxes: candidate.boxes,
                         box_uses: environment.box_uses.split_off(box_use_start),
                         first_formatted,
-                        role_uses: environment.roles.split_off(role_start),
+                        role_uses,
                         line_box_end: line_box_context,
                         zone_basis,
                         phrase_basis,
