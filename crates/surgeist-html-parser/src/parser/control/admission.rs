@@ -355,7 +355,7 @@ impl Charge<HtmlWork, HtmlResource> for ParseControl {
 
     /// A batch of work changes is one work charge. One acquisition is one
     /// resource charge. Any other batch is not one the parser charges for
-    /// `surgeist-html`, so the ledger state it implies is an invariant stop.
+    /// `surgeist-html`, so it stops the parse with the accounting fault `UnexpectedChange`.
     fn charge(&mut self, batch: &[HtmlChange]) -> Result<(), HtmlParseStop> {
         match batch {
             [change @ Change::Acquire(..)] => self.acquire_change(*change),

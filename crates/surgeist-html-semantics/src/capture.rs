@@ -1065,8 +1065,8 @@ impl HtmlCaptureBuilder {
         accounting: &HtmlSemanticAccounting,
     ) -> Result<Self, HtmlAccountingFault> {
         let mut builder = Self::new(limits, host_revision);
-        builder.account =
-            account::Account::hosted(limits, accounting).map_err(crate::accounting::fault)?;
+        builder.account = account::Account::hosted(limits, accounting)
+            .map_err(surgeist_html::accounting::fault_of)?;
         Ok(builder)
     }
     pub(crate) fn enable_controlled_storage(&mut self) {

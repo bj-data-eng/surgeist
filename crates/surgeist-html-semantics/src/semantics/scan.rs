@@ -8,6 +8,7 @@
 //! each caller's charge order and first reached failure.
 
 use super::*;
+use crate::accounting::wide;
 use crate::{HtmlCapture, HtmlCaptureError, HtmlCapturedElement, HtmlCapturedNode};
 use std::{fmt, marker::PhantomData};
 use surgeist_html::accounting::{
@@ -111,7 +112,6 @@ impl Caps {
         self
     }
     fn limits(self) -> HtmlLimits {
-        let wide = |value: usize| u64::try_from(value).unwrap_or(u64::MAX);
         HtmlLimits::from_fn(
             |work| match work {
                 HtmlWork::SemanticStep => wide(self.work),
@@ -220,10 +220,7 @@ impl<E: ScanError> ScanMeter<E> {
         self.operation
             .apply(
                 self.scope,
-                Change::Work(
-                    HtmlWork::SemanticStep,
-                    u64::try_from(amount).unwrap_or(u64::MAX),
-                ),
+                Change::Work(HtmlWork::SemanticStep, wide(amount)),
             )
             .map_err(Self::refusal_of)
     }
@@ -231,10 +228,7 @@ impl<E: ScanError> ScanMeter<E> {
     /// constructor's own order of refusals requires.
     pub(crate) fn grow(&mut self, resource: HtmlResource, amount: usize) -> Result<(), E> {
         self.operation
-            .apply(
-                self.grown,
-                Change::Acquire(resource, u64::try_from(amount).unwrap_or(u64::MAX)),
-            )
+            .apply(self.grown, Change::Acquire(resource, wide(amount)))
             .map_err(Self::refusal_of)
     }
     /// Refuses a total of a fact resource beyond its cap. A refusal is reported through `refuse`
@@ -276,7 +270,7 @@ impl<E: ScanError> ScanMeter<E> {
         amount: usize,
         refuse: impl FnOnce(usize, usize) -> E,
     ) -> Result<(), E> {
-        let amount = u64::try_from(amount).unwrap_or(u64::MAX);
+        let amount = wide(amount);
         self.operation
             .check_batch(self.scope, &[Change::Acquire(resource, amount)])
             .map_err(|error| Self::resource_refusal(error, resource, refuse))
@@ -442,6 +436,19 @@ mod tests {
 
     fn meter(caps: Caps) -> ScanMeter<Refusal> {
         ScanMeter::new(HtmlCapScope::ControlFacts, caps).unwrap()
+    }
+
+    #[test]
+    fn a_meter_names_its_scopes_by_the_schema() {
+        let meter = meter(Caps::work(10));
+        assert_eq!(
+            meter.operation.scope_name(meter.scope),
+            Ok(HtmlCapScope::ControlFacts.name())
+        );
+        assert_eq!(
+            meter.operation.scope_name(meter.grown),
+            Ok(HtmlAuxiliaryScope::FactGrown.name())
+        );
     }
 
     #[test]

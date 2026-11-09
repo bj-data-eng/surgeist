@@ -164,6 +164,24 @@ pub enum HtmlLedgerOutcome {
     Fault(HtmlAccountingFault),
 }
 
+impl HtmlLedgerOutcome {
+    /// The fault of this outcome, for a consumer that charges nothing a cap can refuse where it
+    /// classifies, such as the creation of a scope or the read of a profile: a refusal at a cap
+    /// or an overflow there is a change the consumer does not charge.
+    pub const fn into_fault(self) -> HtmlAccountingFault {
+        match self {
+            Self::Fault(fault) => fault,
+            Self::Cap(_) | Self::Exhausted(_) => HtmlAccountingFault::UnexpectedChange,
+        }
+    }
+}
+
+/// The fault of a ledger error at a place where the consumer charges nothing a cap can refuse.
+/// See [`HtmlLedgerOutcome::into_fault`].
+pub fn fault_of(error: LedgerError<HtmlWork, HtmlResource>) -> HtmlAccountingFault {
+    classify(error).into_fault()
+}
+
 /// Classifies a ledger error. This is the one place that maps the ledger's
 /// error shapes onto the HTML crates' names.
 pub fn classify(error: LedgerError<HtmlWork, HtmlResource>) -> HtmlLedgerOutcome {
@@ -230,6 +248,35 @@ mod tests {
             current,
             limit,
         }
+    }
+
+    #[test]
+    fn an_outcome_that_is_not_a_fault_is_an_unexpected_change_where_nothing_is_charged() {
+        assert_eq!(
+            fault_of(LedgerError::ForeignScope),
+            HtmlAccountingFault::ForeignScope
+        );
+        let operation = Operation::<HtmlWork, HtmlResource>::new(
+            "scope",
+            surgeist_ledger::Limits::unlimited(),
+            1,
+        )
+        .unwrap();
+        let cap = classify(LedgerError::Refused(Refusal {
+            scope: operation.root(),
+            item: 0,
+            change: Change::Acquire(HtmlResource::ManagedEdges, 1),
+            current: 0,
+            reason: RefusalReason::Limit { limit: 0 },
+        }));
+        assert!(matches!(cap, HtmlLedgerOutcome::Cap(_)));
+        assert_eq!(cap.into_fault(), HtmlAccountingFault::UnexpectedChange);
+        let exhausted =
+            HtmlLedgerOutcome::Exhausted(Change::Acquire(HtmlResource::ManagedEdges, 1));
+        assert_eq!(
+            exhausted.into_fault(),
+            HtmlAccountingFault::UnexpectedChange
+        );
     }
 
     #[test]

@@ -1,10 +1,7 @@
 //! Where capture, import and semantic queries charge their work and resources.
 
 use std::fmt;
-use surgeist_html::accounting::{
-    HtmlAccountingFault, HtmlChange, HtmlLedgerOutcome, HtmlLimits, HtmlResource, HtmlTariffs,
-    HtmlWork, classify,
-};
+use surgeist_html::accounting::{HtmlChange, HtmlLimits, HtmlResource, HtmlTariffs, HtmlWork};
 use surgeist_ledger::{Charge, Error, Operation, Scope, SharedOperation, Usage};
 
 /// The ledger error type of the HTML schema pair.
@@ -13,17 +10,6 @@ pub(crate) type LedgerError = Error<HtmlWork, HtmlResource>;
 /// Widens a platform amount; an amount beyond `u64` saturates and every finite cap refuses it.
 pub(crate) fn wide(value: usize) -> u64 {
     u64::try_from(value).unwrap_or(u64::MAX)
-}
-
-/// The fault of a ledger error where nothing here charges a change that a cap can refuse, such
-/// as the creation of a scope: a refusal that names a change is not one the operation charges.
-pub(crate) fn fault(error: LedgerError) -> HtmlAccountingFault {
-    match classify(error) {
-        HtmlLedgerOutcome::Fault(fault) => fault,
-        HtmlLedgerOutcome::Cap(_) | HtmlLedgerOutcome::Exhausted(_) => {
-            HtmlAccountingFault::UnexpectedChange
-        }
-    }
 }
 
 /// Where a capture builder or a session charges: a scope of an operation the host

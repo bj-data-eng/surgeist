@@ -883,7 +883,7 @@ pub(crate) fn autocomplete_limits(limits: HtmlAutocompleteMaterializationLimits)
 mod fault;
 pub use fault::{
     HtmlAccountingFault, HtmlCapRefusal, HtmlChargeOverflow, HtmlLedgerOutcome, HtmlRefusalFigures,
-    classify,
+    classify, fault_of,
 };
 
 #[cfg(test)]

@@ -12,8 +12,8 @@
 use crate::{HtmlParseLimits, HtmlParseStop};
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use surgeist_html::accounting::{
-    HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapScope, HtmlChange, HtmlLedgerOutcome,
-    HtmlLimits, HtmlResource, HtmlWork, aggregate_tariffs, charging_tariffs, classify,
+    HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapScope, HtmlChange, HtmlLimits, HtmlResource,
+    HtmlWork, aggregate_tariffs, charging_tariffs, fault_of,
 };
 use surgeist_ledger::{
     Change, Dimension, Error, Operation, ProfileMode, Report, Scope, SharedOperation, Tariffs,
@@ -169,7 +169,7 @@ impl Lease {
                     7,
                     *mode,
                 )
-                .map_err(fault)?;
+                .map_err(fault_of)?;
                 let root = operation.root();
                 let shared = operation.share();
                 if ledger.set(shared.clone()).is_err() {
@@ -189,17 +189,6 @@ impl Lease {
     }
 }
 
-/// The fault of a ledger error where the parser charges no change, such as the creation of a
-/// scope or a profile read.
-fn fault(error: LedgerError) -> HtmlAccountingFault {
-    match classify(error) {
-        HtmlLedgerOutcome::Fault(fault) => fault,
-        HtmlLedgerOutcome::Cap(_) | HtmlLedgerOutcome::Exhausted(_) => {
-            HtmlAccountingFault::UnexpectedChange
-        }
-    }
-}
-
 /// Creates the parse scopes below `parent`.
 fn scopes(
     ledger: &SharedOperation<HtmlWork, HtmlResource>,
@@ -214,7 +203,7 @@ fn scopes(
             limits.ledger_limits(),
             aggregate_tariffs(),
         )
-        .map_err(fault)?;
+        .map_err(fault_of)?;
     let charging = child(
         ledger,
         cap,
@@ -243,7 +232,7 @@ fn child(
 ) -> Result<Scope, HtmlAccountingFault> {
     ledger
         .child(parent, name, HtmlLimits::unlimited(), tariffs)
-        .map_err(fault)
+        .map_err(fault_of)
 }
 
 /// The private operation of a parse that selected no profiling: the cap scope is
@@ -252,7 +241,7 @@ pub(crate) fn private(
     limits: &HtmlParseLimits,
 ) -> Result<(Operation<HtmlWork, HtmlResource>, Scope, Scope), HtmlAccountingFault> {
     let mut operation =
-        Operation::new(HtmlCapScope::Parse.name(), limits.ledger_limits(), 2).map_err(fault)?;
+        Operation::new(HtmlCapScope::Parse.name(), limits.ledger_limits(), 2).map_err(fault_of)?;
     let cap = operation.root();
     let charging = operation
         .child(
@@ -261,7 +250,7 @@ pub(crate) fn private(
             HtmlLimits::unlimited(),
             charging_tariffs(),
         )
-        .map_err(fault)?;
+        .map_err(fault_of)?;
     Ok((operation, cap, charging))
 }
 
@@ -453,7 +442,7 @@ impl RequestAccounting {
         self.0
             .as_ref()
             .map_or(Ok(None), |lease| lease.profile())
-            .map_err(fault)
+            .map_err(fault_of)
     }
 }
 
