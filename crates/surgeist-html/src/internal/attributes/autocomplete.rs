@@ -2684,8 +2684,8 @@ mod ordinary_allocation_tests {
     }
 
     /// A ledger that cannot allocate, a spent scope bound and a release that matches nothing held
-    /// reach the caller as the one accounting fault; a cap of another dimension is a change the
-    /// materialization does not charge.
+    /// each reach the caller as the one accounting fault, and an arithmetic overflow stays
+    /// representation exhaustion.
     #[test]
     fn ledger_failures_other_than_a_refused_allowance_are_accounting_faults() {
         type M = Materialization<Operation<HtmlWork, HtmlResource>>;
@@ -2707,13 +2707,53 @@ mod ordinary_allocation_tests {
             accounting(HtmlAccountingFault::ReleaseUnderflow)
         );
         let (mut ledger, caps, _) = caller_scopes(u64::MAX, u64::MAX, u64::MAX);
-        let other = ledger
+        let overflow = ledger
             .apply(caps, Change::Acquire(HtmlResource::ManagedNodes, u64::MAX))
             .and_then(|()| ledger.apply(caps, Change::Acquire(HtmlResource::ManagedNodes, 1)))
             .unwrap_err();
         assert_eq!(
-            M::refused(other),
+            M::refused(overflow),
             HtmlAutocompleteMaterializationError::Representation
+        );
+    }
+
+    /// A cap refusal that the materialization does not charge is an unexpected change, whether the
+    /// refused change is not an acquisition or names a resource the materialization does not cap.
+    #[test]
+    fn a_cap_refusal_the_materialization_does_not_charge_is_an_unexpected_change() {
+        type M = Materialization<Operation<HtmlWork, HtmlResource>>;
+        let unexpected =
+            HtmlAutocompleteMaterializationError::Accounting(HtmlAccountingFault::UnexpectedChange);
+        let capped = |change: HtmlChange| {
+            let limits = HtmlLimits::from_fn(|_| 0, |_| 0);
+            let mut operation = Operation::new("scope", limits, 1).unwrap();
+            let root = operation.root();
+            operation.apply(root, change).unwrap_err()
+        };
+        // A work change refused at a cap of zero.
+        assert_eq!(
+            M::refused(capped(Change::Work(HtmlWork::StateStep, 1))),
+            unexpected
+        );
+        // An acquisition of a resource that autocomplete does not cap.
+        assert_eq!(
+            M::refused(capped(Change::Acquire(HtmlResource::ManagedNodes, 1))),
+            unexpected
+        );
+    }
+
+    /// The private operation of an unlimited materialization names its observation scope and its
+    /// cap scope by the schema.
+    #[test]
+    fn the_private_operation_names_its_scopes_by_the_schema() {
+        let materialization = Materialization::new(None).unwrap();
+        assert_eq!(
+            materialization.ledger.scope_name(materialization.observed),
+            Ok(HtmlAuxiliaryScope::AutocompleteObserved.name())
+        );
+        assert_eq!(
+            materialization.ledger.scope_name(materialization.caps),
+            Ok(HtmlCapScope::Autocomplete.name())
         );
     }
 

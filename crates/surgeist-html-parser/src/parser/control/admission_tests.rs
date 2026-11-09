@@ -216,6 +216,22 @@ fn an_overshoot_the_cap_cannot_hold_stops_with_the_planned_layout_and_keeps_the_
     );
 }
 
+/// An overshoot that records over a charge the ledger never admitted is a release underflow, not
+/// a limit: the replaced bytes are not held, so the stop is the accounting fault even though the
+/// allocation is larger than planned.
+#[test]
+fn an_overshoot_that_replaces_bytes_the_ledger_never_admitted_stops_as_a_release_underflow() {
+    let mut c = control_with(builder().managed_capacity_bytes(150));
+    c.set(HtmlParseResource::ManagedCapacityBytes, 10);
+    c.set(HtmlParseResource::PeakTransientBytes, 10);
+    assert_eq!(
+        c.record_capacity(40, 200, 100),
+        Err(HtmlParseStop::Accounting(
+            HtmlAccountingFault::ReleaseUnderflow
+        ))
+    );
+}
+
 #[test]
 fn an_overshoot_the_cap_holds_is_recorded_for_the_caller_to_stop_on() {
     let mut c = control_with(builder().managed_capacity_bytes(200));

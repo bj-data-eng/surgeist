@@ -690,3 +690,27 @@ fn a_usage_read_that_cannot_reach_the_ledger_returns_the_last_usage_read() {
     control.observed = other.observed;
     assert_eq!(control.usage(), before);
 }
+
+/// The owner's operation names its gate and its three custody scopes by the schema.
+#[test]
+fn the_owner_names_its_scopes_by_the_schema() {
+    use surgeist_html::accounting::{HtmlAuxiliaryScope, HtmlCapScope};
+    let control = Control::for_tests(envelope());
+    for (scope, name) in [
+        (control.gate, HtmlCapScope::OptionValue.name()),
+        (
+            control.retained,
+            HtmlAuxiliaryScope::OptionValueRetained.name(),
+        ),
+        (
+            control.temporary,
+            HtmlAuxiliaryScope::OptionValueTemporary.name(),
+        ),
+        (
+            control.observed,
+            HtmlAuxiliaryScope::OptionValueObserved.name(),
+        ),
+    ] {
+        assert_eq!(control.ledger.scope_name(scope), Ok(name));
+    }
+}
