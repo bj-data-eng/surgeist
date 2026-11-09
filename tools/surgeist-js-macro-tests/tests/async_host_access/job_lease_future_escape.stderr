@@ -22,7 +22,7 @@ error[E0521]: borrowed data escapes outside of closure
    |                                         ----
    |                                         |
    |                                         `host` is a reference that is only valid in the closure body
-   |                                         has type `&'1 HostContext<'_>`
+   |                                         has type `&'1 surgeist_js::HostContext<'_>`
 18 |               let _escaped = ContextTask::from_future(async move {
    |  ____________________________^
 19 | |                 host.with(|mut access| access.eval(Source::from_bytes("42")))
@@ -39,7 +39,7 @@ error[E0521]: borrowed data escapes outside of closure
    |                                         ----
    |                                         |
    |                                         `host` is a reference that is only valid in the closure body
-   |                                         has type `&HostContext<'2>`
+   |                                         has type `&surgeist_js::HostContext<'2>`
 18 |               let _escaped = ContextTask::from_future(async move {
    |  ____________________________^
 19 | |                 host.with(|mut access| access.eval(Source::from_bytes("42")))
