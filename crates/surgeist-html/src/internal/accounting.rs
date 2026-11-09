@@ -82,8 +82,13 @@
 //! - The semantic integer digit cap bounds the digits of one integer. It is an
 //!   argument of the numeric owner, a property of a single value rather than a
 //!   cumulative or live quantity, and has no dimension.
-//! - The cap of each semantic fact family, and of the construction, autocomplete
-//!   and capture import scopes, applies to that scope alone. Autocomplete is a
+//! - The cap of each semantic fact family, and of the construction, autocomplete,
+//!   capture import, registry formation and option value scopes, applies to that
+//!   scope alone.
+//! - [`HtmlResource::RetainedBytes`] and [`HtmlResource::RetainedUtf16Units`] are
+//!   live custody of a controlled option value capture, capped by its envelope. The
+//!   retained payload of a capture or a base facts graph is a measurement of actual
+//!   capacities, and its consumer charges that value to its own accounting. Autocomplete is a
 //!   remaining allowance of the query that starts it, so its scope is a child of
 //!   the query scope with identity tariffs: its charges also count in the query.
 //!
@@ -295,12 +300,21 @@ dimensions! {
         /// Cumulative element name, attribute and saved-is storage of a
         /// capture, including pending formation.
         ElementValueBytes,
-        /// Measured retained payload bytes of a capture, base facts graph or
-        /// option value. No HTML cap applies; a host bounds it.
+        /// Live retained payload bytes of a controlled option value capture,
+        /// capped by its envelope. The measured payload of a capture or a base
+        /// facts graph is a value its consumer charges to its own accounting.
         RetainedBytes,
-        /// Measured retained UTF-16 capacity of a capture, base facts graph or
-        /// option value. No HTML cap applies; a host bounds it.
+        /// Live retained UTF-16 capacity of a controlled option value capture,
+        /// capped by its envelope.
         RetainedUtf16Units,
+        /// Bytes of incoming fact vectors admitted into one fact bank.
+        FactBytes,
+        /// The checked total a registry formation needs at one point: its fixed
+        /// workspace, the live backing and the next request, recorded as the
+        /// largest value reached.
+        FormationBytes,
+        /// Live backing bytes of a registry formation, requested or actual.
+        FormationBacking,
     }
 }
 
@@ -408,7 +422,10 @@ impl HtmlResource {
             | Self::AtomicLayoutBytes
             | Self::AllocatedBytes
             | Self::ElementValueBytes
-            | Self::RetainedBytes => HtmlUnit::Bytes,
+            | Self::RetainedBytes
+            | Self::FactBytes
+            | Self::FormationBytes
+            | Self::FormationBacking => HtmlUnit::Bytes,
         }
     }
 
@@ -430,8 +447,12 @@ impl HtmlResource {
             | Self::CapturedUtf16Units
             | Self::CapturedRegistries
             | Self::CapturedDefinitions
-            | Self::ElementValueBytes => HtmlCustody::Permanent,
-            Self::TreeDepth | Self::AtomicLayoutBytes | Self::CapturedDepth => HtmlCustody::Gauge,
+            | Self::ElementValueBytes
+            | Self::FactBytes => HtmlCustody::Permanent,
+            Self::TreeDepth
+            | Self::AtomicLayoutBytes
+            | Self::CapturedDepth
+            | Self::FormationBytes => HtmlCustody::Gauge,
             Self::Diagnostics => HtmlCustody::Retention,
             Self::BufferedUtf16Units
             | Self::TokenAttributes
@@ -449,7 +470,8 @@ impl HtmlResource {
             | Self::PeakTransientBytes
             | Self::ScratchRecords
             | Self::RetainedBytes
-            | Self::RetainedUtf16Units => HtmlCustody::Balance,
+            | Self::RetainedUtf16Units
+            | Self::FormationBacking => HtmlCustody::Balance,
         }
     }
 
@@ -511,11 +533,27 @@ pub enum HtmlCapScope {
     InertFacts,
     /// Language and direction facts: `HtmlLanguageDirectionLimits`.
     LanguageDirection,
+    /// Media facts: `HtmlMediaFactsLimits`.
+    MediaFacts,
+    /// Link relationship facts: `HtmlRelFactsLimits`.
+    LinkRelationshipFacts,
+    /// Image dimension facts: `HtmlImageDimensionFactsLimits`.
+    ImageDimensionFacts,
+    /// Natural dimension facts: `HtmlNaturalDimensionFactsLimits`.
+    NaturalDimensionFacts,
+    /// A capacity cap on supplied context records: the list participation
+    /// supplement's fact cap or the context's classification cap.
+    ContextFacts,
+    /// A complete-empty Global registry formation: its formation byte
+    /// allowance.
+    RegistryFormation,
+    /// A controlled option value capture: `HtmlOptionValueEnvelope`.
+    OptionValue,
 }
 
 impl HtmlCapScope {
     /// Every cap scope.
-    pub const ALL: [Self; 13] = [
+    pub const ALL: [Self; 20] = [
         Self::Parse,
         Self::Construction,
         Self::Autocomplete,
@@ -529,6 +567,13 @@ impl HtmlCapScope {
         Self::OutputDefault,
         Self::InertFacts,
         Self::LanguageDirection,
+        Self::MediaFacts,
+        Self::LinkRelationshipFacts,
+        Self::ImageDimensionFacts,
+        Self::NaturalDimensionFacts,
+        Self::ContextFacts,
+        Self::RegistryFormation,
+        Self::OptionValue,
     ];
 
     /// The static scope name for ledger reports.
@@ -547,6 +592,13 @@ impl HtmlCapScope {
             Self::OutputDefault => "html-output-default",
             Self::InertFacts => "html-inert-facts",
             Self::LanguageDirection => "html-language-direction",
+            Self::MediaFacts => "html-media-facts",
+            Self::LinkRelationshipFacts => "html-link-relationship-facts",
+            Self::ImageDimensionFacts => "html-image-dimension-facts",
+            Self::NaturalDimensionFacts => "html-natural-dimension-facts",
+            Self::ContextFacts => "html-context-facts",
+            Self::RegistryFormation => "html-registry-formation",
+            Self::OptionValue => "html-option-value",
         }
     }
 
@@ -554,8 +606,17 @@ impl HtmlCapScope {
     pub const fn capped_work(self) -> &'static [HtmlWork] {
         match self {
             Self::Parse => &[HtmlWork::Credits],
-            Self::Construction | Self::Autocomplete | Self::Capture => &[],
+            Self::Construction
+            | Self::Autocomplete
+            | Self::Capture
+            | Self::ContextFacts
+            | Self::RegistryFormation => &[],
             Self::Query
+            | Self::OptionValue
+            | Self::MediaFacts
+            | Self::LinkRelationshipFacts
+            | Self::ImageDimensionFacts
+            | Self::NaturalDimensionFacts
             | Self::CaptureImport
             | Self::BaseFacts
             | Self::ElementReferenceFacts
@@ -626,7 +687,17 @@ impl HtmlCapScope {
             Self::ElementReferenceFacts
             | Self::ControlFacts
             | Self::GlobalInheritance
-            | Self::InertFacts => &[HtmlResource::FactRecords],
+            | Self::InertFacts
+            | Self::ContextFacts => &[HtmlResource::FactRecords],
+            Self::MediaFacts
+            | Self::LinkRelationshipFacts
+            | Self::ImageDimensionFacts
+            | Self::NaturalDimensionFacts => &[HtmlResource::FactRecords, HtmlResource::FactBytes],
+            Self::RegistryFormation => &[HtmlResource::FormationBytes],
+            Self::OptionValue => &[
+                HtmlResource::RetainedBytes,
+                HtmlResource::RetainedUtf16Units,
+            ],
             Self::LanguageDirection => &[
                 HtmlResource::FactRecords,
                 HtmlResource::AssignedNodes,
