@@ -336,12 +336,7 @@ impl ParseControl {
                     HtmlParseInvariant::CapacityMismatch,
                 ));
             }
-            let Some(bytes) = vector
-                .capacity
-                .checked_mul(size_of::<Attribute>())
-                .and_then(|bytes| u64::try_from(bytes).ok())
-                .and_then(|bytes| bytes.checked_add(shared.bytes))
-            else {
+            let Some(bytes) = vector.admitted.checked_add(shared.bytes) else {
                 return self.representation(HtmlParseResource::ManagedCapacityBytes);
             };
             self.commit_prepared_release(&[
