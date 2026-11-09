@@ -84,13 +84,13 @@
 //!   cumulative or live quantity, and has no dimension.
 //! - The cap of each semantic fact family, and of the construction, autocomplete,
 //!   capture import, registry formation and option value scopes, applies to that
-//!   scope alone.
+//!   scope alone. Autocomplete is a remaining allowance of the query that starts
+//!   it, so its scope is a child of the query scope with identity tariffs: its
+//!   charges also count in the query.
 //! - [`HtmlResource::RetainedBytes`] and [`HtmlResource::RetainedUtf16Units`] are
 //!   live custody of a controlled option value capture, capped by its envelope. The
 //!   retained payload of a capture or a base facts graph is a measurement of actual
-//!   capacities, and its consumer charges that value to its own accounting. Autocomplete is a
-//!   remaining allowance of the query that starts it, so its scope is a child of
-//!   the query scope with identity tariffs: its charges also count in the query.
+//!   capacities, and its consumer charges that value to its own accounting.
 //!
 //! # Resources that are not plain acquire and release
 //!
