@@ -264,7 +264,7 @@ pub(super) fn references<E>(
 /// The existing iterative full-forest pass, with admitted reads/writes and
 /// all four real reservations. References never become incoming owning edges.
 pub(super) fn depths<E>(
-    builder: &HtmlCaptureBuilder,
+    builder: &mut HtmlCaptureBuilder,
     scratch: &mut DepthScratch,
     admit: &mut impl FnMut(Action) -> Result<(), E>,
 ) -> Result<(), Failure<E>> {

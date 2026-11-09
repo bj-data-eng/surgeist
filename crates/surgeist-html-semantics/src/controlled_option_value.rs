@@ -1,13 +1,17 @@
 //! Controlled formation and one OptionValue read over an ordinary captured tree.
+use crate::accounting::LedgerError;
 use crate::capture::preflight::ActionPolicy;
 use crate::*;
 use std::mem::size_of;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::{error::Error, fmt};
+use surgeist_html::accounting::{HtmlCapScope, HtmlLimits, HtmlResource, HtmlWork};
 use surgeist_html::{
     construction::{HtmlDoctype, HtmlDocumentMode},
     values::{DocumentString, HtmlAttributesInput, HtmlNameInput, HtmlValueInterpreter},
 };
+use surgeist_ledger::{Change, Operation, RefusalReason, Scope, SharedOperation, Tariff, Tariffs};
 
 /// Total producer live allowance after excluding the producer's current graph
 /// from the caller's other live storage. Work is the remaining allowance for
@@ -36,33 +40,6 @@ pub struct HtmlOptionValueStorageUsage {
     pub(crate) units: usize,
 }
 impl HtmlOptionValueStorageUsage {
-    /// The sum, or exhaustion when either component is not representable.
-    fn checked_add(self, other: Self) -> Result<Self, HtmlOptionValueControlError> {
-        Ok(Self {
-            bytes: self
-                .bytes
-                .checked_add(other.bytes)
-                .ok_or(HtmlOptionValueControlError::RepresentationExhausted)?,
-            units: self
-                .units
-                .checked_add(other.units)
-                .ok_or(HtmlOptionValueControlError::RepresentationExhausted)?,
-        })
-    }
-    /// What remains after returning `other`, or a protocol breach when more is returned than is
-    /// held in either component.
-    fn checked_sub(self, other: Self) -> Result<Self, HtmlOptionValueControlError> {
-        Ok(Self {
-            bytes: self
-                .bytes
-                .checked_sub(other.bytes)
-                .ok_or(HtmlOptionValueControlError::ProtocolViolated)?,
-            units: self
-                .units
-                .checked_sub(other.units)
-                .ok_or(HtmlOptionValueControlError::ProtocolViolated)?,
-        })
-    }
     pub fn retained_bytes(self) -> usize {
         self.bytes
     }
@@ -170,11 +147,11 @@ impl Error for HtmlControlledOptionValueFailure {
 
 /// Reads and writes one counter.
 ///
-/// The counters are atomics so that a session reaching `Control` through `&Control` stays `Sync`,
-/// which keeps `HtmlSemanticSession` `Send + Sync`. They are not for concurrent mutation: one
-/// thread drives a session and its owner at a time, and every thread hand-off already
-/// synchronizes. `Relaxed` is sufficient because no counter orders any other memory access and
-/// each is read only by the thread that drives the execution.
+/// The cancellation test hook is an atomic so that a session reaching `Control` through `&Control`
+/// stays `Sync`, which keeps `HtmlSemanticSession` `Send + Sync`. It is not for concurrent
+/// mutation: one thread drives a session and its owner at a time, and every thread hand-off
+/// already synchronizes. `Relaxed` is sufficient because no counter orders any other memory
+/// access.
 trait Counter<T> {
     fn get(&self) -> T;
     fn set(&self, value: T);
@@ -187,119 +164,211 @@ impl Counter<u64> for AtomicU64 {
         self.store(value, Ordering::Relaxed);
     }
 }
-impl Counter<usize> for AtomicUsize {
-    fn get(&self) -> usize {
-        self.load(Ordering::Relaxed)
-    }
-    fn set(&self, value: usize) {
-        self.store(value, Ordering::Relaxed);
-    }
-}
-struct StorageCounter {
-    bytes: AtomicUsize,
-    units: AtomicUsize,
-}
-impl StorageCounter {
-    fn new() -> Self {
-        Self {
-            bytes: AtomicUsize::new(0),
-            units: AtomicUsize::new(0),
-        }
-    }
-    fn get(&self) -> HtmlOptionValueStorageUsage {
-        HtmlOptionValueStorageUsage {
-            bytes: self.bytes.get(),
-            units: self.units.get(),
-        }
-    }
-    fn set(&self, value: HtmlOptionValueStorageUsage) {
-        self.bytes.set(value.bytes);
-        self.units.set(value.units);
-    }
-}
-struct EnvelopeCounter {
-    storage: StorageCounter,
-    work: AtomicU64,
-}
-impl EnvelopeCounter {
-    fn new(value: HtmlOptionValueEnvelope) -> Self {
-        let out = Self {
-            storage: StorageCounter::new(),
-            work: AtomicU64::new(0),
-        };
-        out.set(value);
-        out
-    }
-    fn get(&self) -> HtmlOptionValueEnvelope {
-        let storage = self.storage.get();
-        HtmlOptionValueEnvelope::new(storage.bytes, storage.units, self.work.get())
-    }
-    fn set(&self, value: HtmlOptionValueEnvelope) {
-        self.storage.set(HtmlOptionValueStorageUsage {
-            bytes: value.bytes,
-            units: value.units,
-        });
-        self.work.set(value.work);
-    }
-}
-struct SemanticCounter {
-    words: [AtomicUsize; 6],
-}
-impl SemanticCounter {
-    fn new() -> Self {
-        Self {
-            words: std::array::from_fn(|_| AtomicUsize::new(0)),
-        }
-    }
-    fn get(&self) -> HtmlSemanticUsage {
-        HtmlSemanticUsage::controlled_snapshot(std::array::from_fn(|i| self.words[i].get()))
-    }
-    fn set(&self, value: HtmlSemanticUsage) {
-        let words = [
-            value.work(),
-            value.output_records(),
-            value.scratch_records(),
-            value.allocated_bytes(),
-            value.peak_scratch_records(),
-            value.nested_output_records(),
-        ];
-        for (to, from) in self.words.iter().zip(words) {
-            to.set(from);
-        }
-    }
+
+fn wide(value: usize) -> u64 {
+    u64::try_from(value).unwrap_or(u64::MAX)
 }
 
+fn narrow(value: u64) -> Result<usize, HtmlOptionValueControlError> {
+    usize::try_from(value).map_err(|_| HtmlOptionValueControlError::RepresentationExhausted)
+}
+
+/// The caps one call's envelope sets: the live bytes and UTF-16 units it allows, and the work the
+/// scope may reach, which is the work admitted so far plus the call's remaining work.
+fn gate_limits(bytes: usize, units: usize, work: u64) -> HtmlLimits {
+    HtmlLimits::from_fn(
+        |dimension| match dimension {
+            HtmlWork::SemanticStep => work,
+            _ => u64::MAX,
+        },
+        |dimension| match dimension {
+            HtmlResource::RetainedBytes => wide(bytes),
+            HtmlResource::RetainedUtf16Units => wide(units),
+            _ => u64::MAX,
+        },
+    )
+}
+
+/// The storage and work of one controlled option value capture, charged to a ledger operation of
+/// its own.
+///
+/// The `gate` scope carries the caps of the current call's envelope. It admits every prospective
+/// total of live and temporary storage, which records its peak, and every step of work, including
+/// the nested session's: the session's scopes are created below it, so its work counts in the
+/// call's work cap. The `retained` and `temporary` scopes hold the storage itself, and the
+/// `observed` scope records peak evidence for storage that exceeded the allowance. Held storage is
+/// never refused by the gate, because the caller has already decided its admission.
 pub(crate) struct Control {
-    live: StorageCounter,
-    temporary: StorageCounter,
-    peak: StorageCounter,
-    work: AtomicU64,
-    start: AtomicU64,
-    envelope: EnvelopeCounter,
-    semantic: SemanticCounter,
+    ledger: SharedOperation<HtmlWork, HtmlResource>,
+    gate: Scope,
+    retained: Scope,
+    temporary: Scope,
+    observed: Scope,
+    /// The remaining work the current call was given, which the work cap is measured from.
+    allowance: AtomicU64,
+    semantic: Mutex<HtmlSemanticUsage>,
     #[cfg(test)]
     cancel_after: AtomicU64,
 }
 impl Control {
-    fn new(envelope: HtmlOptionValueEnvelope) -> Self {
-        Self {
-            live: StorageCounter::new(),
-            temporary: StorageCounter::new(),
-            peak: StorageCounter::new(),
-            work: AtomicU64::new(0),
-            start: AtomicU64::new(0),
-            envelope: EnvelopeCounter::new(envelope),
-            semantic: SemanticCounter::new(),
+    fn new(envelope: HtmlOptionValueEnvelope) -> Result<Self, HtmlOptionValueControlError> {
+        let ledger_error = Self::error;
+        let mut operation = Operation::new(
+            HtmlCapScope::OptionValue.name(),
+            gate_limits(envelope.bytes, envelope.units, envelope.work),
+            8,
+        )
+        .map_err(ledger_error)?;
+        let gate = operation.root();
+        let mut child = |name: &'static str| {
+            operation
+                .child(
+                    gate,
+                    name,
+                    HtmlLimits::unlimited(),
+                    Tariffs::from_fn(
+                        |work| Tariff::new(work, 0),
+                        |resource| Tariff::new(resource, 0),
+                    ),
+                )
+                .map_err(ledger_error)
+        };
+        let retained = child("html-option-value-retained")?;
+        let temporary = child("html-option-value-temporary")?;
+        let observed = child("html-option-value-observed")?;
+        Ok(Self {
+            ledger: operation.share(),
+            gate,
+            retained,
+            temporary,
+            observed,
+            allowance: AtomicU64::new(envelope.work),
+            semantic: Mutex::new(HtmlSemanticUsage::default()),
             #[cfg(test)]
             cancel_after: AtomicU64::new(u64::MAX),
+        })
+    }
+    /// The control error of a ledger error that is not a refusal of the gate's caps: a refused
+    /// operation is a ledger state the owner's own sequencing rules out.
+    fn error(error: LedgerError) -> HtmlOptionValueControlError {
+        match error {
+            LedgerError::Refused(refusal) => match refusal.reason {
+                RefusalReason::Overflow => HtmlOptionValueControlError::RepresentationExhausted,
+                _ => HtmlOptionValueControlError::ProtocolViolated,
+            },
+            LedgerError::Allocation => HtmlOptionValueControlError::RepresentationExhausted,
+            _ => HtmlOptionValueControlError::ProtocolViolated,
         }
     }
+    /// Whether `scope` is the gate, whose refusals the nested session reports as this control's.
+    pub(crate) fn is_gate(&self, scope: Scope) -> bool {
+        scope == self.gate
+    }
+    /// The control error of a refusal by the gate: a refused storage cap keeps its resource, its
+    /// limit and the total the storage would have reached, and a refused work cap the call's
+    /// remaining work and the work spent since the call began.
+    pub(crate) fn refusal(
+        &self,
+        refusal: &surgeist_ledger::Refusal<HtmlWork, HtmlResource>,
+    ) -> HtmlOptionValueControlError {
+        use HtmlOptionValueControlError as Error;
+        let RefusalReason::Limit { limit } = refusal.reason else {
+            return Self::error(LedgerError::Refused(*refusal));
+        };
+        let amount = match refusal.change {
+            Change::Work(_, amount) | Change::Acquire(_, amount) | Change::Release(_, amount) => {
+                amount
+            }
+        };
+        let Some(required) = refusal.current.checked_add(amount) else {
+            return Error::RepresentationExhausted;
+        };
+        match refusal.change {
+            Change::Acquire(HtmlResource::RetainedBytes, _) => Error::LimitExceeded {
+                resource: HtmlOptionValueResource::LiveBytes,
+                limit,
+                required,
+            },
+            Change::Acquire(HtmlResource::RetainedUtf16Units, _) => Error::LimitExceeded {
+                resource: HtmlOptionValueResource::LiveUtf16,
+                limit,
+                required,
+            },
+            Change::Work(HtmlWork::SemanticStep, _) => {
+                let allowance = self.allowance.get();
+                match limit
+                    .checked_sub(allowance)
+                    .and_then(|start| required.checked_sub(start))
+                {
+                    Some(spent) => Error::LimitExceeded {
+                        resource: HtmlOptionValueResource::Work,
+                        limit: allowance,
+                        required: spent,
+                    },
+                    None => Error::ProtocolViolated,
+                }
+            }
+            _ => Error::ProtocolViolated,
+        }
+    }
+    fn refused(&self, error: LedgerError) -> HtmlOptionValueControlError {
+        match error {
+            LedgerError::Refused(refusal) => self.refusal(&refusal),
+            other => Self::error(other),
+        }
+    }
+    fn storage(
+        &self,
+        scope: Scope,
+        peak: bool,
+    ) -> Result<HtmlOptionValueStorageUsage, HtmlOptionValueControlError> {
+        let usage = self.ledger.usage(scope).map_err(Self::error)?;
+        let read = |dimension| {
+            narrow(if peak {
+                usage.peak(dimension)
+            } else {
+                usage.live(dimension)
+            })
+        };
+        Ok(HtmlOptionValueStorageUsage {
+            bytes: read(HtmlResource::RetainedBytes)?,
+            units: read(HtmlResource::RetainedUtf16Units)?,
+        })
+    }
+    fn live(&self) -> Result<HtmlOptionValueStorageUsage, HtmlOptionValueControlError> {
+        self.storage(self.retained, false)
+    }
+    fn held_temporary(&self) -> Result<HtmlOptionValueStorageUsage, HtmlOptionValueControlError> {
+        self.storage(self.temporary, false)
+    }
+    /// The largest total of live and temporary storage admitted or observed.
+    fn peak(&self) -> Result<HtmlOptionValueStorageUsage, HtmlOptionValueControlError> {
+        let admitted = self.storage(self.gate, true)?;
+        let observed = self.storage(self.observed, true)?;
+        Ok(HtmlOptionValueStorageUsage {
+            bytes: admitted.bytes.max(observed.bytes),
+            units: admitted.units.max(observed.units),
+        })
+    }
+    fn work_done(&self) -> Result<u64, HtmlOptionValueControlError> {
+        Ok(self
+            .ledger
+            .usage(self.gate)
+            .map_err(Self::error)?
+            .work(HtmlWork::SemanticStep))
+    }
+    /// The usage after every call, including refused ones. A ledger that cannot be read has
+    /// latched a defect, which the next charge reports as a protocol breach; the usage then is
+    /// the unread one.
     fn usage(&self) -> HtmlControlledOptionValueUsage {
         HtmlControlledOptionValueUsage {
-            work: self.work.get(),
-            storage: self.live.get(),
-            peak: self.peak.get(),
-            semantic: self.semantic.get(),
+            work: self.work_done().unwrap_or_default(),
+            storage: self.live().unwrap_or_default(),
+            peak: self.peak().unwrap_or_default(),
+            semantic: self
+                .semantic
+                .lock()
+                .map_or_else(|poisoned| *poisoned.into_inner(), |usage| *usage),
         }
     }
     pub(crate) fn poll(&self, cancel: &AtomicBool) -> Result<(), HtmlOptionValueControlError> {
@@ -315,37 +384,30 @@ impl Control {
         cancel: &AtomicBool,
     ) -> Result<(), HtmlOptionValueControlError> {
         self.poll(cancel)?;
-        let next = self
-            .work
-            .get()
-            .checked_add(
-                u64::try_from(units)
-                    .map_err(|_| HtmlOptionValueControlError::RepresentationExhausted)?,
-            )
-            .ok_or(HtmlOptionValueControlError::RepresentationExhausted)?;
-        let spent = next
-            .checked_sub(self.start.get())
-            .ok_or(HtmlOptionValueControlError::ProtocolViolated)?;
-        if spent > self.envelope.get().work {
-            return Err(HtmlOptionValueControlError::LimitExceeded {
-                resource: HtmlOptionValueResource::Work,
-                limit: self.envelope.get().work,
-                required: spent,
-            });
-        }
-        self.work.set(next);
+        self.ledger
+            .apply(self.gate, Change::Work(HtmlWork::SemanticStep, wide(units)))
+            .map_err(|error| self.refused(error))?;
         #[cfg(test)]
-        if next >= self.cancel_after.get() {
-            cancel.store(true, Ordering::Relaxed);
-        }
+        self.after_work(cancel);
         Ok(())
     }
+    /// Test scheduling only: cancels once this much work is admitted.
+    #[cfg(test)]
+    pub(crate) fn after_work(&self, cancel: &AtomicBool) {
+        if self
+            .work_done()
+            .is_ok_and(|work| work >= self.cancel_after.get())
+        {
+            cancel.store(true, Ordering::Relaxed);
+        }
+    }
+    /// The live and temporary storage and `extra`, which is what the allowance has to cover.
     fn required(
         &self,
         extra: HtmlOptionValueStorageUsage,
     ) -> Result<HtmlOptionValueStorageUsage, HtmlOptionValueControlError> {
-        let live = self.live.get();
-        let temporary = self.temporary.get();
+        let live = self.live()?;
+        let temporary = self.held_temporary()?;
         Ok(HtmlOptionValueStorageUsage {
             bytes: live
                 .bytes
@@ -364,44 +426,59 @@ impl Control {
         extra: HtmlOptionValueStorageUsage,
     ) -> Result<(), HtmlOptionValueControlError> {
         let required = self.required(extra)?;
-        for (resource, value, limit) in [
-            (
-                HtmlOptionValueResource::LiveBytes,
-                required.bytes,
-                self.envelope.get().bytes,
-            ),
-            (
-                HtmlOptionValueResource::LiveUtf16,
-                required.units,
-                self.envelope.get().units,
-            ),
-        ] {
-            if value > limit {
-                return Err(HtmlOptionValueControlError::LimitExceeded {
-                    resource,
-                    limit: u64::try_from(limit)
-                        .map_err(|_| HtmlOptionValueControlError::RepresentationExhausted)?,
-                    required: u64::try_from(value)
-                        .map_err(|_| HtmlOptionValueControlError::RepresentationExhausted)?,
-                });
-            }
-        }
-        self.record_peak(required);
-        Ok(())
+        // The gate holds the total for the batch only: it checks the allowance and keeps the peak.
+        self.ledger
+            .apply_batch(
+                self.gate,
+                &[
+                    Change::Acquire(HtmlResource::RetainedBytes, wide(required.bytes)),
+                    Change::Acquire(HtmlResource::RetainedUtf16Units, wide(required.units)),
+                    Change::Release(HtmlResource::RetainedBytes, wide(required.bytes)),
+                    Change::Release(HtmlResource::RetainedUtf16Units, wide(required.units)),
+                ],
+            )
+            .map_err(|error| self.refused(error))
     }
-    fn record_peak(&self, required: HtmlOptionValueStorageUsage) {
-        let old = self.peak.get();
-        self.peak.set(HtmlOptionValueStorageUsage {
-            bytes: old.bytes.max(required.bytes),
-            units: old.units.max(required.units),
-        });
-    }
+    /// Records the peak of a total the caller already holds or has, whatever the allowance says.
     fn observed(
         &self,
         extra: HtmlOptionValueStorageUsage,
     ) -> Result<(), HtmlOptionValueControlError> {
-        self.record_peak(self.required(extra)?);
-        Ok(())
+        let required = self.required(extra)?;
+        self.ledger
+            .apply_batch(
+                self.observed,
+                &[
+                    Change::Acquire(HtmlResource::RetainedBytes, wide(required.bytes)),
+                    Change::Acquire(HtmlResource::RetainedUtf16Units, wide(required.units)),
+                    Change::Release(HtmlResource::RetainedBytes, wide(required.bytes)),
+                    Change::Release(HtmlResource::RetainedUtf16Units, wide(required.units)),
+                ],
+            )
+            .map_err(Self::error)
+    }
+    fn scope(&self, retained: bool) -> Scope {
+        if retained {
+            self.retained
+        } else {
+            self.temporary
+        }
+    }
+    /// Takes storage into custody without checking the allowance.
+    fn hold(
+        &self,
+        retained: bool,
+        value: HtmlOptionValueStorageUsage,
+    ) -> Result<(), HtmlOptionValueControlError> {
+        self.ledger
+            .apply_batch(
+                self.scope(retained),
+                &[
+                    Change::Acquire(HtmlResource::RetainedBytes, wide(value.bytes)),
+                    Change::Acquire(HtmlResource::RetainedUtf16Units, wide(value.units)),
+                ],
+            )
+            .map_err(Self::error)
     }
     pub(crate) fn add(
         &self,
@@ -409,13 +486,7 @@ impl Control {
         retained: bool,
     ) -> Result<(), HtmlOptionValueControlError> {
         self.admit(value)?;
-        let cell = if retained {
-            &self.live
-        } else {
-            &self.temporary
-        };
-        cell.set(cell.get().checked_add(value)?);
-        Ok(())
+        self.hold(retained, value)
     }
     /// Returns storage that an earlier `add` took. Returning more than is held changes nothing and
     /// is a protocol breach.
@@ -424,12 +495,56 @@ impl Control {
         value: HtmlOptionValueStorageUsage,
         retained: bool,
     ) -> Result<(), HtmlOptionValueControlError> {
-        let cell = if retained {
-            &self.live
-        } else {
-            &self.temporary
-        };
-        cell.set(cell.get().checked_sub(value)?);
+        self.ledger
+            .apply_batch(
+                self.scope(retained),
+                &[
+                    Change::Release(HtmlResource::RetainedBytes, wide(value.bytes)),
+                    Change::Release(HtmlResource::RetainedUtf16Units, wide(value.units)),
+                ],
+            )
+            .map_err(Self::error)
+    }
+    /// Gives every scope back what it holds, once. A refused give-back keeps the custody and
+    /// latches nothing here; the ledger latches a defect itself.
+    fn release_all(&self) {
+        for scope in [self.temporary, self.retained] {
+            let Ok(usage) = self.ledger.usage(scope) else {
+                continue;
+            };
+            let _ = self.ledger.apply_batch(
+                scope,
+                &[
+                    Change::Release(
+                        HtmlResource::RetainedBytes,
+                        usage.live(HtmlResource::RetainedBytes),
+                    ),
+                    Change::Release(
+                        HtmlResource::RetainedUtf16Units,
+                        usage.live(HtmlResource::RetainedUtf16Units),
+                    ),
+                ],
+            );
+        }
+    }
+    /// Records temporary storage whose admission the caller has already decided.
+    fn hold_temporary(
+        &self,
+        value: HtmlOptionValueStorageUsage,
+    ) -> Result<(), HtmlOptionValueControlError> {
+        self.hold(false, value)
+    }
+    /// Moves temporary storage into the retained total. Either both counts change or neither does.
+    fn transfer(
+        &self,
+        value: HtmlOptionValueStorageUsage,
+    ) -> Result<(), HtmlOptionValueControlError> {
+        self.release(value, false)?;
+        if let Err(error) = self.hold(true, value) {
+            // The retained total cannot take it: the temporary custody comes back.
+            self.hold(false, value)?;
+            return Err(error);
+        }
         Ok(())
     }
     fn begin(
@@ -437,8 +552,18 @@ impl Control {
         envelope: HtmlOptionValueEnvelope,
         cancel: &AtomicBool,
     ) -> Result<(), HtmlOptionValueControlError> {
-        self.start.set(self.work.get());
-        self.envelope.set(envelope);
+        let work = self.work_done()?;
+        self.allowance.set(envelope.work);
+        self.ledger
+            .set_limits(
+                self.gate,
+                gate_limits(
+                    envelope.bytes,
+                    envelope.units,
+                    work.saturating_add(envelope.work),
+                ),
+            )
+            .map_err(Self::error)?;
         self.poll(cancel)?;
         self.admit(Default::default())
     }
@@ -447,6 +572,11 @@ impl Control {
             kind,
             usage: self.usage(),
         }
+    }
+}
+impl Drop for Control {
+    fn drop(&mut self) {
+        self.release_all();
     }
 }
 
@@ -461,6 +591,21 @@ impl QueryControl<'_> {
     }
     pub(crate) fn step(self, work: usize) -> Result<(), HtmlOptionValueControlError> {
         self.control.step(work, self.cancel)
+    }
+    /// Test scheduling only: cancels once the configured work is admitted.
+    #[cfg(test)]
+    pub(crate) fn after_work(self) {
+        self.control.after_work(self.cancel);
+    }
+    /// Whether `scope` is the control's gate, whose refusals it reports itself.
+    pub(crate) fn is_gate(self, scope: Scope) -> bool {
+        self.control.is_gate(scope)
+    }
+    pub(crate) fn refusal(
+        self,
+        refusal: &surgeist_ledger::Refusal<HtmlWork, HtmlResource>,
+    ) -> HtmlOptionValueControlError {
+        self.control.refusal(refusal)
     }
     fn bank(
         capacity: usize,
@@ -581,19 +726,14 @@ impl crate::capture::preflight::ActionPolicy for QueryControl<'_> {
             },
             retained,
         );
-        let cell = if retained {
-            &control.live
-        } else {
-            &control.temporary
-        };
-        let held = cell.get().checked_add(HtmlOptionValueStorageUsage {
-            bytes: actual,
-            units: 0,
-        });
-        if let Ok(held) = held {
-            cell.set(held);
-        }
-        outcome.and(released).and(held.map(|_| ()))
+        let held = control.hold(
+            retained,
+            HtmlOptionValueStorageUsage {
+                bytes: actual,
+                units: 0,
+            },
+        );
+        outcome.and(released).and(held)
     }
     fn on_storage_transfer(&mut self, bytes: usize) -> Result<(), Self::Error> {
         self.control
@@ -622,10 +762,37 @@ impl crate::capture::preflight::ActionPolicy for QueryControl<'_> {
 #[cfg(test)]
 impl Control {
     pub(crate) fn for_tests(envelope: HtmlOptionValueEnvelope) -> Self {
-        Self::new(envelope)
+        Self::new(envelope).unwrap()
     }
     pub(crate) fn temporary_bytes(&self) -> usize {
-        self.temporary.get().bytes
+        self.held_temporary().unwrap_or_default().bytes
+    }
+    pub(crate) fn temporary_usage(&self) -> HtmlOptionValueStorageUsage {
+        self.held_temporary().unwrap_or_default()
+    }
+    pub(crate) fn live_usage(&self) -> HtmlOptionValueStorageUsage {
+        self.live().unwrap_or_default()
+    }
+    pub(crate) fn peak_usage(&self) -> HtmlOptionValueStorageUsage {
+        self.peak().unwrap_or_default()
+    }
+    /// Takes storage into the temporary or retained custody, whatever the allowance says.
+    pub(crate) fn hold_for_tests(&self, retained: bool, value: HtmlOptionValueStorageUsage) {
+        self.hold(retained, value).unwrap();
+    }
+    /// Replaces the allowance the way a new call's envelope does, keeping the work cap.
+    pub(crate) fn set_envelope(&self, envelope: HtmlOptionValueEnvelope) {
+        let work = self.work_done().unwrap();
+        self.ledger
+            .set_limits(
+                self.gate,
+                gate_limits(
+                    envelope.bytes,
+                    envelope.units,
+                    work.saturating_add(self.allowance.get()),
+                ),
+            )
+            .unwrap();
     }
 }
 #[cfg(test)]
@@ -659,25 +826,6 @@ impl Control {
             control: self,
             cancel,
         }
-    }
-    /// Records temporary storage whose admission the caller has already decided.
-    fn hold_temporary(
-        &self,
-        value: HtmlOptionValueStorageUsage,
-    ) -> Result<(), HtmlOptionValueControlError> {
-        self.temporary.set(self.temporary.get().checked_add(value)?);
-        Ok(())
-    }
-    /// Moves temporary storage into the retained total. Either both counts change or neither does.
-    fn transfer(
-        &self,
-        value: HtmlOptionValueStorageUsage,
-    ) -> Result<(), HtmlOptionValueControlError> {
-        let temporary = self.temporary.get().checked_sub(value)?;
-        let live = self.live.get().checked_add(value)?;
-        self.temporary.set(temporary);
-        self.live.set(live);
-        Ok(())
     }
     fn capture_failure(
         &self,
@@ -781,8 +929,12 @@ impl Control {
         }
         result
     }
+    /// Gives the temporary scope back what it holds. A refused give-back is a ledger defect,
+    /// which stays latched in the operation and fails the next charge.
     fn clear_temporaries(&self) {
-        self.temporary.set(Default::default());
+        if let Ok(held) = self.held_temporary() {
+            let _ = self.release(held, false);
+        }
     }
 }
 
@@ -797,7 +949,10 @@ impl HtmlControlledOptionValueCapture {
         envelope: HtmlOptionValueEnvelope,
         cancel: &AtomicBool,
     ) -> Result<Self, HtmlControlledOptionValueFailure> {
-        let control = Control::new(envelope);
+        let control = Control::new(envelope).map_err(|error| HtmlControlledOptionValueFailure {
+            kind: HtmlControlledOptionValueError::Control(error),
+            usage: HtmlControlledOptionValueUsage::default(),
+        })?;
         let setup = (|| {
             control.step(1, cancel)?;
             control.add(
@@ -819,7 +974,7 @@ impl HtmlControlledOptionValueCapture {
         })
     }
     pub fn storage_usage(&self) -> HtmlOptionValueStorageUsage {
-        self.control.live.get()
+        self.control.live().unwrap_or_default()
     }
     pub fn usage(&self) -> HtmlControlledOptionValueUsage {
         self.control.usage()
@@ -1269,12 +1424,15 @@ impl HtmlControlledOptionValueCapture {
                 0,
             )
             .map_err(HtmlControlledOptionValueError::Context)?;
-            let mut session = HtmlSemanticSession::new(
+            let accounting =
+                HtmlSemanticAccounting::host(self.control.ledger.clone(), self.control.gate);
+            let mut session = HtmlSemanticSession::with_accounting(
                 capture,
                 &context,
                 interpreter,
                 limits,
                 HtmlSemanticCancellation::new(),
+                &accounting,
             )
             .map_err(HtmlControlledOptionValueError::Semantic)?;
             session.control_option_value(QueryControl {
@@ -1285,7 +1443,11 @@ impl HtmlControlledOptionValueCapture {
                 subject,
                 HtmlSemanticQuery::OptionValue,
             )]);
-            self.control.semantic.set(session.usage());
+            *self
+                .control
+                .semantic
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = session.usage();
             result.map_err(HtmlControlledOptionValueError::Semantic)
         })();
         match result {

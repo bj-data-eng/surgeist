@@ -29,6 +29,7 @@ mod checkpoint;
 mod dimension;
 mod in_place;
 mod phase_observation;
+mod scope_ledger;
 mod shared;
 #[cfg(test)]
 mod tests;
@@ -36,6 +37,7 @@ pub use charge::{Charge, ScopeCharge, SharedScopeCharge};
 pub use checkpoint::{Checkpoint, IntervalReport, IntervalScopeReport, IntervalUsage};
 pub use dimension::{Dimension, NoDimension, NoTable, TableValue};
 pub use phase_observation::PhaseObservation;
+pub use scope_ledger::ScopeLedger;
 pub use shared::SharedOperation;
 
 mod profile;
@@ -475,6 +477,22 @@ impl<W: Dimension, R: Dimension> Operation<W, R> {
     /// scope's own caps and not those of its ancestors.
     pub fn limits(&self, scope: Scope) -> Result<&Limits<W, R>, Error<W, R>> {
         Ok(&self.entry(self.index(scope)?)?.limits)
+    }
+
+    /// Replaces the caps of a scope, for the batches admitted after this call.
+    ///
+    /// Usage, peaks, direct custody, the profile and open intervals stay as they
+    /// are. The new caps are not checked against the usage: a scope that already
+    /// holds more than a new cap refuses its next acquisition of that dimension,
+    /// even of zero, and still accepts releases. Use it when a consumer's
+    /// allowance changes between calls.
+    pub fn set_limits(&mut self, scope: Scope, limits: Limits<W, R>) -> Result<(), Error<W, R>> {
+        let index = self.index(scope)?;
+        let Some(entry) = self.scopes.get_mut(index) else {
+            return Err(self.latch(Defect::ScopeEntry));
+        };
+        entry.limits = limits;
+        Ok(())
     }
 
     pub fn scope_name(&self, scope: Scope) -> Result<&'static str, Error<W, R>> {

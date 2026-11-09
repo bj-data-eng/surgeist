@@ -3,6 +3,7 @@
 //! Fragment queries follow HTML 877d6146487f §13.4 and §13.2.4–6. Captured
 //! availability describes producer evidence; it never advertises host execution.
 
+use crate::HtmlSemanticAccounting;
 use std::{collections::HashSet, error::Error, fmt, hash::Hash, sync::Arc};
 use surgeist_html::bounded::lexical::validate_custom_element_name;
 use surgeist_html::{
@@ -16,6 +17,7 @@ use surgeist_html::{
     values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
 
+pub(crate) mod account;
 mod construction;
 mod element_input;
 pub(crate) mod preflight;
@@ -379,7 +381,7 @@ impl HtmlCaptureLimits {
         self.element_value_bytes
     }
 }
-/// Admitted capture retention, independent of future parser-work accounting.
+/// Admitted capture retention, read from the capture's ledger scope.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct HtmlCaptureUsage {
     subjects: usize,
@@ -545,6 +547,10 @@ pub enum HtmlCaptureError {
         required: usize,
     },
     RepresentationExhausted,
+    /// The ledger that carries the capture's accounting reported a state its own sequencing rules
+    /// out: a release that matches nothing held, a refusal that names no capture resource, or a
+    /// ledger defect. Valid use never reaches it.
+    LedgerState,
     /// A bounded HTML operation charged a change that the capture's work steps do not admit: a
     /// resource change or a gauge record. The capture charges only work, so an operation that does
     /// this breaks its contract with the capture.
@@ -909,6 +915,7 @@ pub struct HtmlCaptureBuilder {
     data: CaptureData,
     limits: HtmlCaptureLimits,
     controlled: bool,
+    account: account::Account,
 }
 
 fn reserve<T>(v: &mut Vec<T>, additional: usize) -> Result<(), HtmlCaptureError> {
@@ -1005,11 +1012,11 @@ impl HtmlCaptureBuilder {
                 )
             }
         };
-        let usage = self.admit(0, relations, 0, units, 0, 0)?;
+        let charges = self.admit(0, relations, 0, units, 0, 0)?;
         step().map_err(Error::Interrupted)?;
+        self.commit(charges)?;
         let element = self.data.records[index].kind.element_mut()?;
         element.hyperlink_url = Some(state);
-        self.data.usage = usage;
         Ok(())
     }
     /// Attests actual canonical flags and parser creation relative to this
@@ -1045,7 +1052,21 @@ impl HtmlCaptureBuilder {
             },
             limits,
             controlled: false,
+            account: account::Account::Pending,
         }
+    }
+    /// A builder that charges below the scope `accounting` names, in the host's operation. See
+    /// [`HtmlSemanticAccounting`] for the scopes it creates. Without accounting a builder charges
+    /// an operation of its own, which it creates at its first charge.
+    pub fn with_accounting(
+        limits: HtmlCaptureLimits,
+        host_revision: HtmlHostFactsRevision,
+        accounting: &HtmlSemanticAccounting,
+    ) -> Result<Self, crate::HtmlSemanticAccountingFault> {
+        let mut builder = Self::new(limits, host_revision);
+        builder.account =
+            account::Account::hosted(limits, accounting).map_err(crate::accounting::fault)?;
+        Ok(builder)
     }
     pub(crate) fn enable_controlled_storage(&mut self) {
         self.controlled = true;
@@ -1099,76 +1120,44 @@ impl HtmlCaptureBuilder {
             }
         })
     }
+    /// Checks the counts an operation adds against the caps and returns them as charges to
+    /// commit. Nothing is recorded: a refusal and any later failure leave the usage as it was.
     fn admit(
-        &self,
+        &mut self,
         subjects: usize,
         relationships: usize,
         attributes: usize,
         units: usize,
         registries: usize,
         definitions: usize,
-    ) -> Result<HtmlCaptureUsage, HtmlCaptureError> {
-        let old = self.data.usage;
-        let next = HtmlCaptureUsage {
-            subjects: add(old.subjects, subjects)?,
-            relationships: add(old.relationships, relationships)?,
-            attributes: add(old.attributes, attributes)?,
-            utf16_units: add(old.utf16_units, units)?,
-            depth: old.depth,
-            registries: add(old.registries, registries)?,
-            definitions: add(old.definitions, definitions)?,
-            element_value_bytes: old.element_value_bytes,
+    ) -> Result<account::Charges, HtmlCaptureError> {
+        let charges = account::Charges {
+            subjects,
+            relationships,
+            attributes,
+            units,
+            registries,
+            definitions,
+            ..account::Charges::default()
         };
-        for (resource, required, limit) in [
-            (
-                HtmlCaptureResource::Subjects,
-                next.subjects,
-                self.limits.subjects,
-            ),
-            (
-                HtmlCaptureResource::Relationships,
-                next.relationships,
-                self.limits.relationships,
-            ),
-            (
-                HtmlCaptureResource::Attributes,
-                next.attributes,
-                self.limits.attributes,
-            ),
-            (
-                HtmlCaptureResource::Utf16Units,
-                next.utf16_units,
-                self.limits.utf16_units,
-            ),
-            (
-                HtmlCaptureResource::Registries,
-                next.registries,
-                self.limits.registries,
-            ),
-            (
-                HtmlCaptureResource::Definitions,
-                next.definitions,
-                self.limits.definitions,
-            ),
-        ] {
-            if required > limit {
-                return Err(HtmlCaptureError::LimitExceeded {
-                    resource,
-                    limit,
-                    required,
-                });
-            }
-        }
-        Ok(next)
+        self.account.ready(self.limits)?.check(&charges)?;
+        Ok(charges)
     }
-    fn depth(&self, required: usize) -> Result<(), HtmlCaptureError> {
-        if required > self.limits.depth {
-            return Err(HtmlCaptureError::LimitExceeded {
-                resource: HtmlCaptureResource::Depth,
-                limit: self.limits.depth,
-                required,
-            });
-        }
+    /// Checks that a subject at `required` depth fits the cap.
+    fn depth(&mut self, required: usize) -> Result<(), HtmlCaptureError> {
+        let held = self.data.usage.depth;
+        self.account.ready(self.limits)?.check_depth(held, required)
+    }
+    /// Gives back what was recorded since the usage `to`, and reads the typed usage back.
+    pub(crate) fn roll_back_usage(&mut self, to: HtmlCaptureUsage) -> Result<(), HtmlCaptureError> {
+        let from = self.data.usage;
+        self.data.usage = self.account.ready(self.limits)?.rollback(from, to)?;
+        Ok(())
+    }
+    /// Records the charges an operation checked, and reads the typed usage back.
+    fn commit(&mut self, charges: account::Charges) -> Result<(), HtmlCaptureError> {
+        let held = self.data.usage.depth;
+        self.data.usage = self.account.ready(self.limits)?.commit(&charges, held)?;
         Ok(())
     }
     fn push(
@@ -1176,9 +1165,9 @@ impl HtmlCaptureBuilder {
         kind: HtmlCapturedNodeKind,
         document: usize,
         parent: Parent,
-        usage: HtmlCaptureUsage,
+        charges: account::Charges,
     ) -> Result<HtmlCaptureBuilderSubject, HtmlCaptureError> {
-        self.push_controlled(kind, document, parent, usage, &mut preflight::ordinary)
+        self.push_controlled(kind, document, parent, charges, &mut preflight::ordinary)
             .map_err(preflight::ordinary_error)
     }
     fn push_controlled<E>(
@@ -1186,10 +1175,11 @@ impl HtmlCaptureBuilder {
         kind: HtmlCapturedNodeKind,
         document: usize,
         parent: Parent,
-        usage: HtmlCaptureUsage,
+        charges: account::Charges,
         admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
     ) -> Result<HtmlCaptureBuilderSubject, preflight::Failure<E>> {
         preflight::reserve_storage(&mut self.data.records, 1, true, self.controlled, admit)?;
+        self.commit(charges)?;
         let index = self.data.records.len();
         let container = matches!(
             kind,
@@ -1205,7 +1195,6 @@ impl HtmlCaptureBuilder {
             dependents: Vec::new(),
             depth: DepthLink::root(index),
         });
-        self.data.usage = usage;
         Ok(HtmlCaptureBuilderSubject {
             capture: self.data.identity.clone(),
             index,
@@ -1230,7 +1219,7 @@ impl HtmlCaptureBuilder {
     ) -> Result<HtmlCaptureBuilderSubject, preflight::Failure<E>> {
         preflight::work(admit, 8)?;
         let registry = self.registry(registry)?;
-        let usage = self.admit(
+        let charges = self.admit(
             1,
             usize::from(matches!(registry, Registry::Index(_))),
             0,
@@ -1257,7 +1246,7 @@ impl HtmlCaptureBuilder {
             }),
             self.data.records.len(),
             Parent::Root,
-            usage,
+            charges,
             admit,
         )
     }
@@ -1331,7 +1320,7 @@ impl HtmlCaptureBuilder {
                 Association::Index(owner)
             }
         };
-        let usage = self.admit(
+        let charges = self.admit(
             0,
             usize::from(matches!(cache, Association::Index(_))),
             0,
@@ -1339,12 +1328,12 @@ impl HtmlCaptureBuilder {
             0,
             0,
         )?;
+        self.commit(charges)?;
         let current = self.data.records[index].kind.document_mut()?;
         current.class = class;
         current.template_role = role;
         current.template_cache = cache;
         current.template_facts_established = true;
-        self.data.usage = usage;
         Ok(())
     }
     /// Establishes the actual slot once, without inferring it from content.
@@ -1362,10 +1351,10 @@ impl HtmlCaptureBuilder {
         if !matches!(element.nonce, HtmlCapturedNonce::Unavailable) {
             return Err(HtmlCaptureError::NonceAlreadyEstablished);
         }
-        let usage = self.admit(0, 0, 0, value.len(), 0, 0)?;
+        let charges = self.admit(0, 0, 0, value.len(), 0, 0)?;
+        self.commit(charges)?;
         let element = self.data.records[index].kind.element_mut()?;
         element.nonce = HtmlCapturedNonce::Value(value);
-        self.data.usage = usage;
         Ok(())
     }
     /// Supplies independently qualified Document environment facts once.
@@ -1433,7 +1422,7 @@ impl HtmlCaptureBuilder {
         if let HtmlCapturedIsValue::Value(v) = &is_value {
             units = add(units, v.len())?;
         }
-        let mut usage = self.admit(
+        let mut charges = self.admit(
             1,
             1 + usize::from(matches!(registry, Registry::Index(_))),
             attributes.len(),
@@ -1454,7 +1443,8 @@ impl HtmlCaptureBuilder {
             }
             HtmlCaptureStorageError::Interrupted(error) => error,
         })?;
-        usage.element_value_bytes = self.admit_element_value_bytes(retained.retained_bytes())?;
+        charges.element_value_bytes = retained.retained_bytes();
+        self.admit_element_value_bytes(charges.element_value_bytes)?;
         preflight::work(admit, add(name_units(&name)?, 16)?)?;
         let template = if html(&name, "template") {
             TemplateAssociation::Unavailable
@@ -1476,7 +1466,7 @@ impl HtmlCaptureBuilder {
             }),
             document,
             Parent::Unavailable,
-            usage,
+            charges,
             admit,
         )
     }
@@ -1487,7 +1477,7 @@ impl HtmlCaptureBuilder {
     ) -> Result<HtmlCaptureBuilderSubject, HtmlCaptureError> {
         let document = self.index(document)?;
         self.require(document, HtmlCaptureSubjectKind::Document)?;
-        let usage = self.admit(1, 1, 0, 0, 0, 0)?;
+        let charges = self.admit(1, 1, 0, 0, 0, 0)?;
         self.push(
             HtmlCapturedNodeKind::Fragment(HtmlCapturedFragment {
                 kind: HtmlCapturedFragmentKind::Plain,
@@ -1496,7 +1486,7 @@ impl HtmlCaptureBuilder {
             }),
             document,
             Parent::Root,
-            usage,
+            charges,
         )
     }
     fn add_leaf(
@@ -1518,8 +1508,8 @@ impl HtmlCaptureBuilder {
         preflight::work(admit, 7)?;
         let document = self.index(document)?;
         self.require(document, HtmlCaptureSubjectKind::Document)?;
-        let usage = self.admit(1, 1, 0, units, 0, 0)?;
-        self.push_controlled(kind, document, Parent::Unavailable, usage, admit)
+        let charges = self.admit(1, 1, 0, units, 0, 0)?;
+        self.push_controlled(kind, document, Parent::Unavailable, charges, admit)
     }
     pub fn add_text(
         &mut self,
@@ -1589,8 +1579,9 @@ impl HtmlCaptureBuilder {
                 units = add(units, add(d.name.len(), d.local_name.len())?)?;
             }
         }
-        let usage = self.admit(0, 0, 0, units, 1, definitions.as_ref().map_or(0, Vec::len))?;
+        let charges = self.admit(0, 0, 0, units, 1, definitions.as_ref().map_or(0, Vec::len))?;
         reserve(&mut self.data.registries, 1)?;
+        self.commit(charges)?;
         let index = self.data.registries.len();
         self.data.registries.push(RegistryRecord {
             complete: definitions.is_some(),
@@ -1598,7 +1589,6 @@ impl HtmlCaptureBuilder {
             scope: HtmlRegistryScope::Unavailable,
             scope_established: false,
         });
-        self.data.usage = usage;
         Ok(HtmlCaptureBuilderRegistry {
             capture: self.data.identity.clone(),
             index,
@@ -1665,7 +1655,7 @@ impl HtmlCaptureBuilder {
         {
             return Err(HtmlCaptureError::DuplicateDefinitionName);
         }
-        let usage = self.admit(
+        let charges = self.admit(
             0,
             0,
             0,
@@ -1673,11 +1663,11 @@ impl HtmlCaptureBuilder {
             0,
             1,
         )?;
+        reserve(&mut self.data.registries[registry.index].definitions, 1)?;
+        self.commit(charges)?;
         let records = &mut self.data.registries[registry.index].definitions;
-        reserve(records, 1)?;
         let record_index = records.len();
         records.push(definition);
-        self.data.usage = usage;
         Ok(HtmlCaptureBuilderDefinition {
             capture: self.data.identity.clone(),
             registry_index: registry.index,
@@ -1746,7 +1736,7 @@ impl HtmlCaptureBuilder {
         {
             return Err(HtmlCaptureError::CustomElementDefinitionRequired);
         }
-        let usage = self.admit(
+        let charges = self.admit(
             0,
             usize::from(matches!(
                 definition,
@@ -1757,9 +1747,9 @@ impl HtmlCaptureBuilder {
             0,
             0,
         )?;
+        self.commit(charges)?;
         let element = self.data.records[index].kind.element_mut()?;
         element.custom_context = Some(CustomElementContext { state, definition });
-        self.data.usage = usage;
         Ok(())
     }
     pub fn establish_root(
@@ -1866,7 +1856,7 @@ impl HtmlCaptureBuilder {
             tallest = tallest.max(self.data.records[child].depth.height);
         }
         let height = add(first, tallest)?;
-        if cycle || height > self.limits.depth {
+        if cycle || self.depth(height).is_err() {
             return Err(self.first_refusal(edges, parent, first, cycle, height, admit));
         }
         Ok(Some(DepthPlan {
@@ -1881,7 +1871,7 @@ impl HtmlCaptureBuilder {
     /// against the limit; the new edge itself is checked before any traversal.
     /// Work is proportional to the records visited.
     fn first_refusal<E>(
-        &self,
+        &mut self,
         edges: &[(usize, usize)],
         parent: usize,
         first: usize,
@@ -1893,15 +1883,15 @@ impl HtmlCaptureBuilder {
             Err(failure) => failure,
             // The walk and the roots and heights decide the same refusal.
             Ok(()) if cycle => preflight::Failure::Capture(HtmlCaptureError::Cycle),
-            Ok(()) => preflight::Failure::Capture(HtmlCaptureError::LimitExceeded {
-                resource: HtmlCaptureResource::Depth,
-                limit: self.limits.depth,
-                required: height,
+            Ok(()) => preflight::Failure::Capture(match self.depth(height) {
+                Err(error) => error,
+                // The walk found no refusal where the check that sent it here found one.
+                Ok(()) => HtmlCaptureError::LedgerState,
             }),
         }
     }
     fn refusal_walk<E>(
-        &self,
+        &mut self,
         edges: &[(usize, usize)],
         parent: usize,
         first: usize,
@@ -1922,7 +1912,7 @@ impl HtmlCaptureBuilder {
     /// record's depth is checked against the limit. Work is proportional to the
     /// records visited, never to the whole forest. Used only to name a refusal.
     fn propagate_depths<E>(
-        &self,
+        &mut self,
         updates: &mut Vec<(usize, usize)>,
         forbidden: Option<usize>,
         admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
@@ -1960,7 +1950,6 @@ impl HtmlCaptureBuilder {
             depth.offset = plan.first;
         }
         self.data.records[plan.root].depth.height = plan.height;
-        self.data.usage.depth = self.data.usage.depth.max(plan.height);
     }
     /// Establishes an ordinary parent without claiming complete ordered children.
     pub fn establish_parent(
@@ -1999,12 +1988,13 @@ impl HtmlCaptureBuilder {
             ));
         }
         self.ordinary_edge(child, parent)?;
-        let usage = self.admit(0, 2, 0, 0, 0, 0)?;
+        let mut charges = self.admit(0, 2, 0, 0, 0, 0)?;
         let plan = self.edge_depths_controlled(child, parent, admit)?;
         reserve(&mut self.data.records[parent].dependents, 1)?;
+        charges.depth = plan.as_ref().map(|plan| plan.height);
+        self.commit(charges)?;
         self.data.records[child].parent = Parent::Index(parent);
         self.data.records[parent].dependents.push(child);
-        self.data.usage = usage;
         self.apply_depths(plan, &[(child, parent)]);
         Ok(())
     }
@@ -2130,7 +2120,7 @@ impl HtmlCaptureBuilder {
                 .checked_mul(2)
                 .ok_or(HtmlCaptureError::RepresentationExhausted)?,
         )?;
-        let usage = self.admit(0, relationships, 0, 0, 0, 0)?;
+        let mut charges = self.admit(0, relationships, 0, 0, 0, 0)?;
         // Only the roots attached here are linked: every other record keeps the
         // depth its own edge established. A cycle needs the parent below one of
         // the attached children, which the roots reveal.
@@ -2156,12 +2146,13 @@ impl HtmlCaptureBuilder {
             bytes: indices.capacity() * std::mem::size_of::<usize>(),
         })
         .map_err(preflight::Failure::Admission)?;
+        charges.depth = plan.as_ref().map(|plan| plan.height);
+        self.commit(charges)?;
         for &(child, _) in &edges {
             self.data.records[child].parent = Parent::Index(parent);
             self.data.records[parent].dependents.push(child);
         }
         self.data.records[parent].children = Some(indices);
-        self.data.usage = usage;
         self.apply_depths(plan, &edges);
         Ok(())
     }
@@ -2253,15 +2244,16 @@ impl HtmlCaptureBuilder {
                 HtmlCaptureError::InvalidTemplateContentsReference,
             ));
         }
-        let usage = self.admit(0, 3, 0, 0, 0, 0)?;
+        let mut charges = self.admit(0, 3, 0, 0, 0, 0)?;
         let plan = self.edge_depths_controlled(f, t, admit)?;
         reserve(&mut self.data.records[t].dependents, 1)?;
+        charges.depth = plan.as_ref().map(|plan| plan.height);
+        self.commit(charges)?;
         let e = self.data.records[t].kind.element_mut()?;
         e.template = TemplateAssociation::Owned(f);
         let frag = self.data.records[f].kind.fragment_mut()?;
         frag.host = Association::Index(t);
         self.data.records[t].dependents.push(f);
-        self.data.usage = usage;
         self.apply_depths(plan, &[(f, t)]);
         Ok(())
     }
@@ -2291,10 +2283,10 @@ impl HtmlCaptureBuilder {
         if !matches!(fragment.kind, HtmlCapturedFragmentKind::ShadowRoot(_)) {
             return Err(HtmlCaptureError::InvalidTemplateContentsReference);
         }
-        let usage = self.admit(0, 1, 0, 0, 0, 0)?;
+        let charges = self.admit(0, 1, 0, 0, 0, 0)?;
+        self.commit(charges)?;
         let element = self.data.records[t].kind.element_mut()?;
         element.template = TemplateAssociation::ShadowReference(f);
-        self.data.usage = usage;
         Ok(())
     }
     /// Adds shadow contents with an unavailable external host, without attaching a host.
@@ -2307,7 +2299,7 @@ impl HtmlCaptureBuilder {
         let document = self.index(document)?;
         self.require(document, HtmlCaptureSubjectKind::Document)?;
         let registry = self.registry(registry)?;
-        let usage = self.admit(
+        let charges = self.admit(
             1,
             1 + usize::from(matches!(registry, Registry::Index(_))),
             0,
@@ -2323,7 +2315,7 @@ impl HtmlCaptureBuilder {
             }),
             document,
             Parent::Root,
-            usage,
+            charges,
         )
     }
     /// Captures an existing shadow root and all its explicit source metadata.
@@ -2346,7 +2338,7 @@ impl HtmlCaptureBuilder {
             return Err(HtmlCaptureError::AssociationAlreadyEstablished);
         }
         let registry = self.registry(registry)?;
-        let mut usage = self.admit(
+        let mut charges = self.admit(
             1,
             4 + usize::from(matches!(registry, Registry::Index(_))),
             0,
@@ -2361,6 +2353,8 @@ impl HtmlCaptureBuilder {
         self.depth(depth)?;
         reserve(&mut self.data.records[h].dependents, 1)?;
         reserve(&mut self.data.records, 1)?;
+        charges.depth = Some(depth);
+        self.commit(charges)?;
         let i = self.data.records.len();
         self.data.records.push(Record {
             kind: HtmlCapturedNodeKind::Fragment(HtmlCapturedFragment {
@@ -2383,15 +2377,13 @@ impl HtmlCaptureBuilder {
         let e = self.data.records[h].kind.element_mut()?;
         e.shadow = Association::Index(i);
         self.data.records[h].dependents.push(i);
-        usage.depth = usage.depth.max(depth);
-        self.data.usage = usage;
         Ok(HtmlCaptureBuilderSubject {
             capture: self.data.identity.clone(),
             index: i,
         })
     }
     /// Publishes validated immutable records; unavailable facts remain unavailable.
-    pub fn finish(self) -> Result<HtmlCapture, HtmlCaptureError> {
+    pub fn finish(mut self) -> Result<HtmlCapture, HtmlCaptureError> {
         let mut scratch = preflight::DepthScratch::new();
         self.preflight_finish(&mut scratch, &mut preflight::ordinary)
             .map_err(preflight::ordinary_error)?;
@@ -2418,7 +2410,7 @@ impl HtmlCaptureBuilder {
     /// Validates borrowed data before the caller moves it into the immutable wrapper.
     /// Admission failure retains this exact builder and the caller's actual scratch.
     pub(crate) fn preflight_finish<E>(
-        &self,
+        &mut self,
         scratch: &mut preflight::DepthScratch,
         admit: &mut impl FnMut(preflight::Action) -> Result<(), E>,
     ) -> Result<(), preflight::Failure<E>> {

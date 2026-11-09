@@ -9,16 +9,23 @@ pub surgeist_html::accounting::HtmlCapScope::BaseFacts
 pub surgeist_html::accounting::HtmlCapScope::Capture
 pub surgeist_html::accounting::HtmlCapScope::CaptureImport
 pub surgeist_html::accounting::HtmlCapScope::Construction
+pub surgeist_html::accounting::HtmlCapScope::ContextFacts
 pub surgeist_html::accounting::HtmlCapScope::ControlFacts
 pub surgeist_html::accounting::HtmlCapScope::ElementReferenceFacts
 pub surgeist_html::accounting::HtmlCapScope::GlobalInheritance
+pub surgeist_html::accounting::HtmlCapScope::ImageDimensionFacts
 pub surgeist_html::accounting::HtmlCapScope::InertFacts
 pub surgeist_html::accounting::HtmlCapScope::LanguageDirection
+pub surgeist_html::accounting::HtmlCapScope::LinkRelationshipFacts
+pub surgeist_html::accounting::HtmlCapScope::MediaFacts
+pub surgeist_html::accounting::HtmlCapScope::NaturalDimensionFacts
+pub surgeist_html::accounting::HtmlCapScope::OptionValue
 pub surgeist_html::accounting::HtmlCapScope::OutputDefault
 pub surgeist_html::accounting::HtmlCapScope::Parse
 pub surgeist_html::accounting::HtmlCapScope::Query
+pub surgeist_html::accounting::HtmlCapScope::RegistryFormation
 impl surgeist_html::accounting::HtmlCapScope
-pub const surgeist_html::accounting::HtmlCapScope::ALL: [Self; 13]
+pub const surgeist_html::accounting::HtmlCapScope::ALL: [Self; 20]
 pub const fn surgeist_html::accounting::HtmlCapScope::capped_resources(self) -> &'static [surgeist_html::accounting::HtmlResource]
 pub const fn surgeist_html::accounting::HtmlCapScope::capped_work(self) -> &'static [surgeist_html::accounting::HtmlWork]
 pub const fn surgeist_html::accounting::HtmlCapScope::name(self) -> &'static str
@@ -52,8 +59,11 @@ pub surgeist_html::accounting::HtmlResource::ContextEffects
 pub surgeist_html::accounting::HtmlResource::DiagnosticPayloadUnits
 pub surgeist_html::accounting::HtmlResource::Diagnostics
 pub surgeist_html::accounting::HtmlResource::ElementValueBytes
+pub surgeist_html::accounting::HtmlResource::FactBytes
 pub surgeist_html::accounting::HtmlResource::FactCodeUnits
 pub surgeist_html::accounting::HtmlResource::FactRecords
+pub surgeist_html::accounting::HtmlResource::FormationBacking
+pub surgeist_html::accounting::HtmlResource::FormationBytes
 pub surgeist_html::accounting::HtmlResource::ManagedAttributes
 pub surgeist_html::accounting::HtmlResource::ManagedCapacityBytes
 pub surgeist_html::accounting::HtmlResource::ManagedEdges
@@ -138,8 +148,11 @@ pub surgeist_html::accounting::HtmlResourceTable::ContextEffects: T
 pub surgeist_html::accounting::HtmlResourceTable::DiagnosticPayloadUnits: T
 pub surgeist_html::accounting::HtmlResourceTable::Diagnostics: T
 pub surgeist_html::accounting::HtmlResourceTable::ElementValueBytes: T
+pub surgeist_html::accounting::HtmlResourceTable::FactBytes: T
 pub surgeist_html::accounting::HtmlResourceTable::FactCodeUnits: T
 pub surgeist_html::accounting::HtmlResourceTable::FactRecords: T
+pub surgeist_html::accounting::HtmlResourceTable::FormationBacking: T
+pub surgeist_html::accounting::HtmlResourceTable::FormationBytes: T
 pub surgeist_html::accounting::HtmlResourceTable::ManagedAttributes: T
 pub surgeist_html::accounting::HtmlResourceTable::ManagedCapacityBytes: T
 pub surgeist_html::accounting::HtmlResourceTable::ManagedEdges: T
@@ -6783,6 +6796,7 @@ impl surgeist_html::values::HtmlValueInterpreter
 pub fn surgeist_html::values::HtmlValueInterpreter::control_autocomplete(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, raw: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>) -> core::result::Result<surgeist_html::attributes::autocomplete::HtmlAutocompleteReport, surgeist_html::values::HtmlValueInterpretationError>
 pub fn surgeist_html::values::HtmlValueInterpreter::control_autocomplete_controlled(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, raw: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>, state: core::option::Option<surgeist_html::attributes::HtmlInputType>, limits: surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationLimits) -> core::result::Result<surgeist_html::bounded::attributes::HtmlAutocompleteMaterialized, surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationFailure>
 pub fn surgeist_html::values::HtmlValueInterpreter::control_autocomplete_for_input(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, raw: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>, state: surgeist_html::attributes::HtmlInputType) -> core::result::Result<surgeist_html::attributes::autocomplete::HtmlAutocompleteReport, surgeist_html::values::HtmlValueInterpretationError>
+pub fn surgeist_html::values::HtmlValueInterpreter::control_autocomplete_in_scopes(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, raw: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>, state: core::option::Option<surgeist_html::attributes::HtmlInputType>, ledger: &mut impl surgeist_ledger::scope_ledger::ScopeLedger<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>, caps: surgeist_ledger::Scope, observed: surgeist_ledger::Scope) -> core::result::Result<surgeist_html::bounded::attributes::HtmlAutocompleteMaterialized, surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationFailure>
 impl surgeist_html::values::HtmlValueInterpreter
 pub fn surgeist_html::values::HtmlValueInterpreter::control_length_bounds(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, minimum: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>, maximum: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>, input_state: core::option::Option<surgeist_html::attributes::HtmlInputType>, initial_text: core::option::Option<&surgeist_html::attributes::control_length::HtmlControlInitialText>) -> core::result::Result<surgeist_html::attributes::control_length::HtmlControlLengthBoundsReport, surgeist_html::attributes::control_length::HtmlControlLengthError>
 pub fn surgeist_html::values::HtmlValueInterpreter::input_size(&self, element: &impl surgeist_html::values::HtmlNameInput + ?core::marker::Sized, raw: core::option::Option<&impl surgeist_html::values::HtmlAttributeInput>) -> core::result::Result<surgeist_html::attributes::control_length::HtmlInputSizeReport, surgeist_html::values::HtmlValueAdmissionError>

@@ -9,8 +9,10 @@
 
 use super::*;
 use crate::{HtmlCapture, HtmlCaptureError, HtmlCapturedElement, HtmlCapturedNode};
-use std::marker::PhantomData;
+use std::{fmt, marker::PhantomData};
+use surgeist_html::accounting::{HtmlCapScope, HtmlLimits, HtmlResource, HtmlWork};
 use surgeist_html::vocabulary::KnownHtmlElement;
+use surgeist_ledger::{Change, Error, Operation, RefusalReason, Scope, Tariff, Tariffs};
 
 /// The namespace URI of HTML elements.
 pub(super) const HTML_NAMESPACE: &str = "http://www.w3.org/1999/xhtml";
@@ -58,54 +60,270 @@ pub(super) fn namespace_is_with<E>(
 
 /// The refusals a fact constructor's validation scan can report. Each
 /// constructor keeps its own error type and its own spelling of the work refusal.
-pub(super) trait ScanError: Sized {
-    /// A work total or envelope that does not fit in `usize`.
+pub(crate) trait ScanError: Sized {
+    /// A work total or envelope that does not fit in `usize`, or a ledger allocation that
+    /// failed while the constructor's scopes were created.
     fn representation_exhausted() -> Self;
     /// The validation work limit was exceeded: `required` is the total that was refused.
     fn work_exceeded(limit: usize, required: usize) -> Self;
     /// The capture refused a node lookup.
     fn capture(error: HtmlCaptureError) -> Self;
+    /// The ledger that enforces the limits reported a state its own sequencing rules out.
+    fn ledger_state() -> Self;
 }
 
-/// A validation-work total against its limit, with the lookups that charge it.
-///
-/// The meter reports refusals as the constructor's own error `E`. A refused
-/// charge leaves the total unchanged, so a refusal reports exactly the work that
-/// was admitted before it.
-pub(super) struct ScanMeter<E> {
+/// The caps of one constructor's ledger scope. A cap left unset is unlimited.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Caps {
     work: usize,
-    limit: usize,
-    error: PhantomData<fn() -> E>,
+    records: usize,
+    bytes: usize,
+    code_units: usize,
+    assigned_nodes: usize,
 }
-impl<E: ScanError> ScanMeter<E> {
-    pub(super) fn new(work: usize, limit: usize) -> Self {
+impl Caps {
+    /// Caps the validation work and nothing else.
+    pub(crate) const fn work(work: usize) -> Self {
         Self {
             work,
-            limit,
+            records: usize::MAX,
+            bytes: usize::MAX,
+            code_units: usize::MAX,
+            assigned_nodes: usize::MAX,
+        }
+    }
+    pub(crate) const fn records(mut self, records: usize) -> Self {
+        self.records = records;
+        self
+    }
+    pub(crate) const fn bytes(mut self, bytes: usize) -> Self {
+        self.bytes = bytes;
+        self
+    }
+    pub(crate) const fn code_units(mut self, code_units: usize) -> Self {
+        self.code_units = code_units;
+        self
+    }
+    pub(crate) const fn assigned_nodes(mut self, assigned_nodes: usize) -> Self {
+        self.assigned_nodes = assigned_nodes;
+        self
+    }
+    fn limits(self) -> HtmlLimits {
+        let wide = |value: usize| u64::try_from(value).unwrap_or(u64::MAX);
+        HtmlLimits::from_fn(
+            |work| match work {
+                HtmlWork::SemanticStep => wide(self.work),
+                _ => u64::MAX,
+            },
+            |resource| match resource {
+                HtmlResource::FactRecords => wide(self.records),
+                HtmlResource::FactBytes => wide(self.bytes),
+                HtmlResource::FactCodeUnits => wide(self.code_units),
+                HtmlResource::AssignedNodes => wide(self.assigned_nodes),
+                _ => u64::MAX,
+            },
+        )
+    }
+}
+
+/// A validation-work total and the fact counts of one constructor, charged to a ledger scope.
+///
+/// The scope belongs to an operation of the meter's own and carries the constructor's caps. The
+/// meter reports refusals as the constructor's own error `E`. A refused charge leaves the total
+/// unchanged, so a refusal reports exactly the work that was admitted before it.
+pub(crate) struct ScanMeter<E> {
+    operation: Operation<HtmlWork, HtmlResource>,
+    /// The scope that carries the caps.
+    scope: Scope,
+    /// The scope that takes every fact amount first, whether or not the caps admit it yet. It
+    /// projects nothing into the capped scope.
+    grown: Scope,
+    error: PhantomData<fn() -> E>,
+}
+impl<E> fmt::Debug for ScanMeter<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ScanMeter").finish_non_exhaustive()
+    }
+}
+impl<E: ScanError> ScanMeter<E> {
+    /// A meter in a scope named for `kind` that carries `caps`.
+    pub(crate) fn new(kind: HtmlCapScope, caps: Caps) -> Result<Self, E> {
+        let mut operation =
+            Operation::new(kind.name(), caps.limits(), 2).map_err(Self::refusal_of)?;
+        let scope = operation.root();
+        let grown = operation
+            .child(
+                scope,
+                "html-fact-grown",
+                HtmlLimits::unlimited(),
+                Tariffs::from_fn(
+                    |work| Tariff::new(work, 0),
+                    |resource| Tariff::new(resource, 0),
+                ),
+            )
+            .map_err(Self::refusal_of)?;
+        Ok(Self {
+            operation,
+            scope,
+            grown,
             error: PhantomData,
+        })
+    }
+    /// The typed refusal of a ledger error. A refused work cap is the constructor's work refusal,
+    /// and an overflow or a failed ledger allocation its representation exhaustion; anything else
+    /// is a ledger state.
+    fn refusal_of(error: Error<HtmlWork, HtmlResource>) -> E {
+        let refusal = match error {
+            Error::Refused(refusal) => refusal,
+            Error::Allocation => return E::representation_exhausted(),
+            _ => return E::ledger_state(),
+        };
+        match (refusal.reason, refusal.change) {
+            (RefusalReason::Overflow, _) => E::representation_exhausted(),
+            (RefusalReason::Limit { limit }, Change::Work(HtmlWork::SemanticStep, amount)) => {
+                match (
+                    usize::try_from(limit),
+                    refusal
+                        .current
+                        .checked_add(amount)
+                        .and_then(|required| usize::try_from(required).ok()),
+                ) {
+                    (Ok(limit), Some(required)) => E::work_exceeded(limit, required),
+                    _ => E::representation_exhausted(),
+                }
+            }
+            _ => E::ledger_state(),
         }
     }
     /// The work admitted so far.
-    pub(super) fn work(&self) -> usize {
-        self.work
+    pub(crate) fn work(&self) -> Result<usize, E> {
+        let work = self
+            .operation
+            .usage(self.scope)
+            .map_err(Self::refusal_of)?
+            .work(HtmlWork::SemanticStep);
+        usize::try_from(work).map_err(|_| E::representation_exhausted())
     }
-    /// The work limit this meter refuses beyond.
-    pub(super) fn limit(&self) -> usize {
-        self.limit
+    pub(crate) fn charge(&mut self, amount: usize) -> Result<(), E> {
+        self.operation
+            .apply(
+                self.scope,
+                Change::Work(
+                    HtmlWork::SemanticStep,
+                    u64::try_from(amount).unwrap_or(u64::MAX),
+                ),
+            )
+            .map_err(Self::refusal_of)
     }
-    pub(super) fn charge(&mut self, amount: usize) -> Result<(), E> {
-        let required = self
-            .work
-            .checked_add(amount)
-            .ok_or_else(E::representation_exhausted)?;
-        if required > self.limit {
-            return Err(E::work_exceeded(self.limit, required));
+    /// Takes `amount` of a fact resource without checking its cap, which `check` does where the
+    /// constructor's own order of refusals requires.
+    pub(crate) fn grow(&mut self, resource: HtmlResource, amount: usize) -> Result<(), E> {
+        self.operation
+            .apply(
+                self.grown,
+                Change::Acquire(resource, u64::try_from(amount).unwrap_or(u64::MAX)),
+            )
+            .map_err(Self::refusal_of)
+    }
+    /// Refuses a total of a fact resource beyond its cap. A refusal is reported through `refuse`
+    /// with the limit and the total taken.
+    pub(crate) fn check(
+        &mut self,
+        resource: HtmlResource,
+        refuse: impl FnOnce(usize, usize) -> E,
+    ) -> Result<(), E> {
+        let live = |meter: &Self, scope| {
+            meter
+                .operation
+                .usage(scope)
+                .map(|usage| usage.live(resource))
+                .map_err(Self::refusal_of)
+        };
+        let owed = live(self, self.grown)?.saturating_sub(live(self, self.scope)?);
+        if owed == 0 {
+            return Ok(());
         }
-        self.work = required;
-        Ok(())
+        self.operation
+            .apply(self.scope, Change::Acquire(resource, owed))
+            .map_err(|error| {
+                let Error::Refused(refusal) = error else {
+                    return E::ledger_state();
+                };
+                match (refusal.reason, refusal.change) {
+                    (RefusalReason::Overflow, _) => E::representation_exhausted(),
+                    (RefusalReason::Limit { limit }, Change::Acquire(refused, _))
+                        if refused == resource =>
+                    {
+                        match (
+                            usize::try_from(limit),
+                            refusal
+                                .current
+                                .checked_add(owed)
+                                .and_then(|required| usize::try_from(required).ok()),
+                        ) {
+                            (Ok(limit), Some(required)) => refuse(limit, required),
+                            _ => E::representation_exhausted(),
+                        }
+                    }
+                    _ => E::ledger_state(),
+                }
+            })
+    }
+    /// Admits `amount` of a fact resource: takes it, then checks the cap.
+    pub(crate) fn acquire(
+        &mut self,
+        resource: HtmlResource,
+        amount: usize,
+        refuse: impl FnOnce(usize, usize) -> E,
+    ) -> Result<(), E> {
+        self.grow(resource, amount)?;
+        self.check(resource, refuse)
+    }
+    /// Refuses `amount` of a fact resource that would not fit its cap, taking none of it.
+    pub(crate) fn fits(
+        &mut self,
+        resource: HtmlResource,
+        amount: usize,
+        refuse: impl FnOnce(usize, usize) -> E,
+    ) -> Result<(), E> {
+        let amount = u64::try_from(amount).unwrap_or(u64::MAX);
+        self.operation
+            .check_batch(self.scope, &[Change::Acquire(resource, amount)])
+            .map_err(|error| {
+                let Error::Refused(refusal) = error else {
+                    return E::ledger_state();
+                };
+                match (refusal.reason, refusal.change) {
+                    (RefusalReason::Overflow, _) => E::representation_exhausted(),
+                    (RefusalReason::Limit { limit }, Change::Acquire(refused, _))
+                        if refused == resource =>
+                    {
+                        match (
+                            usize::try_from(limit),
+                            refusal
+                                .current
+                                .checked_add(amount)
+                                .and_then(|required| usize::try_from(required).ok()),
+                        ) {
+                            (Ok(limit), Some(required)) => refuse(limit, required),
+                            _ => E::representation_exhausted(),
+                        }
+                    }
+                    _ => E::ledger_state(),
+                }
+            })
+    }
+    /// The total of a fact resource taken so far, checked or not.
+    pub(crate) fn taken(&self, resource: HtmlResource) -> Result<usize, E> {
+        let live = self
+            .operation
+            .usage(self.grown)
+            .map_err(Self::refusal_of)?
+            .live(resource);
+        usize::try_from(live).map_err(|_| E::representation_exhausted())
     }
     /// Looks up a node, charging 1 before the lookup.
-    pub(super) fn node<'a>(
+    pub(crate) fn node<'a>(
         &mut self,
         capture: &'a HtmlCapture,
         id: &HtmlCaptureSubjectId,
@@ -114,7 +332,7 @@ impl<E: ScanError> ScanMeter<E> {
         capture.node(id).map_err(E::capture)
     }
     /// Recognizes an element name in the HTML vocabulary, charging its envelope first.
-    pub(super) fn known(
+    pub(crate) fn known(
         &mut self,
         element: &HtmlCapturedElement,
     ) -> Result<Option<KnownHtmlElement>, E> {
@@ -123,7 +341,7 @@ impl<E: ScanError> ScanMeter<E> {
         Ok(KnownHtmlElement::from_name(element.name()))
     }
     /// Whether the element is in the HTML namespace, charged as `namespace_is_with`.
-    pub(super) fn html_namespace(&mut self, element: &HtmlCapturedElement) -> Result<bool, E> {
+    pub(crate) fn html_namespace(&mut self, element: &HtmlCapturedElement) -> Result<bool, E> {
         namespace_is_with(element, HTML_NAMESPACE, |amount| self.charge(amount))
     }
 }
@@ -145,6 +363,7 @@ mod tests {
         Exhausted,
         Work { limit: usize, required: usize },
         Capture,
+        State,
     }
     impl ScanError for Refusal {
         fn representation_exhausted() -> Self {
@@ -155,6 +374,9 @@ mod tests {
         }
         fn capture(_: HtmlCaptureError) -> Self {
             Self::Capture
+        }
+        fn ledger_state() -> Self {
+            Self::State
         }
     }
 
@@ -250,9 +472,13 @@ mod tests {
         assert_eq!((result, asked), (Err("stopped"), 3));
     }
 
+    fn meter(caps: Caps) -> ScanMeter<Refusal> {
+        ScanMeter::new(HtmlCapScope::ControlFacts, caps).unwrap()
+    }
+
     #[test]
     fn meter_refusal_reports_the_refused_total_and_keeps_the_admitted_one() {
-        let mut meter = ScanMeter::<Refusal>::new(0, 10);
+        let mut meter = meter(Caps::work(10));
         meter.charge(6).unwrap();
         assert_eq!(
             meter.charge(5),
@@ -261,31 +487,30 @@ mod tests {
                 required: 11
             })
         );
-        assert_eq!(meter.work(), 6, "a refusal does not consume the work");
+        assert_eq!(meter.work(), Ok(6), "a refusal does not consume the work");
         meter.charge(4).unwrap();
-        assert_eq!(meter.work(), 10);
-        assert_eq!(
-            ScanMeter::<Refusal>::new(usize::MAX, usize::MAX).charge(1),
-            Err(Refusal::Exhausted)
-        );
+        assert_eq!(meter.work(), Ok(10));
+        let mut exhausted = self::meter(Caps::work(usize::MAX));
+        exhausted.charge(usize::MAX).unwrap();
+        assert_eq!(exhausted.charge(1), Err(Refusal::Exhausted));
     }
 
     #[test]
     fn meter_lookups_charge_before_they_read() {
         let (capture, div, circle) = capture();
-        let mut meter = ScanMeter::<Refusal>::new(0, 1_000_000);
+        let mut meter = meter(Caps::work(1_000_000));
         meter.node(&capture, &div).unwrap();
-        assert_eq!(meter.work(), 1);
+        assert_eq!(meter.work(), Ok(1));
         let known = meter.known(element(&capture, &div)).unwrap();
         assert_eq!(known, Some(KnownHtmlElement::Div));
-        assert_eq!(meter.work(), 1 + 4 * KnownHtmlElement::ALL.len() + 28);
-        let before = meter.work();
+        assert_eq!(meter.work(), Ok(1 + 4 * KnownHtmlElement::ALL.len() + 28));
+        let before = meter.work().unwrap();
         assert!(meter.html_namespace(element(&capture, &div)).unwrap());
-        assert_eq!(meter.work(), before + 29);
+        assert_eq!(meter.work(), Ok(before + 29));
         assert!(!meter.html_namespace(element(&capture, &circle)).unwrap());
-        assert_eq!(meter.work(), before + 30);
+        assert_eq!(meter.work(), Ok(before + 30));
         // A refused envelope reads nothing: no vocabulary result without its charge.
-        let mut tight = ScanMeter::<Refusal>::new(0, 3);
+        let mut tight = self::meter(Caps::work(3));
         assert_eq!(
             tight.known(element(&capture, &div)),
             Err(Refusal::Work {
@@ -293,6 +518,88 @@ mod tests {
                 required: 4 * KnownHtmlElement::ALL.len() + 28
             })
         );
-        assert_eq!(tight.work(), 0);
+        assert_eq!(tight.work(), Ok(0));
+    }
+
+    #[test]
+    fn a_fact_resource_cap_reports_its_limit_and_the_total_it_would_have_reached() {
+        let mut meter = meter(Caps::work(10).records(5).bytes(100));
+        let refuse = |limit, required| Refusal::Work { limit, required };
+        meter.acquire(HtmlResource::FactRecords, 3, refuse).unwrap();
+        assert_eq!(
+            meter.acquire(HtmlResource::FactRecords, 3, refuse),
+            Err(Refusal::Work {
+                limit: 5,
+                required: 6
+            })
+        );
+        // The refused amount was taken before the cap refused it, as a grown total is; the cap
+        // still holds only what it admitted.
+        assert_eq!(meter.taken(HtmlResource::FactRecords), Ok(6));
+        // A cap left unset is unlimited, and a sum beyond the ledger's range is exhaustion.
+        meter
+            .acquire(HtmlResource::FactCodeUnits, 1_000_000, refuse)
+            .unwrap();
+        assert_eq!(
+            meter.acquire(HtmlResource::FactCodeUnits, usize::MAX, refuse),
+            Err(Refusal::Exhausted)
+        );
+    }
+
+    #[test]
+    fn growing_checks_nothing_until_the_constructor_checks_and_checking_charges_the_difference() {
+        let mut meter = meter(Caps::work(10).records(5));
+        let refuse = |limit, required| Refusal::Work { limit, required };
+        meter.grow(HtmlResource::FactRecords, 4).unwrap();
+        meter.grow(HtmlResource::FactRecords, 3).unwrap();
+        assert_eq!(meter.taken(HtmlResource::FactRecords), Ok(7));
+        assert_eq!(
+            meter.check(HtmlResource::FactRecords, refuse),
+            Err(Refusal::Work {
+                limit: 5,
+                required: 7
+            })
+        );
+        // `fits` checks an amount against the cap without taking it.
+        let mut fits = self::meter(Caps::work(10).records(5));
+        fits.fits(HtmlResource::FactRecords, 5, refuse).unwrap();
+        assert_eq!(
+            fits.fits(HtmlResource::FactRecords, 6, refuse),
+            Err(Refusal::Work {
+                limit: 5,
+                required: 6
+            })
+        );
+        assert_eq!(fits.taken(HtmlResource::FactRecords), Ok(0));
+    }
+
+    #[test]
+    fn a_ledger_state_the_meter_does_not_charge_is_the_constructors_ledger_state() {
+        let mut meter = meter(Caps::work(10));
+        // A release that matches no custody is a state the constructors' own sequencing rules out;
+        // an acquisition of another dimension than the one asked for cannot occur either.
+        assert_eq!(
+            ScanMeter::<Refusal>::refusal_of(Error::ForeignScope),
+            Refusal::State
+        );
+        assert_eq!(
+            ScanMeter::<Refusal>::refusal_of(Error::Refused(surgeist_ledger::Refusal {
+                scope: meter.scope,
+                item: 0,
+                change: Change::Release(HtmlResource::FactRecords, 1),
+                current: 0,
+                reason: RefusalReason::Underflow,
+            })),
+            Refusal::State
+        );
+        meter.charge(1).unwrap();
+    }
+
+    #[test]
+    fn a_failed_ledger_allocation_is_the_constructors_representation_exhaustion() {
+        assert_eq!(
+            ScanMeter::<Refusal>::refusal_of(Error::Allocation),
+            Refusal::Exhausted
+        );
     }
 }

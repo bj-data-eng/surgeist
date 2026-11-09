@@ -3,9 +3,10 @@
 //! Host adapters establish history and current slots; queries execute no transitions.
 
 use super::index::FactIndex;
-use super::scan::{ScanError, ScanMeter};
+use super::scan::{Caps, ScanError, ScanMeter};
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
+use surgeist_html::accounting::{HtmlCapScope, HtmlResource};
 use surgeist_html::attributes::{HtmlAttributeReport, HtmlInputType};
 use surgeist_html::bounded::form::{HtmlFormOwnerLookup, form_owner_lookup};
 use surgeist_html::{elements::form::HtmlNativeFormAssociationKind, vocabulary::KnownHtmlElement};
@@ -222,9 +223,17 @@ impl HtmlControlFactsLimits {
 pub enum HtmlControlFactsError {
     Capture(HtmlCaptureError),
     HostRevisionMismatch,
-    RecordCapacity { limit: usize, required: usize },
-    ValidationWork { limit: usize, required: usize },
+    RecordCapacity {
+        limit: usize,
+        required: usize,
+    },
+    ValidationWork {
+        limit: usize,
+        required: usize,
+    },
     RepresentationExhausted,
+    /// The ledger that enforces the limits reported a state its own sequencing rules out.
+    LedgerState,
     DuplicateSubject(HtmlCaptureSubjectId),
     InapplicableSubject(HtmlCaptureSubjectId),
     InvalidFormOwner(HtmlCaptureSubjectId),
@@ -251,8 +260,7 @@ pub struct HtmlControlFacts {
     input_index: FactIndex,
     option_index: FactIndex,
     textarea_index: FactIndex,
-    validation_work: usize,
-    validation_limit: usize,
+    validation: ScanMeter<HtmlControlFactsError>,
 }
 impl ScanError for HtmlControlFactsError {
     fn representation_exhausted() -> Self {
@@ -263,6 +271,9 @@ impl ScanError for HtmlControlFactsError {
     }
     fn capture(error: HtmlCaptureError) -> Self {
         Self::Capture(error)
+    }
+    fn ledger_state() -> Self {
+        Self::LedgerState
     }
 }
 /// The topmost ancestor of `subject`, or `None` when an ancestor is unavailable.
@@ -301,13 +312,13 @@ impl HtmlControlFacts {
             .and_then(|n| n.checked_add(options.capacity()))
             .and_then(|n| n.checked_add(textareas.capacity()))
             .ok_or(HtmlControlFactsError::RepresentationExhausted)?;
-        if required > limits.records {
-            return Err(HtmlControlFactsError::RecordCapacity {
-                limit: limits.records,
-                required,
-            });
-        }
-        let mut validation = ScanMeter::new(0, limits.validation_work);
+        let mut validation = ScanMeter::new(
+            HtmlCapScope::ControlFacts,
+            Caps::work(limits.validation_work).records(limits.records),
+        )?;
+        validation.acquire(HtmlResource::FactRecords, required, |limit, required| {
+            HtmlControlFactsError::RecordCapacity { limit, required }
+        })?;
         let mut association_index = FactIndex::new(
             capture.identity(),
             associations.len(),
@@ -455,8 +466,7 @@ impl HtmlControlFacts {
             input_index,
             option_index,
             textarea_index,
-            validation_work: validation.work(),
-            validation_limit: validation.limit(),
+            validation,
         })
     }
     /// Complete the bounded context join using the constructor's remaining work.
@@ -466,7 +476,7 @@ impl HtmlControlFacts {
         classified: &FactIndex,
         classifications: &[HtmlCustomControlClassification],
     ) -> Result<Self, HtmlControlFactsError> {
-        let mut validation = ScanMeter::new(self.validation_work, self.validation_limit);
+        let validation = &mut self.validation;
         for association in &self.associations {
             validation.charge(1)?;
             let node = validation.node(capture, &association.subject)?;
@@ -494,7 +504,6 @@ impl HtmlControlFacts {
                 }
             }
         }
-        self.validation_work = validation.work();
         Ok(self)
     }
     pub fn capture(&self) -> &HtmlCaptureId {

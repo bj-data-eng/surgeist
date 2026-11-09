@@ -199,7 +199,10 @@ impl HtmlParseResource {
             | HtmlResource::CapturedDefinitions
             | HtmlResource::ElementValueBytes
             | HtmlResource::RetainedBytes
-            | HtmlResource::RetainedUtf16Units => return None,
+            | HtmlResource::RetainedUtf16Units
+            | HtmlResource::FactBytes
+            | HtmlResource::FormationBytes
+            | HtmlResource::FormationBacking => return None,
         })
     }
 }

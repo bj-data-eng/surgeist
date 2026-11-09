@@ -409,6 +409,8 @@ pub enum HtmlRelFactsError {
     RecordLimit,
     ByteLimit,
     WorkLimit,
+    /// The ledger that enforces the limits reported a state its own sequencing rules out.
+    LedgerState,
     RepresentationExhausted,
     DuplicateDefinition,
     DuplicateObservation,
@@ -430,6 +432,9 @@ impl ScanError for HtmlRelFactsError {
     }
     fn capture(error: HtmlCaptureError) -> Self {
         Self::Capture(error)
+    }
+    fn ledger_state() -> Self {
+        Self::LedgerState
     }
 }
 impl FactError for HtmlRelFactsError {
@@ -601,7 +606,7 @@ impl HtmlRelFacts {
         limits: HtmlRelFactsLimits,
     ) -> Result<Self, HtmlRelFactsError> {
         FactsAdmission::host(capture, expected_host)?;
-        let mut a = FactsAdmission::new(limits);
+        let mut a = FactsAdmission::new(HtmlCapScope::LinkRelationshipFacts, limits)?;
         a.vector(&input.definitions)?;
         a.vector(&input.occurrences)?;
         a.vector(&input.supported)?;

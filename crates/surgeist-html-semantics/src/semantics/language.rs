@@ -2,10 +2,11 @@
 //! Language tags are BCP 47-designated payloads, without validity or service claims.
 
 use super::index::FactIndex;
-use super::scan::{ScanError, ScanMeter};
+use super::scan::{Caps, ScanError, ScanMeter};
 use super::*;
 use crate::bidi::{BidiClass, bidi_class};
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
+use surgeist_html::accounting::{HtmlCapScope, HtmlResource};
 use surgeist_html::attributes::{HtmlDir, HtmlDirState, HtmlInputType};
 use surgeist_html::{
     values::{DocumentString, HtmlValueInterpreter},
@@ -128,11 +129,25 @@ impl HtmlLanguageDirectionLimits {
 pub enum HtmlLanguageDirectionError {
     Capture(HtmlCaptureError),
     HostRevisionMismatch,
-    RecordCapacity { limit: usize, required: usize },
-    AssignedNodeCapacity { limit: usize, required: usize },
-    CodeUnits { limit: usize, required: usize },
-    ValidationWork { limit: usize, required: usize },
+    RecordCapacity {
+        limit: usize,
+        required: usize,
+    },
+    AssignedNodeCapacity {
+        limit: usize,
+        required: usize,
+    },
+    CodeUnits {
+        limit: usize,
+        required: usize,
+    },
+    ValidationWork {
+        limit: usize,
+        required: usize,
+    },
     RepresentationExhausted,
+    /// The ledger that enforces the limits reported a state its own sequencing rules out.
+    LedgerState,
     DuplicateSubject(HtmlCaptureSubjectId),
     EmptyPragma(HtmlCaptureSubjectId),
     InapplicableCurrentValue(HtmlCaptureSubjectId),
@@ -171,6 +186,9 @@ impl ScanError for HtmlLanguageDirectionError {
     }
     fn capture(error: HtmlCaptureError) -> Self {
         Self::Capture(error)
+    }
+    fn ledger_state() -> Self {
+        Self::LedgerState
     }
 }
 type LanguageMeter = ScanMeter<HtmlLanguageDirectionError>;
@@ -232,15 +250,18 @@ impl HtmlLanguageDirectionFacts {
             language_sum(fallbacks.capacity(), current_values.capacity())?,
             assignments.capacity(),
         )?;
-        if records > limits.records {
-            return Err(HtmlLanguageDirectionError::RecordCapacity {
-                limit: limits.records,
-                required: records,
-            });
-        }
-        let mut validation = LanguageMeter::new(0, limits.validation_work);
+        let mut validation = LanguageMeter::new(
+            HtmlCapScope::LanguageDirection,
+            Caps::work(limits.validation_work)
+                .records(limits.records)
+                .assigned_nodes(limits.assigned_nodes)
+                .code_units(limits.code_units),
+        )?;
+        validation.acquire(HtmlResource::FactRecords, records, |limit, required| {
+            HtmlLanguageDirectionError::RecordCapacity { limit, required }
+        })?;
+        // The code units of the retained strings, admitted once every record is validated.
         let mut units = 0;
-        let mut assigned_capacity = 0;
         let mut fallback_index = FactIndex::new(
             capture.identity(),
             fallbacks.len(),
@@ -410,13 +431,14 @@ impl HtmlLanguageDirectionFacts {
             let Some(nodes) = &fact.nodes else {
                 continue;
             };
-            assigned_capacity = language_sum(assigned_capacity, nodes.capacity())?;
-            if assigned_capacity > limits.assigned_nodes {
-                return Err(HtmlLanguageDirectionError::AssignedNodeCapacity {
-                    limit: limits.assigned_nodes,
-                    required: assigned_capacity,
-                });
-            }
+            validation.acquire(
+                HtmlResource::AssignedNodes,
+                nodes.capacity(),
+                |limit, required| HtmlLanguageDirectionError::AssignedNodeCapacity {
+                    limit,
+                    required,
+                },
+            )?;
             if nodes.is_empty() {
                 continue;
             }
@@ -469,12 +491,9 @@ impl HtmlLanguageDirectionFacts {
                 }
             }
         }
-        if units > limits.code_units {
-            return Err(HtmlLanguageDirectionError::CodeUnits {
-                limit: limits.code_units,
-                required: units,
-            });
-        }
+        validation.acquire(HtmlResource::FactCodeUnits, units, |limit, required| {
+            HtmlLanguageDirectionError::CodeUnits { limit, required }
+        })?;
         Ok(Self {
             capture: capture.identity().clone(),
             host_revision,

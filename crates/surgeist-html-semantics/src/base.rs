@@ -4,11 +4,13 @@
 //! attestations. This owner checks their qualification; it is no URL engine.
 
 use crate::semantics::index::{ContentChains, FactIndex};
+use crate::semantics::scan::{Caps, ScanError, ScanMeter};
 use crate::{
     HtmlCapture, HtmlCaptureDocumentId, HtmlCaptureError, HtmlCaptureId, HtmlCaptureSubjectId,
     HtmlCapturedNodeKind, HtmlHostFactsRevision,
 };
 use std::{error::Error, fmt, sync::Arc};
+use surgeist_html::accounting::{HtmlCapScope, HtmlResource};
 use surgeist_html::values::DocumentString;
 
 identity!(
@@ -351,7 +353,8 @@ impl HtmlBaseParseObservation {
     }
 }
 
-/// Bounded external input formation, separate from parse execution usage.
+/// Bounded external input formation, charged to its own ledger scope and separate from parse
+/// execution usage.
 #[derive(Clone, Copy, Debug)]
 pub struct HtmlBaseFactsLimits {
     records: usize,
@@ -396,6 +399,8 @@ pub enum HtmlBaseFactsError {
     Utf16Limit,
     WorkLimit,
     RepresentationExhausted,
+    /// The ledger that enforces the limits reported a state its own sequencing rules out.
+    LedgerState,
     WrongBase,
     WrongDocument,
 }
@@ -410,77 +415,73 @@ impl From<HtmlCaptureError> for HtmlBaseFactsError {
         Self::Capture(error)
     }
 }
+/// The validation work and UTF-16 units of one Base or encoding-URL formation, charged to a ledger
+/// scope with the formation's caps.
 pub(crate) struct Validation {
-    limits: HtmlBaseFactsLimits,
-    work: usize,
-    units: usize,
+    meter: ScanMeter<HtmlBaseFactsError>,
+}
+impl ScanError for HtmlBaseFactsError {
+    fn representation_exhausted() -> Self {
+        Self::RepresentationExhausted
+    }
+    fn work_exceeded(_limit: usize, _required: usize) -> Self {
+        Self::WorkLimit
+    }
+    fn capture(error: HtmlCaptureError) -> Self {
+        Self::Capture(error)
+    }
+    fn ledger_state() -> Self {
+        Self::LedgerState
+    }
 }
 impl Validation {
-    pub(crate) fn new(limits: HtmlBaseFactsLimits) -> Self {
-        Self {
-            limits,
-            work: 0,
-            units: 0,
-        }
+    pub(crate) fn new(limits: HtmlBaseFactsLimits) -> Result<Self, HtmlBaseFactsError> {
+        Ok(Self {
+            meter: ScanMeter::new(
+                HtmlCapScope::BaseFacts,
+                Caps::work(limits.validation_work)
+                    .records(limits.records)
+                    .code_units(limits.utf16_units),
+            )?,
+        })
     }
-    pub(crate) fn records(&self, capacity: usize) -> Result<(), HtmlBaseFactsError> {
-        if capacity > self.limits.records {
-            return Err(HtmlBaseFactsError::RecordLimit);
-        }
-        Ok(())
+    /// Refuses incoming record capacity beyond the record limit.
+    pub(crate) fn records(&mut self, capacity: usize) -> Result<(), HtmlBaseFactsError> {
+        self.meter
+            .fits(HtmlResource::FactRecords, capacity, |_, _| {
+                HtmlBaseFactsError::RecordLimit
+            })
     }
-    pub(crate) fn usage(&self, records: usize) -> HtmlBaseFactsUsage {
-        HtmlBaseFactsUsage {
+    pub(crate) fn usage(&self, records: usize) -> Result<HtmlBaseFactsUsage, HtmlBaseFactsError> {
+        Ok(HtmlBaseFactsUsage {
             records,
-            utf16_units: self.units,
-            validation_work: self.work,
-        }
+            utf16_units: self.meter.taken(HtmlResource::FactCodeUnits)?,
+            validation_work: self.meter.work()?,
+        })
     }
     /// `units` steps at once.
     pub(crate) fn steps(&mut self, units: usize) -> Result<(), HtmlBaseFactsError> {
-        self.work = self
-            .work
-            .checked_add(units)
-            .ok_or(HtmlBaseFactsError::RepresentationExhausted)?;
-        if self.work > self.limits.validation_work {
-            return Err(HtmlBaseFactsError::WorkLimit);
-        }
-        Ok(())
+        self.meter.charge(units)
     }
     pub(crate) fn step(&mut self) -> Result<(), HtmlBaseFactsError> {
-        self.work = self
-            .work
-            .checked_add(1)
-            .ok_or(HtmlBaseFactsError::RepresentationExhausted)?;
-        if self.work > self.limits.validation_work {
-            return Err(HtmlBaseFactsError::WorkLimit);
-        }
-        Ok(())
+        self.meter.charge(1)
     }
     pub(crate) fn string(&mut self, text: &DocumentString) -> Result<(), HtmlBaseFactsError> {
         self.step()?;
-        self.units = self
-            .units
-            .checked_add(text.len())
-            .ok_or(HtmlBaseFactsError::RepresentationExhausted)?;
-        if self.units > self.limits.utf16_units {
-            return Err(HtmlBaseFactsError::Utf16Limit);
-        }
-        Ok(())
+        self.units(text.len())
     }
     pub(crate) fn retained_string(
         &mut self,
         text: &DocumentString,
     ) -> Result<(), HtmlBaseFactsError> {
         self.step()?;
-        self.units = self
-            .units
-            .checked_add(text.shared_code_units().capacity())
-            .ok_or(HtmlBaseFactsError::RepresentationExhausted)?;
-        if self.units > self.limits.utf16_units {
-            return Err(HtmlBaseFactsError::Utf16Limit);
-        }
-        Ok(())
+        self.units(text.shared_code_units().capacity())
+    }
+    fn units(&mut self, units: usize) -> Result<(), HtmlBaseFactsError> {
+        self.meter
+            .acquire(HtmlResource::FactCodeUnits, units, |_, _| {
+                HtmlBaseFactsError::Utf16Limit
+            })
     }
     pub(crate) fn equal(
         &mut self,
@@ -516,6 +517,9 @@ impl Validation {
 /// Checked retained payload footprint of a complete Base-facts graph.
 /// Immutable backing shared by several occurrences is conservatively counted
 /// per occurrence. Allocator/Arc bookkeeping is outside this payload measure.
+///
+/// This is a measurement of actual capacities with checked sums, not a counter: the consumer
+/// that retains the value charges it to its own accounting.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlBaseRetainedStorageUsage {
     pub(crate) bytes: usize,
@@ -583,14 +587,8 @@ impl HtmlParseBaseFacts {
         observations: Vec<HtmlBaseParseObservation>,
         limits: HtmlBaseFactsLimits,
     ) -> Result<Self, HtmlBaseFactsError> {
-        if observations.capacity() > limits.records {
-            return Err(HtmlBaseFactsError::RecordLimit);
-        }
-        let mut v = Validation {
-            limits,
-            work: 0,
-            units: 0,
-        };
+        let mut v = Validation::new(limits)?;
+        v.records(observations.capacity())?;
         let mut retained = HtmlBaseRetainedStorageUsage {
             bytes: size_of::<ParseFacts>(),
             units: 0,
@@ -649,11 +647,7 @@ impl HtmlParseBaseFacts {
                 earlier = chains.before(position);
             }
         }
-        let usage = HtmlBaseFactsUsage {
-            records: observations.capacity(),
-            utf16_units: v.units,
-            validation_work: v.work,
-        };
+        let usage = v.usage(observations.capacity())?;
         Ok(Self(Arc::new(ParseFacts {
             document,
             observations,
@@ -742,14 +736,13 @@ impl HtmlCapturedBaseFacts {
         if &host != capture.host_facts_revision() {
             return Err(HtmlBaseFactsError::HostRevisionMismatch);
         }
-        if documents
-            .capacity()
-            .checked_add(frozen.capacity())
-            .ok_or(HtmlBaseFactsError::RepresentationExhausted)?
-            > limits.records
-        {
-            return Err(HtmlBaseFactsError::RecordLimit);
-        }
+        let mut v = Validation::new(limits)?;
+        v.records(
+            documents
+                .capacity()
+                .checked_add(frozen.capacity())
+                .ok_or(HtmlBaseFactsError::RepresentationExhausted)?,
+        )?;
         let mut retained = HtmlBaseRetainedStorageUsage {
             bytes: size_of::<Self>(),
             units: 0,
@@ -766,11 +759,6 @@ impl HtmlCapturedBaseFacts {
                 .checked_mul(size_of::<HtmlCapturedFrozenBase>())
                 .ok_or(HtmlBaseFactsError::RepresentationExhausted)?,
         )?;
-        let mut v = Validation {
-            limits,
-            work: 0,
-            units: 0,
-        };
         let mut document_index = FactIndex::new(
             capture.identity(),
             documents.len(),
@@ -848,11 +836,7 @@ impl HtmlCapturedBaseFacts {
                 return Err(HtmlBaseFactsError::DuplicateObservation);
             }
         }
-        let usage = HtmlBaseFactsUsage {
-            records: documents.capacity() + frozen.capacity(),
-            utf16_units: v.units,
-            validation_work: v.work,
-        };
+        let usage = v.usage(documents.capacity() + frozen.capacity())?;
         Ok(Self {
             capture: capture.identity().clone(),
             host,

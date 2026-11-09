@@ -3,9 +3,10 @@
 
 use super::control::ControlStop;
 use super::index::FactIndex;
-use super::scan::{ScanError, ScanMeter};
+use super::scan::{Caps, ScanError, ScanMeter};
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
+use surgeist_html::accounting::{HtmlCapScope, HtmlResource};
 use surgeist_html::attributes::{
     HtmlAttributeReport, HtmlInputType, HtmlPopoverState,
     command::{HtmlCommandReadback, HtmlCommandState},
@@ -102,6 +103,8 @@ pub enum HtmlElementReferenceFactsError {
         required: usize,
     },
     RepresentationExhausted,
+    /// The ledger that enforces the limits reported a state its own sequencing rules out.
+    LedgerState,
     DuplicateReference {
         subject: HtmlCaptureSubjectId,
         key: HtmlElementReferenceKey,
@@ -118,6 +121,9 @@ impl ScanError for HtmlElementReferenceFactsError {
     }
     fn capture(error: HtmlCaptureError) -> Self {
         Self::Capture(error)
+    }
+    fn ledger_state() -> Self {
+        Self::LedgerState
     }
 }
 impl fmt::Display for HtmlElementReferenceFactsError {
@@ -146,14 +152,16 @@ impl HtmlElementReferenceFacts {
         if &host_revision != capture.host_facts_revision() {
             return Err(HtmlElementReferenceFactsError::HostRevisionMismatch);
         }
-        if records.capacity() > limits.records {
-            return Err(HtmlElementReferenceFactsError::RecordCapacity {
-                limit: limits.records,
-                required: records.capacity(),
-            });
-        }
         // This is input validation, not a query/controller or a tree projection.
-        let mut meter = ScanMeter::new(0, limits.validation_work);
+        let mut meter = ScanMeter::new(
+            HtmlCapScope::ElementReferenceFacts,
+            Caps::work(limits.validation_work).records(limits.records),
+        )?;
+        meter.acquire(
+            HtmlResource::FactRecords,
+            records.capacity(),
+            |limit, required| HtmlElementReferenceFactsError::RecordCapacity { limit, required },
+        )?;
         let mut index = FactIndex::new(
             capture.identity(),
             records.len(),

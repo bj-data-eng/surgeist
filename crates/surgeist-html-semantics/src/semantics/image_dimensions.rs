@@ -378,6 +378,8 @@ pub enum HtmlImageDimensionFactsError {
     RecordLimit,
     ByteLimit,
     WorkLimit,
+    /// The ledger that enforces the limits reported a state its own sequencing rules out.
+    LedgerState,
     RepresentationExhausted,
 }
 impl ScanError for HtmlImageDimensionFactsError {
@@ -389,6 +391,9 @@ impl ScanError for HtmlImageDimensionFactsError {
     }
     fn capture(error: HtmlCaptureError) -> Self {
         Self::Capture(error)
+    }
+    fn ledger_state() -> Self {
+        Self::LedgerState
     }
 }
 impl FactError for HtmlImageDimensionFactsError {
@@ -419,8 +424,8 @@ pub struct HtmlImageDimensionFacts {
     expected: Vec<HtmlImageDimensionExpectation>,
     resources: Vec<HtmlImageDimensionResourceObservation>,
     boxes: Vec<HtmlImageContentBoxObservation>,
-    limits: HtmlImageDimensionFactsLimits,
-    validation_work: usize,
+    /// The admission that validated these facts; the joins at context admission continue it.
+    admission: ImageAdmission,
 }
 type ImageAdmission = FactAdmission<HtmlImageDimensionFactsError>;
 fn image_role(
@@ -468,7 +473,7 @@ impl HtmlImageDimensionFacts {
     ) -> Result<Self, HtmlImageDimensionFactsError> {
         use HtmlImageDimensionFactsError as E;
         ImageAdmission::host(capture, &host)?;
-        let mut a = ImageAdmission::new(limits);
+        let mut a = ImageAdmission::new(HtmlCapScope::ImageDimensionFacts, limits)?;
         let capacities = [expected.capacity(), resources.capacity(), boxes.capacity()];
         let records = capacities
             .into_iter()
@@ -610,8 +615,7 @@ impl HtmlImageDimensionFacts {
             expected,
             resources,
             boxes,
-            limits,
-            validation_work: a.work_total(),
+            admission: a,
         })
     }
     pub fn capture(&self) -> &HtmlCaptureId {
@@ -638,7 +642,7 @@ impl HtmlImageDimensionFacts {
         natural: Option<&HtmlNaturalDimensions>,
     ) -> Result<(), HtmlImageDimensionFactsError> {
         use HtmlImageDimensionFactsError as E;
-        let mut a = ImageAdmission::resume(self.limits, self.validation_work);
+        let a = &mut self.admission;
         if let Some(p) = participation {
             a.work(2)?;
             if p.capture() != &self.capture {
@@ -683,7 +687,6 @@ impl HtmlImageDimensionFacts {
                 }
             }
         }
-        self.validation_work = a.work_total();
         Ok(())
     }
 }
@@ -1105,7 +1108,7 @@ impl<'a> HtmlSemanticSession<'a> {
     fn image_remaining_bytes(&self) -> usize {
         self.limits
             .allocated_bytes
-            .saturating_sub(self.usage.allocated_bytes)
+            .saturating_sub(self.snapshot().allocated_bytes)
     }
     fn image_work(&mut self, work: Option<usize>) -> Result<(), HtmlSemanticFailure> {
         let work =
@@ -1116,7 +1119,7 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         result: Result<HtmlNumericMaterialized<T>, HtmlNumericMaterializationFailure>,
     ) -> Result<T, HtmlSemanticFailure> {
-        let baseline = self.usage.allocated_bytes;
+        let baseline = self.snapshot().allocated_bytes;
         let observed = match &result {
             Ok(v) => v.capacity_bytes(),
             Err(e) => e.capacity_bytes(),
@@ -1157,7 +1160,7 @@ impl<'a> HtmlSemanticSession<'a> {
                             HtmlSemanticFailureKind::LimitExceeded {
                                 resource: HtmlSemanticResource::AllocatedBytes,
                                 limit: self.limits.allocated_bytes,
-                                required: self.usage.allocated_bytes,
+                                required: self.snapshot().allocated_bytes,
                             }
                         }
                     },

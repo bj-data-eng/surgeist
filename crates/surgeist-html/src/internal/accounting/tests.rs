@@ -256,9 +256,9 @@ fn a_retention_cap_refuses_the_acquisition_that_reaches_it_without_changing_usag
 }
 
 #[test]
-fn only_categories_and_measured_storage_lack_a_direct_cap() {
+fn only_categories_and_the_formation_backing_lack_a_direct_cap() {
     // The eight parser categories are capped through their conversion into
-    // credits, and the retained storage dimensions are measured only.
+    // credits, and the formation backing is a balance the formation totals.
     let uncapped_work: Vec<HtmlWork> = HtmlWork::ALL
         .iter()
         .copied()
@@ -290,13 +290,7 @@ fn only_categories_and_measured_storage_lack_a_direct_cap() {
                 .any(|scope| scope.capped_resources().contains(resource))
         })
         .collect();
-    assert_eq!(
-        uncapped,
-        [
-            HtmlResource::RetainedBytes,
-            HtmlResource::RetainedUtf16Units
-        ]
-    );
+    assert_eq!(uncapped, [HtmlResource::FormationBacking]);
 }
 
 #[test]

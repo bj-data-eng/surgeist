@@ -175,19 +175,14 @@ impl BorrowedName<'_> {
 }
 
 impl HtmlCaptureBuilder {
+    /// Checks that `pending` more element value bytes fit the cap.
     pub(super) fn admit_element_value_bytes(
-        &self,
+        &mut self,
         pending: usize,
-    ) -> Result<usize, HtmlCaptureError> {
-        let required = add(self.data.usage.element_value_bytes, pending)?;
-        if required > self.limits.element_value_bytes {
-            return Err(HtmlCaptureError::LimitExceeded {
-                resource: HtmlCaptureResource::ElementValueBytes,
-                limit: self.limits.element_value_bytes,
-                required,
-            });
-        }
-        Ok(required)
+    ) -> Result<(), HtmlCaptureError> {
+        self.account
+            .ready(self.limits)?
+            .check_element_value_bytes(pending)
     }
 
     /// Forms one owned element from open borrowed operands, preserving their
@@ -258,7 +253,7 @@ impl HtmlCaptureBuilder {
     }
 
     pub(crate) fn form_element_inputs_controlled<E>(
-        &self,
+        &mut self,
         document: &HtmlCaptureBuilderSubject,
         name: &(impl HtmlNameInput + ?Sized),
         attributes: &(impl HtmlAttributesInput + ?Sized),

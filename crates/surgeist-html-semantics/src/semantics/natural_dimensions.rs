@@ -182,6 +182,8 @@ pub enum HtmlNaturalDimensionFactsError {
     RecordLimit,
     ByteLimit,
     WorkLimit,
+    /// The ledger that enforces the limits reported a state its own sequencing rules out.
+    LedgerState,
     RepresentationExhausted,
 }
 impl ScanError for HtmlNaturalDimensionFactsError {
@@ -193,6 +195,9 @@ impl ScanError for HtmlNaturalDimensionFactsError {
     }
     fn capture(error: HtmlCaptureError) -> Self {
         Self::Capture(error)
+    }
+    fn ledger_state() -> Self {
+        Self::LedgerState
     }
 }
 impl FactError for HtmlNaturalDimensionFactsError {
@@ -236,7 +241,7 @@ impl HtmlNaturalDimensions {
     ) -> Result<Self, HtmlNaturalDimensionFactsError> {
         use HtmlNaturalDimensionFactsError as E;
         FactAdmission::<E>::host(capture, &host_revision)?;
-        let mut a = FactAdmission::<E>::new(limits);
+        let mut a = FactAdmission::<E>::new(HtmlCapScope::NaturalDimensionFacts, limits)?;
         let records = expected
             .capacity()
             .checked_add(observations.capacity())
@@ -654,7 +659,7 @@ impl<'a> HtmlSemanticSession<'a> {
             self.limits.integer_digits,
             remaining,
         );
-        let baseline = self.usage.allocated_bytes;
+        let baseline = self.snapshot().allocated_bytes;
         let observed = match &materialized {
             Ok(v) => v.capacity_bytes(),
             Err(e) => e.capacity_bytes(),
@@ -698,7 +703,7 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticFailureKind::LimitExceeded {
                             resource: HtmlSemanticResource::AllocatedBytes,
                             limit: self.limits.allocated_bytes,
-                            required: self.usage.allocated_bytes,
+                            required: self.snapshot().allocated_bytes,
                         }
                     }
                 })

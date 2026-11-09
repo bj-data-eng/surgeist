@@ -187,6 +187,8 @@ pub enum HtmlMediaFactsError {
     RecordLimit,
     ByteLimit,
     WorkLimit,
+    /// The ledger that enforces the limits reported a state its own sequencing rules out.
+    LedgerState,
     RepresentationExhausted,
 }
 impl ScanError for HtmlMediaFactsError {
@@ -198,6 +200,9 @@ impl ScanError for HtmlMediaFactsError {
     }
     fn capture(error: HtmlCaptureError) -> Self {
         Self::Capture(error)
+    }
+    fn ledger_state() -> Self {
+        Self::LedgerState
     }
 }
 impl FactError for HtmlMediaFactsError {
@@ -217,7 +222,7 @@ impl fmt::Display for HtmlMediaFactsError {
     }
 }
 impl Error for HtmlMediaFactsError {}
-/// Finite incoming storage admission, separate from the semantic session ledger.
+/// Finite incoming storage admission, charged to its own ledger scope.
 /// Input capture backing is shared; no raw text or tree is projected/copied.
 #[derive(Debug)]
 pub struct HtmlMediaFacts {
@@ -238,7 +243,7 @@ impl HtmlMediaFacts {
     ) -> Result<Self, HtmlMediaFactsError> {
         use HtmlMediaFactsError as E;
         FactAdmission::<E>::host(capture, &host)?;
-        let mut a = FactAdmission::<E>::new(limits);
+        let mut a = FactAdmission::<E>::new(HtmlCapScope::MediaFacts, limits)?;
         a.add_records(facts.capacity())?;
         a.add_bytes(
             facts

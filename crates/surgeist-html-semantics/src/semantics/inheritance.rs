@@ -5,9 +5,10 @@
 
 use super::admission::producer_revision;
 use super::index::FactIndex;
-use super::scan::{ScanError, ScanMeter};
+use super::scan::{Caps, ScanError, ScanMeter};
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
+use surgeist_html::accounting::{HtmlCapScope, HtmlResource};
 use surgeist_html::attributes::{
     HtmlContentEditable, HtmlContentEditableState, HtmlSpellcheck, HtmlSpellcheckState,
     HtmlTranslate, HtmlTranslateState,
@@ -91,8 +92,16 @@ pub enum HtmlGlobalInheritanceError {
     Capture(HtmlCaptureError),
     HostRevisionMismatch,
     RepresentationExhausted,
-    RecordCapacity { limit: usize, required: usize },
-    ValidationWork { limit: usize, required: usize },
+    /// The ledger that enforces the limits reported a state its own sequencing rules out.
+    LedgerState,
+    RecordCapacity {
+        limit: usize,
+        required: usize,
+    },
+    ValidationWork {
+        limit: usize,
+        required: usize,
+    },
     DuplicateSubject(HtmlCaptureSubjectId),
     InapplicableSubject(HtmlCaptureSubjectId),
     ParentlessInherit(HtmlCaptureSubjectId),
@@ -125,6 +134,9 @@ impl ScanError for HtmlGlobalInheritanceError {
     fn capture(error: HtmlCaptureError) -> Self {
         Self::Capture(error)
     }
+    fn ledger_state() -> Self {
+        Self::LedgerState
+    }
 }
 impl HtmlGlobalInheritanceFacts {
     pub fn new(
@@ -142,13 +154,13 @@ impl HtmlGlobalInheritanceFacts {
             .capacity()
             .checked_add(spellcheck_defaults.capacity())
             .ok_or(HtmlGlobalInheritanceError::RepresentationExhausted)?;
-        if required > limits.record_capacity {
-            return Err(HtmlGlobalInheritanceError::RecordCapacity {
-                limit: limits.record_capacity,
-                required,
-            });
-        }
-        let mut validation = ScanMeter::new(0, limits.validation_work);
+        let mut validation = ScanMeter::new(
+            HtmlCapScope::GlobalInheritance,
+            Caps::work(limits.validation_work).records(limits.record_capacity),
+        )?;
+        validation.acquire(HtmlResource::FactRecords, required, |limit, required| {
+            HtmlGlobalInheritanceError::RecordCapacity { limit, required }
+        })?;
         let mut design_mode_index = FactIndex::new(
             capture.identity(),
             design_modes.len(),

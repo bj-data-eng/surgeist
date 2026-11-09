@@ -51,15 +51,10 @@ impl HtmlRelNoopenerInput {
         if &url.revision != expected_url {
             return Err(HtmlRelFactsError::UrlRevisionMismatch);
         }
-        let mut a = FactsAdmission::new(limits);
+        let mut a = FactsAdmission::new(HtmlCapScope::LinkRelationshipFacts, limits)?;
         a.work(1)?;
-        if limits.records < 1 {
-            return Err(HtmlRelFactsError::RecordLimit);
-        }
-        a.bytes = std::mem::size_of::<Self>();
-        if a.bytes > limits.bytes {
-            return Err(HtmlRelFactsError::ByteLimit);
-        }
+        a.fit_records(1)?;
+        a.add_bytes(std::mem::size_of::<Self>())?;
         if a.role(capture, &subject)? == HtmlRelRole::Link {
             return Err(HtmlRelFactsError::InvalidRole);
         }
@@ -272,8 +267,9 @@ impl<'a> HtmlSemanticSession<'a> {
                 // The inner scratch owner has now retired all actual temporary
                 // backing. Preserve the first kind, work and qualification while
                 // reporting the final owned scratch count at this child boundary.
+                let scratch = self.snapshot().scratch_records;
                 if let Some(first) = self.failure.as_mut() {
-                    first.usage.scratch_records = self.usage.scratch_records;
+                    first.usage.scratch_records = scratch;
                     Err(first.clone())
                 } else {
                     Err(error)

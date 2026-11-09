@@ -14,7 +14,9 @@ use crate::{
     internal::microsyntax::tokens::declared_keyword,
 };
 use std::{error::Error, fmt};
-use surgeist_ledger::{Change, Error as LedgerError, Operation, RefusalReason, Scope};
+use surgeist_ledger::{
+    Change, Error as LedgerError, Operation, RefusalReason, Scope, ScopeLedger, Usage,
+};
 
 const RULE: RuleMetadata = RuleMetadata {
     attribute: KnownHtmlAttribute::Autocomplete,
@@ -289,21 +291,35 @@ enum StoragePurpose {
     Scratch,
 }
 
-/// One reservation owner used by both interpreter front doors. Both reserve with the fallible
+/// What the scopes of a materialization held before it began. Its own amounts are the
+/// differences, so a materialization can run in scopes that other holders also use.
+#[derive(Clone, Copy, Default)]
+struct Held {
+    allocated_bytes: u64,
+    nested_output_records: u64,
+    /// The live scratch records of the observed scope.
+    observed_scratch: u64,
+    /// The live scratch records of the capped scope.
+    capped_scratch: u64,
+}
+
+/// One reservation owner used by the interpreter front doors. Both reserve with the fallible
 /// allocator and report a refusal; standalone sets no resource cap, so the allocator and the
 /// platform are its only limits.
 ///
 /// The allowances are the caps of one ledger scope. A second, uncapped scope records what was
 /// actually taken, so growth the allocator made beyond a cap is observed before it is refused.
-/// The typed usage is read back from that second scope.
-struct Materialization {
-    operation: Operation<HtmlWork, HtmlResource>,
+/// The typed usage is read back from that second scope. The scopes are the materialization's own,
+/// or scopes its caller supplies, whose caps and other custody it shares.
+struct Materialization<L: ScopeLedger<HtmlWork, HtmlResource>> {
+    ledger: L,
     /// The scope that carries the allowances.
     caps: Scope,
     /// The scope that records the observed growth.
     observed: Scope,
+    held: Held,
     usage: HtmlAutocompleteMaterializationUsage,
-    /// The live scratch records read from the observed scope.
+    /// The live scratch records of this materialization.
     scratch: usize,
 }
 
@@ -316,7 +332,7 @@ impl StoragePurpose {
     }
 }
 
-impl Materialization {
+impl Materialization<Operation<HtmlWork, HtmlResource>> {
     fn new(
         limits: Option<HtmlAutocompleteMaterializationLimits>,
     ) -> Result<Self, HtmlAutocompleteMaterializationError> {
@@ -347,10 +363,34 @@ impl Materialization {
                 HtmlTariffs::identity(),
             )
             .map_err(|_| allocation())?;
+        Self::in_scopes(operation, caps, observed)
+    }
+}
+
+impl<L: ScopeLedger<HtmlWork, HtmlResource>> Materialization<L> {
+    /// A materialization in scopes that exist: `caps` carries the allowances, `observed` records
+    /// the growth the allocator made, and both may hold the custody of others.
+    fn in_scopes(
+        ledger: L,
+        caps: Scope,
+        observed: Scope,
+    ) -> Result<Self, HtmlAutocompleteMaterializationError> {
+        use HtmlAutocompleteMaterializationError as E;
+        let held = {
+            let observed_usage = ledger.usage(observed).map_err(|_| E::LedgerState)?;
+            let caps_usage = ledger.usage(caps).map_err(|_| E::LedgerState)?;
+            Held {
+                allocated_bytes: observed_usage.live(HtmlResource::AllocatedBytes),
+                nested_output_records: observed_usage.live(HtmlResource::NestedOutputRecords),
+                observed_scratch: observed_usage.live(HtmlResource::ScratchRecords),
+                capped_scratch: caps_usage.live(HtmlResource::ScratchRecords),
+            }
+        };
         Ok(Self {
-            operation,
+            ledger,
             caps,
             observed,
+            held,
             usage: HtmlAutocompleteMaterializationUsage::default(),
             scratch: 0,
         })
@@ -396,39 +436,60 @@ impl Materialization {
         ]
     }
 
-    /// Reads the typed usage and the live scratch from the observed scope.
+    /// Reads the typed usage and the live scratch from the observed scope: what it holds beyond
+    /// what it held when the materialization began.
     fn read(&mut self) -> Result<(), HtmlAutocompleteMaterializationError> {
         use HtmlAutocompleteMaterializationError as E;
-        let usage = self
-            .operation
+        let usage: Usage<HtmlWork, HtmlResource> = self
+            .ledger
             .usage(self.observed)
             .map_err(|_| E::LedgerState)?;
-        let read = |value: u64| usize::try_from(value).map_err(|_| E::Representation);
-        self.usage = HtmlAutocompleteMaterializationUsage {
-            allocated_bytes: read(usage.live(HtmlResource::AllocatedBytes))?,
-            nested_output_records: read(usage.live(HtmlResource::NestedOutputRecords))?,
-            peak_scratch_records: read(usage.peak(HtmlResource::ScratchRecords))?,
+        let own = |value: u64, before: u64| {
+            value
+                .checked_sub(before)
+                .ok_or(E::LedgerState)
+                .and_then(|own| usize::try_from(own).map_err(|_| E::Representation))
         };
-        self.scratch = read(usage.live(HtmlResource::ScratchRecords))?;
+        self.usage = HtmlAutocompleteMaterializationUsage {
+            allocated_bytes: own(
+                usage.live(HtmlResource::AllocatedBytes),
+                self.held.allocated_bytes,
+            )?,
+            nested_output_records: own(
+                usage.live(HtmlResource::NestedOutputRecords),
+                self.held.nested_output_records,
+            )?,
+            peak_scratch_records: usize::try_from(usage.peak(HtmlResource::ScratchRecords))
+                .map_err(|_| E::Representation)?,
+        };
+        self.scratch = own(
+            usage.live(HtmlResource::ScratchRecords),
+            self.held.observed_scratch,
+        )?;
         Ok(())
     }
 
     /// Gives back the live scratch records, which are local to one processing step. Each scope
-    /// gives back what it holds: after a refused overshoot the observed scope holds growth that
-    /// the capped scope never admitted. Both scopes are released whatever the first returns, and
-    /// the first failure is reported after the live scratch is read back.
+    /// gives back what this materialization holds in it: after a refused overshoot the observed
+    /// scope holds growth that the capped scope never admitted. Both scopes are released whatever
+    /// the first returns, and the first failure is reported after the live scratch is read back.
     fn release_scratch(&mut self) -> Result<(), HtmlAutocompleteMaterializationError> {
         let mut first = Ok(());
-        for scope in [self.observed, self.caps] {
+        for (scope, before) in [
+            (self.observed, self.held.observed_scratch),
+            (self.caps, self.held.capped_scratch),
+        ] {
             let released = self
-                .operation
+                .ledger
                 .usage(scope)
-                .map(|usage| usage.live(HtmlResource::ScratchRecords))
-                .and_then(|live| {
-                    self.operation.apply_batch(
-                        scope,
-                        &[Change::Release(HtmlResource::ScratchRecords, live)],
-                    )
+                .map(|usage| {
+                    usage
+                        .live(HtmlResource::ScratchRecords)
+                        .saturating_sub(before)
+                })
+                .and_then(|own| {
+                    self.ledger
+                        .apply_batch(scope, &[Change::Release(HtmlResource::ScratchRecords, own)])
                 })
                 .map_err(Self::refused);
             if first.is_ok() {
@@ -489,7 +550,7 @@ impl Materialization {
         bytes: usize,
         purpose: StoragePurpose,
     ) -> Result<(), HtmlAutocompleteMaterializationError> {
-        self.operation
+        self.ledger
             .check_batch(self.caps, &Self::growth_batch(growth, bytes, purpose))
             .map_err(Self::refused)
     }
@@ -505,11 +566,11 @@ impl Materialization {
         use HtmlAutocompleteMaterializationError as E;
         let bytes = growth.checked_mul(item_bytes).ok_or(E::Representation)?;
         let batch = Self::growth_batch(growth, bytes, purpose);
-        self.operation
+        self.ledger
             .apply_batch(self.observed, &batch)
             .map_err(Self::refused)?;
         self.read()?;
-        self.operation
+        self.ledger
             .apply_batch(self.caps, &batch)
             .map_err(Self::refused)
     }
@@ -1609,7 +1670,7 @@ fn identity(value: &DocumentString) -> Option<HtmlAutofillFieldIdentity> {
 fn process(
     tokens: Option<&HtmlSpaceSeparatedTokens>,
     mantle: HtmlAutocompleteMantle,
-    storage: &mut Materialization,
+    storage: &mut Materialization<impl ScopeLedger<HtmlWork, HtmlResource>>,
 ) -> Result<HtmlAutocompleteProcessingState, HtmlAutocompleteMaterializationError> {
     // All temporary IDL handle storage is local to process_inner, including its
     // failure/default paths. Drop it before releasing current scratch accounting.
@@ -1622,7 +1683,7 @@ fn process(
 fn process_inner(
     tokens: Option<&HtmlSpaceSeparatedTokens>,
     mantle: HtmlAutocompleteMantle,
-    storage: &mut Materialization,
+    storage: &mut Materialization<impl ScopeLedger<HtmlWork, HtmlResource>>,
 ) -> Result<HtmlAutocompleteProcessingState, HtmlAutocompleteMaterializationError> {
     use HtmlAutocompleteDefaultReason as D;
     let Some(tokens) = tokens else {
@@ -1743,7 +1804,7 @@ struct ProcessingOutput {
 impl ProcessingOutput {
     fn finish(
         self,
-        storage: &mut Materialization,
+        storage: &mut Materialization<impl ScopeLedger<HtmlWork, HtmlResource>>,
     ) -> Result<HtmlAutocompleteProcessingState, HtmlAutocompleteMaterializationError> {
         let idl_value = storage.idl(&self.idl)?;
         Ok(HtmlAutocompleteProcessingState::Processed(
@@ -1840,12 +1901,51 @@ impl HtmlValueInterpreter {
             })
     }
 
+    /// Materializes the actual attribute's grammar and processing observations in scopes the
+    /// caller supplies, charging its growth to them.
+    ///
+    /// `caps` carries the allowances: a refused growth keeps that scope's limit and the total it
+    /// would have reached, as the scope counts them with the custody of its other holders.
+    /// `observed` has no caps and records every reservation the allocator made before `caps`
+    /// admits or refuses it, so both outcomes retain the observed capacities, including
+    /// discarded intermediates. The materialization's scratch is returned to both scopes by the
+    /// amount it holds in each. The usage the result carries is this materialization's own,
+    /// except that its peak scratch is the largest the observed scope reached. Admit the work
+    /// bound before calling; this atomic operation adds no controller or cancellation poll. All
+    /// operands remain borrowed on refusal.
+    pub fn control_autocomplete_in_scopes(
+        &self,
+        element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
+        raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
+        state: Option<HtmlInputType>,
+        ledger: &mut impl ScopeLedger<HtmlWork, HtmlResource>,
+        caps: Scope,
+        observed: Scope,
+    ) -> Result<HtmlAutocompleteMaterialized, HtmlAutocompleteMaterializationFailure> {
+        let mut storage = Materialization::in_scopes(ledger, caps, observed).map_err(|kind| {
+            HtmlAutocompleteMaterializationFailure {
+                kind,
+                usage: HtmlAutocompleteMaterializationUsage::default(),
+            }
+        })?;
+        let result = self.materialize_autocomplete(element, raw, state, &mut storage);
+        result
+            .map(|report| HtmlAutocompleteMaterialized {
+                report,
+                usage: storage.usage,
+            })
+            .map_err(|kind| HtmlAutocompleteMaterializationFailure {
+                kind,
+                usage: storage.usage,
+            })
+    }
+
     fn materialize_autocomplete(
         &self,
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
         raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
-        storage: &mut Materialization,
+        storage: &mut Materialization<impl ScopeLedger<HtmlWork, HtmlResource>>,
     ) -> Result<HtmlAutocompleteReport, HtmlAutocompleteMaterializationError> {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         let mut input = report(RULE, element, raw);
@@ -2248,7 +2348,7 @@ mod controlled_tests {
         assert_eq!(storage.scratch, 0);
         for scope in [storage.observed, storage.caps] {
             let live = storage
-                .operation
+                .ledger
                 .usage(scope)
                 .unwrap()
                 .live(HtmlResource::ScratchRecords);
@@ -2283,7 +2383,7 @@ mod controlled_tests {
         assert_eq!(storage.scratch, 0);
         for scope in [storage.observed, storage.caps] {
             let live = storage
-                .operation
+                .ledger
                 .usage(scope)
                 .unwrap()
                 .live(HtmlResource::ScratchRecords);
@@ -2452,5 +2552,159 @@ mod ordinary_allocation_tests {
             .control_autocomplete_for_input(&name, Some(&attribute), HtmlInputType::Text)
             .unwrap();
         assert_eq!(report, baseline);
+    }
+
+    /// The scopes a caller supplies: a capped one and an uncapped observer, both already holding
+    /// some other custody of the caller's.
+    fn caller_scopes(
+        bytes: u64,
+        output: u64,
+        scratch: u64,
+    ) -> (Operation<HtmlWork, HtmlResource>, Scope, Scope) {
+        let mut operation = Operation::new("host", HtmlLimits::unlimited(), 3).unwrap();
+        let root = operation.root();
+        let caps = operation
+            .child(
+                root,
+                "caps",
+                HtmlLimits::from_fn(
+                    |_| u64::MAX,
+                    |resource| match resource {
+                        HtmlResource::AllocatedBytes => bytes,
+                        HtmlResource::NestedOutputRecords => output,
+                        HtmlResource::ScratchRecords => scratch,
+                        _ => u64::MAX,
+                    },
+                ),
+                HtmlTariffs::identity(),
+            )
+            .unwrap();
+        let observed = operation
+            .child(
+                root,
+                "observed",
+                HtmlLimits::unlimited(),
+                HtmlTariffs::identity(),
+            )
+            .unwrap();
+        (operation, caps, observed)
+    }
+
+    fn scoped(
+        ledger: &mut Operation<HtmlWork, HtmlResource>,
+        caps: Scope,
+        observed: Scope,
+        raw: &str,
+    ) -> Result<HtmlAutocompleteMaterialized, HtmlAutocompleteMaterializationFailure> {
+        let name = crate::vocabulary::KnownHtmlElement::Input.qualified_name();
+        let raw = Attribute::new(
+            crate::values::QualifiedName::new(
+                crate::values::Namespace::none(),
+                None,
+                "autocomplete",
+            ),
+            raw,
+        );
+        HtmlValueInterpreter::new(200).control_autocomplete_in_scopes(
+            &name,
+            Some(&raw),
+            Some(HtmlInputType::Text),
+            ledger,
+            caps,
+            observed,
+        )
+    }
+
+    /// The same input in the caller's scopes and in a private operation takes the same storage;
+    /// the usage is this materialization's own, whatever the scopes held before.
+    #[test]
+    fn caller_scopes_report_this_materializations_own_usage_and_keep_the_others_custody() {
+        let (mut private, caps, observed) = caller_scopes(u64::MAX, u64::MAX, u64::MAX);
+        let alone = scoped(&mut private, caps, observed, "section-a name").unwrap();
+        let (mut ledger, caps, observed) = caller_scopes(u64::MAX, u64::MAX, u64::MAX);
+        // The caller already holds storage in both scopes.
+        for scope in [observed, caps] {
+            ledger
+                .apply_batch(
+                    scope,
+                    &[
+                        Change::Acquire(HtmlResource::AllocatedBytes, 1000),
+                        Change::Acquire(HtmlResource::NestedOutputRecords, 50),
+                        Change::Acquire(HtmlResource::ScratchRecords, 7),
+                    ],
+                )
+                .unwrap();
+        }
+        let shared = scoped(&mut ledger, caps, observed, "section-a name").unwrap();
+        assert_eq!(shared.report(), alone.report());
+        assert_eq!(
+            shared.usage().allocated_bytes(),
+            alone.usage().allocated_bytes()
+        );
+        assert_eq!(
+            shared.usage().nested_output_records(),
+            alone.usage().nested_output_records()
+        );
+        // The materialization's scratch is returned and the caller's seven records stay.
+        for scope in [observed, caps] {
+            let usage = ledger.usage(scope).unwrap();
+            assert_eq!(usage.live(HtmlResource::ScratchRecords), 7);
+            assert_eq!(
+                usage.live(HtmlResource::AllocatedBytes),
+                1000 + u64::try_from(alone.usage().allocated_bytes()).unwrap()
+            );
+        }
+    }
+
+    /// A cap of the caller's scope refuses with its own limit and the total that scope would have
+    /// reached with its other custody, and the growth is observed before it is refused.
+    #[test]
+    fn a_caller_cap_refuses_with_its_limit_and_the_total_including_the_others_custody() {
+        let (mut ledger, caps, observed) = caller_scopes(1000, u64::MAX, u64::MAX);
+        for scope in [observed, caps] {
+            ledger
+                .apply(scope, Change::Acquire(HtmlResource::AllocatedBytes, 990))
+                .unwrap();
+        }
+        let failure = scoped(&mut ledger, caps, observed, "section-a name").unwrap_err();
+        let HtmlAutocompleteMaterializationError::BytesLimit { limit, required } = failure.kind()
+        else {
+            panic!("{:?}", failure.kind());
+        };
+        assert_eq!(limit, 1000);
+        assert!(required > 1000);
+        // The growth was refused before the allocator made any, so nothing was taken.
+        assert_eq!(failure.usage().allocated_bytes(), 0);
+        for scope in [observed, caps] {
+            assert_eq!(
+                ledger
+                    .usage(scope)
+                    .unwrap()
+                    .live(HtmlResource::AllocatedBytes),
+                990
+            );
+        }
+        // No scratch of this materialization stays in either scope.
+        for scope in [observed, caps] {
+            assert_eq!(
+                ledger
+                    .usage(scope)
+                    .unwrap()
+                    .live(HtmlResource::ScratchRecords),
+                0
+            );
+        }
+    }
+
+    /// A scope of another operation is a ledger state, not a refusal of an allowance.
+    #[test]
+    fn a_scope_of_another_operation_is_a_ledger_state() {
+        let (mut ledger, _, observed) = caller_scopes(u64::MAX, u64::MAX, u64::MAX);
+        let (_, foreign, _) = caller_scopes(u64::MAX, u64::MAX, u64::MAX);
+        let failure = scoped(&mut ledger, foreign, observed, "name").unwrap_err();
+        assert_eq!(
+            failure.kind(),
+            HtmlAutocompleteMaterializationError::LedgerState
+        );
     }
 }

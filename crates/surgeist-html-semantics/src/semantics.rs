@@ -19,7 +19,8 @@
 mod admission;
 mod context;
 pub(crate) mod index;
-mod scan;
+mod query_account;
+pub(crate) mod scan;
 mod seen;
 pub use context::*;
 mod microdata;
@@ -115,7 +116,7 @@ use crate::{
     HtmlBaseFactsRevision, HtmlBaseMissing, HtmlBaseUrlRecord, HtmlCapture, HtmlCaptureError,
     HtmlCaptureId, HtmlCaptureSubjectId, HtmlCapturedBaseFacts, HtmlCapturedChildIds,
     HtmlCapturedChildren, HtmlCapturedElement, HtmlCapturedNode, HtmlCapturedNodeKind,
-    HtmlCapturedParent, HtmlDocumentClass, HtmlHostFactsRevision,
+    HtmlCapturedParent, HtmlDocumentClass, HtmlHostFactsRevision, HtmlSemanticAccounting,
 };
 use std::{
     error::Error,
@@ -125,6 +126,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
+use surgeist_html::accounting::{HtmlCapScope, HtmlResource};
 use surgeist_html::bounded::{
     numeric::{
         HtmlIntegerRecoveryError, HtmlIntegerUnitStep, HtmlIntegerUnitStepError,
@@ -138,8 +140,13 @@ use surgeist_html::{
     values::{Attribute, DocumentString, HtmlValueAdmissionError, HtmlValueInterpreter},
     vocabulary::{KnownHtmlAttribute, KnownHtmlElement},
 };
+use surgeist_ledger::Change;
 
 /// Finite cumulative admission for one semantic session.
+///
+/// The limits are the caps of the session's ledger scope, `html-query`, and
+/// [`HtmlSemanticUsage`] is read from that scope and its observed sibling; see
+/// [`HtmlSemanticAccounting`](crate::HtmlSemanticAccounting).
 ///
 /// Work charges visits, result writes, inspected UTF-16 units and conservative
 /// inspection envelopes for the existing intrinsic producers. Output counts
@@ -269,16 +276,6 @@ pub struct HtmlSemanticUsage {
     nested_output_records: usize,
 }
 impl HtmlSemanticUsage {
-    pub(crate) fn controlled_snapshot(words: [usize; 6]) -> Self {
-        Self {
-            work: words[0],
-            output_records: words[1],
-            scratch_records: words[2],
-            allocated_bytes: words[3],
-            peak_scratch_records: words[4],
-            nested_output_records: words[5],
-        }
-    }
     pub fn work(self) -> usize {
         self.work
     }
@@ -1321,6 +1318,10 @@ pub enum HtmlSemanticFailureKind {
     /// the owner's protocol. Valid captures and valid use never reach this cause; it reports a
     /// defect in this crate, as `ProtocolViolated` does for the value interpretations.
     ProtocolViolated,
+    /// The ledger that carries the session's accounting failed in a way that is not a refused
+    /// cap: a host scope that is not the host operation's, no room for the session's scopes, an
+    /// exhausted ledger resource or a ledger defect.
+    Accounting(crate::HtmlSemanticAccountingFault),
     Capture(HtmlCaptureError),
     ContextCaptureMismatch,
     Attribute(HtmlValueAdmissionError),
@@ -1366,7 +1367,7 @@ pub struct HtmlSemanticSession<'a> {
     limits: HtmlSemanticLimits,
     cancellation: HtmlSemanticCancellation,
     qualification: Arc<HtmlSemanticQualification>,
-    usage: HtmlSemanticUsage,
+    account: query_account::QueryAccount,
     failure: Option<HtmlSemanticFailure>,
     option_control: Option<crate::controlled_option_value::QueryControl<'a>>,
     /// The item graph of the tree the last graph query used, kept for the rest
@@ -1419,6 +1420,35 @@ impl<'a> HtmlSemanticSession<'a> {
         limits: HtmlSemanticLimits,
         cancellation: HtmlSemanticCancellation,
     ) -> Result<Self, HtmlSemanticFailure> {
+        Self::open(capture, context, interpreter, limits, cancellation, None)
+    }
+    /// A session that charges below the scope `accounting` names, in the host's operation. See
+    /// [`HtmlSemanticAccounting`] for the scopes it creates.
+    pub fn with_accounting(
+        capture: &'a HtmlCapture,
+        context: &'a HtmlSemanticContext,
+        interpreter: HtmlValueInterpreter,
+        limits: HtmlSemanticLimits,
+        cancellation: HtmlSemanticCancellation,
+        accounting: &HtmlSemanticAccounting,
+    ) -> Result<Self, HtmlSemanticFailure> {
+        Self::open(
+            capture,
+            context,
+            interpreter,
+            limits,
+            cancellation,
+            Some(accounting),
+        )
+    }
+    fn open(
+        capture: &'a HtmlCapture,
+        context: &'a HtmlSemanticContext,
+        interpreter: HtmlValueInterpreter,
+        limits: HtmlSemanticLimits,
+        cancellation: HtmlSemanticCancellation,
+        accounting: Option<&HtmlSemanticAccounting>,
+    ) -> Result<Self, HtmlSemanticFailure> {
         if capture.identity() != context.capture() {
             return Err(HtmlSemanticFailure {
                 kind: HtmlSemanticFailureKind::ContextCaptureMismatch,
@@ -1426,6 +1456,13 @@ impl<'a> HtmlSemanticSession<'a> {
                 qualification: None,
             });
         }
+        let account = query_account::QueryAccount::new(limits, accounting).map_err(|error| {
+            HtmlSemanticFailure {
+                kind: query_account::stop_kind(error),
+                usage: HtmlSemanticUsage::default(),
+                qualification: None,
+            }
+        })?;
         Ok(Self {
             capture,
             context,
@@ -1456,7 +1493,7 @@ impl<'a> HtmlSemanticSession<'a> {
                     derived_bidi_class_sha256: crate::bidi::DERIVED_BIDI_CLASS_SHA256,
                 },
             }),
-            usage: HtmlSemanticUsage::default(),
+            account,
             failure: None,
             option_control: None,
             microdata_graph: None,
@@ -1466,8 +1503,20 @@ impl<'a> HtmlSemanticSession<'a> {
             cancel_at_work: None,
         })
     }
+    /// The usage read from the session's ledger scopes. A ledger that cannot be read has latched a
+    /// defect, which the session reports as its terminal `ProtocolViolated` failure; the usage
+    /// then is that failure's.
     pub fn usage(&self) -> HtmlSemanticUsage {
-        self.usage
+        self.snapshot()
+    }
+    fn snapshot(&self) -> HtmlSemanticUsage {
+        match self.account.read() {
+            Ok(usage) => usage,
+            Err(_) => self
+                .failure
+                .as_ref()
+                .map_or_else(HtmlSemanticUsage::default, |failure| failure.usage),
+        }
     }
     pub(crate) fn control_option_value(
         &mut self,
@@ -1479,13 +1528,26 @@ impl<'a> HtmlSemanticSession<'a> {
         self.failure.as_ref()
     }
     fn stop(&mut self, kind: HtmlSemanticFailureKind) -> HtmlSemanticFailure {
+        let usage = self.snapshot();
         self.failure
             .get_or_insert(HtmlSemanticFailure {
                 kind,
-                usage: self.usage,
+                usage,
                 qualification: Some(self.qualification.clone()),
             })
             .clone()
+    }
+    /// Stops with the typed stop of a ledger error.
+    fn ledger_stop(&mut self, error: query_account::LedgerError) -> HtmlSemanticFailure {
+        if let (Some(control), query_account::LedgerError::Refused(refusal)) =
+            (self.option_control, &error)
+            && control.is_gate(refusal.scope)
+        {
+            // The parent's allowance refused it, and the parent reports its own limit.
+            let kind = HtmlSemanticFailureKind::ControlledOptionValue(control.refusal(refusal));
+            return self.stop(kind);
+        }
+        self.stop(query_account::stop_kind(error))
     }
     fn first_html_element_child(
         &mut self,
@@ -1588,7 +1650,7 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         #[cfg(test)]
         if let Some((at, handle)) = &self.cancel_at_work
-            && self.usage.work >= *at
+            && self.snapshot().work >= *at
         {
             handle.cancel();
         }
@@ -1599,22 +1661,15 @@ impl<'a> HtmlSemanticSession<'a> {
     }
     fn charge(&mut self, work: usize) -> Result<(), HtmlSemanticFailure> {
         self.poll()?;
-        let Some(required) = self.usage.work.checked_add(work) else {
-            return Err(self.stop(HtmlSemanticFailureKind::RepresentationExhausted));
-        };
-        if required > self.limits.work {
-            return Err(self.stop(HtmlSemanticFailureKind::LimitExceeded {
-                resource: HtmlSemanticResource::Work,
-                limit: self.limits.work,
-                required,
-            }));
-        }
+        // An enclosing controlled OptionValue execution is the parent scope of this session's
+        // ledger scope, so its remaining work admits this work in the same batch.
+        self.account
+            .work(work)
+            .map_err(|error| self.ledger_stop(error))?;
+        #[cfg(test)]
         if let Some(control) = self.option_control {
-            control
-                .step(work)
-                .map_err(|e| self.stop(HtmlSemanticFailureKind::ControlledOptionValue(e)))?;
+            control.after_work();
         }
-        self.usage.work = required;
         Ok(())
     }
     fn node(
@@ -1986,6 +2041,7 @@ impl<'a> HtmlSemanticSession<'a> {
         resource: HtmlSemanticResource,
         reserve: impl FnOnce() -> Result<usize, ()>,
     ) -> Result<(), HtmlSemanticFailure> {
+        use query_account::{record_dimension, wide};
         self.poll()?;
         let needed = len
             .checked_add(additional)
@@ -1997,38 +2053,22 @@ impl<'a> HtmlSemanticSession<'a> {
             }
             return Ok(());
         }
-        let (retained, limit) = match resource {
-            HtmlSemanticResource::ScratchRecords => {
-                (self.usage.scratch_records, self.limits.scratch_records)
-            }
-            HtmlSemanticResource::NestedOutputRecords => (
-                self.usage.nested_output_records,
-                self.limits.nested_output_records,
-            ),
-            _ => (self.usage.output_records, self.limits.output_records),
-        };
+        let dimension = record_dimension(resource);
         let growth = needed - capacity;
-        let required = retained
-            .checked_add(growth)
-            .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
-        if required > limit {
-            return Err(self.stop(HtmlSemanticFailureKind::LimitExceeded {
-                resource,
-                limit,
-                required,
-            }));
+        // The records are checked first, then the bytes: the batch order is the order of refusal.
+        match growth.checked_mul(record_size) {
+            Some(bytes) => self.account.check(&[
+                Change::Acquire(dimension, wide(growth)),
+                Change::Acquire(HtmlResource::AllocatedBytes, wide(bytes)),
+            ]),
+            None => {
+                self.account
+                    .check(&[Change::Acquire(dimension, wide(growth))])
+                    .map_err(|error| self.ledger_stop(error))?;
+                return Err(self.stop(HtmlSemanticFailureKind::RepresentationExhausted));
+            }
         }
-        let requested_bytes = growth
-            .checked_mul(record_size)
-            .and_then(|n| n.checked_add(self.usage.allocated_bytes))
-            .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
-        if requested_bytes > self.limits.allocated_bytes {
-            return Err(self.stop(HtmlSemanticFailureKind::LimitExceeded {
-                resource: HtmlSemanticResource::AllocatedBytes,
-                limit: self.limits.allocated_bytes,
-                required: requested_bytes,
-            }));
-        }
+        .map_err(|error| self.ledger_stop(error))?;
         let before = capacity;
         self.charge(1)?;
         if let Some(control) = self.option_control {
@@ -2045,36 +2085,16 @@ impl<'a> HtmlSemanticSession<'a> {
         let actual_growth = actual_capacity
             .checked_sub(before)
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::ProtocolViolated))?;
-        let actual = retained
-            .checked_add(actual_growth)
-            .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
         let bytes = actual_growth
             .checked_mul(record_size)
-            .and_then(|n| n.checked_add(self.usage.allocated_bytes))
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
-        self.usage.allocated_bytes = bytes;
-        match resource {
-            HtmlSemanticResource::ScratchRecords => {
-                self.usage.scratch_records = actual;
-                self.usage.peak_scratch_records = self.usage.peak_scratch_records.max(actual);
-            }
-            HtmlSemanticResource::NestedOutputRecords => self.usage.nested_output_records = actual,
-            _ => self.usage.output_records = actual,
-        }
-        if actual > limit {
-            return Err(self.stop(HtmlSemanticFailureKind::LimitExceeded {
-                resource,
-                limit,
-                required: actual,
-            }));
-        }
-        if bytes > self.limits.allocated_bytes {
-            return Err(self.stop(HtmlSemanticFailureKind::LimitExceeded {
-                resource: HtmlSemanticResource::AllocatedBytes,
-                limit: self.limits.allocated_bytes,
-                required: bytes,
-            }));
-        }
+        // The allocator's actual growth is recorded before the caps can refuse it.
+        self.account
+            .observe(&[
+                Change::Acquire(dimension, wide(actual_growth)),
+                Change::Acquire(HtmlResource::AllocatedBytes, wide(bytes)),
+            ])
+            .map_err(|error| self.ledger_stop(error))?;
         if let Some(result) = parent_result {
             result.map_err(|e| self.stop(HtmlSemanticFailureKind::ControlledOptionValue(e)))?;
         }
@@ -2108,12 +2128,15 @@ impl<'a> HtmlSemanticSession<'a> {
     /// instead, leaves the counts as they were, and the next charge reports it unless an earlier
     /// failure already holds the slot.
     fn release_scratch_backing(&mut self, backing: ScratchBacking) {
-        let Some(remaining) = self.usage.scratch_records.checked_sub(backing.records) else {
-            // Nothing was returned on either side, so both counts stay as they were.
-            self.stop(HtmlSemanticFailureKind::ProtocolViolated);
+        if let Err(error) = self.account.release_scratch(backing.records) {
+            // A release that matches no reservation changed nothing.
+            let kind = match error {
+                query_account::LedgerError::Refused(_) => HtmlSemanticFailureKind::ProtocolViolated,
+                other => query_account::stop_kind(other),
+            };
+            self.stop(kind);
             return;
-        };
-        self.usage.scratch_records = remaining;
+        }
         if let Some(control) = self.option_control
             && let Err(error) = control.release_scratch(backing.bytes)
         {
@@ -2152,24 +2175,17 @@ impl<'a> HtmlSemanticSession<'a> {
     fn remaining_allocated_bytes(&self) -> usize {
         self.limits
             .allocated_bytes
-            .saturating_sub(self.usage.allocated_bytes)
+            .saturating_sub(self.snapshot().allocated_bytes)
     }
     /// Records actual capacity after an admitted allocation, including an
     /// allocator overshoot. Accounting precedes the next cancellation poll.
     fn record_allocated_bytes(&mut self, capacity: usize) -> Result<(), HtmlSemanticFailure> {
-        self.usage.allocated_bytes = self
-            .usage
-            .allocated_bytes
-            .checked_add(capacity)
-            .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
-        if self.usage.allocated_bytes > self.limits.allocated_bytes {
-            return Err(self.stop(HtmlSemanticFailureKind::LimitExceeded {
-                resource: HtmlSemanticResource::AllocatedBytes,
-                limit: self.limits.allocated_bytes,
-                required: self.usage.allocated_bytes,
-            }));
-        }
-        Ok(())
+        self.account
+            .observe(&[Change::Acquire(
+                HtmlResource::AllocatedBytes,
+                query_account::wide(capacity),
+            )])
+            .map_err(|error| self.ledger_stop(error))
     }
     fn numeric_result(
         &mut self,
@@ -2202,14 +2218,14 @@ impl<'a> HtmlSemanticSession<'a> {
                     HtmlSemanticFailureKind::LimitExceeded {
                         resource: HtmlSemanticResource::AllocatedBytes,
                         limit: self.limits.allocated_bytes,
-                        required: self.usage.allocated_bytes.saturating_add(required),
+                        required: self.snapshot().allocated_bytes.saturating_add(required),
                     }
                 }
                 HtmlIntegerUnitStepError::ActualCapacityLimitExceeded { .. } => {
                     HtmlSemanticFailureKind::LimitExceeded {
                         resource: HtmlSemanticResource::AllocatedBytes,
                         limit: self.limits.allocated_bytes,
-                        required: self.usage.allocated_bytes,
+                        required: self.snapshot().allocated_bytes,
                     }
                 }
             };
@@ -3641,7 +3657,7 @@ impl<'a> HtmlSemanticSession<'a> {
         self.poll()?;
         Ok(HtmlSemanticReport {
             qualification: self.qualification.clone(),
-            usage: self.usage,
+            usage: self.snapshot(),
             results,
         })
     }

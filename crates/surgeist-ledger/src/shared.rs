@@ -65,6 +65,11 @@ impl<W: Dimension, R: Dimension> SharedOperation<W, R> {
     pub fn limits(&self, scope: Scope) -> Result<Limits<W, R>, Error<W, R>> {
         self.lock().limits(scope).copied()
     }
+    /// Replaces the caps of a scope for later batches under one lock; see
+    /// [`Operation::set_limits`].
+    pub fn set_limits(&self, scope: Scope, limits: Limits<W, R>) -> Result<(), Error<W, R>> {
+        self.lock().set_limits(scope, limits)
+    }
     pub fn usage(&self, scope: Scope) -> Result<Usage<W, R>, Error<W, R>> {
         self.lock().usage(scope).copied()
     }

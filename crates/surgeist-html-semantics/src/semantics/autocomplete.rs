@@ -11,8 +11,7 @@ use surgeist_html::attributes::{
     },
 };
 use surgeist_html::bounded::attributes::{
-    HtmlAutocompleteMaterializationError, HtmlAutocompleteMaterializationLimits,
-    HtmlAutocompleteMaterializationUsage, autocomplete_materialization_work_bound,
+    HtmlAutocompleteMaterializationError, autocomplete_materialization_work_bound,
 };
 use surgeist_html::{values::Attribute, vocabulary::KnownHtmlElement};
 
@@ -115,50 +114,38 @@ impl HtmlSemanticSession<'_> {
         let work = autocomplete_materialization_work_bound(raw.map_or(0, |raw| raw.value().len()))
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
         self.charge(work)?;
-        let baseline = self.usage;
-        let materialized = self.interpreter.control_autocomplete_controlled(
-            element.name(),
-            raw,
-            state,
-            HtmlAutocompleteMaterializationLimits::new(
-                self.remaining_allocated_bytes(),
-                self.limits
-                    .nested_output_records
-                    .saturating_sub(baseline.nested_output_records),
-                self.limits
-                    .scratch_records
-                    .saturating_sub(baseline.scratch_records),
-            ),
-        );
-        let observed = match &materialized {
-            Ok(value) => value.usage(),
-            Err(failure) => failure.usage(),
-        };
-        self.record_autocomplete_usage(observed)?;
-        let intrinsic = materialized
+        // The materialization charges this session's scopes: its growth is observed before the
+        // session's caps admit or refuse it, and its scratch is returned by what it holds.
+        let (ledger, caps, observed) = self.account.scopes();
+        let intrinsic = self
+            .interpreter
+            .control_autocomplete_in_scopes(element.name(), raw, state, ledger, caps, observed)
             .map_err(|failure| {
                 let kind = match failure.kind() {
                     HtmlAutocompleteMaterializationError::RawAdmission(error) => {
                         HtmlSemanticFailureKind::Attribute(error)
                     }
-                    HtmlAutocompleteMaterializationError::BytesLimit { required, .. } => self
-                        .autocomplete_limit(
-                            HtmlSemanticResource::AllocatedBytes,
-                            baseline.allocated_bytes,
+                    HtmlAutocompleteMaterializationError::BytesLimit { limit, required } => {
+                        HtmlSemanticFailureKind::LimitExceeded {
+                            resource: HtmlSemanticResource::AllocatedBytes,
+                            limit,
                             required,
-                        ),
-                    HtmlAutocompleteMaterializationError::OutputLimit { required, .. } => self
-                        .autocomplete_limit(
-                            HtmlSemanticResource::NestedOutputRecords,
-                            baseline.nested_output_records,
+                        }
+                    }
+                    HtmlAutocompleteMaterializationError::OutputLimit { limit, required } => {
+                        HtmlSemanticFailureKind::LimitExceeded {
+                            resource: HtmlSemanticResource::NestedOutputRecords,
+                            limit,
                             required,
-                        ),
-                    HtmlAutocompleteMaterializationError::ScratchLimit { required, .. } => self
-                        .autocomplete_limit(
-                            HtmlSemanticResource::ScratchRecords,
-                            baseline.scratch_records,
+                        }
+                    }
+                    HtmlAutocompleteMaterializationError::ScratchLimit { limit, required } => {
+                        HtmlSemanticFailureKind::LimitExceeded {
+                            resource: HtmlSemanticResource::ScratchRecords,
+                            limit,
                             required,
-                        ),
+                        }
+                    }
                     HtmlAutocompleteMaterializationError::Allocation { .. } => {
                         HtmlSemanticFailureKind::AllocationFailed
                     }
@@ -232,54 +219,5 @@ impl HtmlSemanticSession<'_> {
         self.charge(1)?;
         data.push(report);
         Ok(HtmlSemanticValue::Known(HtmlControlAutocomplete { data }))
-    }
-
-    fn autocomplete_limit(
-        &self,
-        resource: HtmlSemanticResource,
-        baseline: usize,
-        required: usize,
-    ) -> HtmlSemanticFailureKind {
-        let Some(required) = baseline.checked_add(required) else {
-            return HtmlSemanticFailureKind::RepresentationExhausted;
-        };
-        let limit = match resource {
-            HtmlSemanticResource::AllocatedBytes => self.limits.allocated_bytes,
-            HtmlSemanticResource::NestedOutputRecords => self.limits.nested_output_records,
-            HtmlSemanticResource::ScratchRecords => self.limits.scratch_records,
-            _ => return HtmlSemanticFailureKind::RepresentationExhausted,
-        };
-        HtmlSemanticFailureKind::LimitExceeded {
-            resource,
-            limit,
-            required,
-        }
-    }
-
-    fn record_autocomplete_usage(
-        &mut self,
-        observed: HtmlAutocompleteMaterializationUsage,
-    ) -> Result<(), HtmlSemanticFailure> {
-        let bytes = self
-            .usage
-            .allocated_bytes
-            .checked_add(observed.allocated_bytes());
-        let output = self
-            .usage
-            .nested_output_records
-            .checked_add(observed.nested_output_records());
-        let scratch = self
-            .usage
-            .scratch_records
-            .checked_add(observed.peak_scratch_records());
-        let (Some(bytes), Some(output), Some(scratch)) = (bytes, output, scratch) else {
-            return Err(self.stop(HtmlSemanticFailureKind::RepresentationExhausted));
-        };
-        self.usage.allocated_bytes = bytes;
-        self.usage.nested_output_records = output;
-        self.usage.peak_scratch_records = self.usage.peak_scratch_records.max(scratch);
-        // Temporary materialization vectors have been dropped before the owner
-        // returns; current scratch remains unchanged on success and failure.
-        Ok(())
     }
 }

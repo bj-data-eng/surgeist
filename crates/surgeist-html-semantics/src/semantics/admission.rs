@@ -10,8 +10,9 @@
 //! checks and their order to the family. Every primitive reports the family's own
 //! error, and none charges after it fails.
 
-use super::scan::{ScanError, ScanMeter};
+use super::scan::{Caps, ScanError, ScanMeter};
 use super::*;
+use surgeist_html::accounting::{HtmlCapScope, HtmlResource};
 
 /// Defines the revision key of a producer's facts: the producer's identity, the
 /// configuration it ran under and its revision number. Consumers compare whole keys
@@ -112,32 +113,38 @@ pub(super) trait FactError: ScanError {
     fn byte_limit() -> Self;
 }
 
-/// The record, byte and work totals of one admission against its limits.
+/// The record, byte and work totals of one admission against its limits, charged to a ledger
+/// scope. Records and bytes are taken first and checked where the family's own order of refusals
+/// requires.
+#[derive(Debug)]
 pub(super) struct FactAdmission<E> {
-    pub(super) limits: FactLimits,
-    pub(super) records: usize,
-    pub(super) bytes: usize,
     meter: ScanMeter<E>,
 }
 impl<E: FactError> FactAdmission<E> {
-    /// An admission with nothing admitted yet.
-    pub(super) fn new(limits: impl Into<FactLimits>) -> Self {
-        Self::resume(limits, 0)
-    }
-    /// An admission that continues from `work` already admitted, with no records
-    /// or bytes of its own.
-    pub(super) fn resume(limits: impl Into<FactLimits>, work: usize) -> Self {
+    /// An admission with nothing admitted yet, in a scope named for `kind`.
+    pub(super) fn new(kind: HtmlCapScope, limits: impl Into<FactLimits>) -> Result<Self, E> {
         let limits = limits.into();
-        Self {
-            limits,
-            records: 0,
-            bytes: 0,
-            meter: ScanMeter::new(work, limits.work),
-        }
+        Ok(Self {
+            meter: ScanMeter::new(
+                kind,
+                Caps::work(limits.work)
+                    .records(limits.records)
+                    .bytes(limits.bytes),
+            )?,
+        })
     }
     /// The validation work admitted so far.
-    pub(super) fn work_total(&self) -> usize {
+    #[cfg(test)]
+    pub(super) fn work_total(&self) -> Result<usize, E> {
         self.meter.work()
+    }
+    /// The retained records taken so far, checked or not.
+    pub(super) fn records(&self) -> Result<usize, E> {
+        self.meter.taken(HtmlResource::FactRecords)
+    }
+    /// The retained bytes taken so far, checked or not.
+    pub(super) fn bytes(&self) -> Result<usize, E> {
+        self.meter.taken(HtmlResource::FactBytes)
     }
     pub(super) fn work(&mut self, amount: usize) -> Result<(), E> {
         self.meter.charge(amount)
@@ -158,36 +165,29 @@ impl<E: FactError> FactAdmission<E> {
         Ok(())
     }
     /// Refuses a record total beyond the record limit.
-    pub(super) fn check_records(&self) -> Result<(), E> {
-        if self.records > self.limits.records {
-            return Err(E::record_limit());
-        }
-        Ok(())
+    pub(super) fn check_records(&mut self) -> Result<(), E> {
+        self.meter
+            .check(HtmlResource::FactRecords, |_, _| E::record_limit())
     }
     /// Refuses a byte total beyond the byte limit.
-    pub(super) fn check_bytes(&self) -> Result<(), E> {
-        if self.bytes > self.limits.bytes {
-            return Err(E::byte_limit());
-        }
-        Ok(())
+    pub(super) fn check_bytes(&mut self) -> Result<(), E> {
+        self.meter
+            .check(HtmlResource::FactBytes, |_, _| E::byte_limit())
+    }
+    /// Refuses `records` that would not fit the record limit, taking none of them.
+    pub(super) fn fit_records(&mut self, records: usize) -> Result<(), E> {
+        self.meter
+            .fits(HtmlResource::FactRecords, records, |_, _| E::record_limit())
     }
     /// Adds retained records without checking the limit; the caller checks at the
     /// point its own order of refusals requires.
     pub(super) fn grow_records(&mut self, records: usize) -> Result<(), E> {
-        self.records = self
-            .records
-            .checked_add(records)
-            .ok_or_else(E::representation_exhausted)?;
-        Ok(())
+        self.meter.grow(HtmlResource::FactRecords, records)
     }
     /// Adds retained bytes without checking the limit; the caller checks at the
     /// point its own order of refusals requires.
     pub(super) fn grow_bytes(&mut self, bytes: usize) -> Result<(), E> {
-        self.bytes = self
-            .bytes
-            .checked_add(bytes)
-            .ok_or_else(E::representation_exhausted)?;
-        Ok(())
+        self.meter.grow(HtmlResource::FactBytes, bytes)
     }
     /// Adds retained records, then refuses a total beyond the record limit.
     pub(super) fn add_records(&mut self, records: usize) -> Result<(), E> {
@@ -228,6 +228,7 @@ mod tests {
         Work,
         Exhausted,
         Capture,
+        State,
     }
     impl ScanError for Refusal {
         fn representation_exhausted() -> Self {
@@ -238,6 +239,9 @@ mod tests {
         }
         fn capture(_: HtmlCaptureError) -> Self {
             Self::Capture
+        }
+        fn ledger_state() -> Self {
+            Self::State
         }
     }
     impl FactError for Refusal {
@@ -266,7 +270,11 @@ mod tests {
         ToyProducer
     );
     fn admission(records: usize, bytes: usize, work: usize) -> FactAdmission<Refusal> {
-        FactAdmission::new(ToyLimits::new(records, bytes, work))
+        FactAdmission::new(
+            HtmlCapScope::MediaFacts,
+            ToyLimits::new(records, bytes, work),
+        )
+        .unwrap()
     }
 
     #[test]
@@ -282,7 +290,10 @@ mod tests {
         let vector: Vec<u32> = Vec::with_capacity(5);
         let mut a = admission(5, 20, 1);
         a.vector(&vector).unwrap();
-        assert_eq!((a.records, a.bytes, a.work_total()), (5, 20, 1));
+        assert_eq!(
+            (a.records(), a.bytes(), a.work_total()),
+            (Ok(5), Ok(20), Ok(1))
+        );
         // The next vector needs work the limit does not allow.
         assert_eq!(a.vector(&vector), Err(Refusal::Work));
     }
@@ -299,7 +310,7 @@ mod tests {
         let vector: Vec<u32> = Vec::with_capacity(5);
         let mut a = admission(0, 0, 0);
         assert_eq!(a.vector(&vector), Err(Refusal::Work));
-        assert_eq!((a.records, a.bytes), (0, 0));
+        assert_eq!((a.records(), a.bytes()), (Ok(0), Ok(0)));
     }
 
     #[test]
@@ -321,11 +332,22 @@ mod tests {
     }
 
     #[test]
-    fn resume_continues_from_the_work_already_admitted() {
-        let mut a = FactAdmission::<Refusal>::resume(ToyLimits::new(0, 0, 10), 7);
-        assert_eq!(a.work_total(), 7);
+    fn the_work_admitted_stays_when_a_refusal_ends_a_charge() {
+        let mut a = admission(0, 0, 10);
+        a.work(7).unwrap();
+        assert_eq!(a.work_total(), Ok(7));
         a.work(3).unwrap();
         assert_eq!(a.work(1), Err(Refusal::Work));
+        assert_eq!(a.work_total(), Ok(10));
+    }
+
+    #[test]
+    fn fitting_checks_a_total_without_taking_it() {
+        let mut a = admission(2, 8, 0);
+        assert_eq!(a.fit_records(3), Err(Refusal::Records));
+        assert_eq!((a.records(), a.bytes()), (Ok(0), Ok(0)));
+        a.fit_records(2).unwrap();
+        assert_eq!((a.records(), a.bytes()), (Ok(0), Ok(0)));
     }
 
     #[test]
