@@ -726,7 +726,8 @@ fn draw_outline_body(
         2
     };
     for copy in 0..copies {
-        pen.begin_glyph(
+        let mut active = GlyphOutlinePen::new(
+            pen,
             glyph,
             instance.synthesis.skew,
             f64::from(instance.size) / f64::from(units),
@@ -735,17 +736,17 @@ fn draw_outline_body(
             } else {
                 instance.synthesis.embolden
             },
+            clip,
         );
-        pen.clip = clip;
         outline
             .draw(
                 DrawSettings::unhinted(Size::unscaled(), LocationRef::new(coordinates))
                     .with_path_style(PathStyle::HarfBuzz)
                     .with_memory(Some(&mut scratch)),
-                pen,
+                &mut active,
             )
             .map_err(|_| Error::from(GlyphPreparationError::Provider { glyph: glyph.id() }))?;
-        pen.finish_glyph()?;
+        active.finish()?;
     }
     Ok(())
 }
@@ -1084,15 +1085,7 @@ fn provider_point(value: f64) -> Error {
 struct CollectingPen {
     elements: AccountedVec<kurbo::PathEl>,
     account: Account,
-    failed: Option<Error>,
-    glyph: TextGlyph,
-    skew: f32,
-    scale: f64,
-    copy_offset: f32,
-    glyph_bounds: Option<kurbo::Rect>,
     bounds: Option<kurbo::Rect>,
-    drawing: bool,
-    clip: Option<kurbo::Rect>,
     paints: AccountedVec<GlyphPaint>,
     coalesce_previous: bool,
 }
@@ -1142,41 +1135,87 @@ impl CollectingPen {
     fn new(account: Account) -> Result<Self> {
         Ok(Self {
             elements: account.retained(0)?,
-            failed: None,
-            glyph: TextGlyph::try_new(0, 0.0, 0.0, 0.0).expect("zero glyph facts are finite"),
-            skew: 0.0,
-            scale: 1.0,
-            copy_offset: 0.0,
-            glyph_bounds: None,
             bounds: None,
-            drawing: false,
-            clip: None,
             paints: account.retained(0)?,
             account,
             coalesce_previous: false,
         })
     }
-    fn begin_glyph(&mut self, glyph: TextGlyph, skew: f32, scale: f64, copy_offset: f32) {
-        self.glyph = glyph;
-        self.skew = skew;
-        self.scale = scale;
-        self.copy_offset = copy_offset;
-        self.glyph_bounds = None;
-        self.drawing = false;
-        self.clip = None;
+    fn finish(self) -> Result<(kurbo::BezPath, TextRunBounds, Vec<GlyphPaint>)> {
+        let bounds = match self.bounds {
+            None => TextRunBounds::empty(),
+            Some(r) => TextRunBounds::try_ink(Rect::try_new(r.x0, r.y0, r.width(), r.height())?)?,
+        };
+        Ok((
+            kurbo::BezPath::from_vec(self.elements.into_preparation()?.into_retained()),
+            bounds,
+            self.paints.into_preparation()?.into_retained(),
+        ))
     }
-    fn point(&mut self, x: f32, y: f32) -> kurbo::Point {
-        if self.failed.is_some() {
-            return kurbo::Point::ZERO;
+}
+
+/// Bounds of every accepted provider point, including off-curve controls.
+enum GlyphGeometry {
+    Empty,
+    PointOnlyBounds(kurbo::Rect),
+    DrawingBounds(kurbo::Rect),
+}
+
+impl GlyphGeometry {
+    fn move_to(&mut self, point: kurbo::Point) {
+        *self = match *self {
+            Self::Empty => Self::PointOnlyBounds(kurbo::Rect::from_points(point, point)),
+            Self::PointOnlyBounds(bounds) => Self::PointOnlyBounds(bounds.union_pt(point)),
+            Self::DrawingBounds(bounds) => Self::DrawingBounds(bounds.union_pt(point)),
+        };
+    }
+
+    fn draw_to(&mut self, point: kurbo::Point) {
+        *self = Self::DrawingBounds(match *self {
+            Self::Empty => kurbo::Rect::from_points(point, point),
+            Self::PointOnlyBounds(bounds) | Self::DrawingBounds(bounds) => bounds.union_pt(point),
+        });
+    }
+}
+
+/// One actual draw borrows retained run storage without replacing its context.
+struct GlyphOutlinePen<'a> {
+    collector: &'a mut CollectingPen,
+    glyph: TextGlyph,
+    skew: f32,
+    scale: f64,
+    copy_offset: f32,
+    clip: Option<kurbo::Rect>,
+    geometry: GlyphGeometry,
+    failed: Option<Error>,
+}
+
+impl<'a> GlyphOutlinePen<'a> {
+    fn new(
+        collector: &'a mut CollectingPen,
+        glyph: TextGlyph,
+        skew: f32,
+        scale: f64,
+        copy_offset: f32,
+        clip: Option<kurbo::Rect>,
+    ) -> Self {
+        Self {
+            collector,
+            glyph,
+            skew,
+            scale,
+            copy_offset,
+            clip,
+            geometry: GlyphGeometry::Empty,
+            failed: None,
         }
-        if let Err(error) = self
+    }
+
+    fn point(&self, x: f32, y: f32) -> Result<kurbo::Point> {
+        self.collector
             .account
             .at(RenderPhase::Outline)
-            .work(RenderWork::OutlinePointVisits, 1)
-        {
-            self.failed = Some(error);
-            return kurbo::Point::ZERO;
-        }
+            .work(RenderWork::OutlinePointVisits, 1)?;
         let values = [
             f64::from(x) * self.scale
                 + f64::from(self.skew) * f64::from(y) * self.scale
@@ -1195,58 +1234,50 @@ impl CollectingPen {
         for (index, value) in values.into_iter().enumerate() {
             let narrowed = value as f32;
             if !value.is_finite() || !narrowed.is_finite() || (value != 0.0 && narrowed == 0.0) {
-                self.failed.get_or_insert_with(|| {
-                    GlyphPreparationError::Numeric {
-                        phase: GlyphNumericPhase::PathPoint,
-                        value,
-                    }
-                    .into()
-                });
+                return Err(GlyphPreparationError::Numeric {
+                    phase: GlyphNumericPhase::PathPoint,
+                    value,
+                }
+                .into());
             }
             if index == 0 && self.copy_offset > 0.0 && narrowed == original_x as f32 {
-                self.failed.get_or_insert_with(|| {
-                    GlyphPreparationError::Numeric {
-                        phase: GlyphNumericPhase::Synthesis,
-                        value: f64::from(self.copy_offset),
-                    }
-                    .into()
-                });
+                return Err(GlyphPreparationError::Numeric {
+                    phase: GlyphNumericPhase::Synthesis,
+                    value: f64::from(self.copy_offset),
+                }
+                .into());
             }
             canonical[index] = f64::from(narrowed);
         }
-        let point = kurbo::Point::new(canonical[0], canonical[1]);
-        self.glyph_bounds = Some(
-            self.glyph_bounds
-                .map_or(kurbo::Rect::from_points(point, point), |r| {
-                    r.union_pt(point)
-                }),
-        );
-        point
+        Ok(kurbo::Point::new(canonical[0], canonical[1]))
     }
-    fn push(&mut self, element: kurbo::PathEl) {
+
+    fn emit(&mut self, element: impl FnOnce(&mut Self) -> Result<kurbo::PathEl>) {
         if self.failed.is_some() {
             return;
         }
         let result = (|| {
-            self.account
+            let element = element(self)?;
+            self.collector
+                .account
                 .at(RenderPhase::Outline)
                 .work(RenderWork::PathElementVisits, 1)?;
-            self.elements.grow(1)?;
-            self.account
+            self.collector.elements.grow(1)?;
+            self.collector
+                .account
                 .at(RenderPhase::Outline)
                 .work(RenderWork::PathElementsEmitted, 1)?;
-            self.elements.push(element)
+            self.collector.elements.push(element)
         })();
         if let Err(error) = result {
             self.failed = Some(error);
         }
     }
-    fn finish_glyph(&mut self) -> Result<()> {
-        if let Some(error) = self.failed.take() {
+    fn finish(self) -> Result<()> {
+        if let Some(error) = self.failed {
             return Err(error);
         }
-        if self.drawing {
-            let mut r = self.glyph_bounds.expect("drawing includes a point");
+        if let GlyphGeometry::DrawingBounds(mut r) = self.geometry {
             if r.width() <= 0.0 || r.height() <= 0.0 {
                 return Err(GlyphPreparationError::Numeric {
                     phase: GlyphNumericPhase::InkExtent,
@@ -1258,21 +1289,14 @@ impl CollectingPen {
                 r = r.intersect(clip);
             }
             if r.width() > 0.0 && r.height() > 0.0 {
-                self.bounds = Some(self.bounds.map_or(r, |previous| previous.union(r)));
+                self.collector.bounds = Some(
+                    self.collector
+                        .bounds
+                        .map_or(r, |previous| previous.union(r)),
+                );
             }
         }
         Ok(())
-    }
-    fn finish(self) -> Result<(kurbo::BezPath, TextRunBounds, Vec<GlyphPaint>)> {
-        let bounds = match self.bounds {
-            None => TextRunBounds::empty(),
-            Some(r) => TextRunBounds::try_ink(Rect::try_new(r.x0, r.y0, r.width(), r.height())?)?,
-        };
-        Ok((
-            kurbo::BezPath::from_vec(self.elements.into_preparation()?.into_retained()),
-            bounds,
-            self.paints.into_preparation()?.into_retained(),
-        ))
     }
 }
 
@@ -1301,31 +1325,43 @@ fn canonical_point(value: f64) -> Result<f64> {
     Ok(f64::from(actual))
 }
 
-impl OutlinePen for CollectingPen {
+impl OutlinePen for GlyphOutlinePen<'_> {
     fn move_to(&mut self, x: f32, y: f32) {
-        let p = self.point(x, y);
-        self.push(kurbo::PathEl::MoveTo(p));
+        self.emit(|pen| {
+            let point = pen.point(x, y)?;
+            pen.geometry.move_to(point);
+            Ok(kurbo::PathEl::MoveTo(point))
+        });
     }
     fn line_to(&mut self, x: f32, y: f32) {
-        self.drawing = true;
-        let p = self.point(x, y);
-        self.push(kurbo::PathEl::LineTo(p));
+        self.emit(|pen| {
+            let point = pen.point(x, y)?;
+            pen.geometry.draw_to(point);
+            Ok(kurbo::PathEl::LineTo(point))
+        });
     }
     fn quad_to(&mut self, cx: f32, cy: f32, x: f32, y: f32) {
-        self.drawing = true;
-        let a = self.point(cx, cy);
-        let p = self.point(x, y);
-        self.push(kurbo::PathEl::QuadTo(a, p));
+        self.emit(|pen| {
+            let control = pen.point(cx, cy)?;
+            pen.geometry.draw_to(control);
+            let point = pen.point(x, y)?;
+            pen.geometry.draw_to(point);
+            Ok(kurbo::PathEl::QuadTo(control, point))
+        });
     }
     fn curve_to(&mut self, ax: f32, ay: f32, bx: f32, by: f32, x: f32, y: f32) {
-        self.drawing = true;
-        let a = self.point(ax, ay);
-        let b = self.point(bx, by);
-        let p = self.point(x, y);
-        self.push(kurbo::PathEl::CurveTo(a, b, p));
+        self.emit(|pen| {
+            let first = pen.point(ax, ay)?;
+            pen.geometry.draw_to(first);
+            let second = pen.point(bx, by)?;
+            pen.geometry.draw_to(second);
+            let point = pen.point(x, y)?;
+            pen.geometry.draw_to(point);
+            Ok(kurbo::PathEl::CurveTo(first, second, point))
+        });
     }
     fn close(&mut self) {
-        self.push(kurbo::PathEl::ClosePath);
+        self.emit(|_| Ok(kurbo::PathEl::ClosePath));
     }
 }
 
@@ -1608,6 +1644,218 @@ fn qualify_preparation_native_bounds(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn callback_contour(pen: &mut impl OutlinePen) {
+        pen.move_to(1.0, 2.0);
+        pen.line_to(4.0, 6.0);
+        pen.quad_to(6.0, 8.0, 8.0, 10.0);
+        pen.curve_to(10.0, 12.0, 12.0, 14.0, 14.0, 16.0);
+        pen.close();
+    }
+
+    #[test]
+    fn collector_callbacks_preserve_empty_point_only_and_drawing_bounds() {
+        let mut context = RenderAccountingContext::default();
+        context
+            .run(
+                RenderAttemptKind::GlyphRun,
+                RenderPhase::Outline,
+                |account| {
+                    let mut pen = CollectingPen::new(account.clone())?;
+                    let glyph = TextGlyph::try_new(58, 20.0, 40.0, 9.0)?;
+                    GlyphOutlinePen::new(&mut pen, glyph, 0.5, 2.0, 3.0, None).finish()?;
+                    assert_eq!(pen.bounds, None);
+                    let mut active = GlyphOutlinePen::new(&mut pen, glyph, 0.5, 2.0, 3.0, None);
+                    active.move_to(1.0, 2.0);
+                    active.move_to(4.0, 6.0);
+                    active.close();
+                    active.finish()?;
+                    // Multiple Move callbacks span a positive box without ink.
+                    assert_eq!(pen.bounds, None);
+                    assert_eq!(pen.elements.len(), 3);
+                    assert_eq!(
+                        pen.elements[0],
+                        kurbo::PathEl::MoveTo(kurbo::Point::new(27.0, 36.0))
+                    );
+                    let mut active = GlyphOutlinePen::new(
+                        &mut pen,
+                        glyph,
+                        0.5,
+                        2.0,
+                        3.0,
+                        Some(kurbo::Rect::new(30.0, 10.0, 60.0, 30.0)),
+                    );
+                    callback_contour(&mut active);
+                    active.finish()?;
+                    // x = 2*x + y + 20 + 3, y = 40 - 2*y. The control
+                    // points monotonically span (27,36)..(67,8), then clip.
+                    assert_eq!(pen.bounds, Some(kurbo::Rect::new(30.0, 10.0, 60.0, 30.0)));
+                    assert_eq!(pen.elements.len(), 8);
+                    let mut active = GlyphOutlinePen::new(&mut pen, glyph, 0.0, 1.0, 0.0, None);
+                    active.move_to(100.0, 100.0);
+                    active.close();
+                    active.finish()?;
+                    assert_eq!(pen.bounds, Some(kurbo::Rect::new(30.0, 10.0, 60.0, 30.0)));
+                    Ok(())
+                },
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn active_pen_latches_numeric_failures_without_emitting_substitute_points() {
+        for (placement, scale, offset, x, y, phase, expected) in [
+            (
+                0.0,
+                1.0,
+                0.0,
+                f32::INFINITY,
+                0.0,
+                GlyphNumericPhase::PathPoint,
+                f64::INFINITY,
+            ),
+            (
+                0.0,
+                2.0_f64.powi(-149),
+                0.0,
+                0.5,
+                0.0,
+                GlyphNumericPhase::PathPoint,
+                2.0_f64.powi(-150),
+            ),
+            (
+                0.0,
+                2.0,
+                0.0,
+                0.0,
+                f32::MAX,
+                GlyphNumericPhase::PathPoint,
+                -f64::from(f32::MAX) * 2.0,
+            ),
+            (
+                2.0_f64.powi(40),
+                2.0,
+                1.0,
+                1.0,
+                f32::MAX,
+                GlyphNumericPhase::Synthesis,
+                1.0,
+            ),
+        ] {
+            let mut context = RenderAccountingContext::default();
+            let error = context
+                .run(
+                    RenderAttemptKind::GlyphRun,
+                    RenderPhase::Outline,
+                    |account| {
+                        let mut collector = CollectingPen::new(account.clone())?;
+                        let mut active = GlyphOutlinePen::new(
+                            &mut collector,
+                            TextGlyph::try_new(58, placement, 0.0, 9.0)?,
+                            0.0,
+                            scale,
+                            offset,
+                            None,
+                        );
+                        active.quad_to(x, y, 1.0, 1.0);
+                        callback_contour(&mut active);
+                        assert!(active.collector.elements.is_empty());
+                        active.finish()
+                    },
+                )
+                .unwrap_err();
+            match error.glyph_preparation_diagnostic() {
+                Some(GlyphPreparationError::Numeric {
+                    phase: actual,
+                    value,
+                }) => {
+                    assert_eq!(*actual, phase);
+                    assert_eq!(*value, expected);
+                }
+                other => panic!("expected the first numeric callback failure, got {other:?}"),
+            }
+            let report = context.last_attempt().unwrap();
+            assert_eq!(report.cleanup_fault(), None);
+            let usage = report.attempt().unwrap().usage();
+            assert_eq!(usage.work(RenderWork::OutlinePointVisits), 1);
+            assert_eq!(usage.work(RenderWork::PathElementVisits), 0);
+            assert_eq!(usage.work(RenderWork::PathElementsEmitted), 0);
+            assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+        }
+    }
+
+    #[test]
+    fn callback_refusals_keep_exact_prefix_and_suppress_later_callbacks() {
+        use crate::{RenderAccountingOptions, RenderLimits, RenderPhaseFilter, RenderProfile};
+        // Move + Line consume two points/elements. Quad first consumes both
+        // points, then visits/grows/emits its one element. These independent
+        // prefixes distinguish the three admission boundaries.
+        for (quantity, points, visits, emitted) in [
+            (RenderWork::OutlinePointVisits, 2, 2, 2),
+            (RenderWork::PathElementVisits, 4, 2, 2),
+            (RenderWork::PathElementsEmitted, 4, 3, 2),
+        ] {
+            let mut previous = None;
+            for profile in [
+                RenderProfile::Off,
+                RenderProfile::Summary { timing: false },
+                RenderProfile::Detailed {
+                    timing: false,
+                    event_limit: 1,
+                    filter: RenderPhaseFilter::All,
+                },
+            ] {
+                let mut context = RenderAccountingContext::new(
+                    RenderAccountingOptions::new()
+                        .with_profile(profile)
+                        .with_limits(RenderLimits::new().with_work_limit(quantity, 2).unwrap()),
+                );
+                let error = context
+                    .run(
+                        RenderAttemptKind::GlyphRun,
+                        RenderPhase::Outline,
+                        |account| {
+                            let mut pen = CollectingPen::new(account.clone())?;
+                            let mut active = GlyphOutlinePen::new(
+                                &mut pen,
+                                TextGlyph::try_new(58, 0.0, 0.0, 9.0)?,
+                                0.0,
+                                1.0,
+                                0.0,
+                                None,
+                            );
+                            callback_contour(&mut active);
+                            active.move_to(f32::NAN, f32::INFINITY);
+                            active.close();
+                            assert_eq!(active.collector.elements.len(), 2);
+                            active.finish()
+                        },
+                    )
+                    .unwrap_err();
+                assert!(error.accounting_diagnostic().is_some());
+                let standalone = context.last_attempt().unwrap();
+                assert_eq!(standalone.cleanup_fault(), None);
+                let report = standalone.attempt().unwrap();
+                let refusal = report.refusal().unwrap();
+                assert_eq!(refusal.quantity(), crate::RenderQuantity::Work(quantity));
+                assert_eq!(refusal.current(), 2);
+                assert_eq!(refusal.amount(), 1);
+                assert_eq!(refusal.phase(), RenderPhase::Attempt);
+                let usage = report.usage();
+                assert_eq!(usage.work(RenderWork::OutlinePointVisits), points);
+                assert_eq!(usage.work(RenderWork::PathElementVisits), visits);
+                assert_eq!(usage.work(RenderWork::PathElementsEmitted), emitted);
+                assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
+                assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+                assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+                if let Some(previous) = previous {
+                    assert_eq!(usage, previous);
+                }
+                previous = Some(usage);
+            }
+        }
+    }
+
     #[test]
     fn the_same_collapsed_placement_keeps_preparation_and_receiving_error_domains() {
         use skrifa::MetadataProvider;

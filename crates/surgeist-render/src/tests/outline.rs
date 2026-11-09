@@ -155,9 +155,15 @@ fn prepared_glyph_run_normalization_and_encoder_share_one_real_run_wide_nonzero_
 
 #[test]
 fn prepared_glyph_run_backend_placement_refuses_before_any_frame_output() {
-    for transform in [
-        Transform::scale(f64::MAX, 1.0).unwrap(),
-        Transform::translation(1e30, 0.0).unwrap(),
+    for (transform, expected) in [
+        (
+            Transform::scale(f64::MAX, 1.0).unwrap(),
+            crate::GeometryRealizationError::UnrepresentableTransform,
+        ),
+        (
+            Transform::translation(1e30, 0.0).unwrap(),
+            crate::GeometryRealizationError::InsufficientNativeCapacity,
+        ),
     ] {
         let mut scene = Scene::new();
         scene.prepared_glyph_run(
@@ -180,13 +186,8 @@ fn prepared_glyph_run_backend_placement_refuses_before_any_frame_output() {
             Ok(_) => panic!("unrepresentable composed affine cannot encode"),
             Err(error) => error,
         };
-        assert!(matches!(
-            error.glyph_preparation_diagnostic(),
-            Some(crate::GlyphPreparationError::Numeric {
-                phase: crate::GlyphNumericPhase::Placement,
-                ..
-            })
-        ));
+        assert_eq!(error.geometry_realization_diagnostic(), Some(&expected));
+        assert!(error.glyph_preparation_diagnostic().is_none());
     }
     let mut singular = Scene::new();
     singular.prepared_glyph_run(

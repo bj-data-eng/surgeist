@@ -83,6 +83,24 @@ fn bounds() -> Rect {
     Rect::try_new(0.0, 0.0, 32.0, 16.0).unwrap()
 }
 
+#[test]
+fn cpu_point_only_preparation_retains_metadata_and_empty_ink() {
+    let prepared = point_only_outline();
+    assert_eq!(
+        prepared.glyphs(),
+        [TextGlyph::try_new(X, 0.0, 0.0, 1000.0).unwrap()]
+    );
+    assert_eq!(prepared.bounds().kind(), TextRunBoundsKind::Empty);
+    assert_eq!(prepared.bounds().ink_rect(), None);
+    assert_eq!(
+        prepared.path_elements().collect::<Vec<_>>(),
+        [
+            PathElement::MoveTo(surgeist_render::Point::try_new(0.0, 0.0).unwrap()),
+            PathElement::Close,
+        ]
+    );
+}
+
 fn scene(graph: bool, draw: impl FnOnce(&mut Scene)) -> Scene {
     let mut scene = Scene::new();
     if graph {
