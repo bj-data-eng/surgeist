@@ -610,3 +610,6 @@ mod balance_tests;
 
 #[cfg(test)]
 mod zero_edge_prefix_tests;
+
+#[cfg(test)]
+mod prefix_content_tests;
