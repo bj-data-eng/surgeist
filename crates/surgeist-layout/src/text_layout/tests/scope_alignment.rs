@@ -1,6 +1,8 @@
 //! Captured scope facts reach real Layout geometry. Ahem's retained tables and
 //! CSS2 10.8.1 aligned subtrees supply the independent metric/edge expectations.
 use crate::test_support::readback::{self, Phase};
+#[path = "scope_alignment/census_failure_usage.rs"]
+mod census_failure_usage;
 #[path = "scope_alignment/resource_comparisons.rs"]
 mod resource_comparisons;
 #[path = "scope_alignment/wrapping_continuation.rs"]
@@ -124,7 +126,7 @@ impl Case {
             base_size,
             inner,
             scale,
-            text::ScopeAlignmentLimits::new(10000, 100, 1_000_000, 16 << 20),
+            text::ScopeAlignmentLimits::new(10000, 100, 4_194_304, 16 << 20),
         )
     }
 

@@ -93,7 +93,7 @@ fn cap(prepared: &PreparedText) -> ScopeAlignmentAllowance {
     ScopeAlignmentAllowance::new(limits.records(), limits.payload_bytes())
 }
 
-fn limit(error: Error, expected: ScopeAlignmentLimitKind) {
+fn limit(error: &Error, expected: ScopeAlignmentLimitKind) {
     match error.detail() {
         Some(ErrorDetail::ScopeAlignment {
             reason:
@@ -364,12 +364,12 @@ fn real_shared_arenas_are_adopted_with_exact_rows_and_capacity_before_growth() {
     assert_eq!(usage.peak_payload_bytes(), expected.bytes);
     let mut small_rows = make(expected.records - 1, expected.bytes);
     limit(
-        accounting::adopt_cell_arenas(&mut small_rows, shaped).unwrap_err(),
+        &accounting::adopt_cell_arenas(&mut small_rows, shaped).unwrap_err(),
         ScopeAlignmentLimitKind::Records,
     );
     let mut small_bytes = make(expected.records, expected.bytes - 1);
     limit(
-        accounting::adopt_cell_arenas(&mut small_bytes, shaped).unwrap_err(),
+        &accounting::adopt_cell_arenas(&mut small_bytes, shaped).unwrap_err(),
         ScopeAlignmentLimitKind::PayloadBytes,
     );
 }
@@ -442,7 +442,7 @@ fn selected_retention_contains_whole_mixed_arenas_coordinates_and_unique_resourc
     assert_eq!(retained.payload_bytes(), input.payload_bytes() + own.bytes);
     let maximum = cap(&prepared);
     limit(
-        prepared
+        &prepared
             .select_with_scope_allowance(
                 request(&prepared),
                 ScopeAlignmentAllowance::new(input.records() - 1, maximum.payload_bytes()),
@@ -469,11 +469,12 @@ fn finalized_replay_census_counts_shared_ancestors_once_and_real_coexistence() {
         .unwrap();
     let old = line.scope_alignment_retention().unwrap();
     limit(
-        line.with_spacing_with_scope_allowance(
-            SpacingAllocations::None,
-            ScopeAlignmentAllowance::new(old.records() - 1, maximum.payload_bytes()),
-        )
-        .unwrap_err(),
+        &line
+            .with_spacing_with_scope_allowance(
+                SpacingAllocations::None,
+                ScopeAlignmentAllowance::new(old.records() - 1, maximum.payload_bytes()),
+            )
+            .unwrap_err(),
         ScopeAlignmentLimitKind::Records,
     );
     let replay = line
@@ -510,7 +511,8 @@ fn finalized_replay_census_counts_shared_ancestors_once_and_real_coexistence() {
             ScopeAlignmentProducts::Mixed(&old_only),
             ScopeAlignmentAllowance::new(maximum.records(), total - 1),
         )
-        .unwrap_err(),
+        .unwrap_err()
+        .error(),
         ScopeAlignmentLimitKind::PayloadBytes,
     );
 }

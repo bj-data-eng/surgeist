@@ -71,7 +71,7 @@ fn maximum(prepared: &PreparedText) -> ScopeAlignmentAllowance {
     ScopeAlignmentAllowance::new(limits.records(), limits.payload_bytes())
 }
 
-fn payload_limit(error: Error) {
+fn payload_limit(error: &Error) {
     match error.detail() {
         Some(ErrorDetail::ScopeAlignment {
             reason:
@@ -288,7 +288,8 @@ fn reconstructed_width_replay_deduplicates_live_ancestors_and_refuses_a_real_sma
             ScopeAlignmentProducts::Mixed(&repeated),
             ScopeAlignmentAllowance::new(allowance.records(), minimum - 1),
         )
-        .unwrap_err(),
+        .unwrap_err()
+        .error(),
     );
     // Failed admission neither invalidates the retained winner nor publishes a
     // replacement frame. The prior and replay still expose the qualified qwid.

@@ -8,6 +8,9 @@ use super::*;
 use crate::test_support::readback::{self, Phase};
 use crate::text_layout::scope_alignment::{ScopeAlignmentResources, admit_frame_comparisons};
 
+#[path = "census_completed_usage.rs"]
+mod census_completed_usage;
+
 const SMALL_WORK: usize = 4096;
 const WORK: usize = 1_000_000;
 // One candidate descriptor plus one actual equal-length frame.

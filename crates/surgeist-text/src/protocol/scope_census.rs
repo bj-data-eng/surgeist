@@ -7,7 +7,66 @@ use super::{
     FinalizedLine, FlowObservationRequest, LineSelectionRequest, PreparedFlowSegment, PreparedText,
     SelectedLine,
 };
-use crate::{Result, ScopeAlignmentUsage};
+use crate::ScopeAlignmentUsage;
+
+/// Executed census costs after traversal scratch has been discarded.
+/// Borrowed retained rows remain in usage; only newly materialized census rows
+/// are added to a consumer's cumulative materialization history.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ScopeAlignmentCensusAccounting {
+    usage: ScopeAlignmentUsage,
+    newly_materialized_records: usize,
+}
+impl ScopeAlignmentCensusAccounting {
+    pub(crate) const fn new(usage: ScopeAlignmentUsage, newly_materialized_records: usize) -> Self {
+        Self {
+            usage,
+            newly_materialized_records,
+        }
+    }
+    pub const fn usage(self) -> ScopeAlignmentUsage {
+        self.usage
+    }
+    pub const fn newly_materialized_records(self) -> usize {
+        self.newly_materialized_records
+    }
+}
+
+/// A refused standalone census, preserving its original cause and completed
+/// charges. None means no budget was funded. A funded failure never issues a
+/// complete retained-union receipt or authorizes a prospective operation.
+#[derive(Debug)]
+pub struct ScopeAlignmentCensusFailure {
+    error: crate::Error,
+    accounting: Option<ScopeAlignmentCensusAccounting>,
+}
+impl ScopeAlignmentCensusFailure {
+    pub(crate) fn new(
+        error: crate::Error,
+        accounting: Option<ScopeAlignmentCensusAccounting>,
+    ) -> Self {
+        Self { error, accounting }
+    }
+    pub fn error(&self) -> &crate::Error {
+        &self.error
+    }
+    pub const fn accounting(&self) -> Option<ScopeAlignmentCensusAccounting> {
+        self.accounting
+    }
+    pub fn into_parts(self) -> (crate::Error, Option<ScopeAlignmentCensusAccounting>) {
+        (self.error, self.accounting)
+    }
+}
+impl std::fmt::Display for ScopeAlignmentCensusFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.error.fmt(formatter)
+    }
+}
+impl std::error::Error for ScopeAlignmentCensusFailure {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.error)
+    }
+}
 
 /// A borrowed actual Text product, including the preparation and selection it
 /// retains. Clones and shared ancestors contribute their live allocations once.
@@ -72,10 +131,21 @@ pub enum ScopeAlignmentProducts<'a> {
 pub struct ScopeAlignmentCensus {
     input_retention: ScopeAlignmentRetention,
     external_retention: ScopeAlignmentRetention,
-    usage: ScopeAlignmentUsage,
+    accounting: ScopeAlignmentCensusAccounting,
 }
 
 impl ScopeAlignmentCensus {
+    pub(crate) const fn new(
+        input_retention: ScopeAlignmentRetention,
+        external_retention: ScopeAlignmentRetention,
+        accounting: ScopeAlignmentCensusAccounting,
+    ) -> Self {
+        Self {
+            input_retention,
+            external_retention,
+            accounting,
+        }
+    }
     /// Unique retained owners reached from the actual input first.
     pub const fn input_retention(&self) -> ScopeAlignmentRetention {
         self.input_retention
@@ -90,7 +160,11 @@ impl ScopeAlignmentCensus {
     /// The final live-byte count excludes the dropped traversal storage; peak
     /// includes its real allocation and reallocation coexistence.
     pub const fn usage(&self) -> ScopeAlignmentUsage {
-        self.usage
+        self.accounting.usage()
+    }
+
+    pub const fn accounting(&self) -> ScopeAlignmentCensusAccounting {
+        self.accounting
     }
 }
 
@@ -108,14 +182,8 @@ pub fn scope_alignment_census(
     input: ScopeAlignmentCensusInput<'_>,
     related: ScopeAlignmentProducts<'_>,
     allowance: ScopeAlignmentAllowance,
-) -> Result<ScopeAlignmentCensus> {
-    let (input_retention, external_retention, usage) =
-        crate::engine::scope_alignment::census::live_products(input, related, allowance)?;
-    Ok(ScopeAlignmentCensus {
-        input_retention,
-        external_retention,
-        usage,
-    })
+) -> std::result::Result<ScopeAlignmentCensus, ScopeAlignmentCensusFailure> {
+    crate::engine::scope_alignment::census::live_products(input, related, allowance)
 }
 
 /// A non-owning lifetime observation of one actual canonical finalized product.

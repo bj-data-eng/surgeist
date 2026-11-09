@@ -11,7 +11,7 @@ use std::sync::Arc;
 use surgeist_text as text;
 
 const AHEM: &[u8] = include_bytes!("../../../../surgeist-text/tests/fixtures/fonts/ahem/Ahem.ttf");
-const WORK: usize = 1_000_000;
+const WORK: usize = 4_194_304;
 // Limit discovery visits one actual normalized row. Payload admission adds
 // normalized key1+1, two line descriptors2 and two frame keys2*(1+1).
 // These9 units are a conservative law, not observed CPU/equality execution.

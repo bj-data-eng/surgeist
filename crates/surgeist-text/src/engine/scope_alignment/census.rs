@@ -906,8 +906,6 @@ fn retained_union(
 }
 
 struct Census {
-    input_retention: crate::ScopeAlignmentRetention,
-    external_retention: crate::ScopeAlignmentRetention,
     budget: ScopeAlignmentBudget,
 }
 
@@ -922,11 +920,7 @@ fn census(
     let mut budget = ScopeAlignmentBudget::new(limits, 0, 0)?;
     let mut retention = CensusRetentions::default();
     census_on_budget(input, related, &mut budget, &mut retention)?;
-    Ok(Some(Census {
-        input_retention: retention.input,
-        external_retention: retention.external,
-        budget,
-    }))
+    Ok(Some(Census { budget }))
 }
 
 #[derive(Default)]
@@ -934,6 +928,19 @@ struct CensusRetentions {
     input: crate::ScopeAlignmentRetention,
     external: crate::ScopeAlignmentRetention,
     admitted: crate::ScopeAlignmentRetention,
+    seeded_records: usize,
+    seeded_bytes: usize,
+}
+
+impl CensusRetentions {
+    fn accounting(&self, budget: &ScopeAlignmentBudget) -> crate::ScopeAlignmentCensusAccounting {
+        let usage = budget.usage_after_discard(self.seeded_bytes);
+        let new_records = usage
+            .records()
+            .checked_sub(self.seeded_records)
+            .expect("successful record seeding remains in the census budget");
+        crate::ScopeAlignmentCensusAccounting::new(usage, new_records)
+    }
 }
 
 fn census_on_budget(
@@ -946,7 +953,9 @@ fn census_on_budget(
     // Seed the complete already live union before any fallible seen growth.
     // Neither the prepass work nor the observed peak is reset afterwards.
     budget.add_records(retained.records())?;
+    retention.seeded_records = retained.records();
     budget.retain_bytes(retained.payload_bytes())?;
+    retention.seeded_bytes = retained.payload_bytes();
     retention.admitted = retained;
     let mut set = AllocationSet::new();
     visit_roots(input, related, &mut |event| match event {
@@ -1033,17 +1042,26 @@ pub(crate) fn live_products(
     input: crate::protocol::ScopeAlignmentCensusInput<'_>,
     related: crate::protocol::ScopeAlignmentProducts<'_>,
     allowance: crate::ScopeAlignmentAllowance,
-) -> Result<(
-    crate::ScopeAlignmentRetention,
-    crate::ScopeAlignmentRetention,
-    crate::ScopeAlignmentUsage,
-)> {
-    let value = census(Input::public(input), related, Some(allowance))?
-        .ok_or_else(|| refusal(ScopeAlignmentError::LimitsRequired))?;
-    Ok((
-        value.input_retention,
-        value.external_retention,
-        value.budget.usage(),
+) -> std::result::Result<crate::ScopeAlignmentCensus, crate::ScopeAlignmentCensusFailure> {
+    let input = Input::public(input);
+    let unfunded = |error| crate::ScopeAlignmentCensusFailure::new(error, None);
+    let limits = super::operation_limits(input.prepared(), Some(allowance))
+        .map_err(unfunded)?
+        .ok_or_else(|| unfunded(refusal(ScopeAlignmentError::LimitsRequired)))?;
+    let mut budget = ScopeAlignmentBudget::new(limits, 0, 0).map_err(unfunded)?;
+    let mut retention = CensusRetentions::default();
+    let result = census_on_budget(input, related, &mut budget, &mut retention);
+    let accounting = retention.accounting(&budget);
+    if let Err(error) = result {
+        return Err(crate::ScopeAlignmentCensusFailure::new(
+            error,
+            Some(accounting),
+        ));
+    }
+    Ok(crate::ScopeAlignmentCensus::new(
+        retention.input,
+        retention.external,
+        accounting,
     ))
 }
 

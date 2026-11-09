@@ -54,7 +54,7 @@ fn allowance(capture: &Captured) -> ScopeAlignmentAllowance {
     let caps = limits(capture);
     ScopeAlignmentAllowance::new(caps.records(), caps.payload_bytes())
 }
-fn limit(error: Error, expected: ScopeAlignmentLimitKind) {
+fn limit(error: &Error, expected: ScopeAlignmentLimitKind) {
     assert_eq!(error.code, ErrorCode::ScopeAlignmentRefused);
     let Some(ErrorDetail::ScopeAlignment {
         reason:
@@ -180,7 +180,7 @@ fn inner_tab_preparation_refuses_insufficient_source_admitted_work_rows_and_payl
             let error = system
                 .prepare(&small.analyzed, options(LineOrientation::Vertical))
                 .unwrap_err();
-            limit(error, kind);
+            limit(&error, kind);
         }
         // Failed independent preparations cannot invalidate a completed input.
         assert_eq!(
@@ -461,7 +461,7 @@ fn real_tab_layout_deep_clones_fund_distinct_buffers_and_retire_their_actual_byt
             ScopeAlignmentBudget::new(tight, retained.records(), retained.payload_bytes()).unwrap(),
         );
         limit(
-            accounting::clone_shaped(&mut tight, source).unwrap_err(),
+            &accounting::clone_shaped(&mut tight, source).unwrap_err(),
             ScopeAlignmentLimitKind::PayloadBytes,
         );
         assert_eq!(
@@ -490,7 +490,7 @@ fn tab_results_replay_with_real_old_new_coexistence_alias_dedup_and_tight_refusa
         let maximum = allowance(&capture);
         let input = prepared.scope_alignment_retention().unwrap();
         limit(
-            prepared
+            &prepared
                 .select_with_scope_allowance(
                     request(&prepared, TabContext::NoTabs),
                     ScopeAlignmentAllowance::new(input.records() - 1, maximum.payload_bytes()),
@@ -512,11 +512,12 @@ fn tab_results_replay_with_real_old_new_coexistence_alias_dedup_and_tight_refusa
             .unwrap();
         let retained = line.scope_alignment_retention().unwrap();
         limit(
-            line.with_spacing_with_scope_allowance(
-                SpacingAllocations::None,
-                ScopeAlignmentAllowance::new(maximum.records(), retained.payload_bytes() - 1),
-            )
-            .unwrap_err(),
+            &line
+                .with_spacing_with_scope_allowance(
+                    SpacingAllocations::None,
+                    ScopeAlignmentAllowance::new(maximum.records(), retained.payload_bytes() - 1),
+                )
+                .unwrap_err(),
             ScopeAlignmentLimitKind::PayloadBytes,
         );
         let replay = line
@@ -558,7 +559,8 @@ fn tab_results_replay_with_real_old_new_coexistence_alias_dedup_and_tight_refusa
                 ScopeAlignmentProducts::Mixed(&old),
                 ScopeAlignmentAllowance::new(maximum.records(), live - 1),
             )
-            .unwrap_err(),
+            .unwrap_err()
+            .error(),
             ScopeAlignmentLimitKind::PayloadBytes,
         );
         drop(system);

@@ -370,6 +370,13 @@ already fund the successful preparation; family construction does not introduce
 a separate funding mode. With no applicable ceiling, Native allocations remain
 fallible without acquiring a new global quota.
 
+The resource owner admits completed standalone-census work and new record charges
+on success and failure. Borrowed Text roots and live Layout leases remain separate
+from cumulative materialization. If completed costs exceed a cumulative ceiling,
+the owner retains that exhaustion for later admissions; a failed census still
+propagates its original cause. No output reservation or successful union authority
+is created from a failed census.
+
 Numeric formatters request a Layout-owned family through
 `WrappingInput::native_inline_boxes`. Both checked constructors authenticate its
 complete generated-child proof and actual native ordering roles.
