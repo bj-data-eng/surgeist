@@ -218,7 +218,7 @@ impl ParseControl {
             return Err(self.fail_invariant(HtmlParseInvariant::LedgerState));
         };
         let result = self.accounts_mut()?.charge(batch);
-        result.map_err(|error| self.storage_stop(error, &requests))
+        result.map_err(|error| self.storage_stop(error, &requests, batch))
     }
     pub(crate) fn final_string_ticket(
         &mut self,

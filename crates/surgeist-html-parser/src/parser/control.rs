@@ -1185,7 +1185,7 @@ impl ParseControl {
             return Err(self.fail_invariant(HtmlParseInvariant::LedgerState));
         };
         let result = self.accounts_mut()?.charge(batch);
-        result.map_err(|error| self.storage_stop(error, requests))
+        result.map_err(|error| self.storage_stop(error, requests, batch))
     }
     pub(crate) fn acquire(
         &mut self,
@@ -1202,18 +1202,29 @@ impl ParseControl {
         if units == 0 {
             return Ok(());
         }
-        let result = self
-            .accounts_mut()?
-            .charge(&[Change::Acquire(dimension, units)]);
-        result.map_err(|error| self.storage_stop(error, &[(resource, units)]))
+        let change = [Change::Acquire(dimension, units)];
+        let result = self.accounts_mut()?.charge(&change);
+        result.map_err(|error| self.storage_stop(error, &[(resource, units)], &change))
     }
-    /// Whether the retained diagnostics have reached the `Diagnostics` limit.
-    /// That limit bounds retention only: a diagnostic emitted while this holds
-    /// is dropped and counted, never refused, so the parse continues.
+    /// Whether the ledger would refuse to retain one more diagnostic. The
+    /// `Diagnostics` cap bounds retention only: a diagnostic emitted while this
+    /// holds is dropped and counted, never refused, so the parse continues. The
+    /// cap that refuses may be the parse's or any scope above it.
     pub(crate) fn diagnostics_retention_full(&mut self) -> Result<bool, HtmlParseStop> {
-        let retained = self.live(HtmlParseResource::Diagnostics)?;
-        let limit = self.limit(HtmlParseResource::Diagnostics)?;
-        Ok(retained >= limit)
+        let one = [Change::Acquire(HtmlResource::Diagnostics, 1)];
+        let Err(error) = self.accounts_mut()?.check(&one) else {
+            return Ok(false);
+        };
+        match classify(error) {
+            Classified::Refusal(refusal)
+                if matches!(refusal.reason, RefusalReason::Limit { .. }) =>
+            {
+                Ok(true)
+            }
+            Classified::Refusal(_) | Classified::Fault(_) => {
+                Err(self.ledger_stop(error, Site::RELEASE, &one))
+            }
+        }
     }
     /// Charges counting one dropped diagnostic, before the count is written:
     /// one visit of the retention state and one write of the counter.
@@ -1253,6 +1264,7 @@ impl ParseControl {
                     (HtmlParseResource::ManagedUtf16Units, units),
                     (HtmlParseResource::AuxiliaryEntries, entries),
                 ],
+                &changes,
             )
         })
     }
@@ -1318,7 +1330,7 @@ impl ParseControl {
             return Err(self.fail_invariant(HtmlParseInvariant::LedgerState));
         };
         let result = self.accounts_mut()?.check(batch);
-        result.map_err(|error| self.storage_stop(error, requests))
+        result.map_err(|error| self.storage_stop(error, requests, batch))
     }
     /// Commits the actual ordinary-edge delta of a child-order change. The
     /// construction owner precharges the bounded in-place edits before this
@@ -1990,12 +2002,13 @@ impl ParseControl {
     ) -> Result<u64, HtmlParseStop> {
         #[cfg(test)]
         let actual = actual.saturating_add(std::mem::take(&mut self.capacity_overshoot));
-        let recorded = self.accounts_mut()?.charge(&[
+        let batch = [
             Change::Release(HtmlResource::ManagedCapacityBytes, old),
             Change::Acquire(HtmlResource::ManagedCapacityBytes, actual),
             Change::Acquire(HtmlResource::PeakTransientBytes, actual),
             Change::Release(HtmlResource::PeakTransientBytes, old),
-        ]);
+        ];
+        let recorded = self.accounts_mut()?.charge(&batch);
         let Err(error) = recorded else {
             return Ok(actual);
         };
@@ -2007,7 +2020,7 @@ impl ParseControl {
                 requested_delta: actual.saturating_sub(old),
             });
         }
-        Err(self.ledger_stop(error, Site::REPLACEMENT))
+        Err(self.ledger_stop(error, Site::REPLACEMENT, &batch))
     }
     /// Cleanup is permitted after a terminal stop; it refunds no admitted work or
     /// high-water observation. The vector owner supplies the bytes the ledger

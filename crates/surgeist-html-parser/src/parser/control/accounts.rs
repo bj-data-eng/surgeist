@@ -9,7 +9,7 @@ use crate::accounting::{Lease, LedgerError, ParsePhase, PhaseScopes, private};
 use crate::{HtmlParseLimits, HtmlParseResource};
 use std::sync::Arc;
 use surgeist_html::accounting::{HtmlChange, HtmlLimits, HtmlResource, HtmlWork};
-use surgeist_ledger::{Operation, PhaseObservation, Scope, SharedOperation, Usage};
+use surgeist_ledger::{Change, Operation, PhaseObservation, Scope, SharedOperation, Usage};
 
 pub(crate) type LedgerUsage = Usage<HtmlWork, HtmlResource>;
 
@@ -127,6 +127,13 @@ impl Accounts {
     pub(crate) fn usage(&self) -> Result<(LedgerUsage, u64), LedgerError> {
         let usage = self.ledger.read(self.charging, |usage| *usage)?;
         Ok((usage, self.credits()?))
+    }
+    /// The value a change counts in `scope`: its work total or its live value.
+    pub(crate) fn value_at(&self, scope: Scope, change: HtmlChange) -> Result<u64, LedgerError> {
+        self.ledger.read(scope, |usage| match change {
+            Change::Work(dimension, _) => usage.work(dimension),
+            Change::Acquire(dimension, _) | Change::Release(dimension, _) => usage.live(dimension),
+        })
     }
     /// Whether a refusal names one of the parse's own scopes, whose figures the
     /// parser rebuilds, rather than a scope above them.

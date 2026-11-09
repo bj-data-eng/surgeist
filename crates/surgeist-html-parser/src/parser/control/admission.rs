@@ -82,7 +82,7 @@ impl ParseControl {
             return;
         };
         if let Err(error) = accounts.enter(phase) {
-            self.ledger_stop(error, Site::RELEASE);
+            self.ledger_stop(error, Site::RELEASE, &[]);
         }
     }
 
@@ -99,7 +99,7 @@ impl ParseControl {
         site: Site,
     ) -> Result<(), HtmlParseStop> {
         let result = self.accounts_mut()?.charge(changes);
-        result.map_err(|error| self.ledger_stop(error, site))
+        result.map_err(|error| self.ledger_stop(error, site, changes))
     }
 
     /// Checks a batch of resource changes the way admission would, committing
@@ -110,23 +110,23 @@ impl ParseControl {
         site: Site,
     ) -> Result<(), HtmlParseStop> {
         let result = self.accounts_mut()?.check(changes);
-        result.map_err(|error| self.ledger_stop(error, site))
+        result.map_err(|error| self.ledger_stop(error, site, changes))
     }
 
     /// The live value of a resource.
     pub(super) fn live(&mut self, resource: HtmlParseResource) -> Result<u64, HtmlParseStop> {
         let Some(dimension) = resource.dimension() else {
             let credits = self.accounts_mut()?.credits();
-            return credits.map_err(|error| self.ledger_stop(error, Site::RELEASE));
+            return credits.map_err(|error| self.ledger_stop(error, Site::RELEASE, &[]));
         };
         let live = self.accounts_mut()?.live(dimension);
-        live.map_err(|error| self.ledger_stop(error, Site::RELEASE))
+        live.map_err(|error| self.ledger_stop(error, Site::RELEASE, &[]))
     }
 
     /// The cap of a resource, read from the ledger scope that carries it.
     pub(super) fn limit(&mut self, resource: HtmlParseResource) -> Result<u64, HtmlParseStop> {
         let limit = self.accounts_mut()?.limit(resource);
-        limit.map_err(|error| self.ledger_stop(error, Site::RELEASE))
+        limit.map_err(|error| self.ledger_stop(error, Site::RELEASE, &[]))
     }
 
     /// Records `value` as the largest reached by a gauge resource, in a batch
@@ -137,15 +137,20 @@ impl ParseControl {
         value: u64,
     ) -> Result<[HtmlChange; 2], HtmlParseStop> {
         let held = self.accounts_mut()?.live(resource);
-        let held = held.map_err(|error| self.ledger_stop(error, Site::RELEASE))?;
+        let held = held.map_err(|error| self.ledger_stop(error, Site::RELEASE, &[]))?;
         Ok(record_largest(resource, held, value))
     }
 
     /// The stop for a ledger error that refused a batch of resource changes.
-    pub(super) fn ledger_stop(&mut self, error: LedgerError, site: Site) -> HtmlParseStop {
+    pub(super) fn ledger_stop(
+        &mut self,
+        error: LedgerError,
+        site: Site,
+        changes: &[HtmlChange],
+    ) -> HtmlParseStop {
         match classify(error) {
             Classified::Fault(fault) => self.latch_stop(HtmlParseStop::Accounting(fault)),
-            Classified::Refusal(refusal) => self.refusal_stop(refusal, site),
+            Classified::Refusal(refusal) => self.refusal_stop(refusal, site, changes),
         }
     }
 
@@ -153,6 +158,7 @@ impl ParseControl {
         &mut self,
         refusal: Refusal<HtmlWork, HtmlResource>,
         site: Site,
+        changes: &[HtmlChange],
     ) -> HtmlParseStop {
         let Some(resource) = resource_of(refusal.change) else {
             return self.fail_invariant(HtmlParseInvariant::LedgerState);
@@ -168,12 +174,43 @@ impl ParseControl {
                 self.latch_stop(HtmlParseStop::InternalInvariant(site.underflow))
             }
             RefusalReason::Limit { limit } if !owned => {
-                // A scope above the parse's own refused the amount it received.
+                // A scope above the parse's own refused. The refused batch
+                // changed nothing there either, so its value now is its value
+                // before the batch, and the figures are in its own units: the
+                // rate its tariffs apply to the refused item is the rate of the
+                // whole batch.
+                let current = self
+                    .accounts
+                    .as_ref()
+                    .and_then(|accounts| accounts.value_at(refusal.scope, refusal.change).ok());
+                let Some(current) = current else {
+                    return self.fail_invariant(HtmlParseInvariant::LedgerState);
+                };
+                let parsed = changes.get(refusal.item).copied().map_or(0, amount_of);
+                let rate = if parsed == 0 {
+                    1
+                } else {
+                    amount.checked_div(parsed).unwrap_or(1)
+                };
+                let requested_delta = match (refusal.change, site.growth) {
+                    (Change::Work(..), _) => changes
+                        .iter()
+                        .filter_map(|change| match change {
+                            Change::Work(_, units) => Some(*units),
+                            Change::Acquire(..) | Change::Release(..) => None,
+                        })
+                        .fold(0_u64, u64::saturating_add)
+                        .saturating_mul(rate),
+                    (_, Some(growth)) if resource == HtmlParseResource::ManagedCapacityBytes => {
+                        growth.saturating_mul(rate)
+                    }
+                    _ => amount,
+                };
                 self.latch_stop(HtmlParseStop::LimitExceeded {
                     resource,
                     limit,
-                    current: refusal.current,
-                    requested_delta: amount,
+                    current,
+                    requested_delta,
                 })
             }
             RefusalReason::Limit { limit } => {
@@ -215,7 +252,7 @@ impl ParseControl {
             .as_ref()
             .is_some_and(|accounts| accounts.owns(refusal.scope));
         if !owned {
-            return self.refusal_stop(refusal, Site::RELEASE);
+            return self.refusal_stop(refusal, Site::RELEASE, changes);
         }
         let Some((usage, credits)) = self
             .accounts
@@ -269,11 +306,12 @@ impl ParseControl {
         &mut self,
         error: LedgerError,
         requests: &[(HtmlParseResource, u64)],
+        changes: &[HtmlChange],
     ) -> HtmlParseStop {
         if let Some(resource) = self.storage_overflow(requests) {
             return self.stop_representation(resource);
         }
-        self.ledger_stop(error, Site::RELEASE)
+        self.ledger_stop(error, Site::RELEASE, changes)
     }
 
     /// The first request, in order, whose live value plus the requests so far
