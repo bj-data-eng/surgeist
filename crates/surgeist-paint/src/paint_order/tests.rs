@@ -1,4 +1,5 @@
 use super::*;
+use crate::ResourceKind;
 use crate::{
     BoxFacts, BoxId, ChildOrder, ContextEffect, PaintLimits, PaintReport, Participation, Position,
     ProfileMode, ZIndex,
@@ -66,6 +67,97 @@ fn events(plan: &PaintOrder<'_>) -> Vec<(char, usize)> {
             PaintOrderEvent::EndContext(owner) => (']', owner.id().get()),
         })
         .collect()
+}
+
+#[test]
+fn same_length_requests_retain_their_distinct_root_order_and_payloads() {
+    let first = [
+        root(),
+        child(0, 0, Position::Relative, ZIndex::Integer(-2)),
+        child(0, 1, Position::Relative, ZIndex::Integer(3)),
+    ];
+    let second = [
+        child(2, 1, Position::Relative, ZIndex::Integer(4)),
+        child(2, 0, Position::Relative, ZIndex::Integer(-3)),
+        root(),
+    ];
+    let paints = [paint(BoxPaintKind::Block); 3];
+    for (boxes, root_id, owners, expected) in [
+        (
+            &first,
+            0,
+            [0, 1, 2],
+            [
+                ('[', 0),
+                ('d', 0),
+                ('[', 1),
+                ('d', 1),
+                (']', 1),
+                ('[', 2),
+                ('d', 2),
+                (']', 2),
+                (']', 0),
+            ],
+        ),
+        (
+            &second,
+            2,
+            [2, 0, 1],
+            [
+                ('[', 2),
+                ('d', 0),
+                ('[', 1),
+                ('d', 2),
+                (']', 1),
+                ('[', 0),
+                ('d', 1),
+                (']', 0),
+                (']', 2),
+            ],
+        ),
+    ] {
+        let fragments = [
+            PaintFragment::box_fragment(BoxId::new(owners[0]), None, None, 0),
+            fragment(owners[1], 0, None),
+            fragment(owners[2], 0, None),
+        ];
+        let primitives = [
+            PaintPrimitive::canvas(CanvasPaintKind::BackgroundColor, 0),
+            color(1),
+            color(2),
+        ];
+        let request = PaintRequest::new(
+            boxes,
+            &paints,
+            &[],
+            &[],
+            &fragments,
+            &primitives,
+            BoxId::new(root_id),
+        );
+        let plan = plan_paint_order(request, options()).result.unwrap();
+        assert_eq!(events(&plan), expected);
+        assert_eq!(plan.request().root(), BoxId::new(root_id));
+        assert_eq!(plan.stacking().root_context().box_id(), BoxId::new(root_id));
+        assert!(std::ptr::eq(plan.request().boxes(), boxes.as_slice()));
+        assert!(std::ptr::eq(plan.stacking().facts(), boxes.as_slice()));
+        assert!(std::ptr::eq(
+            plan.request().fragments(),
+            fragments.as_slice()
+        ));
+        assert!(std::ptr::eq(
+            plan.request().primitives(),
+            primitives.as_slice()
+        ));
+        for event in plan.events() {
+            if let PaintOrderEvent::Draw(draw) = event {
+                assert!(std::ptr::eq(draw.record(), &primitives[draw.id().get()]));
+                let owner = owners[draw.id().get()];
+                assert_eq!(draw.owner().id(), BoxId::new(owner));
+                assert!(std::ptr::eq(draw.owner().facts(), &boxes[owner]));
+            }
+        }
+    }
 }
 
 #[test]

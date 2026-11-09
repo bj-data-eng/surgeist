@@ -1,12 +1,18 @@
 //! Operation-local incidence proofs and ordered, admitted scratch indices.
 
-use std::{mem::take, ops::Range};
+use std::{
+    mem::take,
+    ops::{
+        ControlFlow::{self, Break, Continue},
+        Range,
+    },
+};
 
-use super::model::*;
+use super::{IndexedPaint, PaintCleanup, PreparedPaint, model::*};
 use crate::{
     BoxId, ChildOrder, PaintError, Participation, Position, ResourceKind, WorkKind,
-    accounting::{PhaseMeter, allocate, charge, release},
-    algorithm::{SortBuffers, State},
+    accounting::{Meter, PhaseMeter, allocate, charge, release, setup_error},
+    algorithm::{PreparedCore, SortBuffers},
 };
 use surgeist_layout::SourceIndex;
 use surgeist_ledger::Scope;
@@ -67,7 +73,7 @@ pub(super) struct PaintIndex {
 
 impl PaintIndex {
     pub(super) fn cleanup(
-        &mut self,
+        mut self,
         p: &mut PhaseMeter<'_, '_>,
         root: Scope,
     ) -> Result<(), PaintError> {
@@ -139,13 +145,30 @@ fn fragment_owner(slot: usize, boxes: usize) -> FragmentOwner {
 }
 
 /// This consumes the shared core's proved topology, never reclassifies contexts.
-pub(super) fn prepare(
-    request: PaintRequest<'_>,
-    core: &State,
+pub(super) fn prepare<'a>(
+    input: PreparedPaint<'a>,
+    meter: &mut Meter,
+    root: Scope,
+    phase: Scope,
+) -> ControlFlow<PaintCleanup<'a>, IndexedPaint<'a>> {
+    let result = meter
+        .with_phase(phase, |p| build(&input, p, root, phase))
+        .map_err(setup_error)
+        .and_then(|done| done);
+    match result {
+        Ok(index) => Continue(IndexedPaint { input, index }),
+        Err(error) => Break(PaintCleanup::validation_failure(input, error)),
+    }
+}
+
+fn build(
+    input: &PreparedPaint<'_>,
     p: &mut PhaseMeter<'_, '_>,
     root: Scope,
     phase: Scope,
 ) -> Result<PaintIndex, PaintError> {
+    let request = input.request;
+    let core = &input.core;
     let mut index = PaintIndex::default();
     let result = (|| {
         charge(p, phase, WorkKind::PaintValidation, 1)?;
@@ -226,7 +249,7 @@ pub(super) fn prepare(
 
 fn validate_categories(
     request: PaintRequest<'_>,
-    core: &State,
+    core: &PreparedCore<'_>,
     p: &mut PhaseMeter<'_, '_>,
     phase: Scope,
 ) -> Result<(), PaintError> {
@@ -263,7 +286,7 @@ fn validate_categories(
             && facts.participation() != Participation::Ordinary
         {
             Some(BoxCategoryError::FloatingItem)
-        } else if replaced(paint.kind()) && core.nodes[slot].start != core.nodes[slot].end {
+        } else if replaced(paint.kind()) && core.nodes()[slot].start != core.nodes()[slot].end {
             Some(BoxCategoryError::ReplacedHasChildren)
         } else {
             None
@@ -868,7 +891,7 @@ fn primitive_target(
 
 fn primitives(
     request: PaintRequest<'_>,
-    core: &State,
+    core: &PreparedCore<'_>,
     index: &mut PaintIndex,
     p: &mut PhaseMeter<'_, '_>,
     root: Scope,
@@ -980,7 +1003,7 @@ fn primitives(
                 (
                     fragment.get() + 1,
                     role,
-                    core.nodes[applying_box.get()].rank,
+                    core.nodes()[applying_box.get()].rank,
                 )
             }
         };

@@ -76,6 +76,29 @@ fn assert_failure(boxes: &[BoxFacts], root: usize, expected: PaintError) {
 }
 
 #[test]
+fn same_length_sources_retain_their_distinct_root_order_and_facts() {
+    let first = [root(), child(0, 0, -2), child(0, 1, 3)];
+    let second = [child(2, 1, 4), child(2, 0, -3), root()];
+    for (boxes, root_id, expected_children, expected_membership) in [
+        (&first, 0, [1, 2], [0, 1, 2]),
+        (&second, 2, [1, 0], [0, 1, 2]),
+    ] {
+        let plan = plan_stacking(boxes, BoxId::new(root_id), options())
+            .result
+            .unwrap();
+        assert!(std::ptr::eq(plan.facts(), boxes.as_slice()));
+        assert_eq!(plan.root_context().box_id(), BoxId::new(root_id));
+        assert_eq!(children(plan.root_context()), expected_children);
+        assert_eq!(membership_ids(&plan), expected_membership);
+        for (slot, facts) in boxes.iter().enumerate() {
+            let context = plan.context_for_box(BoxId::new(slot)).unwrap();
+            assert_eq!(context.box_id(), BoxId::new(slot));
+            assert!(std::ptr::eq(&plan.facts()[slot], facts));
+        }
+    }
+}
+
+#[test]
 fn stable_sort_preserves_equal_key_id_order_across_odd_runs_and_backing() {
     let keys = [2, 1, 1, 0, 2, 1, 0];
     let mut values = Vec::with_capacity(11);
@@ -317,9 +340,12 @@ fn refused_traversal_consume_keeps_pending_root_until_cleanup_and_retry() {
         let mut meter = options.operation(OperationKind::Stacking).unwrap();
         let root = meter.root();
         let scopes = setup_scopes(&mut meter).unwrap();
-        let mut state = State::default();
-        let error =
-            prepare(&mut meter, root, &scopes, &mut state, &boxes, BoxId::new(0)).unwrap_err();
+        let PreparationFailure { error, mut cleanup } =
+            match prepare(&mut meter, root, &scopes, &boxes, BoxId::new(0)) {
+                Break(failure) => failure,
+                Continue(_) => panic!("expected traversal admission refusal"),
+            };
+        let state = &cleanup.state;
         let PaintError::Budget(refusal) = error else {
             panic!("expected traversal admission refusal");
         };
@@ -346,8 +372,8 @@ fn refused_traversal_consume_keeps_pending_root_until_cleanup_and_retry() {
         }
         meter
             .with_phase(scopes[6], |p| {
-                state.scratch_cleanup(p, root).unwrap();
-                state.result_cleanup(p, root).unwrap();
+                cleanup.scratch_cleanup(p).unwrap();
+                cleanup.result_cleanup(p).unwrap();
             })
             .unwrap();
         let report = meter.finish().unwrap().unwrap();
