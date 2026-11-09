@@ -242,3 +242,115 @@ fn a_faulted_prepared_task_is_not_polled_again_and_keeps_payload_until_explicit_
         assert_eq!(drops.get(), 1);
     }
 }
+
+#[derive(Debug, Eq, PartialEq)]
+struct CollisionDisposalUnwind(u8);
+
+struct CollisionDisposalCapture {
+    tag: u8,
+    index: usize,
+    counts: Rc<[Cell<usize>; 2]>,
+    mask: Rc<Cell<u8>>,
+    first: Rc<Cell<Option<u8>>>,
+}
+impl Drop for CollisionDisposalCapture {
+    fn drop(&mut self) {
+        self.counts[self.index].set(self.counts[self.index].get() + 1);
+        self.mask.set(self.mask.get() | self.tag);
+        if self.first.get().is_none() {
+            self.first.set(Some(self.tag));
+        }
+        std::panic::panic_any(CollisionDisposalUnwind(self.tag));
+    }
+}
+
+fn collision_disposal_job(
+    counts: Rc<[Cell<usize>; 2]>,
+    mask: Rc<Cell<u8>>,
+    first: Rc<Cell<Option<u8>>>,
+) -> NativeAsyncJob {
+    let retained = CollisionDisposalCapture {
+        tag: 1,
+        index: 0,
+        counts: counts.clone(),
+        mask: mask.clone(),
+        first: first.clone(),
+    };
+    let job = NativeAsyncJob::new(move |_| {
+        let _keep = &retained;
+        panic!("collision cleanup cannot execute the retained factory")
+    });
+    let active = CollisionDisposalCapture {
+        tag: 2,
+        index: 1,
+        counts,
+        mask,
+        first,
+    };
+    // Exercise the actual engine-owned restoration-collision route. It must
+    // quarantine both independently owned payloads without disposing either.
+    job.control
+        .restore_state(State::Task(ContextTask::from_poll(move |_, _| {
+            let _keep = &active;
+            panic!("collision cleanup cannot poll the quarantined task")
+        })));
+    job
+}
+
+#[test]
+fn collision_retirement_finishes_both_payload_disposals_and_resumes_the_first_unwind() {
+    let counts = Rc::new([Cell::new(0), Cell::new(0)]);
+    let mask = Rc::new(Cell::new(0));
+    let first = Rc::new(Cell::new(None));
+    let job = collision_disposal_job(counts.clone(), mask.clone(), first.clone());
+    let observer = job.observer();
+    let expected = JobFault::new(JobFaultOwner::Task, JobFaultCause::StateInconsistency);
+    assert_eq!(observer.status(), Err(expected));
+    assert_eq!(mask.get(), 0);
+    assert_eq!(first.get(), None);
+
+    let unwind = catch_unwind(AssertUnwindSafe(|| {
+        job.control.retire(JobRetirement::Cancelled);
+    }))
+    .unwrap_err();
+    assert_eq!(mask.get(), 3, "both actual owner payloads must dispose");
+    assert_eq!([counts[0].get(), counts[1].get()], [1, 1]);
+    let first_tag = first
+        .get()
+        .expect("an actual destructor must initiate unwind");
+    assert_eq!(
+        unwind.downcast_ref::<CollisionDisposalUnwind>(),
+        Some(&CollisionDisposalUnwind(first_tag))
+    );
+    assert_eq!(observer.status(), Err(expected));
+    assert_eq!(observer.fault(), Some(expected));
+    drop(job);
+    assert_eq!(mask.get(), 3);
+    assert_eq!([counts[0].get(), counts[1].get()], [1, 1]);
+}
+
+#[test]
+fn collision_final_drop_finishes_both_payload_disposals_and_resumes_the_first_unwind() {
+    let counts = Rc::new([Cell::new(0), Cell::new(0)]);
+    let mask = Rc::new(Cell::new(0));
+    let first = Rc::new(Cell::new(None));
+    let job = collision_disposal_job(counts.clone(), mask.clone(), first.clone());
+    let observer = job.observer();
+    let expected = JobFault::new(JobFaultOwner::Task, JobFaultCause::StateInconsistency);
+    assert_eq!(observer.status(), Err(expected));
+    assert_eq!(mask.get(), 0);
+    assert_eq!(first.get(), None);
+
+    let unwind = catch_unwind(AssertUnwindSafe(|| drop(job))).unwrap_err();
+    assert_eq!(mask.get(), 3, "both actual owner payloads must dispose");
+    assert_eq!([counts[0].get(), counts[1].get()], [1, 1]);
+    let first_tag = first
+        .get()
+        .expect("an actual destructor must initiate unwind");
+    assert_eq!(
+        unwind.downcast_ref::<CollisionDisposalUnwind>(),
+        Some(&CollisionDisposalUnwind(first_tag))
+    );
+    assert_eq!(observer.status(), Err(expected));
+    assert_eq!(observer.fault(), Some(expected));
+}

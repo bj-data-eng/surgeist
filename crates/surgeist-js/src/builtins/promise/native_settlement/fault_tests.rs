@@ -929,3 +929,38 @@ fn module_domain_poison_notifies_its_members_without_quarantining_the_ordinary_o
     other.settle();
     assert_eq!(other.status(), Ok(SettlementStatus::Settled));
 }
+
+#[test]
+fn direct_signal_registry_fault_marks_both_active_siblings_before_any_native_wake() {
+    let domain = isolated();
+    let signals: Vec<_> = (0..3).map(|_| signal(&domain)).collect();
+    let _first = connect(&signals[0], &signals[1]);
+    let _second = connect(&signals[0], &signals[2]);
+    let expected = signal_fault(JobFaultCause::PoisonedRegistry);
+    let completion = Arc::new(WakeCount::default());
+    let probe = Arc::new(ChainWake {
+        signals: signals.clone(),
+        expected,
+        all_marked: AtomicBool::new(true),
+        completion: completion.clone(),
+    });
+    let mut waits: Vec<_> = signals
+        .iter()
+        .map(|signal| park(signal, probe.clone()))
+        .collect();
+
+    // All original waits are subscribed and parked before the actual owner
+    // mutex is poisoned. This checked entry detects the real poisoning; the
+    // first external wake inspects all three actual Signal statuses.
+    poison(&signals[0].state);
+    assert_eq!(signals[0].state_access().err(), Some(expected));
+    completion.await_count(signals.len());
+    assert!(
+        probe.all_marked.load(Ordering::SeqCst),
+        "each active sibling must be faulted before the first native wake"
+    );
+    for wait in &mut waits {
+        assert_eq!(poll(wait), Poll::Ready(Err(expected)));
+    }
+    assert!(domain.fault.get().is_none());
+}
