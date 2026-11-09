@@ -255,9 +255,8 @@ impl CaptureAccount {
     ) -> Result<HtmlCaptureUsage, HtmlCaptureError> {
         let (mut batch, length) = charges.counts();
         let mut length = length;
-        if charges.element_value_bytes != 0
-            && let Some(slot) = batch.get_mut(length)
-        {
+        if charges.element_value_bytes != 0 {
+            let slot = batch.get_mut(length).ok_or(HtmlCaptureError::LedgerState)?;
             *slot = Change::Acquire(
                 HtmlResource::ElementValueBytes,
                 wide(charges.element_value_bytes),

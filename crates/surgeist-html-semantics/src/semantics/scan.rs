@@ -169,11 +169,14 @@ impl<E: ScanError> ScanMeter<E> {
             error: PhantomData,
         })
     }
-    /// The typed refusal of a ledger error. A refused work cap is the constructor's work refusal
-    /// and an overflow its representation exhaustion; anything else is a ledger state.
+    /// The typed refusal of a ledger error. A refused work cap is the constructor's work refusal,
+    /// and an overflow or a failed ledger allocation its representation exhaustion; anything else
+    /// is a ledger state.
     fn refusal_of(error: Error<HtmlWork, HtmlResource>) -> E {
-        let Error::Refused(refusal) = error else {
-            return E::ledger_state();
+        let refusal = match error {
+            Error::Refused(refusal) => refusal,
+            Error::Allocation => return E::representation_exhausted(),
+            _ => return E::ledger_state(),
         };
         match (refusal.reason, refusal.change) {
             (RefusalReason::Overflow, _) => E::representation_exhausted(),
