@@ -1,5 +1,5 @@
 use super::*;
-use crate::bounded::values::HtmlStringPool;
+use crate::bounded::values::{HtmlStringPool, HtmlValuePoolUsage};
 use surgeist_ledger::{Dimension, Error, Operation, RefusalReason};
 
 type Op = Operation<HtmlWork, HtmlResource>;
@@ -396,10 +396,10 @@ fn csp_work_sums_its_own_and_closing_credits() {
     assert_eq!(
         csp_storage(storage),
         [
+            (HtmlResource::AuxiliaryEntries, 2),
+            (HtmlResource::ManagedUtf16Units, 8),
             (HtmlResource::ManagedCapacityBytes, 64),
             (HtmlResource::PeakTransientBytes, 64),
-            (HtmlResource::ManagedUtf16Units, 8),
-            (HtmlResource::AuxiliaryEntries, 2),
         ]
     );
 }
@@ -433,4 +433,83 @@ fn the_construction_scope_caps_exactly_the_construction_resources() {
         HtmlCapScope::Construction.capped_resources(),
         capped.as_slice()
     );
+}
+
+/// The field names of a limits value, read from its `Debug` text.
+pub(crate) fn field_names(limits: &impl std::fmt::Debug) -> Vec<String> {
+    let text = format!("{limits:?}");
+    let body = text
+        .split_once('{')
+        .and_then(|(_, rest)| rest.rsplit_once('}'))
+        .map_or("", |(body, _)| body);
+    body.split(',')
+        .filter_map(|field| field.split_once(':'))
+        .map(|(name, _)| name.trim().to_owned())
+        .collect()
+}
+
+#[test]
+fn the_construction_limits_fields_are_the_construction_scope_caps() {
+    let limits = crate::construction::HtmlConstructionLimits::new(1, 2, 3, 4, 5);
+    let capped: Vec<HtmlResource> = field_names(&limits)
+        .iter()
+        .map(|name| match name.as_str() {
+            "nodes" => HtmlResource::ManagedNodes,
+            "edges" => HtmlResource::ManagedEdges,
+            "attributes" => HtmlResource::ManagedAttributes,
+            "utf16_units" => HtmlResource::ManagedUtf16Units,
+            "depth" => HtmlResource::TreeDepth,
+            other => panic!("unmapped construction limit {other}"),
+        })
+        .collect();
+    assert_eq!(
+        HtmlCapScope::Construction.capped_resources(),
+        capped.as_slice()
+    );
+    assert!(HtmlCapScope::Construction.capped_work().is_empty());
+}
+
+#[test]
+fn the_autocomplete_limits_fields_are_the_autocomplete_scope_caps() {
+    let limits = HtmlAutocompleteMaterializationLimits {
+        allocated_bytes: 1,
+        nested_output_records: 2,
+        scratch_records: 3,
+    };
+    let mut capped: Vec<HtmlResource> = field_names(&limits)
+        .iter()
+        .map(|name| match name.as_str() {
+            "allocated_bytes" => HtmlResource::AllocatedBytes,
+            "nested_output_records" => HtmlResource::NestedOutputRecords,
+            "scratch_records" => HtmlResource::ScratchRecords,
+            other => panic!("unmapped autocomplete limit {other}"),
+        })
+        .collect();
+    let mut listed = HtmlCapScope::Autocomplete.capped_resources().to_vec();
+    capped.sort();
+    listed.sort();
+    assert_eq!(listed, capped);
+    assert!(HtmlCapScope::Autocomplete.capped_work().is_empty());
+}
+
+/// Retained storage is refused in the order of the parser's resource precedence,
+/// which is the declaration order of the resources.
+#[test]
+fn retained_storage_conversions_follow_the_resource_precedence() {
+    use crate::security::csp::HtmlCspStorage;
+    let position = |resource: HtmlResource| {
+        HtmlResource::ALL
+            .iter()
+            .position(|candidate| *candidate == resource)
+    };
+    let ordered = |amounts: [(HtmlResource, u64); 4]| {
+        amounts
+            .windows(2)
+            .all(|pair| position(pair[0].0) < position(pair[1].0))
+    };
+    assert!(ordered(retained_provider_storage(1, 2, 3)));
+    assert!(ordered(csp_storage(
+        HtmlCspStorage::try_new(64, 8, 2).unwrap()
+    )));
+    assert!(ordered(value_pool_usage(HtmlValuePoolUsage::default())));
 }

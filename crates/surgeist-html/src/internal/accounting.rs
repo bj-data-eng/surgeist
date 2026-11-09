@@ -37,8 +37,8 @@
 //!
 //! Semantic work ([`HtmlWork::SemanticStep`]) has no conversion into credits.
 //! Credits count the parser's physical operations, no consumer adds semantic
-//! steps to them today, and a host that wants one combined count defines that
-//! rate in its own tariffs.
+//! steps to them, and a host that wants one combined count defines that rate in
+//! its own tariffs.
 //!
 //! # Scope tree
 //!
@@ -49,8 +49,11 @@
 //!         └── attribution scopes  Limits::unlimited(); Tariffs::identity()
 //! ```
 //!
-//! The charging scope records per-category parser work. The cap scope records
-//! credits and the capped resources. [`HtmlCapScope`] lists every cap scope and
+//! The charging scope records per-category parser work and every gauge. Gauges
+//! are recorded only there: attribution scopes use identity tariffs, so a gauge
+//! recorded in two sibling attribution scopes would sum in the charging scope.
+//! Attribution scopes record work and balance resources only. The cap scope
+//! records credits and the capped resources. [`HtmlCapScope`] lists every cap scope and
 //! the dimensions whose caps it carries. A scope that carries no cap of its own
 //! is created with `Limits::unlimited()`; the ledger still checks its
 //! arithmetic.
@@ -97,7 +100,12 @@
 //!   [`HtmlResource::TreeDepth`] and [`HtmlResource::AtomicLayoutBytes`]. Use
 //!   [`record_largest`]: one batch releases the previous value and acquires the
 //!   new one, so the cap is checked against the new value and the peak keeps the
-//!   largest.
+//!   largest. A refusal names item 1, the acquire, and reports the usage after
+//!   the release as its current value. The parser's stop reports the previous
+//!   value as current, and as requested change the value itself for
+//!   [`HtmlResource::AtomicLayoutBytes`] and the value minus the previous one
+//!   for [`HtmlResource::TreeDepth`]; a consumer builds those from the usage it
+//!   read before the batch.
 //! - [`HtmlCustody::Retention`]: [`HtmlResource::Diagnostics`] bounds what is
 //!   retained and never ends a parse. The consumer acquires one unit per
 //!   retained diagnostic; a refusal of that single change means the cap is
@@ -109,13 +117,28 @@
 //! The ledger checks the changes of a batch in input order. The declaration order
 //! of [`HtmlResource`] is the deterministic precedence among parse limits, so a
 //! consumer orders a coalesced batch by [`surgeist_ledger::Dimension::ALL`].
+//! [`retained_provider_storage`] and the conversions built on it are in that
+//! order.
+//!
+//! The parser checks the credit cap once for a whole charge: the cap is compared
+//! with the pre-batch credits plus the sum of every item, and a refusal reports
+//! the pre-batch credits as current and the sum as requested change. A ledger
+//! refusal names one item with the batch prefix as current, so a consumer
+//! recomputes those two figures from the usage it read before the batch and the
+//! batch's amounts.
 //!
 //! # Conversions
 //!
 //! Each function below converts one existing work, layout or limits shape into
-//! ledger changes or limits, with the amounts a consumer charges for that shape
-//! today. Fields that no consumer charges are named in the function that skips
-//! them.
+//! ledger changes or limits, with the amounts a consumer charges for that shape.
+//! Fields that no consumer charges are named in the function that skips them.
+//!
+//! Three shapes have no conversion. `HtmlRangeNumericLayout` and the request
+//! byte accessors of the range numeric machine describe register and buffer
+//! sizes whose charges the parser composes from its own record sizes, so they
+//! carry no amount rule of their own. `HtmlCspArtifactLayout` and
+//! `HtmlValuePoolLayout` bundle storage and work already converted through
+//! [`csp_storage`], [`csp_work`], [`value_pool_usage`] and [`value_pool_work`].
 
 use crate::bounded::{
     attributes::HtmlAutocompleteMaterializationLimits,
@@ -299,7 +322,8 @@ pub enum HtmlCustody {
     Permanent,
     /// A value recorded as the largest reached, through [`record_largest`]. It
     /// is not additive between owners, so [`aggregate_tariffs`] converts it at
-    /// scale zero.
+    /// scale zero. A refusal reports the usage after the release as its current
+    /// value; see [`record_largest`].
     Gauge,
     /// Bounds retention without refusing the operation. A refused acquisition
     /// means the cap is reached and the item is counted as dropped.
@@ -628,6 +652,13 @@ fn wide(value: usize) -> u64 {
 /// value is `held`. Apply both changes in one batch: the release returns the
 /// previous value, the acquire checks the cap against the new value and raises
 /// the peak.
+///
+/// A refusal names item 1, the acquire, with the usage after the release as its
+/// current value. The parser's stop reports the previous value as current and,
+/// as requested change, the value itself for
+/// [`HtmlResource::AtomicLayoutBytes`] and the value minus the previous one for
+/// [`HtmlResource::TreeDepth`]; a consumer derives those from the usage it read
+/// before the batch. Record gauges in the charging scope only.
 pub fn record_largest(resource: HtmlResource, held: u64, value: u64) -> [HtmlChange; 2] {
     [
         Change::Release(resource, held),
@@ -638,13 +669,16 @@ pub fn record_largest(resource: HtmlResource, held: u64, value: u64) -> [HtmlCha
 /// The retained storage of a provider graph: bytes count in both capacity
 /// resources, UTF-16 units and entries in their own.
 ///
-/// Parser order: capacity bytes, peak bytes, UTF-16 units, entries.
+/// The order is the resource precedence the parser refuses in: entries, UTF-16
+/// units, capacity bytes, peak bytes. It is the order of
+/// [`surgeist_ledger::Dimension::ALL`], so a batch in this order reaches the same
+/// first refusal as the parser when several caps fail at once.
 pub fn retained_provider_storage(bytes: u64, units: u64, entries: u64) -> [(HtmlResource, u64); 4] {
     [
+        (HtmlResource::AuxiliaryEntries, entries),
+        (HtmlResource::ManagedUtf16Units, units),
         (HtmlResource::ManagedCapacityBytes, bytes),
         (HtmlResource::PeakTransientBytes, bytes),
-        (HtmlResource::ManagedUtf16Units, units),
-        (HtmlResource::AuxiliaryEntries, entries),
     ]
 }
 
