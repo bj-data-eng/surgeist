@@ -6,6 +6,9 @@ pub(super) use adjoining::AdjoiningFlow;
 mod driver;
 use driver::PrefixDriver;
 
+#[cfg(test)]
+mod settlement_tests;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct StartFact<S: LayoutScalar> {
     pub(crate) margin: CollapsibleMarginOf<S>,
