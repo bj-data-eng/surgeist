@@ -306,9 +306,9 @@ fn hosted_accounting_error(fault: HtmlAccountingFault) -> DomHostedError {
 /// The hosted outcome of a capture error of the registry formation: a ledger fault of the capture
 /// is the accounting outcome, and every other capture error is an unsupported profile.
 fn hosted_capture_error(error: &HtmlCaptureError) -> DomHostedError {
-    match error {
-        HtmlCaptureError::Accounting(fault) => hosted_accounting_error(*fault),
-        _ => DomHostedError::UnsupportedProfile,
+    match error.accounting_fault() {
+        Some(fault) => hosted_accounting_error(fault),
+        None => DomHostedError::UnsupportedProfile,
     }
 }
 

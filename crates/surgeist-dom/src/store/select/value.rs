@@ -184,13 +184,9 @@ impl Draft {
                 }
             }
             HtmlControlledOptionValueError::AllocationFailed => DomError::AllocationFailed,
-            HtmlControlledOptionValueError::Context(error) => match error {
-                HtmlSemanticContextError::Accounting(fault)
-                | HtmlSemanticContextError::Capture(HtmlCaptureError::Accounting(fault))
-                | HtmlSemanticContextError::ImageDimensionsFacts(
-                    HtmlImageDimensionFactsError::Accounting(fault),
-                ) => DomError::from_accounting_fault(fault),
-                _ => DomError::SelectProtocol,
+            HtmlControlledOptionValueError::Context(error) => match error.accounting_fault() {
+                Some(fault) => DomError::from_accounting_fault(fault),
+                None => DomError::SelectProtocol,
             },
             HtmlControlledOptionValueError::InvalidPhase => DomError::SelectProtocol,
         }
@@ -546,8 +542,9 @@ mod tests {
     }
 
     /// A ledger fault of the semantic context is an allocation failure or an HTML charge protocol
-    /// fault, directly or inside the capture and image dimension errors it wraps; every other
-    /// context error stays a select protocol breach.
+    /// fault wherever the context error carries it, directly or inside the capture, image
+    /// dimension and control facts errors it wraps; every other context error stays a select
+    /// protocol breach. The route is the error's own `accounting_fault`.
     #[test]
     fn a_context_ledger_fault_is_an_allocation_failure_or_a_charge_protocol_fault() {
         let (dom, _, _, _) = fixture();
@@ -565,24 +562,30 @@ mod tests {
                 DomError::HtmlChargeProtocol,
             ),
         ] {
-            assert_eq!(map(HtmlSemanticContextError::Accounting(fault)), expected);
-            assert_eq!(
-                map(HtmlSemanticContextError::Capture(
-                    HtmlCaptureError::Accounting(fault)
-                )),
-                expected
-            );
-            assert_eq!(
-                map(HtmlSemanticContextError::ImageDimensionsFacts(
-                    HtmlImageDimensionFactsError::Accounting(fault)
-                )),
-                expected
-            );
+            let capture = || HtmlCaptureError::Accounting(fault);
+            for error in [
+                HtmlSemanticContextError::Accounting(fault),
+                HtmlSemanticContextError::Capture(capture()),
+                HtmlSemanticContextError::ImageDimensionsFacts(
+                    HtmlImageDimensionFactsError::Accounting(fault),
+                ),
+                HtmlSemanticContextError::ImageDimensionsFacts(
+                    HtmlImageDimensionFactsError::Capture(capture()),
+                ),
+                HtmlSemanticContextError::ControlsFacts(HtmlControlFactsError::Accounting(fault)),
+                HtmlSemanticContextError::ControlsFacts(HtmlControlFactsError::Capture(capture())),
+            ] {
+                assert_eq!(map(error.clone()), expected, "{error:?}");
+            }
         }
-        assert_eq!(
-            map(HtmlSemanticContextError::HostRevisionMismatch),
-            DomError::SelectProtocol
-        );
+        for error in [
+            HtmlSemanticContextError::HostRevisionMismatch,
+            HtmlSemanticContextError::ControlsFacts(HtmlControlFactsError::Capture(
+                HtmlCaptureError::ForeignBuilder,
+            )),
+        ] {
+            assert_eq!(map(error), DomError::SelectProtocol);
+        }
         assert_eq!(
             draft.option_value_error(HtmlControlledOptionValueError::InvalidPhase),
             DomError::SelectProtocol
