@@ -283,16 +283,16 @@ impl NativeAsyncJob {
             State::Factory(_) => JobAction::Preparation,
             State::Task(_) => JobAction::Poll,
         };
-        let mut lease = StateLease {
+        let lease = StateLease {
             control: self.control.clone(),
             state: LeaseState::Held(state),
         };
-        let mut action = match Action::begin(host, self.realm.as_ref(), action_kind, &self.control)
-        {
+        let action = match Action::begin(host, self.realm.as_ref(), action_kind, &self.control) {
             Ok(action) => action,
             Err(error) => return JobStep::Deferred(error),
         };
-        let dispatched = catch_unwind(AssertUnwindSafe(|| match &mut lease.state {
+        let mut step = AdmittedStep::new(lease, action);
+        let dispatched = catch_unwind(AssertUnwindSafe(|| match &mut step.lease.state {
             LeaseState::Held(State::Task(task)) => {
                 self.control.wake.ready.store(false, Ordering::Release);
                 let waker = Waker::from(self.control.wake.clone());
@@ -301,16 +301,16 @@ impl NativeAsyncJob {
                     Poll::Ready(result) => StepResult::Complete(result),
                 }
             }
-            LeaseState::Held(State::Factory(_)) => match lease.take() {
+            LeaseState::Held(State::Factory(_)) => match step.lease.take() {
                 Some(State::Factory(factory)) => match host.with(factory) {
                     Ok(task) => {
-                        lease.state = LeaseState::Held(State::Task(task));
+                        step.lease.state = LeaseState::Held(State::Task(task));
                         StepResult::Prepared
                     }
                     Err(error) => StepResult::Complete(Err(error)),
                 },
                 Some(state) => {
-                    lease.state = LeaseState::Held(state);
+                    step.lease.state = LeaseState::Held(state);
                     StepResult::Complete(Err(JobFault::new(
                         JobFaultOwner::Task,
                         JobFaultCause::StateInconsistency,
@@ -329,22 +329,15 @@ impl NativeAsyncJob {
             )
             .into())),
         }));
-        let mut result = match dispatched {
+        step.result = Some(match dispatched {
             Ok(result) => result,
-            Err(payload) => {
+            Err(original) => {
                 let mut cleanup = UnwindCleanup::default();
-                cleanup.run(|| {
-                    let _ = action.restore_and_check();
-                });
-                self.control.disposed.set(true);
-                cleanup.run(|| drop(lease.take()));
-                cleanup.run(|| drop(action));
-                cleanup.run(|| self.control.observer.retire(JobRetirement::Interrupted));
-                // The original callback unwind remains the initiating failure.
-                cleanup.resume(payload)
+                cleanup.run(|| drop(step));
+                cleanup.resume(original)
             }
-        };
-        let stopped = match action.restore_and_check() {
+        });
+        step.stop = match step.restore_and_check() {
             Ok(result) => result.err(),
             Err(fault) => {
                 self.control.fault(fault);
@@ -360,57 +353,58 @@ impl NativeAsyncJob {
             Ok(JobStatus::Retired(reason)) => Some(reason),
             _ => None,
         };
-        if stopped.is_some()
+        if step.stop.is_some()
             || retired.is_some()
-            || (fault.is_none() && matches!(result, StepResult::Complete(_)))
+            || (fault.is_none() && matches!(step.result, Some(StepResult::Complete(_))))
         {
             self.control.disposed.set(true);
-            drop(lease.take());
+            drop(step.lease.take());
         }
-        let later_stop = match action.check_stop() {
+        step.later_stop = match step.check_stop() {
             Ok(result) => result.err(),
             Err(fault) => {
                 self.control.fault(fault);
                 None
             }
         };
-        let stopped = later_stop.or(stopped);
+        step.prefer_later_stop();
         let fault = self.control.observer.fault().or(fault);
-        if let Some(stop) = stopped {
-            result = StepResult::Complete(Err(stop));
+        if let Some(stop) = step.stop.take() {
+            step.replace_result(Err(stop));
         } else if let Some(fault) = fault
-            && !matches!(&result, StepResult::Complete(Err(error)) if error.as_engine().is_some())
+            && !step.has_engine_error()
         {
-            result = StepResult::Complete(Err(fault.into()));
+            step.replace_result(Err(fault.into()));
         } else if let Some(reason) = retired {
-            result = StepResult::Complete(Err(EngineError::JobRetired(reason).into()));
+            step.replace_result(Err(EngineError::JobRetired(reason).into()));
         }
-        match action.finish() {
+        match step.finish_action() {
             Ok(Ok(())) => {}
             Ok(Err(stop)) => {
+                step.stop = Some(stop);
                 self.control.disposed.set(true);
-                drop(lease.take());
-                result = StepResult::Complete(Err(stop));
+                drop(step.lease.take());
+                if let Some(stop) = step.stop.take() {
+                    step.replace_result(Err(stop));
+                }
             }
             Err(fault) => {
                 self.control.fault(fault);
-                if !matches!(&result, StepResult::Complete(Err(error)) if error.as_engine().is_some())
-                {
-                    result = StepResult::Complete(Err(fault.into()));
+                if !step.has_engine_error() {
+                    step.replace_result(Err(fault.into()));
                 }
             }
         }
-        match result {
-            StepResult::Prepared => {
+        match step.result.as_ref() {
+            Some(StepResult::Prepared) => {
                 self.control.wake.ready.store(true, Ordering::Release);
-                JobStep::Prepared
             }
-            StepResult::Pending => JobStep::Pending,
-            StepResult::Complete(mut result) => {
-                if result
-                    .as_ref()
-                    .is_err_and(|error| error.as_engine().is_some())
-                {
+            Some(StepResult::Pending) => {}
+            Some(StepResult::Complete(_)) => {
+                // The result is consumed by this action before publication can
+                // wake arbitrary host code. A committed terminal cannot replay it.
+                self.control.delivered.set(true);
+                if step.has_engine_error() {
                     self.control.observer.retire(JobRetirement::Interrupted);
                 } else {
                     self.control.observer.complete();
@@ -418,35 +412,146 @@ impl NativeAsyncJob {
                 if self.control.disposed.get() {
                     drop(self.control.registration.take());
                 }
-                self.control.delivered.set(true);
                 self.control.wake.retire();
                 if let Some(fault) = self.control.observer.fault()
-                    && !result
-                        .as_ref()
-                        .is_err_and(|error| error.as_engine().is_some())
+                    && !step.has_engine_error()
                 {
-                    result = Err(fault.into());
+                    step.replace_result(Err(fault.into()));
                 }
                 match host.with_job_cleanup(|access| access.into_owner().check_execution_stop()) {
-                    Ok(Err(stop)) => result = Err(stop),
-                    Err(fault)
-                        if !result
-                            .as_ref()
-                            .is_err_and(|error| error.as_engine().is_some()) =>
-                    {
-                        result = Err(fault.into())
+                    Ok(Err(stop)) => step.replace_result(Err(stop)),
+                    Err(fault) if !step.has_engine_error() => {
+                        step.replace_result(Err(fault.into()));
                     }
                     _ => {}
                 }
-                JobStep::Complete(result)
             }
+            None => {}
         }
+        step.finish()
     }
 }
 enum StepResult {
     Prepared,
     Pending,
     Complete(JsResult<JsValue>),
+}
+
+/// Owns the entire admitted transition, including post-dispatch destruction.
+/// Every callback-capable value stays here until cleanup and publication finish.
+struct AdmittedStep<'h, 'o> {
+    lease: StateLease,
+    action: Option<Action<'h, 'o>>,
+    result: Option<StepResult>,
+    stop: Option<JsError>,
+    later_stop: Option<JsError>,
+    armed: bool,
+}
+impl<'h, 'o> AdmittedStep<'h, 'o> {
+    fn new(lease: StateLease, action: Action<'h, 'o>) -> Self {
+        Self {
+            lease,
+            action: Some(action),
+            result: None,
+            stop: None,
+            later_stop: None,
+            armed: true,
+        }
+    }
+    fn missing_action() -> JobFault {
+        JobFault::new(JobFaultOwner::Task, JobFaultCause::StateInconsistency)
+    }
+    fn restore_and_check(&mut self) -> Result<JsResult<()>, JobFault> {
+        self.action
+            .as_mut()
+            .ok_or_else(Self::missing_action)?
+            .restore_and_check()
+    }
+    fn check_stop(&self) -> Result<JsResult<()>, JobFault> {
+        self.action
+            .as_ref()
+            .ok_or_else(Self::missing_action)?
+            .check_stop()
+    }
+    fn finish_action(&mut self) -> Result<JsResult<()>, JobFault> {
+        self.action
+            .take()
+            .ok_or_else(Self::missing_action)?
+            .finish()
+    }
+    fn has_engine_error(&self) -> bool {
+        matches!(&self.result, Some(StepResult::Complete(Err(error))) if error.as_engine().is_some())
+    }
+    fn replace_result(&mut self, result: JsResult<JsValue>) {
+        // Install the successor before disposing the superseded value. If its
+        // destructor unwinds, the new value remains in protected custody.
+        let previous = self.result.replace(StepResult::Complete(result));
+        drop(previous);
+    }
+    fn prefer_later_stop(&mut self) {
+        if self.later_stop.is_some() {
+            let previous = std::mem::replace(&mut self.stop, self.later_stop.take());
+            drop(previous);
+        }
+    }
+    fn finish(mut self) -> JobStep {
+        // Restoration can dispose a task if its owner retired during the action.
+        // It must finish before the result moves out of this guard.
+        if let Some(state) = self.lease.take() {
+            self.lease.control.restore_state(state);
+        }
+        let action = self.action.take();
+        drop(action);
+        let stop = self.stop.take();
+        drop(stop);
+        let later_stop = self.later_stop.take();
+        drop(later_stop);
+        let result = match self.result.take() {
+            Some(StepResult::Prepared) => JobStep::Prepared,
+            Some(StepResult::Pending) => JobStep::Pending,
+            Some(StepResult::Complete(result)) => JobStep::Complete(result),
+            None => {
+                self.lease.control.delivered.set(true);
+                let fault = self
+                    .lease
+                    .control
+                    .observer
+                    .record_fault(Self::missing_action());
+                JobStep::Complete(Err(fault.into()))
+            }
+        };
+        self.armed = false;
+        result
+    }
+}
+impl Drop for AdmittedStep<'_, '_> {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        self.armed = false;
+        self.lease.control.disposed.set(true);
+        let mut cleanup = UnwindCleanup::default();
+        if self.action.is_some() {
+            cleanup.run(|| drop(self.restore_and_check()));
+        }
+        let state = self.lease.take();
+        cleanup.run(|| drop(state));
+        let action = self.action.take();
+        cleanup.run(|| drop(action));
+        // Publication preserves any actual Completed/Retired/fault terminal.
+        // This also finishes driver/registration disposal after a wake unwind.
+        cleanup.run(|| self.lease.control.retire(JobRetirement::Interrupted));
+        let result = self.result.take();
+        cleanup.run(|| drop(result));
+        let stop = self.stop.take();
+        cleanup.run(|| drop(stop));
+        let later_stop = self.later_stop.take();
+        cleanup.run(|| drop(later_stop));
+        // Ambient unwinding owns the initiating host payload. Only this bounded
+        // cleanup set continues; no factory, task poll or guest work is resumed.
+        cleanup.finish();
+    }
 }
 struct Action<'h, 'o> {
     host: &'h HostContext<'o>,
