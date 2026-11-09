@@ -312,6 +312,7 @@ pub(crate) fn prepare(
         row.boundary = native_endpoint(row.boundary)?;
     }
     for row in &mut tables.alternatives {
+        row.source_segment = native_owner(row.boundary);
         row.boundary = native_endpoint(row.boundary)?;
     }
     for row in &mut tables.hyphenation_cuts {

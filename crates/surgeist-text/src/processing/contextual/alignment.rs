@@ -283,6 +283,15 @@ impl ScopeAlignmentBudget {
         Ok(())
     }
 
+    /// The failed operation dropped all of its new products. Keep cumulative
+    /// admission/work and the peak, without reporting dead scratch as live.
+    pub(crate) fn usage_after_discard(&self, retained_payload_bytes: usize) -> ScopeAlignmentUsage {
+        ScopeAlignmentUsage {
+            payload_bytes: retained_payload_bytes,
+            ..self.usage
+        }
+    }
+
     /// Charges one actual resolver invocation, not its opaque internal work.
     pub(crate) fn font_query(&mut self) -> Result<()> {
         let kind = ScopeAlignmentLimitKind::FontQueries;

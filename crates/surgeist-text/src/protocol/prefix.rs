@@ -733,16 +733,21 @@ pub(crate) fn in_flow_item(
     dispositions: &[super::SpacingSlotDisposition],
 ) -> bool {
     let retained = retained_item(input, item, atomics, controls, dispositions);
+    use super::semantic_content::Content;
     match *item {
-        ShapedItem::Cell(_) => true,
-        ShapedItem::TextCluster(index) => {
-            retained && shaped.clusters[index].whitespace != Whitespace::Newline
-        }
-        ShapedItem::InlineBox { .. } => retained,
-        ShapedItem::Anchor { unit } => super::boundary::facts(input, unit)
-            .allocation()
-            .is_some_and(super::InlineBoundaryAllocation::participates),
+        ShapedItem::Cell(_) => Content::Cell,
+        ShapedItem::TextCluster(index) => Content::Text {
+            retained,
+            hard_separator: shaped.clusters[index].whitespace == Whitespace::Newline,
+        },
+        ShapedItem::InlineBox { .. } => Content::Atomic { in_flow: retained },
+        ShapedItem::Anchor { unit } => Content::Boundary {
+            participates: super::boundary::facts(input, unit)
+                .allocation()
+                .is_some_and(super::InlineBoundaryAllocation::participates),
+        },
     }
+    .in_flow()
 }
 
 pub(crate) fn retained_item(

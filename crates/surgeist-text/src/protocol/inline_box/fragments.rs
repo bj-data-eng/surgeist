@@ -233,9 +233,9 @@ impl FamilyData {
     }
     /// Reuse admitted topology; inspect only this operation's real contexts and
     /// endpoint allocations. Source/preparation/role checks remain at admission.
-    pub(crate) fn require_contexts(
+    pub(crate) fn require_contexts<T: super::BoundaryControl>(
         &self,
-        controls: &[crate::ControlAllocation],
+        controls: &[T],
         boundary_context: &[crate::InlineBoundaryContextAllocation],
         ledger: &mut Ledger,
     ) -> Result<()> {
@@ -298,7 +298,7 @@ impl FamilyData {
         }
         for (control, boundary) in controls
             .iter()
-            .filter_map(|row| row.boundary.as_ref().map(|b| (&row.occurrence, b)))
+            .filter_map(|row| row.boundary().map(|b| (row.occurrence(), b)))
             .chain(
                 boundary_context
                     .iter()

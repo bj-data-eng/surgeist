@@ -233,17 +233,29 @@ pub(crate) fn validate_context(
     Ok(())
 }
 
-pub(crate) fn contexts<'a>(
-    controls: &'a [super::ControlAllocation],
+pub(crate) trait BoundaryControl {
+    fn occurrence(&self) -> &super::PreparedControl;
+    fn boundary(&self) -> Option<&super::InlineBoundaryAllocation>;
+}
+impl BoundaryControl for super::ControlAllocation {
+    fn occurrence(&self) -> &super::PreparedControl {
+        &self.occurrence
+    }
+    fn boundary(&self) -> Option<&super::InlineBoundaryAllocation> {
+        self.boundary.as_ref()
+    }
+}
+
+pub(crate) fn contexts<'a, T: BoundaryControl>(
+    controls: &'a [T],
     context: &'a [super::InlineBoundaryContextAllocation],
 ) -> impl Iterator<Item = (&'a super::PreparedControl, &'a InlineBoxEdgeContext)> {
     controls
         .iter()
         .filter_map(|row| {
-            row.boundary
-                .as_ref()?
+            row.boundary()?
                 .box_context()
-                .map(|ctx| (&row.occurrence, ctx))
+                .map(|ctx| (row.occurrence(), ctx))
         })
         .chain(
             context
@@ -254,9 +266,9 @@ pub(crate) fn contexts<'a>(
 
 /// Validate the actual related family once under the operation's real ledger.
 /// The scalar operation neither allocates this family nor claims its authority.
-pub(crate) fn validate_request(
+pub(crate) fn validate_request<T: BoundaryControl>(
     prepared: &crate::engine::PreparedData,
-    controls: &[super::ControlAllocation],
+    controls: &[T],
     context: &[super::InlineBoundaryContextAllocation],
     ledger: &mut Ledger,
 ) -> Result<()> {
@@ -312,9 +324,8 @@ pub(crate) fn validate_request(
             .iter()
             .filter_map(|allocation| {
                 allocation
-                    .boundary
-                    .as_ref()
-                    .map(|boundary| (&allocation.occurrence, boundary))
+                    .boundary()
+                    .map(|boundary| (allocation.occurrence(), boundary))
             })
             .chain(
                 context
@@ -451,9 +462,9 @@ pub(crate) fn context_identity<'a>(
 
 /// Constant-record source checks precede operation funding and provider work.
 /// The complete related-family traversal is separate and metered once.
-pub(crate) fn validate_sources(
+pub(crate) fn validate_sources<T: BoundaryControl>(
     prepared: &crate::engine::PreparedData,
-    controls: &[super::ControlAllocation],
+    controls: &[T],
     context: &[super::InlineBoundaryContextAllocation],
 ) -> Result<()> {
     for (control, declaration) in contexts(controls, context) {

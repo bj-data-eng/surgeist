@@ -103,6 +103,38 @@ Anywhere opportunities, actual-owner hyphenation exclusion and atomic glue
 precedence. These ordinary opportunities are distinct from emergency overflow
 wrapping; typography and captured ancestor wrapping still govern admission.
 
+## Semantic window observations
+
+`PreparedText::semantic_window` observes a complete issued `PreparedSourceSegment`,
+optionally resumed at its authenticated start and incoming hyphenation
+continuation. `SemanticWindowRequest` retains the exact completion, atomic roles,
+typed boundary allocations, inline-box family/context and fixed
+`FormattedLineContext`. Missing first/last or terminal metric context remains
+unresolved. Numeric boundary components retain their source custody; this
+operation does not execute line, font or metric operations.
+
+The opaque `SemanticWindowEvidence` retains ordered mandatory partitions,
+including distinct empty and Forced endings, and preparation-issued conditional
+spelling/provenance. Its content observations use canonical processed semantic
+rows and whitespace edges. They preserve Cell and in-flow Atomic participation
+even with empty source or zero dimensions, and original/computed text independently
+of glyph advance. Evidence is conditional on successful real completion. It
+supplies no CSS adjacency, line-break choice, numerical fit or placement authority;
+the actual fitter still performs its font, metric, band and scope work and reports
+their failures in its existing order.
+
+Accounting is transaction-local. The resource census walks retained allocation
+identities/capacities without using metric values for classification. Usage includes
+retained input, every new materialization and structural inspection, and peak
+storage. Dropping scratch releases live bytes but retains work/record charges.
+`input_retention` and `scope_alignment_retention` distinguish admitted input from
+the proof's own live storage; the scope census deduplicates retained proof clones.
+`SemanticWindowFailure` retains the underlying typed error and funded partial
+usage; `into_parts` preserves both plus admitted input. After failure, live bytes
+exclude discarded scratch and unpublished output. Constant foreign-identity
+checks may fail before funding. Consumers own cross-trial admission; repeated
+calls do not mutate a shared global budget.
+
 ## Prepared hyphenation
 
 `PreparedText::word_views` and `hyphenation_cut_views` expose preparation-owned

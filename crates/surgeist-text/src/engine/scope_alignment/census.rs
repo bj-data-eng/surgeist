@@ -359,6 +359,7 @@ fn product_prepared<'a>(product: crate::protocol::ScopeAlignmentProduct<'a>) -> 
         Product::InlineBoxFamily(value) => &value.inner.prepared.inner,
         Product::Selected(value) => &value.inner.prepared,
         Product::Finalized(value) => &value.inner.selected.prepared,
+        Product::SemanticWindow(value) => &value.request().segment.prepared,
     }
 }
 
@@ -373,6 +374,10 @@ enum Input<'a> {
     Selection {
         prepared: &'a PreparedData,
         request: &'a crate::protocol::LineSelectionRequest,
+    },
+    SemanticWindow {
+        prepared: &'a PreparedData,
+        request: &'a crate::SemanticWindowRequest,
     },
     Flow {
         prepared: &'a PreparedData,
@@ -396,6 +401,10 @@ impl<'a> Input<'a> {
                 prepared: &prepared.inner,
                 request,
             },
+            Public::SemanticWindow { prepared, request } => Self::SemanticWindow {
+                prepared: &prepared.inner,
+                request,
+            },
             // FlowObservationRequest is geometry-only and owns no frame edge.
             Public::Flow {
                 prepared,
@@ -414,6 +423,7 @@ impl<'a> Input<'a> {
             Self::Selection { prepared, .. }
             | Self::Flow { prepared, .. }
             | Self::InlineBoxFamily { prepared, .. } => prepared,
+            Self::SemanticWindow { prepared, .. } => prepared,
         }
     }
 }
@@ -454,6 +464,8 @@ enum Root<'a> {
     InlineBoxFamily(&'a crate::PreparedInlineBoxFamily),
     NativeBoxes(&'a Vec<crate::InlineBoxSource>),
     Request(&'a crate::protocol::LineSelectionRequest),
+    SemanticRequest(&'a crate::SemanticWindowRequest),
+    SemanticWindow(&'a crate::SemanticWindowEvidence),
     Selected(&'a Arc<crate::protocol::selection::SelectedData>),
     Finalized(&'a Arc<crate::engine::FinalizedLine>),
 }
@@ -464,6 +476,8 @@ impl Root<'_> {
             (Self::InlineBoxFamily(a), Self::InlineBoxFamily(b)) => Arc::ptr_eq(&a.inner, &b.inner),
             (Self::NativeBoxes(a), Self::NativeBoxes(b)) => std::ptr::eq(a, b),
             (Self::Request(a), Self::Request(b)) => std::ptr::eq(a, b),
+            (Self::SemanticRequest(a), Self::SemanticRequest(b)) => std::ptr::eq(a, b),
+            (Self::SemanticWindow(a), Self::SemanticWindow(b)) => a.same_storage(b),
             (Self::Selected(a), Self::Selected(b)) => Arc::ptr_eq(a, b),
             (Self::Finalized(a), Self::Finalized(b)) => Arc::ptr_eq(a, b),
             _ => false,
@@ -483,6 +497,11 @@ impl Root<'_> {
             }
             Self::Request(value) => {
                 crate::protocol::inline_box::visit_request_allocations(value, visit)
+            }
+            Self::SemanticRequest(value) => value.visit_allocations(visit),
+            Self::SemanticWindow(value) => {
+                visit_prepared(&value.request().segment.prepared, visit)?;
+                value.visit_allocations(visit)
             }
             Self::Selected(value) => visit_selected_own_allocations(
                 &value.prepared,
@@ -573,6 +592,10 @@ fn visit_product_roots<'a>(
             visit_closed_roots(&value.inner.scopes.proof_frames, phase, emit)
         }
         Product::Finalized(value) => visit_finalized_roots(&value.inner, phase, emit),
+        Product::SemanticWindow(value) => emit(RootVisit::Owner {
+            root: Root::SemanticWindow(value),
+            phase,
+        }),
         Product::InlineBoxFamily(value) if value.scope_alignment_retention().is_some() => {
             emit(RootVisit::Owner {
                 root: Root::InlineBoxFamily(value),
@@ -635,6 +658,12 @@ fn visit_input_roots<'a>(
             phase: Phase::Input,
         })?;
     }
+    if let Input::SemanticWindow { request, .. } = input {
+        emit(RootVisit::Owner {
+            root: Root::SemanticRequest(request),
+            phase: Phase::Input,
+        })?;
+    }
     if let Input::Selection { request, .. } = input
         && crate::protocol::inline_box::contexts(&request.controls, &request.boundary_context)
             .next()
@@ -693,7 +722,10 @@ fn visit_input_roots<'a>(
             crate::protocol::scope_alignment::visit_request_scope_frames(request, &mut proof)
         }
         Input::Flow { segment, .. } => segment.visit_scope_frames(&mut proof),
-        Input::Product(_) | Input::Placed(_) | Input::InlineBoxFamily { .. } => Ok(()),
+        Input::Product(_)
+        | Input::Placed(_)
+        | Input::InlineBoxFamily { .. }
+        | Input::SemanticWindow { .. } => Ok(()),
     }
 }
 
@@ -888,32 +920,71 @@ fn census(
         return Ok(None);
     };
     let mut budget = ScopeAlignmentBudget::new(limits, 0, 0)?;
-    let retained = retained_union(input, related, &mut budget)?;
+    let mut retention = CensusRetentions::default();
+    census_on_budget(input, related, &mut budget, &mut retention)?;
+    Ok(Some(Census {
+        input_retention: retention.input,
+        external_retention: retention.external,
+        budget,
+    }))
+}
+
+#[derive(Default)]
+struct CensusRetentions {
+    input: crate::ScopeAlignmentRetention,
+    external: crate::ScopeAlignmentRetention,
+    admitted: crate::ScopeAlignmentRetention,
+}
+
+fn census_on_budget(
+    input: Input<'_>,
+    related: crate::ScopeAlignmentProducts<'_>,
+    budget: &mut ScopeAlignmentBudget,
+    retention: &mut CensusRetentions,
+) -> Result<()> {
+    let retained = retained_union(input, related, budget)?;
     // Seed the complete already live union before any fallible seen growth.
     // Neither the prepass work nor the observed peak is reset afterwards.
     budget.add_records(retained.records())?;
     budget.retain_bytes(retained.payload_bytes())?;
+    retention.admitted = retained;
     let mut set = AllocationSet::new();
-    let mut input_retention = crate::ScopeAlignmentRetention::default();
-    let mut external_retention = crate::ScopeAlignmentRetention::default();
     visit_roots(input, related, &mut |event| match event {
         RootVisit::Work(count) => budget.work(count),
         RootVisit::Owner { root, phase } => root.allocations(&mut |allocation| {
-            if set.observe(allocation, &mut budget)? {
+            if set.observe(allocation, budget)? {
                 match phase {
-                    Phase::Input => add_retention(&mut input_retention, allocation)?,
-                    Phase::External => add_retention(&mut external_retention, allocation)?,
+                    Phase::Input => add_retention(&mut retention.input, allocation)?,
+                    Phase::External => add_retention(&mut retention.external, allocation)?,
                 }
             }
             Ok(())
         }),
     })?;
-    set.finish(&mut budget)?;
-    Ok(Some(Census {
-        input_retention,
-        external_retention,
-        budget,
-    }))
+    set.finish(budget)?;
+    Ok(())
+}
+
+pub(crate) fn semantic_window_budget(
+    prepared: &PreparedData,
+    request: &crate::SemanticWindowRequest,
+    allowance: Option<crate::ScopeAlignmentAllowance>,
+    ledger: &mut crate::engine::scope_alignment::accounting::Ledger,
+    admitted: &mut crate::ScopeAlignmentRetention,
+) -> Result<()> {
+    let Some(limits) = super::operation_limits(prepared, allowance)? else {
+        return Ok(());
+    };
+    *ledger = Some(ScopeAlignmentBudget::new(limits, 0, 0)?);
+    let mut retention = CensusRetentions::default();
+    let result = census_on_budget(
+        Input::SemanticWindow { prepared, request },
+        crate::ScopeAlignmentProducts::Mixed(&[]),
+        ledger.as_mut().expect("funded semantic transaction"),
+        &mut retention,
+    );
+    *admitted = retention.admitted;
+    result
 }
 
 pub(crate) fn begin_selection(

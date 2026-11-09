@@ -64,8 +64,15 @@ pub(crate) mod prepared;
 pub(crate) mod readback;
 pub(crate) mod segments;
 pub(crate) mod selection;
+mod semantic_content;
+mod semantic_window;
 pub use continuation::HyphenationContinuation;
 pub use segments::PreparedSourceSegment;
+pub use semantic_window::{
+    SemanticAtomicAllocation, SemanticConditionalEvidence, SemanticControlAllocation,
+    SemanticPartitionEvidence, SemanticWindowEvidence, SemanticWindowFailure,
+    SemanticWindowRequest,
+};
 
 pub use conditional::{
     ConditionalDisposition, ConditionalLineContext, ConditionalPurpose, ConditionalStage,
@@ -1043,6 +1050,11 @@ pub enum ProtocolContextField {
 /// Actual invalid association or incomplete input; no caller ordinal issues a capability.
 #[derive(Clone, Debug, PartialEq)]
 pub enum ProtocolError {
+    /// The request does not cover its exact issued semantic window.
+    InvalidSemanticWindow,
+    InvalidSemanticAtomic {
+        occurrence: usize,
+    },
     InlineBoxFragmentation(InlineBoxFragmentationError),
     InlineBoxEdge(InlineBoxEdgeError),
     InvalidSourceSegment {

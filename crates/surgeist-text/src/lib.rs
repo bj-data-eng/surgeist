@@ -143,10 +143,13 @@ pub use protocol::{
     ScopeAlignmentProduct, ScopeAlignmentProducts, ScopeAlignmentRetention,
     ScopeAlignmentWeakProduct, ScopeAllocation, ScopeAllocations, ScopeFrameAllocation,
     ScopeMetricContribution, SelectedInlineBoxPiece, SelectedLine, SelectedScope,
-    SpacingAllocation, SpacingAllocations, SpacingBoundaryGeometry, SpacingDeferredCause,
-    SpacingPolicy, SpacingSlot, SpacingSlotDisposition, SpacingSlotFeedback, SpacingSlotGeometry,
-    SpacingSlotOwner, SpacingSlotPiece, SpacingSlotTarget, SpacingStretchability, SpacingUnit,
-    TabContext, WrappingScopeQueryError, scope_alignment_census,
+    SemanticAtomicAllocation, SemanticConditionalEvidence, SemanticControlAllocation,
+    SemanticPartitionEvidence, SemanticWindowEvidence, SemanticWindowFailure,
+    SemanticWindowRequest, SpacingAllocation, SpacingAllocations, SpacingBoundaryGeometry,
+    SpacingDeferredCause, SpacingPolicy, SpacingSlot, SpacingSlotDisposition, SpacingSlotFeedback,
+    SpacingSlotGeometry, SpacingSlotOwner, SpacingSlotPiece, SpacingSlotTarget,
+    SpacingStretchability, SpacingUnit, TabContext, WrappingScopeQueryError,
+    scope_alignment_census,
 };
 pub use range::{Range, SourcePosition, SourceRange};
 pub use source_model::{
