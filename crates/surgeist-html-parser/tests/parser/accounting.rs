@@ -2,7 +2,7 @@
 //! operation. The expectations come from the ledger's documented behavior and
 //! from the parse's own unhosted usage, which the hosted parse must equal.
 
-use super::support::limits;
+use super::support::{fragment_context, limits};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 use surgeist_html::accounting::{HtmlLimits, HtmlResource, HtmlWork};
@@ -502,4 +502,54 @@ fn a_release_the_ledger_refuses_leaves_the_custody_and_does_not_panic() {
         ledger.apply(charging, Change::Release(HtmlResource::OpenElements, 5)),
         Err(Error::Refused(_))
     ));
+}
+
+fn fragment_request() -> HtmlFragmentParseRequest {
+    HtmlFragmentParseRequest::new(HtmlSource::utf8(SOURCE), fragment_context(), limits()).unwrap()
+}
+
+#[test]
+fn a_fragment_parse_charges_a_host_operation_once_and_releases_it_on_drop() {
+    let alone = fragment_request().parse().unwrap();
+    let (ledger, root) = host(7);
+    let hosted = fragment_request()
+        .with_accounting(HtmlParseAccounting::new(ledger.clone(), root).observing_phases())
+        .parse()
+        .unwrap();
+    assert_eq!(hosted.usage(), alone.usage());
+    assert_eq!(
+        ledger.usage(root).unwrap().work(HtmlWork::Credits),
+        credits(alone.usage())
+    );
+    let charging = scope_named(&ledger, "html-parse-charging");
+    assert!(live_total(&ledger, charging) > 0);
+    drop(hosted);
+    assert_eq!(live_total(&ledger, charging), 0);
+    assert_eq!(live_total(&ledger, root), 0);
+}
+
+#[test]
+fn a_fragment_parse_profiles_its_own_operation_when_its_request_selects_a_mode() {
+    let report = fragment_request()
+        .with_profile(ProfileMode::Summary { timing: false })
+        .parse()
+        .unwrap();
+    let profile = report.profile().unwrap().expect("a summary was selected");
+    assert_eq!(profile.scopes.len(), 7);
+    assert_eq!(
+        profile.scopes.first().unwrap().usage.work(HtmlWork::Credits),
+        credits(report.usage())
+    );
+    let failed = HtmlFragmentParseRequest::new(
+        HtmlSource::utf8(SOURCE),
+        fragment_context(),
+        limits().into_builder().work_credits(50).finish().unwrap(),
+    )
+    .unwrap()
+    .with_profile(ProfileMode::Summary { timing: false })
+    .parse();
+    let Err(failure) = failed else {
+        panic!("fifty credits cannot parse the fragment");
+    };
+    assert!(failure.profile().unwrap().is_some());
 }
