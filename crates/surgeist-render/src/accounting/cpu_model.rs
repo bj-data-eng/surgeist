@@ -1,8 +1,6 @@
 //! Typed views of the renderer CPU owner's exact Ledger observations.
-use super::{
-    RenderAccountingError, RenderChangeKind, RenderQuantity, RenderResource, RenderWork,
-    interval_resolves, profile_resolves,
-};
+use super::report::{IntervalNumbers, LifetimeNumbers, ReportBacking, ResolvedReport};
+use super::{RenderAccountingError, RenderChangeKind, RenderQuantity, RenderResource, RenderWork};
 use std::{fmt, time::Duration};
 use surgeist_ledger::{IntervalReport, IntervalUsage, Report, Scope, Usage};
 
@@ -149,163 +147,97 @@ pub enum RenderCpuEvent {
     },
 }
 
-fn events<'a>(
-    profile: Option<&'a Report<RenderWork, RenderResource>>,
-    scope: impl Fn(Scope) -> Option<RenderCpuScope> + 'a,
-) -> impl Iterator<Item = RenderCpuEvent> + 'a {
-    profile
-        .into_iter()
-        .flat_map(|p| p.events.iter())
-        .filter_map(move |event| {
-            Some(match *event {
-                surgeist_ledger::Event::Phase {
-                    scope: origin,
-                    duration,
-                    elapsed,
-                } => RenderCpuEvent::Phase {
-                    scope: scope(origin)?,
-                    duration,
-                    elapsed,
-                },
-                surgeist_ledger::Event::Refused {
-                    origin, elapsed, ..
-                } => RenderCpuEvent::Refused {
-                    scope: scope(origin)?,
-                    elapsed,
-                },
-                surgeist_ledger::Event::Accepted {
-                    scope: origin,
-                    change,
-                    elapsed,
-                } => {
-                    let (quantity, amount, kind) = match change {
-                        surgeist_ledger::Change::Work(d, n) => {
-                            (RenderQuantity::Work(d), n, RenderChangeKind::Work)
-                        }
-                        surgeist_ledger::Change::Acquire(d, n) => {
-                            (RenderQuantity::Resource(d), n, RenderChangeKind::Acquire)
-                        }
-                        surgeist_ledger::Change::Release(d, n) => {
-                            (RenderQuantity::Resource(d), n, RenderChangeKind::Release)
-                        }
-                    };
-                    RenderCpuEvent::Change {
-                        scope: scope(origin)?,
-                        quantity,
-                        amount,
-                        kind,
-                        elapsed,
-                    }
-                }
-            })
-        })
-}
-
-/// One exact closed renderer CPU interval. Its boundary is not rewritten when a
-/// later rollback or release occurs; a later lifetime snapshot observes that work.
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// One exact closed renderer CPU interval. Later releases do not rewrite it.
+#[derive(Debug, Eq, PartialEq)]
 pub struct RenderCpuInterval {
     pub(crate) identity: RenderCpuIdentity,
-    pub(crate) interval: IntervalReport<RenderWork, RenderResource>,
+    data: ResolvedReport<RenderCpuScope, IntervalNumbers>,
 }
 impl RenderCpuInterval {
-    /// Builds an interval, or refuses one that does not hold the fixed roles.
-    pub(crate) fn new(
+    pub(super) fn new(
         identity: RenderCpuIdentity,
         interval: IntervalReport<RenderWork, RenderResource>,
+        handles: &[Scope],
+        backing: ReportBacking<RenderCpuScope, IntervalNumbers>,
     ) -> Result<Self, RenderAccountingError> {
-        if interval_resolves(&interval, RenderCpuScope::ALL.len()) {
-            Ok(Self { identity, interval })
-        } else {
-            Err(RenderAccountingError::Invariant)
+        let (root, data) = ResolvedReport::interval(interval, handles, backing)?;
+        if identity.0 != root {
+            return Err(RenderAccountingError::Invariant);
         }
+        Ok(Self { identity, data })
     }
     /// Owner represented by the interval.
     pub const fn identity(&self) -> RenderCpuIdentity {
         self.identity
     }
-    /// Exact inclusive root usage, available with profiling off.
+    /// Exact inclusive root usage in every profiling mode.
     pub fn usage(&self) -> RenderCpuUsage {
         self.scope_usage(RenderCpuScope::Root)
     }
     /// Inclusive fixed-role usage.
     pub fn scope_usage(&self, scope: RenderCpuScope) -> RenderCpuUsage {
-        RenderCpuUsage(self.interval.scopes[scope.index()].usage)
+        RenderCpuUsage(self.data.rows[scope.index()].usage)
     }
-    /// Interval elapsed host time; not the frame's elapsed time.
+    /// Interval elapsed host time.
     pub fn elapsed(&self) -> Option<Duration> {
-        self.interval.profile.as_ref().and_then(|p| p.elapsed)
+        self.data.elapsed
     }
-    /// Inclusive ended-role duration; do not add it to ancestors.
+    /// Inclusive ended-role duration.
     pub fn scope_elapsed(&self, scope: RenderCpuScope) -> Option<Duration> {
-        self.interval
-            .profile
-            .as_ref()
-            .and_then(|p| p.scopes[scope.index()].phase_elapsed)
+        self.data.rows[scope.index()].phase_elapsed
     }
     /// Ended role invocations; zero when profiling is off.
     pub fn scope_count(&self, scope: RenderCpuScope) -> u64 {
-        self.interval
-            .profile
-            .as_ref()
-            .map_or(0, |p| p.scopes[scope.index()].phases)
+        self.data.rows[scope.index()].phases
     }
     /// Selected events lost to the per-domain bound.
     pub fn dropped_events(&self) -> u64 {
-        self.interval
-            .profile
-            .as_ref()
-            .map_or(0, |p| p.dropped_events)
+        self.data.dropped_events
     }
-    /// Whether observational counters saturated; authoritative usage remains exact.
+    /// Whether observational counters saturated.
     pub fn saturated(&self) -> bool {
-        self.interval.profile.as_ref().is_some_and(|p| p.saturated)
+        self.data.saturated
     }
-    /// Bounded events projected without another allocation.
+    /// Already resolved bounded detail.
     pub fn events(&self) -> impl Iterator<Item = RenderCpuEvent> + '_ {
-        events(self.interval.profile.as_ref(), |scope| {
-            RenderCpuScope::ALL.into_iter().find(|s| {
-                self.interval
-                    .scopes
-                    .get(s.index())
-                    .is_some_and(|entry| entry.scope == scope)
-            })
-        })
+        self.data.events.iter().copied()
+    }
+    #[cfg(test)]
+    pub(crate) fn snapshot_for_test(&self) -> Self {
+        Self {
+            identity: self.identity,
+            data: self.data.snapshot_for_test(),
+        }
     }
 }
 
-/// Pure coherent lifetime observation of one renderer CPU owner. Off exposes the
-/// exact root; enabled profiles additionally expose the fixed-role breakdown.
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// Coherent lifetime observation. Off retains only exact root usage and identity.
+#[derive(Debug, Eq, PartialEq)]
 pub struct RenderCpuSnapshot {
     pub(crate) identity: RenderCpuIdentity,
     pub(crate) usage: RenderLifetimeUsage,
-    pub(crate) profile: Option<Report<RenderWork, RenderResource>>,
+    data: ResolvedReport<RenderCpuScope, LifetimeNumbers>,
     pub(crate) fault: Option<RenderAccountingError>,
 }
 impl RenderCpuSnapshot {
-    /// Builds a snapshot, or refuses a profile that does not hold the fixed roles.
-    pub(crate) fn new(
+    pub(super) fn new(
         identity: RenderCpuIdentity,
         usage: RenderLifetimeUsage,
         profile: Option<Report<RenderWork, RenderResource>>,
         fault: Option<RenderAccountingError>,
+        handles: &[Scope],
+        backing: ReportBacking<RenderCpuScope, LifetimeNumbers>,
     ) -> Result<Self, RenderAccountingError> {
-        let resolves = profile.as_ref().is_none_or(|profile| {
-            profile_resolves(profile, RenderCpuScope::ALL.len(), |scope| {
-                profile.scopes.iter().any(|entry| entry.scope == scope)
-            })
-        });
-        if resolves {
-            Ok(Self {
-                identity,
-                usage,
-                profile,
-                fault,
-            })
-        } else {
-            Err(RenderAccountingError::Invariant)
+        let (root, data) = ResolvedReport::snapshot(profile, handles, backing)?;
+        if identity.0 != root {
+            return Err(RenderAccountingError::Invariant);
         }
+        Ok(Self {
+            identity,
+            usage,
+            data,
+            fault,
+        })
     }
     /// Owner represented by this immutable observation.
     pub const fn identity(&self) -> RenderCpuIdentity {
@@ -315,49 +247,55 @@ impl RenderCpuSnapshot {
     pub const fn usage(&self) -> RenderLifetimeUsage {
         self.usage
     }
-    /// Coherent scoped lifetime usage, available only when profiling is enabled.
+    /// Scoped usage is unavailable when observation is Off.
     pub fn scope_usage(&self, scope: RenderCpuScope) -> Option<RenderLifetimeUsage> {
-        self.profile
-            .as_ref()
-            .map(|p| RenderLifetimeUsage::new(p.scopes[scope.index()].usage))
+        self.data
+            .observed
+            .then(|| RenderLifetimeUsage::new(self.data.rows[scope.index()].usage))
     }
-    /// First persistent accounting health fault, if one has occurred.
+    /// First persistent accounting health fault.
     pub const fn fault(&self) -> Option<RenderAccountingError> {
         self.fault
     }
-    /// Owner-lifetime elapsed host time, including idle gaps.
+    /// Owner-lifetime elapsed host time.
     pub fn elapsed(&self) -> Option<Duration> {
-        self.profile.as_ref().and_then(|p| p.elapsed)
+        self.data.elapsed
     }
-    /// Inclusive ended-role duration over the lifetime.
+    /// Inclusive ended-role duration; unavailable when observation is Off.
     pub fn scope_elapsed(&self, scope: RenderCpuScope) -> Option<Duration> {
-        self.profile
-            .as_ref()
-            .and_then(|p| p.scopes[scope.index()].phase_elapsed)
+        if self.data.observed {
+            self.data.rows[scope.index()].phase_elapsed
+        } else {
+            None
+        }
     }
-    /// Ended role invocations; zero when profiling is off.
+    /// Ended role invocations; zero when observation is Off.
     pub fn scope_count(&self, scope: RenderCpuScope) -> u64 {
-        self.profile
-            .as_ref()
-            .map_or(0, |p| p.scopes[scope.index()].phases)
+        if self.data.observed {
+            self.data.rows[scope.index()].phases
+        } else {
+            0
+        }
     }
-    /// Selected lifetime events lost to the per-owner bound.
+    /// Selected lifetime detail lost to the owner bound.
     pub fn dropped_events(&self) -> u64 {
-        self.profile.as_ref().map_or(0, |p| p.dropped_events)
+        self.data.dropped_events
     }
     /// Whether optional observational counters saturated.
     pub fn saturated(&self) -> bool {
-        self.profile.as_ref().is_some_and(|p| p.saturated)
+        self.data.saturated
     }
-    /// Bounded lifetime events without another event-buffer copy.
+    /// Already resolved bounded lifetime detail.
     pub fn events(&self) -> impl Iterator<Item = RenderCpuEvent> + '_ {
-        let profile = self.profile.as_ref();
-        events(profile, move |scope| {
-            RenderCpuScope::ALL.into_iter().find(|s| {
-                profile
-                    .and_then(|p| p.scopes.get(s.index()))
-                    .is_some_and(|entry| entry.scope == scope)
-            })
-        })
+        self.data.events.iter().copied()
+    }
+    #[cfg(test)]
+    pub(crate) fn snapshot_for_test(&self) -> Self {
+        Self {
+            identity: self.identity,
+            usage: self.usage,
+            data: self.data.snapshot_for_test(),
+            fault: self.fault,
+        }
     }
 }

@@ -2,21 +2,8 @@ use super::*;
 
 mod resolved_reports;
 
-fn terminal_summary(
-    context: &RenderAccountingContext,
-) -> (
-    RenderAttemptKind,
-    RenderAttemptStatus,
-    std::result::Result<RenderAttemptReport, RenderAccountingError>,
-    Option<RenderAccountingError>,
-) {
-    let report = context.last_attempt().unwrap();
-    (
-        report.kind(),
-        report.status(),
-        report.attempt().cloned(),
-        report.cleanup_fault(),
-    )
+fn terminal_summary(context: &RenderAccountingContext) -> RenderStandaloneReport {
+    context.last_attempt().unwrap().snapshot_for_test()
 }
 
 #[test]
@@ -942,13 +929,23 @@ fn reports_refuse_ledger_intervals_that_lack_the_fixed_scopes() {
             RenderAttemptKind::Frame,
             RenderAttemptStatus::Succeeded,
             empty(),
-            None
+            None,
+            &[operation.root()],
+            ReportBacking::interval(ObserverBudget::new(surgeist_ledger::ProfileMode::Off))
+                .unwrap(),
         )
         .unwrap_err(),
         RenderAccountingError::Invariant
     );
     assert_eq!(
-        RenderCpuInterval::new(identity, empty()).unwrap_err(),
+        RenderCpuInterval::new(
+            identity,
+            empty(),
+            &[operation.root()],
+            ReportBacking::interval(ObserverBudget::new(surgeist_ledger::ProfileMode::Off))
+                .unwrap()
+        )
+        .unwrap_err(),
         RenderAccountingError::Invariant
     );
 }

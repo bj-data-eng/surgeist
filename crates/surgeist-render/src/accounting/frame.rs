@@ -8,7 +8,7 @@ use std::{ops::Deref, sync::RwLockReadGuard};
 /// A completed frame attempt, distinct from last-successful frame statistics.
 /// Each domain keeps its actual closing boundary. Failed extraction is typed
 /// unavailability; an already closed interval does not include later rollback.
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Eq, PartialEq)]
 pub struct RenderFrameReport {
     data: RendererReport,
 }
@@ -18,6 +18,12 @@ impl std::fmt::Debug for RenderFrameReport {
     }
 }
 impl RenderFrameReport {
+    #[cfg(test)]
+    pub(crate) fn snapshot_for_test(&self) -> Self {
+        Self {
+            data: self.data.snapshot_for_test(),
+        }
+    }
     /// Terminal status after inner cleanup and required finalization.
     pub const fn status(&self) -> RenderAttemptStatus {
         self.data.status()

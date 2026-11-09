@@ -271,30 +271,52 @@ impl Fixture {
     }
 
     fn build(self) -> std::result::Result<BuiltReport, RenderAccountingError> {
+        let budget = ObserverBudget::new(ProfileMode::Detailed {
+            timing: true,
+            event_limit: 8,
+            filter: surgeist_ledger::EventFilter::All,
+        });
         match self.domain {
             Domain::Attempt => RenderAttemptReport::new(
                 RenderAttemptKind::Frame,
                 RenderAttemptStatus::Succeeded,
                 self.interval,
                 None,
+                &self.handles,
+                ReportBacking::interval(budget)?,
             )
             .map(BuiltReport::Attempt),
-            Domain::CpuInterval => RenderCpuInterval::new(self.cpu_identity, self.interval)
-                .map(BuiltReport::CpuInterval),
-            Domain::CpuSnapshot => {
-                RenderCpuSnapshot::new(self.cpu_identity, self.usage, Some(self.profile), None)
-                    .map(BuiltReport::CpuSnapshot)
-            }
-            Domain::GenerationInterval => {
-                RenderGenerationInterval::new(self.generation_identity, self.interval)
-                    .map(BuiltReport::GenerationInterval)
-            }
+            Domain::CpuInterval => RenderCpuInterval::new(
+                self.cpu_identity,
+                self.interval,
+                &self.handles,
+                ReportBacking::interval(budget)?,
+            )
+            .map(BuiltReport::CpuInterval),
+            Domain::CpuSnapshot => RenderCpuSnapshot::new(
+                self.cpu_identity,
+                self.usage,
+                Some(self.profile),
+                None,
+                &self.handles,
+                ReportBacking::snapshot(budget)?,
+            )
+            .map(BuiltReport::CpuSnapshot),
+            Domain::GenerationInterval => RenderGenerationInterval::new(
+                self.generation_identity,
+                self.interval,
+                &self.handles,
+                ReportBacking::interval(budget)?,
+            )
+            .map(BuiltReport::GenerationInterval),
             Domain::DeviceSnapshot => RenderDeviceSnapshot::new(
                 self.generation_identity,
                 self.usage,
                 Some(self.profile),
                 false,
                 None,
+                &self.handles,
+                ReportBacking::snapshot(budget)?,
             )
             .map(BuiltReport::DeviceSnapshot),
         }
@@ -313,13 +335,26 @@ enum Corruption {
     PhaseOrigin,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 enum BuiltReport {
     Attempt(RenderAttemptReport),
     CpuInterval(RenderCpuInterval),
     CpuSnapshot(RenderCpuSnapshot),
     GenerationInterval(RenderGenerationInterval),
     DeviceSnapshot(RenderDeviceSnapshot),
+}
+impl BuiltReport {
+    fn snapshot_for_test(&self) -> Self {
+        match self {
+            Self::Attempt(report) => Self::Attempt(report.snapshot_for_test()),
+            Self::CpuInterval(report) => Self::CpuInterval(report.snapshot_for_test()),
+            Self::CpuSnapshot(report) => Self::CpuSnapshot(report.snapshot_for_test()),
+            Self::GenerationInterval(report) => {
+                Self::GenerationInterval(report.snapshot_for_test())
+            }
+            Self::DeviceSnapshot(report) => Self::DeviceSnapshot(report.snapshot_for_test()),
+        }
+    }
 }
 
 fn assert_rejected(domain: Domain, corruption: Corruption) {
@@ -607,4 +642,323 @@ fn owner_acquire_work_reaches_its_declared_present_and_frame_parents() {
         })
         .unwrap();
     assert_eq!(parents, (1, 1));
+}
+
+#[test]
+fn semantic_summary_order_distinguishes_child_work_from_its_parent() {
+    let profile = RenderProfile::Detailed {
+        timing: false,
+        event_limit: 16,
+        filter: RenderPhaseFilter::All,
+    };
+    let mut context =
+        RenderAccountingContext::new(RenderAccountingOptions::new().with_profile(profile));
+    context
+        .run(RenderAttemptKind::Frame, RenderPhase::Kernel, |account| {
+            account.work(RenderWork::CoordinateVisits, 1)?;
+            account
+                .at(RenderPhase::GpuPrepare)
+                .work(RenderWork::CoordinateVisits, 2)
+        })
+        .unwrap();
+    let report = context.last_attempt().unwrap().attempt().unwrap();
+    assert_eq!(
+        report
+            .phase_usage(RenderPhase::Kernel)
+            .work(RenderWork::CoordinateVisits),
+        1
+    );
+    assert_eq!(
+        report
+            .phase_usage(RenderPhase::GpuPrepare)
+            .work(RenderWork::CoordinateVisits),
+        3
+    );
+    let coordinates = report
+        .events()
+        .filter_map(|event| match event {
+            RenderEvent::Change {
+                phase,
+                quantity: RenderQuantity::Work(RenderWork::CoordinateVisits),
+                amount,
+                ..
+            } => Some((phase, amount)),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        coordinates,
+        [(RenderPhase::Kernel, 1), (RenderPhase::GpuPrepare, 2)]
+    );
+}
+
+#[test]
+fn expected_handle_tables_reject_duplicate_foreign_and_wrong_role_bindings() {
+    for domain in [
+        Domain::Attempt,
+        Domain::CpuInterval,
+        Domain::CpuSnapshot,
+        Domain::GenerationInterval,
+        Domain::DeviceSnapshot,
+    ] {
+        for mutation in 0..4 {
+            let mut fixture = Fixture::new(domain);
+            match mutation {
+                0 => fixture.handles[1] = fixture.handles[0],
+                1 => fixture.handles[1] = fixture.foreign,
+                2 => fixture.handles.swap(1, 2),
+                3 => fixture.handles[0] = fixture.foreign,
+                _ => unreachable!(),
+            }
+            assert_invariant(fixture.build());
+        }
+    }
+}
+
+#[test]
+fn private_exact_snapshots_keep_the_complete_resolved_report() {
+    for domain in [
+        Domain::Attempt,
+        Domain::CpuInterval,
+        Domain::CpuSnapshot,
+        Domain::GenerationInterval,
+        Domain::DeviceSnapshot,
+    ] {
+        let report = Fixture::new(domain).build().unwrap();
+        assert_eq!(report.snapshot_for_test(), report);
+    }
+}
+
+#[test]
+fn off_forward_reports_keep_operation_identity_in_equality() {
+    let mut first = RenderAccountingContext::default();
+    let mut second = RenderAccountingContext::default();
+    crate::Scene::new().inspect(&mut first).unwrap();
+    crate::Scene::new().inspect(&mut second).unwrap();
+    let first = first.take_last_attempt().unwrap();
+    let second = second.take_last_attempt().unwrap();
+    assert_eq!(
+        first.attempt().unwrap().usage(),
+        second.attempt().unwrap().usage()
+    );
+    assert_ne!(first, second);
+}
+
+#[test]
+fn cpu_intervals_with_same_closed_values_remain_equal() {
+    let cpu = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+    let first = cpu.begin_interval().unwrap();
+    cpu.at(RenderCpuScope::FrameBacking)
+        .checked_work(RenderWork::CoordinateVisits, 1)
+        .unwrap();
+    let first = first.finish().unwrap();
+    let second = cpu.begin_interval().unwrap();
+    cpu.at(RenderCpuScope::FrameBacking)
+        .checked_work(RenderWork::CoordinateVisits, 1)
+        .unwrap();
+    let second = second.finish().unwrap();
+    assert_eq!(first.identity(), second.identity());
+    assert_eq!(first.usage().work(RenderWork::CoordinateVisits), 1);
+    assert_eq!(second.usage().work(RenderWork::CoordinateVisits), 1);
+    // Ledger clears its opening-work staging values when an interval closes.
+    // Equal closed observations of the same owner therefore remain equal.
+    assert_eq!(first, second);
+}
+
+#[test]
+fn cpu_interval_equality_preserves_different_opening_live_balances() {
+    let cpu = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
+    let first = cpu.begin_interval().unwrap();
+    let bytes = Box::new([0_u8; 1]);
+    let hold = cpu
+        .at(RenderCpuScope::FrameBacking)
+        .acquire(RenderResource::RetainedCpuBytes, 1)
+        .unwrap();
+    cpu.at(RenderCpuScope::FrameBacking)
+        .checked_work(RenderWork::CoordinateVisits, 1)
+        .unwrap();
+    let first = first.finish().unwrap();
+    let second = cpu.begin_interval().unwrap();
+    cpu.at(RenderCpuScope::FrameBacking)
+        .checked_work(RenderWork::CoordinateVisits, 1)
+        .unwrap();
+    let second = second.finish().unwrap();
+    drop(bytes);
+    drop(hold);
+
+    assert_eq!(first.identity(), second.identity());
+    assert_eq!(
+        first
+            .scope_usage(RenderCpuScope::FrameBacking)
+            .opening_live(RenderResource::RetainedCpuBytes),
+        0
+    );
+    assert_eq!(
+        second
+            .scope_usage(RenderCpuScope::FrameBacking)
+            .opening_live(RenderResource::RetainedCpuBytes),
+        1
+    );
+    for report in [&first, &second] {
+        let usage = report.scope_usage(RenderCpuScope::FrameBacking);
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), 1);
+        assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 1);
+        assert_eq!(usage.peak(RenderResource::RetainedCpuBytes), 1);
+    }
+    assert_ne!(first, second);
+}
+
+#[test]
+fn cpu_owner_profiles_keep_usage_and_resolve_zero_lossy_and_filtered_detail() {
+    let mut baseline = None;
+    for profile in [
+        RenderProfile::Off,
+        RenderProfile::Summary { timing: false },
+        RenderProfile::Detailed {
+            timing: false,
+            event_limit: 0,
+            filter: RenderPhaseFilter::All,
+        },
+        RenderProfile::Detailed {
+            timing: false,
+            event_limit: 1,
+            filter: RenderPhaseFilter::All,
+        },
+        RenderProfile::Detailed {
+            timing: false,
+            event_limit: 8,
+            filter: RenderPhaseFilter::RendererCpuScope(RenderCpuScope::FrameBacking),
+        },
+    ] {
+        let cpu = RendererCpu::new(RenderAccountingOptions::new().with_profile(profile)).unwrap();
+        let interval = cpu.begin_interval().unwrap();
+        cpu.at(RenderCpuScope::FrameBacking)
+            .checked_work(RenderWork::CoordinateVisits, 1)
+            .unwrap();
+        cpu.at(RenderCpuScope::DeviceBacking)
+            .checked_work(RenderWork::CoordinateVisits, 2)
+            .unwrap();
+        let interval = interval.finish().unwrap();
+        assert_eq!(
+            interval
+                .scope_usage(RenderCpuScope::FrameBacking)
+                .work(RenderWork::CoordinateVisits),
+            1
+        );
+        assert_eq!(
+            interval
+                .scope_usage(RenderCpuScope::DeviceBacking)
+                .work(RenderWork::CoordinateVisits),
+            2
+        );
+        if let Some(expected) = baseline {
+            assert_eq!(interval.usage(), expected);
+        } else {
+            baseline = Some(interval.usage());
+        }
+        let snapshot = cpu.snapshot().unwrap();
+        assert_eq!(snapshot.usage().work(RenderWork::CoordinateVisits), 3);
+        match profile {
+            RenderProfile::Off => {
+                assert!(snapshot.scope_usage(RenderCpuScope::FrameBacking).is_none());
+                assert_eq!(snapshot.events().count(), 0);
+            }
+            RenderProfile::Detailed {
+                event_limit,
+                filter,
+                ..
+            } => {
+                assert!(interval.events().count() <= event_limit);
+                if event_limit <= 1 {
+                    assert!(interval.dropped_events() > 0);
+                }
+                if matches!(filter, RenderPhaseFilter::RendererCpuScope(_)) {
+                    assert!(interval.events().next().is_some());
+                    for event in interval.events() {
+                        let scope = match event {
+                            RenderCpuEvent::Change { scope, .. }
+                            | RenderCpuEvent::Phase { scope, .. }
+                            | RenderCpuEvent::Refused { scope, .. } => scope,
+                        };
+                        assert_eq!(scope, RenderCpuScope::FrameBacking);
+                    }
+                }
+            }
+            RenderProfile::Summary { .. } => assert_eq!(interval.events().count(), 0),
+        }
+    }
+}
+
+#[test]
+fn generation_owner_profiles_keep_custody_and_resolve_bounded_detail() {
+    let mut baseline = None;
+    for profile in [
+        RenderProfile::Off,
+        RenderProfile::Summary { timing: false },
+        RenderProfile::Detailed {
+            timing: false,
+            event_limit: 0,
+            filter: RenderPhaseFilter::All,
+        },
+        RenderProfile::Detailed {
+            timing: false,
+            event_limit: 1,
+            filter: RenderPhaseFilter::All,
+        },
+        RenderProfile::Detailed {
+            timing: false,
+            event_limit: 16,
+            filter: RenderPhaseFilter::GenerationScope(RenderGenerationScope::Vello),
+        },
+    ] {
+        let generation =
+            Generation::new(RenderAccountingOptions::new().with_profile(profile)).unwrap();
+        let interval = generation.begin_interval().unwrap();
+        let value = generation
+            .allocation(GenerationClass::CacheVello, 3, None, || ())
+            .unwrap();
+        let interval = interval.finish().unwrap();
+        assert_eq!(
+            interval
+                .scope_usage(RenderGenerationScope::Vello)
+                .live(RenderResource::GpuBytes),
+            3
+        );
+        if let Some(expected) = baseline {
+            assert_eq!(interval.usage(), expected);
+        } else {
+            baseline = Some(interval.usage());
+        }
+        let snapshot = generation.snapshot().unwrap();
+        assert_eq!(snapshot.usage().live(RenderResource::GpuBytes), 3);
+        match profile {
+            RenderProfile::Off => {
+                assert!(snapshot.scope_usage(RenderGenerationScope::Vello).is_none());
+                assert_eq!(snapshot.events().count(), 0);
+            }
+            RenderProfile::Detailed {
+                event_limit,
+                filter,
+                ..
+            } => {
+                assert!(interval.events().count() <= event_limit);
+                if event_limit <= 1 {
+                    assert!(interval.dropped_events() > 0);
+                }
+                if matches!(filter, RenderPhaseFilter::GenerationScope(_)) {
+                    assert!(interval.events().next().is_some());
+                    for event in interval.events() {
+                        let scope = match event {
+                            RenderGenerationEvent::Change { scope, .. }
+                            | RenderGenerationEvent::Phase { scope, .. }
+                            | RenderGenerationEvent::Refused { scope, .. } => scope,
+                        };
+                        assert_eq!(scope, RenderGenerationScope::Vello);
+                    }
+                }
+            }
+            RenderProfile::Summary { .. } => assert_eq!(interval.events().count(), 0),
+        }
+        drop(value);
+    }
 }

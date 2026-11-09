@@ -145,3 +145,6 @@ impl Renderer {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod accounting_public_tests;
