@@ -49,9 +49,9 @@ fn continuation_case() -> Case {
         text::process_contextual_source(text::ContextualSourceInput {
             joint_flows: Vec::new(),
             scope_alignment_limits: Some(text::ScopeAlignmentLimits::new(
-                10000,
+                65_536,
                 100,
-                1_000_000,
+                67_108_864,
                 16 << 20,
             )),
             source,

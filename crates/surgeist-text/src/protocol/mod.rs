@@ -35,7 +35,8 @@ pub use scope_alignment::{
     SelectedScope,
 };
 pub use scope_census::{
-    ScopeAlignmentCensus, ScopeAlignmentCensusInput, ScopeAlignmentProduct, ScopeAlignmentProducts,
+    ScopeAlignmentCensus, ScopeAlignmentCensusAccounting, ScopeAlignmentCensusFailure,
+    ScopeAlignmentCensusInput, ScopeAlignmentProduct, ScopeAlignmentProducts,
     ScopeAlignmentWeakProduct, scope_alignment_census,
 };
 mod wrapping_scope;

@@ -135,6 +135,16 @@ exclude discarded scratch and unpublished output. Constant foreign-identity
 checks may fail before funding. Consumers own cross-trial admission; repeated
 calls do not mutate a shared global budget.
 
+The standalone `scope_alignment_census` also preserves completed costs when it
+refuses. `ScopeAlignmentCensusFailure` owns the original error and optional
+`ScopeAlignmentCensusAccounting`; absence means no budget was funded. Accounting
+reports post-discard usage and newly materialized census records separately from
+borrowed retained rows. A failed census supplies no complete union receipt.
+Successful results expose the same accounting alongside their complete input and
+external retention. Consumers admit these completed costs before continuing or
+propagating the original failure; dropping traversal scratch releases live bytes
+without refunding work, record charges or the observed peak.
+
 ## Prepared hyphenation
 
 `PreparedText::word_views` and `hyphenation_cut_views` expose preparation-owned

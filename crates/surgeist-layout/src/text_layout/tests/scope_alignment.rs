@@ -126,7 +126,7 @@ impl Case {
             base_size,
             inner,
             scale,
-            text::ScopeAlignmentLimits::new(10000, 100, 1_000_000, 16 << 20),
+            text::ScopeAlignmentLimits::new(10000, 100, 4_194_304, 16 << 20),
         )
     }
 

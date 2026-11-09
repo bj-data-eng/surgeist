@@ -42,6 +42,13 @@ struct ScopeResourceState {
     live: ScopeCensus,
     materialized: usize,
     work: usize,
+    exhausted: Option<ScopeAlignmentError>,
+}
+
+impl ScopeResourceState {
+    fn check_exhaustion(&self) -> surgeist_text::Result<()> {
+        self.exhausted.map_or(Ok(()), |reason| Err(refusal(reason)))
+    }
 }
 #[derive(Debug, Default)]
 struct Registry {
@@ -57,6 +64,7 @@ impl LiveScopeResources {
     }
     fn retain(&self, census: ScopeCensus) -> surgeist_text::Result<()> {
         let mut state = self.lock();
+        state.check_exhaustion()?;
         state.live = state.live.add(census)?;
         Ok(())
     }
@@ -139,6 +147,7 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
                 live,
                 materialized: census.records,
                 work: 0,
+                exhausted: None,
             }),
             registry: Mutex::new(Registry::default()),
         });
@@ -235,6 +244,7 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
             );
         };
         let mut state = owner.state.lock();
+        state.check_exhaustion()?;
         let total = state
             .materialized
             .checked_add(count)
@@ -259,6 +269,7 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
             );
         };
         let mut state = owner.state.lock();
+        state.check_exhaustion()?;
         let total = state
             .work
             .checked_add(count)
@@ -270,6 +281,67 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
         )?;
         state.work = total;
         Ok(())
+    }
+
+    /// Census work has already executed. Record both dimensions before
+    /// checking ceilings; a late refusal cannot refund those completed costs.
+    fn record_census(
+        &self,
+        limits: ScopeAlignmentLimits,
+        accounting: surgeist_text::ScopeAlignmentCensusAccounting,
+    ) -> Result<(), ScopeAlignmentError> {
+        let Self::Active(owner, _) = self else {
+            return Err(ScopeAlignmentError::MissingCapture);
+        };
+        let mut state = owner.state.lock();
+        let usage = accounting.usage();
+        let new_records = accounting.newly_materialized_records();
+        let borrowed = usage
+            .records()
+            .checked_sub(new_records)
+            .expect("Text census accounting separates authenticated seeded rows");
+        let mut failure = state.exhausted;
+        let mut add = |value: &mut usize, count: usize, kind| {
+            if let Some(total) = value.checked_add(count) {
+                *value = total;
+            } else {
+                failure.get_or_insert(ScopeAlignmentError::Overflow { kind });
+            }
+        };
+        add(
+            &mut state.work,
+            usage.structural_work(),
+            ScopeAlignmentLimitKind::StructuralWork,
+        );
+        add(
+            &mut state.materialized,
+            new_records,
+            ScopeAlignmentLimitKind::Records,
+        );
+        if state.work > limits.structural_work() {
+            failure.get_or_insert(ScopeAlignmentError::Limit {
+                kind: ScopeAlignmentLimitKind::StructuralWork,
+                required: state.work,
+                limit: limits.structural_work(),
+            });
+        }
+        match state.materialized.checked_add(borrowed) {
+            Some(required) if required > limits.records() => {
+                failure.get_or_insert(ScopeAlignmentError::Limit {
+                    kind: ScopeAlignmentLimitKind::Records,
+                    required,
+                    limit: limits.records(),
+                });
+            }
+            None => {
+                failure.get_or_insert(ScopeAlignmentError::Overflow {
+                    kind: ScopeAlignmentLimitKind::Records,
+                });
+            }
+            _ => {}
+        }
+        state.exhausted = failure;
+        state.exhausted.map_or(Ok(()), Err)
     }
     pub(super) fn begin<'a>(
         &'a self,
@@ -346,6 +418,7 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
         let Self::Active(owner, _) = self else {
             return Err(refusal(ScopeAlignmentError::MissingCapture));
         };
+        owner.state.lock().check_exhaustion()?;
         let mut registry = owner
             .state
             .registry
@@ -399,7 +472,23 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
                 families,
             },
             operation.allowance()?,
-        )?;
+        );
+        let census = match census {
+            Ok(census) => {
+                self.record_census(limits, census.accounting())
+                    .map_err(refusal)?;
+                census
+            }
+            Err(failure) => {
+                let (error, accounting) = failure.into_parts();
+                if let Some(accounting) = accounting {
+                    // Exhaustion remains recorded in the owner. The original
+                    // census cause has priority over this later admission.
+                    let _ = self.record_census(limits, accounting);
+                }
+                return Err(error);
+            }
+        };
         operation.input = ScopeCensus::from_retention(census.input_retention());
         operation.external = ScopeCensus::from_retention(census.external_retention());
         operation.reserve_outputs(outputs)?;
@@ -582,6 +671,7 @@ fn visit_state(
     count: usize,
 ) -> surgeist_text::Result<()> {
     let mut counters = state.lock();
+    counters.check_exhaustion()?;
     let next = counters
         .work
         .checked_add(count)

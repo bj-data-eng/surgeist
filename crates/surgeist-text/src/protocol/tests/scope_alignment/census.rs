@@ -62,12 +62,19 @@ fn census(
     )
     .unwrap()
 }
-fn error(value: Result<ScopeAlignmentCensus>) -> Error {
+// Existing refusal assertions inspect the preserved cause. The accounting
+// observations are independently qualified in failure_accounting below.
+fn error(
+    value: std::result::Result<ScopeAlignmentCensus, ScopeAlignmentCensusFailure>,
+) -> ScopeAlignmentCensusFailure {
     match value {
-        Err(error) => error,
+        Err(failure) => failure,
         Ok(_) => panic!("insufficient census allowance was accepted"),
     }
 }
+
+#[path = "census_failure_accounting.rs"]
+mod failure_accounting;
 fn reason(error: &Error) -> ScopeAlignmentError {
     assert_eq!(error.code, ErrorCode::ScopeAlignmentRefused);
     let Some(ErrorDetail::ScopeAlignment { reason }) = error.detail() else {
@@ -75,12 +82,12 @@ fn reason(error: &Error) -> ScopeAlignmentError {
     };
     *reason
 }
-fn refused(error: Error, kind: ScopeAlignmentLimitKind, bound: usize) {
+fn refused(error: ScopeAlignmentCensusFailure, kind: ScopeAlignmentLimitKind, bound: usize) {
     let ScopeAlignmentError::Limit {
         kind: actual,
         required,
         limit,
-    } = reason(&error)
+    } = reason(error.error())
     else {
         panic!("expected limit refusal: {error:?}")
     };
@@ -459,7 +466,7 @@ fn census_allowances_cannot_raise_either_immutable_input_capture_bound() {
                 allowance,
             ));
             assert_eq!(
-                reason(&error),
+                reason(error.error()),
                 ScopeAlignmentError::Limit {
                     kind,
                     required: requested,
@@ -640,11 +647,14 @@ fn census_without_actual_contextual_topology_refuses_missing_capture() {
         ScopeAlignmentProduct::Finalized(&line),
     ] {
         assert_eq!(
-            reason(&error(scope_alignment_census(
-                ScopeAlignmentCensusInput::Product(input),
-                ScopeAlignmentProducts::Mixed(&[]),
-                ScopeAlignmentAllowance::new(0, 0)
-            ))),
+            reason(
+                error(scope_alignment_census(
+                    ScopeAlignmentCensusInput::Product(input),
+                    ScopeAlignmentProducts::Mixed(&[]),
+                    ScopeAlignmentAllowance::new(0, 0)
+                ))
+                .error()
+            ),
             ScopeAlignmentError::MissingCapture
         );
     }
@@ -669,11 +679,14 @@ fn census_of_a_real_capture_without_alignment_limits_refuses_limits_required() {
         ScopeAlignmentProduct::Finalized(&line),
     ] {
         assert_eq!(
-            reason(&error(scope_alignment_census(
-                ScopeAlignmentCensusInput::Product(input),
-                ScopeAlignmentProducts::Mixed(&[]),
-                ScopeAlignmentAllowance::new(0, 0)
-            ))),
+            reason(
+                error(scope_alignment_census(
+                    ScopeAlignmentCensusInput::Product(input),
+                    ScopeAlignmentProducts::Mixed(&[]),
+                    ScopeAlignmentAllowance::new(0, 0)
+                ))
+                .error()
+            ),
             ScopeAlignmentError::LimitsRequired
         );
     }

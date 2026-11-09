@@ -385,7 +385,7 @@ fn shaped_allocations(shaped: &ShapedData) -> Vec<census::AllocationWitness> {
     .unwrap();
     rows
 }
-fn payload_limit(error: Error) {
+fn payload_limit(error: &Error) {
     assert_eq!(error.code, ErrorCode::ScopeAlignmentRefused);
     match error.detail() {
         Some(ErrorDetail::ScopeAlignment {
@@ -578,11 +578,12 @@ fn real_tracking_replay_dedups_ancestors_clones_and_refuses_tight_allowances() {
     geometry(&mixed, &line);
     let retained = line.scope_alignment_retention().unwrap();
     payload_limit(
-        line.with_spacing_with_scope_allowance(
-            SpacingAllocations::None,
-            ScopeAlignmentAllowance::new(maximum.records(), retained.payload_bytes() - 1),
-        )
-        .unwrap_err(),
+        &line
+            .with_spacing_with_scope_allowance(
+                SpacingAllocations::None,
+                ScopeAlignmentAllowance::new(maximum.records(), retained.payload_bytes() - 1),
+            )
+            .unwrap_err(),
     );
     geometry(&mixed, &line);
     let replay = line
@@ -622,7 +623,8 @@ fn real_tracking_replay_dedups_ancestors_clones_and_refuses_tight_allowances() {
             ScopeAlignmentProducts::Mixed(&old),
             ScopeAlignmentAllowance::new(maximum.records(), union - 1),
         )
-        .unwrap_err(),
+        .unwrap_err()
+        .error(),
     );
     let recovered =
         scope_alignment_census(input, ScopeAlignmentProducts::Mixed(&duplicated), maximum).unwrap();
