@@ -61,6 +61,12 @@ impl<'a> QualifiedDash<'a> {
         if !action(account, || phase.is_finite())? {
             return Err(capacity());
         }
+        // Negative small offsets can round their remainder up to the full
+        // period, erasing a visible initial gap. Preserve the authored offset
+        // or refuse; do not certify that noncanonical native phase.
+        if !action(account, || phase < period)? {
+            return Err(capacity());
+        }
         let Some(first) = intervals.first() else {
             return Err(capacity());
         };
@@ -146,13 +152,27 @@ mod tests {
             &[0.0, 1.0][..],
             &[1.0, 0.0][..],
             &[f64::from_bits(1)][..],
-            &[f64::MAX / 4.0][..],
         ] {
             for offset in [-17.0, -1.0, 0.0, 1.0, 17.0] {
                 let style = style(offset, intervals);
                 let qualified = QualifiedDash::try_new(&style, &Account::for_test()).unwrap();
                 assert!(matches!(qualified.0, DashKind::Cycle { .. }));
             }
+        }
+        for offset in [0.0, 1.0, 17.0] {
+            let style = style(offset, &[f64::MAX / 4.0]);
+            let qualified = QualifiedDash::try_new(&style, &Account::for_test()).unwrap();
+            assert!(matches!(qualified.0, DashKind::Cycle { .. }));
+        }
+        for offset in [-17.0, -1.0] {
+            let style = style(offset, &[f64::MAX / 4.0]);
+            let error = QualifiedDash::try_new(&style, &Account::for_test())
+                .err()
+                .expect("rounded full-cycle phase must refuse");
+            assert_eq!(
+                error.geometry_realization_diagnostic(),
+                Some(&GeometryRealizationError::InsufficientNativeCapacity)
+            );
         }
         for intervals in [&[][..], &[0.0][..], &[0.0, 0.0][..]] {
             let style = style(-1.0, intervals);
@@ -252,10 +272,11 @@ mod tests {
     fn short_cycle_proof_admits_exact_prefix_and_clean_retry() {
         // offset capture/check + length capture/check = 4; two interval
         // capture/finite/nonnegative/add/finite groups = 10; zero check,
-        // parity arithmetic/check, period finite check = 4; remainder/check = 2;
+        // parity arithmetic/check, period finite check = 4; remainder/finite/
+        // canonical upper-bound check = 3;
         // first capture/subtract/check = 3; phase completion check = 1.
-        // Total: 24 scalar actions.
-        const ACTIONS: u64 = 24;
+        // Total: 25 scalar actions.
+        const ACTIONS: u64 = 25;
         let style = style(0.0, &[2.0, 1.0]);
         let mut context = RenderAccountingContext::new(
             crate::RenderAccountingOptions::new().with_limits(

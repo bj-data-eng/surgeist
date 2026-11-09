@@ -119,11 +119,13 @@ normalization do not repeat the immutable interval validation.
 
 After source-path elimination, the native receiver qualifies the actual copied
 pattern before entering the locked dash initializer. It checks the sequential
-period sum, odd-pattern doubling, remainder and phase-search arithmetic, and
+period sum, odd-pattern doubling, canonical remainder and phase-search arithmetic, and
 certifies completion within two finite traversals. A required cycle that cannot
 qualify returns `GeometryRealizationError::InsufficientNativeCapacity` before
 submission. The original lengths and offset reach the dependency unchanged;
 closed stroked paths do not receive fitted border spacing.
+In particular, a negative small offset whose remainder rounds to the complete
+finite period refuses rather than silently losing its required initial gap.
 
 Empty and all-zero patterns retain solid-stroke behavior. A positive subnormal
 cycle is not reclassified as solid. The existing path materialization tolerance
