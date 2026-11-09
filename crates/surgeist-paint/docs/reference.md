@@ -38,6 +38,11 @@ source association. `colors()` yields `WeightedGradientColor` views with a
 borrowed payload, source index, Two-position ordinal and finite nonnegative
 weight. Payloads remain opaque to Paint.
 
+Construction captures each color's payload and first/second-position identity
+from its authored stop. The finished measure retains these associations;
+`colors()` projects prepared records without reading or interpreting source
+items again. Repeating weighting starts from a qualified adjacent color pair.
+
 `GradientRepeat::None` selects the last actual color at weight one. A final Two
 uses ordinal one. `GradientRepeat::Repeat` retains all expanded color occurrences
 and their average weights; hints remain separate positional inputs. Repetition
@@ -135,9 +140,11 @@ payload storage remain caller-owned. See
 `resolve_zero_height_gradient_colors` uses the `paint zero-height gradient
 colors` root and the same six stop-resolution child phases. It shares the
 validation, source/record-visit and scalar-action units above. Distribution
-includes normalization and color-weight construction. Scratch charges actual
-affine and normalized record capacities; retained bytes cover the color-weight
-capacity and fixed result owner. Last selection retains only that fixed owner.
+includes normalization, color qualification and weight construction. Scratch
+charges actual affine, normalized and qualified record capacities. Retained
+bytes cover the fixed result owner, including its inline color records, and
+the actual capacity of any remaining color-weight records. Last selection
+retains only that fixed owner.
 Publication is atomic, and failure cleanup releases every admitted capacity.
 Borrowed source and payload storage remain outside custody. See
 [the projection](../src/zero_height_gradient.rs) for the charged actions.

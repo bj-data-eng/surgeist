@@ -307,6 +307,14 @@ impl<'a, 'b, 'operation> StopWork<'a, 'b, 'operation> {
         charge(self.meter, self.scope, WorkKind::GradientCoordinate, 1)?;
         Ok(action())
     }
+    pub(crate) fn visit<T>(&mut self, action: impl FnOnce() -> T) -> Result<T, PaintError> {
+        charge(self.meter, self.scope, WorkKind::GradientStopVisit, 1)?;
+        Ok(action())
+    }
+    pub(crate) fn output<T>(&mut self, action: impl FnOnce() -> T) -> Result<T, PaintError> {
+        charge(self.meter, self.scope, WorkKind::OutputRecord, 1)?;
+        Ok(action())
+    }
     // Each source access or existing record read/write is one actual visit,
     // including separate walks and boundary reinspections. Its constant-size
     // index/ordinal bookkeeping belongs to this unit. No access precedes charge.
@@ -343,11 +351,7 @@ impl<'a, 'b, 'operation> StopWork<'a, 'b, 'operation> {
         charge(self.meter, self.scope, WorkKind::GradientStopVisit, 1)?;
         Ok(&mut records[index])
     }
-    pub(crate) fn emit<P>(
-        &mut self,
-        records: &mut Vec<UsedGradientRecord<P>>,
-        record: UsedGradientRecord<P>,
-    ) -> Result<(), PaintError> {
+    pub(crate) fn emit<T>(&mut self, records: &mut Vec<T>, record: T) -> Result<(), PaintError> {
         // One new retained expanded record; later fixup writes are not new records.
         charge(self.meter, self.scope, WorkKind::OutputRecord, 1)?;
         records.push(record);
@@ -366,54 +370,191 @@ fn validate<C>(
     Ok(validate_source(work, source)?.records)
 }
 
-pub(crate) struct ValidatedStops {
-    pub(crate) records: usize,
-    pub(crate) colors: usize,
-    pub(crate) last_ordinal: usize,
+/// A payload association captured only while visiting its actual authored Stop.
+#[derive(Debug)]
+pub(crate) struct ColorOccurrence<'s, C> {
+    source_index: usize,
+    ordinal: ColorOrdinal,
+    payload: &'s C,
+}
+#[derive(Clone, Copy, Debug)]
+enum ColorOrdinal {
+    First,
+    Second,
+}
+impl<C> Copy for ColorOccurrence<'_, C> {}
+impl<C> Clone for ColorOccurrence<'_, C> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+impl<'s, C> ColorOccurrence<'s, C> {
+    pub(crate) fn source_index(self) -> usize {
+        self.source_index
+    }
+    pub(crate) fn position_index(self) -> usize {
+        match self.ordinal {
+            ColorOrdinal::First => 0,
+            ColorOrdinal::Second => 1,
+        }
+    }
+    pub(crate) fn payload(self) -> &'s C {
+        self.payload
+    }
 }
 
-pub(crate) fn validate_source<C>(
+pub(crate) enum ColorSourceItem<'s, C> {
+    Stop {
+        first: ColorOccurrence<'s, C>,
+        second: Option<ColorOccurrence<'s, C>>,
+        positions: GradientStopPositions,
+    },
+    Hint {
+        position: GradientPosition,
+    },
+}
+impl StopWork<'_, '_, '_> {
+    pub(crate) fn color_source<'s, C>(
+        &mut self,
+        source: &'s [GradientStopItem<C>],
+        source_index: usize,
+    ) -> Result<ColorSourceItem<'s, C>, PaintError> {
+        Ok(match self.source(source, source_index)? {
+            GradientStopItem::Stop { payload, positions } => {
+                let first = ColorOccurrence {
+                    source_index,
+                    ordinal: ColorOrdinal::First,
+                    payload,
+                };
+                let second = match positions {
+                    GradientStopPositions::Two(..) => Some(ColorOccurrence {
+                        source_index,
+                        ordinal: ColorOrdinal::Second,
+                        payload,
+                    }),
+                    _ => None,
+                };
+                ColorSourceItem::Stop {
+                    first,
+                    second,
+                    positions: *positions,
+                }
+            }
+            GradientStopItem::Hint { position } => ColorSourceItem::Hint {
+                position: *position,
+            },
+        })
+    }
+}
+
+pub(crate) enum ColorArity<'s, C> {
+    One(ColorOccurrence<'s, C>),
+    Multiple(MultipleColors<'s, C>),
+}
+pub(crate) struct MultipleColors<'s, C> {
+    first: ColorOccurrence<'s, C>,
+    last: ColorOccurrence<'s, C>,
+    count: usize,
+}
+impl<'s, C> MultipleColors<'s, C> {
+    pub(crate) fn first(&self) -> ColorOccurrence<'s, C> {
+        self.first
+    }
+    pub(crate) fn last(&self) -> ColorOccurrence<'s, C> {
+        self.last
+    }
+    pub(crate) fn count(&self) -> usize {
+        self.count
+    }
+}
+impl<'s, C> ColorArity<'s, C> {
+    fn append(
+        self,
+        first: ColorOccurrence<'s, C>,
+        second: Option<ColorOccurrence<'s, C>>,
+    ) -> Result<Self, PaintError> {
+        let (original, count) = match self {
+            Self::One(original) => (original, 1usize),
+            Self::Multiple(colors) => (colors.first, colors.count),
+        };
+        Ok(Self::Multiple(MultipleColors {
+            first: original,
+            last: match second {
+                Some(last) => last,
+                None => first,
+            },
+            count: count
+                .checked_add(if second.is_some() { 2 } else { 1 })
+                .ok_or(PaintError::CapacityOverflow)?,
+        }))
+    }
+    pub(crate) fn last(&self) -> ColorOccurrence<'s, C> {
+        match self {
+            Self::One(occurrence) => *occurrence,
+            Self::Multiple(colors) => colors.last,
+        }
+    }
+}
+
+pub(crate) struct ValidatedStops<'s, C> {
+    source: &'s [GradientStopItem<C>],
+    records: usize,
+    colors: ColorArity<'s, C>,
+}
+
+impl<'s, C> ValidatedStops<'s, C> {
+    pub(crate) fn into_parts(self) -> (&'s [GradientStopItem<C>], usize, ColorArity<'s, C>) {
+        (self.source, self.records, self.colors)
+    }
+}
+
+pub(crate) fn validate_source<'s, C>(
     work: &mut StopWork<'_, '_, '_>,
-    source: &[GradientStopItem<C>],
-) -> Result<ValidatedStops, PaintError> {
+    source: &'s [GradientStopItem<C>],
+) -> Result<ValidatedStops<'s, C>, PaintError> {
     if work.validation(|| source.is_empty())? {
         return Err(GradientStopsError::EmptyList.into());
     }
-    let mut count = 0usize;
+    let first = work.color_source(source, 0)?;
+    let (first, second, positions) = work.validation(|| match first {
+        ColorSourceItem::Stop {
+            first,
+            second,
+            positions,
+        } => Ok((first, second, positions)),
+        ColorSourceItem::Hint { .. } => Err(GradientStopsError::EndpointHint { source_index: 0 }),
+    })??;
+    validate_positions(work, 0, positions)?;
+    let mut count = if second.is_some() { 2usize } else { 1usize };
+    let mut colors = match second {
+        Some(last) => ColorArity::Multiple(MultipleColors {
+            first,
+            last,
+            count: 2,
+        }),
+        None => ColorArity::One(first),
+    };
     let mut previous_hint = false;
-    let mut colors = 0usize;
-    let mut last_ordinal = 0usize;
-    for source_index in 0..source.len() {
-        let item = work.source(source, source_index)?;
+    for source_index in 1..source.len() {
+        let item = work.color_source(source, source_index)?;
         previous_hint = work.validation(|| match item {
-            GradientStopItem::Hint { .. }
-                if source_index == 0 || source_index == source.len() - 1 =>
-            {
+            ColorSourceItem::Hint { .. } if source_index == source.len() - 1 => {
                 Err(GradientStopsError::EndpointHint { source_index })
             }
-            GradientStopItem::Hint { .. } if previous_hint => {
+            ColorSourceItem::Hint { .. } if previous_hint => {
                 Err(GradientStopsError::AdjacentHints {
                     previous_source_index: source_index - 1,
                     source_index,
                 })
             }
-            GradientStopItem::Hint { .. } => Ok(true),
-            GradientStopItem::Stop { .. } => Ok(false),
+            ColorSourceItem::Hint { .. } => Ok(true),
+            ColorSourceItem::Stop { .. } => Ok(false),
         })??;
         let positions = match item {
-            GradientStopItem::Stop { positions, .. } => *positions,
-            GradientStopItem::Hint { position } => GradientStopPositions::One(*position),
+            ColorSourceItem::Stop { positions, .. } => positions,
+            ColorSourceItem::Hint { position } => GradientStopPositions::One(position),
         };
-        match positions {
-            GradientStopPositions::Omitted => {}
-            GradientStopPositions::One(position) => {
-                validate_position(work, source_index, 0, position)?
-            }
-            GradientStopPositions::Two(first, second) => {
-                validate_position(work, source_index, 0, first)?;
-                validate_position(work, source_index, 1, second)?;
-            }
-        }
+        validate_positions(work, source_index, positions)?;
         let amount = match positions {
             GradientStopPositions::Two(..) => 2,
             _ => 1,
@@ -421,18 +562,30 @@ pub(crate) fn validate_source<C>(
         count = count
             .checked_add(amount)
             .ok_or(PaintError::CapacityOverflow)?;
-        if !previous_hint {
-            colors = colors
-                .checked_add(amount)
-                .ok_or(PaintError::CapacityOverflow)?;
-            last_ordinal = amount - 1;
+        if let ColorSourceItem::Stop { first, second, .. } = item {
+            colors = colors.append(first, second)?;
         }
     }
     Ok(ValidatedStops {
+        source,
         records: count,
         colors,
-        last_ordinal,
     })
+}
+
+fn validate_positions(
+    work: &mut StopWork<'_, '_, '_>,
+    source_index: usize,
+    positions: GradientStopPositions,
+) -> Result<(), PaintError> {
+    match positions {
+        GradientStopPositions::Omitted => Ok(()),
+        GradientStopPositions::One(position) => validate_position(work, source_index, 0, position),
+        GradientStopPositions::Two(first, second) => {
+            validate_position(work, source_index, 0, first)?;
+            validate_position(work, source_index, 1, second)
+        }
+    }
 }
 
 fn validate_position(
