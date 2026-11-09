@@ -22,8 +22,10 @@ explicit named work/result-byte limit after budget refusal.
 For stop lists, `PaintError::GradientStops` identifies an invalid length, list
 structure or numeric component, or an unrepresentable result, with source
 association where applicable. Keep source storage alive while using the result.
-Bound `GradientStopVisit` for actual list/record walks and `RetainedResultBytes`
-for allocated capacity plus the fixed result owner; a zero limit is meaningful.
+Bound `GradientStopVisit` for actual list/record walks, `ScratchBytes` for
+numerical staging, and `RetainedResultBytes` for prepared capacity plus the fixed
+result owner; a zero limit is meaningful. The
+[accounting contract](reference.md#accounting-schema) describes their custody.
 For radial geometry, `PaintError::RadialGradient` distinguishes invalid native
 inputs from an unrepresentable required calculation. Inspect the resolved case
 before composing stops or fields. An explicit already-used center and a default

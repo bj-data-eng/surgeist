@@ -27,6 +27,15 @@ The [public front door](../src/lib.rs) exports these surfaces:
 | `resolve_zero_height_gradient_colors`, `GradientRepeat`, `ZeroHeightGradientColorsOutcome`, `ZeroHeightGradientColors`, `WeightedGradientColor` | Authenticated ordinary/average color measure for the native ZeroHeight case, borrowing exact source payloads. |
 | `ZeroHeightGradientError` | Expected-case or normalized color-measure representation failure, wrapped by `PaintError::ZeroHeightGradient`. |
 
+## Ordinary gradient stop views
+
+`resolve_gradient_stops` validates its source, resolves and qualifies numerical
+positions, then prepares Stop/Hint records with direct borrowed payloads and
+captured source identities. The construction owner creates and advances its own
+staging. `items()` projects the prepared records without source indexing or
+interpreting source kinds again. `source()` retains the exact original slice;
+the result and its views cannot outlive that source.
+
 ## Zero-height gradient colors
 
 `resolve_zero_height_gradient_colors` consumes authentic
@@ -131,10 +140,13 @@ phases: validation, stop resolution, prefix fixup, omitted distribution,
 publication and cleanup. `GradientStopVisit` counts each actual source or
 expanded-record visit, including repeated passes and boundary inspection.
 `GradientCoordinate` counts actual numeric calculations/conversions/inspections;
-`GradientValidation` counts input domain/grammar actions. Each expanded retained
-record and the final fixed result owner contribute an `OutputRecord`.
-Retained bytes include actual record capacity and the fixed owner; source and
-payload storage remain caller-owned. See
+`GradientValidation` counts input domain/grammar actions. Each expanded numerical
+record, prepared Stop/Hint record and final fixed result owner contributes an
+`OutputRecord`. After numerical qualification, preparation visits each source
+item and numerical record once. Numerical staging uses actual `ScratchBytes`;
+prepared capacity and the fixed owner use `RetainedResultBytes`. Both backings
+coexist during preparation, and cleanup releases staging before return. Source
+and payload storage remain caller-owned. See
 [the implementation](../src/gradient_stops.rs) for the precise charged units.
 
 `resolve_zero_height_gradient_colors` uses the `paint zero-height gradient

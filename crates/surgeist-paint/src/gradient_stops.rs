@@ -106,7 +106,7 @@ pub(crate) struct UsedGradientRecord<P = f64> {
 pub struct GradientStops<'a, C> {
     source: &'a [GradientStopItem<C>],
     line_length: f64,
-    records: Vec<UsedGradientRecord>,
+    records: Vec<UsedGradientItem<'a, C>>,
 }
 impl<'a, C> GradientStops<'a, C> {
     pub const fn source(&self) -> &'a [GradientStopItem<C>] {
@@ -116,20 +116,7 @@ impl<'a, C> GradientStops<'a, C> {
         self.line_length
     }
     pub fn items(&self) -> impl ExactSizeIterator<Item = UsedGradientItem<'_, C>> {
-        self.records
-            .iter()
-            .map(|record| match &self.source[record.source_index] {
-                GradientStopItem::Stop { payload, .. } => UsedGradientItem::Stop {
-                    source_index: record.source_index,
-                    position_index: record.position_index,
-                    payload,
-                    position: record.position,
-                },
-                GradientStopItem::Hint { .. } => UsedGradientItem::Hint {
-                    source_index: record.source_index,
-                    position: record.position,
-                },
-            })
+        self.records.iter().copied()
     }
 }
 
@@ -156,6 +143,23 @@ pub struct GradientStopsOutcome<'a, C> {
 /// };
 /// let _ = stops.items().count();
 /// ```
+///
+/// A result cannot be reassociated with another, equally well-typed source.
+///
+/// ```compile_fail
+/// use surgeist_paint::{GradientStopItem, GradientStopPositions, GradientStops,
+///     PaintLimits, PaintOptions, ProfileMode, resolve_gradient_stops};
+/// let source = [GradientStopItem::Stop {
+///     payload: (), positions: GradientStopPositions::Omitted,
+/// }];
+/// let replacement = [GradientStopItem::Stop {
+///     payload: (), positions: GradientStopPositions::Omitted,
+/// }];
+/// let authentic = resolve_gradient_stops(100.0, &source,
+///     PaintOptions::new(PaintLimits::unlimited(), ProfileMode::Off)).result.unwrap();
+/// let reassociated = GradientStops { source: &replacement, ..authentic };
+/// let _ = reassociated.items().count();
+/// ```
 pub fn resolve_gradient_stops<'a, C>(
     line_length: f64,
     source: &'a [GradientStopItem<C>],
@@ -170,7 +174,6 @@ pub fn resolve_gradient_stops<'a, C>(
             };
         }
     };
-    let root = meter.root();
     let scopes = match setup_scopes(&mut meter) {
         Ok(scopes) => scopes,
         Err(error) => {
@@ -178,87 +181,7 @@ pub fn resolve_gradient_stops<'a, C>(
             return GradientStopsOutcome { result, report };
         }
     };
-    let mut records = Vec::new();
-    let mut fixed_owner = false;
-    let result = (|| {
-        let count = meter
-            .with_phase(scopes[0], |p| {
-                validate(&mut StopWork::new(p, scopes[0]), line_length, source)
-            })
-            .map_err(setup_error)??;
-        meter
-            .with_phase(scopes[1], |p| {
-                records = allocate(p, root, count, ResourceKind::RetainedResultBytes)?;
-                expand(
-                    &mut StopWork::new(p, scopes[1]),
-                    line_length,
-                    source,
-                    &mut records,
-                )
-            })
-            .map_err(setup_error)??;
-        meter
-            .with_phase(scopes[2], |p| {
-                fixup(
-                    &mut StopWork::new(p, scopes[2]),
-                    line_length,
-                    source,
-                    &mut records,
-                )
-            })
-            .map_err(setup_error)??;
-        meter
-            .with_phase(scopes[3], |p| {
-                let mut work = StopWork::new(p, scopes[3]);
-                distribute(&mut work, source, &mut records)?;
-                qualify(&mut work, &records)
-            })
-            .map_err(setup_error)??;
-        meter
-            .with_phase(scopes[4], |p| {
-                apply(
-                    p,
-                    root,
-                    Change::Acquire(
-                        ResourceKind::RetainedResultBytes,
-                        bytes::<GradientStops<'_, C>>(1)?,
-                    ),
-                )?;
-                fixed_owner = true;
-                charge(p, scopes[4], WorkKind::OutputRecord, 1)?;
-                Ok(GradientStops {
-                    source,
-                    line_length,
-                    records: take(&mut records),
-                })
-            })
-            .map_err(setup_error)?
-    })();
-    let cleanup = meter
-        .with_phase(scopes[5], |p| {
-            if result.is_err() {
-                release(
-                    p,
-                    root,
-                    take(&mut records),
-                    ResourceKind::RetainedResultBytes,
-                )?;
-                if fixed_owner {
-                    apply(
-                        p,
-                        root,
-                        Change::Release(
-                            ResourceKind::RetainedResultBytes,
-                            bytes::<GradientStops<'_, C>>(1)?,
-                        ),
-                    )?;
-                }
-            }
-            Ok(())
-        })
-        .map_err(setup_error)
-        .and_then(|done| done);
-    let result = result.and_then(|value| cleanup.map(|()| value));
+    let result = ordinary::run(&mut meter, scopes, line_length, source);
     let (result, report) = finish(meter, result);
     GradientStopsOutcome { result, report }
 }
@@ -352,22 +275,11 @@ impl<'a, 'b, 'operation> StopWork<'a, 'b, 'operation> {
         Ok(&mut records[index])
     }
     pub(crate) fn emit<T>(&mut self, records: &mut Vec<T>, record: T) -> Result<(), PaintError> {
-        // One new retained expanded record; later fixup writes are not new records.
+        // One new staging or prepared record; later fixup writes are not new records.
         charge(self.meter, self.scope, WorkKind::OutputRecord, 1)?;
         records.push(record);
         Ok(())
     }
-}
-
-fn validate<C>(
-    work: &mut StopWork<'_, '_, '_>,
-    line_length: f64,
-    source: &[GradientStopItem<C>],
-) -> Result<usize, PaintError> {
-    if !work.validation(|| line_length.is_finite() && line_length >= 0.0)? {
-        return Err(GradientStopsError::InvalidLineLength.into());
-    }
-    Ok(validate_source(work, source)?.records)
 }
 
 /// A payload association captured only while visiting its actual authored Stop.
@@ -938,192 +850,504 @@ impl From<GradientStopsError> for PaintError {
     }
 }
 
-#[cfg(test)]
-mod tests {
+// Only this owner can construct ordinary numerical staging or publish its
+// prepared output. The parent can request a complete run, not advance phases
+// or substitute a source/backing pair.
+mod ordinary {
     use super::*;
-    use crate::{PaintChange, PaintLimits, PaintPhase, ProfileMode};
-    use std::mem::size_of;
 
-    fn options(limits: PaintLimits) -> PaintOptions {
-        PaintOptions::new(limits, ProfileMode::Summary { timing: false })
+    struct Construction<'s, C> {
+        input: ValidatedStops<'s, C>,
+        line_length: f64,
+        staging: Vec<UsedGradientRecord>,
+        prepared: Vec<UsedGradientItem<'s, C>>,
+        fixed_owner: bool,
     }
 
-    // No payload traits, and no payload bytes even though four output records
-    // remain real storage. Two positions borrow the same original payload.
-    struct Payload;
-    fn source() -> [GradientStopItem<Payload>; 3] {
-        [
-            GradientStopItem::Stop {
-                payload: Payload,
-                positions: GradientStopPositions::Two(
-                    GradientPosition {
-                        length: 0.0,
-                        fraction: 0.0,
-                    },
-                    GradientPosition {
-                        length: 0.0,
-                        fraction: 0.25,
-                    },
-                ),
-            },
-            GradientStopItem::Hint {
-                position: GradientPosition {
-                    length: 0.0,
-                    fraction: 0.5,
+    impl<'s, C> Construction<'s, C> {
+        fn validate(
+            work: &mut StopWork<'_, '_, '_>,
+            line_length: f64,
+            source: &'s [GradientStopItem<C>],
+        ) -> Result<Self, PaintError> {
+            if !work.validation(|| line_length.is_finite() && line_length >= 0.0)? {
+                return Err(GradientStopsError::InvalidLineLength.into());
+            }
+            Ok(Self {
+                input: validate_source(work, source)?,
+                line_length,
+                staging: Vec::new(),
+                prepared: Vec::new(),
+                fixed_owner: false,
+            })
+        }
+
+        fn resolve(
+            &mut self,
+            meter: &mut Meter,
+            scopes: [Scope; 6],
+        ) -> Result<GradientStops<'s, C>, PaintError> {
+            let root = meter.root();
+            meter
+                .with_phase(scopes[1], |p| {
+                    self.staging =
+                        allocate(p, root, self.input.records, ResourceKind::ScratchBytes)?;
+                    expand(
+                        &mut StopWork::new(p, scopes[1]),
+                        self.line_length,
+                        self.input.source,
+                        &mut self.staging,
+                    )
+                })
+                .map_err(setup_error)??;
+            meter
+                .with_phase(scopes[2], |p| {
+                    fixup(
+                        &mut StopWork::new(p, scopes[2]),
+                        self.line_length,
+                        self.input.source,
+                        &mut self.staging,
+                    )
+                })
+                .map_err(setup_error)??;
+            meter
+                .with_phase(scopes[3], |p| {
+                    let mut work = StopWork::new(p, scopes[3]);
+                    distribute(&mut work, self.input.source, &mut self.staging)?;
+                    qualify(&mut work, &self.staging)
+                })
+                .map_err(setup_error)??;
+            meter
+                .with_phase(scopes[4], |p| {
+                    self.prepare(&mut StopWork::new(p, scopes[4]), root)?;
+                    apply(
+                        p,
+                        root,
+                        Change::Acquire(
+                            ResourceKind::RetainedResultBytes,
+                            bytes::<GradientStops<'_, C>>(1)?,
+                        ),
+                    )?;
+                    self.fixed_owner = true;
+                    charge(p, scopes[4], WorkKind::OutputRecord, 1)?;
+                    // Keep both admitted buffers under cleanup ownership until the
+                    // final fallible publication action has succeeded.
+                    Ok(GradientStops {
+                        source: self.input.source,
+                        line_length: self.line_length,
+                        records: take(&mut self.prepared),
+                    })
+                })
+                .map_err(setup_error)?
+        }
+
+        fn prepare(
+            &mut self,
+            work: &mut StopWork<'_, '_, '_>,
+            root: Scope,
+        ) -> Result<(), PaintError> {
+            self.prepared = allocate(
+                work.meter(),
+                root,
+                self.input.records,
+                ResourceKind::RetainedResultBytes,
+            )?;
+            let mut index = 0;
+            for source_index in 0..self.input.source.len() {
+                match work.color_source(self.input.source, source_index)? {
+                    ColorSourceItem::Stop { first, second, .. } => {
+                        self.prepare_stop(work, index, first)?;
+                        index += 1;
+                        if let Some(second) = second {
+                            self.prepare_stop(work, index, second)?;
+                            index += 1;
+                        }
+                    }
+                    ColorSourceItem::Hint { .. } => {
+                        // source_index names the actual source visit above.
+                        let position = work.record(&self.staging, index)?.position;
+                        work.emit(
+                            &mut self.prepared,
+                            UsedGradientItem::Hint {
+                                source_index,
+                                position,
+                            },
+                        )?;
+                        index += 1;
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        fn prepare_stop(
+            &mut self,
+            work: &mut StopWork<'_, '_, '_>,
+            index: usize,
+            occurrence: ColorOccurrence<'s, C>,
+        ) -> Result<(), PaintError> {
+            let position = work.record(&self.staging, index)?.position;
+            work.emit(
+                &mut self.prepared,
+                UsedGradientItem::Stop {
+                    source_index: occurrence.source_index(),
+                    position_index: occurrence.position_index(),
+                    payload: occurrence.payload(),
+                    position,
                 },
-            },
-            GradientStopItem::Stop {
+            )
+        }
+
+        fn cleanup(
+            &mut self,
+            p: &mut PhaseMeter<'_, '_>,
+            root: Scope,
+            failed: bool,
+        ) -> Result<(), PaintError> {
+            release(p, root, take(&mut self.staging), ResourceKind::ScratchBytes)?;
+            if failed {
+                release(
+                    p,
+                    root,
+                    take(&mut self.prepared),
+                    ResourceKind::RetainedResultBytes,
+                )?;
+                if self.fixed_owner {
+                    apply(
+                        p,
+                        root,
+                        Change::Release(
+                            ResourceKind::RetainedResultBytes,
+                            bytes::<GradientStops<'_, C>>(1)?,
+                        ),
+                    )?;
+                }
+            }
+            Ok(())
+        }
+    }
+
+    pub(super) fn run<'s, C>(
+        meter: &mut Meter,
+        scopes: [Scope; 6],
+        line_length: f64,
+        source: &'s [GradientStopItem<C>],
+    ) -> Result<GradientStops<'s, C>, PaintError> {
+        let validated = meter
+            .with_phase(scopes[0], |p| {
+                Construction::validate(&mut StopWork::new(p, scopes[0]), line_length, source)
+            })
+            .map_err(setup_error)
+            .and_then(|value| value);
+        let mut owner = match validated {
+            Ok(owner) => owner,
+            Err(error) => {
+                meter.with_phase(scopes[5], |_| ()).map_err(setup_error)?;
+                return Err(error);
+            }
+        };
+        let result = owner.resolve(meter, scopes);
+        let root = meter.root();
+        let cleanup = meter
+            .with_phase(scopes[5], |p| owner.cleanup(p, root, result.is_err()))
+            .map_err(setup_error)
+            .and_then(|done| done);
+        result.and_then(|value| cleanup.map(|()| value))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::{PaintChange, PaintLimits, PaintPhase, ProfileMode};
+        use std::mem::size_of;
+
+        fn options(limits: PaintLimits) -> PaintOptions {
+            PaintOptions::new(limits, ProfileMode::Summary { timing: false })
+        }
+
+        // No payload traits, and no payload bytes even though four output records
+        // remain real storage. Two positions borrow the same original payload.
+        struct Payload;
+        fn source() -> [GradientStopItem<Payload>; 3] {
+            [
+                GradientStopItem::Stop {
+                    payload: Payload,
+                    positions: GradientStopPositions::Two(
+                        GradientPosition {
+                            length: 0.0,
+                            fraction: 0.0,
+                        },
+                        GradientPosition {
+                            length: 0.0,
+                            fraction: 0.25,
+                        },
+                    ),
+                },
+                GradientStopItem::Hint {
+                    position: GradientPosition {
+                        length: 0.0,
+                        fraction: 0.5,
+                    },
+                },
+                GradientStopItem::Stop {
+                    payload: Payload,
+                    positions: GradientStopPositions::Omitted,
+                },
+            ]
+        }
+
+        #[test]
+        fn real_capacity_and_fixed_owner_are_retained_without_payload_storage() {
+            let source = source();
+            let mut meter = options(PaintLimits::unlimited())
+                .operation(OperationKind::GradientStops)
+                .unwrap();
+            let scopes = setup_scopes(&mut meter).unwrap();
+            let root = meter.root();
+            let mut owner = meter
+                .with_phase(scopes[0], |p| {
+                    Construction::validate(&mut StopWork::new(p, scopes[0]), 100.0, &source)
+                })
+                .unwrap()
+                .unwrap();
+            let plan = owner.resolve(&mut meter, scopes).unwrap();
+            let scratch = (owner.staging.capacity() * size_of::<UsedGradientRecord>()) as u64;
+            meter
+                .with_phase(scopes[5], |p| owner.cleanup(p, root, false))
+                .unwrap()
+                .unwrap();
+            let (_, report) = finish(meter, Ok(()));
+            let report = report.unwrap();
+            assert_eq!(size_of::<Payload>(), 0);
+            assert_eq!(plan.records.len(), 4);
+            assert!(size_of::<UsedGradientRecord>() > 0);
+            let backing =
+                (plan.records.capacity() * size_of::<UsedGradientItem<'_, Payload>>()) as u64;
+            let fixed = size_of::<GradientStops<'_, Payload>>() as u64;
+            assert_eq!(
+                report.live(ResourceKind::RetainedResultBytes),
+                backing + fixed
+            );
+            assert_eq!(
+                report.peak(ResourceKind::RetainedResultBytes),
+                backing + fixed
+            );
+            assert_eq!(report.live(ResourceKind::ScratchBytes), 0);
+            assert_eq!(report.peak(ResourceKind::ScratchBytes), scratch);
+            assert!(scratch > 0);
+            assert_eq!(report.work(WorkKind::OutputRecord), 9);
+            assert_eq!(
+                plan.items()
+                    .map(|item| match item {
+                        UsedGradientItem::Stop { position, .. }
+                        | UsedGradientItem::Hint { position, .. } => position,
+                    })
+                    .collect::<Vec<_>>(),
+                vec![0.0, 25.0, 50.0, 100.0]
+            );
+        }
+
+        #[test]
+        fn fixed_owner_and_later_output_refusals_release_all_admitted_custody() {
+            let source = source();
+            let baseline =
+                resolve_gradient_stops(100.0, &source, options(PaintLimits::unlimited()));
+            let plan = baseline.result.unwrap();
+            let backing =
+                (plan.records.capacity() * size_of::<UsedGradientItem<'_, Payload>>()) as u64;
+            let fixed = size_of::<GradientStops<'_, Payload>>() as u64;
+            drop(plan);
+
+            let outcome = resolve_gradient_stops(
+                100.0,
+                &source,
+                options(
+                    PaintLimits::unlimited()
+                        .with_resource_limit(ResourceKind::RetainedResultBytes, backing),
+                ),
+            );
+            let Err(PaintError::Budget(refusal)) = outcome.result else {
+                panic!("fixed owner must refuse");
+            };
+            assert_eq!(refusal.current, backing);
+            assert_eq!(
+                refusal.change,
+                PaintChange::Acquire {
+                    kind: ResourceKind::RetainedResultBytes,
+                    amount: fixed,
+                }
+            );
+            let report = outcome.report.unwrap();
+            assert_eq!(report.work(WorkKind::OutputRecord), 8);
+            for &kind in ResourceKind::ALL {
+                assert_eq!(report.live(kind), 0);
+            }
+
+            let outcome = resolve_gradient_stops(
+                100.0,
+                &source,
+                options(PaintLimits::unlimited().with_work_limit(WorkKind::OutputRecord, 8)),
+            );
+            let Err(PaintError::Budget(refusal)) = outcome.result else {
+                panic!("publication must refuse");
+            };
+            assert_eq!(refusal.origin, PaintPhase::Publication);
+            assert_eq!(refusal.current, 8);
+            assert_eq!(
+                refusal.change,
+                PaintChange::Work {
+                    kind: WorkKind::OutputRecord,
+                    amount: 1
+                }
+            );
+            let report = outcome.report.unwrap();
+            assert_eq!(report.work(WorkKind::OutputRecord), 8);
+            assert_eq!(
+                report.peak(ResourceKind::RetainedResultBytes),
+                backing + fixed
+            );
+            for &kind in ResourceKind::ALL {
+                assert_eq!(report.live(kind), 0);
+            }
+        }
+
+        #[test]
+        fn prepared_allocation_and_partial_capture_release_both_backings_for_retry() {
+            let source = source();
+            let baseline =
+                resolve_gradient_stops(100.0, &source, options(PaintLimits::unlimited()));
+            let plan = baseline.result.unwrap();
+            let report = baseline.report.unwrap();
+            let scratch = report.peak(ResourceKind::ScratchBytes);
+            let backing =
+                (plan.records.capacity() * size_of::<UsedGradientItem<'_, Payload>>()) as u64;
+            let fixed = size_of::<GradientStops<'_, Payload>>() as u64;
+            let publication_visits = report
+                .phases()
+                .find(|phase| phase.phase() == PaintPhase::Publication)
+                .unwrap()
+                .work(WorkKind::GradientStopVisit);
+            // Three authored source visits and four reads of their numeric positions.
+            assert_eq!(publication_visits, 7);
+            let before_capture = report.work(WorkKind::GradientStopVisit) - publication_visits;
+            // Byte custody is admitted at the root; capture work is admitted
+            // at Publication. Refusal origins follow those actual scopes.
+            for (limits, phase, outputs, retained_peak) in [
+                (
+                    PaintLimits::unlimited()
+                        .with_resource_limit(ResourceKind::ScratchBytes, scratch - 1),
+                    PaintPhase::Operation,
+                    0,
+                    0,
+                ),
+                (
+                    PaintLimits::unlimited()
+                        .with_resource_limit(ResourceKind::RetainedResultBytes, 0),
+                    PaintPhase::Operation,
+                    4,
+                    0,
+                ),
+                (
+                    PaintLimits::unlimited().with_work_limit(WorkKind::OutputRecord, 5),
+                    PaintPhase::Publication,
+                    5,
+                    backing,
+                ),
+                // The first source visit and first position read are accepted;
+                // the second numeric read refuses after one prepared record.
+                (
+                    PaintLimits::unlimited()
+                        .with_work_limit(WorkKind::GradientStopVisit, before_capture + 2),
+                    PaintPhase::Publication,
+                    5,
+                    backing,
+                ),
+            ] {
+                let failed = resolve_gradient_stops(100.0, &source, options(limits));
+                let Err(PaintError::Budget(refusal)) = failed.result else {
+                    panic!("expected staging/preparation refusal");
+                };
+                assert_eq!(refusal.origin, phase);
+                let failed_report = failed.report.unwrap();
+                assert_eq!(failed_report.work(WorkKind::OutputRecord), outputs);
+                assert_eq!(
+                    failed_report.peak(ResourceKind::RetainedResultBytes),
+                    retained_peak
+                );
+                for &kind in ResourceKind::ALL {
+                    assert_eq!(failed_report.live(kind), 0);
+                }
+                let retry = resolve_gradient_stops(
+                    100.0,
+                    &source,
+                    options(
+                        PaintLimits::unlimited()
+                            .with_resource_limit(ResourceKind::ScratchBytes, scratch)
+                            .with_resource_limit(
+                                ResourceKind::RetainedResultBytes,
+                                backing + fixed,
+                            ),
+                    ),
+                );
+                let retried = retry.result.unwrap();
+                assert_eq!(retried.items().count(), 4);
+                assert_eq!(retry.report.unwrap().live(ResourceKind::ScratchBytes), 0);
+            }
+        }
+
+        #[test]
+        fn single_omission_units_and_refused_prefix_charge_only_actions_that_run() {
+            let source = [GradientStopItem::Stop {
                 payload: Payload,
                 positions: GradientStopPositions::Omitted,
-            },
-        ]
-    }
+            }];
+            let baseline =
+                resolve_gradient_stops(100.0, &source, options(PaintLimits::unlimited()));
+            assert!(baseline.result.is_ok());
+            let report = baseline.report.unwrap();
+            // L, list emptiness, item grammar. Visits: validation1 + expansion1 +
+            // first record/source/write3 + prefix record/source2 + qualification1.
+            // Preparation visits the source and its numeric position once more.
+            // The only numeric inspection is final finiteness; no affine/lerp runs.
+            assert_eq!(report.work(WorkKind::GradientValidation), 3);
+            assert_eq!(report.work(WorkKind::GradientStopVisit), 10);
+            assert_eq!(report.work(WorkKind::GradientCoordinate), 1);
+            assert_eq!(report.work(WorkKind::OutputRecord), 3);
 
-    #[test]
-    fn real_capacity_and_fixed_owner_are_retained_without_payload_storage() {
-        let source = source();
-        let outcome = resolve_gradient_stops(100.0, &source, options(PaintLimits::unlimited()));
-        let plan = outcome.result.unwrap();
-        let report = outcome.report.unwrap();
-        assert_eq!(size_of::<Payload>(), 0);
-        assert_eq!(plan.records.len(), 4);
-        assert!(size_of::<UsedGradientRecord>() > 0);
-        let backing = (plan.records.capacity() * size_of::<UsedGradientRecord>()) as u64;
-        let fixed = size_of::<GradientStops<'_, Payload>>() as u64;
-        assert_eq!(
-            report.live(ResourceKind::RetainedResultBytes),
-            backing + fixed
-        );
-        assert_eq!(
-            report.peak(ResourceKind::RetainedResultBytes),
-            backing + fixed
-        );
-        assert_eq!(report.live(ResourceKind::ScratchBytes), 0);
-        assert_eq!(report.peak(ResourceKind::ScratchBytes), 0);
-        assert_eq!(report.work(WorkKind::OutputRecord), 5);
-        assert_eq!(
-            plan.items()
-                .map(|item| match item {
-                    UsedGradientItem::Stop { position, .. }
-                    | UsedGradientItem::Hint { position, .. } => position,
-                })
-                .collect::<Vec<_>>(),
-            vec![0.0, 25.0, 50.0, 100.0]
-        );
-    }
-
-    #[test]
-    fn fixed_owner_and_later_output_refusals_release_all_admitted_custody() {
-        let source = source();
-        let baseline = resolve_gradient_stops(100.0, &source, options(PaintLimits::unlimited()));
-        let plan = baseline.result.unwrap();
-        let backing = (plan.records.capacity() * size_of::<UsedGradientRecord>()) as u64;
-        let fixed = size_of::<GradientStops<'_, Payload>>() as u64;
-        drop(plan);
-
-        let outcome = resolve_gradient_stops(
-            100.0,
-            &source,
-            options(
-                PaintLimits::unlimited()
-                    .with_resource_limit(ResourceKind::RetainedResultBytes, backing),
-            ),
-        );
-        let Err(PaintError::Budget(refusal)) = outcome.result else {
-            panic!("fixed owner must refuse");
-        };
-        assert_eq!(refusal.current, backing);
-        assert_eq!(
-            refusal.change,
-            PaintChange::Acquire {
-                kind: ResourceKind::RetainedResultBytes,
-                amount: fixed,
+            let outcome = resolve_gradient_stops(
+                100.0,
+                &source,
+                options(PaintLimits::unlimited().with_work_limit(WorkKind::GradientStopVisit, 1)),
+            );
+            let Err(PaintError::Budget(refusal)) = outcome.result else {
+                panic!("expansion visit must refuse");
+            };
+            assert_eq!(refusal.origin, PaintPhase::GradientStopResolution);
+            let report = outcome.report.unwrap();
+            assert_eq!(report.work(WorkKind::GradientValidation), 3);
+            assert_eq!(report.work(WorkKind::GradientStopVisit), 1);
+            assert_eq!(report.work(WorkKind::GradientCoordinate), 0);
+            assert_eq!(report.work(WorkKind::OutputRecord), 0);
+            for &kind in ResourceKind::ALL {
+                assert_eq!(report.live(kind), 0);
             }
-        );
-        let report = outcome.report.unwrap();
-        assert_eq!(report.work(WorkKind::OutputRecord), 4);
-        for &kind in ResourceKind::ALL {
-            assert_eq!(report.live(kind), 0);
-        }
 
-        let outcome = resolve_gradient_stops(
-            100.0,
-            &source,
-            options(PaintLimits::unlimited().with_work_limit(WorkKind::OutputRecord, 4)),
-        );
-        let Err(PaintError::Budget(refusal)) = outcome.result else {
-            panic!("publication must refuse");
-        };
-        assert_eq!(refusal.origin, PaintPhase::Publication);
-        assert_eq!(refusal.current, 4);
-        assert_eq!(
-            refusal.change,
-            PaintChange::Work {
-                kind: WorkKind::OutputRecord,
-                amount: 1
+            let outcome = resolve_gradient_stops(
+                100.0,
+                &source,
+                options(PaintLimits::unlimited().with_work_limit(WorkKind::GradientCoordinate, 0)),
+            );
+            let Err(PaintError::Budget(refusal)) = outcome.result else {
+                panic!("qualification must refuse");
+            };
+            assert_eq!(refusal.origin, PaintPhase::GradientStopDistribution);
+            let report = outcome.report.unwrap();
+            assert_eq!(report.work(WorkKind::GradientStopVisit), 8);
+            assert_eq!(report.work(WorkKind::GradientCoordinate), 0);
+            assert_eq!(report.work(WorkKind::OutputRecord), 1);
+            for &kind in ResourceKind::ALL {
+                assert_eq!(report.live(kind), 0);
             }
-        );
-        let report = outcome.report.unwrap();
-        assert_eq!(report.work(WorkKind::OutputRecord), 4);
-        assert_eq!(
-            report.peak(ResourceKind::RetainedResultBytes),
-            backing + fixed
-        );
-        for &kind in ResourceKind::ALL {
-            assert_eq!(report.live(kind), 0);
-        }
-    }
-
-    #[test]
-    fn single_omission_units_and_refused_prefix_charge_only_actions_that_run() {
-        let source = [GradientStopItem::Stop {
-            payload: Payload,
-            positions: GradientStopPositions::Omitted,
-        }];
-        let baseline = resolve_gradient_stops(100.0, &source, options(PaintLimits::unlimited()));
-        assert!(baseline.result.is_ok());
-        let report = baseline.report.unwrap();
-        // L, list emptiness, item grammar. Visits: validation1 + expansion1 +
-        // first record/source/write3 + prefix record/source2 + qualification1.
-        // The only numeric inspection is final finiteness; no affine/lerp runs.
-        assert_eq!(report.work(WorkKind::GradientValidation), 3);
-        assert_eq!(report.work(WorkKind::GradientStopVisit), 8);
-        assert_eq!(report.work(WorkKind::GradientCoordinate), 1);
-        assert_eq!(report.work(WorkKind::OutputRecord), 2);
-
-        let outcome = resolve_gradient_stops(
-            100.0,
-            &source,
-            options(PaintLimits::unlimited().with_work_limit(WorkKind::GradientStopVisit, 1)),
-        );
-        let Err(PaintError::Budget(refusal)) = outcome.result else {
-            panic!("expansion visit must refuse");
-        };
-        assert_eq!(refusal.origin, PaintPhase::GradientStopResolution);
-        let report = outcome.report.unwrap();
-        assert_eq!(report.work(WorkKind::GradientValidation), 3);
-        assert_eq!(report.work(WorkKind::GradientStopVisit), 1);
-        assert_eq!(report.work(WorkKind::GradientCoordinate), 0);
-        assert_eq!(report.work(WorkKind::OutputRecord), 0);
-        for &kind in ResourceKind::ALL {
-            assert_eq!(report.live(kind), 0);
-        }
-
-        let outcome = resolve_gradient_stops(
-            100.0,
-            &source,
-            options(PaintLimits::unlimited().with_work_limit(WorkKind::GradientCoordinate, 0)),
-        );
-        let Err(PaintError::Budget(refusal)) = outcome.result else {
-            panic!("qualification must refuse");
-        };
-        assert_eq!(refusal.origin, PaintPhase::GradientStopDistribution);
-        let report = outcome.report.unwrap();
-        assert_eq!(report.work(WorkKind::GradientStopVisit), 8);
-        assert_eq!(report.work(WorkKind::GradientCoordinate), 0);
-        assert_eq!(report.work(WorkKind::OutputRecord), 1);
-        for &kind in ResourceKind::ALL {
-            assert_eq!(report.live(kind), 0);
         }
     }
 }
