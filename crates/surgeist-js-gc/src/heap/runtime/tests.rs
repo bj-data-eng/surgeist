@@ -233,3 +233,86 @@ fn adaptive_collection_waits_for_growth_after_a_sweep() {
             .all(|root| root.record_ref().is_live().unwrap())
     );
 }
+
+#[test]
+fn record_origin_heap_is_available_during_active_heap_access() {
+    // The origin lookup is available independently of the payload's tracing API.
+    fn origin<T>(record: &RecordRef<T>) -> Option<RuntimeHeap> {
+        record.owning_heap()
+    }
+
+    let runtime = RuntimeHeap::default();
+    let foreign = RuntimeHeap::default();
+    let record = runtime.allocate(17_u32).unwrap();
+    let reference = record.record_ref();
+    runtime
+        .read(|heap| {
+            assert_eq!(heap.get(reference.handle()), Ok(&17));
+            assert!(matches!(
+                reference.upgrade(),
+                Err(AccessError::HeapBorrowed)
+            ));
+            assert_eq!(reference.is_live(), Err(AccessError::HeapBorrowed));
+            let owner = origin(&reference).expect("the origin heap is alive");
+            assert!(owner.same_heap(&runtime));
+            assert!(!owner.same_heap(&foreign));
+        })
+        .unwrap();
+    assert!(reference.is_live().unwrap());
+}
+
+#[test]
+fn reclaimed_record_keeps_its_origin_identity_after_real_slot_reuse() {
+    let runtime = RuntimeHeap::default();
+    let record = runtime.allocate(17_u32).unwrap();
+    let reference = record.record_ref();
+    let identity = reference.identity();
+    drop(record);
+    assert_eq!(runtime.collect(), Ok(1));
+    let owner = reference
+        .owning_heap()
+        .expect("the heap outlives its record");
+    assert!(owner.same_heap(&runtime));
+    assert!(!reference.is_live().unwrap());
+    assert!(reference.upgrade().unwrap().is_none());
+
+    let replacement = owner.allocate(23_u32).unwrap();
+    let replacement_identity = replacement.handle().erase();
+    assert_eq!(
+        replacement_identity.slot, identity.slot,
+        "the actual reclaimed slot was reused"
+    );
+    assert_ne!(replacement_identity.generation, identity.generation);
+    assert!(reference.owning_heap().unwrap().same_heap(&runtime));
+    assert!(!reference.is_live().unwrap());
+    assert!(reference.upgrade().unwrap().is_none());
+    assert_eq!(
+        owner.read(|heap| heap.get(reference.handle()).copied()),
+        Ok(Err(AccessError::StaleHandle))
+    );
+    assert_eq!(*replacement, 23);
+}
+
+#[test]
+fn recovered_heap_owner_extends_only_heap_lifetime() {
+    let runtime = RuntimeHeap::default();
+    let record = runtime.allocate(17_u32).unwrap();
+    let reference = record.record_ref();
+    let owner = reference.owning_heap().unwrap();
+    drop(runtime);
+    drop(record);
+
+    assert_eq!(
+        owner.collect(),
+        Ok(1),
+        "the recovered heap owner roots no record"
+    );
+    assert!(!reference.is_live().unwrap());
+    assert!(reference.upgrade().unwrap().is_none());
+    assert!(reference.owning_heap().unwrap().same_heap(&owner));
+
+    drop(owner);
+    assert!(reference.owning_heap().is_none());
+    assert!(!reference.is_live().unwrap());
+    assert!(reference.upgrade().unwrap().is_none());
+}
