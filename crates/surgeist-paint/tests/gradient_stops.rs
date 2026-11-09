@@ -50,6 +50,98 @@ fn resolved<C>(length: f64, source: &[GradientStopItem<C>]) -> GradientStops<'_,
         .unwrap()
 }
 
+#[test]
+fn opaque_two_and_hint_keep_identity_across_partial_and_repeated_iteration() {
+    struct Payload(u8);
+    let source = [
+        GradientStopItem::Stop {
+            payload: Payload(7),
+            positions: GradientStopPositions::Two(position(10.0, 0.0), position(30.0, 0.0)),
+        },
+        GradientStopItem::Hint {
+            position: position(50.0, 0.0),
+        },
+        GradientStopItem::Stop {
+            payload: Payload(9),
+            positions: GradientStopPositions::Omitted,
+        },
+    ];
+    let GradientStopItem::Stop { payload: first, .. } = &source[0] else {
+        unreachable!()
+    };
+    let GradientStopItem::Stop { payload: last, .. } = &source[2] else {
+        unreachable!()
+    };
+    let stops = resolved(100.0, &source);
+    assert!(ptr::eq(stops.source(), &source));
+    let mut partial = stops.items();
+    assert_eq!(partial.len(), 4);
+    let Some(UsedGradientItem::Stop {
+        source_index,
+        position_index,
+        payload,
+        position,
+    }) = partial.next()
+    else {
+        panic!("first occurrence must be a stop");
+    };
+    assert_eq!(
+        (source_index, position_index, position, payload.0),
+        (0, 0, 10.0, 7)
+    );
+    assert!(ptr::eq(payload, first));
+    assert_eq!(partial.len(), 3);
+    let mut independent = stops.items();
+    assert_eq!(independent.len(), 4);
+    assert!(matches!(
+        independent.next(),
+        Some(UsedGradientItem::Stop {
+            position_index: 0,
+            ..
+        })
+    ));
+    let Some(UsedGradientItem::Stop {
+        source_index,
+        position_index,
+        payload,
+        position,
+    }) = partial.next()
+    else {
+        panic!("second occurrence must be a stop");
+    };
+    assert_eq!((source_index, position_index, position), (0, 1, 30.0));
+    assert!(ptr::eq(payload, first));
+    assert_eq!(partial.len(), 2);
+    assert!(matches!(
+        partial.next(),
+        Some(UsedGradientItem::Hint {
+            source_index: 1,
+            position: 50.0
+        })
+    ));
+    assert_eq!(partial.len(), 1);
+    let Some(UsedGradientItem::Stop {
+        source_index,
+        position_index,
+        payload,
+        position,
+    }) = partial.next()
+    else {
+        panic!("last occurrence must be a stop");
+    };
+    assert_eq!(
+        (source_index, position_index, position, payload.0),
+        (2, 0, 100.0, 9)
+    );
+    assert!(ptr::eq(payload, last));
+    for _ in 0..2 {
+        assert_eq!(partial.len(), 0);
+        assert!(partial.next().is_none());
+    }
+    assert_eq!(independent.count(), 3);
+    assert_eq!(stops.items().count(), 4);
+}
+
 fn positions<C>(stops: &GradientStops<'_, C>) -> Vec<f64> {
     stops
         .items()
@@ -552,6 +644,57 @@ fn affine_overflow_reports_its_source_and_expanded_ordinal_after_raw_validation(
 }
 
 #[test]
+fn numeric_failure_precedes_prepared_allocation_and_both_buffers_retry_cleanly() {
+    let overflow = [at(f64::MAX, 2.0)];
+    let failed = resolve_gradient_stops(
+        f64::MAX,
+        &overflow,
+        options(PaintLimits::unlimited().with_resource_limit(ResourceKind::RetainedResultBytes, 0)),
+    );
+    assert!(matches!(
+        failed.result,
+        Err(PaintError::GradientStops(
+            GradientStopsError::UnrepresentablePosition {
+                source_index: 0,
+                position_index: 0
+            }
+        ))
+    ));
+    no_custody(&failed.report.unwrap());
+
+    let source = accounting_fixture();
+    let baseline = resolve_gradient_stops(100.0, &source, options(PaintLimits::unlimited()));
+    let expected = observed(&baseline.result.unwrap());
+    let report = baseline.report.unwrap();
+    let scratch = report.peak(ResourceKind::ScratchBytes);
+    let retained = report.peak(ResourceKind::RetainedResultBytes);
+    assert!(scratch > 0);
+    for limits in [
+        PaintLimits::unlimited().with_resource_limit(ResourceKind::ScratchBytes, 0),
+        PaintLimits::unlimited().with_resource_limit(ResourceKind::RetainedResultBytes, 0),
+        // Seven staging records precede preparation; refuse its second emission.
+        PaintLimits::unlimited().with_work_limit(WorkKind::OutputRecord, 8),
+        // All fourteen records are emitted; refuse the final fixed result emission.
+        PaintLimits::unlimited().with_work_limit(WorkKind::OutputRecord, 14),
+    ] {
+        let failed = resolve_gradient_stops(100.0, &source, options(limits));
+        assert!(matches!(failed.result, Err(PaintError::Budget(_))));
+        no_custody(&failed.report.unwrap());
+        let retry = resolve_gradient_stops(
+            100.0,
+            &source,
+            options(
+                PaintLimits::unlimited()
+                    .with_resource_limit(ResourceKind::ScratchBytes, scratch)
+                    .with_resource_limit(ResourceKind::RetainedResultBytes, retained),
+            ),
+        );
+        assert_eq!(observed(&retry.result.unwrap()), expected);
+        assert_eq!(retry.report.unwrap().live(ResourceKind::ScratchBytes), 0);
+    }
+}
+
+#[test]
 fn layout_size_and_real_linear_geometry_supply_the_used_stop_length() {
     let geometry = resolve_linear_gradient(
         Size::<f64>::new(200.0, 100.0),
@@ -621,8 +764,8 @@ fn reports_charge_expanded_records_and_exclude_caller_payload_storage() {
         [0.0, 10.0, 20.0, 80.0, 80.0, 100.0, 120.0]
     );
     let report = outcome.report.unwrap();
-    // Seven retained expanded records and the one fixed returned owner.
-    assert_eq!(report.work(WorkKind::OutputRecord), 8);
+    // Seven numeric staging emissions, seven prepared emissions, one owner.
+    assert_eq!(report.work(WorkKind::OutputRecord), 15);
     for kind in [
         WorkKind::GradientValidation,
         WorkKind::GradientStopVisit,
