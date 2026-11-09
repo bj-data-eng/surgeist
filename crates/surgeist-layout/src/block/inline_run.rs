@@ -513,9 +513,9 @@ where
         node_inner_size,
         set_layout,
     } = context;
-    // The native inventory settles whether this run consumes adjoining
-    // margins before any positioning, float-band query or published output.
-    // Text-backed runs retain their existing placement contract here.
+    // Settle adjoining-margin consumption before positioning, float-band
+    // queries or publication. Text-issued participant bounds, rather than
+    // native source membership, prove an empty structural segment.
     let uncollapsed_cursor_block = cursor_block;
     let mut cursor_block = cursor_block + adjoining_margin;
     let mut margin = InlineRunMargin::Separates;
@@ -542,13 +542,24 @@ where
             InsetReference::Accepted(frame.measured_inset_basis)
         });
     if text_run.as_ref().is_some_and(|run| {
-        run.nodes().is_empty()
-            && run.binding.line_strut.is_none()
-            && run.segment.start().view().participant_offset()
-                == run.segment.end().view().participant_offset()
+        let start = run.segment.start().view().participant_offset();
+        let end = run.segment.end().view().participant_offset();
+        run.binding.line_strut.is_none()
+            && run
+                .binding
+                .prepared
+                .participants()
+                .skip(start)
+                .take(end - start)
+                .all(|participant| {
+                    matches!(participant, surgeist_text::PreparedParticipant::Text(unit)
+                    if unit.view().empty_origin().is_some())
+                })
     }) {
-        // A metadata-only structural section retains its Text receipt
-        // without inventing an anonymous line box or consuming adjoining margins.
+        // The issued section contains only original empty anchors (or no
+        // participants). It selects no forced, atomic or boundary participant,
+        // and no caller allocation supplies a strut. Keep source membership
+        // and the final nonformatted receipt without consuming adjoining margins.
         margin = InlineRunMargin::Adjoins;
         cursor_block = uncollapsed_cursor_block;
     }

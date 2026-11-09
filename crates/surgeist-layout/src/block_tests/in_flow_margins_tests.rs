@@ -5088,3 +5088,164 @@ fn leading_component_text_between_empty_and_body_f32() {
 fn leading_component_text_between_empty_and_body_f64() {
     assert_leading_component_text_lines::<f64>(false);
 }
+
+fn assert_empty_origin_with_participating_text_control<S: LayoutScalar>() {
+    use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
+    let px = S::from_f64;
+    for kind in 0..3 {
+        let style = ahem_style(4.0, 4.0);
+        let participant = match kind {
+            0 => ParagraphPart::Control {
+                node: 3,
+                kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+            },
+            1 => ParagraphPart::Atomic {
+                node: 3,
+                size: surgeist_text::Size::new(0.0, 0.0),
+            },
+            _ => ParagraphPart::Control {
+                node: 3,
+                kind: surgeist_text::ParagraphControlKind::InlineBoundaryStart,
+            },
+        };
+        let paragraph = PreparedParagraph::with_strut_at_boundary(
+            vec![
+                ParagraphPart::text(2, surgeist_text::Source::new(""), style.clone()),
+                participant,
+            ],
+            style,
+            surgeist_text::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::ParagraphStrut::DefaultFont,
+            Vec::new(),
+            surgeist_text::ParagraphTerminalEdge::NonBlockBoundary,
+        );
+        let ordinary = NodeInputOf {
+            display: Display::Block,
+            size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+            min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+            ..Default::default()
+        };
+        let mut tree = PublicBlockTree::default()
+            .with_children(0, [1, 2, 3, 4])
+            .with_children(1, [])
+            .with_children(2, [])
+            .with_children(3, [])
+            .with_children(4, [])
+            .with_style(0, ordinary.clone())
+            .with_style(
+                1,
+                NodeInputOf {
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(10.0)),
+                    ),
+                    margin: Edges {
+                        bottom: LengthAutoOf::px(px(12.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary.clone()
+                },
+            )
+            .with_style(2, NodeInputOf::non_box())
+            .with_layout_input(2, paragraph.text_input(2))
+            .with_style(3, NodeInputOf::non_box())
+            .with_style(
+                4,
+                NodeInputOf {
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(10.0)),
+                    ),
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(7.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary
+                },
+            );
+        let metrics = InlineMetricsOf::from_ascent_descent(
+            crate::InlineBaselineContext::Physical,
+            px(3.0),
+            px(1.0),
+        )
+        .unwrap();
+        tree = match kind {
+            0 => tree.with_layout_input(
+                3,
+                LayoutInputOf::line_break(LineBreakInputOf::new().with_metrics(metrics)),
+            ),
+            1 => tree.with_style(
+                3,
+                NodeInputOf {
+                    display: Display::InlineBlock,
+                    size: Size::new(PreferredSizeOf::px(S::ZERO), PreferredSizeOf::px(S::ZERO)),
+                    min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+                    ..Default::default()
+                },
+            ),
+            _ => tree.with_layout_input(
+                3,
+                LayoutInputOf::inline_boundary(
+                    InlineBoundaryInputOf::contribution(
+                        InlineBoundaryKind::Start,
+                        metrics,
+                        crate::InlineBoundaryEdgeOf::try_new(S::ZERO, px(1.0), S::ZERO).unwrap(),
+                    )
+                    .unwrap(),
+                ),
+            ),
+        };
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![paragraph.binding(0)],
+            WrappingInput::default(),
+            Vec::new(),
+        )
+        .unwrap();
+        let request = crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::new(Some(NonNegativeFiniteOf::new(px(100.0)).unwrap()), None),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(px(100.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+        ));
+        let batch = compute_layout_with_flow(&capture, 0, request).unwrap();
+        // Empty source membership cannot erase a real forced, atomic, or
+        // border-bearing line. The line consumes 12 before and 7 after it.
+        assert_eq!(
+            batch.placed_text()[0].layout().lines().len(),
+            1,
+            "kind {kind}"
+        );
+        assert_eq!(public_final_output(&batch, 1).location.y, S::ZERO);
+        assert_eq!(
+            public_final_output(&batch, 4).location.y,
+            px(33.0),
+            "kind {kind}"
+        );
+        assert_eq!(
+            public_final_output(&batch, 0).size.height,
+            px(43.0),
+            "kind {kind}"
+        );
+    }
+}
+
+#[test]
+fn empty_text_origin_preserves_participating_controls_f32() {
+    assert_empty_origin_with_participating_text_control::<f32>();
+}
+#[test]
+fn empty_text_origin_preserves_participating_controls_f64() {
+    assert_empty_origin_with_participating_text_control::<f64>();
+}
