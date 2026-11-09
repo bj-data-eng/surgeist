@@ -1360,7 +1360,7 @@ mod tests {
         }
         assert!(matches!(
             owner.next_action(),
-            Err(ref error) if error.kind == HtmlConstructionCause::OperationNotReady
+            Err(ref error) if error.cause == HtmlConstructionCause::OperationNotReady
         ));
         let (storage, node, incoming, discarded) = owner.abort().unwrap().into_parts();
         assert!(discarded.is_none());
@@ -1504,7 +1504,7 @@ mod tests {
             action.perform(None).unwrap().accept();
             assert!(matches!(
                 owner.next_action().unwrap().unwrap().perform(None),
-                Err(ref error) if error.kind == HtmlConstructionCause::SharedAllocationAliased
+                Err(ref error) if error.cause == HtmlConstructionCause::SharedAllocationAliased
             ));
             let (storage, node, _, discarded) = owner.abort().unwrap().into_parts();
             assert_eq!(text(&storage, &node), [1, 2, 3]);
@@ -1523,7 +1523,7 @@ mod tests {
             HtmlConstructionTextAppend::begin(storage, foreign, DocumentString::from("x"));
         assert!(matches!(
             owner.next_action().unwrap().unwrap().perform(None),
-            Err(ref error) if error.kind == HtmlConstructionCause::ForeignBuilder
+            Err(ref error) if error.cause == HtmlConstructionCause::ForeignBuilder
         ));
         let (storage, _, incoming, discarded) = owner.abort().unwrap().into_parts();
         assert_eq!(storage.usage(), usage);
@@ -1532,7 +1532,7 @@ mod tests {
         let mut owner = HtmlConstructionTextAppend::begin(storage, node, incoming);
         assert!(matches!(
             owner.next_action().unwrap().unwrap().perform(None),
-            Err(ref error) if error.kind == HtmlConstructionCause::WrongNodeKind
+            Err(ref error) if error.cause == HtmlConstructionCause::WrongNodeKind
         ));
         assert_eq!(owner.abort().unwrap().into_parts().0.usage(), usage);
     }
@@ -1563,7 +1563,7 @@ mod tests {
             if invalid {
                 assert!(matches!(
                     action.perform(Some(8)),
-                    Err(ref error) if error.kind == HtmlConstructionCause::CapacityMismatch
+                    Err(ref error) if error.cause == HtmlConstructionCause::CapacityMismatch
                 ));
                 assert_eq!(owner.capacity().unwrap().capacity(), 8);
             } else {
@@ -1601,7 +1601,7 @@ mod tests {
             } else {
                 assert!(matches!(
                     slots::text_append(&mut owner),
-                    Err(ref error) if error.kind == HtmlConstructionCause::OperationNotReady
+                    Err(ref error) if error.cause == HtmlConstructionCause::OperationNotReady
                 ));
                 owner.take().unwrap().abort().unwrap()
             };

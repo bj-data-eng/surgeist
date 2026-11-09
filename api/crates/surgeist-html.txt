@@ -4149,7 +4149,7 @@ pub surgeist_html::construction::HtmlConstructionCause::UnknownNode
 pub surgeist_html::construction::HtmlConstructionCause::WrongNodeKind
 pub surgeist_html::construction::HtmlConstructionCause::WrongSibling
 impl core::convert::From<surgeist_html::construction::HtmlConstructionCause> for surgeist_html::construction::HtmlConstructionError
-pub fn surgeist_html::construction::HtmlConstructionError::from(kind: surgeist_html::construction::HtmlConstructionCause) -> Self
+pub fn surgeist_html::construction::HtmlConstructionError::from(cause: surgeist_html::construction::HtmlConstructionCause) -> Self
 pub enum surgeist_html::construction::HtmlConstructionResource
 pub surgeist_html::construction::HtmlConstructionResource::Attributes
 pub surgeist_html::construction::HtmlConstructionResource::Depth
@@ -4222,7 +4222,7 @@ impl surgeist_html::construction::HtmlConstructionError
 pub fn surgeist_html::construction::HtmlConstructionError::accounting_fault(&self) -> core::option::Option<surgeist_html::accounting::HtmlAccountingFault>
 pub fn surgeist_html::construction::HtmlConstructionError::cause(&self) -> surgeist_html::construction::HtmlConstructionCause
 impl core::convert::From<surgeist_html::construction::HtmlConstructionCause> for surgeist_html::construction::HtmlConstructionError
-pub fn surgeist_html::construction::HtmlConstructionError::from(kind: surgeist_html::construction::HtmlConstructionCause) -> Self
+pub fn surgeist_html::construction::HtmlConstructionError::from(cause: surgeist_html::construction::HtmlConstructionCause) -> Self
 impl core::error::Error for surgeist_html::construction::HtmlConstructionError
 impl core::fmt::Display for surgeist_html::construction::HtmlConstructionError
 pub fn surgeist_html::construction::HtmlConstructionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result

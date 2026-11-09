@@ -147,7 +147,7 @@ pub enum HtmlConstructionResource {
 /// [`Self::accounting_fault`] and every message state the cause in prose.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlConstructionError {
-    kind: HtmlConstructionCause,
+    cause: HtmlConstructionCause,
 }
 
 /// What a rejected construction step violated.
@@ -236,27 +236,27 @@ pub enum HtmlConstructionCause {
 impl HtmlConstructionCause {
     /// Wraps this cause as the public error where inference cannot convert it.
     pub(crate) const fn error(self) -> HtmlConstructionError {
-        HtmlConstructionError { kind: self }
+        HtmlConstructionError { cause: self }
     }
 }
 
 impl From<HtmlConstructionCause> for HtmlConstructionError {
-    fn from(kind: HtmlConstructionCause) -> Self {
-        Self { kind }
+    fn from(cause: HtmlConstructionCause) -> Self {
+        Self { cause }
     }
 }
 
 impl HtmlConstructionError {
     /// What the step violated, with the payload of a cause that has one.
     pub fn cause(&self) -> HtmlConstructionCause {
-        self.kind
+        self.cause
     }
     /// The accounting fault, when the cause is [`HtmlConstructionCause::Accounting`]: a failure of
     /// the ledger scope that enforces the limits that is not a refused limit. It equals that
     /// cause's payload and is the method every HTML error that can carry an accounting fault
     /// exposes.
     pub fn accounting_fault(&self) -> Option<HtmlAccountingFault> {
-        match self.kind {
+        match self.cause {
             HtmlConstructionCause::Accounting(fault) => Some(fault),
             _ => None,
         }
@@ -265,78 +265,80 @@ impl HtmlConstructionError {
 
 impl fmt::Display for HtmlConstructionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        use HtmlConstructionCause as Kind;
-        match &self.kind {
-            Kind::ForeignBuilder => f.write_str("node handle belongs to a different builder"),
-            Kind::ParentCannotHaveChildren => f.write_str(
+        use HtmlConstructionCause as Cause;
+        match &self.cause {
+            Cause::ForeignBuilder => f.write_str("node handle belongs to a different builder"),
+            Cause::ParentCannotHaveChildren => f.write_str(
                 "text, comment, processing-instruction and doctype nodes cannot have children",
             ),
-            Kind::TemplateContentsRequired => {
+            Cause::TemplateContentsRequired => {
                 f.write_str("template children must be appended to its separate contents")
             }
-            Kind::ShadowHostMustBeElement => f.write_str("a shadow root requires an element host"),
-            Kind::ShadowAlreadyAttached => f.write_str("element already has a shadow root"),
-            Kind::UnknownNode => f.write_str("node does not exist in this builder"),
-            Kind::WrongNodeKind => f.write_str("node kind cannot take part in this command"),
-            Kind::RootMove => f.write_str("documents and fragments cannot be moved or detached"),
-            Kind::AssociationMove => f.write_str(
+            Cause::ShadowHostMustBeElement => f.write_str("a shadow root requires an element host"),
+            Cause::ShadowAlreadyAttached => f.write_str("element already has a shadow root"),
+            Cause::UnknownNode => f.write_str("node does not exist in this builder"),
+            Cause::WrongNodeKind => f.write_str("node kind cannot take part in this command"),
+            Cause::RootMove => f.write_str("documents and fragments cannot be moved or detached"),
+            Cause::AssociationMove => f.write_str(
                 "template contents and shadow fragments cannot be moved as ordinary children",
             ),
-            Kind::WrongSibling => f.write_str("reference node is not a child of the target parent"),
-            Kind::Cycle => f.write_str("move would make a node its own ancestor"),
-            Kind::AssociationAlreadyOwned => {
+            Cause::WrongSibling => {
+                f.write_str("reference node is not a child of the target parent")
+            }
+            Cause::Cycle => f.write_str("move would make a node its own ancestor"),
+            Cause::AssociationAlreadyOwned => {
                 f.write_str("fragment is already associated with another owner")
             }
-            Kind::InvalidTemplateAssociation => {
+            Cause::InvalidTemplateAssociation => {
                 f.write_str("template contents association does not satisfy the template rules")
             }
-            Kind::AttributeNameMismatch => {
+            Cause::AttributeNameMismatch => {
                 f.write_str("attribute candidate name does not match the planned name")
             }
-            Kind::AttributeOrderMismatch => {
+            Cause::AttributeOrderMismatch => {
                 f.write_str("attribute candidates were not presented in order")
             }
-            Kind::InvalidShadowAssociation => {
+            Cause::InvalidShadowAssociation => {
                 f.write_str("shadow association does not satisfy the shadow host rules")
             }
-            Kind::InvalidContentsReference => {
+            Cause::InvalidContentsReference => {
                 f.write_str("replacement template contents are the existing contents")
             }
-            Kind::ParentChildConflict => {
+            Cause::ParentChildConflict => {
                 f.write_str("parent and child records disagree about their relationship")
             }
-            Kind::InvalidOutputRoot => {
+            Cause::InvalidOutputRoot => {
                 f.write_str("published output root is not a detached document or fragment")
             }
-            Kind::Accounting(fault) => write!(
+            Cause::Accounting(fault) => write!(
                 f,
                 "the ledger scope that enforces the limits failed: {fault}"
             ),
-            Kind::OperationNotReady => {
+            Cause::OperationNotReady => {
                 f.write_str("construction operation still has pending actions")
             }
-            Kind::ForeignAllocation => {
+            Cause::ForeignAllocation => {
                 f.write_str("retired storage does not belong to this result")
             }
-            Kind::CapacityMismatch => {
+            Cause::CapacityMismatch => {
                 f.write_str("observed capacity does not match the pending reservation")
             }
-            Kind::IndexUnavailable => {
+            Cause::IndexUnavailable => {
                 f.write_str("the attribute name index lent to the edit could not serve a step")
             }
-            Kind::SharedAllocationAliased => {
+            Cause::SharedAllocationAliased => {
                 f.write_str("result storage is shared and cannot be recovered")
             }
-            Kind::ReleaseUnderflow => f.write_str("released usage exceeds the admitted usage"),
-            Kind::RepresentationExhausted => {
+            Cause::ReleaseUnderflow => f.write_str("released usage exceeds the admitted usage"),
+            Cause::RepresentationExhausted => {
                 f.write_str("storage count cannot be represented on this platform")
             }
-            Kind::AllocationFailed => f.write_str("reserving arena or edge storage failed"),
-            Kind::DuplicateAttribute { first, duplicate } => write!(
+            Cause::AllocationFailed => f.write_str("reserving arena or edge storage failed"),
+            Cause::DuplicateAttribute { first, duplicate } => write!(
                 f,
                 "attribute at index {duplicate} duplicates the namespace and local name of the attribute at index {first}"
             ),
-            Kind::LimitExceeded {
+            Cause::LimitExceeded {
                 resource,
                 limit,
                 attempted,
@@ -2337,7 +2339,7 @@ mod accounting_tests {
     }
 
     fn refused(error: HtmlConstructionError) -> (HtmlConstructionResource, usize, usize) {
-        match error.kind {
+        match error.cause {
             HtmlConstructionCause::LimitExceeded {
                 resource,
                 limit,
@@ -2633,6 +2635,10 @@ mod cause_tests {
                     attempted: 2,
                 },
                 "node limit of 1 cannot admit a total of 2",
+            ),
+            (
+                HtmlConstructionCause::Accounting(HtmlAccountingFault::ForeignScope),
+                "the ledger scope that enforces the limits failed: the supplied scope belongs to another operation",
             ),
         ];
         for (cause, message) in &cases {

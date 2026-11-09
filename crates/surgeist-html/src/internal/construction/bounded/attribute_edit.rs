@@ -3043,7 +3043,7 @@ mod tests {
         ));
         assert!(matches!(
             slots::edit(&mut edit),
-            Err(ref error) if error.kind == HtmlConstructionCause::OperationNotReady
+            Err(ref error) if error.cause == HtmlConstructionCause::OperationNotReady
         ));
         let name = DocumentString::from("x");
         let mut candidate = edit.as_mut().unwrap().candidate(0, &name).unwrap();
@@ -3054,7 +3054,7 @@ mod tests {
         drop(candidate);
         assert!(matches!(
             edit.as_mut().unwrap().candidate(0, &name),
-            Err(ref error) if error.kind == HtmlConstructionCause::OperationNotReady
+            Err(ref error) if error.cause == HtmlConstructionCause::OperationNotReady
         ));
         let (_, retirement) = edit.take().unwrap().abort().into_parts();
         assert_eq!(retire(retirement).0, 0);
@@ -3080,7 +3080,7 @@ mod tests {
         }
         assert!(matches!(
             slots::candidate(&mut candidate),
-            Err(ref error) if error.kind == HtmlConstructionCause::OperationNotReady
+            Err(ref error) if error.cause == HtmlConstructionCause::OperationNotReady
         ));
         drop(candidate);
         let (_, retirement) = edit.abort().into_parts();
@@ -3393,14 +3393,14 @@ mod tests {
             if matches!(observation.next, SlotState::Ready) {
                 assert!(matches!(
                     observation.shared_attributes(),
-                    Err(ref error) if error.kind == HtmlConstructionCause::OperationNotReady
+                    Err(ref error) if error.cause == HtmlConstructionCause::OperationNotReady
                 ));
             }
             observation.accept();
         }
         assert!(matches!(
             pending.as_ref().unwrap().shared_attributes(),
-            Err(ref error) if error.kind == HtmlConstructionCause::OperationNotReady
+            Err(ref error) if error.cause == HtmlConstructionCause::OperationNotReady
         ));
         let ready = slots::attribute_slot(&mut pending).unwrap();
         drop(ready);
@@ -3446,7 +3446,7 @@ mod tests {
         }
         assert!(matches!(
             slots::attribute_slot(&mut pending),
-            Err(ref error) if error.kind == HtmlConstructionCause::OperationNotReady
+            Err(ref error) if error.cause == HtmlConstructionCause::OperationNotReady
         ));
         drop(pending);
         assert_eq!(incoming.len(), 1);
@@ -3556,7 +3556,7 @@ mod tests {
         );
         assert!(matches!(
             edit.next_action().unwrap().unwrap().perform(),
-            Err(ref error) if error.kind == HtmlConstructionCause::ForeignBuilder
+            Err(ref error) if error.cause == HtmlConstructionCause::ForeignBuilder
         ));
         let (storage, retirement) = edit.abort().into_parts();
         assert_eq!(storage.len(), 1);
@@ -3621,7 +3621,7 @@ mod tests {
         );
         assert!(matches!(
             edit.candidate(1, &names[1]),
-            Err(ref error) if error.kind == HtmlConstructionCause::AttributeOrderMismatch
+            Err(ref error) if error.cause == HtmlConstructionCause::AttributeOrderMismatch
         ));
         plan(&mut edit, &names);
         slot(edit.reserve(2).unwrap());
@@ -3669,7 +3669,7 @@ mod tests {
         let mut excess = vec![attribute("z", "excess")];
         assert!(matches!(
             edit.append(&mut excess),
-            Err(ref error) if error.kind == HtmlConstructionCause::OperationNotReady
+            Err(ref error) if error.cause == HtmlConstructionCause::OperationNotReady
         ));
         assert_eq!(excess.len(), 1);
         assert_eq!(edit.attributes().unwrap().len(), 2);
@@ -3783,11 +3783,11 @@ mod tests {
         std::mem::forget(candidate);
         assert!(matches!(
             slots::edit(&mut edit),
-            Err(ref error) if error.kind == HtmlConstructionCause::OperationNotReady
+            Err(ref error) if error.cause == HtmlConstructionCause::OperationNotReady
         ));
         assert!(matches!(
             edit.as_ref().unwrap().selected_count(),
-            Err(ref error) if error.kind == HtmlConstructionCause::OperationNotReady
+            Err(ref error) if error.cause == HtmlConstructionCause::OperationNotReady
         ));
         let (_, retirement) = edit.take().unwrap().abort().into_parts();
         assert_eq!(retire(retirement).0, 1);

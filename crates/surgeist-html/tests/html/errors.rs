@@ -1035,7 +1035,7 @@ fn input_refusals_state_what_was_refused() {
 }
 
 #[test]
-fn construction_refusals_state_their_cause_and_answer_the_matching_predicate() {
+fn construction_refusals_state_their_cause() {
     let mut builder = HtmlDocument::builder(construction_limits(), HtmlDocumentMode::NoQuirks)
         .expect("limits admit the document");
     let root = builder.root();
