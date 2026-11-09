@@ -522,10 +522,67 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ledger_defect_is_an_accounting_invariant_failure() {
-        assert_eq!(
+    fn distinct_ledger_defects_remain_distinct_accounting_failures() {
+        assert_ne!(
             setup_error(LedgerError::Defect(surgeist_ledger::Defect::ScopeEntry)),
-            PaintError::Accounting(AccountingFailure::Invariant)
+            setup_error(LedgerError::Defect(surgeist_ledger::Defect::ReportScope))
+        );
+    }
+
+    fn report_with_validate_scope() -> (Report<WorkKind, ResourceKind>, Scope) {
+        let mut meter = PaintOptions::new(
+            PaintLimits::unlimited(),
+            ProfileMode::Summary { timing: false },
+        )
+        .operation(OperationKind::Stacking)
+        .unwrap();
+        let validate = meter
+            .child(
+                meter.root(),
+                "validate",
+                Limits::unlimited(),
+                surgeist_ledger::Tariffs::identity(),
+            )
+            .unwrap();
+        (meter.finish().unwrap().unwrap(), validate)
+    }
+
+    #[test]
+    fn known_scope_keeps_its_phase_when_its_display_label_changes() {
+        let (mut report, validate) = report_with_validate_scope();
+        report
+            .scopes
+            .iter_mut()
+            .find(|entry| entry.scope == validate)
+            .unwrap()
+            .name = "unrelated display label";
+
+        let report = PaintReport::new(report).unwrap();
+        assert_eq!(
+            report.phases().map(PhaseReport::phase).collect::<Vec<_>>(),
+            [PaintPhase::Operation, PaintPhase::Validate]
+        );
+    }
+
+    #[test]
+    fn foreign_scope_with_recognized_label_is_an_accounting_invariant_failure() {
+        let (mut report, validate) = report_with_validate_scope();
+        let foreign = Operation::<WorkKind, ResourceKind>::new(
+            "foreign operation",
+            Limits::unlimited(),
+            1,
+        )
+        .unwrap();
+        report
+            .scopes
+            .iter_mut()
+            .find(|entry| entry.scope == validate)
+            .unwrap()
+            .scope = foreign.root();
+
+        assert_eq!(
+            PaintReport::new(report),
+            Err(PaintError::Accounting(AccountingFailure::Invariant))
         );
     }
 
