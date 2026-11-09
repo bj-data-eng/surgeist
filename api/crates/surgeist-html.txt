@@ -3721,9 +3721,6 @@ pub surgeist_html::bounded::template::HtmlSlotAssignAction::AssignSlottablesForT
 pub surgeist_html::bounded::template::HtmlSlotAssignAction::BeginPendingManualSet
 pub surgeist_html::bounded::template::HtmlSlotAssignAction::ClearPreviousManualInverse
 pub surgeist_html::bounded::template::HtmlSlotAssignAction::ClearPreviousManualInverse::previous_ordinal: usize
-pub surgeist_html::bounded::template::HtmlSlotAssignAction::CompareIncoming
-pub surgeist_html::bounded::template::HtmlSlotAssignAction::CompareIncoming::ordinal: usize
-pub surgeist_html::bounded::template::HtmlSlotAssignAction::CompareIncoming::previous_ordinal: usize
 pub surgeist_html::bounded::template::HtmlSlotAssignAction::Complete
 pub surgeist_html::bounded::template::HtmlSlotAssignAction::ReadIncomingManualAssignment
 pub surgeist_html::bounded::template::HtmlSlotAssignAction::ReadIncomingManualAssignment::ordinal: usize
@@ -3735,7 +3732,6 @@ pub surgeist_html::bounded::template::HtmlSlotAssignAction::SetIncomingManualAss
 pub enum surgeist_html::bounded::template::HtmlSlotAssignReply
 pub surgeist_html::bounded::template::HtmlSlotAssignReply::Applied
 pub surgeist_html::bounded::template::HtmlSlotAssignReply::ManualAssignmentPresent(bool)
-pub surgeist_html::bounded::template::HtmlSlotAssignReply::SameNode(bool)
 pub enum surgeist_html::bounded::template::HtmlTemplateMarkerFirst
 pub surgeist_html::bounded::template::HtmlTemplateMarkerFirst::Continue
 pub surgeist_html::bounded::template::HtmlTemplateMarkerFirst::Marker
