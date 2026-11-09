@@ -6,7 +6,7 @@ use super::model::*;
 use crate::{
     BoxId, ChildOrder, PaintError, Participation, Position, ResourceKind, WorkKind,
     accounting::{PhaseMeter, allocate, charge, release},
-    algorithm::{State, sort},
+    algorithm::{SortBuffers, State},
 };
 use surgeist_layout::SourceIndex;
 use surgeist_ledger::Scope;
@@ -333,11 +333,9 @@ fn sources(
         )?;
         push(&mut index.sources, boxes + slot, p, phase)?;
     }
-    sort(
+    SortBuffers::new(&mut index.sources, &mut index.merge)?.sort(
         p,
         phase,
-        &mut index.sources,
-        &mut index.merge,
         WorkKind::PaintOrderComparison,
         |a, b| {
             let a = index.source_keys[a];
@@ -487,11 +485,9 @@ fn fragments(
         )?;
         push(&mut index.fragments, slot, p, phase)?;
     }
-    sort(
+    SortBuffers::new(&mut index.fragments, &mut index.merge)?.sort(
         p,
         phase,
-        &mut index.fragments,
-        &mut index.merge,
         WorkKind::PaintOrderComparison,
         |a, b| {
             let a = index.fragment_keys[a];
@@ -595,11 +591,9 @@ fn lines(
         )?;
         push(&mut index.lines, slot, p, phase)?;
     }
-    sort(
+    SortBuffers::new(&mut index.lines, &mut index.merge)?.sort(
         p,
         phase,
-        &mut index.lines,
-        &mut index.merge,
         WorkKind::PaintOrderComparison,
         |a, b| {
             let a = index.line_keys[a];
@@ -759,11 +753,9 @@ fn content(
             )?;
         }
     }
-    sort(
+    SortBuffers::new(&mut index.content_order, &mut index.merge)?.sort(
         p,
         phase,
-        &mut index.content_order,
-        &mut index.merge,
         WorkKind::PaintOrderComparison,
         |a, b| {
             let a = index.content_keys[a];
@@ -1001,11 +993,9 @@ fn primitives(
         push(&mut index.primitive_keys, key, p, phase)?;
         push(&mut index.primitives, slot, p, phase)?;
     }
-    sort(
+    SortBuffers::new(&mut index.primitives, &mut index.merge)?.sort(
         p,
         phase,
-        &mut index.primitives,
-        &mut index.merge,
         WorkKind::PaintOrderComparison,
         |a, b| index.primitive_keys[a].cmp(&index.primitive_keys[b]),
     )?;

@@ -481,21 +481,17 @@ impl Sequencer<'_, '_, '_, '_> {
         self.state.merge.resize(n, 0);
         let scopes = &self.state.scopes;
         let nodes = &self.core.nodes;
-        algorithm::sort(
+        algorithm::SortBuffers::new(&mut self.state.members, &mut self.state.merge)?.sort(
             self.p,
             self.phase,
-            &mut self.state.members,
-            &mut self.state.merge,
             WorkKind::PaintOrderComparison,
             |a, b| {
                 (scopes[a].owner.get(), nodes[a].rank).cmp(&(scopes[b].owner.get(), nodes[b].rank))
             },
         )?;
-        algorithm::sort(
+        algorithm::SortBuffers::new(&mut self.state.children, &mut self.state.merge)?.sort(
             self.p,
             self.phase,
-            &mut self.state.children,
-            &mut self.state.merge,
             WorkKind::PaintOrderComparison,
             |a, b| {
                 (scopes[a].parent.map(BoxId::get), nodes[a].rank)
@@ -973,11 +969,9 @@ impl Sequencer<'_, '_, '_, '_> {
         self.work(WorkKind::OrderMove, n)?;
         self.state.flow_merge.resize(n, 0);
         let flow = &self.state.flow;
-        algorithm::sort(
+        algorithm::SortBuffers::new(&mut self.state.flow_order, &mut self.state.flow_merge)?.sort(
             self.p,
             self.phase,
-            &mut self.state.flow_order,
-            &mut self.state.flow_merge,
             WorkKind::PaintOrderComparison,
             |a, b| flow[a].key.cmp(&flow[b].key),
         )?;

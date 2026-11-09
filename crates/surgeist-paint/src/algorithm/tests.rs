@@ -76,6 +76,233 @@ fn assert_failure(boxes: &[BoxFacts], root: usize, expected: PaintError) {
 }
 
 #[test]
+fn stable_sort_preserves_equal_key_id_order_across_odd_runs_and_backing() {
+    let keys = [2, 1, 1, 0, 2, 1, 0];
+    let mut values = Vec::with_capacity(11);
+    values.extend([4, 1, 6, 0, 3, 5, 2]);
+    let mut scratch = Vec::with_capacity(13);
+    scratch.extend([99; 10]);
+    let backing = (
+        values.as_ptr(),
+        values.len(),
+        values.capacity(),
+        scratch.as_ptr(),
+        scratch.len(),
+        scratch.capacity(),
+    );
+    let mut meter = options().operation(OperationKind::Stacking).unwrap();
+    let scope = setup_scopes(&mut meter).unwrap()[2];
+    meter
+        .with_phase(scope, |p| {
+            SortBuffers::new(&mut values, &mut scratch)?.sort(
+                p,
+                scope,
+                WorkKind::SiblingComparison,
+                |a, b| keys[a].cmp(&keys[b]),
+            )
+        })
+        .unwrap()
+        .unwrap();
+    // Key groups 0, 1, 2 retain their distinct IDs' original relative order.
+    assert_eq!(values, [6, 3, 1, 5, 2, 4, 0]);
+    assert_eq!(&scratch[7..], [99; 3]);
+    assert_eq!(
+        backing,
+        (
+            values.as_ptr(),
+            values.len(),
+            values.capacity(),
+            scratch.as_ptr(),
+            scratch.len(),
+            scratch.capacity(),
+        )
+    );
+    let report = meter.finish().unwrap().unwrap();
+    // Three widths move seven entries to scratch and back; the independently
+    // traced comparisons per width are 3, 5, 5.
+    assert_eq!(report.work(WorkKind::OrderMove), 42);
+    assert_eq!(report.work(WorkKind::SiblingComparison), 13);
+    for &kind in ResourceKind::ALL {
+        assert_eq!(report.peak(kind), 0);
+    }
+}
+
+#[test]
+fn stable_sort_empty_and_singleton_leave_all_storage_and_zero_work_unchanged() {
+    for mut values in [vec![], vec![8]] {
+        let original = values.clone();
+        let mut scratch = [71, 72];
+        let mut meter = options()
+            .with_limits(
+                PaintLimits::unlimited()
+                    .with_work_limit(WorkKind::SiblingComparison, 0)
+                    .with_work_limit(WorkKind::OrderMove, 0),
+            )
+            .operation(OperationKind::Stacking)
+            .unwrap();
+        let scope = setup_scopes(&mut meter).unwrap()[2];
+        meter
+            .with_phase(scope, |p| {
+                SortBuffers::new(&mut values, &mut scratch)?.sort(
+                    p,
+                    scope,
+                    WorkKind::SiblingComparison,
+                    |_, _| panic!("empty/singleton sorting must not compare"),
+                )
+            })
+            .unwrap()
+            .unwrap();
+        assert_eq!(values, original);
+        assert_eq!(scratch, [71, 72]);
+        let report = meter.finish().unwrap().unwrap();
+        for &kind in WorkKind::ALL {
+            assert_eq!(report.work(kind), 0);
+        }
+    }
+}
+
+#[test]
+fn stable_sort_refuses_before_comparison_merge_write_and_copy_back_with_exact_prefixes() {
+    for (kind, limit, expected_values, expected_scratch, comparisons, moves) in [
+        (WorkKind::SiblingComparison, 0, [9, 3], [77, 88, 99], 0, 0),
+        (WorkKind::OrderMove, 0, [9, 3], [77, 88, 99], 1, 0),
+        (WorkKind::OrderMove, 2, [9, 3], [3, 9, 99], 1, 2),
+        (WorkKind::OrderMove, 3, [3, 3], [3, 9, 99], 1, 3),
+    ] {
+        let mut values = [9, 3];
+        let mut scratch = [77, 88, 99];
+        let calls = std::cell::Cell::new(0);
+        let mut meter = options()
+            .with_limits(PaintLimits::unlimited().with_work_limit(kind, limit))
+            .operation(OperationKind::Stacking)
+            .unwrap();
+        let scope = setup_scopes(&mut meter).unwrap()[2];
+        let error = meter
+            .with_phase(scope, |p| {
+                SortBuffers::new(&mut values, &mut scratch)?.sort(
+                    p,
+                    scope,
+                    WorkKind::SiblingComparison,
+                    |a, b| {
+                        calls.set(calls.get() + 1);
+                        a.cmp(&b)
+                    },
+                )
+            })
+            .unwrap()
+            .unwrap_err();
+        let PaintError::Budget(refusal) = error else {
+            panic!("expected work refusal");
+        };
+        assert_eq!(refusal.origin, PaintPhase::SiblingOrder);
+        assert_eq!(refusal.limiting_phase, PaintPhase::Operation);
+        assert_eq!(refusal.current, limit);
+        assert_eq!(refusal.change, PaintChange::Work { kind, amount: 1 });
+        assert_eq!(values, expected_values);
+        assert_eq!(scratch, expected_scratch);
+        assert_eq!(calls.get(), comparisons);
+        let report = meter.finish().unwrap().unwrap();
+        for &kind in WorkKind::ALL {
+            assert_eq!(
+                report.work(kind),
+                match kind {
+                    WorkKind::SiblingComparison => comparisons,
+                    WorkKind::OrderMove => moves,
+                    _ => 0,
+                }
+            );
+        }
+        assert_eq!(report.refusals().collect::<Vec<_>>(), [refusal]);
+    }
+}
+
+#[test]
+fn sort_buffers_short_initialized_backing_refuses_without_work_or_mutation() {
+    for (mut values, initialized) in [(vec![8], 0), (vec![9, 3], 1)] {
+        let original = values.clone();
+        // Spare allocation capacity is not initialized sorting backing.
+        let mut scratch = Vec::with_capacity(5);
+        scratch.resize(initialized, 77);
+        let backing = (
+            values.as_ptr(),
+            values.capacity(),
+            scratch.as_ptr(),
+            scratch.capacity(),
+        );
+        let mut meter = options()
+            .with_limits(
+                PaintLimits::unlimited()
+                    .with_work_limit(WorkKind::SiblingComparison, 0)
+                    .with_work_limit(WorkKind::OrderMove, 0),
+            )
+            .operation(OperationKind::Stacking)
+            .unwrap();
+        let scope = setup_scopes(&mut meter).unwrap()[2];
+        let error = meter
+            .with_phase(scope, |p| {
+                SortBuffers::new(&mut values, &mut scratch)?.sort(
+                    p,
+                    scope,
+                    WorkKind::SiblingComparison,
+                    |_, _| panic!("short backing must refuse before sorting"),
+                )
+            })
+            .unwrap()
+            .unwrap_err();
+        assert_eq!(
+            error,
+            PaintError::Accounting(crate::AccountingFailure::Invariant)
+        );
+        assert_eq!(values, original);
+        assert_eq!(scratch, vec![77; initialized]);
+        assert_eq!(
+            backing,
+            (
+                values.as_ptr(),
+                values.capacity(),
+                scratch.as_ptr(),
+                scratch.capacity()
+            )
+        );
+        let report = meter.finish().unwrap().unwrap();
+        for &kind in WorkKind::ALL {
+            assert_eq!(report.work(kind), 0);
+        }
+        for &kind in ResourceKind::ALL {
+            assert_eq!(report.peak(kind), 0);
+        }
+        assert!(report.refusals().next().is_none());
+    }
+}
+
+#[test]
+fn sort_buffers_exact_initialized_backing_accepts_empty_and_multi_entry_values() {
+    for (mut values, mut scratch, expected, comparisons, moves) in [
+        (vec![], vec![], vec![], 0, 0),
+        (vec![9, 3], vec![77, 88], vec![3, 9], 1, 4),
+    ] {
+        let mut meter = options().operation(OperationKind::Stacking).unwrap();
+        let scope = setup_scopes(&mut meter).unwrap()[2];
+        meter
+            .with_phase(scope, |p| {
+                SortBuffers::new(&mut values, &mut scratch)?.sort(
+                    p,
+                    scope,
+                    WorkKind::SiblingComparison,
+                    |a, b| a.cmp(&b),
+                )
+            })
+            .unwrap()
+            .unwrap();
+        assert_eq!(values, expected);
+        assert_eq!(scratch, expected);
+        let report = meter.finish().unwrap().unwrap();
+        assert_eq!(report.work(WorkKind::SiblingComparison), comparisons);
+        assert_eq!(report.work(WorkKind::OrderMove), moves);
+    }
+}
+
+#[test]
 fn refused_traversal_consume_keeps_pending_root_until_cleanup_and_retry() {
     let boxes = [root()];
     // Topology admits node/merge initialization, the outer visit and parent

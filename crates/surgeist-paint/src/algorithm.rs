@@ -366,53 +366,80 @@ fn topology(
     Ok(())
 }
 
-/// Stable bottom-up merge sort with fallible admission before every comparator
-/// and every index move. No comparator substitutes Equal after a refusal.
-pub(crate) fn sort(
-    p: &mut PhaseMeter<'_, '_>,
-    scope: Scope,
-    values: &mut [usize],
-    scratch: &mut [usize],
-    comparisons: WorkKind,
-    compare: impl Fn(usize, usize) -> Ordering,
-) -> Result<(), PaintError> {
-    let n = values.len();
-    let mut width = 1;
-    while width < n {
-        let mut begin = 0;
-        while begin < n {
-            let middle = begin.saturating_add(width).min(n);
-            let end = middle.saturating_add(width).min(n);
-            let (mut left, mut right) = (begin, middle);
-            for target in &mut scratch[begin..end] {
-                let take_left = if left == middle {
-                    false
-                } else if right == end {
-                    true
-                } else {
-                    charge(p, scope, comparisons, 1)?;
-                    compare(values[left], values[right]) != Ordering::Greater
-                };
-                charge(p, scope, WorkKind::OrderMove, 1)?;
-                *target = if take_left {
-                    let value = values[left];
-                    left += 1;
-                    value
-                } else {
-                    let value = values[right];
-                    right += 1;
-                    value
-                };
-            }
-            begin = end;
-        }
-        for (target, &value) in values.iter_mut().zip(&scratch[..n]) {
-            charge(p, scope, WorkKind::OrderMove, 1)?;
-            *target = value;
-        }
-        width = width.saturating_mul(2);
+pub(crate) use sort_buffers::SortBuffers;
+
+// Keep the fields behind a child-module boundary so callers in this module
+// cannot construct unqualified pairs or extract mutable slices.
+mod sort_buffers {
+    use super::{Ordering, PaintError, PhaseMeter, Scope, WorkKind, charge};
+
+    /// Exclusive, equal-length sorting borrows. This proves arity only; callers
+    /// retain value-ID/key-table associations and all storage custody.
+    pub(crate) struct SortBuffers<'a> {
+        values: &'a mut [usize],
+        scratch: &'a mut [usize],
     }
-    Ok(())
+
+    impl<'a> SortBuffers<'a> {
+        pub(crate) fn new(
+            values: &'a mut [usize],
+            scratch: &'a mut [usize],
+        ) -> Result<Self, PaintError> {
+            let scratch = scratch
+                .get_mut(..values.len())
+                .ok_or(PaintError::Accounting(crate::AccountingFailure::Invariant))?;
+            Ok(Self { values, scratch })
+        }
+
+        /// Stable bottom-up merge sort, admitting comparisons before source
+        /// reads and each move before scalar copies or destination mutation.
+        pub(crate) fn sort(
+            self,
+            p: &mut PhaseMeter<'_, '_>,
+            scope: Scope,
+            comparisons: WorkKind,
+            compare: impl Fn(usize, usize) -> Ordering,
+        ) -> Result<(), PaintError> {
+            let Self { values, scratch } = self;
+            let n = values.len();
+            let mut width = 1;
+            while width < n {
+                let mut begin = 0;
+                while begin < n {
+                    let middle = begin.saturating_add(width).min(n);
+                    let end = middle.saturating_add(width).min(n);
+                    let (mut left, mut right) = (begin, middle);
+                    for target in &mut scratch[begin..end] {
+                        let take_left = if left == middle {
+                            false
+                        } else if right == end {
+                            true
+                        } else {
+                            charge(p, scope, comparisons, 1)?;
+                            compare(values[left], values[right]) != Ordering::Greater
+                        };
+                        charge(p, scope, WorkKind::OrderMove, 1)?;
+                        *target = if take_left {
+                            let value = values[left];
+                            left += 1;
+                            value
+                        } else {
+                            let value = values[right];
+                            right += 1;
+                            value
+                        };
+                    }
+                    begin = end;
+                }
+                for (target, value) in values.iter_mut().zip(scratch.iter()) {
+                    charge(p, scope, WorkKind::OrderMove, 1)?;
+                    *target = *value;
+                }
+                width = width.saturating_mul(2);
+            }
+            Ok(())
+        }
+    }
 }
 
 fn order_siblings(
@@ -424,11 +451,9 @@ fn order_siblings(
     for (i, node) in s.nodes.iter().enumerate() {
         charge(p, scope, WorkKind::TopologyVisit, 1)?;
         let children = &mut s.edges[node.start..node.end];
-        sort(
+        SortBuffers::new(children, &mut s.merge)?.sort(
             p,
             scope,
-            children,
-            &mut s.merge,
             WorkKind::SiblingComparison,
             |a, b| boxes[a].source_index.cmp(&boxes[b].source_index),
         )?;
@@ -442,11 +467,9 @@ fn order_siblings(
             }
         }
         if boxes[i].child_order != ChildOrder::Source {
-            sort(
+            SortBuffers::new(children, &mut s.merge)?.sort(
                 p,
                 scope,
-                children,
-                &mut s.merge,
                 WorkKind::SiblingComparison,
                 |a, b| {
                     (boxes[a].effective_order(), boxes[a].source_index)
@@ -521,11 +544,9 @@ fn order_contexts(
         charge(p, scope, WorkKind::OutputRecord, 1)?;
         s.children.push(i);
     }
-    sort(
+    SortBuffers::new(&mut s.children, &mut s.merge)?.sort(
         p,
         scope,
-        &mut s.children,
-        &mut s.merge,
         WorkKind::ContextComparison,
         |a, b| {
             let a = s.contexts[a];
