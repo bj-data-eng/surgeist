@@ -29,6 +29,7 @@ mod checkpoint;
 mod dimension;
 mod in_place;
 mod phase_observation;
+mod scope_ledger;
 mod shared;
 #[cfg(test)]
 mod tests;
@@ -36,6 +37,7 @@ pub use charge::{Charge, ScopeCharge, SharedScopeCharge};
 pub use checkpoint::{Checkpoint, IntervalReport, IntervalScopeReport, IntervalUsage};
 pub use dimension::{Dimension, NoDimension, NoTable, TableValue};
 pub use phase_observation::PhaseObservation;
+pub use scope_ledger::ScopeLedger;
 pub use shared::SharedOperation;
 
 mod profile;

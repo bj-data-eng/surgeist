@@ -91,6 +91,11 @@ cap refuses its next acquisition of that dimension, even of zero, and still acce
 releases. A work cap set to the work admitted so far plus an allowance limits one
 call's work.
 
+A component that creates scopes of its own below a scope its caller supplied, checks a
+batch before it applies it and reads the usage of its scopes takes a `ScopeLedger`. An
+owned `Operation`, a `SharedOperation` and a mutable reference to either implement it, so
+the component runs the same on each.
+
 Dimensions of different sets are different types. A resource dimension cannot be
 passed where a work dimension is expected, and a dimension of another set cannot
 name a change, a limit or a usage read of an operation. An operation's `Limits`,
