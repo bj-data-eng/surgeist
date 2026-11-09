@@ -324,8 +324,9 @@ pub(crate) fn preflight_selected_glyphs<'a>(
             let y = glyph.y();
             let x = geometry::scalar(x, reason, account)?;
             let y = geometry::scalar(y, reason, account)?;
+            let slot = drawables.append_slot()?;
             account.work(RenderWork::RasterResourceCopies, 1)?;
-            drawables.push_reserved(DrawableGlyph {
+            slot.write(DrawableGlyph {
                 glyph,
                 source_index: glyph_index,
                 position: [x, y],
