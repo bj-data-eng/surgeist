@@ -232,6 +232,7 @@ fn lane<S: LayoutScalar>() {
                 &capture.associations,
                 offset,
                 child_request,
+                None,
             )
             .unwrap_or_else(|_| panic!("actual native float event")),
         );
@@ -278,7 +279,7 @@ fn lane<S: LayoutScalar>() {
     };
     encounters.checkpoint_group().map_err(failure).unwrap();
     let first_basis = encounters
-        .replay::<core::convert::Infallible>(0, &first, replay_at(0.0))
+        .replay::<core::convert::Infallible>(0, &first, replay_at(0.0), None)
         .unwrap();
     assert_eq!(
         first_basis.iter().map(|row| row.event).collect::<Vec<_>>(),
@@ -304,7 +305,7 @@ fn lane<S: LayoutScalar>() {
     // survive restoration to the real group entry at block10.
     let visits = encounters.replay_event_visits;
     let losing = encounters
-        .replay::<core::convert::Infallible>(0, &second, replay_at(30.0))
+        .replay::<core::convert::Infallible>(0, &second, replay_at(30.0), None)
         .unwrap();
     assert_eq!(losing.iter().map(|row| row.event).collect::<Vec<_>>(), [1]);
     assert_eq!(
@@ -318,7 +319,7 @@ fn lane<S: LayoutScalar>() {
     assert!(encounters.tentative[1].is_none());
     assert_eq!(width(&encounters, 30.0), S::from_f64(100.0));
     encounters
-        .replay::<core::convert::Infallible>(0, &second, replay_at(30.0))
+        .replay::<core::convert::Infallible>(0, &second, replay_at(30.0), None)
         .unwrap();
     encounters.accept().map_err(failure).unwrap();
     assert_eq!(
@@ -345,7 +346,7 @@ fn lane<S: LayoutScalar>() {
     assert_eq!(width(&encounters, 0.0), S::from_f64(90.0));
     assert_eq!(width(&encounters, 30.0), S::from_f64(100.0));
     let winner = encounters
-        .replay::<core::convert::Infallible>(0, &second, replay_at(10.0))
+        .replay::<core::convert::Infallible>(0, &second, replay_at(10.0), None)
         .unwrap();
     encounters.accept().map_err(failure).unwrap();
     assert_eq!(
@@ -367,14 +368,14 @@ fn lane<S: LayoutScalar>() {
     assert_eq!(width(&encounters, 0.0), S::from_f64(100.0));
     assert_eq!(
         encounters
-            .replay::<core::convert::Infallible>(0, &first, replay_at(0.0))
+            .replay::<core::convert::Infallible>(0, &first, replay_at(0.0), None)
             .unwrap(),
         first_basis
     );
     encounters.accept().map_err(failure).unwrap();
     assert_eq!(
         encounters
-            .replay::<core::convert::Infallible>(0, &second, replay_at(10.0))
+            .replay::<core::convert::Infallible>(0, &second, replay_at(10.0), None)
             .unwrap(),
         winner
     );

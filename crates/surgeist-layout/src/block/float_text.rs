@@ -8,7 +8,56 @@ use super::floats::{
 };
 use crate::LayoutScalar;
 use crate::text_layout::fit::{EncounterBasis, EncounterReplay, FitError};
+use crate::text_layout::scope_alignment::EntryFundingRef;
 use surgeist_text::{FinalizedLine, LineEnd, PreparedParticipant, SourcePosition, TextSeam};
+
+struct CellOriginIncidence {
+    represented: bool,
+    inside: bool,
+}
+
+/// A Cell can span several originals without offering an interior break.
+/// Its captured pieces preserve the original endpoint used by Text's prefix.
+fn cell_origin_incidence(
+    cell: &surgeist_text::PreparedCell,
+    origin: &surgeist_text::PreparedOrigin,
+    local: usize,
+    funding: Option<EntryFundingRef<'_>>,
+) -> Result<Option<CellOriginIncidence>, FitError> {
+    let view = origin.view();
+    let Some(captured) = view.capture_position() else {
+        return Ok(None);
+    };
+    let mut member = false;
+    let mut represented = false;
+    let mut before = false;
+    let mut after = false;
+    for piece in cell.view().source_cell().source_pieces() {
+        if let Some(funding) = funding {
+            funding.visit(1)?;
+        }
+        match piece.origin_position().partial_cmp(&captured) {
+            Some(std::cmp::Ordering::Less) => before = true,
+            Some(std::cmp::Ordering::Greater) => after = true,
+            Some(std::cmp::Ordering::Equal) => {
+                if let Some(funding) = funding {
+                    funding.visit(6)?;
+                }
+                let range = piece.local();
+                let declared = view.local_range();
+                member |= (range.start <= declared.end) & (declared.start <= range.end);
+                represented |= (range.start <= local) & (local <= range.end);
+                before |= range.start < local;
+                after |= local < range.end;
+            }
+            None => {}
+        }
+    }
+    Ok(member.then_some(CellOriginIncidence {
+        represented,
+        inside: before && after,
+    }))
+}
 
 pub(super) struct FloatEvent<Node, S: LayoutScalar> {
     pub pending: PendingFloat<Node, S>,
@@ -28,6 +77,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> FloatEvent<Node, S> {
         associations: &crate::text_layout::capture::ScopeAssociations<Node>,
         offset: usize,
         request: crate::ComputeInputOf<S>,
+        funding: Option<EntryFundingRef<'_>>,
     ) -> Result<Self, FitError> {
         let binding = run.binding;
         if packet.node != pending.node || packet.input != request {
@@ -36,7 +86,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> FloatEvent<Node, S> {
         let participants: Vec<_> = binding.prepared.participants().collect();
         let origin_seam = |origin: &surgeist_text::PreparedOrigin,
                            after: bool|
-         -> Option<(TextSeam, usize, bool)> {
+         -> Result<Option<(TextSeam, usize, bool)>, FitError> {
             let view = origin.view();
             let local = if after {
                 view.local_range().end
@@ -48,68 +98,93 @@ impl<Node: Copy + Eq, S: LayoutScalar> FloatEvent<Node, S> {
             } else {
                 view.aggregate_range().start
             };
-            let positions = participants
-                .iter()
-                .enumerate()
-                .filter_map(|(index, participant)| {
-                    let PreparedParticipant::Text(unit) = participant else {
-                        return None;
-                    };
-                    let unit_view = unit.view();
-                    (unit_view.empty_origin().as_ref() == Some(origin)
-                        || unit_view.origins().any(|row| row.origin() == *origin))
-                    .then_some((index, unit_view.source_range()))
-                })
-                .collect::<Vec<_>>();
-            let &(index, range) = if after {
-                positions.last()?
-            } else {
-                positions.first()?
+            let mut endpoint = None;
+            for (index, participant) in participants.iter().enumerate() {
+                let inside = match participant {
+                    PreparedParticipant::Text(unit) => {
+                        let unit_view = unit.view();
+                        if unit_view.empty_origin().as_ref() != Some(origin)
+                            && !unit_view.origins().any(|row| row.origin() == *origin)
+                        {
+                            continue;
+                        }
+                        let range = unit_view.source_range();
+                        range.start < source && source < range.end
+                    }
+                    PreparedParticipant::Cell(cell) => {
+                        let Some(incidence) = cell_origin_incidence(cell, origin, local, funding)?
+                        else {
+                            continue;
+                        };
+                        incidence.inside
+                    }
+                    _ => continue,
+                };
+                endpoint = Some((index, inside));
+                if !after {
+                    break;
+                }
+            }
+            let Some((index, inside)) = endpoint else {
+                return Ok(None);
             };
-            let inside = range.start < source && source < range.end;
-            Some((
+            Ok(Some((
                 TextSeam::Origin {
                     origin: origin.clone(),
-                    local: SourcePosition::try_new(view.source().text(), local).ok()?,
+                    local: SourcePosition::try_new(view.source().text(), local)
+                        .map_err(|_| FitError::InvalidGeometry)?,
                 },
                 index + usize::from(after && !inside),
                 inside,
-            ))
+            )))
         };
-        let at_node = |node: Node, after: bool| -> Option<(TextSeam, usize, bool)> {
-            if let Some(row) = binding.origins.iter().find(|row| row.node == node) {
-                return origin_seam(&row.origin, after);
+        let at_node =
+            |node: Node, after: bool| -> Result<Option<(TextSeam, usize, bool)>, FitError> {
+                if let Some(row) = binding.origins.iter().find(|row| row.node == node) {
+                    return origin_seam(&row.origin, after);
+                }
+                let Some(participant) = binding
+                    .controls
+                    .iter()
+                    .find(|row| row.node == node)
+                    .map(|row| PreparedParticipant::Control(row.occurrence.clone()))
+                    .or_else(|| {
+                        binding
+                            .atomics
+                            .iter()
+                            .find(|row| row.node == node)
+                            .map(|row| PreparedParticipant::Atomic(row.occurrence.clone()))
+                    })
+                else {
+                    return Ok(None);
+                };
+                let Some(index) = participants.iter().position(|p| p == &participant) else {
+                    return Ok(None);
+                };
+                Ok(Some((
+                    if after {
+                        TextSeam::AfterParticipant(participant)
+                    } else {
+                        TextSeam::BeforeParticipant(participant)
+                    },
+                    index + usize::from(after),
+                    false,
+                )))
+            };
+        let mut previous = None;
+        for &node in run.nodes()[..offset].iter().rev() {
+            previous = at_node(node, true)?;
+            if previous.is_some() {
+                break;
             }
-            let participant = binding
-                .controls
-                .iter()
-                .find(|row| row.node == node)
-                .map(|row| PreparedParticipant::Control(row.occurrence.clone()))
-                .or_else(|| {
-                    binding
-                        .atomics
-                        .iter()
-                        .find(|row| row.node == node)
-                        .map(|row| PreparedParticipant::Atomic(row.occurrence.clone()))
-                })?;
-            let index = participants.iter().position(|p| p == &participant)?;
-            Some((
-                if after {
-                    TextSeam::AfterParticipant(participant)
-                } else {
-                    TextSeam::BeforeParticipant(participant)
-                },
-                index + usize::from(after),
-                false,
-            ))
-        };
-        let previous = run.nodes()[..offset]
-            .iter()
-            .rev()
-            .find_map(|&node| at_node(node, true));
-        let following = run.nodes()[offset + 1..]
-            .iter()
-            .find_map(|&node| at_node(node, false));
+        }
+        let mut following = None;
+        for &node in &run.nodes()[offset + 1..] {
+            following = at_node(node, false)?;
+            if following.is_some() {
+                break;
+            }
+        }
         let lower = previous
             .as_ref()
             .map_or(run.segment.start().view().participant_offset(), |row| row.1);
@@ -326,6 +401,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
         container: Node,
         line: &FinalizedLine,
         replay: EncounterReplay,
+        funding: Option<EntryFundingRef<'_>>,
     ) -> crate::LayoutResultOf<Node, Vec<EncounterBasis>, S, M> {
         self.reset_candidate()
             .map_err(|error| super::inline_run::text_run_error(container, error))?;
@@ -374,17 +450,18 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 earlier_float_top = Some(earlier_float_top.map_or(top, |earlier| earlier.max(top)));
                 continue;
             }
-            let represented =
-                |request: &surgeist_text::LineSelectionRequest, seam: &TextSeam| match seam {
+            let represented = |request: &surgeist_text::LineSelectionRequest,
+                               seam: &TextSeam|
+             -> Result<bool, FitError> {
+                Ok(match seam {
                     TextSeam::BeforeParticipant(participant)
                     | TextSeam::AfterParticipant(participant) => {
                         request.participants.contains(participant)
                     }
                     TextSeam::Origin { origin, local } => {
-                        request
-                            .participants
-                            .iter()
-                            .any(|participant| match participant {
+                        let mut found = false;
+                        for participant in &request.participants {
+                            found = match participant {
                                 PreparedParticipant::Text(unit) => {
                                     unit.view().empty_origin().as_ref() == Some(origin)
                                         || unit.view().origins().any(|row| {
@@ -393,19 +470,31 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                                                 && local.get() <= row.local_range().end
                                         })
                                 }
+                                PreparedParticipant::Cell(cell) => {
+                                    cell_origin_incidence(cell, origin, local.get(), funding)?
+                                        .is_some_and(|incidence| incidence.represented)
+                                }
                                 _ => false,
-                            })
+                            };
+                            if found {
+                                break;
+                            }
+                        }
+                        found
                     }
-                };
+                })
+            };
             // At an equal participant boundary the real originating seam,
             // rather than the numeric tie, determines prefix ownership.
             let original_request = line.selected_line();
-            let prefix = replay.preceding.as_ref().filter(|_| {
-                event.position < portion_start
+            let use_preceding = replay.preceding.is_some()
+                && (event.position < portion_start
                     || event.position == portion_start
                         && !event.inside
-                        && !represented(original_request.request(), &event.seam)
-            });
+                        && !represented(original_request.request(), &event.seam).map_err(
+                            |error| super::inline_run::text_run_error(container, error),
+                        )?);
+            let prefix = replay.preceding.as_ref().filter(|_| use_preceding);
             let boxes = prefix
                 .map_or(replay.boxes.as_ref(), |frame| frame.boxes.as_ref())
                 .cloned();
@@ -456,13 +545,19 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             if !eligible {
                 continue;
             }
-            let observation = if represented(request, &event.seam) {
-                AcceptedFloatPrefix::Seam(event.seam.clone())
-            } else if let Some(seam) = event
-                .following
-                .as_ref()
-                .filter(|seam| represented(request, seam))
+            let observation = if represented(request, &event.seam)
+                .map_err(|error| super::inline_run::text_run_error(container, error))?
             {
+                AcceptedFloatPrefix::Seam(event.seam.clone())
+            } else if let Some(seam) = match &event.following {
+                Some(seam)
+                    if represented(request, seam)
+                        .map_err(|error| super::inline_run::text_run_error(container, error))? =>
+                {
+                    Some(seam)
+                }
+                _ => None,
+            } {
                 AcceptedFloatPrefix::Seam(seam.clone())
             } else if start == end
                 && event.position == end

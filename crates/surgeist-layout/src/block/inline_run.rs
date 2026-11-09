@@ -823,6 +823,9 @@ where
                 float_exclusion: child_style.float_exclusion,
                 child_compute_geometry: output.scroll_geometry,
             };
+            let state = tree
+                .text_computation()
+                .expect("captured float keeps source registry");
             float_events.push(
                 super::float_text::FloatEvent::new(
                     pending,
@@ -830,12 +833,10 @@ where
                     text_run
                         .as_ref()
                         .expect("actual float is in captured native run"),
-                    &tree
-                        .text_computation()
-                        .expect("captured float keeps source registry")
-                        .associations,
+                    &state.associations,
                     offset,
                     child_request,
+                    state.entry_case_funding().map(|funding| funding.as_ref()),
                 )
                 .map_err(|e| text_run_error(container, e))?,
             );
@@ -1028,7 +1029,7 @@ where
         };
         let context = crate::text_layout::run::Context {
             scope_alignments,
-            entry_funding,
+            entry_funding: entry_funding.clone(),
             orientation: text_orientation
                 .expect("the actual Text binding has its resolved orientation"),
             inline_baseline_context: constants.inline_baseline_context,
@@ -1251,8 +1252,12 @@ where
                 },
                 replay: |line: &surgeist_text::FinalizedLine, replay| match encounters
                     .borrow_mut()
-                    .replay(container, line, replay)
-                {
+                    .replay(
+                        container,
+                        line,
+                        replay,
+                        entry_funding.as_ref().map(|funding| funding.as_ref()),
+                    ) {
                     Ok(basis) => Ok(basis),
                     Err(error) => {
                         *provider_error.borrow_mut() = Some(error);
