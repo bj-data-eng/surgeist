@@ -294,7 +294,14 @@ type Callback = Box<dyn for<'call> FnOnce(ContextAccess<'call>)>;
 
 /// Token to cancel a [`TimeoutJob`] and [`IntervalJob`].
 #[derive(Clone)]
-pub struct CancellationToken(Rc<Cell<Vec<Callback>>>);
+pub struct CancellationToken(Rc<Cell<CancellationState>>);
+
+#[derive(Default)]
+enum CancellationState {
+    Live(Vec<Callback>),
+    #[default]
+    Revoked,
+}
 
 impl Debug for CancellationToken {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -307,44 +314,66 @@ impl Debug for CancellationToken {
 impl CancellationToken {
     /// Creates a new cancellation token.
     pub(crate) fn new() -> Self {
-        Self(Rc::new(Cell::new(vec![Box::new(|_| {})])))
+        Self(Rc::new(Cell::new(CancellationState::Live(Vec::new()))))
     }
 
     /// Sets a callback to run when the cancellation token gets used.
     ///
-    /// On debug builds, this will panic if the cancellation token was already
-    /// used.
-    pub fn push_callback(&self, f: impl for<'call> FnOnce(ContextAccess<'call>) + 'static) {
-        let mut vec = self.0.take();
-        debug_assert!(
-            !vec.is_empty(),
-            "setting a callback on an already used cancellation token"
-        );
-        vec.push(Box::new(f));
-        self.0.set(vec);
+    /// # Errors
+    /// Returns an uncatchable revoked-registration error after cancellation or
+    /// revocation, or a resource error if callback storage cannot be reserved.
+    /// Rejection never invokes the callback or revives the token. Existing live
+    /// callbacks retain their custody if reservation fails.
+    pub fn push_callback(
+        &self,
+        f: impl for<'call> FnOnce(ContextAccess<'call>) + 'static,
+    ) -> JsResult<()> {
+        let CancellationState::Live(mut callbacks) = self.0.take() else {
+            return Err(crate::error::JobError::CancellationRevoked.into());
+        };
+        let reserve = callbacks
+            .len()
+            .checked_add(1)
+            .and_then(|count| count.checked_mul(std::mem::size_of::<Callback>()))
+            .filter(|bytes| *bytes <= isize::MAX as usize)
+            .ok_or(crate::error::EngineResourceError::SizeOverflow)
+            .and_then(|_| {
+                callbacks
+                    .try_reserve(1)
+                    .map_err(|_| crate::error::EngineResourceError::Allocation)
+            });
+        if let Err(error) = reserve {
+            self.0.set(CancellationState::Live(callbacks));
+            return Err(error.into());
+        }
+        callbacks.push(Box::new(f));
+        self.0.set(CancellationState::Live(callbacks));
+        Ok(())
     }
 
     /// Cancels the [`TimeoutJob`] or [`IntervalJob`] associated with this cancellation token.
     pub fn cancel(&self, context: ContextAccess<'_>) {
         let mut context = context;
-        for job in self.0.take() {
-            job(context.reborrow());
+        if let CancellationState::Live(callbacks) = self.0.take() {
+            for job in callbacks {
+                job(context.reborrow());
+            }
         }
     }
 
     /// Revokes this cancellation token, making it unusable to cancel its associated job.
     pub(crate) fn revoke(&self) {
-        self.0.take();
+        drop(self.0.take());
     }
 
     /// Returns `true` if this cancellation token has been revoked, either because
     /// `cancel` was called or because its associated job has completed.
     #[must_use]
     pub fn revoked(&self) -> bool {
-        let callbacks = self.0.take();
-        let cancelled = callbacks.is_empty();
-        self.0.set(callbacks);
-        cancelled
+        let state = self.0.take();
+        let revoked = matches!(&state, CancellationState::Revoked);
+        self.0.set(state);
+        revoked
     }
 }
 

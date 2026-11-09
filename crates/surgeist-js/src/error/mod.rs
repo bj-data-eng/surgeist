@@ -655,6 +655,23 @@ impl From<EngineResourceError> for JsError {
     }
 }
 
+/// An invalid dynamic operation on owned job state.
+#[derive(Debug, Clone, Copy, Error, Eq, PartialEq)]
+pub enum JobError {
+    /// A task already returned Ready or unwound from its poll command.
+    #[error("the context task has already completed")]
+    TaskCompleted,
+    /// A cancellation token no longer accepts callbacks.
+    #[error("the cancellation token has been revoked")]
+    CancellationRevoked,
+}
+
+impl From<JobError> for JsError {
+    fn from(error: JobError) -> Self {
+        EngineError::Job(error).into()
+    }
+}
+
 /// Engine error that cannot be caught from within ECMAScript code.
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[allow(variant_size_differences)]
@@ -682,6 +699,9 @@ pub enum EngineError {
     /// Owned work was retired without a guest completion.
     #[error("JobRetired: {0:?}")]
     JobRetired(crate::job::JobRetirement),
+    /// A dynamic job operation is invalid for its current state.
+    #[error("JobError: {0}")]
+    Job(#[from] JobError),
 
     /// No further logical invocation identity can be represented.
     #[error("InvocationIdExhausted: invocation identity space exhausted")]
@@ -723,6 +743,7 @@ impl EngineError {
                 ErasedEngineError::JobContextRequired { required }
             }
             EngineError::JobRetired(reason) => ErasedEngineError::JobRetired(reason),
+            EngineError::Job(error) => ErasedEngineError::Job(error),
             EngineError::InvocationIdExhausted => ErasedEngineError::InvocationIdExhausted,
             #[cfg(feature = "fuzz")]
             EngineError::NoInstructionsRemain => ErasedEngineError::NoInstructionsRemain,
@@ -755,6 +776,7 @@ enum StoredErrorRepr {
     ContextAccessBusy,
     JobContextRequired(#[heap_trace(skip)] crate::job::ContextId),
     JobRetired(#[heap_trace(skip)] crate::job::JobRetirement),
+    Job(#[heap_trace(skip)] JobError),
     InvocationIdExhausted,
     ScopeAnalysis(#[heap_trace(skip)] surgeist_js_ast::scope::ScopeStateError),
     Opaque(StoredValue),
@@ -808,6 +830,7 @@ impl StoredJsError {
                 })
             }
             StoredErrorRepr::JobRetired(reason) => Repr::Engine(EngineError::JobRetired(*reason)),
+            StoredErrorRepr::Job(error) => Repr::Engine(EngineError::Job(*error)),
             StoredErrorRepr::InvocationIdExhausted => {
                 Repr::Engine(EngineError::InvocationIdExhausted)
             }
@@ -948,6 +971,7 @@ impl JsError {
                 StoredErrorRepr::JobContextRequired(required)
             }
             Repr::Engine(EngineError::JobRetired(reason)) => StoredErrorRepr::JobRetired(reason),
+            Repr::Engine(EngineError::Job(error)) => StoredErrorRepr::Job(error),
             Repr::Engine(EngineError::InvocationIdExhausted) => {
                 StoredErrorRepr::InvocationIdExhausted
             }
@@ -2235,6 +2259,9 @@ pub enum ErasedEngineError {
     /// Owned work was retired without a guest completion.
     #[error("JobRetired: {0:?}")]
     JobRetired(crate::job::JobRetirement),
+    /// A dynamic job operation is invalid for its current state.
+    #[error("JobError: {0}")]
+    Job(#[from] JobError),
 
     /// No further logical invocation identity can be represented.
     #[error("InvocationIdExhausted: invocation identity space exhausted")]

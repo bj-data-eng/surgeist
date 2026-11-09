@@ -302,6 +302,7 @@ impl<'a> Diagnostic<'a> {
             StoredErrorRepr::JobRetired(reason) => {
                 DiagnosticKind::Engine(DiagnosticEngine::JobRetired(*reason))
             }
+            StoredErrorRepr::Job(error) => DiagnosticKind::Engine(DiagnosticEngine::Job(*error)),
             StoredErrorRepr::InvocationIdExhausted => {
                 DiagnosticKind::Engine(DiagnosticEngine::InvocationIdExhausted)
             }
@@ -486,6 +487,7 @@ impl<'a> Diagnostic<'a> {
                     }
                 }
                 DiagnosticEngine::JobRetired(reason) => ErasedEngineError::JobRetired(reason),
+                DiagnosticEngine::Job(error) => ErasedEngineError::Job(error),
                 DiagnosticEngine::InvocationIdExhausted => ErasedEngineError::InvocationIdExhausted,
                 DiagnosticEngine::ScopeAnalysis(value) => ErasedEngineError::ScopeAnalysis(value),
                 DiagnosticEngine::RuntimeLimit(value) => ErasedEngineError::RuntimeLimit(value),
@@ -702,6 +704,8 @@ pub enum DiagnosticEngine<'a> {
     },
     /// Owned work was retired.
     JobRetired(crate::job::JobRetirement),
+    /// A dynamic job operation is invalid for its current state.
+    Job(JobError),
     /// Invocation identities are exhausted.
     InvocationIdExhausted,
     /// Scope publication refusal.
@@ -1010,6 +1014,7 @@ impl fmt::Display for DiagnosticEngine<'_> {
                 write!(f, "JobContextRequired: task requires Context {required}")
             }
             Self::JobRetired(reason) => write!(f, "JobRetired: {reason:?}"),
+            Self::Job(error) => write!(f, "JobError: {error}"),
             Self::InvocationIdExhausted => {
                 f.write_str("InvocationIdExhausted: invocation identity space exhausted")
             }

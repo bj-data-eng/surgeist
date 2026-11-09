@@ -116,7 +116,7 @@ pub fn set_timeout(
     token.push_callback(move |mut context| {
         let state = IntervalInnerState::from_context(&mut context);
         state.active_map.remove(&id);
-    });
+    })?;
 
     state.active_map.insert(id, token);
 
@@ -165,7 +165,7 @@ pub fn set_interval(
     token.push_callback(move |mut context| {
         let state = IntervalInnerState::from_context(&mut context);
         state.active_map.remove(&id);
-    });
+    })?;
 
     state.active_map.insert(id, token);
 

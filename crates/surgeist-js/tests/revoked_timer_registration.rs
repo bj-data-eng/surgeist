@@ -29,7 +29,9 @@ fn registration_after_cancellation_cannot_revive_a_token_or_execute_the_rejected
     let token = timer.cancellation_token().clone();
     let accepted_calls = Rc::new(Cell::new(0));
     let accepted = accepted_calls.clone();
-    token.push_callback(move |_| accepted.set(accepted.get() + 1));
+    token
+        .push_callback(move |_| accepted.set(accepted.get() + 1))
+        .unwrap();
     token.cancel(owner.access());
     assert!(token.revoked());
     assert_eq!(accepted_calls.get(), 1);
@@ -103,10 +105,12 @@ fn ordinary_cancellation_runs_registered_callbacks_once_and_keeps_the_token_revo
     let seen = calls.clone();
     let drops = Rc::new(Cell::new(0));
     let probe = DropProbe(drops.clone());
-    token.push_callback(move |_| {
-        let _keep = &probe;
-        seen.set(seen.get() + 1);
-    });
+    token
+        .push_callback(move |_| {
+            let _keep = &probe;
+            seen.set(seen.get() + 1);
+        })
+        .unwrap();
     assert!(!token.revoked());
     assert_eq!(drops.get(), 0);
     token.cancel(owner.access());
