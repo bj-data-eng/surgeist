@@ -11,9 +11,7 @@
 //! Referrer-policy vocabulary is qualified separately in its report metadata.
 
 use crate::internal::microsyntax::tokens::ascii_case_insensitive_unit;
-use crate::internal::values::semantic_input::{
-    attributes_iter, capture_attribute, capture_name, find_attribute,
-};
+use crate::internal::values::semantic_input::{capture_attribute, capture_name, find_attribute};
 use crate::{
     internal::construction::HtmlShadowRootMode, internal::construction::HtmlSlotAssignment,
     internal::microsyntax::tokens::HtmlTokenError, internal::values::Attribute,

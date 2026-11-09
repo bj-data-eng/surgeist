@@ -834,8 +834,8 @@ impl HtmlSrcsetReport {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[non_exhaustive]
 pub enum HtmlSrcsetInterpretationError {
-    /// The raw value or a surrounding raw attribute exceeded the per-value admission cap; the
-    /// payload is that refusal.
+    /// The raw value or a surrounding raw attribute that a context rule reads exceeded the
+    /// per-value admission cap; the payload is that refusal.
     RawAdmission(HtmlValueAdmissionError),
     /// An internal size cannot be represented on this platform.
     RepresentationExhausted,
@@ -863,6 +863,9 @@ impl From<HtmlValueAdmissionError> for HtmlSrcsetInterpretationError {
         Self::RawAdmission(error)
     }
 }
+
+/// The attributes of a source's following image that the sizes rule reads.
+const FOLLOWING_IMAGE_ATTRIBUTES: [&str; 2] = ["loading", "sizes"];
 
 #[derive(Clone, Copy)]
 enum Role {
@@ -903,6 +906,15 @@ impl Role {
             source,
             context,
             vocabulary_source: None,
+        }
+    }
+    /// The attributes of the context, besides the target value, that the context rules read:
+    /// the sizes list, `src` for an image, and `rel` and `as` for a link.
+    fn context_attributes(self) -> &'static [&'static str] {
+        match self {
+            Self::Img => &["sizes", "src"],
+            Self::Source => &["sizes"],
+            Self::Link => &["imagesizes", "rel", "as"],
         }
     }
     fn matches(self, context: &HtmlSrcsetContext) -> bool {
@@ -946,7 +958,8 @@ impl HtmlValueInterpreter {
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
         self.srcset(Role::Link, element, raw, None)
     }
-    /// Context target content and surrounding facts come from one raw attribute set.
+    /// Context target content and surrounding facts come from one raw attribute set. The target
+    /// value, `sizes` and `src` obey the per-value cap; other attributes are not read or admitted.
     pub fn img_srcset_with_context(
         &self,
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
@@ -955,7 +968,8 @@ impl HtmlValueInterpreter {
         self.context_srcset(Role::Img, element, context)
     }
     /// Interprets a `source` element's `srcset` together with its attributes, parent and following
-    /// image. Surrounding raw values obey the same per-value cap.
+    /// image. The target value, `sizes` and the following image's `loading` and `sizes` obey the
+    /// same per-value cap; other attributes are not read or admitted.
     pub fn source_srcset_with_context(
         &self,
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
@@ -963,8 +977,9 @@ impl HtmlValueInterpreter {
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
         self.context_srcset(Role::Source, element, context)
     }
-    /// Interprets a `link` element's `imagesrcset` together with its attributes. Surrounding raw
-    /// values obey the same per-value cap.
+    /// Interprets a `link` element's `imagesrcset` together with its attributes. The target value,
+    /// `imagesizes`, `rel` and `as` obey the same per-value cap; other attributes are not read or
+    /// admitted.
     pub fn link_imagesrcset_with_context(
         &self,
         element: &(impl crate::internal::values::semantic_input::HtmlNameInput + ?Sized),
@@ -997,18 +1012,23 @@ impl HtmlValueInterpreter {
         context: Option<&HtmlSrcsetContext>,
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
-        // Surrounding raw values use the same per-value standalone admission.
+        // The surrounding raw values that the rules read use the same per-value standalone
+        // admission. Other attributes of the context are never read, so they are not admitted.
         if let Some(context) = context {
-            for attribute in context.attributes().iter() {
-                self.admit_attribute_raw(Some(attribute.value()))?;
+            for name in role.context_attributes() {
+                self.admit_attribute_raw(
+                    attribute(context.attributes(), name).map(HtmlAttributeInput::value),
+                )?;
             }
             if let HtmlSrcsetContext::Source {
                 following_image: HtmlSrcsetFollowingImageObservation::Element { attributes, .. },
                 ..
             } = context
             {
-                for attribute in attributes_iter(attributes) {
-                    self.admit_attribute_raw(Some(attribute.value()))?;
+                for name in FOLLOWING_IMAGE_ATTRIBUTES {
+                    self.admit_attribute_raw(
+                        attribute(attributes, name).map(HtmlAttributeInput::value),
+                    )?;
                 }
             }
         }
