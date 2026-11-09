@@ -142,7 +142,18 @@ impl<S: LayoutScalar> FailureHost<S> {
             .children(ROOT, [FLOAT, TEXT, CLEAR])
             .children(TEXT, [START, END])
             .style(ROOT, super::block(0.0, 0.0, None))
-            .style(TEXT, super::block(0.0, 0.0, None))
+            .style(
+                TEXT,
+                NodeInputOf {
+                    // The initial point band lies strictly inside the float,
+                    // rather than at its nonoverlapping top boundary.
+                    padding: Edges {
+                        top: LengthOf::px(S::ONE),
+                        ..Edges::all(LengthOf::ZERO)
+                    },
+                    ..super::block(0.0, 0.0, None)
+                },
+            )
             .style(
                 FLOAT,
                 NodeInputOf {
@@ -443,8 +454,8 @@ fn failures_preserve_publication<S: LayoutScalar>() {
         assert!(queries.len() > before);
         assert!(
             queries[before..].iter().any(|(node, query)| *node == FLOAT
-                && query.band_minimum() == S::ZERO
-                && query.band_maximum() == S::ZERO),
+                && query.band_minimum() == S::ONE
+                && query.band_maximum() == S::ONE),
             "the real height-zero point query must reach Shape before metrics"
         );
         drop(queries);
