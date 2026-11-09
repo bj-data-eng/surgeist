@@ -64,18 +64,19 @@ fn finite_native(value: f32, account: &Account) -> Result<f32> {
 fn rank(source: [f64; 6], native: Transform, account: &Account) -> Result<bool> {
     // Source normalization is the existing scene's finite-affine rank policy.
     // Native 24-bit products widen exactly and cannot overflow/underflow f64.
+    let [a, b, c, d, _, _] = source;
     let mut scale = 0.0_f64;
-    for v in &source[..4] {
+    for v in [a, b, c, d] {
         let v = action(account, || v.abs())?;
         scale = action(account, || scale.max(v))?;
     }
     if action(account, || scale == 0.0)? {
         return Ok(false);
     }
-    let a = action(account, || source[0] / scale)?;
-    let b = action(account, || source[1] / scale)?;
-    let c = action(account, || source[2] / scale)?;
-    let d = action(account, || source[3] / scale)?;
+    let a = action(account, || a / scale)?;
+    let b = action(account, || b / scale)?;
+    let c = action(account, || c / scale)?;
+    let d = action(account, || d / scale)?;
     let ad = action(account, || a * d)?;
     let bc = action(account, || b * c)?;
     let determinant = action(account, || ad - bc)?;
@@ -98,16 +99,16 @@ fn rank(source: [f64; 6], native: Transform, account: &Account) -> Result<bool> 
 }
 
 pub(crate) fn qualify_transform(source: Affine, account: &Account) -> Result<QualifiedTransform> {
-    let mut values = [0.0; 6];
     let mut native = [0.0; 6];
     account.work(RenderWork::CoordinateVisits, 6)?;
-    for (index, value) in source.as_coeffs().into_iter().enumerate() {
-        values[index] = value;
-        native[index] = scalar(value, Reason::UnrepresentableTransform, account)?;
+    let values = source.as_coeffs();
+    for (output, value) in native.iter_mut().zip(values) {
+        *output = scalar(value, Reason::UnrepresentableTransform, account)?;
     }
+    let [a, b, c, d, e, f] = native;
     let native = Transform {
-        matrix: [native[0], native[1], native[2], native[3]],
-        translation: [native[4], native[5]],
+        matrix: [a, b, c, d],
+        translation: [e, f],
     };
     Ok(QualifiedTransform {
         source: values,
@@ -122,25 +123,24 @@ pub(crate) fn qualify_native_transform(
     native: Transform,
     account: &Account,
 ) -> Result<QualifiedTransform> {
-    let mut values = [0.0; 6];
     account.work(RenderWork::CoordinateVisits, 6)?;
-    for (index, value) in source.as_coeffs().into_iter().enumerate() {
-        values[index] = value;
+    let values = source.as_coeffs();
+    for value in values {
         if !action(account, || value.is_finite())? {
             return Err(Reason::UnrepresentableTransform.into());
         }
     }
     account.work(RenderWork::CoordinateVisits, 6)?;
-    for (index, value) in native
+    for (value, source_value) in native
         .matrix
         .into_iter()
         .chain(native.translation)
-        .enumerate()
+        .zip(values)
     {
         if !action(account, || value.is_finite())? {
             return Err(Reason::UnrepresentableTransform.into());
         }
-        if action(account, || values[index] != 0.0)? && action(account, || value == 0.0)? {
+        if action(account, || source_value != 0.0)? && action(account, || value == 0.0)? {
             return Err(Reason::UnrepresentableTransform.into());
         }
         finite_native(value, account)?;
@@ -393,16 +393,20 @@ fn placement_axis(
     // ax+cy+e - (AX+CY+E)
     //   = (a-A)x + A(x-X) + (c-C)y + C(y-Y) + (e-E).
     // Bound each term rather than evaluating two huge cancelling positions.
-    let a_gap = difference_up(source[0], native[0], account)?;
-    let c_gap = difference_up(source[1], native[1], account)?;
-    let e_gap = difference_up(source[2], native[2], account)?;
-    let a_magnitude = action(account, || native[0].abs())?;
-    let c_magnitude = action(account, || native[1].abs())?;
+    let [a, c, e] = source;
+    let [native_a, native_c, native_e] = native;
+    let [x_magnitude, y_magnitude] = point_magnitudes;
+    let [x_gap, y_gap] = point_gaps;
+    let a_gap = difference_up(a, native_a, account)?;
+    let c_gap = difference_up(c, native_c, account)?;
+    let e_gap = difference_up(e, native_e, account)?;
+    let a_magnitude = action(account, || native_a.abs())?;
+    let c_magnitude = action(account, || native_c.abs())?;
     let terms = [
-        product_up(a_gap, point_magnitudes[0], account)?,
-        product_up(a_magnitude, point_gaps[0], account)?,
-        product_up(c_gap, point_magnitudes[1], account)?,
-        product_up(c_magnitude, point_gaps[1], account)?,
+        product_up(a_gap, x_magnitude, account)?,
+        product_up(a_magnitude, x_gap, account)?,
+        product_up(c_gap, y_magnitude, account)?,
+        product_up(c_magnitude, y_gap, account)?,
         e_gap,
     ];
     let mut bound = radius;
@@ -418,52 +422,55 @@ fn placement(
     radius: [f64; 2],
     account: &Account,
 ) -> Result<()> {
-    let nx = action(account, || f64::from(native[0]))?;
-    let ny = action(account, || f64::from(native[1]))?;
+    let [sx, sy] = source;
+    let [nx, ny] = native;
+    let nx = action(account, || f64::from(nx))?;
+    let ny = action(account, || f64::from(ny))?;
     let point_gaps = [
-        difference_up(source[0], nx, account)?,
-        difference_up(source[1], ny, account)?,
+        difference_up(sx, nx, account)?,
+        difference_up(sy, ny, account)?,
     ];
-    let point_magnitudes = [
-        action(account, || source[0].abs())?,
-        action(account, || source[1].abs())?,
-    ];
+    let point_magnitudes = [action(account, || sx.abs())?, action(account, || sy.abs())?];
+    let QualifiedTransform {
+        source: [a, b, c, d, e, f],
+        native:
+            Transform {
+                matrix: [na, nb, nc, nd],
+                translation: [ne, nf],
+            },
+        ..
+    } = transform;
+    let [rx, ry] = radius;
+    let axes = [([a, c, e], [na, nc, ne], rx), ([b, d, f], [nb, nd, nf], ry)];
     let mut bounds = [0.0; 2];
-    for axis in 0..2 {
+    for ((source_factors, native_factors, radius), bound) in axes.into_iter().zip(&mut bounds) {
         // Three original and three actual native factor captures per axis.
         account.work(RenderWork::CoordinateVisits, 6)?;
-        let source_factors = [
-            transform.source[axis],
-            transform.source[axis + 2],
-            transform.source[axis + 4],
-        ];
+        let source_factors = source_factors.map(|value| *value);
+        let [na, nc, ne] = native_factors.map(|value| *value);
         let native_factors = [
-            transform.native.matrix[axis],
-            transform.native.matrix[axis + 2],
-            transform.native.translation[axis],
+            action(account, || f64::from(na))?,
+            action(account, || f64::from(nc))?,
+            action(account, || f64::from(ne))?,
         ];
-        let native_factors = [
-            action(account, || f64::from(native_factors[0]))?,
-            action(account, || f64::from(native_factors[1]))?,
-            action(account, || f64::from(native_factors[2]))?,
-        ];
-        bounds[axis] = placement_axis(
+        *bound = placement_axis(
             source_factors,
             native_factors,
             point_magnitudes,
             point_gaps,
-            radius[axis],
+            radius,
             account,
         )?;
-        if !action(account, || bounds[axis] <= 0.25)? {
+        if !action(account, || *bound <= 0.25)? {
             return Err(Reason::InsufficientNativeCapacity.into());
         }
     }
     // Render's receiving allowance is Euclidean 1/4 device pixel, separately
     // additive to the retained native curve/coverage approximation. Components
     // are already <=1/4, so these squares cannot overflow.
-    let x_squared = product_up(bounds[0], bounds[0], account)?;
-    let y_squared = product_up(bounds[1], bounds[1], account)?;
+    let [bx, by] = bounds;
+    let x_squared = product_up(bx, bx, account)?;
+    let y_squared = product_up(by, by, account)?;
     let squared = sum_up(x_squared, y_squared, account)?;
     if !action(account, || squared <= 1.0 / 16.0)? {
         return Err(Reason::InsufficientNativeCapacity.into());
@@ -479,12 +486,14 @@ fn point(
 ) -> Result<MappedPoint> {
     let x = action(account, || source.x)?;
     let y = action(account, || source.y)?;
-    let native = [scalar(x, reason, account)?, scalar(y, reason, account)?];
+    let nx = scalar(x, reason, account)?;
+    let ny = scalar(y, reason, account)?;
+    let native = [nx, ny];
     account.work(RenderWork::CoordinateVisits, 6)?;
     let [a, b, c, d] = transform.native.matrix;
     let [e, f] = transform.native.translation;
-    let (mx, ex) = mapped_axis(a, native[0], c, native[1], e, account)?;
-    let (my, ey) = mapped_axis(b, native[0], d, native[1], f, account)?;
+    let (mx, ex) = mapped_axis(a, nx, c, ny, e, account)?;
+    let (my, ey) = mapped_axis(b, nx, d, ny, f, account)?;
     placement(transform, [x, y], native, [ex, ey], account)?;
     Ok(MappedPoint {
         source,
@@ -514,21 +523,25 @@ fn preserve_pair(
     account: &Account,
 ) -> Result<()> {
     let different = distinct(a.source, b.source, account)?;
-    if different
-        && action(account, || a.native[0] == b.native[0])?
-        && action(account, || a.native[1] == b.native[1])?
-    {
+    let [ax, ay] = a.native;
+    let [bx, by] = b.native;
+    if different && action(account, || ax == bx)? && action(account, || ay == by)? {
         return Err(reason.into());
     }
     if different && transform.nonsingular {
         let mut separated = false;
-        for axis in 0..2 {
-            let a64 = action(account, || f64::from(a.mapped[axis]))?;
-            let b64 = action(account, || f64::from(b.mapped[axis]))?;
+        for ((a_mapped, b_mapped), (a_error, b_error)) in a
+            .mapped
+            .into_iter()
+            .zip(b.mapped)
+            .zip(a.error.into_iter().zip(b.error))
+        {
+            let a64 = action(account, || f64::from(a_mapped))?;
+            let b64 = action(account, || f64::from(b_mapped))?;
             let delta = action(account, || a64 - b64)?;
             let distance = action(account, || delta.abs())?;
             let distance = action(account, || distance.next_down())?;
-            let error = action(account, || a.error[axis] + b.error[axis])?;
+            let error = action(account, || a_error + b_error)?;
             let error = action(account, || error.next_up())?;
             if action(account, || distance > error)? {
                 separated = true;
@@ -548,29 +561,32 @@ pub(crate) fn qualify_bounds(
 ) -> Result<()> {
     account.work(RenderWork::CoordinateVisits, 4)?;
     let [x0, y0, x1, y1] = [bounds.x0, bounds.y0, bounds.x1, bounds.y1];
-    let points = [
+    let p0 = point(
+        transform,
         Point::new(x0, y0),
+        Reason::InsufficientNativeCapacity,
+        account,
+    )?;
+    let p1 = point(
+        transform,
         Point::new(x1, y0),
+        Reason::InsufficientNativeCapacity,
+        account,
+    )?;
+    let p2 = point(
+        transform,
         Point::new(x1, y1),
+        Reason::InsufficientNativeCapacity,
+        account,
+    )?;
+    let p3 = point(
+        transform,
         Point::new(x0, y1),
-    ];
-    let mut mapped = [None; 4];
-    for (index, p) in points.into_iter().enumerate() {
-        mapped[index] = Some(point(
-            transform,
-            p,
-            Reason::InsufficientNativeCapacity,
-            account,
-        )?);
-    }
-    for index in 0..4 {
-        preserve_pair(
-            mapped[index].unwrap(),
-            mapped[(index + 1) % 4].unwrap(),
-            transform,
-            Reason::InsufficientNativeCapacity,
-            account,
-        )?;
+        Reason::InsufficientNativeCapacity,
+        account,
+    )?;
+    for (a, b) in [(p0, p1), (p1, p2), (p2, p3), (p3, p0)] {
+        preserve_pair(a, b, transform, Reason::InsufficientNativeCapacity, account)?;
     }
     Ok(())
 }
@@ -623,6 +639,71 @@ pub(crate) fn qualify_stroke(
     Ok(())
 }
 
+// Line/quad/cubic arity is carried by the variant, never by an unchecked
+// count attached to a padded array. The same shape survives fallible mapping.
+#[derive(Clone, Copy)]
+enum Controls<T> {
+    Line([T; 1]),
+    Quad([T; 2]),
+    Cubic([T; 3]),
+}
+impl<T> Controls<T> {
+    fn as_slice(&self) -> &[T] {
+        match self {
+            Self::Line(points) => points,
+            Self::Quad(points) => points,
+            Self::Cubic(points) => points,
+        }
+    }
+    fn end(&self) -> &T {
+        match self {
+            Self::Line([end]) | Self::Quad([_, end]) | Self::Cubic([_, _, end]) => end,
+        }
+    }
+    fn try_map<U>(self, mut map: impl FnMut(T) -> Result<U>) -> Result<Controls<U>> {
+        Ok(match self {
+            Self::Line([a]) => Controls::Line([map(a)?]),
+            Self::Quad([a, b]) => Controls::Quad([map(a)?, map(b)?]),
+            Self::Cubic([a, b, c]) => Controls::Cubic([map(a)?, map(b)?, map(c)?]),
+        })
+    }
+}
+impl Controls<MappedPoint> {
+    fn preserve_pairs(
+        &self,
+        start: MappedPoint,
+        transform: &QualifiedTransform,
+        reason: Reason,
+        account: &Account,
+    ) -> Result<()> {
+        let preserve = |a, b| preserve_pair(a, b, transform, reason, account);
+        match *self {
+            Self::Line([a]) => preserve(start, a)?,
+            Self::Quad([a, b]) => {
+                preserve(start, a)?;
+                preserve(start, b)?;
+                preserve(a, b)?;
+            }
+            Self::Cubic([a, b, c]) => {
+                preserve(start, a)?;
+                preserve(start, b)?;
+                preserve(a, b)?;
+                preserve(start, c)?;
+                preserve(a, c)?;
+                preserve(b, c)?;
+            }
+        }
+        Ok(())
+    }
+    fn native_element(self) -> NativeElement {
+        match self {
+            Self::Line([a]) => NativeElement::Line(a.native),
+            Self::Quad([a, b]) => NativeElement::Quad(a.native, b.native),
+            Self::Cubic([a, b, c]) => NativeElement::Cubic(a.native, b.native, c.native),
+        }
+    }
+}
+
 /// Source interpretation used by both the empty guard and checked native feed.
 /// Initial line/quad/cubic is a move to its endpoint, exactly as PathEncoder.
 #[derive(Default)]
@@ -634,7 +715,7 @@ struct Cursor {
 }
 impl Cursor {
     fn advance(&mut self, element: PathEl, account: &Account) -> Result<SourceElement> {
-        let (points, count) = match element {
+        let points = match element {
             PathEl::MoveTo(p) => {
                 self.first = Some(p);
                 self.last = Some(p);
@@ -646,19 +727,19 @@ impl Cursor {
                 self.at_start = true;
                 return Ok(SourceElement::Close);
             }
-            PathEl::LineTo(p) => ([p, p, p], 1),
-            PathEl::QuadTo(p, q) => ([p, q, q], 2),
-            PathEl::CurveTo(p, q, r) => ([p, q, r], 3),
+            PathEl::LineTo(p) => Controls::Line([p]),
+            PathEl::QuadTo(p, q) => Controls::Quad([p, q]),
+            PathEl::CurveTo(p, q, r) => Controls::Cubic([p, q, r]),
         };
         let Some(start) = self.last else {
-            let end = points[count - 1];
+            let end = *points.end();
             self.first = Some(end);
             self.last = Some(end);
             self.at_start = true;
             return Ok(SourceElement::Move(end));
         };
         let mut nonzero = false;
-        for p in &points[..count] {
+        for p in points.as_slice() {
             if distinct(start, *p, account)? {
                 nonzero = true;
             }
@@ -669,11 +750,10 @@ impl Cursor {
         let initial = self.at_start;
         self.at_start = false;
         self.ever = true;
-        self.last = Some(points[count - 1]);
+        self.last = Some(*points.end());
         Ok(SourceElement::Segment {
             start,
             points,
-            count,
             initial,
         })
     }
@@ -684,8 +764,7 @@ enum SourceElement {
     Empty,
     Segment {
         start: Point,
-        points: [Point; 3],
-        count: usize,
+        points: Controls<Point>,
         initial: bool,
     },
 }
@@ -713,7 +792,6 @@ pub(super) enum NativeElement {
     Close,
     Empty,
 }
-#[derive(Default)]
 pub(super) struct PathQualifier {
     cursor: Cursor,
     contour: Option<ContourExtent>,
@@ -743,28 +821,34 @@ impl ContourExtent {
         })
     }
     fn add(&mut self, point: MappedPoint, index: usize, account: &Account) -> Result<()> {
-        for axis in 0..2 {
-            let source = action(account, || {
-                if axis == 0 {
-                    point.source.x
-                } else {
-                    point.source.y
-                }
-            })?;
-            let native = action(account, || point.native[axis])?;
-            self.source_min[axis] = action(account, || self.source_min[axis].min(source))?;
-            self.source_max[axis] = action(account, || self.source_max[axis].max(source))?;
-            self.native_min[axis] = action(account, || self.native_min[axis].min(native))?;
-            self.native_max[axis] = action(account, || self.native_max[axis].max(native))?;
+        let MappedPoint {
+            source: Point { x, y },
+            native: [nx, ny],
+            ..
+        } = &point;
+        let source_extents = self.source_min.iter_mut().zip(&mut self.source_max);
+        let native_extents = self.native_min.iter_mut().zip(&mut self.native_max);
+        for (((source_min, source_max), (native_min, native_max)), (source, native)) in
+            source_extents.zip(native_extents).zip([(x, nx), (y, ny)])
+        {
+            let source = action(account, || *source)?;
+            let native = action(account, || *native)?;
+            *source_min = action(account, || (*source_min).min(source))?;
+            *source_max = action(account, || (*source_max).max(source))?;
+            *native_min = action(account, || (*native_min).min(native))?;
+            *native_max = action(account, || (*native_max).max(native))?;
         }
         self.index = index;
         Ok(())
     }
     fn qualify(self, account: &Account) -> Result<()> {
-        if action(account, || self.source_min[0] < self.source_max[0])?
-            && action(account, || self.source_min[1] < self.source_max[1])?
-            && (action(account, || self.native_min[0] == self.native_max[0])?
-                || action(account, || self.native_min[1] == self.native_max[1])?)
+        let [sx0, sy0] = self.source_min;
+        let [sx1, sy1] = self.source_max;
+        let [nx0, ny0] = self.native_min;
+        let [nx1, ny1] = self.native_max;
+        if action(account, || sx0 < sx1)?
+            && action(account, || sy0 < sy1)?
+            && (action(account, || nx0 == nx1)? || action(account, || ny0 == ny1)?)
         {
             return Err(Reason::UnrepresentablePath {
                 element_index: self.index,
@@ -777,8 +861,9 @@ impl ContourExtent {
 impl PathQualifier {
     pub(super) fn new(fill: bool) -> Self {
         Self {
+            cursor: Cursor::default(),
+            contour: None,
             fill,
-            ..Self::default()
         }
     }
     pub(super) fn finish(&mut self, account: &Account) -> Result<()> {
@@ -812,54 +897,47 @@ impl PathQualifier {
             SourceElement::Segment {
                 start,
                 points,
-                count,
                 initial,
             } => {
                 let start = point(transform, start, reason, account)?;
-                let mut native = [start; 3];
-                for i in 0..count {
-                    native[i] = point(transform, points[i], reason, account)?;
-                }
-                // Preserve source-distinct vector controls. One coordinate may
-                // round together while another still separates the points.
-                for i in 0..count {
-                    preserve_pair(start, native[i], transform, reason, account)?;
-                    for j in 0..i {
-                        preserve_pair(native[j], native[i], transform, reason, account)?;
-                    }
-                }
+                let native = points.try_map(|p| point(transform, p, reason, account))?;
+                native.preserve_pairs(start, transform, reason, account)?;
                 if self.fill {
-                    if self.contour.is_none() {
-                        self.contour = Some(ContourExtent::new(start, index, account)?);
-                    }
-                    for p in &native[..count] {
-                        self.contour.as_mut().unwrap().add(*p, index, account)?;
+                    let contour = match &mut self.contour {
+                        Some(contour) => contour,
+                        empty @ None => empty.insert(ContourExtent::new(start, index, account)?),
+                    };
+                    for p in native.as_slice() {
+                        contour.add(*p, index, account)?;
                     }
                 }
-                let mut xmin = start.native[0];
+                let [start_x, start_y] = start.native;
+                let [mut xmin, mut ymin] = start.native;
                 let mut xmax = xmin;
-                let mut ymin = start.native[1];
                 let mut ymax = ymin;
                 let mut tangent = false;
-                let mut tangent_index = 0;
-                for p in &native[..count] {
-                    xmin = action(account, || xmin.min(p.native[0]))?;
-                    xmax = action(account, || xmax.max(p.native[0]))?;
-                    ymin = action(account, || ymin.min(p.native[1]))?;
-                    ymax = action(account, || ymax.max(p.native[1]))?;
+                let mut tangent_is_first = false;
+                let mut first_control = true;
+                for p in native.as_slice() {
+                    let [x, y] = p.native;
+                    xmin = action(account, || xmin.min(x))?;
+                    xmax = action(account, || xmax.max(x))?;
+                    ymin = action(account, || ymin.min(y))?;
+                    ymax = action(account, || ymax.max(y))?;
                     if initial && !tangent {
-                        let dx = action(account, || p.native[0] - start.native[0])?;
+                        let dx = action(account, || x - start_x)?;
                         let dx = action(account, || dx.abs())?;
                         tangent = action(account, || dx > 1e-12)?;
                         if !tangent {
-                            let dy = action(account, || p.native[1] - start.native[1])?;
+                            let dy = action(account, || y - start_y)?;
                             let dy = action(account, || dy.abs())?;
                             tangent = action(account, || dy > 1e-12)?;
                         }
-                        if !tangent {
-                            tangent_index += 1;
+                        if tangent {
+                            tangent_is_first = first_control;
                         }
                     }
+                    first_control = false;
                 }
                 let dx = action(account, || xmax - xmin)?;
                 finite_native(dx, account)?;
@@ -871,33 +949,31 @@ impl PathQualifier {
                 }
                 // The pinned first tangent interpolations use differences/thirds.
                 // Bound their arithmetic domain without replacing their output.
-                if initial && count < 3 {
-                    for axis in 0..2 {
-                        let (base, other) = if count == 1 {
-                            (start.native[axis], native[0].native[axis])
-                        } else {
-                            (
-                                native[0].native[axis],
-                                if tangent_index == 0 {
-                                    start.native[axis]
-                                } else {
-                                    native[1].native[axis]
-                                },
-                            )
-                        };
-                        let delta = action(account, || other - base)?;
-                        finite_native(delta, account)?;
-                        let third = action(account, || delta * (1.0 / 3.0))?;
-                        finite_native(third, account)?;
-                        let end = action(account, || base + third)?;
-                        finite_native(end, account)?;
+                if initial {
+                    let tangent_points = match &native {
+                        Controls::Line([end]) => Some((start.native, end.native)),
+                        Controls::Quad([first, end]) => Some((
+                            first.native,
+                            if tangent_is_first {
+                                start.native
+                            } else {
+                                end.native
+                            },
+                        )),
+                        Controls::Cubic(_) => None,
+                    };
+                    if let Some((base, other)) = tangent_points {
+                        for (base, other) in base.into_iter().zip(other) {
+                            let delta = action(account, || other - base)?;
+                            finite_native(delta, account)?;
+                            let third = action(account, || delta * (1.0 / 3.0))?;
+                            finite_native(third, account)?;
+                            let end = action(account, || base + third)?;
+                            finite_native(end, account)?;
+                        }
                     }
                 }
-                Ok(match count {
-                    1 => NativeElement::Line(native[0].native),
-                    2 => NativeElement::Quad(native[0].native, native[1].native),
-                    _ => NativeElement::Cubic(native[0].native, native[1].native, native[2].native),
-                })
+                Ok(native.native_element())
             }
         }
     }
@@ -1222,7 +1298,7 @@ mod tests {
             [MoveTo(Point::ZERO), LineTo(Point::new(f64::MAX, 0.0))],
         ] {
             let transform = qualify_transform(Affine::IDENTITY, &account()).unwrap();
-            let mut q = PathQualifier::default();
+            let mut q = PathQualifier::new(false);
             q.element(elements[0], 0, &transform, &account()).unwrap();
             let error = match q.element(elements[1], 1, &transform, &account()) {
                 Err(error) => error,

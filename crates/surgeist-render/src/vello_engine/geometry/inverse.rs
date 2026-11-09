@@ -172,11 +172,12 @@ impl Bound {
             action(account, || left.upper * right.lower)?,
             action(account, || left.upper * right.upper)?,
         ];
-        let mut lower = values[0];
-        let mut upper = values[0];
-        for value in &values[1..] {
-            lower = action(account, || lower.min(*value))?;
-            upper = action(account, || upper.max(*value))?;
+        let [first, second, third, fourth] = values;
+        let mut lower = first;
+        let mut upper = first;
+        for value in [second, third, fourth] {
+            lower = action(account, || lower.min(value))?;
+            upper = action(account, || upper.max(value))?;
         }
         let lower = action(account, || lower.next_down())?;
         let upper = action(account, || upper.next_up())?;
@@ -259,11 +260,12 @@ impl Bound {
             action(account, || numerator.upper / denominator.lower)?,
             action(account, || numerator.upper / denominator.upper)?,
         ];
-        let mut lower = values[0];
-        let mut upper = values[0];
-        for value in &values[1..] {
-            lower = action(account, || lower.min(*value))?;
-            upper = action(account, || upper.max(*value))?;
+        let [first, second, third, fourth] = values;
+        let mut lower = first;
+        let mut upper = first;
+        for value in [second, third, fourth] {
+            lower = action(account, || lower.min(value))?;
+            upper = action(account, || upper.max(value))?;
         }
         Self::rounded(
             action(account, || lower.next_down())?,
@@ -345,8 +347,10 @@ fn term(
 // whether their REAL sum is zero, without treating approximate cancellation as
 // an exact native result or requiring two divisions to share rounding errors.
 fn zero_numerator(cofactors: [Bound; 2], values: [Bound; 2], account: &Account) -> Result<bool> {
-    let p = action(account, || cofactors[0].lower * values[0].lower)?;
-    let q = action(account, || cofactors[1].lower * values[1].lower)?;
+    let [a, c] = cofactors;
+    let [x, y] = values;
+    let p = action(account, || a.lower * x.lower)?;
+    let q = action(account, || c.lower * y.lower)?;
     let sum = action(account, || p + q)?;
     let z = action(account, || sum - p)?;
     let t = action(account, || sum - z)?;
@@ -371,24 +375,24 @@ fn translation(
 ) -> Result<Translation> {
     let mut terms = [Bound::ZERO; 2];
     let mut numerators = [Bound::ZERO; 2];
-    for index in 0..2 {
-        let nonzero = !cofactors[index].zero(account)? && !values[index].zero(account)?;
-        numerators[index] = required(
-            cofactors[index].mul(values[index], account)?,
-            nonzero,
-            account,
-        )?;
-        terms[index] = term(
-            reciprocal,
-            determinant,
-            cofactors[index],
-            values[index],
-            account,
-        )?;
+    for ((output, numerator), (cofactor, value)) in terms
+        .iter_mut()
+        .zip(&mut numerators)
+        .zip(cofactors.into_iter().zip(values))
+    {
+        let nonzero = !cofactor.zero(account)? && !value.zero(account)?;
+        *numerator = required(cofactor.mul(value, account)?, nonzero, account)?;
+        *output = term(reciprocal, determinant, cofactor, value, account)?;
     }
     let nonzero = !zero_numerator(cofactors, values, account)?;
-    let literal = required(terms[0].add(terms[1], account)?, nonzero, account)?;
-    let numerator = required(numerators[0].add(numerators[1], account)?, nonzero, account)?;
+    let [first_term, second_term] = terms;
+    let [first_numerator, second_numerator] = numerators;
+    let literal = required(first_term.add(second_term, account)?, nonzero, account)?;
+    let numerator = required(
+        first_numerator.add(second_numerator, account)?,
+        nonzero,
+        account,
+    )?;
     let divided = required(numerator.divide(determinant, account)?, nonzero, account)?;
     let factored = required(reciprocal.mul(numerator, account)?, nonzero, account)?;
     let value = required(
@@ -440,40 +444,32 @@ fn consumer_axis(
         upper: DEVICE_MAX,
         exact: None,
     };
-    let a = term(reciprocal, determinant, cofactors[0], device, account)?.hull(
-        term(reciprocal, determinant, cofactors[0], Bound::ZERO, account)?,
+    let [cofactor_a, cofactor_c] = cofactors;
+    let Translation {
+        value,
+        terms: [tx, ty],
+        numerator_terms: [nx, ny],
+    } = translation;
+    let a = term(reciprocal, determinant, cofactor_a, device, account)?.hull(
+        term(reciprocal, determinant, cofactor_a, Bound::ZERO, account)?,
         account,
     )?;
-    let c = term(reciprocal, determinant, cofactors[1], device, account)?.hull(
-        term(reciprocal, determinant, cofactors[1], Bound::ZERO, account)?,
+    let c = term(reciprocal, determinant, cofactor_c, device, account)?.hull(
+        term(reciprocal, determinant, cofactor_c, Bound::ZERO, account)?,
         account,
     )?;
-    finite_sum(&[a, c, translation.terms[0], translation.terms[1]], account)?;
-    a.add(c, account)?
-        .add(translation.value, account)?
-        .finite(account)?;
-    a.add(translation.value, account)?
-        .add(c, account)?
-        .finite(account)?;
-    a.add(c.add(translation.value, account)?, account)?
-        .finite(account)?;
-    let a_num = cofactors[0].mul(device, account)?;
-    let c_num = cofactors[1].mul(device, account)?;
+    finite_sum(&[a, c, tx, ty], account)?;
+    a.add(c, account)?.add(value, account)?.finite(account)?;
+    a.add(value, account)?.add(c, account)?.finite(account)?;
+    a.add(c.add(value, account)?, account)?.finite(account)?;
+    let a_num = cofactor_a.mul(device, account)?;
+    let c_num = cofactor_c.mul(device, account)?;
     let a_num = a_num.hull(Bound::ZERO, account)?;
     let c_num = c_num.hull(Bound::ZERO, account)?;
-    finite_sum(
-        &[
-            a_num,
-            c_num,
-            translation.numerator_terms[0],
-            translation.numerator_terms[1],
-        ],
-        account,
-    )?;
-    let numerator = a_num.add(c_num, account)?.add(
-        translation.numerator_terms[0].add(translation.numerator_terms[1], account)?,
-        account,
-    )?;
+    finite_sum(&[a_num, c_num, nx, ny], account)?;
+    let numerator = a_num
+        .add(c_num, account)?
+        .add(nx.add(ny, account)?, account)?;
     numerator.divide(determinant, account)?.finite(account)?;
     reciprocal.mul(numerator, account)?.finite(account)?;
     Ok(())
@@ -484,11 +480,12 @@ pub(crate) fn qualify_inverse(transform: &QualifiedTransform, account: &Account)
     account.work(RenderWork::CoordinateVisits, 6)?;
     let [a, b, c, d] = transform.native.matrix;
     let [x, y] = transform.native.translation;
-    let mut input = [Bound::ZERO; 6];
-    for (output, value) in input.iter_mut().zip([a, b, c, d, x, y]) {
-        *output = Bound::native(value, account)?.normal(account)?;
-    }
-    let [a, b, c, d, x, y] = input;
+    let a = Bound::native(a, account)?.normal(account)?;
+    let b = Bound::native(b, account)?.normal(account)?;
+    let c = Bound::native(c, account)?.normal(account)?;
+    let d = Bound::native(d, account)?.normal(account)?;
+    let x = Bound::native(x, account)?.normal(account)?;
+    let y = Bound::native(y, account)?.normal(account)?;
     let determinant = a
         .mul(d, account)?
         .normal(account)?
