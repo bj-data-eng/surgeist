@@ -44,8 +44,8 @@ enum Effect {
     Read(Node, Option<Slot>),
     Remove(Node, Slot),
     Set(Node),
-    Compare(usize, usize),
     Append(Node),
+    AlreadyPresent(Node),
     Replace,
     AssignTargetRoot,
 }
@@ -145,20 +145,16 @@ impl Records {
                 self.node_mut(node).manual = Some(Slot::Target);
                 self.effects.push(Effect::Set(node));
             }
-            Action::CompareIncoming {
-                ordinal,
-                previous_ordinal,
-            } => {
-                self.effects
-                    .push(Effect::Compare(ordinal, previous_ordinal));
-                return Reply::SameNode(self.incoming[ordinal] == self.incoming[previous_ordinal]);
-            }
             Action::AppendIncomingToPendingSet { ordinal } => {
                 let node = self.incoming[ordinal];
-                // This is a plain write, not a duplicate-filtering fixture.
-                // Only the real cursor decides whether an append is required.
-                self.pending.as_mut().unwrap().push(node);
-                self.effects.push(Effect::Append(node));
+                // The ordered set append: a node the set already holds is not added again.
+                let pending = self.pending.as_mut().unwrap();
+                if pending.contains(&node) {
+                    self.effects.push(Effect::AlreadyPresent(node));
+                } else {
+                    pending.push(node);
+                    self.effects.push(Effect::Append(node));
+                }
             }
             Action::ReplaceTargetManualSet => {
                 *self.slot_mut(Slot::Target) = self.pending.take().unwrap();
@@ -177,9 +173,8 @@ impl Records {
             let action = cursor.action();
             if wrong_replies {
                 let wrong = match action {
-                    Action::ReadIncomingManualAssignment { .. }
-                    | Action::CompareIncoming { .. } => Reply::Applied,
-                    _ => Reply::SameNode(false),
+                    Action::ReadIncomingManualAssignment { .. } => Reply::Applied,
+                    _ => Reply::ManualAssignmentPresent(false),
                 };
                 assert!(matches!(cursor.reply(wrong), Err(ref e) if e.is_reply()));
                 assert_eq!(cursor.action(), action);
@@ -228,18 +223,13 @@ fn transfer_effects() -> Vec<Effect> {
         Read(B, Some(Slot::Target)),
         Remove(B, Slot::Target),
         Set(B),
-        Compare(1, 0),
+        AlreadyPresent(B),
         Read(C, Some(Slot::Other)),
         Remove(C, Slot::Other),
         Set(C),
-        Compare(2, 0),
-        Compare(2, 1),
         Append(C),
         Read(A, None),
         Set(A),
-        Compare(3, 0),
-        Compare(3, 1),
-        Compare(3, 2),
         Append(A),
         Replace,
         AssignTargetRoot,
@@ -378,7 +368,6 @@ fn empty_and_unchanged_intent_still_replace_and_request_only_the_target_root() {
                 Append(A),
                 Read(B, None),
                 Set(B),
-                Compare(1, 0),
                 Append(B),
                 Replace,
                 AssignTargetRoot,
@@ -405,8 +394,6 @@ fn wrong_replies_preserve_the_pending_action_and_all_subsequent_source_effects()
     assert_transfer(&records);
     for reply in [
         Reply::Applied,
-        Reply::SameNode(false),
-        Reply::SameNode(true),
         Reply::ManualAssignmentPresent(false),
         Reply::ManualAssignmentPresent(true),
     ] {
@@ -458,10 +445,6 @@ fn identity_map_replies(incoming: &[usize]) -> (usize, Vec<usize>) {
                 assigned_to_target.insert(incoming[ordinal]);
                 Reply::Applied
             }
-            Action::CompareIncoming {
-                ordinal,
-                previous_ordinal,
-            } => Reply::SameNode(incoming[ordinal] == incoming[previous_ordinal]),
             Action::AppendIncomingToPendingSet { ordinal } => {
                 if members.insert(incoming[ordinal]) {
                     pending.push(incoming[ordinal]);

@@ -387,13 +387,22 @@ impl Draft {
                     slottable.commit(cancel)?;
                     R::Applied
                 }
-                A::CompareIncoming {
-                    ordinal,
-                    previous_ordinal,
-                } => R::SameNode(nodes[ordinal] == nodes[previous_ordinal]),
                 A::AppendIncomingToPendingSet { ordinal } => {
-                    self.select_reserve(&mut pending, 1, cancel)?;
-                    pending.push(nodes[ordinal]);
+                    // The ordered set append adds nothing for a node the pending set holds. The
+                    // pending set keeps no identity index, so each comparison is a source step.
+                    let node = nodes[ordinal];
+                    let mut present = false;
+                    for index in 0..pending.len() {
+                        self.source_step(cancel)?;
+                        if pending[index] == node {
+                            present = true;
+                            break;
+                        }
+                    }
+                    if !present {
+                        self.select_reserve(&mut pending, 1, cancel)?;
+                        pending.push(node);
+                    }
                     R::Applied
                 }
                 A::ReplaceTargetManualSet => {
@@ -787,6 +796,46 @@ mod tests {
         );
         assert!(draft.cancelled_signals.is_empty());
         assert_eq!(dom.snapshot().pending_slot_signals(), &[s]);
+    }
+    /// Each incoming node, duplicates included, costs at most four admitted actions, and the
+    /// result is the ordered set of the first occurrences.
+    #[test]
+    fn duplicate_incoming_nodes_cost_a_bounded_number_of_admitted_actions_each() {
+        let (mut dom, s, _) = fixture();
+        let mut b = DomBatch::new();
+        let d = b.create_document();
+        let texts: Vec<_> = (0..8).map(|_| b.create_text(&d, "T")).collect();
+        let c = dom.apply(b, &AtomicBool::new(false)).unwrap();
+        let texts: Vec<NodeId> = texts
+            .iter()
+            .map(|text| c.created(text).unwrap().unwrap())
+            .collect();
+        let cancel = AtomicBool::new(false);
+        let mut draft = Draft::new(&dom, DomBatch::new().owner, &cancel).unwrap();
+        let target = draft.resolve(s.into()).unwrap();
+        let incoming: Vec<NodeOperand> = texts
+            .iter()
+            .chain(texts.iter())
+            .map(|&text| text.into())
+            .collect();
+        let mut actions = 0;
+        draft
+            .assign_manual_admitted(target, &incoming, dom.limits(), &cancel, &mut || {
+                actions += 1;
+                Ok(())
+            })
+            .unwrap();
+        assert!(
+            actions <= 4 * incoming.len() + 6,
+            "{} incoming nodes were admitted as {actions} actions",
+            incoming.len()
+        );
+        let assigned: Vec<_> = draft.node(target).unwrap().manual_nodes().iter().collect();
+        let first_occurrences: Vec<_> = texts
+            .iter()
+            .map(|&text| draft.resolve(text.into()).unwrap())
+            .collect();
+        assert_eq!(assigned, first_occurrences);
     }
     #[test]
     fn actual_cursor_cancellation_after_partial_inverse_writes_never_publishes() {

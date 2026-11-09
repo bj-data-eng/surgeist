@@ -31,16 +31,9 @@ pub enum HtmlSlotAssignAction {
         /// Zero-based position in the raw incoming nodes, duplicates included.
         ordinal: usize,
     },
-    /// Step 3.3 deduplication: test whether the incoming node at `ordinal` is the same node as the
-    /// earlier incoming node at `previous_ordinal`; reply `SameNode`.
-    CompareIncoming {
-        /// Zero-based position of the later raw incoming node.
-        ordinal: usize,
-        /// Zero-based position of an earlier raw incoming node, always below `ordinal`.
-        previous_ordinal: usize,
-    },
-    /// Step 3.3: append the incoming node at this ordinal to the pending ordered set, because no
-    /// earlier incoming node was the same node.
+    /// Step 3.3: append the incoming node at this ordinal to the pending ordered set. The ordered
+    /// set append does nothing when the set already contains the node, so the consumer answers
+    /// that identity question itself and replies `Applied` either way.
     AppendIncomingToPendingSet {
         /// Zero-based position in the raw incoming nodes, duplicates included.
         ordinal: usize,
@@ -62,8 +55,6 @@ pub enum HtmlSlotAssignReply {
     /// From the current raw input's actual manual pointer, after prior effects.
     /// A present pointer is retained by the adapter for the next remove action.
     ManualAssignmentPresent(bool),
-    /// Exact identity equality of the two requested raw input ordinals.
-    SameNode(bool),
 }
 
 /// A reply that does not match the pending slot-assign action.
@@ -119,7 +110,6 @@ enum Phase {
     Read(usize),
     Remove(usize),
     Set(usize),
-    Compare { ordinal: usize, previous: usize },
     Append(usize),
     Replace,
     AssignRoot,
@@ -137,8 +127,11 @@ enum Phase {
 /// storage. It admits each action before its operand reads/writes and replies
 /// only after success. Missing facts, cancellation, allocation and atomic
 /// rollback belong to that owner. This cursor allocates and traverses no tree.
-/// Pairwise ordered-set comparisons are at worst quadratic in the admitted raw
-/// extent; each comparison is separately visible before its actual read.
+/// It asks no per-pair question: one call makes at most one action per previous node, at most
+/// four per raw incoming node and a constant number of others. The ordered-set append of a node
+/// the pending set already holds is the consumer's identity check within
+/// `AppendIncomingToPendingSet`; a consumer without an identity map admits and charges its own
+/// scan of the pending set before it answers.
 #[derive(Clone, Copy, Debug)]
 pub struct HtmlSlotAssignCursor {
     previous_count: usize,
@@ -172,10 +165,6 @@ impl HtmlSlotAssignCursor {
             Phase::Read(ordinal) => A::ReadIncomingManualAssignment { ordinal },
             Phase::Remove(ordinal) => A::RemoveIncomingFromReferredManualSet { ordinal },
             Phase::Set(ordinal) => A::SetIncomingManualAssignmentToTarget { ordinal },
-            Phase::Compare { ordinal, previous } => A::CompareIncoming {
-                ordinal,
-                previous_ordinal: previous,
-            },
             Phase::Append(ordinal) => A::AppendIncomingToPendingSet { ordinal },
             Phase::Replace => A::ReplaceTargetManualSet,
             Phase::AssignRoot => A::AssignSlottablesForTargetRoot,
@@ -229,28 +218,7 @@ impl HtmlSlotAssignCursor {
                 };
             }
             (Phase::Remove(ordinal), R::Applied) => self.phase = Phase::Set(ordinal),
-            (Phase::Set(0), R::Applied) => self.phase = Phase::Append(0),
-            (Phase::Set(ordinal), R::Applied) => {
-                self.phase = Phase::Compare {
-                    ordinal,
-                    previous: 0,
-                };
-            }
-            (Phase::Compare { ordinal, .. }, R::SameNode(true)) => {
-                self.next_incoming(ordinal);
-            }
-            (Phase::Compare { ordinal, previous }, R::SameNode(false)) => {
-                // previous < ordinal; even ordinal == usize::MAX -1 is safe.
-                let next = previous + 1;
-                self.phase = if next < ordinal {
-                    Phase::Compare {
-                        ordinal,
-                        previous: next,
-                    }
-                } else {
-                    Phase::Append(ordinal)
-                };
-            }
+            (Phase::Set(ordinal), R::Applied) => self.phase = Phase::Append(ordinal),
             (Phase::Append(ordinal), R::Applied) => self.next_incoming(ordinal),
             (Phase::Replace, R::Applied) => self.phase = Phase::AssignRoot,
             (Phase::AssignRoot, R::Applied) => self.phase = Phase::Complete,
@@ -275,11 +243,8 @@ mod extent_tests {
         };
         cursor.reply(R::Applied).unwrap();
         assert_eq!(cursor.action(), A::BeginPendingManualSet);
-        cursor.phase = Phase::Compare {
-            ordinal: usize::MAX - 1,
-            previous: usize::MAX - 2,
-        };
-        cursor.reply(R::SameNode(false)).unwrap();
+        cursor.phase = Phase::Set(usize::MAX - 1);
+        cursor.reply(R::Applied).unwrap();
         assert_eq!(
             cursor.action(),
             A::AppendIncomingToPendingSet {
@@ -292,12 +257,6 @@ mod extent_tests {
         assert_eq!(cursor.action(), A::AssignSlottablesForTargetRoot);
         cursor.reply(R::Applied).unwrap();
         assert_eq!(cursor.action(), A::Complete);
-        cursor.phase = Phase::Compare {
-            ordinal: usize::MAX - 1,
-            previous: 0,
-        };
-        cursor.reply(R::SameNode(true)).unwrap();
-        assert_eq!(cursor.action(), A::ReplaceTargetManualSet);
     }
 }
 
