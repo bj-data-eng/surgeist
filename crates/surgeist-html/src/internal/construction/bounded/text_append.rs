@@ -91,13 +91,20 @@ impl HtmlConstructionTextAppendWork {
                 wide(self.atomic_layout_bytes),
             )
             .map_err(HtmlChargedError::Stopped)?;
+        // The record visits are charged before the provider calls are compared with the prepaid
+        // calls, so a plan below the prepayment has charged its visits when it is reported.
+        charge
+            .charge(&[Change::Work(
+                HtmlWork::RecordVisit,
+                wide(self.record_visits),
+            )])
+            .map_err(HtmlChargedError::Stopped)?;
         let provider_calls = wide(self.provider_calls)
             .checked_sub(prepaid_provider_calls)
             .ok_or(HtmlChargedError::Faulted(
                 HtmlConstructionChargeFault::PrepaidCallsExceedPlan,
             ))?;
         for change in [
-            Change::Work(HtmlWork::RecordVisit, wide(self.record_visits)),
             Change::Work(HtmlWork::ProviderCall, provider_calls),
             Change::Work(HtmlWork::InspectByte, wide(self.inspected_bytes)),
             Change::Work(HtmlWork::CopyByte, wide(self.copied_bytes)),
