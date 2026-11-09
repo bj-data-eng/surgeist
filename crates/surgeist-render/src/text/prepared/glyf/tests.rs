@@ -394,6 +394,8 @@ fn simultaneous_old_new_scratch_capacity_is_admitted_before_growth() {
         context
             .last_attempt()
             .unwrap()
+            .attempt()
+            .unwrap()
             .usage()
             .peak(RenderResource::ScratchCpuBytes),
         (128 + 64 + old) as u64
@@ -418,6 +420,8 @@ fn simultaneous_old_new_scratch_capacity_is_admitted_before_growth() {
     assert_eq!(
         context
             .last_attempt()
+            .unwrap()
+            .attempt()
             .unwrap()
             .usage()
             .peak(RenderResource::ScratchCpuBytes),

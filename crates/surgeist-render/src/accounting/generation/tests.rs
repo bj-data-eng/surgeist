@@ -407,7 +407,7 @@ fn attempt_constructor_and_probe_work_does_not_duplicate_generation_forward_work
             Ok(())
         })
         .unwrap();
-    let attempt = context.last_attempt().unwrap().usage();
+    let attempt = context.last_attempt().unwrap().attempt().unwrap().usage();
     assert_eq!(attempt.work(RenderWork::ResourceAllocationRequests), 2);
     assert_eq!(attempt.work(RenderWork::ResourceProbes), 1);
     let snapshot = generation.snapshot().unwrap();
@@ -768,7 +768,7 @@ fn initialized_native_constructor_admits_request_and_upload_atomically_before_in
                 )
             },
         );
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(result.is_ok(), succeeds);
         assert_eq!(invoked.load(Ordering::SeqCst), usize::from(succeeds));
         assert_eq!(

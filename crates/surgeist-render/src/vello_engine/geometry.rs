@@ -1010,6 +1010,8 @@ mod tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .work(RenderWork::CoordinateVisits),
             4
@@ -1027,7 +1029,7 @@ mod tests {
             })
             .unwrap_err();
         assert!(error.accounting_diagnostic().is_some());
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::CoordinateVisits), 3);
         assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
         assert_eq!(
@@ -1157,6 +1159,8 @@ mod tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .work(RenderWork::CoordinateVisits),
             6
@@ -1174,7 +1178,7 @@ mod tests {
             })
             .unwrap_err();
         assert!(error.accounting_diagnostic().is_some());
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::CoordinateVisits), 5);
         assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
         assert_eq!(

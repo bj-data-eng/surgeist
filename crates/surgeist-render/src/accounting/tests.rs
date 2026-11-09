@@ -1,5 +1,22 @@
 use super::*;
 
+fn terminal_summary(
+    context: &RenderAccountingContext,
+) -> (
+    RenderAttemptKind,
+    RenderAttemptStatus,
+    std::result::Result<RenderAttemptReport, RenderAccountingError>,
+    Option<RenderAccountingError>,
+) {
+    let report = context.last_attempt().unwrap();
+    (
+        report.kind(),
+        report.status(),
+        report.attempt().cloned(),
+        report.cleanup_fault(),
+    )
+}
+
 #[test]
 fn ledger_failures_preserve_setup_causes_and_distinguish_private_invariants() {
     for (ledger, render) in [
@@ -36,7 +53,10 @@ fn ledger_failures_preserve_setup_causes_and_distinguish_private_invariants() {
 // These fixtures deliberately misuse Ledger's public custody operations. Public
 // Render callers cannot access the operation or release an owned hold early.
 fn release_preparation_custody_before_hold_drop(account: &Account) {
-    let resource = RenderResource::RetainedCpuBytes;
+    release_custody_before_hold_drop(account, RenderResource::RetainedCpuBytes);
+}
+
+fn release_custody_before_hold_drop(account: &Account, resource: RenderResource) {
     let scope = account.scopes[RenderPhase::Preparation.index()];
     let hold = account.acquire(resource, 1).unwrap();
     account
@@ -86,7 +106,7 @@ fn drop_fault_cancellation_replaces_prior_attempt_report() {
     let mut context = RenderAccountingContext::default();
     crate::Scene::new().inspect(&mut context).unwrap();
     assert_eq!(
-        context.last_attempt().unwrap().kind(),
+        context.last_attempt().unwrap().attempt().unwrap().kind(),
         RenderAttemptKind::SceneInspection
     );
 
@@ -95,6 +115,12 @@ fn drop_fault_cancellation_replaces_prior_attempt_report() {
     let report = context.last_attempt().unwrap();
     assert_eq!(report.kind(), RenderAttemptKind::ImageRepeat);
     assert_eq!(report.status(), RenderAttemptStatus::Canceled);
+    assert!(matches!(
+        report.cleanup_fault(),
+        Some(RenderAccountingError::Refused(refusal))
+            if refusal.reason() == RenderRefusalReason::Underflow
+    ));
+    assert_eq!(report.attempt().unwrap().refusal(), None);
 }
 
 #[test]
@@ -105,7 +131,7 @@ fn drop_fault_cancellation_does_not_fail_next_attempt() {
     crate::Scene::new()
         .inspect(&mut context)
         .expect("a canceled attempt's drop fault must not fail an unrelated inspection");
-    let report = context.last_attempt().unwrap();
+    let report = context.last_attempt().unwrap().attempt().unwrap();
     assert_eq!(report.kind(), RenderAttemptKind::SceneInspection);
     assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
 }
@@ -131,7 +157,7 @@ fn drop_fault_preparation_hold_preserves_underflow_details() {
 
 fn account_with_child_below_repeat_quota() -> (Account, Scope) {
     // Render's ordinary fixed table is full and its quota scopes are leaves.
-    // This valid Ledger fixture reserves one extra scope to exercise genuine
+    // This valid Ledger fixture reserves one extra scope to exercise actual
     // inclusive-versus-direct custody refusal; no Scope identity is fabricated.
     let mut operation =
         Operation::new("drop-fault-fixture", Limits::unlimited(), PHASE_COUNT + 1).unwrap();
@@ -240,6 +266,339 @@ fn drop_fault_distinct_ledger_defects_remain_distinct() {
         map_ledger_failure(LedgerError::Defect(surgeist_ledger::Defect::ReportScope)),
     );
 }
+
+#[test]
+fn standalone_fault_record_survives_context_destruction_without_another_attempt() {
+    for profile in [
+        RenderProfile::Off,
+        RenderProfile::Summary { timing: false },
+        RenderProfile::Summary { timing: true },
+        RenderProfile::Detailed {
+            timing: true,
+            event_limit: 8,
+            filter: RenderPhaseFilter::All,
+        },
+        RenderProfile::Detailed {
+            timing: false,
+            event_limit: 0,
+            filter: RenderPhaseFilter::Phase(RenderPhase::Preparation),
+        },
+    ] {
+        let mut context =
+            RenderAccountingContext::new(RenderAccountingOptions::new().with_profile(profile));
+        cancel_image_repeat_after_hold_underflow(&mut context);
+        let report = context.take_last_attempt().unwrap();
+        assert!(context.last_attempt().is_none());
+        drop(context);
+
+        assert_eq!(report.kind(), RenderAttemptKind::ImageRepeat);
+        assert_eq!(report.status(), RenderAttemptStatus::Canceled);
+        assert!(matches!(
+            report.cleanup_fault(),
+            Some(RenderAccountingError::Refused(refusal))
+                if refusal.phase() == RenderPhase::Preparation
+                    && refusal.quantity() == RenderQuantity::Resource(RenderResource::RetainedCpuBytes)
+                    && refusal.reason() == RenderRefusalReason::Underflow
+                    && refusal.current() == 0
+                    && refusal.amount() == 1
+        ));
+        assert_eq!(report.attempt().unwrap().refusal(), None);
+        assert_eq!(
+            report
+                .attempt()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes),
+            0
+        );
+    }
+}
+
+#[test]
+fn standalone_success_with_drop_fault_disposes_output_before_releasing_credit() {
+    struct Output {
+        _bytes: Vec<u8>,
+        account: Account,
+        observed_live: Arc<Mutex<Option<u64>>>,
+    }
+    impl Drop for Output {
+        fn drop(&mut self) {
+            let live = self
+                .account
+                .ledger
+                .usage(self.account.scopes[RenderPhase::Preparation.index()])
+                .unwrap()
+                .live(RenderResource::RetainedCpuBytes);
+            *self.observed_live.lock().unwrap() = Some(live);
+        }
+    }
+    let observed = Arc::new(Mutex::new(None));
+    let mut context = RenderAccountingContext::default();
+    let result = context.run(
+        RenderAttemptKind::ImageRepeat,
+        RenderPhase::Repeat,
+        |account| {
+            let mut bytes = account.retained(3)?;
+            bytes.extend_from_slice(&[1_u8, 2, 3])?;
+            let (bytes, hold) = bytes.into_parts()?;
+            hold.into_preparation()?.retain();
+            release_custody_before_hold_drop(account, RenderResource::ScratchCpuBytes);
+            Ok(Output {
+                _bytes: bytes,
+                account: account.clone(),
+                observed_live: observed.clone(),
+            })
+        },
+    );
+    let Err(error) = result else {
+        panic!("a drop fault must prevent successful output publication");
+    };
+    assert!(matches!(
+        error.accounting_diagnostic(),
+        Some(RenderAccountingError::Refused(refusal))
+            if refusal.reason() == RenderRefusalReason::Underflow
+    ));
+    assert_eq!(*observed.lock().unwrap(), Some(3));
+    let report = context.last_attempt().unwrap();
+    assert_eq!(
+        report.status(),
+        RenderAttemptStatus::Failed(crate::ErrorCode::Accounting)
+    );
+    assert_eq!(report.cleanup_fault(), error.accounting_diagnostic());
+    let attempt = report.attempt().unwrap();
+    assert_eq!(attempt.refusal(), None);
+    assert_eq!(
+        attempt.usage().work(RenderWork::PreparedTransferredBytes),
+        0
+    );
+    assert_eq!(attempt.usage().live(RenderResource::RetainedCpuBytes), 0);
+}
+
+#[test]
+fn standalone_semantic_failure_keeps_its_cause_separate_from_drop_fault() {
+    let mut context = RenderAccountingContext::default();
+    let error = context
+        .run::<()>(
+            RenderAttemptKind::ImageRepeat,
+            RenderPhase::Repeat,
+            |account| {
+                release_preparation_custody_before_hold_drop(account);
+                Err(Error::invalid_value(
+                    "semantic input",
+                    0,
+                    "must be positive",
+                ))
+            },
+        )
+        .unwrap_err();
+    assert_eq!(error.code(), crate::ErrorCode::InvalidInput);
+    assert_eq!(
+        error.invalid_value_diagnostic().unwrap().field(),
+        "semantic input"
+    );
+    let report = context.last_attempt().unwrap();
+    assert_eq!(
+        report.status(),
+        RenderAttemptStatus::Failed(crate::ErrorCode::InvalidInput)
+    );
+    assert!(matches!(
+        report.cleanup_fault(),
+        Some(RenderAccountingError::Refused(refusal))
+            if refusal.reason() == RenderRefusalReason::Underflow
+    ));
+    assert_eq!(report.attempt().unwrap().refusal(), None);
+}
+
+#[test]
+fn standalone_forward_refusal_is_not_replaced_by_cleanup_underflow() {
+    let limits = RenderLimits::new()
+        .with_work_limit(RenderWork::CoordinateVisits, 0)
+        .unwrap();
+    let mut context =
+        RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
+    let error = context
+        .run(
+            RenderAttemptKind::ImageRepeat,
+            RenderPhase::Repeat,
+            |account| {
+                release_preparation_custody_before_hold_drop(account);
+                account.work(RenderWork::CoordinateVisits, 1)
+            },
+        )
+        .unwrap_err();
+    let Some(RenderAccountingError::Refused(forward)) = error.accounting_diagnostic() else {
+        panic!("the original forward refusal must remain the returned cause");
+    };
+    assert_eq!(forward.reason(), RenderRefusalReason::Limit { limit: 0 });
+    assert_eq!(
+        forward.quantity(),
+        RenderQuantity::Work(RenderWork::CoordinateVisits)
+    );
+    let report = context.last_attempt().unwrap();
+    assert_eq!(report.status(), RenderAttemptStatus::Refused);
+    assert_eq!(report.attempt().unwrap().refusal(), Some(forward));
+    assert!(matches!(
+        report.cleanup_fault(),
+        Some(RenderAccountingError::Refused(refusal))
+            if refusal.reason() == RenderRefusalReason::Underflow
+    ));
+}
+
+#[test]
+fn standalone_failed_setup_preserves_the_faulted_terminal_record() {
+    let mut context = RenderAccountingContext::default();
+    cancel_image_repeat_after_hold_underflow(&mut context);
+    let prior = terminal_summary(&context);
+    let limits = RenderLimits::new()
+        .with_work_limit(RenderWork::RepeatTiles, 0)
+        .unwrap();
+    context.set_options(RenderAccountingOptions::new().with_limits(limits));
+    assert_eq!(
+        crate::Scene::new()
+            .inspect(&mut context)
+            .unwrap_err()
+            .accounting_diagnostic(),
+        Some(RenderAccountingError::InvalidLimit(RenderWork::RepeatTiles))
+    );
+    assert_eq!(terminal_summary(&context), prior);
+}
+
+#[test]
+fn standalone_checkpoint_extraction_failure_publishes_its_own_terminal_record() {
+    let mut context = RenderAccountingContext::default();
+    crate::Scene::new().inspect(&mut context).unwrap();
+    let attempt = Attempt::begin(
+        &mut context,
+        RenderAttemptKind::ImageRepeat,
+        GlyphRunLimits::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX),
+        #[cfg(feature = "render-text")]
+        None,
+    )
+    .unwrap();
+    // Ending a real checkpoint twice is public Ledger misuse, not a fabricated
+    // identity or Ledger Defect. The second close returns StaleCheckpoint.
+    attempt
+        .account
+        .ledger
+        .end_checkpoint(attempt.checkpoint.as_ref().unwrap())
+        .unwrap();
+    drop(attempt);
+    let report = context.last_attempt().unwrap();
+    assert_eq!(report.kind(), RenderAttemptKind::ImageRepeat);
+    assert_eq!(report.status(), RenderAttemptStatus::Canceled);
+    assert_eq!(report.attempt(), Err(RenderAccountingError::Invariant));
+    assert_eq!(
+        report.cleanup_fault(),
+        Some(RenderAccountingError::Invariant)
+    );
+}
+
+#[test]
+fn standalone_cleanup_batch_refusal_never_admits_successful_transfer() {
+    let mut context = RenderAccountingContext::default();
+    let mut saved_account = None;
+    let error = context
+        .run(
+            RenderAttemptKind::ImageRepeat,
+            RenderPhase::Repeat,
+            |account| {
+                // Public Ledger misuse gives a real fixed-table descendant custody that
+                // Preparation cannot release as its own direct hold. No identity or
+                // private Ledger state is fabricated.
+                let child = account.scopes[RenderPhase::Coordinates.index()];
+                account
+                    .ledger
+                    .apply(child, Change::Acquire(RenderResource::RetainedCpuBytes, 1))
+                    .unwrap();
+                saved_account = Some(account.clone());
+                Ok(())
+            },
+        )
+        .unwrap_err();
+    let report = context.last_attempt().unwrap();
+    assert_eq!(
+        report.status(),
+        RenderAttemptStatus::Failed(crate::ErrorCode::Accounting)
+    );
+    assert_eq!(report.cleanup_fault(), error.accounting_diagnostic());
+    let attempt = report.attempt().unwrap();
+    assert_eq!(attempt.refusal(), None);
+    assert_eq!(
+        attempt.usage().work(RenderWork::PreparedTransferredBytes),
+        0
+    );
+    assert_eq!(attempt.usage().live(RenderResource::RetainedCpuBytes), 1);
+    let account = saved_account.unwrap();
+    account
+        .ledger
+        .apply(
+            account.scopes[RenderPhase::Coordinates.index()],
+            Change::Release(RenderResource::RetainedCpuBytes, 1),
+        )
+        .unwrap();
+}
+
+#[test]
+fn local_quota_continues_releasing_after_first_underflow_and_retains_first_fault() {
+    let (account, child) = account_with_child_below_repeat_quota();
+    let quota = account
+        .local_quota(RenderPhase::Repeat, [1_000_000; 2])
+        .unwrap();
+    for resource in [
+        RenderResource::LocalRepeatTileQuota,
+        RenderResource::LocalAtlasTexelQuota,
+    ] {
+        account
+            .ledger
+            .apply(child, Change::Acquire(resource, 1))
+            .unwrap();
+    }
+    quota
+        .acquire(RenderResource::LocalAtlasSourceByteQuota, 1)
+        .unwrap();
+    drop(quota);
+
+    let scope = account.scopes[RenderPhase::RepeatQuota.index()];
+    let usage = account.ledger.usage(scope).unwrap();
+    // First and third releases underflow because the child owns their custody;
+    // the intervening parent's own source-byte custody must still be released.
+    assert_eq!(usage.live(RenderResource::LocalAtlasSourceByteQuota), 0);
+    assert_eq!(usage.live(RenderResource::LocalRepeatTileQuota), 1);
+    assert_eq!(usage.live(RenderResource::LocalAtlasTexelQuota), 1);
+    assert_latched_underflow(
+        &account,
+        RenderPhase::RepeatQuota,
+        RenderResource::LocalRepeatTileQuota,
+    );
+    assert_eq!(*account.first_refusal.lock().unwrap(), None);
+    for resource in [
+        RenderResource::LocalRepeatTileQuota,
+        RenderResource::LocalAtlasTexelQuota,
+    ] {
+        account
+            .ledger
+            .apply(child, Change::Release(resource, 1))
+            .unwrap();
+    }
+}
+
+#[test]
+fn named_ledger_defects_survive_render_accounting_conversion() {
+    // Provider Defects remain unreachable through valid Ledger operations.
+    for defect in [
+        surgeist_ledger::Defect::ScopeEntry,
+        surgeist_ledger::Defect::ReportScope,
+        surgeist_ledger::Defect::ReservedCapacity,
+        surgeist_ledger::Defect::DirectCustody,
+        surgeist_ledger::Defect::IntervalWork,
+        surgeist_ledger::Defect::EventLimit,
+        surgeist_ledger::Defect::CheckpointSlot,
+    ] {
+        let mapped = map_ledger_failure(LedgerError::Defect(defect));
+        assert_eq!(mapped, RenderAccountingError::LedgerDefect(defect));
+        assert_eq!(Error::from(mapped).accounting_diagnostic(), Some(mapped));
+    }
+}
 use std::sync::atomic::{AtomicU64, Ordering};
 static TIME: AtomicU64 = AtomicU64::new(0);
 fn clock() -> std::time::Duration {
@@ -265,7 +624,7 @@ fn exact_growth_overlap_and_refused_preview_leave_old_backing_unchanged() {
             },
         )
         .unwrap();
-    let report = context.last_attempt().unwrap();
+    let report = context.last_attempt().unwrap().attempt().unwrap();
     assert_eq!(report.usage().peak(RenderResource::ScratchCpuBytes), 7);
     assert_eq!(report.usage().live(RenderResource::ScratchCpuBytes), 0);
 }
@@ -297,7 +656,7 @@ fn ended_phase_timing_and_output_transfer_are_independent_of_detail_loss() {
             },
         )
         .unwrap();
-    let report = context.last_attempt().unwrap();
+    let report = context.last_attempt().unwrap().attempt().unwrap();
     assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
     assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 9);
     assert_eq!(report.usage().live(RenderResource::RetainedCpuBytes), 0);
@@ -337,11 +696,16 @@ fn off_and_untimed_do_not_call_the_supplied_clock() {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .work(RenderWork::GlyphInputs),
             1
         );
-        assert_eq!(context.last_attempt().unwrap().elapsed(), None);
+        assert_eq!(
+            context.last_attempt().unwrap().attempt().unwrap().elapsed(),
+            None
+        );
     }
 }
 #[test]
@@ -361,7 +725,7 @@ fn unwinding_drops_backing_then_retains_canceled_report() {
         );
     }));
     assert!(panic.is_err());
-    let report = context.last_attempt().unwrap();
+    let report = context.last_attempt().unwrap().attempt().unwrap();
     assert_eq!(report.status(), RenderAttemptStatus::Canceled);
     assert_eq!(report.usage().live(RenderResource::RetainedCpuBytes), 0);
     assert_eq!(report.usage().live(RenderResource::ScratchCpuBytes), 0);
@@ -379,7 +743,7 @@ fn report_setup_failure_preserves_the_previous_completed_attempt() {
             |_| Ok(()),
         )
         .unwrap();
-    let previous = context.last_attempt().unwrap().clone();
+    let previous = terminal_summary(&context);
     context.set_options(
         RenderAccountingOptions::new().with_profile(RenderProfile::Detailed {
             timing: false,
@@ -398,7 +762,7 @@ fn report_setup_failure_preserves_the_previous_completed_attempt() {
             )
             .is_err()
     );
-    assert_eq!(context.last_attempt(), Some(&previous));
+    assert_eq!(terminal_summary(&context), previous);
 }
 #[test]
 fn failed_allocator_reservation_does_not_create_a_live_peak() {
@@ -419,7 +783,7 @@ fn failed_allocator_reservation_does_not_create_a_live_peak() {
             resource: GlyphResource::ScratchBytes
         })
     ));
-    let report = context.last_attempt().unwrap();
+    let report = context.last_attempt().unwrap().attempt().unwrap();
     assert_eq!(
         report.status(),
         RenderAttemptStatus::Failed(crate::ErrorCode::GlyphPreparation)
@@ -433,7 +797,7 @@ fn standalone_setup_rejects_foreign_work_and_preserves_the_previous_report() {
     let scene = crate::Scene::new();
     let mut context = RenderAccountingContext::default();
     scene.inspect(&mut context).unwrap();
-    let prior = context.last_attempt().unwrap().clone();
+    let prior = terminal_summary(&context);
     // CommandsEmitted is meaningful for frame normalization, but an inspection
     // consumes authored records and never normalizes or emits commands.
     let limits = RenderLimits::new()
@@ -449,7 +813,7 @@ fn standalone_setup_rejects_foreign_work_and_preserves_the_previous_report() {
             RenderWork::CommandsEmitted
         ))
     );
-    assert_eq!(context.last_attempt(), Some(&prior));
+    assert_eq!(terminal_summary(&context), prior);
     for work in [
         RenderWork::ReadbackTransferredBytes,
         RenderWork::ResourceRetirements,
@@ -467,7 +831,7 @@ fn standalone_inspection_rejects_a_renderer_readback_limit_without_replacing_its
     let scene = crate::Scene::new();
     let mut context = RenderAccountingContext::default();
     scene.inspect(&mut context).unwrap();
-    let prior = context.last_attempt().unwrap().clone();
+    let prior = terminal_summary(&context);
     let limits = RenderLimits::new()
         .with_work_limit(RenderWork::ReadbackRows, 1)
         .expect("the renderer readback producer supports row admission");
@@ -481,7 +845,7 @@ fn standalone_inspection_rejects_a_renderer_readback_limit_without_replacing_its
             RenderWork::ReadbackRows
         )),
     );
-    assert_eq!(context.last_attempt(), Some(&prior));
+    assert_eq!(terminal_summary(&context), prior);
 }
 
 #[test]
@@ -548,7 +912,7 @@ fn retained_growth_admits_actual_overlap_and_transfers_only_final_backing() {
         if let Ok(values) = result {
             assert_eq!(values, [1, 2, 3, 4]);
         }
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(report.usage().peak(RenderResource::RetainedCpuBytes), peak);
         assert_eq!(report.usage().live(RenderResource::RetainedCpuBytes), 0);
         assert_eq!(

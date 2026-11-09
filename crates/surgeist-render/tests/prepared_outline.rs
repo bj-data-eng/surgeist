@@ -357,7 +357,7 @@ fn variation_report_counts_each_qualifier_axis_and_converted_coordinate() {
         .prepare_glyph_run(&instance, &[glyph()], limits(), &mut context)
         .unwrap();
     // One fvar axis, one provider coordinate conversion and one tuple peak axis.
-    let report = context.last_attempt().unwrap();
+    let report = context.last_attempt().unwrap().attempt().unwrap();
     assert_eq!(report.usage().work(RenderWork::CoordinateInputs), 1);
     assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 3);
     assert_eq!(report.usage().work(RenderWork::VariationTupleVisits), 1);

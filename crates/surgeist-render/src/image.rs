@@ -964,6 +964,8 @@ mod mask_key_accounting_tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .work(RenderWork::ImageIdentityByteComparisons),
             2
@@ -981,6 +983,8 @@ mod mask_key_accounting_tests {
         assert_eq!(
             context
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .work(RenderWork::ImageIdentityByteComparisons),

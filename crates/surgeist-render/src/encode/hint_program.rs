@@ -504,7 +504,7 @@ mod tests {
         assert!(error.accounting_diagnostic().is_some());
         // Finiteness, positive-domain check, and binary64 representation
         // capture are accepted; exponent extraction has not run.
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::CoordinateVisits), 3);
         assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
         assert!(logs.endpoint(2.0, &fixture).is_ok());
@@ -604,6 +604,8 @@ mod tests {
         assert_eq!(
             context
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .live(RenderResource::ScratchCpuBytes),

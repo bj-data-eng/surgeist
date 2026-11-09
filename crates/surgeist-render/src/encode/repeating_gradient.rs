@@ -923,7 +923,7 @@ mod tests {
             refusal.quantity(),
             RenderQuantity::Work(RenderWork::CoordinateVisits)
         );
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert!(usage.work(RenderWork::CoordinateVisits) > 0);
         assert!(usage.work(RenderWork::CoordinateVisits) <= 64);
         assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
@@ -1252,7 +1252,7 @@ mod tests {
                 prepare(&gradient, kurbo::Affine::scale(0.1), account).map(drop)
             })
             .unwrap();
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         // Two period endpoints plus one complete scalar average traversal.
         assert_eq!(
             report
@@ -1287,6 +1287,8 @@ mod tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .live(RenderResource::ScratchCpuBytes),
             0
@@ -1309,6 +1311,8 @@ mod tests {
             baseline
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .work(RenderWork::CoordinateVisits),
             5
@@ -1328,7 +1332,7 @@ mod tests {
             )
             .unwrap_err();
         assert!(error.accounting_diagnostic().is_some());
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::CoordinateVisits), 4);
         assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
         assert_eq!(horizontal_phase(1.0, 4.0, &account).unwrap(), 0.25);

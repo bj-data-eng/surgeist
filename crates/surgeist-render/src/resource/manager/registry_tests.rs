@@ -75,7 +75,7 @@ fn registry_frame_audit_refuses_the_first_unadmitted_entry_and_retries_without_m
             Some(RenderAccountingError::Refused(refusal))
                 if refusal.quantity() == RenderQuantity::Work(RenderWork::ResourceProbes)
         ));
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(report.status(), RenderAttemptStatus::Refused);
         assert_eq!(report.usage().work(RenderWork::ResourceProbes), limit);
         assert_eq!(
@@ -100,6 +100,8 @@ fn registry_frame_audit_refuses_the_first_unadmitted_entry_and_retries_without_m
         retry
             .last_attempt()
             .unwrap()
+            .attempt()
+            .unwrap()
             .usage()
             .work(RenderWork::ResourceProbes),
         2
@@ -120,6 +122,8 @@ fn registry_preflight_audits_even_an_empty_request_batch_before_any_mutation() {
         refused
             .last_attempt()
             .unwrap()
+            .attempt()
+            .unwrap()
             .usage()
             .work(RenderWork::ResourceProbes),
         1
@@ -134,6 +138,8 @@ fn registry_preflight_audits_even_an_empty_request_batch_before_any_mutation() {
     assert_eq!(
         retry
             .last_attempt()
+            .unwrap()
+            .attempt()
             .unwrap()
             .usage()
             .work(RenderWork::ResourceProbes),
@@ -159,7 +165,7 @@ fn registry_acquisition_repeats_its_audit_before_candidate_selection() {
             result.map(drop)
         })
         .unwrap_err();
-    let report = refused.last_attempt().unwrap();
+    let report = refused.last_attempt().unwrap().attempt().unwrap();
     assert_eq!(report.usage().work(RenderWork::ResourceProbes), 3);
     assert_eq!(
         report.usage().work(RenderWork::ResourceAllocationRequests),
@@ -210,6 +216,8 @@ fn registry_reuse_requires_its_selected_entry_lookup_before_changing_the_lease()
         refused
             .last_attempt()
             .unwrap()
+            .attempt()
+            .unwrap()
             .usage()
             .work(RenderWork::ResourceProbes),
         6
@@ -228,6 +236,8 @@ fn registry_reuse_requires_its_selected_entry_lookup_before_changing_the_lease()
         retry
             .last_attempt()
             .unwrap()
+            .attempt()
+            .unwrap()
             .usage()
             .work(RenderWork::ResourceProbes),
         7
@@ -235,6 +245,8 @@ fn registry_reuse_requires_its_selected_entry_lookup_before_changing_the_lease()
     assert_eq!(
         retry
             .last_attempt()
+            .unwrap()
+            .attempt()
             .unwrap()
             .usage()
             .work(RenderWork::ResourceAllocationRequests),
@@ -273,12 +285,14 @@ fn registry_cleanup_observes_its_walks_after_the_attempt_allowance_is_spent() {
         context
             .last_attempt()
             .unwrap()
+            .attempt()
+            .unwrap()
             .usage()
             .work(RenderWork::ResourceProbes),
         0
     );
     assert_eq!(
-        context.last_attempt().unwrap().status(),
+        context.last_attempt().unwrap().attempt().unwrap().status(),
         RenderAttemptStatus::Refused
     );
     manager.generation().ensure_healthy().unwrap();
@@ -348,12 +362,14 @@ fn registry_provisional_abort_observes_its_predicate_and_removal_after_refusal()
         context
             .last_attempt()
             .unwrap()
+            .attempt()
+            .unwrap()
             .usage()
             .work(RenderWork::ResourceProbes),
         0
     );
     assert_eq!(
-        context.last_attempt().unwrap().status(),
+        context.last_attempt().unwrap().attempt().unwrap().status(),
         RenderAttemptStatus::Refused
     );
 }

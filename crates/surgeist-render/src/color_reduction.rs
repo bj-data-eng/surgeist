@@ -144,7 +144,7 @@ mod tests {
         // Each input: 4 channel captures + 4 widening conversions + 3 alpha
         // products + 4 weighted products + 4 sums = 19. Finish: alpha check,
         // 3*(divide,clamp,narrow), and alpha clamp/narrow = 12. No allocation.
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 50);
         assert_eq!(report.usage().peak(RenderResource::RetainedCpuBytes), 0);
         assert_eq!(report.usage().peak(RenderResource::ScratchCpuBytes), 0);
@@ -163,7 +163,7 @@ mod tests {
             )
             .unwrap_err();
         assert!(error.accounting_diagnostic().is_some());
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 49);
         assert_eq!(report.usage().live(RenderResource::RetainedCpuBytes), 0);
         assert_eq!(report.usage().live(RenderResource::ScratchCpuBytes), 0);

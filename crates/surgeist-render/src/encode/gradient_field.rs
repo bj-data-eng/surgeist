@@ -1078,6 +1078,8 @@ mod accounting_tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .work(RenderWork::CoordinateVisits),
             34
@@ -1101,7 +1103,7 @@ mod accounting_tests {
             )
             .unwrap_err();
         assert!(error.accounting_diagnostic().is_some());
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::CoordinateVisits), 33);
         assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
         assert!(
@@ -1122,6 +1124,8 @@ mod accounting_tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .work(RenderWork::CoordinateVisits),
             6
@@ -1141,7 +1145,7 @@ mod accounting_tests {
             )
             .unwrap_err();
         assert!(error.accounting_diagnostic().is_some());
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::CoordinateVisits), 5);
         assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
         assert!(check_finite(kurbo::Affine::IDENTITY, &Account::for_test()).is_ok());
@@ -1170,6 +1174,8 @@ mod accounting_tests {
         assert_eq!(
             context
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .work(RenderWork::CoordinateVisits),
@@ -1200,7 +1206,7 @@ mod accounting_tests {
         assert!(error.accounting_diagnostic().is_some());
         // Six coefficient captures plus14 normalization/projection actions;
         // the next finite-period check is refused before inverse work starts.
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::CoordinateVisits), 20);
         assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
         assert!(
@@ -1230,6 +1236,8 @@ mod accounting_tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .work(RenderWork::CoordinateVisits),
             16
@@ -1253,6 +1261,8 @@ mod accounting_tests {
         assert_eq!(
             context
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .work(RenderWork::CoordinateVisits),
@@ -1340,6 +1350,8 @@ mod accounting_tests {
                 context
                     .last_attempt()
                     .unwrap()
+                    .attempt()
+                    .unwrap()
                     .usage()
                     .work(RenderWork::CoordinateVisits),
                 32
@@ -1364,6 +1376,8 @@ mod accounting_tests {
                 context
                     .last_attempt()
                     .unwrap()
+                    .attempt()
+                    .unwrap()
                     .usage()
                     .work(RenderWork::CoordinateVisits),
                 31
@@ -1371,6 +1385,8 @@ mod accounting_tests {
             assert_eq!(
                 context
                     .last_attempt()
+                    .unwrap()
+                    .attempt()
                     .unwrap()
                     .usage()
                     .live(RenderResource::ScratchCpuBytes),

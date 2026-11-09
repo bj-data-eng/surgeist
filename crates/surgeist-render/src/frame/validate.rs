@@ -582,7 +582,7 @@ mod repeated_proof_edge_tests {
                         validate_vello_span_metadata(&graph, account)
                     })
                 });
-                let report = context.last_attempt().unwrap();
+                let report = context.last_attempt().unwrap().attempt().unwrap();
                 if limit == 1 {
                     result.unwrap();
                     assert_eq!(report.usage().work(RenderWork::GraphEdgeVisits), 1);

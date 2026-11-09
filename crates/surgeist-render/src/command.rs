@@ -1511,6 +1511,8 @@ mod paint_visit_tests {
                 context
                     .last_attempt()
                     .unwrap()
+                    .attempt()
+                    .unwrap()
                     .usage()
                     .work(RenderWork::PaintVisits),
                 expected
@@ -1544,7 +1546,7 @@ mod paint_visit_tests {
             assert_eq!(refusal.current(), limit);
             assert_eq!(refusal.amount(), 1);
             assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit });
-            let report = context.last_attempt().unwrap();
+            let report = context.last_attempt().unwrap().attempt().unwrap();
             assert_eq!(report.status(), RenderAttemptStatus::Refused);
             assert_eq!(report.usage().work(RenderWork::PaintVisits), limit);
         }

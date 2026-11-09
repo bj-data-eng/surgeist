@@ -182,7 +182,7 @@ mod tests {
         assert_eq!(summary.image_content_hits, 1);
         assert_eq!(summary.image_content_misses, 1);
         assert_eq!(summary.first_observed_image_bytes, 4);
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::AuthoredCommands), 4);
         assert_eq!(usage.work(RenderWork::CommandsEmitted), 0);
         assert_eq!(usage.work(RenderWork::ImageIdentityByteComparisons), 4);
@@ -210,6 +210,8 @@ mod tests {
         assert_eq!(
             context
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .work(RenderWork::AuthoredCommands),
@@ -240,6 +242,8 @@ mod tests {
         assert_eq!(
             context
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .work(RenderWork::ImageIdentityByteComparisons),

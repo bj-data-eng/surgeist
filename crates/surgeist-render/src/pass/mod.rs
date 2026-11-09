@@ -180,7 +180,7 @@ mod accounting_tests {
                 },
             )
             .unwrap();
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::ResourceProbes), 7);
         assert_eq!(usage.peak(RenderResource::RetainedCpuBytes), 24);
         assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
@@ -213,6 +213,8 @@ mod accounting_tests {
         assert_eq!(
             context
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .work(RenderWork::ResourceProbes),

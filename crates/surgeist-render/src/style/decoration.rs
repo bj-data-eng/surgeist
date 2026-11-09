@@ -985,6 +985,8 @@ mod accounting_tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .work(RenderWork::CommandsEmitted),
             4
@@ -1012,6 +1014,8 @@ mod accounting_tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .work(RenderWork::CommandsEmitted),
             0
@@ -1019,6 +1023,8 @@ mod accounting_tests {
         assert_eq!(
             context
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .work(RenderWork::PreparedTransferredBytes),

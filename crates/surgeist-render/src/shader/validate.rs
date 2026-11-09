@@ -863,7 +863,7 @@ mod accounting_tests {
     fn measured_comparison(
         limit: u64,
         compare: impl FnOnce(&Account) -> Result<bool>,
-    ) -> (Result<bool>, crate::RenderAttemptReport) {
+    ) -> (Result<bool>, crate::RenderStandaloneReport) {
         let options = crate::RenderAccountingOptions::new().with_limits(
             crate::RenderLimits::new()
                 .with_work_limit(RenderWork::ShaderBindingVisits, limit)
@@ -908,7 +908,14 @@ mod accounting_tests {
             for limit in [visits, visits - 1] {
                 let (result, report) =
                     measured_comparison(limit, |account| compare(&left, &right, account));
-                assert_eq!(report.usage().work(RenderWork::ShaderBindingVisits), limit);
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::ShaderBindingVisits),
+                    limit
+                );
                 if limit == visits {
                     assert!(result.unwrap());
                 } else {
@@ -975,7 +982,14 @@ mod accounting_tests {
         for (visits, compare) in cases {
             let (result, report) = measured_comparison(visits, compare);
             assert!(!result.unwrap());
-            assert_eq!(report.usage().work(RenderWork::ShaderBindingVisits), visits);
+            assert_eq!(
+                report
+                    .attempt()
+                    .unwrap()
+                    .usage()
+                    .work(RenderWork::ShaderBindingVisits),
+                visits
+            );
         }
     }
 
@@ -998,6 +1012,8 @@ mod accounting_tests {
         assert_eq!(
             context
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .work(RenderWork::ShaderBindingVisits),

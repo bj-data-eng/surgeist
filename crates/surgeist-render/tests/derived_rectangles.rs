@@ -176,7 +176,7 @@ fn profiles() -> [RenderProfile; 5] {
 }
 
 fn assert_clean_numeric_failure(context: &RenderAccountingContext) {
-    let report = context.last_attempt().unwrap();
+    let report = context.last_attempt().unwrap().attempt().unwrap();
     assert_eq!(
         report.status(),
         RenderAttemptStatus::Failed(ErrorCode::InvalidInput)
@@ -210,7 +210,7 @@ fn repeat_numeric_failure_keeps_one_emission_releases_backing_and_allows_retry()
             ImageRepeatPlan::try_new(BackgroundRepeat::repeat_x(), Capabilities::CURRENT).unwrap();
         assert_invalid_numeric_input(repeat_x.resolve(placement, &mut context).unwrap_err());
         assert_clean_numeric_failure(&context);
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(report.usage().work(RenderWork::RepeatTiles), 1);
         // Three generated positions plus two maximum-coordinate proofs per
         // attempted tile: one valid tile, then one invalid tile.
@@ -233,7 +233,7 @@ fn repeat_numeric_failure_keeps_one_emission_releases_backing_and_allows_retry()
                 Rect::try_new(2.0, 2.0, 2.0, 2.0).unwrap(),
             ]
         );
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::RepeatTiles), 4);
         assert_eq!(usage.work(RenderWork::CoordinateVisits), 12);
         assert!(usage.work(RenderWork::PreparedTransferredBytes) > 0);
@@ -276,7 +276,7 @@ fn outline_failure_preserves_first_command_work_and_retry_returns_exact_bounds()
                 .unwrap_err(),
         );
         assert_clean_numeric_failure(&context);
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::CommandsEmitted), 1);
         // Each target derives four components and proves its two maxima.
         assert_eq!(usage.work(RenderWork::CoordinateVisits), 12);
@@ -295,6 +295,8 @@ fn outline_failure_preserves_first_command_work_and_retry_returns_exact_bounds()
         assert_eq!(
             context
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .work(RenderWork::CoordinateVisits),
@@ -316,7 +318,7 @@ fn repeat_maximum_proof_limit_refuses_before_emitting_unproved_tile() {
         .resolve(ordinary_placement(), &mut context)
         .unwrap_err();
     assert!(error.accounting_diagnostic().is_some());
-    let report = context.last_attempt().unwrap();
+    let report = context.last_attempt().unwrap().attempt().unwrap();
     assert_eq!(report.status(), RenderAttemptStatus::Refused);
     assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 4);
     assert_eq!(report.usage().work(RenderWork::RepeatTiles), 0);
@@ -378,7 +380,7 @@ fn background_placement_failure_accounts_maximum_proof_without_emitting_output()
                 .unwrap_err(),
         );
         assert_clean_numeric_failure(&context);
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::CoordinateVisits), 2);
         assert_eq!(usage.work(RenderWork::RepeatTiles), 0);
         assert_eq!(usage.work(RenderWork::CommandsEmitted), 0);
@@ -390,7 +392,7 @@ fn background_placement_failure_accounts_maximum_proof_without_emitting_output()
                 .len(),
             1
         );
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         // Placement proof2, no-repeat positions2, repeat-tile proof2.
         assert_eq!(usage.work(RenderWork::CoordinateVisits), 6);
         assert_eq!(usage.work(RenderWork::RepeatTiles), 1);

@@ -4662,6 +4662,8 @@ mod accounting_tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .live(RenderResource::ScratchCpuBytes),
             0
@@ -4697,7 +4699,7 @@ mod accounting_tests {
             },
         );
         assert!(result.is_err());
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(report.status(), RenderAttemptStatus::Refused);
         assert_eq!(report.usage().work(RenderWork::ResourceProbes), 0);
         assert_eq!(report.usage().live(RenderResource::ScratchCpuBytes), 0);
@@ -4719,7 +4721,7 @@ mod accounting_tests {
             },
         );
         assert!(result.is_err());
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(report.status(), RenderAttemptStatus::Refused);
         assert_eq!(report.usage().peak(RenderResource::ScratchCpuBytes), 0);
         assert_eq!(report.usage().work(RenderWork::GraphNodeVisits), 0);
@@ -4757,6 +4759,8 @@ mod accounting_tests {
             assert_eq!(
                 context
                     .last_attempt()
+                    .unwrap()
+                    .attempt()
                     .unwrap()
                     .usage()
                     .work(RenderWork::ResourceProbes),

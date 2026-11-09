@@ -102,7 +102,13 @@ fn abandoned_slots_and_empty_copy_do_not_invent_work_or_growth() {
     result.unwrap();
     for &work in RenderWork::ALL {
         assert_eq!(
-            context.last_attempt().unwrap().usage().work(work),
+            context
+                .last_attempt()
+                .unwrap()
+                .attempt()
+                .unwrap()
+                .usage()
+                .work(work),
             0,
             "{work:?}"
         );
@@ -133,6 +139,8 @@ fn zero_sized_logical_length_overflow_refuses_before_write() {
         context
             .last_attempt()
             .unwrap()
+            .attempt()
+            .unwrap()
             .usage()
             .live(RenderResource::ScratchCpuBytes),
         0
@@ -153,7 +161,7 @@ fn replacement_counts_existing_length_once_and_admits_actual_overlap() {
         Ok(())
     });
     result.unwrap();
-    let usage = context.last_attempt().unwrap().usage();
+    let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
     assert_eq!(usage.work(RenderWork::StorageRelocations), 2);
     assert_eq!(
         usage.peak(RenderResource::ScratchCpuBytes),
@@ -191,7 +199,7 @@ fn one_short_relocation_cap_preserves_a_real_accepted_prefix_and_all_old_values(
         Err(error)
     });
     assert!(result.is_err());
-    let usage = context.last_attempt().unwrap().usage();
+    let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
     assert_eq!(usage.work(RenderWork::StorageRelocations), 1);
     assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
     let (result, retry) = run(RenderAccountingOptions::default(), |account| {
@@ -208,6 +216,8 @@ fn one_short_relocation_cap_preserves_a_real_accepted_prefix_and_all_old_values(
     assert_eq!(
         retry
             .last_attempt()
+            .unwrap()
+            .attempt()
             .unwrap()
             .usage()
             .work(RenderWork::StorageRelocations),
@@ -234,7 +244,7 @@ fn callback_failure_precedes_central_relocation_and_preserves_its_exact_domain()
         Err(error)
     });
     assert!(result.is_err());
-    let usage = context.last_attempt().unwrap().usage();
+    let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
     assert_eq!(usage.work(RenderWork::StorageRelocations), 0);
     assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
 }
@@ -273,7 +283,7 @@ fn raw_native_backing_growth_uses_the_same_single_relocation_authority() {
         Ok(())
     });
     result.unwrap();
-    let usage = context.last_attempt().unwrap().usage();
+    let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
     assert_eq!(usage.work(RenderWork::StorageRelocations), 2);
     assert_eq!(usage.work(RenderWork::EncodingStreamCopies), 0);
     assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
@@ -359,6 +369,8 @@ fn renderer_relocation_is_cpu_lifetime_work_not_forward_frame_work() {
     assert_eq!(
         context
             .last_attempt()
+            .unwrap()
+            .attempt()
             .unwrap()
             .usage()
             .work(RenderWork::StorageRelocations),

@@ -919,6 +919,8 @@ mod tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .work(RenderWork::CoordinateVisits),
             11
@@ -938,7 +940,7 @@ mod tests {
             )
             .unwrap_err();
         assert!(error.accounting_diagnostic().is_some());
-        let usage = limited.last_attempt().unwrap().usage();
+        let usage = limited.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::CoordinateVisits), 10);
         assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
         assert_eq!(cutoff(value, 0, &Account::for_test()).unwrap().to_bits(), 1);
@@ -970,7 +972,7 @@ mod tests {
         // Six coefficient captures, ten actual scalar decomposition actions,
         // then the first product and its three normalization actions. Admission
         // rejects the next product before evaluating it.
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::CoordinateVisits), 20);
         assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
         let result = affine(
@@ -1097,7 +1099,7 @@ mod tests {
             assert!(matches!(brush.as_ref(),peniko::BrushRef::Solid(color) if color==peniko::Color::TRANSPARENT));
             Ok(())
         }).unwrap();
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         // Two actual source position captures and the radial b<=0 comparison;
         // selecting a solid needs no stop-range equality or unused geometry.
         assert_eq!(usage.work(RenderWork::CoordinateVisits), 3);
@@ -1126,7 +1128,7 @@ mod tests {
             )
             .unwrap_err();
         assert!(error.accounting_diagnostic().is_some());
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::CoordinateVisits), 2);
         assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
         assert!(
@@ -1162,6 +1164,8 @@ mod tests {
                 context
                     .last_attempt()
                     .unwrap()
+                    .attempt()
+                    .unwrap()
                     .usage()
                     .work(RenderWork::CoordinateVisits),
                 actions
@@ -1186,6 +1190,8 @@ mod tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .work(RenderWork::CoordinateVisits),
             2
@@ -1193,6 +1199,8 @@ mod tests {
         assert_eq!(
             context
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .live(RenderResource::ScratchCpuBytes),
@@ -1229,6 +1237,8 @@ mod tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .work(RenderWork::CoordinateVisits),
             5
@@ -1251,6 +1261,8 @@ mod tests {
         assert_eq!(
             context
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .work(RenderWork::CoordinateVisits),
@@ -1301,6 +1313,8 @@ mod tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .work(RenderWork::CoordinateVisits),
             12
@@ -1332,6 +1346,8 @@ mod tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .work(RenderWork::CoordinateVisits),
             11
@@ -1339,6 +1355,8 @@ mod tests {
         assert_eq!(
             context
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .live(RenderResource::ScratchCpuBytes),

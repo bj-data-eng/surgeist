@@ -493,7 +493,7 @@ mod tests {
                     crate::RenderPhase::Kernel,
                     |account| left.matches_in(right, account),
                 );
-                let report = context.last_attempt().unwrap();
+                let report = context.last_attempt().unwrap().attempt().unwrap();
                 assert_eq!(report.usage().work(RenderWork::KernelSampleVisits), limit);
                 assert_eq!(report.usage().work(RenderWork::SerializedBytes), 0);
                 if limit == visits {

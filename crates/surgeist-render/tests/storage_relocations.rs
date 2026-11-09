@@ -39,7 +39,7 @@ fn zero_relocation_cap_refuses_real_glyph_growth_and_allows_clean_retry() {
     assert_eq!(refusal.current(), 0);
     assert!(refusal.amount() > 0);
     assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 0 });
-    let report = context.last_attempt().unwrap();
+    let report = context.last_attempt().unwrap().attempt().unwrap();
     assert_eq!(report.status(), RenderAttemptStatus::Refused);
     assert_eq!(report.usage().work(RenderWork::StorageRelocations), 0);
     assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
@@ -51,7 +51,7 @@ fn zero_relocation_cap_refuses_real_glyph_growth_and_allows_clean_retry() {
         .prepare_glyph_run(&instance, &glyphs, caps(), &mut context)
         .unwrap();
     assert_eq!(prepared.path_elements().count(), 40);
-    let report = context.last_attempt().unwrap();
+    let report = context.last_attempt().unwrap().attempt().unwrap();
     assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
     assert!(report.usage().work(RenderWork::StorageRelocations) > 0);
     assert_eq!(report.usage().live(RenderResource::RetainedCpuBytes), 0);
@@ -91,7 +91,7 @@ fn glyph_relocation_usage_and_geometry_are_independent_of_profile_detail() {
             .unwrap();
         let path: Vec<_> = prepared.path_elements().collect();
         assert_eq!(path.len(), 40);
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         assert!(report.usage().work(RenderWork::StorageRelocations) > 0);
         if let Some(expected) = &expected {
             assert_eq!(&(path, report.usage()), expected);

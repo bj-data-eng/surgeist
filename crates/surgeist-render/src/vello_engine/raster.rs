@@ -973,7 +973,7 @@ mod lut_tests {
         assert_eq!(
             context
                 .last_attempt()
-                .unwrap()
+                .unwrap().attempt().unwrap()
                 .usage()
                 .peak(RenderResource::RetainedCpuBytes),
             9216
@@ -995,7 +995,7 @@ mod lut_tests {
                 },
             )
             .unwrap();
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::KernelSampleVisits), 0);
         assert_eq!(usage.work(RenderWork::UploadBytes), 0);
         assert_eq!(usage.peak(RenderResource::RetainedCpuBytes), 0);
@@ -1041,7 +1041,7 @@ mod lut_tests {
             assert_eq!(
                 context
                     .last_attempt()
-                    .unwrap()
+                    .unwrap().attempt().unwrap()
                     .usage()
                     .work(RenderWork::KernelSampleVisits),
                 8192

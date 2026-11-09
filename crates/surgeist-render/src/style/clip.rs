@@ -525,6 +525,8 @@ mod accounting_tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .work(RenderWork::PathElementVisits),
             9
@@ -548,7 +550,7 @@ mod accounting_tests {
                 .normalize(Capabilities::CURRENT, &mut context)
                 .is_err()
         );
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::PathElementVisits), 2);
         assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
     }
@@ -660,6 +662,8 @@ mod accounting_tests {
                 standalone
                     .last_attempt()
                     .unwrap()
+                    .attempt()
+                    .unwrap()
                     .usage()
                     .work(RenderWork::PreparedTransferredBytes)
                     > 0
@@ -667,6 +671,8 @@ mod accounting_tests {
             assert_eq!(
                 standalone
                     .last_attempt()
+                    .unwrap()
+                    .attempt()
                     .unwrap()
                     .usage()
                     .live(RenderResource::RetainedCpuBytes),

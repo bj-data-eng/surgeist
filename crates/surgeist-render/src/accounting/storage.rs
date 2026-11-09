@@ -1269,6 +1269,8 @@ mod tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .peak(RenderResource::RetainedCpuBytes),
             0

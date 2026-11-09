@@ -139,7 +139,7 @@ fn actual_paint_line_and_shared_fixup_preserve_geometry_colors_and_expanded_orde
         observed(&prepared),
         [(-0.5, red()), (0.0, red()), (0.0, green()), (1.5, blue())]
     );
-    let report = account.last_attempt().unwrap();
+    let report = account.last_attempt().unwrap().attempt().unwrap();
     no_custody(report);
     assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
 }
@@ -211,7 +211,7 @@ fn zero_geometry_precedes_basis_and_source_conversion_and_radial_zero_cases_are_
             panic!("expected a typed radial case")
         };
         assert_eq!(*case, geometry.case());
-        no_custody(account.last_attempt().unwrap());
+        no_custody(account.last_attempt().unwrap().attempt().unwrap());
     }
     for geometry in [radial(0.0, 2.0), radial(0.0, 0.0)] {
         let error =
@@ -223,7 +223,7 @@ fn zero_geometry_precedes_basis_and_source_conversion_and_radial_zero_cases_are_
                 actual: 10.0,
             }
         );
-        let report = account.last_attempt().unwrap();
+        let report = account.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(report.usage().work(RenderWork::GradientStopVisits), 0);
         no_custody(report);
     }
@@ -307,9 +307,9 @@ fn adopted_hint_bounded_fixup_and_outgoing_associations_survive_all_four_consume
         assert_eq!(output[1].hint_after().unwrap().position(), 0.2);
         assert!(output[2].hint_after().is_none());
     }
-    no_custody(account.last_attempt().unwrap());
+    no_custody(account.last_attempt().unwrap().attempt().unwrap());
     assert_eq!(
-        account.last_attempt().unwrap().status(),
+        account.last_attempt().unwrap().attempt().unwrap().status(),
         RenderAttemptStatus::Succeeded
     );
 }
@@ -368,14 +368,16 @@ fn source_numeric_refusals_keep_hint_and_two_ordinals_instead_of_old_hint_prefli
                 }
             );
         }
-        no_custody(account.last_attempt().unwrap());
+        no_custody(account.last_attempt().unwrap().attempt().unwrap());
         assert_eq!(
-            account.last_attempt().unwrap().status(),
+            account.last_attempt().unwrap().attempt().unwrap().status(),
             RenderAttemptStatus::Failed(ErrorCode::PaintGradient)
         );
         assert_eq!(
             account
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .work(RenderWork::PreparedTransferredBytes),
@@ -433,7 +435,7 @@ fn hint_topology_collapse_reports_the_actual_hint_or_following_two_ordinal() {
                 }
             );
         }
-        no_custody(account.last_attempt().unwrap());
+        no_custody(account.last_attempt().unwrap().attempt().unwrap());
     }
 }
 
@@ -513,7 +515,7 @@ fn quotient_underflow_overflow_and_distinct_stop_collapse_are_typed_refusals() {
                 }
             ));
         }
-        no_custody(account.last_attempt().unwrap());
+        no_custody(account.last_attempt().unwrap().attempt().unwrap());
     }
     // In this binade, division by 3 maps these adjacent f64 values to one
     // quotient. A distinct later source position must not silently coalesce.
@@ -621,7 +623,7 @@ fn only_the_converted_span_must_be_finite_not_the_original_physical_span() {
             }
         ));
     }
-    no_custody(account.last_attempt().unwrap());
+    no_custody(account.last_attempt().unwrap().attempt().unwrap());
 }
 
 #[test]
@@ -631,8 +633,9 @@ fn retained_backing_is_transferred_once_and_every_named_refusal_releases_its_pre
     let used = stops(8.0, &source);
     let mut account = context(RenderLimits::new());
     let expected = prepare_repeating_linear_gradient(&geometry, &used, &mut account).unwrap();
-    let baseline = account.last_attempt().unwrap().clone();
-    no_custody(&baseline);
+    let baseline_record = account.take_last_attempt().unwrap();
+    let baseline = baseline_record.attempt().unwrap();
+    no_custody(baseline);
     let transferred = baseline.usage().work(RenderWork::PreparedTransferredBytes);
     assert!(transferred >= (size_of::<RepeatingGradient>() + 3 * size_of::<GradientStop>()) as u64);
     assert_eq!(
@@ -659,7 +662,7 @@ fn retained_backing_is_transferred_once_and_every_named_refusal_releases_its_pre
             };
             assert_eq!(refusal.quantity(), RenderQuantity::Work(work));
             assert!(error.glyph_preparation_diagnostic().is_none());
-            let report = account.last_attempt().unwrap();
+            let report = account.last_attempt().unwrap().attempt().unwrap();
             assert_eq!(report.status(), RenderAttemptStatus::Refused);
             assert!(report.usage().work(work) <= limit);
             assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
@@ -675,7 +678,7 @@ fn retained_backing_is_transferred_once_and_every_named_refusal_releases_its_pre
         assert!(
             matches!(error.accounting_diagnostic(), Some(RenderAccountingError::Refused(refusal)) if refusal.quantity() == RenderQuantity::Resource(RenderResource::RetainedCpuBytes))
         );
-        no_custody(account.last_attempt().unwrap());
+        no_custody(account.last_attempt().unwrap().attempt().unwrap());
     }
     account.set_options(
         RenderAccountingOptions::new()
@@ -694,7 +697,16 @@ fn invalid_limit_and_report_setup_failure_preserve_the_previous_completed_attemp
     let used = stops(8.0, &source);
     let mut account = context(RenderLimits::new());
     prepare_repeating_linear_gradient(&geometry, &used, &mut account).unwrap();
-    let previous = account.last_attempt().unwrap().clone();
+    let observe = |account: &RenderAccountingContext| {
+        let report = account.last_attempt().unwrap();
+        (
+            report.kind(),
+            report.status(),
+            report.attempt().cloned(),
+            report.cleanup_fault(),
+        )
+    };
+    let previous = observe(&account);
     account.set_options(
         RenderAccountingOptions::new().with_limits(
             RenderLimits::new()
@@ -707,7 +719,7 @@ fn invalid_limit_and_report_setup_failure_preserve_the_previous_completed_attemp
         error.accounting_diagnostic(),
         Some(RenderAccountingError::InvalidLimit(RenderWork::GlyphVisits))
     ));
-    assert_eq!(account.last_attempt(), Some(&previous));
+    assert_eq!(observe(&account), previous);
     account.set_options(
         RenderAccountingOptions::new().with_profile(RenderProfile::Detailed {
             timing: false,
@@ -722,11 +734,11 @@ fn invalid_limit_and_report_setup_failure_preserve_the_previous_completed_attemp
             RenderAccountingSetupError::Allocation
         ))
     ));
-    assert_eq!(account.last_attempt(), Some(&previous));
+    assert_eq!(observe(&account), previous);
     account.set_options(RenderAccountingOptions::new());
     prepare_repeating_linear_gradient(&geometry, &used, &mut account).unwrap();
     assert_eq!(
-        account.last_attempt().unwrap().status(),
+        account.last_attempt().unwrap().attempt().unwrap().status(),
         RenderAttemptStatus::Succeeded
     );
 }
@@ -770,7 +782,8 @@ fn off_untimed_timed_and_filtered_profiles_preserve_output_admission_and_usage()
             .with_clock(RenderClock::Host(clock)),
     );
     let expected = prepare_repeating_linear_gradient(&geometry, &used, &mut account).unwrap();
-    let baseline = account.last_attempt().unwrap().clone();
+    let baseline_record = account.take_last_attempt().unwrap();
+    let baseline = baseline_record.attempt().unwrap();
     assert!(baseline.elapsed().unwrap() > Duration::ZERO);
     for phase in [
         RenderPhase::Preparation,
@@ -794,7 +807,8 @@ fn off_untimed_timed_and_filtered_profiles_preserve_output_admission_and_usage()
     let baseline_error =
         prepare_repeating_linear_gradient(&geometry, &used, &mut account).unwrap_err();
     let baseline_diagnostic = baseline_error.accounting_diagnostic().unwrap();
-    let failure = account.last_attempt().unwrap().clone();
+    let failure_record = account.take_last_attempt().unwrap();
+    let failure = failure_record.attempt().unwrap();
     for profile in [
         RenderProfile::Off,
         RenderProfile::Summary { timing: false },
@@ -824,8 +838,8 @@ fn off_untimed_timed_and_filtered_profiles_preserve_output_admission_and_usage()
             prepare_repeating_linear_gradient(&geometry, &used, &mut account).unwrap(),
             expected
         );
-        let actual = account.last_attempt().unwrap();
-        usage_equal(actual, &baseline);
+        let actual = account.last_attempt().unwrap().attempt().unwrap();
+        usage_equal(actual, baseline);
         assert_eq!(actual.elapsed().is_some(), timing);
         if let RenderProfile::Detailed {
             event_limit,
@@ -852,8 +866,8 @@ fn off_untimed_timed_and_filtered_profiles_preserve_output_admission_and_usage()
         account.set_options(options.with_limits(limits));
         let error = prepare_repeating_linear_gradient(&geometry, &used, &mut account).unwrap_err();
         assert_eq!(error.accounting_diagnostic(), Some(baseline_diagnostic));
-        usage_equal(account.last_attempt().unwrap(), &failure);
-        no_custody(account.last_attempt().unwrap());
+        usage_equal(account.last_attempt().unwrap().attempt().unwrap(), failure);
+        no_custody(account.last_attempt().unwrap().attempt().unwrap());
     }
 }
 

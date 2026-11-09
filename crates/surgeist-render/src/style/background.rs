@@ -543,7 +543,7 @@ mod accounting_tests {
             .normalize(Capabilities::CURRENT, &mut context)
             .unwrap();
         assert_eq!(normalized.commands().len(), 2);
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(report.kind(), RenderAttemptKind::Background);
         assert_eq!(report.usage().work(RenderWork::RepeatTiles), 2);
         assert_eq!(report.usage().work(RenderWork::CommandsEmitted), 2);

@@ -1452,7 +1452,7 @@ fn preparation_report_shares_font_custody_and_whole_layout_input_limits() {
     )
     .unwrap();
     assert_eq!(result.scene().commands.len(), 2);
-    let report = context.last_attempt().unwrap();
+    let report = context.last_attempt().unwrap().attempt().unwrap();
     assert_eq!(report.usage().work(RenderWork::GlyphInputs), 2);
     assert_eq!(
         report
@@ -1479,12 +1479,14 @@ fn preparation_report_shares_font_custody_and_whole_layout_input_limits() {
     .unwrap_err();
     assert_limit(&error, TextLayoutResource::Glyphs, 2, 1);
     assert_eq!(
-        context.last_attempt().unwrap().status(),
+        context.last_attempt().unwrap().attempt().unwrap().status(),
         RenderAttemptStatus::Refused
     );
     assert_eq!(
         context
             .last_attempt()
+            .unwrap()
+            .attempt()
             .unwrap()
             .usage()
             .live(RenderResource::RetainedCpuBytes),
@@ -1493,6 +1495,8 @@ fn preparation_report_shares_font_custody_and_whole_layout_input_limits() {
     assert_eq!(
         context
             .last_attempt()
+            .unwrap()
+            .attempt()
             .unwrap()
             .usage()
             .work(RenderWork::PreparedTransferredBytes),
@@ -1517,6 +1521,8 @@ fn preparation_report_shares_font_custody_and_whole_layout_input_limits() {
     assert_eq!(
         context
             .last_attempt()
+            .unwrap()
+            .attempt()
             .unwrap()
             .usage()
             .work(RenderWork::PathElementsEmitted),
@@ -1549,6 +1555,8 @@ fn text_placement_paint_visits_include_the_retained_foreground_inspection() {
     assert_eq!(
         context
             .last_attempt()
+            .unwrap()
+            .attempt()
             .unwrap()
             .usage()
             .work(RenderWork::PaintVisits),
@@ -1586,7 +1594,7 @@ fn text_placement_paint_limit_refuses_the_second_visit_and_retries_atomically() 
     assert_eq!(refusal.current(), 1);
     assert_eq!(refusal.amount(), 1);
     assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 1 });
-    let report = context.last_attempt().unwrap();
+    let report = context.last_attempt().unwrap().attempt().unwrap();
     assert_eq!(report.status(), RenderAttemptStatus::Refused);
     assert_eq!(report.usage().work(RenderWork::PaintVisits), 1);
     assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
@@ -1604,12 +1612,14 @@ fn text_placement_paint_limit_refuses_the_second_visit_and_retries_atomically() 
         prepare_text_layout(&input, Transform::identity(), limits(), &mut context).unwrap();
     assert_eq!(output.scene().commands.len(), 1);
     assert_eq!(
-        context.last_attempt().unwrap().status(),
+        context.last_attempt().unwrap().attempt().unwrap().status(),
         RenderAttemptStatus::Succeeded
     );
     assert_eq!(
         context
             .last_attempt()
+            .unwrap()
+            .attempt()
             .unwrap()
             .usage()
             .work(RenderWork::PaintVisits),

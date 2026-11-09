@@ -1070,7 +1070,7 @@ mod accounting_tests {
                     crate::RenderPhase::Encode,
                     |account| left.matches_in(right, account),
                 );
-                let report = context.last_attempt().unwrap();
+                let report = context.last_attempt().unwrap().attempt().unwrap();
                 assert_eq!(
                     report.usage().work(RenderWork::FilterOperationVisits),
                     limit
@@ -1120,7 +1120,7 @@ mod accounting_tests {
             if let Ok(bytes) = result {
                 assert_eq!(bytes.as_bytes(), &[0; 32]);
             }
-            let report = context.last_attempt().unwrap();
+            let report = context.last_attempt().unwrap().attempt().unwrap();
             assert_eq!(
                 report.usage().work(RenderWork::SerializedBytes),
                 if succeeds { 32 } else { 0 }
@@ -1177,6 +1177,8 @@ mod accounting_tests {
         assert_eq!(
             context
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .work(RenderWork::SerializedBytes),

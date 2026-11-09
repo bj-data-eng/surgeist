@@ -339,7 +339,7 @@ mod tests {
             },
         );
         assert!(result.is_err());
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(
             report.status(),
             crate::RenderAttemptStatus::Failed(crate::ErrorCode::GlyphPreparation)
