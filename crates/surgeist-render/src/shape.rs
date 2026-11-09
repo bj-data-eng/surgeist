@@ -235,7 +235,12 @@ impl Stroke {
     ///
     /// Returns [`crate::ErrorCode::InvalidInput`] for zero, negative, or non-finite width.
     pub fn try_new(width: f64) -> Result<Self> {
-        validate_positive_f64(width, "stroke width")?;
+        Self::try_new_named(width, "stroke width")
+    }
+
+    /// Validates a solid stroke width using the owning authored input label.
+    pub(crate) fn try_new_named(width: f64, name: &str) -> Result<Self> {
+        validate_positive_f64(width, name)?;
         Ok(Self::new(width))
     }
 

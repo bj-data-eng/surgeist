@@ -99,8 +99,7 @@ fn commands(image: Image, bounds: Rect, transform: Transform) -> crate::command:
     let mut scene = Scene::new();
     scene.layer(
         Layer::new()
-            .try_transform(transform)
-            .unwrap()
+            .with_transform(transform)
             .with_resolved_alpha_mask(ResolvedLayerAlphaMask::try_new(image, bounds).unwrap()),
         |scene| {
             scene.fill(bounds, Color::BLACK);
@@ -178,8 +177,7 @@ fn pixelated_mask_gpu_fractional_rotation_and_dpr_match_independent_alpha_oracle
         let bounds = Rect::new(0.0, 0.0, 3.0, 1.0);
         scene.layer(
             Layer::new()
-                .try_transform(transform)
-                .unwrap()
+                .with_transform(transform)
                 .with_resolved_alpha_mask(
                     ResolvedLayerAlphaMask::try_new(
                         mask(PhysicalSize::new(3, 1), &[0, 128, 255], Extend::Pad),

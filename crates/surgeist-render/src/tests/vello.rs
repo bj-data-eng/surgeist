@@ -1073,20 +1073,17 @@ fn matrix_full_transform_clip_opacity_image_gradient_stack_plans_layers() {
     let outer_transform = Transform::translation(3.0, 4.0).unwrap();
     let clip_shape = Shape::rect(Rect::new(2.0, 2.0, 18.0, 14.0));
     let mut scene = Scene::new();
-    scene.layer(
-        Layer::new().try_transform(outer_transform).unwrap(),
-        |scene| {
-            scene.layer(Layer::new().try_clip(clip_shape).unwrap(), |scene| {
-                scene.layer(Layer::new().try_opacity(0.625).unwrap(), |scene| {
-                    scene.image(image, Rect::new(4.0, 5.0, 8.0, 6.0), ImageFit::Contain);
-                    scene.fill(
-                        Rect::new(6.0, 7.0, 10.0, 3.0),
-                        Paint::gradient(gradient.clone()),
-                    );
-                });
+    scene.layer(Layer::new().with_transform(outer_transform), |scene| {
+        scene.layer(Layer::new().try_clip(clip_shape).unwrap(), |scene| {
+            scene.layer(Layer::new().try_opacity(0.625).unwrap(), |scene| {
+                scene.image(image, Rect::new(4.0, 5.0, 8.0, 6.0), ImageFit::Contain);
+                scene.fill(
+                    Rect::new(6.0, 7.0, 10.0, 3.0),
+                    Paint::gradient(gradient.clone()),
+                );
             });
-        },
-    );
+        });
+    });
 
     let normalized = scene
         .normalize(
@@ -1240,8 +1237,7 @@ fn matrix_full_effect_stack_diagnostics_stop_at_unsupported_boundaries() {
     backdrop_scene.fill(Rect::new(0.0, 0.0, 8.0, 8.0), Color::BLACK);
     backdrop_scene.layer(
         Layer::new()
-            .try_transform(Transform::translation(1.0, 0.0).unwrap())
-            .unwrap()
+            .with_transform(Transform::translation(1.0, 0.0).unwrap())
             .try_backdrop_filter(backdrop)
             .unwrap(),
         |scene| {
@@ -3355,8 +3351,7 @@ fn transformed_shape_clips_render_in_layer_space() {
     let mut scene = Scene::new();
     scene.layer(
         Layer::new()
-            .try_transform(Transform::translation(2.0, 0.0).unwrap())
-            .unwrap()
+            .with_transform(Transform::translation(2.0, 0.0).unwrap())
             .try_clip(Shape::rect(Rect::new(0.0, 0.0, 2.0, 2.0)))
             .unwrap(),
         |scene| {
@@ -3572,9 +3567,8 @@ fn transformed_images_render_in_layer_space() {
 
 #[test]
 fn pure_transform_does_not_require_backend_layer() {
-    let transform = Layer::new()
-        .try_transform(Transform::try_new([1.0, 0.0, 0.0, 1.0, 1.0, 1.0]).unwrap())
-        .unwrap();
+    let transform =
+        Layer::new().with_transform(Transform::try_new([1.0, 0.0, 0.0, 1.0, 1.0, 1.0]).unwrap());
     let clip = Layer::new()
         .try_clip(Shape::rect(Rect::new(0.0, 0.0, 1.0, 1.0)))
         .unwrap();
@@ -3695,9 +3689,7 @@ fn layer_pass_plan_names_opacity_and_blend_direct_layers() {
 #[test]
 fn nested_layer_pass_plan_aggregates_transformed_child_bounds() {
     let outer = Layer::new().try_opacity(0.5).unwrap();
-    let inner = Layer::new()
-        .try_transform(Transform::translation(4.0, 1.0).unwrap())
-        .unwrap();
+    let inner = Layer::new().with_transform(Transform::translation(4.0, 1.0).unwrap());
     let mut scene = Scene::new();
     scene.layer(outer, |scene| {
         scene.fill(Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK);

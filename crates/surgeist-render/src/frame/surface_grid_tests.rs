@@ -35,8 +35,7 @@ fn sensitive_image_selects_surface_density_for_all_foreground_siblings() {
         let bounds = Rect::new(0.0, 0.0, 2.0, 3.0);
         scene.layer(
             Layer::new()
-                .try_transform(Transform::scale(2.5, 2.0).unwrap())
-                .unwrap()
+                .with_transform(Transform::scale(2.5, 2.0).unwrap())
                 .with_resolved_alpha_mask(opaque_mask(bounds)),
             |scene| {
                 scene.image(white_image().rendering(hint), bounds, ImageFit::Fill);
@@ -44,8 +43,7 @@ fn sensitive_image_selects_surface_density_for_all_foreground_siblings() {
         );
         scene.layer(
             Layer::new()
-                .try_transform(Transform::scale(3.0, 1.5).unwrap())
-                .unwrap()
+                .with_transform(Transform::scale(3.0, 1.5).unwrap())
                 .with_resolved_alpha_mask(opaque_mask(bounds)),
             |scene| {
                 scene.fill(bounds, Color::BLACK);
@@ -87,8 +85,7 @@ fn surface_capture_maps_signed_fractional_source_bounds_once_before_rounding() {
     let mut scene = Scene::new();
     scene.layer(
         Layer::new()
-            .try_transform(world)
-            .unwrap()
+            .with_transform(world)
             .with_resolved_alpha_mask(opaque_mask(bounds)),
         |scene| {
             scene.fill(
@@ -126,15 +123,13 @@ fn surface_foreground_keeps_nested_world_clips_and_independent_mask_inverse() {
     let mut scene = Scene::new();
     scene.layer(
         Layer::new()
-            .try_transform(outer)
-            .unwrap()
+            .with_transform(outer)
             .try_clip(bounds.into())
             .unwrap(),
         |scene| {
             scene.layer(
                 Layer::new()
-                    .try_transform(inner)
-                    .unwrap()
+                    .with_transform(inner)
                     .with_resolved_alpha_mask(opaque_mask(bounds)),
                 |scene| {
                     scene.fill(
@@ -182,8 +177,7 @@ fn ordinary_image_keeps_existing_local_capture_density_and_coordinates() {
     let mut scene = Scene::new();
     scene.layer(
         Layer::new()
-            .try_transform(Transform::scale(2.5, 2.0).unwrap())
-            .unwrap()
+            .with_transform(Transform::scale(2.5, 2.0).unwrap())
             .with_resolved_alpha_mask(opaque_mask(bounds)),
         |scene| {
             scene.image(
@@ -221,8 +215,7 @@ fn sensitive_resolved_mask_selects_surface_grid_for_an_ordinary_foreground() {
     let mut scene = Scene::new();
     scene.layer(
         Layer::new()
-            .try_transform(Transform::scale(2.5, 2.0).unwrap())
-            .unwrap()
+            .with_transform(Transform::scale(2.5, 2.0).unwrap())
             .with_resolved_alpha_mask(mask),
         |scene| {
             scene.fill(bounds, Color::BLACK);

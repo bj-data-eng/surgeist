@@ -356,7 +356,7 @@ fn prepare_inner<'a>(
         }
     }
     if layered {
-        let layer = Layer::new().try_transform(placement)?;
+        let layer = Layer::new().with_transform(placement);
         commands.push(Command::Layer {
             layer,
             children: decoration_commands.into_preparation()?.into_retained(),

@@ -97,12 +97,9 @@ fn graph_draws_and_image_paints_preserve_every_hint_at_fractional_and_integer_sc
                     let width = f64::from(u32::try_from(values.len()).unwrap());
                     if paint {
                         scene.layer(
-                            Layer::new()
-                                .try_transform(
-                                    Transform::try_new([width / 2.0, 0.0, 0.0, 1.0, 0.0, y])
-                                        .unwrap(),
-                                )
-                                .unwrap(),
+                            Layer::new().with_transform(
+                                Transform::try_new([width / 2.0, 0.0, 0.0, 1.0, 0.0, y]).unwrap(),
+                            ),
                             |scene| {
                                 scene
                                     .fill(Rect::new(0.0, 0.0, 2.0, 1.0), Paint::image(image(hint)));
@@ -133,8 +130,7 @@ fn graph_sensitive_branch_keeps_nested_clip_mask_opacity_and_ordinary_siblings()
     let mut scene = Scene::new();
     scene.layer(
         masked_layer(Rect::new(0.0, 0.0, 2.0, 2.0))
-            .try_transform(Transform::try_new([2.5, 0.0, 0.0, 2.0, 1.0, 1.0]).unwrap())
-            .unwrap()
+            .with_transform(Transform::try_new([2.5, 0.0, 0.0, 2.0, 1.0, 1.0]).unwrap())
             .try_clip(Shape::try_circle(Point::new(1.0, 1.0), 0.8).unwrap())
             .unwrap(),
         |scene| {
@@ -149,15 +145,12 @@ fn graph_sensitive_branch_keeps_nested_clip_mask_opacity_and_ordinary_siblings()
     );
     scene.layer(
         Layer::new()
-            .try_transform(Transform::translation(8.0, 2.0).unwrap())
-            .unwrap()
+            .with_transform(Transform::translation(8.0, 2.0).unwrap())
             .try_opacity(0.5)
             .unwrap(),
         |scene| {
             scene.layer(
-                Layer::new()
-                    .try_transform(Transform::scale(2.0, 1.0).unwrap())
-                    .unwrap(),
+                Layer::new().with_transform(Transform::scale(2.0, 1.0).unwrap()),
                 |scene| {
                     scene.fill(
                         Rect::new(0.0, 0.0, 2.0, 1.0),
@@ -268,7 +261,7 @@ fn graph_sampling_uses_full_affine_device_coordinates_and_unclipped_source_origi
         for (transform, bounds, dpr, expected) in cases {
             let mut scene = Scene::new();
             scene.layer(masked_layer(Rect::new(-16.0, -16.0, 32.0, 32.0)), |scene| {
-                scene.layer(Layer::new().try_transform(transform).unwrap(), |scene| {
+                scene.layer(Layer::new().with_transform(transform), |scene| {
                     scene.image(image(hint), bounds, ImageFit::Fill);
                 });
             });

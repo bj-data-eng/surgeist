@@ -1,5 +1,5 @@
 use super::{
-    Paint, Point, PrimitiveFamily, PrimitiveOperation, Rect, Result, ShadowList, Transform,
+    Paint, Point, PrimitiveFamily, PrimitiveOperation, Rect, Result, ShadowList, Stroke, Transform,
     UnsupportedPrimitive, validation::*,
 };
 use std::borrow::Cow;
@@ -265,7 +265,7 @@ impl<'a> TextShadowRun<'a> {
 pub struct TextDecorationLine {
     start: Point,
     end: Point,
-    thickness: f64,
+    stroke: Stroke,
     transform: Transform,
     paint: Paint,
 }
@@ -313,7 +313,7 @@ impl TextDecorationLine {
                 "must have distinct start and end points",
             ));
         }
-        validate_positive_f64(thickness, "text decoration thickness")?;
+        let stroke = Stroke::try_new_named(thickness, "text decoration thickness")?;
         validate_transform(transform, "text decoration transform")?;
         validate_paint(&paint)?;
         if style != TextDecorationLineStyle::Solid {
@@ -322,7 +322,7 @@ impl TextDecorationLine {
         Ok(Self {
             start,
             end,
-            thickness,
+            stroke,
             transform,
             paint,
         })
@@ -343,7 +343,12 @@ impl TextDecorationLine {
     #[must_use]
     /// Returns the finite, positive line thickness in logical units.
     pub const fn thickness(&self) -> f64 {
-        self.thickness
+        self.stroke.width()
+    }
+
+    /// Returns the solid stroke qualified at the decoration construction boundary.
+    pub(crate) const fn stroke(&self) -> Stroke {
+        self.stroke
     }
 
     #[must_use]

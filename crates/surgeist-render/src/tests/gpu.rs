@@ -1031,8 +1031,7 @@ fn composition_single_mask_composition_commands_for_test(
     with_clip: bool,
 ) -> command::RenderCommands {
     let mut layer = Layer::new()
-        .try_transform(transform)
-        .unwrap()
+        .with_transform(transform)
         .try_opacity(opacity)
         .unwrap()
         .blend(blend)
@@ -1822,8 +1821,7 @@ fn composition_mask_quality_scene_and_oracle_for_test() -> (Scene, PhysicalSize,
             .unwrap();
             scene.layer(
                 Layer::new()
-                    .try_transform(transform)
-                    .unwrap()
+                    .with_transform(transform)
                     .with_resolved_alpha_mask(
                         ResolvedLayerAlphaMask::try_new(mask.clone(), mask_bounds).unwrap(),
                     ),
@@ -4147,8 +4145,7 @@ fn bounded_backdrop_broad_inputs_reject_before_allocation_for_test(
     let mut transformed = Scene::new();
     transformed.layer(
         bounded_backdrop_diagnostic_backdrop_layer_for_test()
-            .try_transform(Transform::translation(1.0, 0.0).unwrap())
-            .unwrap(),
+            .with_transform(Transform::translation(1.0, 0.0).unwrap()),
         |_| {},
     );
     let mut repeated = Scene::new();
@@ -4820,8 +4817,7 @@ fn layer_resolved_alpha_mask_composites_after_layer_transform() {
         pollster::block_on(renderer.create_headless(Size::new(3.0, 1.0), 1.0)).unwrap();
     let mask = ImageBuffer::try_new(PhysicalSize::new(1, 1), vec![255, 255, 255, 255]).unwrap();
     let layer = Layer::new()
-        .try_transform(Transform::translation(1.0, 0.0).unwrap())
-        .unwrap()
+        .with_transform(Transform::translation(1.0, 0.0).unwrap())
         .with_resolved_alpha_mask(resolved_layer_alpha_mask_from_buffer(mask));
     let mut scene = Scene::new();
     scene.layer(layer, |scene| {
@@ -8317,8 +8313,7 @@ fn effect_free_layers_keep_finite_bounds_without_offscreen_plan() {
         scene.fill(Rect::new(1.0, 2.0, 4.0, 3.0), Color::BLACK);
         scene.layer(
             Layer::new()
-                .try_transform(Transform::translation(6.0, 0.0).unwrap())
-                .unwrap()
+                .with_transform(Transform::translation(6.0, 0.0).unwrap())
                 .blend(BlendMode::Screen),
             |scene| {
                 scene.fill(Rect::new(0.0, 1.0, 2.0, 2.0), Color::BLACK);
@@ -12266,8 +12261,7 @@ fn unsupported_broad_backdrop_scene(size: Size, inner_bounds: Rect) -> Scene {
     )])
     .unwrap();
     let backdrop = Layer::new()
-        .try_transform(Transform::translation(1.0, 0.0).unwrap())
-        .unwrap()
+        .with_transform(Transform::translation(1.0, 0.0).unwrap())
         .try_backdrop_filter(
             BackdropFilterInput::try_new(
                 filters,
@@ -12333,8 +12327,7 @@ fn composition_unsupported_dispatch_scenes_for_test() -> (Scene, Scene) {
     let input = BackdropFilterInput::try_new(filters, bounds, None)
         .unwrap_or_else(|error| panic!("the unsupported backdrop input must be valid: {error}"));
     let layer = Layer::new()
-        .try_transform(Transform::translation(1.0, 0.0).unwrap())
-        .unwrap()
+        .with_transform(Transform::translation(1.0, 0.0).unwrap())
         .try_backdrop_filter(input)
         .unwrap_or_else(|error| panic!("the unsupported backdrop layer must be valid: {error}"));
     let mut backdrop_scene = Scene::new();
@@ -12885,8 +12878,7 @@ fn color_filter_unsupported_backdrop_scene_for_test() -> Scene {
         UnitFilterAmount::try_new(1.0).unwrap(),
     )]);
     let backdrop = Layer::new()
-        .try_transform(Transform::translation(1.0, 0.0).unwrap())
-        .unwrap()
+        .with_transform(Transform::translation(1.0, 0.0).unwrap())
         .try_backdrop_filter(
             BackdropFilterInput::try_new(
                 backdrop_filters,

@@ -181,9 +181,7 @@ fn one_image_can_use_distinct_pixelated_scales_in_a_single_scene() {
 fn pixelated_image_paint_keeps_shape_geometry_while_scaling_its_brush() {
     let mut scene = Scene::new();
     scene.layer(
-        Layer::new()
-            .try_transform(Transform::scale(2.5, 1.0).unwrap())
-            .unwrap(),
+        Layer::new().with_transform(Transform::scale(2.5, 1.0).unwrap()),
         |scene| {
             scene.fill(
                 Rect::new(0.0, 0.0, 2.0, 1.0),
@@ -203,8 +201,7 @@ fn pixelated_image_in_a_scaled_opacity_group_keeps_its_final_sampling_lattice() 
     let mut scene = Scene::new();
     scene.layer(
         Layer::new()
-            .try_transform(Transform::scale(2.5, 1.0).unwrap())
-            .unwrap()
+            .with_transform(Transform::scale(2.5, 1.0).unwrap())
             .try_opacity(0.5)
             .unwrap()
             .with_resolved_alpha_mask(
@@ -282,8 +279,7 @@ fn pixelated_graph_keeps_an_integer_source_axis_crisp_beside_a_fractional_axis()
     let mut scene = Scene::new();
     scene.layer(
         Layer::new()
-            .try_transform(Transform::scale(2.5, 2.0).unwrap())
-            .unwrap()
+            .with_transform(Transform::scale(2.5, 2.0).unwrap())
             .with_resolved_alpha_mask(mask),
         |scene| {
             scene.fill(bounds, crate::Paint::image(image));

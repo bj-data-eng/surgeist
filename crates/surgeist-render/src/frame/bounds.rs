@@ -1400,9 +1400,8 @@ mod operation_domain_tests {
 
     #[test]
     fn singular_source_keeps_copy_domain_but_singular_own_clip_has_no_coverage() {
-        let layer = selected(PorterDuffOperator::Copy)
-            .try_transform(Transform::scale(0.0, 1.0).unwrap())
-            .unwrap();
+        let layer =
+            selected(PorterDuffOperator::Copy).with_transform(Transform::scale(0.0, 1.0).unwrap());
         let unclipped = contribution(layer.clone());
         assert!(unclipped.source_bounds.is_exactly_empty());
         assert_eq!(
@@ -1426,8 +1425,7 @@ mod operation_domain_tests {
     #[test]
     fn translating_an_empty_source_transforms_its_clip_and_preserves_parent_domain() {
         let unclipped = selected(PorterDuffOperator::Copy)
-            .try_transform(Transform::translation(2.0, 1.0).unwrap())
-            .unwrap();
+            .with_transform(Transform::translation(2.0, 1.0).unwrap());
         assert_eq!(
             contribution(unclipped.clone())
                 .affected_bounds

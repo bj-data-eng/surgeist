@@ -729,7 +729,7 @@ fn porter_duff_singular_source_discards_unresolved_ink_but_executes_copy() {
     for inherited in [false, true] {
         let mut copy = Layer::new().with_composition(composition(Op::Copy, BlendMode::Normal));
         if !inherited {
-            copy = copy.try_transform(singular).unwrap();
+            copy = copy.with_transform(singular);
         }
         let mut scene = Scene::new();
         let add_source = |scene: &mut Scene| {
@@ -738,7 +738,7 @@ fn porter_duff_singular_source_discards_unresolved_ink_but_executes_copy() {
             });
         };
         if inherited {
-            scene.layer(Layer::new().try_transform(singular).unwrap(), add_source);
+            scene.layer(Layer::new().with_transform(singular), add_source);
         } else {
             add_source(&mut scene);
         }
@@ -780,7 +780,7 @@ fn porter_duff_singular_own_clip_preserves_parent_without_source_prerequisites()
                 .try_clip(Shape::rect(bounds))
                 .unwrap();
             if !inherited {
-                copy = copy.try_transform(singular).unwrap();
+                copy = copy.with_transform(singular);
             }
             let add_source = |scene: &mut Scene| {
                 scene.layer(copy, |scene| {
@@ -796,7 +796,7 @@ fn porter_duff_singular_own_clip_preserves_parent_without_source_prerequisites()
             };
             let mut scene = Scene::new();
             if inherited {
-                scene.layer(Layer::new().try_transform(singular).unwrap(), add_source);
+                scene.layer(Layer::new().with_transform(singular), add_source);
             } else {
                 add_source(&mut scene);
             }
@@ -842,8 +842,7 @@ fn porter_duff_transforms_preserve_the_parent_domain_and_active_operation_clips(
                 // by the same singular map instead has zero operation coverage.
                 let mut layer = Layer::new()
                     .with_composition(composition(Op::Copy, BlendMode::Normal))
-                    .try_transform(Transform::scale(0.0, 1.0).unwrap())
-                    .unwrap();
+                    .with_transform(Transform::scale(0.0, 1.0).unwrap());
                 if scenario == 1 {
                     layer = layer.try_clip(Shape::rect(bounds)).unwrap();
                 }
@@ -854,8 +853,7 @@ fn porter_duff_transforms_preserve_the_parent_domain_and_active_operation_clips(
             2 | 3 => {
                 let mut layer = Layer::new()
                     .with_composition(composition(Op::Copy, BlendMode::Normal))
-                    .try_transform(Transform::translation(2.0, 0.0).unwrap())
-                    .unwrap();
+                    .with_transform(Transform::translation(2.0, 0.0).unwrap());
                 if scenario == 2 {
                     layer = layer
                         .try_clip(Shape::rect(Rect::new(0.0, 0.0, 2.0, 2.0)))
@@ -874,8 +872,7 @@ fn porter_duff_transforms_preserve_the_parent_domain_and_active_operation_clips(
                         scene.layer(
                             Layer::new()
                                 .with_composition(composition(Op::Copy, BlendMode::Normal))
-                                .try_transform(Transform::scale(0.0, 1.0).unwrap())
-                                .unwrap(),
+                                .with_transform(Transform::scale(0.0, 1.0).unwrap()),
                             |scene| {
                                 scene.fill(bounds, straight_color(BLUE));
                             },

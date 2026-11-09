@@ -2851,8 +2851,7 @@ fn transformed_backdrop_layer_normalization_reports_typed_boundary() {
         FilterList::try_ops(vec![FilterOp::blur(FilterBlur::try_new(1.0).unwrap())]).unwrap();
     let bounds = BackdropCaptureBounds::try_new(Rect::new(0.0, 0.0, 10.0, 10.0)).unwrap();
     let backdrop = Layer::new()
-        .try_transform(Transform::translation(2.0, 0.0).unwrap())
-        .unwrap()
+        .with_transform(Transform::translation(2.0, 0.0).unwrap())
         .try_backdrop_filter(BackdropFilterInput::try_new(filters, bounds, None).unwrap())
         .unwrap();
     let mut scene = Scene::new();
@@ -3062,9 +3061,7 @@ fn backdrop_isolation_and_bounded_group_diagnostics_are_explicit() {
 
     let mut transformed_scene = Scene::new();
     transformed_scene.layer(
-        backdrop_layer()
-            .try_transform(Transform::translation(1.0, 0.0).unwrap())
-            .unwrap(),
+        backdrop_layer().with_transform(Transform::translation(1.0, 0.0).unwrap()),
         |_| {},
     );
     let transformed = transformed_scene

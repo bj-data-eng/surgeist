@@ -1329,9 +1329,9 @@ pub fn surgeist_render::Layer::try_clip_input(self, clip: surgeist_render::ClipI
 pub fn surgeist_render::Layer::try_filter(self, filter: surgeist_render::Filter) -> surgeist_render::Result<Self>
 pub fn surgeist_render::Layer::try_mask(self, mask: surgeist_render::Shape) -> surgeist_render::Result<Self>
 pub fn surgeist_render::Layer::try_opacity(self, opacity: f32) -> surgeist_render::Result<Self>
-pub fn surgeist_render::Layer::try_transform(self, transform: surgeist_render::Transform) -> surgeist_render::Result<Self>
 pub const fn surgeist_render::Layer::with_composition(self, composition: surgeist_render::LayerComposition) -> Self
 pub fn surgeist_render::Layer::with_resolved_alpha_mask(self, alpha_mask: surgeist_render::ResolvedLayerAlphaMask) -> Self
+pub const fn surgeist_render::Layer::with_transform(self, transform: surgeist_render::Transform) -> Self
 impl core::default::Default for surgeist_render::Layer
 pub fn surgeist_render::Layer::default() -> Self
 pub struct surgeist_render::LayerComposition
