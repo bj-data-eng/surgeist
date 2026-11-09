@@ -1,4 +1,6 @@
 //! A real originless Wbr emission stops immediate-closing-edge reservation.
+mod prefix;
+
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::test_support::readback::{Phase, single_box_output};
 use crate::test_support::text::ahem_style;
