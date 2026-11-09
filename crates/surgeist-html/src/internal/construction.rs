@@ -1837,6 +1837,65 @@ mod tests {
         drop(builder.take_storage().unwrap());
     }
 
+    /// How many times the record bank and the root's child order change capacity over `appends`
+    /// native appends, each of which makes room for one more record, and one more child of the
+    /// root.
+    fn capacity_changes(appends: usize, nested: bool) -> (usize, usize) {
+        let mut builder = Builder::new(
+            HtmlConstructionLimits::new(appends + 1, appends, 0, appends, appends + 1),
+            NativeRoot::Fragment,
+        )
+        .unwrap();
+        let root = builder.root.clone();
+        let mut parent = root.clone();
+        let mut previous = (
+            builder.storage().unwrap().records_capacity(),
+            builder.storage().unwrap().children_capacity(0),
+        );
+        let (mut records, mut children) = (0, 0);
+        for _ in 0..appends {
+            let kind = if nested {
+                HtmlNodeKind::Element(HtmlElement::new(
+                    QualifiedName::new(Namespace::from_uri("urn:x"), None, "e"),
+                    OrderedAttributes::new(Vec::new()).unwrap(),
+                ))
+            } else {
+                HtmlNodeKind::Comment("c".into())
+            };
+            let appended = builder.append(&parent, kind).unwrap();
+            if nested {
+                parent = appended;
+            }
+            let storage = builder.storage().unwrap();
+            let now = (storage.records_capacity(), storage.children_capacity(0));
+            records += usize::from(now.0 != previous.0);
+            children += usize::from(now.1 != previous.1);
+            previous = now;
+        }
+        (records, children)
+    }
+
+    /// Exact growth changes the capacity on every append; amortized growth changes it a number of
+    /// times that grows with the logarithm of the appends.
+    #[test]
+    fn native_appends_change_capacity_a_logarithmic_number_of_times() {
+        for appends in [1_usize << 10, 1 << 12, 1 << 14] {
+            let bound = appends.ilog2() as usize + 1;
+            let (records, children) = capacity_changes(appends, false);
+            assert!(
+                records <= bound && children <= bound,
+                "{appends} appended children changed the record bank {records} times and the \
+                 root's child order {children} times, over the bound {bound}"
+            );
+            let (records, _) = capacity_changes(appends, true);
+            assert!(
+                records <= bound,
+                "{appends} nested elements changed the record bank {records} times, over the \
+                 bound {bound}"
+            );
+        }
+    }
+
     #[test]
     fn a_builder_without_storage_reports_the_loss_and_the_usage_it_last_held() {
         let mut builder =
