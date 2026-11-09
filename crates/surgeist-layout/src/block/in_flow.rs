@@ -59,6 +59,7 @@ pub(super) struct InFlowResult<Node, S: LayoutScalar> {
     pub(super) participated: bool,
     pub(super) top_margin: CollapsibleMarginOf<S>,
     pub(super) active_margin: CollapsibleMarginOf<S>,
+    pub(super) active_margin_at_start: bool,
     pub(super) active_margin_can_collapse_with_parent: bool,
     pub(super) all_in_flow_children_can_collapse_through: bool,
 }
@@ -73,16 +74,26 @@ impl<Node, S: LayoutScalar> InFlowResult<Node, S> {
     }
 
     pub(super) fn bottom_margin(&self, constants: &Constants<S>) -> CollapsibleMarginOf<S> {
-        if constants.collapse_bottom_margin && self.active_margin_can_collapse_with_parent {
+        if self.collapses_end_margin(constants) {
             self.active_margin
         } else {
             constants.own_bottom_margin
         }
     }
 
+    pub(super) fn collapses_through(&self, constants: &Constants<S>) -> bool {
+        constants.can_collapse_through && self.all_in_flow_children_can_collapse_through
+    }
+
+    pub(super) fn collapses_end_margin(&self, constants: &Constants<S>) -> bool {
+        constants.collapse_bottom_margin
+            && self.active_margin_can_collapse_with_parent
+            && (!self.active_margin_at_start || self.collapses_through(constants))
+    }
+
     pub(super) fn content_end(&self, constants: &Constants<S>, role: float_context::Role) -> S {
         let bottom_margin_offset =
-            if constants.collapse_bottom_margin && self.active_margin_can_collapse_with_parent {
+            if self.active_margin_at_start || self.collapses_end_margin(constants) {
                 S::ZERO
             } else {
                 self.active_margin.resolve()
@@ -1204,6 +1215,7 @@ where
         participated: !first_in_flow,
         top_margin,
         active_margin,
+        active_margin_at_start: start_component_open,
         active_margin_can_collapse_with_parent,
         all_in_flow_children_can_collapse_through,
     })
