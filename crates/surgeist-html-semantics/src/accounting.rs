@@ -34,6 +34,10 @@
 //! with the typed stop that carries that scope's limit and value. The tariffs
 //! between the supplied scope and the scopes above it must map each dimension to
 //! itself, because the refusal names the dimension of the charged change.
+//!
+//! A session sizes a numeric materialization by the allocated bytes its own
+//! limits leave. A lower cap of the supplied scope or of an ancestor refuses the
+//! capacity when the session records it, after the allocation.
 
 use std::{error::Error as StdError, fmt};
 use surgeist_html::accounting::{HtmlChange, HtmlLimits, HtmlResource, HtmlTariffs, HtmlWork};
