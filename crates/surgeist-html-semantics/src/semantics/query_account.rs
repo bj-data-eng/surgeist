@@ -119,6 +119,16 @@ impl QueryAccount {
         })
     }
 
+    /// Points the account at scopes of another operation, so that every later read of it fails
+    /// as the read of a ledger with a latched defect does.
+    #[cfg(test)]
+    pub(super) fn point_at_another_operation(&mut self) {
+        let other = Operation::<HtmlWork, HtmlResource>::new("other", HtmlLimits::unlimited(), 1)
+            .expect("a one-scope operation");
+        self.caps = other.root();
+        self.observed = other.root();
+    }
+
     /// Admits `work` steps at the capped scope.
     pub(super) fn work(&mut self, work: usize) -> Result<(), LedgerError> {
         self.operation

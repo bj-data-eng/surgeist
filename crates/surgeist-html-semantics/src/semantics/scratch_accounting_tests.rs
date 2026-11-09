@@ -114,3 +114,34 @@ fn a_controlled_execution_tracks_every_live_scratch_vector() {
     assert_eq!(control.temporary_bytes(), 0);
     assert_eq!(s.usage().scratch_records(), 0);
 }
+
+/// A ledger that cannot be read reports the last usage the session read, not an empty one, when
+/// no failure is latched.
+#[test]
+fn a_usage_read_that_cannot_reach_the_ledger_returns_the_last_usage_read() {
+    let c = capture();
+    let cx = context(&c);
+    let mut s = session(&c, &cx);
+    let mut frames: Vec<u64> = Vec::new();
+    s.reserve_scratch(&mut frames, 4).unwrap();
+    let before = s.usage();
+    assert!(before.scratch_records() >= 4);
+    assert!(before.work() > 0);
+    s.account.point_at_another_operation();
+    assert!(s.failure().is_none());
+    assert_eq!(s.usage(), before);
+}
+
+/// With a failure latched, the usage the ledger cannot give is the failure's.
+#[test]
+fn a_usage_read_that_cannot_reach_the_ledger_returns_the_latched_failures_usage() {
+    let c = capture();
+    let cx = context(&c);
+    let mut s = session(&c, &cx);
+    let mut frames: Vec<u64> = Vec::new();
+    s.reserve_scratch(&mut frames, 4).unwrap();
+    s.release_scratch(&Vec::<u64>::with_capacity(100));
+    let at_failure = s.failure().expect("the unmatched release latches").usage();
+    s.account.point_at_another_operation();
+    assert_eq!(s.usage(), at_failure);
+}

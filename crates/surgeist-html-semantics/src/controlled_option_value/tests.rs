@@ -673,3 +673,20 @@ fn ledger_failures_other_than_a_refused_allowance_are_accounting_faults() {
         );
     }
 }
+
+/// An owner whose ledger cannot be read reports the last usage it read, not an empty one.
+#[test]
+fn a_usage_read_that_cannot_reach_the_ledger_returns_the_last_usage_read() {
+    let mut control = Control::for_tests(envelope());
+    control.add(usage(8, 4), true).unwrap();
+    control.step(3, &AtomicBool::new(false)).unwrap();
+    let before = control.usage();
+    assert_eq!(before.work(), 3);
+    assert_eq!(before.storage(), usage(8, 4));
+    assert!(before.peak_storage().retained_bytes() >= 8);
+    let other = Control::for_tests(envelope());
+    control.gate = other.gate;
+    control.retained = other.retained;
+    control.observed = other.observed;
+    assert_eq!(control.usage(), before);
+}
