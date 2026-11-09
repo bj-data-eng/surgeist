@@ -79,10 +79,17 @@ A table names every dimension, so a limit or a tariff cannot be left out, and a
 lookup cannot go out of range. `Limits::from_fn`, `Tariffs::from_fn` and
 `Limits::unlimited` build tables by calling a function once per dimension, and
 `Tariffs::identity` keeps every dimension and unit in the parent. `Limits::work`
-and `Limits::live` read a cap back. `Operation::limits` returns the caps a scope was
-created with, through a `Phase` as well, and `SharedOperation::limits` returns a
+and `Limits::live` read a cap back. `Operation::limits` returns the caps a scope has, through a `Phase` as well, and `SharedOperation::limits` returns a
 copy. It reports that scope's own caps, not those of its ancestors, so a consumer
 that runs inside a scope its caller supplied can read the caps it works under.
+
+`Operation::set_limits` and `SharedOperation::set_limits` replace a scope's caps for
+the batches admitted after the call, for a consumer whose allowance changes between
+calls. Usage, peaks, direct custody, the profile and open intervals stay as they are.
+The new caps are not checked against the usage: a scope that holds more than a new
+cap refuses its next acquisition of that dimension, even of zero, and still accepts
+releases. A work cap set to the work admitted so far plus an allowance limits one
+call's work.
 
 Dimensions of different sets are different types. A resource dimension cannot be
 passed where a work dimension is expected, and a dimension of another set cannot

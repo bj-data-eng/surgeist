@@ -106,6 +106,7 @@ pub fn surgeist_ledger::Operation<W, R>::limits(&self, scope: surgeist_ledger::S
 pub fn surgeist_ledger::Operation<W, R>::new(name: &'static str, limits: surgeist_ledger::Limits<W, R>, max_scopes: usize) -> core::result::Result<Self, surgeist_ledger::Error<W, R>>
 pub const fn surgeist_ledger::Operation<W, R>::root(&self) -> surgeist_ledger::Scope
 pub fn surgeist_ledger::Operation<W, R>::scope_name(&self, scope: surgeist_ledger::Scope) -> core::result::Result<&'static str, surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::Operation<W, R>::set_limits(&mut self, scope: surgeist_ledger::Scope, limits: surgeist_ledger::Limits<W, R>) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::snapshot(&self) -> core::result::Result<core::option::Option<surgeist_ledger::Report<W, R>>, surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::usage(&self, scope: surgeist_ledger::Scope) -> core::result::Result<&surgeist_ledger::Usage<W, R>, surgeist_ledger::Error<W, R>>
 pub async fn surgeist_ledger::Operation<W, R>::with_async_phase<T>(&mut self, scope: surgeist_ledger::Scope, run: impl core::ops::async_function::AsyncFnOnce(&mut surgeist_ledger::Phase<'_, W, R>) -> T) -> core::result::Result<T, surgeist_ledger::Error<W, R>>
@@ -183,6 +184,7 @@ pub fn surgeist_ledger::SharedOperation<W, R>::end_phase(&self, observation: sur
 pub fn surgeist_ledger::SharedOperation<W, R>::limits(&self, scope: surgeist_ledger::Scope) -> core::result::Result<surgeist_ledger::Limits<W, R>, surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::SharedOperation<W, R>::root(&self) -> surgeist_ledger::Scope
 pub fn surgeist_ledger::SharedOperation<W, R>::scope_name(&self, scope: surgeist_ledger::Scope) -> core::result::Result<&'static str, surgeist_ledger::Error<W, R>>
+pub fn surgeist_ledger::SharedOperation<W, R>::set_limits(&self, scope: surgeist_ledger::Scope, limits: surgeist_ledger::Limits<W, R>) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::SharedOperation<W, R>::snapshot(&self) -> core::result::Result<core::option::Option<surgeist_ledger::Report<W, R>>, surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::SharedOperation<W, R>::usage(&self, scope: surgeist_ledger::Scope) -> core::result::Result<surgeist_ledger::Usage<W, R>, surgeist_ledger::Error<W, R>>
 pub async fn surgeist_ledger::SharedOperation<W, R>::with_async_phase<T>(&self, scope: surgeist_ledger::Scope, run: impl core::ops::async_function::AsyncFnOnce() -> T) -> core::result::Result<T, surgeist_ledger::Error<W, R>>
