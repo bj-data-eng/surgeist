@@ -141,6 +141,12 @@ impl Accounts {
         scope == self.cap || scope == self.charging
     }
 
+    /// Points the phases at other scopes, for a test of a failing observation.
+    #[cfg(test)]
+    pub(crate) fn replace_phases_for_test(&mut self, phases: PhaseScopes) {
+        self.phases = Some(phases);
+    }
+
     /// Ends the observation in progress and starts observing `phase`, whose
     /// scope receives the work that follows. Without phase scopes nothing
     /// changes.

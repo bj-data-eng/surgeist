@@ -351,6 +351,11 @@ fn a_scope_of_another_operation_stops_the_parse_without_a_report() {
             HtmlParseAccountingFault::ForeignScope
         ))
     );
+    // The failure describes the accounting stop as it describes the others.
+    assert_eq!(
+        failure.to_string(),
+        "HTML parse failed: Stop(Accounting(ForeignScope))"
+    );
 }
 
 static CLOCK_READS: AtomicUsize = AtomicUsize::new(0);
@@ -679,4 +684,93 @@ fn a_host_diagnostics_cap_below_the_parse_cap_drops_diagnostics_and_the_parse_co
         ledger.usage(root).unwrap().live(HtmlResource::Diagnostics),
         3
     );
+}
+
+#[test]
+fn a_supplied_scope_that_is_not_the_root_holds_the_parse_and_its_ancestors_count_it() {
+    let (ledger, root) = host(5);
+    let tenant = ledger
+        .child(root, "tenant", HtmlLimits::unlimited(), Tariffs::identity())
+        .unwrap();
+    let report = request()
+        .with_accounting(HtmlParseAccounting::host(ledger.clone(), tenant))
+        .parse()
+        .unwrap();
+    let profile = report_of(&ledger);
+    assert_eq!(
+        names(&profile),
+        ["host", "tenant", "html-parse", "html-parse-charging"]
+    );
+    let scope = |name: &str| profile.scopes.iter().find(|s| s.name == name).unwrap();
+    assert_eq!(scope("html-parse").parent, Some(tenant));
+    for at in [tenant, root] {
+        assert_eq!(
+            ledger.usage(at).unwrap().work(HtmlWork::Credits),
+            credits(report.usage())
+        );
+    }
+    let charging = scope("html-parse-charging").scope;
+    assert!(live_total(&ledger, tenant) > 0);
+    drop(report);
+    assert_eq!(live_total(&ledger, charging), 0);
+    assert_eq!(live_total(&ledger, tenant), 0);
+    assert_eq!(live_total(&ledger, root), 0);
+}
+
+#[test]
+fn a_parse_stopped_in_any_phase_releases_its_custody_when_the_failure_drops() {
+    const PHASES: [&str; 4] = [
+        "html-parse-admission",
+        "html-parse-construction",
+        "html-parse-finalization",
+        "html-parse-publication",
+    ];
+    // The credits each phase receives in a complete parse.
+    let (ledger, root) = host(7);
+    request()
+        .with_accounting(HtmlParseAccounting::host(ledger.clone(), root).observing_phases())
+        .parse()
+        .unwrap();
+    let profile = report_of(&ledger);
+    let phase_credits: Vec<u64> = PHASES
+        .iter()
+        .map(|name| {
+            let scope = profile.scopes.iter().find(|s| s.name == *name).unwrap();
+            CATEGORIES
+                .iter()
+                .map(|(_, dimension)| scope.usage.work(*dimension))
+                .sum()
+        })
+        .collect();
+    assert!(phase_credits.iter().all(|credits| *credits > 1));
+    let mut before = 0_u64;
+    for (index, name) in PHASES.iter().enumerate() {
+        // A credit cap one credit into the phase stops the parse there.
+        let cap = before + 1;
+        before += phase_credits[index];
+        let limits = HtmlLimits::from_fn(
+            |work| {
+                if work == HtmlWork::Credits {
+                    cap
+                } else {
+                    u64::MAX
+                }
+            },
+            |_| u64::MAX,
+        );
+        let (ledger, root) = host_with(limits, 7, ProfileMode::Summary { timing: false });
+        let Err(failure) = request()
+            .with_accounting(HtmlParseAccounting::host(ledger.clone(), root).observing_phases())
+            .parse()
+        else {
+            panic!("a cap of {cap} credits stops the parse in {name}");
+        };
+        let refused = report_of(&ledger);
+        let phase = refused.scopes.iter().find(|s| s.name == *name).unwrap();
+        assert!(phase.refused_batches > 0, "{name} refused the batch");
+        let charging = scope_named(&ledger, "html-parse-charging");
+        drop(failure);
+        assert_eq!(live_total(&ledger, charging), 0, "{name}");
+        assert_eq!(live_total(&ledger, root), 0, "{name}");
+    }
 }

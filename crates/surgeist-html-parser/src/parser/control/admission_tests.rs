@@ -390,3 +390,36 @@ fn coalesced_storage_refused_by_the_host_reports_the_hosts_value_and_the_sum() {
         Err(limit(HtmlParseResource::ManagedNodes, 10, 4, 7))
     );
 }
+
+#[test]
+fn a_phase_the_ledger_cannot_observe_stops_the_parse_with_the_fault() {
+    use surgeist_html::accounting::HtmlLimits;
+    let ledger = surgeist_ledger::Operation::new("host", HtmlLimits::unlimited(), 8)
+        .unwrap()
+        .share();
+    let root = ledger.root();
+    let other = surgeist_ledger::Operation::<HtmlWork, HtmlResource>::new(
+        "other",
+        HtmlLimits::unlimited(),
+        1,
+    )
+    .unwrap();
+    let request = crate::HtmlParseAccounting::host(ledger, root)
+        .observing_phases()
+        .into_request();
+    let mut c = ParseControl::with_accounting(
+        builder().finish().unwrap(),
+        HtmlParseCancellation::new(),
+        request.lease(),
+    );
+    assert_eq!(c.stop(), None);
+    // The phase scopes now name a scope of another operation.
+    c.accounts
+        .as_mut()
+        .unwrap()
+        .replace_phases_for_test(crate::accounting::PhaseScopes::all_at(other.root()));
+    c.enter_phase(ParsePhase::Construction);
+    let fault = HtmlParseStop::Accounting(HtmlParseAccountingFault::ForeignScope);
+    assert_eq!(c.stop(), Some(fault));
+    assert_eq!(c.charge(HtmlParseWorkCategory::StateStep, 1), Err(fault));
+}

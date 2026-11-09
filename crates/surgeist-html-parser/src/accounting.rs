@@ -192,6 +192,16 @@ pub(crate) struct PhaseScopes {
 }
 
 impl PhaseScopes {
+    /// Every phase at one scope, for a test that points the phases elsewhere.
+    #[cfg(test)]
+    pub(crate) const fn all_at(scope: Scope) -> Self {
+        Self {
+            admission: scope,
+            construction: scope,
+            finalization: scope,
+            publication: scope,
+        }
+    }
     pub(crate) const fn scope(&self, phase: ParsePhase) -> Scope {
         match phase {
             ParsePhase::Admission => self.admission,
@@ -603,5 +613,65 @@ mod tests {
             };
             assert_eq!(found, fault);
         }
+    }
+
+    #[test]
+    fn parses_racing_to_bind_one_lease_create_one_set_of_scopes() {
+        use std::sync::Barrier;
+        const RACERS: usize = 8;
+        let ledger = Operation::with_profile(
+            "host",
+            HtmlLimits::unlimited(),
+            64,
+            ProfileMode::Summary { timing: false },
+        )
+        .unwrap()
+        .share();
+        let root = ledger.root();
+        let request = HtmlParseAccounting::host(ledger.clone(), root).into_request();
+        let lease = request.lease().unwrap();
+        let barrier = Barrier::new(RACERS);
+        let limits = limits();
+        let outcomes: Vec<Result<Bound, HtmlParseAccountingFault>> = std::thread::scope(|scope| {
+            let racers: Vec<_> = (0..RACERS)
+                .map(|_| {
+                    scope.spawn(|| {
+                        barrier.wait();
+                        lease.bind(&limits)
+                    })
+                })
+                .collect();
+            racers
+                .into_iter()
+                .map(|racer| racer.join().unwrap())
+                .collect()
+        });
+        let bound = outcomes.iter().filter(|outcome| outcome.is_ok()).count();
+        assert_eq!(bound, 1);
+        for outcome in outcomes {
+            if let Err(fault) = outcome {
+                assert_eq!(fault, HtmlParseAccountingFault::InUse);
+            }
+        }
+        // The root and the two scopes of the one parse that bound; the others
+        // created none.
+        assert_eq!(ledger.snapshot().unwrap().unwrap().scopes.len(), 3);
+    }
+
+    #[test]
+    fn a_fault_displays_and_is_an_error() {
+        let fault = HtmlParseAccountingFault::ScopeLimit { limit: 3 };
+        assert_eq!(
+            fault.to_string(),
+            "the operation's scope bound of 3 leaves no room for the parse"
+        );
+        let defect = HtmlParseAccountingFault::Defect(Defect::ScopeEntry);
+        assert!(
+            defect
+                .to_string()
+                .contains("scope identity names no scope entry")
+        );
+        let boxed: Box<dyn std::error::Error> = Box::new(fault);
+        assert!(boxed.source().is_none());
     }
 }
