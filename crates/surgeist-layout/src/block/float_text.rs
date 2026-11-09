@@ -616,3 +616,6 @@ mod prefix_content_tests;
 
 #[cfg(test)]
 mod ancestor_end_tests;
+
+#[cfg(test)]
+mod ancestor_end_controls;
