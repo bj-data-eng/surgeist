@@ -19,7 +19,7 @@ current source API.
 | Support and diagnostics | `Capabilities`, `RuntimeCapabilities`, `Error`, `ErrorCode` | [Capabilities](../src/capability.rs), [errors](../src/error.rs) |
 | Successful frame observations | `Stats`, `RenderRoute`, `EffectPrecision` | [Statistics](../src/stats.rs) |
 | Frame and lifetime accounting | `RenderFrameReport`, `RenderCpuSnapshot`, `RenderDeviceSnapshot`, named scopes and typed intervals | [Frame accounting](#frame-accounting), [generation custody](#device-generation-custody) |
-| Preparation accounting | `RenderAccountingContext`, `RenderAccountingOptions`, `RenderLimits`, `RenderAttemptReport`, named work/resources/phases | [Accounting](../src/accounting/mod.rs), [units and reports](../src/accounting/model.rs) |
+| Preparation accounting | `RenderAccountingContext`, `RenderStandaloneReport`, `RenderAccountingOptions`, `RenderLimits`, `RenderAttemptReport`, named work/resources/phases | [Accounting](../src/accounting/mod.rs), [units and reports](../src/accounting/model.rs) |
 | Current style-facing models | Background, border, outline, image-placement, mask, clip, and filter values | [Style module](../src/style/mod.rs), [public reexports](../src/lib.rs) |
 
 The `Renderer` methods `new`, `create_surface`, `create_headless`,
@@ -877,10 +877,29 @@ than borrowed slots or ordinary Image clones.
 context. Nested work uses the same participant and local quotas. Actual
 scratch/output backing is admitted; only complete successful output transfers to
 caller custody. Pure construction, validation and constant-size
-`ImagePlacementInput::resolve` remain context-free. Reuse the context to change
-options for the next call, inspect `last_attempt`, or move its report with
-`take_last_attempt`. Returned values and later caller clones do not retain its
-participant.
+`ImagePlacementInput::resolve` remain context-free. Returned values and later
+caller clones do not retain the context's participant.
+
+`RenderAccountingContext::last_attempt` borrows a `RenderStandaloneReport` for
+the latest started operation. Its `kind` and terminal `status` identify that
+operation even when cleanup or report extraction fails. `attempt()` returns
+the validated forward report or its typed extraction error; `cleanup_fault()`
+exposes the first mandatory cleanup failure separately. Cancellation remains
+`Canceled` with any cleanup fault, while a cleanup fault prevents a successful
+status. A fault belongs to that operation and does not fail the next operation.
+An existing semantic error or forward refusal remains the returned cause;
+a cleanup fault instead prevents a successful body from returning output.
+Setup failure before an operation starts preserves the preceding record.
+
+Inspect the record after completion or guard drop, including after unwinding,
+before destroying the context. `take_last_attempt` moves it to caller custody;
+the owned record remains observable after the context is destroyed, without
+starting another operation. Discarding both the context and its untaken record
+ends that observation lifetime. The record does not allocate or clone its
+report. Named Ledger invariant failures retain their exact
+`RenderAccountingError::LedgerDefect` payload; Render's own `Invariant` remains
+a distinct error. Usage and release failures found during destruction retain
+their typed cause while remaining mandatory releases continue.
 
 Derived image tiles and outline targets preserve `Rect`'s finite maximum
 coordinates as well as its component constraints. Intrinsic overflow returns
@@ -896,8 +915,9 @@ output. Standalone image placement performs the same proof without a context.
 `FontData::prepare_glyph_run` and `prepare_text_layout` take a mutable
 `RenderAccountingContext` after their existing limits. Reuse the context to
 change `RenderAccountingOptions` for the next call, inspect `last_attempt`, or
-move its report to caller custody with `take_last_attempt`. This is a deliberate
-source API change; every preparation path requires the context.
+move its terminal record to caller custody with `take_last_attempt`, as described
+under [standalone accounting](#standalone-accounting). Every preparation path
+requires the context.
 
 The measured boundary is standalone glyph and placed-Text preparation, including
 outline/variation qualification, provider callbacks, intrinsic color/bitmap

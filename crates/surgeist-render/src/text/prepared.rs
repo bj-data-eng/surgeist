@@ -1648,6 +1648,8 @@ mod tests {
             preparation
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .live(RenderResource::ScratchCpuBytes),
             0
@@ -1663,6 +1665,8 @@ mod tests {
         assert_eq!(
             receiving
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .live(RenderResource::ScratchCpuBytes),
@@ -1704,7 +1708,7 @@ mod tests {
             )
             .unwrap_err();
         assert!(error.accounting_diagnostic().is_some());
-        let usage = limited.last_attempt().unwrap().usage();
+        let usage = limited.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::CoordinateVisits), ACTIONS - 1);
         assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
         assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
@@ -1719,6 +1723,8 @@ mod tests {
         assert_eq!(
             retry
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .work(RenderWork::CoordinateVisits),
@@ -1769,6 +1775,8 @@ mod tests {
         assert_eq!(
             account
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .work(RenderWork::PreparedTransferredBytes),

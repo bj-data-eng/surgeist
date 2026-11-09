@@ -1489,7 +1489,7 @@ mod receiving_tests {
             })
             .unwrap_err();
         assert!(error.accounting_diagnostic().is_some());
-        let usage = limited.last_attempt().unwrap().usage();
+        let usage = limited.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::RasterResourceCopies), 1);
         assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
         assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
@@ -1511,7 +1511,7 @@ mod receiving_tests {
                 Ok(())
             })
             .unwrap();
-        let usage = retry.last_attempt().unwrap().usage();
+        let usage = retry.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
         assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
     }
@@ -1533,6 +1533,8 @@ mod receiving_tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .live(RenderResource::ScratchCpuBytes),
             0
@@ -1545,7 +1547,7 @@ mod receiving_tests {
         assert_eq!(empty.path_data, 0);
         assert_eq!(empty.path_tags, 0);
         assert_eq!(empty.transforms, 0);
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::PathElementVisits), 0);
         assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
     }
@@ -1563,7 +1565,7 @@ mod receiving_tests {
             .unwrap_err();
         assert!(error.accounting_diagnostic().is_some());
         assert!(error.geometry_realization_diagnostic().is_none());
-        let usage = limited.last_attempt().unwrap().usage();
+        let usage = limited.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::PathElementVisits), 1);
         assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
         assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
@@ -1583,6 +1585,8 @@ mod receiving_tests {
         assert_eq!(
             retry
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .live(RenderResource::ScratchCpuBytes),
@@ -1611,7 +1615,7 @@ mod receiving_tests {
             .unwrap_err();
         assert!(error.accounting_diagnostic().is_some());
         assert!(error.geometry_realization_diagnostic().is_none());
-        let usage = limited.last_attempt().unwrap().usage();
+        let usage = limited.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::PathElementVisits), SCALED_PREFIX);
         assert!(usage.peak(RenderResource::ScratchCpuBytes) > 0);
         assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
@@ -1626,6 +1630,8 @@ mod receiving_tests {
         assert_eq!(
             retry
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .live(RenderResource::ScratchCpuBytes),

@@ -743,7 +743,8 @@ fn actual_hinted_paint_preparation_preserves_caps_cleanup_retry_and_profile_inva
             .with_clock(RenderClock::Host(forbidden_hint_clock)),
     );
     let expected = prepare_linear_gradient(&geometry, &used, &mut context).unwrap();
-    let baseline = context.last_attempt().unwrap().clone();
+    let baseline_record = context.take_last_attempt().unwrap();
+    let baseline = baseline_record.attempt().unwrap();
     let coordinates = baseline.usage().work(RenderWork::CoordinateVisits);
     let retained = baseline.usage().peak(RenderResource::RetainedCpuBytes);
     assert!(coordinates > 0);
@@ -784,7 +785,7 @@ fn actual_hinted_paint_preparation_preserves_caps_cleanup_retry_and_profile_inva
             prepare_linear_gradient(&geometry, &used, &mut context).unwrap(),
             expected
         );
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
         assert_eq!(report.usage(), baseline.usage());
         assert_eq!(report.elapsed().is_some(), timing);
@@ -804,7 +805,7 @@ fn actual_hinted_paint_preparation_preserves_caps_cleanup_retry_and_profile_inva
                 panic!("expected the actual hinted consumer's Ledger cap")
             };
             assert_eq!(refusal.quantity(), quantity);
-            let report = context.last_attempt().unwrap();
+            let report = context.last_attempt().unwrap().attempt().unwrap();
             assert_eq!(report.status(), RenderAttemptStatus::Refused);
             assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
             for resource in [

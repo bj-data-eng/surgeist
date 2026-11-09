@@ -467,6 +467,7 @@ pub surgeist_render::RenderAccountingError::GenerationRefused::reason: surgeist_
 pub surgeist_render::RenderAccountingError::GenerationRetired
 pub surgeist_render::RenderAccountingError::InvalidLimit(surgeist_render::RenderWork)
 pub surgeist_render::RenderAccountingError::Invariant
+pub surgeist_render::RenderAccountingError::LedgerDefect(surgeist_ledger::Defect)
 pub surgeist_render::RenderAccountingError::Refused(surgeist_render::RenderRefusal)
 pub surgeist_render::RenderAccountingError::Setup(surgeist_render::RenderAccountingSetupError)
 impl core::convert::From<surgeist_render::RenderAccountingError> for surgeist_render::Error
@@ -1615,11 +1616,11 @@ pub type surgeist_render::Rect::Error = surgeist_render::Error
 pub fn surgeist_render::Rect::try_from(rect: kurbo::rect::Rect) -> surgeist_render::Result<Self>
 pub struct surgeist_render::RenderAccountingContext
 impl surgeist_render::RenderAccountingContext
-pub fn surgeist_render::RenderAccountingContext::last_attempt(&self) -> core::option::Option<&surgeist_render::RenderAttemptReport>
+pub fn surgeist_render::RenderAccountingContext::last_attempt(&self) -> core::option::Option<&surgeist_render::RenderStandaloneReport>
 pub const fn surgeist_render::RenderAccountingContext::new(options: surgeist_render::RenderAccountingOptions) -> Self
 pub const fn surgeist_render::RenderAccountingContext::options(&self) -> surgeist_render::RenderAccountingOptions
 pub fn surgeist_render::RenderAccountingContext::set_options(&mut self, options: surgeist_render::RenderAccountingOptions)
-pub fn surgeist_render::RenderAccountingContext::take_last_attempt(&mut self) -> core::option::Option<surgeist_render::RenderAttemptReport>
+pub fn surgeist_render::RenderAccountingContext::take_last_attempt(&mut self) -> core::option::Option<surgeist_render::RenderStandaloneReport>
 pub struct surgeist_render::RenderAccountingOptions
 impl surgeist_render::RenderAccountingOptions
 pub const fn surgeist_render::RenderAccountingOptions::clock(self) -> surgeist_render::RenderClock
@@ -1769,6 +1770,12 @@ pub surgeist_render::RenderResourceTable::RetainedCpuBytes: T
 pub surgeist_render::RenderResourceTable::ScratchCpuBytes: T
 impl<T: core::marker::Copy> surgeist_render::RenderResourceTable<T>
 pub const fn surgeist_render::RenderResourceTable<T>::splat(value: T) -> Self
+pub struct surgeist_render::RenderStandaloneReport
+impl surgeist_render::RenderStandaloneReport
+pub fn surgeist_render::RenderStandaloneReport::attempt(&self) -> core::result::Result<&surgeist_render::RenderAttemptReport, surgeist_render::RenderAccountingError>
+pub const fn surgeist_render::RenderStandaloneReport::cleanup_fault(&self) -> core::option::Option<surgeist_render::RenderAccountingError>
+pub const fn surgeist_render::RenderStandaloneReport::kind(&self) -> surgeist_render::RenderAttemptKind
+pub const fn surgeist_render::RenderStandaloneReport::status(&self) -> surgeist_render::RenderAttemptStatus
 pub struct surgeist_render::RenderUsage(_)
 impl surgeist_render::RenderUsage
 pub fn surgeist_render::RenderUsage::live(self, resource: surgeist_render::RenderResource) -> u64

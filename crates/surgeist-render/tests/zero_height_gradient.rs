@@ -192,7 +192,8 @@ fn fixed_color_custody_actual_reduction_caps_and_profiles_preserve_values_and_re
                 .with_clock(RenderClock::Host(forbidden_clock)),
         );
         let expected = prepare_zero_height_gradient_color(&measure, &mut context).unwrap();
-        let baseline = context.last_attempt().unwrap().clone();
+        let baseline_record = context.take_last_attempt().unwrap();
+        let baseline = baseline_record.attempt().unwrap();
         assert_eq!(baseline.kind(), RenderAttemptKind::PaintGradient);
         assert_eq!(baseline.status(), RenderAttemptStatus::Succeeded);
         let bytes = u64::try_from(size_of::<Color>()).unwrap();
@@ -239,7 +240,7 @@ fn fixed_color_custody_actual_reduction_caps_and_profiles_preserve_values_and_re
                 prepare_zero_height_gradient_color(&measure, &mut context).unwrap(),
                 expected
             );
-            let report = context.last_attempt().unwrap();
+            let report = context.last_attempt().unwrap().attempt().unwrap();
             assert_eq!(report.usage(), baseline.usage());
             assert_eq!(report.elapsed().is_some(), timed);
             let mut limits = vec![RenderLimits::new().with_retained_bytes(bytes - 1)];
@@ -264,7 +265,7 @@ fn fixed_color_custody_actual_reduction_caps_and_profiles_preserve_values_and_re
                     error.accounting_diagnostic(),
                     Some(RenderAccountingError::Refused(_))
                 ));
-                let report = context.last_attempt().unwrap();
+                let report = context.last_attempt().unwrap().attempt().unwrap();
                 assert_eq!(report.status(), RenderAttemptStatus::Refused);
                 assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
                 assert_eq!(report.usage().work(RenderWork::Submissions), 0);

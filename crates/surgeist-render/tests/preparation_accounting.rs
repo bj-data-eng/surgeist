@@ -22,7 +22,7 @@ fn real_glyph_has_one_semantic_input_and_separate_exact_traversal_counts() {
         .prepare_glyph_run(&instance, &glyphs, legacy(), &mut context)
         .unwrap();
     assert_eq!(output.path_elements().count(), 5);
-    let report = context.last_attempt().unwrap();
+    let report = context.last_attempt().unwrap().attempt().unwrap();
     assert_eq!(report.kind(), RenderAttemptKind::GlyphRun);
     assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
     assert_eq!(report.usage().work(RenderWork::GlyphInputs), 1);
@@ -76,6 +76,8 @@ fn coalesced_foreground_inspection_is_a_visit_without_a_second_retained_paint() 
         context
             .last_attempt()
             .unwrap()
+            .attempt()
+            .unwrap()
             .usage()
             .work(RenderWork::PaintVisits),
         2
@@ -99,7 +101,7 @@ fn bitmap_selection_refusal_preserves_the_typed_general_limit_and_accepted_prefi
         error.accounting_diagnostic(),
         Some(RenderAccountingError::Refused(_))
     ));
-    let report = context.last_attempt().unwrap();
+    let report = context.last_attempt().unwrap().attempt().unwrap();
     assert_eq!(report.usage().work(RenderWork::FontRecordVisits), directory);
     assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
     assert_eq!(report.usage().live(RenderResource::ScratchCpuBytes), 0);
@@ -136,7 +138,7 @@ fn one_under_general_and_legacy_limits_refuse_then_retry_the_same_input() {
         error.accounting_diagnostic(),
         Some(RenderAccountingError::Refused(_))
     ));
-    let report = context.last_attempt().unwrap();
+    let report = context.last_attempt().unwrap().attempt().unwrap();
     assert_eq!(report.status(), RenderAttemptStatus::Refused);
     assert_eq!(report.usage().work(RenderWork::PathElementsEmitted), 4);
     assert_eq!(report.refusal().unwrap().phase(), RenderPhase::Attempt);
@@ -160,7 +162,14 @@ fn one_under_general_and_legacy_limits_refuse_then_retry_the_same_input() {
         })
     ));
     assert_eq!(
-        context.last_attempt().unwrap().refusal().unwrap().phase(),
+        context
+            .last_attempt()
+            .unwrap()
+            .attempt()
+            .unwrap()
+            .refusal()
+            .unwrap()
+            .phase(),
         RenderPhase::Preparation
     );
     assert_eq!(
@@ -171,7 +180,7 @@ fn one_under_general_and_legacy_limits_refuse_then_retry_the_same_input() {
         5
     );
     assert_eq!(
-        context.last_attempt().unwrap().status(),
+        context.last_attempt().unwrap().attempt().unwrap().status(),
         RenderAttemptStatus::Succeeded
     );
 }
@@ -190,9 +199,30 @@ fn malformed_input_retains_failed_prefix_without_transferring_result_custody() {
         report.status(),
         RenderAttemptStatus::Failed(ErrorCode::GlyphPreparation)
     );
-    assert_eq!(report.usage().work(RenderWork::GlyphInputs), 1);
-    assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
-    assert_eq!(report.usage().live(RenderResource::RetainedCpuBytes), 0);
+    assert_eq!(
+        report
+            .attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::GlyphInputs),
+        1
+    );
+    assert_eq!(
+        report
+            .attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::PreparedTransferredBytes),
+        0
+    );
+    assert_eq!(
+        report
+            .attempt()
+            .unwrap()
+            .usage()
+            .live(RenderResource::RetainedCpuBytes),
+        0
+    );
 }
 #[test]
 fn bounded_detail_loss_cannot_change_real_preparation_totals() {
@@ -210,9 +240,26 @@ fn bounded_detail_loss_cannot_change_real_preparation_totals() {
     font.prepare_glyph_run(&instance, &glyphs, legacy(), &mut bounded)
         .unwrap();
     assert_eq!(
-        bounded.last_attempt().unwrap().usage(),
-        off.last_attempt().unwrap().usage()
+        bounded.last_attempt().unwrap().attempt().unwrap().usage(),
+        off.last_attempt().unwrap().attempt().unwrap().usage()
     );
-    assert_eq!(bounded.last_attempt().unwrap().events().count(), 1);
-    assert!(bounded.last_attempt().unwrap().dropped_events() > 0);
+    assert_eq!(
+        bounded
+            .last_attempt()
+            .unwrap()
+            .attempt()
+            .unwrap()
+            .events()
+            .count(),
+        1
+    );
+    assert!(
+        bounded
+            .last_attempt()
+            .unwrap()
+            .attempt()
+            .unwrap()
+            .dropped_events()
+            > 0
+    );
 }

@@ -364,7 +364,8 @@ fn identity_conversion_preserves_exact_basis_and_existing_refusal_domains_with_r
         RenderAccountingOptions::new().with_profile(RenderProfile::Summary { timing: false }),
     );
     let ordinary = prepare_radial_gradient(&geometry, &used, &mut context).unwrap();
-    let pad = context.last_attempt().unwrap().clone();
+    let pad_record = context.take_last_attempt().unwrap();
+    let pad = pad_record.attempt().unwrap();
     assert_eq!(
         ordinary
             .stops()
@@ -380,7 +381,8 @@ fn identity_conversion_preserves_exact_basis_and_existing_refusal_domains_with_r
     assert_eq!(pad.usage().work(RenderWork::GradientStopVisits), 2 * 3);
     assert_eq!(pad.usage().work(RenderWork::PaintVisits), 3);
     let repeated = prepare_repeating_radial_gradient(&geometry, &used, &mut context).unwrap();
-    let repeat = context.last_attempt().unwrap().clone();
+    let repeat_record = context.take_last_attempt().unwrap();
+    let repeat = repeat_record.attempt().unwrap();
     assert_eq!(repeated.stops(), ordinary.stops());
     // Repeat separately performs its required span subtraction and domain check.
     assert_eq!(repeat.usage().work(RenderWork::CoordinateVisits), 3 + 3 + 2);
@@ -402,6 +404,8 @@ fn identity_conversion_preserves_exact_basis_and_existing_refusal_domains_with_r
     assert_eq!(
         context
             .last_attempt()
+            .unwrap()
+            .attempt()
             .unwrap()
             .usage()
             .work(RenderWork::GradientStopVisits),
@@ -467,7 +471,7 @@ fn identity_conversion_preserves_exact_basis_and_existing_refusal_domains_with_r
         );
         let error = prepare_radial_gradient(&geometry, &used, &mut context).unwrap_err();
         assert!(error.accounting_diagnostic().is_some());
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(report.status(), RenderAttemptStatus::Refused);
         assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
         for resource in [
@@ -505,13 +509,28 @@ fn identity_conversion_preserves_exact_basis_and_existing_refusal_domains_with_r
             prepare_radial_gradient(&geometry, &used, &mut context).unwrap(),
             ordinary
         );
-        assert_eq!(context.last_attempt().unwrap().usage(), pad.usage());
-        assert_eq!(context.last_attempt().unwrap().elapsed().is_some(), timed);
+        assert_eq!(
+            context.last_attempt().unwrap().attempt().unwrap().usage(),
+            pad.usage()
+        );
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .attempt()
+                .unwrap()
+                .elapsed()
+                .is_some(),
+            timed
+        );
         assert_eq!(
             prepare_repeating_radial_gradient(&geometry, &used, &mut context).unwrap(),
             repeated
         );
-        assert_eq!(context.last_attempt().unwrap().usage(), repeat.usage());
+        assert_eq!(
+            context.last_attempt().unwrap().attempt().unwrap().usage(),
+            repeat.usage()
+        );
         let bytes = pad.usage().peak(RenderResource::RetainedCpuBytes);
         context
             .set_options(options.with_limits(RenderLimits::new().with_retained_bytes(bytes - 1)));
@@ -521,6 +540,8 @@ fn identity_conversion_preserves_exact_basis_and_existing_refusal_domains_with_r
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .work(RenderWork::PreparedTransferredBytes),
             0
@@ -528,6 +549,8 @@ fn identity_conversion_preserves_exact_basis_and_existing_refusal_domains_with_r
         assert_eq!(
             context
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .live(RenderResource::RetainedCpuBytes),

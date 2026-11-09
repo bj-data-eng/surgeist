@@ -78,7 +78,7 @@ mod repeated_proof_edge_tests {
             let result = context.run(RenderAttemptKind::Frame, RenderPhase::Lower, |account| {
                 graph_build(graph_lowering_pass_spatial(&graph, pass, account))
             });
-            let report = context.last_attempt().unwrap();
+            let report = context.last_attempt().unwrap().attempt().unwrap();
             if limit == 1 {
                 let mapping = result.unwrap();
                 assert_eq!(

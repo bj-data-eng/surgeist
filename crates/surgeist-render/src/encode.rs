@@ -1450,7 +1450,7 @@ mod ordinary_gradient_accounting_tests {
                 },
             )
             .unwrap();
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::GradientStopVisits), 1);
         assert_eq!(usage.work(RenderWork::CoordinateVisits), 0);
         assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
@@ -1469,7 +1469,7 @@ mod ordinary_gradient_accounting_tests {
             assert!(matches!(brush.as_ref(),peniko::BrushRef::Solid(actual) if actual==peniko::Color::from(color)));
             Ok(())
         }).unwrap();
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::GradientStopVisits), 1);
         assert_eq!(usage.work(RenderWork::CoordinateVisits), 0);
         assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
@@ -1492,7 +1492,7 @@ mod ordinary_gradient_accounting_tests {
                 },
             )
             .unwrap();
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), bytes);
         assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
         // Two endpoint records and exactly one conversion visit per source stop.
@@ -1531,7 +1531,7 @@ mod ordinary_gradient_accounting_tests {
                 )
                 .unwrap_err();
             assert!(error.accounting_diagnostic().is_some());
-            let usage = context.last_attempt().unwrap().usage();
+            let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
             assert_eq!(usage.work(RenderWork::GradientStopVisits), stops);
             assert_eq!(usage.work(RenderWork::CoordinateVisits), 0);
             assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
@@ -1551,7 +1551,7 @@ mod ordinary_gradient_accounting_tests {
             )
             .unwrap_err();
         assert!(error.accounting_diagnostic().is_some());
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::GradientStopVisits), 2);
         assert!(usage.work(RenderWork::CoordinateVisits) > 0);
         assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
@@ -1683,6 +1683,8 @@ mod paint_visit_tests {
                     context
                         .last_attempt()
                         .unwrap()
+                        .attempt()
+                        .unwrap()
                         .usage()
                         .work(RenderWork::PaintVisits),
                     1
@@ -1726,7 +1728,7 @@ mod paint_visit_tests {
                     })
                     .unwrap_err();
                 refusal(&error, 0, 0);
-                let usage = context.last_attempt().unwrap().usage();
+                let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
                 assert_eq!(usage.work(RenderWork::PaintVisits), 0);
                 assert_eq!(usage.work(RenderWork::GradientStopVisits), 0);
             }
@@ -1755,6 +1757,8 @@ mod paint_visit_tests {
                 assert_eq!(
                     context
                         .last_attempt()
+                        .unwrap()
+                        .attempt()
                         .unwrap()
                         .usage()
                         .work(RenderWork::PaintVisits),
@@ -1785,6 +1789,8 @@ mod paint_visit_tests {
                 assert_eq!(
                     context
                         .last_attempt()
+                        .unwrap()
+                        .attempt()
                         .unwrap()
                         .usage()
                         .work(RenderWork::PathElementVisits),
@@ -1847,6 +1853,8 @@ mod paint_visit_tests {
                 context
                     .last_attempt()
                     .unwrap()
+                    .attempt()
+                    .unwrap()
                     .usage()
                     .work(RenderWork::PaintVisits),
                 5
@@ -1871,7 +1879,7 @@ mod paint_visit_tests {
                 })
                 .unwrap_err();
             refusal(&error, limit, limit);
-            let usage = context.last_attempt().unwrap().usage();
+            let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
             assert_eq!(usage.work(RenderWork::PaintVisits), limit);
             if limit < 4 {
                 assert_eq!(usage.work(RenderWork::PathElementVisits), 0);

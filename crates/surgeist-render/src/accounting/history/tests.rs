@@ -1,14 +1,14 @@
 use super::*;
 use crate::{
     GlyphRunLimits, ImageId, RenderAccountingContext, RenderAccountingOptions, RenderAttemptKind,
-    RenderAttemptReport, RenderLimits, RenderProfile, Size,
+    RenderLimits, RenderProfile, RenderStandaloneReport, Size,
 };
 use std::mem::size_of;
 
 fn attempt<T>(
     limits: RenderLimits,
     run: impl FnOnce(&Account) -> Result<T>,
-) -> (Result<T>, RenderAttemptReport) {
+) -> (Result<T>, RenderStandaloneReport) {
     let mut context =
         RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
     let result = context.prepare(
@@ -132,8 +132,22 @@ fn hash_collisions_compare_the_actual_byte_prefix_and_insert_distinct_content() 
     });
     // Each observation writes one semantic record. The intervening relocation
     // belongs to the CPU history owner, outside the forward copy allowance.
-    assert_eq!(report.usage().work(RenderWork::ImageIdentityCopies), 2);
-    assert_eq!(report.usage().work(RenderWork::StorageRelocations), 0);
+    assert_eq!(
+        report
+            .attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::ImageIdentityCopies),
+        2
+    );
+    assert_eq!(
+        report
+            .attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::StorageRelocations),
+        0
+    );
     assert_eq!(
         cpu.snapshot()
             .unwrap()
@@ -144,6 +158,8 @@ fn hash_collisions_compare_the_actual_byte_prefix_and_insert_distinct_content() 
     );
     assert_eq!(
         report
+            .attempt()
+            .unwrap()
             .usage()
             .work(RenderWork::ImageIdentityByteComparisons),
         3
@@ -173,9 +189,18 @@ fn pointer_equal_hit_inspects_two_history_candidates_without_scanning_bytes() {
         assert!(!observer.observe(&first, account)?);
         Ok(())
     });
-    assert_eq!(report.usage().work(RenderWork::ResourceProbes), 2);
     assert_eq!(
         report
+            .attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::ResourceProbes),
+        2
+    );
+    assert_eq!(
+        report
+            .attempt()
+            .unwrap()
             .usage()
             .work(RenderWork::ImageIdentityByteComparisons),
         0
@@ -201,6 +226,8 @@ fn byte_comparison_refusal_keeps_the_admitted_prefix_and_publishes_nothing() {
     assert!(result.is_err());
     assert_eq!(
         report
+            .attempt()
+            .unwrap()
             .usage()
             .work(RenderWork::ImageIdentityByteComparisons),
         2
@@ -339,8 +366,22 @@ fn refused_insertion_releases_its_provisional_import_and_keeps_real_growth_capac
         draft.observer().observe(&second, account)
     });
     assert!(result.is_err());
-    assert_eq!(report.usage().work(RenderWork::ImageIdentityCopies), 1);
-    assert_eq!(report.usage().work(RenderWork::StorageRelocations), 0);
+    assert_eq!(
+        report
+            .attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::ImageIdentityCopies),
+        1
+    );
+    assert_eq!(
+        report
+            .attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::StorageRelocations),
+        0
+    );
     assert_eq!(
         cpu.snapshot()
             .unwrap()
@@ -376,7 +417,14 @@ fn exhausted_forward_copy_budget_cannot_veto_cancellation_cleanup() {
         Ok(())
     });
     result.unwrap();
-    assert_eq!(report.usage().work(RenderWork::ImageIdentityCopies), 1);
+    assert_eq!(
+        report
+            .attempt()
+            .unwrap()
+            .usage()
+            .work(RenderWork::ImageIdentityCopies),
+        1
+    );
     assert_eq!(retained(&cpu), before);
     assert_eq!(canonical(&history)[0].0, 1);
     assert!(

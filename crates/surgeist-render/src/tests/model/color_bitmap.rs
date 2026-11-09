@@ -84,6 +84,8 @@ fn selected_colr_v1_report_counts_raw_program_and_consumed_paints() {
         context
             .last_attempt()
             .unwrap()
+            .attempt()
+            .unwrap()
             .usage()
             .work(RenderWork::PaintVisits),
         5

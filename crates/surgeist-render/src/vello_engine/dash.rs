@@ -305,7 +305,7 @@ mod tests {
         );
         assert_eq!(refusal.current(), ACTIONS - 1);
         assert_eq!(refusal.amount(), 1);
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::CoordinateVisits), ACTIONS - 1);
         assert_eq!(usage.work(RenderWork::DashInitializations), 0);
         assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
@@ -320,6 +320,8 @@ mod tests {
         assert_eq!(
             retry
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .work(RenderWork::CoordinateVisits),

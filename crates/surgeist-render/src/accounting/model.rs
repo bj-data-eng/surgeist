@@ -953,6 +953,9 @@ pub enum RenderAccountingError {
     InvalidLimit(RenderWork),
     /// A private fixed-scope, checkpoint or participant contract was violated.
     Invariant,
+    /// Ledger found a named internal invariant failure. Valid Ledger sequencing
+    /// cannot produce this; the original provider diagnostic remains intact.
+    LedgerDefect(surgeist_ledger::Defect),
     /// Generation work or native custody failed a checked transition or preview.
     /// A preview refusal leaves the generation healthy; committed transition
     /// failures retain the first fault while mandatory cleanup continues.
@@ -1105,6 +1108,42 @@ pub struct RenderAttemptReport {
     pub(crate) status: RenderAttemptStatus,
     pub(crate) interval: IntervalReport<RenderWork, RenderResource>,
     pub(crate) refusal: Option<RenderRefusal>,
+}
+
+/// Terminal record for one standalone operation, including cancellation and
+/// mandatory cleanup failure. Exact interval extraction may independently fail.
+/// Take this record from its context before destroying the context to retain
+/// the observation without starting another operation.
+#[derive(Debug, Eq, PartialEq)]
+pub struct RenderStandaloneReport {
+    pub(crate) kind: RenderAttemptKind,
+    pub(crate) status: RenderAttemptStatus,
+    pub(crate) attempt: Result<RenderAttemptReport, RenderAccountingError>,
+    pub(crate) cleanup_fault: Option<RenderAccountingError>,
+}
+
+impl RenderStandaloneReport {
+    /// Operation that produced this terminal record.
+    pub const fn kind(&self) -> RenderAttemptKind {
+        self.kind
+    }
+
+    /// Original semantic outcome or cancellation. Cleanup failure prevents a
+    /// successful status but does not replace an earlier failure or cancellation.
+    pub const fn status(&self) -> RenderAttemptStatus {
+        self.status
+    }
+
+    /// Exact closed interval, or the typed fault that prevented its extraction.
+    pub fn attempt(&self) -> Result<&RenderAttemptReport, RenderAccountingError> {
+        self.attempt.as_ref().map_err(|error| *error)
+    }
+
+    /// First mandatory cleanup or finalization fault, separate from the semantic
+    /// outcome and from interval extraction availability.
+    pub const fn cleanup_fault(&self) -> Option<RenderAccountingError> {
+        self.cleanup_fault
+    }
 }
 impl RenderAttemptReport {
     /// Builds a report from a ledger interval, or refuses one that does not hold

@@ -1471,6 +1471,8 @@ mod pixelated_tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .live(crate::RenderResource::ScratchCpuBytes),
             0
@@ -1529,7 +1531,7 @@ mod pixelated_tests {
             error.geometry_realization_diagnostic(),
             Some(&crate::GeometryRealizationError::UnrepresentableGlyph { glyph_index: 0 })
         );
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.live(crate::RenderResource::ScratchCpuBytes), 0);
         assert_eq!(usage.live(crate::RenderResource::RetainedCpuBytes), 0);
     }

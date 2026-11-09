@@ -709,6 +709,8 @@ mod tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .live(RenderResource::RetainedCpuBytes),
             0
@@ -798,6 +800,8 @@ mod tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .peak(RenderResource::RetainedCpuBytes),
             0
@@ -846,7 +850,7 @@ mod tests {
             3,
             "one unpublished command was rewritten"
         );
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert!(usage.peak(RenderResource::RetainedCpuBytes) >= 1024 * 4);
         assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
         assert_eq!(usage.work(RenderWork::SerializedBytes), (512 + 8 + 1) * 4);
@@ -887,7 +891,7 @@ mod tests {
             )
             .unwrap_err();
         assert!(error.accounting_diagnostic().is_some());
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::SerializedBytes), 512 * 4);
         assert!(usage.peak(RenderResource::RetainedCpuBytes) >= 1024 * 4);
         assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
@@ -925,7 +929,7 @@ mod tests {
                 },
             )
             .unwrap();
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.peak(RenderResource::RetainedCpuBytes), bytes);
         assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
 
@@ -951,7 +955,7 @@ mod tests {
             )
             .unwrap_err();
         assert!(error.accounting_diagnostic().is_some());
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(
             report.refusal().unwrap().quantity(),
             crate::RenderQuantity::Resource(RenderResource::RetainedCpuBytes)
@@ -1049,7 +1053,7 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
         assert_eq!(usage.work(RenderWork::GradientStopVisits), 4);
         assert_eq!(usage.work(RenderWork::SerializedBytes), (1024 + 1) * 4);
@@ -1082,7 +1086,7 @@ mod tests {
             .unwrap_err();
         assert!(error.accounting_diagnostic().is_some());
         assert!(captured.as_slice().is_empty());
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::RasterResourceCopies), 1);
         assert!(
             usage.peak(RenderResource::RetainedCpuBytes) >= (2 * size_of::<ProgramRecord>()) as u64
@@ -1111,6 +1115,8 @@ mod tests {
         assert_eq!(
             retry
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .live(RenderResource::RetainedCpuBytes),
@@ -1145,6 +1151,8 @@ mod tests {
             assert_eq!(
                 context
                     .last_attempt()
+                    .unwrap()
+                    .attempt()
                     .unwrap()
                     .usage()
                     .live(RenderResource::RetainedCpuBytes),
@@ -1188,7 +1196,7 @@ mod tests {
                     .unwrap_err();
                 assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
                 assert!(captured.as_slice().is_empty());
-                let usage = context.last_attempt().unwrap().usage();
+                let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
                 assert_eq!(usage.peak(RenderResource::RetainedCpuBytes), 0);
                 assert_eq!(usage.work(RenderWork::RasterResourceCopies), 0);
             }
@@ -1234,7 +1242,7 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::GradientStopVisits), 0);
         assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
     }
@@ -1280,7 +1288,7 @@ mod tests {
             .unwrap_err();
         assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
         assert_eq!(packed, original);
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::SerializedBytes), 512 * 4);
         assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
     }
@@ -1345,6 +1353,8 @@ mod tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .live(RenderResource::RetainedCpuBytes),
             0
@@ -1397,6 +1407,8 @@ mod tests {
                 context
                     .last_attempt()
                     .unwrap()
+                    .attempt()
+                    .unwrap()
                     .usage()
                     .peak(RenderResource::RetainedCpuBytes),
                 0
@@ -1440,7 +1452,7 @@ mod tests {
             .unwrap_err();
         assert!(error.accounting_diagnostic().is_some());
         assert_eq!(packed, original);
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::SerializedBytes), (512 + 7) * 4);
         assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
         assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
@@ -1464,6 +1476,8 @@ mod tests {
         assert_eq!(
             retry
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .live(RenderResource::RetainedCpuBytes),
@@ -1489,7 +1503,7 @@ mod tests {
             .unwrap_err();
         assert!(error.accounting_diagnostic().is_some());
         assert!(records.as_slice().is_empty());
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.peak(RenderResource::RetainedCpuBytes), 0);
         assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
         assert_eq!(usage.work(RenderWork::RasterResourceCopies), 0);

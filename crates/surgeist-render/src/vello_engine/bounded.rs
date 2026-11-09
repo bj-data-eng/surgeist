@@ -700,6 +700,8 @@ mod tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .peak(RenderResource::RetainedCpuBytes),
             6
@@ -715,6 +717,8 @@ mod tests {
         assert_eq!(
             context
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .peak(RenderResource::RetainedCpuBytes),
@@ -741,6 +745,8 @@ mod tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .peak(RenderResource::RetainedCpuBytes),
             60
@@ -759,6 +765,8 @@ mod tests {
         assert_eq!(
             context
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .peak(RenderResource::RetainedCpuBytes),
@@ -839,6 +847,8 @@ mod tests {
         assert_eq!(
             context
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .live(RenderResource::RetainedCpuBytes),
@@ -1122,7 +1132,7 @@ mod tests {
                     },
                 )
                 .unwrap();
-            let usage = context.last_attempt().unwrap().usage();
+            let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
             assert_eq!(
                 usage.peak(RenderResource::ScratchCpuBytes),
                 if allowed == 24 * element_bytes {
@@ -1170,6 +1180,8 @@ mod tests {
         assert_eq!(
             context
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .peak(RenderResource::RetainedCpuBytes),

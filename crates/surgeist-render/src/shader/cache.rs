@@ -1252,7 +1252,7 @@ mod accounting_tests {
                 },
             );
             assert_eq!(result.is_ok(), limit == 6);
-            let report = context.last_attempt().unwrap();
+            let report = context.last_attempt().unwrap().attempt().unwrap();
             assert_eq!(report.status(), expected_status);
             assert_eq!(
                 report.usage().work(RenderWork::ResourceProbes),

@@ -543,7 +543,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             [None, Some(2.0), None, None]
         );
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         // Origin capture, actual basis capture, and basis equality: 3. Each
         // of five source items is captured exactly once in physical identity.
         assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 8);
@@ -584,6 +584,8 @@ mod tests {
             context
                 .last_attempt()
                 .unwrap()
+                .attempt()
+                .unwrap()
                 .usage()
                 .work(RenderWork::CoordinateVisits),
             10
@@ -610,7 +612,7 @@ mod tests {
         );
         assert_eq!(refusal.current(), 7);
         assert_eq!(refusal.amount(), 1);
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 7);
         assert_eq!(report.usage().work(RenderWork::GradientStopVisits), 10);
         assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
@@ -645,7 +647,7 @@ mod tests {
                 })
             );
         }
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 3);
         assert_eq!(report.usage().work(RenderWork::GradientStopVisits), 0);
         let used = resolve_gradient_stops(0.0, &inputs, options())
@@ -657,6 +659,8 @@ mod tests {
         assert_eq!(
             context
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .work(RenderWork::CoordinateVisits),
@@ -678,6 +682,8 @@ mod tests {
         assert_eq!(
             context
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .live(RenderResource::RetainedCpuBytes),
@@ -729,7 +735,7 @@ mod tests {
             prepare_zero_height_gradient_color(&colors, &mut context).unwrap(),
             hidden
         );
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(report.usage().work(RenderWork::PaintVisits), 2);
         assert_eq!(report.usage().work(RenderWork::GradientStopVisits), 1);
         assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 0);
@@ -785,7 +791,7 @@ mod tests {
             prepare_zero_height_gradient_color(&colors, &mut context).unwrap(),
             expected
         );
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         // Each actual occurrence: weight capture1, premultiplication11,
         // weighted product/sum8. Final nonzero-alpha conversion12: 3*20+12.
         assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 72);
@@ -876,7 +882,7 @@ mod tests {
                 crate::RenderRefusalReason::Limit { limit }
             );
             assert!(error.paint_gradient_diagnostic().is_none());
-            let report = context.last_attempt().unwrap();
+            let report = context.last_attempt().unwrap().attempt().unwrap();
             assert_eq!(report.status(), crate::RenderAttemptStatus::Refused);
             assert_eq!(report.refusal(), Some(refusal));
             assert_eq!(
@@ -916,7 +922,7 @@ mod tests {
                 prepare_repeating_radial_gradient(&geometry(), &stops, &mut context).unwrap();
             assert_eq!(result.stops()[0].position(), a);
             assert_eq!(result.stops()[1].position(), b);
-            let report = context.last_attempt().unwrap();
+            let report = context.last_attempt().unwrap().attempt().unwrap();
             assert_eq!(
                 report.usage().work(RenderWork::CoordinateVisits),
                 coordinates
@@ -960,7 +966,7 @@ mod tests {
                     .collect::<Vec<_>>(),
                 [a, b]
             );
-            let report = context.last_attempt().unwrap();
+            let report = context.last_attempt().unwrap().attempt().unwrap();
             assert_eq!(
                 report.usage().work(RenderWork::CoordinateVisits),
                 coordinates
@@ -1016,7 +1022,7 @@ mod tests {
         let gradient = prepare_radial_gradient(&geometry(), &stops, &mut context).unwrap();
         assert_eq!(gradient.stops().len(), 2);
         assert_eq!(gradient.stops()[0].hint_after().unwrap().position(), 0.25);
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         // Geometry/basis 6. Three position captures/divides/finite/nonzero
         // checks = 12; two nonzero results need zero checks = 2; two source
         // adjacent equality/order checks = 4. No output validation walk.
@@ -1052,7 +1058,7 @@ mod tests {
                 .accounting_diagnostic()
                 .is_some()
         );
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 17);
         assert_eq!(report.usage().work(RenderWork::GradientStopVisits), 6);
         assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
@@ -1083,7 +1089,7 @@ mod tests {
                 last_source_index: 1,
             })
         );
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(report.usage().live(RenderResource::RetainedCpuBytes), 0);
         assert_eq!(report.usage().work(RenderWork::PreparedTransferredBytes), 0);
         assert!(report.phase_count(RenderPhase::Cleanup) > 0);
@@ -1132,7 +1138,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(gradient.stops().len(), 2);
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.peak(RenderResource::RetainedCpuBytes), actual_bytes);
         assert_eq!(
             usage.work(RenderWork::PreparedTransferredBytes),
@@ -1182,7 +1188,7 @@ mod tests {
             },
         );
         assert!(result.unwrap_err().accounting_diagnostic().is_some());
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         // The configured cap belongs to Attempt; Output owns the attempted
         // charge, but Ledger identifies the ancestor that enforces its limit.
         assert_eq!(report.refusal().unwrap().phase(), RenderPhase::Attempt);
@@ -1223,7 +1229,7 @@ mod tests {
         let error = result.unwrap_err();
         assert!(error.accounting_diagnostic().is_some());
         assert!(error.paint_gradient_diagnostic().is_none());
-        let report = context.last_attempt().unwrap();
+        let report = context.last_attempt().unwrap().attempt().unwrap();
         assert_eq!(report.usage().work(RenderWork::CoordinateVisits), 5);
         assert_eq!(report.usage().work(RenderWork::GradientStopVisits), 2);
         assert!(report.usage().peak(RenderResource::RetainedCpuBytes) > 0);
@@ -1265,6 +1271,8 @@ mod tests {
         assert_eq!(
             context
                 .last_attempt()
+                .unwrap()
+                .attempt()
                 .unwrap()
                 .usage()
                 .peak(RenderResource::RetainedCpuBytes),

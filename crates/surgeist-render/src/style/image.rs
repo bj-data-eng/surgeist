@@ -1496,7 +1496,7 @@ mod accounting_tests {
                 Rect::new(2.0, 2.0, 2.0, 2.0),
             ]
         );
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::RepeatTiles), 4);
         // Four generated positions plus both maximum-coordinate proofs for
         // each of the four retained tiles.
@@ -1524,7 +1524,7 @@ mod accounting_tests {
         let mut context =
             RenderAccountingContext::new(RenderAccountingOptions::new().with_limits(limits));
         assert!(plan.resolve(placement, &mut context).is_err());
-        let usage = context.last_attempt().unwrap().usage();
+        let usage = context.last_attempt().unwrap().attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::RepeatTiles), 3);
         assert_eq!(usage.work(RenderWork::PreparedTransferredBytes), 0);
         assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
