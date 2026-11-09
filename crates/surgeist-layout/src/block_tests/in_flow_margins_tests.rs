@@ -7070,3 +7070,167 @@ fn policy_clearance_zero_float_later_source_ignored_f32() {
 fn policy_clearance_zero_float_later_source_ignored_f64() {
     assert_policy_clearance_later_zero_float::<f64>(Clear::Left);
 }
+
+#[derive(Clone, Copy)]
+enum PolicyClearanceMultiOfferCase {
+    RightBelowHypothetical,
+    RightAtHypothetical,
+    RightAboveHypothetical,
+    EmptyAuthoredNone,
+    BlockAuthoredNone,
+}
+
+fn assert_policy_clearance_multioffer<S: LayoutScalar>(case: PolicyClearanceMultiOfferCase) {
+    use PolicyClearanceMultiOfferCase::*;
+    let px = S::from_f64;
+    let (right_height, empty_clear, block_clear) = match case {
+        RightBelowHypothetical => (25.0, Clear::Left, Clear::Right),
+        RightAtHypothetical => (27.0, Clear::Left, Clear::Right),
+        RightAboveHypothetical => (30.0, Clear::Left, Clear::Right),
+        EmptyAuthoredNone => (25.0, Clear::None, Clear::Right),
+        BlockAuthoredNone => (25.0, Clear::Left, Clear::None),
+    };
+    let half_width_float = |side, height| NodeInputOf {
+        size: Size::new(
+            PreferredSizeOf::px(px(50.0)),
+            PreferredSizeOf::px(px(height)),
+        ),
+        ..policy_clearance_float(side, height)
+    };
+    let tree = PublicBlockTree::default()
+        .with_children(0, [1, 2, 3, 6])
+        .with_children(1, [])
+        .with_children(2, [])
+        .with_children(3, [4, 5])
+        .with_children(4, [])
+        .with_children(5, [])
+        .with_children(6, [])
+        .with_style(0, policy_clearance_block(None))
+        .with_style(1, half_width_float(Float::Left, 15.0))
+        .with_style(2, half_width_float(Float::Right, right_height))
+        .with_style(3, policy_clearance_block(None))
+        .with_style(
+            4,
+            NodeInputOf {
+                clear: empty_clear,
+                margin: policy_clearance_margins(8.0, 12.0),
+                ..policy_clearance_block(None)
+            },
+        )
+        .with_style(
+            5,
+            NodeInputOf {
+                clear: block_clear,
+                margin: policy_clearance_margins(20.0, 0.0),
+                ..policy_clearance_block(Some(10.0))
+            },
+        )
+        .with_style(6, policy_clearance_block(Some(2.0)));
+    let batch = compute_layout(&tree, 0, actual_clearance_auto_root_request()).unwrap();
+
+    // #2125 comment 6733332381 adopts a source-ordered qualified-prefix
+    // policy; CSS2 alone does not uniquely select this dependency ordering.
+    // With E suppressed, provisional B separates P to12. Actual E therefore
+    // has H=12<Fleft15 and C_E=max(15-8,12-8)=7. B's later contextual
+    // hypothetical retains E's qualified decision: H_B=7+max(8,12,20)=27.
+    // E's border15 differs from its own through-group end7+max(8,12)=19.
+    // R25 and R27 leave B adjoining. R30 separates at S_B=19+20=39,
+    // C_B=max(30-39,27-39)=-9; Bglobal30 and Pheight40.
+    let (parent_y, parent_height, empty_global_y, block_global_y) = match case {
+        RightBelowHypothetical | RightAtHypothetical => (0.0, 37.0, 15.0, 27.0),
+        RightAboveHypothetical => (0.0, 40.0, 15.0, 30.0),
+        // Authored E:none is a distinct whole-layout input. Only B clears:
+        // P12, S_B=32, C_B=-7, B25; its bottom35 gives Pheight23.
+        EmptyAuthoredNone => (12.0, 23.0, 12.0, 25.0),
+        // A fresh authored B:none input requalifies E. Its H=20 already
+        // clears left15: neither offer introduces clearance, P=E=B=20.
+        // This differs from B's contextual none probe with E already retained.
+        BlockAuthoredNone => (20.0, 10.0, 20.0, 20.0),
+    };
+    for (node, x, height) in [(1, 0.0, 15.0), (2, 50.0, right_height)] {
+        let float = batch
+            .node_layout(node)
+            .unwrap()
+            .single_box()
+            .unwrap()
+            .unrounded_output();
+        assert_eq!(
+            float.location,
+            Point::new(px(x), S::ZERO),
+            "float {node} origin"
+        );
+        assert_eq!(
+            float.size,
+            Size::new(px(50.0), px(height)),
+            "float {node} size"
+        );
+    }
+    policy_clearance_box(&batch, 3, px(parent_y), px(parent_height));
+    policy_clearance_box(&batch, 4, px(empty_global_y - parent_y), S::ZERO);
+    policy_clearance_box(&batch, 5, px(block_global_y - parent_y), px(10.0));
+    // Zero bottom/top margins let ordinary normal flow place the following
+    // sibling at P's bottom; its own2px height determines the root extent.
+    let following_y = parent_y + parent_height;
+    policy_clearance_box(&batch, 6, px(following_y), px(2.0));
+    policy_clearance_box(&batch, 0, S::ZERO, px(following_y + 2.0));
+    // Public geometry for R27 cannot distinguish an introduced zero amount
+    // from no clearance. This test asserts geometry, not a private receipt flag.
+}
+
+#[test]
+fn policy_clearance_multioffer_preserves_earlier_prefix_right25_f32() {
+    assert_policy_clearance_multioffer::<f32>(
+        PolicyClearanceMultiOfferCase::RightBelowHypothetical,
+    );
+}
+
+#[test]
+fn policy_clearance_multioffer_preserves_earlier_prefix_right25_f64() {
+    assert_policy_clearance_multioffer::<f64>(
+        PolicyClearanceMultiOfferCase::RightBelowHypothetical,
+    );
+}
+
+#[test]
+fn policy_clearance_multioffer_exact_contact_right27_f32() {
+    assert_policy_clearance_multioffer::<f32>(PolicyClearanceMultiOfferCase::RightAtHypothetical);
+}
+
+#[test]
+fn policy_clearance_multioffer_exact_contact_right27_f64() {
+    assert_policy_clearance_multioffer::<f64>(PolicyClearanceMultiOfferCase::RightAtHypothetical);
+}
+
+#[test]
+fn policy_clearance_multioffer_introduced_negative_right30_f32() {
+    assert_policy_clearance_multioffer::<f32>(
+        PolicyClearanceMultiOfferCase::RightAboveHypothetical,
+    );
+}
+
+#[test]
+fn policy_clearance_multioffer_introduced_negative_right30_f64() {
+    assert_policy_clearance_multioffer::<f64>(
+        PolicyClearanceMultiOfferCase::RightAboveHypothetical,
+    );
+}
+
+#[test]
+fn policy_clearance_multioffer_empty_authored_none_control_f32() {
+    assert_policy_clearance_multioffer::<f32>(PolicyClearanceMultiOfferCase::EmptyAuthoredNone);
+}
+
+#[test]
+fn policy_clearance_multioffer_empty_authored_none_control_f64() {
+    assert_policy_clearance_multioffer::<f64>(PolicyClearanceMultiOfferCase::EmptyAuthoredNone);
+}
+
+#[test]
+fn policy_clearance_multioffer_block_authored_none_fresh_control_f32() {
+    assert_policy_clearance_multioffer::<f32>(PolicyClearanceMultiOfferCase::BlockAuthoredNone);
+}
+
+#[test]
+fn policy_clearance_multioffer_block_authored_none_fresh_control_f64() {
+    assert_policy_clearance_multioffer::<f64>(PolicyClearanceMultiOfferCase::BlockAuthoredNone);
+}
