@@ -12,6 +12,8 @@ use surgeist_html::bounded::values::{HtmlAttributeNameIndex, HtmlNameIndexSlot};
 use surgeist_html::construction::{HtmlBuilderNode, HtmlConstructionError, HtmlConstructionUsage};
 mod attributes;
 #[cfg(test)]
+mod dispositions;
+#[cfg(test)]
 mod tests;
 pub(super) use attributes::{
     NAME_INDEX_MIN_ENTRIES, NAME_INDEX_SPARE_ENTRIES, prepare_attribute_slot,
