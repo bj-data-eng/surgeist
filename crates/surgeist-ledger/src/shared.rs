@@ -50,6 +50,10 @@ impl<W: Dimension, R: Dimension> SharedOperation<W, R> {
     pub fn scope_name(&self, scope: Scope) -> Result<&'static str, Error<W, R>> {
         self.lock().scope_name(scope)
     }
+    /// A copy of the caps configured for a scope; see [`Operation::limits`].
+    pub fn limits(&self, scope: Scope) -> Result<Limits<W, R>, Error<W, R>> {
+        self.lock().limits(scope).copied()
+    }
     pub fn usage(&self, scope: Scope) -> Result<Usage<W, R>, Error<W, R>> {
         self.lock().usage(scope).copied()
     }

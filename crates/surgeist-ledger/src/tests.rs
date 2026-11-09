@@ -56,6 +56,7 @@ pub(crate) fn assert_latched<W: Dimension, R: Dimension>(
         latched
     );
     assert_eq!(operation.usage(root).map(|_| ()), latched);
+    assert_eq!(operation.limits(root).map(|_| ()), latched);
     assert_eq!(operation.scope_name(root).map(|_| ()), latched);
     assert_eq!(operation.begin_phase(root).map(|_| ()), latched);
     assert_eq!(operation.with_phase(root, |_| ()), latched);

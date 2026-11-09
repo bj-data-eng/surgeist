@@ -467,6 +467,13 @@ impl<W: Dimension, R: Dimension> Operation<W, R> {
         Ok(&self.entry(self.index(scope)?)?.usage)
     }
 
+    /// The caps configured for a scope, in its own units. Usage includes the
+    /// scope's descendants, so a cap applies to them too; this reads only the
+    /// scope's own caps and not those of its ancestors.
+    pub fn limits(&self, scope: Scope) -> Result<&Limits<W, R>, Error<W, R>> {
+        Ok(&self.entry(self.index(scope)?)?.limits)
+    }
+
     pub fn scope_name(&self, scope: Scope) -> Result<&'static str, Error<W, R>> {
         Ok(self.entry(self.index(scope)?)?.name)
     }
