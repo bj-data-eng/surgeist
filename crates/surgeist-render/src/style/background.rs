@@ -435,7 +435,7 @@ impl BackgroundNormalizationInput {
             layer.position(),
             layer.size(),
         )?
-        .resolve()?;
+        .resolve_in(account)?;
         let (repeat, hold) = ImageRepeatPlan::try_new(layer.repeat(), capabilities)?
             .resolve_in(placement, account)?;
         custody.hold(hold)?;

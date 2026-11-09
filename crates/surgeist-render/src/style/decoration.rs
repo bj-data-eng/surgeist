@@ -1,6 +1,7 @@
 use super::super::{
     Capabilities, Error, Paint, PrimitiveFamily, PrimitiveOperation, Radii, Rect, Result,
     UnsupportedPrimitive,
+    geometry::validate_rect_maxima,
     validation::{validate_finite_f64, validate_non_negative_f64, validate_paint},
 };
 use super::background::StyleCustody;
@@ -406,9 +407,9 @@ impl BoxDecorationInput {
     /// `None`, `Hidden`, and zero-width borders, plus `None` and zero-width
     /// outlines, emit no command. Groove, ridge, inset, and outset borders and
     /// double or automatic outlines return their exact `BoxDecorations`
-    /// [`crate::UnsupportedPrimitive`] diagnostic. A finite negative outline
-    /// offset returns [`crate::ErrorCode::InvalidInput`] if the resulting target
-    /// rectangle is non-finite or has non-positive extent. The current
+    /// [`crate::UnsupportedPrimitive`] diagnostic. An outline offset returns
+    /// [`crate::ErrorCode::InvalidInput`] if the resulting target rectangle has
+    /// non-finite components or derived maxima, or non-positive extent. The current
     /// normalization is context-free; `capabilities` is reserved input and does
     /// not alter these results.
     pub fn normalize(
@@ -485,7 +486,7 @@ impl BoxDecorationInput {
                         paint: custody.paint(outline.paint(), account)?,
                         offset: outline.offset(),
                         style,
-                        target_rect: outline_target_rect(target_rect, outline.offset())?,
+                        target_rect: outline_target_rect(target_rect, outline.offset(), account)?,
                         clip: border_clip_geometry(fragment, account, custody)?,
                         radii: fragment.radii(),
                         break_mode: fragment.break_mode(),
@@ -717,8 +718,8 @@ impl NormalizedOutlineCommand {
     }
 
     #[must_use]
-    /// Returns the finite positive-area logical rectangle derived from the
-    /// fragment border box and outline offset.
+    /// Returns the positive-area logical rectangle with finite components and
+    /// derived maxima, produced from the fragment border box and outline offset.
     pub const fn target_rect(&self) -> Rect {
         self.target_rect
     }
@@ -870,7 +871,8 @@ fn unsupported_outline_style(
     Err(Error::unsupported_render_primitive(unsupported))
 }
 
-fn outline_target_rect(border_box: Rect, offset: f64) -> Result<Rect> {
+fn outline_target_rect(border_box: Rect, offset: f64, account: &Account) -> Result<Rect> {
+    account.work(RenderWork::CoordinateVisits, 4)?;
     let x = border_box.x() - offset;
     let y = border_box.y() - offset;
     let width = border_box.width() + offset * 2.0;
@@ -890,7 +892,10 @@ fn outline_target_rect(border_box: Rect, offset: f64) -> Result<Rect> {
         ));
     }
 
-    Ok(Rect::new(x, y, width, height))
+    let rect = Rect::new(x, y, width, height);
+    account.work(RenderWork::CoordinateVisits, 2)?;
+    validate_rect_maxima(rect, "outline target rect")?;
+    Ok(rect)
 }
 
 fn validate_box_decoration_radii(radii: Radii) -> Result<()> {

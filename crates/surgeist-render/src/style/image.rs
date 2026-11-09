@@ -2,6 +2,7 @@ use super::super::{
     Capabilities, CoordinateSpaceKind, CoordinateSpaceTag, Error, Image, ImageColorProfilePolicy,
     ImageId, ImageOrientationPolicy, Paint, PrimitiveFamily, PrimitiveOperation, Rect, Result,
     Shape, Size, UnresolvedResource, UnresolvedResourceKind, UnsupportedPrimitive,
+    geometry::validate_rect_maxima,
     validation::{validate_finite_f64, validate_paint, validate_shape, validate_size},
 };
 use crate::accounting::{
@@ -701,7 +702,8 @@ pub struct ImagePlacementInput {
 #[derive(Clone, Copy, Debug, PartialEq)]
 /// Concrete logical geometry for an image paint area and its first tile.
 ///
-/// Both rectangles have finite origins and finite positive dimensions.
+/// Both rectangles have finite origins, finite positive dimensions, and finite
+/// derived maximum coordinates.
 pub struct ResolvedImagePlacement {
     paint_rect: Rect,
     tile_rect: Rect,
@@ -757,8 +759,19 @@ impl ImagePlacementInput {
     ///
     /// The result contains the paint rectangle and first tile rectangle. Returns
     /// [`crate::ErrorCode::InvalidInput`] if arithmetic produces a non-finite or
-    /// non-positive tile rectangle.
+    /// non-positive tile rectangle, including a non-finite derived maximum.
     pub fn resolve(self) -> Result<ResolvedImagePlacement> {
+        self.resolve_with_maximum_admission(|| Ok(()))
+    }
+
+    pub(crate) fn resolve_in(self, account: &Account) -> Result<ResolvedImagePlacement> {
+        self.resolve_with_maximum_admission(|| account.work(RenderWork::CoordinateVisits, 2))
+    }
+
+    fn resolve_with_maximum_admission(
+        self,
+        admit_maximum_visits: impl FnOnce() -> Result<()>,
+    ) -> Result<ResolvedImagePlacement> {
         let tile_size = resolve_background_size(self.paint_rect, self.intrinsic_size, self.size);
         let tile_rect = Rect::new(
             resolve_position_component(
@@ -776,15 +789,23 @@ impl ImagePlacementInput {
             tile_size.width(),
             tile_size.height(),
         );
-        ResolvedImagePlacement::from_parts(self.paint_rect, tile_rect)
+        validate_placement_rect(tile_rect, "image placement tile rect")?;
+        // The shared proof eagerly derives both axes, even if the first fails.
+        admit_maximum_visits()?;
+        validate_rect_maxima(tile_rect, "image placement tile rect")?;
+        Ok(ResolvedImagePlacement {
+            paint_rect: self.paint_rect,
+            tile_rect,
+        })
     }
 }
 
 impl ResolvedImagePlacement {
-    /// Validates concrete paint and first-tile rectangles.
+    /// Validates positive area for canonical paint and first-tile rectangles.
     ///
     /// Returns [`crate::ErrorCode::InvalidInput`] unless both rectangles have
-    /// finite origins and finite positive dimensions.
+    /// finite origins and finite positive dimensions. The supplied [`Rect`]
+    /// values already guarantee finite derived maximum coordinates.
     pub fn from_parts(paint_rect: Rect, tile_rect: Rect) -> Result<Self> {
         validate_placement_rect(paint_rect, "image placement paint rect")?;
         validate_placement_rect(tile_rect, "image placement tile rect")?;
@@ -1103,14 +1124,19 @@ impl ImageRepeatPlan {
                     let mut tile_rects = account.retained(tile_count)?;
                     for y in y_positions.iter() {
                         for x in x_positions.iter() {
-                            quota.acquire(RenderResource::LocalRepeatTileQuota, 1)?;
-                            account.work(RenderWork::RepeatTiles, 1)?;
-                            tile_rects.push(Rect::new(
+                            let tile_rect = Rect::new(
                                 *x,
                                 *y,
                                 placement.tile_rect().width(),
                                 placement.tile_rect().height(),
-                            ))?;
+                            );
+                            // Positive finite dimensions come from placement;
+                            // finite maxima also prove the generated origins finite.
+                            account.work(RenderWork::CoordinateVisits, 2)?;
+                            validate_rect_maxima(tile_rect, "image repeat tile rect")?;
+                            quota.acquire(RenderResource::LocalRepeatTileQuota, 1)?;
+                            account.work(RenderWork::RepeatTiles, 1)?;
+                            tile_rects.push(tile_rect)?;
                         }
                     }
                     let (tile_rects, hold) = tile_rects.into_parts()?;
@@ -1472,7 +1498,9 @@ mod accounting_tests {
         );
         let usage = context.last_attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::RepeatTiles), 4);
-        assert_eq!(usage.work(RenderWork::CoordinateVisits), 4);
+        // Four generated positions plus both maximum-coordinate proofs for
+        // each of the four retained tiles.
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), 12);
         assert_eq!(
             usage.work(RenderWork::PreparedTransferredBytes),
             (resolved.tile_rects.capacity() * std::mem::size_of::<Rect>()) as u64
