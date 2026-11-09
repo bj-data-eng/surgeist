@@ -607,3 +607,6 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
 
 #[cfg(test)]
 mod balance_tests;
+
+#[cfg(test)]
+mod zero_edge_prefix_tests;
