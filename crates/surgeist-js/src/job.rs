@@ -435,8 +435,7 @@ impl CancellationToken {
 #[derive(Debug)]
 pub struct TimeoutJob {
     cancellation: CancellationLease,
-    /// The distance in milliseconds in the future when the job should run.
-    /// This will be added to the current time when the job is enqueued.
+    /// The delay added to the current clock when the job is enqueued.
     timeout: JsDuration,
     /// The job to run after the specified timeout.
     job: NativeJob,
@@ -451,23 +450,28 @@ impl Drop for CancellationLease {
 }
 
 impl TimeoutJob {
-    /// Create a new `TimeoutJob` with a timeout and a job.
+    /// Creates a timeout for an existing job with a delay in milliseconds.
     #[must_use]
     pub fn new(job: NativeJob, timeout_in_millis: u64) -> Self {
+        Self::with_duration(job, JsDuration::from_millis(timeout_in_millis))
+    }
+
+    fn with_duration(job: NativeJob, timeout: JsDuration) -> Self {
         Self {
             cancellation: CancellationLease(CancellationToken::new()),
-            timeout: JsDuration::from_millis(timeout_in_millis),
+            timeout,
             job,
         }
     }
 
     /// Creates a new `TimeoutJob` from a closure and a timeout as [`std::time::Duration`].
+    /// Preserves the supplied duration's nanosecond precision and range.
     #[must_use]
     pub fn from_duration<F>(f: F, timeout: impl Into<JsDuration>) -> Self
     where
         F: for<'call> FnOnce(ContextAccess<'call>) -> JsResult<JsValue> + 'static,
     {
-        Self::new(NativeJob::new(f), timeout.into().as_millis())
+        Self::with_duration(NativeJob::new(f), timeout.into())
     }
 
     /// Creates a new `TimeoutJob` from a closure, a timeout, and an execution realm.
@@ -476,7 +480,7 @@ impl TimeoutJob {
     where
         F: for<'call> FnOnce(ContextAccess<'call>) -> JsResult<JsValue> + 'static,
     {
-        Self::new(NativeJob::with_realm(f, realm), timeout.as_millis() as u64)
+        Self::with_duration(NativeJob::with_realm(f, realm), timeout.into())
     }
 
     /// Calls the native job with the specified [`Context`].
@@ -512,7 +516,7 @@ impl TimeoutJob {
         self.job.observer()
     }
 
-    /// Returns the timeout value in milliseconds since epoch.
+    /// Returns the configured timeout duration.
     #[inline]
     #[must_use]
     pub fn timeout(&self) -> JsDuration {
@@ -540,8 +544,7 @@ impl TimeoutJob {
 /// [`setInterval`]: https://developer.mozilla.org/en-US/docs/Web/API/Window/setInterval
 #[derive(Debug)]
 pub struct IntervalJob {
-    /// The distance in milliseconds in the future when the job should run.
-    /// This will be added to the current time when the job is enqueued.
+    /// The delay added to the current clock for each subsequent invocation.
     interval: JsDuration,
     /// The job to run after every interval of time.
     job: NativeJobFn,
@@ -556,35 +559,37 @@ impl Drop for IntervalJob {
 }
 
 impl IntervalJob {
-    /// Create a new `IntervalJob` with an interval and a job.
+    /// Creates an interval for an existing job with a period in milliseconds.
     #[must_use]
     pub fn new(job: NativeJobFn, interval_in_millis: u64) -> Self {
+        Self::with_duration(job, JsDuration::from_millis(interval_in_millis))
+    }
+
+    fn with_duration(job: NativeJobFn, interval: JsDuration) -> Self {
         Self {
-            interval: JsDuration::from_millis(interval_in_millis),
+            interval,
             job,
             cancellation_token: CancellationToken::new(),
         }
     }
 
     /// Creates a new `IntervalJob` from a closure and an interval as [`std::time::Duration`].
+    /// Preserves the supplied duration's nanosecond precision and range.
     #[must_use]
     pub fn from_duration<F>(f: F, interval: impl Into<JsDuration>) -> Self
     where
         F: for<'call> Fn(ContextAccess<'call>) -> JsResult<JsValue> + 'static,
     {
-        Self::new(NativeJobFn::new(f), interval.into().as_millis())
+        Self::with_duration(NativeJobFn::new(f), interval.into())
     }
 
-    /// Creates a new `TimeoutJob` from a closure, an interval, and an execution realm.
+    /// Creates a new `IntervalJob` from a closure, an interval, and an execution realm.
     #[must_use]
     pub fn with_realm<F>(f: F, realm: Realm, interval: time::Duration) -> Self
     where
         F: for<'call> Fn(ContextAccess<'call>) -> JsResult<JsValue> + 'static,
     {
-        Self::new(
-            NativeJobFn::with_realm(f, realm),
-            interval.as_millis() as u64,
-        )
+        Self::with_duration(NativeJobFn::with_realm(f, realm), interval.into())
     }
 
     /// Calls the interval job with the specified [`Context`].
@@ -600,7 +605,7 @@ impl IntervalJob {
         self.job.call(context.access())
     }
 
-    /// Returns the interval value in milliseconds.
+    /// Returns the configured interval duration.
     #[inline]
     #[must_use]
     pub fn interval(&self) -> JsDuration {
