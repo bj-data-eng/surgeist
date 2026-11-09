@@ -1,5 +1,5 @@
-use surgeist_js_interner::{Interner, ToInternedString};
 use core::ops::ControlFlow;
+use surgeist_js_interner::{Interner, ToInternedString};
 
 use crate::{
     Span, Spanned,

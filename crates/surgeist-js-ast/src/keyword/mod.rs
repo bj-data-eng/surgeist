@@ -10,9 +10,9 @@
 //! [mdn]: https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Lexical_grammar#Keywords
 
 use crate::expression::operator::binary::{BinaryOp, RelationalOp};
+use std::{convert::TryFrom, error, fmt, str::FromStr};
 use surgeist_js_interner::Sym;
 use surgeist_js_macros::utf16;
-use std::{convert::TryFrom, error, fmt, str::FromStr};
 
 #[cfg(test)]
 mod tests;

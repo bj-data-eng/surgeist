@@ -2,9 +2,9 @@
 
 use crate::lexer::{Cursor, Error, Token, TokenKind, Tokenizer, token::EscapeSequence};
 use crate::source::ReadChar;
+use std::io::{self, ErrorKind};
 use surgeist_js_ast::{LinearSpan, Position, PositionGroup, Span};
 use surgeist_js_interner::Interner;
-use std::io::{self, ErrorKind};
 
 /// String literal lexing.
 ///

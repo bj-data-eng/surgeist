@@ -3,8 +3,8 @@ use crate::{
     function::FunctionDeclaration,
     visitor::{VisitWith, Visitor, VisitorMut},
 };
-use surgeist_js_interner::{Interner, Sym, ToIndentedString, ToInternedString};
 use core::ops::ControlFlow;
+use surgeist_js_interner::{Interner, Sym, ToIndentedString, ToInternedString};
 
 /// The set of Parse Nodes that can be preceded by a label, as defined by the [spec].
 ///

@@ -1,9 +1,9 @@
 #![allow(unused_crate_dependencies, missing_docs)]
 
-use surgeist_js::{Context, Source};
-use surgeist_js_test_host::RuntimeExtension;
 use rstest::rstest;
 use std::path::PathBuf;
+use surgeist_js::{Context, Source};
+use surgeist_js_test_host::RuntimeExtension;
 
 #[rstest]
 fn clone(#[files("tests/clone/**/*.js")] path: PathBuf) {

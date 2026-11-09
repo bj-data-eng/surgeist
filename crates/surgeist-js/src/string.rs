@@ -77,8 +77,8 @@ mod tests {
     use crate::{JsStr, string::StaticJsStrings};
 
     use super::JsString;
-    use surgeist_js_macros::{js_str, utf16};
     use rustc_hash::FxHasher;
+    use surgeist_js_macros::{js_str, utf16};
 
     fn hash_value<T: Hash>(value: &T) -> u64 {
         BuildHasherDefault::<FxHasher>::default().hash_one(value)

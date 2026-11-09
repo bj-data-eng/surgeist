@@ -1,5 +1,5 @@
-use surgeist_js_macros::js_str;
 use indoc::indoc;
+use surgeist_js_macros::js_str;
 
 use crate::{JsNativeErrorKind, JsValue, TestAction, js_string, run_test_actions};
 

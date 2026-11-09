@@ -1,9 +1,9 @@
 //! This module contains all the Runtime extensions that can be registered.
 
 use crate::{DefaultLogger, Logger};
+use std::fmt::Debug;
 use surgeist_js::realm::Realm;
 use surgeist_js::{Context, JsResult};
-use std::fmt::Debug;
 
 /// Optional registrable extension (with arguments) in the Boa Runtime should
 /// implement this.

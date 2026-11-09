@@ -22,9 +22,9 @@ use super::{
         FunctionExpression, GeneratorExpression,
     },
 };
-use surgeist_js_interner::{Interner, ToIndentedString, ToInternedString};
 use core::ops::ControlFlow;
 use literal::Literal;
+use surgeist_js_interner::{Interner, ToIndentedString, ToInternedString};
 
 mod r#await;
 mod call;

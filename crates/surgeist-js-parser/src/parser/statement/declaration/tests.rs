@@ -1,5 +1,6 @@
 use crate::parser::tests::{check_invalid_script, check_module_parser, check_script_parser};
 use crate::{Parser, Source};
+use indoc::indoc;
 use surgeist_js_ast::{
     Declaration, ModuleItem, Span, Statement,
     declaration::{
@@ -13,7 +14,6 @@ use surgeist_js_ast::{
 };
 use surgeist_js_interner::{Interner, Sym};
 use surgeist_js_macros::utf16;
-use indoc::indoc;
 
 /// Checks `var` declaration parsing.
 #[test]

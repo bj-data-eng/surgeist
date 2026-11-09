@@ -3,8 +3,8 @@ use crate::{
     statement::Statement,
     visitor::{VisitWith, Visitor, VisitorMut},
 };
-use surgeist_js_interner::{Interner, ToInternedString};
 use core::ops::ControlFlow;
+use surgeist_js_interner::{Interner, ToInternedString};
 
 /// The `throw` statement throws a user-defined exception.
 ///

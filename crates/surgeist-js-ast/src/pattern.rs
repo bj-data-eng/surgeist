@@ -28,8 +28,8 @@ use crate::{
     property::PropertyName,
     visitor::{VisitWith, Visitor, VisitorMut},
 };
-use surgeist_js_interner::{Interner, ToInternedString};
 use core::{fmt::Write as _, ops::ControlFlow};
+use surgeist_js_interner::{Interner, ToInternedString};
 
 /// An object or array pattern binding or assignment.
 ///

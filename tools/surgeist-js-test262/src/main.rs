@@ -30,9 +30,9 @@ use serde::{
     de::{Unexpected, Visitor},
 };
 
-use surgeist_js::optimizer::OptimizerOptions;
 use edition::SpecEdition;
 use read::ErrorType;
+use surgeist_js::optimizer::OptimizerOptions;
 
 use self::{
     read::{MetaData, Negative, TestFlag, read_harness, read_suite, read_test},

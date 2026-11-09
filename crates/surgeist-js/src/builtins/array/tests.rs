@@ -2,8 +2,8 @@ use super::Array;
 use crate::{
     Context, JsNativeErrorKind, JsValue, TestAction, builtins::Number, js_string, run_test_actions,
 };
-use surgeist_js_macros::js_str;
 use indoc::indoc;
+use surgeist_js_macros::js_str;
 
 #[test]
 fn is_array() {

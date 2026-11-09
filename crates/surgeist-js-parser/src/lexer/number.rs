@@ -2,11 +2,11 @@
 
 use crate::lexer::{Cursor, Error, Token, TokenKind, Tokenizer, token::Numeric};
 use crate::source::ReadChar;
-use surgeist_js_ast::PositionGroup;
-use surgeist_js_interner::Interner;
 use num_bigint::BigInt;
 use num_traits::{ToPrimitive, Zero};
 use std::str;
+use surgeist_js_ast::PositionGroup;
+use surgeist_js_interner::Interner;
 
 /// Number literal lexing.
 ///
