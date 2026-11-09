@@ -31,16 +31,18 @@ pub(crate) struct StringIterator {
 }
 
 impl IntrinsicObject for StringIterator {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::with_intrinsic::<Self>(realm)
             .prototype(realm.intrinsics().constructors().iterator().prototype())
-            .static_method(Self::next, js_string!("next"), 0)
+            .static_method(Self::next, js_string!("next"), 0)?
             .static_property(
                 JsSymbol::to_string_tag(),
                 js_string!("String Iterator"),
                 Attribute::CONFIGURABLE,
-            )
-            .build();
+            )?
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -71,7 +73,9 @@ impl StringIterator {
         let object = this.as_object();
         let mut string_iterator = object
             .as_ref()
-            .and_then(JsObject::downcast_mut::<Self>)
+            .map(JsObject::downcast_mut::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("`this` is not an ArrayIterator"))?;
 
         if string_iterator.string.is_empty() {

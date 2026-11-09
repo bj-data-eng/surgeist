@@ -41,7 +41,7 @@ mod tests;
 pub(crate) struct Map;
 
 impl IntrinsicObject for Map {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_species = BuiltInBuilder::callable(realm, Self::get_species)
             .name(js_string!("get [Symbol.species]"))
             .build();
@@ -97,7 +97,9 @@ impl IntrinsicObject for Map {
                 None,
                 Attribute::CONFIGURABLE,
             )
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -270,7 +272,7 @@ impl Map {
         let runtime = map.runtime();
         require_collection_value(&runtime, &key)?;
         require_collection_value(&runtime, value)?;
-        map.borrow_mut().data_mut().insert(key, value.clone());
+        map.borrow_mut()?.data_mut().insert(key, value.clone());
 
         // 7. Return M.
         Ok(this.clone())
@@ -301,7 +303,7 @@ impl Map {
             .ok_or_else(|| {
                 js_error!(TypeError: "method `Map.prototype.set` called on incompatible receiver")
             })?
-            .borrow()
+            .borrow()?
             .data()
             .len()
             .into())
@@ -337,7 +339,7 @@ impl Map {
         //       ii. Set p.[[Value]] to empty.
         //       iii. Return true.
         // 5. Return false.
-        Ok(map.borrow_mut().data_mut().remove(&key).into())
+        Ok(map.borrow_mut()?.data_mut().remove(&key).into())
     }
 
     /// `Map.prototype.get( key )`
@@ -366,7 +368,7 @@ impl Map {
         // 4. For each Record { [[Key]], [[Value]] } p of M.[[MapData]], do
         //    a. If p.[[Key]] is not empty and SameValue(p.[[Key]], key) is true, return p.[[Value]].
         // 5. Return undefined.
-        Ok(map.borrow().data().get(&key).unwrap_or_default())
+        Ok(map.borrow()?.data().get(&key).unwrap_or_default())
     }
 
     /// `Map.prototype.clear( )`
@@ -394,7 +396,7 @@ impl Map {
         // 3. For each Record { [[Key]], [[Value]] } p of M.[[MapData]], do
         //    a. Set p.[[Key]] to empty.
         //    b. Set p.[[Value]] to empty.
-        map.borrow_mut().data_mut().clear();
+        map.borrow_mut()?.data_mut().clear();
 
         // 4. Return undefined.
         Ok(JsValue::undefined())
@@ -428,7 +430,7 @@ impl Map {
         // 4. For each Record { [[Key]], [[Value]] } p of M.[[MapData]], do
         //    a. If p.[[Key]] is not empty and SameValue(p.[[Key]], key) is true, return true.
         // 5. Return false.
-        Ok(map.borrow().data().contains_key(&key).into())
+        Ok(map.borrow()?.data().contains_key(&key).into())
     }
 
     /// `Map.prototype.forEach( callbackFn [ , thisArg ] )`
@@ -476,14 +478,14 @@ impl Map {
         // after it has been visited and then re-added before the forEach call completes.
         // Keys that are deleted after the call to forEach begins and before being visited
         // are not visited unless the key is added again before the forEach call completes.
-        let _lock = map.borrow_mut().data_mut().lock();
+        let _lock = map.borrow_mut()?.data_mut().lock();
 
         // 4. Let entries be the List that is M.[[MapData]].
         // 5. For each Record { [[Key]], [[Value]] } e of entries, do
         let mut index = 0;
         loop {
             let arguments = {
-                let map = map.borrow();
+                let map = map.borrow()?;
                 let map = map.data();
                 if index < map.full_len() {
                     map.get_index(index).map(|(k, v)| [v, k, this.clone()])
@@ -526,12 +528,12 @@ impl Map {
                 )
             })?;
 
-        let _lock = map.borrow_mut().data_mut().lock();
+        let _lock = map.borrow_mut()?.data_mut().lock();
 
         let mut index = 0;
         loop {
             let entry = {
-                let map = map.borrow();
+                let map = map.borrow()?;
                 let map = map.data();
                 if index >= map.full_len() {
                     return Ok(());
@@ -608,7 +610,7 @@ impl Map {
         let key = canonicalize_keyed_collection_key(args.get_or_undefined(0).clone());
 
         // 4. For each Record { [[Key]], [[Value]] } p of M.[[MapData]], do
-        if let Some(existing) = map.borrow().data().get(&key) {
+        if let Some(existing) = map.borrow()?.data().get(&key) {
             // a. If p.[[Key]] is not empty and SameValue(p.[[Key]], key) is true, return p.[[Value]].
             return Ok(existing);
         }
@@ -618,7 +620,7 @@ impl Map {
         let runtime = map.runtime();
         require_collection_value(&runtime, &key)?;
         require_collection_value(&runtime, value)?;
-        map.borrow_mut().data_mut().insert(key, value.clone());
+        map.borrow_mut()?.data_mut().insert(key, value.clone());
 
         // 7. Return value.
         Ok(value.clone())
@@ -663,7 +665,7 @@ impl Map {
         let key = canonicalize_keyed_collection_key(args.get_or_undefined(0).clone());
 
         // 5. For each Record { [[Key]], [[Value]] } p of M.[[MapData]], do
-        if let Some(existing) = map.borrow().data().get(&key) {
+        if let Some(existing) = map.borrow()?.data().get(&key) {
             // a. If p.[[Key]] is not empty and SameValue(p.[[Key]], key) is true, return p.[[Value]].
             return Ok(existing);
         }
@@ -686,7 +688,7 @@ impl Map {
         // 9. Let p be the Record { [[Key]]: key, [[Value]]: value }.
         // 10. Append p to M.[[MapData]].
         // [`OrderedMap::insert`] handles both cases
-        map.borrow_mut()
+        map.borrow_mut()?
             .data_mut()
             .insert(key.clone(), value.clone());
         // 11. Return value.
@@ -801,7 +803,7 @@ impl Map {
 
             // b. Let entry be the Record { [[Key]]: g.[[Key]], [[Value]]: elements }.
             // c. Append entry to map.[[MapData]].
-            map.borrow_mut().data_mut().insert(key, elements.into());
+            map.borrow_mut()?.data_mut().insert(key, elements.into());
         }
 
         // 4. Return map.

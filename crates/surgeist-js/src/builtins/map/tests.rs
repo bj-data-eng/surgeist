@@ -231,10 +231,10 @@ fn recursive_display() {
                 let array = new Array([map]);
             "#}),
         TestAction::assert_with_op("map.set('y', map)", |v, _| {
-            v.display().to_string() == r#"Map { "y" → Map(1) }"#
+            v.display().render().unwrap() == r#"Map { "y" → Map(1) }"#
         }),
         TestAction::assert_with_op("map.set('z', array)", |v, _| {
-            v.display().to_string() == r#"Map { "y" → Map(2), "z" → Array(1) }"#
+            v.display().render().unwrap() == r#"Map { "y" → Map(2), "z" → Array(1) }"#
         }),
     ]);
 }

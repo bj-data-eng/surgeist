@@ -29,8 +29,9 @@ fn resize() {
         let data_block = super::create_byte_data_block(100, None, context).unwrap();
         let js_arr = JsArrayBuffer::from_byte_block(data_block, context.access())
             .unwrap()
-            .with_max_byte_length(100);
-        let mut arr = js_arr.borrow_mut();
+            .with_max_byte_length(100)
+            .unwrap();
+        let mut arr = js_arr.borrow_mut().unwrap();
 
         // Sunny day
         assert_eq!(arr.data_mut().resize(50), Ok(()));
@@ -46,8 +47,9 @@ fn resize_with_an_unallocatable_host_limit_preserves_bytes() {
         let bytes = super::create_byte_data_block(1, None, context).unwrap();
         let array = JsArrayBuffer::from_byte_block(bytes, context.access())
             .unwrap()
-            .with_max_byte_length(u64::MAX);
-        let mut array = array.borrow_mut();
+            .with_max_byte_length(u64::MAX)
+            .unwrap();
+        let mut array = array.borrow_mut().unwrap();
         let buffer = array.data_mut();
 
         assert!(buffer.resize(u64::MAX).is_err());
@@ -80,7 +82,8 @@ fn allocating_buffer_edits_apply_the_host_ceiling_before_mutation() {
         bytes.extend_from_slice(&[1, 2, 3, 4]);
         let source = JsArrayBuffer::from_byte_block(bytes, context.access())
             .unwrap()
-            .with_max_byte_length(16);
+            .with_max_byte_length(16)
+            .unwrap();
         context
             .register_global_property(js_string!("source"), source.clone(), Attribute::all())
             .unwrap();
@@ -90,7 +93,10 @@ fn allocating_buffer_edits_apply_the_host_ceiling_before_mutation() {
             error.try_native(context.access()).unwrap().kind(),
             JsNativeErrorKind::Range
         ));
-        assert_eq!(source.data().as_deref(), Some([1, 2, 3, 4].as_slice()));
+        assert_eq!(
+            source.data().unwrap().as_deref(),
+            Some([1, 2, 3, 4].as_slice())
+        );
     }
 
     assert_refusal("source.resize(8)", 4);
@@ -111,7 +117,8 @@ fn allocating_buffer_edits_apply_the_host_ceiling_before_mutation() {
     bytes.extend_from_slice(&[1, 2, 3, 4]);
     let source = JsArrayBuffer::from_byte_block(bytes, context.access())
         .unwrap()
-        .with_max_byte_length(16);
+        .with_max_byte_length(16)
+        .unwrap();
     context
         .register_global_property(js_string!("source"), source.clone(), Attribute::all())
         .unwrap();
@@ -119,7 +126,7 @@ fn allocating_buffer_edits_apply_the_host_ceiling_before_mutation() {
         .eval(Source::from_bytes("source.resize(8)"))
         .unwrap();
     assert_eq!(
-        source.data().as_deref(),
+        source.data().unwrap().as_deref(),
         Some([1, 2, 3, 4, 0, 0, 0, 0].as_slice())
     );
 }
@@ -150,7 +157,8 @@ fn allocating_buffer_edits_revalidate_after_host_detachment() {
         let mut context = Context::builder().host_hooks(host.clone()).build().unwrap();
         let source = JsArrayBuffer::from_byte_block(vec![1, 2, 3, 4], context.access())
             .unwrap()
-            .with_max_byte_length(16);
+            .with_max_byte_length(16)
+            .unwrap();
         context
             .register_global_property(js_string!("source"), source.clone(), Attribute::all())
             .unwrap();
@@ -161,7 +169,7 @@ fn allocating_buffer_edits_revalidate_after_host_detachment() {
             error.try_native(context.access()).unwrap().kind(),
             JsNativeErrorKind::Type
         ));
-        assert!(source.data().is_none());
+        assert!(source.data().unwrap().is_none());
     }
 
     assert_detached("source.resize(8)");

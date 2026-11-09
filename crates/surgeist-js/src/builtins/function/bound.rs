@@ -2,7 +2,7 @@ use crate::ContextAccess;
 use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use crate::{
-    JsExpect, JsObject, JsResult, JsValue,
+    JsObject, JsResult, JsValue,
     object::{
         JsData, ObjectEdge,
         internal_methods::{
@@ -115,9 +115,9 @@ fn bound_function_exotic_call(
     argument_count: usize,
     context: &mut InternalMethodCallContext<'_>,
 ) -> JsResult<CallValue> {
-    let bound_function = obj.downcast_ref::<BoundFunction>().js_expect(
-        "bound function exotic method should only be callable from bound function objects",
-    )?;
+    let bound_function = obj
+        .downcast_ref::<BoundFunction>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
 
     // 1. Let target be F.[[BoundTargetFunction]].
     let (target, bound_this, bound_args) = bound_function.call_parts();
@@ -160,9 +160,9 @@ fn bound_function_exotic_construct(
 
     debug_assert!(new_target.is_object(), "new.target should be an object");
 
-    let bound_function = function_object.downcast_ref::<BoundFunction>().js_expect(
-        "bound function exotic method should only be callable from bound function objects",
-    )?;
+    let bound_function = function_object
+        .downcast_ref::<BoundFunction>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
 
     // 1. Let target be F.[[BoundTargetFunction]].
     let target = bound_function.target_function();

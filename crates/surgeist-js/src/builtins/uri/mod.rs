@@ -84,11 +84,13 @@ impl UriFunctions {
 pub(crate) struct DecodeUri;
 
 impl IntrinsicObject for DecodeUri {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::callable_with_intrinsic::<Self>(realm, decode_uri)
             .name(Self::NAME)
             .length(1)
-            .build();
+            .build()?;
+
+        Ok(())
     }
     fn get(intrinsics: &Intrinsics) -> JsObject {
         intrinsics.objects().uri_functions().decode_uri().into()
@@ -102,11 +104,13 @@ impl BuiltInObject for DecodeUri {
 pub(crate) struct DecodeUriComponent;
 
 impl IntrinsicObject for DecodeUriComponent {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::callable_with_intrinsic::<Self>(realm, decode_uri_component)
             .name(Self::NAME)
             .length(1)
-            .build();
+            .build()?;
+
+        Ok(())
     }
     fn get(intrinsics: &Intrinsics) -> JsObject {
         intrinsics
@@ -124,11 +128,13 @@ impl BuiltInObject for DecodeUriComponent {
 pub(crate) struct EncodeUri;
 
 impl IntrinsicObject for EncodeUri {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::callable_with_intrinsic::<Self>(realm, encode_uri)
             .name(Self::NAME)
             .length(1)
-            .build();
+            .build()?;
+
+        Ok(())
     }
     fn get(intrinsics: &Intrinsics) -> JsObject {
         intrinsics.objects().uri_functions().encode_uri().into()
@@ -141,11 +147,13 @@ impl BuiltInObject for EncodeUri {
 pub(crate) struct EncodeUriComponent;
 
 impl IntrinsicObject for EncodeUriComponent {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::callable_with_intrinsic::<Self>(realm, encode_uri_component)
             .name(Self::NAME)
             .length(1)
-            .build();
+            .build()?;
+
+        Ok(())
     }
     fn get(intrinsics: &Intrinsics) -> JsObject {
         intrinsics

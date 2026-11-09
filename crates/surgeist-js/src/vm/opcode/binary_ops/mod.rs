@@ -131,7 +131,7 @@ impl InPrivate {
             .resolve_private_identifier(name)
             .expect("private name must be in environment");
 
-        let value = rhs.has_private_element(&name);
+        let value = rhs.has_private_element(&name)?;
 
         context.vm.set_register(dst.into(), value.into());
         Ok(())

@@ -51,7 +51,12 @@ pub(crate) fn locale_from_value(tag: &JsValue, context: &mut Context) -> JsResul
     }
     // iii. If Type(kValue) is Object and kValue has an [[InitializedLocale]] internal slot, then
     let object = tag.as_object();
-    if let Some(tag) = object.as_ref().and_then(|obj| obj.downcast_ref::<Locale>()) {
+    if let Some(tag) = object
+        .as_ref()
+        .map(|obj| obj.downcast_ref::<Locale>())
+        .transpose()?
+        .flatten()
+    {
         // 1. Let tag be kValue.[[Locale]].
         // No need to canonicalize since all `Locale` objects should already be canonicalized.
         return Ok(tag.clone());

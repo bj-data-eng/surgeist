@@ -194,10 +194,12 @@ impl IteratorPrototypes {
 pub(crate) struct AsyncIterator;
 
 impl IntrinsicObject for AsyncIterator {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::with_intrinsic::<Self>(realm)
-            .static_method(|v, _, _| Ok(v.clone()), JsSymbol::async_iterator(), 0)
-            .build();
+            .static_method(|v, _, _| Ok(v.clone()), JsSymbol::async_iterator(), 0)?
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -689,20 +691,19 @@ impl IteratorRecord {
                     return completion;
                 }
             }
-            Err(inner_result) => {
-                // 5. If completion.[[Type]] is throw, return ? completion.
-                completion?;
-
-                // 6. If innerResult.[[Type]] is throw, return ? innerResult.
-                return Err(inner_result);
-            }
+            Err(inner_result) => Err(inner_result),
         };
 
-        // 5. If completion.[[Type]] is throw, return ? completion.
-        let completion = completion?;
-
-        // 6. If innerResult.[[Type]] is throw, return ? innerResult.
-        let inner_result = inner_result?;
+        // Host refusals cannot be masked by an earlier guest throw. Preserve
+        // the first host failure; ordinary guest throws retain ECMAScript's
+        // original-completion precedence.
+        let (completion, inner_result) = match (completion, inner_result) {
+            (Err(original), _) if original.as_engine().is_some() => return Err(original),
+            (_, Err(inner)) if inner.as_engine().is_some() => return Err(inner),
+            (Err(original), _) => return Err(original),
+            (Ok(_), Err(inner)) => return Err(inner),
+            (Ok(completion), Ok(inner)) => (completion, inner),
+        };
 
         if inner_result.is_object() {
             // 8. Return ? completion.

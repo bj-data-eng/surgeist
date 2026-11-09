@@ -13,7 +13,7 @@ pub(crate) struct CreateMappedArgumentsObject;
 
 impl CreateMappedArgumentsObject {
     #[inline(always)]
-    pub(super) fn operation(value: RegisterOperand, context: &mut Context) {
+    pub(super) fn operation(value: RegisterOperand, context: &mut Context) -> crate::JsResult<()> {
         let frame = context.vm.frame();
         let function_object = context
             .vm
@@ -35,8 +35,9 @@ impl CreateMappedArgumentsObject {
             args,
             &env,
             context,
-        );
+        )?;
         context.vm.set_register(value.into(), arguments.into());
+        Ok(())
     }
 }
 
@@ -55,10 +56,11 @@ pub(crate) struct CreateUnmappedArgumentsObject;
 
 impl CreateUnmappedArgumentsObject {
     #[inline(always)]
-    pub(super) fn operation(dst: RegisterOperand, context: &mut Context) {
+    pub(super) fn operation(dst: RegisterOperand, context: &mut Context) -> crate::JsResult<()> {
         let args = context.vm.stack.get_arguments(context.vm.frame()).to_vec();
-        let arguments = UnmappedArguments::new(&args, context);
+        let arguments = UnmappedArguments::new(&args, context)?;
         context.vm.set_register(dst.into(), arguments.into());
+        Ok(())
     }
 }
 

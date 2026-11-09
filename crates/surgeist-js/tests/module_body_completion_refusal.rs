@@ -184,7 +184,7 @@ fn completion_refusal(resumed: bool, guest_throw: bool) {
         .with_source(
             JsNativeError::range()
                 .with_message("authored completion cause")
-                .with_cause(JsError::from_opaque(hook_leaf.clone())),
+                .with_cause(JsError::from_opaque(hook_leaf.clone()).unwrap()),
         )
         .into();
     let source = match (resumed, guest_throw) {

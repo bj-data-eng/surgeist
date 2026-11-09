@@ -272,17 +272,17 @@ pub struct Generator {
 }
 
 impl IntrinsicObject for Generator {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::with_intrinsic::<Self>(realm)
             .prototype(realm.intrinsics().constructors().iterator().prototype())
-            .static_method(Self::next, js_string!("next"), 1)
-            .static_method(Self::r#return, js_string!("return"), 1)
-            .static_method(Self::throw, js_string!("throw"), 1)
+            .static_method(Self::next, js_string!("next"), 1)?
+            .static_method(Self::r#return, js_string!("return"), 1)?
+            .static_method(Self::throw, js_string!("throw"), 1)?
             .static_property(
                 JsSymbol::to_string_tag(),
                 Self::NAME,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .static_property(
                 CONSTRUCTOR,
                 realm
@@ -291,8 +291,10 @@ impl IntrinsicObject for Generator {
                     .generator_function()
                     .prototype(),
                 Attribute::CONFIGURABLE,
-            )
-            .build();
+            )?
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -365,7 +367,7 @@ impl Generator {
         // 3. Return ? GeneratorResumeAbrupt(g, C, empty).
         Self::generator_resume_abrupt(
             this,
-            Err(JsError::from_opaque(args.get_or_undefined(0).clone())),
+            Err(JsError::from_opaque(args.get_or_undefined(0).clone())?),
             context,
         )
     }
@@ -390,7 +392,7 @@ impl Generator {
                     .with_message("Generator method called on non generator")
                     .into());
             };
-            let mut r#gen = generator_obj.downcast_mut::<Self>().ok_or_else(|| {
+            let mut r#gen = generator_obj.downcast_mut::<Self>()?.ok_or_else(|| {
                 JsNativeError::typ().with_message("generator resumed on non generator object")
             })?;
 
@@ -430,7 +432,11 @@ impl Generator {
 
             let mut r#gen = generator_obj
                 .downcast_mut::<Self>()
-                .js_expect("already checked this object type")?;
+                .and_then(|guard| guard.ok_or(crate::error::ObjectAccessError::WrongNativeBrand))
+                .map_err(|later| match &record {
+                    CompletionRecord::Throw(error) if error.as_engine().is_some() => error.clone(),
+                    _ => JsError::from(later),
+                })?;
 
             // 8. Push genContext onto the execution context stack; genContext is now the running execution context.
             // 9. Resume the suspended evaluation of genContext using NormalCompletion(value) as the result of the operation that suspended it. Let result be the value returned by the resumed computation.
@@ -482,7 +488,7 @@ impl Generator {
                     .with_message("Generator method called on non generator")
                     .into());
             };
-            let mut r#gen = generator_obj.downcast_mut::<Self>().ok_or_else(|| {
+            let mut r#gen = generator_obj.downcast_mut::<Self>()?.ok_or_else(|| {
                 JsNativeError::typ().with_message("generator resumed on non generator object")
             })?;
 
@@ -541,9 +547,13 @@ impl Generator {
 
             let record = generator_context.resume(Some(value), resume_kind, context);
 
-            let mut r#gen = generator_obj.downcast_mut::<Self>().ok_or_else(|| {
-                JsNativeError::typ().with_message("generator resumed on non generator object")
-            })?;
+            let mut r#gen = generator_obj
+                .downcast_mut::<Self>()
+                .and_then(|guard| guard.ok_or(crate::error::ObjectAccessError::WrongNativeBrand))
+                .map_err(|later| match &record {
+                    CompletionRecord::Throw(error) if error.as_engine().is_some() => error.clone(),
+                    _ => JsError::from(later),
+                })?;
 
             match record {
                 CompletionRecord::Normal(value) => {

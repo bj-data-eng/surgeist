@@ -1625,7 +1625,7 @@ mod runtime_tests {
     #[test]
     fn materialization_foreign_host_hook_errors_are_local_type_errors() {
         let foreign = Context::default();
-        let foreign_error = crate::JsError::from_opaque(foreign.global_object().into());
+        let foreign_error = crate::JsError::from_opaque(foreign.global_object().into()).unwrap();
         let nested = JsNativeError::error()
             .with_cause(foreign_error.clone())
             .into();

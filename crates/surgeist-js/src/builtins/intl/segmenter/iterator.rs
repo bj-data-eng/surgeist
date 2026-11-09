@@ -5,7 +5,7 @@ use icu_segmenter::{
 use surgeist_js_gc::heap::Trace as HeapTrace;
 
 use crate::{
-    Context, JsData, JsExpect, JsNativeError, JsObject, JsResult, JsString, JsSymbol, JsValue,
+    Context, JsData, JsNativeError, JsObject, JsResult, JsString, JsSymbol, JsValue,
     builtins::{BuiltInBuilder, IntrinsicObject, iterable::create_iter_result_object_trusted},
     context::intrinsics::Intrinsics,
     js_string,
@@ -60,15 +60,17 @@ pub(crate) struct SegmentIterator {
 }
 
 impl IntrinsicObject for SegmentIterator {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::with_intrinsic::<Self>(realm)
             .static_property(
                 JsSymbol::to_string_tag(),
                 js_string!("Segmenter String Iterator"),
                 Attribute::CONFIGURABLE,
-            )
-            .static_method(Self::next, js_string!("next"), 0)
-            .build();
+            )?
+            .static_method(Self::next, js_string!("next"), 0)?
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -111,7 +113,9 @@ impl SegmentIterator {
         let object = this.as_object();
         let mut iter = object
             .as_ref()
-            .and_then(JsObject::downcast_mut::<Self>)
+            .map(JsObject::downcast_mut::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("`next` can only be called on a `Segment Iterator` object")
@@ -122,20 +126,25 @@ impl SegmentIterator {
 
         // 4. Let string be iterator.[[IteratedString]].
         // 6. Let endIndex be ! FindBoundary(segmenter, string, startIndex, after).
-        let Some((end, is_word_like)) = iter.string.get(start..).and_then(|string| {
-            // 3. Let segmenter be iterator.[[IteratingSegmenter]].
-            let segmenter = JsObject::from_inner(iter.segmenter.clone());
-            let segmenter = segmenter
-                .downcast_ref::<Segmenter>()
-                .js_expect("segment iterator object should contain a segmenter")
-                .ok()?;
-            let mut segments = segmenter.native.segment(string.variant());
-            // the first elem is always 0.
-            segments.next();
-            segments
-                .next()
-                .map(|end| (start + end, segments.is_word_like()))
-        }) else {
+        let boundary = iter
+            .string
+            .get(start..)
+            .map(|string| -> JsResult<_> {
+                // 3. Let segmenter be iterator.[[IteratingSegmenter]].
+                let segmenter = JsObject::from_inner(iter.segmenter.clone());
+                let segmenter = segmenter
+                    .downcast_ref::<Segmenter>()?
+                    .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
+                let mut segments = segmenter.native.segment(string.variant());
+                // the first elem is always 0.
+                segments.next();
+                Ok(segments
+                    .next()
+                    .map(|end| (start + end, segments.is_word_like())))
+            })
+            .transpose()?
+            .flatten();
+        let Some((end, is_word_like)) = boundary else {
             drop(iter);
             // 7. If endIndex is not finite, then
             //     a. Return CreateIterResultObject(undefined, true).

@@ -11,7 +11,7 @@ use surgeist_js::{
     Context, ContextAccess, JsData, JsError, JsNativeError, JsObject, JsResult, JsValue,
     NativeFunction, Source,
     builtins::promise::PromiseState,
-    error::{EngineError, PanicError},
+    error::{EngineError, ObjectAccessError, PanicError},
     execution::ExecutionOptions,
     job::{
         Job, JobAcceptance, JobCall, JobExecutor, JobObserver, JobPublicationCause,
@@ -240,11 +240,14 @@ fn actual_discard_then_handled_write_refusal_preserves_prior_effects_and_the_fir
     // are required bookkeeping, not a redundant already-true write.
     let source = JsPromise::resolve(42, context.access()).unwrap();
     executor.arm([Policy::Discard]);
-    let shared_source = source.borrow();
+    let shared_source = source.borrow().unwrap();
     let discarded = source
         .then(Some(callback.clone()), None, context.access())
         .unwrap_err();
-    assert_eq!(discarded.as_engine(), Some(&EngineError::ObjectAccessBusy));
+    assert_eq!(
+        discarded.as_engine(),
+        Some(&EngineError::ObjectAccess(ObjectAccessError::Borrowed))
+    );
     assert_eq!(
         executor.observers.borrow().last().unwrap().status(),
         Ok(JobStatus::Retired(JobRetirement::Dropped))
@@ -257,7 +260,7 @@ fn actual_discard_then_handled_write_refusal_preserves_prior_effects_and_the_fir
         PromiseState::Fulfilled(JsValue::new(42))
     );
     executor.arm([Policy::InlineThenFail(first_error())]);
-    let shared_source = source.borrow();
+    let shared_source = source.borrow().unwrap();
     let actual = source
         .then(Some(callback.clone()), None, context.access())
         .unwrap_err();

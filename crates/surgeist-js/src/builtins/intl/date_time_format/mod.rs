@@ -112,7 +112,7 @@ impl Service for DateTimeFormat {
 }
 
 impl IntrinsicObject for DateTimeFormat {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         use crate::JsSymbol;
         let get_format = BuiltInBuilder::callable(realm, Self::get_format)
             .name(js_string!("get format"))
@@ -136,7 +136,9 @@ impl IntrinsicObject for DateTimeFormat {
                 js_string!("Intl.DateTimeFormat"),
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
             )
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -227,7 +229,7 @@ impl BuiltInConstructor for DateTimeFormat {
                 .intrinsics()
                 .objects()
                 .intl()
-                .borrow()
+                .borrow()?
                 .data()
                 .fallback_symbol();
 
@@ -259,7 +261,7 @@ impl DateTimeFormat {
         //     a. Set dtf to ? UnwrapDateTimeFormat(dtf).
         // 3. Perform ? RequireInternalSlot(dtf, [[InitializedDateTimeFormat]]).
         let dtf_object = unwrap_date_time_format(this, context)?;
-        let cached = dtf_object.borrow().data().bound_format.clone();
+        let cached = dtf_object.borrow()?.data().bound_format.clone();
 
         // 4. If dtf.[[BoundFormat]] is undefined, then
         // 5. Return dtf.[[BoundFormat]].
@@ -289,8 +291,8 @@ impl DateTimeFormat {
 
                         // 5. Return ? FormatDateTime(dtf, x).
                         let dtf = dtf
-                            .downcast_ref::<Self>()
-                            .js_expect("bound format should contain a date time format object")?;
+                            .downcast_ref::<Self>()?
+                            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
                         format_timestamp_with_dtf(&dtf, x, context)
                     },
                     dtf_object.clone().upcast(),
@@ -301,7 +303,7 @@ impl DateTimeFormat {
 
             // b. Set F.[[DateTimeFormat]] to dtf.
             // c. Set dtf.[[BoundFormat]] to F.
-            dtf_object.borrow_mut().data_mut().bound_format =
+            dtf_object.borrow_mut()?.data_mut().bound_format =
                 Some(bound_format.clone().into_record());
             Ok(bound_format.into())
         }
@@ -346,7 +348,7 @@ impl DateTimeFormat {
         //       a. Set dtf to ? UnwrapDateTimeFormat(dtf).
         // 3. Perform ? RequireInternalSlot(dtf, [[InitializedDateTimeFormat]]).
         let dtf_object = unwrap_date_time_format(this, context)?;
-        if let Some(cached) = dtf_object.borrow().data().resolved_options.clone() {
+        if let Some(cached) = dtf_object.borrow()?.data().resolved_options.clone() {
             return Ok(JsObject::from_inner(cached).into());
         }
 
@@ -371,7 +373,7 @@ impl DateTimeFormat {
         //              b. Set v to 𝔽(v).
         //          ii. Perform ! CreateDataPropertyOrThrow(options, p, v).
         let result = {
-            let dtf = dtf_object.borrow();
+            let dtf = dtf_object.borrow()?;
             let dtf = dtf.data();
 
             let mut options = ObjectInitializer::new(context.access());
@@ -467,7 +469,7 @@ impl DateTimeFormat {
         };
 
         // 6. Return options.
-        dtf_object.borrow_mut().data_mut().resolved_options = Some(result.edge());
+        dtf_object.borrow_mut()?.data_mut().resolved_options = Some(result.edge());
         Ok(result.into())
     }
 }
@@ -1016,7 +1018,7 @@ fn unwrap_date_time_format(
             .intrinsics()
             .objects()
             .intl()
-            .borrow()
+            .borrow()?
             .data()
             .fallback_symbol();
 

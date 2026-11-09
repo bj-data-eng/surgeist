@@ -60,8 +60,7 @@ use std::{future::Future, pin::Pin, task};
 ///     .then(
 ///         Some(
 ///             NativeFunction::from_fn_ptr(|_, args, _| {
-///                 Err(JsError::from_opaque(args.get_or_undefined(0).clone())
-///                     .into())
+///                 Err(JsError::from_opaque(args.get_or_undefined(0).clone())?)
 ///             })
 ///             .to_js_function(context.realm()).unwrap(),
 ///         ),
@@ -475,7 +474,7 @@ impl JsPromise {
     /// let context = &mut Context::default();
     ///
     /// let promise = JsPromise::reject(
-    ///     JsError::from_opaque(js_string!("oops!").into()),
+    ///     JsError::from_opaque(js_string!("oops!").into())?,
     ///     context.access(),
     /// )?;
     ///
@@ -504,8 +503,8 @@ impl JsPromise {
 
     /// Gets the current state of the promise.
     ///
-    /// Returns [`crate::error::EngineError::ObjectAccessBusy`] while a mutable
-    /// object alias holds its payload. Refusal leaves the promise unchanged.
+    /// Returns an [`crate::error::EngineError::ObjectAccess`] failure while a
+    /// mutable object alias holds its payload. Refusal leaves the promise unchanged.
     ///
     /// # Examples
     ///
@@ -524,12 +523,7 @@ impl JsPromise {
     /// ```
     #[inline]
     pub fn state(&self) -> JsResult<PromiseState> {
-        Ok(self
-            .inner
-            .try_borrow()
-            .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?
-            .data()
-            .state())
+        Ok(self.inner.borrow()?.data().state())
     }
 
     /// Schedules callback functions to run when the promise settles.
@@ -1256,7 +1250,7 @@ impl JsPromise {
                     context.run_jobs()?;
                 }
                 PromiseState::Fulfilled(f) => break Ok(f),
-                PromiseState::Rejected(r) => break Err(JsError::from_opaque(r)),
+                PromiseState::Rejected(r) => break Err(JsError::from_opaque(r)?),
             }
         }
     }
@@ -1307,7 +1301,7 @@ impl JsPromise {
                         .js_expect("continuation should only run once")?;
                     let value = args.get_or_undefined(0).clone();
                     let completion = if *rejected {
-                        CompletionRecord::Throw(JsError::from_opaque(value))
+                        CompletionRecord::Throw(JsError::from_opaque(value)?)
                     } else {
                         CompletionRecord::Normal(value)
                     };
@@ -1456,7 +1450,10 @@ impl Future for JsFuture {
             match promise.state() {
                 Ok(PromiseState::Pending) => None,
                 Ok(PromiseState::Fulfilled(value)) => Some(Ok(value)),
-                Ok(PromiseState::Rejected(value)) => Some(Err(JsError::from_opaque(value))),
+                Ok(PromiseState::Rejected(value)) => Some(match JsError::from_opaque(value) {
+                    Ok(error) => Err(error),
+                    Err(error) => Err(error.into()),
+                }),
                 Err(error) => Some(Err(error)),
             }
         }

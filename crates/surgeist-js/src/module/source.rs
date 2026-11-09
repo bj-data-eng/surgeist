@@ -1076,7 +1076,7 @@ impl SourceTextModule {
                             ModuleStatus::Evaluated { error: None, .. }
                         )
                         && matches!(
-                            promise.borrow().data().state(),
+                            promise.borrow()?.data().state(),
                             crate::builtins::promise::PromiseState::Pending
                         )
                     {
@@ -1549,7 +1549,7 @@ impl SourceTextModule {
             context.realm(),
             NativeFunction::from_builtin_with_captures(
                 |_, args, module, context| {
-                    let error = JsError::from_opaque(args.get_or_undefined(0).clone());
+                    let error = JsError::from_opaque(args.get_or_undefined(0).clone())?;
                     // a. Perform AsyncModuleExecutionRejected(module, error).
                     async_module_execution_rejected(module, &error, context)?;
                     // b. Return undefined.
@@ -2059,7 +2059,8 @@ fn execute_available_module(module: &Module, context: &mut Context) -> JsResult<
             }
             Err(error) => {
                 let value = error.into_opaque(context.access())?;
-                async_module_execution_rejected(module, &JsError::from_opaque(value), context)?;
+                let error = JsError::from_opaque(value)?;
+                async_module_execution_rejected(module, &error, context)?;
             }
         }
     }

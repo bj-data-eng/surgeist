@@ -71,7 +71,7 @@ pub struct AsyncGenerator {
 }
 
 impl IntrinsicObject for AsyncGenerator {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::with_intrinsic::<Self>(realm)
             .prototype(
                 realm
@@ -80,14 +80,14 @@ impl IntrinsicObject for AsyncGenerator {
                     .iterator_prototypes()
                     .async_iterator(),
             )
-            .static_method(Self::next, js_string!("next"), 1)
-            .static_method(Self::r#return, js_string!("return"), 1)
-            .static_method(Self::throw, js_string!("throw"), 1)
+            .static_method(Self::next, js_string!("next"), 1)?
+            .static_method(Self::r#return, js_string!("return"), 1)?
+            .static_method(Self::throw, js_string!("throw"), 1)?
             .static_property(
                 JsSymbol::to_string_tag(),
                 Self::NAME,
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .static_property(
                 CONSTRUCTOR,
                 realm
@@ -96,8 +96,10 @@ impl IntrinsicObject for AsyncGenerator {
                     .async_generator_function()
                     .prototype(),
                 Attribute::CONFIGURABLE,
-            )
-            .build();
+            )?
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -164,7 +166,7 @@ impl AsyncGenerator {
         generator.check_runtime(context.runtime())?;
         context.runtime().check_value(&value)?;
         // 5. Let state be generator.[[AsyncGeneratorState]].
-        let state = generator.borrow().data().state;
+        let state = generator.borrow()?.data().state;
 
         // 6. If state is completed, then
         if state == AsyncGeneratorState::Completed {
@@ -184,7 +186,7 @@ impl AsyncGenerator {
         let completion = CompletionRecord::Normal(value);
 
         // 8. Perform AsyncGeneratorEnqueue(generator, completion, promiseCapability).
-        Self::enqueue(generator, completion.clone(), cap.clone());
+        Self::enqueue(generator, completion.clone(), cap.clone())?;
 
         // 9. If state is either suspendedStart or suspendedYield, then
         if state == AsyncGeneratorState::SuspendedStart
@@ -257,19 +259,19 @@ impl AsyncGenerator {
         let completion = CompletionRecord::Return(return_value.clone());
 
         // 6. Perform AsyncGeneratorEnqueue(generator, completion, promiseCapability).
-        Self::enqueue(generator, completion.clone(), cap.clone());
+        Self::enqueue(generator, completion.clone(), cap.clone())?;
 
         // 7. Let state be generator.[[AsyncGeneratorState]].
-        let state = generator.borrow().data().state;
+        let state = generator.borrow()?.data().state;
 
         // 8. If state is either suspended-start or completed, then
         if state == AsyncGeneratorState::SuspendedStart || state == AsyncGeneratorState::Completed {
             // a. Set generator.[[AsyncGeneratorState]] to draining-queue.
-            generator.borrow_mut().data_mut().state = AsyncGeneratorState::DrainingQueue;
+            generator.borrow_mut()?.data_mut().state = AsyncGeneratorState::DrainingQueue;
 
             // b. Perform ! AsyncGeneratorAwaitReturn(generator).
             Self::await_return(generator, return_value, context)
-                .inspect_err(|_| Self::discard_aborted_execution(generator))?;
+                .map_err(|error| Self::discard_aborted_execution(generator, error))?;
         }
         // 9. Else if state is suspended-yield, then
         else if state == AsyncGeneratorState::SuspendedYield {
@@ -337,7 +339,7 @@ impl AsyncGenerator {
     ) -> JsResult<JsObject> {
         generator.check_runtime(context.runtime())?;
         context.runtime().check_value(&error_value)?;
-        let mut r#gen = generator.borrow_mut();
+        let mut r#gen = generator.borrow_mut()?;
 
         // 5. Let state be generator.[[AsyncGeneratorState]].
         let mut state = r#gen.data().state;
@@ -368,10 +370,10 @@ impl AsyncGenerator {
         }
 
         // 8. Let completion be ThrowCompletion(exception).
-        let completion = CompletionRecord::Throw(JsError::from_opaque(error_value));
+        let completion = CompletionRecord::Throw(JsError::from_opaque(error_value)?);
 
         // 9. Perform AsyncGeneratorEnqueue(generator, completion, promiseCapability).
-        Self::enqueue(generator, completion.clone(), cap.clone());
+        Self::enqueue(generator, completion.clone(), cap.clone())?;
 
         // 10. If state is suspended-yield, then
         if state == AsyncGeneratorState::SuspendedYield {
@@ -396,8 +398,8 @@ impl AsyncGenerator {
         generator: &JsObject<AsyncGenerator>,
         completion: CompletionRecord,
         promise_capability: PromiseCapability,
-    ) {
-        let mut r#gen = generator.borrow_mut();
+    ) -> JsResult<()> {
+        let mut r#gen = generator.borrow_mut()?;
         // 1. Let request be AsyncGeneratorRequest { [[Completion]]: completion, [[Capability]]: promiseCapability }.
         let request = AsyncGeneratorRequest {
             completion: completion.into_stored(),
@@ -406,6 +408,8 @@ impl AsyncGenerator {
 
         // 2. Append request to the end of generator.[[AsyncGeneratorQueue]].
         r#gen.data_mut().queue.push_back(request);
+
+        Ok(())
     }
 
     /// `AsyncGeneratorCompleteStep ( generator, completion, done [ , realm ] )`
@@ -429,7 +433,7 @@ impl AsyncGenerator {
         // 2. Let next be the first element of generator.[[AsyncGeneratorQueue]].
         // Prepare step 4 while the queue still traces the entire request.
         let promise_capability = {
-            let generator = generator.borrow();
+            let generator = generator.borrow()?;
             let next = generator
                 .data()
                 .queue
@@ -439,7 +443,7 @@ impl AsyncGenerator {
         };
         // 3. Remove the first element from generator.[[AsyncGeneratorQueue]].
         let next = generator
-            .borrow_mut()
+            .borrow_mut()?
             .data_mut()
             .queue
             .pop_front()
@@ -510,13 +514,13 @@ impl AsyncGenerator {
     ) -> JsResult<()> {
         // 1. Assert: generator.[[AsyncGeneratorState]] is either suspended-start or suspended-yield.
         assert!(matches!(
-            generator.borrow().data().state,
+            generator.borrow()?.data().state,
             AsyncGeneratorState::SuspendedStart | AsyncGeneratorState::SuspendedYield
         ));
 
         // 2. Let genContext be generator.[[AsyncGeneratorContext]].
         let mut generator_context = {
-            let generator = generator.borrow();
+            let generator = generator.borrow()?;
             generator
                 .data()
                 .context
@@ -528,7 +532,7 @@ impl AsyncGenerator {
         // 5. Set generator.[[AsyncGeneratorState]] to executing only after the
         // complete suspended context has acquired independent live roots.
         let stored = {
-            let mut generator = generator.borrow_mut();
+            let mut generator = generator.borrow_mut()?;
             let data = generator.data_mut();
             let stored = data.context.take();
             data.state = AsyncGeneratorState::Executing;
@@ -560,8 +564,18 @@ impl AsyncGenerator {
         // Guest exceptions settle requests inside the VM. An engine stop
         // leaves the continuation unable to run and must reach the host.
         if let CompletionRecord::Throw(error) = result {
-            if generator.borrow().data().state == AsyncGeneratorState::Completed {
-                return Err(error);
+            match generator.borrow() {
+                Ok(generator) if generator.data().state == AsyncGeneratorState::Completed => {
+                    return Err(error);
+                }
+                Err(later) => {
+                    return Err(if error.as_engine().is_some() {
+                        error
+                    } else {
+                        later.into()
+                    });
+                }
+                Ok(_) => {}
             }
             match generator_context.continuation_finish() {
                 Ok(finish) if finish.is_transferred() => return Err(error),
@@ -570,8 +584,7 @@ impl AsyncGenerator {
                 Err(_later_fault) => return Err(error),
                 Ok(_) => {}
             }
-            Self::discard_aborted_execution(generator);
-            return Err(error);
+            return Err(Self::discard_aborted_execution(generator, error));
         }
         // Await may have transferred this stack and an inline reaction may
         // already have published a newer suspension. The enclosing invocation
@@ -579,7 +592,7 @@ impl AsyncGenerator {
         if !generator_context.owns_continuation() {
             return Ok(());
         }
-        let mut generator = generator.borrow_mut();
+        let mut generator = generator.borrow_mut()?;
         let generator = generator.data_mut();
         if matches!(
             generator.state,
@@ -591,12 +604,23 @@ impl AsyncGenerator {
         Ok(())
     }
 
-    fn discard_aborted_execution(generator: &JsObject<Self>) {
+    fn discard_aborted_execution(generator: &JsObject<Self>, error: JsError) -> JsError {
         let abandoned = {
-            let mut generator = generator.borrow_mut();
+            let mut generator = match generator.borrow_mut() {
+                Ok(generator) => generator,
+                Err(later) => {
+                    // An inaccessible owner grants no authority to discard it.
+                    // Preserve the earlier host failure over a cleanup refusal.
+                    return if error.as_engine().is_some() {
+                        error
+                    } else {
+                        later.into()
+                    };
+                }
+            };
             let generator = generator.data_mut();
             if generator.state == AsyncGeneratorState::AwaitingReturn {
-                return;
+                return error;
             }
             generator.state = AsyncGeneratorState::Completed;
             (
@@ -605,6 +629,7 @@ impl AsyncGenerator {
             )
         };
         drop(abandoned);
+        error
     }
 
     fn complete_awaited_return(
@@ -613,7 +638,7 @@ impl AsyncGenerator {
         context: &mut Context,
     ) -> JsResult<JsValue> {
         {
-            let mut generator = generator.borrow_mut();
+            let mut generator = generator.borrow_mut()?;
             let generator = generator.data_mut();
             if generator.state != AsyncGeneratorState::AwaitingReturn {
                 return Err(crate::error::PanicError::new(
@@ -625,7 +650,7 @@ impl AsyncGenerator {
         }
         Self::complete_step(generator, completion, true, None, context)
             .and_then(|()| Self::drain_queue(generator, context))
-            .inspect_err(|_| Self::discard_aborted_execution(generator))?;
+            .map_err(|error| Self::discard_aborted_execution(generator, error))?;
         Ok(JsValue::undefined())
     }
 
@@ -645,7 +670,7 @@ impl AsyncGenerator {
         context: &mut Context,
     ) -> JsResult<()> {
         // 1. Assert: generator.[[AsyncGeneratorState]] is draining-queue.
-        if generator.borrow().data().state != AsyncGeneratorState::DrainingQueue {
+        if generator.borrow()?.data().state != AsyncGeneratorState::DrainingQueue {
             return Err(crate::error::PanicError::new(
                 "async generator awaited return requires queue drain ownership",
             )
@@ -705,7 +730,7 @@ impl AsyncGenerator {
             context.realm(),
             NativeFunction::from_builtin_with_captures(
                 |_this, args, generator, context| {
-                    let result = Err(JsError::from_opaque(args.get_or_undefined(0).clone()));
+                    let result = Err(JsError::from_opaque(args.get_or_undefined(0).clone())?);
                     Self::complete_awaited_return(generator, result, context)
                 },
                 generator.clone(),
@@ -718,7 +743,7 @@ impl AsyncGenerator {
         // 15. Perform PerformPromiseThen(promise, onFulfilled, onRejected).
         // Publish the state before a reentrant executor can run the reaction.
         // Only uncommitted registration permits reverting this request.
-        generator.borrow_mut().data_mut().state = AsyncGeneratorState::AwaitingReturn;
+        generator.borrow_mut()?.data_mut().state = AsyncGeneratorState::AwaitingReturn;
         match Promise::perform_promise_then(
             &promise,
             Some(on_fulfilled),
@@ -729,7 +754,7 @@ impl AsyncGenerator {
         .into_outcome()
         {
             crate::builtins::promise::RegistrationOutcome::Uncommitted(error) => {
-                generator.borrow_mut().data_mut().state = AsyncGeneratorState::DrainingQueue;
+                generator.borrow_mut()?.data_mut().state = AsyncGeneratorState::DrainingQueue;
                 Self::complete_step(generator, Err(error), true, None, context)?;
                 Self::drain_queue(generator, context)?;
             }
@@ -758,16 +783,16 @@ impl AsyncGenerator {
     ) -> JsResult<()> {
         // 1. Assert: generator.[[AsyncGeneratorState]] is draining-queue.
         assert_eq!(
-            generator.borrow().data().state,
+            generator.borrow()?.data().state,
             AsyncGeneratorState::DrainingQueue
         );
 
         // 2. Let queue be generator.[[AsyncGeneratorQueue]].
         // 3. If queue is empty, then
-        if generator.borrow().data().queue.is_empty() {
+        if generator.borrow()?.data().queue.is_empty() {
             // a. Set generator.[[AsyncGeneratorState]] to completed.
-            generator.borrow_mut().data_mut().state = AsyncGeneratorState::Completed;
-            generator.borrow_mut().data_mut().context = None;
+            generator.borrow_mut()?.data_mut().state = AsyncGeneratorState::Completed;
+            generator.borrow_mut()?.data_mut().context = None;
             // b. Return unused.
             return Ok(());
         }
@@ -777,7 +802,7 @@ impl AsyncGenerator {
         loop {
             // a. Let next be the first element of queue.
             let next = generator
-                .borrow()
+                .borrow()?
                 .data()
                 .queue
                 .front()
@@ -805,10 +830,10 @@ impl AsyncGenerator {
                     Self::complete_step(generator, completion, true, None, context)?;
 
                     // iii. If queue is empty, then
-                    if generator.borrow().data().queue.is_empty() {
+                    if generator.borrow()?.data().queue.is_empty() {
                         // 1. Set generator.[[AsyncGeneratorState]] to completed.
-                        generator.borrow_mut().data_mut().state = AsyncGeneratorState::Completed;
-                        generator.borrow_mut().data_mut().context = None;
+                        generator.borrow_mut()?.data_mut().state = AsyncGeneratorState::Completed;
+                        generator.borrow_mut()?.data_mut().context = None;
                         // 2. Set done to true.
                         break;
                     }

@@ -22,7 +22,10 @@ impl Throw {
         context: &mut Context,
     ) -> ControlFlow<CompletionRecord> {
         let value = context.vm.get_register(value.into());
-        let error = JsError::from_opaque(value.clone());
+        let error = match JsError::from_opaque(value.clone()) {
+            Ok(error) => error,
+            Err(error) => return context.handle_error(error.into()),
+        };
         context.vm.frame_mut().pending_exception = Some(Box::new(error));
 
         // Note: -1 because we increment after fetching the opcode.

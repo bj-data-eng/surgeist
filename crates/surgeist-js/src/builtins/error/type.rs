@@ -35,14 +35,16 @@ use super::{Error, ErrorKind};
 pub(crate) struct TypeError;
 
 impl IntrinsicObject for TypeError {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let attribute = Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE;
         BuiltInBuilder::from_standard_constructor::<Self>(realm)
             .prototype(realm.intrinsics().constructors().error().constructor())
             .inherits(Some(realm.intrinsics().constructors().error().prototype()))
             .property(js_string!("name"), Self::NAME, attribute)
             .property(js_string!("message"), js_string!(), attribute)
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -82,17 +84,17 @@ impl BuiltInConstructor for TypeError {
 pub(crate) struct ThrowTypeError;
 
 impl IntrinsicObject for ThrowTypeError {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let obj = BuiltInBuilder::with_intrinsic::<Self>(realm)
             .prototype(realm.intrinsics().constructors().function().prototype())
-            .static_property(StaticJsStrings::LENGTH, 0, Attribute::empty())
-            .static_property(js_string!("name"), js_string!(), Attribute::empty())
-            .build();
+            .static_property(StaticJsStrings::LENGTH, 0, Attribute::empty())?
+            .static_property(js_string!("name"), js_string!(), Attribute::empty())?
+            .build()?;
 
         {
             let mut obj = obj
-                .downcast_mut::<NativeFunctionObject>()
-                .expect("`%ThrowTypeError%` must be a function");
+                .downcast_mut::<NativeFunctionObject>()?
+                .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
             obj.f = NativeFunction::from_builtin(|_, _, _| {
                 Err(JsNativeError::typ()
                     .with_message(
@@ -106,7 +108,9 @@ impl IntrinsicObject for ThrowTypeError {
             obj.realm = Some(realm.edge());
         }
 
-        obj.borrow_mut().state_mut().extensible = false;
+        obj.borrow_mut()?.state_mut().extensible = false;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {

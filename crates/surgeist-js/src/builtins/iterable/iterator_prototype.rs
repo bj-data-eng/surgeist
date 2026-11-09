@@ -26,7 +26,7 @@ use crate::{
 pub(crate) struct Iterator;
 
 impl IntrinsicObject for Iterator {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_constructor = BuiltInBuilder::callable(realm, Self::get_constructor)
             .name(js_string!("get constructor"))
             .build();
@@ -40,35 +40,37 @@ impl IntrinsicObject for Iterator {
             .name(js_string!("set [Symbol.toStringTag]"))
             .build();
         let builder = BuiltInBuilder::with_intrinsic::<Self>(realm)
-            .static_method(|v, _, _| Ok(v.clone()), JsSymbol::iterator(), 0)
-            .static_method(Self::map, js_string!("map"), 1)
-            .static_method(Self::filter, js_string!("filter"), 1)
-            .static_method(Self::take, js_string!("take"), 1)
-            .static_method(Self::drop, js_string!("drop"), 1)
-            .static_method(Self::flat_map, js_string!("flatMap"), 1)
-            .static_method(Self::reduce, js_string!("reduce"), 1)
-            .static_method(Self::to_array, js_string!("toArray"), 0)
-            .static_method(Self::for_each, js_string!("forEach"), 1)
-            .static_method(Self::some, js_string!("some"), 1)
-            .static_method(Self::every, js_string!("every"), 1)
-            .static_method(Self::find, js_string!("find"), 1)
+            .static_method(|v, _, _| Ok(v.clone()), JsSymbol::iterator(), 0)?
+            .static_method(Self::map, js_string!("map"), 1)?
+            .static_method(Self::filter, js_string!("filter"), 1)?
+            .static_method(Self::take, js_string!("take"), 1)?
+            .static_method(Self::drop, js_string!("drop"), 1)?
+            .static_method(Self::flat_map, js_string!("flatMap"), 1)?
+            .static_method(Self::reduce, js_string!("reduce"), 1)?
+            .static_method(Self::to_array, js_string!("toArray"), 0)?
+            .static_method(Self::for_each, js_string!("forEach"), 1)?
+            .static_method(Self::some, js_string!("some"), 1)?
+            .static_method(Self::every, js_string!("every"), 1)?
+            .static_method(Self::find, js_string!("find"), 1)?
             .static_accessor(
                 JsSymbol::to_string_tag(),
                 Some(get_to_string_tag),
                 Some(set_to_string_tag),
                 Attribute::CONFIGURABLE,
-            )
+            )?
             .static_accessor(
                 CONSTRUCTOR,
                 Some(get_constructor),
                 Some(set_constructor),
                 Attribute::CONFIGURABLE,
-            );
+            )?;
 
         #[cfg(feature = "experimental")]
-        let builder = builder.static_method(Self::includes, js_string!("includes"), 1);
+        let builder = builder.static_method(Self::includes, js_string!("includes"), 1)?;
 
-        builder.build();
+        builder.build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {

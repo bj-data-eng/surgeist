@@ -145,7 +145,7 @@ impl JsWeakMap {
     /// if it is not a `WeakMap`.
     #[inline]
     pub fn from_object(object: JsObject) -> Result<Self, JsObject> {
-        if object.downcast_ref::<NativeWeakMap>().is_some() {
+        if object.is::<NativeWeakMap>() {
             Ok(Self { inner: object })
         } else {
             Err(object)

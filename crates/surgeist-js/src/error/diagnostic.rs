@@ -343,8 +343,11 @@ impl<'a> Diagnostic<'a> {
             StoredErrorRepr::ContextAccessBusy => {
                 DiagnosticKind::Engine(DiagnosticEngine::ContextAccessBusy)
             }
-            StoredErrorRepr::ObjectAccessBusy => {
-                DiagnosticKind::Engine(DiagnosticEngine::ObjectAccessBusy)
+            StoredErrorRepr::ObjectAccess(error) => {
+                DiagnosticKind::Engine(DiagnosticEngine::ObjectAccess(*error))
+            }
+            StoredErrorRepr::ValueRender(error) => {
+                DiagnosticKind::Engine(DiagnosticEngine::ValueRender(*error))
             }
             StoredErrorRepr::JobContextRequired(required) => {
                 DiagnosticKind::Engine(DiagnosticEngine::JobContextRequired { required })
@@ -552,7 +555,8 @@ impl<'a> Diagnostic<'a> {
                 DiagnosticEngine::Resource(value) => ErasedEngineError::Resource(value),
                 DiagnosticEngine::InvalidEntryPermit => ErasedEngineError::InvalidEntryPermit,
                 DiagnosticEngine::ContextAccessBusy => ErasedEngineError::ContextAccessBusy,
-                DiagnosticEngine::ObjectAccessBusy => ErasedEngineError::ObjectAccessBusy,
+                DiagnosticEngine::ObjectAccess(error) => ErasedEngineError::ObjectAccess(error),
+                DiagnosticEngine::ValueRender(error) => ErasedEngineError::ValueRender(error),
                 DiagnosticEngine::JobContextRequired { required } => {
                     ErasedEngineError::JobContextRequired {
                         required: required.clone(),
@@ -780,8 +784,10 @@ pub enum DiagnosticEngine<'a> {
     InvalidEntryPermit,
     /// Context access is currently leased.
     ContextAccessBusy,
-    /// An object alias currently holds incompatible access.
-    ObjectAccessBusy,
+    /// A live object refused the required access or native projection.
+    ObjectAccess(ObjectAccessError),
+    /// Exact value rendering refusal.
+    ValueRender(crate::value::ValueRenderError),
     /// Work requires the same exact Context identity.
     JobContextRequired {
         /// Context-free diagnostic identity, without liveness/access authority.
@@ -1103,9 +1109,8 @@ impl fmt::Display for DiagnosticEngine<'_> {
             Self::ContextAccessBusy => {
                 f.write_str("ContextAccessBusy: host context access is already leased")
             }
-            Self::ObjectAccessBusy => {
-                f.write_str("ObjectAccessBusy: object access is already borrowed")
-            }
+            Self::ObjectAccess(error) => write!(f, "ObjectAccessError: {error}"),
+            Self::ValueRender(error) => write!(f, "ValueRenderError: {error}"),
             Self::JobContextRequired { required } => {
                 write!(f, "JobContextRequired: task requires Context {required}")
             }

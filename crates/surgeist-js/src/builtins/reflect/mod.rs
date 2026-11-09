@@ -33,33 +33,35 @@ mod tests;
 pub(crate) struct Reflect;
 
 impl IntrinsicObject for Reflect {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let to_string_tag = JsSymbol::to_string_tag();
 
         BuiltInBuilder::with_intrinsic::<Self>(realm)
-            .static_method(Self::apply, js_string!("apply"), 3)
-            .static_method(Self::construct, js_string!("construct"), 2)
-            .static_method(Self::define_property, js_string!("defineProperty"), 3)
-            .static_method(Self::delete_property, js_string!("deleteProperty"), 2)
-            .static_method(Self::get, js_string!("get"), 2)
+            .static_method(Self::apply, js_string!("apply"), 3)?
+            .static_method(Self::construct, js_string!("construct"), 2)?
+            .static_method(Self::define_property, js_string!("defineProperty"), 3)?
+            .static_method(Self::delete_property, js_string!("deleteProperty"), 2)?
+            .static_method(Self::get, js_string!("get"), 2)?
             .static_method(
                 Self::get_own_property_descriptor,
                 js_string!("getOwnPropertyDescriptor"),
                 2,
-            )
-            .static_method(Self::get_prototype_of, js_string!("getPrototypeOf"), 1)
-            .static_method(Self::has, js_string!("has"), 2)
-            .static_method(Self::is_extensible, js_string!("isExtensible"), 1)
-            .static_method(Self::own_keys, js_string!("ownKeys"), 1)
-            .static_method(Self::prevent_extensions, js_string!("preventExtensions"), 1)
-            .static_method(Self::set, js_string!("set"), 3)
-            .static_method(Self::set_prototype_of, js_string!("setPrototypeOf"), 2)
+            )?
+            .static_method(Self::get_prototype_of, js_string!("getPrototypeOf"), 1)?
+            .static_method(Self::has, js_string!("has"), 2)?
+            .static_method(Self::is_extensible, js_string!("isExtensible"), 1)?
+            .static_method(Self::own_keys, js_string!("ownKeys"), 1)?
+            .static_method(Self::prevent_extensions, js_string!("preventExtensions"), 1)?
+            .static_method(Self::set, js_string!("set"), 3)?
+            .static_method(Self::set_prototype_of, js_string!("setPrototypeOf"), 2)?
             .static_property(
                 to_string_tag,
                 Self::NAME,
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
-            .build();
+            )?
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {

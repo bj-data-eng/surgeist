@@ -75,7 +75,7 @@ impl BuiltInObject for PlainDateTime {
 }
 
 impl IntrinsicObject for PlainDateTime {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_calendar_id = BuiltInBuilder::callable(realm, Self::get_calendar_id)
             .name(js_string!("get calendarId"))
             .build();
@@ -320,7 +320,9 @@ impl IntrinsicObject for PlainDateTime {
             .method(Self::to_zoned_date_time, js_string!("toZonedDateTime"), 1)
             .method(Self::to_plain_date, js_string!("toPlainDate"), 0)
             .method(Self::to_plain_time, js_string!("toPlainTime"), 0)
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -490,7 +492,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -513,7 +517,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -540,7 +546,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -563,7 +571,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -586,7 +596,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -609,7 +621,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -632,7 +646,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -657,7 +673,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -683,7 +701,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -709,7 +729,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -735,7 +757,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -761,7 +785,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -787,7 +813,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -811,7 +839,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -834,7 +864,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -857,7 +889,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -880,7 +914,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -903,7 +939,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -926,7 +964,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -949,7 +989,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -972,7 +1014,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -995,7 +1039,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -1022,7 +1068,12 @@ impl PlainDateTime {
         let options = args.get(1);
         // 2. If item is an Object and item has an [[InitializedTemporalDateTime]] internal slot, then
         let object = item.as_object();
-        let dt = if let Some(pdt) = object.as_ref().and_then(JsObject::downcast_ref::<Self>) {
+        let dt = if let Some(pdt) = object
+            .as_ref()
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
+        {
             // a. Perform ? GetTemporalOverflowOption(options).
             let options = get_options_object(args.get_or_undefined(1), context)?;
             let _ = get_option::<Overflow>(&options, js_string!("overflow"), context)?;
@@ -1085,7 +1136,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -1138,7 +1191,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -1166,7 +1221,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -1193,7 +1250,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -1227,7 +1286,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -1261,7 +1322,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -1289,7 +1352,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -1317,7 +1382,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainTime object.")
             })?;
@@ -1386,7 +1453,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -1420,7 +1489,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -1460,7 +1531,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -1484,7 +1557,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -1531,7 +1606,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -1570,7 +1647,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -1594,7 +1673,9 @@ impl PlainDateTime {
         let object = this.as_object();
         let dt = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDateTime object.")
             })?;
@@ -1664,11 +1745,11 @@ pub(crate) fn to_temporal_datetime(
     // 3. If item is an Object, then
     if let Some(object) = value.as_object() {
         // a. If item has an [[InitializedTemporalDateTime]] internal slot, then
-        if let Some(dt) = object.downcast_ref::<PlainDateTime>() {
+        if let Some(dt) = object.downcast_ref::<PlainDateTime>()? {
             // i. Return item.
             return Ok(dt.inner.clone());
         // b. If item has an [[InitializedTemporalZonedDateTime]] internal slot, then
-        } else if let Some(zdt) = object.downcast_ref::<ZonedDateTime>() {
+        } else if let Some(zdt) = object.downcast_ref::<ZonedDateTime>()? {
             // i. Perform ? GetTemporalOverflowOption(resolvedOptions).
             let options = get_options_object(&options.unwrap_or_default(), context)?;
             let _ = get_option::<Overflow>(&options, js_string!("overflow"), context)?;
@@ -1677,7 +1758,7 @@ pub(crate) fn to_temporal_datetime(
             // iv. Return ? GetPlainDateTimeFor(timeZoneRec, instant, item.[[Calendar]]).
             return Ok(zdt.inner.to_plain_date_time());
         // c. If item has an [[InitializedTemporalDate]] internal slot, then
-        } else if let Some(date) = object.downcast_ref::<PlainDate>() {
+        } else if let Some(date) = object.downcast_ref::<PlainDate>()? {
             // i. Perform ? GetTemporalOverflowOption(resolvedOptions).
             let options = get_options_object(&options.unwrap_or_default(), context)?;
             let _ = get_option::<Overflow>(&options, js_string!("overflow"), context)?;

@@ -18,8 +18,12 @@ pub use surgeist_js_macros::TryIntoJs;
 pub(crate) use self::{conversions::IntoOrUndefined, inner::StoredValue};
 #[doc(inline)]
 pub use self::{
-    conversions::try_from_js::TryFromJs, conversions::try_into_js::TryIntoJs,
-    display::ValueDisplay, integer::IntegerOrInfinity, operations::*, r#type::Type,
+    conversions::try_from_js::TryFromJs,
+    conversions::try_into_js::TryIntoJs,
+    display::{ValueDisplay, ValueRenderError},
+    integer::IntegerOrInfinity,
+    operations::*,
+    r#type::Type,
     variant::JsVariant,
 };
 use crate::builtins::RegExp;

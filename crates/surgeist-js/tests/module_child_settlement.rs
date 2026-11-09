@@ -260,7 +260,7 @@ fn child_settlement(rejected: bool) {
         .with_source(
             JsNativeError::range()
                 .with_message("authored settlement cause")
-                .with_cause(JsError::from_opaque(hook_leaf.clone())),
+                .with_cause(JsError::from_opaque(hook_leaf.clone()).unwrap()),
         )
         .into();
     *executor.child.borrow_mut() = Some(child_result.clone());

@@ -74,7 +74,7 @@ fn exact_completed_errors_spend_no_job_admission_and_preserve_first_guest_error_
     for guest_error in [false, true] {
         let mut owner = context();
         let object = JsObject::with_null_proto(owner.runtime());
-        let original = JsError::from_opaque(object.clone().into());
+        let original = JsError::from_opaque(object.clone().into()).unwrap();
         let supplied = original.clone();
         let calls = Rc::new(Cell::new(0));
         let seen = calls.clone();
@@ -138,7 +138,7 @@ fn then_keeps_pending_work_and_delivers_one_completion_before_exact_terminal_rej
 fn then_preserves_an_opaque_guest_error_and_never_enters_its_success_callback() {
     let mut owner = context();
     let object = JsObject::with_null_proto(owner.runtime());
-    let original = JsError::from_opaque(object.clone().into());
+    let original = JsError::from_opaque(object.clone().into()).unwrap();
     let supplied = original.clone();
     let converted = Rc::new(Cell::new(0));
     let seen = converted.clone();

@@ -48,7 +48,7 @@ fn get_own_property_internal_method() {
         "Since it's an owned property, this should be cacheable"
     );
 
-    let shape = o.borrow().shape();
+    let shape = o.borrow().unwrap().shape();
 
     let slot = shape.lookup(&property);
 
@@ -93,7 +93,7 @@ fn get_internal_method() {
         "Since it's an owned property, this should be cacheable"
     );
 
-    let shape = o.borrow().shape();
+    let shape = o.borrow().unwrap().shape();
 
     let slot = shape.lookup(&property);
 
@@ -141,7 +141,7 @@ fn get_internal_method_in_prototype() {
         "Since it's an prototype property, this should be cacheable"
     );
 
-    let shape = prototype.borrow().shape();
+    let shape = prototype.borrow().unwrap().shape();
 
     let slot = shape.lookup(&property);
 
@@ -195,7 +195,7 @@ fn define_own_property_internal_method_non_existent_property() {
         "Since it's an owned property, this should be cacheable"
     );
 
-    let shape = o.borrow().shape();
+    let shape = o.borrow().unwrap().shape();
 
     let slot = shape.lookup(&property);
 
@@ -261,7 +261,7 @@ fn define_own_property_internal_method_existing_property_property() {
         "Since it's an owned property, this should be cacheable"
     );
 
-    let shape = o.borrow().shape();
+    let shape = o.borrow().unwrap().shape();
 
     let slot = shape.lookup(&property);
 
@@ -306,7 +306,7 @@ fn set_internal_method() {
         "Since it's an owned property, this should be cacheable"
     );
 
-    let shape = o.borrow().shape();
+    let shape = o.borrow().unwrap().shape();
 
     let slot = shape.lookup(&property);
 
@@ -319,7 +319,11 @@ fn set_internal_method() {
 
 fn get_codeblock(value: &JsValue) -> Option<(JsObject, Rc<CodeBlock>)> {
     let object = value.as_object()?.clone();
-    let code = object.downcast_ref::<OrdinaryFunction>()?.code.clone();
+    let code = object
+        .downcast_ref::<OrdinaryFunction>()
+        .unwrap()?
+        .code
+        .clone();
 
     Some((object, code))
 }
@@ -337,7 +341,7 @@ fn set_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
         .property(js_string!("test"), 0, Attribute::all())
         .build()
         .unwrap();
-    let o_shape = o.borrow().shape();
+    let o_shape = o.borrow().unwrap().shape();
 
     function.call(&JsValue::undefined(), &[o.clone().into()], context.access())?;
 
@@ -367,7 +371,7 @@ fn get_property_by_name_set_inline_cache_on_property_load() -> JsResult<()> {
         .property(js_string!("test"), 0, Attribute::all())
         .build()
         .unwrap();
-    let o_shape = o.borrow().shape();
+    let o_shape = o.borrow().unwrap().shape();
 
     function.call(&JsValue::undefined(), &[o.clone().into()], context.access())?;
 

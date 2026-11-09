@@ -24,7 +24,7 @@ use super::{BuiltInBuilder, BuiltInConstructor, IntrinsicObject};
 pub struct AsyncGeneratorFunction;
 
 impl IntrinsicObject for AsyncGeneratorFunction {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::from_standard_constructor::<Self>(realm)
             .inherits(Some(
                 realm.intrinsics().constructors().function().prototype(),
@@ -40,7 +40,9 @@ impl IntrinsicObject for AsyncGeneratorFunction {
                 Self::NAME,
                 Attribute::CONFIGURABLE,
             )
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {

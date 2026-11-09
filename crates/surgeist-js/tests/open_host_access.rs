@@ -327,7 +327,7 @@ impl Class for HookClass {
     ) -> JsResult<()> {
         access.eval(Source::from_bytes("classLog.push('object')"))?;
         let object = instance.clone().upcast();
-        let value = object.downcast_ref::<Self>().unwrap().value;
+        let value = object.downcast_ref::<Self>().unwrap().unwrap().value;
         object.set(js_string!("answer"), value, true, access.reborrow())?;
         Ok(())
     }

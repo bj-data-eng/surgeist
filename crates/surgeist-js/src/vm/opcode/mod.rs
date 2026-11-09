@@ -421,7 +421,7 @@ mod emission_tests {
     fn instruction_encoding_counts_opcode_and_scalar_bytes_at_the_exact_boundary() {
         // One opcode admission, one opcode byte and four address bytes.
         const EXACT: usize = 6;
-        let marker = JsError::from_opaque(JsValue::new(221));
+        let marker = JsError::from_opaque(JsValue::new(221)).unwrap();
         for limit in [EXACT - 1, EXACT] {
             let mut emitter = BytecodeEmitter {
                 bytes: Vec::with_capacity(5),
@@ -461,7 +461,7 @@ mod emission_tests {
 
     #[test]
     fn storage_refusal_preserves_the_preexisting_byte_prefix() {
-        let marker = JsError::from_opaque(JsValue::new(222));
+        let marker = JsError::from_opaque(JsValue::new(222)).unwrap();
         let mut emitter = BytecodeEmitter {
             bytes: vec![0xaa, 0xbb],
         };
@@ -500,7 +500,7 @@ mod emission_tests {
 
     #[test]
     fn jump_patch_admits_the_complete_scalar_before_writing() {
-        let marker = JsError::from_opaque(JsValue::new(223));
+        let marker = JsError::from_opaque(JsValue::new(223)).unwrap();
         for limit in [3, 4] {
             let mut emitter = BytecodeEmitter {
                 bytes: vec![Opcode::Jump as u8, 0, 0, 0, 0],
@@ -538,7 +538,7 @@ mod emission_tests {
     fn table_patch_counts_the_header_and_entries_and_stops_at_the_first_refusal() {
         // Four header bytes, two entry visits and eight patched bytes.
         const EXACT: usize = 14;
-        let marker = JsError::from_opaque(JsValue::new(224));
+        let marker = JsError::from_opaque(JsValue::new(224)).unwrap();
         for limit in [EXACT - 1, EXACT] {
             let depth = CompilerDepth::new();
             let mut emitter = BytecodeEmitter::new();
@@ -590,7 +590,7 @@ mod emission_tests {
 
     #[test]
     fn final_storage_preparation_quotes_a_possible_shrink_before_consuming_bytes() {
-        let marker = JsError::from_opaque(JsValue::new(225));
+        let marker = JsError::from_opaque(JsValue::new(225)).unwrap();
         for denied in 0..3 {
             let mut bytes = Vec::with_capacity(8);
             bytes.extend_from_slice(&[0x12, 0x34]);

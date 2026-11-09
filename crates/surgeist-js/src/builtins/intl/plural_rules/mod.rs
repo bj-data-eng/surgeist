@@ -50,7 +50,7 @@ impl Service for PluralRules {
 }
 
 impl IntrinsicObject for PluralRules {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::from_standard_constructor::<Self>(realm)
             .static_method(
                 Self::supported_locales_of,
@@ -65,7 +65,9 @@ impl IntrinsicObject for PluralRules {
             .method(Self::resolved_options, js_string!("resolvedOptions"), 0)
             .method(Self::select, js_string!("select"), 1)
             .method(Self::select_range, js_string!("selectRange"), 2)
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -184,7 +186,9 @@ impl PluralRules {
         let object = this.as_object();
         let plural_rules = object
             .as_ref()
-            .and_then(|o| o.downcast_ref::<Self>())
+            .map(|o| o.downcast_ref::<Self>())
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("`select` can only be called on an `Intl.PluralRules` object")
@@ -211,7 +215,9 @@ impl PluralRules {
         let object = this.as_object();
         let plural_rules = object
             .as_ref()
-            .and_then(|o| o.downcast_ref::<Self>())
+            .map(|o| o.downcast_ref::<Self>())
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message(
                     "`select_range` can only be called on an `Intl.PluralRules` object",
@@ -305,7 +311,9 @@ impl PluralRules {
         let object = this.as_object();
         let plural_rules = object
             .as_ref()
-            .and_then(|o| o.downcast_ref::<Self>())
+            .map(|o| o.downcast_ref::<Self>())
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message(
                     "`resolved_options` can only be called on an `Intl.PluralRules` object",

@@ -30,6 +30,7 @@ fn realm_witness(owner: &mut Context) -> surgeist_js::gc::heap::ObjectId {
         .eval(Source::from_bytes("new Error('authored realm witness')"))
         .unwrap();
     let native = JsError::from_opaque(value)
+        .unwrap()
         .try_native(owner.access())
         .unwrap();
     let outer = PanicError::new("realm identity witness").with_source(native);
@@ -340,7 +341,7 @@ fn actual_deadline_rejection_retains_exact_clock_delay_and_unaccepted_timer_cust
 fn checked_publication_causes_keep_authored_diagnostics_and_return_catchable_inputs() {
     let mut owner = Context::default();
     let value = JsObject::with_null_proto(owner.runtime());
-    let ordinary = JsError::from_opaque(value.clone().into());
+    let ordinary = JsError::from_opaque(value.clone().into()).unwrap();
     let refused = JobPublicationCause::try_new(ordinary.clone(), owner.access()).unwrap_err();
     assert_eq!(refused, ordinary);
     assert_eq!(refused.as_opaque().unwrap().as_object().unwrap(), value);

@@ -333,7 +333,7 @@ mod tests {
         let name = interner.get_or_intern("candidate");
         for refuse in [false, true] {
             let root = Scope::new_global();
-            let marker = JsError::from_opaque(JsValue::new(318));
+            let marker = JsError::from_opaque(JsValue::new(318)).unwrap();
             let mut changed = false;
             let mut admission = |work| {
                 assert!(

@@ -1,5 +1,5 @@
 use crate::{
-    Context, JsData, JsExpect, JsResult, JsValue,
+    Context, JsData, JsResult, JsValue,
     environments::{DeclarativeEnvironmentEdge, DeclarativeEnvironmentRef},
     object::{
         JsObject,
@@ -24,7 +24,7 @@ impl UnmappedArguments {
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-createunmappedargumentsobject
     #[allow(clippy::new_ret_no_self)]
-    pub(crate) fn new(arguments_list: &[JsValue], context: &mut Context) -> JsObject {
+    pub(crate) fn new(arguments_list: &[JsValue], context: &mut Context) -> JsResult<JsObject> {
         // 1. Let len be the number of elements in argumentsList.
         let len = arguments_list.len();
 
@@ -61,12 +61,12 @@ impl UnmappedArguments {
         //    a. Let val be argumentsList[index].
         //    b. Perform ! CreateDataPropertyOrThrow(obj, ! ToString(𝔽(index)), val).
         //    c. Set index to index + 1.
-        obj.borrow_mut()
+        obj.borrow_mut()?
             .properties_mut()
             .override_indexed_properties(arguments_list.iter().cloned().collect());
 
         // 9. Return obj.
-        obj
+        Ok(obj)
     }
 }
 
@@ -153,7 +153,7 @@ impl MappedArguments {
         arguments_list: &[JsValue],
         env: &DeclarativeEnvironmentRef,
         context: &Context,
-    ) -> JsObject {
+    ) -> JsResult<JsObject> {
         // 1. Assert: formals does not contain a rest parameter, any binding patterns, or any initializers.
         // It may contain duplicate identifiers.
         // 2. Let len be the number of elements in argumentsList.
@@ -200,12 +200,12 @@ impl MappedArguments {
         //     Note: Direct initialization of indexed array is used here because `CreateDataPropertyOrThrow`
         //     would cause a panic while executing exotic argument object set methods before the variables
         //     in the environment are initialized.
-        obj.borrow_mut()
+        obj.borrow_mut()?
             .properties_mut()
             .override_indexed_properties(arguments_list.iter().cloned().collect());
 
         // 22. Return obj.
-        obj
+        Ok(obj)
     }
 }
 
@@ -231,8 +231,8 @@ pub(crate) fn arguments_exotic_get_own_property(
     // 5. If isMapped is true, then
     if let PropertyKey::Index(index) = key
         && let Some(value) = obj
-            .downcast_ref::<MappedArguments>()
-            .js_expect("arguments exotic method must only be callable from arguments objects")?
+            .downcast_ref::<MappedArguments>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
             .get(index.get())
     {
         // a. Set desc.[[Value]] to Get(map, P).
@@ -266,8 +266,8 @@ pub(crate) fn arguments_exotic_define_own_property(
     // 2. Let isMapped be HasOwnProperty(map, P).
     let mapped = if let &PropertyKey::Index(index) = &key {
         // 1. Let map be args.[[ParameterMap]].
-        obj.downcast_ref::<MappedArguments>()
-            .js_expect("arguments exotic method must only be callable from arguments objects")?
+        obj.downcast_ref::<MappedArguments>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
             .get(index.get())
             .map(|value| (index, value))
     } else {
@@ -311,8 +311,8 @@ pub(crate) fn arguments_exotic_define_own_property(
     if let Some((index, _)) = mapped {
         // 1. Let map be args.[[ParameterMap]].
         let mut map = obj
-            .downcast_mut::<MappedArguments>()
-            .js_expect("arguments exotic method must only be callable from arguments objects")?;
+            .downcast_mut::<MappedArguments>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
 
         // a. If IsAccessorDescriptor(Desc) is true, then
         if desc.is_accessor_descriptor() {
@@ -360,8 +360,8 @@ pub(crate) fn arguments_exotic_try_get(
     // 2. Let isMapped be ! HasOwnProperty(map, P).
     if let PropertyKey::Index(index) = key
         && let Some(value) = obj
-            .downcast_ref::<MappedArguments>()
-            .js_expect("arguments exotic method must only be callable from arguments objects")?
+            .downcast_ref::<MappedArguments>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
             .get(index.get())
     {
         // a. Assert: map contains a formal parameter mapping for P.
@@ -390,8 +390,8 @@ pub(crate) fn arguments_exotic_get(
     // 2. Let isMapped be ! HasOwnProperty(map, P).
     if let PropertyKey::Index(index) = key
         && let Some(value) = obj
-            .downcast_ref::<MappedArguments>()
-            .js_expect("arguments exotic method must only be callable from arguments objects")?
+            .downcast_ref::<MappedArguments>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
             .get(index.get())
     {
         // a. Assert: map contains a formal parameter mapping for P.
@@ -428,8 +428,8 @@ pub(crate) fn arguments_exotic_set(
         // 3. If isMapped is true, then
         // a. Let setStatus be Set(map, P, V, false).
         // b. Assert: setStatus is true because formal parameters mapped by argument objects are always writable.
-        obj.downcast_ref::<MappedArguments>()
-            .js_expect("arguments exotic method must only be callable from arguments objects")?
+        obj.downcast_ref::<MappedArguments>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
             .set(index.get(), &value);
     }
 
@@ -456,8 +456,8 @@ pub(crate) fn arguments_exotic_delete(
         // 2. Let isMapped be ! HasOwnProperty(map, P).
         // 4. If result is true and isMapped is true, then
         // a. Call map.[[Delete]](P).
-        obj.downcast_mut::<MappedArguments>()
-            .js_expect("arguments exotic method must only be callable from arguments objects")?
+        obj.downcast_mut::<MappedArguments>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
             .delete(index.get());
     }
 

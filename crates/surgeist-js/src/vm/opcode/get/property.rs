@@ -15,7 +15,7 @@ fn get_by_name<const LENGTH: bool>(
         if let Some(object) = object.as_object()
             && object.is_array()
         {
-            let value = object.borrow().properties().named_slot(0);
+            let value = object.borrow()?.properties().named_slot(0);
             context.vm.set_register(dst.into(), value);
             return Ok(());
         } else if let Some(string) = object.as_string() {
@@ -38,11 +38,11 @@ fn get_by_name<const LENGTH: bool>(
     let object = object.base_class(context)?;
 
     let ic = &context.vm.frame().code_block().ic[usize::from(index)];
-    let object_borrowed = object.borrow();
+    let object_borrowed = object.borrow()?;
     if let Some((shape, slot)) = ic.get(&object_borrowed.shape()) {
         let mut result = if slot.attributes.contains(SlotAttributes::PROTOTYPE) {
             let prototype = shape.prototype().expect("prototype should have value");
-            let prototype = prototype.borrow();
+            let prototype = prototype.borrow()?;
             prototype.properties().named_slot(slot.index as usize)
         } else {
             object_borrowed.properties().named_slot(slot.index as usize)
@@ -71,7 +71,7 @@ fn get_by_name<const LENGTH: bool>(
     let slot = *context.slot();
     if slot.is_cacheable() {
         let ic = &context.vm.frame().code_block.ic[usize::from(index)];
-        let object_borrowed = object.borrow();
+        let object_borrowed = object.borrow()?;
         let shape = object_borrowed.shape();
         ic.set(&shape, slot);
     }
@@ -102,7 +102,7 @@ fn get_by_value<const PUSH_KEY: bool>(
     match &key_value {
         PropertyKey::Index(index) => {
             if object.is_array() {
-                let object_borrowed = object.borrow();
+                let object_borrowed = object.borrow()?;
                 if let Some(element) = object_borrowed.properties().get_dense_property(index.get())
                 {
                     if PUSH_KEY {

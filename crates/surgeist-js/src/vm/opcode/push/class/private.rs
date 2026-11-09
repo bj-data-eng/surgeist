@@ -57,13 +57,13 @@ impl PushClassPrivateMethod {
             )
             .js_expect("failed to set name property on private method")?;
         value
-            .downcast_mut::<OrdinaryFunction>()
-            .js_expect("method must be function object")?
+            .downcast_mut::<OrdinaryFunction>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
             .set_home_object(prototype.clone());
 
         object
-            .downcast_mut::<OrdinaryFunction>()
-            .js_expect("class must be function object")?
+            .downcast_mut::<OrdinaryFunction>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
             .push_private_method(
                 object.private_name(name),
                 &PrivateElement::Method(value.clone()),
@@ -105,8 +105,8 @@ impl PushClassPrivateGetter {
             .js_expect("class must be function object")?;
 
         object
-            .downcast_mut::<OrdinaryFunction>()
-            .js_expect("class must be function object")?
+            .downcast_mut::<OrdinaryFunction>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
             .push_private_method(
                 object.private_name(name),
                 &PrivateElement::Accessor {
@@ -151,8 +151,8 @@ impl PushClassPrivateSetter {
             .js_expect("class must be function object")?;
 
         object
-            .downcast_mut::<OrdinaryFunction>()
-            .js_expect("class must be function object")?
+            .downcast_mut::<OrdinaryFunction>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
             .push_private_method(
                 object.private_name(name),
                 &PrivateElement::Accessor {

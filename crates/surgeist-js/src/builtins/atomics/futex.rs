@@ -368,7 +368,8 @@ mod tests {
         let mut context = Context::default();
         let backing = JsSharedArrayBuffer::new(4, context.access())
             .unwrap()
-            .inner();
+            .inner()
+            .unwrap();
         let (first, first_result) = oneshot::channel();
         let (second, second_result) = oneshot::channel();
         let (_first, _second) = {
@@ -420,7 +421,8 @@ mod tests {
         let mut context = Context::default();
         let backing = JsSharedArrayBuffer::new(4, context.access())
             .unwrap()
-            .inner();
+            .inner()
+            .unwrap();
         let (first, mut first_result) = oneshot::async_channel();
         let first_waker = Waker::from(Arc::new(PanickingWake));
         assert!(
@@ -597,7 +599,8 @@ mod publication_tests {
         let mut context = context(publisher.clone(), clock.clone());
         let backing = JsSharedArrayBuffer::new(8, context.access())
             .unwrap()
-            .inner();
+            .inner()
+            .unwrap();
         let (result, promise) = register(&mut context, &backing, Some(Duration::from_millis(10)));
         assert_eq!(
             result.unwrap_err().as_engine(),
@@ -618,7 +621,8 @@ mod publication_tests {
         let mut context = context(publisher.clone(), clock.clone());
         let backing = JsSharedArrayBuffer::new(8, context.access())
             .unwrap()
-            .inner();
+            .inner()
+            .unwrap();
         let unrelated_calls = Rc::new(Cell::new(0));
         let calls = unrelated_calls.clone();
         let unrelated = TimeoutJob::with_realm(
@@ -685,7 +689,8 @@ mod publication_tests {
             let mut context = context(publisher.clone(), clock);
             let backing = JsSharedArrayBuffer::new(8, context.access())
                 .unwrap()
-                .inner();
+                .inner()
+                .unwrap();
             let (result, promise) =
                 register(&mut context, &backing, Some(Duration::from_millis(10)));
             assert_eq!(result.unwrap_err().as_engine(), Some(&expected));
@@ -710,7 +715,8 @@ mod publication_tests {
         let mut context = context(publisher.clone(), clock);
         let backing = JsSharedArrayBuffer::new(8, context.access())
             .unwrap()
-            .inner();
+            .inner()
+            .unwrap();
         publisher.inline_backing.replace(Some(backing.clone()));
         let (result, promise) = register(&mut context, &backing, Some(Duration::from_millis(10)));
         assert_eq!(
@@ -742,7 +748,8 @@ mod publication_tests {
             let mut context = context(publisher, clock.clone());
             let backing = JsSharedArrayBuffer::new(8, context.access())
                 .unwrap()
-                .inner();
+                .inner()
+                .unwrap();
             let (result, promise) = register(&mut context, &backing, timeout);
             assert!(matches!(result, Ok(AtomicsWaitResult::Ok)));
             if timed_out {
@@ -767,7 +774,8 @@ mod publication_tests {
         let mut context = context(publisher.clone(), clock.clone());
         let backing = JsSharedArrayBuffer::new(8, context.access())
             .unwrap()
-            .inner();
+            .inner()
+            .unwrap();
         let (result, promise) = register(&mut context, &backing, Some(Duration::from_millis(10)));
         assert!(matches!(result, Ok(AtomicsWaitResult::Ok)));
         assert!(publisher.timeout_tokens.borrow()[0].revoked());

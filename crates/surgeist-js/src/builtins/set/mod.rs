@@ -124,7 +124,7 @@ impl IntrinsicObject for Set {
     fn get(intrinsics: &Intrinsics) -> JsObject {
         Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
     }
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_species = BuiltInBuilder::callable(realm, Self::get_species)
             .name(js_string!("get [Symbol.species]"))
             .build();
@@ -187,7 +187,9 @@ impl IntrinsicObject for Set {
                 Self::NAME,
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
             )
-            .build();
+            .build()?;
+
+        Ok(())
     }
 }
 
@@ -334,7 +336,7 @@ impl Set {
                     TypeError: "method `Set.prototype.clear` called on incompatible receiver"
                 )
             })?
-            .borrow_mut()
+            .borrow_mut()?
             .data_mut()
             .clear();
 
@@ -372,7 +374,7 @@ impl Set {
         // i. Replace the element of S.[[SetData]] whose value is e with an element whose value is empty.
         // ii. Return true.
         // 4. Return false.
-        Ok(this.borrow_mut().data_mut().delete(&value).into())
+        Ok(this.borrow_mut()?.data_mut().delete(&value).into())
     }
 
     /// `Set.prototype.entries( )`
@@ -437,7 +439,7 @@ impl Set {
             ));
         };
 
-        let _lock = obj.borrow_mut().data_mut().lock();
+        let _lock = obj.borrow_mut()?.data_mut().lock();
 
         // 4. Let entries be S.[[SetData]].
         // 5. Let numEntries be the number of elements in entries.
@@ -445,9 +447,9 @@ impl Set {
         let mut index = 0;
 
         // 7. Repeat, while index < numEntries,
-        while index < obj.borrow().data().full_len() {
+        while index < obj.borrow()?.data().full_len() {
             // a. Let e be entries[index].
-            let e = obj.borrow().data().get_index(index);
+            let e = obj.borrow()?.data().get_index(index);
 
             // b. Set index to index + 1.
             index += 1;
@@ -491,12 +493,12 @@ impl Set {
                     TypeError: "method `Set.prototype.forEach` called on incompatible receiver"
                 )
             })?;
-        let _lock = set.borrow_mut().data_mut().lock();
+        let _lock = set.borrow_mut()?.data_mut().lock();
 
         let mut index = 0;
         loop {
             let value = {
-                let set = set.borrow();
+                let set = set.borrow()?;
                 let set = set.data();
                 if index >= set.full_len() {
                     return Ok(());
@@ -540,7 +542,7 @@ impl Set {
         // 4. For each element e of S.[[SetData]], do
         //    a. If e is not empty and SameValue(e, value) is true, return true.
         // 5. Return false.
-        Ok(this.borrow().data().contains(&value).into())
+        Ok(this.borrow()?.data().contains(&value).into())
     }
 
     /// `Set.prototype.values( )`
@@ -596,16 +598,16 @@ impl Set {
         let other_rec = get_set_record(other, context)?;
 
         // 4. If SetDataSize(O.[[SetData]]) ≤ otherRec.[[Size]], then
-        if this.borrow().data().len() <= other_rec.size {
+        if this.borrow()?.data().len() <= other_rec.size {
             // a. Let thisSize be the number of elements in O.[[SetData]].
-            let _lock = this.borrow_mut().data_mut().lock();
-            let mut this_size = this.borrow().data().full_len();
+            let _lock = this.borrow_mut()?.data_mut().lock();
+            let mut this_size = this.borrow()?.data().full_len();
             // b. Let index be 0.
             let mut index = 0;
             // c. Repeat, while index < thisSize,
             while index < this_size {
                 // i. Let e be O.[[SetData]][index].
-                let e = this.borrow().data().get_index(index);
+                let e = this.borrow()?.data().get_index(index);
 
                 // ii. Set index to index + 1.
                 index += 1;
@@ -625,7 +627,7 @@ impl Set {
 
                     // 3. NOTE: The number of elements in O.[[SetData]] may have increased during execution of otherRec.[[Has]].
                     // 4. Set thisSize to the number of elements in O.[[SetData]].
-                    this_size = this.borrow().data().full_len();
+                    this_size = this.borrow()?.data().full_len();
                 }
             }
         } else {
@@ -642,7 +644,7 @@ impl Set {
                 //       1. If SetDataHas(O.[[SetData]], next) is true, then
                 let next = canonicalize_keyed_collection_key(next);
 
-                if this.borrow().data().contains(&next) {
+                if this.borrow()?.data().contains(&next) {
                     //      a. Perform ? IteratorClose(keysIter, NormalCompletion(unused)).
                     keys_iter.close(Ok(JsValue::undefined()), context)?;
 
@@ -684,20 +686,20 @@ impl Set {
         let other = args.get_or_undefined(0);
         let other_rec = get_set_record(other, context)?;
         // 4. If SetDataSize(O.[[SetData]]) > otherRec.[[Size]], return false.
-        if this.borrow().data().len() > other_rec.size {
+        if this.borrow()?.data().len() > other_rec.size {
             return Ok(JsValue::from(false));
         }
 
         // 5. Let thisSize be the number of elements in O.[[SetData]].
-        let _lock = this.borrow_mut().data_mut().lock();
-        let mut this_size = this.borrow().data().full_len();
+        let _lock = this.borrow_mut()?.data_mut().lock();
+        let mut this_size = this.borrow()?.data().full_len();
         // 6. Let index be 0.
         let mut index = 0;
 
         // 7. Repeat, while index < thisSize,
         while index < this_size {
             // a. Let e be O.[[SetData]][index].
-            let e = this.borrow().data().get_index(index);
+            let e = this.borrow()?.data().get_index(index);
 
             // b. Set index to index + 1.
             index += 1;
@@ -717,7 +719,7 @@ impl Set {
 
                 // iii. NOTE: The number of elements in O.[[SetData]] may have increased during execution of otherRec.[[Has]].
                 // iv. Set thisSize to the number of elements in O.[[SetData]].
-                this_size = this.borrow().data().full_len();
+                this_size = this.borrow()?.data().full_len();
             }
         }
 
@@ -755,7 +757,7 @@ impl Set {
         let other_rec = get_set_record(other, context)?;
 
         // 4. If SetDataSize(O.[[SetData]]) < otherRec.[[Size]], return false.
-        if this.borrow().data().len() < other_rec.size {
+        if this.borrow()?.data().len() < other_rec.size {
             return Ok(JsValue::from(false));
         }
 
@@ -769,7 +771,7 @@ impl Set {
             //  b. If next is not done, then
             //     i. If SetDataHas(O.[[SetData]], next) is false, then
             let next = canonicalize_keyed_collection_key(next);
-            if !this.borrow().data().contains(&next) {
+            if !this.borrow()?.data().contains(&next) {
                 // 1. Perform ? IteratorClose(keysIter, NormalCompletion(unused)).
                 keys_iter.close(Ok(JsValue::undefined()), context)?;
                 // 2. Return false.
@@ -828,8 +830,8 @@ impl Set {
 
             //    iv. If SetDataHas(O.[[SetData]], next) is true, then
             //  1. If alreadyInResult is true, set resultSetData[resultIndex] to empty.
-            if this.borrow().data().contains(&next) {
-                result_set.borrow_mut().data_mut().delete(&next);
+            if this.borrow()?.data().contains(&next) {
+                result_set.borrow_mut()?.data_mut().delete(&next);
             }
             //    v. Else,
             //      1. If alreadyInResult is false, append next to resultSetData.
@@ -930,16 +932,16 @@ impl Set {
         let result_set = Self::create_from_data(OrderedSet::new(), context);
 
         // 5. If SetDataSize(O.[[SetData]]) ≤ otherRec.[[Size]], then
-        if this.borrow().data().len() <= other_rec.size {
+        if this.borrow()?.data().len() <= other_rec.size {
             // a. Let thisSize be the number of elements in O.[[SetData]].
-            let _lock = this.borrow_mut().data_mut().lock();
-            let mut this_size = this.borrow().data().full_len();
+            let _lock = this.borrow_mut()?.data_mut().lock();
+            let mut this_size = this.borrow()?.data().full_len();
             // b. Let index be 0.
             let mut index = 0;
             // c. Repeat, while index < thisSize,
             while index < this_size {
                 // i. Let e be O.[[SetData]][index].
-                let e = this.borrow().data().get_index(index);
+                let e = this.borrow()?.data().get_index(index);
                 // ii. Set index to index + 1.
                 index += 1;
 
@@ -961,7 +963,7 @@ impl Set {
                     Self::add_to_data(&result_set, e)?;
                     //  3. NOTE: The number of elements in O.[[SetData]] may have increased during execution of otherRec.[[Has]].
                     //  4. Set thisSize to the number of elements in O.[[SetData]].
-                    this_size = this.borrow().data().full_len();
+                    this_size = this.borrow()?.data().full_len();
                 }
             }
 
@@ -979,7 +981,7 @@ impl Set {
                 let next = canonicalize_keyed_collection_key(next);
                 //     2. Let inThis be SetDataHas(O.[[SetData]], next).
                 //     3. If inThis is true, then
-                if this.borrow().data().contains(&next) {
+                if this.borrow()?.data().contains(&next) {
                     //        a. NOTE: Because other is an arbitrary object, it is possible for its "keys" iterator to produce the same value more than once.
                     //        b. If SetDataHas(resultSetData, next) is false, then
                     //           i. Append next to resultSetData.
@@ -1033,17 +1035,17 @@ impl Set {
         let result_set = Self::copy_data(&this, context)?;
 
         // 5. If SetDataSize(O.[[SetData]]) ≤ otherRec.[[Size]], then
-        if result_set.borrow().data().len() <= other_rec.size {
+        if result_set.borrow()?.data().len() <= other_rec.size {
             // a. Let thisSize be the number of elements in O.[[SetData]].
-            let _lock = result_set.borrow_mut().data_mut().lock();
-            let this_size = result_set.borrow().data().full_len();
+            let _lock = result_set.borrow_mut()?.data_mut().lock();
+            let this_size = result_set.borrow()?.data().full_len();
             // b. Let index be 0.
             let mut index = 0;
 
             //  c. Repeat, while index < thisSize,
             while index < this_size {
                 // i. Let e be resultSetData[index].
-                let e = result_set.borrow().data().get_index(index);
+                let e = result_set.borrow()?.data().get_index(index);
 
                 // ii. If e is not empty, then
                 if let Some(e) = e {
@@ -1055,7 +1057,7 @@ impl Set {
                     // 2. If inOther is true, then
                     if in_other {
                         // a. Set resultSetData[index] to empty.
-                        result_set.borrow_mut().data_mut().delete(&e);
+                        result_set.borrow_mut()?.data_mut().delete(&e);
                     }
                 }
 
@@ -1078,7 +1080,7 @@ impl Set {
                 //     2. Let valueIndex be SetDataIndex(resultSetData, next).
                 //     3. If valueIndex is not not-found, then
                 //        a. Set resultSetData[valueIndex] to empty.
-                result_set.borrow_mut().data_mut().delete(&next);
+                result_set.borrow_mut()?.data_mut().delete(&next);
             }
         }
 
@@ -1092,13 +1094,13 @@ impl Set {
         if !context.runtime().same_heap(&set.runtime()) {
             return Err(js_error!(TypeError: "collection data crosses JavaScript runtimes"));
         }
-        let data = set.borrow().data().clone();
+        let data = set.borrow()?.data().clone();
         Ok(Self::create_from_data(data, context))
     }
 
     pub(crate) fn add_to_data(set: &JsObject<OrderedSet>, value: JsValue) -> JsResult<()> {
         require_collection_value(&set.runtime(), &value)?;
-        set.borrow_mut().data_mut().add(value);
+        set.borrow_mut()?.data_mut().add(value);
         Ok(())
     }
 
@@ -1113,7 +1115,9 @@ impl Set {
     fn size_getter(this: &JsValue, _: &[JsValue], _: &mut Context) -> JsResult<JsValue> {
         Ok(this
             .as_object()
-            .and_then(|o| o.downcast_ref::<OrderedSet>().map(|o| o.len()))
+            .map(|object| object.downcast_ref::<OrderedSet>().map(|set| set.map(|set| set.len())))
+            .transpose()?
+            .flatten()
             .ok_or_else(|| js_error!(TypeError: "method `get Set.prototype.size` called on incompatible receiver"))?.into())
     }
 }

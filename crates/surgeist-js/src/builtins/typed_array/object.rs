@@ -206,9 +206,9 @@ impl TypedArray {
             })?;
 
         let len = {
-            let array = obj.borrow();
+            let array = obj.borrow()?;
             let buffer = array.data().viewed_array_buffer();
-            let buffer = buffer.as_buffer();
+            let buffer = buffer.as_buffer()?;
             // 2. Assert: O has a [[ViewedArrayBuffer]] internal slot.
             // 3. Let taRecord be MakeTypedArrayWithBufferWitnessRecord(O, order).
             // 4. If IsTypedArrayOutOfBounds(taRecord) is true, throw a TypeError exception.
@@ -288,18 +288,18 @@ impl TypedArray {
     ///  - [ECMAScript reference][spec]
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-istypedarrayfixedlength
-    fn is_fixed_length(&self) -> bool {
+    fn is_fixed_length(&self) -> JsResult<bool> {
         // 1. If O.[[ArrayLength]] is auto, return false.
         if self.is_auto_length() {
-            return false;
+            return Ok(false);
         }
 
         // 2. Let buffer be O.[[ViewedArrayBuffer]].
-        match self.viewed_array_buffer().as_buffer() {
+        Ok(match self.viewed_array_buffer().as_buffer()? {
             // 3. If IsFixedLengthArrayBuffer(buffer) is false and IsSharedArrayBuffer(buffer) is false, return false.
             BufferRef::Buffer(buf) => buf.is_fixed_len(),
             BufferRef::SharedBuffer(_) => true,
-        }
+        })
     }
 }
 
@@ -314,10 +314,10 @@ pub(crate) fn typed_array_exotic_prevent_extensions(
 ) -> JsResult<bool> {
     let is_fixed_length = {
         let ta = obj
-            .downcast_ref::<TypedArray>()
-            .js_expect("must be a TypedArray")?;
+            .downcast_ref::<TypedArray>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
 
-        ta.is_fixed_length()
+        ta.is_fixed_length()?
     }; // Note: this block ensures that the borrow of obj is dropped
     // so it may be re-borrowed in step 3
 
@@ -643,14 +643,14 @@ pub(crate) fn typed_array_exotic_own_property_keys(
     _context: &mut Context,
 ) -> JsResult<Vec<PropertyKey>> {
     let inner = obj
-        .downcast_ref::<TypedArray>()
-        .js_expect("TypedArray exotic method should only be callable from TypedArray objects")?;
+        .downcast_ref::<TypedArray>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
 
     // 1. Let taRecord be MakeTypedArrayWithBufferWitnessRecord(O, seq-cst).
     // 2. Let keys be a new empty List.
     // 3. If IsTypedArrayOutOfBounds(taRecord) is false, then
     let buffer = inner.viewed_array_buffer();
-    let mut keys = match buffer.as_buffer().bytes(Ordering::SeqCst) {
+    let mut keys = match buffer.as_buffer()?.bytes(Ordering::SeqCst) {
         Some(buf) if !inner.is_out_of_bounds(buf.len()) => {
             // a. Let length be TypedArrayLength(taRecord).
             let length = inner.array_length(buf.len());
@@ -667,7 +667,7 @@ pub(crate) fn typed_array_exotic_own_property_keys(
     //     a. Append P to keys.
     // 5. For each own property key P of O such that P is a Symbol, in ascending chronological order of property creation, do
     //     a. Append P to keys.
-    keys.extend(obj.borrow().properties.shape().keys());
+    keys.extend(obj.borrow()?.properties.shape().keys());
 
     // 6. Return keys.
     Ok(keys)
@@ -681,10 +681,10 @@ pub(crate) fn typed_array_exotic_own_property_keys(
 /// [spec]: https://tc39.es/ecma262/sec-typedarraygetelement
 fn typed_array_get_element(obj: &JsObject, index: f64) -> JsResult<Option<JsValue>> {
     let inner = obj
-        .downcast_ref::<TypedArray>()
-        .js_expect("typed_array_get_element should only be called on TypedArray objects")?;
+        .downcast_ref::<TypedArray>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
     let buffer = inner.viewed_array_buffer();
-    let buffer = buffer.as_buffer();
+    let buffer = buffer.as_buffer()?;
 
     // 1. If IsValidIntegerIndex(O, index) is false, return undefined.
     let Some(buffer) = buffer.bytes(Ordering::Relaxed) else {
@@ -734,16 +734,16 @@ pub(crate) fn typed_array_set_element(
         .js_expect("function can only be called for typed array objects")?;
     // b. Let arrayTypeName be the String value of O.[[TypedArrayName]].
     // e. Let elementType be the Element Type value in Table 73 for arrayTypeName.
-    let elem_type = obj.borrow().data().kind();
+    let elem_type = obj.borrow()?.data().kind();
 
     // 1. If O.[[ContentType]] is BigInt, let numValue be ? ToBigInt(value).
     // 2. Otherwise, let numValue be ? ToNumber(value).
     let value = elem_type.get_element(value, context)?;
 
     // 3. If IsValidIntegerIndex(O, index) is true, then
-    let array = obj.borrow();
+    let array = obj.borrow()?;
     let buffer = array.data().viewed_array_buffer();
-    let mut buffer = buffer.as_buffer_mut();
+    let mut buffer = buffer.as_buffer_mut()?;
     let Some(mut buffer) = buffer.bytes(Ordering::Relaxed) else {
         return Ok(());
     };

@@ -36,16 +36,18 @@ pub(crate) struct ArrayIterator {
 }
 
 impl IntrinsicObject for ArrayIterator {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::with_intrinsic::<Self>(realm)
             .prototype(realm.intrinsics().constructors().iterator().prototype())
-            .static_method(Self::next, js_string!("next"), 0)
+            .static_method(Self::next, js_string!("next"), 0)?
             .static_property(
                 JsSymbol::to_string_tag(),
                 js_string!("Array Iterator"),
                 Attribute::CONFIGURABLE,
-            )
-            .build();
+            )?
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -97,7 +99,7 @@ impl ArrayIterator {
         let array_iterator = object
             .and_then(|object| object.downcast::<Self>().ok())
             .ok_or_else(|| JsNativeError::typ().with_message("`this` is not an ArrayIterator"))?;
-        let state = array_iterator.borrow();
+        let state = array_iterator.borrow()?;
         let index = state.data().next_index;
         let kind = state.data().kind;
         let array = state.data().array.clone();
@@ -112,9 +114,9 @@ impl ArrayIterator {
         };
         let array = JsObject::from_inner(array);
 
-        let len = if let Some(f) = array.downcast_ref::<TypedArray>() {
+        let len = if let Some(f) = array.downcast_ref::<TypedArray>()? {
             let buffer = f.viewed_array_buffer();
-            let buf = buffer.as_buffer();
+            let buf = buffer.as_buffer()?;
             let Some(buf) = buf
                 .bytes(std::sync::atomic::Ordering::SeqCst)
                 .filter(|buf| !f.is_out_of_bounds(buf.len()))
@@ -130,14 +132,14 @@ impl ArrayIterator {
         };
 
         if index >= len {
-            array_iterator.borrow_mut().data_mut().array = None;
+            array_iterator.borrow_mut()?.data_mut().array = None;
             return Ok(create_iter_result_object_trusted(
                 JsValue::undefined(),
                 true,
                 context,
             ));
         }
-        array_iterator.borrow_mut().data_mut().next_index = index + 1;
+        array_iterator.borrow_mut()?.data_mut().next_index = index + 1;
         match kind {
             PropertyNameKind::Key => Ok(create_iter_result_object_trusted(
                 index.into(),

@@ -35,7 +35,7 @@ impl IntrinsicObject for WeakRef {
         Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
     }
 
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::from_standard_constructor::<Self>(realm)
             .property(
                 JsSymbol::to_string_tag(),
@@ -43,7 +43,9 @@ impl IntrinsicObject for WeakRef {
                 Attribute::CONFIGURABLE,
             )
             .method(Self::deref, js_string!("deref"), 0)
-            .build();
+            .build()?;
+
+        Ok(())
     }
 }
 
@@ -117,7 +119,9 @@ impl WeakRef {
         let object = this.as_object();
         let weak_ref = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<WeakRefTarget>)
+            .map(JsObject::downcast_ref::<WeakRefTarget>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message(
                     "WeakRef.prototype.deref: expected `this` to be a `WeakRef` object",

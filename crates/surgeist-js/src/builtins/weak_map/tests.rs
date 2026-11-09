@@ -19,7 +19,7 @@ fn collecting_a_weak_key_releases_its_primitive_value() {
         .unwrap();
     assert_eq!(value.refcount(), Some(3));
 
-    let borrowed_map = map.borrow();
+    let borrowed_map = map.borrow().unwrap();
     drop(dead_key);
     context.runtime().collect().unwrap();
 

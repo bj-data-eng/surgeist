@@ -87,7 +87,7 @@ impl Date {
 }
 
 impl IntrinsicObject for Date {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let to_utc_string = BuiltInBuilder::callable(realm, Self::to_utc_string)
             .name(js_string!("toUTCString"))
             .length(0)
@@ -205,7 +205,9 @@ impl IntrinsicObject for Date {
             0,
         );
 
-        builder.build();
+        builder.build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -263,33 +265,37 @@ impl BuiltInConstructor for Date {
             [value] => {
                 // b. If value is an Object and value has a [[DateValue]] internal slot, then
                 let object = value.as_object();
-                let tv =
-                    if let Some(date) = object.as_ref().and_then(JsObject::downcast_ref::<Self>) {
-                        // i. Let tv be value.[[DateValue]].
-                        date.0
-                    }
-                    // c. Else,
-                    else {
-                        // i. Let v be ? ToPrimitive(value).
-                        let v = value.to_primitive(context.access(), PreferredType::Default)?;
+                let tv = if let Some(date) = object
+                    .as_ref()
+                    .map(JsObject::downcast_ref::<Self>)
+                    .transpose()?
+                    .flatten()
+                {
+                    // i. Let tv be value.[[DateValue]].
+                    date.0
+                }
+                // c. Else,
+                else {
+                    // i. Let v be ? ToPrimitive(value).
+                    let v = value.to_primitive(context.access(), PreferredType::Default)?;
 
-                        // ii. If v is a String, then
-                        if let Some(v) = v.as_string() {
-                            // 1. Assert: The next step never returns an abrupt completion because v is a String.
-                            // 2. Let tv be the result of parsing v as a date, in exactly the same manner as for the parse method (21.4.3.2).
-                            let tv = parse_date(&v, context.host_hooks().as_ref());
-                            if let Some(tv) = tv {
-                                tv as f64
-                            } else {
-                                f64::NAN
-                            }
+                    // ii. If v is a String, then
+                    if let Some(v) = v.as_string() {
+                        // 1. Assert: The next step never returns an abrupt completion because v is a String.
+                        // 2. Let tv be the result of parsing v as a date, in exactly the same manner as for the parse method (21.4.3.2).
+                        let tv = parse_date(&v, context.host_hooks().as_ref());
+                        if let Some(tv) = tv {
+                            tv as f64
+                        } else {
+                            f64::NAN
                         }
-                        // iii. Else,
-                        else {
-                            // 1. Let tv be ? ToNumber(v).
-                            v.to_number(context.access())?
-                        }
-                    };
+                    }
+                    // iii. Else,
+                    else {
+                        // 1. Let tv be ? ToNumber(v).
+                        v.to_number(context.access())?
+                    }
+                };
 
                 // d. Let dv be TimeClip(tv).
                 Self(time_clip(tv))
@@ -462,7 +468,12 @@ impl Date {
         // 3. Let t be dateObject.[[DateValue]].
         let t = this
             .as_object()
-            .and_then(|obj| obj.downcast_ref::<Date>().as_deref().copied())
+            .map(|obj| {
+                obj.downcast_ref::<Date>()
+                    .map(|value| value.as_deref().copied())
+            })
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?
             .0;
 
@@ -501,7 +512,12 @@ impl Date {
         // 3. Let t be dateObject.[[DateValue]].
         let t = this
             .as_object()
-            .and_then(|obj| obj.downcast_ref::<Date>().as_deref().copied())
+            .map(|obj| {
+                obj.downcast_ref::<Date>()
+                    .map(|value| value.as_deref().copied())
+            })
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?
             .0;
 
@@ -543,7 +559,12 @@ impl Date {
         // 3. Let t be dateObject.[[DateValue]].
         let t = this
             .as_object()
-            .and_then(|obj| obj.downcast_ref::<Date>().as_deref().copied())
+            .map(|obj| {
+                obj.downcast_ref::<Date>()
+                    .map(|value| value.as_deref().copied())
+            })
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?
             .0;
 
@@ -575,7 +596,12 @@ impl Date {
         // 3. Let t be dateObject.[[DateValue]].
         let t = this
             .as_object()
-            .and_then(|obj| obj.downcast_ref::<Date>().as_deref().copied())
+            .map(|obj| {
+                obj.downcast_ref::<Date>()
+                    .map(|value| value.as_deref().copied())
+            })
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?
             .0;
 
@@ -613,7 +639,12 @@ impl Date {
         // 3. Let t be dateObject.[[DateValue]].
         let t = this
             .as_object()
-            .and_then(|obj| obj.downcast_ref::<Date>().as_deref().copied())
+            .map(|obj| {
+                obj.downcast_ref::<Date>()
+                    .map(|value| value.as_deref().copied())
+            })
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?
             .0;
 
@@ -651,7 +682,12 @@ impl Date {
         // 3. Let t be dateObject.[[DateValue]].
         let t = this
             .as_object()
-            .and_then(|obj| obj.downcast_ref::<Date>().as_deref().copied())
+            .map(|obj| {
+                obj.downcast_ref::<Date>()
+                    .map(|value| value.as_deref().copied())
+            })
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?
             .0;
 
@@ -689,7 +725,12 @@ impl Date {
         // 3. Let t be dateObject.[[DateValue]].
         let t = this
             .as_object()
-            .and_then(|obj| obj.downcast_ref::<Date>().as_deref().copied())
+            .map(|obj| {
+                obj.downcast_ref::<Date>()
+                    .map(|value| value.as_deref().copied())
+            })
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?
             .0;
 
@@ -728,7 +769,12 @@ impl Date {
         // 3. Let t be dateObject.[[DateValue]].
         let t = this
             .as_object()
-            .and_then(|obj| obj.downcast_ref::<Date>().as_deref().copied())
+            .map(|obj| {
+                obj.downcast_ref::<Date>()
+                    .map(|value| value.as_deref().copied())
+            })
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?
             .0;
 
@@ -766,7 +812,12 @@ impl Date {
         // 3. Let t be dateObject.[[DateValue]].
         let t = this
             .as_object()
-            .and_then(|obj| obj.downcast_ref::<Date>().as_deref().copied())
+            .map(|obj| {
+                obj.downcast_ref::<Date>()
+                    .map(|value| value.as_deref().copied())
+            })
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?
             .0;
 
@@ -807,7 +858,12 @@ impl Date {
         // 3. Return dateObject.[[DateValue]].
         Ok(this
             .as_object()
-            .and_then(|obj| obj.downcast_ref::<Date>().as_deref().copied())
+            .map(|obj| {
+                obj.downcast_ref::<Date>()
+                    .map(|value| value.as_deref().copied())
+            })
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?
             .0
             .into())
@@ -834,7 +890,12 @@ impl Date {
         // 3. Let t be dateObject.[[DateValue]].
         let t = this
             .as_object()
-            .and_then(|obj| obj.downcast_ref::<Date>().as_deref().copied())
+            .map(|obj| {
+                obj.downcast_ref::<Date>()
+                    .map(|value| value.as_deref().copied())
+            })
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?
             .0;
 
@@ -870,7 +931,7 @@ impl Date {
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?;
 
         // 3. Let t be dateObject.[[DateValue]].
-        let mut t = date.borrow().data().0;
+        let mut t = date.borrow()?.data().0;
 
         // 4. Let dt be ? ToNumber(date).
         let dt = args.get_or_undefined(0).to_number(context.access())?;
@@ -900,7 +961,7 @@ impl Date {
         };
 
         // 9. Set dateObject.[[DateValue]] to u.
-        date.borrow_mut().data_mut().0 = u;
+        date.borrow_mut()?.data_mut().0 = u;
 
         // 10. Return u.
         Ok(JsValue::from(u))
@@ -928,7 +989,7 @@ impl Date {
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?;
 
         // 3. Let t be dateObject.[[DateValue]].
-        let t = date.borrow().data().0;
+        let t = date.borrow()?.data().0;
 
         let t = if LOCAL {
             // 5. If t is NaN, set t to +0𝔽; otherwise, set t to LocalTime(t).
@@ -971,7 +1032,7 @@ impl Date {
         };
 
         // 10. Set dateObject.[[DateValue]] to u.
-        date.borrow_mut().data_mut().0 = u;
+        date.borrow_mut()?.data_mut().0 = u;
 
         // 11. Return u.
         Ok(JsValue::from(u))
@@ -1000,7 +1061,7 @@ impl Date {
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?;
 
         // 3. Let t be dateObject.[[DateValue]].
-        let mut t = date.borrow().data().0;
+        let mut t = date.borrow()?.data().0;
 
         // 4. Let h be ? ToNumber(hour).
         let h = args.get_or_undefined(0).to_number(context.access())?;
@@ -1054,7 +1115,7 @@ impl Date {
         };
 
         // 15. Set dateObject.[[DateValue]] to u.
-        date.borrow_mut().data_mut().0 = u;
+        date.borrow_mut()?.data_mut().0 = u;
 
         // 16. Return u.
         Ok(JsValue::from(u))
@@ -1080,7 +1141,7 @@ impl Date {
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?;
 
         // 3. Let t be dateObject.[[DateValue]].
-        let mut t = date.borrow().data().0;
+        let mut t = date.borrow()?.data().0;
 
         // 4. Set ms to ? ToNumber(ms).
         let ms = args.get_or_undefined(0).to_number(context.access())?;
@@ -1115,7 +1176,7 @@ impl Date {
         };
 
         // 9. Set dateObject.[[DateValue]] to u.
-        date.borrow_mut().data_mut().0 = u;
+        date.borrow_mut()?.data_mut().0 = u;
 
         // 10. Return u.
         Ok(JsValue::from(u))
@@ -1141,7 +1202,7 @@ impl Date {
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?;
 
         // 3. Let t be dateObject.[[DateValue]].
-        let mut t = date.borrow().data().0;
+        let mut t = date.borrow()?.data().0;
 
         // 4. Let m be ? ToNumber(min).
         let m = args.get_or_undefined(0).to_number(context.access())?;
@@ -1186,7 +1247,7 @@ impl Date {
         };
 
         // 13. Set dateObject.[[DateValue]] to u.
-        date.borrow_mut().data_mut().0 = u;
+        date.borrow_mut()?.data_mut().0 = u;
 
         // 14. Return u.
         Ok(JsValue::from(u))
@@ -1213,7 +1274,7 @@ impl Date {
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?;
 
         // 3. Let t be dateObject.[[DateValue]].
-        let mut t = date.borrow().data().0;
+        let mut t = date.borrow()?.data().0;
 
         // 4. Let m be ? ToNumber(month).
         let m = args.get_or_undefined(0).to_number(context.access())?;
@@ -1252,7 +1313,7 @@ impl Date {
         };
 
         // 11. Set dateObject.[[DateValue]] to u.
-        date.borrow_mut().data_mut().0 = u;
+        date.borrow_mut()?.data_mut().0 = u;
 
         // 12. Return u.
         Ok(JsValue::from(u))
@@ -1278,7 +1339,7 @@ impl Date {
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?;
 
         // 3. Let t be dateObject.[[DateValue]].
-        let mut t = date.borrow().data().0;
+        let mut t = date.borrow()?.data().0;
 
         // 4. Let s be ? ToNumber(sec).
         let s = args.get_or_undefined(0).to_number(context.access())?;
@@ -1317,7 +1378,7 @@ impl Date {
         };
 
         // 11. Set dateObject.[[DateValue]] to u.
-        date.borrow_mut().data_mut().0 = u;
+        date.borrow_mut()?.data_mut().0 = u;
 
         // 12. Return u.
         Ok(JsValue::from(u))
@@ -1350,7 +1411,7 @@ impl Date {
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?;
 
         // 3. Let t be dateObject.[[DateValue]].
-        let t = date.borrow().data().0;
+        let t = date.borrow()?.data().0;
 
         // 4. Let y be ? ToNumber(year).
         let y = args.get_or_undefined(0).to_number(context.access())?;
@@ -1375,7 +1436,7 @@ impl Date {
         let u = time_clip(utc_t(dt, context.host_hooks().as_ref()));
 
         // 10. Set dateObject.[[DateValue]] to u.
-        date.borrow_mut().data_mut().0 = u;
+        date.borrow_mut()?.data_mut().0 = u;
 
         // 11. Return u.
         Ok(JsValue::from(u))
@@ -1410,7 +1471,7 @@ impl Date {
         let v = time_clip(t);
 
         // 5. Set dateObject.[[DateValue]] to v.
-        date.borrow_mut().data_mut().0 = v;
+        date.borrow_mut()?.data_mut().0 = v;
 
         // 6. Return v.
         Ok(JsValue::from(v))
@@ -1435,7 +1496,12 @@ impl Date {
         // 3. Let tv be dateObject.[[DateValue]].
         let tv = this
             .as_object()
-            .and_then(|obj| obj.downcast_ref::<Date>().as_deref().copied())
+            .map(|obj| {
+                obj.downcast_ref::<Date>()
+                    .map(|value| value.as_deref().copied())
+            })
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?
             .0;
 
@@ -1472,7 +1538,12 @@ impl Date {
         // 3. Let tv be dateObject.[[DateValue]].
         let tv = this
             .as_object()
-            .and_then(|obj| obj.downcast_ref::<Date>().as_deref().copied())
+            .map(|obj| {
+                obj.downcast_ref::<Date>()
+                    .map(|value| value.as_deref().copied())
+            })
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?
             .0;
 
@@ -1572,7 +1643,12 @@ impl Date {
         // 3. Let x be dateObject.[[DateValue]].
         let x = this
             .as_object()
-            .and_then(|obj| obj.downcast_ref::<Date>().as_deref().copied())
+            .map(|obj| {
+                obj.downcast_ref::<Date>()
+                    .map(|value| value.as_deref().copied())
+            })
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?
             .0;
 
@@ -1682,7 +1758,12 @@ impl Date {
         // 3. Let tv be dateObject.[[DateValue]].
         let tv = this
             .as_object()
-            .and_then(|obj| obj.downcast_ref::<Date>().as_deref().copied())
+            .map(|obj| {
+                obj.downcast_ref::<Date>()
+                    .map(|value| value.as_deref().copied())
+            })
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?
             .0;
 
@@ -1713,7 +1794,12 @@ impl Date {
         // 3. Let tv be dateObject.[[DateValue]].
         let tv = this
             .as_object()
-            .and_then(|obj| obj.downcast_ref::<Date>().as_deref().copied())
+            .map(|obj| {
+                obj.downcast_ref::<Date>()
+                    .map(|value| value.as_deref().copied())
+            })
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?
             .0;
 
@@ -1751,7 +1837,12 @@ impl Date {
         // 3. Let tv be dateObject.[[DateValue]].
         let tv = this
             .as_object()
-            .and_then(|obj| obj.downcast_ref::<Date>().as_deref().copied())
+            .map(|obj| {
+                obj.downcast_ref::<Date>()
+                    .map(|value| value.as_deref().copied())
+            })
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?
             .0;
 
@@ -1855,7 +1946,12 @@ impl Date {
         // 3. Return dateObject.[[DateValue]].
         Ok(this
             .as_object()
-            .and_then(|obj| obj.downcast_ref::<Date>().as_deref().copied())
+            .map(|obj| {
+                obj.downcast_ref::<Date>()
+                    .map(|value| value.as_deref().copied())
+            })
+            .transpose()?
+            .flatten()
             .ok_or_else(|| JsNativeError::typ().with_message("'this' is not a Date"))?
             .0
             .into())
@@ -1928,7 +2024,12 @@ impl Date {
         // 3. Let t be dateObject.[[DateValue]].
         let t = this
             .as_object()
-            .and_then(|obj| obj.downcast_ref::<Date>().as_deref().copied())
+            .map(|obj| {
+                obj.downcast_ref::<Date>()
+                    .map(|value| value.as_deref().copied())
+            })
+            .transpose()?
+            .flatten()
             .ok_or_else(|| js_error!(TypeError: "'this' is not a Date"))?
             .0;
 

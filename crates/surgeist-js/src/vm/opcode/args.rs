@@ -352,7 +352,7 @@ mod tests {
 
     #[test]
     fn scalar_encoding_admits_exact_bytes_before_any_write() {
-        let marker = JsError::from_opaque(JsValue::new(197));
+        let marker = JsError::from_opaque(JsValue::new(197)).unwrap();
         for limit in [3, 4] {
             let mut bytes = Vec::with_capacity(4);
             let mut accepted = 0;
@@ -387,7 +387,7 @@ mod tests {
     fn variable_operand_refusal_keeps_only_the_admitted_prefix() {
         // Four length bytes plus two element visits and eight element bytes.
         const EXACT: usize = 14;
-        let marker = JsError::from_opaque(JsValue::new(198));
+        let marker = JsError::from_opaque(JsValue::new(198)).unwrap();
         for limit in [EXACT - 1, EXACT] {
             let values: ThinVec<u32> = [0x1234_5678, 0x90ab_cdef].into_iter().collect();
             let mut bytes = Vec::with_capacity(12);

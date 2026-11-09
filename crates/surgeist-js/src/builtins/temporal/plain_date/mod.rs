@@ -72,7 +72,7 @@ impl BuiltInObject for PlainDate {
 }
 
 impl IntrinsicObject for PlainDate {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_calendar_id = BuiltInBuilder::callable(realm, Self::get_calendar_id)
             .name(js_string!("get calendarId"))
             .build();
@@ -256,7 +256,9 @@ impl IntrinsicObject for PlainDate {
             .method(Self::to_locale_string, js_string!("toLocaleString"), 0)
             .method(Self::to_json, js_string!("toJSON"), 0)
             .method(Self::value_of, js_string!("valueOf"), 0)
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -334,7 +336,9 @@ impl PlainDate {
         let object = this.as_object();
         let date = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDate object.")
             })?;
@@ -360,7 +364,7 @@ impl PlainDate {
             .as_object()
             .ok_or_else(|| JsNativeError::typ().with_message("this must be an object."))?;
 
-        let Some(date) = obj.downcast_ref::<Self>() else {
+        let Some(date) = obj.downcast_ref::<Self>()? else {
             return Err(JsNativeError::typ()
                 .with_message("the this object must be a PlainDate object.")
                 .into());
@@ -391,7 +395,7 @@ impl PlainDate {
             .as_object()
             .ok_or_else(|| JsNativeError::typ().with_message("this must be an object."))?;
 
-        let Some(date) = obj.downcast_ref::<Self>() else {
+        let Some(date) = obj.downcast_ref::<Self>()? else {
             return Err(JsNativeError::typ()
                 .with_message("the this object must be a PlainDate object.")
                 .into());
@@ -418,7 +422,7 @@ impl PlainDate {
             .as_object()
             .ok_or_else(|| JsNativeError::typ().with_message("this must be an object."))?;
 
-        let Some(date) = obj.downcast_ref::<Self>() else {
+        let Some(date) = obj.downcast_ref::<Self>()? else {
             return Err(JsNativeError::typ()
                 .with_message("the this object must be a PlainDate object.")
                 .into());
@@ -445,7 +449,7 @@ impl PlainDate {
             .as_object()
             .ok_or_else(|| JsNativeError::typ().with_message("this must be an object."))?;
 
-        let Some(date) = obj.downcast_ref::<Self>() else {
+        let Some(date) = obj.downcast_ref::<Self>()? else {
             return Err(JsNativeError::typ()
                 .with_message("the this object must be a PlainDate object.")
                 .into());
@@ -472,7 +476,7 @@ impl PlainDate {
             .as_object()
             .ok_or_else(|| JsNativeError::typ().with_message("this must be an object."))?;
 
-        let Some(date) = obj.downcast_ref::<Self>() else {
+        let Some(date) = obj.downcast_ref::<Self>()? else {
             return Err(JsNativeError::typ()
                 .with_message("the this object must be a PlainDate object.")
                 .into());
@@ -499,7 +503,7 @@ impl PlainDate {
             .as_object()
             .ok_or_else(|| JsNativeError::typ().with_message("this must be an object."))?;
 
-        let Some(date) = obj.downcast_ref::<Self>() else {
+        let Some(date) = obj.downcast_ref::<Self>()? else {
             return Err(JsNativeError::typ()
                 .with_message("the this object must be a PlainDate object.")
                 .into());
@@ -524,7 +528,7 @@ impl PlainDate {
             .as_object()
             .ok_or_else(|| JsNativeError::typ().with_message("this must be an object."))?;
 
-        let Some(date) = obj.downcast_ref::<Self>() else {
+        let Some(date) = obj.downcast_ref::<Self>()? else {
             return Err(JsNativeError::typ()
                 .with_message("the this object must be a PlainDate object.")
                 .into());
@@ -549,7 +553,7 @@ impl PlainDate {
             .as_object()
             .ok_or_else(|| JsNativeError::typ().with_message("this must be an object."))?;
 
-        let Some(date) = obj.downcast_ref::<Self>() else {
+        let Some(date) = obj.downcast_ref::<Self>()? else {
             return Err(JsNativeError::typ()
                 .with_message("the this object must be a PlainDate object.")
                 .into());
@@ -574,7 +578,7 @@ impl PlainDate {
             .as_object()
             .ok_or_else(|| JsNativeError::typ().with_message("this must be an object."))?;
 
-        let Some(date) = obj.downcast_ref::<Self>() else {
+        let Some(date) = obj.downcast_ref::<Self>()? else {
             return Err(JsNativeError::typ()
                 .with_message("the this object must be a PlainDate object.")
                 .into());
@@ -599,7 +603,7 @@ impl PlainDate {
             .as_object()
             .ok_or_else(|| JsNativeError::typ().with_message("this must be an object."))?;
 
-        let Some(date) = obj.downcast_ref::<Self>() else {
+        let Some(date) = obj.downcast_ref::<Self>()? else {
             return Err(JsNativeError::typ()
                 .with_message("the this object must be a PlainDate object.")
                 .into());
@@ -624,7 +628,7 @@ impl PlainDate {
             .as_object()
             .ok_or_else(|| JsNativeError::typ().with_message("this must be an object."))?;
 
-        let Some(date) = obj.downcast_ref::<Self>() else {
+        let Some(date) = obj.downcast_ref::<Self>()? else {
             return Err(JsNativeError::typ()
                 .with_message("the this object must be a PlainDate object.")
                 .into());
@@ -649,7 +653,7 @@ impl PlainDate {
             .as_object()
             .ok_or_else(|| JsNativeError::typ().with_message("this must be an object."))?;
 
-        let Some(date) = obj.downcast_ref::<Self>() else {
+        let Some(date) = obj.downcast_ref::<Self>()? else {
             return Err(JsNativeError::typ()
                 .with_message("the this object must be a PlainDate object.")
                 .into());
@@ -674,7 +678,7 @@ impl PlainDate {
             .as_object()
             .ok_or_else(|| JsNativeError::typ().with_message("this must be an object."))?;
 
-        let Some(date) = obj.downcast_ref::<Self>() else {
+        let Some(date) = obj.downcast_ref::<Self>()? else {
             return Err(JsNativeError::typ()
                 .with_message("the this object must be a PlainDate object.")
                 .into());
@@ -699,7 +703,7 @@ impl PlainDate {
             .as_object()
             .ok_or_else(|| JsNativeError::typ().with_message("this must be an object."))?;
 
-        let Some(date) = obj.downcast_ref::<Self>() else {
+        let Some(date) = obj.downcast_ref::<Self>()? else {
             return Err(JsNativeError::typ()
                 .with_message("the this object must be a PlainDate object.")
                 .into());
@@ -724,7 +728,7 @@ impl PlainDate {
             .as_object()
             .ok_or_else(|| JsNativeError::typ().with_message("this must be an object."))?;
 
-        let Some(date) = obj.downcast_ref::<Self>() else {
+        let Some(date) = obj.downcast_ref::<Self>()? else {
             return Err(JsNativeError::typ()
                 .with_message("the this object must be a PlainDate object.")
                 .into());
@@ -751,7 +755,12 @@ impl PlainDate {
         let options = args.get(1);
 
         let object = item.as_object();
-        if let Some(date) = object.as_ref().and_then(JsObject::downcast_ref::<Self>) {
+        if let Some(date) = object
+            .as_ref()
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
+        {
             let options = get_options_object(options.unwrap_or(&JsValue::undefined()), context)?;
             let _ = get_option::<Overflow>(&options, js_string!("overflow"), context)?;
             return create_temporal_date(date.inner.clone(), None, context).map(Into::into);
@@ -804,7 +813,9 @@ impl PlainDate {
         let object = this.as_object();
         let date = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDate object.")
             })?;
@@ -834,7 +845,9 @@ impl PlainDate {
         let object = this.as_object();
         let date = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDate object.")
             })?;
@@ -860,7 +873,9 @@ impl PlainDate {
         let object = this.as_object();
         let date = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDate object.")
             })?;
@@ -896,7 +911,9 @@ impl PlainDate {
         let object = this.as_object();
         let date = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDate object.")
             })?;
@@ -932,7 +949,9 @@ impl PlainDate {
         let object = this.as_object();
         let date = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDate object.")
             })?;
@@ -981,7 +1000,9 @@ impl PlainDate {
         // 2. Perform ? RequireInternalSlot(plainDate, [[InitializedTemporalDate]]).
         let date = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDate object.")
             })?;
@@ -1010,7 +1031,9 @@ impl PlainDate {
         let object = this.as_object();
         let date = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDate object.")
             })?;
@@ -1041,7 +1064,9 @@ impl PlainDate {
         let object = this.as_object();
         let date = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDate object.")
             })?;
@@ -1070,7 +1095,9 @@ impl PlainDate {
         let object = this.as_object();
         let date = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDate object.")
             })?;
@@ -1101,7 +1128,9 @@ impl PlainDate {
         let object = this.as_object();
         let date = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDate object.")
             })?;
@@ -1137,7 +1166,9 @@ impl PlainDate {
         let object = this.as_object();
         let date = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDate object.")
             })?;
@@ -1199,7 +1230,9 @@ impl PlainDate {
         let object = this.as_object();
         let date = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDate object.")
             })?;
@@ -1225,7 +1258,9 @@ impl PlainDate {
         let object = this.as_object();
         let date = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDate object.")
             })?;
@@ -1246,7 +1281,9 @@ impl PlainDate {
         let object = this.as_object();
         let date = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainDate object.")
             })?;
@@ -1325,11 +1362,11 @@ pub(crate) fn to_temporal_date(
     // 4. If Type(item) is Object, then
     if let Some(object) = item.as_object() {
         // a. If item has an [[InitializedTemporalDate]] internal slot, then
-        if let Some(date) = object.downcast_ref::<PlainDate>() {
+        if let Some(date) = object.downcast_ref::<PlainDate>()? {
             let _options_obj = get_options_object(&options, context)?;
             return Ok(date.inner.clone());
         // b. If item has an [[InitializedTemporalZonedDateTime]] internal slot, then
-        } else if let Some(zdt) = object.downcast_ref::<ZonedDateTime>() {
+        } else if let Some(zdt) = object.downcast_ref::<ZonedDateTime>()? {
             let options_obj = get_options_object(&options, context)?;
             // i. Perform ? ToTemporalOverflow(options).
             let _overflow = get_option(&options_obj, js_string!("overflow"), context)?
@@ -1340,7 +1377,7 @@ pub(crate) fn to_temporal_date(
             // iv. Return ! CreateTemporalDate(plainDateTime.[[ISOYear]], plainDateTime.[[ISOMonth]], plainDateTime.[[ISODay]], plainDateTime.[[Calendar]]).
             return Ok(zdt.inner.to_plain_date());
         // c. If item has an [[InitializedTemporalDateTime]] internal slot, then
-        } else if let Some(dt) = object.downcast_ref::<PlainDateTime>() {
+        } else if let Some(dt) = object.downcast_ref::<PlainDateTime>()? {
             let options_obj = get_options_object(&options, context)?;
             // i. Perform ? ToTemporalOverflow(options).
             let _overflow = get_option(&options_obj, js_string!("overflow"), context)?

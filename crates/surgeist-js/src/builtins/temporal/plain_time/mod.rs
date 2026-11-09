@@ -56,7 +56,7 @@ impl BuiltInObject for PlainTime {
 }
 
 impl IntrinsicObject for PlainTime {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_hour = BuiltInBuilder::callable(realm, Self::get_hour)
             .name(js_string!("get hour"))
             .build();
@@ -136,7 +136,9 @@ impl IntrinsicObject for PlainTime {
             .method(Self::to_locale_string, js_string!("toLocaleString"), 0)
             .method(Self::to_json, js_string!("toJSON"), 0)
             .method(Self::value_of, js_string!("valueOf"), 0)
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -269,7 +271,9 @@ impl PlainTime {
         let object = this.as_object();
         let time = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainTime object.")
             })?;
@@ -295,7 +299,9 @@ impl PlainTime {
         let object = this.as_object();
         let time = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainTime object.")
             })?;
@@ -321,7 +327,9 @@ impl PlainTime {
         let object = this.as_object();
         let time = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainTime object.")
             })?;
@@ -347,7 +355,9 @@ impl PlainTime {
         let object = this.as_object();
         let time = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainTime object.")
             })?;
@@ -373,7 +383,9 @@ impl PlainTime {
         let object = this.as_object();
         let time = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainTime object.")
             })?;
@@ -399,7 +411,9 @@ impl PlainTime {
         let object = this.as_object();
         let time = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainTime object.")
             })?;
@@ -471,7 +485,9 @@ impl PlainTime {
         let object = this.as_object();
         let time = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainTime object.")
             })?;
@@ -500,7 +516,9 @@ impl PlainTime {
         let object = this.as_object();
         let time = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainTime object.")
             })?;
@@ -529,7 +547,9 @@ impl PlainTime {
         let object = this.as_object();
         let time = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainTime object.")
             })?;
@@ -575,7 +595,9 @@ impl PlainTime {
         let object = this.as_object();
         let time = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainTime object.")
             })?;
@@ -607,7 +629,9 @@ impl PlainTime {
         let object = this.as_object();
         let time = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainTime object.")
             })?;
@@ -641,7 +665,9 @@ impl PlainTime {
         let object = this.as_object();
         let time = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainTime object.")
             })?;
@@ -718,7 +744,9 @@ impl PlainTime {
         let object = this.as_object();
         let time = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainTime object.")
             })?;
@@ -750,7 +778,9 @@ impl PlainTime {
         let object = this.as_object();
         let time = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainTime object.")
             })?;
@@ -787,7 +817,9 @@ impl PlainTime {
         let object = this.as_object();
         let time = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainTime object.")
             })?;
@@ -811,7 +843,9 @@ impl PlainTime {
         let object = this.as_object();
         let time = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be a PlainTime object.")
             })?;
@@ -891,13 +925,13 @@ pub(crate) fn to_temporal_time(
     match value.variant() {
         JsVariant::Object(object) => {
             // a. If item has an [[InitializedTemporalTime]] internal slot, then
-            if let Some(time) = object.downcast_ref::<PlainTime>() {
+            if let Some(time) = object.downcast_ref::<PlainTime>()? {
                 // i. Return item.
                 let options = get_options_object(options, context)?;
                 let _overflow = get_option::<Overflow>(&options, js_string!("overflow"), context)?;
                 return Ok(time.inner);
             // b. If item has an [[InitializedTemporalZonedDateTime]] internal slot, then
-            } else if let Some(zdt) = object.downcast_ref::<ZonedDateTime>() {
+            } else if let Some(zdt) = object.downcast_ref::<ZonedDateTime>()? {
                 // i. Let instant be ! CreateTemporalInstant(item.[[Nanoseconds]]).
                 // ii. Let timeZoneRec be ? CreateTimeZoneMethodsRecord(item.[[TimeZone]], « get-offset-nanoseconds-for »).
                 // iii. Let plainDateTime be ? GetPlainDateTimeFor(timeZoneRec, instant, item.[[Calendar]]).
@@ -908,7 +942,7 @@ pub(crate) fn to_temporal_time(
                 let _overflow = get_option::<Overflow>(&options, js_string!("overflow"), context)?;
                 return Ok(zdt.inner.to_plain_time());
             // c. If item has an [[InitializedTemporalDateTime]] internal slot, then
-            } else if let Some(dt) = object.downcast_ref::<PlainDateTime>() {
+            } else if let Some(dt) = object.downcast_ref::<PlainDateTime>()? {
                 // i. Return ! CreateTemporalTime(item.[[ISOHour]], item.[[ISOMinute]],
                 // item.[[ISOSecond]], item.[[ISOMillisecond]], item.[[ISOMicrosecond]],
                 // item.[[ISONanosecond]]).

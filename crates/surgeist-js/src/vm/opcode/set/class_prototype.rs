@@ -20,7 +20,7 @@ impl SetClassPrototype {
     pub(crate) fn operation(
         (dst, prototype, class): (RegisterOperand, RegisterOperand, RegisterOperand),
         context: &mut Context,
-    ) {
+    ) -> crate::JsResult<()> {
         let prototype = context.vm.get_register(prototype.into());
         let prototype = match prototype.variant() {
             JsVariant::Object(proto) => Some(proto.clone()),
@@ -40,37 +40,34 @@ impl SetClassPrototype {
 
         {
             let class_object = class.as_object().expect("class must be object");
+            class_object.define_property_or_throw(
+                PROTOTYPE,
+                PropertyDescriptorBuilder::new()
+                    .value(proto.clone())
+                    .writable(false)
+                    .enumerable(false)
+                    .configurable(false),
+                context.access(),
+            )?;
             class_object
-                .define_property_or_throw(
-                    PROTOTYPE,
-                    PropertyDescriptorBuilder::new()
-                        .value(proto.clone())
-                        .writable(false)
-                        .enumerable(false)
-                        .configurable(false),
-                    context.access(),
-                )
-                .expect("cannot fail per spec");
-            class_object
-                .downcast_mut::<OrdinaryFunction>()
-                .expect("class must be function object")
+                .downcast_mut::<OrdinaryFunction>()?
+                .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
                 .set_home_object(proto.clone());
         }
 
-        proto
-            .__define_own_property__(
-                &CONSTRUCTOR.into(),
-                PropertyDescriptorBuilder::new()
-                    .value(class.clone())
-                    .writable(true)
-                    .enumerable(false)
-                    .configurable(true)
-                    .build(),
-                &mut InternalMethodPropertyContext::new(context),
-            )
-            .expect("cannot fail per spec");
+        proto.__define_own_property__(
+            &CONSTRUCTOR.into(),
+            PropertyDescriptorBuilder::new()
+                .value(class.clone())
+                .writable(true)
+                .enumerable(false)
+                .configurable(true)
+                .build(),
+            &mut InternalMethodPropertyContext::new(context),
+        )?;
 
         context.vm.set_register(dst.into(), proto.into());
+        Ok(())
     }
 }
 

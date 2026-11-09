@@ -598,7 +598,7 @@ pub(crate) fn ordinary_get_prototype_of(
     _context: &mut Context,
 ) -> JsResult<JsPrototype> {
     // 1. Return O.[[Prototype]].
-    Ok(obj.prototype().clone())
+    Ok(obj.prototype()?)
 }
 
 /// Abstract operation `OrdinarySetPrototypeOf`.
@@ -615,7 +615,7 @@ pub(crate) fn ordinary_set_prototype_of(
 ) -> JsResult<bool> {
     // 1. Assert: Either Type(V) is Object or Type(V) is Null.
     // 2. Let current be O.[[Prototype]].
-    let current = obj.prototype();
+    let current = obj.prototype()?;
 
     // 3. If SameValue(V, current) is true, return true.
     if val == current {
@@ -624,7 +624,7 @@ pub(crate) fn ordinary_set_prototype_of(
 
     // 4. Let extensible be O.[[Extensible]].
     // 5. If extensible is false, return false.
-    if !obj.extensible() {
+    if !obj.extensible()? {
         return Ok(false);
     }
 
@@ -648,11 +648,11 @@ pub(crate) fn ordinary_set_prototype_of(
             break;
         }
         // ii. Else, set p to p.[[Prototype]].
-        p = proto.prototype();
+        p = proto.prototype()?;
     }
 
     // 9. Set O.[[Prototype]] to V.
-    obj.set_prototype(val);
+    obj.set_prototype(val)?;
 
     // 10. Return true.
     Ok(true)
@@ -667,7 +667,7 @@ pub(crate) fn ordinary_set_prototype_of(
 #[allow(clippy::unnecessary_wraps)]
 pub(crate) fn ordinary_is_extensible(obj: &JsObject, _context: &mut Context) -> JsResult<bool> {
     // 1. Return O.[[Extensible]].
-    Ok(obj.borrow().extensible)
+    Ok(obj.borrow()?.extensible)
 }
 
 /// Abstract operation `OrdinaryPreventExtensions`.
@@ -682,7 +682,7 @@ pub(crate) fn ordinary_prevent_extensions(
     _context: &mut Context,
 ) -> JsResult<bool> {
     // 1. Set O.[[Extensible]] to false.
-    obj.borrow_mut().state_mut().extensible = false;
+    obj.borrow_mut()?.state_mut().extensible = false;
 
     // 2. Return true.
     Ok(true)
@@ -714,7 +714,7 @@ pub(crate) fn ordinary_get_own_property(
     // 7. Set D.[[Enumerable]] to the value of X's [[Enumerable]] attribute.
     // 8. Set D.[[Configurable]] to the value of X's [[Configurable]] attribute.
     // 9. Return D.
-    Ok(obj.borrow().properties.get_with_slot(key, context.slot()))
+    Ok(obj.borrow()?.properties.get_with_slot(key, context.slot()))
 }
 
 /// Abstract operation `OrdinaryDefineOwnProperty`.
@@ -737,31 +737,34 @@ pub(crate) fn ordinary_define_own_property(
 
     // A successful compatibility check is not itself a mutation. Match the
     // no-write returns in ValidateAndApply before recording an actual effect.
-    if context.track_effect {
+    let writes = if context.track_effect {
         if !is_compatible_property_descriptor(extensible, desc.clone(), current.clone()) {
             return Ok(false);
         }
-        let writes = !desc.is_empty()
+        !desc.is_empty()
             && current.as_ref().is_none_or(|current| {
                 current.expect_configurable()
                     || !(current.is_data_descriptor()
                         && desc.is_data_descriptor()
                         && !current.expect_writable()
                         || current.is_accessor_descriptor() && desc.is_accessor_descriptor())
-            });
-        if writes {
-            context.note_property_effect();
-        }
-    }
+            })
+    } else {
+        false
+    };
 
     // 3. Return ValidateAndApplyPropertyDescriptor(O, P, extensible, Desc, current).
-    Ok(validate_and_apply_property_descriptor(
+    let accepted = validate_and_apply_property_descriptor(
         Some((obj, key)),
         extensible,
         desc,
         current,
         context.slot(),
-    ))
+    )?;
+    if accepted && writes {
+        context.note_property_effect();
+    }
+    Ok(accepted)
 }
 
 /// Abstract operation `OrdinaryHasProperty`.
@@ -1043,7 +1046,7 @@ pub(crate) fn ordinary_delete(
             // 4. If desc.[[Configurable]] is true, then
             Some(desc) if desc.expect_configurable() => {
                 // a. Remove the own property with name P from O.
-                obj.borrow_mut().state_mut().remove(key);
+                obj.borrow_mut()?.state_mut().remove(key);
                 // b. Return true.
                 true
             }
@@ -1070,7 +1073,7 @@ pub(crate) fn ordinary_own_property_keys(
     let mut keys = Vec::new();
 
     let ordered_indexes = {
-        let mut indexes: Vec<_> = obj.borrow().properties.index_property_keys().collect();
+        let mut indexes: Vec<_> = obj.borrow()?.properties.index_property_keys().collect();
         indexes.sort_unstable();
         indexes
     };
@@ -1084,7 +1087,7 @@ pub(crate) fn ordinary_own_property_keys(
     //
     // 4. For each own property key P of O such that Type(P) is Symbol, in ascending chronological order of property creation, do
     //     a. Add P as the last element of keys.
-    keys.extend(obj.borrow().properties.shape().keys());
+    keys.extend(obj.borrow()?.properties.shape().keys());
 
     // 5. Return keys.
     Ok(keys)
@@ -1101,82 +1104,89 @@ pub(crate) fn is_compatible_property_descriptor(
     desc: PropertyDescriptor,
     current: Option<PropertyDescriptor>,
 ) -> bool {
-    // 1. Return ValidateAndApplyPropertyDescriptor(undefined, undefined, Extensible, Desc, Current).
-    validate_and_apply_property_descriptor(None, extensible, desc, current, &mut Slot::new())
+    !matches!(
+        property_descriptor_update(extensible, desc, current),
+        PropertyUpdate::Rejected
+    )
 }
 
-/// Abstract operation `ValidateAndApplyPropertyDescriptor`
+/// Abstract operation `ValidateAndApplyPropertyDescriptor`.
 ///
-/// More information:
-///  - [ECMAScript reference][spec]
-///
-/// [spec]: https://tc39.es/ecma262/#sec-validateandapplypropertydescriptor
+/// Pure descriptor validation is shared with compatibility checks. Only this
+/// front acquires object access and applies an accepted update.
 pub(crate) fn validate_and_apply_property_descriptor(
     obj_and_key: Option<(&JsObject, &PropertyKey)>,
     extensible: bool,
     desc: PropertyDescriptor,
     current: Option<PropertyDescriptor>,
     slot: &mut Slot,
-) -> bool {
+) -> JsResult<bool> {
+    let update = property_descriptor_update(extensible, desc, current);
+    let (descriptor, existing) = match update {
+        PropertyUpdate::Rejected => return Ok(false),
+        PropertyUpdate::Unchanged => return Ok(true),
+        PropertyUpdate::Create(descriptor) => (descriptor, false),
+        PropertyUpdate::Update(descriptor) => (descriptor, true),
+    };
+    if let Some((obj, key)) = obj_and_key {
+        obj.borrow_mut()?
+            .properties_mut()
+            .insert_with_slot(key, descriptor, slot);
+        if existing {
+            slot.attributes |= SlotAttributes::FOUND;
+        }
+    }
+    Ok(true)
+}
+
+enum PropertyUpdate {
+    Rejected,
+    Unchanged,
+    Create(PropertyDescriptor),
+    Update(PropertyDescriptor),
+}
+
+fn property_descriptor_update(
+    extensible: bool,
+    desc: PropertyDescriptor,
+    current: Option<PropertyDescriptor>,
+) -> PropertyUpdate {
     // 1. Assert: If O is not undefined, then IsPropertyKey(P) is true.
 
     let Some(mut current) = current else {
         // 2. If current is undefined, then
         // a. If extensible is false, return false.
         if !extensible {
-            return false;
+            return PropertyUpdate::Rejected;
         }
 
         // b. Assert: extensible is true.
 
-        if let Some((obj, key)) = obj_and_key {
-            obj.borrow_mut().properties_mut().insert_with_slot(
-                key,
-                // c. If IsGenericDescriptor(Desc) is true or IsDataDescriptor(Desc) is true, then
-                if desc.is_generic_descriptor() || desc.is_data_descriptor() {
-                    // i. If O is not undefined, create an own data property named P of
-                    // object O whose [[Value]], [[Writable]], [[Enumerable]], and
-                    // [[Configurable]] attribute values are described by Desc.
-                    // If the value of an attribute field of Desc is absent, the attribute
-                    // of the newly created property is set to its default value.
-                    desc.into_data_defaulted()
-                }
-                // d. Else,
-                else {
-                    // i. Assert: ! IsAccessorDescriptor(Desc) is true.
-
-                    // ii. If O is not undefined, create an own accessor property named P
-                    // of object O whose [[Get]], [[Set]], [[Enumerable]], and [[Configurable]]
-                    // attribute values are described by Desc. If the value of an attribute field
-                    // of Desc is absent, the attribute of the newly created property is set to
-                    // its default value.
-                    desc.into_accessor_defaulted()
-                },
-                slot,
-            );
-        }
-
-        // e. Return true.
-        return true;
+        let desc = if desc.is_generic_descriptor() || desc.is_data_descriptor() {
+            desc.into_data_defaulted()
+        } else {
+            desc.into_accessor_defaulted()
+        };
+        return PropertyUpdate::Create(desc);
     };
 
     // 3. If every field in Desc is absent, return true.
     if desc.is_empty() {
-        return true;
+        return PropertyUpdate::Unchanged;
     }
 
     // 4. If current.[[Configurable]] is false, then
     if !current.expect_configurable() {
         // a. If Desc.[[Configurable]] is present and its value is true, return false.
         if matches!(desc.configurable(), Some(true)) {
-            return false;
+            return PropertyUpdate::Rejected;
         }
 
         // b. If Desc.[[Enumerable]] is present and ! SameValue(Desc.[[Enumerable]], current.[[Enumerable]])
         // is false, return false.
         if matches!(desc.enumerable(), Some(desc_enum) if desc_enum != current.expect_enumerable())
         {
-            return false;
+            return PropertyUpdate::Rejected;
         }
     }
 
@@ -1188,26 +1198,24 @@ pub(crate) fn validate_and_apply_property_descriptor(
     else if current.is_data_descriptor() != desc.is_data_descriptor() {
         // a. If current.[[Configurable]] is false, return false.
         if !current.expect_configurable() {
-            return false;
+            return PropertyUpdate::Rejected;
         }
 
-        if obj_and_key.is_some() {
-            // b. If IsDataDescriptor(current) is true, then
-            if current.is_data_descriptor() {
-                // i. If O is not undefined, convert the property named P of object O from a data
-                // property to an accessor property. Preserve the existing values of the converted
-                // property's [[Configurable]] and [[Enumerable]] attributes and set the rest of
-                // the property's attributes to their default values.
-                current = current.into_accessor_defaulted();
-            }
-            // c. Else,
-            else {
-                // i. If O is not undefined, convert the property named P of object O from an
-                // accessor property to a data property. Preserve the existing values of the
-                // converted property's [[Configurable]] and [[Enumerable]] attributes and set
-                // the rest of the property's attributes to their default values.
-                current = current.into_data_defaulted();
-            }
+        // b. If IsDataDescriptor(current) is true, then
+        if current.is_data_descriptor() {
+            // i. If O is not undefined, convert the property named P of object O from a data
+            // property to an accessor property. Preserve the existing values of the converted
+            // property's [[Configurable]] and [[Enumerable]] attributes and set the rest of
+            // the property's attributes to their default values.
+            current = current.into_accessor_defaulted();
+        }
+        // c. Else,
+        else {
+            // i. If O is not undefined, convert the property named P of object O from an
+            // accessor property to a data property. Preserve the existing values of the
+            // converted property's [[Configurable]] and [[Enumerable]] attributes and set
+            // the rest of the property's attributes to their default values.
+            current = current.into_data_defaulted();
         }
     }
     // 7. Else if IsDataDescriptor(current) and IsDataDescriptor(Desc) are both true, then
@@ -1216,15 +1224,15 @@ pub(crate) fn validate_and_apply_property_descriptor(
         if !current.expect_configurable() && !current.expect_writable() {
             // i. If Desc.[[Writable]] is present and Desc.[[Writable]] is true, return false.
             if matches!(desc.writable(), Some(true)) {
-                return false;
+                return PropertyUpdate::Rejected;
             }
             // ii. If Desc.[[Value]] is present and SameValue(Desc.[[Value]], current.[[Value]]) is false, return false.
             if matches!(desc.value(), Some(value) if !JsValue::same_value(value, current.expect_value()))
             {
-                return false;
+                return PropertyUpdate::Rejected;
             }
             // iii. Return true.
-            return true;
+            return PropertyUpdate::Unchanged;
         }
     }
     // 8. Else,
@@ -1233,30 +1241,20 @@ pub(crate) fn validate_and_apply_property_descriptor(
     else if !current.expect_configurable() {
         // i. If Desc.[[Set]] is present and SameValue(Desc.[[Set]], current.[[Set]]) is false, return false.
         if matches!(desc.set(), Some(set) if !JsValue::same_value(set, current.expect_set())) {
-            return false;
+            return PropertyUpdate::Rejected;
         }
 
         // ii. If Desc.[[Get]] is present and SameValue(Desc.[[Get]], current.[[Get]]) is false, return false.
         if matches!(desc.get(), Some(get) if !JsValue::same_value(get, current.expect_get())) {
-            return false;
+            return PropertyUpdate::Rejected;
         }
         // iii. Return true.
-        return true;
+        return PropertyUpdate::Unchanged;
     }
 
-    // 9. If O is not undefined, then
-    if let Some((obj, key)) = obj_and_key {
-        // a. For each field of Desc that is present, set the corresponding attribute of the
-        // property named P of object O to the value of the field.
-        current.fill_with(desc);
-        obj.borrow_mut()
-            .properties_mut()
-            .insert_with_slot(key, current, slot);
-        slot.attributes |= SlotAttributes::FOUND;
-    }
-
-    // 10. Return true.
-    true
+    // 9. Prepare the completed descriptor; the caller owns any object mutation.
+    current.fill_with(desc);
+    PropertyUpdate::Update(current)
 }
 
 /// Abstract operation `GetPrototypeFromConstructor`

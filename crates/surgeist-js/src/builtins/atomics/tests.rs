@@ -156,7 +156,7 @@ fn waiterlist_block_indexedposition_wake() {
         .build()
         .unwrap();
     let buffer = JsSharedArrayBuffer::new(size_of::<i32>() * 5, context.access()).unwrap();
-    let inner_buffer = buffer.inner();
+    let inner_buffer = buffer.inner().unwrap();
     let i32a = JsInt32Array::from_shared_array_buffer(buffer.clone(), context.access()).unwrap();
 
     std::thread::scope(|s| {

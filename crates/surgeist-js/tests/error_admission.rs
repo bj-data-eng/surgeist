@@ -45,7 +45,7 @@ fn foreign_aggregate_member_before_engine_member_cannot_make_it_catchable() {
     let mut owner = Context::default();
     let foreign = Context::default();
     let error = JsNativeError::aggregate(vec![
-        JsError::from_opaque(foreign.global_object().into()),
+        JsError::from_opaque(foreign.global_object().into()).unwrap(),
         EngineError::ContextAccessBusy.into(),
     ]);
     assert_engine_survives_admission(&mut owner, error.into());
@@ -57,7 +57,7 @@ fn foreign_aggregate_member_after_engine_member_cannot_make_it_catchable() {
     let foreign = Context::default();
     let error = JsNativeError::aggregate(vec![
         EngineError::ContextAccessBusy.into(),
-        JsError::from_opaque(foreign.global_object().into()),
+        JsError::from_opaque(foreign.global_object().into()).unwrap(),
     ]);
     assert_engine_survives_admission(&mut owner, error.into());
 }
@@ -67,7 +67,7 @@ fn foreign_cause_cannot_hide_an_engine_aggregate_member() {
     let mut owner = Context::default();
     let foreign = Context::default();
     let error = JsNativeError::aggregate(vec![EngineError::ContextAccessBusy.into()])
-        .with_cause(JsError::from_opaque(foreign.global_object().into()));
+        .with_cause(JsError::from_opaque(foreign.global_object().into()).unwrap());
     assert_engine_survives_admission(&mut owner, error.into());
 }
 
@@ -76,9 +76,10 @@ fn engine_nested_in_a_native_cause_survives_a_foreign_aggregate_member() {
     let mut owner = Context::default();
     let foreign = Context::default();
     let cause = JsNativeError::aggregate(vec![EngineError::ContextAccessBusy.into()]);
-    let error =
-        JsNativeError::aggregate(vec![JsError::from_opaque(foreign.global_object().into())])
-            .with_cause(cause);
+    let error = JsNativeError::aggregate(vec![
+        JsError::from_opaque(foreign.global_object().into()).unwrap(),
+    ])
+    .with_cause(cause);
     assert_engine_survives_admission(&mut owner, error.into());
 }
 
@@ -101,8 +102,10 @@ fn local_nested_engine_error_preserves_its_tree_and_refuses_materialization() {
 fn foreign_only_error_remains_a_catchable_type_error() {
     let mut owner = Context::default();
     let foreign = Context::default();
-    let error: JsError =
-        JsNativeError::aggregate(vec![JsError::from_opaque(foreign.global_object().into())]).into();
+    let error: JsError = JsNativeError::aggregate(vec![
+        JsError::from_opaque(foreign.global_object().into()).unwrap(),
+    ])
+    .into();
     let refusal = error.clone().into_opaque(owner.access()).unwrap_err();
     assert_eq!(
         refusal.as_native().unwrap().kind(),

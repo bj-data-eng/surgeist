@@ -3,7 +3,8 @@
 //! The `JsObject` is a garbage collected Object.
 
 use super::{
-    IndexedProperties, JsPrototype, NativeObject, Object, ObjectState, PrivateName, PropertyMap,
+    IndexedProperties, JsPrototype, NativeObject, NativeProjection, Object, ObjectState,
+    PrivateName, PropertyMap,
     internal_methods::{InternalObjectMethods, ORDINARY_INTERNAL_METHODS},
     shape::{RootShape, UniqueShape, property_table::PropertyTableInner},
 };
@@ -16,7 +17,7 @@ use crate::{
     },
     class::Class,
     context::intrinsics::Intrinsics,
-    error::JsNativeError,
+    error::{JsNativeError, ObjectAccessError},
     js_error, js_string,
     property::{PropertyDescriptor, PropertyKey},
     value::PreferredType,
@@ -27,40 +28,33 @@ use std::{
     any::{Any, TypeId},
     cell::{Ref, RefCell, RefMut},
     collections::HashMap,
-    error::Error,
-    fmt::{self, Debug, Display},
+    fmt::{self, Debug},
     hash::Hash,
     marker::PhantomData,
     ops::Deref,
     rc::{Rc, Weak},
-    result::Result as StdResult,
 };
 use surgeist_js_gc::heap::{AccessError, ObjectId, RecordRef, Rooted, Trace as HeapTrace};
 
 /// An immutable borrow of an object's common state and typed native payload.
-#[derive(Debug)]
 pub struct ObjectRef<'a, T: NativeObject + ?Sized> {
-    inner: Ref<'a, Object>,
-    brand: PhantomData<fn(&T) -> &T>,
+    state: Ref<'a, ObjectState>,
+    data: Ref<'a, T>,
 }
 
 impl<T: NativeObject + ?Sized> Deref for ObjectRef<'_, T> {
     type Target = ObjectState;
 
     fn deref(&self) -> &ObjectState {
-        &self.inner.state
+        &self.state
     }
 }
 
-impl<T: NativeObject> ObjectRef<'_, T> {
+impl<T: NativeObject + ?Sized> ObjectRef<'_, T> {
     /// Borrows the object's native payload.
     #[must_use]
     pub fn data(&self) -> &T {
-        self.inner
-            .data
-            .as_ref()
-            .downcast_ref()
-            .expect("checked object brand")
+        &self.data
     }
 }
 
@@ -74,7 +68,7 @@ impl<T: NativeObject> ObjectRef<'_, T> {
 /// let context = Context::default();
 /// let a = JsObject::with_object_proto(context.intrinsics());
 /// let b = JsObject::with_object_proto(context.intrinsics());
-/// std::mem::swap(&mut *a.borrow_mut(), &mut *b.borrow_mut());
+/// std::mem::swap(&mut *a.borrow_mut().unwrap(), &mut *b.borrow_mut().unwrap());
 /// ```
 ///
 /// Engine-owned native payloads have their own mutation operations.
@@ -83,30 +77,29 @@ impl<T: NativeObject> ObjectRef<'_, T> {
 /// use surgeist_js::{Context, object::builtins::JsArrayBuffer};
 /// let mut context = Context::default();
 /// let buffer = JsArrayBuffer::new(8, context.access()).unwrap();
-/// let mut object = buffer.borrow_mut();
+/// let mut object = buffer.borrow_mut().unwrap();
 /// let _ = object.data_mut();
 /// ```
-#[derive(Debug)]
 pub struct ObjectRefMut<'a, T: NativeObject + ?Sized> {
-    inner: RefMut<'a, Object>,
-    brand: PhantomData<fn(&T) -> &T>,
+    state: RefMut<'a, ObjectState>,
+    data: RefMut<'a, T>,
 }
 
 impl<T: NativeObject + ?Sized> Deref for ObjectRefMut<'_, T> {
     type Target = ObjectState;
 
     fn deref(&self) -> &ObjectState {
-        &self.inner.state
+        &self.state
     }
 }
 
 impl<T: NativeObject + ?Sized> ObjectRefMut<'_, T> {
     pub(crate) fn state_mut(&mut self) -> &mut ObjectState {
-        &mut self.inner.state
+        &mut self.state
     }
 
     pub(crate) fn properties_mut(&mut self) -> &mut PropertyMap {
-        self.inner.state.properties_mut()
+        self.state.properties_mut()
     }
 
     pub(crate) fn insert(
@@ -114,34 +107,44 @@ impl<T: NativeObject + ?Sized> ObjectRefMut<'_, T> {
         key: impl Into<PropertyKey>,
         property: impl Into<PropertyDescriptor>,
     ) -> bool {
-        self.inner.state.insert(key, property)
+        self.state.insert(key, property)
     }
 
     /// Sets the prototype if it belongs to this runtime and the object permits it.
     pub fn set_prototype(&mut self, prototype: impl Into<JsPrototype>) -> bool {
-        self.inner.state.set_prototype(prototype)
+        self.state.set_prototype(prototype)
     }
 }
 
-impl<T: NativeObject> ObjectRefMut<'_, T> {
+impl<T: NativeObject + ?Sized> ObjectRefMut<'_, T> {
     /// Borrows the object's native payload.
     #[must_use]
     pub fn data(&self) -> &T {
-        self.inner
-            .data
-            .as_ref()
-            .downcast_ref()
-            .expect("checked object brand")
+        &self.data
     }
 
     /// Mutably borrows the object's native payload.
     #[must_use]
     pub(crate) fn data_mut(&mut self) -> &mut T {
-        self.inner
-            .data
-            .as_mut()
-            .downcast_mut()
-            .expect("checked object brand")
+        &mut self.data
+    }
+}
+
+impl<T: NativeObject + ?Sized> Debug for ObjectRef<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ObjectRef")
+            .field("state", &self.state)
+            .field("data_type", &self.data.deref().type_name_of_value())
+            .finish()
+    }
+}
+
+impl<T: NativeObject + ?Sized> Debug for ObjectRefMut<'_, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ObjectRefMut")
+            .field("state", &self.state)
+            .field("data_type", &self.data.deref().type_name_of_value())
+            .finish()
     }
 }
 
@@ -252,7 +255,7 @@ impl UnpublishedObject<crate::builtins::function::OrdinaryFunction> {
             heap: self.inner.runtime().clone(),
         };
         prototype.check_runtime(&runtime)?;
-        let mut prototype = prototype.borrow_mut();
+        let mut prototype = prototype.borrow_mut()?;
         let mut slot = super::shape::slot::Slot::new();
         let descriptor = prototype
             .properties
@@ -433,7 +436,7 @@ impl JsObject {
     /// let obj = JsObject::with_object_proto(context.intrinsics());
     ///
     /// assert!(obj.is_ordinary());
-    /// assert!(obj.prototype().is_some());
+    /// assert!(obj.prototype().unwrap().is_some());
     /// ```
     #[inline]
     #[must_use]
@@ -458,7 +461,7 @@ impl JsObject {
     /// ```
     /// # use surgeist_js::{JsObject, Runtime};
     /// let obj = JsObject::with_null_proto(&Runtime::default());
-    /// assert!(obj.prototype().is_none());
+    /// assert!(obj.prototype().unwrap().is_none());
     /// assert!(obj.is_ordinary());
     /// ```
     #[inline]
@@ -495,13 +498,13 @@ impl JsObject {
     /// .unwrap();
     ///
     /// assert!(obj.is_ordinary());
-    /// assert!(obj.prototype().is_some());
+    /// assert!(obj.prototype().unwrap().is_some());
     ///
     /// // Create an object with no prototype.
     /// let null_obj =
     ///     JsObject::from_proto_and_data(context.runtime(), None, OrdinaryObject)
     ///         .unwrap();
-    /// assert!(null_obj.prototype().is_none());
+    /// assert!(null_obj.prototype().unwrap().is_none());
     /// ```
     pub fn from_proto_and_data<O: Into<Option<Self>>, T: NativeObject>(
         runtime: &Runtime,
@@ -562,9 +565,8 @@ impl JsObject {
     /// Downcasts a reference to the object,
     /// if the object is of type `T`.
     ///
-    /// # Panics
-    ///
-    /// Panics if the object is currently mutably borrowed.
+    /// Returns a typed access failure if a mutable alias is active or the
+    /// required native projection is invalid.
     ///
     /// # Examples
     ///
@@ -579,21 +581,20 @@ impl JsObject {
     ///         .unwrap();
     ///
     /// // Downcast ref succeeds for the correct type.
-    /// assert!(obj.downcast_ref::<OrdinaryObject>().is_some());
+    /// assert!(obj.downcast_ref::<OrdinaryObject>().unwrap().is_some());
     ///
     /// // Returns `None` for a wrong type.
-    /// assert!(obj.downcast_ref::<CustomStruct>().is_none());
+    /// assert!(obj.downcast_ref::<CustomStruct>().unwrap().is_none());
     /// ```
-    #[must_use]
     #[track_caller]
-    pub fn downcast_ref<T: NativeObject>(&self) -> Option<Ref<'_, T>> {
+    pub fn downcast_ref<T: NativeObject>(&self) -> Result<Option<Ref<'_, T>>, ObjectAccessError> {
         if !self.is::<T>() {
-            return None;
+            return Ok(None);
         }
-        Ref::filter_map(self.borrow().inner, |object| {
-            object.data.as_ref().downcast_ref()
-        })
-        .ok()
+        let ObjectRef { data, .. } = self.borrow()?;
+        Ref::filter_map(data, |data| data.downcast_ref())
+            .map(Some)
+            .map_err(|_| ObjectAccessError::WrongNativeBrand)
     }
 
     /// Mutably borrows the payload of a host-defined class.
@@ -601,9 +602,8 @@ impl JsObject {
     /// Returns `None` if the object has a different native brand.
     /// The caller must preserve the heap edges described by [`Class`].
     ///
-    /// # Panics
-    ///
-    /// Panics if the object is currently borrowed.
+    /// Conflicting access or an invalid native projection returns a typed
+    /// access failure.
     ///
     /// Engine-owned payloads cannot be borrowed mutably through this method.
     ///
@@ -622,22 +622,22 @@ impl JsObject {
     /// let object: JsObject = JsArrayBuffer::new(8, context.access()).unwrap().into();
     /// let _ = object.downcast_mut::<ArrayBuffer>();
     /// ```
-    #[must_use]
     #[track_caller]
-    pub fn downcast_class_mut<C: Class>(&self) -> Option<RefMut<'_, C>> {
+    pub fn downcast_class_mut<C: Class>(&self) -> Result<Option<RefMut<'_, C>>, ObjectAccessError> {
         self.downcast_mut()
     }
 
-    #[must_use]
     #[track_caller]
-    pub(crate) fn downcast_mut<T: NativeObject>(&self) -> Option<RefMut<'_, T>> {
+    pub(crate) fn downcast_mut<T: NativeObject>(
+        &self,
+    ) -> Result<Option<RefMut<'_, T>>, ObjectAccessError> {
         if !self.is::<T>() {
-            return None;
+            return Ok(None);
         }
-        RefMut::filter_map(self.borrow_mut().inner, |object| {
-            object.data.as_mut().downcast_mut()
-        })
-        .ok()
+        let ObjectRefMut { data, .. } = self.borrow_mut()?;
+        RefMut::filter_map(data, |data| data.downcast_mut())
+            .map(Some)
+            .map_err(|_| ObjectAccessError::WrongNativeBrand)
     }
 
     /// Checks if this object is an instance of a certain `NativeObject`.
@@ -736,8 +736,8 @@ impl JsObject {
             }
 
             for key in &l_keys {
-                let vl = lhs.get_property(key);
-                let vr = rhs.get_property(key);
+                let vl = lhs.get_property(key)?;
+                let vr = rhs.get_property(key)?;
 
                 match (vl, vr) {
                     (None, None) => {}
@@ -1035,16 +1035,17 @@ Cannot both specify accessors and a value or writable attribute",
 
     // Allow lint, false positive.
     #[allow(clippy::assigning_clones)]
-    pub(crate) fn get_property(&self, key: &PropertyKey) -> Option<PropertyDescriptor> {
+    pub(crate) fn get_property(&self, key: &PropertyKey) -> JsResult<Option<PropertyDescriptor>> {
         let mut obj = Some(self.clone());
 
         while let Some(o) = obj {
-            if let Some(v) = o.borrow().properties.get(key) {
-                return Some(v);
+            let borrowed = o.borrow()?;
+            if let Some(v) = borrowed.properties.get(key) {
+                return Ok(Some(v));
             }
-            obj = o.borrow().prototype().clone();
+            obj = borrowed.prototype().clone();
         }
-        None
+        Ok(None)
     }
 
     /// Casts to a `BufferObject` if the object is an `ArrayBuffer` or a `SharedArrayBuffer`.
@@ -1089,129 +1090,62 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
         }
     }
 
-    /// Immutably borrows the `Object`.
+    /// Immutably borrows the object's common state and checked native payload.
     ///
-    /// The borrow lasts until the returned `Ref` exits scope.
-    /// Multiple immutable borrows can be taken out at the same time.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the object is currently mutably borrowed.
-    ///
-    /// # Examples
+    /// Multiple immutable guards may coexist. Conflicting mutable access returns
+    /// [`ObjectAccessError::Borrowed`]; an invalid native projection returns
+    /// [`ObjectAccessError::WrongNativeBrand`].
     ///
     /// ```
-    /// # use surgeist_js::JsObject;
-    /// # use surgeist_js::builtins::object::OrdinaryObject;
-    /// let obj =
-    ///     JsObject::from_proto_and_data(&surgeist_js::Runtime::default(), None, OrdinaryObject)
-    ///         .unwrap();
-    ///
-    /// // Multiple immutable borrows are allowed.
-    /// let borrowed = obj.borrow();
+    /// # use surgeist_js::{JsObject, Runtime, builtins::object::OrdinaryObject};
+    /// let obj = JsObject::from_proto_and_data(&Runtime::default(), None, OrdinaryObject).unwrap();
+    /// let borrowed = obj.borrow().unwrap();
     /// assert!(borrowed.prototype().is_none());
     /// ```
     #[inline]
-    #[must_use]
-    #[track_caller]
-    pub fn borrow(&self) -> ObjectRef<'_, T> {
-        self.try_borrow().expect("Object already mutably borrowed")
-    }
-
-    /// Mutably borrows the Object.
-    ///
-    /// The borrow lasts until the returned `RefMut` exits scope.
-    /// The object cannot be borrowed while this borrow is active.
-    ///
-    /// # Panics
-    /// Panics if the object is currently borrowed.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use surgeist_js::{Context, JsObject};
-    /// # use surgeist_js::builtins::object::OrdinaryObject;
-    /// let context = &mut Context::default();
-    /// let obj = JsObject::from_proto_and_data(
-    ///     context.runtime(),
-    ///     context.intrinsics().constructors().object().prototype(),
-    ///     OrdinaryObject,
-    /// )
-    /// .unwrap();
-    ///
-    /// // Set the prototype to `None` via a mutable borrow.
-    /// obj.borrow_mut().set_prototype(None);
-    /// assert!(obj.prototype().is_none());
-    /// ```
-    #[inline]
-    #[must_use]
-    #[track_caller]
-    pub fn borrow_mut(&self) -> ObjectRefMut<'_, T> {
-        self.try_borrow_mut().expect("Object already borrowed")
-    }
-
-    /// Immutably borrows the `Object`, returning an error if the value is currently mutably borrowed.
-    ///
-    /// The borrow lasts until the returned `ObjectRef` exits scope.
-    /// Multiple immutable borrows can be taken out at the same time.
-    ///
-    /// This is the non-panicking variant of [`borrow`](#method.borrow).
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// # use surgeist_js::JsObject;
-    /// # use surgeist_js::builtins::object::OrdinaryObject;
-    /// let obj =
-    ///     JsObject::from_proto_and_data(&surgeist_js::Runtime::default(), None, OrdinaryObject)
-    ///         .unwrap();
-    ///
-    /// // Non-panicking immutable borrow.
-    /// let result = obj.try_borrow();
-    /// assert!(result.is_ok());
-    /// ```
-    #[inline]
-    pub fn try_borrow(&self) -> StdResult<ObjectRef<'_, T>, BorrowError> {
-        self.inner
+    pub fn borrow(&self) -> Result<ObjectRef<'_, T>, ObjectAccessError>
+    where
+        T: NativeProjection,
+    {
+        let inner = self
+            .inner
             .object
             .try_borrow()
-            .map(|inner| ObjectRef {
-                inner,
-                brand: PhantomData,
-            })
-            .map_err(|_| BorrowError)
+            .map_err(|_| ObjectAccessError::Borrowed)?;
+        let (state, data) = Ref::map_split(inner, |object| (&object.state, object.data.as_ref()));
+        let data =
+            Ref::filter_map(data, T::project).map_err(|_| ObjectAccessError::WrongNativeBrand)?;
+        Ok(ObjectRef { state, data })
     }
 
-    /// Mutably borrows the object, returning an error if the value is currently borrowed.
+    /// Mutably borrows the object's common state and checked native payload.
     ///
-    /// The borrow lasts until the returned `ObjectRefMut` exits scope.
-    /// The object be borrowed while this borrow is active.
-    ///
-    /// This is the non-panicking variant of [`borrow_mut`](#method.borrow_mut).
-    ///
-    /// # Examples
+    /// Any existing guard returns [`ObjectAccessError::Borrowed`]. An invalid
+    /// native projection returns [`ObjectAccessError::WrongNativeBrand`].
+    /// Common state and engine-owned native payloads cannot be replaced through
+    /// this guard.
     ///
     /// ```
-    /// # use surgeist_js::JsObject;
-    /// # use surgeist_js::builtins::object::OrdinaryObject;
-    /// let obj =
-    ///     JsObject::from_proto_and_data(&surgeist_js::Runtime::default(), None, OrdinaryObject)
-    ///         .unwrap();
-    ///
-    /// // Non-panicking mutable borrow.
-    /// let result = obj.try_borrow_mut();
-    /// assert!(result.is_ok());
+    /// # use surgeist_js::{JsObject, Runtime, builtins::object::OrdinaryObject};
+    /// let obj = JsObject::from_proto_and_data(&Runtime::default(), None, OrdinaryObject).unwrap();
+    /// obj.borrow_mut().unwrap().set_prototype(None);
+    /// assert!(obj.prototype().unwrap().is_none());
     /// ```
     #[inline]
-    pub fn try_borrow_mut(&self) -> StdResult<ObjectRefMut<'_, T>, BorrowMutError> {
-        self.inner
+    pub fn borrow_mut(&self) -> Result<ObjectRefMut<'_, T>, ObjectAccessError>
+    where
+        T: NativeProjection,
+    {
+        let inner = self
+            .inner
             .object
             .try_borrow_mut()
-            .map(|inner| ObjectRefMut {
-                inner,
-                brand: PhantomData,
-            })
-            .map_err(|_| BorrowMutError)
+            .map_err(|_| ObjectAccessError::Borrowed)?;
+        let (state, data) =
+            RefMut::map_split(inner, |object| (&mut object.state, object.data.as_mut()));
+        let data = RefMut::filter_map(data, T::project_mut)
+            .map_err(|_| ObjectAccessError::WrongNativeBrand)?;
+        Ok(ObjectRefMut { state, data })
     }
 
     /// Checks if the garbage collected memory is the same.
@@ -1241,11 +1175,7 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
         lhs.identity() == rhs.identity()
     }
 
-    /// Get the prototype of the object.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the object is currently mutably borrowed.
+    /// Gets the prototype, or returns a typed access failure.
     ///
     /// # Examples
     ///
@@ -1254,32 +1184,29 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
     /// let context = &mut Context::default();
     ///
     /// let obj = JsObject::with_object_proto(context.intrinsics());
-    /// assert!(obj.prototype().is_some());
+    /// assert!(obj.prototype().unwrap().is_some());
     ///
     /// let null_obj = JsObject::with_null_proto(context.runtime());
-    /// assert!(null_obj.prototype().is_none());
+    /// assert!(null_obj.prototype().unwrap().is_none());
     /// ```
     #[inline]
-    #[must_use]
     #[track_caller]
-    pub fn prototype(&self) -> JsPrototype {
-        self.borrow().prototype()
+    pub fn prototype(&self) -> Result<JsPrototype, ObjectAccessError>
+    where
+        T: NativeProjection,
+    {
+        Ok(self.borrow()?.prototype())
     }
 
-    /// Get the extensibility of the object.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the object is currently mutably borrowed.
-    pub(crate) fn extensible(&self) -> bool {
-        self.borrow().extensible
+    /// Gets extensibility, or returns a typed access failure.
+    pub(crate) fn extensible(&self) -> Result<bool, ObjectAccessError>
+    where
+        T: NativeProjection,
+    {
+        Ok(self.borrow()?.extensible)
     }
 
-    /// Set the prototype of the object.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the object is currently mutably borrowed
+    /// Sets the prototype, or returns a typed access failure.
     ///
     /// # Examples
     ///
@@ -1288,27 +1215,30 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
     /// let context = &mut Context::default();
     /// let obj = JsObject::with_object_proto(context.intrinsics());
     ///
-    /// assert!(obj.prototype().is_some());
+    /// assert!(obj.prototype().unwrap().is_some());
     ///
     /// // Set the prototype to `None`.
-    /// obj.set_prototype(None);
-    /// assert!(obj.prototype().is_none());
+    /// obj.set_prototype(None).unwrap();
+    /// assert!(obj.prototype().unwrap().is_none());
     /// ```
     #[inline]
     #[track_caller]
-    #[allow(clippy::must_use_candidate)]
-    pub fn set_prototype(&self, prototype: JsPrototype) -> bool {
-        self.borrow_mut().set_prototype(prototype)
+    pub fn set_prototype(&self, prototype: JsPrototype) -> Result<bool, ObjectAccessError>
+    where
+        T: NativeProjection,
+    {
+        Ok(self.borrow_mut()?.set_prototype(prototype))
     }
 
     /// Helper function for property insertion.
     #[track_caller]
-    pub(crate) fn insert<K, P>(&self, key: K, property: P) -> bool
+    pub(crate) fn insert<K, P>(&self, key: K, property: P) -> Result<bool, ObjectAccessError>
     where
         K: Into<PropertyKey>,
         P: Into<PropertyDescriptor>,
+        T: NativeProjection,
     {
-        self.borrow_mut().insert(key, property)
+        Ok(self.borrow_mut()?.insert(key, property))
     }
 
     /// Inserts a field in the object `properties` without checking if it's writable.
@@ -1320,10 +1250,11 @@ impl<T: NativeObject + ?Sized> JsObject<T> {
     where
         K: Into<PropertyKey>,
         P: Into<PropertyDescriptor>,
+        T: NativeProjection,
     {
         let property = property.into();
         self.runtime().check_descriptor(&property)?;
-        Ok(self.insert(key, property.complete_property_descriptor()))
+        Ok(self.insert(key, property.complete_property_descriptor())?)
     }
 
     /// It determines if Object is a callable function with a `[[Call]]` internal method.
@@ -1495,7 +1426,7 @@ impl<T: NativeObject> JsObject<T> {
     /// // Upcast to an erased JsObject.
     /// let obj = typed_obj.upcast();
     /// assert!(obj.is_ordinary());
-    /// assert!(obj.prototype().is_none());
+    /// assert!(obj.prototype().unwrap().is_none());
     /// ```
     pub fn new_unique<O: Into<Option<JsObject>>>(
         runtime: &Runtime,
@@ -1529,24 +1460,14 @@ impl<T: NativeObject> JsObject<T> {
             .map_err(object_allocation_error)?
     }
 
-    pub(crate) fn borrow_data(&self) -> Ref<'_, T> {
-        Ref::map(self.borrow().inner, |object| {
-            object
-                .data
-                .as_ref()
-                .downcast_ref()
-                .expect("checked object brand")
-        })
+    pub(crate) fn borrow_data(&self) -> Result<Ref<'_, T>, ObjectAccessError> {
+        let ObjectRef { data, .. } = self.borrow()?;
+        Ok(data)
     }
 
-    pub(crate) fn borrow_data_mut(&self) -> RefMut<'_, T> {
-        RefMut::map(self.borrow_mut().inner, |object| {
-            object
-                .data
-                .as_mut()
-                .downcast_mut()
-                .expect("checked object brand")
-        })
+    pub(crate) fn borrow_data_mut(&self) -> Result<RefMut<'_, T>, ObjectAccessError> {
+        let ObjectRefMut { data, .. } = self.borrow_mut()?;
+        Ok(data)
     }
 }
 
@@ -1570,32 +1491,6 @@ impl<T: NativeObject + ?Sized> Hash for JsObject<T> {
         self.identity().hash(state);
     }
 }
-
-/// An error returned by [`JsObject::try_borrow`](struct.JsObject.html#method.try_borrow).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BorrowError;
-
-impl Display for BorrowError {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Display::fmt("Object already mutably borrowed", f)
-    }
-}
-
-impl Error for BorrowError {}
-
-/// An error returned by [`JsObject::try_borrow_mut`](struct.JsObject.html#method.try_borrow_mut).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BorrowMutError;
-
-impl Display for BorrowMutError {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Display::fmt("Object already borrowed", f)
-    }
-}
-
-impl Error for BorrowMutError {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 enum RecursionValueState {
@@ -1681,6 +1576,7 @@ impl RecursionLimiter {
 
 impl<T: NativeObject + ?Sized> Debug for JsObject<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let obj = self.inner.object.try_borrow().map_err(|_| fmt::Error)?;
         let limiter = RecursionLimiter::new(&self.inner.object);
 
         // Typically, using `!limiter.live` would be good enough here.
@@ -1691,10 +1587,10 @@ impl<T: NativeObject + ?Sized> Debug for JsObject<T> {
         // at most once, hopefully making things a bit clearer.
         if !limiter.visited && !limiter.live {
             let identity = self.identity();
-            let obj = self.borrow();
-            let kind = obj.inner.data.as_ref().type_name_of_value();
+            let kind = obj.data.as_ref().type_name_of_value();
             if self.is_callable() {
                 let name_prop = obj
+                    .state
                     .properties()
                     .get(&PropertyKey::String(js_string!("name")));
                 let name = match name_prop {
@@ -1723,6 +1619,137 @@ mod tests {
 
     #[derive(Debug, crate::JsData, HeapTrace)]
     struct NativePayload(CapturedObject);
+
+    #[derive(Debug, crate::JsData, HeapTrace)]
+    struct HostPayload(u32);
+
+    #[derive(Debug, crate::JsData, HeapTrace)]
+    struct OtherHostPayload;
+
+    fn native_type<T: NativeProjection + ?Sized>(
+        object: &JsObject<T>,
+    ) -> Result<&'static str, ObjectAccessError> {
+        Ok(object.borrow()?.data().type_name_of_value())
+    }
+
+    #[test]
+    fn checked_guards_preserve_sized_and_erased_payload_access() {
+        let object = JsObject::new_unique(&Runtime::default(), None, HostPayload(7)).unwrap();
+        let erased = object.clone().upcast();
+        assert_eq!(object.identity(), erased.identity());
+        assert_eq!(
+            native_type(&object).unwrap(),
+            std::any::type_name::<HostPayload>()
+        );
+        assert_eq!(
+            native_type(&erased).unwrap(),
+            std::any::type_name::<HostPayload>()
+        );
+        {
+            let typed = object.borrow().unwrap();
+            let erased = erased.borrow().unwrap();
+            assert_eq!(typed.data().0, 7);
+            assert!(std::ptr::eq(
+                typed.data(),
+                erased.data().downcast_ref::<HostPayload>().unwrap(),
+            ));
+        }
+        object.borrow_mut().unwrap().data_mut().0 = 11;
+        assert_eq!(object.borrow_data().unwrap().0, 11);
+        object.borrow_data_mut().unwrap().0 = 13;
+        assert_eq!(object.borrow().unwrap().data().0, 13);
+        assert_eq!(erased.downcast_ref::<HostPayload>().unwrap().unwrap().0, 13);
+        assert!(erased.downcast_ref::<OtherHostPayload>().unwrap().is_none());
+    }
+
+    #[test]
+    fn checked_guards_report_alias_refusal_then_allow_same_object_retry() {
+        use std::fmt::Write;
+
+        let object = JsObject::new_unique(&Runtime::default(), None, HostPayload(17)).unwrap();
+        let alias = object.clone().upcast();
+        let identity = object.identity();
+        let read = object.borrow().unwrap();
+        assert_eq!(
+            object.borrow_mut().unwrap_err(),
+            ObjectAccessError::Borrowed
+        );
+        assert_eq!(
+            alias.downcast_mut::<HostPayload>().unwrap_err(),
+            ObjectAccessError::Borrowed
+        );
+        assert_eq!(
+            alias
+                .borrow()
+                .unwrap()
+                .data()
+                .downcast_ref::<HostPayload>()
+                .unwrap()
+                .0,
+            17
+        );
+        drop(read);
+
+        let mut write = object.borrow_mut().unwrap();
+        assert_eq!(object.borrow().unwrap_err(), ObjectAccessError::Borrowed);
+        assert_eq!(
+            alias.downcast_ref::<HostPayload>().unwrap_err(),
+            ObjectAccessError::Borrowed
+        );
+        assert!(alias.downcast_ref::<OtherHostPayload>().unwrap().is_none());
+        assert_eq!(object.prototype().unwrap_err(), ObjectAccessError::Borrowed);
+        assert_eq!(
+            object.extensible().unwrap_err(),
+            ObjectAccessError::Borrowed
+        );
+        let mut text = String::new();
+        assert!(write!(&mut text, "{object:?}").is_err());
+        write.data_mut().0 = 19;
+        drop(write);
+
+        assert_eq!(object.identity(), identity);
+        assert_eq!(
+            alias
+                .borrow_mut()
+                .unwrap()
+                .data()
+                .downcast_ref::<HostPayload>()
+                .unwrap()
+                .0,
+            19
+        );
+        assert_eq!(object.borrow().unwrap().data().0, 19);
+        assert!(write!(&mut text, "{object:?}").is_ok());
+    }
+
+    #[test]
+    fn invalid_private_typed_witness_releases_both_split_guards() {
+        let object = JsObject::new_unique(&Runtime::default(), None, HostPayload(23)).unwrap();
+        // Only this owning test constructs the inconsistent witness. The public
+        // downcast front cannot produce a brand that disagrees with its record.
+        let invalid = JsObject::<OtherHostPayload>::with_record(object.inner.clone());
+        assert_eq!(
+            invalid.borrow().unwrap_err(),
+            ObjectAccessError::WrongNativeBrand
+        );
+        assert_eq!(
+            invalid.borrow_mut().unwrap_err(),
+            ObjectAccessError::WrongNativeBrand
+        );
+        assert_eq!(
+            invalid.borrow_data().unwrap_err(),
+            ObjectAccessError::WrongNativeBrand
+        );
+        assert_eq!(
+            invalid.borrow_data_mut().unwrap_err(),
+            ObjectAccessError::WrongNativeBrand
+        );
+        let mut retry = object.borrow_mut().unwrap();
+        assert_eq!(retry.data().0, 23);
+        retry.data_mut().0 = 29;
+        drop(retry);
+        assert_eq!(object.borrow().unwrap().data().0, 29);
+    }
 
     #[test]
     fn native_object_creation_rejects_foreign_prototypes() {
@@ -1779,8 +1806,8 @@ mod tests {
             .unwrap();
             runtime.collect().unwrap();
 
-            assert_eq!(object.prototype(), Some(prototype.clone()));
-            let target: JsObject = JsObject::restore(&object.borrow().data().0).unwrap();
+            assert_eq!(object.prototype().unwrap(), Some(prototype.clone()));
+            let target: JsObject = JsObject::restore(&object.borrow().unwrap().data().0).unwrap();
             assert_eq!(target.identity(), identity);
 
             let edge = target.into_record();

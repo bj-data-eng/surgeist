@@ -631,6 +631,7 @@ fn combined_evaluation_rejects_foreign_runtime_preparation_with_a_guest_type_err
         panic!("a foreign-runtime module must reject the combined evaluation promise")
     };
     let error = JsError::from_opaque(reason)
+        .unwrap()
         .try_native(receiver.access())
         .unwrap();
     assert!(error.is_type());

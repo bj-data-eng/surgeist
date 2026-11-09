@@ -55,7 +55,7 @@ impl Service for ListFormat {
 }
 
 impl IntrinsicObject for ListFormat {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::from_standard_constructor::<Self>(realm)
             .static_method(
                 Self::supported_locales_of,
@@ -70,7 +70,9 @@ impl IntrinsicObject for ListFormat {
             .method(Self::format, js_string!("format"), 1)
             .method(Self::format_to_parts, js_string!("formatToParts"), 1)
             .method(Self::resolved_options, js_string!("resolvedOptions"), 0)
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -232,7 +234,9 @@ impl ListFormat {
         let object = this.as_object();
         let lf = object
             .as_ref()
-            .and_then(|o| o.downcast_ref::<Self>())
+            .map(|o| o.downcast_ref::<Self>())
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("`format` can only be called on a `ListFormat` object")
@@ -350,7 +354,9 @@ impl ListFormat {
         let object = this.as_object();
         let lf = object
             .as_ref()
-            .and_then(|o| o.downcast_ref::<Self>())
+            .map(|o| o.downcast_ref::<Self>())
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("`formatToParts` can only be called on a `ListFormat` object")
@@ -432,7 +438,9 @@ impl ListFormat {
         let object = this.as_object();
         let lf = object
             .as_ref()
-            .and_then(|o| o.downcast_ref::<Self>())
+            .map(|o| o.downcast_ref::<Self>())
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("`resolvedOptions` can only be called on a `ListFormat` object")

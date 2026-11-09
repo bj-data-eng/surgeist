@@ -771,7 +771,7 @@ impl Module {
                     PromiseState::Fulfilled(_) => Ok(source::EvaluationProgress::new(index)),
                     // c. If promise.[[PromiseState]] is rejected, then
                     //    i. Return ThrowCompletion(promise.[[PromiseResult]]).
-                    PromiseState::Rejected(err) => Err(JsError::from_opaque(err)),
+                    PromiseState::Rejected(err) => Err(JsError::from_opaque(err)?),
                 }
             }
         }
@@ -1070,6 +1070,7 @@ fn module_execution_rejects_a_foreign_context() {
             panic!("module execution accepted a foreign context");
         };
         let error = JsError::from_opaque(reason)
+            .unwrap()
             .try_native(foreign.access())
             .unwrap();
         assert!(error.is_type());
@@ -1261,6 +1262,7 @@ fn static_module_loading_rejects_foreign_dependencies_and_allows_retry() {
     };
     assert!(
         JsError::from_opaque(reason)
+            .unwrap()
             .try_native(owner.access())
             .unwrap()
             .is_type()
@@ -1299,7 +1301,9 @@ fn module_loading_rejects_a_foreign_loader_error_in_static_and_dynamic_imports()
 
     let foreign = Context::default();
     let object = JsObject::with_null_proto(foreign.runtime());
-    let loader = Rc::new(ForeignErrorLoader(JsError::from_opaque(object.into())));
+    let loader = Rc::new(ForeignErrorLoader(
+        JsError::from_opaque(object.into()).unwrap(),
+    ));
     let mut owner = Context::builder().module_loader(loader).build().unwrap();
 
     let module = Module::parse(
@@ -1320,6 +1324,7 @@ fn module_loading_rejects_a_foreign_loader_error_in_static_and_dynamic_imports()
             panic!("module loading failed to reject a foreign loader error");
         };
         let error = JsError::from_opaque(reason)
+            .unwrap()
             .try_native(owner.access())
             .unwrap();
         assert!(error.is_type());
@@ -1370,6 +1375,7 @@ fn module_promises_reject_foreign_host_job_callback_data() {
             panic!("module promise accepted foreign host job callback data");
         };
         let error = JsError::from_opaque(reason)
+            .unwrap()
             .try_native(owner.access())
             .unwrap();
         assert!(error.is_type());
@@ -1391,7 +1397,7 @@ fn synthetic_module_foreign_failures_reject_dynamic_import() {
             |_, nested, _| {
                 let runtime = crate::Runtime::default();
                 let foreign = JsObject::with_null_proto(&runtime);
-                let error = JsError::from_opaque(foreign.into());
+                let error = JsError::from_opaque(foreign.into())?;
                 Err(if *nested {
                     JsNativeError::error().with_cause(error).into()
                 } else {
@@ -1413,6 +1419,7 @@ fn synthetic_module_foreign_failures_reject_dynamic_import() {
             panic!("foreign initializer failure did not reject dynamic import");
         };
         let error = JsError::from_opaque(reason)
+            .unwrap()
             .try_native(context.access())
             .unwrap();
         assert!(error.is_type());
@@ -1550,7 +1557,7 @@ fn can_throw_exception() {
 
     let module = vec![(
         js_string!("doTheThrow"),
-        ((|message| Err(JsError::from_opaque(message))) as fn(JsValue) -> JsResult<()>)
+        ((|message| Err(JsError::from_opaque(message)?)) as fn(JsValue) -> JsResult<()>)
             .into_js_function(),
     )]
     .into_js_module(context.access())

@@ -61,7 +61,7 @@ impl BuiltInObject for Instant {
 }
 
 impl IntrinsicObject for Instant {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_millis = BuiltInBuilder::callable(realm, Self::get_epoch_milliseconds)
             .name(js_string!("get epochMilliseconds"))
             .build();
@@ -115,7 +115,9 @@ impl IntrinsicObject for Instant {
                 js_string!("toZonedDateTimeISO"),
                 1,
             )
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -288,7 +290,9 @@ impl Instant {
         let object = this.as_object();
         let instant = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be an instant object.")
             })?;
@@ -319,7 +323,9 @@ impl Instant {
         let object = this.as_object();
         let instant = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be an instant object.")
             })?;
@@ -353,7 +359,9 @@ impl Instant {
         let object = this.as_object();
         let instant = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be an instant object.")
             })?;
@@ -386,7 +394,9 @@ impl Instant {
         let object = this.as_object();
         let instant = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be an instant object.")
             })?;
@@ -419,7 +429,9 @@ impl Instant {
         let object = this.as_object();
         let instant = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be an instant object.")
             })?;
@@ -457,7 +469,9 @@ impl Instant {
         let object = this.as_object();
         let instant = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be an instant object.")
             })?;
@@ -493,7 +507,9 @@ impl Instant {
         let object = this.as_object();
         let instant = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be an instant object.")
             })?;
@@ -592,7 +608,9 @@ impl Instant {
         let object = this.as_object();
         let instant = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ().with_message("the this object must be an instant object.")
             })?;
@@ -622,7 +640,9 @@ impl Instant {
         let object = this.as_object();
         let instant = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("the this object must be a Temporal.Instant object.")
@@ -669,7 +689,9 @@ impl Instant {
         let object = this.as_object();
         let instant = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("the this object must be a Temporal.Instant object.")
@@ -696,7 +718,9 @@ impl Instant {
         let object = this.as_object();
         let instant = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("the this object must be a Temporal.Instant object.")
@@ -746,7 +770,9 @@ impl Instant {
         let object = this.as_object();
         let instant = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("the this object must be a Temporal.Instant object.")
@@ -805,9 +831,9 @@ fn to_temporal_instant(item: &JsValue, context: &mut Context) -> JsResult<InnerI
         //     i. Return ! CreateTemporalInstant(item.[[Nanoseconds]]).
         // c. NOTE: This use of ToPrimitive allows Instant-like objects to be converted.
         // d. Set item to ? ToPrimitive(item, string).
-        if let Some(instant) = obj.downcast_ref::<Instant>() {
+        if let Some(instant) = obj.downcast_ref::<Instant>()? {
             return Ok(*instant.inner);
-        } else if let Some(zdt) = obj.downcast_ref::<ZonedDateTime>() {
+        } else if let Some(zdt) = obj.downcast_ref::<ZonedDateTime>()? {
             return Ok(zdt.inner.to_instant());
         }
         item.to_primitive(context.access(), PreferredType::String)?

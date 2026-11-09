@@ -31,11 +31,11 @@ struct SetIteration {
 }
 
 impl SetIteration {
-    fn new(collection: &JsObject<OrderedSet>) -> Self {
-        Self {
+    fn new(collection: &JsObject<OrderedSet>) -> JsResult<Self> {
+        Ok(Self {
             collection: collection.edge(),
-            _position_lock: collection.borrow_mut().data_mut().lock(),
-        }
+            _position_lock: collection.borrow_mut()?.data_mut().lock(),
+        })
     }
 }
 
@@ -54,16 +54,18 @@ pub(crate) struct SetIterator {
 }
 
 impl IntrinsicObject for SetIterator {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::with_intrinsic::<Self>(realm)
             .prototype(realm.intrinsics().constructors().iterator().prototype())
-            .static_method(Self::next, js_string!("next"), 0)
+            .static_method(Self::next, js_string!("next"), 0)?
             .static_property(
                 JsSymbol::to_string_tag(),
                 js_string!("Set Iterator"),
                 Attribute::CONFIGURABLE,
-            )
-            .build();
+            )?
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -92,7 +94,7 @@ impl SetIterator {
             context.root_shape(),
             context.intrinsics().objects().iterator_prototypes().set(),
             Self {
-                iterated_set: Some(SetIteration::new(&set)),
+                iterated_set: Some(SetIteration::new(&set)?),
                 next_index: 0,
                 iteration_kind: kind,
             },
@@ -112,7 +114,9 @@ impl SetIterator {
         let invalid_receiver = || JsNativeError::typ().with_message("`this` is not a SetIterator");
         let object = this.as_object().ok_or_else(invalid_receiver)?;
         let (element, kind) = {
-            let mut iterator = object.downcast_mut::<Self>().ok_or_else(invalid_receiver)?;
+            let mut iterator = object
+                .downcast_mut::<Self>()?
+                .ok_or_else(invalid_receiver)?;
             if !context.runtime().same_heap(&object.runtime()) {
                 return Err(
                     js_error!(TypeError: "collection iterator crosses JavaScript runtimes"),
@@ -128,19 +132,23 @@ impl SetIterator {
                     .downcast::<OrderedSet>()
                     .expect("iterator retains a Set")
             });
-            let element = collection.and_then(|collection| {
-                let collection = collection.borrow();
+            let element = if let Some(collection) = collection {
+                let collection = collection.borrow()?;
                 let entries = collection.data();
 
-                while iterator.next_index < entries.full_len() {
+                loop {
+                    if iterator.next_index >= entries.full_len() {
+                        break None;
+                    }
                     let index = iterator.next_index;
                     iterator.next_index += 1;
                     if let Some(element) = entries.get_index(index) {
-                        return Some(element);
+                        break Some(element);
                     }
                 }
+            } else {
                 None
-            });
+            };
             if element.is_none() {
                 iterator.iterated_set = None;
             }

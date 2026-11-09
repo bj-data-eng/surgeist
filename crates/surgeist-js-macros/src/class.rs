@@ -120,14 +120,22 @@ impl Function {
         let downcast = if shared_receiver {
             quote! {
                 let object = this.as_object();
-                let self_ = &*object.as_ref().and_then(|o| o.downcast_ref::< #class_ty >())
-                    .ok_or( surgeist_js::js_error!( #err ))?;
+                let Some(self_) = object.as_ref().map(|o| o.downcast_ref::< #class_ty >())
+                    .transpose()?.flatten()
+                else {
+                    return Err(surgeist_js::js_error!( #err )?);
+                };
+                let self_ = &*self_;
             }
         } else {
             quote! {
                 let object = this.as_object();
-                let self_ = &mut *object.as_ref().and_then(|o| o.downcast_class_mut::< #class_ty >())
-                    .ok_or( surgeist_js::js_error!( #err ))?;
+                let Some(mut self_) = object.as_ref().map(|o| o.downcast_class_mut::< #class_ty >())
+                    .transpose()?.flatten()
+                else {
+                    return Err(surgeist_js::js_error!( #err )?);
+                };
+                let self_ = &mut *self_;
             }
         };
 

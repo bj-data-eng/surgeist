@@ -707,10 +707,10 @@ fn retained_typed_array_iterator_releases_access_after_authored_values_are_consu
     let mut access = owner.access();
     let array = JsUint8Array::from_iter([7_u8, 35, 42], access.reborrow()).unwrap();
     {
-        let mut iterator = array.iter(access.reborrow());
-        assert_eq!(iterator.next(), Some(7));
-        assert_eq!(iterator.next(), Some(35));
-        assert_eq!(iterator.next(), Some(42));
+        let mut iterator = array.iter(access.reborrow()).unwrap();
+        assert_eq!(iterator.next().transpose().unwrap(), Some(7));
+        assert_eq!(iterator.next().transpose().unwrap(), Some(35));
+        assert_eq!(iterator.next().transpose().unwrap(), Some(42));
         assert_eq!(iterator.next(), None);
     }
     assert_eq!(
@@ -859,6 +859,7 @@ fn error_materialization_and_erasure_keep_native_details_and_exact_engine_cause(
         JsValue::new(js_string!("TypeError"))
     );
     let recovered = JsError::from_opaque(object.into())
+        .unwrap()
         .try_native(access.reborrow())
         .unwrap();
     assert!(matches!(recovered.kind(), JsNativeErrorKind::Type));

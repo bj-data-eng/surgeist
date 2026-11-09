@@ -179,7 +179,7 @@ impl Error {
 }
 
 impl IntrinsicObject for Error {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let property_attribute =
             Attribute::WRITABLE | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE;
         let accessor_attribute = Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE;
@@ -206,7 +206,9 @@ impl IntrinsicObject for Error {
         #[cfg(feature = "experimental")]
         let builder = builder.static_method(Error::is_error, js_string!("isError"), 1);
 
-        builder.build();
+        builder.build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -310,7 +312,7 @@ impl Error {
 
         // 3. Let errorData be the value of the [[ErrorData]] internal slot of E.
         // 4. If errorData is undefined, return undefined.
-        let Some(error_data) = e.downcast_ref::<Error>() else {
+        let Some(error_data) = e.downcast_ref::<Error>()? else {
             return Ok(JsValue::undefined());
         };
 

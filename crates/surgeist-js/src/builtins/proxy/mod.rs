@@ -121,10 +121,12 @@ impl JsData for Proxy {
 }
 
 impl IntrinsicObject for Proxy {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::from_standard_constructor::<Self>(realm)
             .static_method(Self::revocable, js_string!("revocable"), 2)
-            .build_without_prototype();
+            .build_without_prototype()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -173,8 +175,8 @@ impl Proxy {
         context: &mut Context,
     ) -> JsResult<(JsObject, JsObject, Option<JsObject>)> {
         let (target, handler) = object
-            .downcast_ref::<Self>()
-            .js_expect("proxy call resolution requires a proxy")?
+            .downcast_ref::<Self>()?
+            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
             .try_data()?;
         let trap = handler.get_method(js_string!("apply"), context)?;
         Ok((target, handler, trap))
@@ -257,8 +259,8 @@ impl Proxy {
                     // e. Assert: p is a Proxy object.
                     // f. Set p.[[ProxyTarget]] to null.
                     // g. Set p.[[ProxyHandler]] to null.
-                    p.downcast_mut::<Proxy>()
-                        .js_expect("[[RevocableProxy]] must be a proxy object")?
+                    p.downcast_mut::<Proxy>()?
+                        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
                         .data = None;
                 }
 
@@ -320,8 +322,8 @@ pub(crate) fn proxy_exotic_get_prototype_of(
     // 3. Assert: Type(handler) is Object.
     // 4. Let target be O.[[ProxyTarget]].
     let (target, handler) = obj
-        .downcast_ref::<Proxy>()
-        .js_expect("Proxy object internal internal method called on non-proxy object")?
+        .downcast_ref::<Proxy>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
         .try_data()?;
 
     // 5. Let trap be ? GetMethod(handler, "getPrototypeOf").
@@ -381,8 +383,8 @@ pub(crate) fn proxy_exotic_set_prototype_of(
     // 3. Assert: Type(handler) is Object.
     // 4. Let target be O.[[ProxyTarget]].
     let (target, handler) = obj
-        .downcast_ref::<Proxy>()
-        .js_expect("Proxy object internal internal method called on non-proxy object")?
+        .downcast_ref::<Proxy>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
         .try_data()?;
 
     // 5. Let trap be ? GetMethod(handler, "setPrototypeOf").
@@ -440,8 +442,8 @@ pub(crate) fn proxy_exotic_is_extensible(obj: &JsObject, context: &mut Context) 
     // 3. Assert: Type(handler) is Object.
     // 4. Let target be O.[[ProxyTarget]].
     let (target, handler) = obj
-        .downcast_ref::<Proxy>()
-        .js_expect("Proxy object internal internal method called on non-proxy object")?
+        .downcast_ref::<Proxy>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
         .try_data()?;
 
     // 5. Let trap be ? GetMethod(handler, "isExtensible").
@@ -485,8 +487,8 @@ pub(crate) fn proxy_exotic_prevent_extensions(
     // 3. Assert: Type(handler) is Object.
     // 4. Let target be O.[[ProxyTarget]].
     let (target, handler) = obj
-        .downcast_ref::<Proxy>()
-        .js_expect("Proxy object internal internal method called on non-proxy object")?
+        .downcast_ref::<Proxy>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
         .try_data()?;
 
     // 5. Let trap be ? GetMethod(handler, "preventExtensions").
@@ -532,8 +534,8 @@ pub(crate) fn proxy_exotic_get_own_property(
     // 3. Assert: Type(handler) is Object.
     // 4. Let target be O.[[ProxyTarget]].
     let (target, handler) = obj
-        .downcast_ref::<Proxy>()
-        .js_expect("Proxy object internal internal method called on non-proxy object")?
+        .downcast_ref::<Proxy>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
         .try_data()?;
 
     // 5. Let trap be ? GetMethod(handler, "getOwnPropertyDescriptor").
@@ -657,8 +659,8 @@ pub(crate) fn proxy_exotic_define_own_property(
     // 3. Assert: Type(handler) is Object.
     // 4. Let target be O.[[ProxyTarget]].
     let (target, handler) = obj
-        .downcast_ref::<Proxy>()
-        .js_expect("Proxy object internal internal method called on non-proxy object")?
+        .downcast_ref::<Proxy>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
         .try_data()?;
 
     // 5. Let trap be ? GetMethod(handler, "defineProperty").
@@ -770,8 +772,8 @@ pub(crate) fn proxy_define_prepared_function(
     context: &mut Context,
 ) -> JsResult<Option<JsObject>> {
     let (target, handler) = obj
-        .downcast_ref::<Proxy>()
-        .js_expect("prepared proxy definition requires a proxy")?
+        .downcast_ref::<Proxy>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
         .try_data()?;
     let Some(trap) = handler.get_method(js_string!("defineProperty"), context)? else {
         return target.define_prepared_function(key, desc, materialize, context);
@@ -787,7 +789,7 @@ pub(crate) fn proxy_define_prepared_function(
         .expect("a present descriptor creates an object");
     let mut value_slot = crate::object::shape::slot::Slot::new();
     desc_object
-        .borrow()
+        .borrow()?
         .properties
         .get_with_slot(&js_string!("value").into(), &mut value_slot)
         .expect("private descriptor has a value slot");
@@ -801,7 +803,7 @@ pub(crate) fn proxy_define_prepared_function(
         |_, context| {
             let value = materialize(context)?;
             desc_object
-                .borrow_mut()
+                .borrow_mut()?
                 .properties_mut()
                 .write_named_slot(value_slot.index as usize, value.clone().into());
             function = Some(value);
@@ -841,8 +843,8 @@ pub(crate) fn proxy_exotic_has_property(
     // 3. Assert: Type(handler) is Object.
     // 4. Let target be O.[[ProxyTarget]].
     let (target, handler) = obj
-        .downcast_ref::<Proxy>()
-        .js_expect("Proxy object internal internal method called on non-proxy object")?
+        .downcast_ref::<Proxy>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
         .try_data()?;
 
     // 5. Let trap be ? GetMethod(handler, "has").
@@ -933,8 +935,8 @@ pub(crate) fn proxy_exotic_get(
     // 3. Assert: Type(handler) is Object.
     // 4. Let target be O.[[ProxyTarget]].
     let (target, handler) = obj
-        .downcast_ref::<Proxy>()
-        .js_expect("Proxy object internal internal method called on non-proxy object")?
+        .downcast_ref::<Proxy>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
         .try_data()?;
 
     // 5. Let trap be ? GetMethod(handler, "get").
@@ -1003,8 +1005,8 @@ pub(crate) fn proxy_exotic_set(
     // 3. Assert: Type(handler) is Object.
     // 4. Let target be O.[[ProxyTarget]].
     let (target, handler) = obj
-        .downcast_ref::<Proxy>()
-        .js_expect("Proxy object internal internal method called on non-proxy object")?
+        .downcast_ref::<Proxy>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
         .try_data()?;
 
     // 5. Let trap be ? GetMethod(handler, "set").
@@ -1083,8 +1085,8 @@ pub(crate) fn proxy_exotic_delete(
     // 3. Assert: Type(handler) is Object.
     // 4. Let target be O.[[ProxyTarget]].
     let (target, handler) = obj
-        .downcast_ref::<Proxy>()
-        .js_expect("Proxy object internal internal method called on non-proxy object")?
+        .downcast_ref::<Proxy>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
         .try_data()?;
 
     // 5. Let trap be ? GetMethod(handler, "deleteProperty").
@@ -1148,8 +1150,8 @@ pub(crate) fn proxy_exotic_own_property_keys(
     // 3. Assert: Type(handler) is Object.
     // 4. Let target be O.[[ProxyTarget]].
     let (target, handler) = obj
-        .downcast_ref::<Proxy>()
-        .js_expect("Proxy object internal internal method called on non-proxy object")?
+        .downcast_ref::<Proxy>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
         .try_data()?;
 
     // 5. Let trap be ? GetMethod(handler, "ownKeys").
@@ -1328,8 +1330,8 @@ fn proxy_exotic_construct(
     // 3. Assert: Type(handler) is Object.
     // 4. Let target be O.[[ProxyTarget]].
     let (target, handler) = obj
-        .downcast_ref::<Proxy>()
-        .js_expect("Proxy object internal internal method called on non-proxy object")?
+        .downcast_ref::<Proxy>()?
+        .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?
         .try_data()?;
 
     // 5. Assert: IsConstructor(target) is true.

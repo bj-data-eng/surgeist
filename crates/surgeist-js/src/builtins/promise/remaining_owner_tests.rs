@@ -424,7 +424,7 @@ fn an_earlier_actual_callback_retires_a_prepared_tail_before_its_late_accepted_e
         .with_source(JsNativeError::range().with_message("original owner cause"))
         .into();
     let lifecycle = {
-        let source = fixture.source.borrow();
+        let source = fixture.source.borrow().unwrap();
         let StoredPromiseState::Pending {
             fulfill_reactions, ..
         } = &source.data().state

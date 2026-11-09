@@ -40,7 +40,7 @@ use super::{iterator_helper::IteratorHelper, wrap_for_valid_iterator::WrapForVal
 pub(crate) struct IteratorConstructor;
 
 impl IntrinsicObject for IteratorConstructor {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let iterator_prototype = realm.intrinsics().constructors().iterator().prototype();
         BuiltInBuilder::from_standard_constructor::<Self>(realm)
             .inherits(Some(iterator_prototype.clone()))
@@ -48,7 +48,9 @@ impl IntrinsicObject for IteratorConstructor {
             .static_method(Self::from, js_string!("from"), 1)
             .static_method(Self::concat, js_string!("concat"), 0)
             .static_property(PROTOTYPE, iterator_prototype, Attribute::empty())
-            .build_without_prototype();
+            .build_without_prototype()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {

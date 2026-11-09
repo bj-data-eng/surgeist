@@ -506,7 +506,8 @@ fn async_promise_host_errors_reach_the_driver_without_guest_rejection() {
         foreign_context
             .eval(Source::from_bytes("new Error('foreign async completion')"))
             .unwrap(),
-    );
+    )
+    .unwrap();
     let mut cases = vec![
         ("direct Busy", busy.clone(), busy.clone()),
         ("direct PanicError", panic.clone(), panic),
@@ -593,7 +594,7 @@ fn async_promise_success_and_catchable_error_use_the_ordinary_guest_paths() {
     let failure = JsPromise::from_task(
         |_| {
             Ok(ContextTask::from_future(async {
-                Err(JsError::from_opaque(JsValue::new(7)))
+                Err(JsError::from_opaque(JsValue::new(7)).unwrap())
             }))
         },
         context.access(),
@@ -849,7 +850,8 @@ fn source_graph_and_dynamic_import_loader_host_errors_do_not_reject_in_guest() {
         foreign_context
             .eval(Source::from_bytes("new Error('foreign loader completion')"))
             .unwrap(),
-    );
+    )
+    .unwrap();
     for dynamic in [false, true] {
         let mut cases = vec![
             ("direct Busy", busy.clone(), busy.clone()),

@@ -68,6 +68,45 @@ impl<T: Any + HeapTrace + JsData> NativeObject for T {
     }
 }
 
+mod native_projection {
+    use super::NativeObject;
+
+    pub trait Sealed {
+        fn project(value: &dyn NativeObject) -> Option<&Self>;
+        fn project_mut(value: &mut dyn NativeObject) -> Option<&mut Self>;
+    }
+
+    impl<T: NativeObject> Sealed for T {
+        fn project(value: &dyn NativeObject) -> Option<&Self> {
+            value.downcast_ref()
+        }
+
+        fn project_mut(value: &mut dyn NativeObject) -> Option<&mut Self> {
+            value.downcast_mut()
+        }
+    }
+
+    impl Sealed for dyn NativeObject {
+        fn project(value: &dyn NativeObject) -> Option<&Self> {
+            Some(value)
+        }
+
+        fn project_mut(value: &mut dyn NativeObject) -> Option<&mut Self> {
+            Some(value)
+        }
+    }
+}
+
+/// Checked projection of an object's native payload into a live access guard.
+///
+/// This sealed capability is supplied for every sized [`NativeObject`] and for
+/// the erased `dyn NativeObject`. Generic callers that access a possibly unsized
+/// payload require this capability in addition to its native-object identity.
+pub trait NativeProjection: NativeObject + native_projection::Sealed {}
+
+impl<T: NativeObject> NativeProjection for T {}
+impl NativeProjection for dyn NativeObject {}
+
 impl dyn NativeObject {
     /// Returns whether the inner value is of type `T`.
     #[inline]
@@ -892,7 +931,7 @@ impl<'ctx> ConstructorBuilder<'ctx> {
             .configurable(true);
 
         {
-            let mut state = prototype.borrow_mut();
+            let mut state = prototype.borrow_mut()?;
             let parent = self.inherit.take().unwrap_or_else(|| {
                 self.context
                     .intrinsics()
@@ -921,7 +960,7 @@ impl<'ctx> ConstructorBuilder<'ctx> {
             });
             let constructor = JsObject::new_unique(runtime, parent, data)?.upcast();
             {
-                let mut state = constructor.borrow_mut();
+                let mut state = constructor.borrow_mut()?;
                 for (key, property) in self.static_properties {
                     state.insert(key, property);
                 }
@@ -942,7 +981,7 @@ impl<'ctx> ConstructorBuilder<'ctx> {
         };
 
         {
-            let mut prototype = prototype.borrow_mut();
+            let mut prototype = prototype.borrow_mut()?;
             prototype.insert(
                 CONSTRUCTOR,
                 PropertyDescriptor::builder()

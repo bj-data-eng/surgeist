@@ -10,6 +10,7 @@ use std::{
 };
 use surgeist_js::{
     Context, ContextAccess, JsObject, JsResult, JsValue,
+    error::{EngineError, ObjectAccessError},
     job::{
         ContextTask, Job, JobAcceptance, JobExecutor, JobPublicationError, JobStep, NativeAsyncJob,
     },
@@ -87,7 +88,7 @@ fn native_registration_under_a_mutable_promise_alias_returns_a_host_error_and_ke
     .unwrap();
     let mut job = executor.take_async();
     let alias = Deref::deref(&promise).clone();
-    let guard = alias.borrow_mut();
+    let guard = alias.borrow_mut().unwrap();
     let attempted = catch_unwind(AssertUnwindSafe(|| {
         promise.clone().into_js_future(owner.access())
     }));
@@ -109,9 +110,10 @@ fn native_registration_under_a_mutable_promise_alias_returns_a_host_error_and_ke
     let Err(error) = returned else {
         panic!("mutable alias contention must refuse registration")
     };
-    assert!(
-        error.as_engine().is_some(),
-        "contention must be an uncatchable typed host failure"
+    assert_eq!(
+        error.as_engine(),
+        Some(&EngineError::ObjectAccess(ObjectAccessError::Borrowed)),
+        "contention must preserve its uncatchable typed host cause"
     );
 }
 
@@ -137,7 +139,7 @@ fn native_poll_under_a_mutable_promise_alias_returns_a_host_error_without_losing
     let mut future = promise.clone().into_js_future(owner.access()).unwrap();
     assert!(poll(&mut future).is_pending());
     let alias = Deref::deref(&promise).clone();
-    let guard = alias.borrow_mut();
+    let guard = alias.borrow_mut().unwrap();
     let attempted = catch_unwind(AssertUnwindSafe(|| poll(&mut future)));
     assert_eq!(factories.get(), 0);
     drop(guard);
@@ -157,8 +159,9 @@ fn native_poll_under_a_mutable_promise_alias_returns_a_host_error_without_losing
     let Poll::Ready(Err(error)) = returned else {
         panic!("an inaccessible current promise state must return its host contention error")
     };
-    assert!(
-        error.as_engine().is_some(),
+    assert_eq!(
+        error.as_engine(),
+        Some(&EngineError::ObjectAccess(ObjectAccessError::Borrowed)),
         "contention must not be fabricated as guest rejection or Pending"
     );
 }

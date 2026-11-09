@@ -39,7 +39,10 @@ fn request_constructor() {
                 response
                     .as_object()
                     .as_ref()
-                    .and_then(|o| o.downcast_ref::<JsResponse>())
+                    .map(|o| o.downcast_ref::<JsResponse>())
+                    .transpose()
+                    .unwrap()
+                    .flatten()
                     .unwrap()
                     .body()
                     .as_ref()
@@ -102,7 +105,7 @@ fn request_clone_preserves_body_without_override() {
                 .get(js_str!("cloned"), ctx.access())
                 .unwrap();
             let request_obj = request.as_object().unwrap();
-            let request = request_obj.downcast_ref::<JsRequest>().unwrap();
+            let request = request_obj.downcast_ref::<JsRequest>().unwrap().unwrap();
             assert_eq!(request.inner().body().as_slice(), b"payload");
         }),
     ]);
@@ -132,7 +135,7 @@ fn request_clone_empty_body_preserved() {
                 .get(js_str!("cloned"), ctx.access())
                 .unwrap();
             let request_obj = request.as_object().unwrap();
-            let request = request_obj.downcast_ref::<JsRequest>().unwrap();
+            let request = request_obj.downcast_ref::<JsRequest>().unwrap().unwrap();
             assert_eq!(request.inner().body().as_slice(), b"");
         }),
     ]);
@@ -162,7 +165,7 @@ fn request_clone_body_override() {
                 .get(js_str!("cloned"), ctx.access())
                 .unwrap();
             let request_obj = request.as_object().unwrap();
-            let request = request_obj.downcast_ref::<JsRequest>().unwrap();
+            let request = request_obj.downcast_ref::<JsRequest>().unwrap().unwrap();
             assert_eq!(request.inner().body().as_slice(), b"override");
         }),
     ]);
@@ -189,7 +192,7 @@ fn request_clone_no_body_preserved() {
                 .get(js_str!("cloned"), ctx.access())
                 .unwrap();
             let request_obj = request.as_object().unwrap();
-            let request = request_obj.downcast_ref::<JsRequest>().unwrap();
+            let request = request_obj.downcast_ref::<JsRequest>().unwrap().unwrap();
             assert_eq!(request.inner().body().as_slice(), b"");
         }),
     ]);
@@ -217,7 +220,7 @@ fn request_clone_method_preserves_body() {
                 .get(js_str!("cloned"), ctx.access())
                 .unwrap();
             let cloned_obj = cloned.as_object().unwrap();
-            let cloned_req = cloned_obj.downcast_ref::<JsRequest>().unwrap();
+            let cloned_req = cloned_obj.downcast_ref::<JsRequest>().unwrap().unwrap();
             assert_eq!(cloned_req.inner().body().as_slice(), b"payload");
         }),
     ]);
@@ -246,14 +249,14 @@ fn request_clone_method_is_independent() {
                 .get(js_str!("original"), ctx.access())
                 .unwrap();
             let original_obj = original.as_object().unwrap();
-            let original_req = original_obj.downcast_ref::<JsRequest>().unwrap();
+            let original_req = original_obj.downcast_ref::<JsRequest>().unwrap().unwrap();
 
             let cloned = ctx
                 .global_object()
                 .get(js_str!("cloned"), ctx.access())
                 .unwrap();
             let cloned_obj = cloned.as_object().unwrap();
-            let cloned_req = cloned_obj.downcast_ref::<JsRequest>().unwrap();
+            let cloned_req = cloned_obj.downcast_ref::<JsRequest>().unwrap().unwrap();
 
             assert_eq!(original_req.inner().body().as_slice(), b"original-body");
             assert_eq!(cloned_req.inner().body().as_slice(), b"original-body");
@@ -288,7 +291,7 @@ fn request_stores_signal() {
                 .get(js_str!("request"), ctx.access())
                 .unwrap();
             let request_obj = request.as_object().unwrap();
-            let request = request_obj.downcast_ref::<JsRequest>().unwrap();
+            let request = request_obj.downcast_ref::<JsRequest>().unwrap().unwrap();
 
             let signal = ctx
                 .global_object()
@@ -335,7 +338,7 @@ fn request_clone_preserves_signal_without_override() {
                 .get(js_str!("cloned"), ctx.access())
                 .unwrap();
             let cloned_obj = cloned.as_object().unwrap();
-            let cloned = cloned_obj.downcast_ref::<JsRequest>().unwrap();
+            let cloned = cloned_obj.downcast_ref::<JsRequest>().unwrap().unwrap();
 
             let signal = ctx
                 .global_object()
@@ -383,7 +386,7 @@ fn request_clone_signal_override() {
                 .get(js_str!("cloned"), ctx.access())
                 .unwrap();
             let cloned_obj = cloned.as_object().unwrap();
-            let cloned = cloned_obj.downcast_ref::<JsRequest>().unwrap();
+            let cloned = cloned_obj.downcast_ref::<JsRequest>().unwrap().unwrap();
 
             let signal = ctx
                 .global_object()

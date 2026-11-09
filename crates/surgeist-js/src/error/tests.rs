@@ -23,7 +23,7 @@ fn get_backtrace_from_rejection(
 
     match promise.state().unwrap() {
         PromiseState::Rejected(err) => {
-            let js_error = JsError::from_opaque(err);
+            let js_error = JsError::from_opaque(err).unwrap();
             js_error
                 .backtrace
                 .as_ref()
@@ -183,7 +183,7 @@ fn eval_error_has_backtrace() {
 fn materialization_refuses_a_foreign_opaque_error() {
     let context = &mut Context::default();
     let foreign = JsObject::with_null_proto(&Runtime::default());
-    let error = JsError::from_opaque(foreign.into());
+    let error = JsError::from_opaque(foreign.into()).unwrap();
 
     let refusal = error.into_opaque(context.access()).unwrap_err();
     assert!(refusal.as_native().is_some_and(JsNativeError::is_type));
@@ -193,7 +193,7 @@ fn materialization_refuses_a_foreign_opaque_error() {
 fn materialization_refuses_a_foreign_cause_inside_an_aggregate() {
     let context = &mut Context::default();
     let foreign = JsObject::with_null_proto(&Runtime::default());
-    let cause = JsError::from_opaque(foreign.into());
+    let cause = JsError::from_opaque(foreign.into()).unwrap();
     let member = JsNativeError::range().with_cause(cause).into();
     let error = JsError::from_native(JsNativeError::aggregate(vec![member]));
 
@@ -205,7 +205,7 @@ fn materialization_refuses_a_foreign_cause_inside_an_aggregate() {
 fn materialization_preserves_the_original_engine_error() {
     let context = &mut Context::default();
     let foreign = JsObject::with_null_proto(&Runtime::default());
-    let cause = JsError::from_opaque(foreign.into());
+    let cause = JsError::from_opaque(foreign.into()).unwrap();
     let error = JsError::from(PanicError::new("engine failure").with_source(cause));
 
     assert_eq!(error.clone().into_opaque(context.access()), Err(error));
@@ -216,7 +216,7 @@ fn materialization_preserves_a_local_aggregate_members_cause() {
     let context = &mut Context::default();
     let cause = JsObject::with_null_proto(context.runtime());
     let member = JsNativeError::range()
-        .with_cause(JsError::from_opaque(cause.clone().into()))
+        .with_cause(JsError::from_opaque(cause.clone().into()).unwrap())
         .into();
     let error = JsError::from_native(JsNativeError::aggregate(vec![member]));
 
@@ -242,7 +242,7 @@ fn materialization_preserves_a_local_aggregate_members_cause() {
 fn native_error_materialization_refuses_a_foreign_nested_cause() {
     let context = &mut Context::default();
     let foreign = JsObject::with_null_proto(&Runtime::default());
-    let cause = JsError::from_opaque(foreign.into());
+    let cause = JsError::from_opaque(foreign.into()).unwrap();
     let inner = JsNativeError::range().with_cause(cause);
     let error = JsNativeError::error().with_cause(inner);
 

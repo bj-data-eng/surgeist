@@ -60,7 +60,7 @@ impl RegExp {
 }
 
 impl IntrinsicObject for RegExp {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_species = BuiltInBuilder::callable(realm, Self::get_species)
             .name(js_string!("get [Symbol.species]"))
             .build();
@@ -173,7 +173,9 @@ impl IntrinsicObject for RegExp {
         #[cfg(feature = "annex-b")]
         let regexp = regexp.method(Self::compile, js_string!("compile"), 2);
 
-        regexp.build();
+        regexp.build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -234,41 +236,45 @@ impl BuiltInConstructor for RegExp {
 
         // 4. If pattern is an Object and pattern has a [[RegExpMatcher]] internal slot, then
         let object = pattern.clone().as_object();
-        let (p, f) =
-            if let Some(pattern) = object.as_ref().and_then(JsObject::downcast_ref::<RegExp>) {
-                // a. Let P be pattern.[[OriginalSource]].
-                let p = pattern.original_source.clone().into();
+        let (p, f) = if let Some(pattern) = object
+            .as_ref()
+            .map(JsObject::downcast_ref::<RegExp>)
+            .transpose()?
+            .flatten()
+        {
+            // a. Let P be pattern.[[OriginalSource]].
+            let p = pattern.original_source.clone().into();
 
-                // b. If flags is undefined, let F be pattern.[[OriginalFlags]].
-                let f = if flags.is_undefined() {
-                    pattern.original_flags.clone().into()
-                // c. Else, let F be flags.
-                } else {
-                    flags.clone()
-                };
-
-                (p, f)
-            } else if let Some(pattern) = &pattern_is_regexp {
-                // a. Let P be ? Get(pattern, "source").
-                let p = pattern.get(js_string!("source"), context.access())?;
-
-                // b. If flags is undefined, then
-                let f = if flags.is_undefined() {
-                    // i. Let F be ? Get(pattern, "flags").
-                    pattern.get(js_string!("flags"), context.access())?
-                // c. Else,
-                } else {
-                    // i. Let F be flags.
-                    flags.clone()
-                };
-
-                (p, f)
-            // 6. Else,
+            // b. If flags is undefined, let F be pattern.[[OriginalFlags]].
+            let f = if flags.is_undefined() {
+                pattern.original_flags.clone().into()
+            // c. Else, let F be flags.
             } else {
-                // a. Let P be pattern.
-                // b. Let F be flags.
-                (pattern.clone(), flags.clone())
+                flags.clone()
             };
+
+            (p, f)
+        } else if let Some(pattern) = &pattern_is_regexp {
+            // a. Let P be ? Get(pattern, "source").
+            let p = pattern.get(js_string!("source"), context.access())?;
+
+            // b. If flags is undefined, then
+            let f = if flags.is_undefined() {
+                // i. Let F be ? Get(pattern, "flags").
+                pattern.get(js_string!("flags"), context.access())?
+            // c. Else,
+            } else {
+                // i. Let F be flags.
+                flags.clone()
+            };
+
+            (p, f)
+        // 6. Else,
+        } else {
+            // a. Let P be pattern.
+            // b. Let F be flags.
+            (pattern.clone(), flags.clone())
+        };
 
         // 7. Let O be ? RegExpAlloc(newTarget).
         let proto =
@@ -467,7 +473,7 @@ impl RegExp {
 
     fn regexp_has_flag(this: &JsValue, flag: u8, context: &mut Context) -> JsResult<JsValue> {
         if let Some(object) = this.as_object() {
-            if let Some(regexp) = object.downcast_ref::<RegExp>() {
+            if let Some(regexp) = object.downcast_ref::<RegExp>()? {
                 return Ok(JsValue::new(match flag {
                     b'd' => regexp.flags.contains(RegExpFlags::HAS_INDICES),
                     b'g' => regexp.flags.contains(RegExpFlags::GLOBAL),
@@ -778,7 +784,7 @@ impl RegExp {
                 .into());
         };
 
-        let casted = object.downcast_ref::<RegExp>();
+        let casted = object.downcast_ref::<RegExp>()?;
         match casted {
             // 3. If R does not have an [[OriginalSource]] internal slot, then
             None => {
@@ -1124,7 +1130,7 @@ impl RegExp {
         input: &JsString,
         context: &mut Context,
     ) -> JsResult<Option<JsObject>> {
-        let rx = this.borrow().data().clone();
+        let rx = this.borrow()?.data().clone();
         let this = this.upcast();
 
         // 1. Let length be the length of S.
@@ -2123,10 +2129,21 @@ impl RegExp {
         let pattern = args.get_or_undefined(0);
         let flags = args.get_or_undefined(1);
         // 3. If pattern is an Object and pattern has a [[RegExpMatcher]] internal slot, then
-        let (pattern, flags) = if let Some((p, f)) = pattern.as_object().and_then(|o| {
-            o.downcast_ref::<RegExp>()
-                .map(|rx| (rx.original_source.clone(), rx.original_flags.clone()))
-        }) {
+        let original = pattern
+            .as_object()
+            .map(|object| {
+                object.downcast_ref::<RegExp>().map(|regexp| {
+                    regexp.map(|regexp| {
+                        (
+                            regexp.original_source.clone(),
+                            regexp.original_flags.clone(),
+                        )
+                    })
+                })
+            })
+            .transpose()?
+            .flatten();
+        let (pattern, flags) = if let Some((p, f)) = original {
             //     a. If flags is not undefined, throw a TypeError exception.
             if !flags.is_undefined() {
                 return Err(JsNativeError::typ()
@@ -2151,8 +2168,8 @@ impl RegExp {
         // 5. Return ? RegExpInitialize(O, P, F).
         {
             *this
-                .downcast_mut::<RegExp>()
-                .expect("already checked that the object was a RegExp") = regexp;
+                .downcast_mut::<RegExp>()?
+                .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)? = regexp;
         }
 
         this.set(js_string!("lastIndex"), 0, true, context.access())?;

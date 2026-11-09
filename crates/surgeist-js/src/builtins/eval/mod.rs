@@ -12,7 +12,7 @@
 use std::rc::Rc;
 
 use crate::{
-    Context, JsArgs, JsExpect, JsResult, JsString, JsValue, SpannedSourceText,
+    Context, JsArgs, JsResult, JsString, JsValue, SpannedSourceText,
     builtins::{BuiltInObject, function::OrdinaryFunction},
     bytecompiler::{
         ByteCompiler,
@@ -78,11 +78,13 @@ fn project_private_names<E>(
 pub(crate) struct Eval;
 
 impl IntrinsicObject for Eval {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::callable_with_intrinsic::<Self>(realm, Self::eval)
             .name(Self::NAME)
             .length(1)
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -250,14 +252,14 @@ impl Eval {
                 // i. Let F be thisEnvRec.[[FunctionObject]].
                 let function_object = function_env.slots().function_object();
                 let function_object = function_object
-                    .downcast_ref::<OrdinaryFunction>()
-                    .js_expect("must be function object")?;
+                    .downcast_ref::<OrdinaryFunction>()?
+                    .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
 
                 // ii. Set inFunction to true.
                 let mut flags = Flags::IN_FUNCTION;
 
                 // iii. Set inMethod to thisEnvRec.HasSuperBinding().
-                if function_env.has_super_binding() {
+                if function_env.has_super_binding()? {
                     flags |= Flags::IN_METHOD;
                 }
 

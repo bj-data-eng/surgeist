@@ -43,16 +43,18 @@ pub(crate) struct RegExpStringIterator {
 }
 
 impl IntrinsicObject for RegExpStringIterator {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::with_intrinsic::<Self>(realm)
             .prototype(realm.intrinsics().constructors().iterator().prototype())
-            .static_method(Self::next, js_string!("next"), 0)
+            .static_method(Self::next, js_string!("next"), 0)?
             .static_property(
                 JsSymbol::to_string_tag(),
                 js_string!("RegExp String Iterator"),
                 Attribute::CONFIGURABLE,
-            )
-            .build();
+            )?
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -124,7 +126,7 @@ impl RegExpStringIterator {
                 JsNativeError::typ().with_message("`this` is not a RegExpStringIterator")
             })?;
         let (matcher, string, global, unicode) = {
-            let mut object = iterator.borrow_mut();
+            let mut object = iterator.borrow_mut()?;
             let state = object.data_mut();
             if state.executing {
                 return Err(JsNativeError::typ()
@@ -145,7 +147,7 @@ impl RegExpStringIterator {
         };
 
         let result = Self::advance(&matcher, &string, global, unicode, context);
-        let mut object = iterator.borrow_mut();
+        let mut object = iterator.borrow_mut()?;
         let state = object.data_mut();
         state.executing = false;
         if matches!(&result, Ok(None)) || (!global && result.is_ok()) {

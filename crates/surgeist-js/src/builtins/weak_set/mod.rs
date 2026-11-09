@@ -34,7 +34,7 @@ impl IntrinsicObject for WeakSet {
         Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
     }
 
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::from_standard_constructor::<Self>(realm)
             .property(
                 JsSymbol::to_string_tag(),
@@ -44,7 +44,9 @@ impl IntrinsicObject for WeakSet {
             .method(Self::add, js_string!("add"), 1)
             .method(Self::delete, js_string!("delete"), 1)
             .method(Self::has, js_string!("has"), 1)
-            .build();
+            .build()?;
+
+        Ok(())
     }
 }
 
@@ -163,7 +165,7 @@ impl WeakSet {
 
         // 4-6. Add value to S.[[WeakSetData]] if absent.
         require_same_runtime(&set.runtime(), &value)?;
-        set.borrow_data().insert(&value, ());
+        set.borrow_data()?.insert(&value, ());
 
         // 7. Return S.
         Ok(this.clone())
@@ -189,7 +191,9 @@ impl WeakSet {
         let object = this.as_object();
         let set = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<NativeWeakSet>)
+            .map(JsObject::downcast_ref::<NativeWeakSet>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 js_error!(TypeError:
                     "WeakSet.prototype.delete: expected 'this' to be a WeakSet object",
@@ -231,7 +235,9 @@ impl WeakSet {
         let object = this.as_object();
         let set = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<NativeWeakSet>)
+            .map(JsObject::downcast_ref::<NativeWeakSet>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 js_error!(TypeError:
                     "WeakSet.prototype.has: expected 'this' to be a WeakSet object")

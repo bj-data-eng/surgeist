@@ -10,7 +10,10 @@ use std::{
 use surgeist_js::{
     Context, ContextAccess, JsError, JsObject, JsResult, JsValue,
     builtins::promise::PromiseState,
-    error::{DiagnosticEngine, DiagnosticKind, EngineError, ErasedEngineError, PanicError},
+    error::{
+        DiagnosticEngine, DiagnosticKind, EngineError, ErasedEngineError, ObjectAccessError,
+        PanicError,
+    },
     execution::ExecutionOptions,
     job::{
         ContextTask, Job, JobAcceptance, JobExecutor, JobPublicationError, JobStatus, JobStep,
@@ -56,7 +59,10 @@ fn poll(future: &mut JsFuture) -> Poll<JsResult<JsValue>> {
     Pin::new(future).poll(&mut TaskContext::from_waker(Waker::noop()))
 }
 fn busy(error: &JsError) {
-    assert_eq!(error.as_engine(), Some(&EngineError::ObjectAccessBusy));
+    assert_eq!(
+        error.as_engine(),
+        Some(&EngineError::ObjectAccess(ObjectAccessError::Borrowed))
+    );
 }
 fn complete(job: &mut NativeAsyncJob, owner: &mut Context) {
     let host = owner.host_access();
@@ -80,11 +86,13 @@ fn representations(error: &JsError, owner: &mut Context) {
     let outer = PanicError::new("authored promise alias contention").with_source(error.clone());
     assert!(matches!(
         outer.diagnostic().unwrap().kind(),
-        DiagnosticKind::Engine(DiagnosticEngine::ObjectAccessBusy)
+        DiagnosticKind::Engine(DiagnosticEngine::ObjectAccess(ObjectAccessError::Borrowed))
     ));
     assert_eq!(
         error.clone().into_erased(owner.access()).as_engine(),
-        Some(&ErasedEngineError::ObjectAccessBusy)
+        Some(&ErasedEngineError::ObjectAccess(
+            ObjectAccessError::Borrowed
+        ))
     );
 }
 
@@ -109,7 +117,7 @@ fn a_mutable_promise_alias_refuses_future_registration_without_faulting_or_consu
     let mut job = executor.take_async();
     let observer = job.observer();
     let alias = Deref::deref(&promise).clone();
-    let guard = alias.borrow_mut();
+    let guard = alias.borrow_mut().unwrap();
     let refused = owner
         .with_execution(
             ExecutionOptions::new(0)
@@ -172,7 +180,7 @@ fn polling_under_a_mutable_promise_alias_returns_busy_and_recovers_the_original_
     let mut future = promise.clone().into_js_future(owner.access()).unwrap();
     assert!(poll(&mut future).is_pending());
     let alias = Deref::deref(&promise).clone();
-    let guard = alias.borrow_mut();
+    let guard = alias.borrow_mut().unwrap();
     let Poll::Ready(Err(error)) = poll(&mut future) else {
         panic!("the actual shared mutable object lease must return its contention error")
     };

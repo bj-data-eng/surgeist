@@ -204,17 +204,19 @@ impl<'ast> surgeist_js_ast::visitor::Visitor<'ast> for JsonSourceVisitor<'_> {
 pub(crate) struct Json;
 
 impl IntrinsicObject for Json {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let to_string_tag = JsSymbol::to_string_tag();
         let attribute = Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE;
 
         BuiltInBuilder::with_intrinsic::<Self>(realm)
-            .static_method(Self::parse, js_string!("parse"), 2)
-            .static_method(Self::stringify, js_string!("stringify"), 3)
-            .static_method(Self::raw_json, js_string!("rawJSON"), 1)
-            .static_method(Self::is_raw_json, js_string!("isRawJSON"), 1)
-            .static_property(to_string_tag, Self::NAME, attribute)
-            .build();
+            .static_method(Self::parse, js_string!("parse"), 2)?
+            .static_method(Self::stringify, js_string!("stringify"), 3)?
+            .static_method(Self::raw_json, js_string!("rawJSON"), 1)?
+            .static_method(Self::is_raw_json, js_string!("isRawJSON"), 1)?
+            .static_property(to_string_tag, Self::NAME, attribute)?
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -861,12 +863,12 @@ impl Json {
                 value = value.to_string(context.access())?.into();
             }
             // c. Else if value has a [[BooleanData]] internal slot, then
-            else if let Some(boolean) = obj.downcast_ref::<bool>() {
+            else if let Some(boolean) = obj.downcast_ref::<bool>()? {
                 // i. Set value to value.[[BooleanData]].
                 value = (*boolean).into();
             }
             // d. Else if value has a [[BigIntData]] internal slot, then
-            else if let Some(bigint) = obj.downcast_ref::<JsBigInt>() {
+            else if let Some(bigint) = obj.downcast_ref::<JsBigInt>()? {
                 // i. Set value to value.[[BigIntData]].
                 value = bigint.clone().into();
             }

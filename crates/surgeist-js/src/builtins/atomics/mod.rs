@@ -39,31 +39,33 @@ use super::{
 pub(crate) struct Atomics;
 
 impl IntrinsicObject for Atomics {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let builder = BuiltInBuilder::with_intrinsic::<Self>(realm)
             .static_property(
                 JsSymbol::to_string_tag(),
                 Self::NAME,
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
-            )
-            .static_method(Atomics::add, js_string!("add"), 3)
-            .static_method(Atomics::bit_and, js_string!("and"), 3)
-            .static_method(Atomics::compare_exchange, js_string!("compareExchange"), 4)
-            .static_method(Atomics::swap, js_string!("exchange"), 3)
-            .static_method(Atomics::is_lock_free, js_string!("isLockFree"), 1)
-            .static_method(Atomics::load, js_string!("load"), 2)
-            .static_method(Atomics::bit_or, js_string!("or"), 3)
-            .static_method(Atomics::store, js_string!("store"), 3)
-            .static_method(Atomics::sub, js_string!("sub"), 3)
-            .static_method(Atomics::wait::<false>, js_string!("wait"), 4)
-            .static_method(Atomics::wait::<true>, js_string!("waitAsync"), 4)
-            .static_method(Atomics::notify, js_string!("notify"), 3)
-            .static_method(Atomics::bit_xor, js_string!("xor"), 3);
+            )?
+            .static_method(Atomics::add, js_string!("add"), 3)?
+            .static_method(Atomics::bit_and, js_string!("and"), 3)?
+            .static_method(Atomics::compare_exchange, js_string!("compareExchange"), 4)?
+            .static_method(Atomics::swap, js_string!("exchange"), 3)?
+            .static_method(Atomics::is_lock_free, js_string!("isLockFree"), 1)?
+            .static_method(Atomics::load, js_string!("load"), 2)?
+            .static_method(Atomics::bit_or, js_string!("or"), 3)?
+            .static_method(Atomics::store, js_string!("store"), 3)?
+            .static_method(Atomics::sub, js_string!("sub"), 3)?
+            .static_method(Atomics::wait::<false>, js_string!("wait"), 4)?
+            .static_method(Atomics::wait::<true>, js_string!("waitAsync"), 4)?
+            .static_method(Atomics::notify, js_string!("notify"), 3)?
+            .static_method(Atomics::bit_xor, js_string!("xor"), 3)?;
 
         #[cfg(feature = "experimental")]
-        let builder = builder.static_method(Atomics::pause, js_string!("pause"), 0);
+        let builder = builder.static_method(Atomics::pause, js_string!("pause"), 0)?;
 
-        builder.build();
+        builder.build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -98,10 +100,10 @@ macro_rules! atomic_op {
             let value = access.kind.get_element(value, context)?;
 
             // Revalidate the selected byte range after value coercion.
-            let ta = ta.borrow();
+            let ta = ta.borrow()?;
             let ta = ta.data();
             let buffer = ta.viewed_array_buffer();
-            let mut buffer = buffer.as_buffer_mut();
+            let mut buffer = buffer.as_buffer_mut()?;
             let Some(mut data) = buffer.bytes(Ordering::Relaxed) else {
                 return Err(JsNativeError::typ()
                 .with_message("cannot execute atomic operation in detached buffer")
@@ -190,10 +192,10 @@ impl Atomics {
         let access = validate_atomic_access(&ta, buf_len, index, context)?;
 
         // 2. Perform ? RevalidateAtomicAccess(typedArray, indexedPosition).
-        let ta = ta.borrow();
+        let ta = ta.borrow()?;
         let ta = ta.data();
         let buffer = ta.viewed_array_buffer();
-        let buffer = buffer.as_buffer();
+        let buffer = buffer.as_buffer()?;
         let Some(data) = buffer.bytes(Ordering::Relaxed) else {
             return Err(JsNativeError::typ()
                 .with_message("cannot execute atomic operation in detached buffer")
@@ -237,10 +239,10 @@ impl Atomics {
         let value = access.kind.get_element(&converted, context)?;
 
         // 4. Perform ? RevalidateAtomicAccess(typedArray, indexedPosition).
-        let ta = ta.borrow();
+        let ta = ta.borrow()?;
         let ta = ta.data();
         let buffer = ta.viewed_array_buffer();
-        let mut buffer = buffer.as_buffer_mut();
+        let mut buffer = buffer.as_buffer_mut()?;
         let Some(mut buffer) = buffer.bytes(Ordering::Relaxed) else {
             return Err(JsNativeError::typ()
                 .with_message("cannot execute atomic operation in detached buffer")
@@ -283,10 +285,10 @@ impl Atomics {
         let rep = access.kind.get_element(replacement, context)?.to_bits();
 
         // 6. Perform ? RevalidateAtomicAccess(typedArray, indexedPosition).
-        let ta = ta.borrow();
+        let ta = ta.borrow()?;
         let ta = ta.data();
         let buffer = ta.viewed_array_buffer();
-        let mut buffer = buffer.as_buffer_mut();
+        let mut buffer = buffer.as_buffer_mut()?;
         let Some(mut buffer) = buffer.bytes(Ordering::Relaxed) else {
             return Err(JsNativeError::typ()
                 .with_message("cannot execute atomic operation in detached buffer")
@@ -409,7 +411,7 @@ impl Atomics {
 
         // 2. Let buffer be taRecord.[[Object]].[[ViewedArrayBuffer]].
         // 3. If IsSharedArrayBuffer(buffer) is false, throw a TypeError exception.
-        let buffer = match ta.borrow().data().viewed_array_buffer() {
+        let buffer = match ta.borrow()?.data().viewed_array_buffer() {
             BufferObject::SharedBuffer(buf) => buf,
             BufferObject::Buffer(_) => {
                 return Err(JsNativeError::typ()
@@ -449,7 +451,7 @@ impl Atomics {
         }
 
         // A host executor can reenter when an async completion is enqueued.
-        let backing = buffer.borrow().data().clone();
+        let backing = buffer.borrow()?.data().clone();
         if ASYNC {
             let (promise, resolvers) = JsPromise::new_pending(context.access());
             let result = if access.kind == TypedArrayKind::BigInt64 {
@@ -535,11 +537,11 @@ impl Atomics {
         // 5. Let block be buffer.[[ArrayBufferData]].
         // 6. If IsSharedArrayBuffer(buffer) is false, return +0𝔽.
         let shared = {
-            let ta = ta.borrow();
+            let ta = ta.borrow()?;
             let BufferObject::SharedBuffer(shared) = ta.data().viewed_array_buffer() else {
                 return Ok(0.into());
             };
-            shared.borrow().data().clone()
+            shared.borrow()?.data().clone()
         };
 
         let count = futex::notify(&shared, access.byte_offset, count)?;
@@ -606,7 +608,7 @@ fn validate_integer_typed_array(
     let ta_record = TypedArray::validate(array, Ordering::Relaxed)?;
 
     {
-        let array = ta_record.0.borrow();
+        let array = ta_record.0.borrow()?;
 
         // 3. If waitable is true, then
         if waitable {
@@ -672,7 +674,7 @@ fn validate_atomic_access(
 ) -> JsResult<AtomicAccess> {
     // 5. Let typedArray be taRecord.[[Object]].
     let (length, kind, offset) = {
-        let array = array.borrow();
+        let array = array.borrow()?;
         let array = array.data();
 
         // 1. Let length be typedArray.[[ArrayLength]].

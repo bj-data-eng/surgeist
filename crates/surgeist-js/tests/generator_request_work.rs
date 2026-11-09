@@ -128,7 +128,7 @@ impl ManualExecutor {
         for _ in 0..32 {
             match promise.state().unwrap() {
                 PromiseState::Fulfilled(value) => return Ok(value),
-                PromiseState::Rejected(reason) => return Err(JsError::from_opaque(reason)),
+                PromiseState::Rejected(reason) => return Err(JsError::from_opaque(reason)?),
                 PromiseState::Pending => {}
             }
             let queued = self.0.borrow_mut().pop_front();

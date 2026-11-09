@@ -60,11 +60,11 @@ impl GetNameGlobal {
 
             let ic = &context.vm.frame().code_block().ic[usize::from(ic_index)];
 
-            let object_borrowed = object.borrow();
+            let object_borrowed = object.borrow()?;
             if let Some((shape, slot)) = ic.get(&object_borrowed.shape()) {
                 let mut result = if slot.attributes.contains(SlotAttributes::PROTOTYPE) {
                     let prototype = shape.prototype().expect("prototype should have value");
-                    let prototype = prototype.borrow();
+                    let prototype = prototype.borrow()?;
                     prototype.properties().named_slot(slot.index as usize)
                 } else {
                     object_borrowed.properties().named_slot(slot.index as usize)
@@ -98,7 +98,7 @@ impl GetNameGlobal {
             let slot = *context.slot();
             if slot.is_cacheable() {
                 let ic = &context.vm.frame().code_block.ic[usize::from(ic_index)];
-                let object_borrowed = object.borrow();
+                let object_borrowed = object.borrow()?;
                 let shape = object_borrowed.shape();
                 ic.set(&shape, slot);
             }

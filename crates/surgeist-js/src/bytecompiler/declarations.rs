@@ -1133,7 +1133,7 @@ mod tests {
     #[test]
     fn declaration_name_search_refuses_before_the_next_candidate_without_wrapping_error() {
         let names = [Sym::EVAL, Sym::ARGUMENTS, Sym::LET];
-        let marker = JsError::from_opaque(JsValue::new(315));
+        let marker = JsError::from_opaque(JsValue::new(315)).unwrap();
         let mut attempted = 0;
         let mut stopped = false;
         let mut admission = |_| {
@@ -1176,7 +1176,7 @@ mod tests {
         assert_eq!(exact, [5, 4, 3, 2, 1]);
         assert_eq!(requests, 10); // Two visits, one payload transfer and two writes per swap.
 
-        let marker = JsError::from_opaque(JsValue::new(316));
+        let marker = JsError::from_opaque(JsValue::new(316)).unwrap();
         let mut partial = [1_u32, 2, 3, 4, 5];
         let mut accepted = 0;
         let mut stopped = false;
@@ -1216,7 +1216,7 @@ mod tests {
             names
         );
         for limit in 0..=requests {
-            let marker = JsError::from_opaque(JsValue::new(317));
+            let marker = JsError::from_opaque(JsValue::new(317)).unwrap();
             let mut accepted = 0;
             let mut stopped = false;
             let mut admission = |_| {

@@ -22,7 +22,7 @@ impl E2eFetcher {
             .collect();
 
         let Some(header) = request_query.get("header") else {
-            return Err(js_error!("Invalid query."));
+            return Err(js_error!("Invalid query.")?);
         };
 
         let mut response = Response::new(b"".to_vec());
@@ -52,7 +52,7 @@ impl crate::fetch::Fetcher for E2eFetcher {
         ContextTask::from_future(async move {
             match request.uri().path() {
                 "/headers" => Self::headers(&request),
-                _ => Err(js_error!("Invalid request.")),
+                _ => Err(js_error!("Invalid request.")?),
             }
         })
     }

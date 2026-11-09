@@ -4,7 +4,7 @@ use crate::{
     JsResult, JsValue,
     builtins::array_buffer::ArrayBuffer,
     context::intrinsics::StandardConstructors,
-    error::JsNativeError,
+    error::{JsNativeError, ObjectAccessError},
     object::{JsObject, internal_methods::get_prototype_from_constructor},
     value::TryFromJs,
 };
@@ -135,13 +135,12 @@ impl JsArrayBuffer {
 
     /// Set a maximum length for the underlying array buffer.
     #[inline]
-    #[must_use]
-    pub fn with_max_byte_length(self, max_byte_len: u64) -> Self {
+    pub fn with_max_byte_length(self, max_byte_len: u64) -> Result<Self, ObjectAccessError> {
         self.inner
-            .borrow_mut()
+            .borrow_mut()?
             .data_mut()
             .set_max_byte_length(max_byte_len);
-        self
+        Ok(self)
     }
 
     /// Create a [`JsArrayBuffer`] from a [`JsObject`], if the object is not an array buffer throw a `TypeError`.
@@ -174,16 +173,15 @@ impl JsArrayBuffer {
     /// let array_buffer = JsArrayBuffer::from_byte_block(data_block, context.access())?;
     ///
     /// // Take the inner buffer
-    /// let buffer_length = array_buffer.byte_length();
+    /// let buffer_length = array_buffer.byte_length()?;
     ///
     /// assert_eq!(buffer_length, 5);
     /// # Ok(())
     /// # }
     ///  ```
     #[inline]
-    #[must_use]
-    pub fn byte_length(&self) -> usize {
-        self.inner.borrow().data().len()
+    pub fn byte_length(&self) -> Result<usize, ObjectAccessError> {
+        Ok(self.inner.borrow()?.data().len())
     }
 
     /// Take the inner `ArrayBuffer`'s `array_buffer_data` field and replace it with `None`
@@ -232,7 +230,7 @@ impl JsArrayBuffer {
     /// Returns a `TypeError` if the detach key does not match.
     #[inline]
     pub fn detach_if_attached(&self, detach_key: &JsValue) -> JsResult<Option<Vec<u8>>> {
-        self.inner.borrow_mut().data_mut().detach(detach_key)
+        self.inner.borrow_mut()?.data_mut().detach(detach_key)
     }
 
     /// Get an immutable reference to the [`JsArrayBuffer`]'s data.
@@ -252,16 +250,15 @@ impl JsArrayBuffer {
     /// let array_buffer = JsArrayBuffer::from_byte_block(data_block, context.access())?;
     ///
     /// // Get a reference to the data.
-    /// let internal_buffer = array_buffer.data();
+    /// let internal_buffer = array_buffer.data()?;
     ///
     /// assert_eq!(internal_buffer.as_deref(), Some(&[0u8, 1, 2, 3, 4][..]));
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
-    #[must_use]
-    pub fn data(&self) -> Option<Ref<'_, [u8]>> {
-        Ref::filter_map(self.inner.borrow_data(), ArrayBuffer::bytes).ok()
+    pub fn data(&self) -> Result<Option<Ref<'_, [u8]>>, ObjectAccessError> {
+        Ok(Ref::filter_map(self.inner.borrow_data()?, ArrayBuffer::bytes).ok())
     }
 
     /// Copies the contents of this [`JsArrayBuffer`] into a new [`Vec<u8>`].
@@ -280,17 +277,16 @@ impl JsArrayBuffer {
     /// let context = &mut Context::default();
     /// let data = vec![1u8, 2, 3, 4];
     /// let buffer = JsArrayBuffer::from_byte_block(data, context.access())?;
-    /// assert_eq!(buffer.to_vec(), Some(vec![1u8, 2, 3, 4]));
+    /// assert_eq!(buffer.to_vec()?, Some(vec![1u8, 2, 3, 4]));
     ///
     /// buffer.detach(&JsValue::undefined())?;
-    /// assert_eq!(buffer.to_vec(), None);
+    /// assert_eq!(buffer.to_vec()?, None);
     /// # Ok(())
     /// # }
     /// ```
     #[inline]
-    #[must_use]
-    pub fn to_vec(&self) -> Option<Vec<u8>> {
-        self.data().map(|data| data.to_vec())
+    pub fn to_vec(&self) -> Result<Option<Vec<u8>>, ObjectAccessError> {
+        Ok(self.data()?.map(|data| data.to_vec()))
     }
 
     /// Get a mutable reference to the [`JsArrayBuffer`]'s data.
@@ -311,7 +307,7 @@ impl JsArrayBuffer {
     ///
     /// // Get a reference to the data.
     /// let mut internal_buffer = array_buffer
-    ///     .data_mut()
+    ///     .data_mut()?
     ///     .expect("the buffer should not be detached");
     ///
     /// internal_buffer.fill(10);
@@ -321,9 +317,8 @@ impl JsArrayBuffer {
     /// # }
     /// ```
     #[inline]
-    #[must_use]
-    pub fn data_mut(&self) -> Option<RefMut<'_, [u8]>> {
-        RefMut::filter_map(self.inner.borrow_data_mut(), ArrayBuffer::bytes_mut).ok()
+    pub fn data_mut(&self) -> Result<Option<RefMut<'_, [u8]>>, ObjectAccessError> {
+        Ok(RefMut::filter_map(self.inner.borrow_data_mut()?, ArrayBuffer::bytes_mut).ok())
     }
 }
 
@@ -368,16 +363,45 @@ mod tests {
     use crate::{Context, JsValue};
 
     #[test]
+    fn array_buffer_access_distinguishes_alias_refusal_from_detachment() {
+        let context = &mut Context::default();
+        let buffer = JsArrayBuffer::from_byte_block(vec![3, 5], context.access()).unwrap();
+        let alias: JsObject<ArrayBuffer> = buffer.clone().into();
+        let view = alias.borrow_mut().unwrap();
+
+        assert_eq!(buffer.byte_length(), Err(ObjectAccessError::Borrowed));
+        assert_eq!(buffer.data().unwrap_err(), ObjectAccessError::Borrowed);
+        assert_eq!(buffer.data_mut().unwrap_err(), ObjectAccessError::Borrowed);
+        assert_eq!(buffer.to_vec(), Err(ObjectAccessError::Borrowed));
+        assert_eq!(
+            buffer
+                .detach_if_attached(&JsValue::undefined())
+                .unwrap_err()
+                .as_engine(),
+            Some(&crate::error::EngineError::ObjectAccess(
+                ObjectAccessError::Borrowed
+            ))
+        );
+        drop(view);
+
+        assert_eq!(buffer.to_vec().unwrap(), Some(vec![3, 5]));
+        assert_eq!(buffer.detach(&JsValue::undefined()).unwrap(), vec![3, 5]);
+        assert!(buffer.data().unwrap().is_none());
+        assert!(buffer.data_mut().unwrap().is_none());
+        assert_eq!(buffer.to_vec().unwrap(), None);
+    }
+
+    #[test]
     fn array_buffer_to_vec_roundtrip_and_detach() {
         let context = &mut Context::default();
 
         let data = vec![1u8, 2, 3, 4, 5];
         let buffer = JsArrayBuffer::from_byte_block(data, context.access()).unwrap();
 
-        assert_eq!(buffer.to_vec(), Some(vec![1u8, 2, 3, 4, 5]));
+        assert_eq!(buffer.to_vec().unwrap(), Some(vec![1u8, 2, 3, 4, 5]));
 
         buffer.detach(&JsValue::undefined()).unwrap();
-        assert_eq!(buffer.to_vec(), None);
+        assert_eq!(buffer.to_vec().unwrap(), None);
     }
 
     #[test]
@@ -387,6 +411,6 @@ mod tests {
         let data = Vec::new();
         let buffer = JsArrayBuffer::from_byte_block(data, context.access()).unwrap();
 
-        assert_eq!(buffer.to_vec(), Some(Vec::new()));
+        assert_eq!(buffer.to_vec().unwrap(), Some(Vec::new()));
     }
 }

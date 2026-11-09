@@ -37,7 +37,7 @@ impl IntrinsicObject for WeakMap {
         Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
     }
 
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::from_standard_constructor::<Self>(realm)
             .property(
                 JsSymbol::to_string_tag(),
@@ -54,7 +54,9 @@ impl IntrinsicObject for WeakMap {
                 js_string!("getOrInsertComputed"),
                 2,
             )
-            .build();
+            .build()?;
+
+        Ok(())
     }
 }
 
@@ -139,7 +141,9 @@ impl WeakMap {
         let object = this.as_object();
         let map = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<NativeWeakMap>)
+            .map(JsObject::downcast_ref::<NativeWeakMap>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 js_error!(TypeError:
                     "WeakMap.prototype.delete: expected 'this' to be a WeakMap object",
@@ -179,7 +183,9 @@ impl WeakMap {
         let object = this.as_object();
         let map = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<NativeWeakMap>)
+            .map(JsObject::downcast_ref::<NativeWeakMap>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 js_error!(TypeError:
                     "WeakMap.prototype.get: expected 'this' to be a WeakMap object")
@@ -215,7 +221,9 @@ impl WeakMap {
         let object = this.as_object();
         let map = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<NativeWeakMap>)
+            .map(JsObject::downcast_ref::<NativeWeakMap>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 js_error!(TypeError:
                     "WeakMap.prototype.has: expected 'this' to be a WeakMap object")
@@ -319,7 +327,7 @@ impl WeakMap {
         };
 
         // 4. For each Record { [[Key]], [[Value]] } p of M.[[WeakMapData]]
-        if let Some(value) = map.borrow().data().get(&key) {
+        if let Some(value) = map.borrow()?.data().get(&key) {
             // a. If p.[[Key]] is not empty and SameValue(p.[[Key]], key) is true, return p.[[Value]].
             return Ok(value);
         }
@@ -378,7 +386,7 @@ impl WeakMap {
         };
 
         // 5. For each Record { [[Key]], [[Value]] } p of M.[[WeakMapData]]
-        if let Some(value) = map.borrow().data().get(&key_obj) {
+        if let Some(value) = map.borrow()?.data().get(&key_obj) {
             // a. If p.[[Key]] is not empty and SameValue(p.[[Key]], key) is true, return p.[[Value]].
             return Ok(value);
         }
@@ -401,7 +409,7 @@ impl WeakMap {
         if let Some(object) = value.as_object() {
             require_same_runtime(&map.runtime(), &object)?;
         }
-        map.borrow_data().insert(key, value.into_stored());
+        map.borrow_data()?.insert(key, value.into_stored());
         Ok(())
     }
 }

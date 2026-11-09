@@ -62,7 +62,7 @@ pub(crate) enum Placement {
 pub(crate) struct String;
 
 impl IntrinsicObject for String {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let trim_start = BuiltInBuilder::callable(realm, Self::trim_start)
             .length(0)
             .name(js_string!("trimStart"))
@@ -166,7 +166,9 @@ impl IntrinsicObject for String {
                 .method(Self::sup, js_string!("sup"), 0)
         };
 
-        builder.build();
+        builder.build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -278,17 +280,17 @@ impl String {
     ///
     /// [spec]: https://tc39.es/ecma262/#thisstringvalue
     fn this_string_value(this: &JsValue) -> JsResult<JsString> {
-        // 1. If Type(value) is String, return value.
-        this.as_string()
-            // 2. If Type(value) is Object and value has a [[StringData]] internal slot, then
-            //     a. Let s be value.[[StringData]].
-            //     b. Assert: Type(s) is String.
-            //     c. Return s.
-            .or_else(|| {
-                this.as_object()
-                    .and_then(|obj| obj.downcast_ref::<JsString>().as_deref().cloned())
+        if let Some(primitive) = this.as_string() {
+            return Ok(primitive);
+        }
+        this.as_object()
+            .map(|object| {
+                object
+                    .downcast_ref::<JsString>()
+                    .map(|value| value.as_deref().cloned())
             })
-            // 3. Throw a TypeError exception.
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("'this' is not a string")
@@ -1463,7 +1465,9 @@ impl String {
                 let object = collator.as_object();
                 let collator = object
                     .as_ref()
-                    .and_then(|o| o.downcast_ref::<Collator>())
+                    .map(|o| o.downcast_ref::<Collator>())
+                    .transpose()?
+                    .flatten()
                     .js_expect("constructor must return a `Collator` object")?;
 
                 let s = s.iter().collect::<Vec<_>>();

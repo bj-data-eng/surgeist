@@ -372,7 +372,7 @@ fn promise_executor_error_materialization_refuses_a_foreign_nested_cause() {
 
     let context = &mut Context::default();
     let foreign = JsObject::with_null_proto(&Runtime::default());
-    let inner = JsNativeError::range().with_cause(JsError::from_opaque(foreign.into()));
+    let inner = JsNativeError::range().with_cause(JsError::from_opaque(foreign.into()).unwrap());
     let error = JsNativeError::error().with_cause(inner).into();
 
     let refusal = JsPromise::new(|_, _| Err(error), context.access()).unwrap_err();
@@ -385,7 +385,7 @@ fn promise_reject_error_materialization_refuses_a_foreign_nested_cause() {
 
     let context = &mut Context::default();
     let foreign = JsObject::with_null_proto(&Runtime::default());
-    let inner = JsNativeError::range().with_cause(JsError::from_opaque(foreign.into()));
+    let inner = JsNativeError::range().with_cause(JsError::from_opaque(foreign.into()).unwrap());
     let error = JsNativeError::error().with_cause(inner);
 
     let refusal = JsPromise::reject(error, context.access()).unwrap_err();

@@ -72,8 +72,8 @@ fn extract_map_rows(map: &JsMap) -> JsResult<TableData> {
     map.for_each_native(|key, value| {
         let mut row = FxHashMap::default();
         row.insert(ITER_INDEX_COL.to_string(), index.to_string());
-        row.insert(KEY_COL.to_string(), display_cell_value(&key));
-        row.insert(VALUE_COL.to_string(), display_cell_value(&value));
+        row.insert(KEY_COL.to_string(), display_cell_value(&key)?);
+        row.insert(VALUE_COL.to_string(), display_cell_value(&value)?);
         rows.push(row);
         index += 1;
         Ok(())
@@ -91,7 +91,7 @@ fn extract_set_rows(set: &JsSet) -> JsResult<TableData> {
     set.for_each_native(|value| {
         let mut row = FxHashMap::default();
         row.insert(ITER_INDEX_COL.to_string(), index.to_string());
-        row.insert(VALUE_COL.to_string(), display_cell_value(&value));
+        row.insert(VALUE_COL.to_string(), display_cell_value(&value)?);
         rows.push(row);
         index += 1;
         Ok(())
@@ -123,13 +123,13 @@ fn extract_rows(obj: &JsObject, mut context: ContextAccess<'_>) -> JsResult<Tabl
                     col_names.push(col.clone());
                 }
                 let cell = val_obj.get(js_string!(col.as_str()), context.reborrow())?;
-                row.insert(col.clone(), display_cell_value(&cell));
+                row.insert(col.clone(), display_cell_value(&cell)?);
             }
         } else {
             if seen_cols.insert(VALUE_COL.to_string()) {
                 col_names.push(VALUE_COL.to_string());
             }
-            row.insert(VALUE_COL.to_string(), display_cell_value(&val));
+            row.insert(VALUE_COL.to_string(), display_cell_value(&val)?);
         }
 
         rows.push(row);
@@ -143,14 +143,14 @@ fn extract_rows(obj: &JsObject, mut context: ContextAccess<'_>) -> JsResult<Tabl
 /// Objects and arrays are rendered on a single line (e.g. `{ nested: true }`
 /// instead of multi-line pretty-print), matching Node.js/Chrome behaviour
 /// for nested values in `console.table`.
-fn display_cell_value(val: &JsValue) -> String {
-    let raw = val.display().to_string();
+fn display_cell_value(val: &JsValue) -> JsResult<String> {
+    let raw = val.display().render()?;
     // If the display spans multiple lines, collapse to single-line.
-    if raw.contains('\n') {
+    Ok(if raw.contains('\n') {
         raw.split('\n').map(str::trim).collect::<Vec<_>>().join(" ")
     } else {
         raw
-    }
+    })
 }
 
 /// Returns the enumerable own string-keyed property names of `obj`,

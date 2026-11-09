@@ -46,7 +46,7 @@ impl<T: TypedArrayMarker> IntrinsicObject for T {
         Self::STANDARD_CONSTRUCTOR(intrinsics.constructors()).constructor()
     }
 
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_species = BuiltInBuilder::callable(realm, BuiltinTypedArray::get_species)
             .name(js_string!("get [Symbol.species]"))
             .build();
@@ -78,7 +78,9 @@ impl<T: TypedArrayMarker> IntrinsicObject for T {
                 size_of::<T::Element>(),
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::PERMANENT,
             )
-            .build();
+            .build()?;
+
+        Ok(())
     }
 }
 

@@ -36,7 +36,7 @@ fn fibonacci_throw(
     context: ContextAccess<'_>,
 ) -> JsResult<usize> {
     if a < 5 {
-        Err(js_error!("a is too small"))
+        Err(js_error!("a is too small")?)
     } else {
         fibonacci(a, cb_a, cb_b, context)
     }

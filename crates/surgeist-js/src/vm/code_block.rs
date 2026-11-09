@@ -1337,7 +1337,10 @@ pub(crate) fn prepare_function_object_with_prototype(
 /// Creates a new function object.
 ///
 /// Uses pre-initialized intrinsic templates with their properties and prototype set.
-pub(crate) fn create_function_object_fast(code: ActivatedCode, context: &mut Context) -> JsObject {
+pub(crate) fn create_function_object_fast(
+    code: ActivatedCode,
+    context: &mut Context,
+) -> JsResult<JsObject> {
     let name: JsValue = code.name().clone().into();
     let length: JsValue = code.length.into();
 
@@ -1353,7 +1356,7 @@ pub(crate) fn create_function_object_fast(code: ActivatedCode, context: &mut Con
         context.realm().clone(),
     );
 
-    if is_generator {
+    Ok(if is_generator {
         let prototype = JsObject::from_proto_and_data_with_shared_shape(
             context.root_shape(),
             if is_async {
@@ -1396,10 +1399,10 @@ pub(crate) fn create_function_object_fast(code: ActivatedCode, context: &mut Con
             .create(function, [length, name, prototype.clone().into()]);
 
         prototype
-            .borrow_mut()
+            .borrow_mut()?
             .properties_mut()
             .write_named_slot(0, constructor.clone().into());
 
         constructor
-    }
+    })
 }

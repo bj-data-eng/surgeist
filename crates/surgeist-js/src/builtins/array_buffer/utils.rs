@@ -101,7 +101,7 @@ impl SliceRef<'_> {
 
         // 4. Let targetBlock be targetBuffer.[[ArrayBufferData]].
         {
-            let mut target_buffer = target_buffer.borrow_mut();
+            let mut target_buffer = target_buffer.borrow_mut()?;
             let target_block = target_buffer
                 .data_mut()
                 .bytes_mut()

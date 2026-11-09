@@ -93,7 +93,7 @@ impl GlobalSymbolRegistry {
 pub struct Symbol;
 
 impl IntrinsicObject for Symbol {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let symbol_async_iterator = JsSymbol::async_iterator();
         let symbol_has_instance = JsSymbol::has_instance();
         let symbol_is_concat_spreadable = JsSymbol::is_concat_spreadable();
@@ -173,7 +173,9 @@ impl IntrinsicObject for Symbol {
                 to_primitive,
                 Attribute::READONLY | Attribute::NON_ENUMERABLE | Attribute::CONFIGURABLE,
             )
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -235,13 +237,18 @@ impl BuiltInConstructor for Symbol {
 
 impl Symbol {
     fn this_symbol_value(value: &JsValue) -> JsResult<JsSymbol> {
+        if let Some(primitive) = value.as_symbol() {
+            return Ok(primitive);
+        }
         value
-            .as_symbol()
-            .or_else(|| {
-                value
-                    .as_object()
-                    .and_then(|obj| obj.downcast_ref::<JsSymbol>().as_deref().cloned())
+            .as_object()
+            .map(|object| {
+                object
+                    .downcast_ref::<JsSymbol>()
+                    .map(|value| value.as_deref().cloned())
             })
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("'this' is not a Symbol")

@@ -114,12 +114,12 @@ impl Encoder<'_> {
             })?;
             return Ok(StoredValue::Set(entries));
         } else if let Ok(buffer) = JsArrayBuffer::from_object(object.clone()) {
-            let data = buffer.data().ok_or_else(unsupported_type)?;
+            let data = buffer.data()?.ok_or_else(unsupported_type)?;
             return Ok(StoredValue::ArrayBuffer(data.to_vec()));
         } else if let Ok(buffer) = JsSharedArrayBuffer::from_object(object.clone()) {
-            return Ok(StoredValue::SharedArrayBuffer(buffer.inner()));
+            return Ok(StoredValue::SharedArrayBuffer(buffer.inner()?));
         } else if let Ok(array) = JsTypedArray::from_object(object.clone()) {
-            let kind = array.kind().ok_or_else(unsupported_type)?;
+            let kind = array.kind()?;
             let buffer = array.buffer(context.reborrow())?;
             return Ok(StoredValue::TypedArray {
                 kind,
@@ -165,7 +165,7 @@ impl Encoder<'_> {
         let mut items = Vec::with_capacity(length);
         for index in 0..length {
             let value = array
-                .borrow()
+                .borrow()?
                 .properties()
                 .get(&index.into())
                 .and_then(|descriptor| descriptor.value().cloned());

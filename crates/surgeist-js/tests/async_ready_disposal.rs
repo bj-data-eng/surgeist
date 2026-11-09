@@ -174,7 +174,7 @@ fn ordinary_ready_success_and_guest_error_dispose_once_and_publish_completed() {
     for guest_error in [false, true] {
         let mut owner = context();
         let object = JsObject::with_null_proto(owner.runtime());
-        let original = JsError::from_opaque(object.clone().into());
+        let original = JsError::from_opaque(object.clone().into()).unwrap();
         let result = if guest_error {
             Err(original.clone())
         } else {
@@ -225,7 +225,7 @@ fn ordinary_ready_success_and_guest_error_dispose_once_and_publish_completed() {
 
 fn ready_disposal_unwind(guest_error: bool) {
     let mut owner = context();
-    let original = JsError::from_opaque(7.into());
+    let original = JsError::from_opaque(7.into()).unwrap();
     let result = if guest_error {
         Err(original)
     } else {

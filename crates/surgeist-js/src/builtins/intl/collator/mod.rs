@@ -69,7 +69,7 @@ impl Service for Collator {
 }
 
 impl IntrinsicObject for Collator {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let compare = BuiltInBuilder::callable(realm, Self::compare)
             .name(js_string!("get compare"))
             .build();
@@ -92,7 +92,9 @@ impl IntrinsicObject for Collator {
                 Attribute::CONFIGURABLE,
             )
             .method(Self::resolved_options, js_string!("resolvedOptions"), 0)
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -347,7 +349,7 @@ impl Collator {
         //     a. Let F be a new built-in function object as defined in 10.3.3.1.
         //     b. Set F.[[Collator]] to collator.
         //     c. Set collator.[[BoundCompare]] to F.
-        let cached = collator.borrow().data().bound_compare.clone();
+        let cached = collator.borrow()?.data().bound_compare.clone();
         let bound_compare = if let Some(f) = cached {
             JsFunction::from_record(f)
         } else {
@@ -360,8 +362,8 @@ impl Collator {
                         // 1. Let collator be F.[[Collator]].
                         // 2. Assert: Type(collator) is Object and collator has an [[InitializedCollator]] internal slot.
                         let collator = collator
-                            .downcast_ref::<Self>()
-                            .js_expect("checked above that the object was a collator object")?;
+                            .downcast_ref::<Self>()?
+                            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
 
                         // 3. If x is not provided, let x be undefined.
                         // 5. Let X be ? ToString(x).
@@ -391,7 +393,7 @@ impl Collator {
             .length(2)
             .build()?;
 
-            collator.borrow_mut().data_mut().bound_compare =
+            collator.borrow_mut()?.data_mut().bound_compare =
                 Some(bound_compare.clone().into_record());
             bound_compare
         };
@@ -416,7 +418,9 @@ impl Collator {
         let object = this.as_object();
         let collator = object
             .as_ref()
-            .and_then(JsObject::downcast_ref::<Self>)
+            .map(JsObject::downcast_ref::<Self>)
+            .transpose()?
+            .flatten()
             .ok_or_else(|| {
                 JsNativeError::typ()
                     .with_message("`resolvedOptions` can only be called on a `Collator` object")

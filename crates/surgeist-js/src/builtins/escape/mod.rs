@@ -22,11 +22,13 @@ use super::{BuiltInBuilder, BuiltInObject, IntrinsicObject};
 pub(crate) struct Escape;
 
 impl IntrinsicObject for Escape {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::callable_with_intrinsic::<Self>(realm, escape)
             .name(Self::NAME)
             .length(1)
-            .build();
+            .build()?;
+
+        Ok(())
     }
     fn get(intrinsics: &Intrinsics) -> JsObject {
         intrinsics.objects().escape().into()
@@ -94,11 +96,13 @@ fn escape(_: &JsValue, args: &[JsValue], context: &mut Context) -> JsResult<JsVa
 pub(crate) struct Unescape;
 
 impl IntrinsicObject for Unescape {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         BuiltInBuilder::callable_with_intrinsic::<Self>(realm, unescape)
             .name(Self::NAME)
             .length(1)
-            .build();
+            .build()?;
+
+        Ok(())
     }
     fn get(intrinsics: &Intrinsics) -> JsObject {
         intrinsics.objects().unescape().into()

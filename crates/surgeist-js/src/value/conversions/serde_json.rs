@@ -77,7 +77,7 @@ impl JsValue {
                         .enumerable(true)
                         .configurable(true);
                     js_obj
-                        .borrow_mut()
+                        .borrow_mut()?
                         .insert(js_string!(key.clone()), property);
                 }
 
@@ -144,7 +144,7 @@ impl JsValue {
                         .into());
                 }
                 let mut value_by_prop_key = |property_key, context: &mut Context| {
-                    obj.borrow()
+                    obj.borrow()?
                         .properties()
                         .get(&property_key)
                         .and_then(|x| {
@@ -172,7 +172,7 @@ impl JsValue {
                 } else {
                     let mut map = Map::new();
 
-                    for index in obj.borrow().properties().index_property_keys() {
+                    for index in obj.borrow()?.properties().index_property_keys() {
                         let key = index.to_string();
                         let value = value_by_prop_key(index.into(), context)?;
                         if let Some(value) = value {
@@ -180,7 +180,7 @@ impl JsValue {
                         }
                     }
 
-                    for property_key in obj.borrow().properties().shape().keys() {
+                    for property_key in obj.borrow()?.properties().shape().keys() {
                         let key = match &property_key {
                             PropertyKey::String(string) => string.to_std_string_escaped(),
                             PropertyKey::Index(i) => i.get().to_string(),

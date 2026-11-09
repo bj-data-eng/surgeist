@@ -90,14 +90,14 @@ impl ForInIterator {
             .as_object()
             .and_then(|object| object.downcast::<Self>().ok())
             .ok_or_else(|| JsNativeError::typ().with_message("`this` is not a ForInIterator"))?;
-        let value = iterator.borrow().data().object.to_value();
+        let value = iterator.borrow()?.data().object.to_value();
         let mut object = value.to_object(context.access())?;
         loop {
-            let object_was_visited = iterator.borrow().data().object_was_visited;
+            let object_was_visited = iterator.borrow()?.data().object_was_visited;
             if !object_was_visited {
                 let keys = object
                     .__own_property_keys__(&mut InternalMethodPropertyContext::new(context))?;
-                let mut state = iterator.borrow_mut();
+                let mut state = iterator.borrow_mut()?;
                 let state = state.data_mut();
                 for k in keys {
                     match k {
@@ -113,11 +113,11 @@ impl ForInIterator {
                 state.object_was_visited = true;
             }
             loop {
-                let key = iterator.borrow_mut().data_mut().remaining_keys.pop_front();
+                let key = iterator.borrow_mut()?.data_mut().remaining_keys.pop_front();
                 let Some(key) = key else {
                     break;
                 };
-                let visited = iterator.borrow().data().visited_keys.contains(&key);
+                let visited = iterator.borrow()?.data().visited_keys.contains(&key);
                 if !visited
                     && let Some(desc) = object.__get_own_property__(
                         &PropertyKey::from(key.clone()),
@@ -125,7 +125,7 @@ impl ForInIterator {
                     )?
                 {
                     iterator
-                        .borrow_mut()
+                        .borrow_mut()?
                         .data_mut()
                         .visited_keys
                         .insert(key.clone());
@@ -138,7 +138,7 @@ impl ForInIterator {
                     }
                 }
             }
-            let proto = object.prototype().clone();
+            let proto = object.prototype()?.clone();
             match proto {
                 Some(o) => {
                     object = o;
@@ -151,7 +151,7 @@ impl ForInIterator {
                     ));
                 }
             }
-            let mut state = iterator.borrow_mut();
+            let mut state = iterator.borrow_mut()?;
             let state = state.data_mut();
             state.object = JsValue::new(object.clone()).into_stored();
             state.object_was_visited = false;

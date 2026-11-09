@@ -167,7 +167,7 @@ impl JsRequest {
                     .map_err(|_| js_error!(Error: "Cannot construct request"))?;
                 (request, None)
             }
-            Either::Right(r) => r.borrow().data().clone().into_parts()?,
+            Either::Right(r) => r.borrow()?.data().clone().into_parts()?,
         };
 
         if let Some(mut options) = options {

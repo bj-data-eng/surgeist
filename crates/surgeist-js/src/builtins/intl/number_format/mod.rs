@@ -21,8 +21,8 @@ use super::{
     options::{IntlOptions, coerce_options_to_object},
 };
 use crate::{
-    Context, JsArgs, JsData, JsExpect, JsNativeError, JsObject, JsResult, JsString, JsSymbol,
-    JsValue, NativeFunction,
+    Context, JsArgs, JsData, JsNativeError, JsObject, JsResult, JsString, JsSymbol, JsValue,
+    NativeFunction,
     builtins::{
         BuiltInConstructor, BuiltInObject, IntrinsicObject, builder::BuiltInBuilder,
         options::get_option,
@@ -157,7 +157,7 @@ impl Service for NumberFormat {
 }
 
 impl IntrinsicObject for NumberFormat {
-    fn init(realm: &Realm) {
+    fn init(realm: &Realm) -> crate::JsResult<()> {
         let get_format = BuiltInBuilder::callable(realm, Self::get_format)
             .name(js_string!("get format"))
             .build();
@@ -180,7 +180,9 @@ impl IntrinsicObject for NumberFormat {
                 Attribute::CONFIGURABLE,
             )
             .method(Self::resolved_options, js_string!("resolvedOptions"), 0)
-            .build();
+            .build()?;
+
+        Ok(())
     }
 
     fn get(intrinsics: &Intrinsics) -> JsObject {
@@ -269,7 +271,7 @@ impl BuiltInConstructor for NumberFormat {
                 .intrinsics()
                 .objects()
                 .intl()
-                .borrow()
+                .borrow()?
                 .data()
                 .fallback_symbol();
 
@@ -592,7 +594,7 @@ impl NumberFormat {
         //     a. Set nf to ? UnwrapNumberFormat(nf).
         // 3. Perform ? RequireInternalSlot(nf, [[InitializedNumberFormat]]).
         let nf = unwrap_number_format(this, context)?;
-        let cached = nf.borrow().data().bound_format.clone();
+        let cached = nf.borrow()?.data().bound_format.clone();
         let bound_format = if let Some(f) = cached {
             JsFunction::from_record(f)
         } else {
@@ -617,8 +619,8 @@ impl NumberFormat {
 
                         // 5. Return FormatNumeric(nf, x).
                         let nf = nf
-                            .downcast_ref::<Self>()
-                            .js_expect("bound format should contain a number format object")?;
+                            .downcast_ref::<Self>()?
+                            .ok_or(crate::error::ObjectAccessError::WrongNativeBrand)?;
                         Ok(js_string!(nf.format(&mut x).write_to_string()).into())
                     },
                     nf.clone().upcast(),
@@ -627,7 +629,7 @@ impl NumberFormat {
             .length(2)
             .build()?;
 
-            nf.borrow_mut().data_mut().bound_format = Some(bound_format.clone().into_record());
+            nf.borrow_mut()?.data_mut().bound_format = Some(bound_format.clone().into_record());
             bound_format
         };
 
@@ -653,7 +655,7 @@ impl NumberFormat {
         //     a. Set nf to ? UnwrapNumberFormat(nf).
         // 3. Perform ? RequireInternalSlot(nf, [[InitializedNumberFormat]]).
         let nf = unwrap_number_format(this, context)?;
-        let nf = nf.borrow();
+        let nf = nf.borrow()?;
         let nf = nf.data();
 
         // 4. Let options be OrdinaryObjectCreate(%Object.prototype%).
@@ -853,7 +855,7 @@ fn unwrap_number_format(nf: &JsValue, context: &mut Context) -> JsResult<JsObjec
             .intrinsics()
             .objects()
             .intl()
-            .borrow()
+            .borrow()?
             .data()
             .fallback_symbol();
 

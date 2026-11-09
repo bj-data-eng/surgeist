@@ -221,7 +221,7 @@ mod tests {
             );
         }
         for limit in 0..=events {
-            let marker = JsError::from_opaque(JsValue::new(313));
+            let marker = JsError::from_opaque(JsValue::new(313)).unwrap();
             let mut accepted = 0;
             let mut stopped = false;
             let mut admission = |_| {
@@ -261,7 +261,7 @@ mod tests {
         let parameters = vec!["a"; 513];
         let (interner, formals, mut scopes, scope) = fixture(&parameters, &["arguments", "a"]);
         let mut extension = scopes.begin_extension::<JsError>(None).expect("savepoint");
-        let marker = JsError::from_opaque(JsValue::new(314));
+        let marker = JsError::from_opaque(JsValue::new(314)).unwrap();
         let chunk_bytes = payload_bytes::<Option<u32>>(256).expect("bounded chunk");
         let mut chunks = 0;
         let mut stopped = false;

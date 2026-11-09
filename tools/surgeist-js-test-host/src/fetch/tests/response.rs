@@ -122,7 +122,10 @@ fn response_json() {
                 .unwrap()
                 .await_blocking(ctx.access())
                 .unwrap();
-            assert_eq!(response.display_obj(false), "{\n    hello world: 123\n}");
+            assert_eq!(
+                response.display_obj(false).unwrap(),
+                "{\n    hello world: 123\n}"
+            );
         }),
     ]);
 }

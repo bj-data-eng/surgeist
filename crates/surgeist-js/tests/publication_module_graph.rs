@@ -190,7 +190,7 @@ impl Graph {
             .with_source(
                 JsNativeError::range()
                     .with_message("graph retained cause")
-                    .with_cause(JsError::from_opaque(opaque.clone())),
+                    .with_cause(JsError::from_opaque(opaque.clone()).unwrap()),
             )
             .into();
         GRAPH_HOOK.with(|slot| {

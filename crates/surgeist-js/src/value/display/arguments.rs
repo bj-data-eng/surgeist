@@ -1,9 +1,8 @@
 use crate::builtins::function::arguments::MappedArguments;
 use crate::property::DescriptorKind;
 use crate::value::display::value;
-use crate::{JsObject, JsValue, js_string};
+use crate::{JsObject, js_string};
 use std::collections::HashSet;
-use std::fmt::{self, Write};
 
 const MAX_ARGUMENTS_TO_LOG: u32 = 100;
 
@@ -17,13 +16,13 @@ const MAX_ARGUMENTS_TO_LOG: u32 = 100;
 /// }
 /// ```
 pub(super) fn log_arguments_to(
-    f: &mut fmt::Formatter<'_>,
+    f: &mut super::RenderSink<'_>,
     x: &JsObject,
     print_internals: bool,
     print_children: bool,
-) -> fmt::Result {
+) -> crate::JsResult<()> {
     let reported_len = x
-        .borrow()
+        .borrow()?
         .properties()
         .get(&js_string!("length").into())
         .and_then(|d| d.value().cloned())
@@ -45,32 +44,24 @@ pub(super) fn log_arguments_to(
         // For MappedArguments, prefer the live value from the environment parameter map.
         // Named parameters are backed by environment bindings, not the stored property value,
         // so reading properties().get(...).value() can return a stale initial value.
-        let mapped_value = x.downcast_ref::<MappedArguments>().and_then(|m| m.get(i));
+        let mapped_value = x.downcast_ref::<MappedArguments>()?.and_then(|m| m.get(i));
 
         write!(f, "  {i}: ")?;
 
         if let Some(v) = mapped_value {
-            write!(
-                f,
-                "{}",
-                CompactValue {
-                    value: &v,
-                    print_internals
-                }
-            )?;
+            value::log_value_compact(f, &v, 0, print_internals, &mut HashSet::new())?;
         } else {
-            let borrow = x.borrow();
+            let borrow = x.borrow()?;
             if let Some(d) = borrow.properties().get(&i.into()) {
                 match d.kind() {
                     DescriptorKind::Data { value, .. } => {
                         if let Some(v) = value {
-                            write!(
+                            value::log_value_compact(
                                 f,
-                                "{}",
-                                CompactValue {
-                                    value: v,
-                                    print_internals
-                                }
+                                v,
+                                0,
+                                print_internals,
+                                &mut HashSet::new(),
                             )?;
                         } else {
                             f.write_str("undefined")?;
@@ -98,15 +89,4 @@ pub(super) fn log_arguments_to(
         f.write_char('\n')?;
     }
     f.write_str("}")
-}
-
-struct CompactValue<'a> {
-    value: &'a JsValue,
-    print_internals: bool,
-}
-
-impl fmt::Display for CompactValue<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        value::log_value_compact(f, self.value, 0, self.print_internals, &mut HashSet::new())
-    }
 }
