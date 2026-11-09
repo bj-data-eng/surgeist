@@ -6,6 +6,57 @@ use crate::GlyphPreparationError;
 use crate::Result;
 use std::ops::{Deref, DerefMut};
 
+/// A Render consumer violated its owned-vector contract. These are not defects
+/// fabricated on behalf of Ledger; provider failures retain their own identity.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum StorageContractError {
+    MissingBacking,
+    ReservedCapacity {
+        needed: usize,
+        capacity: usize,
+    },
+    InvalidInsertion {
+        index: usize,
+        len: usize,
+    },
+    InvalidPosition {
+        index: usize,
+        len: usize,
+    },
+    BackingCapacityMismatch {
+        admitted_bytes: u64,
+        actual_bytes: u64,
+    },
+    WrongRetentionLifetime,
+    BackingResourceMismatch {
+        admitted: RenderResource,
+        requested: RenderResource,
+    },
+    ProducerCapacityChanged {
+        expected: usize,
+        actual: usize,
+    },
+    ProducerLengthChanged {
+        expected: usize,
+        actual: usize,
+    },
+}
+impl std::fmt::Display for StorageContractError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "owned-vector consumer contract: {self:?}")
+    }
+}
+impl std::error::Error for StorageContractError {}
+impl From<StorageContractError> for crate::Error {
+    fn from(value: StorageContractError) -> Self {
+        Self::new(
+            crate::BackendErrorCode::RenderFailed,
+            "owned-vector storage contract failed",
+        )
+        .with_source(value)
+    }
+}
+
 /// Stack custody for an owned value and the backing/import leases it consumes.
 /// Text needs at most two independent allocations. No forward participant or
 /// additional heap allocation is introduced by this owner.
@@ -26,6 +77,18 @@ impl<T> BackedValue<T> {
             backing,
             import,
         }
+    }
+
+    /// Qualify lifetime while the complete generic payload owner remains armed.
+    /// No mutable backing/import access escapes before immediate consumption.
+    pub(crate) fn require_preparation(&self) -> Result<()> {
+        if self.import.is_some() {
+            return Err(StorageContractError::WrongRetentionLifetime.into());
+        }
+        for hold in self.backing.iter().flatten() {
+            hold.require_preparation()?;
+        }
+        Ok(())
     }
 
     fn take_parts(&mut self) -> (T, [Option<Hold>; 2], Option<CpuImport>) {
@@ -199,7 +262,7 @@ impl<T> SharedValue<T> {
         values: AccountedVec<T>,
         account: &StorageAccount,
     ) -> Result<SharedValue<Vec<T>>> {
-        let (values, hold) = values.into_parts();
+        let (values, hold) = values.into_parts()?;
         SharedValue::with_parts(values, Some(hold), None, account)
     }
     /// Moves the same counted payload into a dependency's immutable byte handle.
@@ -259,7 +322,7 @@ impl<T: Clone> SharedValue<Vec<T>> {
         let mut replacement =
             AccountedVec::new_in(account, count, RenderResource::RetainedCpuBytes)?;
         replacement.extend_from_slice(self.as_slice())?;
-        let (mut values, hold) = replacement.into_parts();
+        let (mut values, hold) = replacement.into_parts()?;
         let capacity = values.capacity();
         edit(&mut values);
         if values.capacity() != capacity {
@@ -360,12 +423,6 @@ impl StorageAccount {
             Self::Renderer(account) => account.sized::<T>(count, resource),
         }
     }
-    fn invariant_error(&self) -> crate::Error {
-        if let Self::Renderer(account) = self {
-            account.note_fault(RenderAccountingError::Invariant);
-        }
-        RenderAccountingError::Invariant.into()
-    }
     pub(crate) fn phase<T>(&self, run: impl FnOnce() -> Result<T>) -> Result<T> {
         match self {
             Self::Preparation(_) => run(),
@@ -382,6 +439,20 @@ impl StorageAccount {
         match self {
             Self::Preparation(account) => account.acquire(resource, amount),
             Self::Renderer(account) => account.acquire(resource, amount).map(Hold::Renderer),
+        }
+    }
+    fn relocate(&self, count: usize, resource: RenderResource) -> Result<()> {
+        if count == 0 {
+            return Ok(());
+        }
+        match self {
+            Self::Preparation(account) => {
+                account.work(super::RenderWork::StorageRelocations, count)
+            }
+            Self::Renderer(account) => {
+                let amount = u64::try_from(count).map_err(|_| self.capacity_error(resource))?;
+                account.checked_work(super::RenderWork::StorageRelocations, amount)
+            }
         }
     }
     pub(crate) fn allocation_error(&self, resource: RenderResource) -> crate::Error {
@@ -417,10 +488,12 @@ impl Hold {
             Self::Renderer(hold) => hold.resource(),
         }
     }
-    fn amount(&self) -> u64 {
+    fn amount(&self) -> Result<u64> {
         match self {
-            Self::Preparation(hold) => hold.amount,
-            Self::Renderer(hold) => hold.amount(),
+            Self::Preparation(hold) => Ok(hold.amount),
+            Self::Renderer(hold) => hold
+                .active_amount()
+                .ok_or_else(|| StorageContractError::MissingBacking.into()),
         }
     }
     pub(crate) fn dispose<T>(self, run: impl FnOnce() -> T) -> T {
@@ -440,12 +513,18 @@ impl Hold {
             }
         }
     }
-    /// Standalone preparation transfers its operation's result backing at the
-    /// outer return. Renderer backing must retain its paired lifetime hold.
-    pub(crate) fn retain(self) {
+    pub(crate) fn require_preparation(&self) -> Result<()> {
+        if matches!(self, Self::Renderer(_)) {
+            Err(StorageContractError::WrongRetentionLifetime.into())
+        } else {
+            Ok(())
+        }
+    }
+    /// Narrows a real standalone preparation lease before plain-result transfer.
+    pub(crate) fn into_preparation(self) -> Result<PreparationHold> {
         match self {
-            Self::Preparation(hold) => hold.retain(),
-            Self::Renderer(_) => panic!("renderer backing requires its lifetime hold"),
+            Self::Preparation(hold) => Ok(hold),
+            Self::Renderer(_) => Err(StorageContractError::WrongRetentionLifetime.into()),
         }
     }
     /// Transfers only a complete explicit-readback output after report closure.
@@ -480,15 +559,27 @@ fn reserve_backing_inner<T>(
     before_move: impl FnOnce(usize) -> Result<()>,
 ) -> Result<()> {
     let current = account.bytes::<T>(values.capacity(), resource)?;
-    if match hold {
+    let current = u64::try_from(current).map_err(|_| account.capacity_error(resource))?;
+    match hold {
         Some(hold) => {
-            hold.resource() != resource
-                || hold.amount()
-                    != u64::try_from(current).map_err(|_| account.capacity_error(resource))?
+            if hold.resource() != resource {
+                return Err(StorageContractError::BackingResourceMismatch {
+                    admitted: hold.resource(),
+                    requested: resource,
+                }
+                .into());
+            }
+            let admitted_bytes = hold.amount()?;
+            if admitted_bytes != current {
+                return Err(StorageContractError::BackingCapacityMismatch {
+                    admitted_bytes,
+                    actual_bytes: current,
+                }
+                .into());
+            }
         }
-        None => current != 0,
-    } {
-        return Err(account.invariant_error());
+        None if current != 0 => return Err(StorageContractError::MissingBacking.into()),
+        None => (),
     }
     if needed <= values.capacity() {
         return Ok(());
@@ -503,6 +594,10 @@ fn reserve_backing_inner<T>(
         account.bytes::<T>(replacement.capacity(), resource)?,
     )?;
     if let Err(error) = before_move(values.len()) {
+        replacement_hold.dispose(|| drop(replacement));
+        return Err(error);
+    }
+    if let Err(error) = account.relocate(values.len(), resource) {
         replacement_hold.dispose(|| drop(replacement));
         return Err(error);
     }
@@ -523,6 +618,53 @@ pub(crate) struct AccountedVec<T> {
     values: Vec<T>,
     hold: Option<Hold>,
 }
+pub(crate) struct AppendSlot<'a, T> {
+    values: &'a mut Vec<T>,
+}
+impl<T> AppendSlot<'_, T> {
+    pub(crate) fn write(self, value: T) {
+        self.values.push(value);
+    }
+}
+pub(crate) struct InsertSlot<'a, T> {
+    values: &'a mut Vec<T>,
+    index: usize,
+    movements: usize,
+}
+impl<T> InsertSlot<'_, T> {
+    pub(crate) fn movement_count(&self) -> usize {
+        self.movements
+    }
+    pub(crate) fn write(self, value: T) {
+        self.values.insert(self.index, value);
+    }
+}
+pub(crate) struct CopySlot<'a, 'b, T> {
+    values: &'a mut Vec<T>,
+    source: &'b [T],
+}
+impl<T: Copy> CopySlot<'_, '_, T> {
+    pub(crate) fn element_count(&self) -> usize {
+        self.source.len()
+    }
+    pub(crate) fn write(self) {
+        self.values.extend_from_slice(self.source);
+    }
+}
+/// A standalone vector result whose lease cannot belong to a renderer lifetime.
+/// No custom destructor is needed: values drop before preparation custody.
+pub(crate) struct PreparationVec<T> {
+    values: Vec<T>,
+    hold: PreparationHold,
+}
+impl<T> PreparationVec<T> {
+    pub(crate) fn into_retained(self) -> Vec<T> {
+        let Self { values, hold } = self;
+        hold.retain();
+        values
+    }
+}
+
 impl<T> AccountedVec<T> {
     pub(crate) fn new(account: &Account, count: usize, resource: RenderResource) -> Result<Self> {
         Self::new_in(&account.storage(), count, resource)
@@ -556,7 +698,7 @@ impl<T> AccountedVec<T> {
         additional: usize,
         before_move: impl FnOnce(usize) -> Result<()>,
     ) -> Result<()> {
-        let hold = self.hold.as_ref().expect("owned vector admission");
+        let hold = self.backing()?;
         let storage = hold.storage();
         let resource = hold.resource();
         let count = self
@@ -568,15 +710,11 @@ impl<T> AccountedVec<T> {
             return Ok(());
         }
         storage.phase(|| {
-            let mut next = Self::allocate(
-                &storage,
-                count,
-                self.hold
-                    .as_ref()
-                    .expect("owned vector admission")
-                    .resource(),
-            )?;
+            let mut next = Self::allocate(&storage, count, resource)?;
             before_move(self.values.len())?;
+            // Capacity/overlap, then the caller's admission callback, then
+            // central relocation admission all precede the physical move.
+            storage.relocate(self.values.len(), resource)?;
             next.values.append(&mut self.values);
             std::mem::swap(self, &mut next);
             drop(next);
@@ -602,22 +740,110 @@ impl<T> AccountedVec<T> {
         self.values.push(value);
         Ok(())
     }
-    /// Appends after the caller has proved spare capacity and admitted its work.
-    pub(crate) fn push_reserved(&mut self, value: T) {
-        assert!(
-            self.values.len() < self.values.capacity(),
-            "admitted spare capacity"
-        );
-        self.values.push(value);
+    fn backing(&self) -> Result<&Hold> {
+        let hold = self
+            .hold
+            .as_ref()
+            .ok_or(StorageContractError::MissingBacking)?;
+        let storage = hold.storage();
+        let resource = hold.resource();
+        let actual_bytes = storage.bytes::<T>(self.values.capacity(), resource)?;
+        let actual_bytes =
+            u64::try_from(actual_bytes).map_err(|_| storage.capacity_error(resource))?;
+        let admitted_bytes = hold.amount()?;
+        if admitted_bytes != actual_bytes {
+            return Err(StorageContractError::BackingCapacityMismatch {
+                admitted_bytes,
+                actual_bytes,
+            }
+            .into());
+        }
+        Ok(hold)
     }
-    /// Inserts after capacity and the exact suffix movement have been admitted.
-    pub(crate) fn insert_reserved(&mut self, index: usize, value: T) {
-        assert!(
-            self.values.len() < self.values.capacity(),
-            "admitted spare capacity"
-        );
-        assert!(index <= self.values.len(), "validated insertion index");
-        self.values.insert(index, value);
+    fn checked_needed(&self, additional: usize) -> Result<usize> {
+        let hold = self.backing()?;
+        let needed = self
+            .values
+            .len()
+            .checked_add(additional)
+            .ok_or_else(|| hold.storage().capacity_error(hold.resource()))?;
+        if needed > self.values.capacity() {
+            return Err(StorageContractError::ReservedCapacity {
+                needed,
+                capacity: self.values.capacity(),
+            }
+            .into());
+        }
+        Ok(needed)
+    }
+    /// A single checked, exclusive append capability. Growth remains explicit.
+    pub(crate) fn append_slot(&mut self) -> Result<AppendSlot<'_, T>> {
+        self.checked_needed(1)?;
+        Ok(AppendSlot {
+            values: &mut self.values,
+        })
+    }
+    /// Bind both insertion position and spare capacity until the one write.
+    pub(crate) fn insert_slot(&mut self, index: usize) -> Result<InsertSlot<'_, T>> {
+        let len = self.values.len();
+        if index > len {
+            return Err(StorageContractError::InvalidInsertion { index, len }.into());
+        }
+        self.checked_needed(1)?;
+        let movements = len
+            .checked_sub(index)
+            .and_then(|n| n.checked_add(1))
+            .ok_or(StorageContractError::InvalidInsertion { index, len })?;
+        Ok(InsertSlot {
+            values: &mut self.values,
+            index,
+            movements,
+        })
+    }
+    /// Bind the actual immutable copy source, not a separately claimed length.
+    pub(crate) fn copy_slot<'a, 'b>(&'a mut self, source: &'b [T]) -> Result<CopySlot<'a, 'b, T>>
+    where
+        T: Copy,
+    {
+        self.checked_needed(source.len())?;
+        Ok(CopySlot {
+            values: &mut self.values,
+            source,
+        })
+    }
+    /// The locked native producer temporarily borrows this intact owner. A
+    /// callback's original failure takes priority; successful calls must retain
+    /// admitted capacity and produce exactly their qualified serialized length.
+    pub(crate) fn with_producer<R>(
+        &mut self,
+        expected_len: usize,
+        producer: impl FnOnce(&mut Vec<T>) -> Result<R>,
+    ) -> Result<R> {
+        self.backing()?;
+        let capacity = self.values.capacity();
+        if expected_len > capacity {
+            return Err(StorageContractError::ReservedCapacity {
+                needed: expected_len,
+                capacity,
+            }
+            .into());
+        }
+        let result = producer(&mut self.values)?;
+        if self.values.capacity() != capacity {
+            return Err(StorageContractError::ProducerCapacityChanged {
+                expected: capacity,
+                actual: self.values.capacity(),
+            }
+            .into());
+        }
+        if self.values.len() != expected_len {
+            return Err(StorageContractError::ProducerLengthChanged {
+                expected: expected_len,
+                actual: self.values.len(),
+            }
+            .into());
+        }
+        Ok(result)
     }
     pub(crate) fn extend_from_slice(&mut self, values: &[T]) -> Result<()>
     where
@@ -626,18 +852,6 @@ impl<T> AccountedVec<T> {
         self.grow(values.len())?;
         self.values.extend_from_slice(values);
         Ok(())
-    }
-    /// Copies after capacity and the exact copy work have been admitted. Copy
-    /// elements cannot invoke a fallible clone or require backing growth.
-    pub(crate) fn extend_reserved_from_slice(&mut self, values: &[T])
-    where
-        T: Copy,
-    {
-        assert!(
-            values.len() <= self.values.capacity() - self.values.len(),
-            "admitted spare copy capacity"
-        );
-        self.values.extend_from_slice(values);
     }
     pub(crate) fn resize(&mut self, len: usize, value: T) -> Result<()>
     where
@@ -657,11 +871,13 @@ impl<T> AccountedVec<T> {
         self.values.truncate(len);
     }
     /// Lending transfers the backing and its exact admission together.
-    pub(crate) fn into_parts(mut self) -> (Vec<T>, Hold) {
-        (
-            std::mem::take(&mut self.values),
-            self.hold.take().expect("owned vector admission"),
-        )
+    pub(crate) fn into_parts(mut self) -> Result<(Vec<T>, Hold)> {
+        self.backing()?;
+        let hold = self
+            .hold
+            .take()
+            .ok_or(StorageContractError::MissingBacking)?;
+        Ok((std::mem::take(&mut self.values), hold))
     }
     /// Rejoins a producer backing which was proved not to grow while lent.
     pub(crate) fn from_parts(values: Vec<T>, hold: Hold) -> Result<Self> {
@@ -670,26 +886,43 @@ impl<T> AccountedVec<T> {
         let expected = account
             .bytes::<T>(values.capacity(), resource)
             .and_then(|amount| u64::try_from(amount).map_err(|_| account.capacity_error(resource)));
-        match expected {
-            Ok(amount) if hold.amount() == amount => Ok(Self {
+        let checked = expected.and_then(|actual_bytes| {
+            let admitted_bytes = hold.amount()?;
+            if admitted_bytes == actual_bytes {
+                Ok(())
+            } else {
+                Err(StorageContractError::BackingCapacityMismatch {
+                    admitted_bytes,
+                    actual_bytes,
+                }
+                .into())
+            }
+        });
+        match checked {
+            Ok(()) => Ok(Self {
                 values,
                 hold: Some(hold),
             }),
-            expected => {
-                let error = match expected {
-                    Err(error) => error,
-                    Ok(_) => account.invariant_error(),
-                };
+            Err(error) => {
                 hold.dispose(|| drop(values));
                 Err(error)
             }
         }
     }
-    /// Standalone result retention is finalized by the outer preparation owner.
-    pub(crate) fn into_retained(self) -> Vec<T> {
-        let (values, hold) = self.into_parts();
-        hold.retain();
-        values
+    /// Reject a renderer lease while this complete payload/credit owner is armed.
+    pub(crate) fn into_preparation(mut self) -> Result<PreparationVec<T>> {
+        self.backing()?;
+        match self.hold.take() {
+            Some(Hold::Preparation(hold)) => Ok(PreparationVec {
+                values: std::mem::take(&mut self.values),
+                hold,
+            }),
+            Some(hold @ Hold::Renderer(_)) => {
+                self.hold = Some(hold);
+                Err(StorageContractError::WrongRetentionLifetime.into())
+            }
+            None => Err(StorageContractError::MissingBacking.into()),
+        }
     }
 }
 impl<T> Drop for AccountedVec<T> {
@@ -712,29 +945,29 @@ impl<T: PartialEq> PartialEq for AccountedVec<T> {
 }
 impl<T: Eq> Eq for AccountedVec<T> {}
 pub(crate) struct AccountedIntoIter<T> {
-    values: Option<std::vec::IntoIter<T>>,
+    values: std::vec::IntoIter<T>,
     hold: Option<Hold>,
 }
 impl<T> Iterator for AccountedIntoIter<T> {
     type Item = T;
     fn next(&mut self) -> Option<T> {
-        self.values.as_mut().expect("owned iterator").next()
+        self.values.next()
     }
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.values.as_ref().expect("owned iterator").size_hint()
+        self.values.size_hint()
     }
 }
 impl<T> ExactSizeIterator for AccountedIntoIter<T> {}
 impl<T> DoubleEndedIterator for AccountedIntoIter<T> {
     fn next_back(&mut self) -> Option<T> {
-        self.values.as_mut().expect("owned iterator").next_back()
+        self.values.next_back()
     }
 }
 impl<T> std::iter::FusedIterator for AccountedIntoIter<T> {}
 impl<T> Drop for AccountedIntoIter<T> {
     fn drop(&mut self) {
         if let Some(hold) = self.hold.take() {
-            let values = self.values.take();
+            let values = std::mem::take(&mut self.values);
             hold.dispose(|| drop(values));
         }
     }
@@ -742,11 +975,10 @@ impl<T> Drop for AccountedIntoIter<T> {
 impl<T> IntoIterator for AccountedVec<T> {
     type Item = T;
     type IntoIter = AccountedIntoIter<T>;
-    fn into_iter(self) -> Self::IntoIter {
-        let (values, hold) = self.into_parts();
+    fn into_iter(mut self) -> Self::IntoIter {
         AccountedIntoIter {
-            values: Some(values.into_iter()),
-            hold: Some(hold),
+            values: std::mem::take(&mut self.values).into_iter(),
+            hold: self.hold.take(),
         }
     }
 }
@@ -927,7 +1159,7 @@ mod tests {
             AccountedVec::new_in(&storage, 3, RenderResource::RetainedCpuBytes).unwrap();
         bytes.extend_from_slice(&[1u8, 2, 3]).unwrap();
         let admitted_bytes = bytes.capacity() as u64;
-        let (bytes, hold) = bytes.into_parts();
+        let (bytes, hold) = bytes.into_parts().unwrap();
         let drops = Arc::new(AtomicUsize::new(0));
         let observed_live = Arc::new(AtomicU64::new(u64::MAX));
         let value = DropProbe {
@@ -1397,3 +1629,6 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod vector_capability_tests;

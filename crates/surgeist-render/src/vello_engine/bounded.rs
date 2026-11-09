@@ -6,7 +6,8 @@
 
 use crate::Result;
 use crate::accounting::{
-    Account, AccountedVec, Hold, RenderResource, RenderWork, StorageAccount, reserve_backing_with,
+    Account, AccountedVec, Hold, RenderResource, RenderWork, StorageAccount, StorageContractError,
+    reserve_backing_with,
 };
 use peniko::BrushRef;
 use vello_encoding::{Encoding, StreamOffsets};
@@ -98,7 +99,7 @@ impl EncodingBacking {
                     total,
                     &storage,
                     resource,
-                    |count| account.work(RenderWork::EncodingStreamCopies, count),
+                    |_| Ok(()),
                 )?;
             }};
         }
@@ -358,14 +359,11 @@ impl PayloadCustody {
         account: &Account,
     ) -> Result<()> {
         if let Some(import) = import {
-            if self.imports.is_none() {
-                self.imports = Some(account.retained(0)?);
-            }
-            push_record(
-                self.imports.as_mut().expect("payload registry"),
-                import,
-                account,
-            )?;
+            let imports = match &mut self.imports {
+                Some(imports) => imports,
+                slot @ None => slot.insert(account.retained(0)?),
+            };
+            push_record(imports, import, account)?;
         }
         Ok(())
     }
@@ -399,51 +397,100 @@ impl Drop for OwnedEncoding {
     }
 }
 
-/// Lending retains the real vector and its admission in one destructor owner.
-pub(super) struct ProducerVec<T> {
-    values: Vec<T>,
-    hold: Option<Hold>,
+/// Locked serialization owns one intact admitted vector, bound to its actual
+/// immutable encoding and the size calculated from that encoding's streams.
+pub(super) struct PackedProducer<'a> {
+    encoding: &'a Encoding,
+    expected_size: usize,
+    values: AccountedVec<u8>,
+    account: &'a Account,
 }
-impl<T> ProducerVec<T> {
-    pub(super) fn new(values: AccountedVec<T>) -> Self {
-        let (values, hold) = values.into_parts();
-        Self {
-            values,
-            hold: Some(hold),
-        }
-    }
-    pub(super) fn values(&mut self) -> &mut Vec<T> {
-        &mut self.values
-    }
-    pub(super) fn into_accounted(mut self) -> Result<AccountedVec<T>> {
-        AccountedVec::from_parts(
-            std::mem::take(&mut self.values),
-            self.hold.take().expect("producer vector admission"),
-        )
-    }
+
+/// The dependency's upload type is unnameable outside its private module. This
+/// view borrows its actual upload slice without another backing or upload copy.
+pub(super) struct ResolvedImages<'a> {
+    pub(super) width: u32,
+    pub(super) height: u32,
+    pub(super) images: &'a [(peniko::ImageData, u32, u32)],
 }
-impl<T> std::ops::Deref for ProducerVec<T> {
-    type Target = Vec<T>;
-    fn deref(&self) -> &Vec<T> {
-        &self.values
-    }
+
+pub(super) struct PackedResolution<'a> {
+    packed: AccountedVec<u8>,
+    layout: vello_encoding::Layout,
+    ramps: vello_encoding::Ramps<'a>,
+    images: ResolvedImages<'a>,
 }
-impl<T> Drop for ProducerVec<T> {
-    fn drop(&mut self) {
-        if let Some(hold) = self.hold.take() {
-            let values = std::mem::take(&mut self.values);
-            hold.dispose(|| drop(values));
-        }
+
+impl<'a> PackedResolution<'a> {
+    pub(super) fn into_parts(
+        self,
+    ) -> (
+        AccountedVec<u8>,
+        vello_encoding::Layout,
+        vello_encoding::Ramps<'a>,
+        ResolvedImages<'a>,
+    ) {
+        (self.packed, self.layout, self.ramps, self.images)
+    }
+
+    #[cfg(test)]
+    pub(super) fn packed_for_test(&self) -> &AccountedVec<u8> {
+        &self.packed
     }
 }
 
-/// Actual relocation of resource/index records is admitted after replacement
-/// backing succeeds and before the nonfallible move.
-pub(super) fn reserve_record<T>(values: &mut AccountedVec<T>, account: &Account) -> Result<()> {
-    if values.len() == values.capacity() {
-        values.grow_with(values.capacity().max(1), |count| {
-            account.work(RenderWork::RasterResourceCopies, count)
+impl<'a> PackedProducer<'a> {
+    pub(super) fn new(
+        encoding: &'a Encoding,
+        glyph_sizes: &StreamOffsets,
+        account: &'a Account,
+    ) -> Result<Self> {
+        let expected_size = packed_size(encoding, glyph_sizes, account)?;
+        Ok(Self {
+            encoding,
+            expected_size,
+            values: account.retained(expected_size.max(4))?,
+            account,
+        })
+    }
+
+    pub(super) fn resolve<'r>(
+        mut self,
+        resolver: &'r mut vello_encoding::Resolver,
+    ) -> Result<PackedResolution<'r>> {
+        let (layout, ramps, images) = self.values.with_producer(self.expected_size, |values| {
+            self.account
+                .work(RenderWork::SerializedBytes, self.expected_size)?;
+            let (layout, ramps, images) = resolver.resolve(self.encoding, values);
+            Ok((
+                layout,
+                ramps,
+                ResolvedImages {
+                    width: images.width,
+                    height: images.height,
+                    images: images.images,
+                },
+            ))
         })?;
+        Ok(PackedResolution {
+            packed: self.values,
+            layout,
+            ramps,
+            images,
+        })
+    }
+
+    #[cfg(test)]
+    pub(super) fn capacity(&self) -> usize {
+        self.values.capacity()
+    }
+}
+
+/// Storage owns and admits actual replacement-backing relocation. This helper
+/// only requests the existing record-capacity growth policy.
+pub(super) fn reserve_record<T>(values: &mut AccountedVec<T>) -> Result<()> {
+    if values.len() == values.capacity() {
+        values.grow(values.capacity().max(1))?;
     }
     Ok(())
 }
@@ -452,9 +499,10 @@ pub(super) fn push_record<T>(
     value: T,
     account: &Account,
 ) -> Result<()> {
-    reserve_record(values, account)?;
+    reserve_record(values)?;
+    let slot = values.append_slot()?;
     account.work(RenderWork::RasterResourceCopies, 1)?;
-    values.push_reserved(value);
+    slot.write(value);
     Ok(())
 }
 
@@ -477,15 +525,22 @@ impl<K: Ord, V> RasterRegistry<K, V> {
             ..Self::default()
         }
     }
-    fn position(&self, key: &K, account: &Account) -> Result<std::result::Result<usize, usize>> {
-        let Some(values) = &self.values else {
-            return Ok(Err(0));
-        };
+    fn position(
+        values: &[(K, V)],
+        key: &K,
+        account: &Account,
+    ) -> Result<std::result::Result<usize, usize>> {
         let (mut lo, mut hi) = (0, values.len());
         while lo < hi {
             let mid = lo + (hi - lo) / 2;
             account.work(RenderWork::ResourceProbes, 1)?;
-            match values[mid].0.cmp(key) {
+            let record = values
+                .get(mid)
+                .ok_or(StorageContractError::InvalidPosition {
+                    index: mid,
+                    len: values.len(),
+                })?;
+            match record.0.cmp(key) {
                 std::cmp::Ordering::Less => lo = mid + 1,
                 std::cmp::Ordering::Greater => hi = mid,
                 std::cmp::Ordering::Equal => return Ok(Ok(mid)),
@@ -494,31 +549,41 @@ impl<K: Ord, V> RasterRegistry<K, V> {
         Ok(Err(lo))
     }
     pub(super) fn get(&self, key: &K, account: &Account) -> Result<Option<&V>> {
-        Ok(self
-            .position(key, account)?
-            .ok()
-            .map(|index| &self.values.as_ref().expect("registry backing")[index].1))
+        let Some(values) = &self.values else {
+            return Ok(None);
+        };
+        match Self::position(values.as_slice(), key, account)? {
+            Ok(index) => {
+                let record = values
+                    .get(index)
+                    .ok_or(StorageContractError::InvalidPosition {
+                        index,
+                        len: values.len(),
+                    })?;
+                Ok(Some(&record.1))
+            }
+            Err(_) => Ok(None),
+        }
     }
     pub(super) fn insert(&mut self, key: K, value: V, account: &Account) -> Result<()> {
-        let position = self.position(&key, account)?;
-        if self.values.is_none() {
-            self.values = Some(AccountedVec::new(account, 0, self.resource)?);
-        }
-        let values = self.values.as_mut().expect("registry backing");
-        match position {
+        let values = match &mut self.values {
+            Some(values) => values,
+            slot @ None => slot.insert(AccountedVec::new(account, 0, self.resource)?),
+        };
+        match Self::position(values.as_slice(), &key, account)? {
             Ok(index) => {
+                let len = values.len();
+                let record = values
+                    .get_mut(index)
+                    .ok_or(StorageContractError::InvalidPosition { index, len })?;
                 account.work(RenderWork::RasterResourceCopies, 1)?;
-                values[index] = (key, value);
+                *record = (key, value);
             }
             Err(index) => {
-                reserve_record(values, account)?;
-                let count = values
-                    .len()
-                    .checked_sub(index)
-                    .and_then(|count| count.checked_add(1))
-                    .ok_or_else(|| account.storage().capacity_error(self.resource))?;
-                account.work(RenderWork::RasterResourceCopies, count)?;
-                values.insert_reserved(index, (key, value));
+                reserve_record(values)?;
+                let slot = values.insert_slot(index)?;
+                account.work(RenderWork::RasterResourceCopies, slot.movement_count())?;
+                slot.write((key, value));
             }
         }
         Ok(())
@@ -806,40 +871,127 @@ mod tests {
         );
     }
 
+    fn solid_serialization_fixture(account: &Account) -> Result<OwnedEncoding> {
+        let mut owned = OwnedEncoding::default();
+        let (encoding, backing) = owned.parts();
+        backing.reserve(
+            encoding,
+            Growth {
+                path_tags: 2,
+                transforms: 1,
+                styles: 1,
+                ..Growth::default()
+            },
+            account,
+        )?;
+        encoding.encode_transform(vello_encoding::Transform::IDENTITY);
+        encoding.encode_fill_style(peniko::Fill::NonZero);
+        let input = [MoveTo((1.0, 2.0).into()), LineTo((3.0, 4.0).into())];
+        backing.path(encoding, 2, account)?;
+        encode_elements(encoding, &input, true, account)?;
+        backing.reserve(
+            encoding,
+            brush_growth(peniko::BrushRef::Solid(peniko::Color::BLACK)),
+            account,
+        )?;
+        encoding.encode_color(peniko::Color::BLACK);
+        Ok(owned)
+    }
+
     #[test]
     fn packed_solid_streams_match_literal_format_and_locked_resolver() {
         run_with_cap(usize::MAX, |account| {
-            let mut encoding = Encoding::default();
-            let mut backing = EncodingBacking::default();
-            backing.reserve(
-                &mut encoding,
-                Growth {
-                    path_tags: 2,
-                    transforms: 1,
-                    styles: 1,
-                    ..Growth::default()
-                },
-                account,
-            )?;
-            encoding.encode_transform(vello_encoding::Transform::IDENTITY);
-            encoding.encode_fill_style(peniko::Fill::NonZero);
-            let input = [MoveTo((1.0, 2.0).into()), LineTo((3.0, 4.0).into())];
-            backing.path(&mut encoding, 2, account)?;
-            encode_elements(&mut encoding, &input, true, account)?;
-            backing.reserve(
-                &mut encoding,
-                brush_growth(peniko::BrushRef::Solid(peniko::Color::BLACK)),
-                account,
-            )?;
-            encoding.encode_color(peniko::Color::BLACK);
-            let size = packed_size(&encoding, &StreamOffsets::default(), account)?;
+            let owned = solid_serialization_fixture(account)?;
+            let encoding = &owned.encoding;
+            let size = packed_size(encoding, &StreamOffsets::default(), account)?;
             assert_eq!(size, 1088); // 1024 + 6*4 + 4 + 4 + 24 + 8
-            let mut packed = ProducerVec::new(account.retained::<u8>(size)?);
+            let packed = PackedProducer::new(encoding, &StreamOffsets::default(), account)?;
             let capacity = packed.capacity();
             let mut resolver = vello_encoding::Resolver::default();
-            resolver.resolve(&encoding, packed.values());
-            assert_eq!(packed.len(), 1088);
-            assert_eq!(packed.capacity(), capacity);
+            let resolved = packed.resolve(&mut resolver)?;
+            assert_eq!(resolved.packed.len(), 1088);
+            assert_eq!(resolved.packed.capacity(), capacity);
+            assert_eq!(resolved.layout.path_data_base, 256);
+            let expected_points: Vec<_> = [1.0_f32, 2.0, 3.0, 4.0, 1.0, 2.0]
+                .into_iter()
+                .flat_map(f32::to_le_bytes)
+                .collect();
+            assert_eq!(&resolved.packed[1024..1048], expected_points);
+            assert_eq!(account.work_count(RenderWork::SerializedBytes)?, 1088);
+            Ok(())
+        });
+    }
+
+    #[test]
+    fn empty_native_serialization_keeps_admitted_capacity_without_inventing_bytes() {
+        let context = run_with_cap(usize::MAX, |account| {
+            let encoding = Encoding::default();
+            let producer = PackedProducer::new(&encoding, &StreamOffsets::default(), account)?;
+            assert!(producer.capacity() >= 4);
+            let mut resolver = vello_encoding::Resolver::default();
+            let resolved = producer.resolve(&mut resolver)?;
+            assert!(resolved.packed.is_empty());
+            assert_eq!(resolved.layout.n_paths, 0);
+            assert_eq!(account.work_count(RenderWork::SerializedBytes)?, 0);
+            Ok(())
+        });
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .live(RenderResource::RetainedCpuBytes),
+            0
+        );
+    }
+
+    #[test]
+    fn native_serialization_one_short_refusal_drops_intact_owner_and_retries() {
+        use crate::accounting::{
+            FrameAttempt, FrameReportSlot, RenderAccountingOptions, RenderAttemptStatus,
+            RenderCpuScope, RenderLimits, RendererCpu,
+        };
+        let options = RenderAccountingOptions::new().with_limits(
+            RenderLimits::new()
+                .with_work_limit(RenderWork::SerializedBytes, 1087)
+                .unwrap(),
+        );
+        let cpu = RendererCpu::new(options).unwrap();
+        let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+        let account = attempt.account();
+        let owned = solid_serialization_fixture(account).unwrap();
+        let producer =
+            PackedProducer::new(&owned.encoding, &StreamOffsets::default(), account).unwrap();
+        let mut resolver = vello_encoding::Resolver::default();
+        let error = producer.resolve(&mut resolver).err().unwrap();
+        assert!(error.accounting_diagnostic().is_some());
+        drop(owned);
+        let (report, fault) =
+            attempt.finish(RenderAttemptStatus::Refused, error.accounting_diagnostic());
+        assert_eq!(fault, None);
+        assert_eq!(
+            report
+                .attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::SerializedBytes),
+            0
+        );
+        assert_eq!(
+            report
+                .renderer_cpu()
+                .unwrap()
+                .scope_usage(RenderCpuScope::FrameBacking)
+                .live(RenderResource::RetainedCpuBytes),
+            0
+        );
+        run_with_cap(usize::MAX, |account| {
+            let owned = solid_serialization_fixture(account)?;
+            let producer =
+                PackedProducer::new(&owned.encoding, &StreamOffsets::default(), account)?;
+            let mut resolver = vello_encoding::Resolver::default();
+            let resolved = producer.resolve(&mut resolver)?;
+            assert_eq!(resolved.packed.len(), 1088);
             Ok(())
         });
     }
@@ -1094,7 +1246,8 @@ mod tests {
             registry.insert(20, 3, account)?;
             assert_eq!(registry.get(&10, account)?, Some(&1));
             assert_eq!(registry.get(&20, account)?, Some(&3));
-            assert_eq!(account.work_count(RenderWork::RasterResourceCopies)?, 5);
+            assert_eq!(account.work_count(RenderWork::RasterResourceCopies)?, 4);
+            assert_eq!(account.work_count(RenderWork::StorageRelocations)?, 1);
             Ok(())
         });
     }
@@ -1192,7 +1345,7 @@ mod tests {
             stream_offsets: StreamOffsets::default(),
         })
         .unwrap();
-        let (values, hold) = runs.into_parts();
+        let (values, hold) = runs.into_parts().unwrap();
         let mut owned = OwnedEncoding::default();
         owned.encoding.resources.glyph_runs = values;
         owned.backing.holds[9] = Some(hold);

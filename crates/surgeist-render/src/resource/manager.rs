@@ -405,7 +405,7 @@ impl ResourceManagerState {
                 let index = selected_idle
                     .binary_search(&identity)
                     .expect_err("one selected idle identity per request");
-                selected_idle.insert_reserved(index, identity);
+                selected_idle.insert_slot(index)?.write(identity);
                 continue;
             }
 

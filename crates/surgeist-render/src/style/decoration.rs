@@ -422,8 +422,7 @@ impl BoxDecorationInput {
             |account| {
                 let mut custody = StyleCustody::new(account)?;
                 let value = self.normalize_in(capabilities, account, &mut custody)?;
-                custody.transfer();
-                Ok(value)
+                custody.transfer(value)
             },
         )
     }
@@ -498,7 +497,7 @@ impl BoxDecorationInput {
             }
         }
 
-        let (commands, hold) = commands.into_parts();
+        let (commands, hold) = commands.into_parts()?;
         custody.hold(hold)?;
         Ok(NormalizedBoxDecoration { commands })
     }

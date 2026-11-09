@@ -731,6 +731,7 @@ pub surgeist_render::RenderWork::SerializedBytes
 pub surgeist_render::RenderWork::ShaderBindingVisits
 pub surgeist_render::RenderWork::ShaderKeyCopies
 pub surgeist_render::RenderWork::ShadowsEmitted
+pub surgeist_render::RenderWork::StorageRelocations
 pub surgeist_render::RenderWork::StrokesEmitted
 pub surgeist_render::RenderWork::Submissions
 pub surgeist_render::RenderWork::SurfaceAcquisitions
@@ -1826,6 +1827,7 @@ pub surgeist_render::RenderWorkTable::SerializedBytes: T
 pub surgeist_render::RenderWorkTable::ShaderBindingVisits: T
 pub surgeist_render::RenderWorkTable::ShaderKeyCopies: T
 pub surgeist_render::RenderWorkTable::ShadowsEmitted: T
+pub surgeist_render::RenderWorkTable::StorageRelocations: T
 pub surgeist_render::RenderWorkTable::StrokesEmitted: T
 pub surgeist_render::RenderWorkTable::Submissions: T
 pub surgeist_render::RenderWorkTable::SurfaceAcquisitions: T

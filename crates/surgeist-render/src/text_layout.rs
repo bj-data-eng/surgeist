@@ -309,7 +309,7 @@ fn prepare_inner<'a>(
             }
             Ok(())
         })?;
-        let (coordinates, coordinate_hold) = coordinates.into_parts();
+        let (coordinates, coordinate_hold) = coordinates.into_parts()?;
         let synthesis = GlyphSynthesis::try_new(instance.x_shear(), instance.embolden())
             .map_err(|e| TextLayoutError::render(location, e))?;
         let instance = TextInstance::try_new(instance.font_size(), coordinates, synthesis)
@@ -359,7 +359,7 @@ fn prepare_inner<'a>(
         let layer = Layer::new().try_transform(placement)?;
         commands.push(Command::Layer {
             layer,
-            children: decoration_commands.into_retained(),
+            children: decoration_commands.into_preparation()?.into_retained(),
         })?;
     }
     // These actual buffers are disposed before their custody can leave the builder.
@@ -369,7 +369,7 @@ fn prepare_inner<'a>(
         Ok(PreparedTextScene {
             layout,
             scene: Scene {
-                commands: commands.into_retained(),
+                commands: commands.into_preparation()?.into_retained(),
             },
         })
     })

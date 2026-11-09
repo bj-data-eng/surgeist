@@ -150,7 +150,7 @@ impl ImageHistory {
                 RenderResource::RetainedCpuBytes,
             )?;
             for record in committed {
-                records.push_reserved(record.try_clone(forward)?);
+                records.append_slot()?.write(record.try_clone(forward)?);
             }
             state.draft = Some(DraftState { attempt, records });
             state.active = Some(attempt);
@@ -350,24 +350,20 @@ fn observe(
         }
         insertion += 1;
     }
-    records.grow_with(1, |moved| {
-        forward.work(RenderWork::ImageIdentityCopies, moved)
-    })?;
+    records.grow(1)?;
     let import = cpu
         .at(RenderCpuScope::ImagePayloads)
         .import_image_pixels(identity, Some(forward))?;
     // One new slot plus each actual suffix destination is written once.
-    forward.work(
-        RenderWork::ImageIdentityCopies,
-        records.len() - insertion + 1,
-    )?;
+    let slot = records.insert_slot(insertion)?;
+    forward.work(RenderWork::ImageIdentityCopies, slot.movement_count())?;
     let record = ContentRecord {
         identity: identity.clone(),
         import,
         introduced_by: attempt,
         cleanup: cpu.at(RenderCpuScope::Cleanup),
     };
-    records.insert_reserved(insertion, record);
+    slot.write(record);
     Ok(true)
 }
 

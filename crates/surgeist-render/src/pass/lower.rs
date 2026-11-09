@@ -131,7 +131,7 @@ fn lower_runtime_resources(
             return Err(lowering_error("resource last-use binding is missing"));
         }
         let position = resources.len();
-        resources.push_reserved(RuntimeResourceRequest {
+        resources.append_slot()?.write(RuntimeResourceRequest {
             id,
             role,
             format,
@@ -141,7 +141,7 @@ fn lower_runtime_resources(
             last_use,
             import,
         });
-        index.insert_at_reserved(slot, id, position);
+        index.insert_at_reserved(slot, id, position)?;
     }
     Ok(LoweredResourceSet {
         values: SharedValue::from_accounted(resources, &account.storage())?,
@@ -177,7 +177,7 @@ fn lower_runtime_passes(
                     "runtime pass has a missing or forward dependency",
                 ));
             }
-            dependencies.push_reserved(dependency);
+            dependencies.append_slot()?.write(dependency);
         }
         let kind = runtime_pass_kind(pass.kind(account)?, working_format, account)?;
         let reads = lower_read_bindings(&pass.reads(account)?, resources, resource_index, account)?;
@@ -219,7 +219,7 @@ fn lower_runtime_passes(
             |id| Ok(resource_by_id(resources, resource_index, id, account)?.map(|r| r.format)),
             account,
         )?;
-        passes.push_reserved(RuntimePass {
+        passes.append_slot()?.write(RuntimePass {
             id,
             kind,
             dependencies: SharedValue::from_accounted(dependencies, &account.storage())?,
@@ -228,7 +228,7 @@ fn lower_runtime_passes(
             releases: SharedValue::from_accounted(pass_releases, &account.storage())?,
             cache_keys,
         });
-        seen.insert_at_reserved(slot, id, ());
+        seen.insert_at_reserved(slot, id, ())?;
     }
     SharedValue::from_accounted(passes, &account.storage())
 }
@@ -335,8 +335,8 @@ impl LoweredGraphPlan {
                     Ok(index) => releases.entries[index].1.push(resource.id)?,
                     Err(slot) => {
                         let mut values = account.retained(1)?;
-                        values.push_reserved(resource.id);
-                        releases.insert_at_reserved(slot, resource.last_use, values);
+                        values.append_slot()?.write(resource.id);
+                        releases.insert_at_reserved(slot, resource.last_use, values)?;
                     }
                 }
             }
@@ -509,7 +509,7 @@ fn runtime_clip_coverage(
     let mut elements = account.retained(coverage.elements().len())?;
     for element in coverage.elements() {
         account.work(RenderWork::GraphNodeVisits, 1)?;
-        elements.push_reserved(RuntimeClipCoverageElement {
+        elements.append_slot()?.write(RuntimeClipCoverageElement {
             clip: element.clip().clone(),
             transform: element.transform(),
         });
@@ -546,7 +546,9 @@ fn runtime_color_filter(
     let mut operations = account.retained(filter.operations().len())?;
     for operation in filter.operations() {
         account.work(RenderWork::FilterOperationVisits, 1)?;
-        operations.push_reserved(runtime_color_operation(*operation)?);
+        operations
+            .append_slot()?
+            .write(runtime_color_operation(*operation)?);
     }
     Ok(RuntimeColorFilter {
         operations: SharedValue::from_accounted(operations, &account.storage())?,
@@ -686,7 +688,7 @@ fn runtime_composite(
                     let mut values = account.retained(outer_clips.len())?;
                     for clip in outer_clips.iter() {
                         account.work(RenderWork::GraphNodeVisits, 1)?;
-                        values.push_reserved(RuntimeOuterClip {
+                        values.append_slot()?.write(RuntimeOuterClip {
                             clip: clip.clip().clone(),
                             transform: clip.transform(),
                         });
@@ -770,7 +772,7 @@ fn lower_read_bindings(
             shader_sampling_edge(sampling_edge),
             resolved_mask_sampling,
         );
-        bindings.push_reserved(RuntimeReadBinding {
+        bindings.append_slot()?.write(RuntimeReadBinding {
             role,
             resource,
             sampling_filter,
@@ -892,9 +894,11 @@ pub(super) fn runtime_pass_cache_keys(
         }
         let format = resource_format(read.resource)?
             .ok_or_else(|| lowering_error("cache key source format is missing"))?;
-        sampled_textures.push_reserved((shader_binding_role(read.role), format.shader_key()));
+        sampled_textures
+            .append_slot()?
+            .write((shader_binding_role(read.role), format.shader_key()));
         if runtime_read_uses_shader_sampler(kind, read.role) {
-            samplers.push_reserved(read.sampler_key);
+            samplers.append_slot()?.write(read.sampler_key);
         }
     }
     let StorageAccount::Renderer(cpu) = account.storage() else {

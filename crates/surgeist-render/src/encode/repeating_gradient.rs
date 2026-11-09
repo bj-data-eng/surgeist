@@ -130,7 +130,7 @@ pub(super) fn prepare(
             let quotient = scalar(&account, || difference / span)?;
             let offset = scalar(&account, || quotient as f32)?;
             account.work(RenderWork::CoordinateVisits, 4)?;
-            normalized.push_reserved(peniko::ColorStop::from((
+            normalized.append_slot()?.write(peniko::ColorStop::from((
                 offset,
                 peniko::Color::from(stop.color()),
             )));

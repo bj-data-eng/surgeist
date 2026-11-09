@@ -294,6 +294,11 @@ impl CpuAccount {
     pub(crate) fn note_fault(&self, error: RenderAccountingError) {
         self.core.remember(error);
     }
+    /// Checked owner work. Unlike mandatory cleanup, refusal stops a pending
+    /// physical relocation before any element moves.
+    pub(crate) fn checked_work(&self, work: RenderWork, amount: u64) -> Result<()> {
+        self.core.apply(self.scope, Change::Work(work, amount))
+    }
     pub(crate) fn maintenance_phase<T>(&self, run: impl FnOnce() -> T) -> T {
         let mut run = Some(run);
         match self
@@ -514,7 +519,7 @@ impl CpuAccount {
                     prepared.font().admitted_face().resource(),
                     forward,
                 )?;
-                dependencies.keys.push_reserved(font);
+                dependencies.keys.append_slot()?.write(font);
                 for paint in prepared.paints() {
                     account.visit(RenderWork::PaintVisits, forward)?;
                     if let crate::text::GlyphPaint::Bitmap { image, .. } = paint {
@@ -523,7 +528,7 @@ impl CpuAccount {
                             image,
                             forward,
                         )?;
-                        dependencies.keys.push_reserved(key);
+                        dependencies.keys.append_slot()?.write(key);
                     }
                 }
                 // Subordinate insertion may have consumed the spare registry cell.
@@ -581,8 +586,8 @@ impl CpuHold {
     pub(crate) fn resource(&self) -> RenderResource {
         self.resource
     }
-    pub(crate) fn amount(&self) -> u64 {
-        self.amount.expect("active CPU backing admission")
+    pub(crate) fn active_amount(&self) -> Option<u64> {
+        self.amount
     }
     /// The final checked operation before a complete readback leaves Renderer.
     /// Rejection preserves custody; success consumes it without destroying data.
@@ -750,11 +755,12 @@ impl Registry {
         }
         let account = account.at(RenderCpuScope::ImagePayloads);
         account.phase(|| {
-            let count = self
-                .entries
-                .len()
+            let existing = self.entries.len();
+            let count = existing
                 .checked_add(1)
                 .ok_or_else(|| account.capacity_error(RenderResource::RetainedCpuBytes))?;
+            let relocated = u64::try_from(existing)
+                .map_err(|_| account.capacity_error(RenderResource::RetainedCpuBytes))?;
             account.preview(
                 RenderResource::RetainedCpuBytes,
                 account.sized::<Entry>(count, RenderResource::RetainedCpuBytes)?,
@@ -767,6 +773,15 @@ impl Registry {
                 RenderResource::RetainedCpuBytes,
                 account.sized::<Entry>(replacement.capacity(), RenderResource::RetainedCpuBytes)?,
             )?;
+            if relocated != 0
+                && let Err(error) = account.checked_work(RenderWork::StorageRelocations, relocated)
+            {
+                account.maintenance_phase(move || {
+                    drop(replacement);
+                    drop(hold);
+                });
+                return Err(error);
+            }
             replacement.append(&mut self.entries);
             std::mem::swap(&mut self.entries, &mut replacement);
             if let Some(old) = self.backing.replace(hold) {

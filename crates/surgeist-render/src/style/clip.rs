@@ -154,9 +154,11 @@ impl ClipInput {
         context: &mut RenderAccountingContext,
     ) -> Result<NormalizedClip> {
         context.run(RenderAttemptKind::Clip, RenderPhase::Clip, |account| {
-            let (clip, backing, import) = self.normalize_in(capabilities, account)?.into_parts();
+            let guarded = self.normalize_in(capabilities, account)?;
+            guarded.require_preparation()?;
+            let (clip, backing, import) = guarded.into_parts();
             for hold in backing.into_iter().flatten() {
-                hold.retain();
+                hold.into_preparation()?.retain();
             }
             drop(import);
             Ok(clip)

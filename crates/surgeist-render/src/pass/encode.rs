@@ -415,19 +415,22 @@ impl CustomSpineEncodingProgress {
         })
     }
 
-    fn record_custom_completion(&mut self, kind: GraphScheduledEncodingKind) {
-        self.scheduled.push_reserved(kind);
+    fn record_custom_completion(&mut self, kind: GraphScheduledEncodingKind) -> Result<()> {
+        self.scheduled.append_slot()?.write(kind);
         self.custom_encoded = self.custom_encoded.saturating_add(1);
         self.custom_completed = self.custom_completed.saturating_add(1);
         self.completed_pass_count = self.completed_pass_count.saturating_add(1);
+        Ok(())
     }
 
-    fn record_capture_completion(&mut self) {
+    fn record_capture_completion(&mut self) -> Result<()> {
         self.scheduled
-            .push_reserved(GraphScheduledEncodingKind::VelloCapture);
+            .append_slot()?
+            .write(GraphScheduledEncodingKind::VelloCapture);
         self.capture_count = self.capture_count.saturating_add(1);
         self.validated_capture_receipts = self.validated_capture_receipts.saturating_add(1);
         self.completed_pass_count = self.completed_pass_count.saturating_add(1);
+        Ok(())
     }
 
     fn finish(
@@ -1630,7 +1633,9 @@ fn vello_capture_scene(
             let mut elements = account.temporary(coverage.elements.len())?;
             for element in coverage.elements.iter() {
                 account.work(RenderWork::GraphEdgeVisits, 1)?;
-                elements.push_reserved((element.clip.clone(), element.transform));
+                elements
+                    .append_slot()?
+                    .write((element.clip.clone(), element.transform));
             }
             encode_vello_clip_coverage_scene(
                 &elements,
@@ -1901,7 +1906,7 @@ impl<'device> PreparedGraph<'device> {
         }
         self.complete_custom_spine_pass(request.id, account)
             .map(drop)?;
-        progress.record_custom_completion(GraphScheduledEncodingKind::ClearRoot);
+        progress.record_custom_completion(GraphScheduledEncodingKind::ClearRoot)?;
         Ok(())
     }
 
@@ -1931,7 +1936,7 @@ impl<'device> PreparedGraph<'device> {
             self.acquired_capture_lease_count_raw_fact =
                 self.acquired_capture_lease_count_raw_fact.saturating_add(1);
         }
-        progress.record_capture_completion();
+        progress.record_capture_completion()?;
         Ok(())
     }
 
@@ -1946,7 +1951,7 @@ impl<'device> PreparedGraph<'device> {
         progress.exact_spatial &= facts.exact_spatial_uniform;
         self.complete_custom_spine_pass(request.id, account)
             .map(drop)?;
-        progress.record_custom_completion(GraphScheduledEncodingKind::CanonicalizeCapture);
+        progress.record_custom_completion(GraphScheduledEncodingKind::CanonicalizeCapture)?;
         Ok(())
     }
 
@@ -1969,7 +1974,7 @@ impl<'device> PreparedGraph<'device> {
             .complete_custom_spine_pass(request.id, account)?
             .prove_for(request);
         progress.color_filter_operation_buffers_released &= released.color_buffer;
-        progress.record_custom_completion(GraphScheduledEncodingKind::ColorFilter);
+        progress.record_custom_completion(GraphScheduledEncodingKind::ColorFilter)?;
         Ok(())
     }
 
@@ -1994,7 +1999,7 @@ impl<'device> PreparedGraph<'device> {
             .complete_custom_spine_pass(request.id, account)?
             .prove_for(request);
         progress.spatial_filter_textures_released &= released.resources;
-        progress.record_custom_completion(GraphScheduledEncodingKind::CopyBackdrop);
+        progress.record_custom_completion(GraphScheduledEncodingKind::CopyBackdrop)?;
         Ok(())
     }
 
@@ -2039,7 +2044,7 @@ impl<'device> PreparedGraph<'device> {
         progress.blur_allocations_are_distinct &= facts.distinct_source_and_result;
         progress.spatial_filter_kernels_released &= released.kernels;
         progress.spatial_filter_textures_released &= released.resources;
-        progress.record_custom_completion(kind);
+        progress.record_custom_completion(kind)?;
         Ok(())
     }
 
@@ -2064,7 +2069,7 @@ impl<'device> PreparedGraph<'device> {
             facts.validated_region && facts.preserved_signed_mapping;
         progress.blur_allocations_are_distinct &= facts.distinct_source_and_result;
         progress.spatial_filter_textures_released &= released.resources;
-        progress.record_custom_completion(GraphScheduledEncodingKind::DropShadowColorize);
+        progress.record_custom_completion(GraphScheduledEncodingKind::DropShadowColorize)?;
         Ok(())
     }
 
@@ -2128,7 +2133,7 @@ impl<'device> PreparedGraph<'device> {
         progress.shadow_source_released_after_merge &=
             source_is_live && source_is_scheduled_for_release && released.resources;
         progress.spatial_filter_textures_released &= released.resources;
-        progress.record_custom_completion(GraphScheduledEncodingKind::DropShadowMerge);
+        progress.record_custom_completion(GraphScheduledEncodingKind::DropShadowMerge)?;
         Ok(())
     }
 
@@ -2149,7 +2154,7 @@ impl<'device> PreparedGraph<'device> {
         progress.preserves_signed_origin &= facts.preserved_signed_source_origin;
         self.complete_custom_spine_pass(request.id, account)
             .map(drop)?;
-        progress.record_custom_completion(GraphScheduledEncodingKind::SpanSourceOver);
+        progress.record_custom_completion(GraphScheduledEncodingKind::SpanSourceOver)?;
         Ok(())
     }
 
@@ -2189,7 +2194,7 @@ impl<'device> PreparedGraph<'device> {
             .push(facts.encoder_identity);
         self.complete_custom_spine_pass(request.id, account)
             .map(drop)?;
-        progress.record_custom_completion(GraphScheduledEncodingKind::LayerComposite);
+        progress.record_custom_completion(GraphScheduledEncodingKind::LayerComposite)?;
         Ok(())
     }
 
@@ -2206,7 +2211,7 @@ impl<'device> PreparedGraph<'device> {
         progress.exact_external_output |= facts.external_output_exact;
         self.complete_custom_spine_pass(request.id, account)
             .map(drop)?;
-        progress.record_custom_completion(GraphScheduledEncodingKind::Present);
+        progress.record_custom_completion(GraphScheduledEncodingKind::Present)?;
         Ok(())
     }
 
@@ -3258,7 +3263,7 @@ impl<'device> PreparedGraph<'device> {
             },
         ])?;
         if let Some(edge_buffer) = &edge_buffer {
-            entries.push_reserved(wgpu::BindGroupEntry {
+            entries.append_slot()?.write(wgpu::BindGroupEntry {
                 binding: 4,
                 resource: edge_buffer.as_entire_binding(),
             });
@@ -3732,37 +3737,37 @@ impl<'device> PreparedGraph<'device> {
         let spatial_buffer = self.create_core_pass_spatial_uniform_buffer(spatial, account)?;
         let parameter_buffer = self.create_layer_composite_parameter_buffer(parameters, account)?;
         let mut entries = account.temporary(expected_read_count.saturating_add(4))?;
-        entries.push_reserved(wgpu::BindGroupEntry {
+        entries.append_slot()?.write(wgpu::BindGroupEntry {
             binding: 0,
             resource: wgpu::BindingResource::TextureView(bindings.source.view()),
         });
-        entries.push_reserved(wgpu::BindGroupEntry {
+        entries.append_slot()?.write(wgpu::BindGroupEntry {
             binding: 1,
             resource: wgpu::BindingResource::Sampler(objects.source_sampler()),
         });
         if bindings.semantic.destination_path {
-            entries.push_reserved(wgpu::BindGroupEntry {
+            entries.append_slot()?.write(wgpu::BindGroupEntry {
                 binding: 2,
                 resource: wgpu::BindingResource::TextureView(bindings.parent.view()),
             });
         }
         if let Some(binding) = &bindings.clip {
-            entries.push_reserved(wgpu::BindGroupEntry {
+            entries.append_slot()?.write(wgpu::BindGroupEntry {
                 binding: 3,
                 resource: wgpu::BindingResource::TextureView(binding.view()),
             });
         }
         if let Some(binding) = &bindings.mask {
-            entries.push_reserved(wgpu::BindGroupEntry {
+            entries.append_slot()?.write(wgpu::BindGroupEntry {
                 binding: 4,
                 resource: wgpu::BindingResource::TextureView(binding.view()),
             });
         }
-        entries.push_reserved(wgpu::BindGroupEntry {
+        entries.append_slot()?.write(wgpu::BindGroupEntry {
             binding: 5,
             resource: spatial_buffer.as_entire_binding(),
         });
-        entries.push_reserved(wgpu::BindGroupEntry {
+        entries.append_slot()?.write(wgpu::BindGroupEntry {
             binding: 6,
             resource: parameter_buffer.as_entire_binding(),
         });
@@ -4198,7 +4203,7 @@ impl<'device> PreparedGraph<'device> {
                 .get(resource, account)?
                 .and_then(|binding| binding.lease.as_ref())
                 .expect("prepared resource releases were validated before atomic resolution");
-            leases.push_reserved(lease);
+            leases.append_slot()?.write(lease);
         }
         for kernel in &kernel_releases {
             account.work(RenderWork::GraphEdgeVisits, 1)?;
@@ -4206,7 +4211,7 @@ impl<'device> PreparedGraph<'device> {
                 .get(kernel, account)?
                 .and_then(|binding| binding.lease.as_ref())
                 .expect("prepared kernel releases were validated before atomic resolution");
-            leases.push_reserved(lease);
+            leases.append_slot()?.write(lease);
         }
         frame_scope
             .as_mut()

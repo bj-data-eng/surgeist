@@ -453,7 +453,7 @@ impl Path {
             account.work(crate::accounting::RenderWork::PathElementVisits, 1)?;
             elements.push(*element)?;
         }
-        let (elements, hold) = elements.into_parts();
+        let (elements, hold) = elements.into_parts()?;
         Ok((Self { elements }, hold))
     }
 
@@ -533,7 +533,7 @@ impl Path {
         &self,
         account: &crate::accounting::Account,
     ) -> Result<(kurbo::BezPath, crate::accounting::Hold)> {
-        let (elements, hold) = self.kurbo_elements(account)?.into_parts();
+        let (elements, hold) = self.kurbo_elements(account)?.into_parts()?;
         Ok((kurbo::BezPath::from_vec(elements), hold))
     }
 }
@@ -557,7 +557,7 @@ impl Path {
     ) -> Result<(kurbo::BezPath, crate::accounting::Hold)> {
         let (elements, hold) = self
             .kurbo_elements_in(account, crate::accounting::RenderResource::RetainedCpuBytes)?
-            .into_parts();
+            .into_parts()?;
         Ok((kurbo::BezPath::from_vec(elements), hold))
     }
 }

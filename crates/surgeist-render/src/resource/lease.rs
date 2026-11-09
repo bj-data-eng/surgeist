@@ -10,8 +10,8 @@ use super::{
 use crate::{
     BackendErrorCode, Error, Result,
     accounting::{
-        Account, AccountedVec, CpuAccount, Generation, GenerationClass, Hold,
-        RenderAccountingError, RenderCpuScope, RenderResource, RenderWork, StorageAccount,
+        Account, AccountedVec, CpuAccount, Generation, GenerationClass, RenderAccountingError,
+        RenderCpuScope, RenderResource, RenderWork, StorageAccount,
     },
     backend::DeviceCapabilities,
     image::ResolvedMaskUploadDescriptor,
@@ -833,7 +833,8 @@ impl FrameScratch {
         }
         self.cpu.maintenance(RenderWork::ResourceProbes, 1);
         self.indices
-            .insert_reserved(self.indices.len(), (order, identity));
+            .insert_slot(self.indices.len())?
+            .write((order, identity));
         Ok(())
     }
 }
@@ -1393,48 +1394,102 @@ pub(crate) enum ResourceRetentionOutcome {
     },
 }
 
+/// An empty cleanup has no allocation; an admitted cleanup keeps its
+/// vector and credit coupled, including through mandatory infallible cleanup.
 #[derive(Default)]
-pub(crate) struct FrameCleanup {
-    pub(super) evicted_resources: Vec<ResourceIdentity>,
-    _backing: Option<Hold>,
-    cpu: Option<CpuAccount>,
-    pub(super) retention: ResourceRetentionOutcome,
+pub(super) enum CleanupBuffer {
+    #[default]
+    Empty,
+    Accounted(AccountedVec<ResourceIdentity>),
 }
-impl Drop for FrameCleanup {
-    fn drop(&mut self) {
-        let values = std::mem::take(&mut self.evicted_resources);
-        let backing = self._backing.take();
-        if let Some(cpu) = self.cpu.take() {
-            cpu.maintenance_phase(move || {
-                drop(values);
-                drop(backing);
-            });
-        } else {
-            drop(values);
-            drop(backing);
+impl CleanupBuffer {
+    fn as_slice(&self) -> &[ResourceIdentity] {
+        match self {
+            Self::Empty => &[],
+            Self::Accounted(values) => values.as_slice(),
+        }
+    }
+    fn capacity(&self) -> usize {
+        match self {
+            Self::Empty => 0,
+            Self::Accounted(values) => values.capacity(),
+        }
+    }
+    fn clear(&mut self) {
+        if let Self::Accounted(values) = self {
+            values.clear();
+        }
+    }
+    fn append_from(&mut self, source: &mut Self) -> Result<()> {
+        match self {
+            Self::Empty if source.is_empty() => Ok(()),
+            Self::Empty => Err(crate::accounting::StorageContractError::ReservedCapacity {
+                needed: source.len(),
+                capacity: 0,
+            }
+            .into()),
+            Self::Accounted(values) => {
+                values.copy_slot(source.as_slice())?.write();
+                source.clear();
+                Ok(())
+            }
+        }
+    }
+    fn rotate_right(&mut self, count: usize) -> Result<()> {
+        match self {
+            Self::Empty if count == 0 => Ok(()),
+            Self::Empty => Err(crate::accounting::StorageContractError::InvalidPosition {
+                index: count,
+                len: 0,
+            }
+            .into()),
+            Self::Accounted(values) => {
+                if count > values.len() {
+                    return Err(crate::accounting::StorageContractError::InvalidPosition {
+                        index: count,
+                        len: values.len(),
+                    }
+                    .into());
+                }
+                values.rotate_right(count);
+                Ok(())
+            }
         }
     }
 }
+impl std::ops::Deref for CleanupBuffer {
+    type Target = [ResourceIdentity];
+    fn deref(&self) -> &Self::Target {
+        self.as_slice()
+    }
+}
+#[derive(Default)]
+pub(crate) struct FrameCleanup {
+    pub(super) evicted_resources: CleanupBuffer,
+    cpu: Option<CpuAccount>,
+    pub(super) retention: ResourceRetentionOutcome,
+}
+// AccountedVec already disposes its actual vector and credit together under the
+// original Cleanup lifetime scope. An outer disposal callback would time it twice.
 impl fmt::Debug for FrameCleanup {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("FrameCleanup")
-            .field("evicted_resources", &self.evicted_resources)
+            .field("evicted_resources", &self.evicted_resources.as_slice())
             .field("retention", &self.retention)
             .finish()
     }
 }
 impl PartialEq for FrameCleanup {
     fn eq(&self, other: &Self) -> bool {
-        self.evicted_resources == other.evicted_resources && self.retention == other.retention
+        self.evicted_resources.as_slice() == other.evicted_resources.as_slice()
+            && self.retention == other.retention
     }
 }
 impl Eq for FrameCleanup {}
 impl FrameCleanup {
     fn with_reserved(values: AccountedVec<ResourceIdentity>, cpu: CpuAccount) -> Self {
-        let (evicted_resources, backing) = values.into_parts();
         Self {
-            evicted_resources,
-            _backing: Some(backing),
+            evicted_resources: CleanupBuffer::Accounted(values),
             cpu: Some(cpu),
             retention: ResourceRetentionOutcome::default(),
         }
@@ -1449,11 +1504,17 @@ impl FrameCleanup {
         if self.evicted_resources.len() == self.evicted_resources.capacity() {
             return Err(self.capacity_error());
         }
-        if let Some(cpu) = &self.cpu {
-            cpu.maintenance(RenderWork::ResourceProbes, 1);
+        match &mut self.evicted_resources {
+            CleanupBuffer::Empty => Err(self.capacity_error()),
+            CleanupBuffer::Accounted(values) => {
+                let slot = values.append_slot()?;
+                if let Some(cpu) = &self.cpu {
+                    cpu.maintenance(RenderWork::ResourceProbes, 1);
+                }
+                slot.write(identity);
+                Ok(())
+            }
         }
-        self.evicted_resources.push(identity);
-        Ok(())
     }
     pub(crate) fn followed_by(self, later: Self) -> Result<Self> {
         let cpu = self.cpu.as_ref().or(later.cpu.as_ref()).cloned();
@@ -1484,7 +1545,8 @@ impl FrameCleanup {
                     later.evicted_resources.len() as u64,
                 );
             }
-            self.evicted_resources.append(&mut later.evicted_resources);
+            self.evicted_resources
+                .append_from(&mut later.evicted_resources)?;
             self.retention = retention;
             Ok(self)
         } else if count <= later.evicted_resources.capacity() {
@@ -1494,8 +1556,10 @@ impl FrameCleanup {
             {
                 cpu.maintenance(RenderWork::ResourceProbes, old_count as u64);
             }
-            later.evicted_resources.append(&mut self.evicted_resources);
-            later.evicted_resources.rotate_right(old_count);
+            later
+                .evicted_resources
+                .append_from(&mut self.evicted_resources)?;
+            later.evicted_resources.rotate_right(old_count)?;
             later.retention = retention;
             Ok(later)
         } else {

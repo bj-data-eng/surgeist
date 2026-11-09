@@ -30,7 +30,7 @@ impl FilterList {
             account.work(RenderWork::FilterOperationVisits, 1)?;
             copied.push(operation.clone())?;
         }
-        let (ops, hold) = copied.into_parts();
+        let (ops, hold) = copied.into_parts()?;
         Ok((Self { ops: Some(ops) }, Some(hold)))
     }
     /// Creates the authored `none` filter state.

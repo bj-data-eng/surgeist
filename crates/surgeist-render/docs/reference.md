@@ -666,6 +666,18 @@ nested source/key/index Vecs and retained payloads remain measured.
 Temporary text values and resource iterators retain their backing admissions
 through actual destruction inside the owning CPU disposal phase, including
 early failure and cancellation.
+`StorageRelocations` counts existing elements moved to a replacement owned-vector
+backing. It excludes new element writes, insertion suffix shifts and in-place
+rotations. Renderer storage charges this checked-unlimited work to its CPU
+lifetime owner; it does not spend a fresh frame or readback work allowance.
+Standalone preparation charges its own operation and permits a work limit where
+that entrypoint produces relocations. Existing image-identity and raster-resource
+copy units retain their new writes and suffix shifts, without counting the same
+replacement move again. The eleven owned encoding-stream replacement backings
+use this relocation unit too; `EncodingStreamCopies` counts their independent
+stream copies instead.
+The CPU import registry also charges its actual existing entry count before a
+replacement move, at `ImagePayloads`.
 The bounded raster adapter admits replacement capacity for its eleven public
 Encoding streams before producer calls. The dependency-owned mask lookup
 constructors offer no fill API: their known 1024/8192-byte payloads are previewed,

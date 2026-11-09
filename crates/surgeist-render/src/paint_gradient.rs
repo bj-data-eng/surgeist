@@ -158,7 +158,7 @@ pub fn prepare_zero_height_gradient_color(
                     output.work(RenderWork::PaintVisits, 1)?;
                     // This fixed Color is the complete owned result. There is no
                     // output vector, copied stop list, or borrowed storage to charge.
-                    fixed.retain();
+                    fixed.into_preparation()?.retain();
                     Ok(color)
                 })
             })
@@ -279,9 +279,10 @@ fn prepare<T>(
                     let guarded = construct(geometry.into_geometry(), converted, fixed, &output)?;
                     // Both actual allocation guards transfer through the enclosing
                     // standalone attempt only after all qualification succeeds.
+                    guarded.require_preparation()?;
                     let (gradient, backing, import) = guarded.into_parts();
                     for hold in backing.into_iter().flatten() {
-                        hold.retain();
+                        hold.into_preparation()?.retain();
                     }
                     drop(import);
                     Ok(gradient)
@@ -396,9 +397,11 @@ fn convert(
                 if let Some((position, color, hint_after)) =
                     pending.replace((field, *payload, None))
                 {
-                    output.push_reserved(GradientStop::from_qualified_paint(
-                        position, color, hint_after,
-                    ));
+                    output
+                        .append_slot()?
+                        .write(GradientStop::from_qualified_paint(
+                            position, color, hint_after,
+                        ));
                 }
                 first.get_or_insert((source_index, field));
                 last = Some((source_index, field));
@@ -410,9 +413,11 @@ fn convert(
         }
     }
     let (position, color, hint_after) = pending.expect("Paint list has a color");
-    output.push_reserved(GradientStop::from_qualified_paint(
-        position, color, hint_after,
-    ));
+    output
+        .append_slot()?
+        .write(GradientStop::from_qualified_paint(
+            position, color, hint_after,
+        ));
     let first = first.expect("Paint list has a stop");
     let last = last.expect("Paint list has a stop");
     Ok((output, (first.0, last.0), (first.1, last.1)))
@@ -1116,9 +1121,10 @@ mod tests {
                         positions,
                         account,
                     )?;
+                    guarded.require_preparation()?;
                     let (gradient, backing, import) = guarded.into_parts();
                     for hold in backing.into_iter().flatten() {
-                        hold.retain();
+                        hold.into_preparation()?.retain();
                     }
                     drop(import);
                     Ok((gradient, actual_bytes as u64))

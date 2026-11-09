@@ -24,7 +24,8 @@ pub(crate) use generation::{
 mod tests;
 pub use model::*;
 pub(crate) use storage::{
-    AccountedVec, BackedValue, Hold, OwnedBox, SharedValue, StorageAccount, reserve_backing_with,
+    AccountedVec, BackedValue, Hold, OwnedBox, SharedValue, StorageAccount, StorageContractError,
+    reserve_backing_with,
 };
 
 use crate::{Error, GlyphPreparationError, GlyphResource, GlyphRunLimits, Result};
@@ -628,6 +629,7 @@ impl Account {
     }
     pub(crate) fn retain(&self, bytes: usize) -> Result<()> {
         self.acquire(RenderResource::RetainedCpuBytes, bytes)?
+            .into_preparation()?
             .retain();
         Ok(())
     }

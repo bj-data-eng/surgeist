@@ -540,7 +540,7 @@ impl Gradient {
         // quotients or physical identity into this exact backing, without a
         // duplicate canonical validation walk.
         account.work(crate::accounting::RenderWork::PaintVisits, 1)?;
-        let (stops, backing) = stops.into_parts();
+        let (stops, backing) = stops.into_parts()?;
         let kind = match geometry {
             GradientGeometry::Linear { start, end } => GradientKind::Linear { start, end, stops },
             GradientGeometry::HorizontalDistance { origin_x } => {
@@ -700,7 +700,7 @@ impl Gradient {
             account.work(crate::accounting::RenderWork::GradientStopVisits, 1)?;
             stops.push(*stop)?;
         }
-        let (stops, hold) = stops.into_parts();
+        let (stops, hold) = stops.into_parts()?;
         let kind = match self.kind {
             GradientKind::Linear { start, end, .. } => GradientKind::Linear { start, end, stops },
             GradientKind::HorizontalDistance { origin_x, .. } => {

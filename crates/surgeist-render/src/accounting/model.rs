@@ -148,7 +148,8 @@ dimensions! {
         AuthoredGlyphs,
         /// Authored nested layer commands inspected.
         AuthoredLayers,
-        /// Exact image identity records actually copied or shifted.
+        /// Exact image identity records actually copied or shifted; excludes
+        /// replacement-backing relocation.
         ImageIdentityCopies,
         /// Pairs of bytes actually compared for exact image content, including first difference.
         ImageIdentityByteComparisons,
@@ -161,14 +162,20 @@ dimensions! {
         ShaderBindingVisits,
         /// Shader key elements actually copied into distinct owned backing.
         ShaderKeyCopies,
-        /// Typed elements actually copied between owned Vello encoding streams.
+        /// Existing elements physically moved between replacement owned-vector
+        /// backings; excludes new writes, insertion shifts and in-place rotations.
+        /// Standalone preparation charges its forward owner. Renderer vectors
+        /// charge checked-unlimited CPU lifetime work, never frame/readback work.
+        StorageRelocations,
+        /// Typed elements actually copied between independently owned Vello
+        /// encoding streams; excludes replacement-backing relocation.
         EncodingStreamCopies,
         /// Private raster recording commands actually appended.
         RasterCommandsEmitted,
         /// Private raster recording command records actually inspected.
         RasterCommandVisits,
-        /// Render-owned raster source/index records copied or moved, including
-        /// replacement growth and insertion shifts; excludes the eleven streams.
+        /// Render-owned raster source/index records copied or shifted, including
+        /// insertion shifts; excludes replacement relocation and eleven streams.
         RasterResourceCopies,
     }
 }
@@ -205,7 +212,8 @@ impl RenderWork {
             ),
             RenderAttemptKind::GlyphRun => matches!(
                 self,
-                Self::PathElementVisits
+                Self::StorageRelocations
+                    | Self::PathElementVisits
                     | Self::GlyphVisits
                     | Self::PaintVisits
                     | Self::FontRecordVisits
@@ -282,7 +290,8 @@ impl RenderWork {
             }
             RenderAttemptKind::SceneInspection => matches!(
                 self,
-                Self::CommandVisits
+                Self::StorageRelocations
+                    | Self::CommandVisits
                     | Self::GlyphVisits
                     | Self::PaintVisits
                     | Self::ResourceProbes
@@ -303,7 +312,8 @@ impl RenderWork {
             }
             RenderAttemptKind::Background => matches!(
                 self,
-                Self::CommandVisits
+                Self::StorageRelocations
+                    | Self::CommandVisits
                     | Self::CommandsEmitted
                     | Self::FillsEmitted
                     | Self::ImagesEmitted
@@ -318,7 +328,8 @@ impl RenderWork {
             RenderAttemptKind::Clip => matches!(self, Self::PathElementVisits),
             RenderAttemptKind::BoxDecoration => matches!(
                 self,
-                Self::CommandsEmitted
+                Self::StorageRelocations
+                    | Self::CommandsEmitted
                     | Self::PaintVisits
                     | Self::GradientStopVisits
                     | Self::PathElementVisits

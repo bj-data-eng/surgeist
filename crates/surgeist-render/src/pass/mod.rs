@@ -96,13 +96,14 @@ impl<K: Ord, V> PassMap<K, V> {
         match self.maintenance_position(&key) {
             Ok(index) => Some(std::mem::replace(&mut self.entries[index].1, value)),
             Err(index) => {
-                self.entries.insert_reserved(index, (key, value));
+                self.entries.insert_slot(index).unwrap().write((key, value));
                 None
             }
         }
     }
-    fn insert_at_reserved(&mut self, index: usize, key: K, value: V) {
-        self.entries.insert_reserved(index, (key, value));
+    fn insert_at_reserved(&mut self, index: usize, key: K, value: V) -> Result<()> {
+        self.entries.insert_slot(index)?.write((key, value));
+        Ok(())
     }
     fn insert_with(
         &mut self,
@@ -113,7 +114,7 @@ impl<K: Ord, V> PassMap<K, V> {
         Ok(match self.position(&key, account)? {
             Ok(index) => Some(std::mem::replace(&mut self.entries[index].1, value)),
             Err(index) => {
-                self.entries.insert_reserved(index, (key, value));
+                self.entries.insert_slot(index)?.write((key, value));
                 None
             }
         })

@@ -413,7 +413,7 @@ pub(super) fn prepare_projected(
                 scalar(account, || b * a)?,
                 a,
             ];
-            records.push_reserved(ProgramRecord {
+            records.append_slot()?.write(ProgramRecord {
                 position: native_position,
                 premultiplied,
                 outgoing,

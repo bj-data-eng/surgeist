@@ -164,7 +164,7 @@ impl RepeatingGradient {
         // physical identity prove the geometry/list domains. Only repetition's
         // span remains.
         account.work(RenderWork::PaintVisits, 1)?;
-        let (stops, backing) = stops.into_parts();
+        let (stops, backing) = stops.into_parts()?;
         let gradient =
             BackedValue::new(Self { geometry, stops }, [Some(backing), Some(fixed_owner)]);
         account.work(RenderWork::CoordinateVisits, 1)?;
@@ -185,7 +185,7 @@ impl RepeatingGradient {
             account.work(RenderWork::GradientStopVisits, 1)?;
             stops.push(*stop)?;
         }
-        let (stops, hold) = stops.into_parts();
+        let (stops, hold) = stops.into_parts()?;
         Ok((
             Self {
                 geometry: self.geometry,

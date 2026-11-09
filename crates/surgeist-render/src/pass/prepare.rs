@@ -190,7 +190,7 @@ impl RuntimeGraphPreparationPlan {
         let mut kernels = account.retained(pass_facts.kernels.len())?;
         for kernel in pass_facts.kernels.into_values() {
             account.work(RenderWork::GraphNodeVisits, 1)?;
-            kernels.push_reserved(kernel);
+            kernels.append_slot()?.write(kernel);
         }
         for kernel in &kernels {
             account.work(RenderWork::GraphNodeVisits, 1)?;
@@ -593,7 +593,7 @@ fn analyze_runtime_kernel(
                 plan: kernel_plan,
                 last_use: pass.id,
             },
-        ),
+        )?,
         Ok(index) => {
             let entry = &mut facts.kernels.entries[index].1;
             if !entry.plan.matches_in(&kernel_plan, account)? {
@@ -704,17 +704,19 @@ fn prepare_runtime_pass_requests(
                 kernel_releases.push(kernel.key)?;
             }
         }
-        requests.push_reserved(RuntimePassPreparationRequest {
-            runtime: pass.clone(),
-            spatial_uniform,
-            blur_edge_parameters,
-            color_filter_operations,
-            drop_shadow_parameters,
-            composite_parameters,
-            cache_keys: pass.cache_keys.clone(),
-            kernel: facts.kernel_by_pass.get(&pass.id, account)?.copied(),
-            kernel_releases: SharedValue::from_accounted(kernel_releases, &account.storage())?,
-        });
+        requests
+            .append_slot()?
+            .write(RuntimePassPreparationRequest {
+                runtime: pass.clone(),
+                spatial_uniform,
+                blur_edge_parameters,
+                color_filter_operations,
+                drop_shadow_parameters,
+                composite_parameters,
+                cache_keys: pass.cache_keys.clone(),
+                kernel: facts.kernel_by_pass.get(&pass.id, account)?.copied(),
+                kernel_releases: SharedValue::from_accounted(kernel_releases, &account.storage())?,
+            });
     }
     Ok(requests)
 }
@@ -1033,7 +1035,7 @@ fn acquire_prepared_graph_resources(
                 allocation: request.allocation.clone(),
                 lease: Some(lease),
             },
-        );
+        )?;
     }
     for request in &plan.kernels {
         account.work(RenderWork::GraphNodeVisits, 1)?;
@@ -1047,7 +1049,7 @@ fn acquire_prepared_graph_resources(
             slot,
             request.key,
             PreparedKernelBinding { lease: Some(lease) },
-        );
+        )?;
     }
     Ok(AcquiredGraphBindings {
         runtime_bindings,
@@ -1114,7 +1116,7 @@ fn create_color_filter_operation_bindings(
                 bytes: bytes.clone(),
                 buffer: Some(buffer),
             },
-        );
+        )?;
     }
     Ok(bindings)
 }
@@ -1178,7 +1180,7 @@ fn realize_prepared_graph_passes(
             realize_prepared_graph_pass(&mut update, device, pass_cache, request, keys, account)?;
         match (slot, objects) {
             (Some(slot), Some(objects)) => {
-                spatial_filter_objects.insert_at_reserved(slot, request.runtime.id, objects)
+                spatial_filter_objects.insert_at_reserved(slot, request.runtime.id, objects)?
             }
             (None, None) => {}
             _ => {

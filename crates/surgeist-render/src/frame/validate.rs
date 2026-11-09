@@ -218,7 +218,7 @@ impl<'graph, 'account> LoweringValidationState<'graph, 'account> {
             if dependency_index >= index {
                 return Err(GraphValidationError::ForwardDependency(*dependency));
             }
-            seen_dependencies.push_reserved(*dependency);
+            seen_dependencies.append_slot()?.write(*dependency);
         }
 
         let mut seen_reads = account.temporary(pass.reads.len())?;
@@ -251,7 +251,7 @@ impl<'graph, 'account> LoweringValidationState<'graph, 'account> {
                 .checked_add(1)
                 .ok_or(GraphValidationError::ReadCountOverflow(*read))?;
             self.last_reads[resource_index] = Some(pass.id);
-            seen_reads.push_reserved(*read);
+            seen_reads.append_slot()?.write(*read);
         }
         if let SemanticPassResult::Resource(result) = pass.result {
             let resource_index = validate_graph_resource_id(graph, result, account)?;

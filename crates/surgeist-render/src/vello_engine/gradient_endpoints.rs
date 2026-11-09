@@ -253,8 +253,9 @@ impl EndpointRecords {
                     {
                         return Err(correspondence());
                     }
+                    let slot = records.append_slot()?;
                     account.work(RenderWork::RasterResourceCopies, 1)?;
-                    records.push_reserved(*record);
+                    slot.write(*record);
                 }
                 CapturedSampling::Program(OwnedProgram {
                     records,
@@ -405,8 +406,9 @@ pub(crate) fn prepare(
     let height = scalar(account, || u32::try_from(rows))?.map_err(|_| correspondence())?;
     let mut texels = account.retained(padded)?;
     for texel in ramps.data {
+        let slot = texels.append_slot()?;
         account.work(RenderWork::SerializedBytes, 4)?;
-        texels.push_reserved(*texel);
+        slot.write(*texel);
     }
 
     let mut prefix = 0_usize;
@@ -548,16 +550,18 @@ pub(crate) fn prepare(
         return Err(correspondence());
     }
     while texels.len() < padded {
+        let slot = texels.append_slot()?;
         account.work(RenderWork::SerializedBytes, 4)?;
-        texels.push_reserved(0);
+        slot.write(0);
     }
     Ok(Some(EndpointTexture { texels, height }))
 }
 
 fn serialize_word(texels: &mut AccountedVec<u32>, word: u32, account: &Account) -> Result<()> {
+    let slot = texels.append_slot()?;
     account.work(RenderWork::SerializedBytes, 4)?;
     // Exact little-endian words reconstructed by WGSL pack4x8unorm.
-    texels.push_reserved(u32::from_ne_bytes(word.to_le_bytes()));
+    slot.write(u32::from_ne_bytes(word.to_le_bytes()));
     Ok(())
 }
 

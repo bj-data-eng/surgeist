@@ -1048,7 +1048,12 @@ impl ImageRepeatPlan {
             RenderPhase::Repeat,
             |account| {
                 let (repeat, hold) = self.resolve_in(placement, account)?;
-                hold.retain();
+                let guarded = crate::accounting::BackedValue::new(repeat, [Some(hold), None]);
+                guarded.require_preparation()?;
+                let (repeat, backing, _) = guarded.into_parts();
+                for hold in backing.into_iter().flatten() {
+                    hold.into_preparation()?.retain();
+                }
                 Ok(repeat)
             },
         )
@@ -1108,7 +1113,7 @@ impl ImageRepeatPlan {
                             ))?;
                         }
                     }
-                    let (tile_rects, hold) = tile_rects.into_parts();
+                    let (tile_rects, hold) = tile_rects.into_parts()?;
                     Ok((
                         ResolvedImageRepeat {
                             clip_rect: placement.paint_rect(),

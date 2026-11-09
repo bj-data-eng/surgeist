@@ -318,7 +318,7 @@ mod role_lookup_accounting_tests {
         let mut read = pass.reads[0];
         read.role = RuntimeReadRole::CompletedParent;
         let mut reads = setup.retained(1).unwrap();
-        reads.push_reserved(read);
+        reads.append_slot().unwrap().write(read);
         pass.reads = SharedValue::from_accounted(reads, &setup.storage()).unwrap();
         let resources = PassMap::temporary(&setup, 0).unwrap();
         let control =

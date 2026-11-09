@@ -334,7 +334,7 @@ fn retained_growth_admits_actual_overlap_and_transfers_only_final_backing() {
                 let mut output = account.retained::<u8>(3)?;
                 output.extend_from_slice(&[1, 2, 3])?;
                 output.push(4)?;
-                Ok(output.into_retained())
+                Ok(output.into_preparation()?.into_retained())
             },
         );
         assert_eq!(result.is_ok(), succeeds);

@@ -1135,7 +1135,7 @@ fn prepare_sweep_gradient(gradient: &Gradient, account: &Account) -> Result<Fram
         let position = gradient_field::scalar(account, || stop.position())?;
         let offset = gradient_field::scalar(account, || position as f32)?;
         account.work(RenderWork::CoordinateVisits, 4)?;
-        stops.push_reserved(peniko::ColorStop::from((
+        stops.append_slot()?.write(peniko::ColorStop::from((
             offset,
             peniko::Color::from(stop.color()),
         )));
@@ -1170,7 +1170,7 @@ fn prepare_sweep_gradient(gradient: &Gradient, account: &Account) -> Result<Fram
         }
         previous = Some((position, offset));
         account.work(RenderWork::CoordinateVisits, 4)?;
-        stops.push_reserved(peniko::ColorStop::from((
+        stops.append_slot()?.write(peniko::ColorStop::from((
             offset,
             peniko::Color::from(stop.color()),
         )));
@@ -1199,7 +1199,7 @@ fn gradient_with_stops(
     stops: AccountedVec<peniko::ColorStop>,
     transform: Option<BrushTransform>,
 ) -> Result<FrameBrush> {
-    let (stops, hold) = stops.into_parts();
+    let (stops, hold) = stops.into_parts()?;
     // SmallVec::from_vec moves an existing heap allocation; an inline result
     // releases it. Never call with_stops, which clones into an unadmitted backing.
     let hold = if stops.capacity() <= output.stops.capacity() {
@@ -1249,7 +1249,7 @@ fn vello_stroke(stroke: &RenderStroke, account: &Account) -> Result<FrameStroke>
             account.work(RenderWork::PathElementVisits, 1)?;
             intervals.push(*interval)?;
         }
-        let (intervals, backing) = intervals.into_parts();
+        let (intervals, backing) = intervals.into_parts()?;
         if intervals.capacity() <= vello.dash_pattern.capacity() {
             vello.dash_pattern = backing.dispose(|| intervals.into());
         } else {

@@ -130,9 +130,18 @@ fn hash_collisions_compare_the_actual_byte_prefix_and_insert_distinct_content() 
         assert!(observer.observe(&different, account)?);
         Ok(draft)
     });
-    // First observation writes one slot. Growth moves that record once; the
-    // second observation writes its new slot. The third byte pair differs.
-    assert_eq!(report.usage().work(RenderWork::ImageIdentityCopies), 3);
+    // Each observation writes one semantic record. The intervening relocation
+    // belongs to the CPU history owner, outside the forward copy allowance.
+    assert_eq!(report.usage().work(RenderWork::ImageIdentityCopies), 2);
+    assert_eq!(report.usage().work(RenderWork::StorageRelocations), 0);
+    assert_eq!(
+        cpu.snapshot()
+            .unwrap()
+            .scope_usage(super::super::RenderCpuScope::ImageHistory)
+            .unwrap()
+            .work(RenderWork::StorageRelocations),
+        1
+    );
     assert_eq!(
         report
             .usage()
@@ -319,17 +328,27 @@ fn refused_insertion_releases_its_provisional_import_and_keeps_real_growth_capac
     let second = pixel(2, 20, [5, 6, 7, 8]);
     publish(&history, &[&first]);
     let caller_count = Arc::strong_count(&second.bytes);
-    // Baseline clone and actual growth each consume one copy. The new-slot
-    // admission then refuses after its real payload import has been acquired.
+    // The baseline clone consumes one forward copy. Growth is CPU lifetime
+    // relocation, so a one-copy cap refuses the new-slot admission after its
+    // real payload import has been acquired.
     let limits = RenderLimits::new()
-        .with_work_limit(RenderWork::ImageIdentityCopies, 2)
+        .with_work_limit(RenderWork::ImageIdentityCopies, 1)
         .unwrap();
     let (result, report) = attempt(limits, |account| {
         let draft = history.begin(account)?;
         draft.observer().observe(&second, account)
     });
     assert!(result.is_err());
-    assert_eq!(report.usage().work(RenderWork::ImageIdentityCopies), 2);
+    assert_eq!(report.usage().work(RenderWork::ImageIdentityCopies), 1);
+    assert_eq!(report.usage().work(RenderWork::StorageRelocations), 0);
+    assert_eq!(
+        cpu.snapshot()
+            .unwrap()
+            .scope_usage(super::super::RenderCpuScope::ImageHistory)
+            .unwrap()
+            .work(RenderWork::StorageRelocations),
+        1
+    );
     assert_eq!(Arc::strong_count(&second.bytes), caller_count);
     assert_eq!(
         canonical(&history).iter().map(|x| x.0).collect::<Vec<_>>(),

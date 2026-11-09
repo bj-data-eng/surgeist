@@ -57,10 +57,28 @@ impl<'a> StyleCustody<'a> {
         }
         Ok(copied)
     }
-    pub(crate) fn transfer(mut self) {
-        while let Some(hold) = self.holds.pop() {
-            hold.retain();
+    pub(crate) fn transfer<T>(mut self, payload: T) -> Result<T> {
+        let renderer = self.holds.iter().find_map(|hold| match hold {
+            Hold::Renderer(hold) => Some(hold.account()),
+            Hold::Preparation(_) => None,
+        });
+        if let Some(renderer) = renderer {
+            let error =
+                Error::from(crate::accounting::StorageContractError::WrongRetentionLifetime);
+            return renderer.maintenance_phase(move || {
+                // The real offending owner observes payload destruction while
+                // all credits remain live, then disposes the intact registry.
+                drop(payload);
+                drop(self);
+                Err(error)
+            });
         }
+        // The read-only closed-variant walk proved all leases Preparation.
+        // No mutation can change a lease's lifetime before its consumed transfer.
+        while let Some(hold) = self.holds.pop() {
+            hold.into_preparation()?.retain();
+        }
+        Ok(payload)
     }
 }
 
@@ -316,8 +334,7 @@ impl BackgroundNormalizationInput {
             |account| {
                 let mut custody = StyleCustody::new(account)?;
                 let value = self.normalize_in(capabilities, account, &mut custody)?;
-                custody.transfer();
-                Ok(value)
+                custody.transfer(value)
             },
         )
     }
@@ -375,7 +392,7 @@ impl BackgroundNormalizationInput {
             commands.push(command)?;
         }
 
-        let (commands, hold) = commands.into_parts();
+        let (commands, hold) = commands.into_parts()?;
         custody.hold(hold)?;
         Ok(NormalizedBackgroundStack { commands })
     }
@@ -559,3 +576,6 @@ mod accounting_tests {
         assert_eq!(account.work_count(RenderWork::CommandVisits).unwrap(), 6);
     }
 }
+
+#[cfg(test)]
+mod vector_custody_tests;
