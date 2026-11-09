@@ -12,6 +12,112 @@ fn invariant() -> PaintError {
 }
 
 #[cfg(test)]
+mod pending_tests {
+    use super::*;
+    use crate::{
+        BoxFacts, ChildOrder, ContextEffect, PaintChange, PaintLimits, PaintOptions, PaintPhase,
+        ProfileMode, ZIndex, accounting::OperationKind, paint_order::validation,
+    };
+    use surgeist_layout::SourceIndex;
+    use surgeist_ledger::{Limits, Tariffs};
+
+    #[test]
+    fn refused_first_task_keeps_pending_scope_unstarted_until_cleanup_and_retry() {
+        let boxes = [BoxFacts::new(
+            None,
+            SourceIndex::new(0),
+            ChildOrder::Source,
+            Participation::Ordinary,
+            Position::Static,
+            ZIndex::Auto,
+            ContextEffect::None,
+        )];
+        let paint = [BoxPaint::new(BoxPaintKind::Block, FloatParticipation::None)];
+        let request = PaintRequest::new(&boxes, &paint, &[], &[], &[], &[], BoxId::new(0));
+        // Prepare visits rank, scope, children and the sole member (4).
+        // The initial Scope push is the fifth visit; consuming it is refused.
+        let options = PaintOptions::new(
+            PaintLimits::unlimited().with_work_limit(WorkKind::PaintScopeVisit, 5),
+            ProfileMode::Summary { timing: false },
+        );
+        let mut meter = options.operation(OperationKind::PaintOrder).unwrap();
+        let root = meter.root();
+        let scopes = algorithm::setup_scopes(&mut meter).unwrap();
+        let validate = meter
+            .child(
+                root,
+                PaintPhase::PaintValidation,
+                Limits::unlimited(),
+                Tariffs::identity(),
+            )
+            .unwrap();
+        let sequence = meter
+            .child(
+                root,
+                PaintPhase::PaintSequence,
+                Limits::unlimited(),
+                Tariffs::identity(),
+            )
+            .unwrap();
+        let mut core = algorithm::State::default();
+        algorithm::prepare(&mut meter, root, &scopes, &mut core, &boxes, request.root()).unwrap();
+        let mut index = meter
+            .with_phase(validate, |p| {
+                validation::prepare(request, &core, p, root, validate)
+            })
+            .unwrap()
+            .unwrap();
+        let mut state = SequenceState::default();
+        let error = meter
+            .with_phase(sequence, |p| {
+                run(request, &core, &index, &mut state, p, root, sequence)
+            })
+            .unwrap()
+            .unwrap_err();
+        let PaintError::Budget(refusal) = error else {
+            panic!("expected task admission refusal");
+        };
+        assert_eq!(refusal.origin, PaintPhase::PaintSequence);
+        assert_eq!(refusal.current, 5);
+        assert_eq!(
+            refusal.change,
+            PaintChange::Work {
+                kind: WorkKind::PaintScopeVisit,
+                amount: 1
+            }
+        );
+        assert!(
+            matches!(state.tasks.as_slice(), [Task::Scope(Invocation { box_id, limit: None })] if *box_id == request.root())
+        );
+        assert!(state.tasks.capacity() >= 1);
+        assert!(state.events.is_empty());
+        assert!(state.events.capacity() >= 2);
+        assert_eq!(state.context_state, [0]);
+        meter
+            .with_phase(scopes[6], |p| {
+                core.scratch_cleanup(p, root).unwrap();
+                index.cleanup(p, root).unwrap();
+                state.scratch_cleanup(p, root).unwrap();
+                core.result_cleanup(p, root).unwrap();
+                state.result_cleanup(p, root).unwrap();
+            })
+            .unwrap();
+        let report = meter.finish().unwrap().unwrap();
+        assert_eq!(report.work(WorkKind::PaintScopeVisit), 5);
+        for &resource in ResourceKind::ALL {
+            assert!(report.peak(resource) > 0);
+            assert_eq!(report.live(resource), 0);
+        }
+        let retry = crate::plan_paint_order(request, options.with_limits(PaintLimits::unlimited()));
+        let plan = retry.result.unwrap();
+        let events: Vec<_> = plan.events().collect();
+        assert!(
+            matches!(events.as_slice(), [PaintOrderEvent::BeginContext(begin), PaintOrderEvent::EndContext(end)] if begin.id() == request.root() && end.id() == request.root())
+        );
+    }
+}
+
+#[cfg(test)]
 mod growth_tests {
     use super::*;
     use crate::{PaintLimits, PaintOptions, PaintReport, ProfileMode, accounting::OperationKind};
@@ -252,9 +358,11 @@ pub(super) fn run(
         box_id: request.root(),
         limit: None,
     }))?;
-    while !runner.state.tasks.is_empty() {
-        runner.work(WorkKind::PaintScopeVisit, 1)?;
-        let task = runner.state.tasks.pop().expect("nonempty task stack");
+    while let [remaining @ .., pending] = runner.state.tasks.as_mut_slice() {
+        charge(runner.p, runner.phase, WorkKind::PaintScopeVisit, 1)?;
+        let task = *pending;
+        let keep = remaining.len();
+        runner.state.tasks.truncate(keep);
         runner.execute(task)?;
     }
     for i in 0..runner.state.drawn.len() {
