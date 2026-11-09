@@ -50,6 +50,27 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
     fn has_leaf_measurement(&self, _node: Self::Node) -> bool {
         false
     }
+    fn qualify_entry(
+        &mut self,
+        query: crate::block::entry::EntryQuery<Self::Node, Self::Scalar>,
+    ) -> crate::block::entry::EntryResult<Self::Node, Self::Scalar, M>
+    where
+        Self: Sized,
+    {
+        crate::block::entry::observe(self, query)
+    }
+    /// A framed entry demand samples the actual leaf producer, without host
+    /// geometry-cache authority. Executors with such a cache override this.
+    fn measure_entry_leaf(
+        &mut self,
+        node: Self::Node,
+        input: ComputeInputOf<Self::Scalar>,
+    ) -> LayoutResultOf<Self::Node, ComputeOutputOf<Self::Scalar>, Self::Scalar, M> {
+        if !self.has_leaf_measurement(node) {
+            return Err(crate::block::float_context::missing(node));
+        }
+        self.compute_child(node, input.with_run_mode(crate::RunMode::ComputeSize))
+    }
     fn block_float_work(&self, node: Self::Node) -> bool {
         crate::block::float_context::discover_work(self, node)
     }

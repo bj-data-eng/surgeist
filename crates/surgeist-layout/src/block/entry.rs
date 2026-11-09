@@ -3,6 +3,8 @@ use super::*;
 
 mod adjoining;
 pub(super) use adjoining::AdjoiningFlow;
+mod driver;
+use driver::PrefixDriver;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct StartFact<S: LayoutScalar> {
@@ -13,6 +15,72 @@ pub(crate) struct StartFact<S: LayoutScalar> {
 pub(crate) enum Qualification<S: LayoutScalar> {
     Known(StartFact<S>),
     RequiresBody,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum EntryPurpose {
+    StartOnly,
+    FramedEntry,
+}
+
+pub(crate) struct EntryQuery<Node, S: LayoutScalar> {
+    pub(crate) node: Node,
+    pub(crate) input: ComputeInputOf<S>,
+    pub(crate) reporting_side: PhysicalSide,
+    pub(crate) purpose: EntryPurpose,
+    pub(crate) incoming: Option<float_context::Incoming<Node, S>>,
+}
+
+/// A completed entry component, not a completed descendant layout.
+pub(crate) struct EntrySummary<Node, S: LayoutScalar> {
+    pub(crate) query: EntryQuery<Node, S>,
+    start: CollapsibleMarginOf<S>,
+    through: Through<S>,
+}
+
+impl<Node, S: LayoutScalar> EntrySummary<Node, S> {
+    pub(crate) fn start_fact(&self) -> StartFact<S> {
+        StartFact {
+            margin: match self.through {
+                Through::Known(group) => self.start.collapse_with(group),
+                Through::Blocked | Through::Unknown => self.start,
+            },
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum EntryFrontier {
+    Leaf,
+    NativeRun,
+    Float,
+    Clearance,
+    OppositeSide,
+    AmbiguousStart,
+}
+
+/// Owns the suspended prefix stack and its exact next producer request.
+/// No output, fragment or completed float handoff can escape this boundary.
+pub(crate) struct EntryDemand<Node, S: LayoutScalar> {
+    pub(crate) kind: EntryFrontier,
+    pub(crate) node: Node,
+    pub(crate) input: ComputeInputOf<S>,
+    pub(crate) reporting_side: PhysicalSide,
+    pub(crate) window: Option<EntryWindow>,
+    driver: PrefixDriver<Node, S>,
+}
+
+#[derive(Clone)]
+pub(crate) struct EntryWindow {
+    pub(crate) nodes: std::ops::Range<usize>,
+    pub(crate) segment: Option<surgeist_text::PreparedSourceSegment>,
+}
+
+pub(crate) type EntryResult<Node, S, M> = LayoutResultOf<Node, EntryObservation<Node, S>, S, M>;
+
+pub(crate) enum EntryObservation<Node, S: LayoutScalar> {
+    Summary(EntrySummary<Node, S>),
+    Demand(EntryDemand<Node, S>),
 }
 
 pub(super) struct StartReduction<S: LayoutScalar> {
@@ -60,6 +128,9 @@ struct PrefixFrame<Node, S: LayoutScalar> {
     prepared_inline: bool,
     children: Vec<Node>,
     next: usize,
+    slots: Vec<crate::text_layout::capture::NativeRunSlot>,
+    slot_cursor: usize,
+    window: Option<EntryWindow>,
     first_in_flow: bool,
     start: CollapsibleMarginOf<S>,
     through: Through<S>,
@@ -70,10 +141,10 @@ struct PrefixFrame<Node, S: LayoutScalar> {
 enum PrefixStep<Node, S: LayoutScalar> {
     Child(Node, ComputeInputOf<S>, PhysicalSide),
     Complete(Prefix<S>),
-    RequiresBody,
+    Frontier(EntryFrontier),
 }
 
-impl<Node: Copy, S: LayoutScalar> PrefixFrame<Node, S> {
+impl<Node: Copy + Eq, S: LayoutScalar> PrefixFrame<Node, S> {
     fn accept(&mut self, child: Prefix<S>) -> bool {
         self.start = self
             .start
@@ -105,25 +176,74 @@ impl<Node: Copy, S: LayoutScalar> PrefixFrame<Node, S> {
     fn step<'input, Tree, M>(
         &mut self,
         tree: &mut Tree,
+        purpose: EntryPurpose,
     ) -> LayoutResultOf<Node, PrefixStep<Node, S>, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
         Node: 'input,
     {
         if !matches!(self.through, Through::Blocked) {
+            if let Some(slot) = self
+                .slots
+                .get(self.slot_cursor)
+                .filter(|slot| slot.gap == self.next)
+            {
+                self.slot_cursor += 1;
+                self.window = Some(EntryWindow {
+                    nodes: self.next..self.next,
+                    segment: Some(slot.segment.clone()),
+                });
+                return Ok(PrefixStep::Frontier(EntryFrontier::NativeRun));
+            }
             while let Some(&child) = self.children.get(self.next) {
+                let start = self.next;
                 self.next += 1;
+                if purpose == EntryPurpose::FramedEntry {
+                    let captured = tree.text_computation().and_then(|state| {
+                        state
+                            .run_starting(self.node, &self.children[start..])
+                            .map(|run| run.segment.clone())
+                    });
+                    if captured.is_some() || crate::inline::starts_run(tree.layout_input(child)) {
+                        let end = super::inline_run::inline_run_end(
+                            tree,
+                            self.node,
+                            &self.children,
+                            &self.constants,
+                            self.next,
+                            self.slots
+                                .get(self.slot_cursor)
+                                .map_or(self.children.len(), |slot| slot.gap),
+                        )?;
+                        self.window = Some(EntryWindow {
+                            nodes: start..end,
+                            segment: captured,
+                        });
+                        return Ok(PrefixStep::Frontier(EntryFrontier::NativeRun));
+                    }
+                }
                 let projection = InlineParticipantProjection::lookup::<Tree, M>(tree, child);
+                if purpose == EntryPurpose::FramedEntry
+                    && matches!(projection.kind(), InlineParticipantKindOf::LineBreak(value) if value.display().is_none())
+                {
+                    continue;
+                }
                 let InlineParticipantKindOf::Box(style) = projection.kind() else {
-                    return Ok(PrefixStep::RequiresBody);
+                    return Ok(PrefixStep::Frontier(EntryFrontier::NativeRun));
                 };
                 if style.display == crate::Display::None
                     || style.common.position == Position::Absolute
                 {
                     continue;
                 }
-                if !style.float.is_none() || style.display.is_inline_level() {
-                    return Ok(PrefixStep::RequiresBody);
+                if !style.float.is_none() {
+                    return Ok(PrefixStep::Frontier(EntryFrontier::Float));
+                }
+                if style.display.is_inline_level() {
+                    return Ok(PrefixStep::Frontier(EntryFrontier::NativeRun));
+                }
+                if purpose == EntryPurpose::FramedEntry && style.clear != crate::Clear::None {
+                    return Ok(PrefixStep::Frontier(EntryFrontier::Clearance));
                 }
                 if !in_flow::child_margin_can_collapse_with_parent(&style) {
                     self.through = Through::Blocked;
@@ -201,93 +321,48 @@ impl<Node: Copy, S: LayoutScalar> PrefixFrame<Node, S> {
     }
 }
 
+pub(crate) fn observe<'input, Tree, M>(
+    tree: &mut Tree,
+    query: EntryQuery<Tree::Node, Tree::Scalar>,
+) -> EntryResult<Tree::Node, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let observation = PrefixDriver::new(query).begin(tree)?;
+    if let EntryObservation::Demand(demand) = &observation {
+        demand.validate_window(tree)?;
+    }
+    Ok(observation)
+}
+
 pub(crate) fn qualify<'input, Tree, M>(
     tree: &mut Tree,
-    mut node: Tree::Node,
-    mut input: ComputeInputOf<Tree::Scalar>,
-    mut reporting_side: PhysicalSide,
+    node: Tree::Node,
+    input: ComputeInputOf<Tree::Scalar>,
+    reporting_side: PhysicalSide,
 ) -> LayoutResultOf<Tree::Node, Qualification<Tree::Scalar>, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
-    let mut frames: Vec<PrefixFrame<Tree::Node, Tree::Scalar>> = Vec::new();
-    'descend: loop {
-        let raw = tree.node_input(node);
-        let own = crate::FlowAxes::new(raw.writing_mode, raw.direction);
-        let mut fact = if tree.has_leaf_measurement(node) {
-            Prefix {
-                start: CollapsibleMarginOf::ZERO,
-                through: Through::Unknown,
+    let observation = tree.qualify_entry(EntryQuery {
+        node,
+        input,
+        reporting_side,
+        purpose: EntryPurpose::StartOnly,
+        incoming: None,
+    })?;
+    Ok(match observation {
+        EntryObservation::Summary(summary) => {
+            if summary.query.node != node
+                || summary.query.input != input
+                || summary.query.reporting_side != reporting_side
+            {
+                return Err(float_context::missing(node));
             }
-        } else if raw.display.inner_display() != crate::Display::Block
-            || own.block_axis() != reporting_side.axis()
-        {
-            Prefix {
-                start: CollapsibleMarginOf::ZERO,
-                through: Through::Blocked,
-            }
-        } else {
-            let contained = containment_sizing(node, raw, input, tree.fragment_minimum(node))?
-                .map_or(Size::NONE, |value| value.outer);
-            let style = block_container_projection::<Tree, M>(tree, node);
-            let constants =
-                Constants::from_projection::<Tree, M>(tree, node, &style, input, contained)?;
-            if own.block_start() != reporting_side {
-                if own.block_end() != reporting_side || constants.collapse_bottom_margin {
-                    return Ok(Qualification::RequiresBody);
-                }
-                Prefix {
-                    start: constants.own_bottom_margin,
-                    through: Through::Blocked,
-                }
-            } else if !constants.collapse_top_margin {
-                Prefix {
-                    start: constants.own_top_margin,
-                    through: Through::Blocked,
-                }
-            } else {
-                let mut frame = PrefixFrame {
-                    node,
-                    input,
-                    constants,
-                    prepared_inline: false,
-                    children: tree.children(node).collect(),
-                    next: 0,
-                    first_in_flow: true,
-                    start: CollapsibleMarginOf::ZERO,
-                    through: Through::Known(CollapsibleMarginOf::ZERO),
-                    possible_closed_start: None,
-                    child_margin: (Tree::Scalar::ZERO, Tree::Scalar::ZERO),
-                };
-                match frame.step::<Tree, M>(tree)? {
-                    PrefixStep::Child(child, request, side) => {
-                        frames.push(frame);
-                        (node, input, reporting_side) = (child, request, side);
-                        continue 'descend;
-                    }
-                    PrefixStep::Complete(fact) => fact,
-                    PrefixStep::RequiresBody => return Ok(Qualification::RequiresBody),
-                }
-            }
-        };
-        loop {
-            let Some(mut frame) = frames.pop() else {
-                return Ok(Qualification::Known(StartFact { margin: fact.start }));
-            };
-            if !frame.accept(fact) {
-                return Ok(Qualification::RequiresBody);
-            }
-            match frame.step::<Tree, M>(tree)? {
-                PrefixStep::Child(child, request, side) => {
-                    frames.push(frame);
-                    (node, input, reporting_side) = (child, request, side);
-                    continue 'descend;
-                }
-                PrefixStep::Complete(result) => fact = result,
-                PrefixStep::RequiresBody => return Ok(Qualification::RequiresBody),
-            }
+            Qualification::Known(summary.start_fact())
         }
-    }
+        EntryObservation::Demand(_) => Qualification::RequiresBody,
+    })
 }
 
 #[cfg(test)]

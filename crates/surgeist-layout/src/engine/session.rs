@@ -1226,6 +1226,47 @@ where
     fn has_leaf_measurement(&self, node: Self::Node) -> bool {
         self.tree.has_leaf_measurement(node)
     }
+    fn qualify_entry(
+        &mut self,
+        query: crate::block::entry::EntryQuery<Self::Node, Self::Scalar>,
+    ) -> SessionResult<Tree, crate::block::entry::EntryObservation<Self::Node, Self::Scalar>> {
+        use crate::block::entry::{EntryFrontier, EntryObservation, EntryPurpose};
+        if query.purpose == EntryPurpose::StartOnly {
+            return crate::block::entry::observe(self, query);
+        }
+        if !query
+            .incoming
+            .as_ref()
+            .is_some_and(|incoming| incoming.node == query.node && incoming.request == query.input)
+        {
+            return Err(crate::block::float_context::missing(query.node));
+        }
+        let mut trial =
+            self.child_staging(query.node, FloatChildTrial::InFlow, query.incoming.clone())?;
+        let mut observation = crate::block::entry::observe(&mut trial, query)?;
+        loop {
+            observation = match observation {
+                EntryObservation::Demand(demand) if demand.kind == EntryFrontier::Leaf => {
+                    demand.measure_leaf(&mut trial)?
+                }
+                ready => return Ok(ready),
+            };
+            if let EntryObservation::Demand(demand) = &observation {
+                demand.validate_window(&mut trial)?;
+            }
+        }
+    }
+    fn measure_entry_leaf(
+        &mut self,
+        node: Self::Node,
+        input: ComputeInputOf<Self::Scalar>,
+    ) -> SessionResult<Tree, ComputeOutputOf<Self::Scalar>> {
+        if !self.tree.has_leaf_measurement(node) {
+            return Err(crate::block::float_context::missing(node));
+        }
+        let input = self.prepare_child_input(node, input)?;
+        self.compute_child_uncached(node, input.with_run_mode(RunMode::ComputeSize))
+    }
     fn block_float_work(&self, node: Self::Node) -> bool {
         if let Some(graph) = self.flow_graph {
             let index = graph
