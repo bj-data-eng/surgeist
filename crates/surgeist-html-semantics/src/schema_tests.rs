@@ -236,3 +236,17 @@ fn the_query_capture_and_import_scopes_cap_the_fields_of_their_limits() {
         },
     );
 }
+
+#[test]
+fn the_option_value_scope_caps_the_fields_of_its_envelope() {
+    pin(
+        HtmlCapScope::OptionValue,
+        crate::HtmlOptionValueEnvelope::new(1, 2, 3),
+        |name| match name {
+            "bytes" => Mapped::Resource(HtmlResource::RetainedBytes),
+            "units" => Mapped::Resource(HtmlResource::RetainedUtf16Units),
+            "work" => Mapped::Work(HtmlWork::SemanticStep),
+            other => panic!("unmapped envelope field {other}"),
+        },
+    );
+}

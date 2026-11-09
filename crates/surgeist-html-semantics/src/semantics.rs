@@ -272,16 +272,6 @@ pub struct HtmlSemanticUsage {
     nested_output_records: usize,
 }
 impl HtmlSemanticUsage {
-    pub(crate) fn controlled_snapshot(words: [usize; 6]) -> Self {
-        Self {
-            work: words[0],
-            output_records: words[1],
-            scratch_records: words[2],
-            allocated_bytes: words[3],
-            peak_scratch_records: words[4],
-            nested_output_records: words[5],
-        }
-    }
     pub fn work(self) -> usize {
         self.work
     }
@@ -1545,6 +1535,14 @@ impl<'a> HtmlSemanticSession<'a> {
     }
     /// Stops with the typed stop of a ledger error.
     fn ledger_stop(&mut self, error: query_account::LedgerError) -> HtmlSemanticFailure {
+        if let (Some(control), query_account::LedgerError::Refused(refusal)) =
+            (self.option_control, &error)
+            && control.is_gate(refusal.scope)
+        {
+            // The parent's allowance refused it, and the parent reports its own limit.
+            let kind = HtmlSemanticFailureKind::ControlledOptionValue(control.refusal(refusal));
+            return self.stop(kind);
+        }
         self.stop(query_account::stop_kind(error))
     }
     fn first_html_element_child(
@@ -1659,19 +1657,15 @@ impl<'a> HtmlSemanticSession<'a> {
     }
     fn charge(&mut self, work: usize) -> Result<(), HtmlSemanticFailure> {
         self.poll()?;
-        if let Some(control) = self.option_control {
-            // The parent's allowance is admitted after this session's own cap accepts the work and
-            // before the work is recorded.
-            self.account
-                .check_work(work)
-                .map_err(|error| self.ledger_stop(error))?;
-            control
-                .step(work)
-                .map_err(|e| self.stop(HtmlSemanticFailureKind::ControlledOptionValue(e)))?;
-        }
+        // An enclosing controlled OptionValue execution is the parent scope of this session's
+        // ledger scope, so its remaining work admits this work in the same batch.
         self.account
             .work(work)
-            .map_err(|error| self.ledger_stop(error))
+            .map_err(|error| self.ledger_stop(error))?;
+        if let Some(control) = self.option_control {
+            control.after_work();
+        }
+        Ok(())
     }
     fn node(
         &mut self,

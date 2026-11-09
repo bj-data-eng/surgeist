@@ -147,14 +147,6 @@ impl QueryAccount {
             .apply(self.caps, Change::Work(HtmlWork::SemanticStep, wide(work)))
     }
 
-    /// Checks `work` steps against the capped scope without recording them.
-    pub(super) fn check_work(&mut self, work: usize) -> Result<(), LedgerError> {
-        self.operation.check_batch(
-            self.caps,
-            &[Change::Work(HtmlWork::SemanticStep, wide(work))],
-        )
-    }
-
     /// Checks a batch against the capped scope without recording it.
     pub(super) fn check(&mut self, batch: &[HtmlChange]) -> Result<(), LedgerError> {
         self.operation.check_batch(self.caps, batch)

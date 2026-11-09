@@ -108,7 +108,7 @@ fn borrowed_destination_and_old_record_bank_fit_exactly_and_refuse_one_short() {
     assert_eq!(owner.storage_usage(), before);
     assert_eq!(owner.capture_usage().subjects(), 1);
     assert_eq!(
-        owner.control.temporary.get(),
+        owner.control.temporary_usage(),
         HtmlOptionValueStorageUsage::default()
     );
     let subject = owner
@@ -209,7 +209,7 @@ fn borrowed_duplicate_refusal_drops_the_destination_and_can_retry_on_original_ow
     assert_eq!(owner.storage_usage(), before);
     assert_eq!(owner.capture_usage().subjects(), 1);
     assert_eq!(
-        owner.control.temporary.get(),
+        owner.control.temporary_usage(),
         HtmlOptionValueStorageUsage::default()
     );
     assert_eq!(
@@ -250,7 +250,7 @@ fn work_and_cancellation_refusals_drop_every_unpublished_borrowed_payload() {
         assert_eq!(owner.storage_usage(), before);
         assert_eq!(owner.capture_usage().subjects(), 1);
         assert_eq!(
-            owner.control.temporary.get(),
+            owner.control.temporary_usage(),
             HtmlOptionValueStorageUsage::default()
         );
         assert_eq!(
@@ -274,7 +274,7 @@ fn work_and_cancellation_refusals_drop_every_unpublished_borrowed_payload() {
     );
     assert_eq!(owner.storage_usage(), before);
     assert_eq!(
-        owner.control.temporary.get(),
+        owner.control.temporary_usage(),
         HtmlOptionValueStorageUsage::default()
     );
     owner.control.cancel_after.set(u64::MAX);
