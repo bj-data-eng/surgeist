@@ -44,7 +44,10 @@ impl Generator {
             },
         );
 
-        let gen_ctx = GeneratorContext::from_current(context, None);
+        let gen_ctx = match GeneratorContext::from_current(context, None) {
+            Ok(value) => value,
+            Err(error) => return context.handle_error(error),
+        };
 
         generator.borrow_mut().data_mut().state = GeneratorState::SuspendedStart {
             context: gen_ctx.stored(),
@@ -93,7 +96,11 @@ impl AsyncGenerator {
             },
         );
 
-        let gen_ctx = GeneratorContext::from_current(context, Some(generator.clone().upcast()));
+        let gen_ctx =
+            match GeneratorContext::from_current(context, Some(generator.clone().upcast())) {
+                Ok(value) => value,
+                Err(error) => return context.handle_error(error),
+            };
         generator.borrow_mut().data_mut().context = Some(gen_ctx.stored());
 
         context.vm.set_return_value(generator.upcast().into());

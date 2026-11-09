@@ -52,6 +52,23 @@ impl UnwindCleanup {
         }
     }
 
+    /// Returns an owned result, or disposes it before resuming cleanup's unwind.
+    /// During an existing outer unwind, secondary cleanup failure is discarded
+    /// under the same policy as `finish`, and the result remains caller-owned.
+    pub(crate) fn finish_with<T>(mut self, value: T) -> T {
+        match self.first.take() {
+            Some(original) if !std::thread::panicking() => {
+                self.run(move || drop(value));
+                self.resume(original)
+            }
+            Some(secondary) => {
+                Self::discard_secondary(secondary);
+                value
+            }
+            None => value,
+        }
+    }
+
     /// Resumes an initiating unwind already caught by the owning action.
     pub(crate) fn resume(self, original: Box<dyn std::any::Any + Send>) -> ! {
         if let Some(secondary) = self.first {
@@ -193,3 +210,6 @@ pub enum JobRegistrationError {
     #[error(transparent)]
     Fault(#[from] JobFault),
 }
+
+#[cfg(test)]
+mod cleanup_tests;

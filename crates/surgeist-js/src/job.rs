@@ -96,7 +96,6 @@ type NativeCallback = Box<dyn for<'call> FnOnce(ContextAccess<'call>) -> JsResul
 pub struct NativeJob {
     custody: InvocationCustody,
     f: NativeCallback,
-    module_action: Option<crate::module::lifecycle::ModuleActionRoot>,
     realm: Option<Realm>,
 }
 
@@ -135,14 +134,24 @@ fn invoke_native_job(
 struct InvocationCustody {
     observer: JobObserver,
     entered: bool,
+    lifecycle: crate::builtins::promise::ReactionJobLifecycle,
 }
 impl Drop for InvocationCustody {
     fn drop(&mut self) {
-        self.observer.retire(if self.entered {
-            JobRetirement::Interrupted
-        } else {
-            JobRetirement::Dropped
+        let mut cleanup = UnwindCleanup::default();
+        cleanup.run(|| {
+            if let Err(fault) = self.lifecycle.dispose(self.entered) {
+                self.observer.record_fault(fault);
+            }
         });
+        cleanup.run(|| {
+            self.observer.retire(if self.entered {
+                JobRetirement::Interrupted
+            } else {
+                JobRetirement::Dropped
+            })
+        });
+        cleanup.finish();
     }
 }
 
@@ -162,9 +171,9 @@ impl NativeJob {
             custody: InvocationCustody {
                 observer: JobObserver::new(),
                 entered: false,
+                lifecycle: crate::builtins::promise::ReactionJobLifecycle::untracked(),
             },
             f: Box::new(f),
-            module_action: None,
             realm: None,
         }
     }
@@ -178,9 +187,9 @@ impl NativeJob {
             custody: InvocationCustody {
                 observer: JobObserver::new(),
                 entered: false,
+                lifecycle: crate::builtins::promise::ReactionJobLifecycle::untracked(),
             },
             f: Box::new(f),
-            module_action: None,
             realm: Some(realm),
         }
     }
@@ -233,21 +242,27 @@ impl NativeJob {
         let Self {
             mut custody,
             f: call,
-            module_action,
             realm,
         } = self;
         custody.entered = true;
-        let mut result = if let Some(action) = &module_action {
-            match action.check() {
+        let is_module = custody.lifecycle.is_module();
+        let run = |context: &mut Context| {
+            let result = match custody.lifecycle.check() {
                 Ok(()) => invoke_native_job(context, realm, call),
                 Err(error) => Err(error),
+            };
+            if let Err(error) = &result
+                && let Err(fault) = custody.lifecycle.finish(error)
+            {
+                custody.observer.record_fault(fault);
             }
-        } else {
-            invoke_native_job(context, realm, call)
+            result
         };
-        if let (Some(action), Err(error)) = (&module_action, &result) {
-            action.finish(error);
-        }
+        let mut result = if is_module {
+            context.with_module_run(run)
+        } else {
+            run(context)
+        };
         if result
             .as_ref()
             .is_err_and(|error| error.as_engine().is_some())
@@ -712,11 +727,11 @@ impl Debug for PromiseJob {
 }
 
 impl PromiseJob {
-    pub(crate) fn with_module_action(
+    pub(crate) fn with_reaction_lifecycle(
         mut self,
-        action: Option<crate::module::lifecycle::ModuleAction>,
+        lifecycle: crate::builtins::promise::ReactionJobLifecycle,
     ) -> Self {
-        self.0.module_action = action.map(|action| action.root());
+        self.0.custody.lifecycle = lifecycle;
         self
     }
     /// Creates a new `PromiseJob` from a closure.

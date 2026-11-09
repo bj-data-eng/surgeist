@@ -714,7 +714,8 @@ impl Module {
                     None,
                     &bridge.target,
                     context,
-                )?;
+                )
+                .into_result()?;
                 Ok(evaluated)
             }
         }
@@ -746,7 +747,7 @@ impl Module {
         stack: &mut lifecycle::EvaluationStack,
         index: usize,
         context: &mut Context,
-    ) -> JsResult<usize> {
+    ) -> JsResult<source::EvaluationProgress> {
         match self.kind() {
             ModuleKind::SourceText(src) => src.inner_evaluate(self, stack, index, None, context),
             // 1. If module is not a Cyclic Module Record, then
@@ -759,7 +760,7 @@ impl Module {
                         unreachable!("b. Assert: promise.[[PromiseState]] is not pending.")
                     }
                     // d. Return index.
-                    PromiseState::Fulfilled(_) => Ok(index),
+                    PromiseState::Fulfilled(_) => Ok(source::EvaluationProgress::new(index)),
                     // c. If promise.[[PromiseState]] is rejected, then
                     //    i. Return ThrowCompletion(promise.[[PromiseResult]]).
                     PromiseState::Rejected(err) => Err(JsError::from_opaque(err)),
@@ -862,7 +863,8 @@ impl Module {
                 None,
                 &capability,
                 context,
-            )?;
+            )
+            .into_result()?;
             JsPromise::from_object(capability.promise().clone())
         })();
         match result {

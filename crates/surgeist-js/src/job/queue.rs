@@ -1631,11 +1631,9 @@ impl QueueRegistry {
                     }
                 }
             }
-            if complete {
-                if let Ok(mut queues) = self.queues.try_borrow_mut() {
-                    queues.clear();
-                    self.shutdown_complete.set(true);
-                }
+            if complete && let Ok(mut queues) = self.queues.try_borrow_mut() {
+                queues.clear();
+                self.shutdown_complete.set(true);
             }
         }
         self.driving.set(false);

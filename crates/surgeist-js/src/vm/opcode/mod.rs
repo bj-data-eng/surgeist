@@ -57,7 +57,10 @@ mod value;
 #[doc(inline)]
 pub(crate) use arguments::*;
 #[doc(inline)]
-pub(crate) use r#await::*;
+pub(crate) use r#await::{
+    Await, AwaitPhase, AwaitRef, AwaitRoot, ContinuationFinish, CreatePromiseCapability,
+    PreparedAwaitRef,
+};
 #[doc(inline)]
 pub(crate) use binary_ops::*;
 #[doc(inline)]

@@ -1,6 +1,12 @@
 //! Boa's implementation of ECMAScript's global `Promise` object.
 
 pub(crate) mod native_settlement;
+mod reaction;
+use reaction::PublicationHold;
+pub(crate) use reaction::{
+    CommittedReactions, ReactionCustody, ReactionJobLifecycle, ReactionLifecycle,
+    ReactionRegistration, RegistrationOutcome,
+};
 #[cfg(test)]
 mod pending_bridge_cleanup_tests;
 #[cfg(test)]
@@ -229,7 +235,7 @@ impl NativeCapture for PromiseCapability {
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-promisereaction-records
 struct ReactionRecord {
-    module_action: Option<crate::module::lifecycle::ModuleAction>,
+    lifecycle: ReactionLifecycle,
     native_result_target: Option<JsObject<Promise>>,
     native_target: Option<JsObject<Promise>>,
     /// The `[[Capability]]` field.
@@ -245,7 +251,7 @@ struct ReactionRecord {
 impl ReactionRecord {
     fn to_stored(&self) -> StoredReactionRecord {
         StoredReactionRecord {
-            module_action: self.module_action.clone(),
+            lifecycle: self.lifecycle.clone(),
             native_result_target: self.native_result_target.as_ref().map(JsObject::edge),
             native_target: self.native_target.as_ref().map(JsObject::edge),
             promise_capability: self
@@ -260,7 +266,7 @@ impl ReactionRecord {
 
 #[derive(HeapTrace)]
 struct StoredReactionRecord {
-    module_action: Option<crate::module::lifecycle::ModuleAction>,
+    lifecycle: ReactionLifecycle,
     native_result_target: Option<ObjectEdge>,
     native_target: Option<ObjectEdge>,
     promise_capability: Option<StoredPromiseCapability>,
@@ -272,7 +278,7 @@ struct StoredReactionRecord {
 impl StoredReactionRecord {
     fn to_reaction(&self) -> ReactionRecord {
         ReactionRecord {
-            module_action: self.module_action.clone(),
+            lifecycle: self.lifecycle.clone(),
             native_result_target: self
                 .native_result_target
                 .clone()
@@ -2414,7 +2420,8 @@ impl Promise {
             on_rejected,
             Some(result_capability),
             context,
-        )?;
+        )
+        .into_result()?;
 
         Ok(result_promise)
     }
@@ -2431,7 +2438,7 @@ impl Promise {
         on_rejected: Option<JsFunction>,
         result_capability: Option<PromiseCapability>,
         context: &mut Context,
-    ) -> JsResult<()> {
+    ) -> ReactionRegistration {
         let target = on_fulfilled
             .as_ref()
             .and_then(Self::native_handler_target)
@@ -2442,8 +2449,12 @@ impl Promise {
                     .and_then(|cap| cap.promise.clone().downcast::<Self>().ok())
             });
         let target = match target {
-            Some(target) if Self::native_association(&target)?.is_some() => Some(target),
-            _ => None,
+            Some(target) => match Self::native_association(&target) {
+                Ok(Some(_)) => Some(target),
+                Ok(None) => None,
+                Err(error) => return ReactionRegistration::uncommitted(error),
+            },
+            None => None,
         };
         Self::perform_promise_then_target(
             promise,
@@ -2451,25 +2462,25 @@ impl Promise {
             on_rejected,
             result_capability,
             target,
-            None,
+            ReactionLifecycle::untracked(),
             context,
         )
     }
-    pub(crate) fn perform_promise_then_module(
+    pub(crate) fn perform_promise_then_with_lifecycle(
         promise: &JsObject<Self>,
         on_fulfilled: Option<JsFunction>,
         on_rejected: Option<JsFunction>,
         result_capability: Option<PromiseCapability>,
-        action: Option<crate::module::lifecycle::ModuleAction>,
+        lifecycle: ReactionLifecycle,
         context: &mut Context,
-    ) -> JsResult<()> {
+    ) -> ReactionRegistration {
         Self::perform_promise_then_target(
             promise,
             on_fulfilled,
             on_rejected,
             result_capability,
             None,
-            action,
+            lifecycle,
             context,
         )
     }
@@ -2480,19 +2491,25 @@ impl Promise {
         result_capability: Option<PromiseCapability>,
         target: &PromiseCapability,
         context: &mut Context,
-    ) -> JsResult<()> {
-        context.check_execution_stop()?;
-        let target = target.native_promise()?;
-        Self::ensure_native_association(&target, context)?;
-        Self::perform_promise_then_target(
-            promise,
-            on_fulfilled,
-            on_rejected,
-            result_capability,
-            Some(target),
-            None,
-            context,
-        )
+    ) -> ReactionRegistration {
+        let target = (|| {
+            context.check_execution_stop()?;
+            let target = target.native_promise()?;
+            Self::ensure_native_association(&target, context)?;
+            Ok::<_, JsError>(target)
+        })();
+        match target {
+            Ok(target) => Self::perform_promise_then_target(
+                promise,
+                on_fulfilled,
+                on_rejected,
+                result_capability,
+                Some(target),
+                ReactionLifecycle::untracked(),
+                context,
+            ),
+            Err(error) => ReactionRegistration::uncommitted(error),
+        }
     }
     fn prepare_then_records(
         promise: &JsObject<Promise>,
@@ -2500,7 +2517,7 @@ impl Promise {
         on_rejected: Option<JsFunction>,
         result_capability: Option<PromiseCapability>,
         native_target: Option<JsObject<Self>>,
-        module_action: Option<crate::module::lifecycle::ModuleAction>,
+        lifecycle: ReactionLifecycle,
         context: &mut Context,
     ) -> JsResult<(ReactionRecord, ReactionRecord)> {
         // 1. Assert: IsPromise(promise) is true.
@@ -2553,7 +2570,7 @@ impl Promise {
         });
         // 7. Let fulfillReaction be the PromiseReaction { [[Capability]]: resultCapability, [[Type]]: Fulfill, [[Handler]]: onFulfilledJobCallback }.
         let fulfill_reaction = ReactionRecord {
-            module_action: module_action.clone(),
+            lifecycle: lifecycle.clone(),
             native_result_target: native_result_target.clone(),
             native_target: native_target.clone(),
             promise_capability: result_capability.clone(),
@@ -2563,7 +2580,7 @@ impl Promise {
 
         // 8. Let rejectReaction be the PromiseReaction { [[Capability]]: resultCapability, [[Type]]: Reject, [[Handler]]: onRejectedJobCallback }.
         let reject_reaction = ReactionRecord {
-            module_action,
+            lifecycle,
             native_result_target,
             native_target,
             promise_capability: result_capability,
@@ -2591,7 +2608,7 @@ impl Promise {
             Some(rejected),
             None,
             Some(target_promise.clone()),
-            None,
+            ReactionLifecycle::untracked(),
             context,
         )?;
         let stored = (fulfill.to_stored(), reject.to_stored());
@@ -2658,131 +2675,163 @@ impl Promise {
         on_rejected: Option<JsFunction>,
         result_capability: Option<PromiseCapability>,
         native_target: Option<JsObject<Self>>,
-        module_action: Option<crate::module::lifecycle::ModuleAction>,
+        lifecycle: ReactionLifecycle,
         context: &mut Context,
-    ) -> JsResult<()> {
-        let (fulfill_reaction, reject_reaction) = Self::prepare_then_records(
-            promise,
-            on_fulfilled,
-            on_rejected,
-            result_capability,
-            native_target,
-            module_action,
-            context,
-        )?;
-        let (state, handled) = {
-            let promise = promise.borrow();
-            let promise = promise.data();
-            (promise.state(), promise.handled)
-        };
-
-        let mut dependency_handoffs = [None, None];
-        if matches!(state, PromiseState::Pending)
-            && let Some(source) = Self::native_association(promise)?
-        {
-            for (slot, target) in dependency_handoffs.iter_mut().zip([
-                fulfill_reaction.native_target.as_ref(),
-                fulfill_reaction.native_result_target.as_ref(),
-            ]) {
-                if let Some(target) = target
-                    && promise.identity() != target.identity()
-                {
-                    let target = Self::ensure_native_association(target, context)?;
-                    *slot = Some(native_settlement::Association::prepare_follow(
-                        &target, &source,
-                    )?);
+    ) -> ReactionRegistration {
+        let mut preparation = RegistrationPreparation::new(lifecycle);
+        let registration = (|| {
+            context.check_execution_stop()?;
+            let (fulfilled, rejected) = Self::prepare_then_records(
+                promise,
+                on_fulfilled,
+                on_rejected,
+                result_capability,
+                native_target,
+                preparation.lifecycle.clone(),
+                context,
+            )?;
+            preparation.fulfilled = Some(fulfilled);
+            preparation.rejected = Some(rejected);
+            let (state, handled) = {
+                let promise = promise
+                    .try_borrow()
+                    .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?;
+                (promise.data().state(), promise.data().handled)
+            };
+            if matches!(state, PromiseState::Pending) {
+                // Both actual live records remain owned before the first root
+                // attempt. The lease survives commit, bookkeeping and notices.
+                preparation.publication.hold = Some(preparation.lifecycle.hold()?);
+                if let Some(source) = Self::native_association(promise)? {
+                    let targets = {
+                        let fulfilled = preparation.fulfilled()?;
+                        [
+                            fulfilled.native_target.clone(),
+                            fulfilled.native_result_target.clone(),
+                        ]
+                    };
+                    for (slot, target) in preparation
+                        .publication
+                        .notifications
+                        .pending
+                        .iter_mut()
+                        .zip(targets)
+                    {
+                        if let Some(target) = target
+                            && promise.identity() != target.identity()
+                        {
+                            let target = Self::ensure_native_association(&target, context)?;
+                            *slot = Some(native_settlement::Association::prepare_follow(
+                                &target, &source,
+                            )?);
+                        }
+                    }
                 }
             }
-        }
-        // Validate the exact stored pair before changing the promise or invoking an executor.
-        let reactions = (fulfill_reaction.to_stored(), reject_reaction.to_stored());
-        let heap = context.runtime().heap.clone();
-        let (notifications, publication) = heap
-            .with_pending_edges(reactions, |(stored_fulfill, stored_reject)| {
-                let mut notifications = ReactionNotifications::default();
-                let mut publication = Ok(());
-                match state {
-                    // 9. If promise.[[PromiseState]] is pending, then
-                    PromiseState::Pending => {
-                        let mut promise = promise.borrow_mut();
-                        let StoredPromiseState::Pending {
-                            fulfill_reactions,
-                            reject_reactions,
-                        } = &mut promise.data_mut().state
-                        else {
-                            unreachable!("promise is pending");
-                        };
-
-                        //   a. Append fulfillReaction as the last element of the List that is promise.[[PromiseFulfillReactions]].
-                        fulfill_reactions
-                            .try_reserve(1)
-                            .map_err(|_| crate::error::EngineResourceError::Allocation)?;
-                        reject_reactions
-                            .try_reserve(1)
-                            .map_err(|_| crate::error::EngineResourceError::Allocation)?;
-                        for (slot, prepared) in notifications
-                            .committed
-                            .iter_mut()
-                            .zip(dependency_handoffs.iter_mut())
-                        {
-                            *slot = prepared
-                                .take()
-                                .map(native_settlement::PreparedHandoff::commit);
-                        }
-                        fulfill_reactions.push(stored_fulfill);
-
-                        //   b. Append rejectReaction as the last element of the List that is promise.[[PromiseRejectReactions]].
-                        reject_reactions.push(stored_reject);
-                    }
-
-                    // 10. Else if promise.[[PromiseState]] is fulfilled, then
-                    //   a. Let value be promise.[[PromiseResult]].
-                    PromiseState::Fulfilled(value) => {
-                        //   b. Let fulfillJob be NewPromiseReactionJob(fulfillReaction, value).
-                        let mut fulfill_job =
-                            new_promise_reaction_job(fulfill_reaction, value, context)?;
-                        fulfill_job.commit();
-                        //   c. Perform HostEnqueuePromiseJob(fulfillJob.[[Job]], fulfillJob.[[Realm]]).
-                        (publication, notifications) = fulfill_job.publish(context);
-                    }
-
-                    // 11. Else,
-                    //   a. Assert: The value of promise.[[PromiseState]] is rejected.
-                    //   b. Let reason be promise.[[PromiseResult]].
-                    PromiseState::Rejected(reason) => {
-                        //   c. If promise.[[PromiseIsHandled]] is false, perform HostPromiseRejectionTracker(promise, "handle").
-                        if !handled {
-                            context.host_hooks().promise_rejection_tracker(
-                                promise,
-                                OperationType::Handle,
-                                context.access(),
+            let stored = (
+                preparation.fulfilled()?.to_stored(),
+                preparation.rejected()?.to_stored(),
+            );
+            let heap = context.runtime().heap.clone();
+            let registration = heap
+                .with_pending_edges(stored, |(stored_fulfill, stored_reject)| {
+                    match state {
+                        PromiseState::Pending => {
+                            let hold = preparation
+                                .publication
+                                .hold
+                                .as_ref()
+                                .ok_or_else(reaction_state_error)?;
+                            let mut promise = promise
+                                .try_borrow_mut()
+                                .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?;
+                            let StoredPromiseState::Pending {
+                                fulfill_reactions,
+                                reject_reactions,
+                            } = &mut promise.data_mut().state
+                            else {
+                                return Err(reaction_state_error());
+                            };
+                            fulfill_reactions
+                                .try_reserve(1)
+                                .map_err(|_| crate::error::EngineResourceError::Allocation)?;
+                            reject_reactions
+                                .try_reserve(1)
+                                .map_err(|_| crate::error::EngineResourceError::Allocation)?;
+                            for (notification, handoff) in preparation
+                                .publication
+                                .notifications
+                                .committed
+                                .iter_mut()
+                                .zip(preparation.publication.notifications.pending.iter_mut())
+                            {
+                                if let Some(handoff) = handoff.take() {
+                                    *notification = Some(handoff.commit());
+                                }
+                            }
+                            fulfill_reactions.push(stored_fulfill);
+                            reject_reactions.push(stored_reject);
+                            // This sealed fact binds the actual Await before any
+                            // notification can reenter and before live roots leave.
+                            let registration = ReactionRegistration::committed(
+                                ReactionCustody::SourcePending,
+                                Ok(()),
+                                hold,
                             );
+                            promise.data_mut().handled = true;
+                            Ok(registration)
                         }
-
-                        //   d. Let rejectJob be NewPromiseReactionJob(rejectReaction, reason).
-                        let mut reject_job =
-                            new_promise_reaction_job(reject_reaction, reason, context)?;
-                        reject_job.commit();
-                        //   e. Perform HostEnqueuePromiseJob(rejectJob.[[Job]], rejectJob.[[Realm]]).
-                        (publication, notifications) = reject_job.publish(context);
+                        PromiseState::Fulfilled(value) => {
+                            let fulfilled = preparation
+                                .fulfilled
+                                .take()
+                                .ok_or_else(reaction_state_error)?;
+                            preparation.job.live = Some(fulfilled);
+                            new_promise_reaction_job(&mut preparation.job, value, context)?;
+                            let mut job = preparation.job.take_prepared()?;
+                            job.commit();
+                            Ok(job.publish(&mut preparation.publication, context))
+                        }
+                        PromiseState::Rejected(reason) => {
+                            if !handled {
+                                context.host_hooks().promise_rejection_tracker(
+                                    promise,
+                                    OperationType::Handle,
+                                    context.access(),
+                                );
+                            }
+                            let rejected = preparation
+                                .rejected
+                                .take()
+                                .ok_or_else(reaction_state_error)?;
+                            preparation.job.live = Some(rejected);
+                            new_promise_reaction_job(&mut preparation.job, reason, context)?;
+                            let mut job = preparation.job.take_prepared()?;
+                            job.commit();
+                            Ok(job.publish(&mut preparation.publication, context))
+                        }
                     }
-                }
-
-                // 12. Set promise.[[PromiseIsHandled]] to true.
-                promise.borrow_mut().data_mut().handled = true;
-
-                // 13. If resultCapability is undefined, then
-                //   a. Return undefined.
-                // 14. Else,
-                //   a. Return resultCapability.[[Promise]].
-                // skipped because we can already access the promise from `result_capability`
-                Ok::<_, JsError>((notifications, publication))
-            })
-            .map_err(|error| {
-                JsError::from(JsNativeError::typ().with_message(error.to_string()))
-            })??;
-        notifications.finish();
-        publication
+                })
+                .map_err(|error| {
+                    JsError::from(JsNativeError::typ().with_message(error.to_string()))
+                })??;
+            let registration = if registration.is_committed() {
+                let handled = promise
+                    .try_borrow_mut()
+                    .map_err(|_| crate::error::EngineError::ObjectAccessBusy.into())
+                    .map(|mut promise| {
+                        promise.data_mut().handled = true;
+                    });
+                registration.complete(handled)
+            } else {
+                registration
+            };
+            Ok::<_, JsError>(registration)
+        })();
+        match registration {
+            Ok(registration) => preparation.finish(registration),
+            Err(error) => preparation.fail(error),
+        }
     }
 
     /// `GetPromiseResolve ( promiseConstructor )`
@@ -2868,28 +2917,32 @@ impl Promise {
             argument: &JsValue,
             context: &mut Context,
         ) -> JsResult<Vec<PreparedReactionJob>> {
-            let mut jobs = Vec::new();
-            let prepared = (|| {
-                jobs.try_reserve(reactions.len())
-                    .map_err(|_| crate::error::EngineResourceError::Allocation)?;
-                for reaction in reactions {
-                    jobs.push(new_promise_reaction_job(
-                        reaction,
-                        argument.clone(),
-                        context,
-                    )?);
-                }
-                Ok::<_, JsError>(())
-            })();
-            if let Err(error) = prepared {
-                // The source resolving capability has already been consumed.
-                // Its accepted native-target pairs cannot silently wait forever.
-                if let Some(association) = association {
-                    association.retire_pending(crate::job::JobRetirement::Interrupted);
-                }
-                return Err(error);
+            let mut preparation = ReactionPreparation {
+                remaining: reactions.into_iter(),
+                prepared: Vec::new(),
+                current: ReactionJobPreparation::new(),
+                association,
+            };
+            if preparation
+                .prepared
+                .try_reserve(preparation.remaining.len())
+                .is_err()
+            {
+                return Err(preparation.fail(crate::error::EngineResourceError::Allocation.into()));
             }
-            Ok(jobs)
+            while let Some(reaction) = preparation.remaining.next() {
+                preparation.current.live = Some(reaction);
+                if let Err(error) =
+                    new_promise_reaction_job(&mut preparation.current, argument.clone(), context)
+                {
+                    return Err(preparation.fail(error));
+                }
+                match preparation.current.take_prepared() {
+                    Ok(job) => preparation.prepared.push(job),
+                    Err(error) => return Err(preparation.fail(error)),
+                }
+            }
+            Ok(std::mem::take(&mut preparation.prepared))
         }
 
         /// `FulfillPromise ( promise, value )`
@@ -3271,10 +3324,104 @@ impl Drop for ReactionNotifications {
     }
 }
 
+fn reaction_state_error() -> JsError {
+    crate::job::JobFault::new(
+        crate::job::JobFaultOwner::Task,
+        crate::job::JobFaultCause::StateInconsistency,
+    )
+    .into()
+}
+
+/// Producer-only custody. Its root lease is released after every saved notice.
+#[derive(Default)]
+struct ReactionPublication {
+    rejected: Option<crate::job::Job>,
+    notifications: ReactionNotifications,
+    hold: Option<PublicationHold>,
+}
+impl ReactionPublication {
+    fn cleanup(&mut self, cleanup: &mut crate::job::UnwindCleanup) {
+        let rejected = self.rejected.take();
+        cleanup.run(|| drop(rejected));
+        let notifications = std::mem::take(&mut self.notifications);
+        cleanup.run(|| notifications.finish());
+        let hold = self.hold.take();
+        cleanup.run(|| drop(hold));
+    }
+    fn finish<T>(mut self, value: T) -> T {
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        self.cleanup(&mut cleanup);
+        cleanup.finish_with(value)
+    }
+}
+impl Drop for ReactionPublication {
+    fn drop(&mut self) {
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        self.cleanup(&mut cleanup);
+        cleanup.finish();
+    }
+}
+
+struct RegistrationPreparation {
+    lifecycle: ReactionLifecycle,
+    fulfilled: Option<ReactionRecord>,
+    rejected: Option<ReactionRecord>,
+    job: ReactionJobPreparation,
+    publication: ReactionPublication,
+}
+impl RegistrationPreparation {
+    fn new(lifecycle: ReactionLifecycle) -> Self {
+        Self {
+            lifecycle,
+            fulfilled: None,
+            rejected: None,
+            job: ReactionJobPreparation::new(),
+            publication: ReactionPublication::default(),
+        }
+    }
+    fn fulfilled(&self) -> JsResult<&ReactionRecord> {
+        self.fulfilled.as_ref().ok_or_else(reaction_state_error)
+    }
+    fn rejected(&self) -> JsResult<&ReactionRecord> {
+        self.rejected.as_ref().ok_or_else(reaction_state_error)
+    }
+    fn cleanup(&mut self, cleanup: &mut crate::job::UnwindCleanup) {
+        cleanup.run(|| self.job.unavailable());
+        let fulfilled = self.fulfilled.take();
+        cleanup.run(|| drop(fulfilled));
+        let rejected = self.rejected.take();
+        cleanup.run(|| drop(rejected));
+        self.job.cleanup(cleanup);
+        self.publication.cleanup(cleanup);
+    }
+    fn finish(mut self, registration: ReactionRegistration) -> ReactionRegistration {
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        self.cleanup(&mut cleanup);
+        cleanup.finish_with(registration)
+    }
+    fn fail(mut self, error: JsError) -> ReactionRegistration {
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        cleanup.run(|| {
+            let _secondary = self.lifecycle.preparation_failed(&error);
+        });
+        cleanup.run(|| self.job.preparation_failed(&error));
+        self.cleanup(&mut cleanup);
+        cleanup.finish_with(ReactionRegistration::uncommitted(error))
+    }
+}
+impl Drop for RegistrationPreparation {
+    fn drop(&mut self) {
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        self.cleanup(&mut cleanup);
+        cleanup.finish();
+    }
+}
+
 struct PreparedReactionJob {
     job: PromiseJob,
     handoffs: [Option<native_settlement::PreparedHandoff>; 2],
     notifications: [Option<native_settlement::HandoffNotification>; 2],
+    hold: PublicationHold,
 }
 impl PreparedReactionJob {
     fn commit(&mut self) {
@@ -3284,31 +3431,197 @@ impl PreparedReactionJob {
             }
         }
     }
-    fn publish(self, context: &mut Context) -> (JsResult<()>, ReactionNotifications) {
+    fn publish(
+        self,
+        publication: &mut ReactionPublication,
+        context: &mut Context,
+    ) -> ReactionRegistration {
         let Self {
             job,
             handoffs,
             notifications,
+            hold,
         } = self;
-        let notifications = ReactionNotifications {
+        publication.notifications = ReactionNotifications {
             pending: handoffs,
             committed: notifications,
         };
-        let publication = crate::job::finish_publication(context.enqueue_job(job.into()));
-        (publication, notifications)
+        publication.hold = Some(hold);
+        let hold = match publication.hold.as_ref() {
+            Some(hold) => hold,
+            None => {
+                publication.rejected = Some(job.into());
+                return ReactionRegistration::uncommitted(reaction_state_error());
+            }
+        };
+        match context.enqueue_job(job.into()) {
+            Ok(crate::job::JobAcceptance::Accepted) => {
+                ReactionRegistration::committed(ReactionCustody::ExecutorAccepted, Ok(()), hold)
+            }
+            Ok(crate::job::JobAcceptance::AcceptedWithError(cause)) => {
+                ReactionRegistration::committed(
+                    ReactionCustody::ExecutorAccepted,
+                    Err(cause.into_error()),
+                    hold,
+                )
+            }
+            Ok(crate::job::JobAcceptance::Discarded) => {
+                ReactionRegistration::committed(ReactionCustody::PolicyDiscarded, Ok(()), hold)
+            }
+            Err(error) => {
+                let (job, cause) = error.into_parts();
+                publication.rejected = Some(job);
+                let error = cause.into_error();
+                let mut cleanup = crate::job::UnwindCleanup::default();
+                cleanup.run(|| {
+                    let _secondary = hold.refused(&error);
+                });
+                cleanup.finish_with(ReactionRegistration::uncommitted(error))
+            }
+        }
+    }
+    fn preparation_failed(&self, error: &JsError) {
+        if let Err(fault) = self.hold.preparation_failed(error) {
+            self.job.observer().record_fault(fault);
+        }
     }
     fn dispose(self, cleanup: &mut crate::job::UnwindCleanup) {
         let Self {
             job,
             handoffs,
             notifications,
+            hold,
         } = self;
-        let notifications = ReactionNotifications {
-            pending: handoffs,
-            committed: notifications,
+        let publication = ReactionPublication {
+            rejected: Some(job.into()),
+            notifications: ReactionNotifications {
+                pending: handoffs,
+                committed: notifications,
+            },
+            hold: Some(hold),
         };
-        cleanup.run(|| drop(job));
-        cleanup.run(|| notifications.finish());
+        cleanup.run(|| publication.finish(()));
+    }
+}
+
+/// Caller-owned slots retain the live input or its partial job through failure.
+struct ReactionJobPreparation {
+    live: Option<ReactionRecord>,
+    prepared: Option<PreparedReactionJob>,
+}
+impl ReactionJobPreparation {
+    fn new() -> Self {
+        Self {
+            live: None,
+            prepared: None,
+        }
+    }
+    fn take_prepared(&mut self) -> JsResult<PreparedReactionJob> {
+        self.prepared.take().ok_or_else(reaction_state_error)
+    }
+    fn is_empty(&self) -> bool {
+        self.live.is_none() && self.prepared.is_none()
+    }
+    fn unavailable(&self) {
+        // Intrinsic secondary faults are latched by the actual Await owner;
+        // they cannot replace this preparation's earlier full error.
+        if let Some(record) = &self.live {
+            let _secondary = record.lifecycle.unavailable();
+        }
+        if let Some(job) = &self.prepared {
+            let _secondary = job.hold.unavailable();
+        }
+    }
+    fn preparation_failed(&self, error: &JsError) {
+        if let Some(record) = &self.live {
+            let _secondary = record.lifecycle.preparation_failed(error);
+        }
+        if let Some(job) = &self.prepared {
+            job.preparation_failed(error);
+        }
+    }
+    fn cleanup(&mut self, cleanup: &mut crate::job::UnwindCleanup) {
+        let live = self.live.take();
+        cleanup.run(|| drop(live));
+        if let Some(job) = self.prepared.take() {
+            job.dispose(cleanup);
+        }
+    }
+}
+impl Drop for ReactionJobPreparation {
+    fn drop(&mut self) {
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        cleanup.run(|| self.unavailable());
+        self.cleanup(&mut cleanup);
+        cleanup.finish();
+    }
+}
+
+/// Current, already-prepared and unprepared records stay owned before rooting.
+/// Failure invalidates every required tail before disposal or native notices.
+struct ReactionPreparation<'a> {
+    remaining: std::vec::IntoIter<ReactionRecord>,
+    prepared: Vec<PreparedReactionJob>,
+    current: ReactionJobPreparation,
+    association: Option<&'a Rooted<native_settlement::Association>>,
+}
+impl ReactionPreparation<'_> {
+    fn unavailable(&self, cleanup: &mut crate::job::UnwindCleanup) {
+        cleanup.run(|| self.current.unavailable());
+        for job in &self.prepared {
+            cleanup.run(|| {
+                let _secondary = job.hold.unavailable();
+            });
+        }
+        for record in self.remaining.as_slice() {
+            cleanup.run(|| {
+                let _secondary = record.lifecycle.unavailable();
+            });
+        }
+    }
+    fn cleanup(&mut self, cleanup: &mut crate::job::UnwindCleanup) {
+        self.current.cleanup(cleanup);
+        for job in self.prepared.drain(..) {
+            job.dispose(cleanup);
+        }
+        for record in self.remaining.by_ref() {
+            cleanup.run(|| drop(record));
+        }
+    }
+    fn fail(mut self, error: JsError) -> JsError {
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        self.unavailable(&mut cleanup);
+        cleanup.run(|| self.current.preparation_failed(&error));
+        for job in &self.prepared {
+            cleanup.run(|| job.preparation_failed(&error));
+        }
+        for record in self.remaining.as_slice() {
+            cleanup.run(|| {
+                let _secondary = record.lifecycle.preparation_failed(&error);
+            });
+        }
+        if let Some(association) = self.association {
+            cleanup.run(|| association.retire_pending(crate::job::JobRetirement::Interrupted));
+        }
+        self.cleanup(&mut cleanup);
+        cleanup.finish_with(error)
+    }
+}
+impl Drop for ReactionPreparation<'_> {
+    fn drop(&mut self) {
+        if self.current.is_empty()
+            && self.prepared.is_empty()
+            && self.remaining.as_slice().is_empty()
+        {
+            return;
+        }
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        self.unavailable(&mut cleanup);
+        if let Some(association) = self.association {
+            cleanup.run(|| association.retire_pending(crate::job::JobRetirement::Interrupted));
+        }
+        self.cleanup(&mut cleanup);
+        cleanup.finish();
     }
 }
 
@@ -3317,36 +3630,42 @@ impl PreparedReactionJob {
 struct ReactionBatch {
     jobs: std::vec::IntoIter<PreparedReactionJob>,
     pending: Option<StoredPromiseState>,
+    first_error: Option<JsError>,
 }
 impl ReactionBatch {
     fn new(jobs: Vec<PreparedReactionJob>, pending: StoredPromiseState) -> Self {
         Self {
             jobs: jobs.into_iter(),
             pending: Some(pending),
+            first_error: None,
         }
     }
     fn publish(mut self, context: &mut Context) -> JsResult<()> {
-        let mut first_error = None;
         for prepared in self.jobs.by_ref() {
-            let (publication, notifications) = prepared.publish(context);
-            notifications.finish();
-            if let Err(error) = publication
-                && first_error.is_none()
-            {
-                first_error = Some(error);
+            let mut publication = ReactionPublication::default();
+            let registration = prepared.publish(&mut publication, context);
+            let registration = publication.finish(registration);
+            if let Err(error) = registration.into_result() {
+                if self.first_error.is_none() {
+                    self.first_error = Some(error);
+                } else {
+                    let mut cleanup = crate::job::UnwindCleanup::default();
+                    cleanup.run(|| drop(error));
+                    cleanup.finish();
+                }
             }
         }
-        match first_error {
+        let result = match self.first_error.take() {
             Some(error) => Err(error),
             None => Ok(()),
-        }
-    }
-}
-impl Drop for ReactionBatch {
-    fn drop(&mut self) {
+        };
         let mut cleanup = crate::job::UnwindCleanup::default();
+        self.cleanup(&mut cleanup);
+        cleanup.finish_with(result)
+    }
+    fn cleanup(&mut self, cleanup: &mut crate::job::UnwindCleanup) {
         for prepared in self.jobs.by_ref() {
-            prepared.dispose(&mut cleanup);
+            prepared.dispose(cleanup);
         }
         match self.pending.take() {
             Some(StoredPromiseState::Pending {
@@ -3362,15 +3681,27 @@ impl Drop for ReactionBatch {
             }
             None => {}
         }
+        let error = self.first_error.take();
+        cleanup.run(|| drop(error));
+    }
+}
+impl Drop for ReactionBatch {
+    fn drop(&mut self) {
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        self.cleanup(&mut cleanup);
         cleanup.finish();
     }
 }
 
 fn new_promise_reaction_job(
-    mut reaction: ReactionRecord,
+    preparation: &mut ReactionJobPreparation,
     argument: JsValue,
     context: &mut Context,
-) -> JsResult<PreparedReactionJob> {
+) -> JsResult<()> {
+    if preparation.prepared.is_some() {
+        return Err(reaction_state_error());
+    }
+    let reaction = preparation.live.as_ref().ok_or_else(reaction_state_error)?;
     // Inverting order since `job` captures `reaction` by value.
 
     // 2. Let handlerRealm be null.
@@ -3387,9 +3718,11 @@ fn new_promise_reaction_job(
         .unwrap_or_else(|| context.realm().clone());
 
     // 1. Let job be a new Job Abstract Closure with no parameters that captures reaction and argument and performs the following steps when called:
-    let module_action = reaction.module_action.clone();
+    let hold = reaction.lifecycle.hold()?;
+    let lifecycle_owner = hold.job_owner();
     let native_result_target = reaction.native_result_target.clone();
     let native_target = reaction.native_target.clone();
+    let mut reaction = preparation.live.take().ok_or_else(reaction_state_error)?;
     let job = move |context: crate::ContextAccess<'_>| {
         let context = context.into_owner();
         //   a. Let promiseCapability be reaction.[[Capability]].
@@ -3452,21 +3785,27 @@ fn new_promise_reaction_job(
     };
 
     // 4. Return the Record { [[Job]]: job, [[Realm]]: handlerRealm }.
-    let job = PromiseJob::with_realm(job, realm).with_module_action(module_action);
-    let mut handoffs = [None, None];
-    for (slot, target) in handoffs
+    let job = PromiseJob::with_realm(job, realm).with_reaction_lifecycle(lifecycle_owner);
+    preparation.prepared = Some(PreparedReactionJob {
+        job,
+        handoffs: [None, None],
+        notifications: [None, None],
+        hold,
+    });
+    let prepared = preparation
+        .prepared
+        .as_mut()
+        .ok_or_else(reaction_state_error)?;
+    for (slot, target) in prepared
+        .handoffs
         .iter_mut()
         .zip([native_target, native_result_target])
     {
         if let Some(target) = target {
-            *slot = Promise::prepare_native_handoff(&target, &job.observer())?;
+            *slot = Promise::prepare_native_handoff(&target, &prepared.job.observer())?;
         }
     }
-    Ok(PreparedReactionJob {
-        job,
-        handoffs,
-        notifications: [None, None],
-    })
+    Ok(())
 }
 
 /// More information:

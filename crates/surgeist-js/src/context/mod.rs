@@ -54,6 +54,8 @@ pub use time::Clock;
 mod access;
 mod hooks;
 mod host;
+mod module_run;
+use module_run::ModuleRunFailure;
 #[cfg(feature = "intl")]
 pub(crate) mod icu;
 pub mod intrinsics;
@@ -142,6 +144,7 @@ pub struct Context {
     pub(crate) vm: Vm,
 
     pub(crate) execution: Option<Execution>,
+    module_run_failure: Option<ModuleRunFailure>,
 
     pub(crate) kept_alive: Vec<JsObject>,
 
@@ -1487,6 +1490,7 @@ impl ContextBuilder {
         let mut context = Context {
             vm,
             execution: None,
+            module_run_failure: None,
             strict: false,
             #[cfg(any(feature = "temporal", feature = "intl"))]
             timezone_provider: if let Some(provider) = self.timezone_provider {
