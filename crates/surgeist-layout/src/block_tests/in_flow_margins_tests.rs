@@ -4829,3 +4829,107 @@ fn leading_margin_components_keep_extrema_and_actual_barriers_in_all_flows() {
     lane::<f32>();
     lane::<f64>();
 }
+
+fn assert_leading_start_component_stays_outside_parent_end<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let ordinary = NodeInputOf {
+        display: Display::Block,
+        block_flow_context: BlockFlowContext::Normal,
+        size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+        min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+        ..Default::default()
+    };
+    let width = NonNegativeFiniteOf::new(px(100.0)).unwrap();
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::new(Some(width), None),
+        OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::new(
+        AxisSizingRequestOf::new(AvailableSpaceOf::Definite(width), SizingOperation::Normal),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+    ));
+    for (case, minimum, top, bottom, parent_y, following_y, root_height) in [
+        ("zero margins", 5.0, 0.0, 0.0, 0.0, 5.0, 15.0),
+        ("through parent", 0.0, 8.0, 12.0, 12.0, 12.0, 22.0),
+        ("separate parent end", 5.0, 8.0, 12.0, 12.0, 17.0, 27.0),
+    ] {
+        let tree = PublicBlockTree::default()
+            .with_children(0, [2, 4])
+            .with_children(2, [3])
+            .with_children(3, [])
+            .with_children(4, [])
+            .with_style(0, ordinary.clone())
+            .with_style(
+                2,
+                NodeInputOf {
+                    min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(px(minimum))),
+                    ..ordinary.clone()
+                },
+            )
+            .with_style(
+                3,
+                NodeInputOf {
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(top)),
+                        bottom: LengthAutoOf::px(px(bottom)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary.clone()
+                },
+            )
+            .with_style(
+                4,
+                NodeInputOf {
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(10.0)),
+                    ),
+                    ..ordinary.clone()
+                },
+            );
+        let batch = compute_layout(&tree, 0, request).unwrap();
+        let parent = public_final_output(&batch, 2);
+        let empty = public_final_output(&batch, 3);
+        let following = public_final_output(&batch, 4);
+        let root = public_final_output(&batch, 0);
+        assert_eq!(
+            (parent.location, parent.size, parent.margin),
+            (
+                Point::new(S::ZERO, px(parent_y)),
+                Size::new(px(100.0), px(minimum)),
+                Edges::ZERO
+            ),
+            "{case}: parent"
+        );
+        assert_eq!(
+            (empty.location, empty.size),
+            (Point::ZERO, Size::new(px(100.0), S::ZERO)),
+            "{case}: real empty child"
+        );
+        // The whole8/12 component adjoins P's top. A positive minimum
+        // separates P's own boundaries, so that component is not also its end.
+        assert_eq!(
+            (following.location, following.size, root.size),
+            (
+                Point::new(S::ZERO, px(following_y)),
+                Size::new(px(100.0), px(10.0)),
+                Size::new(px(100.0), px(root_height))
+            ),
+            "{case}: following/root"
+        );
+    }
+}
+
+#[test]
+fn leading_start_component_stays_outside_minimum_parent_end_f32() {
+    assert_leading_start_component_stays_outside_parent_end::<f32>();
+}
+#[test]
+fn leading_start_component_stays_outside_minimum_parent_end_f64() {
+    assert_leading_start_component_stays_outside_parent_end::<f64>();
+}
