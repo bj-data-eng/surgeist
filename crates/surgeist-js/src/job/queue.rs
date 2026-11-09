@@ -9,6 +9,7 @@ use crate::{
     Context, ContextAccess, HostContext, JsResult,
     context::time::{JsDuration, JsInstant},
     error::{EngineError, EngineResourceError},
+    execution::{ExecutionPhase, JobClaimWork},
 };
 use futures_lite::future;
 use portable_atomic::AtomicBool;
@@ -746,7 +747,7 @@ struct ClaimScratch {
     logical_capacity: usize,
 }
 impl ClaimScratch {
-    fn reserve_one(&mut self) -> JsResult<()> {
+    fn reserve_one(&mut self, context: &mut Context) -> JsResult<()> {
         if self.slots.len() < self.logical_capacity {
             return Ok(());
         }
@@ -764,8 +765,10 @@ impl ClaimScratch {
                 .ok_or(EngineResourceError::SizeOverflow)
         };
         bytes(capacity)?;
-        bytes(capacity - self.logical_capacity)?;
-        bytes(self.slots.len())?;
+        context.admit_job_claim(JobClaimWork::Capacity(bytes(
+            capacity - self.logical_capacity,
+        )?))?;
+        context.admit_job_claim(JobClaimWork::Relocate(bytes(self.slots.len())?))?;
         self.slots
             .try_reserve_exact(capacity - self.slots.len())
             .map_err(|_| EngineResourceError::Allocation)?;
@@ -1059,24 +1062,27 @@ impl RuntimeJobQueues {
         host.with(|access| {
             let context = access.into_owner();
             context.check_execution_stop()?;
-            let mut result = self.prepare_claim(selection);
-            if let Err(error) = &mut result {
-                context.retain_preparation_error(error);
-            }
+            let result = context.with_execution_phase(ExecutionPhase::JobClaim, |context| {
+                let mut result = self.prepare_claim(selection, context);
+                if let Err(error) = &mut result {
+                    context.retain_preparation_error(error);
+                }
+                result
+            });
             context.check_execution_stop().and(result)
         })
     }
-    fn prepare_claim(&self, selection: ClaimSelection) -> JsResult<Batch> {
+    fn prepare_claim(&self, selection: ClaimSelection, context: &mut Context) -> JsResult<Batch> {
         let mut scratch = ClaimScratch::default();
         match selection {
             ClaimSelection::Async => {
-                self.snapshot_bucket(Kind::Ordinary(Ordinary::Async), &mut scratch)?
+                self.snapshot_bucket(Kind::Ordinary(Ordinary::Async), &mut scratch, context)?
             }
             ClaimSelection::Promise => {
-                self.snapshot_bucket(Kind::Ordinary(Ordinary::Promise), &mut scratch)?
+                self.snapshot_bucket(Kind::Ordinary(Ordinary::Promise), &mut scratch, context)?
             }
             ClaimSelection::Generic => {
-                self.snapshot_bucket(Kind::Ordinary(Ordinary::Generic), &mut scratch)?
+                self.snapshot_bucket(Kind::Ordinary(Ordinary::Generic), &mut scratch, context)?
             }
             ClaimSelection::ClocksBefore(cutoff) => {
                 let mut previous = None;
@@ -1095,21 +1101,28 @@ impl RuntimeJobQueues {
                         })
                         .map_err(|error| crate::JsError::from(error.into_engine()))?;
                     let Some(time) = time else { break };
-                    self.snapshot_bucket(Kind::Clock(time), &mut scratch)?;
+                    self.snapshot_bucket(Kind::Clock(time), &mut scratch, context)?;
                     previous = Some(time);
                 }
             }
         }
+        context.admit_job_claim(JobClaimWork::Commit(scratch.slots.len()))?;
         let batch = Batch {
             slots: scratch.slots,
         };
-        // Install rollback custody before marking; no fallible step or stop/token read splits it.
+        // Admission covers every mark; no fallible step or stop/token read splits it.
         for slot in &batch.slots {
             slot.status.set(Status::Claimed);
         }
         Ok(batch)
     }
-    fn snapshot_bucket(&self, kind: Kind, scratch: &mut ClaimScratch) -> JsResult<()> {
+    fn snapshot_bucket(
+        &self,
+        kind: Kind,
+        scratch: &mut ClaimScratch,
+        context: &mut Context,
+    ) -> JsResult<()> {
+        context.admit_job_claim(JobClaimWork::Bucket)?;
         let (mut cursor, mut remaining) = self
             .with_store(|store| {
                 let bucket = store.bucket(kind)?;
@@ -1121,6 +1134,7 @@ impl RuntimeJobQueues {
             .map_err(|error| crate::JsError::from(error.into_engine()))?;
         let mut previous = None;
         while let Some(index) = cursor {
+            context.admit_job_claim(JobClaimWork::Node)?;
             let (next, available) = self
                 .with_store(|store| {
                     if remaining == 0 {
@@ -1142,7 +1156,8 @@ impl RuntimeJobQueues {
             previous = Some(index);
             cursor = next;
             if available {
-                scratch.reserve_one()?;
+                scratch.reserve_one(context)?;
+                context.admit_job_claim(JobClaimWork::SnapshotCopy)?;
                 let slot = self
                     .with_store(|store| Ok(store.node(index)?.clone()))
                     .map_err(|error| crate::JsError::from(error.into_engine()))?;
@@ -2137,3 +2152,6 @@ impl JobExecutor for SimpleJobExecutor {
 
 #[cfg(test)]
 mod fault_tests;
+
+#[cfg(test)]
+mod claim_tests;

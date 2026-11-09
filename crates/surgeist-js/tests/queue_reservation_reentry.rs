@@ -114,11 +114,13 @@ fn an_old_interval_reservation_cannot_modify_a_same_deadline_timer_published_aft
     assert_eq!(observer.fault(), None);
     assert!(!token.revoked());
     // Advance outside all engine calls and clock reads: the replacement is now
-    // strictly due.
+    // strictly due. A finite snapshot allowance also bounds an accidental idle loop.
     clock.forward(11);
     let completed = owner
         .with_execution(
-            ExecutionOptions::new(0).with_job_invocation_limit(1),
+            ExecutionOptions::new(0)
+                .with_job_invocation_limit(1)
+                .with_job_claim_work_limit(10_000),
             |mut access| access.run_jobs(),
         )
         .unwrap();

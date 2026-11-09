@@ -147,6 +147,16 @@ impl ExecutionReport {
         Ok(self.ledger()?.usage.work(super::ExecutionWork::JobPoll))
     }
 
+    /// Returns finite executor batch snapshot and claim credits.
+    /// Scratch disposal or claim rollback does not refund accepted work.
+    /// This counter does not price an entire drain or arbitrary custom executors.
+    pub fn job_claim_work(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::JobClaimWork))
+    }
+
     /// Returns the number of admitted generator request attempts.
     ///
     /// Each `next`, `return` or `throw` request counts once before validation
@@ -389,6 +399,9 @@ impl ExecutionReport {
     /// suspension.
     /// `ModuleMetadataWork` counts module-owned metadata credits, with delegated
     /// name dimensions attributed under the same detached metadata phase.
+    /// `JobClaimWork` counts finite batch snapshot and claim credits under the
+    /// detached `job-claim` phase and its six fixed producer origins. Rollback
+    /// does not refund these credits; they do not price an entire drain.
     ///
     /// # Errors
     ///

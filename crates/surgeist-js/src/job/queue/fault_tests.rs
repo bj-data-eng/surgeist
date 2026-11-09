@@ -255,14 +255,18 @@ fn invalid_index_reciprocal_neighbor_and_live_slot_identity_fail_during_priced_i
         };
         let expected = defect(cause);
         let outcome = context
-            .with_execution(ExecutionOptions::new(0), |access| {
-                queues.claim(ClaimSelection::Generic, &access.into_host_access())
-            })
+            .with_execution(
+                ExecutionOptions::new(0).with_job_claim_work_limit(2),
+                |access| queues.claim(ClaimSelection::Generic, &access.into_host_access()),
+            )
             .unwrap();
         let Err(error) = outcome.result else {
             panic!("the corrupt real selected node cannot be claimed")
         };
         assert_eq!(engine_fault(&error), expected);
+        // One selected head and one linked-node inspection. Validation is
+        // inside those existing credits, without candidate scratch or marks.
+        assert_eq!(outcome.report.job_claim_work().unwrap(), 2);
         assert!(!outcome.report.effects_started());
         quarantined(&first, expected);
         quarantined(&second, expected);
@@ -525,7 +529,10 @@ fn checked_drain_and_reservation_overflow_refuse_without_faulting_or_consuming_r
     }
     drop(reservation);
     context
-        .with_execution(ExecutionOptions::new(0), |mut access| access.run_jobs())
+        .with_execution(
+            ExecutionOptions::new(0).with_job_claim_work_limit(10_000),
+            |mut access| access.run_jobs(),
+        )
         .unwrap()
         .result
         .unwrap();
