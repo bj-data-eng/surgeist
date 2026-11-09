@@ -8,7 +8,7 @@ pub(crate) struct ReadbackOutput(BackedValue<ImageBuffer>);
 
 impl ReadbackOutput {
     pub(super) fn try_new(size: PhysicalSize, rgba: AccountedVec<u8>) -> Result<Self> {
-        let (values, hold) = rgba.into_parts();
+        let (values, hold) = rgba.into_parts()?;
         let storage = hold.storage();
         let guarded = BackedValue::new(values, [Some(hold), None]);
         storage.phase(|| {

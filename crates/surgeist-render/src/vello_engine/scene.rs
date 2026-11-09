@@ -584,22 +584,22 @@ impl VelloScene {
             }
         }
         let import = account.import_font(resource)?;
-        let bytes = SharedValue::with_parts(
-            DecodedFontBytes(resource.clone()),
-            None,
-            import,
-            &account.storage(),
-        )?;
+        account.work(RenderWork::RasterResourceCopies, 1)?;
+        let source = resource.clone();
+        let bytes =
+            SharedValue::with_parts(DecodedFontBytes(source), None, import, &account.storage())?;
         let backing = Blob::new(bytes.into_bytes_arc());
-        if self.font_backings.is_none() {
-            self.font_backings = Some(account.retained(0)?);
-        }
-        let backings = self.font_backings.as_mut().expect("font registry");
-        bounded::reserve_record(backings, account)?;
+        let backings = match &mut self.font_backings {
+            Some(backings) => backings,
+            slot @ None => slot.insert(account.retained(0)?),
+        };
+        bounded::reserve_record(backings)?;
+        let slot = backings.append_slot()?;
         account.work(RenderWork::RasterResourceCopies, 1)?;
-        backings.push_reserved((resource.identity(), backing));
+        let registered = backing.clone();
         account.work(RenderWork::RasterResourceCopies, 1)?;
-        Ok(backings.last().expect("inserted font").1.clone())
+        slot.write((resource.identity(), registered));
+        Ok(backing)
     }
 
     fn push_layer_inner(
@@ -1065,6 +1065,36 @@ mod pixelated_tests {
     use super::*;
 
     #[test]
+    fn font_backing_miss_counts_source_clone_blob_clone_and_registry_write() {
+        let bytes = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
+        let resource =
+            FontResource::decode(bytes.to_vec(), surgeist_test::fixtures::FONT_LIMITS).unwrap();
+        let account = Account::for_test();
+        let mut scene = VelloScene::default();
+        let first = scene.font_backing(&resource, &account).unwrap();
+        assert_eq!(first.data(), resource.bytes());
+        // One retained source-owner clone, one Blob clone, and one new registry
+        // record copy. The first empty registry has no elements to relocate.
+        assert_eq!(
+            account
+                .work_count(RenderWork::RasterResourceCopies)
+                .unwrap(),
+            3
+        );
+        let second = scene.font_backing(&resource, &account).unwrap();
+        assert_eq!(second.id(), first.id());
+        // A hit clones only the existing Blob; it does not insert another record.
+        assert_eq!(
+            account
+                .work_count(RenderWork::RasterResourceCopies)
+                .unwrap(),
+            4
+        );
+        drop((first, second));
+        drop(scene);
+    }
+
+    #[test]
     fn empty_pixelated_brush_keeps_transparent_draw_without_expansion() {
         let account = Account::for_test();
         let image = crate::Image::from_rgba(crate::Size::new(0.0, 2.0), Vec::<u8>::new()).unwrap();
@@ -1287,12 +1317,13 @@ mod pixelated_tests {
         assert_eq!(scene.encoding.resources.glyphs.len(), 6);
         assert!(scene.encoding.resources.normalized_coords.is_empty());
         let expected = bounded::packed_size(&scene.encoding, &scene.glyph_sizes, &account).unwrap();
-        let mut packed = bounded::ProducerVec::new(account.retained::<u8>(expected).unwrap());
+        let packed =
+            bounded::PackedProducer::new(&scene.encoding, &scene.glyph_sizes, &account).unwrap();
         let capacity = packed.capacity();
         let mut resolver = vello_encoding::Resolver::default();
-        resolver.resolve(&scene.encoding, packed.values());
-        assert_eq!(packed.len(), expected);
-        assert_eq!(packed.capacity(), capacity);
+        let resolved = packed.resolve(&mut resolver).unwrap();
+        assert_eq!(resolved.packed_for_test().len(), expected);
+        assert_eq!(resolved.packed_for_test().capacity(), capacity);
     }
 
     #[test]
@@ -1376,12 +1407,14 @@ mod pixelated_tests {
             assert!(!scene.encoding.resources.glyph_runs[0].hint);
             let expected =
                 bounded::packed_size(&scene.encoding, &scene.glyph_sizes, &account).unwrap();
-            let mut packed = bounded::ProducerVec::new(account.retained::<u8>(expected).unwrap());
+            let packed =
+                bounded::PackedProducer::new(&scene.encoding, &scene.glyph_sizes, &account)
+                    .unwrap();
             let capacity = packed.capacity();
             let mut resolver = vello_encoding::Resolver::default();
-            resolver.resolve(&scene.encoding, packed.values());
-            assert_eq!(packed.len(), expected);
-            assert_eq!(packed.capacity(), capacity);
+            let resolved = packed.resolve(&mut resolver).unwrap();
+            assert_eq!(resolved.packed_for_test().len(), expected);
+            assert_eq!(resolved.packed_for_test().capacity(), capacity);
         }
     }
 }

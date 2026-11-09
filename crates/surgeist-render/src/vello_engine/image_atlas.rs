@@ -135,9 +135,10 @@ impl ImageAtlasPlan {
                     account.work_u64(RenderWork::ImageSourceBytes, bytes)?;
                     account.work_u64(RenderWork::AtlasTexels, texels)?;
                     let index = entries.len();
-                    bounded::reserve_record(&mut entries, &account)?;
+                    bounded::reserve_record(&mut entries)?;
+                    let slot = entries.append_slot()?;
                     account.work(RenderWork::RasterResourceCopies, 1)?;
-                    entries.push_reserved(AtlasEntry {
+                    slot.write(AtlasEntry {
                         image: image.clone(),
                         origin: [0, 0],
                         expansion,

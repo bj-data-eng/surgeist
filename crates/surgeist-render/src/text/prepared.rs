@@ -647,10 +647,10 @@ impl FontData {
                 font: self.clone(),
                 instance: TextInstance {
                     size: instance.size,
-                    coordinates: owned_coordinates.into_retained(),
+                    coordinates: owned_coordinates.into_preparation()?.into_retained(),
                     synthesis: instance.synthesis,
                 },
-                glyphs: owned_glyphs.into_retained(),
+                glyphs: owned_glyphs.into_preparation()?.into_retained(),
                 path,
                 bounds,
                 paints,
@@ -1269,9 +1269,9 @@ impl CollectingPen {
             Some(r) => TextRunBounds::try_ink(Rect::try_new(r.x0, r.y0, r.width(), r.height())?)?,
         };
         Ok((
-            kurbo::BezPath::from_vec(self.elements.into_retained()),
+            kurbo::BezPath::from_vec(self.elements.into_preparation()?.into_retained()),
             bounds,
-            self.paints.into_retained(),
+            self.paints.into_preparation()?.into_retained(),
         ))
     }
 }

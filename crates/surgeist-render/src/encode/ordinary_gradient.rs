@@ -559,7 +559,7 @@ pub(super) fn prepare(
         previous = Some((position, offset));
         // Native Color copies the four already validated source channels.
         account.work(RenderWork::CoordinateVisits, 4)?;
-        stops.push_reserved(peniko::ColorStop::from((
+        stops.append_slot()?.write(peniko::ColorStop::from((
             offset,
             peniko::Color::from(stop.color()),
         )));
@@ -604,7 +604,7 @@ pub(super) fn horizontal_carrier_stops(
             scalar(account, || quotient as f32)?
         };
         account.work(RenderWork::CoordinateVisits, 4)?;
-        carrier.push_reserved(peniko::ColorStop::from((
+        carrier.append_slot()?.write(peniko::ColorStop::from((
             offset,
             peniko::Color::from(stop.color()),
         )));

@@ -35,7 +35,7 @@ fn final_readback_transfer_consumes_actual_backing_without_a_later_drop_observat
             AccountedVec::<u8>::new_in(&account, requested, RenderResource::RetainedCpuBytes)
                 .unwrap();
         output.extend_from_slice(&vec![7; requested]).unwrap();
-        let (values, mut hold) = output.into_parts();
+        let (values, mut hold) = output.into_parts().unwrap();
         let actual = values.capacity() as u64;
         let closing = checkpoint.finish().unwrap();
         assert_eq!(
@@ -100,7 +100,7 @@ fn final_readback_transfer_overflow_keeps_custody_until_mandatory_disposal() {
             reason: RenderRefusalReason::Overflow,
         }
     ));
-    assert_eq!(hold.amount(), 24);
+    assert_eq!(hold.active_amount(), Some(24));
     let refused = cpu.snapshot().unwrap();
     assert_eq!(
         refused.usage().live(RenderResource::RetainedCpuBytes),
@@ -150,7 +150,7 @@ fn final_readback_transfer_rechecks_health_and_rejects_other_backing_roles() {
             .accounting_diagnostic(),
         Some(RenderAccountingError::Invariant)
     );
-    assert_eq!(hold.amount(), 24);
+    assert_eq!(hold.active_amount(), Some(24));
     drop(hold);
     let cleaned = cpu.snapshot().unwrap();
     assert_eq!(
@@ -902,4 +902,69 @@ fn observation_modes_preserve_identical_scripted_cpu_work_and_custody() {
             }
         }
     }
+}
+
+#[test]
+fn native_import_registry_growth_charges_existing_entries_once_to_actual_cpu_owner() {
+    let cpu = RendererCpu::new(
+        RenderAccountingOptions::default().with_profile(RenderProfile::Summary { timing: false }),
+    )
+    .unwrap();
+    let account = cpu.at(RenderCpuScope::ImagePayloads);
+    let image = Image::from_rgba(crate::Size::new(1.0, 1.0), vec![255, 0, 0, 255]).unwrap();
+    let baseline = retained(&cpu);
+    let import = account.import_image(&image, None).unwrap();
+    let opening = cpu.snapshot().unwrap();
+    let opening_moves = opening.usage().work(RenderWork::StorageRelocations);
+    let backing_bytes;
+    {
+        let mut registry = cpu.0.lock();
+        // One authentic image has its pixel identity and native Blob adapter.
+        assert_eq!(registry.entries.len(), 2);
+        let existing = registry.entries.len();
+        assert_eq!(registry.entries.capacity(), existing);
+        registry.reserve(&account).unwrap();
+        let capacity = registry.entries.capacity();
+        assert!(capacity > existing);
+        backing_bytes = (capacity * size_of::<Entry>()) as u64;
+        assert_eq!(registry.entries.len(), existing);
+        let grown = cpu.snapshot().unwrap();
+        assert_eq!(
+            grown.usage().work(RenderWork::StorageRelocations) - opening_moves,
+            2
+        );
+        assert_eq!(
+            grown
+                .scope_usage(RenderCpuScope::ImagePayloads)
+                .unwrap()
+                .work(RenderWork::StorageRelocations)
+                - opening
+                    .scope_usage(RenderCpuScope::ImagePayloads)
+                    .unwrap()
+                    .work(RenderWork::StorageRelocations),
+            2
+        );
+        assert_eq!(
+            grown
+                .scope_usage(RenderCpuScope::FrameBacking)
+                .unwrap()
+                .work(RenderWork::StorageRelocations),
+            0
+        );
+        registry.reserve(&account).unwrap(); // actual spare slot: no replacement
+        assert_eq!(registry.entries.capacity(), capacity);
+        assert_eq!(
+            cpu.snapshot()
+                .unwrap()
+                .usage()
+                .work(RenderWork::StorageRelocations),
+            grown.usage().work(RenderWork::StorageRelocations)
+        );
+    }
+    drop(import);
+    assert!(cpu.0.lock().entries.is_empty());
+    assert!(cpu.ensure_healthy().is_ok());
+    assert_eq!(cpu.snapshot().unwrap().fault(), None);
+    // Semantic imports are gone; the actual reusable registry backing remains.
+    assert_eq!(retained(&cpu), baseline + backing_bytes);
 }

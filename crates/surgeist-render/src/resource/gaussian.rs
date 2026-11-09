@@ -254,7 +254,9 @@ fn normalized_positive_gaussian_weights(
         account.work(RenderWork::KernelSampleVisits, 1)?;
         let offset = f64::from(offset);
         let ratio = offset / device_standard_deviation;
-        positive_weights.push_reserved((-0.5 * ratio * ratio).exp());
+        positive_weights
+            .append_slot()?
+            .write((-0.5 * ratio * ratio).exp());
     }
     let mut positive_sum = 0.0;
     for weight in positive_weights.iter().skip(1) {

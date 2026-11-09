@@ -110,7 +110,7 @@ impl FrameContext {
                     source: self.plan_non_empty_local_bounds(source_bounds, transform)?,
                     result: self.plan_non_empty_local_bounds(result_bounds, transform)?,
                 };
-                steps.push_reserved(ResolvedFilterStep {
+                steps.append_slot()?.write(ResolvedFilterStep {
                     source_bounds,
                     result_bounds,
                     spatial_mapping,

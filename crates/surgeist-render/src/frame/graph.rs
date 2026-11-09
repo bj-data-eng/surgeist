@@ -670,7 +670,7 @@ impl SemanticGraphBuilder {
 
         let dependencies = owned_dependencies;
         let reads = owned_reads;
-        self.passes.push_reserved(SemanticGraphPass {
+        self.passes.append_slot()?.write(SemanticGraphPass {
             id,
             intent,
             dependencies,
@@ -698,7 +698,7 @@ impl SemanticGraphBuilder {
                 return Err(GraphValidationError::DuplicateDependency(*dependency));
             }
             self.validate_recorded_dependency(*dependency)?;
-            seen.push_reserved(*dependency);
+            seen.append_slot()?.write(*dependency);
         }
         Ok(())
     }
@@ -737,8 +737,8 @@ impl SemanticGraphBuilder {
                 .recorded_reads
                 .checked_add(1)
                 .ok_or(GraphValidationError::ReadCountOverflow(*resource))?;
-            seen.push_reserved(*resource);
-            indices.push_reserved(resource_index);
+            seen.append_slot()?.write(*resource);
+            indices.append_slot()?.write(resource_index);
         }
         Ok(indices)
     }
@@ -1087,7 +1087,7 @@ impl SemanticGraphBuilder {
                 Some(_) => {}
                 None => return Err(GraphValidationError::ConsumersNotSealed),
             }
-            indices.push_reserved(resource_index);
+            indices.append_slot()?.write(resource_index);
         }
         Ok(indices)
     }
@@ -2061,7 +2061,9 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                         step.spatial_mapping.result,
                         SemanticPassIntent::ColorFilter,
                     )?;
-                    passes.push_reserved(planned_resource_producer(source)?);
+                    passes
+                        .append_slot()?
+                        .write(planned_resource_producer(source)?);
                 }
                 ResolvedFilterOperationIntent::Blur(_) => {
                     let horizontal = self.declare_unary_resource_pass(
@@ -2072,7 +2074,9 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                             input: BlurInput::Rgba,
                         },
                     )?;
-                    passes.push_reserved(planned_resource_producer(horizontal)?);
+                    passes
+                        .append_slot()?
+                        .write(planned_resource_producer(horizontal)?);
                     source = self.declare_unary_resource_pass(
                         horizontal,
                         SemanticResourceRole::FilterIntermediate,
@@ -2081,7 +2085,9 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                             input: BlurInput::Rgba,
                         },
                     )?;
-                    passes.push_reserved(planned_resource_producer(source)?);
+                    passes
+                        .append_slot()?
+                        .write(planned_resource_producer(source)?);
                 }
                 ResolvedFilterOperationIntent::DropShadow(_) => {
                     let horizontal = self.declare_unary_resource_pass(
@@ -2092,7 +2098,9 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                             input: BlurInput::SourceAlpha,
                         },
                     )?;
-                    passes.push_reserved(planned_resource_producer(horizontal)?);
+                    passes
+                        .append_slot()?
+                        .write(planned_resource_producer(horizontal)?);
                     let vertical = self.declare_unary_resource_pass(
                         horizontal,
                         SemanticResourceRole::FilterIntermediate,
@@ -2101,14 +2109,18 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                             input: BlurInput::SourceAlpha,
                         },
                     )?;
-                    passes.push_reserved(planned_resource_producer(vertical)?);
+                    passes
+                        .append_slot()?
+                        .write(planned_resource_producer(vertical)?);
                     let shadow = self.declare_unary_resource_pass(
                         vertical,
                         SemanticResourceRole::ShadowImage,
                         step.spatial_mapping.result,
                         SemanticPassIntent::DropShadowColorize,
                     )?;
-                    passes.push_reserved(planned_resource_producer(shadow)?);
+                    passes
+                        .append_slot()?
+                        .write(planned_resource_producer(shadow)?);
                     let result_id = graph_build(self.builder.declare_resource(
                         SemanticResourceDescriptor::new(
                             SemanticResourceRole::CompositeResult,
@@ -2122,7 +2134,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                         &[source.id, shadow.id],
                         SemanticPassResult::Resource(result_id),
                     ))?;
-                    passes.push_reserved(merge);
+                    passes.append_slot()?.write(merge);
                     self.composites.push(SemanticCompositePlan {
                         pass: merge,
                         kind: SemanticCompositeKind::DropShadow,
@@ -2316,10 +2328,10 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
         }
 
         let mut sources = self.account.temporary(additional_sources.len() + 3)?;
-        sources.push_reserved(parent.current);
-        sources.push_reserved(source);
+        sources.append_slot()?.write(parent.current);
+        sources.append_slot()?.write(source);
         if let Some(coverage) = clip_coverage {
-            sources.push_reserved(coverage);
+            sources.append_slot()?.write(coverage);
         }
         sources.extend_from_slice(additional_sources)?;
         let resource = graph_build(self.builder.declare_resource(
@@ -2336,7 +2348,7 @@ impl<'a> SemanticFrameGraphPlanner<'a> {
                 let mut reads = self.account.temporary(sources.len())?;
                 for source in sources.iter() {
                     self.account.work(RenderWork::GraphEdgeVisits, 1)?;
-                    reads.push_reserved(source.id);
+                    reads.append_slot()?.write(source.id);
                 }
                 reads
             },
@@ -2491,7 +2503,7 @@ fn dependencies_for(
             continue;
         };
         if !edge_contains(&dependencies, &producer, account)? {
-            dependencies.push_reserved(producer);
+            dependencies.append_slot()?.write(producer);
         }
     }
     Ok(dependencies)

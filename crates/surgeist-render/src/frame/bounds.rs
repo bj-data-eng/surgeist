@@ -267,7 +267,7 @@ impl SemanticSourceContribution {
             if let Some(command) = contribution.command {
                 source_bounds = source_bounds.try_union(contribution.source_bounds)?;
                 affected_bounds = affected_bounds.try_union(contribution.affected_bounds)?;
-                contributing_commands.push_reserved(command);
+                contributing_commands.append_slot()?.write(command);
             }
         }
         Ok(Self {

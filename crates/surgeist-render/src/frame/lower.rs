@@ -793,7 +793,9 @@ impl GraphLoweringPassView<'_> {
         let mut result = account.temporary(self.pass.dependencies.len())?;
         for dependency in self.pass.dependencies.iter() {
             account.work(RenderWork::GraphEdgeVisits, 1)?;
-            result.push_reserved(GraphLoweringPassId::from_semantic(*dependency));
+            result
+                .append_slot()?
+                .write(GraphLoweringPassId::from_semantic(*dependency));
         }
         Ok(result)
     }
@@ -856,7 +858,9 @@ impl<'graph> GraphLoweringView<'graph> {
                     break;
                 }
             }
-            result.push_reserved(GraphLoweringResourceView { resource, import });
+            result
+                .append_slot()?
+                .write(GraphLoweringResourceView { resource, import });
         }
         Ok(result)
     }
@@ -869,7 +873,7 @@ impl<'graph> GraphLoweringView<'graph> {
         let mut result = account.temporary(self.graph.passes.len())?;
         for pass in self.graph.passes.iter() {
             account.work(RenderWork::GraphNodeVisits, 1)?;
-            result.push_reserved(GraphLoweringPassView {
+            result.append_slot()?.write(GraphLoweringPassView {
                 graph: self.graph,
                 pass,
             });
@@ -1622,7 +1626,7 @@ fn mapped_shared<T, U>(
     let mut result = account.retained(values.len())?;
     for value in values {
         account.work(work, 1)?;
-        result.push_reserved(map(value)?);
+        result.append_slot()?.write(map(value)?);
     }
     SharedValue::from_accounted(result, &account.storage())
 }

@@ -123,8 +123,9 @@ pub(super) fn decode_padded_rows(
             .get(start..end)
             .ok_or_else(|| readback_failed("mapped readback row was incomplete"))?;
         account.storage().phase(|| {
-            account.work(crate::RenderWork::ReadbackBytes, row.len())?;
-            rgba.extend_reserved_from_slice(row);
+            let slot = rgba.copy_slot(row)?;
+            account.work(crate::RenderWork::ReadbackBytes, slot.element_count())?;
+            slot.write();
             Ok(())
         })?;
     }

@@ -246,33 +246,22 @@ pub(super) fn prepare(
         None
     };
     let mut resolver = Resolver::default();
-    let expected_size = bounded::packed_size(resolved_encoding, glyph_sizes, account)?;
-    let mut packed = bounded::ProducerVec::new(account.retained::<u8>(expected_size.max(4))?);
-    let capacity = packed.capacity();
-    // The public Resolver writes one indivisible serialization. The bound is
-    // derived from qualified streams before the call, never from a sizing replay.
-    account.work(RenderWork::SerializedBytes, expected_size)?;
-    let (layout, ramps, images) = if atlas.is_none() {
-        // Ordinary image packing is inside this indivisible dependency call.
-        // Its Atlas observation is inclusive of glyph/ramp resolution and packed
-        // serialization too; it is not an isolated image-only duration.
-        let resolver = &mut resolver;
-        let values = packed.values();
-        account.phase(RenderPhase::Atlas, move || {
-            Ok(resolver.resolve(resolved_encoding, values))
-        })?
+    let producer = bounded::PackedProducer::new(resolved_encoding, glyph_sizes, account)?;
+    // Ordinary image packing is inside this indivisible dependency call. Its
+    // Atlas observation includes glyph/ramp resolution and serialization.
+    let resolution = if atlas.is_none() {
+        account.phase(RenderPhase::Atlas, || producer.resolve(&mut resolver))?
     } else {
-        resolver.resolve(resolved_encoding, packed.values())
+        producer.resolve(&mut resolver)?
     };
-    if packed.capacity() != capacity || packed.len() != expected_size {
-        return Err(Error::new(
-            crate::BackendErrorCode::RenderFailed,
-            "locked Vello packed-stream correspondence changed",
-        ));
-    }
-    let mut packed = packed.into_accounted()?;
+    let (mut packed, layout, ramps, images) = resolution.into_parts();
     let endpoint_texture = super::gradient_endpoints::prepare(
-        &layout, &mut packed, ramps, glyph_sizes, endpoints, account,
+        &layout,
+        &mut packed,
+        ramps,
+        glyph_sizes,
+        endpoints,
+        account,
     )?;
     let config = RenderConfig::new(
         &layout,

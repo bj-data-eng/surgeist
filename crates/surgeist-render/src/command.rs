@@ -36,7 +36,7 @@ impl<'a> IntoIterator for &'a RenderCommands {
 }
 impl RenderCommands {
     pub(crate) fn new_in(commands: AccountedVec<RenderCommand>, account: &Account) -> Result<Self> {
-        let (commands, hold) = commands.into_parts();
+        let (commands, hold) = commands.into_parts()?;
         Ok(Self {
             commands: shared(commands, Some(hold), None, account)?,
         })
@@ -653,7 +653,7 @@ fn normalize_commands_in_context(
                     copied.push(*glyph)?;
                 }
                 let paint = shared_paint(paint.fill(), capabilities, account)?;
-                let (glyphs, hold) = copied.into_parts();
+                let (glyphs, hold) = copied.into_parts()?;
                 RenderCommand::TextRun {
                     font,
                     size: *size,
