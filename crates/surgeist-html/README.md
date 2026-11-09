@@ -340,7 +340,7 @@ next. Qualified target lookup remains with HTML semantics.
 
 Shared strings and attributes expose immutable allocation views. Controlled
 validation and edits retain their actual inputs on refusal, while callers admit
-work/providers and retain cancellation and allocation accounting. Generic tree
+work/providers through a `Charge` and retain cancellation. Generic tree
 records, allocation identities and mutable backing remain private.
 
 `bounded::values::HtmlStringPool` and `HtmlAttributePool` provide optional owner-scoped
@@ -442,6 +442,36 @@ Failure to issue a nested mark suspends mutations for that root; a paired adapte
 also suspends its other root after restoring any acquired mark. Pooling never
 rewrites an existing semantic no-op or releases immutable report custody. Parser
 and DOM integration remain with those consumers.
+
+## Accounting
+
+`surgeist_html::accounting` is the schema that the HTML crates charge through
+`surgeist-ledger`. `HtmlWork` and `HtmlResource` declare the work and resource
+dimensions with their unit, custody and conversion rate, `HtmlCapScope` names each
+scope that carries caps, and `HtmlAuxiliaryScope` names every other scope the HTML
+crates create. `charging_tariffs` and `aggregate_tariffs` give the conversion rates
+between a charging scope, its cap scope and a host scope.
+
+A bounded operation of this crate charges its own work before it runs, through a
+`surgeist_ledger::Charge` that the caller supplies. A cursor charges in its
+advancing call, and a description, pool action or layout has a charging method. The
+caller decides what a charge means: `Operation::charge_at` and
+`SharedOperation::charge_at` apply it to a ledger scope, and a consumer with its own
+admission rules, such as the parser's first-stop controller, implements the trait
+over its own accounting. An operation that can fault by itself reports
+`HtmlChargedError`, which keeps the caller's stop apart from the operation's fault.
+
+The native builders and the controlled autocomplete materialization enforce their
+typed limits with a private ledger scope and read their typed usage back from it.
+
+Every HTML crate reports a ledger condition under one name. `HtmlAccountingFault`
+covers a release that matches nothing held, a ledger that cannot allocate, a scope of
+another operation, a spent scope bound and the other failures that are not a refused
+cap. `classify` splits a ledger error into a refusal at a cap, an arithmetic overflow
+and a fault. `HtmlCapRefusal` gives the limit and the required total of a refusal,
+and `figures` narrows both to `usize` with an unrepresentable figure reported as
+`HtmlChargeOverflow`. `HtmlConstructionError::accounting_fault` and
+`HtmlAutocompleteMaterializationError::Accounting` carry the fault for this crate.
 
 From the repository root, run focused checks through bounded `pisct run`:
 

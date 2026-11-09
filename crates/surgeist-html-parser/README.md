@@ -220,7 +220,9 @@ the parse's own operation under a ledger profile mode, read back from the report
 failure's `profile()`. `observing_phases()` adds a scope and a ledger phase for each parse
 phase. `HtmlParseAccounting` documents the scope tree, the two scopes a parse adds (six with
 phase observation) and the custody a hosted report releases when it drops. A ledger failure
-that is not a refusal of a charged change stops the parse with `HtmlParseStop::Accounting`.
+that is not a refusal of a charged change stops the parse with `HtmlParseStop::Accounting`,
+which carries the `HtmlAccountingFault` of `surgeist_html::accounting`. A request whose accounting
+already serves another parse stops with `HtmlParseStop::AccountingInUse`.
 
 From the repository root, run focused checks through bounded `pisct run`:
 

@@ -193,8 +193,10 @@ names a scope of an operation the host owns; `HtmlCaptureBuilder::with_accountin
 `HtmlSemanticSession::with_accounting` create their scopes below it, and an import charges a scope
 of its own below the scope its builder was given. `HtmlSemanticAccounting` documents the scope tree
 and the refusals a host cap reports. A ledger failure that is not a refused cap stops with
-`HtmlSemanticFailureKind::Accounting`, `HtmlCaptureError::LedgerState`, or the `LedgerState`
-variant of the error of the operation.
+`HtmlSemanticFailureKind::Accounting`, or with the `Accounting` variant of the error of the
+operation, which carries the `HtmlAccountingFault` of `surgeist_html::accounting`. The usage reads
+of a session and of the controlled OptionValue owner stay infallible and return the last usage
+they read when the ledger cannot be read.
 
 The retained storage values (`retained_storage_usage` of a capture, Base facts graph, URL record
 and hyperlink snapshot) are measurements of actual capacities with checked sums, not counters,
