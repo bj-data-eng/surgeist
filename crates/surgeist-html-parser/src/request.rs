@@ -207,9 +207,12 @@ impl HtmlDocumentParseRequest {
         self.accounting = RequestAccounting::host(accounting);
         self
     }
-    /// Profiles the parse's own operation in `mode`; [`ProfileMode::Off`](surgeist_ledger::ProfileMode::Off) reads
-    /// no clock and keeps no observation. The profile is read from the report
-    /// or failure. A request that supplies accounting is profiled by the
+    /// Profiles the parse's own operation in `mode`;
+    /// [`ProfileMode::Off`](surgeist_ledger::ProfileMode::Off) reads no clock and
+    /// keeps no observation. The profiled operation has the scopes
+    /// `html-parse-host`, `html-parse`, `html-parse-charging` and one scope for
+    /// each of four parse phases, all observed. The profile is read from the
+    /// report or failure. A request that supplies accounting is profiled by the
     /// operation of its host instead.
     #[must_use]
     pub fn with_profile(mut self, mode: surgeist_ledger::ProfileMode) -> Self {

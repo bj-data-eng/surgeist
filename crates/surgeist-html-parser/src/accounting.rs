@@ -6,35 +6,8 @@
 //! HTML work to its own operation supplies a [`HtmlParseAccounting`], which names
 //! a shared operation and a scope of it.
 //!
-//! # Scope tree
-//!
-//! Under the supplied scope the parse creates two scopes:
-//!
-//! ```text
-//! supplied scope                  (the host's, or the root of a profiled private operation)
-//! └── html-parse                  caps of HtmlParseLimits; aggregate tariffs to the supplied scope
-//!     └── html-parse-charging     unlimited; charging tariffs to html-parse
-//! ```
-//!
-//! Every resource and every gauge is charged in `html-parse-charging`, which
-//! also records the work of each category. `html-parse` records the credit total
-//! and carries the caps. With phase observation, four more unlimited scopes
-//! below `html-parse-charging` receive the work of the parse phases:
-//! `html-parse-admission`, `html-parse-construction`, `html-parse-finalization`
-//! and `html-parse-publication`.
-//!
-//! The ledger never frees a scope. A parse adds two scopes to the host's
-//! operation, six with phase observation, so an operation that runs several
-//! parses sizes its scope bound for all of them.
-//!
-//! # Custody
-//!
-//! A report or failure of a parse that ran in a supplied operation keeps the
-//! accounting handle. When the last holder drops, the live balances that remain
-//! in `html-parse-charging` are released into the operation, once, so the
-//! operation shows no live custody of the parse afterward. A release the ledger
-//! refuses cannot panic; a defect found there latches in the operation and is
-//! returned by its next fallible call.
+//! The scope tree a parse creates and the custody its report keeps are described
+//! on [`HtmlParseAccounting`].
 
 use crate::HtmlParseLimits;
 use std::sync::{Arc, OnceLock};
@@ -357,11 +330,44 @@ impl Drop for Lease {
 
 /// Where a parse charges its work: an operation and a scope the host owns.
 ///
-/// A request takes one through `with_accounting`. The parse creates its scopes
-/// below the supplied scope, charges everything there once, and releases what
-/// it still holds when its report or failure is dropped. The module
-/// documentation lists the scopes a parse adds and how they count against the
-/// operation's scope bound: two per parse, six when phases are observed.
+/// A request takes one through `with_accounting`. The parse charges everything
+/// once, in the supplied scope's operation, instead of in an operation of its
+/// own.
+///
+/// # Scope tree
+///
+/// Under the supplied scope the parse creates two scopes:
+///
+/// ```text
+/// supplied scope                  (the host's)
+/// └── html-parse                  caps of the parse limits; aggregate tariffs to the supplied scope
+///     └── html-parse-charging     unlimited; charging tariffs to html-parse
+/// ```
+///
+/// Every resource and every gauge is charged in `html-parse-charging`, which
+/// also records the work of each category. `html-parse` records the credit total
+/// and carries the caps. A gauge, such as the tree depth, stays in the scope that
+/// observed it, so the supplied scope sees no gauge of the parse. With
+/// [`Self::observing_phases`], four more unlimited scopes below
+/// `html-parse-charging` receive the work of the parse phases:
+/// `html-parse-admission`, `html-parse-construction`, `html-parse-finalization`
+/// and `html-parse-publication`.
+///
+/// A refusal by a cap of the supplied scope or of an ancestor stops the parse
+/// with a limit stop that carries that scope's limit.
+///
+/// The ledger never frees a scope. A parse adds two scopes to the host's
+/// operation, six with phase observation, so an operation that runs several
+/// parses sizes its scope bound for all of them.
+///
+/// # Custody
+///
+/// A report or failure of the parse keeps the accounting handle. When the last
+/// holder drops, the live balances that remain in `html-parse-charging` are
+/// released into the operation, once, so the operation shows no live custody of
+/// the parse afterward. A release the ledger refuses cannot panic; the custody
+/// stays, and a defect found there latches in the operation and is returned by
+/// its next fallible call.
 pub struct HtmlParseAccounting {
     ledger: SharedOperation<HtmlWork, HtmlResource>,
     scope: Scope,
