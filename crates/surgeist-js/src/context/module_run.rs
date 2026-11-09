@@ -76,6 +76,12 @@ impl Context {
     /// Retains an actual admitted committed-reaction cause at its selected owner.
     /// False means there is no owner: the caller must still return the error.
     pub(crate) fn retain_committed_reaction_failure(&mut self, error: &mut JsError) -> bool {
+        self.retain_module_failure(error)
+    }
+
+    /// Retains a failed canonical settlement or required module-parent action.
+    /// Remaining owned bookkeeping can close, while new guest actions refuse it.
+    pub(crate) fn retain_module_failure(&mut self, error: &mut JsError) -> bool {
         if self.execution.is_none() && self.module_run_failure.is_none() {
             return false;
         }

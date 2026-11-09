@@ -1823,11 +1823,91 @@ impl SourceTextModule {
     }
 }
 
+/// Returned failures and mandatory closure belong to one finite completion
+/// batch. This owner stores no operation state on the module or its parents.
+#[derive(Default)]
+struct ModuleCompletionFailures {
+    first: Option<JsError>,
+    cleanup: UnwindCleanup,
+}
+impl ModuleCompletionFailures {
+    fn record(&mut self, mut error: JsError, context: &mut Context) {
+        self.cleanup.run(|| {
+            if error.as_engine().is_some() {
+                context.retain_module_failure(&mut error);
+            }
+        });
+        if self.first.is_none() {
+            self.first = Some(error);
+        } else {
+            self.cleanup.run(move || drop(error));
+        }
+    }
+    fn run<T>(&mut self, run: impl FnOnce() -> JsResult<T>) -> Option<JsResult<T>> {
+        let mut result = None;
+        self.cleanup.run(|| result = Some(run()));
+        result
+    }
+    fn settlement(
+        &mut self,
+        module: &SourceTextModule,
+        result: JsResult<JsValue>,
+        context: &mut Context,
+    ) {
+        if let Err(error) = result {
+            // Status publication precedes canonical settlement. Only the actual
+            // Promise-origin completion proves the child's terminal outcome.
+            let completed = module.evaluation.is_complete();
+            self.record(error, context);
+            if matches!(&completed, Ok(false))
+                && let Some(first) = &self.first
+                && first.as_engine().is_some()
+            {
+                self.cleanup.run(|| module.evaluation.interrupt(first));
+            }
+            self.cleanup.run(move || drop(completed.err()));
+        }
+    }
+    fn finish(mut self) -> JsResult<()> {
+        let first = self.first.take();
+        let cleanup = std::mem::take(&mut self.cleanup);
+        cleanup.finish_with(first).map_or(Ok(()), Err)
+    }
+}
+impl Drop for ModuleCompletionFailures {
+    fn drop(&mut self) {
+        let first = self.first.take();
+        self.cleanup.run(move || drop(first));
+        std::mem::take(&mut self.cleanup).finish();
+    }
+}
+
+/// A required completion action observes the selected stop before changing a
+/// still-incomplete parent. An actual completed owner is never invalidated.
+fn check_module_completion(module: &SourceTextModule, context: &mut Context) -> JsResult<bool> {
+    let Err(stop) = context.check_execution_stop() else {
+        return Ok(false);
+    };
+    let completed = module.evaluation.is_complete();
+    if matches!(&completed, Ok(true)) {
+        return Ok(true);
+    }
+    let mut cleanup = UnwindCleanup::default();
+    if matches!(&completed, Ok(false)) {
+        cleanup.run(|| module.evaluation.interrupt(&stop));
+    }
+    cleanup.run(move || drop(completed.err()));
+    Err(cleanup.finish_with(stop))
+}
+
 /// Abstract operation [`AsyncModuleExecutionFulfilled ( module )`][spec].
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-async-module-execution-fulfilled
-#[allow(clippy::mutable_key_type)]
 fn async_module_execution_fulfilled(module: &Module, context: &mut Context) -> JsResult<()> {
+    context.with_module_run(|context| async_module_execution_fulfilled_run(module, context))
+}
+#[allow(clippy::mutable_key_type)]
+fn async_module_execution_fulfilled_run(module: &Module, context: &mut Context) -> JsResult<()> {
     let ModuleKind::SourceText(module_src) = module.kind() else {
         unreachable!("async executed module must be a source text module");
     };
@@ -1835,6 +1915,10 @@ fn async_module_execution_fulfilled(module: &Module, context: &mut Context) -> J
     if let Some(error) = module_src.evaluation.error(module) {
         return Err(error);
     }
+    if check_module_completion(module_src, context)? {
+        return Ok(());
+    }
+    let mut failures = ModuleCompletionFailures::default();
     {
         let mut status = module_src.status.borrow_mut();
         if let ModuleStatus::Evaluating {
@@ -1882,7 +1966,8 @@ fn async_module_execution_fulfilled(module: &Module, context: &mut Context) -> J
         module_src.evaluation.complete();
     }
     // 7. If module.[[TopLevelCapability]] is not empty, then
-    if let Some(cap) = module_src.status.borrow().top_level_capability() {
+    let capability = { module_src.status.borrow().top_level_capability() };
+    if let Some(cap) = capability {
         // a. Assert: module.[[CycleRoot]] and module are the same Module Record.
         debug_assert_eq!(
             module_src.status.borrow().cycle_root(),
@@ -1890,9 +1975,10 @@ fn async_module_execution_fulfilled(module: &Module, context: &mut Context) -> J
         );
 
         // b. Perform ! Call(module.[[TopLevelCapability]].[[Resolve]], undefined, « undefined »).
-        cap.resolve()
-            .call(&JsValue::undefined(), &[], context.access())
-            .js_expect("default `resolve` function cannot fail")?;
+        let result = cap
+            .resolve()
+            .call(&JsValue::undefined(), &[], context.access());
+        failures.settlement(module_src, result, context);
     }
 
     // 8. Let execList be a new empty List.
@@ -1927,15 +2013,17 @@ fn async_module_execution_fulfilled(module: &Module, context: &mut Context) -> J
     });
 
     for module in sorted_exec_list {
-        if matches!(
-            execute_available_module(&module, context)?,
-            ModuleExecution::Stopped
-        ) {
-            break;
+        match failures.run(|| execute_available_module(&module, context)) {
+            Some(Ok(_)) => {}
+            Some(Err(error)) => failures.record(error, context),
+            // A retained actual engine cause still lets every remaining parent
+            // reach its own refusal. An unrelated Rust unwind runs no new guest.
+            None if context.check_execution_stop().is_err() => {}
+            None => break,
         }
     }
-    // 13. Return unused.
-    Ok(())
+    // 13. Return the first real failure only after the owned parent closure.
+    failures.finish()
 }
 
 /// Runs a body whose dependency discovery and cyclic status publication are complete.
@@ -2029,6 +2117,7 @@ impl OrdinaryQueue {
         }
     }
     fn drain(mut self, context: &mut Context, mut stopped: bool) -> JsResult<bool> {
+        let mut failures = ModuleCompletionFailures::default();
         while let Some(module) = self.head.take() {
             let source = module.kind().as_source_text().expect("source work");
             self.head = source.evaluation.take_ordinary_next();
@@ -2081,9 +2170,19 @@ impl OrdinaryQueue {
             if stopped {
                 continue;
             }
-            match completion {
-                Some(Ok(())) => async_module_execution_fulfilled(&module, context)?,
-                Some(Err(error)) => async_module_execution_rejected(&module, &error, context)?,
+            let result = match completion {
+                Some(Ok(())) => failures.run(|| {
+                    async_module_execution_fulfilled(&module, context)
+                        .map(|()| ModuleExecution::Finished)
+                }),
+                Some(Err(error)) => {
+                    let result = failures.run(|| {
+                        async_module_execution_rejected(&module, &error, context)
+                            .map(|()| ModuleExecution::Finished)
+                    });
+                    failures.cleanup.run(move || drop(error));
+                    result
+                }
                 None => {
                     let ready = matches!(
                         &*source.status.borrow(),
@@ -2093,14 +2192,21 @@ impl OrdinaryQueue {
                         }
                     );
                     if ready && !source.evaluation.has_invocation() {
-                        stopped = matches!(
-                            execute_available_module(&module, context)?,
-                            ModuleExecution::Stopped
-                        );
+                        failures.run(|| execute_available_module(&module, context))
+                    } else {
+                        Some(Ok(ModuleExecution::Finished))
                     }
                 }
+            };
+            match result {
+                Some(Ok(ModuleExecution::Stopped)) => stopped = true,
+                Some(Ok(_)) => {}
+                Some(Err(error)) => failures.record(error, context),
+                None if context.check_execution_stop().is_err() => {}
+                None => break,
             }
         }
+        failures.finish()?;
         Ok(stopped)
     }
 }
@@ -2113,12 +2219,23 @@ fn async_module_execution_rejected(
     error: &JsError,
     context: &mut Context,
 ) -> JsResult<()> {
+    context.with_module_run(|context| async_module_execution_rejected_run(module, error, context))
+}
+fn async_module_execution_rejected_run(
+    module: &Module,
+    error: &JsError,
+    context: &mut Context,
+) -> JsResult<()> {
     let ModuleKind::SourceText(module_src) = module.kind() else {
         unreachable!("async executed module must be a source text module");
     };
     if let Some(error) = module_src.evaluation.error(module) {
         return Err(error);
     }
+    if check_module_completion(module_src, context)? {
+        return Ok(());
+    }
+    let mut failures = ModuleCompletionFailures::default();
     {
         let mut status = module_src.status.borrow_mut();
         if let ModuleStatus::Evaluating {
@@ -2171,23 +2288,18 @@ fn async_module_execution_rejected(
     //    module's [[AsyncEvaluationOrder]] internal slot is unused when its
     //    [[EvaluationError]] internal slot is not empty.
 
-    {
-        let status = module_src.status.borrow();
-
-        // 9. If module.[[TopLevelCapability]] is not empty, then
-        if let Some(cap) = status.top_level_capability() {
-            // a. Assert: module.[[CycleRoot]] is module.
-            debug_assert_eq!(status.cycle_root(), Some(module.clone()));
-
-            // b. Perform ! Call(module.[[TopLevelCapability]].[[Reject]], undefined, « error »).
+    let capability = { module_src.status.borrow().top_level_capability() };
+    if let Some(cap) = capability {
+        debug_assert_eq!(
+            module_src.status.borrow().cycle_root(),
+            Some(module.clone())
+        );
+        let result = (|| {
+            let reason = error.clone().into_opaque(context.access())?;
             cap.reject()
-                .call(
-                    &JsValue::undefined(),
-                    &[error.clone().into_opaque(context.access())?],
-                    context.access(),
-                )
-                .js_expect("default `reject` function cannot fail")?;
-        }
+                .call(&JsValue::undefined(), &[reason], context.access())
+        })();
+        failures.settlement(module_src, result, context);
     }
 
     // 10. For each Cyclic Module Record m of module.[[AsyncParentModules]], do
@@ -2202,10 +2314,15 @@ fn async_module_execution_rejected(
             continue;
         }
         // a. Perform AsyncModuleExecutionRejected(m, error).
-        async_module_execution_rejected(&m, error, context)?;
+        match failures.run(|| async_module_execution_rejected(&m, error, context)) {
+            Some(Ok(())) => {}
+            Some(Err(error)) => failures.record(error, context),
+            None if context.check_execution_stop().is_err() => {}
+            None => break,
+        }
     }
-    // 11. Return unused.
-    Ok(())
+    // 11. Complete every owned propagation before returning the first cause.
+    failures.finish()
 }
 
 #[cfg(test)]
