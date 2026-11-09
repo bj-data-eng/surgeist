@@ -786,6 +786,10 @@ and negative extrema until that group is consumed or exported. An exported
 group stays outside the parent's content and adds no local offset. Borders,
 padding, sizing, line participation and context boundaries determine adjacency.
 
+The [clearance determination](../../../references/block-clearance--native-determination.md)
+defines exact-contact admission, signed settlement and qualified source-prefix
+ordering in a common BFC coordinate frame.
+
 An ordinary float between adjoining margins starts from the border position of
 an [otherwise empty anonymous block parent](../../../references/css2--visuren.html--3f334c530cf4.md#float-rules).
 Placement applies float constraints and retains the normal-flow cursor and

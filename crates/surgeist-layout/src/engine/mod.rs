@@ -1,6 +1,7 @@
 pub(crate) mod block_scope;
 pub(crate) mod containment;
 pub(crate) mod contracts;
+mod entry_sources;
 mod root;
 mod rounding;
 pub(crate) use rounding::FragmentAnchor;

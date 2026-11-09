@@ -253,7 +253,7 @@ fn normalization_error(
     })
 }
 
-pub(super) fn refusal(reason: ScopeAlignmentError) -> surgeist_text::Error {
+pub(crate) fn refusal(reason: ScopeAlignmentError) -> surgeist_text::Error {
     surgeist_text::Error::new(
         surgeist_text::ErrorCode::ScopeAlignmentRefused,
         "captured scope alignment refused",
@@ -823,6 +823,7 @@ pub(super) fn overflow(kind: ScopeAlignmentLimitKind) -> surgeist_text::Error {
 
 mod custody;
 pub(super) use custody::ScopeCensus;
+pub(crate) use custody::semantic::SemanticWindowProof;
 pub(crate) use custody::{ScopeAlignmentResources, ScopeLease, ScopeOperation};
 
 fn reserve_buffer<T>(
@@ -887,6 +888,21 @@ pub(crate) fn allocation_buffer<T>(
         reserve_buffer::<T>(operation.limits(), retained, facts.retention(), count, 0)?;
     let lease = facts.retain_payload(census)?;
     Ok((values, lease))
+}
+
+/// Admit an actual Layout owner header without inventing a structural row.
+pub(crate) fn allocation_header<T>(
+    facts: &dyn ScopeAlignmentFacts,
+    operation: &ScopeOperation<'_>,
+) -> surgeist_text::Result<ScopeLease> {
+    let (_, census) = reserve_buffer::<()>(
+        operation.limits(),
+        operation.input_union()?,
+        facts.retention(),
+        0,
+        size_of::<T>(),
+    )?;
+    facts.retain_payload(census)
 }
 
 /// The native fitter consumes f64 facts without erasing the scalar ownership of

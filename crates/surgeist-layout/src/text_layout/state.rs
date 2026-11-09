@@ -561,6 +561,22 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
         })
     }
 
+    /// The issued section is the source authority, including an empty window;
+    /// its admitted native range is retained by the capture owner.
+    pub(crate) fn run_from_segment(
+        &self,
+        container: Node,
+        segment: &surgeist_text::PreparedSourceSegment,
+    ) -> Option<super::AdmittedRun<'input, Node>> {
+        self.associations
+            .runs()
+            .iter()
+            .find(|row| {
+                self.paragraphs[row.paragraph].container == container && row.segment == *segment
+            })
+            .map(|row| self.associations.admitted_run(self.paragraphs, row))
+    }
+
     pub(crate) fn semantic_run(
         &self,
         container: Node,

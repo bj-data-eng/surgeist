@@ -61,6 +61,7 @@ pub(crate) struct Incoming<Node, S: LayoutScalar> {
     pub(crate) node: Node,
     pub(crate) request: ComputeInputOf<S>,
     pub(crate) frame: std::sync::Arc<InheritedFloatExclusions<S, Node>>,
+    pub(crate) cut: Option<super::entry::canonical::Separation<Node, S>>,
 }
 #[derive(Clone)]
 pub(crate) struct Completed<Node, S: LayoutScalar> {
@@ -71,6 +72,7 @@ pub(crate) struct Completed<Node, S: LayoutScalar> {
     pub(crate) ledger: FloatExclusions<S, Node>,
     pub(crate) inherited: usize,
     pub(crate) frame: Option<std::sync::Arc<InheritedFloatExclusions<S, Node>>>,
+    pub(crate) remaining_cut: Option<super::entry::canonical::Separation<Node, S>>,
 }
 pub(crate) struct ChildOutput<Node, S: LayoutScalar> {
     pub(crate) output: ComputeOutputOf<S>,
@@ -144,13 +146,27 @@ impl<Node: Copy + Eq, S: LayoutScalar> State<Node, S> {
         node: Node,
         request: ComputeInputOf<S>,
         frame: InheritedFloatExclusions<S, Node>,
+        cut: Option<super::entry::canonical::Separation<Node, S>>,
     ) {
         self.completed = None;
         self.incoming.push(Incoming {
             node,
             request,
             frame: std::sync::Arc::new(frame),
+            cut,
         });
+    }
+    /// The outer dispatcher authenticated the resident request. Each internal
+    /// sizing/geometry pass starts from that same immutable cut; only the final
+    /// completion returns its progress to the containing traversal.
+    pub(crate) fn entry_cut(
+        &self,
+        node: Node,
+    ) -> Option<super::entry::canonical::Separation<Node, S>> {
+        self.incoming
+            .last()
+            .filter(|entry| entry.node == node)
+            .and_then(|entry| entry.cut)
     }
     pub(crate) fn incoming(
         &self,
@@ -191,6 +207,9 @@ impl<Node: Copy + Eq, S: LayoutScalar> State<Node, S> {
         self.completed.take().filter(|completed| {
             completed.node == node
                 && completed.request == request
+                && completed
+                    .remaining_cut
+                    .is_none_or(|remaining| incoming.cut.is_some_and(|cut| cut.same_cut(remaining)))
                 && completed
                     .used
                     .with_settled_auto_scrollbars(crate::scroll::SettledAutoScrollbarState::INITIAL)

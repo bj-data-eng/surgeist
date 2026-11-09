@@ -387,6 +387,27 @@ pub struct OracleComputeOf<'input, 'output, S: LayoutScalar = DefaultScalar> {
     final_layouts: &'output mut HashMap<u32, LayoutOutputEntryOf<u32, S>>,
 }
 
+impl<'input, S: LayoutScalar> OracleComputeOf<'input, '_, S> {
+    /// The oracle records real requests but gives each prospective traversal
+    /// private output storage, just as its existing overflow observation does.
+    fn staging<'trial>(
+        &'trial mut self,
+        block_floats: crate::block::float_context::State<u32, S>,
+        layouts: &'trial mut HashMap<u32, LayoutOutputEntryOf<u32, S>>,
+        final_layouts: &'trial mut HashMap<u32, LayoutOutputEntryOf<u32, S>>,
+    ) -> OracleComputeOf<'input, 'trial, S> {
+        OracleComputeOf {
+            block_floats,
+            children: self.children,
+            layout_inputs: self.layout_inputs,
+            measurements: self.measurements,
+            compute_inputs: &mut *self.compute_inputs,
+            layouts,
+            final_layouts,
+        }
+    }
+}
+
 impl<S: LayoutScalar> OracleTreeOf<S> {
     pub fn borrow_compute(&mut self) -> OracleComputeOf<'_, '_, S> {
         OracleComputeOf {
@@ -453,6 +474,42 @@ impl<'input, S: LayoutScalar> Compute<'input> for OracleComputeOf<'input, '_, S>
         self.measurements.contains_key(&node)
     }
 
+    fn qualify_entry(
+        &mut self,
+        query: crate::block::entry::EntryQuery<Self::Node, S>,
+    ) -> crate::block::entry::EntryResult<Self::Node, S, core::convert::Infallible> {
+        if query.purpose == crate::block::entry::EntryPurpose::StartOnly {
+            return crate::block::entry::observe(self, query);
+        }
+        let incoming = query
+            .incoming
+            .as_ref()
+            .filter(|incoming| incoming.node == query.node && incoming.request == query.input)
+            .ok_or_else(|| crate::block::float_context::missing(query.node))?;
+        let floats = self.block_floats.fork_framed(incoming.clone());
+        let mut layouts = HashMap::new();
+        let mut final_layouts = HashMap::new();
+        let mut trial = self.staging(floats, &mut layouts, &mut final_layouts);
+        crate::block::entry::resolve_framed(&mut trial, query)
+    }
+
+    fn measure_entry_float(
+        &mut self,
+        node: Self::Node,
+        input: ComputeInputOf<S>,
+    ) -> crate::LayoutResultOf<Self::Node, ComputeOutputOf<S>, S> {
+        if input.run_mode() != RunMode::ComputeSize || self.node_input(node).float.is_none() {
+            return Err(crate::block::float_context::missing(node));
+        }
+        // This executor has no Text/Formatted context. A detached real numeric
+        // computation supplies the float's used size without exporting its body.
+        let floats = self.block_floats.fork();
+        let mut layouts = HashMap::new();
+        let mut final_layouts = HashMap::new();
+        self.staging(floats, &mut layouts, &mut final_layouts)
+            .compute_child(node, input)
+    }
+
     fn node_input(&self, node: Self::Node) -> &'input NodeInputOf<S> {
         match self.layout_inputs.get(&node) {
             Some(input) => input
@@ -499,15 +556,8 @@ impl<'input, S: LayoutScalar> Compute<'input> for OracleComputeOf<'input, '_, S>
     > {
         let mut layouts = HashMap::new();
         let mut final_layouts = HashMap::new();
-        let mut observation = OracleComputeOf {
-            block_floats: self.block_floats.fork(),
-            children: self.children,
-            layout_inputs: self.layout_inputs,
-            measurements: self.measurements,
-            compute_inputs: &mut *self.compute_inputs,
-            layouts: &mut layouts,
-            final_layouts: &mut final_layouts,
-        };
+        let floats = self.block_floats.fork();
+        let mut observation = self.staging(floats, &mut layouts, &mut final_layouts);
         probe.observe(&mut observation, node)
     }
 

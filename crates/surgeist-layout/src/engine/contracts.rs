@@ -71,6 +71,17 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
         }
         self.compute_child(node, input.with_run_mode(crate::RunMode::ComputeSize))
     }
+    /// Real used-box sizing of an independent source float in a disposable
+    /// entry traversal. The packet producer retains its detached body policy;
+    /// no complete packet or descendant publication escapes entry qualification.
+    fn measure_entry_float(
+        &mut self,
+        node: Self::Node,
+        input: ComputeInputOf<Self::Scalar>,
+    ) -> LayoutResultOf<Self::Node, ComputeOutputOf<Self::Scalar>, Self::Scalar, M> {
+        self.probe_float_child(node, input, super::session::FloatChildTrial::Detached)
+            .map(|packet| packet.output)
+    }
     fn block_float_work(&self, node: Self::Node) -> bool {
         crate::block::float_context::discover_work(self, node)
     }
@@ -79,10 +90,11 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
         node: Self::Node,
         input: ComputeInputOf<Self::Scalar>,
         frame: crate::block::InheritedFloatExclusions<Self::Scalar, Self::Node>,
+        cut: Option<crate::block::entry::canonical::Separation<Self::Node, Self::Scalar>>,
     ) -> FloatContextChildResult<Self::Node, Self::Scalar, M> {
         self.block_float_state()
             .ok_or_else(|| crate::block::float_context::missing(node))?
-            .push(node, input, frame);
+            .push(node, input, frame, cut);
         let result = self.compute_child(node, input);
         let completed = self
             .block_float_state()

@@ -252,19 +252,25 @@ impl LineDisposition {
     pub(crate) fn resolve(line: &FinalizedLine) -> Result<Self, FitError> {
         let selected = line.selected_line();
         let request = selected.request();
-        if request.context.end == LineEnd::Forced
-            || line.has_in_flow_content()
-            || request.controls.iter().any(|control| {
+        if Self::participates(
+            request.context.end,
+            line.has_in_flow_content(),
+            request.controls.iter().any(|control| {
                 control
                     .boundary
                     .as_ref()
                     .is_some_and(|edge| edge.participates())
-            })
-        {
+            }),
+        ) {
             Ok(Self::Formatted)
         } else {
             Ok(Self::NonFormatted(line.nonformatted()?))
         }
+    }
+    /// Layout's line-existence rule consumes Text-owned semantic content and
+    /// actual termination/edge authority, never numerical height or advance.
+    pub(crate) fn participates(end: LineEnd, content: bool, boundary: bool) -> bool {
+        end == LineEnd::Forced || content || boundary
     }
     pub(crate) fn is_formatted(&self) -> bool {
         matches!(self, Self::Formatted)

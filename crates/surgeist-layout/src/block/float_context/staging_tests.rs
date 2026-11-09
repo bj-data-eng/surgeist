@@ -98,7 +98,7 @@ fn framed<S: LayoutScalar>() {
     owner
         .block_float_state()
         .unwrap()
-        .push(2, resident_request, resident_frame);
+        .push(2, resident_request, resident_frame, None);
     let resident = owner
         .block_float_state()
         .unwrap()
@@ -106,6 +106,7 @@ fn framed<S: LayoutScalar>() {
         .unwrap();
     let target_request = normal_request(10.0, 5.0, Size::new(S::from_f64(40.0), S::from_f64(10.0)));
     let target = Incoming {
+        cut: None,
         node: 4,
         request: target_request,
         frame: std::sync::Arc::new(

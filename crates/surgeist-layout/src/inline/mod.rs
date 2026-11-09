@@ -32,7 +32,8 @@ mod wrap_inside_auto_tests;
 mod wrap_inside_tests;
 
 pub(crate) use input::{
-    InlineParticipantKindOf, InlineParticipantProjection, continues_run, run_ranges, starts_run,
+    InlineParticipantKindOf, InlineParticipantProjection, continues_run, entry_participation,
+    run_ranges, starts_run,
 };
 
 #[cfg(test)]

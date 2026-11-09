@@ -377,15 +377,11 @@ pub(crate) fn compute_tree_leaf_with_intrinsic_icb<Tree>(
 where
     Tree: LayoutTree,
 {
-    let resolved = resolve_leaf_values_for_input(input, style)
-        .map_err(|error| sizing_resolution_error(node, error))?;
-
     let site = LayoutErrorSiteOf::Node(node);
-    compute_leaf_with_resolved_values(
-        site,
+    compute_leaf_with_sampler(
+        node,
         input,
         style,
-        resolved,
         intrinsic_icb,
         |measure_input| match tree.measure_leaf(node, measure_input) {
             Some(Ok(output)) => Ok(output),
@@ -402,6 +398,28 @@ where
                 ),
             )),
         },
+    )
+}
+
+/// Private producer injection for operation-local native observations. All
+/// property lowering, used-size/scrollbar passes and output validation remain
+/// in this measurement owner; a sampler supplies only the actual raw result.
+pub(crate) fn compute_leaf_with_sampler<Node: Copy, S: LayoutScalar, M>(
+    node: Node,
+    input: ComputeInputOf<S>,
+    style: &NodeInputOf<S>,
+    intrinsic_icb: Option<Size<NonNegativeFiniteOf<S>>>,
+    sample: impl FnMut(LeafMeasureInputOf<S>) -> LayoutResultOf<Node, Size<S>, S, M>,
+) -> LayoutResultOf<Node, ComputeOutputOf<S>, S, M> {
+    let resolved = resolve_leaf_values_for_input(input, style)
+        .map_err(|error| sizing_resolution_error(node, error))?;
+    compute_leaf_with_resolved_values(
+        LayoutErrorSiteOf::Node(node),
+        input,
+        style,
+        resolved,
+        intrinsic_icb,
+        sample,
     )
 }
 
@@ -756,6 +774,14 @@ where
         operation,
         LayoutErrorKindOf::InternalInvariant(invariant),
     )
+}
+
+pub(crate) fn validate_native_sample<Node: Copy, S: LayoutScalar, M>(
+    node: Node,
+    measured: Size<S>,
+) -> LayoutResultOf<Node, Size<S>, S, M> {
+    validate_measurement_output(measured)
+        .map_err(|error| leaf_measurement_error_at_site(LayoutErrorSiteOf::Node(node), error))
 }
 
 fn validate_measurement_output<S, M>(measured: Size<S>) -> Result<Size<S>, LeafMeasureErrorOf<S, M>>

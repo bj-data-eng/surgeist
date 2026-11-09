@@ -1077,53 +1077,14 @@ where
                     _ => unreachable!("validated actual control retains its normalized role"),
                 };
                 let boundary = endpoint
-                    .map(|endpoint| {
-                        let advance = endpoint.edge.border_padding_advance().to_f64();
-                        let crate::LayoutInputViewOf::InlineBoundary(input) = tree.layout_input(node) else { unreachable!("an endpoint retains its normalized input"); };
-                        let Some(parent_axes) = input.parent_edge_axes() else {
-                            return surgeist_text::InlineBoundaryAllocation::contribution(advance)
-                                .map_err(|error| text_run_error(container, error.into()));
-                        };
-                        let limits = binding.occurrence.captured_control().and_then(|control| control.scope().scope_alignment_limits());
-                        let inspect = || {
-                            if let Some(limits) = limits {
-                                crate::text_layout::scope_alignment::ScopeAlignmentFacts::visit(&context.scope_alignments, limits, 1)?;
-                            }
-                            Ok::<_, surgeist_text::Error>(())
-                        };
-                        let fallback = associations.box_for_endpoint(node, inspect)
-                            .map_err(|error| text_run_error(container, error.into()))?;
-                        let (wrapping, _) = tree.wrapping_context().ok_or_else(|| crate::inline_wrapping::wrapping_error(container, crate::WrappingScopeError::MissingCapture))?;
-                        let (owner, parent) = wrapping.text_box_edge_sources(container, node, fallback.as_ref(), &text_binding.expect("the actual Text branch retains its binding").prepared, inspect)
-                            .map_err(|error| text_run_error(container, error.into()))?
-                            .ok_or_else(|| crate::inline_wrapping::wrapping_error(container, crate::WrappingScopeError::MissingCapture))?;
-                        if let Some(scope) = parent.captured_scope().filter(|scope| scope.role() == surgeist_text::ScopeRole::Domain) {
-                            if let Some(limits) = scope.scope_alignment_limits() {
-                                crate::text_layout::scope_alignment::ScopeAlignmentFacts::visit(&context.scope_alignments, limits, associations.captured_binding_work(scope))
-                                    .map_err(|error| text_run_error(container, error.into()))?;
-                            }
-                            if let Some(crate::TextScopeAssociation::ParagraphContainer(parent_node)) = associations.captured_binding(scope) {
-                            let parent_input = tree.layout_input(parent_node).as_box().ok_or_else(|| crate::inline_wrapping::wrapping_error(parent_node, crate::WrappingScopeError::CaptureAssociation))?;
-                            let expected = crate::FlowAxes::new(parent_input.writing_mode, parent_input.direction);
-                            if parent_axes != expected {
-                                return Err(LayoutErrorOf::new(LayoutErrorSiteOf::Node(node), LayoutOperation::TextCapture,
-                                    LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InlineBoundaryParentMismatch { expected: Some(expected), actual: Some(parent_axes) })));
-                            }
-                        }
-                        }
-                        let side = match (context.orientation, parent_axes.inline_start()) {
-                            (surgeist_text::LineOrientation::Horizontal, crate::PhysicalSide::Left)
-                            | (surgeist_text::LineOrientation::Vertical | surgeist_text::LineOrientation::SidewaysClockwise | surgeist_text::LineOrientation::SidewaysCounterclockwise, crate::PhysicalSide::Top) => surgeist_text::LineEdgeSide::Start,
-                            (surgeist_text::LineOrientation::Horizontal, crate::PhysicalSide::Right)
-                            | (surgeist_text::LineOrientation::Vertical | surgeist_text::LineOrientation::SidewaysClockwise | surgeist_text::LineOrientation::SidewaysCounterclockwise, crate::PhysicalSide::Bottom) => surgeist_text::LineEdgeSide::End,
-                            _ => return Err(LayoutErrorOf::new(LayoutErrorSiteOf::Node(node), LayoutOperation::TextCapture,
-                                LayoutErrorKindOf::InvalidInput(LayoutInvalidInputOf::InlineBoundaryParentAxis { parent: parent_axes, formatter: constants.flow_axes }))),
-                        };
-                        let context = text_binding.expect("the actual Text branch retains its binding").prepared.inline_box_edge_context(owner, parent, side)
-                            .map_err(|error| text_run_error(container, error.into()))?;
-                        let components = crate::text_layout::edge_components::from_native(endpoint.edge).map_err(|error| text_run_error(container, error.into()))?;
-                        Ok(surgeist_text::InlineBoundaryAllocation::box_edge(context, components))
-                    })
+                    .map(|endpoint| BoundaryAllocationContext {
+                        container,
+                        prepared: &text_binding.expect("the actual Text branch retains its binding").prepared,
+                        associations: &associations,
+                        resources: &context.scope_alignments,
+                        orientation: context.orientation,
+                        axes: constants.flow_axes,
+                    }.allocate(tree, node, &binding.occurrence, endpoint))
                     .transpose()?;
                 Ok(crate::text_layout::run::Control {
                     node,
@@ -2466,6 +2427,152 @@ where
 
 fn resolve_atomic_inline_margin<S: LayoutScalar>(margin: Edges<Option<S>>) -> Edges<S> {
     margin.map(|value| value.unwrap_or(S::ZERO))
+}
+
+/// One source-backed endpoint allocation shared by actual fitting and entry
+/// semantics. Struts and metrics are deliberately outside this operation.
+pub(super) struct BoundaryAllocationContext<'a, Node> {
+    pub(super) container: Node,
+    pub(super) prepared: &'a surgeist_text::PreparedText,
+    pub(super) associations: &'a crate::text_layout::capture::ScopeAssociations<Node>,
+    pub(super) resources: &'a dyn crate::text_layout::scope_alignment::ScopeAlignmentFacts,
+    pub(super) orientation: surgeist_text::LineOrientation,
+    pub(super) axes: crate::FlowAxes,
+}
+impl<Node: Copy + Eq> BoundaryAllocationContext<'_, Node> {
+    pub(super) fn allocate<'input, Tree, S, M>(
+        &self,
+        tree: &Tree,
+        node: Node,
+        occurrence: &surgeist_text::PreparedControl,
+        endpoint: crate::inline::InlineEndpointOf<S>,
+    ) -> LayoutResultOf<Node, surgeist_text::InlineBoundaryAllocation, S, M>
+    where
+        Tree: Compute<'input, M, Node = Node, Scalar = S>,
+        Node: 'input,
+        S: LayoutScalar,
+    {
+        let advance = endpoint.edge.border_padding_advance().to_f64();
+        let crate::LayoutInputViewOf::InlineBoundary(input) = tree.layout_input(node) else {
+            unreachable!("an endpoint retains its normalized input");
+        };
+        let Some(parent_axes) = input.parent_edge_axes() else {
+            return surgeist_text::InlineBoundaryAllocation::contribution(advance)
+                .map_err(|error| text_run_error(self.container, error.into()));
+        };
+        let limits = occurrence
+            .captured_control()
+            .and_then(|control| control.scope().scope_alignment_limits());
+        let inspect = || {
+            if let Some(limits) = limits {
+                crate::text_layout::scope_alignment::ScopeAlignmentFacts::visit(
+                    self.resources,
+                    limits,
+                    1,
+                )?;
+            }
+            Ok::<_, surgeist_text::Error>(())
+        };
+        let fallback = self
+            .associations
+            .box_for_endpoint(node, inspect)
+            .map_err(|error| text_run_error(self.container, error.into()))?;
+        let (wrapping, _) = tree.wrapping_context().ok_or_else(|| {
+            crate::inline_wrapping::wrapping_error(
+                self.container,
+                crate::WrappingScopeError::MissingCapture,
+            )
+        })?;
+        let (owner, parent) = wrapping
+            .text_box_edge_sources(
+                self.container,
+                node,
+                fallback.as_ref(),
+                self.prepared,
+                inspect,
+            )
+            .map_err(|error| text_run_error(self.container, error.into()))?
+            .ok_or_else(|| {
+                crate::inline_wrapping::wrapping_error(
+                    self.container,
+                    crate::WrappingScopeError::MissingCapture,
+                )
+            })?;
+        if let Some(scope) = parent
+            .captured_scope()
+            .filter(|scope| scope.role() == surgeist_text::ScopeRole::Domain)
+        {
+            if let Some(limits) = scope.scope_alignment_limits() {
+                crate::text_layout::scope_alignment::ScopeAlignmentFacts::visit(
+                    self.resources,
+                    limits,
+                    self.associations.captured_binding_work(scope),
+                )
+                .map_err(|error| text_run_error(self.container, error.into()))?;
+            }
+            if let Some(crate::TextScopeAssociation::ParagraphContainer(parent_node)) =
+                self.associations.captured_binding(scope)
+            {
+                let parent_input = tree.layout_input(parent_node).as_box().ok_or_else(|| {
+                    crate::inline_wrapping::wrapping_error(
+                        parent_node,
+                        crate::WrappingScopeError::CaptureAssociation,
+                    )
+                })?;
+                let expected =
+                    crate::FlowAxes::new(parent_input.writing_mode, parent_input.direction);
+                if parent_axes != expected {
+                    return Err(LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(node),
+                        LayoutOperation::TextCapture,
+                        LayoutErrorKindOf::InvalidInput(
+                            LayoutInvalidInputOf::InlineBoundaryParentMismatch {
+                                expected: Some(expected),
+                                actual: Some(parent_axes),
+                            },
+                        ),
+                    ));
+                }
+            }
+        }
+        let side = match (self.orientation, parent_axes.inline_start()) {
+            (surgeist_text::LineOrientation::Horizontal, crate::PhysicalSide::Left)
+            | (
+                surgeist_text::LineOrientation::Vertical
+                | surgeist_text::LineOrientation::SidewaysClockwise
+                | surgeist_text::LineOrientation::SidewaysCounterclockwise,
+                crate::PhysicalSide::Top,
+            ) => surgeist_text::LineEdgeSide::Start,
+            (surgeist_text::LineOrientation::Horizontal, crate::PhysicalSide::Right)
+            | (
+                surgeist_text::LineOrientation::Vertical
+                | surgeist_text::LineOrientation::SidewaysClockwise
+                | surgeist_text::LineOrientation::SidewaysCounterclockwise,
+                crate::PhysicalSide::Bottom,
+            ) => surgeist_text::LineEdgeSide::End,
+            _ => {
+                return Err(LayoutErrorOf::new(
+                    LayoutErrorSiteOf::Node(node),
+                    LayoutOperation::TextCapture,
+                    LayoutErrorKindOf::InvalidInput(
+                        LayoutInvalidInputOf::InlineBoundaryParentAxis {
+                            parent: parent_axes,
+                            formatter: self.axes,
+                        },
+                    ),
+                ));
+            }
+        };
+        let context = self
+            .prepared
+            .inline_box_edge_context(owner, parent, side)
+            .map_err(|error| text_run_error(self.container, error.into()))?;
+        let components = crate::text_layout::edge_components::from_native(endpoint.edge)
+            .map_err(|error| text_run_error(self.container, error.into()))?;
+        Ok(surgeist_text::InlineBoundaryAllocation::box_edge(
+            context, components,
+        ))
+    }
 }
 
 pub(super) fn text_run_error<Node: Copy, S: LayoutScalar, M>(

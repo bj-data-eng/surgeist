@@ -171,6 +171,7 @@ struct BlockResult<Node, S: LayoutScalar> {
     output: ComputeOutputOf<S>,
     used: ComputeInputOf<S>,
     floats: Option<(FloatExclusions<S, Node>, usize)>,
+    remaining_cut: Option<entry::canonical::Separation<Node, S>>,
 }
 
 /// Actual empty-box sizing supplied by the containment owner. Scalar demand
@@ -318,6 +319,7 @@ where
                 ledger,
                 inherited,
                 frame: incoming.map(|incoming| incoming.frame),
+                remaining_cut: result.remaining_cut,
             });
         }
         Ok(result.output)
@@ -369,6 +371,7 @@ where
                 )?),
             used: input,
             floats: None,
+            remaining_cut: None,
         });
     }
     if contained_size == Size::NONE
@@ -394,6 +397,7 @@ where
                 )?),
             used: input,
             floats: None,
+            remaining_cut: None,
         });
     }
     let logical_inner_size = constants.logical_node_inner_size();
@@ -718,6 +722,7 @@ where
             output,
             used: input,
             floats: Some((final_pass.float_context, final_pass.inherited_floats)),
+            remaining_cut: final_pass.remaining_cut,
         })
     } else {
         let mut accepted_contributions = final_pass.contributions;
@@ -796,6 +801,7 @@ where
             output,
             used: input,
             floats: Some((final_pass.float_context, final_pass.inherited_floats)),
+            remaining_cut: final_pass.remaining_cut,
         })
     }
 }

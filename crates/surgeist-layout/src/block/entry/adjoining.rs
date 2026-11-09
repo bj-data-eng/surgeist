@@ -10,6 +10,7 @@ pub(in crate::block) struct AdjoiningFlow<S: LayoutScalar> {
     pub(in crate::block) start_open: bool,
     pub(in crate::block) end_adjoins_parent: bool,
     pub(in crate::block) all_through: bool,
+    clearance_component: bool,
 }
 
 impl<S: LayoutScalar> AdjoiningFlow<S> {
@@ -21,6 +22,7 @@ impl<S: LayoutScalar> AdjoiningFlow<S> {
             start_open: collapses_start,
             end_adjoins_parent: collapses_start,
             all_through: true,
+            clearance_component: false,
         }
     }
 
@@ -61,6 +63,19 @@ impl<S: LayoutScalar> AdjoiningFlow<S> {
         self.cursor = self.cursor + start.offset;
     }
 
+    /// Introduced clearance separates the preceding component from the
+    /// child's own adjoining margins, even when its amount is zero or negative.
+    pub(in crate::block) fn begin_clearance(&mut self, border: S) {
+        self.start_open = false;
+        self.active = CollapsibleMarginOf::ZERO;
+        self.all_through = false;
+        self.clearance_component = true;
+        self.end_adjoins_parent = false;
+        // Do not recover this position by adding the separately rounded
+        // clearance and top margin: the accepted common-BFC border owns it.
+        self.cursor = border;
+    }
+
     /// The placement owner supplies the exact accepted progression separately
     /// from the child's border position. Through-empty boxes retain the open
     /// group's extrema; a non-through body starts a new trailing component.
@@ -78,8 +93,9 @@ impl<S: LayoutScalar> AdjoiningFlow<S> {
         } else {
             self.all_through = false;
             self.active = bottom;
+            self.clearance_component = false;
         }
-        self.end_adjoins_parent = child_adjoins_parent;
+        self.end_adjoins_parent = child_adjoins_parent && !self.clearance_component;
     }
 
     pub(in crate::block) fn adjoining_displacement(&self) -> S {
@@ -99,6 +115,7 @@ impl<S: LayoutScalar> AdjoiningFlow<S> {
             self.active = CollapsibleMarginOf::ZERO;
             self.end_adjoins_parent = false;
             self.all_through = false;
+            self.clearance_component = false;
         }
     }
 }

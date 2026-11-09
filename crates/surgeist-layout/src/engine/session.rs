@@ -24,6 +24,13 @@ type CanonicalFrames<Tree> = Vec<
     crate::text_layout::state::CanonicalFrame<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
 >;
 
+type EntrySources<Tree> = std::sync::Arc<
+    std::sync::Mutex<
+        super::entry_sources::SourceMemo<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>,
+    >,
+>;
+type EntryFunding<Tree> = Option<super::entry_sources::Funding<<Tree as Traverse>::Scalar>>;
+
 type GroupBasis<Tree> =
     Option<crate::group_alignment::Basis<<Tree as Traverse>::Node, <Tree as Traverse>::Scalar>>;
 
@@ -66,6 +73,7 @@ where
     fragment_intrinsics:
         Option<std::sync::Arc<crate::block::intrinsic::FragmentContext<Tree::Node, Tree::Scalar>>>,
     block_floats: crate::block::float_context::State<Tree::Node, Tree::Scalar>,
+    entry_sources: Option<EntrySources<Tree>>,
     wrapping: Option<std::sync::Arc<crate::inline_wrapping::WrappingContext<Tree::Node>>>,
     flow_graph: Option<&'a crate::engine::validation::ValidationGraph<Tree::Node>>,
     wrapping_uncached: Vec<Tree::Node>,
@@ -217,6 +225,7 @@ where
             fragment_allocations: Vec::new(),
             fragment_intrinsics: None,
             block_floats: crate::block::float_context::State::new(),
+            entry_sources: None,
             wrapping: None,
             flow_graph: None,
             wrapping_uncached: Vec::new(),
@@ -232,6 +241,33 @@ where
             cache_clear_entries,
             invalidated_nodes,
         }
+    }
+
+    fn entry_funding(&self, node: Tree::Node) -> SessionResult<Tree, EntryFunding<Tree>> {
+        use crate::text_layout::scope_alignment::ScopeAlignmentFacts;
+        let Some(text) = &self.text else {
+            return Ok(None);
+        };
+        let error = |error| {
+            LayoutErrorOf::new(
+                LayoutErrorSiteOf::Node(node),
+                LayoutOperation::ChildLayout,
+                LayoutErrorKindOf::Text(error),
+            )
+        };
+        let limits = text.scope_resources.key_limits().map_err(error)?;
+        for binding in text.paragraphs {
+            if let Some(limits) = limits {
+                text.scope_resources.visit(limits, 1).map_err(error)?;
+            }
+            if binding.prepared.scope_alignment_retention().is_some() {
+                return Ok(Some(super::entry_sources::Funding {
+                    resources: text.scope_resources.clone(),
+                    prepared: binding.prepared.clone(),
+                }));
+            }
+        }
+        Ok(None)
     }
 
     /// Disposable custody for an exact native child trial. A framed caller
@@ -263,6 +299,7 @@ where
             .filter(|node| scope.contains(node))
             .collect();
         let mut probe = Self::new(self.tree, dirty);
+        probe.entry_sources = self.entry_sources.clone();
         probe.block_floats = match incoming {
             Some(incoming) => self.block_floats.fork_framed(incoming),
             None => self.block_floats.fork(),
@@ -1092,15 +1129,60 @@ where
         }
         let style = self.tree.node_input(node);
         if self.tree.has_leaf_measurement(node) {
-            let result = if let Some(context) = &self.fragment_intrinsics {
-                let icb = context
+            let icb = self.fragment_intrinsics.as_ref().map(|context| {
+                context
                     .request
                     .sizing_request()
                     .orthogonal_fallback()
                     .initial_containing_block()
                     .map(|value| {
                         value.expect("native intrinsic context has first-frame ICB authority")
-                    });
+                    })
+            });
+            let result = if let Some(memo) = &self.entry_sources {
+                let funding = self.entry_funding(node)?;
+                crate::measurement::compute_leaf_with_sampler(node, input, style, icb, |request| {
+                    let mut memo = memo
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                    let error = |error| {
+                        LayoutErrorOf::new(
+                            LayoutErrorSiteOf::Node(node),
+                            LayoutOperation::ChildLayout,
+                            LayoutErrorKindOf::Text(error),
+                        )
+                    };
+                    if let Some(result) =
+                        memo.find(node, request, funding.as_ref()).map_err(error)?
+                    {
+                        return Ok(result);
+                    }
+                    memo.reserve(funding.as_ref()).map_err(error)?;
+                    let result = self
+                        .tree
+                        .measure_leaf(node, request)
+                        .ok_or_else(|| {
+                            LayoutErrorOf::new(
+                                LayoutErrorSiteOf::Node(node),
+                                LayoutOperation::LeafMeasurement,
+                                LayoutErrorKindOf::InternalInvariant(
+                                    LayoutInternalInvariant::MissingLeafMeasurementProvider,
+                                ),
+                            )
+                        })?
+                        .map_err(|error| {
+                            LayoutErrorOf::new(
+                                LayoutErrorSiteOf::Node(node),
+                                LayoutOperation::LeafMeasurement,
+                                LayoutErrorKindOf::Measurement(error),
+                            )
+                        })?;
+                    let result = crate::measurement::validate_native_sample(node, result)?;
+                    memo.record(node, request, result, funding.as_ref())
+                        .map_err(error)?;
+                    Ok(result)
+                })
+            } else if let Some(icb) = icb {
                 crate::measurement::compute_tree_leaf_with_intrinsic_icb(
                     self.tree,
                     node,
@@ -1230,7 +1312,7 @@ where
         &mut self,
         query: crate::block::entry::EntryQuery<Self::Node, Self::Scalar>,
     ) -> SessionResult<Tree, crate::block::entry::EntryObservation<Self::Node, Self::Scalar>> {
-        use crate::block::entry::{EntryFrontier, EntryObservation, EntryPurpose};
+        use crate::block::entry::EntryPurpose;
         if query.purpose == EntryPurpose::StartOnly {
             return crate::block::entry::observe(self, query);
         }
@@ -1241,20 +1323,48 @@ where
         {
             return Err(crate::block::float_context::missing(query.node));
         }
+        if let Some(text) = &mut self.text
+            && let Some(binding) = text
+                .paragraphs
+                .iter()
+                .find(|binding| binding.prepared.scope_alignment_retention().is_some())
+                .or_else(|| text.paragraphs.first())
+        {
+            text.scope_resources =
+                text.scope_resources
+                    .entry_view(&binding.prepared)
+                    .map_err(|error| {
+                        LayoutErrorOf::new(
+                            LayoutErrorSiteOf::Node(query.node),
+                            LayoutOperation::ChildLayout,
+                            LayoutErrorKindOf::Text(error),
+                        )
+                    })?;
+        }
+        if self.entry_sources.is_none() {
+            let header = self
+                .entry_funding(query.node)?
+                .as_ref()
+                .map(|funding| {
+                    funding.header::<std::sync::Mutex<
+                            super::entry_sources::SourceMemo<Tree::Node, Tree::Scalar>,
+                        >>()
+                })
+                .transpose()
+                .map_err(|error| {
+                    LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(query.node),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::Text(error),
+                    )
+                })?;
+            self.entry_sources = Some(std::sync::Arc::new(std::sync::Mutex::new(
+                super::entry_sources::SourceMemo::new(header),
+            )));
+        }
         let mut trial =
             self.child_staging(query.node, FloatChildTrial::InFlow, query.incoming.clone())?;
-        let mut observation = crate::block::entry::observe(&mut trial, query)?;
-        loop {
-            observation = match observation {
-                EntryObservation::Demand(demand) if demand.kind == EntryFrontier::Leaf => {
-                    demand.measure_leaf(&mut trial)?
-                }
-                ready => return Ok(ready),
-            };
-            if let EntryObservation::Demand(demand) = &observation {
-                demand.validate_window(&mut trial)?;
-            }
-        }
+        crate::block::entry::resolve_framed(&mut trial, query)
     }
     fn measure_entry_leaf(
         &mut self,
@@ -1673,6 +1783,24 @@ where
             );
         }
 
+        if let Some(memo) = &self.entry_sources {
+            let funding = self.entry_funding(node)?;
+            let measured = memo
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .contains(node, funding.as_ref())
+                .map_err(|error| {
+                    LayoutErrorOf::new(
+                        LayoutErrorSiteOf::Node(node),
+                        LayoutOperation::ChildLayout,
+                        LayoutErrorKindOf::Text(error),
+                    )
+                })?;
+            if measured {
+                return self.compute_child_uncached(node, input);
+            }
+        }
+
         if input.run_mode().is_perform_layout() && self.child_count(node) != 0 {
             let input = input.with_settled_auto_scrollbars(SettledAutoScrollbarState::INITIAL);
             if self.subtree_uses_shape_provider(node) {
@@ -1713,6 +1841,7 @@ where
     > {
         let mut observation = Self::new(self.tree, self.invalidated_nodes.clone());
         observation.block_floats = self.block_floats.fork();
+        observation.entry_sources = self.entry_sources.clone();
         observation.wrapping = self.wrapping.clone();
         observation.flow_graph = self.flow_graph;
         observation.bound = self.bound.clone();

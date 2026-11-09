@@ -77,6 +77,7 @@ fn query<S: LayoutScalar>(purpose: EntryPurpose) -> EntryQuery<u32, S> {
             LogicalEdgesOf::new(S::ZERO, S::ZERO, S::ZERO, S::ZERO),
         );
         float_context::Incoming {
+            cut: None,
             node: 0,
             request: input,
             frame: std::sync::Arc::new(
@@ -90,6 +91,7 @@ fn query<S: LayoutScalar>(purpose: EntryPurpose) -> EntryQuery<u32, S> {
         reporting_side: PhysicalSide::Top,
         purpose,
         incoming,
+        position: None,
     }
 }
 
@@ -332,4 +334,206 @@ fn native_frontier_keeps_issued_section_custody_without_placing_source() {
         error.kind(),
         crate::LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::RequiredBasis)
     ));
+}
+
+fn component<S: LayoutScalar>(left: f64, right: f64, own_top: f64) {
+    let tree = PublicLayoutTreeOf::new()
+        .children(0, [1, 6, 2])
+        .children(2, [3, 4])
+        .style(0, block(0.0, 0.0, Some(100.0)))
+        .style(
+            1,
+            crate::NodeInputOf {
+                float: crate::Float::Left,
+                size: Size::new(
+                    crate::PreferredSizeOf::px(S::from_f64(20.0)),
+                    crate::PreferredSizeOf::px(S::from_f64(left)),
+                ),
+                ..block(0.0, 0.0, None)
+            },
+        )
+        .style(
+            6,
+            crate::NodeInputOf {
+                float: crate::Float::Right,
+                size: Size::new(
+                    crate::PreferredSizeOf::px(S::from_f64(20.0)),
+                    crate::PreferredSizeOf::px(S::from_f64(right)),
+                ),
+                ..block(0.0, 0.0, None)
+            },
+        )
+        .style(2, block(own_top, 0.0, None))
+        .style(
+            3,
+            crate::NodeInputOf {
+                clear: crate::Clear::Left,
+                ..block(8.0, 12.0, None)
+            },
+        )
+        .style(
+            4,
+            crate::NodeInputOf {
+                clear: crate::Clear::Right,
+                ..block(20.0, 0.0, Some(10.0))
+            },
+        );
+    let mut owner = ComputeSession::new(&tree, Vec::new());
+    let mut request = query(EntryPurpose::FramedEntry);
+    let parent = block_container_projection::<_, core::convert::Infallible>(&owner, 0);
+    let constants = Constants::from_projection::<_, core::convert::Infallible>(
+        &owner,
+        0,
+        &parent,
+        request.input,
+        Size::NONE,
+    )
+    .unwrap();
+    let axes = constants.flow_axes;
+    let mut ledger = FloatExclusions::new(
+        axes,
+        Size::splat(S::from_f64(100.0)),
+        S::from_f64(100.0),
+        LogicalEdgesOf::new(S::ZERO, S::ZERO, S::ZERO, S::ZERO),
+    );
+    for (source_index, node) in [1, 6].into_iter().enumerate() {
+        let style = BlockChildProjection::from_node(owner.node_input(node));
+        let mut first = true;
+        let prepared = in_flow::prepare_child(
+            &owner,
+            node,
+            &style,
+            &constants,
+            in_flow::ChildSizingContext {
+                inner_size: constants.node_inner_size,
+                request: constants.sizing_request,
+                run_mode: RunMode::ComputeSize,
+                axis: RequestedAxis::Both,
+                first_in_flow: &mut first,
+            },
+        )
+        .unwrap();
+        let output = owner.compute_child(node, prepared.input).unwrap();
+        assert_eq!(output.size.width, S::from_f64(20.0));
+        assert_eq!(
+            output.size.height,
+            S::from_f64(if node == 1 { left } else { right })
+        );
+        let pending = PendingFloat {
+            placement: super::super::floats::PendingPlacement::Unresolved,
+            node,
+            source_index,
+            side: style.float,
+            clear: style.clear,
+            block_start: S::ZERO,
+            size: output.size,
+            named_baselines: output.named_baselines,
+            content_size: output.content_size,
+            border: prepared.border,
+            padding: prepared.padding,
+            margin: Edges::all(S::ZERO),
+            float_exclusion: style.float_exclusion,
+            child_compute_geometry: output.scroll_geometry,
+        };
+        let placement = ledger
+            .place_float_for_line::<core::convert::Infallible>(0, &pending, None)
+            .unwrap();
+        assert_eq!(placement.logical.block, S::ZERO);
+    }
+    request.node = 2;
+    request.purpose = EntryPurpose::Component;
+    request.incoming = Some(float_context::Incoming {
+        cut: None,
+        node: 2,
+        request: request.input,
+        frame: std::sync::Arc::new(
+            ledger.for_ordinary_child(LogicalPointOf::new(S::ZERO, S::ZERO)),
+        ),
+    });
+    request.position = Some(super::super::canonical::EntryPosition {
+        cursor: S::ZERO,
+        active: CollapsibleMarginOf::ZERO,
+        start_open: false,
+        collapses_start: false,
+        child_adjoins_parent: true,
+        own_start: CollapsibleMarginOf::ZERO.collapse_with_margin(S::from_f64(own_top)),
+        inline_offset: S::ZERO,
+    });
+    let EntryObservation::Summary(summary) = owner.qualify_entry(request).unwrap() else {
+        panic!("actual box-only prefix has a complete source-cut basis");
+    };
+    if own_top >= left.max(right) {
+        // An ancestor's own top belongs to the complete counterfactual group;
+        // qualifying the child before that group would introduce a false cut.
+        assert!(summary.separation.is_none());
+        assert_eq!(summary.start_fact().margin.resolve(), S::from_f64(20.0));
+    } else {
+        let cut = summary.separation.unwrap();
+        assert_eq!(cut.node, 3);
+        assert_eq!(cut.container, 2);
+        assert_eq!(cut.index, 0);
+        assert_eq!(cut.hypothetical.get(), S::from_f64(12.0));
+        assert_eq!(cut.relevant_bottom.get(), S::from_f64(left));
+        assert_eq!(summary.start_fact().margin.resolve(), S::ZERO);
+    }
+    assert!(owner.staged_unrounded(2).is_err());
+    assert!(owner.staged_unrounded(3).is_err());
+    assert!(owner.staged_unrounded(4).is_err());
+}
+
+#[test]
+fn component_cuts_retain_the_original_ancestor_basis_f32() {
+    for right in [25.0, 27.0, 30.0] {
+        component::<f32>(15.0, right, 0.0);
+    }
+    component::<f32>(30.0, 30.0, 40.0);
+}
+
+#[test]
+fn component_cuts_retain_the_original_ancestor_basis_f64() {
+    for right in [25.0, 27.0, 30.0] {
+        component::<f64>(15.0, right, 0.0);
+    }
+    component::<f64>(30.0, 30.0, 40.0);
+}
+
+fn native_samples<S: LayoutScalar>() {
+    let tree = PublicLayoutTreeOf::new()
+        .children(0, [1, 2])
+        .style(0, block::<S>(0.0, 0.0, None))
+        .style(1, block(5.0, 7.0, None))
+        .style(2, block(29.0, 0.0, Some(20.0)))
+        .measure_with(1, zero::<S>);
+    CALLS.with(|calls| calls.set(0));
+    let mut owner = ComputeSession::new(&tree, Vec::new());
+    for _ in 0..2 {
+        let EntryObservation::Summary(summary) = owner
+            .qualify_entry(query(EntryPurpose::FramedEntry))
+            .unwrap()
+        else {
+            panic!("exact native sample resumes its component");
+        };
+        assert_eq!(summary.start_fact().margin.resolve(), S::from_f64(29.0));
+        CALLS.with(|calls| assert_eq!(calls.get(), 1));
+    }
+    // The independent publication operation samples anew: the entry memo is
+    // neither host-cache geometry nor a persistent provider result cache.
+    let mut next = ComputeSession::new(&tree, Vec::new());
+    let EntryObservation::Summary(summary) = next
+        .qualify_entry(query(EntryPurpose::FramedEntry))
+        .unwrap()
+    else {
+        panic!("new operation owns its own native observation");
+    };
+    assert_eq!(summary.start_fact().margin.resolve(), S::from_f64(29.0));
+    CALLS.with(|calls| assert_eq!(calls.get(), 2));
+}
+
+#[test]
+fn exact_native_entry_sample_is_operation_local_f32() {
+    native_samples::<f32>();
+}
+#[test]
+fn exact_native_entry_sample_is_operation_local_f64() {
+    native_samples::<f64>();
 }

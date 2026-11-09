@@ -262,6 +262,7 @@ enum FloatBandQueryPurpose {
 pub(crate) struct FloatExclusions<S: LayoutScalar, Node = ()> {
     flow_axes: crate::geometry::FlowAxes,
     containing_size: Size<S>,
+    common_block_origin: S,
     pub(super) containing_inline_start: S,
     pub(super) containing_inline_end: S,
     ledger: Vec<FloatLedgerEntry<S, Node>>,
@@ -271,8 +272,78 @@ pub(crate) struct FloatExclusions<S: LayoutScalar, Node = ()> {
 pub(crate) struct InheritedFloatExclusions<S: LayoutScalar, Node> {
     parent_flow_axes: crate::geometry::FlowAxes,
     parent_containing_size: Size<S>,
+    parent_common_block_origin: S,
     child_logical_location: LogicalPointOf<S>,
     ledger: Vec<FloatLedgerEntry<S, Node>>,
+}
+
+/// A logical block coordinate in the common BFC, independent of physical-axis
+/// orientation and of a receiving child's later settled origin.
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+pub(crate) struct CommonBfcPosition<S: LayoutScalar>(S);
+impl<S: LayoutScalar> CommonBfcPosition<S> {
+    pub(in crate::block) fn get(self) -> S {
+        self.0
+    }
+}
+
+impl<S: LayoutScalar, Node> InheritedFloatExclusions<S, Node> {
+    pub(in crate::block) fn common_border(
+        &self,
+        parent_local: S,
+    ) -> Result<CommonBfcPosition<S>, LengthResolutionStatus<S>> {
+        let value = self.parent_common_block_origin + parent_local;
+        if value.is_finite() {
+            Ok(CommonBfcPosition(value))
+        } else {
+            Err(LengthResolutionStatus::InvalidNumeric { value })
+        }
+    }
+
+    pub(in crate::block) fn parent_axes(&self) -> crate::FlowAxes {
+        self.parent_flow_axes
+    }
+    pub(in crate::block) fn entry_ledger(
+        &self,
+        inline_start: S,
+        inline_end: S,
+    ) -> FloatExclusions<S, Node>
+    where
+        Node: Clone,
+    {
+        FloatExclusions {
+            flow_axes: self.parent_flow_axes,
+            containing_size: self.parent_containing_size,
+            common_block_origin: self.parent_common_block_origin,
+            containing_inline_start: inline_start,
+            containing_inline_end: inline_end,
+            ledger: self.ledger.clone(),
+        }
+    }
+    /// Relevant source-before-target margin-box bound in the receiving parent's
+    /// logical BFC frame. A zero-height row is still a row; absence is distinct.
+    pub(in crate::block) fn relevant_bound(
+        &self,
+        clear: Clear,
+        receiver: crate::FlowAxes,
+    ) -> Result<Option<CommonBfcPosition<S>>, LengthResolutionStatus<S>> {
+        let clear = if receiver.inline_start() == self.parent_flow_axes.inline_start() {
+            clear
+        } else {
+            match clear {
+                Clear::Left => Clear::Right,
+                Clear::Right => Clear::Left,
+                value => value,
+            }
+        };
+        self.ledger
+            .iter()
+            .filter(|entry| entry.side.is_cleared_by(clear))
+            .map(|entry| entry.block_end)
+            .reduce(S::max)
+            .map(|value| self.common_border(value))
+            .transpose()
+    }
 }
 
 impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
@@ -285,10 +356,16 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         Self {
             flow_axes,
             containing_size,
+            common_block_origin: S::ZERO,
             containing_inline_start: inset.inline_start,
             containing_inline_end: inset.inline_start + content_inline_size,
             ledger: Vec::new(),
         }
+    }
+
+    pub(in crate::block) fn entry_inline_window(&mut self, start: S, end: S) {
+        self.containing_inline_start = start;
+        self.containing_inline_end = end;
     }
 
     /// Rebase this actual influencing float ledger to the preceding canonical
@@ -373,12 +450,15 @@ impl<S: LayoutScalar, Node: Copy> FloatExclusions<S, Node> {
         InheritedFloatExclusions {
             parent_flow_axes: self.flow_axes,
             parent_containing_size: self.containing_size,
+            parent_common_block_origin: self.common_block_origin,
             child_logical_location,
             ledger: self.ledger.clone(),
         }
     }
 
     pub(super) fn inherit_into_child(&mut self, inherited: &InheritedFloatExclusions<S, Node>) {
+        self.common_block_origin =
+            inherited.parent_common_block_origin + inherited.child_logical_location.block;
         let child_size = self.containing_size;
         let child_logical_size = inherited.parent_flow_axes.logical_size(child_size);
         let child_physical_origin = inherited.parent_flow_axes.physical_point(

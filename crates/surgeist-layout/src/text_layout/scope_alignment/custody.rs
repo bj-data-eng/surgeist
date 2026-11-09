@@ -11,6 +11,8 @@ use surgeist_text::{
     ScopeAlignmentWeakProduct,
 };
 
+pub(crate) mod semantic;
+
 /// Actual live Layout payload, separate from a phase's materialized-row history.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct ScopeCensus {
@@ -108,8 +110,9 @@ impl<S: LayoutScalar> Drop for ScopeInputOwner<S> {
     }
 }
 
-/// One computation/session family's live feature custody. It never owns a
-/// proof or a lease, so proof leases cannot form a strong ownership cycle.
+/// One computation/session family's live feature custody. The opt-in entry
+/// view owns strong proofs and Layout leases. The live counter state does not
+/// own that entry store, so these leases cannot form a strong ownership cycle.
 #[derive(Clone, Debug)]
 pub(crate) enum ScopeAlignmentResources<S: LayoutScalar> {
     Empty(
@@ -120,6 +123,7 @@ pub(crate) enum ScopeAlignmentResources<S: LayoutScalar> {
         Arc<ScopeInputOwner<S>>,
         super::super::fragmentation::InlineBoxFamilies,
     ),
+    Entry(Arc<semantic::EntryScopeResources<S>>),
 }
 impl<S: LayoutScalar> ScopeAlignmentResources<S> {
     pub(crate) fn new(
@@ -164,12 +168,30 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
         match self {
             Self::Empty(snapshot, _) => snapshot,
             Self::Active(owner, _) => &owner.snapshot,
+            Self::Entry(entry) => entry.base.snapshot(),
         }
     }
     fn inline_boxes(&self) -> &super::super::fragmentation::InlineBoxFamilies {
         match self {
             Self::Empty(_, inline_boxes) | Self::Active(_, inline_boxes) => inline_boxes,
+            Self::Entry(entry) => entry.base.inline_boxes(),
         }
+    }
+    fn active_owner(&self) -> Option<&Arc<ScopeInputOwner<S>>> {
+        match self {
+            Self::Empty(..) => None,
+            Self::Active(owner, _) => Some(owner),
+            Self::Entry(entry) => entry.base.active_owner(),
+        }
+    }
+    fn semantic_store(&self) -> Option<&Arc<semantic::SemanticStore>> {
+        match self {
+            Self::Entry(entry) => Some(&entry.store),
+            _ => None,
+        }
+    }
+    fn semantic_credit(&self) -> usize {
+        self.semantic_store().map_or(0, |store| store.credit())
     }
     /// Discover the actual constraining capture on the stack. Each normalized
     /// descriptor visit is admitted before continuing; no policy summary is
@@ -216,10 +238,11 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
         match self {
             Self::Empty(_, _) => ScopeCensus::default(),
             Self::Active(owner, _) => owner.state.lock().live,
+            Self::Entry(entry) => entry.base.census(),
         }
     }
     pub(super) fn lease(&self, census: ScopeCensus) -> surgeist_text::Result<ScopeLease> {
-        let Self::Active(owner, _) = self else {
+        let Some(owner) = self.active_owner() else {
             return Err(refusal(ScopeAlignmentError::MissingCapture));
         };
         owner.state.retain(census)?;
@@ -234,7 +257,7 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
         input_records: usize,
         count: usize,
     ) -> surgeist_text::Result<()> {
-        let Self::Active(owner, _) = self else {
+        let Some(owner) = self.active_owner() else {
             return check(
                 ScopeAlignmentLimitKind::Records,
                 input_records
@@ -249,6 +272,9 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
             .materialized
             .checked_add(count)
             .ok_or_else(|| overflow(ScopeAlignmentLimitKind::Records))?;
+        // Only entry-owned Text rows already admitted as materialization may
+        // overlap the exact borrowed union. Ordinary finalized roots get none.
+        let input_records = input_records.saturating_sub(self.semantic_credit());
         let required = input_records
             .checked_add(total)
             .ok_or_else(|| overflow(ScopeAlignmentLimitKind::Records))?;
@@ -261,7 +287,7 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
         limits: ScopeAlignmentLimits,
         count: usize,
     ) -> surgeist_text::Result<()> {
-        let Self::Active(owner, _) = self else {
+        let Some(owner) = self.active_owner() else {
             return check(
                 ScopeAlignmentLimitKind::StructuralWork,
                 count,
@@ -289,17 +315,38 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
         &self,
         limits: ScopeAlignmentLimits,
         accounting: surgeist_text::ScopeAlignmentCensusAccounting,
+        request_credit: usize,
     ) -> Result<(), ScopeAlignmentError> {
-        let Self::Active(owner, _) = self else {
-            return Err(ScopeAlignmentError::MissingCapture);
-        };
-        let mut state = owner.state.lock();
         let usage = accounting.usage();
         let new_records = accounting.newly_materialized_records();
         let borrowed = usage
             .records()
             .checked_sub(new_records)
             .expect("Text census accounting separates authenticated seeded rows");
+        let credit = if borrowed == 0 {
+            0
+        } else {
+            self.semantic_credit()
+                .checked_add(request_credit)
+                .expect("admitted entry credit arithmetic")
+        };
+        let borrowed = borrowed
+            .checked_sub(credit)
+            .expect("entry credits name distinct rows in the seeded complete union");
+        self.record_completed(limits, usage, new_records, borrowed)
+    }
+
+    fn record_completed(
+        &self,
+        limits: ScopeAlignmentLimits,
+        usage: surgeist_text::ScopeAlignmentUsage,
+        new_records: usize,
+        borrowed: usize,
+    ) -> Result<(), ScopeAlignmentError> {
+        let Some(owner) = self.active_owner() else {
+            return Err(ScopeAlignmentError::MissingCapture);
+        };
+        let mut state = owner.state.lock();
         let mut failure = state.exhausted;
         let mut add = |value: &mut usize, count: usize, kind| {
             if let Some(total) = value.checked_add(count) {
@@ -348,7 +395,7 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
         input: ScopeAlignmentCensusInput<'a>,
         outputs: usize,
     ) -> surgeist_text::Result<Option<ScopeOperation<'a>>> {
-        self.begin_with_families(input, outputs, self.inline_boxes().slots())
+        self.begin_with_families(input, outputs, self.inline_boxes().slots(), 0)
     }
 
     /// Constructor input moves into Text after census; the operation owns the
@@ -367,6 +414,7 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
             },
             0,
             families,
+            0,
         )
     }
 
@@ -375,6 +423,7 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
         input: ScopeAlignmentCensusInput<'_>,
         outputs: usize,
         families: &[Option<surgeist_text::PreparedInlineBoxFamily>],
+        request_credit: usize,
     ) -> surgeist_text::Result<Option<ScopeOperation<'a>>> {
         let (prepared, retained) = match input {
             ScopeAlignmentCensusInput::Product(product) => match product {
@@ -415,7 +464,7 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
         let limits = root
             .scope_alignment_limits()
             .ok_or_else(|| refusal(ScopeAlignmentError::LimitsRequired))?;
-        let Self::Active(owner, _) = self else {
+        let Some(owner) = self.active_owner() else {
             return Err(refusal(ScopeAlignmentError::MissingCapture));
         };
         owner.state.lock().check_exhaustion()?;
@@ -449,8 +498,13 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
             remaining_outputs: outputs,
             input: ScopeCensus::default(),
             external: ScopeCensus::default(),
+            semantic: None,
             _borrow: std::marker::PhantomData,
         };
+        operation.semantic = self
+            .semantic_store()
+            .map(semantic::SemanticLoan::take)
+            .transpose()?;
         {
             let mut registry = owner
                 .state
@@ -465,17 +519,10 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
                 }
             }
         }
-        let census = surgeist_text::scope_alignment_census(
-            input,
-            ScopeAlignmentProducts::FinalizedAndInlineBoxFamilies {
-                finalized: &operation.strong,
-                families,
-            },
-            operation.allowance()?,
-        );
+        let census = operation.census(input, families)?;
         let census = match census {
             Ok(census) => {
-                self.record_census(limits, census.accounting())
+                self.record_census(limits, census.accounting(), request_credit)
                     .map_err(refusal)?;
                 census
             }
@@ -484,7 +531,7 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
                 if let Some(accounting) = accounting {
                     // Exhaustion remains recorded in the owner. The original
                     // census cause has priority over this later admission.
-                    let _ = self.record_census(limits, accounting);
+                    let _ = self.record_census(limits, accounting, request_credit);
                 }
                 return Err(error);
             }
@@ -492,6 +539,7 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
         operation.input = ScopeCensus::from_retention(census.input_retention());
         operation.external = ScopeCensus::from_retention(census.external_retention());
         operation.reserve_outputs(outputs)?;
+        operation.replenish_descriptors(self, families.len())?;
         Ok(Some(operation))
     }
 
@@ -532,6 +580,7 @@ pub(crate) struct ScopeOperation<'a> {
     remaining_outputs: usize,
     input: ScopeCensus,
     external: ScopeCensus,
+    semantic: Option<semantic::SemanticLoan>,
     _borrow: std::marker::PhantomData<&'a ()>,
 }
 impl ScopeCensus {
@@ -593,11 +642,18 @@ impl ScopeOperation<'_> {
             &self.state,
             self.limits,
             union,
+            self.semantic.as_ref().map_or(0, |loan| loan.credit()),
             &mut registry.weak,
             required,
         )?;
-        if let Err(error) = grow_slots(&self.state, self.limits, union, &mut self.strong, required)
-        {
+        if let Err(error) = grow_slots(
+            &self.state,
+            self.limits,
+            union,
+            self.semantic.as_ref().map_or(0, |loan| loan.credit()),
+            &mut self.strong,
+            required,
+        ) {
             let extra = registry.weak.len() - self.strong.len();
             registry.weak.truncate(self.strong.len());
             self.state.release(ScopeCensus {
@@ -689,6 +745,7 @@ fn grow_slots<T>(
     state: &LiveScopeResources,
     limits: ScopeAlignmentLimits,
     external: ScopeCensus,
+    history_credit: usize,
     slots: &mut Vec<Option<T>>,
     required: usize,
 ) -> surgeist_text::Result<()> {
@@ -705,7 +762,7 @@ fn grow_slots<T>(
             .ok_or_else(|| overflow(ScopeAlignmentLimitKind::Records))?;
         check(
             ScopeAlignmentLimitKind::Records,
-            rows.checked_add(external.records)
+            rows.checked_add(external.records.saturating_sub(history_credit))
                 .ok_or_else(|| overflow(ScopeAlignmentLimitKind::Records))?,
             limits.records(),
         )?;
@@ -759,7 +816,7 @@ fn grow_slots<T>(
             .ok_or_else(|| overflow(ScopeAlignmentLimitKind::Records))?;
         check(
             ScopeAlignmentLimitKind::Records,
-            rows.checked_add(external.records)
+            rows.checked_add(external.records.saturating_sub(history_credit))
                 .ok_or_else(|| overflow(ScopeAlignmentLimitKind::Records))?,
             limits.records(),
         )?;
