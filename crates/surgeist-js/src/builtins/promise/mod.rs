@@ -3250,9 +3250,12 @@ impl PreparedPendingReactions {
             roots,
             handoff,
         } = self;
+        let (fulfilled, rejected) = roots;
         let mut cleanup = crate::job::UnwindCleanup::default();
         cleanup.run(|| handoff.commit().notify());
-        cleanup.run(|| drop((promise, roots)));
+        cleanup.run(|| drop(promise));
+        cleanup.run(|| drop(fulfilled));
+        cleanup.run(|| drop(rejected));
         cleanup.finish();
     }
 }
