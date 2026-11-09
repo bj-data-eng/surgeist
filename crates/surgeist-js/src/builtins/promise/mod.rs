@@ -2970,39 +2970,41 @@ impl Promise {
             {
                 return Err(error);
             }
-            // Root all reactions before clearing the pending state. Enqueueing the first
-            // job can run host code while the remaining reactions still await enqueueing.
-            let reactions = {
-                let promise = promise.borrow();
-                let StoredPromiseState::Pending {
-                    fulfill_reactions, ..
-                } = &promise.data().state
-                else {
-                    panic!("promise was not pending");
-                };
-                fulfill_reactions
-                    .iter()
-                    .map(StoredReactionRecord::to_reaction)
-                    .collect()
-            };
-
-            let mut jobs =
-                prepare_promise_reactions(reactions, association.as_ref(), &value, context)?;
-            for job in &mut jobs {
-                job.commit();
-            }
-            // 3–6. Store the result, clear both reaction lists, and mark the promise fulfilled.
-            let pending = std::mem::replace(
-                &mut promise.borrow_mut().data_mut().state,
-                StoredPromiseState::Fulfilled(value.clone().into_stored()),
-            );
-
-            let batch = ReactionBatch::new(jobs, pending);
-            // 7. Perform TriggerPromiseReactions(reactions, value).
-            if let Some(association) = association {
-                association.settle();
-            }
-            batch.publish(context)
+            let mut setup = ReactionRestoration::new(promise, association.as_ref());
+            let heap = context.runtime().heap.clone();
+            let result = heap.with_pending_edges(ReactionSourceRoots(promise.clone()), |_| {
+                let mut restoration = ReactionRestoration::new(promise, association.as_ref());
+                setup.enabled = false;
+                let result = (|| {
+                    restoration.detach()?;
+                    let reactions = restoration.restore(ReactionType::Fulfill)?;
+                    let mut jobs = prepare_promise_reactions(
+                        reactions,
+                        association.as_ref(),
+                        &value,
+                        context,
+                    )?;
+                    for job in &mut jobs {
+                        job.commit();
+                    }
+                    let pending = restoration.take_pending()?;
+                    let batch = ReactionBatch::new(jobs, pending);
+                    // 3–6. Store the result and mark the promise fulfilled.
+                    promise
+                        .try_borrow_mut()
+                        .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?
+                        .data_mut()
+                        .state = StoredPromiseState::Fulfilled(value.clone().into_stored());
+                    restoration.enabled = false;
+                    // 7. Perform TriggerPromiseReactions(reactions, value).
+                    if let Some(association) = &association {
+                        association.settle();
+                    }
+                    batch.publish(context)
+                })();
+                restoration.finish(result)
+            });
+            setup.finish(result.map_err(reaction_access_error).flatten())
         }
 
         /// `RejectPromise ( promise, reason )`
@@ -3030,51 +3032,49 @@ impl Promise {
             {
                 return Err(error);
             }
-            let (reactions, handled) = {
-                let promise = promise.borrow();
-                let promise = promise.data();
-                let StoredPromiseState::Pending {
-                    reject_reactions, ..
-                } = &promise.state
-                else {
-                    panic!("promise was not pending");
-                };
-
-                // Root all rejection reactions before clearing the pending state.
-                let reactions = reject_reactions
-                    .iter()
-                    .map(StoredReactionRecord::to_reaction)
-                    .collect();
-                (reactions, promise.handled)
-            };
-
-            let mut jobs =
-                prepare_promise_reactions(reactions, association.as_ref(), &reason, context)?;
-            for job in &mut jobs {
-                job.commit();
-            }
-            // 3–6. Store the reason, clear both reaction lists, and mark the promise rejected.
-            let pending = std::mem::replace(
-                &mut promise.borrow_mut().data_mut().state,
-                StoredPromiseState::Rejected(reason.clone().into_stored()),
-            );
-
-            let batch = ReactionBatch::new(jobs, pending);
-            if let Some(association) = association {
-                association.settle();
-            }
-
-            // 7. If promise.[[PromiseIsHandled]] is false, perform HostPromiseRejectionTracker(promise, "reject").
-            if !handled {
-                context.host_hooks().promise_rejection_tracker(
-                    promise,
-                    OperationType::Reject,
-                    context.access(),
-                );
-            }
-
-            // 8. Perform TriggerPromiseReactions(reactions, reason).
-            batch.publish(context)
+            let mut setup = ReactionRestoration::new(promise, association.as_ref());
+            let heap = context.runtime().heap.clone();
+            let result = heap.with_pending_edges(ReactionSourceRoots(promise.clone()), |_| {
+                let mut restoration = ReactionRestoration::new(promise, association.as_ref());
+                setup.enabled = false;
+                let result = (|| {
+                    let handled = restoration.detach()?;
+                    let reactions = restoration.restore(ReactionType::Reject)?;
+                    let mut jobs = prepare_promise_reactions(
+                        reactions,
+                        association.as_ref(),
+                        &reason,
+                        context,
+                    )?;
+                    for job in &mut jobs {
+                        job.commit();
+                    }
+                    let pending = restoration.take_pending()?;
+                    let batch = ReactionBatch::new(jobs, pending);
+                    // 3–6. Store the reason and mark the promise rejected.
+                    promise
+                        .try_borrow_mut()
+                        .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?
+                        .data_mut()
+                        .state = StoredPromiseState::Rejected(reason.clone().into_stored());
+                    restoration.enabled = false;
+                    if let Some(association) = &association {
+                        association.settle();
+                    }
+                    // 7. Track an unhandled rejection after actual settlement.
+                    if !handled {
+                        context.host_hooks().promise_rejection_tracker(
+                            promise,
+                            OperationType::Reject,
+                            context.access(),
+                        );
+                    }
+                    // 8. Perform TriggerPromiseReactions(reactions, reason).
+                    batch.publish(context)
+                })();
+                restoration.finish(result)
+            });
+            setup.finish(result.map_err(reaction_access_error).flatten())
         }
 
         // 1. Let alreadyResolved be the Record { [[Value]]: false }.
@@ -3332,6 +3332,18 @@ fn reaction_state_error() -> JsError {
     .into()
 }
 
+fn reaction_access_error(error: surgeist_js_gc::heap::AccessError) -> JsError {
+    use crate::job::{JobFault, JobFaultCause, JobFaultOwner};
+    use surgeist_js_gc::heap::AccessError;
+    let cause = match error {
+        AccessError::PayloadBorrowed => return crate::error::EngineError::ObjectAccessBusy.into(),
+        AccessError::HeapBorrowed => JobFaultCause::InaccessibleRegistry,
+        AccessError::ForeignHeap | AccessError::StaleHandle => JobFaultCause::OwnerMismatch,
+        AccessError::WrongType => JobFaultCause::StateInconsistency,
+    };
+    JobFault::new(JobFaultOwner::Task, cause).into()
+}
+
 /// Producer-only custody. Its root lease is released after every saved notice.
 #[derive(Default)]
 struct ReactionPublication {
@@ -3552,6 +3564,213 @@ impl Drop for ReactionJobPreparation {
     fn drop(&mut self) {
         let mut cleanup = crate::job::UnwindCleanup::default();
         cleanup.run(|| self.unavailable());
+        self.cleanup(&mut cleanup);
+        cleanup.finish();
+    }
+}
+
+/// Snapshot the outgoing bank edges before moving either bank out of its owner.
+/// The pending-edge barrier retains these direct roots throughout its callback.
+struct ReactionSourceRoots(JsObject<Promise>);
+impl HeapTrace for ReactionSourceRoots {
+    fn trace(
+        &self,
+        edges: &mut surgeist_js_gc::heap::EdgeVisitor<'_>,
+    ) -> Result<(), surgeist_js_gc::heap::AccessError> {
+        let promise = self
+            .0
+            .try_borrow()
+            .map_err(|_| surgeist_js_gc::heap::AccessError::PayloadBorrowed)?;
+        let StoredPromiseState::Pending {
+            fulfill_reactions,
+            reject_reactions,
+        } = &promise.data().state
+        else {
+            return Err(surgeist_js_gc::heap::AccessError::WrongType);
+        };
+        fulfill_reactions.trace(edges)?;
+        reject_reactions.trace(edges)
+    }
+}
+
+/// Owns original stored tails and the restored live prefix before host restore.
+/// A detached instance never escapes the pending-edge barrier that roots it.
+struct ReactionRestoration<'a> {
+    source: &'a JsObject<Promise>,
+    association: Option<&'a Rooted<native_settlement::Association>>,
+    pending: Option<StoredPromiseState>,
+    live: Vec<ReactionRecord>,
+    detached: bool,
+    enabled: bool,
+}
+impl<'a> ReactionRestoration<'a> {
+    fn new(
+        source: &'a JsObject<Promise>,
+        association: Option<&'a Rooted<native_settlement::Association>>,
+    ) -> Self {
+        Self {
+            source,
+            association,
+            pending: None,
+            live: Vec::new(),
+            detached: false,
+            enabled: true,
+        }
+    }
+    fn detach(&mut self) -> JsResult<bool> {
+        let mut source = self
+            .source
+            .try_borrow_mut()
+            .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?;
+        let handled = source.data().handled;
+        let StoredPromiseState::Pending {
+            fulfill_reactions,
+            reject_reactions,
+        } = &mut source.data_mut().state
+        else {
+            return Err(reaction_state_error());
+        };
+        self.pending = Some(StoredPromiseState::Pending {
+            fulfill_reactions: std::mem::take(fulfill_reactions),
+            reject_reactions: std::mem::take(reject_reactions),
+        });
+        self.detached = true;
+        Ok(handled)
+    }
+    fn restore(&mut self, kind: ReactionType) -> JsResult<Vec<ReactionRecord>> {
+        let Some(StoredPromiseState::Pending {
+            fulfill_reactions,
+            reject_reactions,
+        }) = &self.pending
+        else {
+            return Err(reaction_state_error());
+        };
+        let records = match kind {
+            ReactionType::Fulfill => fulfill_reactions,
+            ReactionType::Reject => reject_reactions,
+        };
+        self.live
+            .try_reserve(records.len())
+            .map_err(|_| crate::error::EngineResourceError::Allocation)?;
+        for record in records {
+            self.live.push(record.to_reaction());
+        }
+        Ok(std::mem::take(&mut self.live))
+    }
+    fn take_pending(&mut self) -> JsResult<StoredPromiseState> {
+        self.pending.take().ok_or_else(reaction_state_error)
+    }
+    fn attached_lifecycle(
+        &self,
+        kind: ReactionType,
+        index: usize,
+    ) -> JsResult<Option<ReactionLifecycle>> {
+        let source = self
+            .source
+            .try_borrow()
+            .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?;
+        let StoredPromiseState::Pending {
+            fulfill_reactions,
+            reject_reactions,
+        } = &source.data().state
+        else {
+            return Err(reaction_state_error());
+        };
+        let records = match kind {
+            ReactionType::Fulfill => fulfill_reactions,
+            ReactionType::Reject => reject_reactions,
+        };
+        Ok(records.get(index).map(|record| record.lifecycle.clone()))
+    }
+    fn unavailable_attached(&self, cleanup: &mut crate::job::UnwindCleanup) -> JsResult<()> {
+        // Only setup refusal reaches this path: no opaque restore has run and
+        // the original source still roots its banks. Read each closed edge fact,
+        // release the source borrow, then perform the owning cleanup event.
+        // This event only withdraws stored continuations and exact evaluation
+        // links; it does not restore/drop opaque callback captures, collect the
+        // heap, or notify native waiters. Valid Trace/NativeCapture operations
+        // leave the owner unchanged, so original indices stay readable until
+        // the full pass ends. Module failure and retirement notifications must
+        // remain outside this attached-source loop.
+        let lengths = {
+            let source = self
+                .source
+                .try_borrow()
+                .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?;
+            let StoredPromiseState::Pending {
+                fulfill_reactions,
+                reject_reactions,
+            } = &source.data().state
+            else {
+                return Err(reaction_state_error());
+            };
+            [fulfill_reactions.len(), reject_reactions.len()]
+        };
+        for (kind, length) in [ReactionType::Fulfill, ReactionType::Reject]
+            .into_iter()
+            .zip(lengths)
+        {
+            for index in 0..length {
+                let lifecycle = self
+                    .attached_lifecycle(kind, index)?
+                    .ok_or_else(reaction_state_error)?;
+                cleanup.run(|| {
+                    let _secondary = lifecycle.unavailable();
+                });
+            }
+        }
+        Ok(())
+    }
+    fn cleanup(&mut self, cleanup: &mut crate::job::UnwindCleanup) {
+        if self.enabled {
+            if let Some(StoredPromiseState::Pending {
+                fulfill_reactions,
+                reject_reactions,
+            }) = &self.pending
+            {
+                for record in fulfill_reactions.iter().chain(reject_reactions) {
+                    cleanup.run(|| {
+                        let _secondary = record.lifecycle.unavailable();
+                    });
+                }
+            } else if !self.detached {
+                // An access refusal is a secondary checked setup failure, never
+                // authority to replace an existing cause or invent guest failure.
+                let result = self.unavailable_attached(cleanup);
+                cleanup.run(|| drop(result));
+            }
+            if let Some(association) = self.association {
+                cleanup.run(|| association.retire_pending(crate::job::JobRetirement::Interrupted));
+            }
+            self.enabled = false;
+        }
+        for record in self.live.drain(..) {
+            cleanup.run(|| drop(record));
+        }
+        match self.pending.take() {
+            Some(StoredPromiseState::Pending {
+                fulfill_reactions,
+                reject_reactions,
+            }) => {
+                for record in fulfill_reactions.into_iter().chain(reject_reactions) {
+                    cleanup.run(|| drop(record));
+                }
+            }
+            Some(StoredPromiseState::Fulfilled(value) | StoredPromiseState::Rejected(value)) => {
+                cleanup.run(|| drop(value));
+            }
+            None => {}
+        }
+    }
+    fn finish<T>(mut self, value: T) -> T {
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        self.cleanup(&mut cleanup);
+        cleanup.finish_with(value)
+    }
+}
+impl Drop for ReactionRestoration<'_> {
+    fn drop(&mut self) {
+        let mut cleanup = crate::job::UnwindCleanup::default();
         self.cleanup(&mut cleanup);
         cleanup.finish();
     }
