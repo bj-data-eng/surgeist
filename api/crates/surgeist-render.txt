@@ -647,11 +647,11 @@ pub surgeist_render::RenderResource::RetainedCpuBytes
 pub surgeist_render::RenderResource::ScratchCpuBytes
 impl surgeist_ledger::__private::Sealed for surgeist_render::RenderResource
 impl surgeist_ledger::dimension::Dimension for surgeist_render::RenderResource
-pub type surgeist_render::RenderResource::Table<T: surgeist_ledger::dimension::TableValue> = surgeist_render::accounting::model::RenderResourceTable<T>
+pub type surgeist_render::RenderResource::Table<T: surgeist_ledger::dimension::TableValue> = surgeist_render::RenderResourceTable<T>
 pub const surgeist_render::RenderResource::ALL: &'static [Self]
-pub fn surgeist_render::RenderResource::from_fn<T: surgeist_ledger::dimension::TableValue>(value: impl core::ops::function::FnMut(Self) -> T) -> surgeist_render::accounting::model::RenderResourceTable<T>
-pub fn surgeist_render::RenderResource::get<T: surgeist_ledger::dimension::TableValue>(table: &surgeist_render::accounting::model::RenderResourceTable<T>, key: Self) -> &T
-pub fn surgeist_render::RenderResource::get_mut<T: surgeist_ledger::dimension::TableValue>(table: &mut surgeist_render::accounting::model::RenderResourceTable<T>, key: Self) -> &mut T
+pub fn surgeist_render::RenderResource::from_fn<T: surgeist_ledger::dimension::TableValue>(value: impl core::ops::function::FnMut(Self) -> T) -> surgeist_render::RenderResourceTable<T>
+pub fn surgeist_render::RenderResource::get<T: surgeist_ledger::dimension::TableValue>(table: &surgeist_render::RenderResourceTable<T>, key: Self) -> &T
+pub fn surgeist_render::RenderResource::get_mut<T: surgeist_ledger::dimension::TableValue>(table: &mut surgeist_render::RenderResourceTable<T>, key: Self) -> &mut T
 pub enum surgeist_render::RenderRoute
 pub surgeist_render::RenderRoute::DirectVello
 pub surgeist_render::RenderRoute::GpuGraph
@@ -740,11 +740,11 @@ pub surgeist_render::RenderWork::VariationTupleVisits
 pub surgeist_render::RenderWork::VelloPasses
 impl surgeist_ledger::__private::Sealed for surgeist_render::RenderWork
 impl surgeist_ledger::dimension::Dimension for surgeist_render::RenderWork
-pub type surgeist_render::RenderWork::Table<T: surgeist_ledger::dimension::TableValue> = surgeist_render::accounting::model::RenderWorkTable<T>
+pub type surgeist_render::RenderWork::Table<T: surgeist_ledger::dimension::TableValue> = surgeist_render::RenderWorkTable<T>
 pub const surgeist_render::RenderWork::ALL: &'static [Self]
-pub fn surgeist_render::RenderWork::from_fn<T: surgeist_ledger::dimension::TableValue>(value: impl core::ops::function::FnMut(Self) -> T) -> surgeist_render::accounting::model::RenderWorkTable<T>
-pub fn surgeist_render::RenderWork::get<T: surgeist_ledger::dimension::TableValue>(table: &surgeist_render::accounting::model::RenderWorkTable<T>, key: Self) -> &T
-pub fn surgeist_render::RenderWork::get_mut<T: surgeist_ledger::dimension::TableValue>(table: &mut surgeist_render::accounting::model::RenderWorkTable<T>, key: Self) -> &mut T
+pub fn surgeist_render::RenderWork::from_fn<T: surgeist_ledger::dimension::TableValue>(value: impl core::ops::function::FnMut(Self) -> T) -> surgeist_render::RenderWorkTable<T>
+pub fn surgeist_render::RenderWork::get<T: surgeist_ledger::dimension::TableValue>(table: &surgeist_render::RenderWorkTable<T>, key: Self) -> &T
+pub fn surgeist_render::RenderWork::get_mut<T: surgeist_ledger::dimension::TableValue>(table: &mut surgeist_render::RenderWorkTable<T>, key: Self) -> &mut T
 pub enum surgeist_render::RepeatMode
 pub surgeist_render::RepeatMode::NoRepeat
 pub surgeist_render::RepeatMode::Repeat
@@ -1696,11 +1696,102 @@ pub const fn surgeist_render::RenderRefusal::current(self) -> u64
 pub const fn surgeist_render::RenderRefusal::phase(self) -> surgeist_render::RenderPhase
 pub const fn surgeist_render::RenderRefusal::quantity(self) -> surgeist_render::RenderQuantity
 pub const fn surgeist_render::RenderRefusal::reason(self) -> surgeist_render::RenderRefusalReason
+pub struct surgeist_render::RenderResourceTable<T>
+pub surgeist_render::RenderResourceTable::GpuBytes: T
+pub surgeist_render::RenderResourceTable::IdleCacheGpuBytes: T
+pub surgeist_render::RenderResourceTable::LocalAtlasSourceByteQuota: T
+pub surgeist_render::RenderResourceTable::LocalAtlasTexelQuota: T
+pub surgeist_render::RenderResourceTable::LocalRepeatTileQuota: T
+pub surgeist_render::RenderResourceTable::OpaqueGpuObjects: T
+pub surgeist_render::RenderResourceTable::RegisteredCacheGpuBytes: T
+pub surgeist_render::RenderResourceTable::RetainedCpuBytes: T
+pub surgeist_render::RenderResourceTable::ScratchCpuBytes: T
+impl<T: core::marker::Copy> surgeist_render::RenderResourceTable<T>
+pub const fn surgeist_render::RenderResourceTable<T>::splat(value: T) -> Self
 pub struct surgeist_render::RenderUsage(_)
 impl surgeist_render::RenderUsage
 pub fn surgeist_render::RenderUsage::live(self, resource: surgeist_render::RenderResource) -> u64
 pub fn surgeist_render::RenderUsage::peak(self, resource: surgeist_render::RenderResource) -> u64
 pub fn surgeist_render::RenderUsage::work(self, work: surgeist_render::RenderWork) -> u64
+pub struct surgeist_render::RenderWorkTable<T>
+pub surgeist_render::RenderWorkTable::AtlasTexels: T
+pub surgeist_render::RenderWorkTable::AuthoredCommands: T
+pub surgeist_render::RenderWorkTable::AuthoredFills: T
+pub surgeist_render::RenderWorkTable::AuthoredGlyphs: T
+pub surgeist_render::RenderWorkTable::AuthoredImages: T
+pub surgeist_render::RenderWorkTable::AuthoredLayers: T
+pub surgeist_render::RenderWorkTable::AuthoredShadows: T
+pub surgeist_render::RenderWorkTable::AuthoredStrokes: T
+pub surgeist_render::RenderWorkTable::CommandVisits: T
+pub surgeist_render::RenderWorkTable::CommandsEmitted: T
+pub surgeist_render::RenderWorkTable::CompositePasses: T
+pub surgeist_render::RenderWorkTable::CoordinateInputs: T
+pub surgeist_render::RenderWorkTable::CoordinateVisits: T
+pub surgeist_render::RenderWorkTable::CopyOperations: T
+pub surgeist_render::RenderWorkTable::CustomPresentPasses: T
+pub surgeist_render::RenderWorkTable::EncodingStreamCopies: T
+pub surgeist_render::RenderWorkTable::FillsEmitted: T
+pub surgeist_render::RenderWorkTable::FilterOperationVisits: T
+pub surgeist_render::RenderWorkTable::FontRecordVisits: T
+pub surgeist_render::RenderWorkTable::GlyphComponentVisits: T
+pub surgeist_render::RenderWorkTable::GlyphInputs: T
+pub surgeist_render::RenderWorkTable::GlyphVisits: T
+pub surgeist_render::RenderWorkTable::GlyphsEmitted: T
+pub surgeist_render::RenderWorkTable::GpuObjectsCreated: T
+pub surgeist_render::RenderWorkTable::GradientStopVisits: T
+pub surgeist_render::RenderWorkTable::GraphEdgeVisits: T
+pub surgeist_render::RenderWorkTable::GraphNodeVisits: T
+pub surgeist_render::RenderWorkTable::ImageContentHits: T
+pub surgeist_render::RenderWorkTable::ImageContentMisses: T
+pub surgeist_render::RenderWorkTable::ImageFirstObservedBytes: T
+pub surgeist_render::RenderWorkTable::ImageIdentityByteComparisons: T
+pub surgeist_render::RenderWorkTable::ImageIdentityCopies: T
+pub surgeist_render::RenderWorkTable::ImageIdentityDrops: T
+pub surgeist_render::RenderWorkTable::ImagePasses: T
+pub surgeist_render::RenderWorkTable::ImageSourceBytes: T
+pub surgeist_render::RenderWorkTable::ImageTexelVisits: T
+pub surgeist_render::RenderWorkTable::ImagesEmitted: T
+pub surgeist_render::RenderWorkTable::KernelSampleVisits: T
+pub surgeist_render::RenderWorkTable::LayersEmitted: T
+pub surgeist_render::RenderWorkTable::OutlinePointVisits: T
+pub surgeist_render::RenderWorkTable::PaintVisits: T
+pub surgeist_render::RenderWorkTable::PathElementVisits: T
+pub surgeist_render::RenderWorkTable::PathElementsEmitted: T
+pub surgeist_render::RenderWorkTable::PngByteVisits: T
+pub surgeist_render::RenderWorkTable::PreparedTransferredBytes: T
+pub surgeist_render::RenderWorkTable::Presentations: T
+pub surgeist_render::RenderWorkTable::RasterCommandVisits: T
+pub surgeist_render::RenderWorkTable::RasterCommandsEmitted: T
+pub surgeist_render::RenderWorkTable::RasterDispatches: T
+pub surgeist_render::RenderWorkTable::RasterResourceCopies: T
+pub surgeist_render::RenderWorkTable::ReadbackBytes: T
+pub surgeist_render::RenderWorkTable::ReadbackCopies: T
+pub surgeist_render::RenderWorkTable::ReadbackMapRequests: T
+pub surgeist_render::RenderWorkTable::ReadbackRows: T
+pub surgeist_render::RenderWorkTable::ReadbackTransferredBytes: T
+pub surgeist_render::RenderWorkTable::RepeatTiles: T
+pub surgeist_render::RenderWorkTable::ResourceAllocationRequests: T
+pub surgeist_render::RenderWorkTable::ResourceAllocations: T
+pub surgeist_render::RenderWorkTable::ResourceEvictions: T
+pub surgeist_render::RenderWorkTable::ResourceLeaseReturns: T
+pub surgeist_render::RenderWorkTable::ResourceProbes: T
+pub surgeist_render::RenderWorkTable::ResourceRetirements: T
+pub surgeist_render::RenderWorkTable::ResourceReuses: T
+pub surgeist_render::RenderWorkTable::ScheduledFilterTexels: T
+pub surgeist_render::RenderWorkTable::SerializedBytes: T
+pub surgeist_render::RenderWorkTable::ShaderBindingVisits: T
+pub surgeist_render::RenderWorkTable::ShaderKeyCopies: T
+pub surgeist_render::RenderWorkTable::ShadowsEmitted: T
+pub surgeist_render::RenderWorkTable::StrokesEmitted: T
+pub surgeist_render::RenderWorkTable::Submissions: T
+pub surgeist_render::RenderWorkTable::SurfaceAcquisitions: T
+pub surgeist_render::RenderWorkTable::TextDecorations: T
+pub surgeist_render::RenderWorkTable::TextRuns: T
+pub surgeist_render::RenderWorkTable::UploadBytes: T
+pub surgeist_render::RenderWorkTable::VariationTupleVisits: T
+pub surgeist_render::RenderWorkTable::VelloPasses: T
+impl<T: core::marker::Copy> surgeist_render::RenderWorkTable<T>
+pub const fn surgeist_render::RenderWorkTable<T>::splat(value: T) -> Self
 pub struct surgeist_render::Renderer
 impl surgeist_render::Renderer
 pub const fn surgeist_render::Renderer::capabilities(&self) -> surgeist_render::Capabilities
