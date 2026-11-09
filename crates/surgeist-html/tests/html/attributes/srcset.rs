@@ -839,6 +839,65 @@ fn context_admission_refuses_each_attribute_the_rules_read_with_its_length() {
     }
 }
 
+/// With two oversized read attributes, the refusal names the one that comes first in the
+/// attributes of the context, then in those of the following image, whatever order the rules read
+/// them in.
+#[test]
+fn context_admission_refuses_the_first_oversized_read_attribute_in_attribute_order() {
+    let interpreter = HtmlValueInterpreter::new(16);
+    let (mid, large) = ("x".repeat(17), "x".repeat(18));
+    let required = |result: Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError>| match result {
+        Err(HtmlSrcsetInterpretationError::RawAdmission(error)) => error.required(),
+        other => panic!("expected a raw admission refusal, got {other:?}"),
+    };
+    // The rules read `sizes` before `src`, `imagesizes` before `rel` and `as`, and the following
+    // image's `loading` before its `sizes`; the attributes below come in the opposite order.
+    let img = HtmlSrcsetContext::Img {
+        attributes: attributes(&[("srcset", "a 1x"), ("src", &mid), ("sizes", &large)]),
+    };
+    assert_eq!(
+        required(interpreter.img_srcset_with_context(&element("img"), &img)),
+        17
+    );
+    let link = HtmlSrcsetContext::Link {
+        attributes: attributes(&[
+            ("imagesrcset", "a 1x"),
+            ("as", &mid),
+            ("rel", &large),
+            ("imagesizes", "1"),
+        ]),
+    };
+    assert_eq!(
+        required(interpreter.link_imagesrcset_with_context(&element("link"), &link)),
+        17
+    );
+    let source = |own: &[(&str, &str)], following: &[(&str, &str)]| HtmlSrcsetContext::Source {
+        attributes: attributes(own),
+        parent: HtmlSrcsetParentObservation::Element(element("picture")),
+        following_image: HtmlSrcsetFollowingImageObservation::Element {
+            name: element("img"),
+            attributes: attributes(following),
+        },
+    };
+    let following_only = source(
+        &[("srcset", "a 1x")],
+        &[("sizes", &mid), ("loading", &large)],
+    );
+    assert_eq!(
+        required(interpreter.source_srcset_with_context(&element("source"), &following_only)),
+        17
+    );
+    // The context's own attributes are admitted before the following image's.
+    let both = source(
+        &[("srcset", "a 1x"), ("sizes", &large)],
+        &[("loading", &mid)],
+    );
+    assert_eq!(
+        required(interpreter.source_srcset_with_context(&element("source"), &both)),
+        18
+    );
+}
+
 #[test]
 fn unavailable_and_absent_parent_facts_are_distinct_and_prefixed_raw_attributes_stay_exact() {
     let interpreter = HtmlValueInterpreter::new(100);
