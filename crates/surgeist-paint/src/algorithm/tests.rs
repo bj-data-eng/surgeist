@@ -76,6 +76,69 @@ fn assert_failure(boxes: &[BoxFacts], root: usize, expected: PaintError) {
 }
 
 #[test]
+fn refused_traversal_consume_keeps_pending_root_until_cleanup_and_retry() {
+    let boxes = [root()];
+    // Topology admits node/merge initialization, the outer visit and parent
+    // visit (4) before draining. Its drain and three indexing passes plus the
+    // sibling visit bring the total to 9; membership's initial push makes 10.
+    for (limit, phase, color) in [
+        (4, PaintPhase::Topology, 1),
+        (10, PaintPhase::Membership, 2),
+    ] {
+        let options = options()
+            .with_limits(PaintLimits::unlimited().with_work_limit(WorkKind::TopologyVisit, limit));
+        let mut meter = options.operation(OperationKind::Stacking).unwrap();
+        let root = meter.root();
+        let scopes = setup_scopes(&mut meter).unwrap();
+        let mut state = State::default();
+        let error =
+            prepare(&mut meter, root, &scopes, &mut state, &boxes, BoxId::new(0)).unwrap_err();
+        let PaintError::Budget(refusal) = error else {
+            panic!("expected traversal admission refusal");
+        };
+        assert_eq!(refusal.origin, phase);
+        assert_eq!(refusal.current, limit);
+        assert_eq!(
+            refusal.change,
+            PaintChange::Work {
+                kind: WorkKind::TopologyVisit,
+                amount: 1
+            }
+        );
+        assert_eq!(state.stack, [0]);
+        assert!(state.stack.capacity() >= 1);
+        assert_eq!(state.nodes[0].color, color);
+        assert_eq!(state.nodes[0].rank, 0);
+        assert!(state.contexts.is_empty());
+        assert!(state.children.is_empty());
+        if phase == PaintPhase::Topology {
+            assert!(state.membership.is_empty());
+        } else {
+            assert_eq!(state.membership, [0]);
+            assert!(state.contexts.capacity() >= 1);
+        }
+        meter
+            .with_phase(scopes[6], |p| {
+                state.scratch_cleanup(p, root).unwrap();
+                state.result_cleanup(p, root).unwrap();
+            })
+            .unwrap();
+        let report = meter.finish().unwrap().unwrap();
+        assert_eq!(report.work(WorkKind::TopologyVisit), limit);
+        assert_eq!(report.work(WorkKind::MembershipVisit), 0);
+        assert!(report.peak(ResourceKind::ScratchBytes) > 0);
+        for &resource in ResourceKind::ALL {
+            assert_eq!(report.live(resource), 0);
+        }
+        let retry = plan_stacking(&boxes, BoxId::new(0), self::options());
+        let plan = retry.result.unwrap();
+        assert_eq!(membership_ids(&plan), [0]);
+        assert_eq!(plan.root_context().box_id(), BoxId::new(0));
+        assert!(children(plan.root_context()).is_empty());
+    }
+}
+
+#[test]
 fn root_and_nested_signed_contexts_keep_descendants_inside_actual_contexts() {
     let boxes = [
         root(),

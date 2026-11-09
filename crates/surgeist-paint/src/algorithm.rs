@@ -332,9 +332,11 @@ fn topology(
                 }
             }
         }
-        while !s.stack.is_empty() {
+        while let [remaining @ .., pending] = s.stack.as_mut_slice() {
             charge(p, scope, WorkKind::TopologyVisit, 1)?;
-            let i = s.stack.pop().expect("nonempty traversal stack");
+            let i = *pending;
+            let keep = remaining.len();
+            s.stack.truncate(keep);
             s.nodes[i].color = 2;
         }
     }
@@ -473,9 +475,11 @@ fn membership(
     charge(p, scope, WorkKind::TopologyVisit, 1)?;
     s.stack.push(root_box.get());
     let mut rank = 0;
-    while !s.stack.is_empty() {
+    while let [remaining @ .., pending] = s.stack.as_mut_slice() {
         charge(p, scope, WorkKind::TopologyVisit, 1)?;
-        let i = s.stack.pop().expect("nonempty traversal stack");
+        let i = *pending;
+        let keep = remaining.len();
+        s.stack.truncate(keep);
         charge(p, scope, WorkKind::MembershipVisit, 1)?;
         s.nodes[i].rank = rank;
         rank += 1;
