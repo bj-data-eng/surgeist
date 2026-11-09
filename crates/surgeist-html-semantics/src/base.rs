@@ -11,7 +11,7 @@ use crate::{
 };
 use std::{error::Error, fmt, sync::Arc};
 use surgeist_html::accounting::HtmlAccountingFault;
-use surgeist_html::accounting::{HtmlCapScope, HtmlResource};
+use surgeist_html::accounting::{HtmlCapScope, HtmlHostScope, HtmlResource};
 use surgeist_html::values::DocumentString;
 
 identity!(
@@ -459,13 +459,19 @@ impl ScanError for HtmlBaseFactsError {
     }
 }
 impl Validation {
-    pub(crate) fn new(limits: HtmlBaseFactsLimits) -> Result<Self, HtmlBaseFactsError> {
+    /// A validation in a scope below the one `hosted` supplies when it is `Some`, else in an
+    /// operation of its own.
+    pub(crate) fn charging(
+        limits: HtmlBaseFactsLimits,
+        hosted: Option<&HtmlHostScope>,
+    ) -> Result<Self, HtmlBaseFactsError> {
         Ok(Self {
-            meter: ScanMeter::new(
+            meter: ScanMeter::charging(
                 HtmlCapScope::BaseFacts,
                 Caps::work(limits.validation_work)
                     .records(limits.records)
                     .code_units(limits.utf16_units),
+                hosted,
             )?,
         })
     }
@@ -611,7 +617,26 @@ impl HtmlParseBaseFacts {
         observations: Vec<HtmlBaseParseObservation>,
         limits: HtmlBaseFactsLimits,
     ) -> Result<Self, HtmlBaseFactsError> {
-        let mut v = Validation::new(limits)?;
+        Self::build(document, observations, limits, None)
+    }
+    /// Charges below the scope `accounting` names, in the host's operation, as [`Self::new`]
+    /// charges an operation of its own. The schema module documentation of
+    /// `surgeist_html::accounting` lists the scopes it creates and what the host keeps.
+    pub fn with_accounting(
+        document: HtmlBaseDocumentFacts,
+        observations: Vec<HtmlBaseParseObservation>,
+        limits: HtmlBaseFactsLimits,
+        accounting: &HtmlHostScope,
+    ) -> Result<Self, HtmlBaseFactsError> {
+        Self::build(document, observations, limits, Some(accounting))
+    }
+    fn build(
+        document: HtmlBaseDocumentFacts,
+        observations: Vec<HtmlBaseParseObservation>,
+        limits: HtmlBaseFactsLimits,
+        hosted: Option<&HtmlHostScope>,
+    ) -> Result<Self, HtmlBaseFactsError> {
+        let mut v = Validation::charging(limits, hosted)?;
         v.records(observations.capacity())?;
         let mut retained = HtmlBaseRetainedStorageUsage {
             bytes: size_of::<ParseFacts>(),
@@ -757,10 +782,43 @@ impl HtmlCapturedBaseFacts {
         frozen: Vec<HtmlCapturedFrozenBase>,
         limits: HtmlBaseFactsLimits,
     ) -> Result<Self, HtmlBaseFactsError> {
+        Self::build(capture, host, revision, documents, frozen, limits, None)
+    }
+    /// Charges below the scope `accounting` names, in the host's operation, as [`Self::new`]
+    /// charges an operation of its own. The schema module documentation of
+    /// `surgeist_html::accounting` lists the scopes it creates and what the host keeps.
+    pub fn with_accounting(
+        capture: &HtmlCapture,
+        host: HtmlHostFactsRevision,
+        revision: HtmlBaseFactsRevision,
+        documents: Vec<HtmlCapturedBaseDocument>,
+        frozen: Vec<HtmlCapturedFrozenBase>,
+        limits: HtmlBaseFactsLimits,
+        accounting: &HtmlHostScope,
+    ) -> Result<Self, HtmlBaseFactsError> {
+        Self::build(
+            capture,
+            host,
+            revision,
+            documents,
+            frozen,
+            limits,
+            Some(accounting),
+        )
+    }
+    fn build(
+        capture: &HtmlCapture,
+        host: HtmlHostFactsRevision,
+        revision: HtmlBaseFactsRevision,
+        documents: Vec<HtmlCapturedBaseDocument>,
+        frozen: Vec<HtmlCapturedFrozenBase>,
+        limits: HtmlBaseFactsLimits,
+        hosted: Option<&HtmlHostScope>,
+    ) -> Result<Self, HtmlBaseFactsError> {
         if &host != capture.host_facts_revision() {
             return Err(HtmlBaseFactsError::HostRevisionMismatch);
         }
-        let mut v = Validation::new(limits)?;
+        let mut v = Validation::charging(limits, hosted)?;
         v.records(
             documents
                 .capacity()

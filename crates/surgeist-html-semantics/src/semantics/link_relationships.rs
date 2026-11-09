@@ -641,8 +641,29 @@ impl HtmlRelFacts {
         input: HtmlRelFactsInput,
         limits: HtmlRelFactsLimits,
     ) -> Result<Self, HtmlRelFactsError> {
+        Self::build(capture, expected_host, input, limits, None)
+    }
+    /// Charges below the scope `accounting` names, in the host's operation, as [`Self::new`]
+    /// charges an operation of its own. The schema module documentation of
+    /// `surgeist_html::accounting` lists the scopes it creates and what the host keeps.
+    pub fn with_accounting(
+        capture: &HtmlCapture,
+        expected_host: &HtmlHostFactsRevision,
+        input: HtmlRelFactsInput,
+        limits: HtmlRelFactsLimits,
+        accounting: &HtmlHostScope,
+    ) -> Result<Self, HtmlRelFactsError> {
+        Self::build(capture, expected_host, input, limits, Some(accounting))
+    }
+    fn build(
+        capture: &HtmlCapture,
+        expected_host: &HtmlHostFactsRevision,
+        input: HtmlRelFactsInput,
+        limits: HtmlRelFactsLimits,
+        hosted: Option<&HtmlHostScope>,
+    ) -> Result<Self, HtmlRelFactsError> {
         FactsAdmission::host(capture, expected_host)?;
-        let mut a = FactsAdmission::new(HtmlCapScope::LinkRelationshipFacts, limits)?;
+        let mut a = FactsAdmission::charging(HtmlCapScope::LinkRelationshipFacts, limits, hosted)?;
         a.vector(&input.definitions)?;
         a.vector(&input.occurrences)?;
         a.vector(&input.supported)?;

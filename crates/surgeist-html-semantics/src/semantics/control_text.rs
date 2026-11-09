@@ -144,14 +144,36 @@ impl HtmlOutputDefaultFacts {
         records: Vec<HtmlOutputDefaultFact>,
         limits: HtmlOutputDefaultLimits,
     ) -> Result<Self, HtmlOutputDefaultError> {
+        Self::build(capture, host_revision, records, limits, None)
+    }
+    /// Charges below the scope `accounting` names, in the host's operation, as [`Self::new`]
+    /// charges an operation of its own. The schema module documentation of
+    /// `surgeist_html::accounting` lists the scopes it creates and what the host keeps.
+    pub fn with_accounting(
+        capture: &HtmlCapture,
+        host_revision: HtmlHostFactsRevision,
+        records: Vec<HtmlOutputDefaultFact>,
+        limits: HtmlOutputDefaultLimits,
+        accounting: &HtmlHostScope,
+    ) -> Result<Self, HtmlOutputDefaultError> {
+        Self::build(capture, host_revision, records, limits, Some(accounting))
+    }
+    fn build(
+        capture: &HtmlCapture,
+        host_revision: HtmlHostFactsRevision,
+        records: Vec<HtmlOutputDefaultFact>,
+        limits: HtmlOutputDefaultLimits,
+        hosted: Option<&HtmlHostScope>,
+    ) -> Result<Self, HtmlOutputDefaultError> {
         if &host_revision != capture.host_facts_revision() {
             return Err(HtmlOutputDefaultError::HostRevisionMismatch);
         }
-        let mut meter = ScanMeter::new(
+        let mut meter = ScanMeter::charging(
             HtmlCapScope::OutputDefault,
             Caps::work(limits.validation_work)
                 .records(limits.record_capacity)
                 .code_units(limits.code_units),
+            hosted,
         )?;
         meter.acquire(
             HtmlResource::FactRecords,

@@ -33,7 +33,37 @@ impl HtmlDefaultFeedInput {
         applicability: HtmlDefaultFeedApplicability,
         limits: HtmlRelFactsLimits,
     ) -> Result<Self, HtmlRelFactsError> {
-        let mut admission = selector_admission(limits, std::mem::size_of::<Self>())?;
+        Self::build(capture, context, document, applicability, limits, None)
+    }
+    /// Charges below the scope `accounting` names, in the host's operation, as [`Self::new`]
+    /// charges an operation of its own. The schema module documentation of
+    /// `surgeist_html::accounting` lists the scopes it creates and what the host keeps.
+    pub fn with_accounting(
+        capture: &HtmlCapture,
+        context: &HtmlSemanticContext,
+        document: HtmlCaptureSubjectId,
+        applicability: HtmlDefaultFeedApplicability,
+        limits: HtmlRelFactsLimits,
+        accounting: &HtmlHostScope,
+    ) -> Result<Self, HtmlRelFactsError> {
+        Self::build(
+            capture,
+            context,
+            document,
+            applicability,
+            limits,
+            Some(accounting),
+        )
+    }
+    fn build(
+        capture: &HtmlCapture,
+        context: &HtmlSemanticContext,
+        document: HtmlCaptureSubjectId,
+        applicability: HtmlDefaultFeedApplicability,
+        limits: HtmlRelFactsLimits,
+        hosted: Option<&HtmlHostScope>,
+    ) -> Result<Self, HtmlRelFactsError> {
+        let mut admission = selector_admission(limits, std::mem::size_of::<Self>(), hosted)?;
         validate_document(capture, context, &document, &mut admission)?;
         Ok(Self {
             capture: capture.identity().clone(),
@@ -50,8 +80,9 @@ impl HtmlDefaultFeedInput {
 fn selector_admission(
     limits: HtmlRelFactsLimits,
     bytes: usize,
+    hosted: Option<&HtmlHostScope>,
 ) -> Result<FactsAdmission, HtmlRelFactsError> {
-    let mut a = FactsAdmission::new(HtmlCapScope::LinkRelationshipFacts, limits)?;
+    let mut a = FactsAdmission::charging(HtmlCapScope::LinkRelationshipFacts, limits, hosted)?;
     a.add_records(1)?;
     a.add_bytes(bytes)?;
     a.work(1)?;
@@ -364,13 +395,67 @@ impl HtmlDocumentIconInput {
         context: &HtmlSemanticContext,
         collection: HtmlDocumentIconCollection,
         expected: HtmlIconExpectedRevisions,
+        observations: Vec<HtmlIconSuitabilityObservation>,
+        ordering: HtmlIconOrdering,
+        limits: HtmlRelFactsLimits,
+    ) -> Result<Self, HtmlRelFactsError> {
+        Self::build(
+            capture,
+            context,
+            collection,
+            expected,
+            observations,
+            ordering,
+            limits,
+            None,
+        )
+    }
+    /// Charges below the scope `accounting` names, in the host's operation, as [`Self::new`]
+    /// charges an operation of its own. The schema module documentation of
+    /// `surgeist_html::accounting` lists the scopes it creates and what the host keeps.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the arguments of the constructor and the host scope"
+    )]
+    pub fn with_accounting(
+        capture: &HtmlCapture,
+        context: &HtmlSemanticContext,
+        collection: HtmlDocumentIconCollection,
+        expected: HtmlIconExpectedRevisions,
+        observations: Vec<HtmlIconSuitabilityObservation>,
+        ordering: HtmlIconOrdering,
+        limits: HtmlRelFactsLimits,
+        accounting: &HtmlHostScope,
+    ) -> Result<Self, HtmlRelFactsError> {
+        Self::build(
+            capture,
+            context,
+            collection,
+            expected,
+            observations,
+            ordering,
+            limits,
+            Some(accounting),
+        )
+    }
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the arguments of the constructor and the host scope"
+    )]
+    fn build(
+        capture: &HtmlCapture,
+        context: &HtmlSemanticContext,
+        collection: HtmlDocumentIconCollection,
+        expected: HtmlIconExpectedRevisions,
         mut observations: Vec<HtmlIconSuitabilityObservation>,
         ordering: HtmlIconOrdering,
         limits: HtmlRelFactsLimits,
+        hosted: Option<&HtmlHostScope>,
     ) -> Result<Self, HtmlRelFactsError> {
         let mut a = selector_admission(
             limits,
             std::mem::size_of::<IconInputData>() + 2 * std::mem::size_of::<usize>(),
+            hosted,
         )?;
         validate_document(capture, context, &collection.document, &mut a)?;
         a.work(5)?;
@@ -605,9 +690,37 @@ impl HtmlNextDocumentIconInput {
         examination: HtmlIconExaminationObservation,
         limits: HtmlRelFactsLimits,
     ) -> Result<Self, HtmlRelFactsError> {
+        Self::build(previous, expected_examination, examination, limits, None)
+    }
+    /// Charges below the scope `accounting` names, in the host's operation, as [`Self::new`]
+    /// charges an operation of its own. The schema module documentation of
+    /// `surgeist_html::accounting` lists the scopes it creates and what the host keeps.
+    pub fn with_accounting(
+        previous: HtmlDocumentIconChoice,
+        expected_examination: &HtmlRelRevision,
+        examination: HtmlIconExaminationObservation,
+        limits: HtmlRelFactsLimits,
+        accounting: &HtmlHostScope,
+    ) -> Result<Self, HtmlRelFactsError> {
+        Self::build(
+            previous,
+            expected_examination,
+            examination,
+            limits,
+            Some(accounting),
+        )
+    }
+    fn build(
+        previous: HtmlDocumentIconChoice,
+        expected_examination: &HtmlRelRevision,
+        examination: HtmlIconExaminationObservation,
+        limits: HtmlRelFactsLimits,
+        hosted: Option<&HtmlHostScope>,
+    ) -> Result<Self, HtmlRelFactsError> {
         let mut a = selector_admission(
             limits,
             std::mem::size_of::<NextIconData>() + 2 * std::mem::size_of::<usize>(),
+            hosted,
         )?;
         a.vector(&previous.rejections)?;
         a.work(4)?;

@@ -122,6 +122,7 @@ pub(super) struct FactAdmission<E> {
 }
 impl<E: FactError> FactAdmission<E> {
     /// An admission with nothing admitted yet, in a scope named for `kind`.
+    #[cfg(test)]
     pub(super) fn new(kind: HtmlCapScope, limits: impl Into<FactLimits>) -> Result<Self, E> {
         Self::charging(kind, limits, None)
     }

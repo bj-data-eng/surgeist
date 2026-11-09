@@ -502,9 +502,55 @@ impl HtmlImageDimensionFacts {
         boxes: Vec<HtmlImageContentBoxObservation>,
         limits: HtmlImageDimensionFactsLimits,
     ) -> Result<Self, HtmlImageDimensionFactsError> {
+        Self::build(
+            capture, host, revision, expected, resources, boxes, limits, None,
+        )
+    }
+    /// Charges below the scope `accounting` names, in the host's operation, as [`Self::new`]
+    /// charges an operation of its own. The schema module documentation of
+    /// `surgeist_html::accounting` lists the scopes it creates and what the host keeps.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the arguments of the constructor and the host scope"
+    )]
+    pub fn with_accounting(
+        capture: &HtmlCapture,
+        host: HtmlHostFactsRevision,
+        revision: HtmlImageDimensionRevision,
+        expected: Vec<HtmlImageDimensionExpectation>,
+        resources: Vec<HtmlImageDimensionResourceObservation>,
+        boxes: Vec<HtmlImageContentBoxObservation>,
+        limits: HtmlImageDimensionFactsLimits,
+        accounting: &HtmlHostScope,
+    ) -> Result<Self, HtmlImageDimensionFactsError> {
+        Self::build(
+            capture,
+            host,
+            revision,
+            expected,
+            resources,
+            boxes,
+            limits,
+            Some(accounting),
+        )
+    }
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the arguments of the constructor and the host scope"
+    )]
+    fn build(
+        capture: &HtmlCapture,
+        host: HtmlHostFactsRevision,
+        revision: HtmlImageDimensionRevision,
+        expected: Vec<HtmlImageDimensionExpectation>,
+        resources: Vec<HtmlImageDimensionResourceObservation>,
+        boxes: Vec<HtmlImageContentBoxObservation>,
+        limits: HtmlImageDimensionFactsLimits,
+        hosted: Option<&HtmlHostScope>,
+    ) -> Result<Self, HtmlImageDimensionFactsError> {
         use HtmlImageDimensionFactsError as E;
         ImageAdmission::host(capture, &host)?;
-        let mut a = ImageAdmission::new(HtmlCapScope::ImageDimensionFacts, limits)?;
+        let mut a = ImageAdmission::charging(HtmlCapScope::ImageDimensionFacts, limits, hosted)?;
         let capacities = [expected.capacity(), resources.capacity(), boxes.capacity()];
         let records = capacities
             .into_iter()

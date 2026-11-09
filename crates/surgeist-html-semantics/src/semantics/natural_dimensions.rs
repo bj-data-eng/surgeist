@@ -260,13 +260,55 @@ impl HtmlNaturalDimensions {
         capture: &HtmlCapture,
         host_revision: HtmlHostFactsRevision,
         revision: HtmlNaturalDimensionRevision,
+        expected: Vec<HtmlNaturalDimensionFact>,
+        observations: Vec<HtmlNaturalDimensionFact>,
+        limits: HtmlNaturalDimensionLimits,
+    ) -> Result<Self, HtmlNaturalDimensionFactsError> {
+        Self::build(
+            capture,
+            host_revision,
+            revision,
+            expected,
+            observations,
+            limits,
+            None,
+        )
+    }
+    /// Charges below the scope `accounting` names, in the host's operation, as [`Self::new`]
+    /// charges an operation of its own. The schema module documentation of
+    /// `surgeist_html::accounting` lists the scopes it creates and what the host keeps.
+    pub fn with_accounting(
+        capture: &HtmlCapture,
+        host_revision: HtmlHostFactsRevision,
+        revision: HtmlNaturalDimensionRevision,
+        expected: Vec<HtmlNaturalDimensionFact>,
+        observations: Vec<HtmlNaturalDimensionFact>,
+        limits: HtmlNaturalDimensionLimits,
+        accounting: &HtmlHostScope,
+    ) -> Result<Self, HtmlNaturalDimensionFactsError> {
+        Self::build(
+            capture,
+            host_revision,
+            revision,
+            expected,
+            observations,
+            limits,
+            Some(accounting),
+        )
+    }
+    fn build(
+        capture: &HtmlCapture,
+        host_revision: HtmlHostFactsRevision,
+        revision: HtmlNaturalDimensionRevision,
         mut expected: Vec<HtmlNaturalDimensionFact>,
         mut observations: Vec<HtmlNaturalDimensionFact>,
         limits: HtmlNaturalDimensionLimits,
+        hosted: Option<&HtmlHostScope>,
     ) -> Result<Self, HtmlNaturalDimensionFactsError> {
         use HtmlNaturalDimensionFactsError as E;
         FactAdmission::<E>::host(capture, &host_revision)?;
-        let mut a = FactAdmission::<E>::new(HtmlCapScope::NaturalDimensionFacts, limits)?;
+        let mut a =
+            FactAdmission::<E>::charging(HtmlCapScope::NaturalDimensionFacts, limits, hosted)?;
         let records = expected
             .capacity()
             .checked_add(observations.capacity())

@@ -168,6 +168,47 @@ impl HtmlGlobalInheritanceFacts {
         spellcheck_defaults: Vec<HtmlSpellcheckDefaultFact>,
         limits: HtmlGlobalInheritanceLimits,
     ) -> Result<Self, HtmlGlobalInheritanceError> {
+        Self::build(
+            capture,
+            host_revision,
+            revision,
+            design_modes,
+            spellcheck_defaults,
+            limits,
+            None,
+        )
+    }
+    /// Charges below the scope `accounting` names, in the host's operation, as [`Self::new`]
+    /// charges an operation of its own. The schema module documentation of
+    /// `surgeist_html::accounting` lists the scopes it creates and what the host keeps.
+    pub fn with_accounting(
+        capture: &HtmlCapture,
+        host_revision: HtmlHostFactsRevision,
+        revision: HtmlGlobalInheritanceRevision,
+        design_modes: Vec<HtmlDocumentDesignModeFact>,
+        spellcheck_defaults: Vec<HtmlSpellcheckDefaultFact>,
+        limits: HtmlGlobalInheritanceLimits,
+        accounting: &HtmlHostScope,
+    ) -> Result<Self, HtmlGlobalInheritanceError> {
+        Self::build(
+            capture,
+            host_revision,
+            revision,
+            design_modes,
+            spellcheck_defaults,
+            limits,
+            Some(accounting),
+        )
+    }
+    fn build(
+        capture: &HtmlCapture,
+        host_revision: HtmlHostFactsRevision,
+        revision: HtmlGlobalInheritanceRevision,
+        design_modes: Vec<HtmlDocumentDesignModeFact>,
+        spellcheck_defaults: Vec<HtmlSpellcheckDefaultFact>,
+        limits: HtmlGlobalInheritanceLimits,
+        hosted: Option<&HtmlHostScope>,
+    ) -> Result<Self, HtmlGlobalInheritanceError> {
         if &host_revision != capture.host_facts_revision() {
             return Err(HtmlGlobalInheritanceError::HostRevisionMismatch);
         }
@@ -175,9 +216,10 @@ impl HtmlGlobalInheritanceFacts {
             .capacity()
             .checked_add(spellcheck_defaults.capacity())
             .ok_or(HtmlGlobalInheritanceError::RepresentationExhausted)?;
-        let mut validation = ScanMeter::new(
+        let mut validation = ScanMeter::charging(
             HtmlCapScope::GlobalInheritance,
             Caps::work(limits.validation_work).records(limits.record_capacity),
+            hosted,
         )?;
         validation.acquire(HtmlResource::FactRecords, required, |limit, required| {
             HtmlGlobalInheritanceError::RecordCapacity { limit, required }

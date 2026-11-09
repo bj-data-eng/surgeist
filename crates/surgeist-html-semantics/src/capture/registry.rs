@@ -1,14 +1,14 @@
 //! One finite registry-only capture, using the original capture owner.
 use super::*;
-use crate::accounting::{LedgerError, wide};
+use crate::accounting::{Ledger, LedgerError, wide};
 use preflight::ActionPolicy;
 use std::mem::size_of;
 use surgeist_html::accounting::{
-    HtmlAccountingFault, HtmlCapScope, HtmlLedgerOutcome, HtmlLimits, HtmlResource, HtmlWork,
-    classify,
+    HtmlAccountingFault, HtmlCapScope, HtmlHostScope, HtmlLedgerOutcome, HtmlLimits, HtmlResource,
+    aggregate_tariffs, classify,
 };
 use surgeist_html::values::DocumentString;
-use surgeist_ledger::{Change, Charge, Operation, Scope};
+use surgeist_ledger::{Change, Operation, Scope};
 
 /// A complete-empty Global registry and its owning immutable evidence.
 /// The local registry identity is distinct from a consumer's canonical identity.
@@ -124,25 +124,49 @@ struct Workspace {
 /// ledger scope on the largest total a formation needs at one point, and the live backing is a
 /// balance of that scope.
 struct Control {
-    operation: Operation<HtmlWork, HtmlResource>,
+    operation: Ledger,
     scope: Scope,
     fixed: usize,
 }
 impl Control {
+    #[cfg(test)]
     fn new<E>(limit: usize, fixed: usize) -> Result<Self, HtmlEmptyGlobalRegistryError<E>> {
-        let operation = Operation::new(
-            HtmlCapScope::RegistryFormation.name(),
-            HtmlLimits::from_fn(
-                |_| u64::MAX,
-                |resource| match resource {
-                    HtmlResource::FormationBytes => wide(limit),
-                    _ => u64::MAX,
-                },
-            ),
-            1,
-        )
-        .map_err(Self::ledger_error)?;
-        let scope = operation.root();
+        Self::charging(limit, fixed, None)
+    }
+    /// The control of a formation: a scope below the one `hosted` supplies when it is `Some`, else
+    /// the root of an operation of its own.
+    fn charging<E>(
+        limit: usize,
+        fixed: usize,
+        hosted: Option<&HtmlHostScope>,
+    ) -> Result<Self, HtmlEmptyGlobalRegistryError<E>> {
+        let caps = HtmlLimits::from_fn(
+            |_| u64::MAX,
+            |resource| match resource {
+                HtmlResource::FormationBytes => wide(limit),
+                _ => u64::MAX,
+            },
+        );
+        let (operation, scope) = match hosted {
+            Some(host) => {
+                let mut operation = Ledger::Shared(host.ledger().clone());
+                let scope = operation
+                    .child(
+                        host.scope(),
+                        HtmlCapScope::RegistryFormation.name(),
+                        caps,
+                        aggregate_tariffs(),
+                    )
+                    .map_err(Self::ledger_error)?;
+                (operation, scope)
+            }
+            None => {
+                let operation = Operation::new(HtmlCapScope::RegistryFormation.name(), caps, 1)
+                    .map_err(Self::ledger_error)?;
+                let scope = operation.root();
+                (Ledger::Owned(operation), scope)
+            }
+        };
         Ok(Self {
             operation,
             scope,
@@ -175,25 +199,24 @@ impl Control {
     fn backing<E>(&self) -> Result<usize, HtmlEmptyGlobalRegistryError<E>> {
         let live = self
             .operation
-            .usage(self.scope)
-            .map_err(Self::ledger_error)?
-            .live(HtmlResource::FormationBacking);
+            .read(self.scope, |usage| {
+                usage.live(HtmlResource::FormationBacking)
+            })
+            .map_err(Self::ledger_error)?;
         usize::try_from(live).map_err(|_| HtmlEmptyGlobalRegistryError::RepresentationExhausted)
     }
     /// The largest total admitted so far.
     fn peak<E>(&self) -> Result<usize, HtmlEmptyGlobalRegistryError<E>> {
         let peak = self
             .operation
-            .usage(self.scope)
-            .map_err(Self::ledger_error)?
-            .peak(HtmlResource::FormationBytes);
+            .read(self.scope, |usage| usage.peak(HtmlResource::FormationBytes))
+            .map_err(Self::ledger_error)?;
         usize::try_from(peak).map_err(|_| HtmlEmptyGlobalRegistryError::RepresentationExhausted)
     }
     /// Admits a total the formation needs at one point, refusing one beyond the allowance.
     fn admit<E>(&mut self, required: usize) -> Result<(), HtmlEmptyGlobalRegistryError<E>> {
         self.operation
-            .charge_at(self.scope)
-            .record_largest(HtmlResource::FormationBytes, wide(required))
+            .record_largest(self.scope, HtmlResource::FormationBytes, wide(required))
             .map_err(Self::ledger_error)
     }
     /// Replaces a backing of `old` bytes with one of `actual`, which a formation holds live.
@@ -308,19 +331,45 @@ impl HtmlCapture {
     pub fn complete_empty_global_registry_with<E>(
         host_revision: HtmlHostFactsRevision,
         formation_bytes: usize,
+        step: impl FnMut(usize) -> Result<(), E>,
+    ) -> Result<HtmlEmptyGlobalRegistryCapture, HtmlEmptyGlobalRegistryError<E>> {
+        Self::form_empty_global_registry(host_revision, formation_bytes, step, None)
+    }
+
+    /// Forms the registry as [`Self::complete_empty_global_registry_with`] does, charging scopes
+    /// below the scope `accounting` names instead of operations of its own. The formation opens
+    /// `html-registry-formation`, which carries the allowance, and its capture builder opens
+    /// `html-capture`; the host operation keeps the captured registry, and the formation backing
+    /// is returned when the formation ends. A cap of the host scope or of an ancestor refuses with
+    /// the limit that scope carries.
+    pub fn complete_empty_global_registry_with_accounting<E>(
+        host_revision: HtmlHostFactsRevision,
+        formation_bytes: usize,
+        step: impl FnMut(usize) -> Result<(), E>,
+        accounting: &HtmlHostScope,
+    ) -> Result<HtmlEmptyGlobalRegistryCapture, HtmlEmptyGlobalRegistryError<E>> {
+        Self::form_empty_global_registry(host_revision, formation_bytes, step, Some(accounting))
+    }
+
+    fn form_empty_global_registry<E>(
+        host_revision: HtmlHostFactsRevision,
+        formation_bytes: usize,
         mut step: impl FnMut(usize) -> Result<(), E>,
+        hosted: Option<&HtmlHostScope>,
     ) -> Result<HtmlEmptyGlobalRegistryCapture, HtmlEmptyGlobalRegistryError<E>> {
         Control::step(&mut step, 1)?;
         let fixed = Control::plus(
             size_of::<Workspace>(),
             size_of::<HtmlEmptyGlobalRegistryCapture>(),
         )?;
-        let mut control = Control::new(formation_bytes, fixed)?;
+        let mut control = Control::charging(formation_bytes, fixed, hosted)?;
         control.admit(fixed)?;
-        let mut builder = HtmlCaptureBuilder::new(
-            HtmlCaptureLimits::new(0, 0, 0, 0, 0, 1, 0, 16 * 1024 * 1024),
-            host_revision,
-        );
+        let capture_limits = HtmlCaptureLimits::new(0, 0, 0, 0, 0, 1, 0, 16 * 1024 * 1024);
+        let mut builder = match hosted {
+            Some(host) => HtmlCaptureBuilder::with_accounting(capture_limits, host_revision, host)
+                .map_err(HtmlEmptyGlobalRegistryError::Accounting)?,
+            None => HtmlCaptureBuilder::new(capture_limits, host_revision),
+        };
         let mut scratch = preflight::DepthScratch::new();
         builder.enable_controlled_storage();
         // Pre-reserve the exact existing registry bank. The original add_registry

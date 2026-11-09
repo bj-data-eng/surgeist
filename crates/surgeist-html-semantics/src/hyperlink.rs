@@ -7,6 +7,7 @@ use crate::{
     HtmlBaseFactsUsage, HtmlBaseRetainedStorageUsage, HtmlBaseUrlRecord,
 };
 use std::{error::Error, fmt, sync::Arc};
+use surgeist_html::accounting::HtmlHostScope;
 use surgeist_html::values::DocumentString;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -116,7 +117,37 @@ impl HtmlEncodingUrlParseFacts {
         observations: Vec<HtmlEncodingUrlParseObservation>,
         limits: HtmlBaseFactsLimits,
     ) -> Result<Self, HtmlEncodingUrlFactsError> {
-        let mut v = crate::base::Validation::new(limits)?;
+        Self::build(base, encoding, revision, observations, limits, None)
+    }
+    /// Charges below the scope `accounting` names, in the host's operation, as [`Self::new`]
+    /// charges an operation of its own. The schema module documentation of
+    /// `surgeist_html::accounting` lists the scopes it creates and what the host keeps.
+    pub fn with_accounting(
+        base: HtmlBaseUrlRecord,
+        encoding: HtmlBaseEncoding,
+        revision: HtmlBaseFactsRevision,
+        observations: Vec<HtmlEncodingUrlParseObservation>,
+        limits: HtmlBaseFactsLimits,
+        accounting: &HtmlHostScope,
+    ) -> Result<Self, HtmlEncodingUrlFactsError> {
+        Self::build(
+            base,
+            encoding,
+            revision,
+            observations,
+            limits,
+            Some(accounting),
+        )
+    }
+    fn build(
+        base: HtmlBaseUrlRecord,
+        encoding: HtmlBaseEncoding,
+        revision: HtmlBaseFactsRevision,
+        observations: Vec<HtmlEncodingUrlParseObservation>,
+        limits: HtmlBaseFactsLimits,
+        hosted: Option<&HtmlHostScope>,
+    ) -> Result<Self, HtmlEncodingUrlFactsError> {
+        let mut v = crate::base::Validation::charging(limits, hosted)?;
         v.records(observations.capacity())?;
         let mut retained = HtmlBaseRetainedStorageUsage {
             bytes: size_of::<Facts>(),
