@@ -413,18 +413,30 @@ impl Materialization {
         Ok(())
     }
 
-    /// Gives back the live scratch records, which are local to one processing step.
+    /// Gives back the live scratch records, which are local to one processing step. Each scope
+    /// gives back what it holds: after a refused overshoot the observed scope holds growth that
+    /// the capped scope never admitted. Both scopes are released whatever the first returns, and
+    /// the first failure is reported after the live scratch is read back.
     fn release_scratch(&mut self) -> Result<(), HtmlAutocompleteMaterializationError> {
-        let release = [Change::Release(
-            HtmlResource::ScratchRecords,
-            wide(self.scratch),
-        )];
+        let mut first = Ok(());
         for scope in [self.observed, self.caps] {
-            self.operation
-                .apply_batch(scope, &release)
-                .map_err(Self::refused)?;
+            let released = self
+                .operation
+                .usage(scope)
+                .map(|usage| usage.live(HtmlResource::ScratchRecords))
+                .and_then(|live| {
+                    self.operation.apply_batch(
+                        scope,
+                        &[Change::Release(HtmlResource::ScratchRecords, live)],
+                    )
+                })
+                .map_err(Self::refused);
+            if first.is_ok() {
+                first = released;
+            }
         }
-        self.read()
+        let read = self.read();
+        first.and(read)
     }
 
     fn reserve<T>(
@@ -2263,16 +2275,21 @@ mod controlled_tests {
                 .observe_growth(5, 8, StoragePurpose::Scratch)
                 .is_err()
         );
-        let outcome = process(
+        // Whether the step stops or completes, it ends with no live scratch in either scope.
+        let _ = process(
             Some(&tokens),
             HtmlAutocompleteMantle::Expectation,
             &mut storage,
         );
-        assert!(matches!(
-            outcome,
-            Err(HtmlAutocompleteMaterializationError::ScratchLimit { .. })
-        ));
         assert_eq!(storage.scratch, 0);
+        for scope in [storage.observed, storage.caps] {
+            let live = storage
+                .operation
+                .usage(scope)
+                .unwrap()
+                .live(HtmlResource::ScratchRecords);
+            assert_eq!(live, 0);
+        }
     }
 
     #[test]
