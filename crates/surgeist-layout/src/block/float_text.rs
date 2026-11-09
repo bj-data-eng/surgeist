@@ -8,8 +8,88 @@ use super::floats::{
 };
 use crate::LayoutScalar;
 use crate::text_layout::fit::{EncounterBasis, EncounterReplay, FitError};
+use crate::text_layout::scope_alignment::EntryBacking;
 use crate::text_layout::scope_alignment::EntryFundingRef;
 use surgeist_text::{FinalizedLine, LineEnd, PreparedParticipant, SourcePosition, TextSeam};
+
+mod ancestor_end;
+use ancestor_end::ClosingEnds;
+pub(super) use ancestor_end::source_interval;
+
+pub(super) struct FloatEvents<Node, S: LayoutScalar> {
+    rows: Vec<FloatEvent<Node, S>>,
+    backing: EntryBacking,
+}
+impl<Node: Copy + Eq, S: LayoutScalar> FloatEvents<Node, S> {
+    pub fn new() -> Self {
+        Self {
+            rows: Vec::new(),
+            backing: EntryBacking::default(),
+        }
+    }
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
+    }
+    pub fn push(
+        &mut self,
+        event: FloatEvent<Node, S>,
+        funding: Option<EntryFundingRef<'_>>,
+    ) -> Result<(), FitError> {
+        self.backing.reserve_push_ref(&mut self.rows, funding)?;
+        self.rows.push(event);
+        Ok(())
+    }
+    pub fn bind<'a>(
+        self,
+        run: &crate::text_layout::AdmittedRun<'_, Node>,
+        associations: &crate::text_layout::capture::ScopeAssociations<Node>,
+        controls: impl Iterator<Item = &'a surgeist_text::ControlAllocation> + Clone,
+        mut interval: impl FnMut(
+            &surgeist_text::InlineBoxSource,
+        ) -> Result<Option<(usize, usize)>, FitError>,
+        funding: Option<EntryFundingRef<'_>>,
+    ) -> Result<BoundEvents<Node, S>, FitError> {
+        let mut backing = EntryBacking::default();
+        let mut rows = Vec::new();
+        for source in self.rows {
+            if let Some(funding) = funding {
+                funding.visit(1)?;
+            }
+            let closing_ends = ClosingEnds::project(
+                &source,
+                run,
+                associations,
+                controls.clone(),
+                &mut interval,
+                funding,
+            )?;
+            backing.reserve_push_ref(&mut rows, funding)?;
+            rows.push(FloatEncounter {
+                source,
+                closing_ends,
+            });
+        }
+        Ok(BoundEvents {
+            rows,
+            _backing: backing,
+        })
+    }
+}
+
+pub(super) struct FloatEncounter<Node, S: LayoutScalar> {
+    source: FloatEvent<Node, S>,
+    closing_ends: ClosingEnds,
+}
+pub(super) struct BoundEvents<Node, S: LayoutScalar> {
+    rows: Vec<FloatEncounter<Node, S>>,
+    _backing: EntryBacking,
+}
+impl<Node, S: LayoutScalar> std::ops::Deref for BoundEvents<Node, S> {
+    type Target = [FloatEncounter<Node, S>];
+    fn deref(&self) -> &Self::Target {
+        &self.rows
+    }
+}
 
 struct CellOriginIncidence {
     represented: bool,
@@ -271,7 +351,7 @@ struct EncounterJournal<Node, S: LayoutScalar> {
 }
 
 pub(super) struct Encounters<Node, S: LayoutScalar> {
-    pub events: Vec<FloatEvent<Node, S>>,
+    events: BoundEvents<Node, S>,
     incoming: Option<FloatExclusions<S, Node>>,
     base: FloatExclusions<S, Node>,
     current: FloatExclusions<S, Node>,
@@ -286,7 +366,7 @@ pub(super) struct Encounters<Node, S: LayoutScalar> {
 
 impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
     pub fn new(
-        events: Vec<FloatEvent<Node, S>>,
+        events: BoundEvents<Node, S>,
         base: FloatExclusions<S, Node>,
         cursor: S,
         inline_space: FloatInlineSpace,
@@ -300,7 +380,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 remaining: events
                     .iter()
                     .enumerate()
-                    .map(|(index, event)| (event.position, index))
+                    .map(|(index, event)| (event.source.position, index))
                     .collect(),
                 tentative: Vec::new(),
                 accepted: Vec::new(),
@@ -339,7 +419,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 self.accepted[index] = None;
                 journal
                     .remaining
-                    .insert((self.events[index].position, index));
+                    .insert((self.events[index].source.position, index));
             }
             journal.earlier_float_top = journal.incoming_float_top;
             journal.group = None;
@@ -375,7 +455,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 self.accepted[index] = None;
                 journal
                     .remaining
-                    .insert((self.events[index].position, index));
+                    .insert((self.events[index].source.position, index));
             }
             journal.earlier_float_top = group.earlier_float_top;
         }
@@ -436,7 +516,8 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
         });
         for ordinal in 0..window.as_ref().map_or(self.events.len(), Vec::len) {
             let index = window.as_ref().map_or(ordinal, |window| window[ordinal]);
-            let event = &self.events[index];
+            let encounter = &self.events[index];
+            let event = &encounter.source;
             #[cfg(test)]
             {
                 self.replay_event_visits += 1;
@@ -577,7 +658,16 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             let (prefix, preceding) = observation
                 .observe(line)
                 .map_err(|error| super::inline_run::text_run_error(container, error))?;
-            let inline_constraint = prefix + request.context.indent;
+            let demand = encounter
+                .closing_ends
+                .demand(line, &observation, funding)
+                .map_err(|error| super::inline_run::text_run_error(container, error))?;
+            let inline_constraint = crate::text_layout::run::add(
+                crate::text_layout::run::add(prefix, request.context.indent)
+                    .map_err(|error| super::inline_run::text_run_error(container, error))?,
+                demand.extra,
+            )
+            .map_err(|error| super::inline_run::text_run_error(container, error))?;
             if !inline_constraint.is_finite() {
                 return Err(super::inline_run::text_run_error(
                     container,
@@ -611,7 +701,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 FloatInlineSpace::Finite => self.current.place_float_for_line(
                     container,
                     &pending,
-                    preceding.then_some((inline_constraint, line_end)),
+                    (preceding || demand.participates).then_some((inline_constraint, line_end)),
                 )?,
                 FloatInlineSpace::IntrinsicMaximum => {
                     self.current.place_float_intrinsic(container, &pending)?
@@ -674,7 +764,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 journal.accepted.push(index);
                 journal
                     .remaining
-                    .remove(&(self.events[index].position, index));
+                    .remove(&(self.events[index].source.position, index));
             }
         } else {
             self.accepted = self.tentative.clone();
@@ -685,11 +775,11 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
         let children = self
             .accepted
             .into_iter()
-            .zip(self.events)
+            .zip(self.events.rows)
             .filter_map(|(plan, event)| {
                 plan.map(|pending| AcceptedFloatChild {
                     pending,
-                    packet: event.packet,
+                    packet: event.source.packet,
                 })
             })
             .collect();
@@ -720,3 +810,9 @@ mod generated_end_controls;
 
 #[cfg(test)]
 mod cell_prefix_tests;
+
+#[cfg(test)]
+mod closing_source_controls;
+
+#[cfg(test)]
+mod closing_funding_tests;

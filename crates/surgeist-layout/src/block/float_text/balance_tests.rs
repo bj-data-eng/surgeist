@@ -198,7 +198,7 @@ fn lane<S: LayoutScalar>() {
         ),
     );
     let mut packets = Vec::new();
-    let mut events = Vec::new();
+    let mut events = FloatEvents::new();
     for (node, offset, extent) in [(2, 1, 10.0), (5, 4, 20.0)] {
         let packet = owner
             .probe_float_child(
@@ -224,18 +224,26 @@ fn lane<S: LayoutScalar>() {
             float_exclusion: FloatExclusion::MarginBox,
             child_compute_geometry: packet.output.scroll_geometry,
         };
-        events.push(
-            FloatEvent::new(
-                pending,
-                packet.clone(),
-                &admitted,
-                &capture.associations,
-                offset,
-                child_request,
+        events
+            .push(
+                FloatEvent::new(
+                    pending,
+                    packet.clone(),
+                    &admitted,
+                    &capture.associations,
+                    offset,
+                    child_request,
+                    None,
+                )
+                .unwrap_or_else(|_| panic!("actual native float event")),
                 None,
             )
-            .unwrap_or_else(|_| panic!("actual native float event")),
-        );
+            .map_err(|error| {
+                super::super::inline_run::text_run_error::<u32, S, core::convert::Infallible>(
+                    0, error,
+                )
+            })
+            .unwrap();
         packets.push(packet);
     }
     let forced = paragraph
@@ -266,6 +274,31 @@ fn lane<S: LayoutScalar>() {
     let failure = |error| {
         super::super::inline_run::text_run_error::<u32, S, core::convert::Infallible>(0, error)
     };
+    let first_selected = first.selected_line();
+    let second_selected = second.selected_line();
+    let events = events
+        .bind(
+            &admitted,
+            &capture.associations,
+            first_selected
+                .request()
+                .controls
+                .iter()
+                .chain(second_selected.request().controls.iter()),
+            |owner| {
+                source_interval(
+                    &admitted,
+                    &capture.associations,
+                    &capture.wrapping,
+                    &capture.graph,
+                    owner,
+                    None,
+                )
+            },
+            None,
+        )
+        .map_err(failure)
+        .unwrap();
     let mut encounters =
         Encounters::new(events, base, S::ZERO, FloatInlineSpace::Finite, true, true)
             .map_err(failure)

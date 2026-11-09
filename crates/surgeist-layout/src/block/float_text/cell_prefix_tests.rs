@@ -416,8 +416,30 @@ fn cell_prefix_for<S: LayoutScalar>(binding: TextParagraphBinding<u32>) {
             S::from_f64(30.0),
             crate::geometry::LogicalEdgesOf::new(S::ZERO, S::ZERO, S::ZERO, S::ZERO),
         );
+        let mut events = FloatEvents::new();
+        events.push(event, None).map_err(prefix_error).unwrap();
+        let selected = line.selected_line();
+        let events = events
+            .bind(
+                &admitted,
+                &capture.associations,
+                selected.request().controls.iter(),
+                |owner| {
+                    source_interval(
+                        &admitted,
+                        &capture.associations,
+                        &capture.wrapping,
+                        &capture.graph,
+                        owner,
+                        None,
+                    )
+                },
+                None,
+            )
+            .map_err(prefix_error)
+            .unwrap();
         let mut encounters = Encounters::new(
-            vec![event],
+            events,
             base,
             S::ZERO,
             FloatInlineSpace::Finite,
