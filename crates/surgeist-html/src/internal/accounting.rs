@@ -707,6 +707,79 @@ impl HtmlCapScope {
     }
 }
 
+/// A scope that carries no cap of its own: a charging, attribution or observation
+/// scope below a cap scope, or the root of an operation a parse creates.
+///
+/// Together with [`HtmlCapScope`] it names every scope the HTML crates create, so a
+/// host profile reader matches on names the schema owns.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlAuxiliaryScope {
+    /// The root of a profiled parse's own operation.
+    ParseHost,
+    /// The charging scope below the parse's cap scope.
+    ParseCharging,
+    /// The scope that receives the work of the admission phase.
+    ParseAdmission,
+    /// The scope that receives the work of the construction phase.
+    ParseConstruction,
+    /// The scope that receives the work of the finalization phase.
+    ParseFinalization,
+    /// The scope that receives the work of the publication phase.
+    ParsePublication,
+    /// The scope of a semantic session that records every reservation the
+    /// allocator made before the query scope admits or refuses it.
+    QueryObserved,
+    /// The scope of a controlled autocomplete materialization that records the
+    /// growth the allocator made before the autocomplete scope admits it.
+    AutocompleteObserved,
+    /// The scope of a fact scan that records the growth of its vectors.
+    FactGrown,
+    /// The scope of a controlled option value capture that holds the graph it
+    /// retains between calls.
+    OptionValueRetained,
+    /// The scope of a controlled option value capture that holds its scratch.
+    OptionValueTemporary,
+    /// The scope of a controlled option value capture that records the storage
+    /// actually observed.
+    OptionValueObserved,
+}
+
+impl HtmlAuxiliaryScope {
+    /// Every auxiliary scope.
+    pub const ALL: [Self; 12] = [
+        Self::ParseHost,
+        Self::ParseCharging,
+        Self::ParseAdmission,
+        Self::ParseConstruction,
+        Self::ParseFinalization,
+        Self::ParsePublication,
+        Self::QueryObserved,
+        Self::AutocompleteObserved,
+        Self::FactGrown,
+        Self::OptionValueRetained,
+        Self::OptionValueTemporary,
+        Self::OptionValueObserved,
+    ];
+
+    /// The static scope name for ledger reports.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::ParseHost => "html-parse-host",
+            Self::ParseCharging => "html-parse-charging",
+            Self::ParseAdmission => "html-parse-admission",
+            Self::ParseConstruction => "html-parse-construction",
+            Self::ParseFinalization => "html-parse-finalization",
+            Self::ParsePublication => "html-parse-publication",
+            Self::QueryObserved => "html-query-observed",
+            Self::AutocompleteObserved => "html-autocomplete-observed",
+            Self::FactGrown => "html-fact-grown",
+            Self::OptionValueRetained => "html-option-value-retained",
+            Self::OptionValueTemporary => "html-option-value-temporary",
+            Self::OptionValueObserved => "html-option-value-observed",
+        }
+    }
+}
+
 /// How a bounded operation that charges before it runs can fail: the charge
 /// stopped, or the operation found a fault of its own.
 ///
@@ -738,20 +811,6 @@ impl<Stop: Error + 'static, Fault: Error + 'static> Error for HtmlChargedError<S
         }
     }
 }
-
-/// A conversion amount that does not fit the ledger's `u64`.
-///
-/// Callers stop with their own representation failure.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HtmlChargeOverflow;
-
-impl fmt::Display for HtmlChargeOverflow {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("accounting amount is not representable")
-    }
-}
-
-impl Error for HtmlChargeOverflow {}
 
 /// Widens a platform amount. An amount beyond `u64` saturates, and every finite
 /// cap refuses `u64::MAX`.
@@ -820,6 +879,12 @@ pub(crate) fn autocomplete_limits(limits: HtmlAutocompleteMaterializationLimits)
         },
     )
 }
+
+mod fault;
+pub use fault::{
+    HtmlAccountingFault, HtmlCapRefusal, HtmlChargeOverflow, HtmlLedgerOutcome, HtmlRefusalFigures,
+    classify, fault_of,
+};
 
 #[cfg(test)]
 mod tests;

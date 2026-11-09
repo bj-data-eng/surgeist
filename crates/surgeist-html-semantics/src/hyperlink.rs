@@ -34,6 +34,20 @@ pub enum HtmlEncodingUrlFactsError {
     InputsMismatch,
     MissingObservation,
 }
+impl HtmlEncodingUrlFactsError {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Formation(error) => error.accounting_fault(),
+            Self::ForeignProducer
+            | Self::RevisionMismatch
+            | Self::InputsMismatch
+            | Self::MissingObservation => None,
+        }
+    }
+}
 impl From<HtmlBaseFactsError> for HtmlEncodingUrlFactsError {
     fn from(value: HtmlBaseFactsError) -> Self {
         Self::Formation(value)
@@ -49,6 +63,17 @@ impl Error for HtmlEncodingUrlFactsError {}
 pub enum HtmlEncodingUrlLookupError<E> {
     Facts(HtmlEncodingUrlFactsError),
     Interrupted(E),
+}
+impl<E> HtmlEncodingUrlLookupError<E> {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Facts(error) => error.accounting_fault(),
+            Self::Interrupted(_) => None,
+        }
+    }
 }
 impl<E: fmt::Display> fmt::Display for HtmlEncodingUrlLookupError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -366,6 +391,17 @@ impl HtmlHyperlinkUrlSnapshot {
 pub enum HtmlHyperlinkCaptureError<E> {
     Capture(crate::HtmlCaptureError),
     Interrupted(E),
+}
+impl<E> HtmlHyperlinkCaptureError<E> {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Capture(error) => error.accounting_fault(),
+            Self::Interrupted(_) => None,
+        }
+    }
 }
 impl<E: fmt::Display> fmt::Display for HtmlHyperlinkCaptureError<E> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

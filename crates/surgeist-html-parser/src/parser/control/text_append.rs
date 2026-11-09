@@ -246,14 +246,14 @@ impl ParseControl {
                     HtmlResource::ManagedUtf16Units,
                     allocation.units,
                 )],
-                Site::RELEASE,
+                Site::PLAIN,
             )?;
             self.admit_resources(
                 &[
                     Change::Release(HtmlResource::BufferedUtf16Units, allocation.units),
                     Change::Acquire(HtmlResource::ManagedUtf16Units, allocation.units),
                 ],
-                Site::RELEASE,
+                Site::PLAIN,
             )?;
             allocation.resource = HtmlParseResource::ManagedUtf16Units;
         }

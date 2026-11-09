@@ -4,8 +4,9 @@
 
 use super::*;
 use crate::internal::accounting::{
-    HtmlCapScope, HtmlChange, HtmlLimits, HtmlResource, HtmlTariffs, HtmlWork, autocomplete_limits,
-    wide,
+    HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapScope, HtmlChange, HtmlLedgerOutcome,
+    HtmlLimits, HtmlRefusalFigures, HtmlResource, HtmlTariffs, HtmlWork, autocomplete_limits,
+    classify, wide,
 };
 use crate::{
     internal::microsyntax::tokens::DeclaredKeyword,
@@ -14,9 +15,7 @@ use crate::{
     internal::microsyntax::tokens::declared_keyword,
 };
 use std::{error::Error, fmt};
-use surgeist_ledger::{
-    Change, Error as LedgerError, Operation, RefusalReason, Scope, ScopeLedger, Usage,
-};
+use surgeist_ledger::{Change, Error as LedgerError, Operation, Scope, ScopeLedger, Usage};
 
 const RULE: RuleMetadata = RuleMetadata {
     attribute: KnownHtmlAttribute::Autocomplete,
@@ -140,9 +139,10 @@ pub enum HtmlAutocompleteMaterializationError {
     /// A size computation overflowed `usize` or exceeded `isize::MAX` bytes, so the request cannot
     /// be represented on this platform.
     Representation,
-    /// The ledger scope that enforces the allowances reported a state its own sequencing rules
-    /// out.
-    LedgerState,
+    /// The ledger scope that enforces the allowances failed in a way that is not a refused
+    /// allowance: a scope of another operation, a ledger that cannot allocate, a release that
+    /// matches nothing held, or a state its own sequencing rules out.
+    Accounting(HtmlAccountingFault),
 }
 
 /// A refused materialization with the storage it had taken when it stopped.
@@ -255,8 +255,9 @@ impl fmt::Display for HtmlAutocompleteMaterializationError {
             Self::Representation => f.write_str(
                 "autocomplete materialization size cannot be represented on this platform",
             ),
-            Self::LedgerState => f.write_str(
-                "the ledger scope that enforces the allowances reported an impossible state",
+            Self::Accounting(fault) => write!(
+                f,
+                "the ledger scope that enforces the allowances failed: {fault}"
             ),
         }
     }
@@ -270,6 +271,7 @@ impl Error for HtmlAutocompleteMaterializationError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::RawAdmission(error) => Some(error),
+            Self::Accounting(fault) => Some(fault),
             _ => None,
         }
     }
@@ -336,16 +338,12 @@ impl Materialization<Operation<HtmlWork, HtmlResource>> {
     fn new(
         limits: Option<HtmlAutocompleteMaterializationLimits>,
     ) -> Result<Self, HtmlAutocompleteMaterializationError> {
-        use HtmlAutocompleteMaterializationError as E;
-        let allocation = || E::Allocation {
-            requested_bytes: std::mem::size_of::<Operation<HtmlWork, HtmlResource>>(),
-        };
         let mut operation = Operation::new(
             HtmlCapScope::Autocomplete.name(),
             HtmlLimits::unlimited(),
             3,
         )
-        .map_err(|_| allocation())?;
+        .map_err(Self::refused)?;
         let root = operation.root();
         let caps = operation
             .child(
@@ -354,15 +352,15 @@ impl Materialization<Operation<HtmlWork, HtmlResource>> {
                 limits.map_or_else(HtmlLimits::unlimited, autocomplete_limits),
                 HtmlTariffs::identity(),
             )
-            .map_err(|_| allocation())?;
+            .map_err(Self::refused)?;
         let observed = operation
             .child(
                 root,
-                "html-autocomplete-observed",
+                HtmlAuxiliaryScope::AutocompleteObserved.name(),
                 HtmlLimits::unlimited(),
                 HtmlTariffs::identity(),
             )
-            .map_err(|_| allocation())?;
+            .map_err(Self::refused)?;
         Self::in_scopes(operation, caps, observed)
     }
 }
@@ -375,10 +373,9 @@ impl<L: ScopeLedger<HtmlWork, HtmlResource>> Materialization<L> {
         caps: Scope,
         observed: Scope,
     ) -> Result<Self, HtmlAutocompleteMaterializationError> {
-        use HtmlAutocompleteMaterializationError as E;
         let held = {
-            let observed_usage = ledger.usage(observed).map_err(|_| E::LedgerState)?;
-            let caps_usage = ledger.usage(caps).map_err(|_| E::LedgerState)?;
+            let observed_usage = ledger.usage(observed).map_err(Self::refused)?;
+            let caps_usage = ledger.usage(caps).map_err(Self::refused)?;
             Held {
                 allocated_bytes: observed_usage.live(HtmlResource::AllocatedBytes),
                 nested_output_records: observed_usage.live(HtmlResource::NestedOutputRecords),
@@ -400,31 +397,22 @@ impl<L: ScopeLedger<HtmlWork, HtmlResource>> Materialization<L> {
     /// total the growth would have reached.
     fn refused(error: LedgerError<HtmlWork, HtmlResource>) -> HtmlAutocompleteMaterializationError {
         use HtmlAutocompleteMaterializationError as E;
-        let LedgerError::Refused(refusal) = error else {
-            return E::LedgerState;
+        let refusal = match classify(error) {
+            HtmlLedgerOutcome::Fault(fault) => return E::Accounting(fault),
+            HtmlLedgerOutcome::Exhausted(_) => return E::Representation,
+            HtmlLedgerOutcome::Cap(refusal) => refusal,
         };
-        let (RefusalReason::Limit { limit }, Change::Acquire(resource, amount)) =
-            (refusal.reason, refusal.change)
-        else {
-            return match refusal.reason {
-                RefusalReason::Overflow => E::Representation,
-                _ => E::LedgerState,
-            };
+        let Change::Acquire(resource, _) = refusal.change() else {
+            return E::Accounting(HtmlAccountingFault::UnexpectedChange);
         };
-        let (Ok(limit), Some(required)) = (
-            usize::try_from(limit),
-            refusal
-                .current
-                .checked_add(amount)
-                .and_then(|required| usize::try_from(required).ok()),
-        ) else {
+        let Ok(HtmlRefusalFigures { limit, required }) = refusal.figures() else {
             return E::Representation;
         };
         match resource {
             HtmlResource::AllocatedBytes => E::BytesLimit { limit, required },
             HtmlResource::NestedOutputRecords => E::OutputLimit { limit, required },
             HtmlResource::ScratchRecords => E::ScratchLimit { limit, required },
-            _ => E::LedgerState,
+            _ => E::Accounting(HtmlAccountingFault::UnexpectedChange),
         }
     }
 
@@ -440,14 +428,12 @@ impl<L: ScopeLedger<HtmlWork, HtmlResource>> Materialization<L> {
     /// what it held when the materialization began.
     fn read(&mut self) -> Result<(), HtmlAutocompleteMaterializationError> {
         use HtmlAutocompleteMaterializationError as E;
-        let usage: Usage<HtmlWork, HtmlResource> = self
-            .ledger
-            .usage(self.observed)
-            .map_err(|_| E::LedgerState)?;
+        let usage: Usage<HtmlWork, HtmlResource> =
+            self.ledger.usage(self.observed).map_err(Self::refused)?;
         let own = |value: u64, before: u64| {
             value
                 .checked_sub(before)
-                .ok_or(E::LedgerState)
+                .ok_or(E::Accounting(HtmlAccountingFault::UnexpectedChange))
                 .and_then(|own| usize::try_from(own).map_err(|_| E::Representation))
         };
         self.usage = HtmlAutocompleteMaterializationUsage {
@@ -1850,7 +1836,8 @@ impl HtmlValueInterpreter {
     ) -> Result<HtmlAutocompleteReport, HtmlValueInterpretationError> {
         let interpretation = |error| match error {
             HtmlAutocompleteMaterializationError::RawAdmission(error) => error.into(),
-            HtmlAutocompleteMaterializationError::Allocation { .. } => {
+            HtmlAutocompleteMaterializationError::Allocation { .. }
+            | HtmlAutocompleteMaterializationError::Accounting(HtmlAccountingFault::Allocation) => {
                 HtmlValueInterpretationError::AllocationFailed
             }
             HtmlAutocompleteMaterializationError::Representation => {
@@ -1861,7 +1848,7 @@ impl HtmlValueInterpreter {
             HtmlAutocompleteMaterializationError::BytesLimit { .. }
             | HtmlAutocompleteMaterializationError::OutputLimit { .. }
             | HtmlAutocompleteMaterializationError::ScratchLimit { .. }
-            | HtmlAutocompleteMaterializationError::LedgerState => {
+            | HtmlAutocompleteMaterializationError::Accounting(_) => {
                 HtmlValueInterpretationError::ProtocolViolated
             }
         };
@@ -2696,15 +2683,89 @@ mod ordinary_allocation_tests {
         }
     }
 
-    /// A scope of another operation is a ledger state, not a refusal of an allowance.
+    /// A ledger that cannot allocate, a spent scope bound and a release that matches nothing held
+    /// each reach the caller as the one accounting fault, and an arithmetic overflow stays
+    /// representation exhaustion.
     #[test]
-    fn a_scope_of_another_operation_is_a_ledger_state() {
+    fn ledger_failures_other_than_a_refused_allowance_are_accounting_faults() {
+        type M = Materialization<Operation<HtmlWork, HtmlResource>>;
+        let accounting = HtmlAutocompleteMaterializationError::Accounting;
+        assert_eq!(
+            M::refused(LedgerError::Allocation),
+            accounting(HtmlAccountingFault::Allocation)
+        );
+        assert_eq!(
+            M::refused(LedgerError::ScopeLimit { limit: 3 }),
+            accounting(HtmlAccountingFault::ScopeLimit { limit: 3 })
+        );
+        let (mut ledger, caps, _) = caller_scopes(u64::MAX, u64::MAX, u64::MAX);
+        let underflow = ledger
+            .apply(caps, Change::Release(HtmlResource::ScratchRecords, 1))
+            .unwrap_err();
+        assert_eq!(
+            M::refused(underflow),
+            accounting(HtmlAccountingFault::ReleaseUnderflow)
+        );
+        let (mut ledger, caps, _) = caller_scopes(u64::MAX, u64::MAX, u64::MAX);
+        let overflow = ledger
+            .apply(caps, Change::Acquire(HtmlResource::ManagedNodes, u64::MAX))
+            .and_then(|()| ledger.apply(caps, Change::Acquire(HtmlResource::ManagedNodes, 1)))
+            .unwrap_err();
+        assert_eq!(
+            M::refused(overflow),
+            HtmlAutocompleteMaterializationError::Representation
+        );
+    }
+
+    /// A cap refusal that the materialization does not charge is an unexpected change, whether the
+    /// refused change is not an acquisition or names a resource the materialization does not cap.
+    #[test]
+    fn a_cap_refusal_the_materialization_does_not_charge_is_an_unexpected_change() {
+        type M = Materialization<Operation<HtmlWork, HtmlResource>>;
+        let unexpected =
+            HtmlAutocompleteMaterializationError::Accounting(HtmlAccountingFault::UnexpectedChange);
+        let capped = |change: HtmlChange| {
+            let limits = HtmlLimits::from_fn(|_| 0, |_| 0);
+            let mut operation = Operation::new("scope", limits, 1).unwrap();
+            let root = operation.root();
+            operation.apply(root, change).unwrap_err()
+        };
+        // A work change refused at a cap of zero.
+        assert_eq!(
+            M::refused(capped(Change::Work(HtmlWork::StateStep, 1))),
+            unexpected
+        );
+        // An acquisition of a resource that autocomplete does not cap.
+        assert_eq!(
+            M::refused(capped(Change::Acquire(HtmlResource::ManagedNodes, 1))),
+            unexpected
+        );
+    }
+
+    /// The private operation of an unlimited materialization names its observation scope and its
+    /// cap scope by the schema.
+    #[test]
+    fn the_private_operation_names_its_scopes_by_the_schema() {
+        let materialization = Materialization::new(None).unwrap();
+        assert_eq!(
+            materialization.ledger.scope_name(materialization.observed),
+            Ok(HtmlAuxiliaryScope::AutocompleteObserved.name())
+        );
+        assert_eq!(
+            materialization.ledger.scope_name(materialization.caps),
+            Ok(HtmlCapScope::Autocomplete.name())
+        );
+    }
+
+    /// A scope of another operation is an accounting fault, not a refusal of an allowance.
+    #[test]
+    fn a_scope_of_another_operation_is_a_foreign_scope_fault() {
         let (mut ledger, _, observed) = caller_scopes(u64::MAX, u64::MAX, u64::MAX);
         let (_, foreign, _) = caller_scopes(u64::MAX, u64::MAX, u64::MAX);
         let failure = scoped(&mut ledger, foreign, observed, "name").unwrap_err();
         assert_eq!(
             failure.kind(),
-            HtmlAutocompleteMaterializationError::LedgerState
+            HtmlAutocompleteMaterializationError::Accounting(HtmlAccountingFault::ForeignScope)
         );
     }
 }

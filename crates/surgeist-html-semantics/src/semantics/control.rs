@@ -6,6 +6,7 @@ use super::index::FactIndex;
 use super::scan::{Caps, ScanError, ScanMeter};
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
+use surgeist_html::accounting::HtmlAccountingFault;
 use surgeist_html::accounting::{HtmlCapScope, HtmlResource};
 use surgeist_html::attributes::{HtmlAttributeReport, HtmlInputType};
 use surgeist_html::bounded::form::{HtmlFormOwnerLookup, form_owner_lookup};
@@ -232,14 +233,37 @@ pub enum HtmlControlFactsError {
         required: usize,
     },
     RepresentationExhausted,
-    /// The ledger that enforces the limits reported a state its own sequencing rules out.
-    LedgerState,
+    /// The ledger that carries the accounting failed in a way that is not a refused limit: a release
+    /// that matches nothing held, a ledger that cannot allocate, a scope that is not the
+    /// operation's, or a change the operation does not charge. It carries the accounting fault.
+    Accounting(HtmlAccountingFault),
     DuplicateSubject(HtmlCaptureSubjectId),
     InapplicableSubject(HtmlCaptureSubjectId),
     InvalidFormOwner(HtmlCaptureSubjectId),
     CrossDocumentFormOwner(HtmlCaptureSubjectId),
     CrossTreeFormOwner(HtmlCaptureSubjectId),
     ContradictoryCustomControlAssociation(HtmlCaptureSubjectId),
+}
+impl HtmlControlFactsError {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Accounting(fault) => Some(*fault),
+            Self::Capture(error) => error.accounting_fault(),
+            Self::HostRevisionMismatch
+            | Self::RecordCapacity { .. }
+            | Self::ValidationWork { .. }
+            | Self::RepresentationExhausted
+            | Self::DuplicateSubject(_)
+            | Self::InapplicableSubject(_)
+            | Self::InvalidFormOwner(_)
+            | Self::CrossDocumentFormOwner(_)
+            | Self::CrossTreeFormOwner(_)
+            | Self::ContradictoryCustomControlAssociation(_) => None,
+        }
+    }
 }
 impl fmt::Display for HtmlControlFactsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -272,8 +296,8 @@ impl ScanError for HtmlControlFactsError {
     fn capture(error: HtmlCaptureError) -> Self {
         Self::Capture(error)
     }
-    fn ledger_state() -> Self {
-        Self::LedgerState
+    fn accounting(fault: HtmlAccountingFault) -> Self {
+        Self::Accounting(fault)
     }
 }
 /// The topmost ancestor of `subject`, or `None` when an ancestor is unavailable.

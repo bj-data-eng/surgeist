@@ -3,6 +3,36 @@
 
 pub mod surgeist_html
 pub mod surgeist_html::accounting
+#[non_exhaustive] pub enum surgeist_html::accounting::HtmlAccountingFault
+pub surgeist_html::accounting::HtmlAccountingFault::Allocation
+pub surgeist_html::accounting::HtmlAccountingFault::Checkpoint
+pub surgeist_html::accounting::HtmlAccountingFault::Defect(surgeist_ledger::Defect)
+pub surgeist_html::accounting::HtmlAccountingFault::ForeignScope
+pub surgeist_html::accounting::HtmlAccountingFault::IdentityExhausted
+pub surgeist_html::accounting::HtmlAccountingFault::ReleaseUnderflow
+pub surgeist_html::accounting::HtmlAccountingFault::ScopeLimit
+pub surgeist_html::accounting::HtmlAccountingFault::ScopeLimit::limit: usize
+pub surgeist_html::accounting::HtmlAccountingFault::TimingUnavailable
+pub surgeist_html::accounting::HtmlAccountingFault::UnexpectedChange
+impl core::error::Error for surgeist_html::accounting::HtmlAccountingFault
+impl core::fmt::Display for surgeist_html::accounting::HtmlAccountingFault
+pub fn surgeist_html::accounting::HtmlAccountingFault::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub enum surgeist_html::accounting::HtmlAuxiliaryScope
+pub surgeist_html::accounting::HtmlAuxiliaryScope::AutocompleteObserved
+pub surgeist_html::accounting::HtmlAuxiliaryScope::FactGrown
+pub surgeist_html::accounting::HtmlAuxiliaryScope::OptionValueObserved
+pub surgeist_html::accounting::HtmlAuxiliaryScope::OptionValueRetained
+pub surgeist_html::accounting::HtmlAuxiliaryScope::OptionValueTemporary
+pub surgeist_html::accounting::HtmlAuxiliaryScope::ParseAdmission
+pub surgeist_html::accounting::HtmlAuxiliaryScope::ParseCharging
+pub surgeist_html::accounting::HtmlAuxiliaryScope::ParseConstruction
+pub surgeist_html::accounting::HtmlAuxiliaryScope::ParseFinalization
+pub surgeist_html::accounting::HtmlAuxiliaryScope::ParseHost
+pub surgeist_html::accounting::HtmlAuxiliaryScope::ParsePublication
+pub surgeist_html::accounting::HtmlAuxiliaryScope::QueryObserved
+impl surgeist_html::accounting::HtmlAuxiliaryScope
+pub const surgeist_html::accounting::HtmlAuxiliaryScope::ALL: [Self; 12]
+pub const fn surgeist_html::accounting::HtmlAuxiliaryScope::name(self) -> &'static str
 pub enum surgeist_html::accounting::HtmlCapScope
 pub surgeist_html::accounting::HtmlCapScope::Autocomplete
 pub surgeist_html::accounting::HtmlCapScope::BaseFacts
@@ -41,6 +71,10 @@ pub surgeist_html::accounting::HtmlCustody::Balance
 pub surgeist_html::accounting::HtmlCustody::Gauge
 pub surgeist_html::accounting::HtmlCustody::Permanent
 pub surgeist_html::accounting::HtmlCustody::Retention
+pub enum surgeist_html::accounting::HtmlLedgerOutcome
+pub surgeist_html::accounting::HtmlLedgerOutcome::Cap(surgeist_html::accounting::HtmlCapRefusal)
+pub surgeist_html::accounting::HtmlLedgerOutcome::Exhausted(surgeist_html::accounting::HtmlChange)
+pub surgeist_html::accounting::HtmlLedgerOutcome::Fault(surgeist_html::accounting::HtmlAccountingFault)
 pub enum surgeist_html::accounting::HtmlResource
 pub surgeist_html::accounting::HtmlResource::ActiveFormattingEntries
 pub surgeist_html::accounting::HtmlResource::AllocatedBytes
@@ -126,10 +160,23 @@ pub const surgeist_html::accounting::HtmlWork::ALL: &'static [Self]
 pub fn surgeist_html::accounting::HtmlWork::from_fn<T: surgeist_ledger::dimension::TableValue>(value: impl core::ops::function::FnMut(Self) -> T) -> surgeist_html::accounting::HtmlWorkTable<T>
 pub fn surgeist_html::accounting::HtmlWork::get<T: surgeist_ledger::dimension::TableValue>(table: &surgeist_html::accounting::HtmlWorkTable<T>, key: Self) -> &T
 pub fn surgeist_html::accounting::HtmlWork::get_mut<T: surgeist_ledger::dimension::TableValue>(table: &mut surgeist_html::accounting::HtmlWorkTable<T>, key: Self) -> &mut T
+pub struct surgeist_html::accounting::HtmlCapRefusal
+impl surgeist_html::accounting::HtmlCapRefusal
+pub const fn surgeist_html::accounting::HtmlCapRefusal::amount(&self) -> u64
+pub const fn surgeist_html::accounting::HtmlCapRefusal::change(&self) -> surgeist_html::accounting::HtmlChange
+pub const fn surgeist_html::accounting::HtmlCapRefusal::current(&self) -> u64
+pub fn surgeist_html::accounting::HtmlCapRefusal::figures(&self) -> core::result::Result<surgeist_html::accounting::HtmlRefusalFigures, surgeist_html::accounting::HtmlChargeOverflow>
+pub const fn surgeist_html::accounting::HtmlCapRefusal::item(&self) -> usize
+pub const fn surgeist_html::accounting::HtmlCapRefusal::limit(&self) -> u64
+pub fn surgeist_html::accounting::HtmlCapRefusal::required(&self) -> core::result::Result<u64, surgeist_html::accounting::HtmlChargeOverflow>
+pub const fn surgeist_html::accounting::HtmlCapRefusal::scope(&self) -> surgeist_ledger::Scope
 pub struct surgeist_html::accounting::HtmlChargeOverflow
 impl core::error::Error for surgeist_html::accounting::HtmlChargeOverflow
 impl core::fmt::Display for surgeist_html::accounting::HtmlChargeOverflow
 pub fn surgeist_html::accounting::HtmlChargeOverflow::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_html::accounting::HtmlRefusalFigures
+pub surgeist_html::accounting::HtmlRefusalFigures::limit: usize
+pub surgeist_html::accounting::HtmlRefusalFigures::required: usize
 pub struct surgeist_html::accounting::HtmlResourceTable<T>
 pub surgeist_html::accounting::HtmlResourceTable::ActiveFormattingEntries: T
 pub surgeist_html::accounting::HtmlResourceTable::AllocatedBytes: T
@@ -188,6 +235,8 @@ impl<T: core::marker::Copy> surgeist_html::accounting::HtmlWorkTable<T>
 pub const fn surgeist_html::accounting::HtmlWorkTable<T>::splat(value: T) -> Self
 pub fn surgeist_html::accounting::aggregate_tariffs() -> surgeist_html::accounting::HtmlTariffs
 pub fn surgeist_html::accounting::charging_tariffs() -> surgeist_html::accounting::HtmlTariffs
+pub fn surgeist_html::accounting::classify(error: surgeist_ledger::Error<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>) -> surgeist_html::accounting::HtmlLedgerOutcome
+pub fn surgeist_html::accounting::fault_of(error: surgeist_ledger::Error<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>) -> surgeist_html::accounting::HtmlAccountingFault
 pub fn surgeist_html::accounting::record_largest(resource: surgeist_html::accounting::HtmlResource, held: u64, value: u64) -> [surgeist_html::accounting::HtmlChange; 2]
 pub fn surgeist_html::accounting::retained_provider_storage(bytes: u64, units: u64, entries: u64) -> [(surgeist_html::accounting::HtmlResource, u64); 4]
 pub type surgeist_html::accounting::HtmlChange = surgeist_ledger::Change<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>
@@ -2289,12 +2338,12 @@ pub surgeist_html::bounded::attributes::HtmlAttributeKeywordRead::KeywordHeader
 pub surgeist_html::bounded::attributes::HtmlAttributeKeywordRead::KeywordPair
 pub surgeist_html::bounded::attributes::HtmlAttributeKeywordRead::ValueHeader
 pub enum surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError
+pub surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError::Accounting(surgeist_html::accounting::HtmlAccountingFault)
 pub surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError::Allocation
 pub surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError::Allocation::requested_bytes: usize
 pub surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError::BytesLimit
 pub surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError::BytesLimit::limit: usize
 pub surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError::BytesLimit::required: usize
-pub surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError::LedgerState
 pub surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError::OutputLimit
 pub surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError::OutputLimit::limit: usize
 pub surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError::OutputLimit::required: usize
@@ -4125,6 +4174,7 @@ impl core::hash::Hash for surgeist_html::construction::HtmlBuilderNode
 pub fn surgeist_html::construction::HtmlBuilderNode::hash<H: core::hash::Hasher>(&self, state: &mut H)
 pub struct surgeist_html::construction::HtmlConstructionError
 impl surgeist_html::construction::HtmlConstructionError
+pub fn surgeist_html::construction::HtmlConstructionError::accounting_fault(&self) -> core::option::Option<surgeist_html::accounting::HtmlAccountingFault>
 pub fn surgeist_html::construction::HtmlConstructionError::attempted(&self) -> core::option::Option<usize>
 pub fn surgeist_html::construction::HtmlConstructionError::duplicate_attribute_indices(&self) -> core::option::Option<(usize, usize)>
 pub fn surgeist_html::construction::HtmlConstructionError::exceeded_resource(&self) -> core::option::Option<surgeist_html::construction::HtmlConstructionResource>
@@ -4143,7 +4193,6 @@ pub fn surgeist_html::construction::HtmlConstructionError::is_invalid_contents_r
 pub fn surgeist_html::construction::HtmlConstructionError::is_invalid_output_root(&self) -> bool
 pub fn surgeist_html::construction::HtmlConstructionError::is_invalid_shadow_association(&self) -> bool
 pub fn surgeist_html::construction::HtmlConstructionError::is_invalid_template_association(&self) -> bool
-pub fn surgeist_html::construction::HtmlConstructionError::is_ledger_state(&self) -> bool
 pub fn surgeist_html::construction::HtmlConstructionError::is_limit_exceeded(&self) -> bool
 pub fn surgeist_html::construction::HtmlConstructionError::is_operation_not_ready(&self) -> bool
 pub fn surgeist_html::construction::HtmlConstructionError::is_parent_cannot_have_children(&self) -> bool

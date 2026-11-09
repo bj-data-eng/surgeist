@@ -8,16 +8,12 @@
 
 use super::*;
 use crate::HtmlSemanticAccounting;
-use crate::accounting::{Ledger, LedgerError};
+use crate::accounting::{Ledger, LedgerError, wide};
 use surgeist_html::accounting::{
-    HtmlCapScope, HtmlChange, HtmlLimits, HtmlResource, HtmlWork, aggregate_tariffs,
+    HtmlAccountingFault, HtmlCapScope, HtmlChange, HtmlLedgerOutcome, HtmlLimits, HtmlResource,
+    HtmlWork, aggregate_tariffs, classify,
 };
-use surgeist_ledger::{Change, Operation, RefusalReason, Scope};
-
-/// Widens a platform amount; an amount beyond `u64` saturates and every finite cap refuses it.
-fn wide(value: usize) -> u64 {
-    u64::try_from(value).unwrap_or(u64::MAX)
-}
+use surgeist_ledger::{Change, Operation, Scope};
 
 fn caps(limits: HtmlCaptureLimits) -> HtmlLimits {
     HtmlLimits::from_fn(
@@ -52,43 +48,25 @@ fn resource(dimension: HtmlResource) -> Option<HtmlCaptureResource> {
 }
 
 /// The typed refusal of a ledger error: a refused cap keeps its resource, its limit and the total
-/// the change would have reached. A ledger error that is not a refusal of a capture cap is a
-/// ledger state the builder's own sequencing rules out, except an allocation failure, which keeps
-/// the builder's spelling of one.
+/// the change would have reached. A ledger error that is not a refusal of a capture cap is the
+/// accounting fault.
 pub(crate) fn refusal(error: LedgerError) -> HtmlCaptureError {
-    let LedgerError::Refused(refusal) = error else {
-        return match error {
-            LedgerError::Allocation => HtmlCaptureError::RepresentationExhausted,
-            _ => HtmlCaptureError::LedgerState,
-        };
+    let refusal = match classify(error) {
+        HtmlLedgerOutcome::Fault(fault) => return HtmlCaptureError::Accounting(fault),
+        HtmlLedgerOutcome::Exhausted(_) => return HtmlCaptureError::RepresentationExhausted,
+        HtmlLedgerOutcome::Cap(refusal) => refusal,
     };
-    let RefusalReason::Limit { limit } = refusal.reason else {
-        return match refusal.reason {
-            RefusalReason::Overflow => HtmlCaptureError::RepresentationExhausted,
-            _ => HtmlCaptureError::LedgerState,
-        };
-    };
-    let amount = match refusal.change {
-        Change::Work(_, amount) | Change::Acquire(_, amount) | Change::Release(_, amount) => amount,
-    };
-    let dimension = match refusal.change {
+    let dimension = match refusal.change() {
         Change::Acquire(dimension, _) => resource(dimension),
         _ => None,
     };
-    match (
-        dimension,
-        usize::try_from(limit),
-        refusal
-            .current
-            .checked_add(amount)
-            .and_then(|required| usize::try_from(required).ok()),
-    ) {
-        (Some(resource), Ok(limit), Some(required)) => HtmlCaptureError::LimitExceeded {
+    match (dimension, refusal.figures()) {
+        (Some(resource), Ok(figures)) => HtmlCaptureError::LimitExceeded {
             resource,
-            limit,
-            required,
+            limit: figures.limit,
+            required: figures.required,
         },
-        (None, ..) => HtmlCaptureError::LedgerState,
+        (None, _) => HtmlCaptureError::Accounting(HtmlAccountingFault::UnexpectedChange),
         _ => HtmlCaptureError::RepresentationExhausted,
     }
 }
@@ -196,7 +174,9 @@ impl Account {
         }
         match self {
             Self::Ready(account) => Ok(account),
-            Self::Pending => Err(HtmlCaptureError::LedgerState),
+            Self::Pending => Err(HtmlCaptureError::Accounting(
+                HtmlAccountingFault::UnexpectedChange,
+            )),
         }
     }
 }
@@ -206,7 +186,9 @@ impl CaptureAccount {
     pub(crate) fn check(&mut self, charges: &Charges) -> Result<(), HtmlCaptureError> {
         let (batch, length) = charges.counts();
         let Some(batch) = batch.get(..length) else {
-            return Err(HtmlCaptureError::LedgerState);
+            return Err(HtmlCaptureError::Accounting(
+                HtmlAccountingFault::UnexpectedChange,
+            ));
         };
         if batch.is_empty() {
             return Ok(());
@@ -258,7 +240,9 @@ impl CaptureAccount {
         // An operation that retains element value bytes charges at most four counts, so the
         // batch has a free slot; a full batch is a state the capture's own sequencing rules out.
         if charges.element_value_bytes != 0 {
-            let slot = batch.get_mut(length).ok_or(HtmlCaptureError::LedgerState)?;
+            let slot = batch.get_mut(length).ok_or(HtmlCaptureError::Accounting(
+                HtmlAccountingFault::UnexpectedChange,
+            ))?;
             *slot = Change::Acquire(
                 HtmlResource::ElementValueBytes,
                 wide(charges.element_value_bytes),
@@ -381,20 +365,16 @@ fn import_caps(limits: HtmlConstructionCaptureLimits) -> HtmlLimits {
 /// The typed refusal of a ledger error of an import.
 fn import_refusal(error: LedgerError) -> HtmlConstructionCaptureError {
     use HtmlConstructionCaptureError as Error;
-    let LedgerError::Refused(refusal) = error else {
-        return match error {
-            LedgerError::Allocation => Error::AllocationFailed,
-            _ => Error::LedgerState,
-        };
-    };
-    match (refusal.reason, refusal.change) {
-        (
-            RefusalReason::Limit { .. },
+    match classify(error) {
+        HtmlLedgerOutcome::Fault(fault) => Error::Accounting(fault),
+        HtmlLedgerOutcome::Exhausted(_) => Error::RepresentationExhausted,
+        HtmlLedgerOutcome::Cap(refusal) => match refusal.change() {
             Change::Work(HtmlWork::SemanticStep, _)
-            | Change::Acquire(HtmlResource::MappingEntries | HtmlResource::ScratchRecords, _),
-        ) => Error::LimitExceeded,
-        (RefusalReason::Overflow, _) => Error::RepresentationExhausted,
-        _ => Error::LedgerState,
+            | Change::Acquire(HtmlResource::MappingEntries | HtmlResource::ScratchRecords, _) => {
+                Error::LimitExceeded
+            }
+            _ => Error::Accounting(HtmlAccountingFault::UnexpectedChange),
+        },
     }
 }
 
@@ -472,7 +452,9 @@ impl ImportAccount {
         let live = self.mark()?;
         let above = live
             .checked_sub(mark)
-            .ok_or(HtmlConstructionCaptureError::LedgerState)?;
+            .ok_or(HtmlConstructionCaptureError::Accounting(
+                HtmlAccountingFault::UnexpectedChange,
+            ))?;
         self.release_scratch(above)
     }
 
@@ -520,5 +502,50 @@ impl CaptureAccount {
             scope,
             usage: HtmlConstructionCaptureUsage::default(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A ledger that cannot allocate, a release that matches nothing held, a scope of another
+    /// operation and a spent scope bound are each the one accounting fault, in a capture and in
+    /// an import.
+    #[test]
+    fn ledger_failures_other_than_a_refused_cap_are_accounting_faults() {
+        for (error, fault) in [
+            (LedgerError::Allocation, HtmlAccountingFault::Allocation),
+            (LedgerError::ForeignScope, HtmlAccountingFault::ForeignScope),
+            (
+                LedgerError::ScopeLimit { limit: 2 },
+                HtmlAccountingFault::ScopeLimit { limit: 2 },
+            ),
+        ] {
+            assert_eq!(refusal(error), HtmlCaptureError::Accounting(fault));
+            assert_eq!(
+                import_refusal(error),
+                HtmlConstructionCaptureError::Accounting(fault)
+            );
+        }
+        let mut account = Account::Pending;
+        let capture = account
+            .ready(HtmlCaptureLimits::new(10, 10, 10, 10, 10, 10, 10, 10))
+            .unwrap();
+        let underflow = capture
+            .ledger
+            .apply(
+                capture.scope,
+                Change::Release(HtmlResource::CapturedSubjects, 1),
+            )
+            .unwrap_err();
+        assert_eq!(
+            refusal(underflow),
+            HtmlCaptureError::Accounting(HtmlAccountingFault::ReleaseUnderflow)
+        );
+        assert_eq!(
+            import_refusal(underflow),
+            HtmlConstructionCaptureError::Accounting(HtmlAccountingFault::ReleaseUnderflow)
+        );
     }
 }

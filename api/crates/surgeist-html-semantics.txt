@@ -18,11 +18,11 @@ pub surgeist_html_semantics::HtmlBaseAllowed::Allowed
 pub surgeist_html_semantics::HtmlBaseAllowed::Blocked
 pub surgeist_html_semantics::HtmlBaseAllowed::Unavailable
 pub enum surgeist_html_semantics::HtmlBaseFactsError
+pub surgeist_html_semantics::HtmlBaseFactsError::Accounting(surgeist_html::internal::accounting::fault::HtmlAccountingFault)
 pub surgeist_html_semantics::HtmlBaseFactsError::Capture(surgeist_html_semantics::HtmlCaptureError)
 pub surgeist_html_semantics::HtmlBaseFactsError::ContradictoryObservation
 pub surgeist_html_semantics::HtmlBaseFactsError::DuplicateObservation
 pub surgeist_html_semantics::HtmlBaseFactsError::HostRevisionMismatch
-pub surgeist_html_semantics::HtmlBaseFactsError::LedgerState
 pub surgeist_html_semantics::HtmlBaseFactsError::RecordLimit
 pub surgeist_html_semantics::HtmlBaseFactsError::RepresentationExhausted
 pub surgeist_html_semantics::HtmlBaseFactsError::RevisionMismatch
@@ -30,6 +30,8 @@ pub surgeist_html_semantics::HtmlBaseFactsError::Utf16Limit
 pub surgeist_html_semantics::HtmlBaseFactsError::WorkLimit
 pub surgeist_html_semantics::HtmlBaseFactsError::WrongBase
 pub surgeist_html_semantics::HtmlBaseFactsError::WrongDocument
+impl surgeist_html_semantics::HtmlBaseFactsError
+pub fn surgeist_html_semantics::HtmlBaseFactsError::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl core::convert::From<surgeist_html_semantics::HtmlBaseFactsError> for surgeist_html_semantics::HtmlEncodingUrlFactsError
 pub fn surgeist_html_semantics::HtmlEncodingUrlFactsError::from(value: surgeist_html_semantics::HtmlBaseFactsError) -> Self
 impl core::convert::From<surgeist_html_semantics::HtmlCaptureError> for surgeist_html_semantics::HtmlBaseFactsError
@@ -69,6 +71,8 @@ pub surgeist_html_semantics::HtmlCaptureDefinitionInput::Unavailable
 pub enum surgeist_html_semantics::HtmlCaptureEdgeError<E>
 pub surgeist_html_semantics::HtmlCaptureEdgeError::Capture(surgeist_html_semantics::HtmlCaptureError)
 pub surgeist_html_semantics::HtmlCaptureEdgeError::Interrupted(E)
+impl<E> surgeist_html_semantics::HtmlCaptureEdgeError<E>
+pub fn surgeist_html_semantics::HtmlCaptureEdgeError<E>::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl<E: core::error::Error + 'static> core::error::Error for surgeist_html_semantics::HtmlCaptureEdgeError<E>
 pub fn surgeist_html_semantics::HtmlCaptureEdgeError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl<E: core::fmt::Display> core::fmt::Display for surgeist_html_semantics::HtmlCaptureEdgeError<E>
@@ -81,6 +85,8 @@ pub surgeist_html_semantics::HtmlCaptureElementError::Capture(surgeist_html_sema
 pub surgeist_html_semantics::HtmlCaptureElementError::InconsistentAttributes
 pub surgeist_html_semantics::HtmlCaptureElementError::InconsistentAttributes::index: usize
 pub surgeist_html_semantics::HtmlCaptureElementError::Interrupted(E)
+impl<E> surgeist_html_semantics::HtmlCaptureElementError<E>
+pub fn surgeist_html_semantics::HtmlCaptureElementError<E>::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl<E: core::error::Error + 'static> core::error::Error for surgeist_html_semantics::HtmlCaptureElementError<E>
 pub fn surgeist_html_semantics::HtmlCaptureElementError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl<E: core::fmt::Display> core::fmt::Display for surgeist_html_semantics::HtmlCaptureElementError<E>
@@ -88,6 +94,7 @@ pub fn surgeist_html_semantics::HtmlCaptureElementError<E>::fmt(&self, f: &mut c
 impl<E> core::convert::From<surgeist_html_semantics::HtmlCaptureError> for surgeist_html_semantics::HtmlCaptureElementError<E>
 pub fn surgeist_html_semantics::HtmlCaptureElementError<E>::from(error: surgeist_html_semantics::HtmlCaptureError) -> Self
 pub enum surgeist_html_semantics::HtmlCaptureError
+pub surgeist_html_semantics::HtmlCaptureError::Accounting(surgeist_html::internal::accounting::fault::HtmlAccountingFault)
 pub surgeist_html_semantics::HtmlCaptureError::AssociationAlreadyEstablished
 pub surgeist_html_semantics::HtmlCaptureError::CannotBeOrdinaryChild(surgeist_html_semantics::HtmlCaptureSubjectKind)
 pub surgeist_html_semantics::HtmlCaptureError::CannotHaveChildren(surgeist_html_semantics::HtmlCaptureSubjectKind)
@@ -113,7 +120,6 @@ pub surgeist_html_semantics::HtmlCaptureError::InvalidDefinitionName
 pub surgeist_html_semantics::HtmlCaptureError::InvalidFragmentScriptingMode(surgeist_html::internal::parsing::fragment_initialization::HtmlParserScriptingMode)
 pub surgeist_html_semantics::HtmlCaptureError::InvalidTemplateContentsReference
 pub surgeist_html_semantics::HtmlCaptureError::InvalidTemplateDocumentCache
-pub surgeist_html_semantics::HtmlCaptureError::LedgerState
 pub surgeist_html_semantics::HtmlCaptureError::LimitExceeded
 pub surgeist_html_semantics::HtmlCaptureError::LimitExceeded::limit: usize
 pub surgeist_html_semantics::HtmlCaptureError::LimitExceeded::required: usize
@@ -139,6 +145,8 @@ pub surgeist_html_semantics::HtmlCaptureError::UnsupportedExecution(surgeist_htm
 pub surgeist_html_semantics::HtmlCaptureError::WrongKind
 pub surgeist_html_semantics::HtmlCaptureError::WrongKind::actual: surgeist_html_semantics::HtmlCaptureSubjectKind
 pub surgeist_html_semantics::HtmlCaptureError::WrongKind::expected: surgeist_html_semantics::HtmlCaptureSubjectKind
+impl surgeist_html_semantics::HtmlCaptureError
+pub fn surgeist_html_semantics::HtmlCaptureError::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl core::convert::From<surgeist_html_semantics::HtmlCaptureError> for surgeist_html_semantics::HtmlBaseFactsError
 pub fn surgeist_html_semantics::HtmlBaseFactsError::from(error: surgeist_html_semantics::HtmlCaptureError) -> Self
 impl core::convert::From<surgeist_html_semantics::HtmlCaptureError> for surgeist_html_semantics::HtmlConstructionCaptureError
@@ -259,6 +267,7 @@ pub enum surgeist_html_semantics::HtmlConstructionCaptureDocument
 pub surgeist_html_semantics::HtmlConstructionCaptureDocument::Existing(surgeist_html_semantics::HtmlCaptureBuilderSubject)
 pub surgeist_html_semantics::HtmlConstructionCaptureDocument::ResultDocument
 #[non_exhaustive] pub enum surgeist_html_semantics::HtmlConstructionCaptureError
+pub surgeist_html_semantics::HtmlConstructionCaptureError::Accounting(surgeist_html::internal::accounting::fault::HtmlAccountingFault)
 pub surgeist_html_semantics::HtmlConstructionCaptureError::AllocationFailed
 pub surgeist_html_semantics::HtmlConstructionCaptureError::Cancelled
 pub surgeist_html_semantics::HtmlConstructionCaptureError::Capture(surgeist_html_semantics::HtmlCaptureError)
@@ -266,19 +275,21 @@ pub surgeist_html_semantics::HtmlConstructionCaptureError::DuplicateNodeFacts
 pub surgeist_html_semantics::HtmlConstructionCaptureError::ForeignBuilder
 pub surgeist_html_semantics::HtmlConstructionCaptureError::ForeignResult
 pub surgeist_html_semantics::HtmlConstructionCaptureError::HostRevisionMismatch
-pub surgeist_html_semantics::HtmlConstructionCaptureError::LedgerState
 pub surgeist_html_semantics::HtmlConstructionCaptureError::LimitExceeded
 pub surgeist_html_semantics::HtmlConstructionCaptureError::MissingNodeDocument
 pub surgeist_html_semantics::HtmlConstructionCaptureError::MissingShadowFacts
 pub surgeist_html_semantics::HtmlConstructionCaptureError::OutsideImportedClosure
 pub surgeist_html_semantics::HtmlConstructionCaptureError::RepresentationExhausted
 pub surgeist_html_semantics::HtmlConstructionCaptureError::WrongFactRole
+impl surgeist_html_semantics::HtmlConstructionCaptureError
+pub fn surgeist_html_semantics::HtmlConstructionCaptureError::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl core::convert::From<surgeist_html_semantics::HtmlCaptureError> for surgeist_html_semantics::HtmlConstructionCaptureError
 pub fn surgeist_html_semantics::HtmlConstructionCaptureError::from(error: surgeist_html_semantics::HtmlCaptureError) -> Self
 impl core::error::Error for surgeist_html_semantics::HtmlConstructionCaptureError
 impl core::fmt::Display for surgeist_html_semantics::HtmlConstructionCaptureError
 pub fn surgeist_html_semantics::HtmlConstructionCaptureError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html_semantics::HtmlControlFactsError
+pub surgeist_html_semantics::HtmlControlFactsError::Accounting(surgeist_html::internal::accounting::fault::HtmlAccountingFault)
 pub surgeist_html_semantics::HtmlControlFactsError::Capture(surgeist_html_semantics::HtmlCaptureError)
 pub surgeist_html_semantics::HtmlControlFactsError::ContradictoryCustomControlAssociation(surgeist_html_semantics::HtmlCaptureSubjectId)
 pub surgeist_html_semantics::HtmlControlFactsError::CrossDocumentFormOwner(surgeist_html_semantics::HtmlCaptureSubjectId)
@@ -287,7 +298,6 @@ pub surgeist_html_semantics::HtmlControlFactsError::DuplicateSubject(surgeist_ht
 pub surgeist_html_semantics::HtmlControlFactsError::HostRevisionMismatch
 pub surgeist_html_semantics::HtmlControlFactsError::InapplicableSubject(surgeist_html_semantics::HtmlCaptureSubjectId)
 pub surgeist_html_semantics::HtmlControlFactsError::InvalidFormOwner(surgeist_html_semantics::HtmlCaptureSubjectId)
-pub surgeist_html_semantics::HtmlControlFactsError::LedgerState
 pub surgeist_html_semantics::HtmlControlFactsError::RecordCapacity
 pub surgeist_html_semantics::HtmlControlFactsError::RecordCapacity::limit: usize
 pub surgeist_html_semantics::HtmlControlFactsError::RecordCapacity::required: usize
@@ -295,6 +305,8 @@ pub surgeist_html_semantics::HtmlControlFactsError::RepresentationExhausted
 pub surgeist_html_semantics::HtmlControlFactsError::ValidationWork
 pub surgeist_html_semantics::HtmlControlFactsError::ValidationWork::limit: usize
 pub surgeist_html_semantics::HtmlControlFactsError::ValidationWork::required: usize
+impl surgeist_html_semantics::HtmlControlFactsError
+pub fn surgeist_html_semantics::HtmlControlFactsError::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl core::error::Error for surgeist_html_semantics::HtmlControlFactsError
 impl core::fmt::Display for surgeist_html_semantics::HtmlControlFactsError
 pub fn surgeist_html_semantics::HtmlControlFactsError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -317,6 +329,8 @@ pub surgeist_html_semantics::HtmlControlledOptionValueError::Control(surgeist_ht
 pub surgeist_html_semantics::HtmlControlledOptionValueError::ElementValues(surgeist_html_semantics::HtmlCaptureElementError<core::convert::Infallible>)
 pub surgeist_html_semantics::HtmlControlledOptionValueError::InvalidPhase
 pub surgeist_html_semantics::HtmlControlledOptionValueError::Semantic(surgeist_html_semantics::HtmlSemanticFailure)
+impl surgeist_html_semantics::HtmlControlledOptionValueError
+pub fn surgeist_html_semantics::HtmlControlledOptionValueError::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl core::error::Error for surgeist_html_semantics::HtmlControlledOptionValueError
 impl core::fmt::Display for surgeist_html_semantics::HtmlControlledOptionValueError
 pub fn surgeist_html_semantics::HtmlControlledOptionValueError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -390,6 +404,7 @@ pub surgeist_html_semantics::HtmlDocumentModalBlocking::BlockedBy(surgeist_html_
 pub surgeist_html_semantics::HtmlDocumentModalBlocking::Unavailable
 pub surgeist_html_semantics::HtmlDocumentModalBlocking::Unblocked
 pub enum surgeist_html_semantics::HtmlElementReferenceFactsError
+pub surgeist_html_semantics::HtmlElementReferenceFactsError::Accounting(surgeist_html::internal::accounting::fault::HtmlAccountingFault)
 pub surgeist_html_semantics::HtmlElementReferenceFactsError::Capture(surgeist_html_semantics::HtmlCaptureError)
 pub surgeist_html_semantics::HtmlElementReferenceFactsError::DuplicateReference
 pub surgeist_html_semantics::HtmlElementReferenceFactsError::DuplicateReference::key: surgeist_html_semantics::HtmlElementReferenceKey
@@ -397,7 +412,6 @@ pub surgeist_html_semantics::HtmlElementReferenceFactsError::DuplicateReference:
 pub surgeist_html_semantics::HtmlElementReferenceFactsError::HostRevisionMismatch
 pub surgeist_html_semantics::HtmlElementReferenceFactsError::InapplicableSubject(surgeist_html_semantics::HtmlCaptureSubjectId)
 pub surgeist_html_semantics::HtmlElementReferenceFactsError::InvalidTarget(surgeist_html_semantics::HtmlCaptureSubjectId)
-pub surgeist_html_semantics::HtmlElementReferenceFactsError::LedgerState
 pub surgeist_html_semantics::HtmlElementReferenceFactsError::RecordCapacity
 pub surgeist_html_semantics::HtmlElementReferenceFactsError::RecordCapacity::limit: usize
 pub surgeist_html_semantics::HtmlElementReferenceFactsError::RecordCapacity::required: usize
@@ -405,6 +419,8 @@ pub surgeist_html_semantics::HtmlElementReferenceFactsError::RepresentationExhau
 pub surgeist_html_semantics::HtmlElementReferenceFactsError::ValidationWork
 pub surgeist_html_semantics::HtmlElementReferenceFactsError::ValidationWork::limit: usize
 pub surgeist_html_semantics::HtmlElementReferenceFactsError::ValidationWork::required: usize
+impl surgeist_html_semantics::HtmlElementReferenceFactsError
+pub fn surgeist_html_semantics::HtmlElementReferenceFactsError::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl core::error::Error for surgeist_html_semantics::HtmlElementReferenceFactsError
 impl core::fmt::Display for surgeist_html_semantics::HtmlElementReferenceFactsError
 pub fn surgeist_html_semantics::HtmlElementReferenceFactsError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -415,6 +431,7 @@ pub enum surgeist_html_semantics::HtmlElementReferenceOrigin
 pub surgeist_html_semantics::HtmlElementReferenceOrigin::ContentAttribute
 pub surgeist_html_semantics::HtmlElementReferenceOrigin::ExplicitPointer
 pub enum surgeist_html_semantics::HtmlEmptyGlobalRegistryError<E>
+pub surgeist_html_semantics::HtmlEmptyGlobalRegistryError::Accounting(surgeist_html::internal::accounting::fault::HtmlAccountingFault)
 pub surgeist_html_semantics::HtmlEmptyGlobalRegistryError::AllocationFailed
 pub surgeist_html_semantics::HtmlEmptyGlobalRegistryError::Capture(surgeist_html_semantics::HtmlCaptureError)
 pub surgeist_html_semantics::HtmlEmptyGlobalRegistryError::FormationBytes
@@ -422,6 +439,8 @@ pub surgeist_html_semantics::HtmlEmptyGlobalRegistryError::FormationBytes::limit
 pub surgeist_html_semantics::HtmlEmptyGlobalRegistryError::FormationBytes::required: usize
 pub surgeist_html_semantics::HtmlEmptyGlobalRegistryError::Interrupted(E)
 pub surgeist_html_semantics::HtmlEmptyGlobalRegistryError::RepresentationExhausted
+impl<E> surgeist_html_semantics::HtmlEmptyGlobalRegistryError<E>
+pub fn surgeist_html_semantics::HtmlEmptyGlobalRegistryError<E>::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl<E: core::error::Error + 'static> core::error::Error for surgeist_html_semantics::HtmlEmptyGlobalRegistryError<E>
 pub fn surgeist_html_semantics::HtmlEmptyGlobalRegistryError<E>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
 impl<E: core::fmt::Display> core::fmt::Display for surgeist_html_semantics::HtmlEmptyGlobalRegistryError<E>
@@ -432,6 +451,8 @@ pub surgeist_html_semantics::HtmlEncodingUrlFactsError::Formation(surgeist_html_
 pub surgeist_html_semantics::HtmlEncodingUrlFactsError::InputsMismatch
 pub surgeist_html_semantics::HtmlEncodingUrlFactsError::MissingObservation
 pub surgeist_html_semantics::HtmlEncodingUrlFactsError::RevisionMismatch
+impl surgeist_html_semantics::HtmlEncodingUrlFactsError
+pub fn surgeist_html_semantics::HtmlEncodingUrlFactsError::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl core::convert::From<surgeist_html_semantics::HtmlBaseFactsError> for surgeist_html_semantics::HtmlEncodingUrlFactsError
 pub fn surgeist_html_semantics::HtmlEncodingUrlFactsError::from(value: surgeist_html_semantics::HtmlBaseFactsError) -> Self
 impl core::error::Error for surgeist_html_semantics::HtmlEncodingUrlFactsError
@@ -440,6 +461,8 @@ pub fn surgeist_html_semantics::HtmlEncodingUrlFactsError::fmt(&self, f: &mut co
 pub enum surgeist_html_semantics::HtmlEncodingUrlLookupError<E>
 pub surgeist_html_semantics::HtmlEncodingUrlLookupError::Facts(surgeist_html_semantics::HtmlEncodingUrlFactsError)
 pub surgeist_html_semantics::HtmlEncodingUrlLookupError::Interrupted(E)
+impl<E> surgeist_html_semantics::HtmlEncodingUrlLookupError<E>
+pub fn surgeist_html_semantics::HtmlEncodingUrlLookupError<E>::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl<E: core::error::Error + 'static> core::error::Error for surgeist_html_semantics::HtmlEncodingUrlLookupError<E>
 impl<E: core::fmt::Display> core::fmt::Display for surgeist_html_semantics::HtmlEncodingUrlLookupError<E>
 pub fn surgeist_html_semantics::HtmlEncodingUrlLookupError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -486,11 +509,11 @@ pub enum surgeist_html_semantics::HtmlFragmentTarget
 pub surgeist_html_semantics::HtmlFragmentTarget::Element(surgeist_html_semantics::HtmlCaptureElementId)
 pub surgeist_html_semantics::HtmlFragmentTarget::HostedFragment(surgeist_html_semantics::HtmlCaptureFragmentId)
 pub enum surgeist_html_semantics::HtmlGlobalInheritanceError
+pub surgeist_html_semantics::HtmlGlobalInheritanceError::Accounting(surgeist_html::internal::accounting::fault::HtmlAccountingFault)
 pub surgeist_html_semantics::HtmlGlobalInheritanceError::Capture(surgeist_html_semantics::HtmlCaptureError)
 pub surgeist_html_semantics::HtmlGlobalInheritanceError::DuplicateSubject(surgeist_html_semantics::HtmlCaptureSubjectId)
 pub surgeist_html_semantics::HtmlGlobalInheritanceError::HostRevisionMismatch
 pub surgeist_html_semantics::HtmlGlobalInheritanceError::InapplicableSubject(surgeist_html_semantics::HtmlCaptureSubjectId)
-pub surgeist_html_semantics::HtmlGlobalInheritanceError::LedgerState
 pub surgeist_html_semantics::HtmlGlobalInheritanceError::ParentlessInherit(surgeist_html_semantics::HtmlCaptureSubjectId)
 pub surgeist_html_semantics::HtmlGlobalInheritanceError::RecordCapacity
 pub surgeist_html_semantics::HtmlGlobalInheritanceError::RecordCapacity::limit: usize
@@ -499,12 +522,16 @@ pub surgeist_html_semantics::HtmlGlobalInheritanceError::RepresentationExhausted
 pub surgeist_html_semantics::HtmlGlobalInheritanceError::ValidationWork
 pub surgeist_html_semantics::HtmlGlobalInheritanceError::ValidationWork::limit: usize
 pub surgeist_html_semantics::HtmlGlobalInheritanceError::ValidationWork::required: usize
+impl surgeist_html_semantics::HtmlGlobalInheritanceError
+pub fn surgeist_html_semantics::HtmlGlobalInheritanceError::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl core::error::Error for surgeist_html_semantics::HtmlGlobalInheritanceError
 impl core::fmt::Display for surgeist_html_semantics::HtmlGlobalInheritanceError
 pub fn surgeist_html_semantics::HtmlGlobalInheritanceError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html_semantics::HtmlHyperlinkCaptureError<E>
 pub surgeist_html_semantics::HtmlHyperlinkCaptureError::Capture(surgeist_html_semantics::HtmlCaptureError)
 pub surgeist_html_semantics::HtmlHyperlinkCaptureError::Interrupted(E)
+impl<E> surgeist_html_semantics::HtmlHyperlinkCaptureError<E>
+pub fn surgeist_html_semantics::HtmlHyperlinkCaptureError<E>::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl<E: core::error::Error + 'static> core::error::Error for surgeist_html_semantics::HtmlHyperlinkCaptureError<E>
 impl<E: core::fmt::Display> core::fmt::Display for surgeist_html_semantics::HtmlHyperlinkCaptureError<E>
 pub fn surgeist_html_semantics::HtmlHyperlinkCaptureError<E>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -561,6 +588,7 @@ pub surgeist_html_semantics::HtmlImageDimensionBranch::NonImageInput
 pub surgeist_html_semantics::HtmlImageDimensionBranch::RenderedContentBox
 pub surgeist_html_semantics::HtmlImageDimensionBranch::Unrendered
 pub enum surgeist_html_semantics::HtmlImageDimensionFactsError
+pub surgeist_html_semantics::HtmlImageDimensionFactsError::Accounting(surgeist_html::internal::accounting::fault::HtmlAccountingFault)
 pub surgeist_html_semantics::HtmlImageDimensionFactsError::BindingMismatch(surgeist_html_semantics::HtmlCaptureSubjectId)
 pub surgeist_html_semantics::HtmlImageDimensionFactsError::ByteLimit
 pub surgeist_html_semantics::HtmlImageDimensionFactsError::Capture(surgeist_html_semantics::HtmlCaptureError)
@@ -571,7 +599,6 @@ pub surgeist_html_semantics::HtmlImageDimensionFactsError::DuplicateSubject(surg
 pub surgeist_html_semantics::HtmlImageDimensionFactsError::HostRevisionMismatch
 pub surgeist_html_semantics::HtmlImageDimensionFactsError::InvalidAvailability(surgeist_html_semantics::HtmlCaptureSubjectId)
 pub surgeist_html_semantics::HtmlImageDimensionFactsError::InvalidOperation(surgeist_html_semantics::HtmlCaptureSubjectId)
-pub surgeist_html_semantics::HtmlImageDimensionFactsError::LedgerState
 pub surgeist_html_semantics::HtmlImageDimensionFactsError::ParticipationRevisionMismatch
 pub surgeist_html_semantics::HtmlImageDimensionFactsError::RecordLimit
 pub surgeist_html_semantics::HtmlImageDimensionFactsError::RepresentationExhausted
@@ -580,6 +607,8 @@ pub surgeist_html_semantics::HtmlImageDimensionFactsError::ResourceRevisionMissi
 pub surgeist_html_semantics::HtmlImageDimensionFactsError::RoleMismatch(surgeist_html_semantics::HtmlCaptureSubjectId)
 pub surgeist_html_semantics::HtmlImageDimensionFactsError::UnexpectedObservation(surgeist_html_semantics::HtmlCaptureSubjectId)
 pub surgeist_html_semantics::HtmlImageDimensionFactsError::WorkLimit
+impl surgeist_html_semantics::HtmlImageDimensionFactsError
+pub fn surgeist_html_semantics::HtmlImageDimensionFactsError::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl core::error::Error for surgeist_html_semantics::HtmlImageDimensionFactsError
 impl core::fmt::Display for surgeist_html_semantics::HtmlImageDimensionFactsError
 pub fn surgeist_html_semantics::HtmlImageDimensionFactsError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -655,6 +684,7 @@ pub surgeist_html_semantics::HtmlImplicitSubmissionCondition::DefaultButton(surg
 pub surgeist_html_semantics::HtmlImplicitSubmissionCondition::NoButton
 pub surgeist_html_semantics::HtmlImplicitSubmissionCondition::NoButton::blocking_fields: surgeist_html_semantics::HtmlImplicitSubmissionBlockingFields
 pub enum surgeist_html_semantics::HtmlInertFactError
+pub surgeist_html_semantics::HtmlInertFactError::Accounting(surgeist_html::internal::accounting::fault::HtmlAccountingFault)
 pub surgeist_html_semantics::HtmlInertFactError::Capture(surgeist_html_semantics::HtmlCaptureError)
 pub surgeist_html_semantics::HtmlInertFactError::ContradictoryConnectedness(surgeist_html_semantics::HtmlCaptureSubjectId)
 pub surgeist_html_semantics::HtmlInertFactError::ContradictoryMembership(surgeist_html_semantics::HtmlCaptureSubjectId)
@@ -666,7 +696,6 @@ pub surgeist_html_semantics::HtmlInertFactError::HostRevisionMismatch
 pub surgeist_html_semantics::HtmlInertFactError::InvalidBlockingDialog(surgeist_html_semantics::HtmlCaptureSubjectId)
 pub surgeist_html_semantics::HtmlInertFactError::InvalidFlatParent(surgeist_html_semantics::HtmlCaptureSubjectId)
 pub surgeist_html_semantics::HtmlInertFactError::InvalidFlatRoot(surgeist_html_semantics::HtmlCaptureSubjectId)
-pub surgeist_html_semantics::HtmlInertFactError::LedgerState
 pub surgeist_html_semantics::HtmlInertFactError::RecordCapacity
 pub surgeist_html_semantics::HtmlInertFactError::RecordCapacity::limit: usize
 pub surgeist_html_semantics::HtmlInertFactError::RecordCapacity::required: usize
@@ -674,6 +703,8 @@ pub surgeist_html_semantics::HtmlInertFactError::RepresentationExhausted
 pub surgeist_html_semantics::HtmlInertFactError::ValidationWork
 pub surgeist_html_semantics::HtmlInertFactError::ValidationWork::limit: usize
 pub surgeist_html_semantics::HtmlInertFactError::ValidationWork::required: usize
+impl surgeist_html_semantics::HtmlInertFactError
+pub fn surgeist_html_semantics::HtmlInertFactError::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl core::error::Error for surgeist_html_semantics::HtmlInertFactError
 impl core::fmt::Display for surgeist_html_semantics::HtmlInertFactError
 pub fn surgeist_html_semantics::HtmlInertFactError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -698,6 +729,7 @@ pub surgeist_html_semantics::HtmlIsDefinitionRequirement::NoMatchingCustomizedDe
 pub surgeist_html_semantics::HtmlIsDefinitionRequirement::NotRequired
 pub surgeist_html_semantics::HtmlIsDefinitionRequirement::Unavailable(surgeist_html_semantics::HtmlIsContextUnavailable)
 pub enum surgeist_html_semantics::HtmlLanguageDirectionError
+pub surgeist_html_semantics::HtmlLanguageDirectionError::Accounting(surgeist_html::internal::accounting::fault::HtmlAccountingFault)
 pub surgeist_html_semantics::HtmlLanguageDirectionError::AssignedNodeCapacity
 pub surgeist_html_semantics::HtmlLanguageDirectionError::AssignedNodeCapacity::limit: usize
 pub surgeist_html_semantics::HtmlLanguageDirectionError::AssignedNodeCapacity::required: usize
@@ -713,7 +745,6 @@ pub surgeist_html_semantics::HtmlLanguageDirectionError::HostRevisionMismatch
 pub surgeist_html_semantics::HtmlLanguageDirectionError::InapplicableCurrentValue(surgeist_html_semantics::HtmlCaptureSubjectId)
 pub surgeist_html_semantics::HtmlLanguageDirectionError::InvalidAssignedNode(surgeist_html_semantics::HtmlCaptureSubjectId)
 pub surgeist_html_semantics::HtmlLanguageDirectionError::InvalidSlot(surgeist_html_semantics::HtmlCaptureSubjectId)
-pub surgeist_html_semantics::HtmlLanguageDirectionError::LedgerState
 pub surgeist_html_semantics::HtmlLanguageDirectionError::RecordCapacity
 pub surgeist_html_semantics::HtmlLanguageDirectionError::RecordCapacity::limit: usize
 pub surgeist_html_semantics::HtmlLanguageDirectionError::RecordCapacity::required: usize
@@ -722,6 +753,8 @@ pub surgeist_html_semantics::HtmlLanguageDirectionError::UnavailableRelation(sur
 pub surgeist_html_semantics::HtmlLanguageDirectionError::ValidationWork
 pub surgeist_html_semantics::HtmlLanguageDirectionError::ValidationWork::limit: usize
 pub surgeist_html_semantics::HtmlLanguageDirectionError::ValidationWork::required: usize
+impl surgeist_html_semantics::HtmlLanguageDirectionError
+pub fn surgeist_html_semantics::HtmlLanguageDirectionError::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl core::error::Error for surgeist_html_semantics::HtmlLanguageDirectionError
 impl core::fmt::Display for surgeist_html_semantics::HtmlLanguageDirectionError
 pub fn surgeist_html_semantics::HtmlLanguageDirectionError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -754,17 +787,19 @@ pub surgeist_html_semantics::HtmlMediaExternalCapability::Edition
 pub surgeist_html_semantics::HtmlMediaExternalCapability::EnvironmentFeature
 pub surgeist_html_semantics::HtmlMediaExternalCapability::GrammarFeature
 pub enum surgeist_html_semantics::HtmlMediaFactsError
+pub surgeist_html_semantics::HtmlMediaFactsError::Accounting(surgeist_html::internal::accounting::fault::HtmlAccountingFault)
 pub surgeist_html_semantics::HtmlMediaFactsError::ByteLimit
 pub surgeist_html_semantics::HtmlMediaFactsError::Capture(surgeist_html_semantics::HtmlCaptureError)
 pub surgeist_html_semantics::HtmlMediaFactsError::DuplicateInput(surgeist_html_semantics::HtmlMediaAttributeInput)
 pub surgeist_html_semantics::HtmlMediaFactsError::GrammarRevisionMismatch
 pub surgeist_html_semantics::HtmlMediaFactsError::HostRevisionMismatch
 pub surgeist_html_semantics::HtmlMediaFactsError::InvalidInput
-pub surgeist_html_semantics::HtmlMediaFactsError::LedgerState
 pub surgeist_html_semantics::HtmlMediaFactsError::MatchRevisionMismatch
 pub surgeist_html_semantics::HtmlMediaFactsError::RecordLimit
 pub surgeist_html_semantics::HtmlMediaFactsError::RepresentationExhausted
 pub surgeist_html_semantics::HtmlMediaFactsError::WorkLimit
+impl surgeist_html_semantics::HtmlMediaFactsError
+pub fn surgeist_html_semantics::HtmlMediaFactsError::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl core::error::Error for surgeist_html_semantics::HtmlMediaFactsError
 impl core::fmt::Display for surgeist_html_semantics::HtmlMediaFactsError
 pub fn surgeist_html_semantics::HtmlMediaFactsError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -868,6 +903,8 @@ pub surgeist_html_semantics::HtmlMicrodataFactsError::MissingRaw
 pub surgeist_html_semantics::HtmlMicrodataFactsError::OperationMismatch
 pub surgeist_html_semantics::HtmlMicrodataFactsError::TokenIndex
 pub surgeist_html_semantics::HtmlMicrodataFactsError::WrongRole
+impl surgeist_html_semantics::HtmlMicrodataFactsError
+pub fn surgeist_html_semantics::HtmlMicrodataFactsError::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl core::error::Error for surgeist_html_semantics::HtmlMicrodataFactsError
 impl core::fmt::Display for surgeist_html_semantics::HtmlMicrodataFactsError
 pub fn surgeist_html_semantics::HtmlMicrodataFactsError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -910,19 +947,21 @@ pub surgeist_html_semantics::HtmlNaturalDimensionAxis::KnownPresent(surgeist_htm
 pub surgeist_html_semantics::HtmlNaturalDimensionAxis::KnownPresentButUnrepresentable(surgeist_html_semantics::HtmlNaturalDimensionUnsupported)
 pub surgeist_html_semantics::HtmlNaturalDimensionAxis::Unavailable
 pub enum surgeist_html_semantics::HtmlNaturalDimensionFactsError
+pub surgeist_html_semantics::HtmlNaturalDimensionFactsError::Accounting(surgeist_html::internal::accounting::fault::HtmlAccountingFault)
 pub surgeist_html_semantics::HtmlNaturalDimensionFactsError::ByteLimit
 pub surgeist_html_semantics::HtmlNaturalDimensionFactsError::Capture(surgeist_html_semantics::HtmlCaptureError)
 pub surgeist_html_semantics::HtmlNaturalDimensionFactsError::DuplicateSubject(surgeist_html_semantics::HtmlCaptureSubjectId)
 pub surgeist_html_semantics::HtmlNaturalDimensionFactsError::HostRevisionMismatch
 pub surgeist_html_semantics::HtmlNaturalDimensionFactsError::InvalidExpectedSelection
 pub surgeist_html_semantics::HtmlNaturalDimensionFactsError::InvalidObservation
-pub surgeist_html_semantics::HtmlNaturalDimensionFactsError::LedgerState
 pub surgeist_html_semantics::HtmlNaturalDimensionFactsError::RecordLimit
 pub surgeist_html_semantics::HtmlNaturalDimensionFactsError::RepresentationExhausted
 pub surgeist_html_semantics::HtmlNaturalDimensionFactsError::ResourceMismatch(surgeist_html_semantics::HtmlCaptureSubjectId)
 pub surgeist_html_semantics::HtmlNaturalDimensionFactsError::SelectionRevisionMismatch(surgeist_html_semantics::HtmlCaptureSubjectId)
 pub surgeist_html_semantics::HtmlNaturalDimensionFactsError::UnexpectedObservation(surgeist_html_semantics::HtmlCaptureSubjectId)
 pub surgeist_html_semantics::HtmlNaturalDimensionFactsError::WorkLimit
+impl surgeist_html_semantics::HtmlNaturalDimensionFactsError
+pub fn surgeist_html_semantics::HtmlNaturalDimensionFactsError::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl core::error::Error for surgeist_html_semantics::HtmlNaturalDimensionFactsError
 impl core::fmt::Display for surgeist_html_semantics::HtmlNaturalDimensionFactsError
 pub fn surgeist_html_semantics::HtmlNaturalDimensionFactsError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -950,13 +989,15 @@ pub surgeist_html_semantics::HtmlOptionReadbackOrigin::DescendantText
 pub surgeist_html_semantics::HtmlOptionReadbackOrigin::LabelAttribute
 pub surgeist_html_semantics::HtmlOptionReadbackOrigin::ValueAttribute
 pub enum surgeist_html_semantics::HtmlOptionValueControlError
+pub surgeist_html_semantics::HtmlOptionValueControlError::Accounting(surgeist_html::internal::accounting::fault::HtmlAccountingFault)
 pub surgeist_html_semantics::HtmlOptionValueControlError::Cancelled
 pub surgeist_html_semantics::HtmlOptionValueControlError::LimitExceeded
 pub surgeist_html_semantics::HtmlOptionValueControlError::LimitExceeded::limit: u64
 pub surgeist_html_semantics::HtmlOptionValueControlError::LimitExceeded::required: u64
 pub surgeist_html_semantics::HtmlOptionValueControlError::LimitExceeded::resource: surgeist_html_semantics::HtmlOptionValueResource
-pub surgeist_html_semantics::HtmlOptionValueControlError::ProtocolViolated
 pub surgeist_html_semantics::HtmlOptionValueControlError::RepresentationExhausted
+impl surgeist_html_semantics::HtmlOptionValueControlError
+pub fn surgeist_html_semantics::HtmlOptionValueControlError::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl core::error::Error for surgeist_html_semantics::HtmlOptionValueControlError
 impl core::fmt::Display for surgeist_html_semantics::HtmlOptionValueControlError
 pub fn surgeist_html_semantics::HtmlOptionValueControlError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -965,6 +1006,7 @@ pub surgeist_html_semantics::HtmlOptionValueResource::LiveBytes
 pub surgeist_html_semantics::HtmlOptionValueResource::LiveUtf16
 pub surgeist_html_semantics::HtmlOptionValueResource::Work
 pub enum surgeist_html_semantics::HtmlOutputDefaultError
+pub surgeist_html_semantics::HtmlOutputDefaultError::Accounting(surgeist_html::internal::accounting::fault::HtmlAccountingFault)
 pub surgeist_html_semantics::HtmlOutputDefaultError::Capture(surgeist_html_semantics::HtmlCaptureError)
 pub surgeist_html_semantics::HtmlOutputDefaultError::CodeUnits
 pub surgeist_html_semantics::HtmlOutputDefaultError::CodeUnits::limit: usize
@@ -972,7 +1014,6 @@ pub surgeist_html_semantics::HtmlOutputDefaultError::CodeUnits::required: usize
 pub surgeist_html_semantics::HtmlOutputDefaultError::DuplicateSubject(surgeist_html_semantics::HtmlCaptureSubjectId)
 pub surgeist_html_semantics::HtmlOutputDefaultError::HostRevisionMismatch
 pub surgeist_html_semantics::HtmlOutputDefaultError::InapplicableSubject(surgeist_html_semantics::HtmlCaptureSubjectId)
-pub surgeist_html_semantics::HtmlOutputDefaultError::LedgerState
 pub surgeist_html_semantics::HtmlOutputDefaultError::RecordCapacity
 pub surgeist_html_semantics::HtmlOutputDefaultError::RecordCapacity::limit: usize
 pub surgeist_html_semantics::HtmlOutputDefaultError::RecordCapacity::required: usize
@@ -980,6 +1021,8 @@ pub surgeist_html_semantics::HtmlOutputDefaultError::RepresentationExhausted
 pub surgeist_html_semantics::HtmlOutputDefaultError::ValidationWork
 pub surgeist_html_semantics::HtmlOutputDefaultError::ValidationWork::limit: usize
 pub surgeist_html_semantics::HtmlOutputDefaultError::ValidationWork::required: usize
+impl surgeist_html_semantics::HtmlOutputDefaultError
+pub fn surgeist_html_semantics::HtmlOutputDefaultError::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl core::error::Error for surgeist_html_semantics::HtmlOutputDefaultError
 impl core::fmt::Display for surgeist_html_semantics::HtmlOutputDefaultError
 pub fn surgeist_html_semantics::HtmlOutputDefaultError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -1030,6 +1073,7 @@ pub surgeist_html_semantics::HtmlRelExtensionEffect::NotAllowed
 pub surgeist_html_semantics::HtmlRelExtensionEffect::StylesheetModifier
 pub surgeist_html_semantics::HtmlRelExtensionEffect::Unavailable
 pub enum surgeist_html_semantics::HtmlRelFactsError
+pub surgeist_html_semantics::HtmlRelFactsError::Accounting(surgeist_html::internal::accounting::fault::HtmlAccountingFault)
 pub surgeist_html_semantics::HtmlRelFactsError::ByteLimit
 pub surgeist_html_semantics::HtmlRelFactsError::CanonicalMismatch
 pub surgeist_html_semantics::HtmlRelFactsError::Capture(surgeist_html_semantics::HtmlCaptureError)
@@ -1045,7 +1089,6 @@ pub surgeist_html_semantics::HtmlRelFactsError::InvalidEffect
 pub surgeist_html_semantics::HtmlRelFactsError::InvalidOccurrence
 pub surgeist_html_semantics::HtmlRelFactsError::InvalidRole
 pub surgeist_html_semantics::HtmlRelFactsError::InvalidSupportedToken
-pub surgeist_html_semantics::HtmlRelFactsError::LedgerState
 pub surgeist_html_semantics::HtmlRelFactsError::MissingDefinition
 pub surgeist_html_semantics::HtmlRelFactsError::RawMismatch
 pub surgeist_html_semantics::HtmlRelFactsError::RecordLimit
@@ -1054,6 +1097,8 @@ pub surgeist_html_semantics::HtmlRelFactsError::SelectorBindingMismatch
 pub surgeist_html_semantics::HtmlRelFactsError::UrlBindingMismatch
 pub surgeist_html_semantics::HtmlRelFactsError::UrlRevisionMismatch
 pub surgeist_html_semantics::HtmlRelFactsError::WorkLimit
+impl surgeist_html_semantics::HtmlRelFactsError
+pub fn surgeist_html_semantics::HtmlRelFactsError::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl core::error::Error for surgeist_html_semantics::HtmlRelFactsError
 impl core::fmt::Display for surgeist_html_semantics::HtmlRelFactsError
 pub fn surgeist_html_semantics::HtmlRelFactsError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -1083,20 +1128,8 @@ pub enum surgeist_html_semantics::HtmlScriptingStatus
 pub surgeist_html_semantics::HtmlScriptingStatus::Disabled
 pub surgeist_html_semantics::HtmlScriptingStatus::Enabled
 pub surgeist_html_semantics::HtmlScriptingStatus::Unavailable
-#[non_exhaustive] pub enum surgeist_html_semantics::HtmlSemanticAccountingFault
-pub surgeist_html_semantics::HtmlSemanticAccountingFault::Allocation
-pub surgeist_html_semantics::HtmlSemanticAccountingFault::Checkpoint
-pub surgeist_html_semantics::HtmlSemanticAccountingFault::Defect(surgeist_ledger::Defect)
-pub surgeist_html_semantics::HtmlSemanticAccountingFault::ForeignScope
-pub surgeist_html_semantics::HtmlSemanticAccountingFault::IdentityExhausted
-pub surgeist_html_semantics::HtmlSemanticAccountingFault::ScopeLimit
-pub surgeist_html_semantics::HtmlSemanticAccountingFault::ScopeLimit::limit: usize
-pub surgeist_html_semantics::HtmlSemanticAccountingFault::TimingUnavailable
-pub surgeist_html_semantics::HtmlSemanticAccountingFault::UnexpectedRefusal
-impl core::error::Error for surgeist_html_semantics::HtmlSemanticAccountingFault
-impl core::fmt::Display for surgeist_html_semantics::HtmlSemanticAccountingFault
-pub fn surgeist_html_semantics::HtmlSemanticAccountingFault::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html_semantics::HtmlSemanticContextError
+pub surgeist_html_semantics::HtmlSemanticContextError::Accounting(surgeist_html::internal::accounting::fault::HtmlAccountingFault)
 pub surgeist_html_semantics::HtmlSemanticContextError::BaseCaptureMismatch
 pub surgeist_html_semantics::HtmlSemanticContextError::BaseHostRevisionMismatch
 pub surgeist_html_semantics::HtmlSemanticContextError::BaseRevisionMismatch
@@ -1125,7 +1158,6 @@ pub surgeist_html_semantics::HtmlSemanticContextError::InertHostRevisionMismatch
 pub surgeist_html_semantics::HtmlSemanticContextError::InertRevisionMismatch
 pub surgeist_html_semantics::HtmlSemanticContextError::LanguageDirectionCaptureMismatch
 pub surgeist_html_semantics::HtmlSemanticContextError::LanguageDirectionHostRevisionMismatch
-pub surgeist_html_semantics::HtmlSemanticContextError::LedgerState
 pub surgeist_html_semantics::HtmlSemanticContextError::LinkRelationshipsCaptureMismatch
 pub surgeist_html_semantics::HtmlSemanticContextError::LinkRelationshipsHostRevisionMismatch
 pub surgeist_html_semantics::HtmlSemanticContextError::LinkRelationshipsRevisionMismatch
@@ -1143,6 +1175,8 @@ pub surgeist_html_semantics::HtmlSemanticContextError::ParticipationLimit
 pub surgeist_html_semantics::HtmlSemanticContextError::ParticipationLimit::limit: usize
 pub surgeist_html_semantics::HtmlSemanticContextError::ParticipationLimit::retained_capacity: usize
 pub surgeist_html_semantics::HtmlSemanticContextError::ParticipationRevisionMismatch
+impl surgeist_html_semantics::HtmlSemanticContextError
+pub fn surgeist_html_semantics::HtmlSemanticContextError::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl core::error::Error for surgeist_html_semantics::HtmlSemanticContextError
 impl core::fmt::Display for surgeist_html_semantics::HtmlSemanticContextError
 pub fn surgeist_html_semantics::HtmlSemanticContextError::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -1274,7 +1308,7 @@ pub surgeist_html_semantics::HtmlSemanticFact::UsedAutocapitalizationHint(surgei
 pub surgeist_html_semantics::HtmlSemanticFact::UsedAutocorrectionState(surgeist_html_semantics::HtmlSemanticValue<surgeist_html_semantics::HtmlUsedAutocorrectionState>)
 pub surgeist_html_semantics::HtmlSemanticFact::UsemapReference(surgeist_html_semantics::HtmlSemanticValue<surgeist_html_semantics::HtmlUsemapReferenceResult>)
 pub enum surgeist_html_semantics::HtmlSemanticFailureKind
-pub surgeist_html_semantics::HtmlSemanticFailureKind::Accounting(surgeist_html_semantics::HtmlSemanticAccountingFault)
+pub surgeist_html_semantics::HtmlSemanticFailureKind::Accounting(surgeist_html::internal::accounting::fault::HtmlAccountingFault)
 pub surgeist_html_semantics::HtmlSemanticFailureKind::AllocationFailed
 pub surgeist_html_semantics::HtmlSemanticFailureKind::Attribute(surgeist_html::internal::values::interpretation::HtmlValueAdmissionError)
 pub surgeist_html_semantics::HtmlSemanticFailureKind::Cancelled
@@ -1290,6 +1324,8 @@ pub surgeist_html_semantics::HtmlSemanticFailureKind::NoopenerRequestMismatch
 pub surgeist_html_semantics::HtmlSemanticFailureKind::ProtocolViolated
 pub surgeist_html_semantics::HtmlSemanticFailureKind::RelationshipSelectorRequestMismatch
 pub surgeist_html_semantics::HtmlSemanticFailureKind::RepresentationExhausted
+impl surgeist_html_semantics::HtmlSemanticFailureKind
+pub fn surgeist_html_semantics::HtmlSemanticFailureKind::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 pub enum surgeist_html_semantics::HtmlSemanticMissing
 pub surgeist_html_semantics::HtmlSemanticMissing::Base
 pub surgeist_html_semantics::HtmlSemanticMissing::Base::fact: surgeist_html_semantics::HtmlBaseMissing
@@ -1726,7 +1762,7 @@ pub fn surgeist_html_semantics::HtmlCaptureBuilder::establish_unhosted(&mut self
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::finish(self) -> core::result::Result<surgeist_html_semantics::HtmlCapture, surgeist_html_semantics::HtmlCaptureError>
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::new(limits: surgeist_html_semantics::HtmlCaptureLimits, host_revision: surgeist_html_semantics::HtmlHostFactsRevision) -> Self
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::usage(&self) -> surgeist_html_semantics::HtmlCaptureUsage
-pub fn surgeist_html_semantics::HtmlCaptureBuilder::with_accounting(limits: surgeist_html_semantics::HtmlCaptureLimits, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, accounting: &surgeist_html_semantics::HtmlSemanticAccounting) -> core::result::Result<Self, surgeist_html_semantics::HtmlSemanticAccountingFault>
+pub fn surgeist_html_semantics::HtmlCaptureBuilder::with_accounting(limits: surgeist_html_semantics::HtmlCaptureLimits, host_revision: surgeist_html_semantics::HtmlHostFactsRevision, accounting: &surgeist_html_semantics::HtmlSemanticAccounting) -> core::result::Result<Self, surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 impl surgeist_html_semantics::HtmlCaptureBuilder
 pub fn surgeist_html_semantics::HtmlCaptureBuilder::add_element_from_inputs<E>(&mut self, document: &surgeist_html_semantics::HtmlCaptureBuilderSubject, name: &impl surgeist_html::internal::values::semantic_input::HtmlNameInput + ?core::marker::Sized, attributes: &impl surgeist_html::internal::values::semantic_input::HtmlAttributesInput + ?core::marker::Sized, is_value: surgeist_html_semantics::HtmlCapturedIsValue, registry: surgeist_html_semantics::HtmlCaptureRegistryInput, step: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<surgeist_html_semantics::HtmlCaptureBuilderSubject, surgeist_html_semantics::HtmlCaptureElementError<E>>
 pub struct surgeist_html_semantics::HtmlCaptureBuilderDefinition
@@ -1886,6 +1922,7 @@ pub fn surgeist_html_semantics::HtmlConstructionCaptureFacts::new(revision: surg
 pub fn surgeist_html_semantics::HtmlConstructionCaptureFacts::nodes(&self) -> &[surgeist_html_semantics::HtmlConstructionCaptureNodeFacts]
 pub struct surgeist_html_semantics::HtmlConstructionCaptureFailure
 impl surgeist_html_semantics::HtmlConstructionCaptureFailure
+pub fn surgeist_html_semantics::HtmlConstructionCaptureFailure::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 pub fn surgeist_html_semantics::HtmlConstructionCaptureFailure::builder(&self) -> &surgeist_html_semantics::HtmlCaptureBuilder
 pub fn surgeist_html_semantics::HtmlConstructionCaptureFailure::facts(&self) -> &surgeist_html_semantics::HtmlConstructionCaptureFacts
 pub fn surgeist_html_semantics::HtmlConstructionCaptureFailure::into_parts(self) -> (surgeist_html_semantics::HtmlConstructionCaptureError, surgeist_html_semantics::HtmlCaptureBuilder, surgeist_html::internal::construction::bounded::HtmlConstructionResult, surgeist_html_semantics::HtmlConstructionCaptureFacts, surgeist_html_semantics::HtmlConstructionCaptureUsage)
@@ -1894,6 +1931,7 @@ pub fn surgeist_html_semantics::HtmlConstructionCaptureFailure::source(&self) ->
 pub fn surgeist_html_semantics::HtmlConstructionCaptureFailure::usage(&self) -> surgeist_html_semantics::HtmlConstructionCaptureUsage
 pub struct surgeist_html_semantics::HtmlConstructionCaptureFinishFailure
 impl surgeist_html_semantics::HtmlConstructionCaptureFinishFailure
+pub fn surgeist_html_semantics::HtmlConstructionCaptureFinishFailure::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 pub fn surgeist_html_semantics::HtmlConstructionCaptureFinishFailure::import(&self) -> &surgeist_html_semantics::HtmlConstructionCaptureImport
 pub fn surgeist_html_semantics::HtmlConstructionCaptureFinishFailure::into_parts(self) -> (surgeist_html_semantics::HtmlConstructionCaptureError, surgeist_html_semantics::HtmlConstructionCaptureImport)
 pub fn surgeist_html_semantics::HtmlConstructionCaptureFinishFailure::reason(&self) -> &surgeist_html_semantics::HtmlConstructionCaptureError
@@ -1997,6 +2035,7 @@ pub fn surgeist_html_semantics::HtmlControlledOptionValueCapture::storage_usage(
 pub fn surgeist_html_semantics::HtmlControlledOptionValueCapture::usage(&self) -> surgeist_html_semantics::HtmlControlledOptionValueUsage
 pub struct surgeist_html_semantics::HtmlControlledOptionValueFailure
 impl surgeist_html_semantics::HtmlControlledOptionValueFailure
+pub fn surgeist_html_semantics::HtmlControlledOptionValueFailure::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 pub fn surgeist_html_semantics::HtmlControlledOptionValueFailure::into_error(self) -> surgeist_html_semantics::HtmlControlledOptionValueError
 pub fn surgeist_html_semantics::HtmlControlledOptionValueFailure::kind(&self) -> &surgeist_html_semantics::HtmlControlledOptionValueError
 pub fn surgeist_html_semantics::HtmlControlledOptionValueFailure::usage(&self) -> surgeist_html_semantics::HtmlControlledOptionValueUsage
@@ -3040,6 +3079,7 @@ pub fn surgeist_html_semantics::HtmlSemanticContextInput::with_natural_dimension
 pub fn surgeist_html_semantics::HtmlSemanticContextInput::with_output_defaults(self, facts: surgeist_html_semantics::HtmlOutputDefaultFacts) -> Self
 pub struct surgeist_html_semantics::HtmlSemanticFailure
 impl surgeist_html_semantics::HtmlSemanticFailure
+pub fn surgeist_html_semantics::HtmlSemanticFailure::accounting_fault(&self) -> core::option::Option<surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 pub fn surgeist_html_semantics::HtmlSemanticFailure::kind(&self) -> &surgeist_html_semantics::HtmlSemanticFailureKind
 pub fn surgeist_html_semantics::HtmlSemanticFailure::qualification(&self) -> core::option::Option<&surgeist_html_semantics::HtmlSemanticQualification>
 pub fn surgeist_html_semantics::HtmlSemanticFailure::usage(&self) -> surgeist_html_semantics::HtmlSemanticUsage

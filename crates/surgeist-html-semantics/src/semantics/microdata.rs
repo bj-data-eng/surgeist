@@ -1438,6 +1438,23 @@ pub enum HtmlMicrodataFactsError {
     Duplicate,
     Limit,
 }
+impl HtmlMicrodataFactsError {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Capture(error) => error.accounting_fault(),
+            Self::Attribute(_)
+            | Self::WrongRole
+            | Self::MissingRaw
+            | Self::TokenIndex
+            | Self::OperationMismatch
+            | Self::Duplicate
+            | Self::Limit => None,
+        }
+    }
+}
 impl fmt::Display for HtmlMicrodataFactsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{self:?}")

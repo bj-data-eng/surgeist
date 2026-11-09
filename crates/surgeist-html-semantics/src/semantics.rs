@@ -122,11 +122,13 @@ use std::{
     error::Error,
     fmt,
     sync::{
-        Arc,
+        Arc, Mutex, PoisonError,
         atomic::{AtomicBool, Ordering},
     },
 };
-use surgeist_html::accounting::{HtmlCapScope, HtmlResource};
+use surgeist_html::accounting::{
+    HtmlAccountingFault, HtmlCapScope, HtmlLedgerOutcome, HtmlResource, classify,
+};
 use surgeist_html::bounded::{
     numeric::{
         HtmlIntegerRecoveryError, HtmlIntegerUnitStep, HtmlIntegerUnitStepError,
@@ -1319,15 +1321,38 @@ pub enum HtmlSemanticFailureKind {
     /// defect in this crate, as `ProtocolViolated` does for the value interpretations.
     ProtocolViolated,
     /// The ledger that carries the session's accounting failed in a way that is not a refused
-    /// cap: a host scope that is not the host operation's, no room for the session's scopes, an
-    /// exhausted ledger resource or a ledger defect.
-    Accounting(crate::HtmlSemanticAccountingFault),
+    /// cap: a host scope that is not the host operation's, no room for the session's scopes, a
+    /// ledger that cannot allocate, a release that matches nothing held, an exhausted ledger
+    /// resource or a ledger defect.
+    Accounting(HtmlAccountingFault),
     Capture(HtmlCaptureError),
     ContextCaptureMismatch,
     Attribute(HtmlValueAdmissionError),
     IntrinsicUnavailable,
     /// The enclosing controlled OptionValue execution stopped before an action.
     ControlledOptionValue(crate::HtmlOptionValueControlError),
+}
+impl HtmlSemanticFailureKind {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Accounting(fault) => Some(*fault),
+            Self::Capture(error) => error.accounting_fault(),
+            Self::ControlledOptionValue(error) => error.accounting_fault(),
+            Self::RelationshipSelectorRequestMismatch
+            | Self::NoopenerRequestMismatch
+            | Self::Cancelled
+            | Self::LimitExceeded { .. }
+            | Self::RepresentationExhausted
+            | Self::AllocationFailed
+            | Self::ProtocolViolated
+            | Self::ContextCaptureMismatch
+            | Self::Attribute(_)
+            | Self::IntrinsicUnavailable => None,
+        }
+    }
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlSemanticFailure {
@@ -1338,6 +1363,11 @@ pub struct HtmlSemanticFailure {
 impl HtmlSemanticFailure {
     pub fn kind(&self) -> &HtmlSemanticFailureKind {
         &self.kind
+    }
+    /// The accounting fault of the ledger that carried the query, when the failure is one or
+    /// wraps an error that is one.
+    pub fn accounting_fault(&self) -> Option<HtmlAccountingFault> {
+        self.kind.accounting_fault()
     }
     pub fn usage(&self) -> HtmlSemanticUsage {
         self.usage
@@ -1368,6 +1398,9 @@ pub struct HtmlSemanticSession<'a> {
     cancellation: HtmlSemanticCancellation,
     qualification: Arc<HtmlSemanticQualification>,
     account: query_account::QueryAccount,
+    /// The last usage read from the ledger, which a read that cannot reach the ledger returns when
+    /// no failure is latched. A mutex keeps the session `Sync`, as `usage` takes `&self`.
+    last_usage: Mutex<HtmlSemanticUsage>,
     failure: Option<HtmlSemanticFailure>,
     option_control: Option<crate::controlled_option_value::QueryControl<'a>>,
     /// The item graph of the tree the last graph query used, kept for the rest
@@ -1494,6 +1527,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 },
             }),
             account,
+            last_usage: Mutex::new(HtmlSemanticUsage::default()),
             failure: None,
             option_control: None,
             microdata_graph: None,
@@ -1504,18 +1538,22 @@ impl<'a> HtmlSemanticSession<'a> {
         })
     }
     /// The usage read from the session's ledger scopes. A ledger that cannot be read has latched a
-    /// defect, which the session reports as its terminal `ProtocolViolated` failure; the usage
-    /// then is that failure's.
+    /// defect, which the next charge reports as the session's terminal `Accounting` failure; the
+    /// usage then is that failure's when one is latched, and else the last usage read.
     pub fn usage(&self) -> HtmlSemanticUsage {
         self.snapshot()
     }
     fn snapshot(&self) -> HtmlSemanticUsage {
+        let mut last = self
+            .last_usage
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         match self.account.read() {
-            Ok(usage) => usage,
-            Err(_) => self
-                .failure
-                .as_ref()
-                .map_or_else(HtmlSemanticUsage::default, |failure| failure.usage),
+            Ok(usage) => {
+                *last = usage;
+                usage
+            }
+            Err(_) => self.failure.as_ref().map_or(*last, |failure| failure.usage),
         }
     }
     pub(crate) fn control_option_value(
@@ -1539,12 +1577,12 @@ impl<'a> HtmlSemanticSession<'a> {
     }
     /// Stops with the typed stop of a ledger error.
     fn ledger_stop(&mut self, error: query_account::LedgerError) -> HtmlSemanticFailure {
-        if let (Some(control), query_account::LedgerError::Refused(refusal)) =
-            (self.option_control, &error)
-            && control.is_gate(refusal.scope)
+        if let (Some(control), HtmlLedgerOutcome::Cap(refusal)) =
+            (self.option_control, classify(error))
+            && control.is_gate(refusal.scope())
         {
             // The parent's allowance refused it, and the parent reports its own limit.
-            let kind = HtmlSemanticFailureKind::ControlledOptionValue(control.refusal(refusal));
+            let kind = HtmlSemanticFailureKind::ControlledOptionValue(control.refusal(&refusal));
             return self.stop(kind);
         }
         self.stop(query_account::stop_kind(error))
@@ -2130,11 +2168,7 @@ impl<'a> HtmlSemanticSession<'a> {
     fn release_scratch_backing(&mut self, backing: ScratchBacking) {
         if let Err(error) = self.account.release_scratch(backing.records) {
             // A release that matches no reservation changed nothing.
-            let kind = match error {
-                query_account::LedgerError::Refused(_) => HtmlSemanticFailureKind::ProtocolViolated,
-                other => query_account::stop_kind(other),
-            };
-            self.stop(kind);
+            self.stop(query_account::stop_kind(error));
             return;
         }
         if let Some(control) = self.option_control
@@ -3660,5 +3694,37 @@ impl<'a> HtmlSemanticSession<'a> {
             usage: self.snapshot(),
             results,
         })
+    }
+}
+
+#[cfg(test)]
+mod accounting_fault_tests {
+    use super::*;
+
+    /// A failure and the controlled option value error that wraps it find the fault through the
+    /// failure's kind.
+    #[test]
+    fn a_semantic_failure_finds_the_fault_of_its_kind() {
+        let fault = HtmlAccountingFault::ForeignScope;
+        let failure = |kind| HtmlSemanticFailure {
+            kind,
+            usage: HtmlSemanticUsage::default(),
+            qualification: None,
+        };
+        assert_eq!(
+            failure(HtmlSemanticFailureKind::Accounting(fault)).accounting_fault(),
+            Some(fault)
+        );
+        assert_eq!(
+            failure(HtmlSemanticFailureKind::Cancelled).accounting_fault(),
+            None
+        );
+        assert_eq!(
+            crate::HtmlControlledOptionValueError::Semantic(failure(
+                HtmlSemanticFailureKind::Accounting(fault)
+            ))
+            .accounting_fault(),
+            Some(fault)
+        );
     }
 }

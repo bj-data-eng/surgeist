@@ -1,5 +1,5 @@
 //! Scratch accounting pairs every release with the reservation it returns. A release the session
-//! never reserved is a defect in this crate: it is reported as a protocol breach, never wrapped
+//! never reserved is a defect in this crate: it is reported as a release underflow, never wrapped
 //! into a huge count, and an enclosing controlled OptionValue execution tracks every live scratch
 //! vector.
 use super::*;
@@ -52,7 +52,7 @@ fn session<'a>(
 
 /// Nothing was reserved, so nothing can be released: the count stays zero instead of wrapping.
 #[test]
-fn releasing_scratch_that_was_never_reserved_is_a_protocol_violation() {
+fn releasing_scratch_that_was_never_reserved_is_a_release_underflow() {
     let c = capture();
     let cx = context(&c);
     let mut s = session(&c, &cx);
@@ -60,11 +60,13 @@ fn releasing_scratch_that_was_never_reserved_is_a_protocol_violation() {
     assert_eq!(s.usage().scratch_records(), 0);
     assert_eq!(
         s.failure().map(HtmlSemanticFailure::kind),
-        Some(&HtmlSemanticFailureKind::ProtocolViolated)
+        Some(&HtmlSemanticFailureKind::Accounting(
+            HtmlAccountingFault::ReleaseUnderflow
+        ))
     );
     assert_eq!(
         s.poll().unwrap_err().kind(),
-        &HtmlSemanticFailureKind::ProtocolViolated
+        &HtmlSemanticFailureKind::Accounting(HtmlAccountingFault::ReleaseUnderflow)
     );
 }
 
@@ -81,7 +83,9 @@ fn releasing_more_scratch_than_was_reserved_keeps_the_reserved_count() {
     assert_eq!(s.usage().scratch_records(), reserved);
     assert_eq!(
         s.failure().map(HtmlSemanticFailure::kind),
-        Some(&HtmlSemanticFailureKind::ProtocolViolated)
+        Some(&HtmlSemanticFailureKind::Accounting(
+            HtmlAccountingFault::ReleaseUnderflow
+        ))
     );
 }
 
@@ -109,4 +113,43 @@ fn a_controlled_execution_tracks_every_live_scratch_vector() {
     s.release_scratch(&second);
     assert_eq!(control.temporary_bytes(), 0);
     assert_eq!(s.usage().scratch_records(), 0);
+}
+
+/// A ledger that cannot be read reports the last usage the session read, not an empty one, when
+/// no failure is latched.
+#[test]
+fn a_usage_read_that_cannot_reach_the_ledger_returns_the_last_usage_read() {
+    let c = capture();
+    let cx = context(&c);
+    let mut s = session(&c, &cx);
+    let mut frames: Vec<u64> = Vec::new();
+    s.reserve_scratch(&mut frames, 4).unwrap();
+    let before = s.usage();
+    assert!(before.scratch_records() >= 4);
+    assert!(before.work() > 0);
+    s.account.point_at_another_operation();
+    assert!(s.failure().is_none());
+    assert_eq!(s.usage(), before);
+}
+
+/// With a failure latched, the usage the ledger cannot give is the failure's.
+#[test]
+fn a_usage_read_that_cannot_reach_the_ledger_returns_the_latched_failures_usage() {
+    let c = capture();
+    let cx = context(&c);
+    let mut s = session(&c, &cx);
+    let mut frames: Vec<u64> = Vec::new();
+    s.reserve_scratch(&mut frames, 4).unwrap();
+    s.release_scratch(&Vec::<u64>::with_capacity(100));
+    let at_failure = s.failure().expect("the unmatched release latches").usage();
+    s.account.point_at_another_operation();
+    assert_eq!(s.usage(), at_failure);
+}
+
+/// Reading the last usage through `&self` keeps the session and the owner `Send + Sync`.
+#[test]
+fn the_session_and_the_option_value_owner_stay_send_and_sync() {
+    fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<HtmlSemanticSession<'static>>();
+    assert_send_sync::<crate::HtmlControlledOptionValueCapture>();
 }

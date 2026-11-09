@@ -219,6 +219,7 @@ impl<E: FactError> FactAdmission<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use surgeist_html::accounting::HtmlAccountingFault;
 
     #[derive(Debug, Eq, PartialEq)]
     enum Refusal {
@@ -240,7 +241,7 @@ mod tests {
         fn capture(_: HtmlCaptureError) -> Self {
             Self::Capture
         }
-        fn ledger_state() -> Self {
+        fn accounting(_: HtmlAccountingFault) -> Self {
             Self::State
         }
     }

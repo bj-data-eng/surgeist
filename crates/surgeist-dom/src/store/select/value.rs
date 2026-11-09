@@ -2,6 +2,8 @@
 use super::*;
 use source::checkpoint::Charge;
 use source::storage::Payload;
+#[cfg(test)]
+use surgeist_html::accounting::HtmlAccountingFault;
 use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html_semantics::*;
 mod rows;
@@ -182,8 +184,11 @@ impl Draft {
                 }
             }
             HtmlControlledOptionValueError::AllocationFailed => DomError::AllocationFailed,
-            HtmlControlledOptionValueError::Context(_)
-            | HtmlControlledOptionValueError::InvalidPhase => DomError::SelectProtocol,
+            HtmlControlledOptionValueError::Context(error) => match error.accounting_fault() {
+                Some(fault) => DomError::from_accounting_fault(fault),
+                None => DomError::SelectProtocol,
+            },
+            HtmlControlledOptionValueError::InvalidPhase => DomError::SelectProtocol,
         }
     }
     fn option_value_control_error(&self, error: HtmlOptionValueControlError) -> DomError {
@@ -192,7 +197,9 @@ impl Draft {
             HtmlOptionValueControlError::RepresentationExhausted => {
                 DomError::RepresentationExhausted
             }
-            HtmlOptionValueControlError::ProtocolViolated => DomError::SelectProtocol,
+            HtmlOptionValueControlError::Accounting(fault) => {
+                DomError::from_accounting_fault(fault)
+            }
             HtmlOptionValueControlError::LimitExceeded { resource, .. } => {
                 let limits = self
                     .source_limits
@@ -513,14 +520,74 @@ mod tests {
     }
 
     /// The producer's accounting refused storage it never took, a defect in the producer: the
-    /// store reports it as a select protocol breach, not as exhaustion or a resource limit.
+    /// store reports it as an HTML charge protocol breach, not as exhaustion or a resource limit,
+    /// and a ledger that cannot allocate is an allocation failure.
     #[test]
-    fn a_producer_accounting_breach_is_a_select_protocol_error() {
+    fn a_producer_accounting_breach_is_an_html_charge_protocol_error() {
         let (dom, _, _, _) = fixture();
         let cancel = AtomicBool::new(false);
         let draft = Draft::new(&dom, Arc::new(crate::batch::BatchIdentity), &cancel).unwrap();
         assert_eq!(
-            draft.option_value_control_error(HtmlOptionValueControlError::ProtocolViolated),
+            draft.option_value_control_error(HtmlOptionValueControlError::Accounting(
+                HtmlAccountingFault::ReleaseUnderflow
+            )),
+            DomError::HtmlChargeProtocol
+        );
+        assert_eq!(
+            draft.option_value_control_error(HtmlOptionValueControlError::Accounting(
+                HtmlAccountingFault::Allocation
+            )),
+            DomError::AllocationFailed
+        );
+    }
+
+    /// A ledger fault of the semantic context is an allocation failure or an HTML charge protocol
+    /// fault wherever the context error carries it, directly or inside the capture, image
+    /// dimension and control facts errors it wraps; every other context error stays a select
+    /// protocol breach. The route is the error's own `accounting_fault`.
+    #[test]
+    fn a_context_ledger_fault_is_an_allocation_failure_or_a_charge_protocol_fault() {
+        let (dom, _, _, _) = fixture();
+        let cancel = AtomicBool::new(false);
+        let draft = Draft::new(&dom, Arc::new(crate::batch::BatchIdentity), &cancel).unwrap();
+        let map = |error| draft.option_value_error(HtmlControlledOptionValueError::Context(error));
+        for (fault, expected) in [
+            (HtmlAccountingFault::Allocation, DomError::AllocationFailed),
+            (
+                HtmlAccountingFault::ReleaseUnderflow,
+                DomError::HtmlChargeProtocol,
+            ),
+            (
+                HtmlAccountingFault::ForeignScope,
+                DomError::HtmlChargeProtocol,
+            ),
+        ] {
+            let capture = || HtmlCaptureError::Accounting(fault);
+            for error in [
+                HtmlSemanticContextError::Accounting(fault),
+                HtmlSemanticContextError::Capture(capture()),
+                HtmlSemanticContextError::ImageDimensionsFacts(
+                    HtmlImageDimensionFactsError::Accounting(fault),
+                ),
+                HtmlSemanticContextError::ImageDimensionsFacts(
+                    HtmlImageDimensionFactsError::Capture(capture()),
+                ),
+                HtmlSemanticContextError::ControlsFacts(HtmlControlFactsError::Accounting(fault)),
+                HtmlSemanticContextError::ControlsFacts(HtmlControlFactsError::Capture(capture())),
+            ] {
+                assert_eq!(map(error.clone()), expected, "{error:?}");
+            }
+        }
+        for error in [
+            HtmlSemanticContextError::HostRevisionMismatch,
+            HtmlSemanticContextError::ControlsFacts(HtmlControlFactsError::Capture(
+                HtmlCaptureError::ForeignBuilder,
+            )),
+        ] {
+            assert_eq!(map(error), DomError::SelectProtocol);
+        }
+        assert_eq!(
+            draft.option_value_error(HtmlControlledOptionValueError::InvalidPhase),
             DomError::SelectProtocol
         );
     }

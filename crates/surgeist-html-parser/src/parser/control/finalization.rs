@@ -203,13 +203,13 @@ impl ParseControl {
         ];
         for change in storage.iter().take(count).chain(capacity.iter()).copied() {
             let Some(slot) = batch.get_mut(length) else {
-                return Err(self.fail_invariant(HtmlParseInvariant::LedgerState));
+                return Err(self.unexpected_change());
             };
             *slot = change;
             length = length.saturating_add(1);
         }
         let Some(batch) = batch.get(..length) else {
-            return Err(self.fail_invariant(HtmlParseInvariant::LedgerState));
+            return Err(self.unexpected_change());
         };
         let result = self.accounts_mut()?.charge(batch);
         result.map_err(|error| self.storage_stop(error, &requests, batch))

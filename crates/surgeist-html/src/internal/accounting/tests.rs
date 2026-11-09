@@ -469,3 +469,248 @@ fn retained_storage_conversions_follow_the_resource_precedence() {
     };
     assert!(ordered(retained_provider_storage(1, 2, 3)));
 }
+
+fn refusal_of(
+    operation: &mut Op,
+    scope: surgeist_ledger::Scope,
+    batch: &[HtmlChange],
+) -> Error<HtmlWork, HtmlResource> {
+    operation
+        .apply_batch(scope, batch)
+        .expect_err("the batch is refused")
+}
+
+#[test]
+fn a_ledger_limit_refusal_classifies_as_a_cap_with_its_figures() {
+    let limits = HtmlLimits::from_fn(
+        |_| u64::MAX,
+        |resource| match resource {
+            HtmlResource::ManagedNodes => 5,
+            _ => u64::MAX,
+        },
+    );
+    let mut operation = Operation::new("cap", limits, 1).unwrap();
+    let root = operation.root();
+    operation
+        .apply(root, Change::Acquire(HtmlResource::ManagedNodes, 3))
+        .unwrap();
+    let error = refusal_of(
+        &mut operation,
+        root,
+        &[Change::Acquire(HtmlResource::ManagedNodes, 4)],
+    );
+    let HtmlLedgerOutcome::Cap(refusal) = classify(error) else {
+        panic!("a limit refusal is a cap refusal");
+    };
+    assert_eq!(refusal.scope(), root);
+    assert_eq!(refusal.item(), 0);
+    assert_eq!(
+        refusal.change(),
+        Change::Acquire(HtmlResource::ManagedNodes, 4)
+    );
+    assert_eq!(
+        (refusal.current(), refusal.amount(), refusal.limit()),
+        (3, 4, 5)
+    );
+    assert_eq!(refusal.required(), Ok(7));
+    assert_eq!(
+        refusal.figures(),
+        Ok(HtmlRefusalFigures {
+            limit: 5,
+            required: 7
+        })
+    );
+}
+
+#[test]
+fn the_current_value_of_a_cap_refusal_includes_the_batch_prefix() {
+    let limits = HtmlLimits::from_fn(
+        |_| u64::MAX,
+        |resource| match resource {
+            HtmlResource::ManagedEdges => 10,
+            _ => u64::MAX,
+        },
+    );
+    let mut operation = Operation::new("cap", limits, 1).unwrap();
+    let root = operation.root();
+    let error = refusal_of(
+        &mut operation,
+        root,
+        &[
+            Change::Acquire(HtmlResource::ManagedEdges, 6),
+            Change::Acquire(HtmlResource::ManagedEdges, 6),
+        ],
+    );
+    let HtmlLedgerOutcome::Cap(refusal) = classify(error) else {
+        panic!("a limit refusal is a cap refusal");
+    };
+    assert_eq!(refusal.item(), 1);
+    assert_eq!(
+        refusal.figures(),
+        Ok(HtmlRefusalFigures {
+            limit: 10,
+            required: 12
+        })
+    );
+}
+
+#[test]
+fn an_arithmetic_overflow_classifies_as_exhaustion_of_the_changed_resource() {
+    let mut operation = Operation::new("cap", HtmlLimits::unlimited(), 1).unwrap();
+    let root = operation.root();
+    operation
+        .apply(root, Change::Acquire(HtmlResource::ManagedEdges, u64::MAX))
+        .unwrap();
+    let change = Change::Acquire(HtmlResource::ManagedEdges, 1);
+    let error = refusal_of(&mut operation, root, &[change]);
+    assert_eq!(classify(error), HtmlLedgerOutcome::Exhausted(change));
+}
+
+#[test]
+fn a_release_beyond_the_held_custody_classifies_as_a_release_underflow() {
+    let mut operation = Operation::new("cap", HtmlLimits::unlimited(), 1).unwrap();
+    let root = operation.root();
+    let error = refusal_of(
+        &mut operation,
+        root,
+        &[Change::Release(HtmlResource::ManagedEdges, 1)],
+    );
+    assert_eq!(
+        classify(error),
+        HtmlLedgerOutcome::Fault(HtmlAccountingFault::ReleaseUnderflow)
+    );
+}
+
+#[test]
+fn every_other_ledger_error_classifies_as_one_fault() {
+    use surgeist_ledger::Defect;
+    for (error, fault) in [
+        (Error::Allocation, HtmlAccountingFault::Allocation),
+        (Error::ForeignScope, HtmlAccountingFault::ForeignScope),
+        (
+            Error::ScopeLimit { limit: 3 },
+            HtmlAccountingFault::ScopeLimit { limit: 3 },
+        ),
+        (
+            Error::IdentityExhausted,
+            HtmlAccountingFault::IdentityExhausted,
+        ),
+        (
+            Error::TimingUnavailable,
+            HtmlAccountingFault::TimingUnavailable,
+        ),
+        (Error::ForeignCheckpoint, HtmlAccountingFault::Checkpoint),
+        (Error::StaleCheckpoint, HtmlAccountingFault::Checkpoint),
+        (
+            Error::CheckpointLimit { limit: 1 },
+            HtmlAccountingFault::Checkpoint,
+        ),
+        (
+            Error::CheckpointsConfigured,
+            HtmlAccountingFault::Checkpoint,
+        ),
+        (
+            Error::Defect(Defect::ScopeEntry),
+            HtmlAccountingFault::Defect(Defect::ScopeEntry),
+        ),
+    ] {
+        assert_eq!(
+            classify(error),
+            HtmlLedgerOutcome::Fault(fault),
+            "{error:?}"
+        );
+    }
+}
+
+#[test]
+fn a_scope_of_another_operation_classifies_as_a_foreign_scope() {
+    let mut operation = Operation::new("one", HtmlLimits::unlimited(), 1).unwrap();
+    let other =
+        Operation::<HtmlWork, HtmlResource>::new("two", HtmlLimits::unlimited(), 1).unwrap();
+    let error = operation
+        .apply(other.root(), Change::Acquire(HtmlResource::ManagedEdges, 1))
+        .expect_err("a foreign scope is refused");
+    assert_eq!(
+        classify(error),
+        HtmlLedgerOutcome::Fault(HtmlAccountingFault::ForeignScope)
+    );
+}
+
+#[test]
+fn an_operation_without_room_for_a_scope_classifies_as_a_scope_limit() {
+    let mut operation = Operation::new("one", HtmlLimits::unlimited(), 1).unwrap();
+    let root = operation.root();
+    let error = operation
+        .child(
+            root,
+            "child",
+            HtmlLimits::unlimited(),
+            HtmlTariffs::identity(),
+        )
+        .expect_err("the bound is spent");
+    assert_eq!(
+        classify(error),
+        HtmlLedgerOutcome::Fault(HtmlAccountingFault::ScopeLimit { limit: 1 })
+    );
+}
+
+#[test]
+fn an_auxiliary_scope_name_is_unique_prefixed_and_not_a_cap_scope_name() {
+    for (index, scope) in HtmlAuxiliaryScope::ALL.iter().enumerate() {
+        let name = scope.name();
+        assert!(name.starts_with("html-"), "{scope:?}");
+        for other in &HtmlAuxiliaryScope::ALL[index + 1..] {
+            assert_ne!(name, other.name(), "{scope:?} {other:?}");
+        }
+        assert!(
+            HtmlCapScope::ALL.iter().all(|cap| cap.name() != name),
+            "{scope:?} repeats a cap scope name"
+        );
+    }
+}
+
+/// The exact names a host profile reader matches on. Each auxiliary scope has one fixed name, and
+/// a table of every variant keeps a new entry from going unpinned.
+#[test]
+fn each_auxiliary_scope_has_its_exact_name() {
+    let table = [
+        (HtmlAuxiliaryScope::ParseHost, "html-parse-host"),
+        (HtmlAuxiliaryScope::ParseCharging, "html-parse-charging"),
+        (HtmlAuxiliaryScope::ParseAdmission, "html-parse-admission"),
+        (
+            HtmlAuxiliaryScope::ParseConstruction,
+            "html-parse-construction",
+        ),
+        (
+            HtmlAuxiliaryScope::ParseFinalization,
+            "html-parse-finalization",
+        ),
+        (
+            HtmlAuxiliaryScope::ParsePublication,
+            "html-parse-publication",
+        ),
+        (HtmlAuxiliaryScope::QueryObserved, "html-query-observed"),
+        (
+            HtmlAuxiliaryScope::AutocompleteObserved,
+            "html-autocomplete-observed",
+        ),
+        (HtmlAuxiliaryScope::FactGrown, "html-fact-grown"),
+        (
+            HtmlAuxiliaryScope::OptionValueRetained,
+            "html-option-value-retained",
+        ),
+        (
+            HtmlAuxiliaryScope::OptionValueTemporary,
+            "html-option-value-temporary",
+        ),
+        (
+            HtmlAuxiliaryScope::OptionValueObserved,
+            "html-option-value-observed",
+        ),
+    ];
+    assert_eq!(table.len(), HtmlAuxiliaryScope::ALL.len());
+    for (scope, name) in table {
+        assert_eq!(scope.name(), name, "{scope:?}");
+        assert!(HtmlAuxiliaryScope::ALL.contains(&scope), "{scope:?}");
+    }
+}

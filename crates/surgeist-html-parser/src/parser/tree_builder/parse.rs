@@ -263,7 +263,7 @@ impl HtmlParseFailure {
                 surgeist_html::accounting::HtmlResource,
             >,
         >,
-        crate::HtmlParseAccountingFault,
+        surgeist_html::accounting::HtmlAccountingFault,
     > {
         match &self.storage {
             FailureStorage::OrdinaryInitialization(o) => o.request().accounting().profile(),

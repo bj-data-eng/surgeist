@@ -8,9 +8,11 @@ use crate::hosted::{
     DomHostedError, DomHostedResource, DomHostedSource, RegistryQuota, Retained, Work,
 };
 use crate::registry::{DomRegistry, DomRegistryId};
+use surgeist_html::accounting::HtmlAccountingFault;
 
 use surgeist_html_semantics::{
-    HtmlCapture, HtmlCaptureRegistryId, HtmlEmptyGlobalRegistryError, HtmlHostFactsRevision,
+    HtmlCapture, HtmlCaptureError, HtmlCaptureRegistryId, HtmlEmptyGlobalRegistryError,
+    HtmlHostFactsRevision,
 };
 
 #[derive(Debug)]
@@ -130,7 +132,8 @@ impl Bank {
                 DomHostedError::RepresentationExhausted
             }
             HtmlEmptyGlobalRegistryError::AllocationFailed => DomHostedError::AllocationFailed,
-            HtmlEmptyGlobalRegistryError::Capture(_) => DomHostedError::UnsupportedProfile,
+            HtmlEmptyGlobalRegistryError::Accounting(fault) => hosted_accounting_error(fault),
+            HtmlEmptyGlobalRegistryError::Capture(error) => hosted_capture_error(&error),
         })?;
         let payload_bytes = formed.retained_storage_usage().retained_bytes();
         let payload = source.retain(payload_bytes, cancel)?;
@@ -287,5 +290,69 @@ impl Draft {
         }
         self.establish_element_registry(key, binding, cancel)?;
         Ok(())
+    }
+}
+
+/// The hosted outcome of an accounting fault of the registry formation: a ledger that cannot
+/// allocate is the hosted allocation failure, and every other fault breaks the HTML operation's
+/// accounting contract.
+fn hosted_accounting_error(fault: HtmlAccountingFault) -> DomHostedError {
+    match fault {
+        HtmlAccountingFault::Allocation => DomHostedError::AllocationFailed,
+        _ => DomError::HtmlChargeProtocol.into(),
+    }
+}
+
+/// The hosted outcome of a capture error of the registry formation: a ledger fault of the capture
+/// is the accounting outcome, and every other capture error is an unsupported profile.
+fn hosted_capture_error(error: &HtmlCaptureError) -> DomHostedError {
+    match error.accounting_fault() {
+        Some(fault) => hosted_accounting_error(fault),
+        None => DomHostedError::UnsupportedProfile,
+    }
+}
+
+#[cfg(test)]
+mod accounting_fault_tests {
+    use super::*;
+
+    #[test]
+    fn a_capture_ledger_fault_of_the_formation_follows_the_accounting_outcome() {
+        assert_eq!(
+            hosted_capture_error(&HtmlCaptureError::Accounting(
+                HtmlAccountingFault::Allocation
+            )),
+            DomHostedError::AllocationFailed
+        );
+        assert_eq!(
+            hosted_capture_error(&HtmlCaptureError::Accounting(
+                HtmlAccountingFault::ReleaseUnderflow
+            )),
+            DomHostedError::Dom(DomError::HtmlChargeProtocol)
+        );
+        assert_eq!(
+            hosted_capture_error(&HtmlCaptureError::ForeignBuilder),
+            DomHostedError::UnsupportedProfile
+        );
+    }
+
+    #[test]
+    fn a_registry_formation_ledger_fault_is_an_allocation_failure_or_a_charge_protocol_fault() {
+        assert_eq!(
+            hosted_accounting_error(HtmlAccountingFault::Allocation),
+            DomHostedError::AllocationFailed
+        );
+        for fault in [
+            HtmlAccountingFault::ReleaseUnderflow,
+            HtmlAccountingFault::ForeignScope,
+            HtmlAccountingFault::ScopeLimit { limit: 1 },
+            HtmlAccountingFault::UnexpectedChange,
+        ] {
+            assert_eq!(
+                hosted_accounting_error(fault),
+                DomHostedError::Dom(DomError::HtmlChargeProtocol),
+                "{fault:?}"
+            );
+        }
     }
 }

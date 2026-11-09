@@ -10,6 +10,7 @@ use super::index::FactIndex;
 use super::scan::ScanError;
 use super::*;
 use std::cmp::Ordering as CmpOrdering;
+use surgeist_html::accounting::HtmlAccountingFault;
 use surgeist_html::bounded::numeric::{
     HtmlNaturalComparison, HtmlNaturalDifference, HtmlNaturalDigits, HtmlNaturalProduct,
 };
@@ -182,9 +183,33 @@ pub enum HtmlNaturalDimensionFactsError {
     RecordLimit,
     ByteLimit,
     WorkLimit,
-    /// The ledger that enforces the limits reported a state its own sequencing rules out.
-    LedgerState,
+    /// The ledger that carries the accounting failed in a way that is not a refused limit: a release
+    /// that matches nothing held, a ledger that cannot allocate, a scope that is not the
+    /// operation's, or a change the operation does not charge. It carries the accounting fault.
+    Accounting(HtmlAccountingFault),
     RepresentationExhausted,
+}
+impl HtmlNaturalDimensionFactsError {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Accounting(fault) => Some(*fault),
+            Self::Capture(error) => error.accounting_fault(),
+            Self::HostRevisionMismatch
+            | Self::DuplicateSubject(_)
+            | Self::InvalidExpectedSelection
+            | Self::InvalidObservation
+            | Self::UnexpectedObservation(_)
+            | Self::ResourceMismatch(_)
+            | Self::SelectionRevisionMismatch(_)
+            | Self::RecordLimit
+            | Self::ByteLimit
+            | Self::WorkLimit
+            | Self::RepresentationExhausted => None,
+        }
+    }
 }
 impl ScanError for HtmlNaturalDimensionFactsError {
     fn representation_exhausted() -> Self {
@@ -196,8 +221,8 @@ impl ScanError for HtmlNaturalDimensionFactsError {
     fn capture(error: HtmlCaptureError) -> Self {
         Self::Capture(error)
     }
-    fn ledger_state() -> Self {
-        Self::LedgerState
+    fn accounting(fault: HtmlAccountingFault) -> Self {
+        Self::Accounting(fault)
     }
 }
 impl FactError for HtmlNaturalDimensionFactsError {

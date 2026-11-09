@@ -3,6 +3,7 @@ use super::*;
 use crate::HtmlSemanticCancellation;
 use preflight::ActionPolicy;
 use std::collections::HashMap;
+use surgeist_html::accounting::HtmlAccountingFault;
 use surgeist_html::construction::{
     HtmlDocument, HtmlFragment, HtmlFragmentOwner, HtmlNodeId, HtmlNodeKind,
     HtmlTemplateContentsKind,
@@ -224,10 +225,33 @@ pub enum HtmlConstructionCaptureError {
     AllocationFailed,
     Cancelled,
     Capture(HtmlCaptureError),
-    /// The ledger that carries the import's accounting reported a state its own sequencing rules
-    /// out: a release that matches nothing held, a refusal that names no import resource, or a
-    /// ledger defect. Valid use never reaches it.
-    LedgerState,
+    /// The ledger that carries the accounting failed in a way that is not a refused limit: a release
+    /// that matches nothing held, a ledger that cannot allocate, a scope that is not the
+    /// operation's, or a change the operation does not charge. It carries the accounting fault.
+    Accounting(HtmlAccountingFault),
+}
+impl HtmlConstructionCaptureError {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Accounting(fault) => Some(*fault),
+            Self::Capture(error) => error.accounting_fault(),
+            Self::ForeignResult
+            | Self::HostRevisionMismatch
+            | Self::ForeignBuilder
+            | Self::DuplicateNodeFacts
+            | Self::WrongFactRole
+            | Self::MissingNodeDocument
+            | Self::MissingShadowFacts
+            | Self::OutsideImportedClosure
+            | Self::LimitExceeded
+            | Self::RepresentationExhausted
+            | Self::AllocationFailed
+            | Self::Cancelled => None,
+        }
+    }
 }
 impl fmt::Display for HtmlConstructionCaptureError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -486,6 +510,10 @@ impl HtmlConstructionCaptureFailure {
     pub fn reason(&self) -> &HtmlConstructionCaptureError {
         &self.reason
     }
+    /// The accounting fault the reason carries, directly or inside an error it wraps.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        self.reason.accounting_fault()
+    }
     pub fn builder(&self) -> &HtmlCaptureBuilder {
         &self.builder
     }
@@ -593,6 +621,10 @@ pub struct HtmlConstructionCaptureFinishFailure {
 impl HtmlConstructionCaptureFinishFailure {
     pub fn reason(&self) -> &HtmlConstructionCaptureError {
         &self.reason
+    }
+    /// The accounting fault the reason carries, directly or inside an error it wraps.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        self.reason.accounting_fault()
     }
     pub fn import(&self) -> &HtmlConstructionCaptureImport {
         &self.import

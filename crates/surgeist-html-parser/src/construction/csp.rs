@@ -484,7 +484,7 @@ impl SessionStorage {
                             SessionError::from(stop)
                         }
                         surgeist_html::accounting::HtmlChargedError::Faulted(_) => {
-                            SessionError::WrongToken
+                            SessionError::from(c.charge_overflow_stop())
                         }
                     })?;
                 storage.acquire(c)?;

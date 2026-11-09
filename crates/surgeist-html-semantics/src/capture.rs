@@ -5,6 +5,7 @@
 
 use crate::HtmlSemanticAccounting;
 use std::{collections::HashSet, error::Error, fmt, hash::Hash, sync::Arc};
+use surgeist_html::accounting::HtmlAccountingFault;
 use surgeist_html::bounded::lexical::validate_custom_element_name;
 use surgeist_html::{
     construction::{HtmlDoctype, HtmlDocumentMode, HtmlShadowRootMode, HtmlShadowRootProperties},
@@ -471,6 +472,17 @@ pub enum HtmlCaptureEdgeError<E> {
     /// walk ended without an answer.
     Interrupted(E),
 }
+impl<E> HtmlCaptureEdgeError<E> {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Capture(error) => error.accounting_fault(),
+            Self::Interrupted(_) => None,
+        }
+    }
+}
 impl<E> From<HtmlCaptureError> for HtmlCaptureEdgeError<E> {
     fn from(error: HtmlCaptureError) -> Self {
         Self::Capture(error)
@@ -547,16 +559,69 @@ pub enum HtmlCaptureError {
         required: usize,
     },
     RepresentationExhausted,
-    /// The ledger that carries the capture's accounting reported a state its own sequencing rules
-    /// out: a release that matches nothing held, a refusal that names no capture resource, or a
-    /// ledger defect. Valid use never reaches it.
-    LedgerState,
+    /// The ledger that carries the accounting failed in a way that is not a refused limit: a release
+    /// that matches nothing held, a ledger that cannot allocate, a scope that is not the
+    /// operation's, or a change the operation does not charge. It carries the accounting fault.
+    Accounting(HtmlAccountingFault),
     /// A bounded HTML operation charged a change that the capture's work steps do not admit: a
     /// resource change or a gauge record. The capture charges only work, so an operation that does
     /// this breaks its contract with the capture.
     ChargeProtocol,
     InvalidFragmentScriptingMode(HtmlParserScriptingMode),
     UnsupportedExecution(HtmlParserScriptingMode),
+}
+impl HtmlCaptureError {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Accounting(fault) => Some(*fault),
+            Self::NotHtmlLink
+            | Self::NotHtmlHyperlink
+            | Self::HyperlinkUrlAlreadyEstablished
+            | Self::HyperlinkHrefMismatch
+            | Self::LinkHistoryAlreadyEstablished
+            | Self::ForeignBuilder
+            | Self::ForeignCapture
+            | Self::WrongKind { .. }
+            | Self::MissingFact { .. }
+            | Self::UnavailableDefinitions(_)
+            | Self::ParentAlreadyEstablished
+            | Self::ChildrenAlreadyEstablished
+            | Self::ParentChildConflict
+            | Self::DuplicateChild
+            | Self::DocumentMismatch
+            | Self::AssociationAlreadyEstablished
+            | Self::FragmentAlreadyHosted
+            | Self::UnhostedFragment
+            | Self::NotHtmlTemplate
+            | Self::CannotHaveChildren(_)
+            | Self::CannotBeOrdinaryChild(_)
+            | Self::Cycle
+            | Self::InvalidDefinitionName
+            | Self::UnknownDefinition
+            | Self::CompleteRegistry
+            | Self::DocumentFactsAlreadyEstablished
+            | Self::RegistryScopeAlreadyEstablished
+            | Self::InvalidTemplateDocumentCache
+            | Self::InvalidTemplateContentsReference
+            | Self::ShadowRootCannotBeUnhosted
+            | Self::CustomElementContextAlreadyEstablished
+            | Self::CustomElementDefinitionRequired
+            | Self::CustomElementDefinitionNameMismatch
+            | Self::CustomElementDefinitionNamespaceMismatch
+            | Self::CustomElementSavedIsMismatch
+            | Self::DuplicateDefinitionName
+            | Self::NonceAlreadyEstablished
+            | Self::NonceInapplicable
+            | Self::LimitExceeded { .. }
+            | Self::RepresentationExhausted
+            | Self::ChargeProtocol
+            | Self::InvalidFragmentScriptingMode(_)
+            | Self::UnsupportedExecution(_) => None,
+        }
+    }
 }
 impl fmt::Display for HtmlCaptureError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1062,10 +1127,10 @@ impl HtmlCaptureBuilder {
         limits: HtmlCaptureLimits,
         host_revision: HtmlHostFactsRevision,
         accounting: &HtmlSemanticAccounting,
-    ) -> Result<Self, crate::HtmlSemanticAccountingFault> {
+    ) -> Result<Self, HtmlAccountingFault> {
         let mut builder = Self::new(limits, host_revision);
-        builder.account =
-            account::Account::hosted(limits, accounting).map_err(crate::accounting::fault)?;
+        builder.account = account::Account::hosted(limits, accounting)
+            .map_err(surgeist_html::accounting::fault_of)?;
         Ok(builder)
     }
     pub(crate) fn enable_controlled_storage(&mut self) {
@@ -1886,7 +1951,7 @@ impl HtmlCaptureBuilder {
             Ok(()) => preflight::Failure::Capture(match self.depth(height) {
                 Err(error) => error,
                 // The walk found no refusal where the check that sent it here found one.
-                Ok(()) => HtmlCaptureError::LedgerState,
+                Ok(()) => HtmlCaptureError::Accounting(HtmlAccountingFault::UnexpectedChange),
             }),
         }
     }

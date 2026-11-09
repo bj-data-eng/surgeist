@@ -206,9 +206,7 @@ impl Account {
         self.settle(c)?;
         a.charge_work(c).map_err(|error| match error {
             surgeist_html::accounting::HtmlChargedError::Stopped(stop) => stop,
-            surgeist_html::accounting::HtmlChargedError::Faulted(_) => {
-                c.stop_representation(crate::HtmlParseResource::WorkCredits)
-            }
+            surgeist_html::accounting::HtmlChargedError::Faulted(_) => c.charge_overflow_stop(),
         })?;
         c.admit_atomic_layout(a.atomic_bytes())?;
         let base = self

@@ -32,20 +32,6 @@ pub surgeist_html_parser::HtmlInsertionMode::InTableBody
 pub surgeist_html_parser::HtmlInsertionMode::InTableText
 pub surgeist_html_parser::HtmlInsertionMode::InTemplate
 pub surgeist_html_parser::HtmlInsertionMode::Text
-#[non_exhaustive] pub enum surgeist_html_parser::HtmlParseAccountingFault
-pub surgeist_html_parser::HtmlParseAccountingFault::Allocation
-pub surgeist_html_parser::HtmlParseAccountingFault::Checkpoint
-pub surgeist_html_parser::HtmlParseAccountingFault::Defect(surgeist_ledger::Defect)
-pub surgeist_html_parser::HtmlParseAccountingFault::ForeignScope
-pub surgeist_html_parser::HtmlParseAccountingFault::IdentityExhausted
-pub surgeist_html_parser::HtmlParseAccountingFault::InUse
-pub surgeist_html_parser::HtmlParseAccountingFault::ScopeLimit
-pub surgeist_html_parser::HtmlParseAccountingFault::ScopeLimit::limit: usize
-pub surgeist_html_parser::HtmlParseAccountingFault::TimingUnavailable
-pub surgeist_html_parser::HtmlParseAccountingFault::UnexpectedRefusal
-impl core::error::Error for surgeist_html_parser::HtmlParseAccountingFault
-impl core::fmt::Display for surgeist_html_parser::HtmlParseAccountingFault
-pub fn surgeist_html_parser::HtmlParseAccountingFault::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html_parser::HtmlParseAssociationCaptureDisposition
 pub surgeist_html_parser::HtmlParseAssociationCaptureDisposition::PendingComplete
 pub surgeist_html_parser::HtmlParseAssociationCaptureDisposition::Unavailable(surgeist_html_parser::HtmlParseAssociationMissingKind)
@@ -267,7 +253,6 @@ pub surgeist_html_parser::HtmlParseInvariant::ForeignEvidence
 pub surgeist_html_parser::HtmlParseInvariant::ForeignSource
 pub surgeist_html_parser::HtmlParseInvariant::IncompleteFormAssociationCreation
 pub surgeist_html_parser::HtmlParseInvariant::InputCursorState
-pub surgeist_html_parser::HtmlParseInvariant::LedgerState
 pub surgeist_html_parser::HtmlParseInvariant::MissingSource
 pub surgeist_html_parser::HtmlParseInvariant::NonReclaimableNodes
 pub surgeist_html_parser::HtmlParseInvariant::NonStorageResource
@@ -450,7 +435,8 @@ pub surgeist_html_parser::HtmlParseReverseStep::Fault(surgeist_html_parser::Html
 pub surgeist_html_parser::HtmlParseReverseStep::Match(surgeist_html_parser::HtmlParseAssociation<'a>)
 pub surgeist_html_parser::HtmlParseReverseStep::Skipped
 pub enum surgeist_html_parser::HtmlParseStop
-pub surgeist_html_parser::HtmlParseStop::Accounting(surgeist_html_parser::HtmlParseAccountingFault)
+pub surgeist_html_parser::HtmlParseStop::Accounting(surgeist_html::internal::accounting::fault::HtmlAccountingFault)
+pub surgeist_html_parser::HtmlParseStop::AccountingInUse
 pub surgeist_html_parser::HtmlParseStop::AllocationFailed
 pub surgeist_html_parser::HtmlParseStop::AllocationFailed::layout_bytes: u64
 pub surgeist_html_parser::HtmlParseStop::AllocationFailed::resource: surgeist_html_parser::HtmlParseResource
@@ -961,7 +947,7 @@ pub fn surgeist_html_parser::HtmlParseFailure::encoding_url_fact_capacity(&self)
 pub fn surgeist_html_parser::HtmlParseFailure::encoding_url_facts(&self) -> core::option::Option<&[surgeist_html_semantics::hyperlink::HtmlEncodingUrlParseFacts]>
 pub fn surgeist_html_parser::HtmlParseFailure::first_stop(&self) -> core::option::Option<surgeist_html_parser::HtmlParseStop>
 pub fn surgeist_html_parser::HtmlParseFailure::limits(&self) -> &surgeist_html_parser::HtmlParseLimits
-pub fn surgeist_html_parser::HtmlParseFailure::profile(&self) -> core::result::Result<core::option::Option<surgeist_ledger::profile::Report<surgeist_html::internal::accounting::HtmlWork, surgeist_html::internal::accounting::HtmlResource>>, surgeist_html_parser::HtmlParseAccountingFault>
+pub fn surgeist_html_parser::HtmlParseFailure::profile(&self) -> core::result::Result<core::option::Option<surgeist_ledger::profile::Report<surgeist_html::internal::accounting::HtmlWork, surgeist_html::internal::accounting::HtmlResource>>, surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 pub fn surgeist_html_parser::HtmlParseFailure::reason(&self) -> surgeist_html_parser::HtmlParseFailureReason
 pub fn surgeist_html_parser::HtmlParseFailure::requested_scripting_mode(&self) -> surgeist_html::internal::parsing::fragment_initialization::HtmlParserScriptingMode
 pub fn surgeist_html_parser::HtmlParseFailure::retained_usage(&self) -> core::option::Option<surgeist_html_parser::HtmlParseUsage>
@@ -1199,7 +1185,7 @@ pub fn surgeist_html_parser::HtmlParseReport::image_support(&self) -> surgeist_h
 pub fn surgeist_html_parser::HtmlParseReport::limits(&self) -> &surgeist_html_parser::HtmlParseLimits
 pub fn surgeist_html_parser::HtmlParseReport::metadata(&self) -> surgeist_html_parser::HtmlParseMetadataCursor<'_>
 pub fn surgeist_html_parser::HtmlParseReport::pending_associations(&self) -> surgeist_html_parser::HtmlParsePendingAssociationCursor<'_>
-pub fn surgeist_html_parser::HtmlParseReport::profile(&self) -> core::result::Result<core::option::Option<surgeist_ledger::profile::Report<surgeist_html::internal::accounting::HtmlWork, surgeist_html::internal::accounting::HtmlResource>>, surgeist_html_parser::HtmlParseAccountingFault>
+pub fn surgeist_html_parser::HtmlParseReport::profile(&self) -> core::result::Result<core::option::Option<surgeist_ledger::profile::Report<surgeist_html::internal::accounting::HtmlWork, surgeist_html::internal::accounting::HtmlResource>>, surgeist_html::internal::accounting::fault::HtmlAccountingFault>
 pub fn surgeist_html_parser::HtmlParseReport::requested_scripting_mode(&self) -> surgeist_html::internal::parsing::fragment_initialization::HtmlParserScriptingMode
 pub fn surgeist_html_parser::HtmlParseReport::retained_construction_bytes(&self) -> u64
 pub fn surgeist_html_parser::HtmlParseReport::retained_construction_utf16_units(&self) -> u64

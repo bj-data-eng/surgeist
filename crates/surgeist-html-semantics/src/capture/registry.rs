@@ -1,11 +1,14 @@
 //! One finite registry-only capture, using the original capture owner.
 use super::*;
-use crate::accounting::LedgerError;
+use crate::accounting::{LedgerError, wide};
 use preflight::ActionPolicy;
 use std::mem::size_of;
-use surgeist_html::accounting::{HtmlCapScope, HtmlLimits, HtmlResource, HtmlWork};
+use surgeist_html::accounting::{
+    HtmlAccountingFault, HtmlCapScope, HtmlLedgerOutcome, HtmlLimits, HtmlResource, HtmlWork,
+    classify,
+};
 use surgeist_html::values::DocumentString;
-use surgeist_ledger::{Change, Charge, Operation, RefusalReason, Scope};
+use surgeist_ledger::{Change, Charge, Operation, Scope};
 
 /// A complete-empty Global registry and its owning immutable evidence.
 /// The local registry identity is distinct from a consumer's canonical identity.
@@ -50,8 +53,26 @@ pub enum HtmlEmptyGlobalRegistryError<E> {
     /// A fallible backing reservation reported an allocation failure. Infallible
     /// standard-library Arc allocation retains its ordinary allocation contract.
     AllocationFailed,
+    /// The ledger that carries the formation allowance failed in a way that is not a refused
+    /// allowance.
+    Accounting(HtmlAccountingFault),
     Capture(HtmlCaptureError),
     Interrupted(E),
+}
+impl<E> HtmlEmptyGlobalRegistryError<E> {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Accounting(fault) => Some(*fault),
+            Self::Capture(error) => error.accounting_fault(),
+            Self::FormationBytes { .. }
+            | Self::RepresentationExhausted
+            | Self::AllocationFailed
+            | Self::Interrupted(_) => None,
+        }
+    }
 }
 
 impl<E: fmt::Display> fmt::Display for HtmlEmptyGlobalRegistryError<E> {
@@ -67,6 +88,12 @@ impl<E: fmt::Display> fmt::Display for HtmlEmptyGlobalRegistryError<E> {
             Self::AllocationFailed => {
                 f.write_str("empty Global registry backing allocation failed")
             }
+            Self::Accounting(fault) => {
+                write!(
+                    f,
+                    "empty Global registry formation accounting failed: {fault}"
+                )
+            }
             Self::Capture(error) => error.fmt(f),
             Self::Interrupted(error) => error.fmt(f),
         }
@@ -75,6 +102,7 @@ impl<E: fmt::Display> fmt::Display for HtmlEmptyGlobalRegistryError<E> {
 impl<E: Error + 'static> Error for HtmlEmptyGlobalRegistryError<E> {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
+            Self::Accounting(fault) => Some(fault),
             Self::Capture(error) => Some(error),
             Self::Interrupted(error) => Some(error),
             _ => None,
@@ -107,7 +135,7 @@ impl Control {
             HtmlLimits::from_fn(
                 |_| u64::MAX,
                 |resource| match resource {
-                    HtmlResource::FormationBytes => u64::try_from(limit).unwrap_or(u64::MAX),
+                    HtmlResource::FormationBytes => wide(limit),
                     _ => u64::MAX,
                 },
             ),
@@ -125,28 +153,22 @@ impl Control {
     /// formation would have needed.
     fn ledger_error<E>(error: LedgerError) -> HtmlEmptyGlobalRegistryError<E> {
         use HtmlEmptyGlobalRegistryError as Error;
-        let LedgerError::Refused(refusal) = error else {
-            return match error {
-                LedgerError::Allocation => Error::AllocationFailed,
-                _ => Error::Capture(HtmlCaptureError::LedgerState),
-            };
+        let refusal = match classify(error) {
+            HtmlLedgerOutcome::Fault(fault) => return Error::Accounting(fault),
+            HtmlLedgerOutcome::Exhausted(_) => return Error::RepresentationExhausted,
+            HtmlLedgerOutcome::Cap(refusal) => refusal,
         };
-        match (refusal.reason, refusal.change) {
-            (
-                RefusalReason::Limit { limit },
-                Change::Acquire(HtmlResource::FormationBytes, amount),
-            ) => match (
-                usize::try_from(limit),
-                refusal
-                    .current
-                    .checked_add(amount)
-                    .and_then(|required| usize::try_from(required).ok()),
-            ) {
-                (Ok(limit), Some(required)) => Error::FormationBytes { limit, required },
-                _ => Error::RepresentationExhausted,
-            },
-            (RefusalReason::Overflow, _) => Error::RepresentationExhausted,
-            _ => Error::Capture(HtmlCaptureError::LedgerState),
+        match (refusal.change(), refusal.figures()) {
+            (Change::Acquire(HtmlResource::FormationBytes, _), Ok(figures)) => {
+                Error::FormationBytes {
+                    limit: figures.limit,
+                    required: figures.required,
+                }
+            }
+            (Change::Acquire(HtmlResource::FormationBytes, _), Err(_)) => {
+                Error::RepresentationExhausted
+            }
+            _ => Error::Accounting(HtmlAccountingFault::UnexpectedChange),
         }
     }
     /// The live backing bytes.
@@ -171,10 +193,7 @@ impl Control {
     fn admit<E>(&mut self, required: usize) -> Result<(), HtmlEmptyGlobalRegistryError<E>> {
         self.operation
             .charge_at(self.scope)
-            .record_largest(
-                HtmlResource::FormationBytes,
-                u64::try_from(required).unwrap_or(u64::MAX),
-            )
+            .record_largest(HtmlResource::FormationBytes, wide(required))
             .map_err(Self::ledger_error)
     }
     /// Replaces a backing of `old` bytes with one of `actual`, which a formation holds live.
@@ -183,7 +202,6 @@ impl Control {
         old: usize,
         actual: usize,
     ) -> Result<(), HtmlEmptyGlobalRegistryError<E>> {
-        let wide = |value: usize| u64::try_from(value).unwrap_or(u64::MAX);
         self.operation
             .apply_batch(
                 self.scope,
@@ -192,14 +210,7 @@ impl Control {
                     Change::Acquire(HtmlResource::FormationBacking, wide(actual)),
                 ],
             )
-            .map_err(|error| match error {
-                // A backing larger than what is held is a replacement of storage this formation
-                // never took.
-                LedgerError::Refused(refusal) if refusal.reason == RefusalReason::Underflow => {
-                    HtmlEmptyGlobalRegistryError::RepresentationExhausted
-                }
-                other => Self::ledger_error(other),
-            })
+            .map_err(Self::ledger_error)
     }
     fn plus<E>(a: usize, b: usize) -> Result<usize, HtmlEmptyGlobalRegistryError<E>> {
         a.checked_add(b)
@@ -505,6 +516,30 @@ mod tests {
                 + actual_bank
                 + size_of::<CaptureData>().max(registry_call_headers)
         );
+    }
+
+    /// A backing the formation never took cannot be released, a ledger that cannot allocate and
+    /// a foreign scope are ledger failures: each is the one accounting fault, and none is
+    /// reported as exhaustion or as a backing allocation of the formation itself.
+    #[test]
+    fn ledger_failures_other_than_a_refused_allowance_are_accounting_faults() {
+        type Error = HtmlEmptyGlobalRegistryError<()>;
+        let mut control = Control::new::<()>(1_000, 10).unwrap();
+        assert_eq!(
+            control.replace_backing::<()>(5, 8),
+            Err(Error::Accounting(HtmlAccountingFault::ReleaseUnderflow))
+        );
+        assert_eq!(control.backing::<()>(), Ok(0));
+        for (error, fault) in [
+            (LedgerError::Allocation, HtmlAccountingFault::Allocation),
+            (LedgerError::ForeignScope, HtmlAccountingFault::ForeignScope),
+            (
+                LedgerError::ScopeLimit { limit: 1 },
+                HtmlAccountingFault::ScopeLimit { limit: 1 },
+            ),
+        ] {
+            assert_eq!(Control::ledger_error::<()>(error), Error::Accounting(fault));
+        }
     }
 
     #[test]

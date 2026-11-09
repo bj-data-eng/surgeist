@@ -8,8 +8,9 @@ use surgeist_html::values::{Attribute, Namespace, OrderedAttributes, QualifiedNa
 const FOREIGN: HtmlParseStop = HtmlParseStop::InternalInvariant(HtmlParseInvariant::ForeignControl);
 const MISMATCH: HtmlParseStop =
     HtmlParseStop::InternalInvariant(HtmlParseInvariant::CapacityMismatch);
+/// A release the ledger refuses.
 const UNDERFLOW: HtmlParseStop =
-    HtmlParseStop::InternalInvariant(HtmlParseInvariant::ReleaseUnderflow);
+    HtmlParseStop::Accounting(surgeist_html::accounting::HtmlAccountingFault::ReleaseUnderflow);
 const REPRESENTATION: HtmlParseStop = HtmlParseStop::RepresentationExhausted {
     resource: HtmlParseResource::ManagedCapacityBytes,
 };
@@ -298,11 +299,13 @@ fn restoring_a_text_ticket_with_fewer_units_than_the_value_is_refused() {
     let mut ticket = ticket_for(&mut c, &value);
     ticket.units = 0;
     let before = c.usage().clone();
+    // The ticket's own check refuses before any release reaches the ledger.
+    let underflow = HtmlParseStop::InternalInvariant(HtmlParseInvariant::ReleaseUnderflow);
     assert_eq!(
         c.restore_text_append_ticket(&mut ticket, &value),
-        Err(UNDERFLOW)
+        Err(underflow)
     );
-    assert_eq!(c.stop(), Some(UNDERFLOW));
+    assert_eq!(c.stop(), Some(underflow));
     assert_eq!(c.usage(), before);
     assert!(ticket.backing.is_none());
 }

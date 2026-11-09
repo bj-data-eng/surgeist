@@ -480,20 +480,24 @@ fn usage(bytes: usize, units: usize) -> HtmlOptionValueStorageUsage {
     HtmlOptionValueStorageUsage { bytes, units }
 }
 
-/// Storage that was never added cannot be released: the refusal is a protocol breach and the held
+/// Storage that was never added cannot be released: the refusal is a release underflow and the held
 /// amount is neither changed nor wrapped around.
 #[test]
-fn releasing_storage_that_was_never_added_is_a_protocol_violation() {
+fn releasing_storage_that_was_never_added_is_a_release_underflow() {
     let control = Control::for_tests(envelope());
     assert_eq!(
         control.release(usage(1, 0), false),
-        Err(HtmlOptionValueControlError::ProtocolViolated)
+        Err(HtmlOptionValueControlError::Accounting(
+            HtmlAccountingFault::ReleaseUnderflow
+        ))
     );
     assert_eq!(control.temporary_usage(), usage(0, 0));
     control.hold_for_tests(false, usage(4, 1));
     assert_eq!(
         control.release(usage(4, 2), false),
-        Err(HtmlOptionValueControlError::ProtocolViolated)
+        Err(HtmlOptionValueControlError::Accounting(
+            HtmlAccountingFault::ReleaseUnderflow
+        ))
     );
     assert_eq!(control.temporary_usage(), usage(4, 1));
     assert_eq!(control.release(usage(4, 1), false), Ok(()));
@@ -502,11 +506,13 @@ fn releasing_storage_that_was_never_added_is_a_protocol_violation() {
 
 /// Moving storage that is not held as temporary storage is refused and changes nothing.
 #[test]
-fn transferring_storage_that_is_not_held_is_a_protocol_violation() {
+fn transferring_storage_that_is_not_held_is_a_release_underflow() {
     let control = Control::for_tests(envelope());
     assert_eq!(
         control.transfer(usage(8, 2)),
-        Err(HtmlOptionValueControlError::ProtocolViolated)
+        Err(HtmlOptionValueControlError::Accounting(
+            HtmlAccountingFault::ReleaseUnderflow
+        ))
     );
     assert_eq!(control.temporary_usage(), usage(0, 0));
     assert_eq!(control.live_usage(), usage(0, 0));
@@ -647,4 +653,84 @@ fn a_refused_transfer_keeps_each_scope_at_its_own_amount() {
     );
     assert_eq!(scope_live(&control, control.temporary), (2, 1));
     assert_eq!(scope_live(&control, control.retained), (u64::MAX, 0));
+}
+
+/// A ledger that cannot allocate, a scope of another operation and a spent scope bound are each
+/// the one accounting fault, and an overflow stays exhaustion.
+#[test]
+fn ledger_failures_other_than_a_refused_allowance_are_accounting_faults() {
+    for (error, fault) in [
+        (LedgerError::Allocation, HtmlAccountingFault::Allocation),
+        (LedgerError::ForeignScope, HtmlAccountingFault::ForeignScope),
+        (
+            LedgerError::ScopeLimit { limit: 2 },
+            HtmlAccountingFault::ScopeLimit { limit: 2 },
+        ),
+    ] {
+        assert_eq!(
+            Control::error(error),
+            HtmlOptionValueControlError::Accounting(fault)
+        );
+    }
+}
+
+/// An owner whose ledger cannot be read reports the last usage it read, not an empty one.
+#[test]
+fn a_usage_read_that_cannot_reach_the_ledger_returns_the_last_usage_read() {
+    let mut control = Control::for_tests(envelope());
+    control.add(usage(8, 4), true).unwrap();
+    control.step(3, &AtomicBool::new(false)).unwrap();
+    let before = control.usage();
+    assert_eq!(before.work(), 3);
+    assert_eq!(before.storage(), usage(8, 4));
+    assert!(before.peak_storage().retained_bytes() >= 8);
+    let other = Control::for_tests(envelope());
+    control.gate = other.gate;
+    control.retained = other.retained;
+    control.observed = other.observed;
+    assert_eq!(control.usage(), before);
+}
+
+/// The owner's operation names its gate and its three custody scopes by the schema.
+#[test]
+fn the_owner_names_its_scopes_by_the_schema() {
+    use surgeist_html::accounting::{HtmlAuxiliaryScope, HtmlCapScope};
+    let control = Control::for_tests(envelope());
+    for (scope, name) in [
+        (control.gate, HtmlCapScope::OptionValue.name()),
+        (
+            control.retained,
+            HtmlAuxiliaryScope::OptionValueRetained.name(),
+        ),
+        (
+            control.temporary,
+            HtmlAuxiliaryScope::OptionValueTemporary.name(),
+        ),
+        (
+            control.observed,
+            HtmlAuxiliaryScope::OptionValueObserved.name(),
+        ),
+    ] {
+        assert_eq!(control.ledger.scope_name(scope), Ok(name));
+    }
+}
+
+#[test]
+fn a_failure_finds_the_accounting_fault_of_the_error_it_carries() {
+    let fault = HtmlAccountingFault::ReleaseUnderflow;
+    let failure = |kind| HtmlControlledOptionValueFailure {
+        kind,
+        usage: HtmlControlledOptionValueUsage::default(),
+    };
+    assert_eq!(
+        failure(HtmlControlledOptionValueError::Control(
+            HtmlOptionValueControlError::Accounting(fault)
+        ))
+        .accounting_fault(),
+        Some(fault)
+    );
+    assert_eq!(
+        failure(HtmlControlledOptionValueError::InvalidPhase).accounting_fault(),
+        None
+    );
 }

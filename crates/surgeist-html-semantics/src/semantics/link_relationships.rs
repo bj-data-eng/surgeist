@@ -3,6 +3,7 @@ use super::admission::{FactAdmission, FactError, fact_limits, producer_revision}
 use super::index::FactIndex;
 use super::scan::ScanError;
 use super::*;
+use surgeist_html::accounting::HtmlAccountingFault;
 use surgeist_html::{
     microsyntax::tokens::HtmlSpaceToken,
     values::{Attribute, DocumentString},
@@ -409,8 +410,10 @@ pub enum HtmlRelFactsError {
     RecordLimit,
     ByteLimit,
     WorkLimit,
-    /// The ledger that enforces the limits reported a state its own sequencing rules out.
-    LedgerState,
+    /// The ledger that carries the accounting failed in a way that is not a refused limit: a release
+    /// that matches nothing held, a ledger that cannot allocate, a scope that is not the
+    /// operation's, or a change the operation does not charge. It carries the accounting fault.
+    Accounting(HtmlAccountingFault),
     RepresentationExhausted,
     DuplicateDefinition,
     DuplicateObservation,
@@ -423,6 +426,39 @@ pub enum HtmlRelFactsError {
     InvalidSupportedToken,
     GrammarContradiction,
 }
+impl HtmlRelFactsError {
+    /// The accounting fault of the ledger that carried the operation, when this error is one or
+    /// wraps an error that is one. The match lists every variant, so a new variant that wraps an
+    /// error is decided here.
+    pub fn accounting_fault(&self) -> Option<surgeist_html::accounting::HtmlAccountingFault> {
+        match self {
+            Self::Accounting(fault) => Some(*fault),
+            Self::Capture(error) => error.accounting_fault(),
+            Self::SelectorBindingMismatch
+            | Self::IconObservationCoverage
+            | Self::IconOrderingInvalid
+            | Self::IconMediaContradiction
+            | Self::IconNotAttempted
+            | Self::HostRevisionMismatch
+            | Self::UrlRevisionMismatch
+            | Self::UrlBindingMismatch
+            | Self::RecordLimit
+            | Self::ByteLimit
+            | Self::WorkLimit
+            | Self::RepresentationExhausted
+            | Self::DuplicateDefinition
+            | Self::DuplicateObservation
+            | Self::InvalidRole
+            | Self::InvalidEffect
+            | Self::InvalidOccurrence
+            | Self::RawMismatch
+            | Self::MissingDefinition
+            | Self::CanonicalMismatch
+            | Self::InvalidSupportedToken
+            | Self::GrammarContradiction => None,
+        }
+    }
+}
 impl ScanError for HtmlRelFactsError {
     fn representation_exhausted() -> Self {
         Self::RepresentationExhausted
@@ -433,8 +469,8 @@ impl ScanError for HtmlRelFactsError {
     fn capture(error: HtmlCaptureError) -> Self {
         Self::Capture(error)
     }
-    fn ledger_state() -> Self {
-        Self::LedgerState
+    fn accounting(fault: HtmlAccountingFault) -> Self {
+        Self::Accounting(fault)
     }
 }
 impl FactError for HtmlRelFactsError {
