@@ -5285,3 +5285,233 @@ fn leading_component_text_supplied_strut_between_empty_and_body_f32() {
 fn leading_component_text_supplied_strut_between_empty_and_body_f64() {
     assert_leading_component_text_lines::<f64>(false, true);
 }
+
+#[derive(Clone, Copy)]
+enum ProcessedBlockEntry {
+    LeadingEmpty,
+    Positive,
+    Zero,
+    Negative,
+}
+
+fn assert_processed_whitespace_preserves_block_adjacency<S: LayoutScalar>(
+    entry: ProcessedBlockEntry,
+) {
+    let prefix_margin = match entry {
+        ProcessedBlockEntry::LeadingEmpty => None,
+        ProcessedBlockEntry::Positive => Some(12.0),
+        ProcessedBlockEntry::Zero => Some(0.0),
+        ProcessedBlockEntry::Negative => Some(-12.0),
+    };
+    let px = S::from_f64;
+    for visible in [true, false] {
+        let value = if visible { "X" } else { " " };
+        // This fixture performs contextual source processing before analysis
+        // and prepares the retained source with registered Ahem10 metrics.
+        let fixture = crate::test_support::inline_endpoint::Fixture::new(
+            value,
+            (0, 1),
+            surgeist_text::WhiteSpace::Collapse,
+            false,
+            false,
+        );
+        assert!(fixture.binding.prepared.captured_owner().is_some());
+        let ordinary = NodeInputOf {
+            display: Display::Block,
+            size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+            min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+            ..Default::default()
+        };
+        let tree = fixture
+            .tree::<S>(
+                InlineBoundaryEdgeOf::ZERO,
+                InlineBoundaryEdgeOf::ZERO,
+                false,
+                Some(100.0),
+                false,
+            )
+            .children(100, [50])
+            .style(100, ordinary.clone())
+            .children(50, [0, 51])
+            .style(50, ordinary.clone())
+            .style(
+                0,
+                NodeInputOf {
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(8.0)),
+                        bottom: LengthAutoOf::px(px(12.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary.clone()
+                },
+            )
+            .children(51, [])
+            .style(
+                51,
+                NodeInputOf {
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(10.0)),
+                    ),
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(7.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary.clone()
+                },
+            );
+        let tree = if let Some(margin) = prefix_margin {
+            tree.children(
+                0,
+                std::iter::once(52).chain(fixture.binding.nodes.iter().copied()),
+            )
+            .style(0, ordinary.clone())
+            .children(52, [])
+            .style(
+                52,
+                NodeInputOf {
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(10.0)),
+                    ),
+                    margin: Edges {
+                        bottom: LengthAutoOf::px(px(margin)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary
+                },
+            )
+        } else {
+            tree
+        };
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            100,
+            vec![fixture.binding.clone()],
+            WrappingInput::default(),
+            Vec::new(),
+        )
+        .unwrap();
+        let request = crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::new(Some(NonNegativeFiniteOf::new(px(100.0)).unwrap()), None),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(px(100.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+        ));
+        let batch = compute_layout_with_flow(&capture, 100, request).unwrap();
+        if prefix_margin.is_some() {
+            let prefix = public_final_output(&batch, 52);
+            assert_eq!(prefix.location.y, S::ZERO);
+            assert_eq!(prefix.size.height, px(10.0));
+        }
+        let [placed] = batch.placed_text() else {
+            panic!("one actual processed paragraph");
+        };
+        assert_eq!(
+            placed.layout().source().text(),
+            &surgeist_text::Text::from(value)
+        );
+        assert_eq!(placed.layout().lines().len(), usize::from(visible));
+        if !visible {
+            let completions = placed.layout().nonformatted_lines().collect::<Vec<_>>();
+            assert_eq!(completions.len(), 1);
+            let receipt = completions[0].line.finalized_line();
+            assert_eq!(receipt.prepared_text(), fixture.binding.prepared);
+            assert!(!receipt.has_in_flow_content());
+            assert_eq!(receipt.feedback().line_height, 10.0);
+            let selected = receipt.selected_line();
+            assert_eq!(selected.request().controls.len(), 2);
+            assert!(selected.request().controls.iter().all(|control| {
+                control
+                    .boundary
+                    .as_ref()
+                    .is_some_and(|edge| !edge.participates())
+            }));
+        }
+        // A real10px line blocks E's own margins from adjoining through it.
+        // Its12px bottom then separates B. A fully discarded line leaves
+        // E8/12 and B7 in the one adjoining start group12.
+        let (parent_y, height, empty_height, body_y, root_height) = match (entry, visible) {
+            (ProcessedBlockEntry::LeadingEmpty, true) => (8.0, 32.0, 10.0, 22.0, 40.0),
+            (ProcessedBlockEntry::LeadingEmpty, false) => (12.0, 10.0, 0.0, 0.0, 22.0),
+            (ProcessedBlockEntry::Positive, true) => (0.0, 49.0, 32.0, 39.0, 49.0),
+            (ProcessedBlockEntry::Positive, false) => (0.0, 32.0, 10.0, 22.0, 32.0),
+            (ProcessedBlockEntry::Zero, true) => (0.0, 37.0, 20.0, 27.0, 37.0),
+            (ProcessedBlockEntry::Zero, false) => (0.0, 27.0, 10.0, 17.0, 27.0),
+            (ProcessedBlockEntry::Negative, true) => (0.0, 25.0, 8.0, 15.0, 25.0),
+            (ProcessedBlockEntry::Negative, false) => (0.0, 15.0, 10.0, 5.0, 15.0),
+        };
+        let parent = public_final_output(&batch, 50);
+        let empty = public_final_output(&batch, 0);
+        let body = public_final_output(&batch, 51);
+        let root = public_final_output(&batch, 100);
+        assert_eq!(
+            (
+                parent.location.y,
+                parent.size.height,
+                empty.location.y,
+                empty.size.height,
+                body.location.y,
+                root.size.height
+            ),
+            (
+                px(parent_y),
+                px(height),
+                S::ZERO,
+                px(empty_height),
+                px(body_y),
+                px(root_height)
+            ),
+            "processed text visible {visible}"
+        );
+    }
+}
+
+#[test]
+fn processed_whitespace_preserves_block_adjacency_f32() {
+    assert_processed_whitespace_preserves_block_adjacency::<f32>(ProcessedBlockEntry::LeadingEmpty);
+}
+#[test]
+fn processed_whitespace_preserves_block_adjacency_f64() {
+    assert_processed_whitespace_preserves_block_adjacency::<f64>(ProcessedBlockEntry::LeadingEmpty);
+}
+
+#[test]
+fn processed_whitespace_preserves_positive_adjoining_displacement_f32() {
+    assert_processed_whitespace_preserves_block_adjacency::<f32>(ProcessedBlockEntry::Positive);
+}
+
+#[test]
+fn processed_whitespace_preserves_positive_adjoining_displacement_f64() {
+    assert_processed_whitespace_preserves_block_adjacency::<f64>(ProcessedBlockEntry::Positive);
+}
+
+#[test]
+fn processed_whitespace_preserves_zero_adjoining_displacement_f32() {
+    assert_processed_whitespace_preserves_block_adjacency::<f32>(ProcessedBlockEntry::Zero);
+}
+
+#[test]
+fn processed_whitespace_preserves_zero_adjoining_displacement_f64() {
+    assert_processed_whitespace_preserves_block_adjacency::<f64>(ProcessedBlockEntry::Zero);
+}
+
+#[test]
+fn processed_whitespace_preserves_negative_adjoining_displacement_f32() {
+    assert_processed_whitespace_preserves_block_adjacency::<f32>(ProcessedBlockEntry::Negative);
+}
+
+#[test]
+fn processed_whitespace_preserves_negative_adjoining_displacement_f64() {
+    assert_processed_whitespace_preserves_block_adjacency::<f64>(ProcessedBlockEntry::Negative);
+}
