@@ -15,6 +15,9 @@ use surgeist_html::{
 /// Excludes the public `HtmlCapture` handle, opaque Arc control blocks and
 /// allocator bookkeeping. Separately supplied captured Base facts are not owned
 /// by a capture and are not included.
+///
+/// This is a measurement of actual capacities with checked sums, not a counter: the consumer
+/// that retains the value charges it to its own accounting.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlCaptureRetainedStorageUsage {
     bytes: usize,

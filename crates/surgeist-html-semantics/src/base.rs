@@ -517,6 +517,9 @@ impl Validation {
 /// Checked retained payload footprint of a complete Base-facts graph.
 /// Immutable backing shared by several occurrences is conservatively counted
 /// per occurrence. Allocator/Arc bookkeeping is outside this payload measure.
+///
+/// This is a measurement of actual capacities with checked sums, not a counter: the consumer
+/// that retains the value charges it to its own accounting.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlBaseRetainedStorageUsage {
     pub(crate) bytes: usize,
