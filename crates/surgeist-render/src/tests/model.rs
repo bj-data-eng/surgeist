@@ -13,9 +13,9 @@ use crate::{
     Dash, DegradedQuality, DegradedQualityKind, DeviceLossReason, EffectPrecision,
     EffectQualityPolicy, Error, ErrorCode, Extend, FillRule, FilledPath, Filter, FontData, FontId,
     FontRef, Format, GpuFaultKind, Gradient, GradientStop, HitTestOwnership, Image, ImageBuffer,
-    ImageFit, ImageQuality, InvalidValue, Layer, NormalizedPaintLayer, Paint, PaintColor, Path,
-    PathElement, PhysicalSize, Point, PrimitiveFamily, PrimitiveOperation, Radii, Rect,
-    RenderRoute, RenderSurfaceAvailability, RepeatingGradient, ResolvedLayerAlphaMask,
+    ImageFit, ImageQuality, InvalidValue, Layer, LineCap, LineJoin, NormalizedPaintLayer, Paint,
+    PaintColor, Path, PathElement, PhysicalSize, Point, PrimitiveFamily, PrimitiveOperation, Radii,
+    Rect, RenderRoute, RenderSurfaceAvailability, RepeatingGradient, ResolvedLayerAlphaMask,
     RuntimeCapabilityUnavailable, RuntimeCapabilityUnavailableReason, RuntimeOperation, Scene,
     Shadow, ShadowList, Shape, Size, Stats, Stroke, StrokeAlign, SurfaceIdentityMismatchKind,
     SymbolicColorPolicy, TextDecorationLine, TextDecorationLineStyle, TextGlyph, TextPaint,
@@ -3138,8 +3138,7 @@ fn transitional_resolved_mask_bridge_preserves_bounds_quality_extend_and_transfo
     let mut scene = Scene::new();
     scene.layer(
         Layer::new()
-            .try_transform(transform)
-            .unwrap()
+            .with_transform(transform)
             .with_resolved_alpha_mask(
                 ResolvedLayerAlphaMask::try_new(transformed_mask, mask_bounds)
                     .unwrap_or_panic_for_test("the transformed staged mask fixture must install"),
@@ -4845,5 +4844,222 @@ fn repeating_gradient_normalized_clones_retain_backing_until_final_drop() {
             .usage()
             .work(crate::accounting::RenderWork::GradientStopVisits),
         4
+    );
+}
+
+#[test]
+fn text_decoration_positive_thickness_is_preserved_without_requalification() {
+    for thickness in [f64::MIN_POSITIVE, 0.25, 2.5, f64::MAX] {
+        let decoration = TextDecorationLine::try_solid(
+            Point::new(1.0, 5.0),
+            Point::new(9.0, 5.0),
+            thickness,
+            Transform::identity(),
+            Color::BLACK.into(),
+        )
+        .unwrap();
+        assert_eq!(decoration.thickness(), thickness);
+        let mut scene = Scene::new();
+        scene.text_decoration_line(decoration);
+        let [crate::scene::Command::Stroke { stroke, .. }] = scene.commands.as_slice() else {
+            panic!("identity decoration must emit one stroke");
+        };
+        assert_eq!(stroke.width(), thickness);
+        assert_eq!(stroke.join_kind(), LineJoin::Miter);
+        assert_eq!(stroke.start_cap(), LineCap::Butt);
+        assert_eq!(stroke.end_cap(), LineCap::Butt);
+        assert_eq!(stroke.miter_limit(), 4.0);
+        assert_eq!(stroke.dash(), None);
+        assert_eq!(stroke.align_kind(), StrokeAlign::Center);
+    }
+}
+
+#[test]
+fn text_decoration_invalid_thickness_preserves_typed_diagnostic() {
+    for (thickness, value) in [
+        (0.0, "0"),
+        (-1.0, "-1"),
+        (f64::NAN, "NaN"),
+        (f64::INFINITY, "inf"),
+        (f64::NEG_INFINITY, "-inf"),
+    ] {
+        let error = TextDecorationLine::try_solid(
+            Point::new(1.0, 5.0),
+            Point::new(9.0, 5.0),
+            thickness,
+            Transform::identity(),
+            Color::BLACK.into(),
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), ErrorCode::InvalidInput);
+        let diagnostic = error.invalid_value_diagnostic().unwrap();
+        assert_eq!(diagnostic.field(), "text decoration thickness");
+        assert_eq!(diagnostic.value(), value);
+        assert_eq!(diagnostic.invariant(), "must be finite and greater than 0");
+    }
+}
+
+#[test]
+fn text_decoration_validation_keeps_geometry_before_thickness_before_style() {
+    for (start, end, thickness, field) in [
+        (
+            Point::new(f64::NAN, 0.0),
+            Point::new(f64::NAN, 1.0),
+            0.0,
+            "text decoration start x",
+        ),
+        (
+            Point::new(0.0, 0.0),
+            Point::new(f64::NAN, 1.0),
+            0.0,
+            "text decoration end x",
+        ),
+        (
+            Point::new(0.0, 0.0),
+            Point::new(0.0, 0.0),
+            0.0,
+            "text decoration line",
+        ),
+        (
+            Point::new(0.0, 0.0),
+            Point::new(1.0, 0.0),
+            0.0,
+            "text decoration thickness",
+        ),
+    ] {
+        let error = TextDecorationLine::try_new(
+            start,
+            end,
+            thickness,
+            Transform::identity(),
+            Color::BLACK.into(),
+            TextDecorationLineStyle::Wavy,
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), ErrorCode::InvalidInput);
+        assert_eq!(error.invalid_value_diagnostic().unwrap().field(), field);
+    }
+}
+
+#[test]
+fn text_decoration_identity_and_transformed_lowering_preserve_complete_stroke() {
+    for transform in [
+        Transform::identity(),
+        Transform::translation(3.0, 4.0).unwrap(),
+        Transform::try_new([0.0, 0.0, 0.0, 2.0, 7.0, -3.0]).unwrap(),
+    ] {
+        let mut scene = Scene::new();
+        scene.text_decoration_line(
+            TextDecorationLine::try_solid(
+                Point::new(1.0, 5.0),
+                Point::new(9.0, 5.0),
+                2.5,
+                transform,
+                Color::BLACK.into(),
+            )
+            .unwrap(),
+        );
+        let normalized = scene
+            .normalize(
+                Capabilities::CURRENT,
+                &crate::accounting::Account::for_test(),
+            )
+            .unwrap();
+        let commands = if transform == Transform::identity() {
+            normalized.commands.as_slice()
+        } else {
+            let [command::RenderCommand::Layer { layer, children }] =
+                normalized.commands.as_slice()
+            else {
+                panic!("nonidentity decoration must emit one transform layer");
+            };
+            assert_eq!(layer.transform, transform);
+            &children[..]
+        };
+        let [
+            command::RenderCommand::Stroke {
+                shape,
+                stroke,
+                paint,
+            },
+        ] = commands
+        else {
+            panic!("decoration must emit one stroke");
+        };
+        let command::RenderStrokeShape::Path(path) = shape else {
+            panic!("decoration must preserve its path");
+        };
+        assert_eq!(
+            path.elements(),
+            &[
+                kurbo::PathEl::MoveTo(kurbo::Point::new(1.0, 5.0)),
+                kurbo::PathEl::LineTo(kurbo::Point::new(9.0, 5.0)),
+            ]
+        );
+        assert_eq!(
+            *stroke,
+            command::RenderStroke {
+                width: 2.5,
+                join: LineJoin::Miter,
+                start_cap: LineCap::Butt,
+                end_cap: LineCap::Butt,
+                miter_limit: 4.0,
+                dash: None
+            }
+        );
+        assert_eq!(*paint, command::RenderPaint::Color(Color::BLACK));
+        assert_eq!(normalized.stats().strokes, 1);
+    }
+}
+
+#[test]
+fn layer_with_transform_accepts_finite_singular_values_and_scene_keeps_command_order() {
+    use crate::scene::Command;
+    let singular = Transform::try_new([0.0, 0.0, 0.0, 2.0, 7.0, -3.0]).unwrap();
+    let layer = Layer::new()
+        .try_opacity(0.5)
+        .unwrap()
+        .isolated()
+        .with_transform(Transform::translation(1.0, 2.0).unwrap())
+        .with_transform(singular);
+    assert_eq!(layer.transform(), singular);
+    assert_eq!(layer.opacity(), 0.5);
+    assert!(layer.is_isolated());
+    let first = Rect::new(1.0, 2.0, 3.0, 4.0);
+    let second = Rect::new(5.0, 6.0, 7.0, 8.0);
+    let mut scene = Scene::new();
+    scene
+        .fill(first, Color::BLACK)
+        .transform(singular, |scene| {
+            scene
+                .fill(second, Color::TRANSPARENT)
+                .fill(first, Color::BLACK);
+        })
+        .fill(second, Color::BLACK);
+    assert_eq!(
+        scene.commands,
+        vec![
+            Command::Fill {
+                shape: first.into(),
+                paint: Color::BLACK.into()
+            },
+            Command::Layer {
+                layer: Layer::new().with_transform(singular),
+                children: vec![
+                    Command::Fill {
+                        shape: second.into(),
+                        paint: Color::TRANSPARENT.into()
+                    },
+                    Command::Fill {
+                        shape: first.into(),
+                        paint: Color::BLACK.into()
+                    },
+                ]
+            },
+            Command::Fill {
+                shape: second.into(),
+                paint: Color::BLACK.into()
+            },
+        ]
     );
 }

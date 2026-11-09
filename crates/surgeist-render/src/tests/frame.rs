@@ -1064,8 +1064,7 @@ fn rank_deficient_masked_source_does_not_select_graph_or_split_vello_span() {
         .fill(Rect::new(0.0, 0.0, 2.0, 2.0), Color::BLACK)
         .layer(
             Layer::new()
-                .try_transform(Transform::scale(0.0, 1.0).unwrap())
-                .unwrap()
+                .with_transform(Transform::scale(0.0, 1.0).unwrap())
                 .with_resolved_alpha_mask(opaque_planning_mask(PhysicalSize::new(1, 1))),
             |scene| {
                 scene.fill(Rect::new(0.0, 3.0, 2.0, 2.0), Color::BLACK);
@@ -2019,8 +2018,7 @@ fn composition_ordered_clip_coverage_commands_for_test() -> command::RenderComma
         Layer::new()
             .try_clip(Shape::rect(Rect::new(0.0, 0.0, 8.0, 8.0)))
             .unwrap()
-            .try_transform(transforms[0])
-            .unwrap(),
+            .with_transform(transforms[0]),
         |scene| {
             scene.layer(
                 Layer::new()
@@ -2032,15 +2030,13 @@ fn composition_ordered_clip_coverage_commands_for_test() -> command::RenderComma
                         .unwrap(),
                     )
                     .unwrap()
-                    .try_transform(transforms[1])
-                    .unwrap(),
+                    .with_transform(transforms[1]),
                 |scene| {
                     scene.layer(
                         Layer::new()
                             .try_clip(Shape::try_circle(Point::new(4.0, 4.0), 3.5).unwrap())
                             .unwrap()
-                            .try_transform(transforms[2])
-                            .unwrap(),
+                            .with_transform(transforms[2]),
                         |scene| {
                             scene.layer(
                                 Layer::new()
@@ -2052,15 +2048,13 @@ fn composition_ordered_clip_coverage_commands_for_test() -> command::RenderComma
                                         .unwrap(),
                                     )
                                     .unwrap()
-                                    .try_transform(transforms[3])
-                                    .unwrap(),
+                                    .with_transform(transforms[3]),
                                 |scene| {
                                     scene.layer(
                                         Layer::new()
                                             .try_clip_input(path_clip)
                                             .unwrap()
-                                            .try_transform(transforms[4])
-                                            .unwrap()
+                                            .with_transform(transforms[4])
                                             .with_resolved_alpha_mask(opaque_planning_mask(
                                                 PhysicalSize::new(8, 8),
                                             )),

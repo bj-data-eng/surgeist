@@ -29,6 +29,20 @@ The `Renderer` methods `new`, `create_surface`, `create_headless`,
 the current complete headless publication. Rendering does not invoke this
 readback implicitly.
 
+## Qualified Scene inputs
+
+[`Layer::with_transform`](../src/layer.rs) and
+[`Scene::transform`](../src/scene.rs) consume a finite
+[`Transform`](../src/geometry.rs) infallibly. Singular finite transforms are valid;
+composing transforms remains fallible when the resulting coefficients overflow.
+
+[`TextDecorationLine`](../src/text.rs) validates its endpoints, thickness and other
+inputs at construction and retains its qualified solid stroke. Its thickness
+reader and `Scene::text_decoration_line` consume that accepted value directly.
+Invalid raw thickness still returns the owning text-decoration input diagnostic.
+Identity transforms lower directly to a stroke; other transforms retain the
+nested layer and authored command order.
+
 ## Capabilities and errors
 
 `Capabilities::CURRENT` reports semantic support for authored rendering

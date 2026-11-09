@@ -133,8 +133,7 @@ impl Scene {
     pub fn text_decoration_line(&mut self, line: TextDecorationLine) -> &mut Self {
         let mut path = Path::new();
         path.move_to(line.start()).line_to(line.end());
-        let stroke = Stroke::try_new(line.thickness())
-            .expect("TextDecorationLine constructors validate positive thickness");
+        let stroke = line.stroke();
         if line.transform() == Transform::identity() {
             return self.stroke(Shape::path(path), stroke, line.paint().clone());
         }
@@ -167,9 +166,7 @@ impl Scene {
         transform: Transform,
         children: impl FnOnce(&mut Scene),
     ) -> &mut Self {
-        let layer = Layer::new()
-            .try_transform(transform)
-            .expect("Transform constructors validate layer transform values");
+        let layer = Layer::new().with_transform(transform);
         self.layer(layer, children)
     }
 

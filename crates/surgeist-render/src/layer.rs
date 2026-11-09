@@ -3,7 +3,7 @@ use super::{
     style::validate_clip_input,
     validation::{
         validate_filter, validate_finite_f64, validate_non_negative_f64, validate_paint,
-        validate_point, validate_positive_f64, validate_shape, validate_transform,
+        validate_point, validate_positive_f64, validate_shape,
     },
 };
 
@@ -96,11 +96,12 @@ impl Layer {
 
     /// Returns this layer with a finite logical transform, replacing the previous transform.
     ///
-    /// Returns [`crate::ErrorCode::InvalidInput`] for a non-finite transform.
-    pub fn try_transform(mut self, transform: Transform) -> Result<Self> {
-        validate_transform(transform, "layer transform")?;
+    /// The supplied [`Transform`] already guarantees finite coefficients, including
+    /// finite singular transforms. Composition that overflows remains fallible.
+    #[must_use]
+    pub const fn with_transform(mut self, transform: Transform) -> Self {
         self.transform = transform;
-        Ok(self)
+        self
     }
 
     #[must_use]

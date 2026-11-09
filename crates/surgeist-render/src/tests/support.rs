@@ -323,22 +323,19 @@ pub(super) fn composition_commands_for_test() -> command::RenderCommands {
         Layer::new()
             .try_clip(Shape::rect(Rect::new(0.0, 0.0, 4.0, 4.0)))
             .unwrap()
-            .try_transform(outer_clip_transform)
-            .unwrap(),
+            .with_transform(outer_clip_transform),
         |scene| {
             scene.layer(
                 Layer::new()
                     .try_clip(Shape::rect(Rect::new(0.125, 0.125, 3.75, 3.75)))
                     .unwrap()
-                    .try_transform(inner_clip_transform)
-                    .unwrap(),
+                    .with_transform(inner_clip_transform),
                 |scene| {
                     scene.layer(
                         Layer::new()
                             .try_clip(Shape::rect(Rect::new(0.25, 0.25, 3.5, 3.5)))
                             .unwrap()
-                            .try_transform(outer_transform)
-                            .unwrap()
+                            .with_transform(outer_transform)
                             .try_opacity(1.5)
                             .unwrap()
                             .blend(BlendMode::Screen)
@@ -348,8 +345,7 @@ pub(super) fn composition_commands_for_test() -> command::RenderCommands {
                                 Layer::new()
                                     .try_clip(Shape::rect(Rect::new(0.5, 0.5, 2.5, 2.5)))
                                     .unwrap()
-                                    .try_transform(inner_transform)
-                                    .unwrap()
+                                    .with_transform(inner_transform)
                                     .try_opacity(0.25)
                                     .unwrap()
                                     .blend(BlendMode::Multiply)
