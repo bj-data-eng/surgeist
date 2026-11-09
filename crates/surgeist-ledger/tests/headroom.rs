@@ -194,3 +194,43 @@ fn the_headroom_is_the_largest_acquisition_the_ledger_admits_over_every_small_ch
     }
     assert!(checked > 10_000);
 }
+
+/// A scope above a zero-scale tariff that holds more than its cap still refuses every
+/// acquisition below it, even of zero, because admission walks past the tariff with an amount of
+/// zero. The headroom is zero there, as it is for a scope over its own cap.
+#[test]
+fn an_ancestor_over_its_cap_above_a_zero_scale_tariff_leaves_no_headroom() {
+    for (first, second) in [(2, 0), (0, 2), (0, 0)] {
+        let (mut operation, [top, _, low]) = chain(100, 50, 40, first, second);
+        operation
+            .apply(top, Change::Acquire(Resource::B, 8))
+            .unwrap();
+        // Before the cap drops, the leaf is bounded by its own cap and what the chain leaves.
+        assert!(operation.headroom(low, Resource::A).unwrap() > 0);
+        operation.set_limits(top, caps(u64::MAX, 5)).unwrap();
+        assert!(is_refused(
+            operation.check_batch(low, &[Change::Acquire(Resource::A, 0)])
+        ));
+        assert!(is_refused(
+            operation.check_batch(low, &[Change::Acquire(Resource::A, 1)])
+        ));
+        assert_eq!(
+            operation.headroom(low, Resource::A),
+            Ok(0),
+            "scales {first} {second}"
+        );
+    }
+}
+
+/// An ancestor above a zero-scale tariff that is within its cap does not bound the leaf.
+#[test]
+fn an_ancestor_within_its_cap_above_a_zero_scale_tariff_does_not_bound_the_leaf() {
+    let (mut operation, [top, _, low]) = chain(5, 50, 40, 2, 0);
+    operation
+        .apply(top, Change::Acquire(Resource::B, 5))
+        .unwrap();
+    assert_eq!(operation.headroom(low, Resource::A), Ok(25));
+    operation
+        .check_batch(low, &[Change::Acquire(Resource::A, 25)])
+        .unwrap();
+}
