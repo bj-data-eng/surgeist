@@ -190,9 +190,7 @@ pub enum HtmlParseInvariant {
     /// consumed or is not ready. It is also reported when the owner answers a
     /// step with an action or observation the parser's sequencing does not
     /// expect, such as an action of another kind or an observation without the
-    /// allocation, capacity or backing the step was planned around. The
-    /// owner's error enum is open, so an error this parser does not yet
-    /// classify reports the same fault.
+    /// allocation, capacity or backing the step was planned around.
     ConstructionOwnerRefusal,
     /// The tree-builder drivers or algorithm are in a state their sequencing
     /// excludes: a driver, stage or prologue owner that the sequencing keeps in
