@@ -400,7 +400,8 @@ impl PreparedGlyphRun {
     /// scene drawing consumes the ordered admitted paints and images.
     pub fn path_elements(&self) -> impl Iterator<Item = PathElement> + '_ {
         fn point(p: kurbo::Point) -> Point {
-            Point::try_new(p.x, p.y).expect("prepared path points are finite")
+            // The immutable path contains only successfully admitted canonical points.
+            Point::new(p.x, p.y)
         }
         self.0.path.elements().iter().map(|element| match *element {
             kurbo::PathEl::MoveTo(p) => PathElement::MoveTo(point(p)),
@@ -984,13 +985,15 @@ fn qualify_simple_glyf(
             }
         }
         if let (Some(start), Some(end)) = (tuple.intermediate_start(), tuple.intermediate_end()) {
-            for i in 0..peak.len() {
+            // Every lane has the same checked axis count. Borrow together and
+            // decode values only after their existing coordinate admission.
+            for ((start, peak), end) in start.values().iter().zip(peak.values()).zip(end.values()) {
                 account
                     .at(RenderPhase::Qualify)
                     .work(RenderWork::CoordinateVisits, 3)?;
-                let start = start.get(i).expect("validated tuple axis count");
-                let peak = peak.get(i).expect("validated tuple axis count");
-                let end = end.get(i).expect("validated tuple axis count");
+                let start = start.get();
+                let peak = peak.get();
+                let end = end.get();
                 if start > peak || peak > end {
                     return Err(invalid_variation());
                 }
