@@ -4933,3 +4933,158 @@ fn leading_start_component_stays_outside_minimum_parent_end_f32() {
 fn leading_start_component_stays_outside_minimum_parent_end_f64() {
     assert_leading_start_component_stays_outside_parent_end::<f64>();
 }
+
+fn assert_leading_component_text_lines<S: LayoutScalar>(inside_empty: bool) {
+    use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
+    let px = S::from_f64;
+    let ordinary = NodeInputOf {
+        display: Display::Block,
+        size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+        min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+        ..Default::default()
+    };
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::new(Some(NonNegativeFiniteOf::new(px(100.0)).unwrap()), None),
+        OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::new(
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(px(100.0)).unwrap()),
+            SizingOperation::Normal,
+        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+    ));
+    for visible in [true, false] {
+        let style = ahem_style(4.0, 4.0);
+        let paragraph = PreparedParagraph::with_strut_at_boundary(
+            vec![ParagraphPart::text(
+                5,
+                surgeist_text::Source::new(if visible { "X" } else { "" }),
+                style.clone(),
+            )],
+            style,
+            surgeist_text::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::ParagraphStrut::DefaultFont,
+            Vec::new(),
+            if inside_empty {
+                surgeist_text::ParagraphTerminalEdge::BlockEnd
+            } else {
+                surgeist_text::ParagraphTerminalEdge::NonBlockBoundary
+            },
+        );
+        let tree = PublicBlockTree::default()
+            .with_children(0, [2])
+            .with_children(
+                2,
+                if inside_empty {
+                    vec![3, 4]
+                } else {
+                    vec![3, 5, 4]
+                },
+            )
+            .with_children(3, if inside_empty { vec![5] } else { Vec::new() })
+            .with_children(4, [])
+            .with_children(5, [])
+            .with_style(0, ordinary.clone())
+            .with_style(2, ordinary.clone())
+            .with_style(
+                3,
+                NodeInputOf {
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(8.0)),
+                        bottom: LengthAutoOf::px(px(12.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary.clone()
+                },
+            )
+            .with_style(
+                4,
+                NodeInputOf {
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(10.0)),
+                    ),
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(7.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary.clone()
+                },
+            )
+            .with_style(5, NodeInputOf::non_box())
+            .with_layout_input(5, paragraph.text_input(5));
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![paragraph.binding(if inside_empty { 3 } else { 2 })],
+            WrappingInput::default(),
+            Vec::new(),
+        )
+        .unwrap();
+        let batch = compute_layout_with_flow(&capture, 0, request).unwrap();
+        let [placed] = batch.placed_text() else {
+            panic!("one actual Text layout belongs to the paragraph");
+        };
+        assert_eq!(placed.layout().source().text().is_empty(), !visible);
+        assert_eq!(placed.layout().lines().len(), usize::from(visible));
+        if !visible {
+            let completions = placed.layout().nonformatted_lines().collect::<Vec<_>>();
+            assert_eq!(completions.len(), 1);
+            let receipt = completions[0].line.finalized_line();
+            assert!(!receipt.has_in_flow_content());
+            assert_eq!(receipt.feedback().line_height, 4.0);
+            assert_eq!(receipt.prepared_text(), paragraph.prepared);
+        }
+        let (parent_y, parent_height, empty_height, body_y) = if !visible {
+            (12.0, 10.0, 0.0, 0.0)
+        } else if inside_empty {
+            (8.0, 26.0, 4.0, 16.0)
+        } else {
+            (12.0, 21.0, 0.0, 11.0)
+        };
+        let parent = public_final_output(&batch, 2);
+        let empty = public_final_output(&batch, 3);
+        let body = public_final_output(&batch, 4);
+        assert_eq!(
+            (
+                parent.location.y,
+                parent.size.height,
+                empty.location.y,
+                empty.size.height,
+                body.location.y
+            ),
+            (
+                px(parent_y),
+                px(parent_height),
+                S::ZERO,
+                px(empty_height),
+                px(body_y)
+            ),
+            "text visible {visible}, inside empty {inside_empty}"
+        );
+        assert_eq!(batch.unrounded_inline_fragments().is_empty(), !visible);
+    }
+}
+
+#[test]
+fn leading_component_text_inside_empty_box_f32() {
+    assert_leading_component_text_lines::<f32>(true);
+}
+#[test]
+fn leading_component_text_inside_empty_box_f64() {
+    assert_leading_component_text_lines::<f64>(true);
+}
+#[test]
+fn leading_component_text_between_empty_and_body_f32() {
+    assert_leading_component_text_lines::<f32>(false);
+}
+#[test]
+fn leading_component_text_between_empty_and_body_f64() {
+    assert_leading_component_text_lines::<f64>(false);
+}
