@@ -150,12 +150,7 @@ impl ParseControl {
     /// A change the parser does not charge reached its ledger: the parse stops with the
     /// accounting fault, after the cancellation check every invariant stop takes.
     pub(crate) fn unexpected_change(&mut self) -> HtmlParseStop {
-        if let Err(reason) = self.checkpoint() {
-            return reason;
-        }
-        self.latch_stop(HtmlParseStop::Accounting(
-            HtmlAccountingFault::UnexpectedChange,
-        ))
+        self.stop_accounting(HtmlAccountingFault::UnexpectedChange)
     }
 
     /// The stop for a ledger error that refused a batch of resource changes.
