@@ -387,6 +387,7 @@ impl Control {
         self.ledger
             .apply(self.gate, Change::Work(HtmlWork::SemanticStep, wide(units)))
             .map_err(|error| self.refused(error))?;
+        #[cfg(test)]
         self.after_work(cancel);
         Ok(())
     }
@@ -400,8 +401,6 @@ impl Control {
             cancel.store(true, Ordering::Relaxed);
         }
     }
-    #[cfg(not(test))]
-    pub(crate) fn after_work(&self, _cancel: &AtomicBool) {}
     /// The live and temporary storage and `extra`, which is what the allowance has to cover.
     fn required(
         &self,
@@ -594,6 +593,7 @@ impl QueryControl<'_> {
         self.control.step(work, self.cancel)
     }
     /// Test scheduling only: cancels once the configured work is admitted.
+    #[cfg(test)]
     pub(crate) fn after_work(self) {
         self.control.after_work(self.cancel);
     }

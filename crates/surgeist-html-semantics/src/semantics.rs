@@ -1666,6 +1666,7 @@ impl<'a> HtmlSemanticSession<'a> {
         self.account
             .work(work)
             .map_err(|error| self.ledger_stop(error))?;
+        #[cfg(test)]
         if let Some(control) = self.option_control {
             control.after_work();
         }
