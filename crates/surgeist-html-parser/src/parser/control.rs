@@ -2868,6 +2868,7 @@ impl<T> OwnedVec<T> {
     }
     /// One consumed evidence commit. Both capacities, logical slots and fixed
     /// writes are admitted before either vector's committed length changes.
+    #[cfg(test)]
     pub(crate) fn try_push_pair<U>(
         &mut self,
         other: &mut OwnedVec<U>,
