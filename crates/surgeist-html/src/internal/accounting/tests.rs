@@ -4,16 +4,6 @@ use surgeist_ledger::{Dimension, Error, Operation, RefusalReason};
 
 type Op = Operation<HtmlWork, HtmlResource>;
 
-fn work_of(changes: &[HtmlChange]) -> Vec<(HtmlWork, u64)> {
-    changes
-        .iter()
-        .filter_map(|change| match *change {
-            Change::Work(dimension, amount) => Some((dimension, amount)),
-            _ => None,
-        })
-        .collect()
-}
-
 /// A cap scope with the given caps and one charging scope below it.
 fn charging(limits: HtmlLimits) -> (Op, surgeist_ledger::Scope, surgeist_ledger::Scope) {
     let mut operation = Operation::new(HtmlCapScope::Parse.name(), limits, 2).unwrap();
@@ -382,15 +372,9 @@ fn autocomplete_limits_cap_bytes_nested_output_and_scratch() {
 }
 
 #[test]
-fn csp_work_sums_its_own_and_closing_credits() {
-    use crate::security::csp::{HtmlCspDisposalWork, HtmlCspLayout, HtmlCspStorage};
+fn csp_storage_converts_to_the_provider_graph_resources() {
+    use crate::security::csp::HtmlCspStorage;
     let storage = HtmlCspStorage::try_new(64, 8, 2).unwrap();
-    let closing = HtmlCspDisposalWork::try_new(5, 16).unwrap();
-    let layout = HtmlCspLayout::processing(37, storage, closing, 32).unwrap();
-    assert_eq!(
-        work_of(&[csp_work(&layout).unwrap()]),
-        [(HtmlWork::ProviderCall, 42)]
-    );
     assert_eq!(
         csp_storage(storage),
         [

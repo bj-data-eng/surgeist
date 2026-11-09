@@ -146,7 +146,7 @@ use crate::bounded::{
     values::HtmlValuePoolUsage,
 };
 use crate::construction::HtmlConstructionLimits;
-use crate::security::csp::{HtmlCspLayout, HtmlCspStorage};
+use crate::security::csp::HtmlCspStorage;
 use std::{error::Error, fmt};
 use surgeist_ledger::{Change, Limits, Tariff, Tariffs, dimensions};
 
@@ -765,17 +765,6 @@ pub fn text_append_work(work: &HtmlConstructionTextAppendWork) -> [HtmlChange; 5
         Change::Work(HtmlWork::CopyByte, wide(work.copied_bytes)),
         Change::Work(HtmlWork::RecordWrite, wide(work.record_writes)),
     ]
-}
-
-/// The provider work of a content security policy action: its own credits and
-/// the prepaid credits of its closing work. The action's atomic bytes are
-/// recorded with [`record_largest`].
-pub fn csp_work(layout: &HtmlCspLayout) -> Result<HtmlChange, HtmlChargeOverflow> {
-    layout
-        .work_credits()
-        .checked_add(layout.closing_work().work_credits())
-        .map(|credits| Change::Work(HtmlWork::ProviderCall, credits))
-        .ok_or(HtmlChargeOverflow)
 }
 
 /// The caps of a construction arena.

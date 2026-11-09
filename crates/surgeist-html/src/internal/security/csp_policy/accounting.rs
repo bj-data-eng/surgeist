@@ -1,4 +1,6 @@
 use super::*;
+use crate::internal::accounting::{HtmlChargeOverflow, HtmlChargedError, HtmlResource, HtmlWork};
+use surgeist_ledger::{Change, Charge};
 
 /// Known retained storage, excluding opaque allocator and Arc bookkeeping.
 /// Graphs shared by different occurrences may be conservatively reserved twice.
@@ -107,8 +109,25 @@ impl HtmlCspDisposalWork {
     }
     /// Returns the fixed credits that bound destroying a possibly last strong
     /// occurrence, including transitive native release.
-    pub fn work_credits(self) -> u64 {
+    #[cfg(test)]
+    pub(crate) fn work_credits(self) -> u64 {
         self.work_credits
+    }
+    /// Charges the credits that bound destroying a possibly last strong occurrence, plus `calls`
+    /// provider calls of the caller's own that belong to the same action, as one change of
+    /// provider calls. A sum that does not fit the ledger's `u64` is a fault of the charge.
+    pub fn charge_with_calls<C: Charge<HtmlWork, HtmlResource>>(
+        self,
+        calls: u64,
+        charge: &mut C,
+    ) -> Result<(), HtmlChargedError<C::Stop, HtmlChargeOverflow>> {
+        let credits = self
+            .work_credits
+            .checked_add(calls)
+            .ok_or(HtmlChargedError::Faulted(HtmlChargeOverflow))?;
+        charge
+            .charge(&[Change::Work(HtmlWork::ProviderCall, credits)])
+            .map_err(HtmlChargedError::Stopped)
     }
     /// Returns the bytes that bound the cleanup frame or stack of that destruction.
     pub fn atomic_bytes(self) -> usize {
@@ -217,8 +236,19 @@ impl HtmlCspLayout {
             atomic_bytes: atomic_bytes.max(closing_work.atomic_bytes),
         })
     }
-    /// Returns the credits for the admitted action's own bounded work.
-    pub fn work_credits(self) -> u64 {
+    /// Charges the action's own bounded work and the prepaid credits of its closing work, as one
+    /// change of provider calls, before the action runs. A sum that does not fit the ledger's
+    /// `u64` is a fault of the charge. The atomic bytes stay with the caller, which records them
+    /// as its own layout bound.
+    pub fn charge_work<C: Charge<HtmlWork, HtmlResource>>(
+        self,
+        charge: &mut C,
+    ) -> Result<(), HtmlChargedError<C::Stop, HtmlChargeOverflow>> {
+        self.closing_work
+            .charge_with_calls(self.work_credits, charge)
+    }
+    #[cfg(test)]
+    pub(crate) fn work_credits(self) -> u64 {
         self.work_credits
     }
     /// Returns the complete custody that the operation's result retains.
@@ -276,12 +306,17 @@ impl HtmlCspLayout {
 #[cfg(test)]
 mod schema_tests {
     use super::*;
-    use crate::accounting::{HtmlChargeOverflow, csp_work};
+    use crate::internal::accounting::HtmlLimits;
+    use surgeist_ledger::Operation;
+
+    fn ledger() -> Operation<HtmlWork, HtmlResource> {
+        Operation::new("csp", HtmlLimits::unlimited(), 1).unwrap()
+    }
 
     /// No constructor builds a layout whose own and closing credits overflow, so
-    /// the conversion's overflow path is reached with fields set directly.
+    /// the charge's overflow path is reached with fields set directly.
     #[test]
-    fn csp_work_reports_credits_that_overflow() {
+    fn a_layout_whose_credits_overflow_charges_nothing_and_faults() {
         let layout = HtmlCspLayout {
             work_credits: u64::MAX,
             closing_work: HtmlCspDisposalWork {
@@ -290,6 +325,60 @@ mod schema_tests {
             },
             ..HtmlCspLayout::default()
         };
-        assert_eq!(csp_work(&layout), Err(HtmlChargeOverflow));
+        let mut operation = ledger();
+        let root = operation.root();
+        assert_eq!(
+            layout.charge_work(&mut operation.charge_at(root)),
+            Err(HtmlChargedError::Faulted(HtmlChargeOverflow))
+        );
+        assert_eq!(
+            operation.usage(root).unwrap().work(HtmlWork::ProviderCall),
+            0
+        );
+    }
+
+    #[test]
+    fn a_layout_charges_its_own_and_its_closing_credits_as_one_provider_call_change() {
+        let layout = HtmlCspLayout::processing(
+            37,
+            HtmlCspStorage::try_new(64, 8, 2).unwrap(),
+            HtmlCspDisposalWork::try_new(5, 16).unwrap(),
+            32,
+        )
+        .unwrap();
+        let mut operation = ledger();
+        let root = operation.root();
+        layout.charge_work(&mut operation.charge_at(root)).unwrap();
+        let usage = *operation.usage(root).unwrap();
+        assert_eq!(usage.work(HtmlWork::ProviderCall), 42);
+        for dimension in [
+            HtmlWork::RecordVisit,
+            HtmlWork::InspectByte,
+            HtmlWork::CopyByte,
+            HtmlWork::RecordWrite,
+            HtmlWork::ReserveByte,
+        ] {
+            assert_eq!(usage.work(dimension), 0, "{dimension:?}");
+        }
+    }
+
+    #[test]
+    fn disposal_credits_charge_with_the_callers_own_calls_in_one_change() {
+        let disposal = HtmlCspDisposalWork::try_new(5, 16).unwrap();
+        let mut operation = ledger();
+        let root = operation.root();
+        disposal
+            .charge_with_calls(1, &mut operation.charge_at(root))
+            .unwrap();
+        assert_eq!(
+            operation.usage(root).unwrap().work(HtmlWork::ProviderCall),
+            6
+        );
+        assert_eq!(
+            HtmlCspDisposalWork::try_new(u64::MAX >> 1, 0)
+                .unwrap()
+                .charge_with_calls(u64::MAX, &mut operation.charge_at(root)),
+            Err(HtmlChargedError::Faulted(HtmlChargeOverflow))
+        );
     }
 }

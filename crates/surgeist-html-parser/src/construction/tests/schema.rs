@@ -4,9 +4,9 @@
 
 use super::*;
 use crate::meta_csp::{Account, Caller};
-use crate::schema_support::{charged, through_ledger, through_schema};
+use crate::schema_support::{charged, through_ledger};
 use surgeist_html::{
-    accounting::{HtmlChargedError, HtmlResource, HtmlWork, csp_storage, csp_work},
+    accounting::{HtmlChargedError, HtmlResource, HtmlWork, csp_storage},
     bounded::{
         script::HtmlScriptTypeCursor,
         values::{HtmlAttributeNameIndex, HtmlAttributeStorage, HtmlNameIndexSlot},
@@ -137,7 +137,14 @@ fn csp_actions_convert_to_the_work_layout_and_storage_the_account_admits() {
     let mut c = control();
     let mut account = Account::default();
     account.admit(&mut c, layout, Caller::Parser).unwrap();
-    assert_eq!(charged(&c), through_schema(&[csp_work(&layout).unwrap()]));
+    assert_eq!(
+        charged(&c),
+        through_ledger(|charge| match layout.charge_work(charge) {
+            Ok(()) => Ok(()),
+            Err(HtmlChargedError::Stopped(stop)) => Err(stop),
+            Err(HtmlChargedError::Faulted(overflow)) => panic!("{overflow}"),
+        })
+    );
     let layout_bytes = layout.atomic_bytes() as u64;
     assert_eq!(
         c.usage()

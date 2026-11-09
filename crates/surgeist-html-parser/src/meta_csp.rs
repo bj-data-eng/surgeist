@@ -204,9 +204,12 @@ impl Account {
     ) -> Result<(), HtmlParseStop> {
         self.processor_touched |= caller == Caller::Processor;
         self.settle(c)?;
-        let work = surgeist_html::accounting::csp_work(&a)
-            .map_err(|_| c.stop_representation(crate::HtmlParseResource::WorkCredits))?;
-        c.charge_change(work)?;
+        a.charge_work(c).map_err(|error| match error {
+            surgeist_html::accounting::HtmlChargedError::Stopped(stop) => stop,
+            surgeist_html::accounting::HtmlChargedError::Faulted(_) => {
+                c.stop_representation(crate::HtmlParseResource::WorkCredits)
+            }
+        })?;
         c.admit_atomic_layout(a.atomic_bytes())?;
         let base = self
             .live

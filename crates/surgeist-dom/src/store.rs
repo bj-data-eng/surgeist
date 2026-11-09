@@ -44,6 +44,7 @@ mod form;
 mod fullscreen;
 mod history;
 pub(crate) mod hosted;
+mod html_credits;
 mod hyperlink;
 use history::HistoryEntry;
 mod image;

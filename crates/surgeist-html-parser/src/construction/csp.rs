@@ -476,14 +476,17 @@ impl SessionStorage {
                     .retained_layout()
                     .map_err(|_| SessionError::WrongToken)?;
                 let storage = Storage::from(layout.storage());
-                c.charge(
-                    HtmlParseWorkCategory::ProviderCall,
-                    layout
-                        .disposal()
-                        .work_credits()
-                        .checked_add(1)
-                        .ok_or(SessionError::WrongToken)?,
-                )?;
+                layout
+                    .disposal()
+                    .charge_with_calls(1, c)
+                    .map_err(|error| match error {
+                        surgeist_html::accounting::HtmlChargedError::Stopped(stop) => {
+                            SessionError::from(stop)
+                        }
+                        surgeist_html::accounting::HtmlChargedError::Faulted(_) => {
+                            SessionError::WrongToken
+                        }
+                    })?;
                 storage.acquire(c)?;
                 state.account.live.bytes = state
                     .account
