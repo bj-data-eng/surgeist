@@ -3450,9 +3450,23 @@ pub const fn surgeist_text::ScopeAlignmentAllowance::payload_bytes(self) -> usiz
 pub const fn surgeist_text::ScopeAlignmentAllowance::records(self) -> usize
 pub struct surgeist_text::ScopeAlignmentCensus
 impl surgeist_text::ScopeAlignmentCensus
+pub const fn surgeist_text::ScopeAlignmentCensus::accounting(&self) -> surgeist_text::ScopeAlignmentCensusAccounting
 pub const fn surgeist_text::ScopeAlignmentCensus::external_retention(&self) -> surgeist_text::ScopeAlignmentRetention
 pub const fn surgeist_text::ScopeAlignmentCensus::input_retention(&self) -> surgeist_text::ScopeAlignmentRetention
 pub const fn surgeist_text::ScopeAlignmentCensus::usage(&self) -> surgeist_text::ScopeAlignmentUsage
+pub struct surgeist_text::ScopeAlignmentCensusAccounting
+impl surgeist_text::ScopeAlignmentCensusAccounting
+pub const fn surgeist_text::ScopeAlignmentCensusAccounting::newly_materialized_records(self) -> usize
+pub const fn surgeist_text::ScopeAlignmentCensusAccounting::usage(self) -> surgeist_text::ScopeAlignmentUsage
+pub struct surgeist_text::ScopeAlignmentCensusFailure
+impl surgeist_text::ScopeAlignmentCensusFailure
+pub const fn surgeist_text::ScopeAlignmentCensusFailure::accounting(&self) -> core::option::Option<surgeist_text::ScopeAlignmentCensusAccounting>
+pub fn surgeist_text::ScopeAlignmentCensusFailure::error(&self) -> &surgeist_text::Error
+pub fn surgeist_text::ScopeAlignmentCensusFailure::into_parts(self) -> (surgeist_text::Error, core::option::Option<surgeist_text::ScopeAlignmentCensusAccounting>)
+impl core::error::Error for surgeist_text::ScopeAlignmentCensusFailure
+pub fn surgeist_text::ScopeAlignmentCensusFailure::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_text::ScopeAlignmentCensusFailure
+pub fn surgeist_text::ScopeAlignmentCensusFailure::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub struct surgeist_text::ScopeAlignmentLimits
 impl surgeist_text::ScopeAlignmentLimits
 pub const fn surgeist_text::ScopeAlignmentLimits::font_queries(self) -> usize
@@ -4023,6 +4037,6 @@ pub surgeist_text::WrappingPolicy::relation: surgeist_text::AnalyzedWrappingRela
 pub fn surgeist_text::compose() -> surgeist_text::Composer
 pub fn surgeist_text::process_contextual_source(input: surgeist_text::ContextualSourceInput) -> surgeist_text::Result<surgeist_text::ProcessedSource>
 pub fn surgeist_text::process_source_whitespace(source: surgeist_text::Source, base_style: surgeist_text::Style, segment_breaks: surgeist_text::DocumentSegmentBreaks) -> surgeist_text::Result<surgeist_text::ProcessedSource>
-pub fn surgeist_text::scope_alignment_census(input: surgeist_text::ScopeAlignmentCensusInput<'_>, related: surgeist_text::ScopeAlignmentProducts<'_>, allowance: surgeist_text::ScopeAlignmentAllowance) -> surgeist_text::Result<surgeist_text::ScopeAlignmentCensus>
+pub fn surgeist_text::scope_alignment_census(input: surgeist_text::ScopeAlignmentCensusInput<'_>, related: surgeist_text::ScopeAlignmentProducts<'_>, allowance: surgeist_text::ScopeAlignmentAllowance) -> core::result::Result<surgeist_text::ScopeAlignmentCensus, surgeist_text::ScopeAlignmentCensusFailure>
 pub fn surgeist_text::source(children: impl core::ops::function::FnOnce(&mut surgeist_text::Composer)) -> surgeist_text::Source
 pub type surgeist_text::Result<T> = core::result::Result<T, surgeist_text::Error>
