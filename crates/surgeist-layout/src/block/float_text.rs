@@ -619,3 +619,9 @@ mod ancestor_end_tests;
 
 #[cfg(test)]
 mod ancestor_end_controls;
+
+#[cfg(test)]
+mod generated_end_controls;
+
+#[cfg(test)]
+mod cell_prefix_tests;
