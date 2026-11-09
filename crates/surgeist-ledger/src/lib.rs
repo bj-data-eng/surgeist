@@ -569,7 +569,7 @@ impl<W: Dimension, R: Dimension> Operation<W, R> {
             return Ok(());
         }
         if const { in_place::wide::<W, R>() }
-            && in_place::preferred::<W, R>(changes.len())
+            && in_place::preferred::<W, R>(changes, self.chain(origin))
             && let Some(checked) =
                 in_place::check(&mut self.scopes, &self.defect, scope, origin, changes)
         {
@@ -637,7 +637,7 @@ impl<W: Dimension, R: Dimension> Operation<W, R> {
         // the dense admission tracks.
         if const { in_place::wide::<W, R>() }
             && !self.checkpoints.configured()
-            && in_place::preferred::<W, R>(changes.len())
+            && in_place::preferred::<W, R>(changes, self.chain(origin))
             && in_place::admit(&mut self.scopes, &self.defect, scope, origin, changes)?
         {
             return Ok(());
@@ -669,6 +669,25 @@ impl<W: Dimension, R: Dimension> Operation<W, R> {
         };
         entry.direct = direct;
         Ok(())
+    }
+
+    /// The number of scopes from `index` to the root, both included. A chain
+    /// that cannot be read is reported as one no journal holds, which selects
+    /// the dense admission.
+    fn chain(&self, index: usize) -> usize {
+        let mut chain = 0_usize;
+        let mut cursor = Some(index);
+        while let Some(at) = cursor {
+            let Some(entry) = self.scopes.get(at) else {
+                return usize::MAX;
+            };
+            chain = chain.saturating_add(1);
+            cursor = entry.parent_index();
+            if chain > self.scopes.len() {
+                return usize::MAX;
+            }
+        }
+        chain
     }
 
     fn record_phase(&mut self, scope: Scope, start: Option<Duration>) {
@@ -830,6 +849,10 @@ impl<W: Dimension, R: Dimension> Drop for Phase<'_, W, R> {
 
 /// One batch's view of the scope list, borrowed once so that every walk
 /// along a scope chain works on the same slice.
+///
+/// This is the dense admission. `in_place.rs` applies the same rules to a small
+/// batch on a wide pair; a change to an admission rule here changes there too,
+/// and the comparison test in `tests.rs` runs both on the same input.
 struct Admission<'a, W: Dimension, R: Dimension> {
     scopes: &'a mut [ScopeEntry<W, R>],
     defect: &'a OnceLock<Defect>,

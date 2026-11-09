@@ -7,6 +7,10 @@
 //! refused batch is rolled back from it. The two paths apply the same rules:
 //! items in input order, each from the origin towards the root, each scope
 //! checking its own cap before its tariff projects the change into its parent.
+//!
+//! The rules live in two places: here and in `Admission` in `lib.rs`. A change to
+//! an admission rule changes both, and the comparison test in `tests.rs` runs the
+//! two on the same random input.
 
 use std::sync::OnceLock;
 
@@ -49,20 +53,40 @@ pub(crate) const fn wide<W: Dimension, R: Dimension>() -> bool {
     words::<W, R>() >= 8
 }
 
-/// Whether a batch of `items` changes goes through the in-place store: the
-/// store pays from about eight words of usage per change.
-pub(crate) fn preferred<W: Dimension, R: Dimension>(items: usize) -> bool {
+/// Whether a batch, admitted at a scope `chain` scopes from the root, goes
+/// through the in-place store. It must pay and it must fit.
+///
+/// The store pays from about eight words of usage per change. A change journals
+/// one value in each scope of the chain, and an acquisition or release one more
+/// for the origin's direct custody. A batch the journal cannot hold would be
+/// rolled back and staged densely, which costs more than staging it densely at
+/// once.
+pub(crate) fn preferred<W: Dimension, R: Dimension>(
+    changes: &[Change<W, R>],
+    chain: usize,
+) -> bool {
     #[cfg(test)]
     match FORCE.get() {
         Force::Dense => return false,
         Force::InPlace => return true,
         Force::Auto => {}
     }
-    words::<W, R>() >= items.saturating_mul(8)
+    if words::<W, R>() < changes.len().saturating_mul(8) {
+        return false;
+    }
+    let mut needed = 0_usize;
+    for change in changes {
+        let own = match change {
+            Change::Work(..) => 0,
+            Change::Acquire(..) | Change::Release(..) => 1,
+        };
+        needed = needed.saturating_add(chain).saturating_add(own);
+    }
+    needed <= JOURNAL
 }
 
 /// The number of values the journal restores.
-const JOURNAL: usize = 16;
+const JOURNAL: usize = 24;
 
 /// What a journal entry restores.
 #[derive(Clone, Copy)]

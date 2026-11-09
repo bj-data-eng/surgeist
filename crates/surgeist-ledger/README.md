@@ -79,7 +79,10 @@ A table names every dimension, so a limit or a tariff cannot be left out, and a
 lookup cannot go out of range. `Limits::from_fn`, `Tariffs::from_fn` and
 `Limits::unlimited` build tables by calling a function once per dimension, and
 `Tariffs::identity` keeps every dimension and unit in the parent. `Limits::work`
-and `Limits::live` read a cap back.
+and `Limits::live` read a cap back. `Operation::limits` returns the caps a scope was
+created with, through a `Phase` as well, and `SharedOperation::limits` returns a
+copy. It reports that scope's own caps, not those of its ancestors, so a consumer
+that runs inside a scope its caller supplied can read the caps it works under.
 
 Dimensions of different sets are different types. A resource dimension cannot be
 passed where a work dimension is expected, and a dimension of another set cannot
@@ -217,8 +220,8 @@ the operation ledger, allocator metadata, and process memory.
 
 Run the admission cost comparison with
 `cargo bench --offline --locked -j 1 -p surgeist-ledger --bench admission`.
-It applies small batches at the root and below a capped root for a narrow and a
-wide dimension set. A small batch on a wide set changes only the values it
+It applies batches of one to ten changes at the root, below a capped root and at
+the leaf of a four-scope chain, for a narrow and a wide dimension set. A small batch on a wide set changes only the values it
 touches and journals their old values, so its cost does not grow with the width
 of the sets; a refused batch is rolled back from the journal and leaves usage,
 peaks and direct custody as they were.

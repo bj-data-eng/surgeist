@@ -1,7 +1,8 @@
 //! Release-mode admission cost for dimension sets of different widths.
 //!
-//! Each case applies one small batch to a scope below a capped root, so every
-//! admission walks two scopes, or to the root alone. The narrow set has the
+//! Each case applies one small batch to the root alone, to a scope below a
+//! capped root, or to the leaf of a four-scope chain that has the shape of the
+//! HTML topology (host, cap, charging and attribution scopes). The narrow set has the
 //! width of a parser's accounting, the wide set the width of a combined
 //! schema. Run with
 //! `cargo bench --offline --locked -j 1 -p surgeist-ledger --bench admission`.
@@ -40,16 +41,17 @@ const BATCHES: u64 = 2_000_000;
 const ROUNDS: usize = 11;
 
 macro_rules! case {
-    ($results:ident, $name:literal, $work:ident, $resource:ident, scopes: $scopes:expr, batch: $batch:expr) => {{
+    ($results:ident, $name:literal, $work:ident, $resource:ident, children: $children:expr, batch: $batch:expr) => {{
         let mut times = [0.0_f64; ROUNDS];
         for time in &mut times {
             let mut operation =
-                Operation::<$work, $resource>::new("root", Limits::unlimited(), 2).unwrap();
+                Operation::<$work, $resource>::new("root", Limits::unlimited(), 4).unwrap();
             let root = operation.root();
-            let scope = if $scopes == 2 {
-                operation
+            let mut scope = root;
+            for () in std::iter::repeat_n((), $children) {
+                scope = operation
                     .child(
-                        root,
+                        scope,
                         "child",
                         Limits::unlimited(),
                         Tariffs::from_fn(
@@ -57,10 +59,8 @@ macro_rules! case {
                             |dimension| Tariff::new(dimension, 1),
                         ),
                     )
-                    .unwrap()
-            } else {
-                root
-            };
+                    .unwrap();
+            }
             let batch = $batch;
             let start = Instant::now();
             for _ in 0..BATCHES {
@@ -77,13 +77,13 @@ macro_rules! case {
 fn main() {
     let mut results: Vec<(&str, f64, f64, f64)> = Vec::new();
     case!(results, "narrow, one work change, root", NarrowWork, NarrowResource,
-        scopes: 1, batch: [Change::Work(NarrowWork::Inspect, 2)]);
+        children: 0, batch: [Change::Work(NarrowWork::Inspect, 2)]);
     case!(results, "narrow, one work change, child and root", NarrowWork, NarrowResource,
-        scopes: 2, batch: [Change::Work(NarrowWork::Inspect, 2)]);
+        children: 1, batch: [Change::Work(NarrowWork::Inspect, 2)]);
     case!(results, "narrow, acquire and release, child and root", NarrowWork, NarrowResource,
-        scopes: 2, batch: [Change::Acquire(NarrowResource::R4, 8), Change::Release(NarrowResource::R4, 8)]);
+        children: 1, batch: [Change::Acquire(NarrowResource::R4, 8), Change::Release(NarrowResource::R4, 8)]);
     case!(results, "narrow, five work changes, child and root", NarrowWork, NarrowResource,
-    scopes: 2, batch: [
+    children: 1, batch: [
         Change::Work(NarrowWork::Visit, 1),
         Change::Work(NarrowWork::Inspect, 2),
         Change::Work(NarrowWork::Copy, 3),
@@ -91,17 +91,56 @@ fn main() {
         Change::Work(NarrowWork::Reserve, 8),
     ]);
     case!(results, "wide, one work change, root", WideWork, WideResource,
-        scopes: 1, batch: [Change::Work(WideWork::Inspect, 2)]);
+        children: 0, batch: [Change::Work(WideWork::Inspect, 2)]);
     case!(results, "wide, one work change, child and root", WideWork, WideResource,
-        scopes: 2, batch: [Change::Work(WideWork::Inspect, 2)]);
+        children: 1, batch: [Change::Work(WideWork::Inspect, 2)]);
     case!(results, "wide, acquire and release, child and root", WideWork, WideResource,
-        scopes: 2, batch: [Change::Acquire(WideResource::R4, 8), Change::Release(WideResource::R4, 8)]);
+        children: 1, batch: [Change::Acquire(WideResource::R4, 8), Change::Release(WideResource::R4, 8)]);
     case!(results, "wide, five work changes, child and root", WideWork, WideResource,
-    scopes: 2, batch: [
+    children: 1, batch: [
         Change::Work(WideWork::Visit, 1),
         Change::Work(WideWork::Inspect, 2),
         Change::Work(WideWork::Copy, 3),
         Change::Work(WideWork::Call, 1),
+        Change::Work(WideWork::Reserve, 8),
+    ]);
+    case!(results, "narrow, five work changes, four scopes", NarrowWork, NarrowResource,
+    children: 3, batch: [
+        Change::Work(NarrowWork::Visit, 1),
+        Change::Work(NarrowWork::Inspect, 2),
+        Change::Work(NarrowWork::Copy, 3),
+        Change::Work(NarrowWork::Call, 1),
+        Change::Work(NarrowWork::Reserve, 8),
+    ]);
+    case!(results, "wide, one work change, four scopes", WideWork, WideResource,
+        children: 3, batch: [Change::Work(WideWork::Inspect, 2)]);
+    case!(results, "wide, five work changes, four scopes", WideWork, WideResource,
+    children: 3, batch: [
+        Change::Work(WideWork::Visit, 1),
+        Change::Work(WideWork::Inspect, 2),
+        Change::Work(WideWork::Copy, 3),
+        Change::Work(WideWork::Call, 1),
+        Change::Work(WideWork::Reserve, 8),
+    ]);
+    case!(results, "wide, ten work changes, four scopes", WideWork, WideResource,
+    children: 3, batch: [
+        Change::Work(WideWork::Read, 1),
+        Change::Work(WideWork::Inspect, 2),
+        Change::Work(WideWork::Copy, 3),
+        Change::Work(WideWork::Step, 1),
+        Change::Work(WideWork::Visit, 1),
+        Change::Work(WideWork::Write, 1),
+        Change::Work(WideWork::Reserve, 8),
+        Change::Work(WideWork::Call, 1),
+        Change::Work(WideWork::Inspect, 2),
+        Change::Work(WideWork::Copy, 3),
+    ]);
+    case!(results, "wide, mixed five changes, four scopes", WideWork, WideResource,
+    children: 3, batch: [
+        Change::Work(WideWork::Visit, 1),
+        Change::Acquire(WideResource::R4, 8),
+        Change::Work(WideWork::Copy, 3),
+        Change::Release(WideResource::R4, 8),
         Change::Work(WideWork::Reserve, 8),
     ]);
     println!("{BATCHES} batches per round, {ROUNDS} rounds");

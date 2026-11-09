@@ -456,9 +456,9 @@ mod staging_stores {
 
     /// The selection rule: a pair of fewer than eight usage words never uses
     /// the in-place store, a wide pair uses it for a batch of up to words/8
-    /// changes, and the compile-time width test agrees.
+    /// changes that the journal holds, and the compile-time width test agrees.
     #[test]
-    fn the_in_place_store_is_selected_by_width_and_batch_size() {
+    fn the_in_place_store_is_selected_by_width_batch_size_and_chain() {
         use crate::in_place::{preferred, wide};
         crate::dimensions! {
             enum OneWork => OneWorkTable { Only }
@@ -466,11 +466,35 @@ mod staging_stores {
         crate::dimensions! {
             enum OneResource => OneResourceTable { Only }
         }
+        let work = |count: usize| vec![Change::<Wk, Rs>::Work(Wk::A, 1); count];
         assert!(!wide::<OneWork, OneResource>());
-        assert!(!preferred::<OneWork, OneResource>(1));
+        assert!(!preferred(
+            &[Change::<OneWork, OneResource>::Work(OneWork::Only, 1)],
+            1
+        ));
         // Four work words and three resources of two words each: ten words.
         assert!(wide::<Wk, Rs>());
-        assert!(preferred::<Wk, Rs>(1));
-        assert!(!preferred::<Wk, Rs>(2));
+        assert!(preferred(&work(1), 2));
+        assert!(!preferred(&work(2), 2));
+        // A pair wide enough for five changes: 2 work and 24 resources.
+        crate::dimensions! {
+            enum BigWork => BigWorkTable { A, B }
+        }
+        crate::dimensions! {
+            enum BigResource => BigResourceTable {
+                R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, R13, R14, R15,
+                R16, R17, R18, R19, R20, R21, R22, R23,
+            }
+        }
+        let big = |count: usize| vec![Change::<BigWork, BigResource>::Work(BigWork::A, 1); count];
+        assert!(preferred(&big(5), 2));
+        // Five work changes over four scopes journal 20 values; seven journal 28,
+        // more than the 24 the journal holds.
+        assert!(preferred(&big(5), 4));
+        assert!(!preferred(&big(7), 4));
+        // An acquisition or release also journals the origin's direct custody.
+        let acquires = vec![Change::<BigWork, BigResource>::Acquire(BigResource::R0, 1); 5];
+        assert!(!preferred(&acquires, 5));
+        assert!(preferred(&acquires, 3));
     }
 }
