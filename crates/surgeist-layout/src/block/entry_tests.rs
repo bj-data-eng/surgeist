@@ -36,9 +36,11 @@ fn input<S: LayoutScalar>() -> ComputeInputOf<S> {
     )
 }
 fn first_margin<S: LayoutScalar>() {
-    for (measured, separating, expected) in
-        [(true, false, 5.0), (false, false, 5.0), (true, true, 11.0)]
-    {
+    for (measured, separating, expected) in [
+        (true, false, 29.0),
+        (false, false, 29.0),
+        (true, true, 11.0),
+    ] {
         let mut owner = crate::NodeInputOf::<S> {
             display: crate::Display::Block,
             ..Default::default()
@@ -83,17 +85,20 @@ fn first_margin<S: LayoutScalar>() {
         };
         let mut session = ComputeSession::new(&tree, Vec::new());
         MEASUREMENTS.with(|value| value.set(0));
-        let Qualification::Known(fact) =
-            qualify(&mut session, 0, input(), PhysicalSide::Top).unwrap()
-        else {
-            panic!("same-progression Block entry is independently qualified");
-        };
-        assert_eq!(fact.margin.resolve(), S::from_f64(expected));
+        let qualified = qualify(&mut session, 0, input(), PhysicalSide::Top).unwrap();
+        if measured && !separating {
+            assert_eq!(qualified, Qualification::RequiresBody);
+        } else {
+            let Qualification::Known(fact) = qualified else {
+                panic!("complete known prefix is independently qualified");
+            };
+            assert_eq!(fact.margin.resolve(), S::from_f64(expected));
+        }
         MEASUREMENTS.with(|value| assert_eq!(value.get(), 0));
         let body = session.compute_child(0, input()).unwrap();
         assert_eq!(
             body.block_margin_collapse.at(crate::PhysicalSide::Top),
-            fact.margin
+            CollapsibleMarginOf::from_margin(S::from_f64(expected))
         );
         if measured {
             let Qualification::Known(leaf_start) =
@@ -154,10 +159,78 @@ fn first_margin<S: LayoutScalar>() {
     assert_eq!(start.offset, S::from_f64(-5.0));
 }
 #[test]
-fn first_start_fact_does_not_measure_or_accumulate_later_children_f32() {
+fn complete_start_prefix_or_body_demand_does_not_measure_f32() {
     first_margin::<f32>();
 }
 #[test]
-fn first_start_fact_does_not_measure_or_accumulate_later_children_f64() {
+fn complete_start_prefix_or_body_demand_does_not_measure_f64() {
     first_margin::<f64>();
+}
+
+fn measured_ten<S: LayoutScalar>(_: crate::LeafMeasureInputOf<S>) -> Size<S> {
+    MEASUREMENTS.with(|value| value.set(value.get() + 1));
+    Size::new(S::from_f64(100.0), S::from_f64(10.0))
+}
+
+#[test]
+fn opaque_last_child_bottom_margin_requires_body_without_qualification_measurement() {
+    fn lane<S: LayoutScalar>() {
+        for empty in [true, false] {
+            let tree = PublicLayoutTreeOf::new()
+                .style(
+                    0,
+                    crate::NodeInputOf::<S> {
+                        display: crate::Display::Block,
+                        ..Default::default()
+                    },
+                )
+                .style(
+                    1,
+                    crate::NodeInputOf::<S> {
+                        display: crate::Display::Block,
+                        margin: Edges::new(
+                            LengthAutoOf::px(S::from_f64(5.0)),
+                            LengthAutoOf::ZERO,
+                            LengthAutoOf::px(S::from_f64(7.0)),
+                            LengthAutoOf::ZERO,
+                        ),
+                        ..Default::default()
+                    },
+                )
+                .children(0, [1])
+                .measure_with(
+                    1,
+                    if empty {
+                        measured_zero::<S>
+                    } else {
+                        measured_ten::<S>
+                    },
+                );
+            let mut session = ComputeSession::new(&tree, Vec::new());
+            MEASUREMENTS.with(|value| value.set(0));
+            assert_eq!(
+                qualify(&mut session, 0, input(), PhysicalSide::Top).unwrap(),
+                Qualification::RequiresBody
+            );
+            let Qualification::Known(leaf) =
+                qualify(&mut session, 1, input(), PhysicalSide::Top).unwrap()
+            else {
+                panic!("the opaque leaf's descendant start set is independently empty");
+            };
+            assert_eq!(leaf.margin, CollapsibleMarginOf::ZERO);
+            MEASUREMENTS.with(|value| assert_eq!(value.get(), 0));
+            let body = session.compute_child(0, input()).unwrap();
+            assert_eq!(
+                body.block_margin_collapse.at(PhysicalSide::Top).resolve(),
+                S::from_f64(if empty { 7.0 } else { 5.0 })
+            );
+            assert_eq!(
+                body.size.height,
+                S::from_f64(if empty { 0.0 } else { 10.0 })
+            );
+            MEASUREMENTS.with(|value| assert!(value.get() > 0));
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
 }

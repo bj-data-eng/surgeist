@@ -773,6 +773,12 @@ Independent contexts contain their own floats; ordinary shared blocks transfer
 float exclusions through the enclosing context without including those floats
 in their own auto height.
 
+Leading empty blocks can share their top and bottom margins with the parent's
+start margin and later adjoining sibling margins. Layout retains the positive
+and negative extrema until that group is consumed or exported. An exported
+group stays outside the parent's content and adds no local offset. Borders,
+padding, sizing, line participation and context boundaries determine adjacency.
+
 An `item_is_table` node represents the normalized outer table wrapper. Its
 contents establish an independent block flow with `BlockFlowContext::Normal`;
 its outer border participates in the parent's float avoidance. Supplied

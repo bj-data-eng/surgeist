@@ -2967,3 +2967,116 @@ fn table_wrapper_context_switch_invalidates_warm_cache_and_preserves_old_batches
     lane::<f32>();
     lane::<f64>();
 }
+
+#[test]
+fn leading_component_cold_warm_invalidation_and_prior_batches() {
+    fn lane<S: LayoutScalar>() {
+        let px = S::from_f64;
+        let width = NonNegativeFiniteOf::new(px(100.0)).unwrap();
+        let request = crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::new(Some(width), None),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(Size::new(
+            AxisSizingRequestOf::new(AvailableSpaceOf::Definite(width), SizingOperation::Normal),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+        ));
+        let ordinary = NodeInputOf {
+            display: Display::Block,
+            size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+            min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+            ..Default::default()
+        };
+        let mut tree = PublicFlowTree::default()
+            .with_children(0, [2, 4])
+            .with_children(2, [3])
+            .with_children(3, [])
+            .with_children(4, [])
+            .with_style(0, ordinary.clone())
+            .with_style(
+                2,
+                NodeInputOf {
+                    min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(px(5.0))),
+                    ..ordinary.clone()
+                },
+            )
+            .with_style(
+                3,
+                NodeInputOf {
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(8.0)),
+                        bottom: LengthAutoOf::px(px(12.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary.clone()
+                },
+            )
+            .with_style(
+                4,
+                NodeInputOf {
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(10.0)),
+                    ),
+                    ..ordinary
+                },
+            );
+        let geometry = |batch: &CompletedLayoutBatchOf<u32, S>, parent_y: f64, following_y: f64| {
+            let parent = public_flow_output(batch, 2, Phase::Unrounded);
+            let empty = public_flow_output(batch, 3, Phase::Unrounded);
+            let following = public_flow_output(batch, 4, Phase::Unrounded);
+            assert_eq!(
+                (
+                    parent.location.y,
+                    parent.size.height,
+                    empty.location.y,
+                    empty.size.height,
+                    following.location.y
+                ),
+                (px(parent_y), px(5.0), S::ZERO, S::ZERO, px(following_y))
+            );
+            assert_eq!(
+                public_flow_output(batch, 0, Phase::Unrounded).size.height,
+                px(following_y + 10.0)
+            );
+        };
+        let cold = compute_layout(&tree, 0, request).unwrap();
+        geometry(&cold, 12.0, 17.0);
+        assert!(!cold.cache_store_entries().is_empty());
+        tree.apply_cache_entries(cold.cache_store_entries());
+        tree.clear_cache_inputs();
+        let warm = compute_layout(&tree, 0, request).unwrap();
+        geometry(&warm, 12.0, 17.0);
+        assert!(!tree.cache_inputs(4).is_empty());
+        assert!(
+            warm.cache_store_entries()
+                .iter()
+                .all(|entry| entry.node() != 4)
+        );
+
+        tree.styles.get_mut(&3).unwrap().margin.bottom = LengthAutoOf::px(px(20.0));
+        let changed = crate::compute_layout_invalidated(&tree, 0, request, &[3]).unwrap();
+        assert!(changed.invalidated_nodes().contains(&3));
+        assert!(changed.invalidated_nodes().contains(&2));
+        assert!(changed.invalidated_nodes().contains(&0));
+        geometry(&changed, 20.0, 25.0);
+        geometry(&cold, 12.0, 17.0);
+        geometry(&warm, 12.0, 17.0);
+        tree.apply_cache_entries(changed.cache_store_entries());
+        let warm_changed = compute_layout(&tree, 0, request).unwrap();
+        geometry(&warm_changed, 20.0, 25.0);
+
+        tree.styles.get_mut(&3).unwrap().margin.bottom = LengthAutoOf::px(px(12.0));
+        let restored = crate::compute_layout_invalidated(&tree, 0, request, &[3]).unwrap();
+        geometry(&restored, 12.0, 17.0);
+        geometry(&changed, 20.0, 25.0);
+        geometry(&warm_changed, 20.0, 25.0);
+    }
+    lane::<f32>();
+    lane::<f64>();
+}

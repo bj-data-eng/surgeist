@@ -99,7 +99,7 @@ fn parent_context_gates_only_block_boundary_collapse_in_both_scalar_lanes() {
             assert_eq!(
                 collapse.at(flow_axes.block_start()).resolve(),
                 if expected_collapse {
-                    S::from_f64(3.0)
+                    S::from_f64(5.0)
                 } else {
                     S::ZERO
                 },
@@ -251,7 +251,9 @@ where
                 .block_margin_collapse
                 .at(flow_axes.block_start())
                 .resolve(),
-            fri06_mr02_physical_edge_value(sentinels, flow_axes.block_start()),
+            fri06_mr02_physical_edge_value(sentinels, flow_axes.block_start()).max(
+                fri06_mr02_physical_edge_value(sentinels, flow_axes.block_end()),
+            ),
             "block-start margin selection changed for {writing_mode:?} {direction:?}"
         );
         assert_eq!(
@@ -4529,4 +4531,757 @@ fn block_legacy_text_align_offsets_table_child_in_free_inline_space() {
         70.0
     );
     assert_eq!(run(TextAlign::LegacyLeft, Direction::Rtl).location.x, 0.0);
+}
+
+fn assert_leading_empty_margins_expose_whole_group<S: LayoutScalar>(external_float: bool) {
+    let px = S::from_f64;
+    let width = NonNegativeFiniteOf::new(px(100.0)).unwrap();
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::new(Some(width), None),
+        OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::new(
+        AxisSizingRequestOf::new(AvailableSpaceOf::Definite(width), SizingOperation::Normal),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+    ));
+    let ordinary = NodeInputOf {
+        display: Display::Block,
+        block_flow_context: BlockFlowContext::Normal,
+        size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+        min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+        ..NodeInputOf::default()
+    };
+    for leading_empty in [false, true] {
+        let mut tree = PublicBlockTree::default()
+            .with_children(0, if external_float { vec![1, 2] } else { vec![2] })
+            .with_children(2, if leading_empty { vec![3, 4] } else { vec![4] })
+            .with_children(4, [])
+            .with_style(0, ordinary.clone())
+            .with_style(2, ordinary.clone())
+            .with_style(
+                4,
+                NodeInputOf {
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(10.0)),
+                    ),
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(20.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary.clone()
+                },
+            );
+        if external_float {
+            tree = tree.with_children(1, []).with_style(
+                1,
+                NodeInputOf {
+                    float: Float::Left,
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(30.0)),
+                    ),
+                    ..ordinary.clone()
+                },
+            );
+        }
+        if leading_empty {
+            tree = tree.with_children(3, []).with_style(
+                3,
+                NodeInputOf {
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(8.0)),
+                        bottom: LengthAutoOf::px(px(12.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary.clone()
+                },
+            );
+        }
+        let batch = compute_layout(&tree, 0, request).unwrap();
+        if external_float {
+            let float = public_final_output(&batch, 1);
+            assert_eq!(
+                (float.location, float.size),
+                (Point::ZERO, Size::new(px(100.0), px(30.0)))
+            );
+        }
+        if leading_empty {
+            let empty = public_final_output(&batch, 3);
+            assert_eq!(
+                (empty.location, empty.size),
+                (Point::ZERO, Size::new(px(100.0), S::ZERO))
+            );
+        }
+        let root = public_final_output(&batch, 0);
+        let parent = public_final_output(&batch, 2);
+        let body = public_final_output(&batch, 4);
+        // P->B is the nearest control. Adding empty A adjoins its8/12
+        // margins to B's20, so the same maximum20 remains exposed by P.
+        assert_eq!(
+            (
+                parent.location,
+                parent.size,
+                body.location,
+                body.size,
+                root.size
+            ),
+            (
+                Point::new(S::ZERO, px(20.0)),
+                Size::new(px(100.0), px(10.0)),
+                Point::ZERO,
+                Size::new(px(100.0), px(10.0)),
+                Size::new(px(100.0), px(30.0)),
+            ),
+            "external float {external_float}, leading empty {leading_empty}: parent/body/root"
+        );
+    }
+}
+
+#[test]
+fn leading_empty_margins_expose_whole_group_without_floats_f32() {
+    assert_leading_empty_margins_expose_whole_group::<f32>(false);
+}
+#[test]
+fn leading_empty_margins_expose_whole_group_without_floats_f64() {
+    assert_leading_empty_margins_expose_whole_group::<f64>(false);
+}
+#[test]
+fn leading_empty_margins_expose_whole_group_with_external_float_f32() {
+    assert_leading_empty_margins_expose_whole_group::<f32>(true);
+}
+#[test]
+fn leading_empty_margins_expose_whole_group_with_external_float_f64() {
+    assert_leading_empty_margins_expose_whole_group::<f64>(true);
+}
+
+#[test]
+fn leading_margin_components_keep_extrema_and_actual_barriers_in_all_flows() {
+    fn lane<S: LayoutScalar>() {
+        use crate::geometry::{LogicalEdgesOf, LogicalSizeOf};
+        let px = S::from_f64;
+        for (writing_mode, direction) in all_writing_mode_directions() {
+            let axes = FlowAxes::new(writing_mode, direction);
+            let margins = |top, bottom| {
+                axes.physical_edges(LogicalEdgesOf::new(S::ZERO, S::ZERO, px(top), px(bottom)))
+                    .map(LengthAutoOf::px)
+            };
+            let edge = axes
+                .physical_edges(LogicalEdgesOf::new(S::ZERO, S::ZERO, px(1.0), S::ZERO))
+                .map(LengthOf::px);
+            let ordinary = NodeInputOf {
+                display: Display::Block,
+                writing_mode,
+                direction,
+                size: axes.physical_size(LogicalSizeOf::new(
+                    PreferredSizeOf::px(px(100.0)),
+                    PreferredSizeOf::AUTO,
+                )),
+                min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+                ..Default::default()
+            };
+            let request = crate::test_support::requests::NativeRootFrameOf::new(
+                axes,
+                axes.physical_size(LogicalSizeOf::new(
+                    Some(NonNegativeFiniteOf::new(px(100.0)).unwrap()),
+                    None,
+                )),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            )
+            .request(axes.physical_size(LogicalSizeOf::new(
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(px(100.0)).unwrap()),
+                    SizingOperation::Normal,
+                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            )));
+            for (case, y, height, empty_y, empty_height, body_y) in [
+                ("baseline", 12.0, 10.0, 0.0, 0.0, 0.0),
+                ("larger_body_margin", 20.0, 10.0, 0.0, 0.0, 0.0),
+                ("multiple", 15.0, 10.0, 0.0, 0.0, 0.0),
+                ("signed", 3.0, 10.0, 0.0, 0.0, 0.0),
+                ("own_positive", 20.0, 10.0, 0.0, 0.0, 0.0),
+                ("own_negative", 8.0, 10.0, 0.0, 0.0, 0.0),
+                ("parent_border", 0.0, 23.0, 9.0, 0.0, 13.0),
+                ("parent_padding", 0.0, 23.0, 9.0, 0.0, 13.0),
+                ("parent_independent", 0.0, 22.0, 8.0, 0.0, 12.0),
+                ("child_border", 8.0, 23.0, 0.0, 1.0, 13.0),
+                ("child_padding", 8.0, 23.0, 0.0, 1.0, 13.0),
+                ("child_minimum", 8.0, 23.0, 0.0, 1.0, 13.0),
+                ("child_independent", 8.0, 22.0, 0.0, 0.0, 12.0),
+                ("parent_minimum", 12.0, 10.0, 0.0, 0.0, 0.0),
+                ("all_empty_minimum", 12.0, 5.0, 0.0, 0.0, 0.0),
+                ("direct_root", 0.0, 22.0, 8.0, 0.0, 12.0),
+            ] {
+                let mut parent = ordinary.clone();
+                let mut empty = NodeInputOf {
+                    margin: margins(8.0, 12.0),
+                    ..ordinary.clone()
+                };
+                let mut body = NodeInputOf {
+                    size: axes.physical_size(LogicalSizeOf::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(10.0)),
+                    )),
+                    margin: margins(7.0, 0.0),
+                    ..ordinary.clone()
+                };
+                match case {
+                    "larger_body_margin" => body.margin = margins(20.0, 0.0),
+                    "signed" => empty.margin = margins(8.0, -12.0),
+                    "own_positive" => parent.margin = margins(20.0, 0.0),
+                    "own_negative" => parent.margin = margins(-4.0, 0.0),
+                    "parent_border" => parent.border = edge,
+                    "parent_padding" => parent.padding = edge,
+                    "parent_independent" => {
+                        parent.block_flow_context = BlockFlowContext::Independent
+                    }
+                    "child_border" => empty.border = edge,
+                    "child_padding" => empty.padding = edge,
+                    "child_minimum" => {
+                        empty.min_size = axes.physical_size(LogicalSizeOf::new(
+                            MinSizeOf::px(S::ZERO),
+                            MinSizeOf::px(px(1.0)),
+                        ))
+                    }
+                    "child_independent" => empty.block_flow_context = BlockFlowContext::Independent,
+                    "parent_minimum" | "all_empty_minimum" => {
+                        parent.min_size = axes.physical_size(LogicalSizeOf::new(
+                            MinSizeOf::px(S::ZERO),
+                            MinSizeOf::px(px(if case == "parent_minimum" { 1.0 } else { 5.0 })),
+                        ))
+                    }
+                    _ => {}
+                }
+                let mut children = vec![3, 4];
+                if case == "multiple" || case == "signed" {
+                    children.insert(1, 5);
+                }
+                if case == "all_empty_minimum" {
+                    children.pop();
+                }
+                let direct = case == "direct_root";
+                let mut tree = PublicBlockTree::default()
+                    .with_children(0, if direct { children.clone() } else { vec![2] })
+                    .with_style(0, ordinary.clone())
+                    .with_children(3, [])
+                    .with_style(3, empty)
+                    .with_children(4, [])
+                    .with_style(4, body);
+                if !direct {
+                    tree = tree.with_children(2, children).with_style(2, parent);
+                }
+                if case == "multiple" || case == "signed" {
+                    tree = tree.with_children(5, []).with_style(
+                        5,
+                        NodeInputOf {
+                            margin: margins(15.0, if case == "signed" { -3.0 } else { 3.0 }),
+                            ..ordinary.clone()
+                        },
+                    );
+                }
+                let batch = compute_layout(&tree, 0, request).unwrap();
+                let root = public_final_output(&batch, 0);
+                let parent = public_final_output(&batch, if direct { 0 } else { 2 });
+                assert_eq!(
+                    axes.logical_point(parent.location, parent.size, root.size)
+                        .block,
+                    px(y),
+                    "{axes:?}, {case}: parent origin"
+                );
+                assert_eq!(
+                    axes.logical_size(parent.size).block,
+                    px(height),
+                    "{axes:?}, {case}: parent height"
+                );
+                let empty = public_final_output(&batch, 3);
+                assert_eq!(
+                    axes.logical_point(empty.location, empty.size, parent.size)
+                        .block,
+                    px(empty_y),
+                    "{axes:?}, {case}: empty origin"
+                );
+                assert_eq!(
+                    axes.logical_size(empty.size).block,
+                    px(empty_height),
+                    "{axes:?}, {case}: empty height"
+                );
+                if case != "all_empty_minimum" {
+                    let body = public_final_output(&batch, 4);
+                    assert_eq!(
+                        axes.logical_point(body.location, body.size, parent.size)
+                            .block,
+                        px(body_y),
+                        "{axes:?}, {case}: body origin"
+                    );
+                    assert_eq!(axes.logical_size(body.size).block, px(10.0));
+                }
+            }
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}
+
+fn assert_leading_start_component_stays_outside_parent_end<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let ordinary = NodeInputOf {
+        display: Display::Block,
+        block_flow_context: BlockFlowContext::Normal,
+        size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+        min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+        ..Default::default()
+    };
+    let width = NonNegativeFiniteOf::new(px(100.0)).unwrap();
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::new(Some(width), None),
+        OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::new(
+        AxisSizingRequestOf::new(AvailableSpaceOf::Definite(width), SizingOperation::Normal),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+    ));
+    for (case, minimum, top, bottom, parent_y, following_y, root_height) in [
+        ("zero margins", 5.0, 0.0, 0.0, 0.0, 5.0, 15.0),
+        ("through parent", 0.0, 8.0, 12.0, 12.0, 12.0, 22.0),
+        ("separate parent end", 5.0, 8.0, 12.0, 12.0, 17.0, 27.0),
+    ] {
+        let tree = PublicBlockTree::default()
+            .with_children(0, [2, 4])
+            .with_children(2, [3])
+            .with_children(3, [])
+            .with_children(4, [])
+            .with_style(0, ordinary.clone())
+            .with_style(
+                2,
+                NodeInputOf {
+                    min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(px(minimum))),
+                    ..ordinary.clone()
+                },
+            )
+            .with_style(
+                3,
+                NodeInputOf {
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(top)),
+                        bottom: LengthAutoOf::px(px(bottom)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary.clone()
+                },
+            )
+            .with_style(
+                4,
+                NodeInputOf {
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(10.0)),
+                    ),
+                    ..ordinary.clone()
+                },
+            );
+        let batch = compute_layout(&tree, 0, request).unwrap();
+        let parent = public_final_output(&batch, 2);
+        let empty = public_final_output(&batch, 3);
+        let following = public_final_output(&batch, 4);
+        let root = public_final_output(&batch, 0);
+        assert_eq!(
+            (parent.location, parent.size, parent.margin),
+            (
+                Point::new(S::ZERO, px(parent_y)),
+                Size::new(px(100.0), px(minimum)),
+                Edges::ZERO
+            ),
+            "{case}: parent"
+        );
+        assert_eq!(
+            (empty.location, empty.size),
+            (Point::ZERO, Size::new(px(100.0), S::ZERO)),
+            "{case}: real empty child"
+        );
+        // The whole8/12 component adjoins P's top. A positive minimum
+        // separates P's own boundaries, so that component is not also its end.
+        assert_eq!(
+            (following.location, following.size, root.size),
+            (
+                Point::new(S::ZERO, px(following_y)),
+                Size::new(px(100.0), px(10.0)),
+                Size::new(px(100.0), px(root_height))
+            ),
+            "{case}: following/root"
+        );
+    }
+}
+
+#[test]
+fn leading_start_component_stays_outside_minimum_parent_end_f32() {
+    assert_leading_start_component_stays_outside_parent_end::<f32>();
+}
+#[test]
+fn leading_start_component_stays_outside_minimum_parent_end_f64() {
+    assert_leading_start_component_stays_outside_parent_end::<f64>();
+}
+
+fn assert_leading_component_text_lines<S: LayoutScalar>(inside_empty: bool, supplied_strut: bool) {
+    use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
+    let px = S::from_f64;
+    let ordinary = NodeInputOf {
+        display: Display::Block,
+        size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+        min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+        ..Default::default()
+    };
+    let request = crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::new(Some(NonNegativeFiniteOf::new(px(100.0)).unwrap()), None),
+        OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::new(
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(px(100.0)).unwrap()),
+            SizingOperation::Normal,
+        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+    ));
+    for visible in [true, false] {
+        let style = ahem_style(4.0, 4.0);
+        let paragraph = PreparedParagraph::with_strut_at_boundary(
+            vec![ParagraphPart::text(
+                5,
+                surgeist_text::Source::new(if visible { "X" } else { "" }),
+                style.clone(),
+            )],
+            style,
+            surgeist_text::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::ParagraphStrut::DefaultFont,
+            Vec::new(),
+            if inside_empty {
+                surgeist_text::ParagraphTerminalEdge::BlockEnd
+            } else {
+                surgeist_text::ParagraphTerminalEdge::NonBlockBoundary
+            },
+        );
+        let tree = PublicBlockTree::default()
+            .with_children(0, [2])
+            .with_children(
+                2,
+                if inside_empty {
+                    vec![3, 4]
+                } else {
+                    vec![3, 5, 4]
+                },
+            )
+            .with_children(3, if inside_empty { vec![5] } else { Vec::new() })
+            .with_children(4, [])
+            .with_children(5, [])
+            .with_style(0, ordinary.clone())
+            .with_style(2, ordinary.clone())
+            .with_style(
+                3,
+                NodeInputOf {
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(8.0)),
+                        bottom: LengthAutoOf::px(px(12.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary.clone()
+                },
+            )
+            .with_style(
+                4,
+                NodeInputOf {
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(10.0)),
+                    ),
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(7.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary.clone()
+                },
+            )
+            .with_style(5, NodeInputOf::non_box())
+            .with_layout_input(5, paragraph.text_input(5));
+        let mut binding = paragraph.binding(if inside_empty { 3 } else { 2 });
+        if supplied_strut {
+            binding.line_strut = Some(surgeist_text::LineStrut {
+                baseline: 3.0,
+                line_extent: 4.0,
+            });
+        }
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![binding],
+            WrappingInput::default(),
+            Vec::new(),
+        )
+        .unwrap();
+        let batch = compute_layout_with_flow(&capture, 0, request).unwrap();
+        let [placed] = batch.placed_text() else {
+            panic!("one actual Text layout belongs to the paragraph");
+        };
+        assert_eq!(placed.layout().source().text().is_empty(), !visible);
+        assert_eq!(placed.layout().lines().len(), usize::from(visible));
+        if !visible {
+            let completions = placed.layout().nonformatted_lines().collect::<Vec<_>>();
+            assert_eq!(completions.len(), 1);
+            let receipt = completions[0].line.finalized_line();
+            assert!(!receipt.has_in_flow_content());
+            // The captured font contributes 3.2/.8; the supplied canonical
+            // strut contributes 3/1. Their union is 4.2, still nonformatted.
+            assert_eq!(
+                receipt.feedback().line_height,
+                if supplied_strut { 4.2 } else { 4.0 }
+            );
+            assert_eq!(receipt.prepared_text(), paragraph.prepared);
+            let allocation = receipt.selected_line().request().line_strut;
+            assert_eq!(allocation.is_some(), supplied_strut);
+            if let Some(allocation) = allocation {
+                assert_eq!(allocation.line_extent, 4.0);
+            }
+        }
+        let (parent_y, parent_height, empty_height, body_y) = if !visible {
+            (12.0, 10.0, 0.0, 0.0)
+        } else if inside_empty {
+            (8.0, 26.0, 4.0, 16.0)
+        } else {
+            (12.0, 21.0, 0.0, 11.0)
+        };
+        let parent = public_final_output(&batch, 2);
+        let empty = public_final_output(&batch, 3);
+        let body = public_final_output(&batch, 4);
+        assert_eq!(
+            (
+                parent.location.y,
+                parent.size.height,
+                empty.location.y,
+                empty.size.height,
+                body.location.y
+            ),
+            (
+                px(parent_y),
+                px(parent_height),
+                S::ZERO,
+                px(empty_height),
+                px(body_y)
+            ),
+            "text visible {visible}, inside empty {inside_empty}"
+        );
+        assert_eq!(batch.unrounded_inline_fragments().is_empty(), !visible);
+    }
+}
+
+#[test]
+fn leading_component_text_inside_empty_box_f32() {
+    assert_leading_component_text_lines::<f32>(true, false);
+}
+#[test]
+fn leading_component_text_inside_empty_box_f64() {
+    assert_leading_component_text_lines::<f64>(true, false);
+}
+#[test]
+fn leading_component_text_between_empty_and_body_f32() {
+    assert_leading_component_text_lines::<f32>(false, false);
+}
+#[test]
+fn leading_component_text_between_empty_and_body_f64() {
+    assert_leading_component_text_lines::<f64>(false, false);
+}
+
+fn assert_empty_origin_with_participating_text_control<S: LayoutScalar>() {
+    use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
+    let px = S::from_f64;
+    for kind in 0..3 {
+        let style = ahem_style(4.0, 4.0);
+        let participant = match kind {
+            0 => ParagraphPart::Control {
+                node: 3,
+                kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+            },
+            1 => ParagraphPart::Atomic {
+                node: 3,
+                size: surgeist_text::Size::new(0.0, 0.0),
+            },
+            _ => ParagraphPart::Control {
+                node: 3,
+                kind: surgeist_text::ParagraphControlKind::InlineBoundaryStart,
+            },
+        };
+        let paragraph = PreparedParagraph::with_strut_at_boundary(
+            vec![
+                ParagraphPart::text(2, surgeist_text::Source::new(""), style.clone()),
+                participant,
+            ],
+            style,
+            surgeist_text::ParagraphBaseDirection::LeftToRight,
+            surgeist_text::ParagraphStrut::DefaultFont,
+            Vec::new(),
+            surgeist_text::ParagraphTerminalEdge::NonBlockBoundary,
+        );
+        let ordinary = NodeInputOf {
+            display: Display::Block,
+            size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+            min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+            ..Default::default()
+        };
+        let mut tree = PublicBlockTree::default()
+            .with_children(0, [1, 2, 3, 4])
+            .with_children(1, [])
+            .with_children(2, [])
+            .with_children(3, [])
+            .with_children(4, [])
+            .with_style(0, ordinary.clone())
+            .with_style(
+                1,
+                NodeInputOf {
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(10.0)),
+                    ),
+                    margin: Edges {
+                        bottom: LengthAutoOf::px(px(12.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary.clone()
+                },
+            )
+            .with_style(2, NodeInputOf::non_box())
+            .with_layout_input(2, paragraph.text_input(2))
+            .with_style(3, NodeInputOf::non_box())
+            .with_style(
+                4,
+                NodeInputOf {
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(10.0)),
+                    ),
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(7.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary
+                },
+            );
+        let metrics = InlineMetricsOf::from_ascent_descent(
+            crate::InlineBaselineContext::Physical,
+            px(3.0),
+            px(1.0),
+        )
+        .unwrap();
+        tree = match kind {
+            0 => tree.with_layout_input(
+                3,
+                LayoutInputOf::line_break(LineBreakInputOf::new().with_metrics(metrics)),
+            ),
+            1 => tree.with_style(
+                3,
+                NodeInputOf {
+                    display: Display::InlineBlock,
+                    size: Size::new(PreferredSizeOf::px(S::ZERO), PreferredSizeOf::px(S::ZERO)),
+                    min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+                    ..Default::default()
+                },
+            ),
+            _ => tree.with_layout_input(
+                3,
+                LayoutInputOf::inline_boundary(
+                    InlineBoundaryInputOf::contribution(
+                        InlineBoundaryKind::Start,
+                        metrics,
+                        crate::InlineBoundaryEdgeOf::try_new(S::ZERO, px(1.0), S::ZERO).unwrap(),
+                    )
+                    .unwrap(),
+                ),
+            ),
+        };
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![paragraph.binding(0)],
+            WrappingInput::default(),
+            Vec::new(),
+        )
+        .unwrap();
+        let request = crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::new(Some(NonNegativeFiniteOf::new(px(100.0)).unwrap()), None),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(px(100.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+        ));
+        let batch = compute_layout_with_flow(&capture, 0, request).unwrap();
+        // Empty source membership cannot erase a real forced, atomic, or
+        // border-bearing line. The line consumes 12 before and 7 after it.
+        assert_eq!(
+            batch.placed_text()[0].layout().lines().len(),
+            1,
+            "kind {kind}"
+        );
+        assert_eq!(public_final_output(&batch, 1).location.y, S::ZERO);
+        assert_eq!(
+            public_final_output(&batch, 4).location.y,
+            px(33.0),
+            "kind {kind}"
+        );
+        assert_eq!(
+            public_final_output(&batch, 0).size.height,
+            px(43.0),
+            "kind {kind}"
+        );
+    }
+}
+
+#[test]
+fn empty_text_origin_preserves_participating_controls_f32() {
+    assert_empty_origin_with_participating_text_control::<f32>();
+}
+#[test]
+fn empty_text_origin_preserves_participating_controls_f64() {
+    assert_empty_origin_with_participating_text_control::<f64>();
+}
+
+#[test]
+fn leading_component_text_supplied_strut_inside_empty_box_f32() {
+    assert_leading_component_text_lines::<f32>(true, true);
+}
+#[test]
+fn leading_component_text_supplied_strut_inside_empty_box_f64() {
+    assert_leading_component_text_lines::<f64>(true, true);
+}
+#[test]
+fn leading_component_text_supplied_strut_between_empty_and_body_f32() {
+    assert_leading_component_text_lines::<f32>(false, true);
+}
+#[test]
+fn leading_component_text_supplied_strut_between_empty_and_body_f64() {
+    assert_leading_component_text_lines::<f64>(false, true);
 }

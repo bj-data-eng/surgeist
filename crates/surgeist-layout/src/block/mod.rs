@@ -671,8 +671,7 @@ where
     } = sized;
     let top_margin = final_pass.top_margin(final_constants);
     let bottom_margin = final_pass.bottom_margin(final_constants);
-    let margins_can_collapse_through = final_constants.can_collapse_through
-        && final_pass.all_in_flow_children_can_collapse_through;
+    let margins_can_collapse_through = final_pass.collapses_through(final_constants);
     let block_margin_collapse = PhysicalBlockMarginCollapseOf::from_block_flow(
         final_constants.flow_axes,
         top_margin,
@@ -688,8 +687,7 @@ where
             final_constants.flow_axes,
             flow,
             final_constants.collapse_top_margin,
-            final_constants.collapse_bottom_margin
-                && final_pass.active_margin_can_collapse_with_parent,
+            final_pass.collapses_end_margin(final_constants),
         );
     }
 

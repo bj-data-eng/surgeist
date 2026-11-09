@@ -3833,7 +3833,7 @@ fn minimum_margin_classification_preserves_authored_positive_minimum<S: LayoutSc
         };
         assert_eq!(
             output(0).size,
-            Size::new(S::from_f64(100.0), S::from_f64(20.0)),
+            Size::new(S::from_f64(100.0), S::from_f64(15.0)),
             "ordinary continuous root control"
         );
         assert_eq!(output(0).location, Point::ZERO);
@@ -7844,4 +7844,79 @@ scalars!(
     inline_containment_intrinsic_sizes_compose_with_live_fragmentation,
     inline_containment_intrinsic_sizes_compose_with_live_fragmentation_f32,
     inline_containment_intrinsic_sizes_compose_with_live_fragmentation_f64
+);
+
+fn leading_components_preserve_native_scope_placement_and_end_ownership<S: LayoutScalar>() {
+    for capped in [false, true] {
+        for forced in [false, true] {
+            let mut parent = block::<S>(None, None);
+            parent.min_size.height =
+                MinSizeOf::value(LengthPercentageOf::px(S::from_f64(5.0)).unwrap());
+            if capped {
+                parent.max_size.height =
+                    MaxSizeOf::value(LengthPercentageOf::px(S::from_f64(1000.0)).unwrap());
+            }
+            let mut empty = block::<S>(None, None);
+            empty.min_size.height = MinSizeOf::value(LengthPercentageOf::px(S::ZERO).unwrap());
+            empty.margin.top =
+                LengthAutoOf::value(LengthPercentageOf::px(S::from_f64(8.0)).unwrap());
+            empty.margin.bottom =
+                LengthAutoOf::value(LengthPercentageOf::px(S::from_f64(12.0)).unwrap());
+            let mut following = block::<S>(None, Some(10.0));
+            if forced {
+                following.break_before = FragmentationBreak::Page;
+            }
+            let tree = Tree::new(
+                vec![block(None, None), parent, empty, following],
+                vec![vec![1, 3], vec![2], vec![], vec![]],
+            );
+            let request = fragmented(
+                LayoutSourceBasis::fresh(),
+                if forced {
+                    vec![frame(100.0, 50.0, true), frame(60.0, 80.0, false)]
+                } else {
+                    vec![frame(100.0, 50.0, true)]
+                },
+            );
+            let batch = compute(&tree, 0, &request).unwrap();
+            let parent = single(&batch, 1);
+            let empty = single(&batch, 2);
+            let following = single(&batch, 3);
+            assert_packet(parent.unrounded_output(), (0.0, 12.0), (100.0, 5.0));
+            assert_packet(parent.final_output(), (0.0, 12.0), (100.0, 5.0));
+            for packet in [empty.unrounded_output(), empty.final_output()] {
+                assert_eq!(packet.location, Point::ZERO);
+                assert_eq!(packet.size, Size::new(S::from_f64(100.0), S::ZERO));
+                assert_eq!(packet.margin.top, S::from_f64(8.0));
+                assert_eq!(packet.margin.bottom, S::from_f64(12.0));
+            }
+            maximum_progress_children(&batch, parent.id(), &[empty.id()]);
+            if forced {
+                let roots = fragments(&batch, 0);
+                assert_eq!(roots.len(), 2);
+                assert_fragment(&roots[0], (100.0, 50.0));
+                assert_fragment(&roots[1], (60.0, 10.0));
+                assert_eq!(
+                    parent.coordinate_parent(),
+                    Some(&FragmentCoordinateSpace::Fragment(roots[0].id().clone()))
+                );
+                assert_eq!(
+                    following.coordinate_parent(),
+                    Some(&FragmentCoordinateSpace::Fragment(roots[1].id().clone()))
+                );
+                assert_packet(following.unrounded_output(), (0.0, 0.0), (60.0, 10.0));
+            } else {
+                let root = single(&batch, 0);
+                assert_packet(root.unrounded_output(), (0.0, 0.0), (100.0, 27.0));
+                maximum_progress_children(&batch, root.id(), &[parent.id(), following.id()]);
+                assert_packet(following.unrounded_output(), (0.0, 17.0), (100.0, 10.0));
+            }
+            maximum_progress_unique_fragments(&batch);
+        }
+    }
+}
+scalars!(
+    leading_components_preserve_native_scope_placement_and_end_ownership,
+    leading_components_preserve_native_scope_placement_and_end_ownership_f32,
+    leading_components_preserve_native_scope_placement_and_end_ownership_f64
 );

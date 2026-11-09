@@ -217,7 +217,7 @@ impl VisibleInlineRunTransition {
             static_positions,
             resolved_terminal_float_block_end,
             active_margin,
-            is_collapsing_first_margin,
+            start_component_open,
             active_margin_can_collapse_with_parent,
             all_in_flow_children_can_collapse_through,
             float_exclusions,
@@ -226,7 +226,11 @@ impl VisibleInlineRunTransition {
             owned_float_block_end,
             contributions,
         } = state;
-        let adjoining_margin = active_margin.resolve();
+        let adjoining_margin = if *start_component_open {
+            S::ZERO
+        } else {
+            active_margin.resolve()
+        };
         context.cursor_block = *cursor_block;
         let constants = context.constants;
         let semantic = self.semantic.as_ref().map(|segment| {
@@ -259,7 +263,7 @@ impl VisibleInlineRunTransition {
 
         if placement.margin == InlineRunMargin::Separates {
             *cursor_block = *cursor_block + adjoining_margin;
-            *is_collapsing_first_margin = false;
+            *start_component_open = false;
         }
         if let (Some(flow), Some(item)) = (formatted.as_mut(), placement.formatted.take()) {
             flow.items.push(item);
@@ -332,7 +336,7 @@ pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
     pub(super) static_positions: &'a mut Vec<(Node, StaticPositionOf<S>)>,
     pub(super) resolved_terminal_float_block_end: &'a mut Option<S>,
     pub(super) active_margin: &'a mut CollapsibleMarginOf<S>,
-    pub(super) is_collapsing_first_margin: &'a mut bool,
+    pub(super) start_component_open: &'a mut bool,
     pub(super) active_margin_can_collapse_with_parent: &'a mut bool,
     pub(super) all_in_flow_children_can_collapse_through: &'a mut bool,
     pub(super) float_exclusions: &'a mut FloatExclusions<S, Node>,
@@ -509,9 +513,9 @@ where
         node_inner_size,
         set_layout,
     } = context;
-    // The native inventory settles whether this run consumes adjoining
-    // margins before any positioning, float-band query or published output.
-    // Text-backed runs retain their existing placement contract here.
+    // Settle adjoining-margin consumption before positioning, float-band
+    // queries or publication. Text-issued empty-origin units, rather than
+    // native source membership, prove this sufficient phantom-line case.
     let uncollapsed_cursor_block = cursor_block;
     let mut cursor_block = cursor_block + adjoining_margin;
     let mut margin = InlineRunMargin::Separates;
@@ -538,13 +542,23 @@ where
             InsetReference::Accepted(frame.measured_inset_basis)
         });
     if text_run.as_ref().is_some_and(|run| {
-        run.nodes().is_empty()
-            && run.binding.line_strut.is_none()
-            && run.segment.start().view().participant_offset()
-                == run.segment.end().view().participant_offset()
+        let start = run.segment.start().view().participant_offset();
+        let end = run.segment.end().view().participant_offset();
+        run.binding
+            .prepared
+            .participants()
+            .skip(start)
+            .take(end - start)
+            .all(|participant| {
+                matches!(participant, surgeist_text::PreparedParticipant::Text(unit)
+                    if unit.view().empty_origin().is_some())
+            })
     }) {
-        // A metadata-only structural section retains its Text receipt
-        // without inventing an anonymous line box or consuming adjoining margins.
+        // The issued section contains only original empty anchors (or no
+        // participants). It selects no forced, atomic or boundary participant,
+        // while supplied strut metrics do not establish line existence. Keep
+        // source membership, allocations and the final nonformatted receipt
+        // without consuming adjoining margins.
         margin = InlineRunMargin::Adjoins;
         cursor_block = uncollapsed_cursor_block;
     }
