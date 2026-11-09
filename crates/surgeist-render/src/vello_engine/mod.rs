@@ -1,4 +1,5 @@
 mod bounded;
+pub(crate) mod geometry;
 pub(crate) mod glyph;
 pub(crate) mod gradient_endpoints;
 mod image_atlas;

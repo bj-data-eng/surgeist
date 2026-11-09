@@ -14,11 +14,13 @@ use vello_encoding::{DrawTag, PathTag, Style};
 use crate::{BackendErrorCode, Error, Result, TextRun, encode::glyph_paint_brush};
 
 use super::bounded::{self, EncodingBacking, Growth, PayloadCustody};
+use super::geometry::{self, QualifiedTransform};
 use super::gradient_endpoints::{EndpointRecords, SceneBrush};
 use crate::accounting::{Account, AccountedVec, RenderPhase, RenderWork, SharedValue};
 
 use super::glyph::{
-    BitmapEncoding, SelectedGlyphRepresentation, ValidatedGlyphRun, preflight_selected_glyphs,
+    BitmapEncoding, SelectedGlyphRepresentation, ValidatedGlyphRun, glyph_geometry_error,
+    preflight_selected_glyphs, qualify_native_outline,
 };
 use super::raster::{self, PreparedVelloPass, RasterParameters};
 
@@ -63,6 +65,40 @@ struct DecodedFontBytes(FontResource);
 impl AsRef<[u8]> for DecodedFontBytes {
     fn as_ref(&self) -> &[u8] {
         self.0.bytes()
+    }
+}
+
+fn geometry_action<T>(account: &Account, action: impl FnOnce() -> T) -> Result<T> {
+    account.work(RenderWork::CoordinateVisits, 1)?;
+    Ok(action())
+}
+
+// The immutable style borrow is the same one qualified and encoded. Empty
+// strokes are eliminated by their owning branch before constructing this state.
+struct QualifiedStroke<'a>(&'a kurbo::Stroke);
+
+impl<'a> QualifiedStroke<'a> {
+    fn try_new(
+        style: &'a kurbo::Stroke,
+        transform: &QualifiedTransform,
+        account: &Account,
+    ) -> Result<Self> {
+        let width = geometry_action(account, || style.width)?;
+        if geometry_action(account, || width == 0.0)? {
+            return Err(crate::GeometryRealizationError::UnrepresentableStroke.into());
+        }
+        geometry::qualify_stroke(style, transform, account)?;
+        Ok(Self(style))
+    }
+
+    fn encode(self, encoding: &mut Encoding) -> Result<()> {
+        if !encoding.encode_stroke_style(self.0) {
+            return Err(Error::new(
+                BackendErrorCode::RenderFailed,
+                "locked native nonzero stroke correspondence changed",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -120,7 +156,11 @@ impl VelloScene {
         fill: Option<Fill>,
         stroke: Option<&kurbo::Stroke>,
         account: &Account,
-    ) -> Result<()> {
+    ) -> Result<QualifiedTransform> {
+        let qualified = geometry::qualify_transform(transform, account)?;
+        let stroke = stroke
+            .map(|style| QualifiedStroke::try_new(style, &qualified, account))
+            .transpose()?;
         self.backing.reserve(
             &mut self.encoding,
             Growth {
@@ -131,25 +171,31 @@ impl VelloScene {
             },
             account,
         )?;
-        self.encoding
-            .encode_transform(VelloTransform::from_kurbo(&transform));
+        self.encoding.encode_transform(qualified.native());
         if let Some(fill) = fill {
             self.encoding.encode_fill_style(fill);
         }
         if let Some(stroke) = stroke {
-            let encoded = self.encoding.encode_stroke_style(stroke);
-            debug_assert!(encoded, "non-zero strokes must encode");
+            stroke.encode(&mut self.encoding)?;
         }
-        Ok(())
+        Ok(qualified)
     }
 
-    fn brush(&mut self, brush: SceneBrush<'_>, account: &Account) -> Result<()> {
+    fn brush(
+        &mut self,
+        brush: SceneBrush<'_>,
+        effective_transform: &QualifiedTransform,
+        account: &Account,
+    ) -> Result<()> {
         let SceneBrush { brush, sampling } = brush;
+        account.work(RenderWork::PaintVisits, 1)?;
+        if matches!(brush, BrushRef::Image(_)) {
+            geometry::qualify_inverse(effective_transform, account)?;
+        }
         let word = self.encoding.draw_data.len();
         let tag_index = self.encoding.draw_tags.len();
         self.backing
             .reserve(&mut self.encoding, bounded::brush_growth(brush), account)?;
-        account.work(RenderWork::PaintVisits, 1)?;
         if let BrushRef::Gradient(gradient) = brush {
             for _ in &gradient.stops.0 {
                 account.work(RenderWork::GradientStopVisits, 1)?;
@@ -173,7 +219,12 @@ impl VelloScene {
         Ok(())
     }
 
-    fn brush_transform(&mut self, transform: kurbo::Affine, account: &Account) -> Result<()> {
+    fn brush_transform(
+        &mut self,
+        transform: kurbo::Affine,
+        account: &Account,
+    ) -> Result<QualifiedTransform> {
+        let qualified = geometry::qualify_transform(transform, account)?;
         self.backing.reserve(
             &mut self.encoding,
             Growth {
@@ -183,13 +234,10 @@ impl VelloScene {
             },
             account,
         )?;
-        if self
-            .encoding
-            .encode_transform(VelloTransform::from_kurbo(&transform))
-        {
+        if self.encoding.encode_transform(qualified.native()) {
             self.encoding.swap_last_path_tags();
         }
-        Ok(())
+        Ok(qualified)
     }
 
     pub(crate) fn fill_elements<'a>(
@@ -219,14 +267,22 @@ impl VelloScene {
         elements: &[kurbo::PathEl],
         account: &Account,
     ) -> Result<()> {
-        self.transform_and_style(transform, Some(style), None, account)?;
+        if !geometry::has_segments(elements, account)? {
+            return Ok(());
+        }
+        let qualified = self.transform_and_style(transform, Some(style), None, account)?;
         self.backing
             .path(&mut self.encoding, elements.len(), account)?;
-        if bounded::encode_elements(&mut self.encoding, elements, true, account)? {
-            if let Some(brush_transform) = brush_transform {
-                self.brush_transform(transform * brush_transform, account)?;
-            }
-            self.brush(brush, account)?;
+        if bounded::encode_elements(&mut self.encoding, elements, true, &qualified, account)? {
+            let effective = if let Some(brush_transform) = brush_transform {
+                self.brush_transform(
+                    geometry::affine_product(transform, brush_transform, account)?,
+                    account,
+                )?
+            } else {
+                qualified
+            };
+            self.brush(brush, &effective, account)?;
         }
         Ok(())
     }
@@ -276,14 +332,22 @@ impl VelloScene {
                 account,
             )?
         };
-        self.transform_and_style(transform, None, Some(style), account)?;
+        if !geometry::has_segments(&elements, account)? {
+            return Ok(());
+        }
+        let qualified = self.transform_and_style(transform, None, Some(style), account)?;
         self.backing
             .path(&mut self.encoding, elements.len(), account)?;
-        if bounded::encode_elements(&mut self.encoding, &elements, false, account)? {
-            if let Some(brush_transform) = brush_transform {
-                self.brush_transform(transform * brush_transform, account)?;
-            }
-            self.brush(brush.into(), account)?;
+        if bounded::encode_elements(&mut self.encoding, &elements, false, &qualified, account)? {
+            let effective = if let Some(brush_transform) = brush_transform {
+                self.brush_transform(
+                    geometry::affine_product(transform, brush_transform, account)?,
+                    account,
+                )?
+            } else {
+                qualified
+            };
+            self.brush(brush.into(), &effective, account)?;
         }
         Ok(())
     }
@@ -355,9 +419,16 @@ impl VelloScene {
         std_dev: f64,
         account: &Account,
     ) -> Result<()> {
-        let kernel_size = 2.5 * std_dev;
+        let kernel_size = geometry_action(account, || 2.5 * std_dev)?;
+        account.work(RenderWork::CoordinateVisits, 4)?;
+        let (x0, y0, x1, y1) = (rect.x0, rect.y0, rect.x1, rect.y1);
+        let x0 = geometry_action(account, || x0 - kernel_size)?;
+        let y0 = geometry_action(account, || y0 - kernel_size)?;
+        let x1 = geometry_action(account, || x1 + kernel_size)?;
+        let y1 = geometry_action(account, || y1 + kernel_size)?;
+        let inflated = kurbo::Rect::new(x0, y0, x1, y1);
         self.draw_blurred_rounded_rect_in(
-            &rect.inflate(kernel_size, kernel_size),
+            &inflated,
             transform,
             RoundedRectBlur {
                 rect,
@@ -383,11 +454,32 @@ impl VelloScene {
             std_dev,
         } = blur;
         let elements = bounded::materialize(shape.path_elements(0.1), account)?;
-        self.transform_and_style(transform, Some(Fill::NonZero), None, account)?;
+        if !geometry::has_segments(&elements, account)? {
+            return Ok(());
+        }
+        let qualified = self.transform_and_style(transform, Some(Fill::NonZero), None, account)?;
         self.backing
             .path(&mut self.encoding, elements.len(), account)?;
-        if bounded::encode_elements(&mut self.encoding, &elements, true, account)? {
-            self.brush_transform(transform.pre_translate(rect.center().to_vec2()), account)?;
+        if bounded::encode_elements(&mut self.encoding, &elements, true, &qualified, account)? {
+            account.work(RenderWork::CoordinateVisits, 4)?;
+            let (x0, y0, x1, y1) = (rect.x0, rect.y0, rect.x1, rect.y1);
+            let width = geometry_action(account, || x1 - x0)?;
+            let height = geometry_action(account, || y1 - y0)?;
+            let sum_x = geometry_action(account, || x0 + x1)?;
+            let sum_y = geometry_action(account, || y0 + y1)?;
+            let center_x = geometry_action(account, || 0.5 * sum_x)?;
+            let center_y = geometry_action(account, || 0.5 * sum_y)?;
+            let center = kurbo::Affine::translate((center_x, center_y));
+            let blur_transform = self.brush_transform(
+                geometry::affine_product(transform, center, account)?,
+                account,
+            )?;
+            geometry::qualify_inverse(&blur_transform, account)?;
+            let reason = crate::GeometryRealizationError::UnrepresentableBlur;
+            let width = geometry::scalar(width, reason, account)?;
+            let height = geometry::scalar(height, reason, account)?;
+            let radius = geometry::scalar(radius, reason, account)?;
+            let std_dev = geometry::scalar(std_dev, reason, account)?;
             self.backing.reserve(
                 &mut self.encoding,
                 Growth {
@@ -398,13 +490,8 @@ impl VelloScene {
                 account,
             )?;
             account.work(RenderWork::PaintVisits, 1)?;
-            self.encoding.encode_blurred_rounded_rect(
-                brush,
-                rect.width() as f32,
-                rect.height() as f32,
-                radius as f32,
-                std_dev as f32,
-            );
+            self.encoding
+                .encode_blurred_rounded_rect(brush, width, height, radius, std_dev);
         }
         Ok(())
     }
@@ -479,10 +566,22 @@ impl VelloScene {
                 format!("internal Vello scene cannot append selected {context}"),
             ));
         }
+        let Some(first_occurrence) = validated.occurrences().next() else {
+            return Ok(());
+        };
         if let crate::paint::PaintKind::Image(image) = validated.paint().fill().kind() {
             self.import_image(image, account)?;
         }
-        let paint_transform = transform * kurbo::Affine::from(validated.transform());
+        account.work(RenderWork::GlyphVisits, 1)?;
+        let first_drawable = first_occurrence.source_index();
+        let paint_transform = geometry::affine_product(
+            transform,
+            kurbo::Affine::from(validated.transform()),
+            account,
+        )
+        .map_err(|error| glyph_geometry_error(error, first_drawable))?;
+        let native_run = geometry::qualify_transform(paint_transform, account)
+            .map_err(|error| glyph_geometry_error(error, first_drawable))?;
         let brush = glyph_paint_brush(
             validated.paint().fill(),
             paint_transform,
@@ -499,10 +598,7 @@ impl VelloScene {
             {
                 Some((
                     image.data.data.id(),
-                    super::image_atlas::ImageExpansion::try_new(
-                        &image.data,
-                        transform * kurbo::Affine::from(validated.transform()),
-                    )?,
+                    super::image_atlas::ImageExpansion::try_new(&image.data, paint_transform)?,
                 ))
             }
             _ => None,
@@ -510,7 +606,7 @@ impl VelloScene {
         self.backing.reserve(
             &mut self.encoding,
             Growth {
-                glyphs: validated.glyphs().len(),
+                glyphs: validated.drawable_count(),
                 glyph_runs: 1,
                 patches: 1,
                 ..Growth::default()
@@ -519,12 +615,26 @@ impl VelloScene {
         )?;
         let stream_offsets = self.encoding.stream_offsets();
         let glyph_start = self.encoding.resources.glyphs.len();
-        for glyph in validated.glyphs() {
+        for occurrence in validated.occurrences() {
             account.work(RenderWork::GlyphVisits, 1)?;
-            account.work(RenderWork::CoordinateVisits, 1)?;
-            let x = glyph.x() as f32;
-            account.work(RenderWork::CoordinateVisits, 1)?;
-            let y = glyph.y() as f32;
+            let glyph = occurrence.glyph();
+            let glyph_index = occurrence.source_index();
+            account.work(RenderWork::CoordinateVisits, 2)?;
+            let [x, y] = occurrence.native_position();
+            let native_placement = VelloTransform {
+                matrix: [1.0, 0.0, 0.0, -1.0],
+                translation: [x, y],
+            };
+            let product = geometry::native_product(native_run.native(), native_placement, account)
+                .map_err(|error| glyph_geometry_error(error, glyph_index))?;
+            account.work(RenderWork::CoordinateVisits, 2)?;
+            let source_position = kurbo::Affine::new([1.0, 0.0, 0.0, -1.0, glyph.x(), glyph.y()]);
+            let source_product =
+                geometry::affine_product(paint_transform, source_position, account)
+                    .map_err(|error| glyph_geometry_error(error, glyph_index))?;
+            let qualified = geometry::qualify_native_transform(source_product, product, account)
+                .map_err(|error| glyph_geometry_error(error, glyph_index))?;
+            qualify_native_outline(occurrence, &qualified, account)?;
             self.encoding.resources.glyphs.push(Glyph {
                 id: glyph.id(),
                 x,
@@ -537,19 +647,42 @@ impl VelloScene {
         }
         // The glyph resolver shares its cache within this encoding. Use one
         // blob identity per backing and keep the original face index on each run.
+        let native_brush = if let Some((_, expansion)) = image_expansion {
+            Some(
+                geometry::qualify_transform(expansion.compensation(), account)
+                    .map_err(|error| glyph_geometry_error(error, first_drawable))?
+                    .native(),
+            )
+        } else {
+            gradient_transform
+        };
+        let native_paint = if let Some(native_brush) = native_brush {
+            account.work(RenderWork::CoordinateVisits, 6)?;
+            let brush_source = native_brush.to_kurbo();
+            let source_product = geometry::affine_product(paint_transform, brush_source, account)
+                .map_err(|error| glyph_geometry_error(error, first_drawable))?;
+            let actual_product =
+                geometry::native_product(native_run.native(), native_brush, account)
+                    .map_err(|error| glyph_geometry_error(error, first_drawable))?;
+            geometry::qualify_native_transform(source_product, actual_product, account)
+                .map_err(|error| glyph_geometry_error(error, first_drawable))?
+        } else {
+            // Resolver composes this actual identity brush factor as well.
+            let actual_product =
+                geometry::native_product(native_run.native(), VelloTransform::IDENTITY, account)
+                    .map_err(|error| glyph_geometry_error(error, first_drawable))?;
+            geometry::qualify_native_transform(paint_transform, actual_product, account)
+                .map_err(|error| glyph_geometry_error(error, first_drawable))?
+        };
         let face = validated.font_data().admitted_face();
         let resource = face.resource();
         let backing = self.font_backing(resource, account)?;
         let index = self.encoding.resources.glyph_runs.len();
         self.encoding.resources.glyph_runs.push(GlyphRun {
             font: peniko::FontData::new(backing, face.index()),
-            transform: VelloTransform::from_kurbo(
-                &(transform * kurbo::Affine::from(validated.transform())),
-            ),
+            transform: native_run.native(),
             glyph_transform: None,
-            brush_transform: image_expansion
-                .map(|(_, expansion)| VelloTransform::from_kurbo(&expansion.compensation()))
-                .or(gradient_transform),
+            brush_transform: native_brush,
             font_size: validated.size(),
             font_embolden: vello_encoding::FontEmbolden::default(),
             hint: false,
@@ -564,7 +697,7 @@ impl VelloScene {
             .patches
             .push(Patch::GlyphRun { index });
         let first_patch = self.encoding.resources.patches.len();
-        self.brush(brush.scene_brush(), account)?;
+        self.brush(brush.scene_brush(), &native_paint, account)?;
         if let Some((source_id, expansion)) = image_expansion {
             self.mark_image_expansion(first_patch, source_id, expansion, account)?;
         }
@@ -611,10 +744,16 @@ impl VelloScene {
         account: &Account,
     ) -> Result<()> {
         let elements = bounded::materialize(clip.path_elements(0.1), account)?;
-        self.transform_and_style(transform, Some(fill), None, account)?;
-        self.backing
-            .path(&mut self.encoding, elements.len(), account)?;
-        if !bounded::encode_elements(&mut self.encoding, &elements, true, account)? {
+        if geometry::has_segments(&elements, account)? {
+            let qualified = self.transform_and_style(transform, Some(fill), None, account)?;
+            self.backing
+                .path(&mut self.encoding, elements.len(), account)?;
+            if !bounded::encode_elements(&mut self.encoding, &elements, true, &qualified, account)?
+            {
+                self.backing.path(&mut self.encoding, 0, account)?;
+                self.encoding.encode_empty_shape();
+            }
+        } else {
             self.backing.path(&mut self.encoding, 0, account)?;
             self.encoding.encode_empty_shape();
         }
@@ -673,7 +812,8 @@ impl VelloScene {
     #[cfg(test)]
     fn append_large_path_scenario_for_test(&mut self, account: &Account) -> Result<()> {
         const LARGE_PATH_SCAN_LINE_SEGMENTS: usize = 4 * 256 * 256 + 1;
-        self.transform_and_style(kurbo::Affine::IDENTITY, Some(Fill::NonZero), None, account)?;
+        let qualified =
+            self.transform_and_style(kurbo::Affine::IDENTITY, Some(Fill::NonZero), None, account)?;
         self.backing.path(
             &mut self.encoding,
             LARGE_PATH_SCAN_LINE_SEGMENTS + 1,
@@ -689,7 +829,11 @@ impl VelloScene {
             x += 1.0;
         }
         path.finish(true);
-        self.brush(BrushRef::Solid(peniko::Color::BLACK).into(), account)
+        self.brush(
+            BrushRef::Solid(peniko::Color::BLACK).into(),
+            &qualified,
+            account,
+        )
     }
 
     #[cfg(test)]
@@ -1279,6 +1423,159 @@ mod pixelated_tests {
     }
 
     #[test]
+    fn empty_native_space_skips_unused_positions_and_visible_failure_keeps_source_index() {
+        use skrifa::MetadataProvider;
+        let bytes = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
+        let provider = skrifa::FontRef::from_index(bytes, 0).unwrap();
+        let visible = provider.charmap().map('A').unwrap().to_u32();
+        let space = provider.charmap().map(' ').unwrap().to_u32();
+        let font = crate::FontData::try_from_bytes(
+            bytes.to_vec(),
+            0,
+            surgeist_test::fixtures::FONT_LIMITS,
+        )
+        .unwrap();
+        let glyphs = [
+            crate::TextGlyph::try_new(space, f64::MAX, f64::MAX, 16.0).unwrap(),
+            crate::TextGlyph::try_new(visible, f64::MIN_POSITIVE, 16.0, 16.0).unwrap(),
+        ];
+        fn make_run<'a>(
+            font: &crate::FontData,
+            glyphs: &'a [crate::TextGlyph],
+        ) -> crate::TextRun<'a> {
+            crate::TextRun::try_new(
+                crate::FontRef::new(1_u64).with_data(font.clone()),
+                16.0,
+                crate::Transform::identity(),
+                crate::TextPaint::try_fill(crate::Paint::color(crate::Color::BLACK)).unwrap(),
+                glyphs,
+                crate::TextRunBounds::unspecified(),
+            )
+            .unwrap()
+        }
+        let mut context = crate::RenderAccountingContext::default();
+        let invalid = make_run(&font, &glyphs[..]);
+        let error = context
+            .run(
+                crate::accounting::RenderAttemptKind::Frame,
+                RenderPhase::Encode,
+                |account| {
+                    let mut scene = VelloScene::default();
+                    scene.encode_text_run(&invalid, account)
+                },
+            )
+            .unwrap_err();
+        assert_eq!(
+            error.geometry_realization_diagnostic(),
+            Some(&crate::GeometryRealizationError::UnrepresentableGlyph { glyph_index: 1 })
+        );
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .live(crate::RenderResource::ScratchCpuBytes),
+            0
+        );
+        let empty = make_run(&font, &glyphs[..1]);
+        context
+            .run(
+                crate::accounting::RenderAttemptKind::Frame,
+                RenderPhase::Encode,
+                |account| {
+                    let mut scene = VelloScene::default();
+                    scene.encode_text_run(&empty, account)?;
+                    assert!(scene.encoding.resources.glyphs.is_empty());
+                    assert!(scene.encoding.resources.glyph_runs.is_empty());
+                    assert!(scene.font_backings.is_none());
+                    Ok(())
+                },
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn actual_native_provider_loss_refuses_the_original_glyph_occurrence() {
+        use skrifa::MetadataProvider;
+        let bytes = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
+        let provider = skrifa::FontRef::from_index(bytes, 0).unwrap();
+        let visible = provider.charmap().map('A').unwrap().to_u32();
+        let font = crate::FontData::try_from_bytes(
+            bytes.to_vec(),
+            0,
+            surgeist_test::fixtures::FONT_LIMITS,
+        )
+        .unwrap();
+        let glyphs = [crate::TextGlyph::try_new(visible, 0.0, 0.0, 0.0).unwrap()];
+        let run = crate::TextRun::try_new(
+            crate::FontRef::new(1_u64).with_data(font),
+            2.0_f32.powi(-43),
+            crate::Transform::scale(2.0_f64.powi(48), 2.0_f64.powi(48)).unwrap(),
+            crate::TextPaint::try_fill(crate::Paint::color(crate::Color::BLACK)).unwrap(),
+            &glyphs,
+            crate::TextRunBounds::unspecified(),
+        )
+        .unwrap();
+        let mut context = crate::RenderAccountingContext::default();
+        let error = context
+            .run(
+                crate::accounting::RenderAttemptKind::Frame,
+                RenderPhase::Encode,
+                |account| {
+                    let mut scene = VelloScene::default();
+                    scene.encode_text_run(&run, account)
+                },
+            )
+            .unwrap_err();
+        assert_eq!(
+            error.geometry_realization_diagnostic(),
+            Some(&crate::GeometryRealizationError::UnrepresentableGlyph { glyph_index: 0 })
+        );
+        let usage = context.last_attempt().unwrap().usage();
+        assert_eq!(usage.live(crate::RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(usage.live(crate::RenderResource::RetainedCpuBytes), 0);
+    }
+
+    #[test]
+    fn geometry_role_remapping_preserves_capacity_and_accounting_domains() {
+        let capacity: Error = crate::GeometryRealizationError::InsufficientNativeCapacity.into();
+        assert_eq!(
+            glyph_geometry_error(capacity, 3).geometry_realization_diagnostic(),
+            Some(&crate::GeometryRealizationError::InsufficientNativeCapacity)
+        );
+        let path: Error =
+            crate::GeometryRealizationError::UnrepresentablePath { element_index: 2 }.into();
+        assert_eq!(
+            glyph_geometry_error(path, 3).geometry_realization_diagnostic(),
+            Some(&crate::GeometryRealizationError::UnrepresentableGlyph { glyph_index: 3 })
+        );
+        let mut context = crate::RenderAccountingContext::new(
+            crate::RenderAccountingOptions::new().with_limits(
+                crate::RenderLimits::new()
+                    .with_work_limit(RenderWork::CoordinateVisits, 0)
+                    .unwrap(),
+            ),
+        );
+        let error = context
+            .run(
+                crate::accounting::RenderAttemptKind::Frame,
+                RenderPhase::Encode,
+                |account| account.work(RenderWork::CoordinateVisits, 1),
+            )
+            .unwrap_err();
+        let original = error.accounting_diagnostic();
+        let error = glyph_geometry_error(error, 3);
+        assert_eq!(error.accounting_diagnostic(), original);
+        assert!(original.is_some());
+        let font = Error::invalid_input_message("intrinsic font control");
+        assert!(
+            glyph_geometry_error(font, 3)
+                .geometry_realization_diagnostic()
+                .is_none()
+        );
+    }
+
+    #[test]
     fn repeated_and_empty_late_glyphs_keep_exact_packed_stream_correspondence() {
         use skrifa::MetadataProvider;
         let account = Account::for_test();
@@ -1292,6 +1589,45 @@ mod pixelated_tests {
             surgeist_test::fixtures::FONT_LIMITS,
         )
         .unwrap();
+        let outlines = provider.outline_glyphs();
+        let outline = outlines.get(skrifa::GlyphId::new(empty)).unwrap();
+        let mut empty_path = kurbo::BezPath::new();
+        struct Pen<'a>(&'a mut kurbo::BezPath);
+        impl skrifa::outline::OutlinePen for Pen<'_> {
+            fn move_to(&mut self, x: f32, y: f32) {
+                self.0.move_to((f64::from(x), f64::from(y)));
+            }
+            fn line_to(&mut self, x: f32, y: f32) {
+                self.0.line_to((f64::from(x), f64::from(y)));
+            }
+            fn quad_to(&mut self, x0: f32, y0: f32, x: f32, y: f32) {
+                self.0
+                    .quad_to((f64::from(x0), f64::from(y0)), (f64::from(x), f64::from(y)));
+            }
+            fn curve_to(&mut self, x0: f32, y0: f32, x1: f32, y1: f32, x: f32, y: f32) {
+                self.0.curve_to(
+                    (f64::from(x0), f64::from(y0)),
+                    (f64::from(x1), f64::from(y1)),
+                    (f64::from(x), f64::from(y)),
+                );
+            }
+            fn close(&mut self) {
+                self.0.close_path();
+            }
+        }
+        outline
+            .draw(
+                skrifa::outline::DrawSettings::unhinted(
+                    skrifa::instance::Size::new(16.0),
+                    skrifa::instance::LocationRef::new(&[]),
+                ),
+                &mut Pen(&mut empty_path),
+            )
+            .unwrap();
+        assert!(
+            empty_path.elements().is_empty(),
+            "authentic Ahem space has no outline segments"
+        );
         let glyphs = [
             crate::TextGlyph::try_new(visible, 0.0, 16.0, 16.0).unwrap(),
             crate::TextGlyph::try_new(visible, 16.0, 16.0, 16.0).unwrap(),
@@ -1314,7 +1650,15 @@ mod pixelated_tests {
             scene.encode_text_run(&run, &account).unwrap();
         }
         assert_eq!(scene.encoding.resources.glyph_runs.len(), 2);
-        assert_eq!(scene.encoding.resources.glyphs.len(), 6);
+        assert_eq!(scene.encoding.resources.glyphs.len(), 4);
+        assert!(
+            scene
+                .encoding
+                .resources
+                .glyphs
+                .iter()
+                .all(|glyph| glyph.id == visible)
+        );
         assert!(scene.encoding.resources.normalized_coords.is_empty());
         let expected = bounded::packed_size(&scene.encoding, &scene.glyph_sizes, &account).unwrap();
         let packed =

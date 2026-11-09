@@ -50,6 +50,7 @@ struct ErrorContext {
 enum PreparationDiagnostic {
     Glyph(crate::GlyphPreparationError),
     Accounting(crate::RenderAccountingError),
+    GeometryRealization(GeometryRealizationError),
     GradientRealization(GradientRealizationError),
     GradientHint(GradientHintError),
     #[cfg(feature = "render-paint")]
@@ -402,6 +403,18 @@ impl Error {
         }
     }
 
+    /// Returns a contextual native-geometry precision or representation refusal.
+    #[must_use]
+    pub const fn geometry_realization_diagnostic(&self) -> Option<&GeometryRealizationError> {
+        match &self.payload {
+            ErrorPayload::Context(context) => match &context.preparation {
+                Some(PreparationDiagnostic::GeometryRealization(error)) => Some(error),
+                _ => None,
+            },
+            ErrorPayload::Accounting(_) => None,
+        }
+    }
+
     /// Returns the contextual gradient realization refusal, when present.
     #[must_use]
     pub const fn gradient_realization_diagnostic(&self) -> Option<&GradientRealizationError> {
@@ -528,6 +541,51 @@ pub enum GradientHintError {
     UnsupportedSweep { stop_index: usize },
 }
 
+impl From<GeometryRealizationError> for Error {
+    fn from(value: GeometryRealizationError) -> Self {
+        Self::context(ErrorContext {
+            code: ErrorCode::GeometryRealization,
+            message: format!("geometry realization refused: {value:?}"),
+            source: None,
+            invalid_value: None,
+            unsupported_primitive: None,
+            unresolved_resource: None,
+            degraded_quality: None,
+            runtime_capability_unavailable: None,
+            preparation: Some(PreparationDiagnostic::GeometryRealization(value)),
+            #[cfg(feature = "render-text")]
+            text_layout: None,
+        })
+    }
+}
+
+/// Valid geometry cannot qualify for its actual native representation.
+///
+/// These contextual refusals preserve intrinsic input validity and semantic
+/// support. Original accounting, storage, font, device, and gradient errors
+/// retain their existing diagnostic domains.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GeometryRealizationError {
+    /// Required native transform coefficients cannot be represented.
+    UnrepresentableTransform,
+    /// A required native path conversion or segment-retention condition fails.
+    UnrepresentablePath {
+        /// Local index in the receiving operation's input element sequence.
+        element_index: usize,
+    },
+    /// A required native stroke parameter cannot be represented.
+    UnrepresentableStroke,
+    /// A required native glyph placement cannot be represented.
+    UnrepresentableGlyph {
+        /// Local index in the receiving operation's input glyph sequence.
+        glyph_index: usize,
+    },
+    /// A required native blur parameter cannot be represented.
+    UnrepresentableBlur,
+    /// Required rank, composition, or subnormal-flushing behavior cannot qualify.
+    InsufficientNativeCapacity,
+}
+
 impl From<GradientRealizationError> for Error {
     fn from(value: GradientRealizationError) -> Self {
         Self::context(ErrorContext {
@@ -644,6 +702,8 @@ mod tests;
 pub enum ErrorCode {
     /// General accounting setup or named admission failure.
     Accounting,
+    /// Reports contextual native-geometry representation or precision refusal.
+    GeometryRealization,
     /// Reports an invalid or unsupported outgoing gradient hint association.
     GradientHint,
     /// Reports contextual gradient representation or precision refusal.
@@ -1418,5 +1478,104 @@ mod hint_error_tests {
         assert_eq!(error.code(), ErrorCode::GradientRealization);
         assert_eq!(error.gradient_realization_diagnostic(), Some(&diagnostic));
         assert!(error.gradient_hint_diagnostic().is_none());
+    }
+}
+
+#[cfg(test)]
+mod geometry_error_tests {
+    use super::*;
+    use std::error::Error as _;
+
+    #[test]
+    fn geometry_refusals_preserve_their_exact_reason_and_local_input_index() {
+        for diagnostic in [
+            GeometryRealizationError::UnrepresentableTransform,
+            GeometryRealizationError::UnrepresentablePath { element_index: 7 },
+            GeometryRealizationError::UnrepresentableStroke,
+            GeometryRealizationError::UnrepresentableGlyph { glyph_index: 11 },
+            GeometryRealizationError::UnrepresentableBlur,
+            GeometryRealizationError::InsufficientNativeCapacity,
+        ] {
+            let error = Error::from(diagnostic);
+            assert_eq!(error.code(), ErrorCode::GeometryRealization);
+            assert_eq!(error.geometry_realization_diagnostic(), Some(&diagnostic));
+            assert!(error.invalid_value_diagnostic().is_none());
+            assert!(error.unsupported_primitive().is_none());
+            assert!(error.degraded_quality_diagnostic().is_none());
+            assert!(error.accounting_diagnostic().is_none());
+            assert!(error.gradient_realization_diagnostic().is_none());
+            assert!(error.gradient_hint_diagnostic().is_none());
+            assert!(error.glyph_preparation_diagnostic().is_none());
+            assert!(error.source().is_none());
+            #[cfg(feature = "render-paint")]
+            assert!(error.paint_gradient_diagnostic().is_none());
+            #[cfg(feature = "render-text")]
+            assert!(error.text_layout_diagnostic().is_none());
+        }
+        assert_ne!(
+            GeometryRealizationError::UnrepresentablePath { element_index: 7 },
+            GeometryRealizationError::UnrepresentablePath { element_index: 8 },
+        );
+        assert_ne!(
+            GeometryRealizationError::UnrepresentablePath { element_index: 7 },
+            GeometryRealizationError::UnrepresentableGlyph { glyph_index: 7 },
+        );
+    }
+
+    #[derive(Debug)]
+    struct Cause;
+
+    impl fmt::Display for Cause {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("native receiving context")
+        }
+    }
+
+    impl error::Error for Cause {}
+
+    #[test]
+    fn geometry_identity_survives_human_context_and_source_enrichment() {
+        let diagnostic = GeometryRealizationError::UnrepresentablePath {
+            element_index: usize::MAX,
+        };
+        let mut error = Error::from(diagnostic).with_source(Cause);
+        error.append_message(format_args!(" at command {}", 3));
+        assert_eq!(error.code(), ErrorCode::GeometryRealization);
+        assert_eq!(error.geometry_realization_diagnostic(), Some(&diagnostic));
+        assert_eq!(
+            error.source().unwrap().to_string(),
+            "native receiving context"
+        );
+        error.replace_message("qualified receiving failure");
+        assert_eq!(error.geometry_realization_diagnostic(), Some(&diagnostic));
+        assert_eq!(
+            error.source().unwrap().to_string(),
+            "native receiving context"
+        );
+        assert_eq!(
+            error.to_string(),
+            "GeometryRealization: qualified receiving failure"
+        );
+    }
+
+    #[test]
+    fn existing_gradient_accounting_input_and_device_errors_retain_their_domains() {
+        let gradient = GradientRealizationError::UnrepresentableStop { stop_index: 2 };
+        let error = Error::from(gradient);
+        assert_eq!(error.code(), ErrorCode::GradientRealization);
+        assert_eq!(error.gradient_realization_diagnostic(), Some(&gradient));
+        assert!(error.geometry_realization_diagnostic().is_none());
+        let accounting = crate::RenderAccountingError::Invariant;
+        let error = Error::from(accounting);
+        assert_eq!(error.code(), ErrorCode::Accounting);
+        assert_eq!(error.accounting_diagnostic(), Some(accounting));
+        assert!(error.geometry_realization_diagnostic().is_none());
+        let error = Error::invalid_value("path", "nonfinite", "must be finite");
+        assert_eq!(error.code(), ErrorCode::InvalidInput);
+        assert!(error.invalid_value_diagnostic().is_some());
+        assert!(error.geometry_realization_diagnostic().is_none());
+        let error = Error::new(BackendErrorCode::RenderFailed, "native backend failure");
+        assert_eq!(error.code(), ErrorCode::RenderFailed);
+        assert!(error.geometry_realization_diagnostic().is_none());
     }
 }

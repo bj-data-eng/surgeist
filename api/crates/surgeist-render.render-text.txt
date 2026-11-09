@@ -115,6 +115,7 @@ pub enum surgeist_render::ErrorCode
 pub surgeist_render::ErrorCode::Accounting
 pub surgeist_render::ErrorCode::DegradedQuality
 pub surgeist_render::ErrorCode::DeviceCreateFailed
+pub surgeist_render::ErrorCode::GeometryRealization
 pub surgeist_render::ErrorCode::GlyphPreparation
 pub surgeist_render::ErrorCode::GradientHint
 pub surgeist_render::ErrorCode::GradientRealization
@@ -159,6 +160,17 @@ pub surgeist_render::Format::Bgra8
 pub surgeist_render::Format::Rgba8
 impl core::convert::From<surgeist_render::Format> for wgpu_types::texture::format::TextureFormat
 pub fn wgpu_types::texture::format::TextureFormat::from(format: surgeist_render::Format) -> Self
+pub enum surgeist_render::GeometryRealizationError
+pub surgeist_render::GeometryRealizationError::InsufficientNativeCapacity
+pub surgeist_render::GeometryRealizationError::UnrepresentableBlur
+pub surgeist_render::GeometryRealizationError::UnrepresentableGlyph
+pub surgeist_render::GeometryRealizationError::UnrepresentableGlyph::glyph_index: usize
+pub surgeist_render::GeometryRealizationError::UnrepresentablePath
+pub surgeist_render::GeometryRealizationError::UnrepresentablePath::element_index: usize
+pub surgeist_render::GeometryRealizationError::UnrepresentableStroke
+pub surgeist_render::GeometryRealizationError::UnrepresentableTransform
+impl core::convert::From<surgeist_render::GeometryRealizationError> for surgeist_render::Error
+pub fn surgeist_render::Error::from(value: surgeist_render::GeometryRealizationError) -> Self
 pub enum surgeist_render::GlyphCapability
 pub surgeist_render::GlyphCapability::CompositeGlyph
 pub surgeist_render::GlyphCapability::PostScript
@@ -1080,6 +1092,7 @@ pub const fn surgeist_render::Error::code(&self) -> surgeist_render::ErrorCode
 pub fn surgeist_render::Error::degraded_quality(diagnostic: surgeist_render::DegradedQuality) -> Self
 pub const fn surgeist_render::Error::degraded_quality_diagnostic(&self) -> core::option::Option<&surgeist_render::DegradedQuality>
 pub fn surgeist_render::Error::from_invalid_value(invalid_value: surgeist_render::InvalidValue) -> Self
+pub const fn surgeist_render::Error::geometry_realization_diagnostic(&self) -> core::option::Option<&surgeist_render::GeometryRealizationError>
 pub const fn surgeist_render::Error::glyph_preparation_diagnostic(&self) -> core::option::Option<&surgeist_render::GlyphPreparationError>
 pub const fn surgeist_render::Error::gradient_hint_diagnostic(&self) -> core::option::Option<&surgeist_render::GradientHintError>
 pub const fn surgeist_render::Error::gradient_realization_diagnostic(&self) -> core::option::Option<&surgeist_render::GradientRealizationError>
@@ -1093,6 +1106,8 @@ pub fn surgeist_render::Error::unresolved_resource(resource: surgeist_render::Un
 pub const fn surgeist_render::Error::unresolved_resource_diagnostic(&self) -> core::option::Option<&surgeist_render::UnresolvedResource>
 pub const fn surgeist_render::Error::unsupported_primitive(&self) -> core::option::Option<surgeist_render::UnsupportedPrimitive>
 pub fn surgeist_render::Error::unsupported_render_primitive(primitive: surgeist_render::UnsupportedPrimitive) -> Self
+impl core::convert::From<surgeist_render::GeometryRealizationError> for surgeist_render::Error
+pub fn surgeist_render::Error::from(value: surgeist_render::GeometryRealizationError) -> Self
 impl core::convert::From<surgeist_render::GlyphPreparationError> for surgeist_render::Error
 pub fn surgeist_render::Error::from(value: surgeist_render::GlyphPreparationError) -> Self
 impl core::convert::From<surgeist_render::GradientHintError> for surgeist_render::Error

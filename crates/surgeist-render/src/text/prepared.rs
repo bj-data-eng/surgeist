@@ -1329,61 +1329,131 @@ impl OutlinePen for CollectingPen {
     }
 }
 
-/// Qualifies the actual composed backend affine before any prepared-path encoding.
-pub(crate) fn qualify_placement(
+/// Preparation keeps the intrinsic glyph-placement policy and error domain.
+#[cfg(any(feature = "render-text", test))]
+pub(crate) fn qualify_preparation_placement(
     transform: kurbo::Affine,
     outline: &PreparedGlyphRun,
-    account: Option<&Account>,
+    account: &Account,
 ) -> Result<()> {
-    let run = || qualify_placement_inner(transform, outline, account);
-    if let Some(account) = account {
-        account.phase(RenderPhase::Qualify, run)
-    } else {
-        run()
-    }
+    account.phase(RenderPhase::Qualify, || {
+        if outline.paints().is_empty() {
+            return Ok(());
+        }
+        qualify_preparation_bounds(transform, outline.bounds().ink_rect(), account)?;
+        let mut control_box: Option<kurbo::Rect> = None;
+        for element in outline.path().elements() {
+            account.work(RenderWork::PathElementVisits, 1)?;
+            let mut point = |point: kurbo::Point| -> Result<()> {
+                account.work(RenderWork::CoordinateVisits, 2)?;
+                let point = kurbo::Point::new(point.x, point.y);
+                account.work(RenderWork::CoordinateVisits, 4)?;
+                control_box = Some(match control_box {
+                    Some(bounds) => bounds.union_pt(point),
+                    None => kurbo::Rect::from_points(point, point),
+                });
+                Ok(())
+            };
+            match *element {
+                kurbo::PathEl::MoveTo(p) | kurbo::PathEl::LineTo(p) => point(p)?,
+                kurbo::PathEl::QuadTo(a, b) => {
+                    point(a)?;
+                    point(b)?;
+                }
+                kurbo::PathEl::CurveTo(a, b, c) => {
+                    point(a)?;
+                    point(b)?;
+                    point(c)?;
+                }
+                kurbo::PathEl::ClosePath => {}
+            }
+        }
+        if let Some(bounds) = control_box {
+            qualify_preparation_native_bounds(transform, Some(bounds), account)?;
+        }
+        for paint in outline.paints() {
+            account.work(RenderWork::PaintVisits, 1)?;
+            match paint {
+                GlyphPaint::Fill {
+                    clip: Some(clip), ..
+                } => qualify_preparation_bounds(transform, Some(*clip), account)?,
+                GlyphPaint::Bitmap {
+                    image,
+                    rect,
+                    brush_transform,
+                } => {
+                    qualify_preparation_bounds(transform, Some(*rect), account)?;
+                    let map = crate::vello_engine::geometry::affine_product(
+                        transform,
+                        *brush_transform,
+                        account,
+                    )?;
+                    account.work(RenderWork::CoordinateVisits, 2)?;
+                    let width = image.size().width();
+                    let height = image.size().height();
+                    qualify_preparation_native_bounds(
+                        map,
+                        Some(kurbo::Rect::new(0.0, 0.0, width, height)),
+                        account,
+                    )?;
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    })
 }
 
-fn qualify_placement_inner(
+/// Actual runtime receiving uses the shared native-geometry qualification.
+pub(crate) fn qualify_receiving_placement(
     transform: kurbo::Affine,
     outline: &PreparedGlyphRun,
-    account: Option<&Account>,
+    account: &Account,
 ) -> Result<()> {
-    qualify_bounds_placement(transform, outline.bounds().ink_rect())?;
-    if !outline.path().elements().is_empty() {
-        let bounds = outline.path().control_box();
-        qualify_bounds_placement(
-            transform,
-            Some(Rect::try_new(
-                bounds.x0,
-                bounds.y0,
-                bounds.width(),
-                bounds.height(),
-            )?),
-        )?;
+    account.phase(RenderPhase::Qualify, || {
+        qualify_receiving_placement_inner(transform, outline, account)
+    })
+}
+
+fn qualify_receiving_placement_inner(
+    transform: kurbo::Affine,
+    outline: &PreparedGlyphRun,
+    account: &Account,
+) -> Result<()> {
+    if outline.paints().is_empty() {
+        return Ok(());
     }
+    let qualified = crate::vello_engine::geometry::qualify_transform(transform, account)?;
+    if let Some(bounds) = outline.bounds().ink_rect() {
+        qualify_receiving_bounds(&qualified, bounds, account)?;
+    }
+    // The actual complete immutable outlines subsequently pass through the
+    // common checked scene path feed. A control-box replay is not that proof.
     for paint in outline.paints() {
-        if let Some(account) = account {
-            account.work(RenderWork::PaintVisits, 1)?;
-        }
+        account.work(RenderWork::PaintVisits, 1)?;
         match paint {
             GlyphPaint::Fill {
                 clip: Some(clip), ..
-            } => qualify_bounds_placement(transform, Some(*clip))?,
+            } => qualify_receiving_bounds(&qualified, *clip, account)?,
             GlyphPaint::Bitmap {
                 image,
                 rect,
                 brush_transform,
             } => {
-                qualify_bounds_placement(transform, Some(*rect))?;
-                let image_transform = transform * *brush_transform;
-                qualify_bounds_placement(
-                    image_transform,
-                    Some(Rect::try_new(
-                        0.0,
-                        0.0,
-                        image.size().width(),
-                        image.size().height(),
-                    )?),
+                qualify_receiving_bounds(&qualified, *rect, account)?;
+                let map = crate::vello_engine::geometry::affine_product(
+                    transform,
+                    *brush_transform,
+                    account,
+                )?;
+                let map = crate::vello_engine::geometry::qualify_transform(map, account)?;
+                account.work(RenderWork::CoordinateVisits, 2)?;
+                let width = image.size().width();
+                let height = image.size().height();
+                crate::vello_engine::geometry::qualify_bounds(
+                    &map,
+                    kurbo::Rect::new(0.0, 0.0, width, height),
+                    account,
                 )?;
             }
             _ => {}
@@ -1392,14 +1462,58 @@ fn qualify_placement_inner(
     Ok(())
 }
 
-pub(crate) fn qualify_bounds_placement(
+fn qualify_receiving_bounds(
+    qualified: &crate::vello_engine::geometry::QualifiedTransform,
+    bounds: Rect,
+    account: &Account,
+) -> Result<()> {
+    account.work(RenderWork::CoordinateVisits, 4)?;
+    let (x, y, width, height) = (bounds.x(), bounds.y(), bounds.width(), bounds.height());
+    let x1 = placement_action(account, || x + width)?;
+    let y1 = placement_action(account, || y + height)?;
+    crate::vello_engine::geometry::qualify_bounds(
+        qualified,
+        kurbo::Rect::new(x, y, x1, y1),
+        account,
+    )
+}
+
+fn placement_action<T>(account: &Account, action: impl FnOnce() -> T) -> Result<T> {
+    account.work(RenderWork::CoordinateVisits, 1)?;
+    Ok(action())
+}
+
+pub(crate) fn qualify_preparation_bounds(
     transform: kurbo::Affine,
     bounds: Option<Rect>,
+    account: &Account,
 ) -> Result<()> {
+    let bounds = if let Some(bounds) = bounds {
+        account.work(RenderWork::CoordinateVisits, 4)?;
+        let (x, y, width, height) = (bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        let x1 = placement_action(account, || x + width)?;
+        let y1 = placement_action(account, || y + height)?;
+        Some(kurbo::Rect::new(x, y, x1, y1))
+    } else {
+        None
+    };
+    qualify_preparation_native_bounds(transform, bounds, account)
+}
+
+fn qualify_preparation_native_bounds(
+    transform: kurbo::Affine,
+    bounds: Option<kurbo::Rect>,
+    account: &Account,
+) -> Result<()> {
+    account.work(RenderWork::CoordinateVisits, 6)?;
     let coefficients = transform.as_coeffs();
     for value in coefficients {
-        let narrowed = value as f32;
-        if !value.is_finite() || !narrowed.is_finite() || (value != 0.0 && narrowed == 0.0) {
+        let narrowed = placement_action(account, || value as f32)?;
+        if !placement_action(account, || value.is_finite())?
+            || !placement_action(account, || narrowed.is_finite())?
+            || (placement_action(account, || value != 0.0)?
+                && placement_action(account, || narrowed == 0.0)?)
+        {
             return Err(GlyphPreparationError::Numeric {
                 phase: GlyphNumericPhase::Placement,
                 value,
@@ -1408,10 +1522,20 @@ pub(crate) fn qualify_bounds_placement(
         }
     }
     let [a, b, c, d, _, _] = coefficients;
-    let determinant = a * d - b * c;
-    let narrowed = coefficients.map(|v| f64::from(v as f32));
-    let canonical_determinant = narrowed[0] * narrowed[3] - narrowed[1] * narrowed[2];
-    if determinant != 0.0 && canonical_determinant == 0.0 {
+    let ad = placement_action(account, || a * d)?;
+    let bc = placement_action(account, || b * c)?;
+    let determinant = placement_action(account, || ad - bc)?;
+    let mut narrowed = [0.0; 6];
+    for (index, value) in coefficients.into_iter().enumerate() {
+        let native = placement_action(account, || value as f32)?;
+        narrowed[index] = placement_action(account, || f64::from(native))?;
+    }
+    let ad = placement_action(account, || narrowed[0] * narrowed[3])?;
+    let bc = placement_action(account, || narrowed[1] * narrowed[2])?;
+    let canonical_determinant = placement_action(account, || ad - bc)?;
+    if placement_action(account, || determinant != 0.0)?
+        && placement_action(account, || canonical_determinant == 0.0)?
+    {
         return Err(GlyphPreparationError::Numeric {
             phase: GlyphNumericPhase::Placement,
             value: determinant,
@@ -1419,44 +1543,63 @@ pub(crate) fn qualify_bounds_placement(
         .into());
     }
     if let Some(rect) = bounds {
-        let coefficients = coefficients.map(|v| v as f32);
-        let [a, b, c, d, e, f] = coefficients;
-        let mut placed: Option<kurbo::Rect> = None;
-        for (x, y) in [
-            (rect.x(), rect.y()),
-            (rect.x() + rect.width(), rect.y()),
-            (rect.x(), rect.y() + rect.height()),
-            (rect.x() + rect.width(), rect.y() + rect.height()),
-        ] {
-            let local_x = x as f32;
-            let local_y = y as f32;
-            let placed_x = a * local_x + c * local_y + e;
-            let placed_y = b * local_x + d * local_y + f;
+        let mut native = [0.0; 6];
+        for (index, value) in coefficients.into_iter().enumerate() {
+            native[index] = placement_action(account, || value as f32)?;
+        }
+        let [a, b, c, d, e, f] = native;
+        account.work(RenderWork::CoordinateVisits, 4)?;
+        let (x, y, x1, y1) = (rect.x0, rect.y0, rect.x1, rect.y1);
+        let width = placement_action(account, || x1 - x)?;
+        let height = placement_action(account, || y1 - y)?;
+        let map_corner = |x, y| -> Result<kurbo::Point> {
+            let local_x = placement_action(account, || x as f32)?;
+            let local_y = placement_action(account, || y as f32)?;
+            let ax = placement_action(account, || a * local_x)?;
+            let cy = placement_action(account, || c * local_y)?;
+            let sum = placement_action(account, || ax + cy)?;
+            let placed_x = placement_action(account, || sum + e)?;
+            let bx = placement_action(account, || b * local_x)?;
+            let dy = placement_action(account, || d * local_y)?;
+            let sum = placement_action(account, || bx + dy)?;
+            let placed_y = placement_action(account, || sum + f)?;
             for value in [placed_x, placed_y] {
-                if !value.is_finite() {
+                if !placement_action(account, || value.is_finite())? {
                     return Err(GlyphPreparationError::Numeric {
                         phase: GlyphNumericPhase::Placement,
-                        value: f64::from(value),
+                        value: placement_action(account, || f64::from(value))?,
                     }
                     .into());
                 }
             }
-            let point = kurbo::Point::new(f64::from(placed_x), f64::from(placed_y));
-            placed = Some(placed.map_or(kurbo::Rect::from_points(point, point), |r| {
-                r.union_pt(point)
-            }));
+            let x = placement_action(account, || f64::from(placed_x))?;
+            let y = placement_action(account, || f64::from(placed_y))?;
+            Ok(kurbo::Point::new(x, y))
+        };
+        let first = map_corner(x, y)?;
+        // Rect::from_points evaluates min/max on both axes.
+        account.work(RenderWork::CoordinateVisits, 4)?;
+        let mut placed = kurbo::Rect::from_points(first, first);
+        for (x, y) in [(x1, y), (x, y1), (x1, y1)] {
+            let point = map_corner(x, y)?;
+            account.work(RenderWork::CoordinateVisits, 4)?;
+            placed = placed.union_pt(point);
         }
-        let placed = placed.expect("four corners are always visited");
-        if determinant != 0.0
-            && rect.width() > 0.0
-            && rect.height() > 0.0
-            && (placed.width() == 0.0 || placed.height() == 0.0)
+        if placement_action(account, || determinant != 0.0)?
+            && placement_action(account, || width > 0.0)?
+            && placement_action(account, || height > 0.0)?
         {
-            return Err(GlyphPreparationError::Numeric {
-                phase: GlyphNumericPhase::Placement,
-                value: placed.area(),
+            let native_width = placement_action(account, || placed.x1 - placed.x0)?;
+            let native_height = placement_action(account, || placed.y1 - placed.y0)?;
+            if placement_action(account, || native_width == 0.0)?
+                || placement_action(account, || native_height == 0.0)?
+            {
+                return Err(GlyphPreparationError::Numeric {
+                    phase: GlyphNumericPhase::Placement,
+                    value: placement_action(account, || native_width * native_height)?,
+                }
+                .into());
             }
-            .into());
         }
     }
     Ok(())
@@ -1465,6 +1608,124 @@ pub(crate) fn qualify_bounds_placement(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn the_same_collapsed_placement_keeps_preparation_and_receiving_error_domains() {
+        use skrifa::MetadataProvider;
+        let bytes = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
+        let provider = skrifa::FontRef::from_index(bytes, 0).unwrap();
+        let glyph = provider.charmap().map('A').unwrap().to_u32();
+        let font =
+            FontData::try_from_bytes(bytes.to_vec(), 0, surgeist_test::fixtures::FONT_LIMITS)
+                .unwrap();
+        let instance = TextInstance::try_new(16.0, vec![], GlyphSynthesis::none()).unwrap();
+        let glyphs = [TextGlyph::try_new(glyph, 0.0, 16.0, 16.0).unwrap()];
+        let outline = font
+            .prepare_glyph_run(
+                &instance,
+                &glyphs,
+                GlyphRunLimits::new(1, 32, 1 << 20, 1 << 20),
+                &mut RenderAccountingContext::default(),
+            )
+            .unwrap();
+        let placement = kurbo::Affine::translate((2.0_f64.powi(40), 2.0_f64.powi(40)));
+        let mut preparation = RenderAccountingContext::default();
+        let error = preparation
+            .run(
+                RenderAttemptKind::GlyphRun,
+                RenderPhase::Qualify,
+                |account| qualify_preparation_placement(placement, &outline, account),
+            )
+            .unwrap_err();
+        assert!(matches!(
+            error.glyph_preparation_diagnostic(),
+            Some(GlyphPreparationError::Numeric {
+                phase: GlyphNumericPhase::Placement,
+                value: 0.0
+            })
+        ));
+        assert!(error.geometry_realization_diagnostic().is_none());
+        assert_eq!(
+            preparation
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .live(RenderResource::ScratchCpuBytes),
+            0
+        );
+        let mut receiving = RenderAccountingContext::default();
+        let error = receiving
+            .run(RenderAttemptKind::Frame, RenderPhase::Qualify, |account| {
+                qualify_receiving_placement(placement, &outline, account)
+            })
+            .unwrap_err();
+        assert!(error.geometry_realization_diagnostic().is_some());
+        assert!(error.glyph_preparation_diagnostic().is_none());
+        assert_eq!(
+            receiving
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .live(RenderResource::ScratchCpuBytes),
+            0
+        );
+        preparation
+            .run(
+                RenderAttemptKind::GlyphRun,
+                RenderPhase::Qualify,
+                |account| qualify_preparation_placement(kurbo::Affine::IDENTITY, &outline, account),
+            )
+            .unwrap();
+        receiving
+            .run(RenderAttemptKind::Frame, RenderPhase::Qualify, |account| {
+                qualify_receiving_placement(kurbo::Affine::IDENTITY, &outline, account)
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn bitmap_intrinsic_identity_map_admits_its_exact_scalar_prefix() {
+        // Six source captures; two nonzero coefficient sequences of five
+        // actions and four zero sequences of four; source determinant3,
+        // canonical recasts/widens12, canonical determinant3 and rank tests2.
+        const ACTIONS: u64 = 6 + 2 * 5 + 4 * 4 + 3 + 12 + 3 + 2;
+        assert_eq!(ACTIONS, 52);
+        let mut limited = RenderAccountingContext::new(
+            crate::RenderAccountingOptions::new().with_limits(
+                crate::RenderLimits::new()
+                    .with_work_limit(RenderWork::CoordinateVisits, ACTIONS - 1)
+                    .unwrap(),
+            ),
+        );
+        let error = limited
+            .run(
+                RenderAttemptKind::GlyphRun,
+                RenderPhase::Qualify,
+                |account| qualify_preparation_bounds(kurbo::Affine::IDENTITY, None, account),
+            )
+            .unwrap_err();
+        assert!(error.accounting_diagnostic().is_some());
+        let usage = limited.last_attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::CoordinateVisits), ACTIONS - 1);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+        let mut retry = RenderAccountingContext::default();
+        retry
+            .run(
+                RenderAttemptKind::GlyphRun,
+                RenderPhase::Qualify,
+                |account| qualify_preparation_bounds(kurbo::Affine::IDENTITY, None, account),
+            )
+            .unwrap();
+        assert_eq!(
+            retry
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::CoordinateVisits),
+            ACTIONS
+        );
+    }
+
     #[test]
     fn empty_run_retains_only_owned_result_payload_and_font_admitted_backing() {
         let bytes = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");

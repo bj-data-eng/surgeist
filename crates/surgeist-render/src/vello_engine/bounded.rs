@@ -463,14 +463,41 @@ pub(super) fn encode_elements(
     encoding: &mut Encoding,
     elements: &[kurbo::PathEl],
     fill: bool,
+    transform: &super::geometry::QualifiedTransform,
     account: &Account,
 ) -> Result<bool> {
-    let mut path = encoding.encode_path(fill);
-    for element in elements {
-        account.work(RenderWork::PathElementVisits, 1)?;
-        path.path_elements(std::iter::once(*element));
+    encode_elements_with_marker(encoding, elements, fill, true, transform, account)
+}
+
+/// Marker suppression is used by native outline preflight. It does not suppress
+/// PathEncoder's implicit fill closure or change its stroke marker policy.
+pub(super) fn encode_elements_with_marker(
+    encoding: &mut Encoding,
+    elements: &[kurbo::PathEl],
+    fill: bool,
+    insert_path_marker: bool,
+    transform: &super::geometry::QualifiedTransform,
+    account: &Account,
+) -> Result<bool> {
+    use super::geometry::{NativeElement, PathQualifier};
+    if !super::geometry::has_segments(elements, account)? {
+        return Ok(false);
     }
-    Ok(path.finish(true) != 0)
+    let mut qualifier = PathQualifier::new(fill);
+    let mut path = encoding.encode_path(fill);
+    for (index, element) in elements.iter().enumerate() {
+        account.work(RenderWork::PathElementVisits, 1)?;
+        match qualifier.element(*element, index, transform, account)? {
+            NativeElement::Move([x, y]) => path.move_to(x, y),
+            NativeElement::Line([x, y]) => path.line_to(x, y),
+            NativeElement::Quad([x, y], [u, v]) => path.quad_to(x, y, u, v),
+            NativeElement::Cubic([x, y], [u, v], [s, t]) => path.cubic_to(x, y, u, v, s, t),
+            NativeElement::Close => path.close(),
+            NativeElement::Empty => (),
+        }
+    }
+    qualifier.finish(account)?;
+    Ok(path.finish(insert_path_marker) != 0)
 }
 
 #[cfg(test)]
@@ -566,7 +593,13 @@ mod tests {
             let input = [MoveTo((1.0, 2.0).into()), LineTo((3.0, 4.0).into())];
             backing.path(&mut encoding, input.len(), account)?;
             let capacities = (encoding.path_tags.capacity(), encoding.path_data.capacity());
-            assert!(encode_elements(&mut encoding, &input, true, account)?);
+            assert!(encode_elements(
+                &mut encoding,
+                &input,
+                true,
+                &super::super::geometry::qualify_transform(kurbo::Affine::IDENTITY, account)?,
+                account
+            )?);
             assert_eq!(
                 encoding
                     .path_tags
@@ -629,7 +662,16 @@ mod tests {
                     let mut backing = EncodingBacking::default();
                     backing.path(&mut encoding, input.len(), account)?;
                     let capacities = (encoding.path_tags.capacity(), encoding.path_data.capacity());
-                    encode_elements(&mut encoding, input, fill, account)?;
+                    encode_elements(
+                        &mut encoding,
+                        input,
+                        fill,
+                        &super::super::geometry::qualify_transform(
+                            kurbo::Affine::IDENTITY,
+                            account,
+                        )?,
+                        account,
+                    )?;
                     assert_eq!(
                         capacities,
                         (encoding.path_tags.capacity(), encoding.path_data.capacity())
@@ -741,7 +783,13 @@ mod tests {
         encoding.encode_fill_style(peniko::Fill::NonZero);
         let input = [MoveTo((1.0, 2.0).into()), LineTo((3.0, 4.0).into())];
         backing.path(encoding, 2, account)?;
-        encode_elements(encoding, &input, true, account)?;
+        encode_elements(
+            encoding,
+            &input,
+            true,
+            &super::super::geometry::qualify_transform(kurbo::Affine::IDENTITY, account)?,
+            account,
+        )?;
         backing.reserve(
             encoding,
             brush_growth(peniko::BrushRef::Solid(peniko::Color::BLACK)),

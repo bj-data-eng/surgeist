@@ -47,6 +47,70 @@ distinct typed diagnostics. Missing adapters, required formats, device limits,
 and surface lifecycle availability do not authorize partial frame publication.
 The [error API](../src/error.rs) defines the operation and reason payloads.
 
+## Native geometry realization
+
+A valid finite scene can exceed the native geometry representation. Render
+qualifies the actual path coordinates, transforms, required stroke/blur values
+and glyph placement factors before submission. `ErrorCode::GeometryRealization`
+and `Error::geometry_realization_diagnostic()` distinguish that contextual limit
+from invalid caller input, unsupported semantic operations and device failures.
+`GeometryRealizationError` identifies an unrepresentable transform, path element,
+stroke, glyph occurrence or blur value, or insufficient native proof capacity.
+Path and glyph indices are local to the receiving input sequence.
+Font and intrinsic glyph-preparation errors retain their preparation domain;
+gradient field refusals retain `GradientRealization`.
+Standalone placed-Text preparation meters its own placement validation and
+retains its glyph numeric diagnostics. Runtime frame encoding performs the
+separate contextual native receiving checks.
+
+Separate narrowing can erase geometry even when its final device bounds are
+finite. Examples include a huge local rectangle under a tiny scale, a translated
+unit edge whose endpoints round together, and tiny local edges that the pinned
+encoder eliminates before a large transform makes them visible. The shared
+receiver checks the accepted native factors and explicit segment retention;
+uncertifiable rank, composed arithmetic and subnormal behavior refuse. It encodes
+the accepted representation and preserves the existing native curve and coverage
+approximation. Ordinary nonzero rounding remains supported; this contract adds
+no exact source-f64 raster, arbitrary winding or affine-boundary tie guarantee.
+
+The receiver also bounds source-to-native device placement. It admits at most
+0.25 device pixel of Euclidean point displacement from coordinate/factor
+narrowing and permitted GPU point arithmetic. Outward bounds compare the source
+and actual native factors without evaluating a cancellation-sensitive source
+sum. This is a separate receiving capacity policy; the backend's curve and
+coverage approximation remains additive. The policy does not promise identical
+pixels at affine boundaries. A finite map whose separately narrowed factors
+move the geometry beyond this budget refuses as insufficient native capacity.
+
+Surviving image and blurred-rectangle brushes also require qualified native
+inverse arithmetic. A forward matrix can retain rank in widened arithmetic while
+its actual GPU determinant underflows; that is insufficient native capacity.
+The proof covers reassociated division/product forms and propagates bounded
+zero neighborhoods and subnormal flushing. Required nonzero factors must not
+collapse. It also encloses finite image/blur mapping across the raster format's
+padded device-coordinate domain, including permitted upward rounding of the lane
+and pixel-center additions, without adding a color-accuracy guarantee.
+Gradient field precision and its diagnostics remain with the gradient owner.
+
+Qualification follows existing semantic elimination. Empty paths and glyphs,
+true point degeneracy, zero-width strokes, empty clips and eliminated subtrees
+retain their behavior and do not acquire requirements from unused geometry or
+resources. Fill, stroke, clip, image, blur and prepared/native glyph paths share
+the receiving checks. Gradient field qualification remains a separate owner.
+
+For native glyphs, the default scaled font provider can lose an entire small
+outline before path encoding. An empty scaled result therefore receives a
+qualification-only check of the same authentic unscaled outline. A nonempty
+source refuses at its original glyph index; true spaces retain their empty
+behavior. The witness does not change the native drawing size or path style.
+
+Ledger admits actual conversion, retention, rank and composition work, including
+repeated walks and copies. Real backing is admitted before private stream writes.
+A refused frame releases unpublished custody, submits nothing and preserves
+previous pixels and successful statistics; a fresh valid attempt can retry.
+The [geometry contribution](https://github.com/bj-data-eng/surgeist/issues/2111)
+records the receiving scope and precision boundaries.
+
 ## Gradient paints
 
 `Gradient` supplies ordinary linear, positive elliptical radial, horizontal-distance
@@ -203,10 +267,10 @@ Unrepresentable controls/hints and uncertifiable phase/geometry retain typed
 capability refusals; numerical difficulty does not select a different average.
 Steps retain directed threshold rounding and their comparison-only finite
 certificate, including native subnormal threshold bits.
-Large local path coordinates under tiny transforms also encounter the existing
-[native geometry encoding limitation](https://github.com/bj-data-eng/surgeist/issues/2111).
-The field's bounded final-coefficient proof covers its carrier and sampling;
-complete scenes retain their geometry and inverse-domain receiving constraints.
+The field's bounded final-coefficient proof covers its carrier and sampling.
+Complete scenes also pass [native geometry realization](#native-geometry-realization)
+and retain their finite inverse-domain constraints; a qualified carrier does not
+certify separately narrowed path coordinates or transforms.
 
 Qualification checks the complete final target and each actual glyph transform
 product. Smooth field error is measured relative to the accepted stop span,
@@ -488,7 +552,7 @@ existing resource manager continues to own GPU residency and cross-frame leases.
 | --- | --- |
 | Default features (`[]`) | Native headless GPU execution without a window. |
 | `render-text` | Optional direct Text dependency, without Text default features; immutable placed-layout consumption, independent of window/web/accessibility adapters. |
-| `render-paint` | Optional direct Paint dependency; native positive geometry and used-stop consumption into repeating fields, independent of host adapters. |
+| `render-paint` | Optional direct Paint dependency; native positive and zero-width geometry/used-stop consumption, independent of host adapters. |
 | `render-window` | Enables `surgeist-window` and native window attachment; live presentation requires its graphical host lifecycle. |
 | `render-web` | Enables `wgpu/webgpu`; web-canvas support requires `wasm32`. The documented wasm leaf check compiles `--lib --tests`. |
 | `render-window,render-web` on native | Additive compiled features; uses the same native live-window smoke target. |

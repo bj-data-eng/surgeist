@@ -94,7 +94,7 @@ pub use error::{
     RuntimeCapabilityUnavailable, RuntimeCapabilityUnavailableReason, RuntimeOperation,
     SurfaceIdentityMismatchKind, UnresolvedResource, UnresolvedResourceKind, UnsupportedPrimitive,
 };
-pub use error::{GradientHintError, GradientRealizationError};
+pub use error::{GeometryRealizationError, GradientHintError, GradientRealizationError};
 pub use geometry::{
     CoordinateSpaceId, CoordinateSpaceKind, CoordinateSpaceTag, PhysicalSize, Point, Radii, Rect,
     Size, Transform,

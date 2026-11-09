@@ -104,7 +104,7 @@ pub(super) fn prepare(
     )?;
     let brush_transform =
         crate::encode::image_transform(image.size(), rect, crate::ImageFit::Fill)?;
-    qualify_bounds_placement(brush_transform, None)?;
+    qualify_preparation_bounds(brush_transform, None, account)?;
     pen.paint(GlyphPaint::Bitmap {
         image,
         rect,

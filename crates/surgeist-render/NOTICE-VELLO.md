@@ -100,6 +100,48 @@ reuse the checked fine-program lookup boundaries and preserve the surrounding
 coverage operation. The native probe also covers folded controls, phase seams
 and subnormal step thresholds. No upstream license text or source hash changes.
 
+## Native geometry receiving correspondence
+
+The private `src/vello_engine/geometry.rs` receiving checks qualify the actual
+native coordinates and factors before stream publication. Their segment-retention
+correspondence follows `vello_encoding` 0.9.0's path encoder, including its local
+zero-length and initial-tangent predicate. Matrix and deferred glyph composition
+follow the same package's actual narrowed factors. These checks preserve the
+existing native curve/coverage approximation and refuse an unqualified required
+representation; they do not replace GPU geometry execution.
+
+The arithmetic correspondence also follows `vello_shaders` 0.9.0's native
+flattening and shared transform expressions, including nested fused operations
+and permitted subnormal behavior. The selected source files are:
+
+| Package and source | SHA-256 |
+| --- | --- |
+| `vello_encoding` 0.9.0, `src/math.rs` | `59d65cad5505858a13b5eb11251d31166119cf5ae1bc1cc3514009523344014f` |
+| `vello_encoding` 0.9.0, `src/path.rs` | `ea94b3018a243f29e6954f4669a247dcea2d2fbaac23b9f376d00ad9cab78c49` |
+| `vello_encoding` 0.9.0, `src/resolve.rs` | `b246758ed97ece009f2b5852c9632b387dc7950dfb84604ff0802974623bb03b` |
+| `vello_shaders` 0.9.0, `shader/flatten.wgsl` | `d610683837057363eb37186e55377b7873ada7e06cfa58b58eddfded1badd403` |
+| `vello_shaders` 0.9.0, `shader/shared/transform.wgsl` | `da5d9c0a83f04d3f70432a13250466e8632960761cda1ae69632d2bc325d3552` |
+
+The encoding sources retain `Copyright 2022 the Vello Authors` and
+`Apache-2.0 OR MIT`; the shader sources additionally permit `Unlicense`.
+The existing linked license texts preserve these alternatives unchanged.
+
+Source-to-native point correspondence uses an explicit 0.25-device-pixel
+Euclidean receiving budget. The pinned flattening shader's curve and arc
+`tol` values inform this policy, but do not establish a total conversion
+or raster guarantee: the retained backend approximation is separately additive.
+The source/native affine-difference bound is Surgeist-owned qualification.
+Image and blurred-rectangle inverse qualification follows the actual
+`shared/transform.wgsl` determinant, reciprocal, matrix and translation chain.
+Its consumer envelope also follows the permitted upward rounding of the actual
+fine-shader integer conversion, lane addition and image pixel-center addition.
+
+Native glyph qualification also uses the existing locked Skrifa 0.42.1 provider
+to distinguish a true empty outline from loss during its default scaled
+FreeType conversion. An unscaled outline is consulted only when the actual
+scaled result has no real segments; it is a qualification witness and is never
+substituted for the cache's drawing geometry or settings.
+
 ## Omitted upstream main-crate sources
 
 | Upstream source | Rationale |

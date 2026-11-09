@@ -26,6 +26,7 @@ use skrifa::{
 };
 
 use super::bounded::{self, Growth, OwnedEncoding};
+use super::geometry::{self, QualifiedTransform};
 use crate::accounting::{Account, AccountedVec, RenderPhase, RenderWork};
 use crate::{
     BackendErrorCode, Error, FontData, Result, TextGlyph, TextPaint, TextRun, Transform,
@@ -53,14 +54,41 @@ const SKRIFA_NORMALIZED_COORDS: &[skrifa::instance::NormalizedCoord] = &[];
 
 pub(crate) struct ValidatedGlyphRun<'a> {
     font_data: &'a FontData,
-    glyphs: &'a [TextGlyph],
     size: f32,
     transform: Transform,
     paint: &'a TextPaint,
     representations: AccountedVec<SelectedGlyphRepresentation>,
+    drawables: AccountedVec<DrawableGlyph<'a>>,
     stream_sizes: StreamOffsets,
     #[cfg(test)]
     selected_glyph_traces: AccountedVec<SelectedGlyphTrace>,
+}
+
+// One authoritative occurrence record couples the actual source glyph, its
+// diagnostic ordinal, and the native position admitted for that same glyph.
+struct DrawableGlyph<'a> {
+    glyph: &'a TextGlyph,
+    source_index: usize,
+    position: [f32; 2],
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct GlyphOccurrence<'a> {
+    font_data: &'a FontData,
+    size: &'a f32,
+    drawable: &'a DrawableGlyph<'a>,
+}
+
+impl<'a> GlyphOccurrence<'a> {
+    pub(crate) fn glyph(self) -> &'a TextGlyph {
+        self.drawable.glyph
+    }
+    pub(crate) fn source_index(self) -> usize {
+        self.drawable.source_index
+    }
+    pub(crate) fn native_position(self) -> [f32; 2] {
+        self.drawable.position
+    }
 }
 
 pub(crate) enum SelectedGlyphRepresentation {
@@ -174,10 +202,6 @@ impl<'a> ValidatedGlyphRun<'a> {
         self.font_data
     }
 
-    pub(crate) const fn glyphs(&self) -> &[TextGlyph] {
-        self.glyphs
-    }
-
     pub(crate) const fn paint(&self) -> &TextPaint {
         self.paint
     }
@@ -188,6 +212,18 @@ impl<'a> ValidatedGlyphRun<'a> {
 
     pub(crate) fn representations(&self) -> &[SelectedGlyphRepresentation] {
         self.representations.as_slice()
+    }
+
+    pub(crate) fn occurrences(&self) -> impl ExactSizeIterator<Item = GlyphOccurrence<'_>> {
+        self.drawables.iter().map(|drawable| GlyphOccurrence {
+            font_data: self.font_data,
+            size: &self.size,
+            drawable,
+        })
+    }
+
+    pub(crate) fn drawable_count(&self) -> usize {
+        self.drawables.len()
     }
 
     #[cfg(test)]
@@ -218,17 +254,13 @@ pub(crate) fn preflight_selected_glyphs<'a>(
     let outlines = font.outline_glyphs();
     let mut representations = account.temporary(run.glyphs().len())?;
     let mut stream_sizes = StreamOffsets::default();
+    let mut drawables = account.temporary(run.glyphs().len())?;
     #[cfg(test)]
     let mut selected_glyph_traces = account.temporary(run.glyphs().len())?;
 
-    for glyph in run.glyphs() {
+    for (glyph_index, glyph) in run.glyphs().iter().enumerate() {
         account.work(RenderWork::GlyphVisits, 1)?;
-        // Qualify the complete borrowed run before any encoding mutation. The
-        // encoder can then lower these same immutable coordinates infallibly.
-        account.work(RenderWork::CoordinateVisits, 1)?;
-        canonical_glyph_coordinate(glyph.x())?;
-        account.work(RenderWork::CoordinateVisits, 1)?;
-        canonical_glyph_coordinate(glyph.y())?;
+        let mut drawable = true;
         if glyph.id() >= glyph_count {
             return Err(missing_glyph_error(glyph.id()));
         }
@@ -240,7 +272,15 @@ pub(crate) fn preflight_selected_glyphs<'a>(
                 .color_glyphs()
                 .get(glyph_id)
                 .ok_or_else(|| font_data_error(font_data))?;
-            preflight_color_glyph(&color, &outlines, &cpal, run.size(), font_data, account)?;
+            preflight_color_glyph(
+                &color,
+                &outlines,
+                &cpal,
+                run.size(),
+                font_data,
+                glyph_index,
+                account,
+            )?;
             #[cfg(test)]
             selected_glyph_traces.push(SelectedGlyphTrace::Colr)?;
             SelectedGlyphRepresentation::Colr
@@ -261,50 +301,65 @@ pub(crate) fn preflight_selected_glyphs<'a>(
             )?;
             SelectedGlyphRepresentation::Bitmap(encoding)
         } else {
-            let sizes = preflight_outline(&outlines, glyph_id, run.size(), font_data, account)?;
+            let sizes = preflight_outline(
+                &outlines,
+                glyph_id,
+                run.size(),
+                font_data,
+                glyph_index,
+                account,
+            )
+            .map_err(|error| glyph_geometry_error(error, glyph_index))?;
+            drawable = sizes.path_data != 0;
             bounded::sum_streams(&mut stream_sizes, &sizes, account)?;
             #[cfg(test)]
             selected_glyph_traces.push(SelectedGlyphTrace::Outline)?;
             SelectedGlyphRepresentation::Outline
         };
+        if drawable {
+            let reason = crate::GeometryRealizationError::UnrepresentableGlyph { glyph_index };
+            account.work(RenderWork::CoordinateVisits, 1)?;
+            let x = glyph.x();
+            account.work(RenderWork::CoordinateVisits, 1)?;
+            let y = glyph.y();
+            let x = geometry::scalar(x, reason, account)?;
+            let y = geometry::scalar(y, reason, account)?;
+            let slot = drawables.append_slot()?;
+            account.work(RenderWork::RasterResourceCopies, 1)?;
+            slot.write(DrawableGlyph {
+                glyph,
+                source_index: glyph_index,
+                position: [x, y],
+            });
+        }
+        account.work(RenderWork::RasterResourceCopies, 1)?;
         representations.push(representation)?;
     }
 
-    if !run.glyphs().is_empty() {
+    let drawable_count = drawables.len();
+    if drawable_count != 0 {
         stream_sizes.path_tags = bounded::add(
             stream_sizes.path_tags,
-            bounded::add(run.glyphs().len(), 2, account)?,
+            bounded::add(drawable_count, 2, account)?,
             account,
         )?;
         stream_sizes.transforms = bounded::add(
             stream_sizes.transforms,
-            bounded::add(run.glyphs().len(), 1, account)?,
+            bounded::add(drawable_count, 1, account)?,
             account,
         )?;
     }
     Ok(ValidatedGlyphRun {
         font_data,
-        glyphs: run.glyphs(),
         size: run.size(),
         transform: run.transform(),
         paint: run.paint(),
         representations,
+        drawables,
         stream_sizes,
         #[cfg(test)]
         selected_glyph_traces,
     })
-}
-
-fn canonical_glyph_coordinate(value: f64) -> Result<f32> {
-    let canonical = value as f32;
-    if !value.is_finite() || !canonical.is_finite() || (value != 0.0 && canonical == 0.0) {
-        return Err(Error::invalid_value(
-            "glyph backend coordinate",
-            value,
-            "must remain finite and preserve a nonzero value when converted to f32",
-        ));
-    }
-    Ok(canonical)
 }
 
 fn selected_color_root<'a>(
@@ -372,6 +427,7 @@ fn preflight_outline(
     glyph_id: GlyphId,
     size: f32,
     font_data: &FontData,
+    glyph_index: usize,
     account: &Account,
 ) -> Result<StreamOffsets> {
     let outline = outlines
@@ -386,10 +442,36 @@ fn preflight_outline(
         DrawSettings::unhinted(Size::new(size), LocationRef::new(SKRIFA_NORMALIZED_COORDS)),
         &mut pen,
     );
-    if let Some(error) = pen.error {
+    if let Some(error) = pen.error.take() {
         return Err(error);
     }
     drawn.map_err(|_| font_data_error(font_data))?;
+    if !geometry::has_segments(&pen.elements, account)? {
+        // The actual scaled provider may have quantized a visible outline to
+        // coincident points before PathEncoder. Release that consumed buffer
+        // before obtaining a qualification-only witness from the same outline.
+        drop(pen);
+        let mut witness = QualifiedPen {
+            elements: account.temporary(0)?,
+            account,
+            error: None,
+        };
+        account.work(RenderWork::GlyphVisits, 1)?;
+        let drawn = outline.draw(
+            DrawSettings::unhinted(Size::unscaled(), LocationRef::new(SKRIFA_NORMALIZED_COORDS)),
+            &mut witness,
+        );
+        if let Some(error) = witness.error.take() {
+            return Err(error);
+        }
+        drawn.map_err(|_| font_data_error(font_data))?;
+        if geometry::has_segments(&witness.elements, account)? {
+            return Err(
+                crate::GeometryRealizationError::UnrepresentableGlyph { glyph_index }.into(),
+            );
+        }
+        return Ok(StreamOffsets::default());
+    }
     // Same default size/coordinates, unhinted nonzero fill, zero embolden and
     // finish(false) as the locked glyph cache. No narrower prepared-outline gate.
     let mut owned = OwnedEncoding::temporary();
@@ -405,16 +487,68 @@ fn preflight_outline(
     )?;
     encoding.encode_fill_style(peniko::Fill::NonZero);
     backing.path(encoding, pen.elements.len(), account)?;
-    let mut path = encoding.encode_path(true);
-    for element in &pen.elements {
-        account.work(RenderWork::PathElementVisits, 1)?;
-        path.path_elements(std::iter::once(*element));
-    }
-    let segments = path.finish(false);
-    if segments == 0 {
+    let qualified = geometry::qualify_transform(kurbo::Affine::IDENTITY, account)?;
+    if !bounded::encode_elements_with_marker(
+        encoding,
+        &pen.elements,
+        true,
+        false,
+        &qualified,
+        account,
+    )? {
         encoding.reset();
     }
     Ok(encoding.stream_offsets())
+}
+
+pub(crate) fn qualify_native_outline(
+    occurrence: GlyphOccurrence<'_>,
+    qualified: &QualifiedTransform,
+    account: &Account,
+) -> Result<()> {
+    let font_data = occurrence.font_data;
+    let font = skrifa::FontRef::from_index(font_data.bytes(), font_data.index())
+        .map_err(|_| font_data_error(font_data))?;
+    account.work(RenderWork::GlyphVisits, 1)?;
+    let glyph = occurrence.glyph();
+    let glyph_index = occurrence.source_index();
+    let outlines = font.outline_glyphs();
+    let outline = outlines
+        .get(GlyphId::new(glyph.id()))
+        .ok_or_else(|| font_data_error(font_data))?;
+    let mut pen = QualifiedPen {
+        elements: account.temporary(0)?,
+        account,
+        error: None,
+    };
+    let drawn = outline.draw(
+        DrawSettings::unhinted(
+            Size::new(*occurrence.size),
+            LocationRef::new(SKRIFA_NORMALIZED_COORDS),
+        ),
+        &mut pen,
+    );
+    if let Some(error) = pen.error {
+        return Err(error);
+    }
+    drawn.map_err(|_| font_data_error(font_data))?;
+    let mut owned = OwnedEncoding::temporary();
+    let (encoding, backing) = owned.parts();
+    backing.path(encoding, pen.elements.len(), account)?;
+    bounded::encode_elements_with_marker(encoding, &pen.elements, true, false, qualified, account)
+        .map_err(|error| glyph_geometry_error(error, glyph_index))?;
+    Ok(())
+}
+
+pub(crate) fn glyph_geometry_error(error: Error, glyph_index: usize) -> Error {
+    match error.geometry_realization_diagnostic() {
+        Some(
+            crate::GeometryRealizationError::UnrepresentableTransform
+            | crate::GeometryRealizationError::UnrepresentablePath { .. }
+            | crate::GeometryRealizationError::UnrepresentableGlyph { .. },
+        ) => crate::GeometryRealizationError::UnrepresentableGlyph { glyph_index }.into(),
+        _ => error,
+    }
 }
 
 fn preflight_color_glyph(
@@ -423,6 +557,7 @@ fn preflight_color_glyph(
     cpal: &Cpal<'_>,
     size: f32,
     font_data: &FontData,
+    glyph_index: usize,
     account: &Account,
 ) -> Result<()> {
     let mut painter = PreflightColorPainter {
@@ -430,6 +565,7 @@ fn preflight_color_glyph(
         outlines,
         cpal,
         size,
+        glyph_index,
         failed: false,
         account,
         error: None,
@@ -1109,11 +1245,12 @@ struct QualifiedPen<'a> {
     error: Option<Error>,
 }
 impl QualifiedPen<'_> {
-    fn emit(&mut self, element: impl FnOnce() -> kurbo::PathEl) {
+    fn emit(&mut self, coordinates: usize, element: impl FnOnce() -> kurbo::PathEl) {
         if self.error.is_none() {
             self.error = self
                 .account
                 .work(RenderWork::PathElementVisits, 1)
+                .and_then(|()| self.account.work(RenderWork::CoordinateVisits, coordinates))
                 .and_then(|()| bounded::push_element(&mut self.elements, element()))
                 .err();
         }
@@ -1121,13 +1258,17 @@ impl QualifiedPen<'_> {
 }
 impl OutlinePen for QualifiedPen<'_> {
     fn move_to(&mut self, x: f32, y: f32) {
-        self.emit(|| kurbo::PathEl::MoveTo((f64::from(x), f64::from(y)).into()));
+        self.emit(2, || {
+            kurbo::PathEl::MoveTo((f64::from(x), f64::from(y)).into())
+        });
     }
     fn line_to(&mut self, x: f32, y: f32) {
-        self.emit(|| kurbo::PathEl::LineTo((f64::from(x), f64::from(y)).into()));
+        self.emit(2, || {
+            kurbo::PathEl::LineTo((f64::from(x), f64::from(y)).into())
+        });
     }
     fn quad_to(&mut self, ax: f32, ay: f32, x: f32, y: f32) {
-        self.emit(|| {
+        self.emit(4, || {
             kurbo::PathEl::QuadTo(
                 (f64::from(ax), f64::from(ay)).into(),
                 (f64::from(x), f64::from(y)).into(),
@@ -1135,7 +1276,7 @@ impl OutlinePen for QualifiedPen<'_> {
         });
     }
     fn curve_to(&mut self, ax: f32, ay: f32, bx: f32, by: f32, x: f32, y: f32) {
-        self.emit(|| {
+        self.emit(6, || {
             kurbo::PathEl::CurveTo(
                 (f64::from(ax), f64::from(ay)).into(),
                 (f64::from(bx), f64::from(by)).into(),
@@ -1144,7 +1285,7 @@ impl OutlinePen for QualifiedPen<'_> {
         });
     }
     fn close(&mut self) {
-        self.emit(|| kurbo::PathEl::ClosePath);
+        self.emit(0, || kurbo::PathEl::ClosePath);
     }
 }
 
@@ -1153,6 +1294,7 @@ struct PreflightColorPainter<'a, 'font> {
     outlines: &'a skrifa::OutlineGlyphCollection<'font>,
     cpal: &'a Cpal<'font>,
     size: f32,
+    glyph_index: usize,
     failed: bool,
     account: &'a Account,
     error: Option<Error>,
@@ -1180,6 +1322,7 @@ impl PreflightColorPainter<'_, '_> {
             glyph_id,
             self.size,
             self.font_data,
+            self.glyph_index,
             self.account,
         ) {
             self.error = Some(error);
@@ -1275,5 +1418,218 @@ impl ColorPainter for PreflightColorPainter<'_, '_> {
 
     fn push_layer(&mut self, _: CompositeMode) {
         self.record();
+    }
+}
+
+#[cfg(test)]
+mod receiving_tests {
+    use super::*;
+    use crate::accounting::{RenderAttemptKind, RenderResource};
+    use crate::{RenderAccountingContext, RenderAccountingOptions, RenderLimits};
+
+    fn fixture() -> (FontData, u32, u32) {
+        let bytes = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
+        let provider = skrifa::FontRef::from_index(bytes, 0).unwrap();
+        let visible = provider.charmap().map('A').unwrap().to_u32();
+        let space = provider.charmap().map(' ').unwrap().to_u32();
+        let font =
+            FontData::try_from_bytes(bytes.to_vec(), 0, surgeist_test::fixtures::FONT_LIMITS)
+                .unwrap();
+        (font, visible, space)
+    }
+
+    fn selected_outline(
+        font: &FontData,
+        glyph: u32,
+        size: f32,
+        index: usize,
+        account: &Account,
+    ) -> Result<StreamOffsets> {
+        let provider = skrifa::FontRef::from_index(font.bytes(), font.index()).unwrap();
+        preflight_outline(
+            &provider.outline_glyphs(),
+            GlyphId::new(glyph),
+            size,
+            font,
+            index,
+            account,
+        )
+    }
+
+    #[test]
+    fn drawable_occurrences_keep_source_identity_and_placement_after_empty_glyphs() {
+        let (font, visible, space) = fixture();
+        let glyphs = [
+            TextGlyph::try_new(space, f64::MAX, f64::MAX, 16.0).unwrap(),
+            TextGlyph::try_new(visible, 3.0, 16.0, 16.0).unwrap(),
+            TextGlyph::try_new(visible, 11.0, 20.0, 16.0).unwrap(),
+        ];
+        let run = TextRun::try_new(
+            crate::FontRef::new(1_u64).with_data(font),
+            16.0,
+            Transform::identity(),
+            TextPaint::try_fill(crate::Paint::color(crate::Color::BLACK)).unwrap(),
+            &glyphs,
+            crate::TextRunBounds::unspecified(),
+        )
+        .unwrap();
+        // The first empty source glyph contributes its representation record.
+        // Refuse the next actual drawable record copy before it is appended.
+        let mut limited = RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::RasterResourceCopies, 1)
+                    .unwrap(),
+            ),
+        );
+        let error = limited
+            .run(RenderAttemptKind::Frame, RenderPhase::Qualify, |account| {
+                let _validated = preflight_selected_glyphs(&run, account)?;
+                Ok(())
+            })
+            .unwrap_err();
+        assert!(error.accounting_diagnostic().is_some());
+        let usage = limited.last_attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::RasterResourceCopies), 1);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+        let mut retry = RenderAccountingContext::default();
+        retry
+            .run(RenderAttemptKind::Frame, RenderPhase::Qualify, |account| {
+                let validated = preflight_selected_glyphs(&run, account)?;
+                let mut occurrences = validated.occurrences();
+                assert_eq!(occurrences.len(), 2);
+                let first = occurrences.next().unwrap();
+                assert!(std::ptr::eq(first.glyph(), &glyphs[1]));
+                assert_eq!(first.source_index(), 1);
+                assert_eq!(first.native_position(), [3.0, 16.0]);
+                let second = occurrences.next().unwrap();
+                assert!(std::ptr::eq(second.glyph(), &glyphs[2]));
+                assert_eq!(second.source_index(), 2);
+                assert_eq!(second.native_position(), [11.0, 20.0]);
+                assert!(occurrences.next().is_none());
+                Ok(())
+            })
+            .unwrap();
+        let usage = retry.last_attempt().unwrap().usage();
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+    }
+
+    #[test]
+    fn scaled_empty_visible_outline_refuses_but_authentic_space_stays_empty() {
+        let (font, visible, space) = fixture();
+        let mut context = RenderAccountingContext::default();
+        let error = context
+            .run(RenderAttemptKind::Frame, RenderPhase::Qualify, |account| {
+                selected_outline(&font, visible, 2.0_f32.powi(-43), 7, account)
+            })
+            .unwrap_err();
+        assert_eq!(
+            error.geometry_realization_diagnostic(),
+            Some(&crate::GeometryRealizationError::UnrepresentableGlyph { glyph_index: 7 })
+        );
+        assert_eq!(
+            context
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .live(RenderResource::ScratchCpuBytes),
+            0
+        );
+        let empty = context
+            .run(RenderAttemptKind::Frame, RenderPhase::Qualify, |account| {
+                selected_outline(&font, space, 2.0_f32.powi(-43), 7, account)
+            })
+            .unwrap();
+        assert_eq!(empty.path_data, 0);
+        assert_eq!(empty.path_tags, 0);
+        assert_eq!(empty.transforms, 0);
+        let usage = context.last_attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::PathElementVisits), 0);
+        assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
+    }
+
+    #[test]
+    fn outline_capacity_refusal_preserves_accounting_and_allows_empty_then_fresh_retry() {
+        let (font, visible, space) = fixture();
+        let mut limited = RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_limits(RenderLimits::new().with_scratch_bytes(0)),
+        );
+        let error = limited
+            .run(RenderAttemptKind::Frame, RenderPhase::Qualify, |account| {
+                selected_outline(&font, visible, 2.0_f32.powi(-43), 4, account)
+            })
+            .unwrap_err();
+        assert!(error.accounting_diagnostic().is_some());
+        assert!(error.geometry_realization_diagnostic().is_none());
+        let usage = limited.last_attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::PathElementVisits), 1);
+        assert_eq!(usage.peak(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        let empty = limited
+            .run(RenderAttemptKind::Frame, RenderPhase::Qualify, |account| {
+                selected_outline(&font, space, 2.0_f32.powi(-43), 4, account)
+            })
+            .unwrap();
+        assert_eq!(empty.path_data, 0);
+        let mut retry = RenderAccountingContext::default();
+        let normal = retry
+            .run(RenderAttemptKind::Frame, RenderPhase::Qualify, |account| {
+                selected_outline(&font, visible, 16.0, 4, account)
+            })
+            .unwrap();
+        assert!(normal.path_data > 0);
+        assert_eq!(
+            retry
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .live(RenderResource::ScratchCpuBytes),
+            0
+        );
+    }
+
+    #[test]
+    fn unscaled_witness_refusal_preserves_real_prefix_cleanup_and_normal_retry() {
+        let (font, visible, _) = fixture();
+        // Independently observed Ahem contour: Move, three Lines, Close. The
+        // scaled provider emits five records; empty-source classification walks
+        // all five. Refuse the first witness record after those ten visits.
+        const SCALED_PREFIX: u64 = 5 + 5;
+        let mut limited = RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::PathElementVisits, SCALED_PREFIX)
+                    .unwrap(),
+            ),
+        );
+        let error = limited
+            .run(RenderAttemptKind::Frame, RenderPhase::Qualify, |account| {
+                selected_outline(&font, visible, 2.0_f32.powi(-43), 2, account)
+            })
+            .unwrap_err();
+        assert!(error.accounting_diagnostic().is_some());
+        assert!(error.geometry_realization_diagnostic().is_none());
+        let usage = limited.last_attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::PathElementVisits), SCALED_PREFIX);
+        assert!(usage.peak(RenderResource::ScratchCpuBytes) > 0);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+        let mut retry = RenderAccountingContext::default();
+        let normal = retry
+            .run(RenderAttemptKind::Frame, RenderPhase::Qualify, |account| {
+                selected_outline(&font, visible, 16.0, 2, account)
+            })
+            .unwrap();
+        assert!(normal.path_data > 0);
+        assert_eq!(
+            retry
+                .last_attempt()
+                .unwrap()
+                .usage()
+                .live(RenderResource::ScratchCpuBytes),
+            0
+        );
     }
 }

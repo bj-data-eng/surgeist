@@ -197,8 +197,12 @@ fn encode_vello_commands(
                 transform: run_transform,
                 paint,
             } => {
-                let transform = transform * kurbo::Affine::from(*run_transform);
-                crate::text::qualify_glyph_placement(transform, outline, Some(account))?;
+                let transform = crate::vello_engine::geometry::affine_product(
+                    transform,
+                    kurbo::Affine::from(*run_transform),
+                    account,
+                )?;
+                crate::text::qualify_receiving_placement(transform, outline, account)?;
                 for operation in outline.paints() {
                     account.work(RenderWork::PaintVisits, 1)?;
                     match operation {
