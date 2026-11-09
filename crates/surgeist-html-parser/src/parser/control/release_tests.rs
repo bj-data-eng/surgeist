@@ -472,3 +472,19 @@ fn a_shared_admission_whose_charge_vanished_still_reports_the_post_poll_stop() {
     );
     assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
 }
+
+#[test]
+fn final_attribute_release_credits_the_admitted_bytes_not_the_physical_capacity() {
+    let mut c = control();
+    let values = bank();
+    let (mut vector, shared) = c.final_attribute_tickets(&values).unwrap();
+    // The ledger holds eight bytes fewer for the vector than it physically has.
+    vector.admitted -= 8;
+    let held = current(&c, HtmlParseResource::ManagedCapacityBytes);
+    c.release_final_attributes(values, vector, shared)
+        .unwrap_or_else(|_| panic!("the release is accepted"));
+    // The bytes the ticket never admitted are not credited.
+    assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 8);
+    assert_eq!(current(&c, HtmlParseResource::PeakTransientBytes), 8);
+    assert!(held > 8);
+}
