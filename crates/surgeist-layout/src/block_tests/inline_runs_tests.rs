@@ -674,9 +674,10 @@ fn assert_fri08_c07_t01_inline_transition_roles<S: LayoutScalar>() {
 
         assert_eq!(prefix.location, Point::ZERO, "{start:?}");
         assert_eq!(prefix.margin.bottom, S::from_f64(7.0), "{start:?}");
+        // Empty anonymous-parent border follows A10 plus its bottom margin7.
         assert_eq!(
             float.location,
-            Point::new(S::ZERO, S::from_f64(10.0)),
+            Point::new(S::ZERO, S::from_f64(17.0)),
             "{start:?}"
         );
         assert_eq!(
