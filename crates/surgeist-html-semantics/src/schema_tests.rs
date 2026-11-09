@@ -122,8 +122,9 @@ fn fact(name: &str) -> Mapped {
     match name {
         "records" | "record_capacity" => Mapped::Resource(HtmlResource::FactRecords),
         "utf16_units" | "code_units" => Mapped::Resource(HtmlResource::FactCodeUnits),
+        "bytes" => Mapped::Resource(HtmlResource::FactBytes),
         "assigned_nodes" => Mapped::Resource(HtmlResource::AssignedNodes),
-        "validation_work" => Mapped::Work(HtmlWork::SemanticStep),
+        "validation_work" | "work" => Mapped::Work(HtmlWork::SemanticStep),
         other => panic!("unmapped fact limit {other}"),
     }
 }
@@ -132,9 +133,30 @@ fn fact(name: &str) -> Mapped {
 fn each_fact_family_scope_caps_the_fields_of_its_limits() {
     use crate::{
         HtmlBaseFactsLimits, HtmlControlFactsLimits, HtmlElementReferenceFactsLimits,
-        HtmlGlobalInheritanceLimits, HtmlInertFactLimits, HtmlLanguageDirectionLimits,
-        HtmlOutputDefaultLimits,
+        HtmlGlobalInheritanceLimits, HtmlImageDimensionFactsLimits, HtmlInertFactLimits,
+        HtmlLanguageDirectionLimits, HtmlMediaFactsLimits, HtmlNaturalDimensionLimits,
+        HtmlOutputDefaultLimits, HtmlRelFactsLimits,
     };
+    pin(
+        HtmlCapScope::MediaFacts,
+        HtmlMediaFactsLimits::new(1, 2, 3),
+        fact,
+    );
+    pin(
+        HtmlCapScope::LinkRelationshipFacts,
+        HtmlRelFactsLimits::new(1, 2, 3),
+        fact,
+    );
+    pin(
+        HtmlCapScope::ImageDimensionFacts,
+        HtmlImageDimensionFactsLimits::new(1, 2, 3),
+        fact,
+    );
+    pin(
+        HtmlCapScope::NaturalDimensionFacts,
+        HtmlNaturalDimensionLimits::new(1, 2, 3),
+        fact,
+    );
     pin(
         HtmlCapScope::BaseFacts,
         HtmlBaseFactsLimits::new(1, 2, 3),

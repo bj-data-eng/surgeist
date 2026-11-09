@@ -141,12 +141,14 @@ impl HtmlListParticipation {
         facts: Vec<HtmlListParticipationFact>,
         max_facts: usize,
     ) -> Result<Self, HtmlSemanticContextError> {
-        if facts.capacity() > max_facts {
-            return Err(HtmlSemanticContextError::ParticipationLimit {
-                limit: max_facts,
-                retained_capacity: facts.capacity(),
-            });
-        }
+        capacity_cap(max_facts)?.fits(
+            HtmlResource::FactRecords,
+            facts.capacity(),
+            |limit, retained_capacity| HtmlSemanticContextError::ParticipationLimit {
+                limit,
+                retained_capacity,
+            },
+        )?;
         // Sized by the facts, which the capacity check above bounds, never by
         // the capture; the check is ordinary construction without a work budget.
         let mut index = FactIndex::new(
@@ -379,6 +381,30 @@ pub struct HtmlSemanticContext {
     pub(super) base_facts: Option<HtmlCapturedBaseFacts>,
     pub(super) empty_language: DocumentString,
 }
+impl super::scan::ScanError for HtmlSemanticContextError {
+    fn representation_exhausted() -> Self {
+        Self::Capture(HtmlCaptureError::RepresentationExhausted)
+    }
+    fn work_exceeded(_limit: usize, _required: usize) -> Self {
+        // The meter of a capacity cap carries no work cap, so no work charge is refused.
+        Self::LedgerState
+    }
+    fn capture(error: HtmlCaptureError) -> Self {
+        Self::Capture(error)
+    }
+    fn ledger_state() -> Self {
+        Self::LedgerState
+    }
+}
+/// A ledger scope that caps the capacity of one supplied record vector at `cap`.
+fn capacity_cap(
+    cap: usize,
+) -> Result<super::scan::ScanMeter<HtmlSemanticContextError>, HtmlSemanticContextError> {
+    super::scan::ScanMeter::new(
+        surgeist_html::accounting::HtmlCapScope::ContextFacts,
+        super::scan::Caps::work(usize::MAX).records(cap),
+    )
+}
 /// Rejected producer context; no query result is created.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum HtmlSemanticContextError {
@@ -401,6 +427,9 @@ pub enum HtmlSemanticContextError {
     NaturalDimensionsRevisionMismatch,
     Capture(HtmlCaptureError),
     HostRevisionMismatch,
+    /// The ledger that enforces the capacity limits reported a state its own sequencing rules
+    /// out.
+    LedgerState,
     ClassificationLimit {
         limit: usize,
         retained_capacity: usize,
@@ -671,12 +700,14 @@ impl HtmlSemanticContext {
                 return Err(HtmlSemanticContextError::ParticipationRevisionMismatch);
             }
         }
-        if classifications.capacity() > max_classifications {
-            return Err(HtmlSemanticContextError::ClassificationLimit {
-                limit: max_classifications,
-                retained_capacity: classifications.capacity(),
-            });
-        }
+        capacity_cap(max_classifications)?.fits(
+            HtmlResource::FactRecords,
+            classifications.capacity(),
+            |limit, retained_capacity| HtmlSemanticContextError::ClassificationLimit {
+                limit,
+                retained_capacity,
+            },
+        )?;
         // Where each classification sits, sized by the classifications, which the
         // capacity check above bounds, never by the capture.
         let mut classified = FactIndex::new(

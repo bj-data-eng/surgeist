@@ -51,15 +51,9 @@ fn selector_admission(
     limits: HtmlRelFactsLimits,
     bytes: usize,
 ) -> Result<FactsAdmission, HtmlRelFactsError> {
-    if limits.records < 1 {
-        return Err(HtmlRelFactsError::RecordLimit);
-    }
-    if bytes > limits.bytes {
-        return Err(HtmlRelFactsError::ByteLimit);
-    }
-    let mut a = FactsAdmission::new(limits);
-    a.records = 1;
-    a.bytes = bytes;
+    let mut a = FactsAdmission::new(HtmlCapScope::LinkRelationshipFacts, limits)?;
+    a.add_records(1)?;
+    a.add_bytes(bytes)?;
     a.work(1)?;
     Ok(a)
 }
@@ -510,8 +504,8 @@ impl HtmlDocumentIconInput {
             }
         }
         a.work(1)?;
-        let retained_bytes = a.bytes;
-        let retained_records = a.records;
+        let retained_bytes = a.bytes()?;
+        let retained_records = a.records()?;
         Ok(Self {
             data: Arc::new(IconInputData {
                 collection,
@@ -633,20 +627,10 @@ impl HtmlNextDocumentIconInput {
             }
         }
         // The already-formed input is retained, rather than copying its vectors.
-        a.bytes = a
-            .bytes
-            .checked_add(previous.input.data.retained_bytes)
-            .ok_or(HtmlRelFactsError::RepresentationExhausted)?;
-        a.records = a
-            .records
-            .checked_add(previous.input.data.retained_records)
-            .ok_or(HtmlRelFactsError::RepresentationExhausted)?;
-        if a.records > a.limits.records {
-            return Err(HtmlRelFactsError::RecordLimit);
-        }
-        if a.bytes > a.limits.bytes {
-            return Err(HtmlRelFactsError::ByteLimit);
-        }
+        a.grow_bytes(previous.input.data.retained_bytes)?;
+        a.grow_records(previous.input.data.retained_records)?;
+        a.check_records()?;
+        a.check_bytes()?;
         Ok(Self {
             data: Arc::new(NextIconData {
                 previous,

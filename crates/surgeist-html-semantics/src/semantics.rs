@@ -20,7 +20,7 @@ mod admission;
 mod context;
 pub(crate) mod index;
 mod query_account;
-mod scan;
+pub(crate) mod scan;
 mod seen;
 pub use context::*;
 mod microdata;
@@ -126,7 +126,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
-use surgeist_html::accounting::HtmlResource;
+use surgeist_html::accounting::{HtmlCapScope, HtmlResource};
 use surgeist_html::bounded::{
     numeric::{
         HtmlIntegerRecoveryError, HtmlIntegerUnitStep, HtmlIntegerUnitStepError,

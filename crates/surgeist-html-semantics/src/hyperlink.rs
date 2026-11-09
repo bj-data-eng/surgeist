@@ -91,7 +91,7 @@ impl HtmlEncodingUrlParseFacts {
         observations: Vec<HtmlEncodingUrlParseObservation>,
         limits: HtmlBaseFactsLimits,
     ) -> Result<Self, HtmlEncodingUrlFactsError> {
-        let mut v = crate::base::Validation::new(limits);
+        let mut v = crate::base::Validation::new(limits)?;
         v.records(observations.capacity())?;
         let mut retained = HtmlBaseRetainedStorageUsage {
             bytes: size_of::<Facts>(),
@@ -136,7 +136,7 @@ impl HtmlEncodingUrlParseFacts {
                 earlier = chains.before(position);
             }
         }
-        let usage = v.usage(observations.capacity());
+        let usage = v.usage(observations.capacity())?;
         Ok(Self(Arc::new(Facts {
             base,
             encoding,

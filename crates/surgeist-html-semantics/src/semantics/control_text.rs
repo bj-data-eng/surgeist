@@ -3,8 +3,9 @@
 //! reset and establishing an output's actual default override are external.
 
 use super::index::FactIndex;
-use super::scan::{ScanError, ScanMeter};
+use super::scan::{Caps, ScanError, ScanMeter};
 use super::*;
+use surgeist_html::accounting::{HtmlCapScope, HtmlResource};
 use surgeist_html::{values::DocumentString, vocabulary::KnownHtmlElement};
 
 /// Actual output slot: established null differs from missing evidence and empty.
@@ -66,10 +67,21 @@ impl HtmlOutputDefaultLimits {
 pub enum HtmlOutputDefaultError {
     Capture(HtmlCaptureError),
     HostRevisionMismatch,
-    RecordCapacity { limit: usize, required: usize },
-    CodeUnits { limit: usize, required: usize },
-    ValidationWork { limit: usize, required: usize },
+    RecordCapacity {
+        limit: usize,
+        required: usize,
+    },
+    CodeUnits {
+        limit: usize,
+        required: usize,
+    },
+    ValidationWork {
+        limit: usize,
+        required: usize,
+    },
     RepresentationExhausted,
+    /// The ledger that enforces the limits reported a state its own sequencing rules out.
+    LedgerState,
     DuplicateSubject(HtmlCaptureSubjectId),
     InapplicableSubject(HtmlCaptureSubjectId),
 }
@@ -82,6 +94,9 @@ impl ScanError for HtmlOutputDefaultError {
     }
     fn capture(error: HtmlCaptureError) -> Self {
         Self::Capture(error)
+    }
+    fn ledger_state() -> Self {
+        Self::LedgerState
     }
 }
 impl fmt::Display for HtmlOutputDefaultError {
@@ -111,14 +126,17 @@ impl HtmlOutputDefaultFacts {
         if &host_revision != capture.host_facts_revision() {
             return Err(HtmlOutputDefaultError::HostRevisionMismatch);
         }
-        if records.capacity() > limits.record_capacity {
-            return Err(HtmlOutputDefaultError::RecordCapacity {
-                limit: limits.record_capacity,
-                required: records.capacity(),
-            });
-        }
-        let mut meter = ScanMeter::new(0, limits.validation_work);
-        let mut units = 0usize;
+        let mut meter = ScanMeter::new(
+            HtmlCapScope::OutputDefault,
+            Caps::work(limits.validation_work)
+                .records(limits.record_capacity)
+                .code_units(limits.code_units),
+        )?;
+        meter.acquire(
+            HtmlResource::FactRecords,
+            records.capacity(),
+            |limit, required| HtmlOutputDefaultError::RecordCapacity { limit, required },
+        )?;
         let mut index = FactIndex::new(
             capture.identity(),
             records.len(),
@@ -148,15 +166,11 @@ impl HtmlOutputDefaultFacts {
             }
             meter.charge(1)?;
             if let HtmlOutputDefaultValueOverride::Value(value) = &record.default_value_override {
-                units = units
-                    .checked_add(value.len())
-                    .ok_or(HtmlOutputDefaultError::RepresentationExhausted)?;
-                if units > limits.code_units {
-                    return Err(HtmlOutputDefaultError::CodeUnits {
-                        limit: limits.code_units,
-                        required: units,
-                    });
-                }
+                meter.acquire(
+                    HtmlResource::FactCodeUnits,
+                    value.len(),
+                    |limit, required| HtmlOutputDefaultError::CodeUnits { limit, required },
+                )?;
             }
         }
         Ok(Self {
@@ -164,7 +178,7 @@ impl HtmlOutputDefaultFacts {
             host_revision,
             records,
             index,
-            validation_work: meter.work(),
+            validation_work: meter.work()?,
         })
     }
     pub fn capture(&self) -> &HtmlCaptureId {

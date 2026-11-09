@@ -51,15 +51,10 @@ impl HtmlRelNoopenerInput {
         if &url.revision != expected_url {
             return Err(HtmlRelFactsError::UrlRevisionMismatch);
         }
-        let mut a = FactsAdmission::new(limits);
+        let mut a = FactsAdmission::new(HtmlCapScope::LinkRelationshipFacts, limits)?;
         a.work(1)?;
-        if limits.records < 1 {
-            return Err(HtmlRelFactsError::RecordLimit);
-        }
-        a.bytes = std::mem::size_of::<Self>();
-        if a.bytes > limits.bytes {
-            return Err(HtmlRelFactsError::ByteLimit);
-        }
+        a.fit_records(1)?;
+        a.add_bytes(std::mem::size_of::<Self>())?;
         if a.role(capture, &subject)? == HtmlRelRole::Link {
             return Err(HtmlRelFactsError::InvalidRole);
         }

@@ -1,8 +1,11 @@
 //! One finite registry-only capture, using the original capture owner.
 use super::*;
+use crate::accounting::LedgerError;
 use preflight::ActionPolicy;
 use std::mem::size_of;
+use surgeist_html::accounting::{HtmlCapScope, HtmlLimits, HtmlResource, HtmlWork};
 use surgeist_html::values::DocumentString;
+use surgeist_ledger::{Change, Charge, Operation, RefusalReason, Scope};
 
 /// A complete-empty Global registry and its owning immutable evidence.
 /// The local registry identity is distinct from a consumer's canonical identity.
@@ -89,22 +92,114 @@ struct Workspace {
     _registry: Option<HtmlCaptureBuilderRegistry>,
 }
 
+/// The formation byte allowance and the bytes a formation holds. The allowance is the cap of one
+/// ledger scope on the largest total a formation needs at one point, and the live backing is a
+/// balance of that scope.
 struct Control {
-    limit: usize,
+    operation: Operation<HtmlWork, HtmlResource>,
+    scope: Scope,
     fixed: usize,
-    backing: usize,
-    peak: usize,
 }
 impl Control {
-    fn admit<E>(&mut self, required: usize) -> Result<(), HtmlEmptyGlobalRegistryError<E>> {
-        self.peak = self.peak.max(required);
-        if required > self.limit {
-            return Err(HtmlEmptyGlobalRegistryError::FormationBytes {
-                limit: self.limit,
-                required,
-            });
+    fn new<E>(limit: usize, fixed: usize) -> Result<Self, HtmlEmptyGlobalRegistryError<E>> {
+        let operation = Operation::new(
+            HtmlCapScope::RegistryFormation.name(),
+            HtmlLimits::from_fn(
+                |_| u64::MAX,
+                |resource| match resource {
+                    HtmlResource::FormationBytes => u64::try_from(limit).unwrap_or(u64::MAX),
+                    _ => u64::MAX,
+                },
+            ),
+            1,
+        )
+        .map_err(Self::ledger_error)?;
+        let scope = operation.root();
+        Ok(Self {
+            operation,
+            scope,
+            fixed,
+        })
+    }
+    /// The typed refusal of a ledger error: a refused allowance keeps its limit and the total the
+    /// formation would have needed.
+    fn ledger_error<E>(error: LedgerError) -> HtmlEmptyGlobalRegistryError<E> {
+        use HtmlEmptyGlobalRegistryError as Error;
+        let LedgerError::Refused(refusal) = error else {
+            return match error {
+                LedgerError::Allocation => Error::AllocationFailed,
+                _ => Error::Capture(HtmlCaptureError::LedgerState),
+            };
+        };
+        match (refusal.reason, refusal.change) {
+            (
+                RefusalReason::Limit { limit },
+                Change::Acquire(HtmlResource::FormationBytes, amount),
+            ) => match (
+                usize::try_from(limit),
+                refusal
+                    .current
+                    .checked_add(amount)
+                    .and_then(|required| usize::try_from(required).ok()),
+            ) {
+                (Ok(limit), Some(required)) => Error::FormationBytes { limit, required },
+                _ => Error::RepresentationExhausted,
+            },
+            (RefusalReason::Overflow, _) => Error::RepresentationExhausted,
+            _ => Error::Capture(HtmlCaptureError::LedgerState),
         }
-        Ok(())
+    }
+    /// The live backing bytes.
+    fn backing<E>(&self) -> Result<usize, HtmlEmptyGlobalRegistryError<E>> {
+        let live = self
+            .operation
+            .usage(self.scope)
+            .map_err(Self::ledger_error)?
+            .live(HtmlResource::FormationBacking);
+        usize::try_from(live).map_err(|_| HtmlEmptyGlobalRegistryError::RepresentationExhausted)
+    }
+    /// The largest total admitted so far.
+    fn peak<E>(&self) -> Result<usize, HtmlEmptyGlobalRegistryError<E>> {
+        let peak = self
+            .operation
+            .usage(self.scope)
+            .map_err(Self::ledger_error)?
+            .peak(HtmlResource::FormationBytes);
+        usize::try_from(peak).map_err(|_| HtmlEmptyGlobalRegistryError::RepresentationExhausted)
+    }
+    /// Admits a total the formation needs at one point, refusing one beyond the allowance.
+    fn admit<E>(&mut self, required: usize) -> Result<(), HtmlEmptyGlobalRegistryError<E>> {
+        self.operation
+            .charge_at(self.scope)
+            .record_largest(
+                HtmlResource::FormationBytes,
+                u64::try_from(required).unwrap_or(u64::MAX),
+            )
+            .map_err(Self::ledger_error)
+    }
+    /// Replaces a backing of `old` bytes with one of `actual`, which a formation holds live.
+    fn replace_backing<E>(
+        &mut self,
+        old: usize,
+        actual: usize,
+    ) -> Result<(), HtmlEmptyGlobalRegistryError<E>> {
+        let wide = |value: usize| u64::try_from(value).unwrap_or(u64::MAX);
+        self.operation
+            .apply_batch(
+                self.scope,
+                &[
+                    Change::Release(HtmlResource::FormationBacking, wide(old)),
+                    Change::Acquire(HtmlResource::FormationBacking, wide(actual)),
+                ],
+            )
+            .map_err(|error| match error {
+                // A backing larger than what is held is a replacement of storage this formation
+                // never took.
+                LedgerError::Refused(refusal) if refusal.reason == RefusalReason::Underflow => {
+                    HtmlEmptyGlobalRegistryError::RepresentationExhausted
+                }
+                other => Self::ledger_error(other),
+            })
     }
     fn plus<E>(a: usize, b: usize) -> Result<usize, HtmlEmptyGlobalRegistryError<E>> {
         a.checked_add(b)
@@ -134,10 +229,8 @@ impl<E> preflight::ActionPolicy for Formation<'_, E> {
     fn on_storage_before(&mut self, requested: usize) -> Result<(), Self::Error> {
         Control::step(&mut self.step, 0)?;
         let control = &mut *self.control;
-        control.admit(Control::plus(
-            Control::plus(control.fixed, control.backing)?,
-            requested,
-        )?)
+        let held = Control::plus(control.fixed, control.backing()?)?;
+        control.admit(Control::plus(held, requested)?)
     }
     fn on_storage_after(
         &mut self,
@@ -149,12 +242,8 @@ impl<E> preflight::ActionPolicy for Formation<'_, E> {
         // extra exposed capacity before proceeding or publishing.
         let control = &mut *self.control;
         let replacement_peak =
-            Control::plus(Control::plus(control.fixed, control.backing)?, actual)?;
-        control.backing = control
-            .backing
-            .checked_sub(old)
-            .and_then(|n| n.checked_add(actual))
-            .ok_or(HtmlEmptyGlobalRegistryError::RepresentationExhausted)?;
+            Control::plus(Control::plus(control.fixed, control.backing()?)?, actual)?;
+        control.replace_backing(old, actual)?;
         control.admit(replacement_peak)
     }
     fn on_storage_transfer(&mut self, _bytes: usize) -> Result<(), Self::Error> {
@@ -215,12 +304,7 @@ impl HtmlCapture {
             size_of::<Workspace>(),
             size_of::<HtmlEmptyGlobalRegistryCapture>(),
         )?;
-        let mut control = Control {
-            limit: formation_bytes,
-            fixed,
-            backing: 0,
-            peak: 0,
-        };
+        let mut control = Control::new(formation_bytes, fixed)?;
         control.admit(fixed)?;
         let mut builder = HtmlCaptureBuilder::new(
             HtmlCaptureLimits::new(0, 0, 0, 0, 0, 1, 0, 16 * 1024 * 1024),
@@ -244,7 +328,7 @@ impl HtmlCapture {
             size_of::<HashSet<&DocumentString>>(),
         )?;
         control.admit(Control::plus(
-            Control::plus(fixed, control.backing)?,
+            Control::plus(fixed, control.backing()?)?,
             registry_call_headers,
         )?)?;
         let registry = builder
@@ -273,7 +357,7 @@ impl HtmlCapture {
                 })?;
         Control::step(&mut step, 1)?;
         let required = Control::plus(
-            Control::plus(fixed, control.backing)?,
+            Control::plus(fixed, control.backing()?)?,
             size_of::<CaptureData>(),
         )?;
         control.admit(required)?;
@@ -286,7 +370,7 @@ impl HtmlCapture {
             capture,
             registry,
             retained,
-            peak: control.peak,
+            peak: control.peak()?,
         })
     }
 }
@@ -310,12 +394,7 @@ mod tests {
 
     #[test]
     fn requested_backing_is_admitted_before_growth_and_extra_capacity_is_checked() {
-        let mut control = Control {
-            limit: 119,
-            fixed: 100,
-            backing: 0,
-            peak: 0,
-        };
+        let mut control = Control::new::<()>(119, 100).unwrap();
         assert_eq!(
             action(
                 &mut control,
@@ -326,8 +405,8 @@ mod tests {
                 required: 120
             })
         );
-        assert_eq!(control.backing, 0);
-        control.limit = 125;
+        assert_eq!(control.backing::<()>(), Ok(0));
+        let mut control = Control::new::<()>(125, 100).unwrap();
         assert_eq!(
             action(
                 &mut control,
@@ -349,8 +428,9 @@ mod tests {
                 required: 130
             })
         );
-        assert_eq!(control.backing, 30);
-        assert_eq!(control.peak, 130);
+        assert_eq!(control.backing::<()>(), Ok(30));
+        // The peak is the largest total the allowance admitted; the refused 130 is not one.
+        assert_eq!(control.peak::<()>(), Ok(120));
         assert_eq!(
             Control::plus::<()>(usize::MAX, 1),
             Err(HtmlEmptyGlobalRegistryError::RepresentationExhausted)

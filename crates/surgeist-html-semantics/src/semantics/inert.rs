@@ -12,10 +12,11 @@
 
 use super::admission::producer_revision;
 use super::index::FactIndex;
-use super::scan::{ScanError, ScanMeter};
+use super::scan::{Caps, ScanError, ScanMeter};
 use super::seen::Seen;
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
+use surgeist_html::accounting::{HtmlCapScope, HtmlResource};
 use surgeist_html::{
     attributes::HtmlBooleanAttribute, bounded::select::HtmlSelectButton,
     vocabulary::KnownHtmlElement,
@@ -122,9 +123,17 @@ impl HtmlInertFactLimits {
 pub enum HtmlInertFactError {
     Capture(HtmlCaptureError),
     HostRevisionMismatch,
-    RecordCapacity { limit: usize, required: usize },
-    ValidationWork { limit: usize, required: usize },
+    RecordCapacity {
+        limit: usize,
+        required: usize,
+    },
+    ValidationWork {
+        limit: usize,
+        required: usize,
+    },
     RepresentationExhausted,
+    /// The ledger that enforces the limits reported a state its own sequencing rules out.
+    LedgerState,
     DuplicateSubject(HtmlCaptureSubjectId),
     InvalidFlatRoot(HtmlCaptureSubjectId),
     InvalidFlatParent(HtmlCaptureSubjectId),
@@ -183,6 +192,9 @@ impl ScanError for HtmlInertFactError {
     }
     fn capture(error: HtmlCaptureError) -> Self {
         Self::Capture(error)
+    }
+    fn ledger_state() -> Self {
+        Self::LedgerState
     }
 }
 type InertMeter = ScanMeter<HtmlInertFactError>;
@@ -269,13 +281,13 @@ impl HtmlInertFacts {
             .capacity()
             .checked_add(documents.capacity())
             .ok_or(HtmlInertFactError::RepresentationExhausted)?;
-        if required > limits.record_capacity {
-            return Err(HtmlInertFactError::RecordCapacity {
-                limit: limits.record_capacity,
-                required,
-            });
-        }
-        let mut validation = InertMeter::new(0, limits.validation_work);
+        let mut validation = InertMeter::new(
+            HtmlCapScope::InertFacts,
+            Caps::work(limits.validation_work).records(limits.record_capacity),
+        )?;
+        validation.acquire(HtmlResource::FactRecords, required, |limit, required| {
+            HtmlInertFactError::RecordCapacity { limit, required }
+        })?;
         let mut index = FactIndex::new(
             capture.identity(),
             nodes.len(),
