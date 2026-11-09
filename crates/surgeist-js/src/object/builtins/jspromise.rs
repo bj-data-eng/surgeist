@@ -377,7 +377,7 @@ impl JsPromise {
     /// fn do_thing(success: bool) -> JsResult<JsString> {
     ///     success
     ///         .then(|| js_string!("resolved!"))
-    ///         .ok_or(js_error!("rejected!"))
+    ///         .ok_or(js_error!("rejected!")?)
     /// }
     ///
     /// let promise = JsPromise::from_result(do_thing(true), context.access())?;
