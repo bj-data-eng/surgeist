@@ -3,7 +3,8 @@
 pub(crate) mod bounded;
 
 use crate::internal::accounting::{
-    HtmlAccountingFault, HtmlCapScope, HtmlLedgerOutcome, HtmlResource, HtmlWork, classify, wide,
+    HtmlAccountingFault, HtmlCapScope, HtmlHostScope, HtmlLedgerOutcome, HtmlResource, HtmlWork,
+    aggregate_tariffs, classify, wide,
 };
 #[cfg(test)]
 use crate::internal::values::Namespace;
@@ -18,7 +19,9 @@ use std::{
     hash::{Hash, Hasher},
     sync::{Arc, Weak},
 };
-use surgeist_ledger::{Change, Charge, Error as LedgerError, Operation, Scope};
+use surgeist_ledger::{
+    Change, Charge, Error as LedgerError, Operation, Scope, SharedOperation, Usage,
+};
 
 /// The HTML document's selected compatibility mode.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1152,6 +1155,22 @@ impl HtmlDocument {
             builder: Builder::new(limits, NativeRoot::Document(mode))?,
         })
     }
+    /// Begins bounded native document construction that charges below the scope `host` supplies,
+    /// in the host's ledger operation.
+    ///
+    /// The builder opens `html-construction` below the scope, which carries the caps of `limits`
+    /// and converts into the scope by [`aggregate_tariffs`]; a cap of the scope or of an ancestor
+    /// refuses an append with the limit that scope carries. The host operation keeps the
+    /// admitted amounts after the builder and its result drop, and keeps the scope.
+    pub fn builder_with_accounting(
+        limits: HtmlConstructionLimits,
+        mode: HtmlDocumentMode,
+        host: &HtmlHostScope,
+    ) -> Result<HtmlDocumentBuilder, HtmlConstructionError> {
+        Ok(HtmlDocumentBuilder {
+            builder: Builder::charging(limits, NativeRoot::Document(mode), Some(host))?,
+        })
+    }
     /// Document root.
     pub fn root(&self) -> HtmlNode<'_> {
         HtmlNode {
@@ -1189,6 +1208,16 @@ impl HtmlFragment {
     ) -> Result<HtmlFragmentBuilder, HtmlConstructionError> {
         Ok(HtmlFragmentBuilder {
             builder: Builder::new(limits, NativeRoot::Fragment)?,
+        })
+    }
+    /// Begins source-free native fragment construction that charges below the scope `host`
+    /// supplies; see [`HtmlDocument::builder_with_accounting`].
+    pub fn builder_with_accounting(
+        limits: HtmlConstructionLimits,
+        host: &HtmlHostScope,
+    ) -> Result<HtmlFragmentBuilder, HtmlConstructionError> {
+        Ok(HtmlFragmentBuilder {
+            builder: Builder::charging(limits, NativeRoot::Fragment, Some(host))?,
         })
     }
     /// Fragment root, whose children are the fragment's ordinary output.
@@ -1364,10 +1393,50 @@ enum BuilderStorage {
     Lost,
 }
 
+/// The operation a native builder charges: its own, or a host's.
+enum ConstructionLedger {
+    Owned(Operation<HtmlWork, HtmlResource>),
+    Shared(SharedOperation<HtmlWork, HtmlResource>),
+}
+impl ConstructionLedger {
+    fn apply_batch(
+        &mut self,
+        scope: Scope,
+        batch: &[Change<HtmlWork, HtmlResource>],
+    ) -> Result<(), LedgerError<HtmlWork, HtmlResource>> {
+        match self {
+            Self::Owned(operation) => operation.apply_batch(scope, batch),
+            Self::Shared(operation) => operation.apply_batch(scope, batch),
+        }
+    }
+    fn record_largest(
+        &mut self,
+        scope: Scope,
+        resource: HtmlResource,
+        value: u64,
+    ) -> Result<(), LedgerError<HtmlWork, HtmlResource>> {
+        match self {
+            Self::Owned(operation) => operation.charge_at(scope).record_largest(resource, value),
+            Self::Shared(operation) => operation.charge_at(scope).record_largest(resource, value),
+        }
+    }
+    fn usage(
+        &self,
+        scope: Scope,
+    ) -> Result<Usage<HtmlWork, HtmlResource>, LedgerError<HtmlWork, HtmlResource>> {
+        match self {
+            Self::Owned(operation) => operation.usage(scope).copied(),
+            Self::Shared(operation) => operation.usage(scope),
+        }
+    }
+}
+
 /// The construction scope of a native builder: the caps of its limits, enforced by a ledger scope,
-/// and the typed usage read back from that scope after each charge.
+/// and the typed usage read back from that scope after each charge. The scope is the root of an
+/// operation of the builder's own, or a child of the scope a host supplies; a host operation keeps
+/// the admitted amounts after the builder and its result drop.
 struct Accounting {
-    operation: Operation<HtmlWork, HtmlResource>,
+    operation: ConstructionLedger,
     scope: Scope,
     usage: HtmlConstructionUsage,
     limits: HtmlConstructionLimits,
@@ -1390,14 +1459,37 @@ struct Charged {
     depth: Option<usize>,
 }
 impl Accounting {
+    #[cfg(test)]
     fn new(limits: HtmlConstructionLimits) -> Result<Self, HtmlConstructionError> {
-        let operation = Operation::new(
-            HtmlCapScope::Construction.name(),
-            crate::internal::accounting::construction_limits(limits),
-            1,
-        )
-        .map_err(ledger_error)?;
-        let scope = operation.root();
+        Self::charging(limits, None)
+    }
+    /// The accounting of a builder: a scope below the one `host` supplies when it is `Some`, else
+    /// the root of an operation of its own.
+    fn charging(
+        limits: HtmlConstructionLimits,
+        host: Option<&HtmlHostScope>,
+    ) -> Result<Self, HtmlConstructionError> {
+        let caps = crate::internal::accounting::construction_limits(limits);
+        let (operation, scope) = match host {
+            Some(host) => {
+                let scope = host
+                    .ledger()
+                    .child(
+                        host.scope(),
+                        HtmlCapScope::Construction.name(),
+                        caps,
+                        aggregate_tariffs(),
+                    )
+                    .map_err(ledger_error)?;
+                (ConstructionLedger::Shared(host.ledger().clone()), scope)
+            }
+            None => {
+                let operation = Operation::new(HtmlCapScope::Construction.name(), caps, 1)
+                    .map_err(ledger_error)?;
+                let scope = operation.root();
+                (ConstructionLedger::Owned(operation), scope)
+            }
+        };
         Ok(Self {
             operation,
             scope,
@@ -1459,8 +1551,7 @@ impl Accounting {
             .map_err(ledger_error)?;
         if let Some(previous) = charged.depth {
             self.operation
-                .charge_at(self.scope)
-                .record_largest(HtmlResource::TreeDepth, wide(previous))
+                .record_largest(self.scope, HtmlResource::TreeDepth, wide(previous))
                 .map_err(ledger_error)?;
         }
         self.read()
@@ -1552,6 +1643,15 @@ impl Builder {
         limits: HtmlConstructionLimits,
         root: NativeRoot,
     ) -> Result<Self, HtmlConstructionError> {
+        Self::charging(limits, root, None)
+    }
+    /// A builder that charges below the scope `host` supplies when it is `Some`, else an
+    /// operation of its own.
+    fn charging(
+        limits: HtmlConstructionLimits,
+        root: NativeRoot,
+        host: Option<&HtmlHostScope>,
+    ) -> Result<Self, HtmlConstructionError> {
         let mut initialization = bounded::HtmlConstructionStorage::begin();
         while let Some(action) = initialization.next_action()? {
             action.perform().accept();
@@ -1560,7 +1660,7 @@ impl Builder {
             .try_ready()
             .map_err(|refusal| refusal.into_parts().1)?
             .commit();
-        let mut accounting = Accounting::new(limits)?;
+        let mut accounting = Accounting::charging(limits, host)?;
         accounting.admit(1, 0, 0, 0, 0)?;
         let command = match root {
             NativeRoot::Document(mode) => {

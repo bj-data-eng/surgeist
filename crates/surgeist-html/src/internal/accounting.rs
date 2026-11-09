@@ -880,6 +880,9 @@ pub(crate) fn autocomplete_limits(limits: HtmlAutocompleteMaterializationLimits)
     )
 }
 
+mod host;
+pub use host::HtmlHostScope;
+
 mod fault;
 pub use fault::{
     HtmlAccountingFault, HtmlCapRefusal, HtmlChargeOverflow, HtmlLedgerOutcome, HtmlRefusalFigures,
