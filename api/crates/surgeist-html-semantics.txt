@@ -90,6 +90,7 @@ pub enum surgeist_html_semantics::HtmlCaptureError
 pub surgeist_html_semantics::HtmlCaptureError::AssociationAlreadyEstablished
 pub surgeist_html_semantics::HtmlCaptureError::CannotBeOrdinaryChild(surgeist_html_semantics::HtmlCaptureSubjectKind)
 pub surgeist_html_semantics::HtmlCaptureError::CannotHaveChildren(surgeist_html_semantics::HtmlCaptureSubjectKind)
+pub surgeist_html_semantics::HtmlCaptureError::ChargeProtocol
 pub surgeist_html_semantics::HtmlCaptureError::ChildrenAlreadyEstablished
 pub surgeist_html_semantics::HtmlCaptureError::CompleteRegistry
 pub surgeist_html_semantics::HtmlCaptureError::CustomElementContextAlreadyEstablished

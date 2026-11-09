@@ -120,6 +120,8 @@ impl<W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension> surgeist_ledg
 pub fn surgeist_ledger::Operation<W, R>::begin_phase(&self, scope: surgeist_ledger::Scope) -> core::result::Result<surgeist_ledger::PhaseObservation, surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::end_phase(&mut self, observation: surgeist_ledger::PhaseObservation) -> core::result::Result<(), surgeist_ledger::PhaseObservation>
 impl<W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension> surgeist_ledger::Operation<W, R>
+pub fn surgeist_ledger::Operation<W, R>::charge_at(&mut self, scope: surgeist_ledger::Scope) -> surgeist_ledger::ScopeCharge<'_, W, R>
+impl<W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension> surgeist_ledger::Operation<W, R>
 pub fn surgeist_ledger::Operation<W, R>::share(self) -> surgeist_ledger::SharedOperation<W, R>
 pub struct surgeist_ledger::Phase<'a, W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension>
 impl<W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension> surgeist_ledger::Phase<'_, W, R>
@@ -152,6 +154,11 @@ pub surgeist_ledger::Report::scopes: alloc::vec::Vec<surgeist_ledger::ScopeRepor
 impl<W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension> surgeist_ledger::Report<W, R>
 pub const fn surgeist_ledger::Report<W, R>::terminal(&self) -> surgeist_ledger::TerminalReport<'_, W, R>
 pub struct surgeist_ledger::Scope
+pub struct surgeist_ledger::ScopeCharge<'a, W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension>
+impl<W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension> surgeist_ledger::Charge<W, R> for surgeist_ledger::ScopeCharge<'_, W, R>
+pub type surgeist_ledger::ScopeCharge<'_, W, R>::Stop = surgeist_ledger::Error<W, R>
+pub fn surgeist_ledger::ScopeCharge<'_, W, R>::charge(&mut self, batch: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), Self::Stop>
+pub fn surgeist_ledger::ScopeCharge<'_, W, R>::record_largest(&mut self, resource: R, value: u64) -> core::result::Result<(), Self::Stop>
 pub struct surgeist_ledger::ScopeReport<W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension>
 pub surgeist_ledger::ScopeReport::accepted_batches: u64
 pub surgeist_ledger::ScopeReport::accepted_items: u64
@@ -180,6 +187,13 @@ pub fn surgeist_ledger::SharedOperation<W, R>::snapshot(&self) -> core::result::
 pub fn surgeist_ledger::SharedOperation<W, R>::usage(&self, scope: surgeist_ledger::Scope) -> core::result::Result<surgeist_ledger::Usage<W, R>, surgeist_ledger::Error<W, R>>
 pub async fn surgeist_ledger::SharedOperation<W, R>::with_async_phase<T>(&self, scope: surgeist_ledger::Scope, run: impl core::ops::async_function::AsyncFnOnce() -> T) -> core::result::Result<T, surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::SharedOperation<W, R>::with_phase<T>(&self, scope: surgeist_ledger::Scope, run: impl core::ops::function::FnOnce() -> T) -> core::result::Result<T, surgeist_ledger::Error<W, R>>
+impl<W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension> surgeist_ledger::SharedOperation<W, R>
+pub fn surgeist_ledger::SharedOperation<W, R>::charge_at(&self, scope: surgeist_ledger::Scope) -> surgeist_ledger::SharedScopeCharge<'_, W, R>
+pub struct surgeist_ledger::SharedScopeCharge<'a, W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension>
+impl<W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension> surgeist_ledger::Charge<W, R> for surgeist_ledger::SharedScopeCharge<'_, W, R>
+pub type surgeist_ledger::SharedScopeCharge<'_, W, R>::Stop = surgeist_ledger::Error<W, R>
+pub fn surgeist_ledger::SharedScopeCharge<'_, W, R>::charge(&mut self, batch: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), Self::Stop>
+pub fn surgeist_ledger::SharedScopeCharge<'_, W, R>::record_largest(&mut self, resource: R, value: u64) -> core::result::Result<(), Self::Stop>
 pub struct surgeist_ledger::Tariff<D>
 impl<D> surgeist_ledger::Tariff<D>
 pub const fn surgeist_ledger::Tariff<D>::new(target: D, scale: u64) -> Self
@@ -196,6 +210,18 @@ impl<W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension> surgeist_ledg
 pub fn surgeist_ledger::Usage<W, R>::live(&self, dimension: R) -> u64
 pub fn surgeist_ledger::Usage<W, R>::peak(&self, dimension: R) -> u64
 pub fn surgeist_ledger::Usage<W, R>::work(&self, dimension: W) -> u64
+pub trait surgeist_ledger::Charge<W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension>
+pub type surgeist_ledger::Charge::Stop
+pub fn surgeist_ledger::Charge::charge(&mut self, batch: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), Self::Stop>
+pub fn surgeist_ledger::Charge::record_largest(&mut self, resource: R, value: u64) -> core::result::Result<(), Self::Stop>
+impl<W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension> surgeist_ledger::Charge<W, R> for surgeist_ledger::ScopeCharge<'_, W, R>
+pub type surgeist_ledger::ScopeCharge<'_, W, R>::Stop = surgeist_ledger::Error<W, R>
+pub fn surgeist_ledger::ScopeCharge<'_, W, R>::charge(&mut self, batch: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), Self::Stop>
+pub fn surgeist_ledger::ScopeCharge<'_, W, R>::record_largest(&mut self, resource: R, value: u64) -> core::result::Result<(), Self::Stop>
+impl<W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension> surgeist_ledger::Charge<W, R> for surgeist_ledger::SharedScopeCharge<'_, W, R>
+pub type surgeist_ledger::SharedScopeCharge<'_, W, R>::Stop = surgeist_ledger::Error<W, R>
+pub fn surgeist_ledger::SharedScopeCharge<'_, W, R>::charge(&mut self, batch: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), Self::Stop>
+pub fn surgeist_ledger::SharedScopeCharge<'_, W, R>::record_largest(&mut self, resource: R, value: u64) -> core::result::Result<(), Self::Stop>
 pub trait surgeist_ledger::Dimension: core::marker::Copy + core::cmp::Eq + core::hash::Hash + core::fmt::Debug + core::marker::Send + core::marker::Sync + 'static + crate::__private::Sealed
 pub type surgeist_ledger::Dimension::Table<T: surgeist_ledger::TableValue>: surgeist_ledger::TableValue
 pub const surgeist_ledger::Dimension::ALL: &'static [Self]
