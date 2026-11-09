@@ -827,7 +827,7 @@ fn a_text_append_step_charges_the_controller_what_the_stock_charger_records() {
 
 /// The wrapper's provider call was charged when it was prepared. A step that describes fewer calls
 /// than that has nothing for the charge to be part of, so the plan differs from the work already
-/// charged for it. No row is missing, and no work is charged for the refused step.
+/// charged for it. No row is missing, and no provider call is charged for the refused step.
 #[test]
 fn a_text_append_step_below_the_prepaid_provider_call_is_the_capacity_mismatch() {
     use crate::schema_support::charged;
@@ -846,7 +846,13 @@ fn a_text_append_step_below_the_prepaid_provider_call_is_the_capacity_mismatch()
         SessionError::Stop(mismatch)
     );
     assert_eq!(c.stop(), Some(mismatch));
-    assert_eq!(charged(&c).credits, before.credits);
+    // The record visits are charged before the plan is compared with the prepayment, as the
+    // adapter charged them, and no provider call is charged for the refused plan.
+    let after = charged(&c);
+    let visits = after.categories[4] - before.categories[4];
+    assert_ne!(visits, 0);
+    assert_eq!(after.credits - before.credits, visits);
+    assert_eq!(after.categories[7], before.categories[7]);
     let (owner, ..) = append.abort().unwrap().into_parts();
     session.active_mut().unwrap().construction.owner = Some(owner);
 }
