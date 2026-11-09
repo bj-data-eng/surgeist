@@ -4836,15 +4836,117 @@ fn repeating_gradient_normalized_clones_retain_backing_until_final_drop() {
     );
     let (report, fault) = attempt.finish(crate::accounting::RenderAttemptStatus::Succeeded, None);
     assert_eq!(fault, None);
-    // Two stops are validated once and copied once into normalized custody.
+    // Context-free construction validates the immutable two-stop input;
+    // normalization visits each stop once to copy it into owned custody.
     assert_eq!(
         report
             .attempt()
             .unwrap()
             .usage()
             .work(crate::accounting::RenderWork::GradientStopVisits),
-        4
+        2
     );
+}
+
+#[test]
+fn repeating_stop_copy_one_short_refuses_releases_backing_and_retries() {
+    use crate::accounting::{
+        FrameAttempt, FrameReportSlot, RenderAccountingError, RenderAccountingOptions,
+        RenderAttemptStatus, RenderCpuScope, RenderLimits, RenderPhase, RenderProfile,
+        RenderQuantity, RenderRefusalReason, RenderResource, RenderWork, RendererCpu,
+    };
+    let stops = [
+        GradientStop::try_new(-1.0, Color::BLACK).unwrap(),
+        GradientStop::try_new(2.0, Color::TRANSPARENT).unwrap(),
+    ];
+    let gradient =
+        RepeatingGradient::try_radial(Point::new(0.0, 0.0), 4.0, 2.0, stops.to_vec()).unwrap();
+    let mut scene = Scene::new();
+    scene.fill(Rect::try_new(0.0, 0.0, 8.0, 8.0).unwrap(), gradient);
+    let options =
+        RenderAccountingOptions::new().with_profile(RenderProfile::Summary { timing: false });
+    let cpu = RendererCpu::new(options).unwrap();
+    let opening = cpu
+        .snapshot()
+        .unwrap()
+        .usage()
+        .live(RenderResource::RetainedCpuBytes);
+    for limit in [1, 2] {
+        let bounded = options.with_limits(
+            RenderLimits::new()
+                .with_work_limit(RenderWork::GradientStopVisits, limit)
+                .unwrap(),
+        );
+        let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, bounded).unwrap();
+        let result = scene.normalize(Capabilities::CURRENT, attempt.account());
+        let (report, fault) = if limit == 1 {
+            let error = result.unwrap_err();
+            let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+            else {
+                panic!("the second stop must refuse at the one-short work limit");
+            };
+            assert_eq!(refusal.phase(), RenderPhase::Attempt);
+            assert_eq!(
+                refusal.quantity(),
+                RenderQuantity::Work(RenderWork::GradientStopVisits)
+            );
+            assert_eq!(refusal.current(), 1);
+            assert_eq!(refusal.amount(), 1);
+            assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 1 });
+            let (report, fault) =
+                attempt.finish(RenderAttemptStatus::Refused, error.accounting_diagnostic());
+            assert_eq!(report.attempt().unwrap().refusal(), Some(refusal));
+            (report, fault)
+        } else {
+            let normalized = result.unwrap();
+            let [
+                command::RenderCommand::Fill {
+                    paint: command::RenderPaint::RepeatingGradient(value),
+                    ..
+                },
+            ] = &normalized[..]
+            else {
+                panic!("raised work limit must preserve the complete repeating paint");
+            };
+            assert_eq!(value.stops(), stops.as_slice());
+            assert_eq!(
+                value.radial_geometry(),
+                Some((Point::new(0.0, 0.0), 4.0, 2.0))
+            );
+            drop(normalized);
+            let (report, fault) = attempt.finish(RenderAttemptStatus::Succeeded, None);
+            assert_eq!(report.attempt().unwrap().refusal(), None);
+            (report, fault)
+        };
+        assert_eq!(fault, None);
+        assert_eq!(
+            report
+                .attempt()
+                .unwrap()
+                .usage()
+                .work(RenderWork::GradientStopVisits),
+            limit
+        );
+        let cpu_interval = report.renderer_cpu().unwrap();
+        assert_eq!(
+            cpu_interval.usage().live(RenderResource::RetainedCpuBytes),
+            opening
+        );
+        assert_eq!(
+            cpu_interval
+                .scope_usage(RenderCpuScope::FrameBacking)
+                .live(RenderResource::RetainedCpuBytes),
+            0
+        );
+        assert!(
+            cpu_interval
+                .scope_usage(RenderCpuScope::FrameBacking)
+                .peak(RenderResource::RetainedCpuBytes)
+                >= (2 * std::mem::size_of::<GradientStop>()) as u64
+        );
+        assert_eq!(cpu.snapshot().unwrap().fault(), None);
+        assert_eq!(scene.len(), 1);
+    }
 }
 
 #[test]
