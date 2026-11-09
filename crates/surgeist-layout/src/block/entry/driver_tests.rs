@@ -4,6 +4,9 @@ use crate::geometry::{LogicalEdgesOf, LogicalPointOf};
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use std::cell::Cell;
 
+#[path = "funding_tests.rs"]
+mod funding;
+
 thread_local! {
     static CALLS: Cell<usize> = const { Cell::new(0) };
 }
