@@ -1098,9 +1098,8 @@ fn script_classification_cursor_admission_refuses_before_the_next_read() {
     ) -> Result<Option<surgeist_html::elements::script::HtmlScriptKind>, SessionError> {
         let mut cursor =
             surgeist_html::bounded::script::HtmlScriptTypeCursor::preparation(Some(value), None);
-        while let Some(work) = cursor.required_work() {
-            script_type_charge(c, work)?;
-            cursor.advance();
+        while cursor.result().is_none() {
+            cursor.advance(c)?;
         }
         Ok(cursor.result().expect("all admitted actions completed"))
     }

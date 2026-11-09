@@ -1,10 +1,28 @@
 //! Source-ordered native Input transitions in the one canonical Draft.
 use super::*;
 use surgeist_html::{
+    accounting::{HtmlChange, HtmlResource, HtmlWork},
     attributes::HtmlInputType,
     elements::input::{HtmlInputSelection, HtmlInputValueSanitization, HtmlRadioTrigger},
     vocabulary::KnownHtmlAttribute as A,
 };
+use surgeist_ledger::Charge;
+
+/// The DOM's meter for the HTML input cursors: one source step for each cursor action, whatever
+/// work the cursor describes. The cursors charge through it before each action they perform.
+pub(super) struct StepMeter<'a>(pub(super) &'a mut dyn FnMut() -> Result<(), DomError>);
+
+impl Charge<HtmlWork, HtmlResource> for StepMeter<'_> {
+    type Stop = DomError;
+
+    fn charge(&mut self, _: &[HtmlChange]) -> Result<(), DomError> {
+        (self.0)()
+    }
+
+    fn record_largest(&mut self, _: HtmlResource, _: u64) -> Result<(), DomError> {
+        Err(DomError::HtmlChargeProtocol)
+    }
+}
 
 impl Draft {
     fn input_attribute_is(
@@ -28,13 +46,11 @@ impl Draft {
             a.code_units(),
             b.code_units(),
         );
-        loop {
-            self.source_step(cancel)?;
-            if cursor.required_work().is_none() {
-                break;
-            }
-            cursor.advance();
+        let mut steps = StepMeter(&mut || self.source_step(cancel));
+        while cursor.result().is_none() {
+            cursor.advance(&mut steps)?;
         }
+        self.source_step(cancel)?;
         Ok(cursor.result().expect("completed comparison").is_equal())
     }
     fn input_shared(
@@ -166,12 +182,9 @@ impl Draft {
         // already admitted immutable storage; no numeric/CSS allocation occurs.
         let mut cursor = Cursor::new(policy, raw.code_units(), mode);
         let mut count = 0usize;
-        loop {
-            self.source_step(cancel)?;
-            if cursor.required_work().is_none() {
-                break;
-            }
-            if let Some(range) = cursor.advance() {
+        let mut steps = StepMeter(&mut || self.source_step(cancel));
+        while !cursor.is_complete() {
+            if let Some(range) = cursor.advance(&mut steps)? {
                 for unit in &raw.code_units()[range.start()..range.end()] {
                     self.source_step(cancel)?;
                     if cursor.retain_unit(*unit) {
@@ -182,6 +195,7 @@ impl Draft {
                 }
             }
         }
+        self.source_step(cancel)?;
         let email_count = cursor.email_value_count();
         let total = (self.units - self.input_state(key)?.current.len())
             .checked_add(count)
@@ -207,12 +221,9 @@ impl Draft {
             }
         };
         let mut cursor = Cursor::new(policy, raw.code_units(), mode);
-        loop {
-            self.source_step(cancel)?;
-            if cursor.required_work().is_none() {
-                break;
-            }
-            if let Some(range) = cursor.advance() {
+        let mut steps = StepMeter(&mut || self.source_step(cancel));
+        while !cursor.is_complete() {
+            if let Some(range) = cursor.advance(&mut steps)? {
                 for position in range.start()..range.end() {
                     self.source_step(cancel)?;
                     let unit = raw.code_units()[position];
@@ -224,6 +235,7 @@ impl Draft {
                 }
             }
         }
+        self.source_step(cancel)?;
         let output = DocumentString::from_utf16(output);
         #[cfg(test)]
         source::formation::mutation_observation::grew(
@@ -303,13 +315,11 @@ impl Draft {
                 let space = self.input_raw(key, A::Colorspace, cancel)?;
                 let mut cursor =
                     HtmlInputColorSpaceCursor::new(space.as_ref().map(|raw| &raw.value));
-                loop {
-                    self.source_step(cancel)?;
-                    if cursor.required_work().is_none() {
-                        break;
-                    }
-                    cursor.advance();
+                let mut steps = StepMeter(&mut || self.source_step(cancel));
+                while cursor.result().is_none() {
+                    cursor.advance(&mut steps)?;
                 }
+                self.source_step(cancel)?;
                 #[cfg(test)]
                 let _source_observation = input_processing::source_observation::bind(self);
                 let source = source::formation::Formation::new(self, cancel)?;
@@ -367,13 +377,11 @@ impl Draft {
                         old.value.code_units(),
                         state.current.code_units(),
                     );
-                loop {
-                    self.source_step(cancel)?;
-                    if comparison.required_work().is_none() {
-                        break;
-                    }
-                    comparison.advance();
+                let mut steps = StepMeter(&mut || self.source_step(cancel));
+                while comparison.result().is_none() {
+                    comparison.advance(&mut steps)?;
                 }
+                self.source_step(cancel)?;
                 if surgeist_html::elements::input::input_value_setter_finish(
                     state.input_type(),
                     comparison.result().expect("completed comparison"),
@@ -643,13 +651,11 @@ impl Draft {
             let mut cursor = surgeist_html::elements::input::HtmlInputTypeCursor::new(
                 raw.as_ref().map(|raw| &raw.value),
             );
-            loop {
-                self.source_step(cancel)?;
-                if cursor.required_work().is_none() {
-                    break;
-                }
-                cursor.advance();
+            let mut steps = StepMeter(&mut || self.source_step(cancel));
+            while cursor.result().is_none() {
+                cursor.advance(&mut steps)?;
             }
+            self.source_step(cancel)?;
             self.input_type_changed(
                 key,
                 cursor.result().expect("completed actual type"),

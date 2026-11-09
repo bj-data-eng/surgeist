@@ -148,8 +148,6 @@ use ordinary_view::{append_descendant_text, find_output_state};
 use ordinary_view::{
     next_ordinary_view_after_subtree, next_ordinary_view_node, ordinary_view_parent,
 };
-#[cfg(test)]
-use script_type::script_type_charge;
 use script_type::{classify_script, script_attribute};
 #[cfg(test)]
 pub(crate) use test_support::csp_protocol_error;

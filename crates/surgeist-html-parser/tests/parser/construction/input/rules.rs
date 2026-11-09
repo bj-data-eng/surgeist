@@ -1,4 +1,5 @@
 use surgeist_html::{
+    accounting::{HtmlLimits, HtmlResource, HtmlWork},
     attributes::HtmlInputType,
     construction::HtmlNodeKind,
     elements::{
@@ -6,11 +7,11 @@ use surgeist_html::{
         input::{
             HtmlInputCheckedAttributeChange, HtmlInputEmailMode, HtmlInputEmptySelectionSupport,
             HtmlInputFlags, HtmlInputNoneDirectionSupport, HtmlInputReset, HtmlInputResetEffect,
-            HtmlInputRuleWork, HtmlInputSanitization, HtmlInputSanitizationCursor,
-            HtmlInputSelection, HtmlInputSelectionDirection, HtmlInputTypeChange,
-            HtmlInputTypeCursor, HtmlInputTypeEffect, HtmlInputValueAttributeEffect,
-            HtmlInputValueComparison, HtmlInputValueComparisonCursor, HtmlInputValueMode,
-            HtmlInputValueSanitization, HtmlInputValueSetterStart, input_value_setter_finish,
+            HtmlInputSanitization, HtmlInputSanitizationCursor, HtmlInputSelection,
+            HtmlInputSelectionDirection, HtmlInputTypeChange, HtmlInputTypeCursor,
+            HtmlInputTypeEffect, HtmlInputValueAttributeEffect, HtmlInputValueComparison,
+            HtmlInputValueComparisonCursor, HtmlInputValueMode, HtmlInputValueSanitization,
+            HtmlInputValueSetterStart, input_value_setter_finish,
         },
     },
     values::DocumentString,
@@ -20,18 +21,40 @@ use surgeist_html_parser::{
     HtmlParseHistoryStep, HtmlParseMetadataStep, HtmlParseRangeBranch, HtmlParseRangeOperandKind,
     HtmlParseRangeOperandRole, HtmlSource,
 };
+use surgeist_ledger::{Operation, Scope};
+
+/// An unlimited ledger scope that cursor actions charge, so a test reads what they charged.
+struct Meter {
+    operation: Operation<HtmlWork, HtmlResource>,
+    scope: Scope,
+}
+impl Meter {
+    fn new() -> Self {
+        let operation = Operation::new("rules", HtmlLimits::unlimited(), 1).unwrap();
+        let scope = operation.root();
+        Self { operation, scope }
+    }
+    fn charge(&mut self) -> surgeist_ledger::ScopeCharge<'_, HtmlWork, HtmlResource> {
+        self.operation.charge_at(self.scope)
+    }
+    fn total(&self, dimension: HtmlWork) -> u64 {
+        self.operation.usage(self.scope).unwrap().work(dimension)
+    }
+}
 
 fn recognize(raw: Option<&DocumentString>) -> HtmlInputType {
     let mut cursor = HtmlInputTypeCursor::new(raw);
-    while cursor.required_work().is_some() {
-        cursor.advance();
+    let mut meter = Meter::new();
+    while cursor.result().is_none() {
+        cursor.advance(&mut meter.charge()).unwrap();
     }
     cursor.result().unwrap()
 }
 fn compare(old: &[u16], new: &[u16]) -> HtmlInputValueComparison {
     let mut cursor = HtmlInputValueComparisonCursor::new(old, new);
-    while cursor.required_work().is_some() {
-        cursor.advance();
+    let mut meter = Meter::new();
+    while cursor.result().is_none() {
+        cursor.advance(&mut meter.charge()).unwrap();
     }
     cursor.result().unwrap()
 }
@@ -404,21 +427,22 @@ fn value_comparison_is_exact_and_has_no_hidden_full_scan() {
     assert!(!compare(&[1], &[]).is_equal());
     assert!(compare(&[], &[]).is_equal());
     let mut cursor = HtmlInputValueComparisonCursor::new(&old, &old);
-    assert_eq!(
-        cursor.required_work(),
-        Some(HtmlInputRuleWork::ReadValueLengths)
-    );
-    cursor.advance();
-    for _ in 0..4 {
+    let mut meter = Meter::new();
+    // The first action reads the two lengths: two record visits and no unit inspection.
+    cursor.advance(&mut meter.charge()).unwrap();
+    assert_eq!(meter.total(HtmlWork::RecordVisit), 2);
+    assert_eq!(meter.total(HtmlWork::InspectByte), 0);
+    for pair in 1..=4 {
         assert_eq!(cursor.result(), None);
-        assert_eq!(
-            cursor.required_work(),
-            Some(HtmlInputRuleWork::CompareValueUnits)
-        );
-        cursor.advance();
+        // Each further action compares one pair of units: two inspected bytes.
+        cursor.advance(&mut meter.charge()).unwrap();
+        assert_eq!(meter.total(HtmlWork::InspectByte), 2 * pair);
+        assert_eq!(meter.total(HtmlWork::RecordVisit), 2);
     }
     assert!(cursor.result().unwrap().is_equal());
-    assert_eq!(cursor.required_work(), None);
+    // A completed comparison charges nothing.
+    cursor.advance(&mut meter.charge()).unwrap();
+    assert_eq!(meter.total(HtmlWork::InspectByte), 8);
 }
 
 #[test]
@@ -578,8 +602,9 @@ fn number_shared_rules_preserve_complete_grammar_without_binary64_conversion() {
         );
         let mut ranges = Vec::new();
         let mut steps = 0;
-        while cursor.required_work().is_some() {
-            if let Some(range) = cursor.advance() {
+        let mut meter = Meter::new();
+        while !cursor.is_complete() {
+            if let Some(range) = cursor.advance(&mut meter.charge()).unwrap() {
                 ranges.push(range);
             }
             steps += 1;
@@ -601,8 +626,9 @@ fn number_shared_rules_preserve_complete_grammar_without_binary64_conversion() {
         HtmlInputEmailMode::Multiple,
     );
     let mut range = None;
-    while cursor.required_work().is_some() {
-        range = cursor.advance().or(range);
+    let mut meter = Meter::new();
+    while !cursor.is_complete() {
+        range = cursor.advance(&mut meter.charge()).unwrap().or(range);
     }
     assert_eq!(range.unwrap().end(), 0);
 }
@@ -615,24 +641,23 @@ fn number_sanitizer_inspection_actions_are_explicit_and_source_ordered() {
         &units,
         HtmlInputEmailMode::Single,
     );
-    let mut inspections = 0;
-    let mut fixed = 0;
+    let mut meter = Meter::new();
     let mut result = None;
-    while let Some(work) = cursor.required_work() {
-        match work {
-            HtmlInputRuleWork::InspectValueUnit => inspections += 1,
-            HtmlInputRuleWork::ReadField => fixed += 1,
-            _ => panic!("no unrelated rule operation"),
-        }
-        result = cursor.advance().or(result);
+    while !cursor.is_complete() {
+        result = cursor.advance(&mut meter.charge()).unwrap().or(result);
     }
+    // An inspected source unit is two bytes; a fixed action is one record visit.
+    assert_eq!(meter.total(HtmlWork::InspectByte) % 2, 0);
+    let inspections = meter.total(HtmlWork::InspectByte) / 2;
+    let fixed = meter.total(HtmlWork::RecordVisit);
     // Sign; digit loop (digit plus terminator); decimal-point decision;
     // exponent marker/sign decisions; three exponent digits = nine reads.
     // Initial state, EOF exponent decision, finish, and interval emission = four.
     assert_eq!((inspections, fixed), (9, 4));
     assert_eq!((result.unwrap().start(), result.unwrap().end()), (0, 5));
-    assert_eq!(cursor.required_work(), None);
-    assert_eq!(cursor.advance(), None);
+    assert!(cursor.is_complete());
+    assert_eq!(cursor.advance(&mut meter.charge()).unwrap(), None);
+    assert_eq!(meter.total(HtmlWork::InspectByte) / 2, 9);
 }
 
 #[test]

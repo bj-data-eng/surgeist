@@ -2,9 +2,45 @@
 
 use super::*;
 use std::mem::size_of;
+use surgeist_html::accounting::{HtmlChange, HtmlChargedError, HtmlResource, HtmlWork};
 use surgeist_html::bounded::values::{HtmlAttributeStorage, HtmlAttributeValidationError};
 use surgeist_html::values::{Attribute, HtmlAttributeInput, HtmlAttributesInput, HtmlNameInput};
 use surgeist_html::values::{DocumentString, Namespace, OrderedAttributes, QualifiedName};
+use surgeist_ledger::{Change, Charge};
+
+/// Charges the work of an attribute validation step to the capture's step callback: one work step
+/// for each record visit and for each inspected UTF-16 unit.
+struct ValidationWork<'a, F>(&'a mut F);
+
+impl<E, F: FnMut(preflight::Action) -> Result<(), E>> Charge<HtmlWork, HtmlResource>
+    for ValidationWork<'_, F>
+{
+    type Stop = HtmlCaptureElementError<E>;
+
+    fn charge(&mut self, batch: &[HtmlChange]) -> Result<(), Self::Stop> {
+        let mut work = 0_u64;
+        for change in batch {
+            let units = match *change {
+                Change::Work(HtmlWork::RecordVisit, visits) => visits,
+                Change::Work(HtmlWork::InspectByte, bytes) => bytes / size_of::<u16>() as u64,
+                // Writes and copies belong to the name index, which a capture does not lend.
+                Change::Work(HtmlWork::RecordWrite | HtmlWork::CopyByte, _) => 0,
+                _ => return Err(HtmlCaptureError::ChargeProtocol.into()),
+            };
+            work = work
+                .checked_add(units)
+                .ok_or(HtmlCaptureError::RepresentationExhausted)?;
+        }
+        for _ in 0..work {
+            (self.0)(preflight::Action::Work(1)).map_err(HtmlCaptureElementError::Interrupted)?;
+        }
+        Ok(())
+    }
+
+    fn record_largest(&mut self, _: HtmlResource, _: u64) -> Result<(), Self::Stop> {
+        Err(HtmlCaptureError::ChargeProtocol.into())
+    }
+}
 
 /// Refusal before an element's values or subject are committed to the builder.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -370,17 +406,12 @@ impl HtmlCaptureBuilder {
             .next_action()
             .map_err(HtmlCaptureElementError::Attributes)?
         {
-            let layout = action.layout();
-            let work = layout
-                .record_visits()
-                .checked_add(layout.inspected_bytes() / size_of::<u16>() as u64)
-                .ok_or(HtmlCaptureError::RepresentationExhausted)?;
-            for _ in 0..work {
-                step(preflight::Action::Work(1)).map_err(HtmlCaptureElementError::Interrupted)?;
-            }
             action
-                .advance()
-                .map_err(HtmlCaptureElementError::Attributes)?;
+                .advance(&mut ValidationWork(step))
+                .map_err(|error| match error {
+                    HtmlChargedError::Stopped(stop) => stop,
+                    HtmlChargedError::Faulted(fault) => HtmlCaptureElementError::Attributes(fault),
+                })?;
         }
         let attributes = validation
             .finish()

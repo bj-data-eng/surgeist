@@ -1,4 +1,4 @@
-use crate::html::support::string_sanitization as string_policy;
+use crate::html::support::{Recorder, string_sanitization as string_policy};
 use surgeist_html::{
     attributes::HtmlInputType,
     elements::input::{
@@ -19,10 +19,11 @@ fn sanitized(kind: HtmlInputType, input: &[u16]) -> Vec<u16> {
     // This source-length bound prevents a nonterminating rule test; it is not
     // a claim that adapters can skip per-step admissions.
     let mut remaining = input.len() * 4 + 64;
-    while cursor.required_work().is_some() {
+    let mut meter = Recorder::default();
+    while !cursor.is_complete() {
         assert!(remaining != 0);
         remaining -= 1;
-        if let Some(range) = cursor.advance() {
+        if let Some(range) = cursor.advance(&mut meter).unwrap() {
             for (position, &unit) in input
                 .iter()
                 .enumerate()
@@ -36,7 +37,7 @@ fn sanitized(kind: HtmlInputType, input: &[u16]) -> Vec<u16> {
         }
     }
     assert_eq!(cursor.email_value_count(), None);
-    assert!(cursor.advance().is_none());
+    assert!(cursor.advance(&mut meter).unwrap().is_none());
     output
 }
 

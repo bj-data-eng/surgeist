@@ -8,10 +8,9 @@
 //! rates, and [`HtmlCapScope`] for cap placement.
 
 pub use crate::internal::accounting::{
-    HtmlCapScope, HtmlChange, HtmlChargeOverflow, HtmlCustody, HtmlLimits, HtmlResource,
-    HtmlResourceTable, HtmlTariffs, HtmlUnit, HtmlWork, HtmlWorkTable, aggregate_tariffs,
-    attribute_edit_entries, attribute_edit_work, attribute_validation_work, autocomplete_limits,
-    charging_tariffs, construction_limits, csp_storage, csp_work, input_rule_work, record_largest,
-    retained_provider_storage, script_type_work, text_append_work, time_interpretation_work,
-    value_pool_usage,
+    HtmlCapScope, HtmlChange, HtmlChargeOverflow, HtmlChargedError, HtmlCustody, HtmlLimits,
+    HtmlResource, HtmlResourceTable, HtmlTariffs, HtmlUnit, HtmlWork, HtmlWorkTable,
+    aggregate_tariffs, attribute_edit_entries, attribute_edit_work, autocomplete_limits,
+    charging_tariffs, construction_limits, csp_storage, csp_work, record_largest,
+    retained_provider_storage, text_append_work, value_pool_usage,
 };

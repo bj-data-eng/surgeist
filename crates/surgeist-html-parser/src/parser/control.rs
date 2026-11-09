@@ -1113,19 +1113,6 @@ impl ParseControl {
     pub(crate) fn charge_change(&mut self, change: HtmlChange) -> Result<(), HtmlParseStop> {
         self.charge_changes(&[change])
     }
-    /// Charges each change of a conversion on its own, in order, leaving out the
-    /// ones that carry no work.
-    pub(crate) fn charge_each_nonzero(
-        &mut self,
-        changes: &[HtmlChange],
-    ) -> Result<(), HtmlParseStop> {
-        for &change in changes {
-            if !matches!(change, Change::Work(_, 0)) {
-                self.charge_change(change)?;
-            }
-        }
-        Ok(())
-    }
     /// Acquires one resource change of a conversion.
     pub(crate) fn acquire_change(&mut self, change: HtmlChange) -> Result<(), HtmlParseStop> {
         let Change::Acquire(dimension, units) = change else {

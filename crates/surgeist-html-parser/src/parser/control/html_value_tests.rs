@@ -1,13 +1,13 @@
 //! HTML local-rule cursors driven by the actual parser admission owner.
 
-use crate::parser::control::{HtmlParseStop, HtmlParseWorkCategory, ParseControl};
+use crate::parser::control::{HtmlParseStop, ParseControl};
 use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
 use surgeist_html::bounded::lexical::{
     HtmlCustomNameScanAction as CustomNameScanAction, validate_custom_element_name_with,
 };
 use surgeist_html::{
     attributes::HtmlInputType,
-    elements::input::{HtmlInputRuleWork, HtmlInputTypeCursor, HtmlInputValueComparisonCursor},
+    elements::input::{HtmlInputTypeCursor, HtmlInputValueComparisonCursor},
     values::DocumentString,
 };
 
@@ -37,16 +37,6 @@ fn control(work: u64, cancellation: HtmlParseCancellation) -> ParseControl {
         .unwrap();
     ParseControl::new(limits, cancellation)
 }
-fn admit(c: &mut ParseControl, work: HtmlInputRuleWork) -> Result<(), HtmlParseStop> {
-    match work {
-        HtmlInputRuleWork::ReadField => c.charge(HtmlParseWorkCategory::RecordVisit, 1),
-        HtmlInputRuleWork::ReadValueLengths => c.charge(HtmlParseWorkCategory::RecordVisit, 2),
-        HtmlInputRuleWork::CompareAsciiUnit => c.charge(HtmlParseWorkCategory::InspectByte, 3),
-        HtmlInputRuleWork::CompareValueUnits | HtmlInputRuleWork::InspectValueUnit => {
-            c.charge(HtmlParseWorkCategory::InspectByte, 2)
-        }
-    }
-}
 #[test]
 fn type_exact_sixteen_and_one_short_stop_before_final_pair_and_keep_original() {
     // hidden row+length2; text row+length2; four real pairs*3 =16.
@@ -54,11 +44,10 @@ fn type_exact_sixteen_and_one_short_stop_before_final_pair_and_keep_original() {
     for cap in [15, 16] {
         let mut c = control(cap, HtmlParseCancellation::new());
         let mut cursor = HtmlInputTypeCursor::new(Some(&raw));
-        while let Some(work) = cursor.required_work() {
-            if admit(&mut c, work).is_err() {
+        while cursor.result().is_none() {
+            if cursor.advance(&mut c).is_err() {
                 break;
             }
-            cursor.advance();
         }
         if cap == 16 {
             assert_eq!(cursor.result(), Some(HtmlInputType::Text));
@@ -80,10 +69,16 @@ fn type_exact_sixteen_and_one_short_stop_before_final_pair_and_keep_original() {
                 c.usage().resource(HtmlParseResource::WorkCredits).current,
                 13
             );
-            assert_eq!(
-                cursor.required_work(),
-                Some(HtmlInputRuleWork::CompareAsciiUnit)
-            );
+            // The refused action is the ASCII comparison of the final pair: three inspected bytes.
+            assert!(matches!(
+                c.stop(),
+                Some(HtmlParseStop::LimitExceeded {
+                    limit: 15,
+                    current: 13,
+                    requested_delta: 3,
+                    ..
+                })
+            ));
         }
         assert_eq!(raw.code_units(), [84, 101, 88, 116]);
         assert_eq!(c.usage().actual_capacity_high_water, 0);
@@ -96,11 +91,10 @@ fn comparison_exact_eight_and_one_short_use_actual_controller_without_materializ
     for cap in [7, 8] {
         let mut c = control(cap, HtmlParseCancellation::new());
         let mut cursor = HtmlInputValueComparisonCursor::new(&value, &value);
-        while let Some(work) = cursor.required_work() {
-            if admit(&mut c, work).is_err() {
+        while cursor.result().is_none() {
+            if cursor.advance(&mut c).is_err() {
                 break;
             }
-            cursor.advance();
         }
         if cap == 8 {
             assert!(cursor.result().unwrap().is_equal());
@@ -129,22 +123,15 @@ fn cancellation_before_pair_retains_unfinished_cursor_and_canonical_first_stop()
     let old = [1, 2];
     let new = [1, 3];
     let mut cursor = HtmlInputValueComparisonCursor::new(&old, &new);
-    admit(&mut c, cursor.required_work().unwrap()).unwrap();
-    cursor.advance();
+    cursor.advance(&mut c).unwrap();
     cancellation.cancel();
-    assert_eq!(
-        admit(&mut c, cursor.required_work().unwrap()),
-        Err(HtmlParseStop::Cancelled)
-    );
+    assert_eq!(cursor.advance(&mut c), Err(HtmlParseStop::Cancelled));
     assert_eq!(cursor.result(), None);
     assert_eq!(
         c.usage().resource(HtmlParseResource::WorkCredits).current,
         2
     );
-    assert_eq!(
-        admit(&mut c, cursor.required_work().unwrap()),
-        Err(HtmlParseStop::Cancelled)
-    );
+    assert_eq!(cursor.advance(&mut c), Err(HtmlParseStop::Cancelled));
     assert_eq!(c.first_stop_usage(), Some(c.usage()).as_ref());
     assert_eq!(c.usage().actual_capacity_high_water, 0);
 }

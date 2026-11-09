@@ -143,12 +143,9 @@
 use crate::bounded::{
     attributes::HtmlAutocompleteMaterializationLimits,
     construction::{HtmlConstructionAttributeWork, HtmlConstructionTextAppendWork},
-    script::HtmlScriptTypeWork,
-    temporal::HtmlTimeElementInterpretationLayout,
-    values::{HtmlAttributeValidationLayout, HtmlValuePoolUsage},
+    values::HtmlValuePoolUsage,
 };
 use crate::construction::HtmlConstructionLimits;
-use crate::elements::input::HtmlInputRuleWork;
 use crate::security::csp::{HtmlCspLayout, HtmlCspStorage};
 use std::{error::Error, fmt};
 use surgeist_ledger::{Change, Limits, Tariff, Tariffs, dimensions};
@@ -638,6 +635,38 @@ impl HtmlCapScope {
     }
 }
 
+/// How a bounded operation that charges before it runs can fail: the charge
+/// stopped, or the operation found a fault of its own.
+///
+/// `Stopped` carries the caller's stop from the charge, so the caller keeps its own
+/// typed stop and its first-failure rule. `Faulted` carries the operation's typed
+/// fault, which the charge did not cause.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlChargedError<Stop, Fault> {
+    /// The charge before the operation was refused or failed.
+    Stopped(Stop),
+    /// The operation reported its own fault.
+    Faulted(Fault),
+}
+
+impl<Stop: fmt::Display, Fault: fmt::Display> fmt::Display for HtmlChargedError<Stop, Fault> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Stopped(stop) => write!(formatter, "the charge stopped: {stop}"),
+            Self::Faulted(fault) => fault.fmt(formatter),
+        }
+    }
+}
+
+impl<Stop: Error + 'static, Fault: Error + 'static> Error for HtmlChargedError<Stop, Fault> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Stopped(stop) => Some(stop),
+            Self::Faulted(fault) => Some(fault),
+        }
+    }
+}
+
 /// A conversion amount that does not fit the ledger's `u64`.
 ///
 /// Callers stop with their own representation failure.
@@ -738,38 +767,6 @@ pub fn text_append_work(work: &HtmlConstructionTextAppendWork) -> [HtmlChange; 5
     ]
 }
 
-/// The work of the next attribute validation step.
-pub fn attribute_validation_work(layout: HtmlAttributeValidationLayout) -> [HtmlChange; 4] {
-    [
-        Change::Work(HtmlWork::RecordVisit, layout.record_visits()),
-        Change::Work(HtmlWork::InspectByte, layout.inspected_bytes()),
-        Change::Work(HtmlWork::RecordWrite, layout.record_writes()),
-        Change::Work(HtmlWork::CopyByte, layout.copied_bytes()),
-    ]
-}
-
-/// The work of a script type matching step.
-pub fn script_type_work(work: HtmlScriptTypeWork) -> HtmlChange {
-    match work {
-        HtmlScriptTypeWork::RecordVisit(units) => Change::Work(HtmlWork::RecordVisit, units),
-        HtmlScriptTypeWork::InspectByte(units) => Change::Work(HtmlWork::InspectByte, units),
-    }
-}
-
-/// The work of an input rule cursor step. A length pair reads two records. An
-/// ASCII comparison inspects the unit's two bytes and the literal's one. A value
-/// unit comparison or inspection inspects the unit's two bytes.
-pub fn input_rule_work(work: HtmlInputRuleWork) -> HtmlChange {
-    match work {
-        HtmlInputRuleWork::ReadField => Change::Work(HtmlWork::RecordVisit, 1),
-        HtmlInputRuleWork::ReadValueLengths => Change::Work(HtmlWork::RecordVisit, 2),
-        HtmlInputRuleWork::CompareAsciiUnit => Change::Work(HtmlWork::InspectByte, 3),
-        HtmlInputRuleWork::CompareValueUnits | HtmlInputRuleWork::InspectValueUnit => {
-            Change::Work(HtmlWork::InspectByte, 2)
-        }
-    }
-}
-
 /// The provider work of a content security policy action: its own credits and
 /// the prepaid credits of its closing work. The action's atomic bytes are
 /// recorded with [`record_largest`].
@@ -779,11 +776,6 @@ pub fn csp_work(layout: &HtmlCspLayout) -> Result<HtmlChange, HtmlChargeOverflow
         .checked_add(layout.closing_work().work_credits())
         .map(|credits| Change::Work(HtmlWork::ProviderCall, credits))
         .ok_or(HtmlChargeOverflow)
-}
-
-/// The semantic work of the next time element interpretation action.
-pub fn time_interpretation_work(layout: HtmlTimeElementInterpretationLayout) -> HtmlChange {
-    Change::Work(HtmlWork::SemanticStep, wide(layout.work()))
 }
 
 /// The caps of a construction arena.

@@ -6,7 +6,9 @@ use super::attribute_name_index::{
 use super::finish::HtmlFinishFailure;
 use super::name_index::{HtmlNameIndex, HtmlNameIndexProbe, HtmlNameIndexSlot, HtmlNameIndexStep};
 use super::{Attribute, DocumentString, OrderedAttributes};
+use crate::internal::accounting::{HtmlChargedError, HtmlResource, HtmlWork};
 use std::{error::Error, fmt, mem::size_of, sync::Arc};
+use surgeist_ledger::{Change, Charge};
 
 /// The actual immutable attribute allocation awaiting expanded-name validation.
 ///
@@ -125,7 +127,7 @@ pub(crate) enum Phase {
 
 /// The exact next step's fixed work, before its operand read.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct HtmlAttributeValidationLayout {
+pub(crate) struct HtmlAttributeValidationLayout {
     record_visits: u64,
     inspected_bytes: u64,
     record_writes: u64,
@@ -133,23 +135,43 @@ pub struct HtmlAttributeValidationLayout {
 }
 
 impl HtmlAttributeValidationLayout {
+    /// Charges each nonzero dimension of the step on its own, in the order record visits,
+    /// inspected bytes, record writes, copied bytes.
+    pub(crate) fn charge<C: Charge<HtmlWork, HtmlResource>>(
+        self,
+        charge: &mut C,
+    ) -> Result<(), C::Stop> {
+        for change in [
+            Change::Work(HtmlWork::RecordVisit, self.record_visits),
+            Change::Work(HtmlWork::InspectByte, self.inspected_bytes),
+            Change::Work(HtmlWork::RecordWrite, self.record_writes),
+            Change::Work(HtmlWork::CopyByte, self.copied_bytes),
+        ] {
+            if !matches!(change, Change::Work(_, 0)) {
+                charge.charge(&[change])?;
+            }
+        }
+        Ok(())
+    }
     /// Number of attribute/string header visits.
-    pub fn record_visits(self) -> u64 {
+    pub(crate) fn record_visits(self) -> u64 {
         self.record_visits
     }
 
     /// Bytes inspected in exact UTF-16 unit comparisons and in hashing.
-    pub fn inspected_bytes(self) -> u64 {
+    pub(crate) fn inspected_bytes(self) -> u64 {
         self.inspected_bytes
     }
 
     /// Slots of the name index the step writes. Zero without an index.
-    pub fn record_writes(self) -> u64 {
+    #[cfg(test)]
+    pub(crate) fn record_writes(self) -> u64 {
         self.record_writes
     }
 
     /// Bytes of the name index the step copies. Zero without an index.
-    pub fn copied_bytes(self) -> u64 {
+    #[cfg(test)]
+    pub(crate) fn copied_bytes(self) -> u64 {
         self.copied_bytes
     }
 }
@@ -316,8 +338,8 @@ pub struct HtmlAttributeValidationAction<'a> {
 }
 
 impl HtmlAttributeValidationAction<'_> {
-    /// Returns work admitted before calling [`Self::advance`].
-    pub fn layout(&self) -> HtmlAttributeValidationLayout {
+    /// The work this action admits before it reads its operands.
+    fn layout(&self) -> HtmlAttributeValidationLayout {
         let validation = &*self.validation;
         let none = |layout: HtmlAttributeValidationLayout| layout;
         match self.stage {
@@ -378,9 +400,21 @@ impl HtmlAttributeValidationAction<'_> {
         }
     }
 
-    /// Performs only this action's admitted read and advances its cursor.
+    /// Charges this action's work, then performs only its read and advances its cursor. Each
+    /// nonzero dimension of the work is its own charge, in the order record visits, inspected
+    /// bytes, record writes, copied bytes. A refused charge leaves the cursor at the same action.
     /// A duplicate is latched before returning its first refusal.
-    pub fn advance(self) -> Result<(), HtmlAttributeValidationError> {
+    pub fn advance<C: Charge<HtmlWork, HtmlResource>>(
+        self,
+        charge: &mut C,
+    ) -> Result<(), HtmlChargedError<C::Stop, HtmlAttributeValidationError>> {
+        self.layout()
+            .charge(charge)
+            .map_err(HtmlChargedError::Stopped)?;
+        self.perform().map_err(HtmlChargedError::Faulted)
+    }
+    /// Performs only this action's read and advances its cursor.
+    fn perform(self) -> Result<(), HtmlAttributeValidationError> {
         let validation = self.validation;
         match self.stage {
             Stage::Pairs => {
@@ -700,7 +734,7 @@ mod tests {
                 work.writes += layout.record_writes();
                 work.copied += layout.copied_bytes();
                 work.steps += 1;
-                action.advance()?;
+                action.perform()?;
             }
             Ok(())
         })();
@@ -789,7 +823,7 @@ mod tests {
         let mut validation = HtmlAttributeStorage::from_shared_attributes(Arc::new(attributes))
             .validate_indexed(index);
         while let Some(action) = validation.next_action().expect("distinct names") {
-            action.advance().expect("distinct names");
+            action.perform().expect("distinct names");
         }
         let index = validation.take_index().expect("the cursor held the index");
         assert_eq!(index.capacity(), capacity, "validation never reallocates");

@@ -1,3 +1,5 @@
+use crate::html::support::{Recorder, Refused, Refuser};
+use surgeist_html::accounting::HtmlWork;
 use surgeist_html::bounded::{
     lexical::{
         HtmlCustomNameScanAction as CustomAction, HtmlPiPseudoAttributeAction as PiAction,
@@ -20,18 +22,22 @@ use surgeist_html::bounded::{
 use surgeist_html::values::{
     DocumentString, HtmlCustomElementNameError, HtmlValueInterpreter, Namespace, QualifiedName,
 };
+use surgeist_ledger::Change;
 
 #[test]
 fn script_content_and_preparation_preserve_their_distinct_whitespace_rules() {
     use surgeist_html::{bounded::script::HtmlScriptTypeCursor, elements::script::HtmlScriptKind};
 
     fn finish(mut cursor: HtmlScriptTypeCursor<'_>) -> Option<HtmlScriptKind> {
-        while cursor.required_work().is_some() {
-            cursor.advance();
+        let mut meter = Recorder::default();
+        while cursor.result().is_none() {
+            cursor.advance(&mut meter).unwrap();
         }
         let result = cursor.result().unwrap();
-        cursor.advance();
-        assert!(cursor.required_work().is_none());
+        let charged = meter.batches().len();
+        // A completed cursor charges nothing and stays completed.
+        cursor.advance(&mut meter).unwrap();
+        assert_eq!(meter.batches().len(), charged);
         assert_eq!(cursor.result(), Some(result));
         result
     }
@@ -69,24 +75,29 @@ fn script_content_and_preparation_preserve_their_distinct_whitespace_rules() {
 
 #[test]
 fn missing_script_type_has_a_fixed_header_action_and_stable_completion() {
-    use surgeist_html::{
-        bounded::script::{HtmlScriptTypeCursor, HtmlScriptTypeWork},
-        elements::script::HtmlScriptKind,
-    };
+    use surgeist_html::{bounded::script::HtmlScriptTypeCursor, elements::script::HtmlScriptKind};
 
     let mut cursor = HtmlScriptTypeCursor::content(None);
     assert_eq!(cursor.result(), None);
+    // A refused charge leaves the cursor at its header action, however often it is refused.
+    let mut refuser = Refuser::default();
     for _ in 0..2 {
-        assert_eq!(
-            cursor.required_work(),
-            Some(HtmlScriptTypeWork::RecordVisit(2))
-        );
+        assert_eq!(cursor.advance(&mut refuser), Err(Refused));
         assert_eq!(cursor.result(), None);
     }
-    cursor.advance();
+    assert_eq!(
+        refuser.attempts,
+        vec![vec![Change::Work(HtmlWork::RecordVisit, 2)]; 2]
+    );
+    let mut meter = Recorder::default();
+    cursor.advance(&mut meter).unwrap();
+    assert_eq!(
+        meter.batches(),
+        [vec![Change::Work(HtmlWork::RecordVisit, 2)]]
+    );
     assert_eq!(cursor.result(), Some(Some(HtmlScriptKind::Classic)));
-    assert_eq!(cursor.required_work(), None);
-    cursor.advance();
+    cursor.advance(&mut meter).unwrap();
+    assert_eq!(meter.batches().len(), 1);
     assert_eq!(cursor.result(), Some(Some(HtmlScriptKind::Classic)));
 }
 

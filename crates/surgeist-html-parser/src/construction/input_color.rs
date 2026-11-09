@@ -325,7 +325,7 @@ impl SessionStorage {
                 .map(|slot| admitted_input_string(&self.payloads, c, slot))
                 .transpose()?;
             let mut cursor = surgeist_html::elements::input::HtmlInputColorSpaceCursor::new(value);
-            while let Some(work) = cursor.required_work() {
+            while cursor.result().is_none() {
                 c.charge(HtmlParseWorkCategory::StateStep, 1)?;
                 c.charge(
                     HtmlParseWorkCategory::InspectByte,
@@ -335,14 +335,7 @@ impl SessionStorage {
                 payload_write::<surgeist_html::elements::input::HtmlInputColorSpaceCursor<'_>>(
                     c, 1,
                 )?;
-                match work {
-                    surgeist_html::elements::input::HtmlInputRuleWork::CompareAsciiUnit
-                    | surgeist_html::elements::input::HtmlInputRuleWork::ReadField => {
-                        c.charge_change(surgeist_html::accounting::input_rule_work(work))?;
-                    }
-                    _ => return Err(integrity(c)),
-                }
-                cursor.advance();
+                cursor.advance(c)?;
             }
             cursor.result().ok_or_else(|| integrity(c))?
         };

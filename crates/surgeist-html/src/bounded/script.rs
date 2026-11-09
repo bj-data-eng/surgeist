@@ -4,4 +4,4 @@ pub use crate::internal::elements::script_preparation::{
     HtmlScriptPreparationAction, HtmlScriptPreparationCursor, HtmlScriptPreparationError,
     HtmlScriptPreparationReply, HtmlScriptPreparationResult,
 };
-pub use crate::internal::elements::script_type::{HtmlScriptTypeCursor, HtmlScriptTypeWork};
+pub use crate::internal::elements::script_type::HtmlScriptTypeCursor;

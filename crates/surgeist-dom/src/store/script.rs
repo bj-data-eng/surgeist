@@ -1,10 +1,41 @@
 //! Native Script hooks over actual staged topology, attributes and documents.
 use super::*;
+use surgeist_html::accounting::{HtmlChange, HtmlResource, HtmlWork};
 use surgeist_html::bounded::script::{
     HtmlScriptPreparationAction as Action, HtmlScriptPreparationCursor,
     HtmlScriptPreparationReply as Reply, HtmlScriptPreparationResult, HtmlScriptTypeCursor,
-    HtmlScriptTypeWork,
 };
+use surgeist_ledger::{Change, Charge};
+
+/// Checks cancellation before each script type cursor action and the representation of the work
+/// credits they describe. DOM admits the raw strings before the hooks, so the borrowed kernel's
+/// work is finite in those operands; there is no hidden allocation or copied table.
+struct TypeWork<'a> {
+    cancel: &'a AtomicBool,
+    work: u64,
+}
+
+impl Charge<HtmlWork, HtmlResource> for TypeWork<'_> {
+    type Stop = DomError;
+
+    fn charge(&mut self, batch: &[HtmlChange]) -> Result<(), DomError> {
+        check_cancel(self.cancel)?;
+        for change in batch {
+            let Change::Work(_, amount) = *change else {
+                return Err(DomError::HtmlChargeProtocol);
+            };
+            self.work = self
+                .work
+                .checked_add(amount)
+                .ok_or(DomError::RepresentationExhausted)?;
+        }
+        Ok(())
+    }
+
+    fn record_largest(&mut self, _: HtmlResource, _: u64) -> Result<(), DomError> {
+        Err(DomError::HtmlChargeProtocol)
+    }
+}
 
 use surgeist_html::{
     elements::script::{HtmlScriptKind, HtmlScriptResult},
@@ -51,20 +82,9 @@ impl Draft {
         // canonical type cursor owns its meaning; this is only an exact lookup.
         let language = self.script_attribute(node, "language", cancel)?;
         let mut cursor = HtmlScriptTypeCursor::preparation(explicit, language);
-        let mut work = 0_u64;
-        while let Some(required) = cursor.required_work() {
-            check_cancel(cancel)?;
-            // DOM admits raw strings before hooks; this borrowed kernel's work
-            // is finite in those admitted operands. Check every actual credit
-            // before advancing; there is no hidden allocation or copied table.
-            let amount = match required {
-                HtmlScriptTypeWork::RecordVisit(amount)
-                | HtmlScriptTypeWork::InspectByte(amount) => amount,
-            };
-            work = work
-                .checked_add(amount)
-                .ok_or(DomError::RepresentationExhausted)?;
-            cursor.advance();
+        let mut work = TypeWork { cancel, work: 0 };
+        while cursor.result().is_none() {
+            cursor.advance(&mut work)?;
         }
         Ok(cursor.result().expect("completed actual type cursor"))
     }

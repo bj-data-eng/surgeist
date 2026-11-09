@@ -1,4 +1,5 @@
 //! Literal setter/selection outcomes from HTML877d41486–41494 and44332–44352.
+use crate::html::support::Recorder;
 use surgeist_html::{
     attributes::HtmlInputType,
     elements::{
@@ -25,8 +26,9 @@ fn api_value(raw: &[u16]) -> Vec<u16> {
 
 fn compare(old: &[u16], new: &[u16]) -> HtmlInputValueComparison {
     let mut cursor = HtmlInputValueComparisonCursor::new(old, new);
-    while cursor.required_work().is_some() {
-        cursor.advance();
+    let mut meter = Recorder::default();
+    while cursor.result().is_none() {
+        cursor.advance(&mut meter).unwrap();
     }
     cursor.result().unwrap()
 }

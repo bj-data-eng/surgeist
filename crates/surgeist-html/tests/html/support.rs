@@ -5,6 +5,8 @@
 //! fixture it depends on without copying its constructor.
 
 use std::convert::Infallible;
+use surgeist_html::accounting::{HtmlChange, HtmlResource, HtmlWork};
+use surgeist_ledger::{Change, Charge};
 
 use surgeist_html::bounded::native::native_element_initialization_with;
 use surgeist_html::{
@@ -305,5 +307,67 @@ pub mod slots {
                 Err(reason)
             }
         }
+    }
+}
+
+/// A charger that admits and records every batch, in order, so a test reads exactly what an
+/// operation charged and in which batches.
+#[derive(Debug, Default)]
+pub struct Recorder {
+    batches: Vec<Vec<HtmlChange>>,
+}
+
+impl Recorder {
+    /// Every batch charged so far, oldest first.
+    pub fn batches(&self) -> &[Vec<HtmlChange>] {
+        &self.batches
+    }
+
+    /// The amount charged to one work dimension across all batches.
+    pub fn total(&self, dimension: HtmlWork) -> u64 {
+        self.batches
+            .iter()
+            .flatten()
+            .map(|change| match *change {
+                Change::Work(charged, amount) if charged == dimension => amount,
+                _ => 0,
+            })
+            .sum()
+    }
+}
+
+impl Charge<HtmlWork, HtmlResource> for Recorder {
+    type Stop = Infallible;
+
+    fn charge(&mut self, batch: &[HtmlChange]) -> Result<(), Infallible> {
+        self.batches.push(batch.to_vec());
+        Ok(())
+    }
+
+    fn record_largest(&mut self, _: HtmlResource, _: u64) -> Result<(), Infallible> {
+        panic!("this operation records no gauge");
+    }
+}
+
+/// The stop of a [`Refuser`].
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Refused;
+
+/// A charger that refuses every batch and records it.
+#[derive(Debug, Default)]
+pub struct Refuser {
+    pub attempts: Vec<Vec<HtmlChange>>,
+}
+
+impl Charge<HtmlWork, HtmlResource> for Refuser {
+    type Stop = Refused;
+
+    fn charge(&mut self, batch: &[HtmlChange]) -> Result<(), Refused> {
+        self.attempts.push(batch.to_vec());
+        Err(Refused)
+    }
+
+    fn record_largest(&mut self, _: HtmlResource, _: u64) -> Result<(), Refused> {
+        Err(Refused)
     }
 }

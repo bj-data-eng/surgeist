@@ -545,6 +545,10 @@ pub enum HtmlCaptureError {
         required: usize,
     },
     RepresentationExhausted,
+    /// A bounded HTML operation charged a change that the capture's work steps do not admit: a
+    /// resource change or a gauge record. The capture charges only work, so an operation that does
+    /// this breaks its contract with the capture.
+    ChargeProtocol,
     InvalidFragmentScriptingMode(HtmlParserScriptingMode),
     UnsupportedExecution(HtmlParserScriptingMode),
 }
