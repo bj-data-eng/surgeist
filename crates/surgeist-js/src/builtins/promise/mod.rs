@@ -10,6 +10,8 @@ pub(crate) use reaction::{
 #[cfg(test)]
 mod pending_bridge_cleanup_tests;
 #[cfg(test)]
+mod remaining_owner_tests;
+#[cfg(test)]
 mod tests;
 
 use super::{
