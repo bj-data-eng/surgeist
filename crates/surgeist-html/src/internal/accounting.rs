@@ -82,7 +82,7 @@
 //!
 //! | Operation | Entry | Scopes opened below the host scope | Charges the host operation keeps | Released |
 //! | --- | --- | --- | --- | --- |
-//! | Parse | `HtmlParseAccounting::host` | `html-parse`, `html-parse-charging` (four phase scopes with phase observation) | Work, credits and permanent resources | Live balances, when the report or failure drops |
+//! | Parse | `HtmlParseAccounting::host` | `html-parse`, `html-parse-charging` (four phase scopes with phase observation) | Work and credits | Every live resource, permanent ones included, when the report or failure drops |
 //! | Capture | `HtmlCaptureBuilder::with_accounting` | `html-capture` | Captured subjects, relationships, attributes, UTF-16 units, registries, definitions and element value bytes | None; a capture holds no custody |
 //! | Construction import | `HtmlConstructionCaptureAdapter` with a hosted builder | `html-capture-import`, a sibling of `html-capture` | Semantic steps and mapping entries | Scratch records, as the import returns them |
 //! | Semantic session | `HtmlSemanticSession::with_accounting` | `html-query`, `html-query-observed` (scale zero into the host scope) | Semantic steps, output and nested output records, allocated bytes | Scratch records, as each scratch vector is returned |
