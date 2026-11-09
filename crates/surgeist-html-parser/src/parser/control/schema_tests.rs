@@ -2,13 +2,13 @@
 //! schema's conversions of the same shapes. The expected side is what the
 //! controller charges today; the schema side runs through a real ledger.
 
-use crate::parser::control::ParseControl;
+use crate::parser::control::{HtmlParseStop, ParseControl};
 use crate::schema_support::{CATEGORIES, charged, through_schema};
 use crate::settings::RESOURCES;
 use crate::{HtmlParseCancellation, HtmlParseLimits, HtmlParseResource};
 use surgeist_html::{
     accounting::{
-        HtmlCustody, HtmlLimits, HtmlResource, HtmlWork, attribute_edit_entries,
+        HtmlChange, HtmlCustody, HtmlLimits, HtmlResource, HtmlWork, attribute_edit_entries,
         attribute_edit_work, record_largest, retained_provider_storage, value_pool_work,
     },
     bounded::{construction::HtmlConstructionAttributeWork, values::HtmlStringPool},
@@ -193,6 +193,71 @@ fn the_schema_marks_the_parser_custody_policies() {
                 HtmlCustody::Balance | HtmlCustody::Retention
             ),
             "{resource:?}"
+        );
+    }
+}
+
+/// The controller refuses retained provider storage at the first resource, in
+/// resource precedence order, whose cap the request exceeds. The schema's batch
+/// must reach the same first refusal when several caps fail at once.
+#[test]
+fn retained_provider_storage_is_refused_at_the_resource_the_controller_names() {
+    use surgeist_ledger::{Error, Limits};
+    let storage = [
+        HtmlParseResource::AuxiliaryEntries,
+        HtmlParseResource::ManagedUtf16Units,
+        HtmlParseResource::ManagedCapacityBytes,
+        HtmlParseResource::PeakTransientBytes,
+    ];
+    // Every subset of two or more of the four storage caps set to zero.
+    for mask in 1_u32..16 {
+        if mask.count_ones() < 2 {
+            continue;
+        }
+        let failing: Vec<HtmlParseResource> = storage
+            .iter()
+            .enumerate()
+            .filter(|(bit, _)| mask & (1 << bit) != 0)
+            .map(|(_, resource)| *resource)
+            .collect();
+        let mut c = control();
+        for resource in &failing {
+            c.test_limit(*resource, 0);
+        }
+        let Err(HtmlParseStop::LimitExceeded { resource, .. }) =
+            c.acquire_retained_provider(64, 8, 2)
+        else {
+            panic!("expected a limit stop for {failing:?}");
+        };
+        let limits = Limits::from_fn(
+            |_| u64::MAX,
+            |dimension| {
+                if failing
+                    .iter()
+                    .any(|resource| RESOURCES.get(dimension as usize) == Some(resource))
+                {
+                    0
+                } else {
+                    u64::MAX
+                }
+            },
+        );
+        let mut operation = Operation::<HtmlWork, HtmlResource>::new("cap", limits, 1).unwrap();
+        let root = operation.root();
+        let batch: Vec<HtmlChange> = retained_provider_storage(64, 8, 2)
+            .into_iter()
+            .map(|(dimension, amount)| Change::Acquire(dimension, amount))
+            .collect();
+        let Err(Error::Refused(refusal)) = operation.apply_batch(root, &batch) else {
+            panic!("expected a ledger refusal for {failing:?}");
+        };
+        let Change::Acquire(refused, _) = refusal.change else {
+            panic!("expected an acquire refusal");
+        };
+        assert_eq!(
+            format!("{refused:?}"),
+            format!("{resource:?}"),
+            "failing caps {failing:?}"
         );
     }
 }
