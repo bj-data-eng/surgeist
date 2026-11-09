@@ -348,6 +348,10 @@ impl<'owner> ContextAccess<'owner> {
     /// # Errors
     /// Returns the exact original job and the receiving engine cause if the
     /// executor rejected the input before acceptance.
+    #[expect(
+        clippy::result_large_err,
+        reason = "retain original job ownership without allocating to box the refused input"
+    )]
     pub fn enqueue_job(
         &mut self,
         job: Job,

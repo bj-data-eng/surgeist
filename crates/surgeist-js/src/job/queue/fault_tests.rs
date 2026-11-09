@@ -84,9 +84,10 @@ fn pending(wait: &mut JobWait, waker: &Waker) {
             .is_pending()
     );
 }
+type ObserverSnapshot = Vec<Result<JobStatus, JobFault>>;
 struct PeerWake {
     peers: Vec<JobObserver>,
-    snapshots: Arc<Mutex<Vec<Vec<Result<JobStatus, JobFault>>>>>,
+    snapshots: Arc<Mutex<Vec<ObserverSnapshot>>>,
     wakes: Arc<AtomicUsize>,
 }
 impl PeerWake {

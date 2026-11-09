@@ -49,7 +49,10 @@ fn initial_deadline_overflow_keeps_the_unaccepted_timer_until_the_caller_dispose
     let token = timer.cancellation_token().clone();
     {
         // Keep the publication result alive until the caller explicitly disposes it.
-        let attempted = catch_unwind(AssertUnwindSafe(|| owner.enqueue_job(timer.into())));
+        let mut publication = None;
+        let attempted = catch_unwind(AssertUnwindSafe(|| {
+            publication = Some(owner.enqueue_job(timer.into()));
+        }));
         assert_eq!(calls.get(), 0);
         assert_eq!(
             drops.get(),
@@ -62,9 +65,11 @@ fn initial_deadline_overflow_keeps_the_unaccepted_timer_until_the_caller_dispose
         );
         assert_eq!(observer.status(), Ok(JobStatus::Pending));
         assert_eq!(observer.fault(), None);
-        let _returned = attempted.expect(
+        attempted.expect(
             "deadline overflow must return through publication rather than a host arithmetic panic",
         );
+        let _returned =
+            publication.expect("a completed call retains its owning publication result");
         assert_eq!(drops.get(), 0);
     }
     // Leaving the scope is the caller's explicit disposal of whatever owning

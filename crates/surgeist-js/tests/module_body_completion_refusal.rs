@@ -203,7 +203,7 @@ fn completion_refusal(resumed: bool, guest_throw: bool) {
     module.link(context.access()).unwrap();
     let result = if resumed {
         // Here the real source canonical capability is publicly returned
-        // before its genuine suspended body resumes.
+        // before its actual suspended body resumes.
         context
             .with_execution(ExecutionOptions::new(FINITE), |access| {
                 module.evaluate(access)

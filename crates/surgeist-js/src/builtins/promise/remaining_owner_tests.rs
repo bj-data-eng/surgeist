@@ -20,9 +20,10 @@ use std::{
     task::{Context as TaskContext, Poll, Waker},
 };
 const FINITE: u64 = 100_000;
+type EarlyReactionFailure = (ReactionLifecycle, JsError, Rc<Cell<usize>>);
 thread_local! {
     static INPUTS: RefCell<VecDeque<JsValue>> = const { RefCell::new(VecDeque::new()) };
-    static EARLY: RefCell<Option<(ReactionLifecycle, JsError, Rc<Cell<usize>>)>> = const { RefCell::new(None) };
+    static EARLY: RefCell<Option<EarlyReactionFailure>> = const { RefCell::new(None) };
 }
 struct Inputs;
 impl Drop for Inputs {

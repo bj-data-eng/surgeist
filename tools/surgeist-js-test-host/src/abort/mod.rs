@@ -118,10 +118,10 @@ impl JsAbortSignal {
             let result = publication
                 .map_err(surgeist_js::job::JobPublicationError::into_error)
                 .and_then(surgeist_js::job::JobAcceptance::into_result);
-            if let Err(error) = result {
-                if publication_error.is_none() {
-                    publication_error = Some(error);
-                }
+            if let Err(error) = result
+                && publication_error.is_none()
+            {
+                publication_error = Some(error);
             }
         }
 

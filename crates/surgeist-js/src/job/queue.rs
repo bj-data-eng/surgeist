@@ -513,6 +513,10 @@ impl Store {
             self.clocks.remove(index);
         }
     }
+    #[expect(
+        clippy::result_large_err,
+        reason = "retain original job ownership without allocating to box the refused input"
+    )]
     fn insert(
         &mut self,
         command: Resident,
@@ -1276,6 +1280,10 @@ impl RuntimeJobQueues {
         cleanup.finish();
         Ok(())
     }
+    #[expect(
+        clippy::result_large_err,
+        reason = "retain original job ownership without allocating to box the refused input"
+    )]
     fn publish(
         self: &Rc<Self>,
         command: Resident,

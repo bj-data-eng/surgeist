@@ -401,27 +401,27 @@ fn later_real_discard_or_refusal_releases_source_pending_ordinary_and_module_cap
                 1,
                 "neither a dropped selected job nor the old source-retained qualification owns a runnable capture"
             );
-            if let Some(module) = &module {
-                if refused {
-                    let stopped = context
-                        .with_execution(ExecutionOptions::new(FINITE), |access| {
-                            module.evaluate(access)
-                        })
-                        .unwrap();
-                    assert_eq!(stopped.report.instructions().unwrap(), 0);
-                    let error = stopped.result.unwrap_err();
-                    let Some(EngineError::ModuleInterrupted(cause)) = error.as_engine() else {
-                        panic!(
-                            "required module reaction refusal must preserve its actual terminal cause"
-                        )
-                    };
-                    assert_eq!(
-                        cause.cause().kind(),
-                        DiagnosticKind::Engine(DiagnosticEngine::Resource(
-                            EngineResourceError::Allocation
-                        ))
-                    );
-                }
+            if let Some(module) = &module
+                && refused
+            {
+                let stopped = context
+                    .with_execution(ExecutionOptions::new(FINITE), |access| {
+                        module.evaluate(access)
+                    })
+                    .unwrap();
+                assert_eq!(stopped.report.instructions().unwrap(), 0);
+                let error = stopped.result.unwrap_err();
+                let Some(EngineError::ModuleInterrupted(cause)) = error.as_engine() else {
+                    panic!(
+                        "required module reaction refusal must preserve its actual terminal cause"
+                    )
+                };
+                assert_eq!(
+                    cause.cause().kind(),
+                    DiagnosticKind::Engine(DiagnosticEngine::Resource(
+                        EngineResourceError::Allocation
+                    ))
+                );
             }
             assert_eq!(eval("40 + 2", &mut context).unwrap(), JsValue::new(42));
             assert_eq!(value("lifecycleEffects", &mut context), JsValue::new(1));

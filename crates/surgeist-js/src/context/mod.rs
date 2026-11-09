@@ -734,6 +734,10 @@ impl Context {
     /// # Errors
     /// Returns the exact original input if the executor rejects it before
     /// acceptance. Accepted inline failures have a distinct disposition.
+    #[expect(
+        clippy::result_large_err,
+        reason = "retain original job ownership without allocating to box the refused input"
+    )]
     pub fn enqueue_job(
         &mut self,
         job: Job,

@@ -1056,6 +1056,10 @@ pub trait JobExecutor: Any {
     ///
     /// # Errors
     /// Returns the original job and a validated engine cause before acceptance.
+    #[expect(
+        clippy::result_large_err,
+        reason = "retain original job ownership without allocating to box the refused input"
+    )]
     fn enqueue_job(
         self: Rc<Self>,
         job: Job,
