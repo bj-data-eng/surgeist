@@ -2245,8 +2245,11 @@ fn clip_coverage_preserves_fill_rule_antialiasing_and_signed_mapping() {
         context,
         DeviceCapabilities::from_test_facts(true, true, 4_096),
     );
-    let expected_texel_origin = Point::new(-2.4, -1.6);
-    let expected_initial_transform = Transform::translation(2.4, 1.6)
+    // Coverage uses the containing parent image's grid. The source rectangle
+    // [-3,-2]..[3,2], scaled by 5/4, rounds outward to [-4,-3]..[4,3].
+    // Its 8x6 texels start at (-16/5,-12/5), with first center (-14/5,-2).
+    let expected_texel_origin = Point::new(-3.2, -2.4);
+    let expected_initial_transform = Transform::translation(3.2, 2.4)
         .unwrap()
         .then(Transform::scale(1.25, 1.25).unwrap())
         .unwrap();
@@ -2288,11 +2291,11 @@ fn clip_coverage_preserves_fill_rule_antialiasing_and_signed_mapping() {
             && emitted_fill_is_exact
             && emitted_end_clip_is_exact
             && capture.antialiasing == antialiasing
-            && capture.device_origin == (-3, -2)
-            && capture.target_extent == PhysicalSize::new(5, 3)
+            && capture.device_origin == (-4, -3)
+            && capture.target_extent == PhysicalSize::new(8, 6)
             && capture.texel_origin == expected_texel_origin
             && capture.raster_scale == 1.25
-            && capture.first_texel_center == Point::new(-2.0, -1.2)
+            && capture.first_texel_center == Point::new(-2.8, -2.0)
             && capture.initial_transform == expected_initial_transform
             && capture.uses_transparent_base
             && capture.raster_antialiasing == antialiasing
@@ -2301,7 +2304,7 @@ fn clip_coverage_preserves_fill_rule_antialiasing_and_signed_mapping() {
 
     assert!(
         observed.captures.len() == 1 && preserves_geometry_and_grid,
-        "clip coverage differs from authored Vello geometry or grid"
+        "clip coverage differs from authored Vello geometry or grid: {observed:#?}"
     );
 }
 

@@ -559,6 +559,12 @@ Source support, affected domain and result support remain distinct planning fact
 These are resolved native execution rules; callers still own CSS, Canvas or SVG
 interpretation and group creation.
 
+Graph clip-coverage captures use the composed parent image's spatial grid,
+including its signed device origin, extent, raster scale and texel centers.
+Coverage is evaluated over that complete image before composition. Source
+support, clip geometry and alpha-mask image dimensions retain their separate
+roles; the clip path's own bounds do not select another capture grid.
+
 Layer transforms map source content and the layer's own clip. They do not remove
 the parent image domain. A singular source transform yields transparent source;
 an unclipped destructive operation still runs. A singular own geometric clip has
