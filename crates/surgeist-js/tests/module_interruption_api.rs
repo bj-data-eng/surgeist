@@ -8,7 +8,7 @@ use surgeist_js::{
     error::{
         Diagnostic, DiagnosticEngine, DiagnosticFrame, DiagnosticKind, DiagnosticNative,
         DiagnosticNativeKind, DiagnosticStack, EngineError, EngineResourceError, ErasedEngineError,
-        JsErasedError, PanicError, RuntimeLimitError,
+        JobError, JsErasedError, PanicError, RuntimeLimitError,
     },
     execution::ExecutionOptions,
     job::JobRetirement,
@@ -80,7 +80,7 @@ fn interrupt(original: JsError, context: &mut Context) -> (Module, JsError) {
     .unwrap();
     let loaded = module.load(context.access()).unwrap();
     assert_eq!(
-        loaded.state(),
+        loaded.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     module.link(context.access()).unwrap();
@@ -144,6 +144,8 @@ fn assert_engine_cause(view: Diagnostic<'_>, expected: &EngineError) {
         EngineError::Resource(value) => DiagnosticEngine::Resource(*value),
         EngineError::InvalidEntryPermit => DiagnosticEngine::InvalidEntryPermit,
         EngineError::ContextAccessBusy => DiagnosticEngine::ContextAccessBusy,
+        EngineError::ObjectAccessBusy => DiagnosticEngine::ObjectAccessBusy,
+        EngineError::Job(value) => DiagnosticEngine::Job(*value),
         EngineError::JobContextRequired { required } => {
             DiagnosticEngine::JobContextRequired { required }
         }
@@ -166,6 +168,9 @@ fn scalar_cases(context: &Context) -> Vec<EngineError> {
         EngineError::Resource(EngineResourceError::Allocation),
         EngineError::InvalidEntryPermit,
         EngineError::ContextAccessBusy,
+        EngineError::ObjectAccessBusy,
+        EngineError::Job(JobError::TaskCompleted),
+        EngineError::Job(JobError::CancellationRevoked),
         EngineError::JobContextRequired {
             required: context.id(),
         },
@@ -258,6 +263,15 @@ fn actual_callback_stops_preserve_every_scalar_engine_payload_identity_and_erase
         };
         assert_eq!(*identity, handle.identity());
         assert_eq!(cause.as_ref(), &expected);
+        if let EngineError::ObjectAccessBusy = engine {
+            assert_eq!(
+                cause.as_engine(),
+                Some(&ErasedEngineError::ObjectAccessBusy)
+            );
+        }
+        if let EngineError::Job(error) = engine {
+            assert_eq!(cause.as_engine(), Some(&ErasedEngineError::Job(error)));
+        }
         assert_eq!(effects(&mut context), 1.into());
     }
     fn send_sync<T: Send + Sync>() {}
@@ -611,7 +625,7 @@ fn fresh_native_wait_reports_terminal_module_before_executing_a_guest_species_ge
     )
     .unwrap();
     assert_eq!(
-        module.load(context.access()).unwrap().state(),
+        module.load(context.access()).unwrap().state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     module.link(context.access()).unwrap();
@@ -622,7 +636,7 @@ fn fresh_native_wait_reports_terminal_module_before_executing_a_guest_species_ge
         .unwrap()
         .result
         .unwrap();
-    assert_eq!(evaluation.state(), PromiseState::Pending);
+    assert_eq!(evaluation.state().unwrap(), PromiseState::Pending);
     assert_eq!(effects(&mut context), 0.into());
     let original = JsError::from(EngineError::RuntimeLimit(RuntimeLimitError::JobPoll {
         limit: 73,
@@ -639,7 +653,7 @@ fn fresh_native_wait_reports_terminal_module_before_executing_a_guest_species_ge
         .unwrap();
     assert_eq!(stopped.result.unwrap_err(), original);
     assert_eq!(effects(&mut context), 1.into());
-    assert_eq!(evaluation.state(), PromiseState::Pending);
+    assert_eq!(evaluation.state().unwrap(), PromiseState::Pending);
     let terminal = observe(&module, &mut context);
     context
         .global_object()
@@ -675,7 +689,7 @@ fn fresh_native_wait_reports_terminal_module_before_executing_a_guest_species_ge
             .unwrap(),
         0.into()
     );
-    assert_eq!(evaluation.state(), PromiseState::Pending);
+    assert_eq!(evaluation.state().unwrap(), PromiseState::Pending);
     assert_eq!(effects(&mut context), 1.into());
 }
 
@@ -734,7 +748,7 @@ fn newly_runnable_tla_ancestor_preserves_its_original_host_panic_in_the_initiati
         .result
         .unwrap();
     assert_eq!(
-        loaded.state(),
+        loaded.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     parent.link(context.access()).unwrap();
@@ -745,8 +759,8 @@ fn newly_runnable_tla_ancestor_preserves_its_original_host_panic_in_the_initiati
         .unwrap()
         .result
         .unwrap();
-    assert_eq!(evaluation.state(), PromiseState::Pending);
-    assert_eq!(gate.state(), PromiseState::Pending);
+    assert_eq!(evaluation.state().unwrap(), PromiseState::Pending);
+    assert_eq!(gate.state().unwrap(), PromiseState::Pending);
     assert_eq!(effects(&mut context), 0.into());
     context
         .global_object()
@@ -796,7 +810,7 @@ fn newly_runnable_tla_ancestor_preserves_its_original_host_panic_in_the_initiati
     assert!(outcome.report.instructions().unwrap() > 0);
     assert!(outcome.report.instructions().unwrap() < 100_000);
     assert_eq!(effects(&mut context), 1.into());
-    assert_eq!(evaluation.state(), PromiseState::Pending);
+    assert_eq!(evaluation.state().unwrap(), PromiseState::Pending);
     assert_eq!(
         context
             .global_object()
@@ -819,7 +833,7 @@ fn newly_runnable_tla_ancestor_preserves_its_original_host_panic_in_the_initiati
         .result
         .unwrap();
     assert_eq!(
-        child_completion.state(),
+        child_completion.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     assert_eq!(
@@ -841,7 +855,7 @@ fn newly_runnable_tla_ancestor_preserves_its_original_host_panic_in_the_initiati
     let source = native(source);
     assert_eq!(source.kind(), DiagnosticNativeKind::Range);
     assert_eq!(source.message(), "authored ancestor native cause");
-    assert_eq!(evaluation.state(), PromiseState::Pending);
+    assert_eq!(evaluation.state().unwrap(), PromiseState::Pending);
 }
 
 #[test]
@@ -1023,7 +1037,7 @@ mod final_settlement {
         let module = Module::parse(Source::from_bytes(source), None, context.access()).unwrap();
         let loaded = module.load(context.access()).unwrap();
         assert_eq!(
-            loaded.state(),
+            loaded.state().unwrap(),
             PromiseState::Fulfilled(JsValue::undefined())
         );
         module.link(context.access()).unwrap();

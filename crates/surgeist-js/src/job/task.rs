@@ -1,6 +1,6 @@
 //! Owned host work with temporary engine access at each poll.
 
-use crate::{ContextAccess, HostContext, JsResult};
+use crate::{ContextAccess, HostContext, JsResult, error::JobError};
 use std::{
     fmt,
     future::Future,
@@ -9,9 +9,20 @@ use std::{
 
 type PollTask<T> = dyn FnMut(&mut TaskContext<'_>, &HostContext<'_>) -> Poll<JsResult<T>>;
 
+enum TaskState {
+    Active,
+    Terminal,
+}
+
+enum Completion<F> {
+    Waiting(F),
+    Consumed,
+}
+
 /// Owned asynchronous work that cannot retain the engine access supplied to a poll.
 pub struct ContextTask<T: 'static> {
     poll: Box<PollTask<T>>,
+    state: TaskState,
 }
 
 impl<T> fmt::Debug for ContextTask<T> {
@@ -37,6 +48,7 @@ impl<T: 'static> ContextTask<T> {
     {
         Self {
             poll: Box::new(poll),
+            state: TaskState::Active,
         }
     }
 
@@ -45,19 +57,37 @@ impl<T: 'static> ContextTask<T> {
     where
         F: for<'call> FnOnce(T, ContextAccess<'call>) -> JsResult<U> + 'static,
     {
-        let mut complete = Some(complete);
+        let mut complete = Completion::Waiting(complete);
         ContextTask::from_poll(move |cx, host| match self.poll(cx, host) {
             Poll::Pending => Poll::Pending,
             Poll::Ready(Err(error)) => Poll::Ready(Err(error)),
             Poll::Ready(Ok(value)) => {
-                let complete = complete.take().expect("completion runs once");
-                Poll::Ready(host.with(|access| complete(value, access)))
+                match std::mem::replace(&mut complete, Completion::Consumed) {
+                    Completion::Waiting(complete) => {
+                        Poll::Ready(host.with(|access| complete(value, access)))
+                    }
+                    Completion::Consumed => Poll::Ready(Err(JobError::TaskCompleted.into())),
+                }
             }
         })
     }
 
     /// Polls one stage using access that cannot escape into owned task state.
+    ///
+    /// A terminal task returns an uncatchable completed-task error without
+    /// polling its command again. Ready and Rust unwinding are terminal;
+    /// only Pending permits another poll. Captured storage remains owned until
+    /// this task is dropped, preserving its caller's cleanup ordering.
     pub fn poll(&mut self, cx: &mut TaskContext<'_>, host: &HostContext<'_>) -> Poll<JsResult<T>> {
-        (self.poll)(cx, host)
+        if matches!(self.state, TaskState::Terminal) {
+            return Poll::Ready(Err(JobError::TaskCompleted.into()));
+        }
+        // Publish terminality before host work so unwinding cannot reopen it.
+        self.state = TaskState::Terminal;
+        let result = (self.poll)(cx, host);
+        if result.is_pending() {
+            self.state = TaskState::Active;
+        }
+        result
     }
 }

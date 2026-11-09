@@ -58,7 +58,7 @@ fn failed_linking_preserves_empty_synthetic_dependency_scope_identities() {
     let loaded = module.load(context.access()).unwrap();
     context.run_jobs().unwrap();
     assert_eq!(
-        loaded.state(),
+        loaded.state().unwrap(),
         PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
     );
     let root = context.realm().scope().clone();
@@ -87,7 +87,7 @@ fn one_short_module_preparation_preserves_identities_and_retained_source_retry()
         let loaded = module.load(context.access()).unwrap();
         context.run_jobs().unwrap();
         assert_eq!(
-            loaded.state(),
+            loaded.state().unwrap(),
             PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
         );
         context
@@ -144,7 +144,7 @@ fn one_short_module_preparation_preserves_identities_and_retained_source_retry()
     let evaluated = module.evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
     assert_eq!(
-        evaluated.state(),
+        evaluated.state().unwrap(),
         PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
     );
     assert_eq!(
@@ -167,7 +167,7 @@ fn linking_prepares_captures_without_entering_a_guest_frame() {
     let loaded = module.load(context.access()).unwrap();
     context.run_jobs().unwrap();
     assert_eq!(
-        loaded.state(),
+        loaded.state().unwrap(),
         PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
     );
     let limits = context.runtime_limits();
@@ -222,7 +222,7 @@ fn pending_cyclic_modules_use_the_current_realm_and_preserve_top_level_await() {
     let evaluated = root.load_link_evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
     assert_eq!(
-        evaluated.state(),
+        evaluated.state().unwrap(),
         PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
     );
     assert_eq!(
@@ -265,7 +265,7 @@ fn failed_linking_preserves_an_initialized_synthetic_binding() {
     let initialized = stable.evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
     assert_eq!(
-        initialized.state(),
+        initialized.state().unwrap(),
         PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
     );
     let peer = Module::parse(
@@ -285,7 +285,7 @@ fn failed_linking_preserves_an_initialized_synthetic_binding() {
     let loaded = root.load(context.access()).unwrap();
     context.run_jobs().unwrap();
     assert_eq!(
-        loaded.state(),
+        loaded.state().unwrap(),
         PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
     );
     let scope = context.realm().scope().clone();
@@ -341,7 +341,7 @@ fn test_json_module_from_str() {
     let promise = module.load_link_evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
 
-    match promise.state() {
+    match promise.state().unwrap() {
         PromiseState::Pending => {}
         PromiseState::Fulfilled(v) => {
             assert!(v.is_undefined());
@@ -404,7 +404,7 @@ fn test_json_module_dynamic_import() {
     let promise = module.load_link_evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
 
-    match promise.state() {
+    match promise.state().unwrap() {
         PromiseState::Fulfilled(_) => {}
         _ => panic!("Module evaluation failed"),
     }
@@ -419,7 +419,7 @@ fn test_json_module_dynamic_import() {
     let p_obj = p.as_promise().unwrap();
     context.run_jobs().unwrap();
 
-    match p_obj.state() {
+    match p_obj.state().unwrap() {
         PromiseState::Fulfilled(module_ns) => {
             let default_export = module_ns
                 .as_object()
@@ -487,7 +487,7 @@ fn test_json_module_static_import_with_attributes() {
     context.run_jobs().unwrap();
 
     assert_eq!(
-        promise.state(),
+        promise.state().unwrap(),
         PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
     );
 
@@ -547,7 +547,7 @@ fn test_json_module_reexport_with_attributes() {
     context.run_jobs().unwrap();
 
     assert_eq!(
-        promise.state(),
+        promise.state().unwrap(),
         PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
     );
 
@@ -591,7 +591,7 @@ fn test_dynamic_import_invalid_options() {
     let promise = module.load_link_evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
 
-    match promise.state() {
+    match promise.state().unwrap() {
         PromiseState::Fulfilled(_) => {}
         _ => panic!("Module evaluation failed"),
     }
@@ -606,7 +606,7 @@ fn test_dynamic_import_invalid_options() {
     let p_obj = p.as_promise().unwrap();
     context.run_jobs().unwrap();
 
-    match p_obj.state() {
+    match p_obj.state().unwrap() {
         PromiseState::Rejected(e) => {
             let error = e.as_object().unwrap();
             let name = error.get(js_string!("name"), context.access()).unwrap();
@@ -644,7 +644,7 @@ fn test_dynamic_import_non_string_attribute_value() {
     let promise = module.load_link_evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
 
-    match promise.state() {
+    match promise.state().unwrap() {
         PromiseState::Fulfilled(_) => {}
         _ => panic!("Module evaluation failed"),
     }
@@ -658,7 +658,7 @@ fn test_dynamic_import_non_string_attribute_value() {
     let p_obj = p.as_promise().unwrap();
     context.run_jobs().unwrap();
 
-    match p_obj.state() {
+    match p_obj.state().unwrap() {
         PromiseState::Rejected(e) => {
             let error = e.as_object().unwrap();
             let name = error.get(js_string!("name"), context.access()).unwrap();
@@ -709,7 +709,7 @@ fn test_dynamic_import_symbol_key() {
     let promise = module.load_link_evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
 
-    match promise.state() {
+    match promise.state().unwrap() {
         PromiseState::Fulfilled(_) => {}
         _ => panic!("Module evaluation failed"),
     }
@@ -723,7 +723,7 @@ fn test_dynamic_import_symbol_key() {
     let p_obj = p.as_promise().unwrap();
     context.run_jobs().unwrap();
 
-    match p_obj.state() {
+    match p_obj.state().unwrap() {
         PromiseState::Fulfilled(module_ns) => {
             let default_export = module_ns
                 .as_object()
@@ -768,12 +768,12 @@ fn a_cold_module_links_and_evaluates_in_a_peer_context() {
     drop(owner);
 
     assert_eq!(
-        module.load(peer.access()).unwrap().state(),
+        module.load(peer.access()).unwrap().state().unwrap(),
         PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
     );
     module.link(peer.access()).unwrap();
     assert_eq!(
-        module.evaluate(peer.access()).unwrap().state(),
+        module.evaluate(peer.access()).unwrap().state().unwrap(),
         PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
     );
     assert_eq!(
@@ -848,7 +848,7 @@ fn a_mixed_context_graph_resolves_named_and_namespace_exports_with_attributes() 
     let evaluation = root.load_link_evaluate(peer.access()).unwrap();
     peer.run_jobs().unwrap();
     assert_eq!(
-        evaluation.state(),
+        evaluation.state().unwrap(),
         PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
     );
 
@@ -908,7 +908,7 @@ fn failed_cyclic_linking_reports_the_missing_export_on_retry() {
     let loaded = root.load(context.access()).unwrap();
     context.run_jobs().unwrap();
     assert_eq!(
-        loaded.state(),
+        loaded.state().unwrap(),
         PromiseState::Fulfilled(surgeist_js::JsValue::undefined())
     );
 

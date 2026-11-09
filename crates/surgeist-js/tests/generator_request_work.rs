@@ -118,7 +118,7 @@ impl JobExecutor for ManualExecutor {
 impl ManualExecutor {
     fn settle(&self, promise: &JsPromise, context: &mut Context) -> JsResult<JsValue> {
         for _ in 0..32 {
-            match promise.state() {
+            match promise.state().unwrap() {
                 PromiseState::Fulfilled(value) => return Ok(value),
                 PromiseState::Rejected(reason) => return Err(JsError::from_opaque(reason)),
                 PromiseState::Pending => {}
@@ -569,8 +569,8 @@ fn async_requests_enqueued_while_executing_are_counted_once_before_later_cap_zer
                 let Output::Async(second) = generator.call(request, &Route::Native, access)? else {
                     unreachable!()
                 };
-                assert_eq!(first.state(), PromiseState::Pending);
-                assert_eq!(second.state(), PromiseState::Pending);
+                assert_eq!(first.state().unwrap(), PromiseState::Pending);
+                assert_eq!(second.state().unwrap(), PromiseState::Pending);
                 Ok((first, second))
             })
             .unwrap();
@@ -615,7 +615,7 @@ fn refusing_a_new_async_request_does_not_revoke_an_older_pending_await_continuat
         let Output::Async(first) = accepted.result.unwrap() else {
             unreachable!()
         };
-        assert_eq!(first.state(), PromiseState::Pending);
+        assert_eq!(first.state().unwrap(), PromiseState::Pending);
         let refused = context
             .with_execution(options(0), |access| {
                 generator.call(request, &Route::Native, access)
@@ -723,7 +723,7 @@ fn request_phases_end_on_return_before_pending_wait_and_all_untimed_modes_read_n
                 options(1).with_profile(mode).with_profile_clock(clock),
                 |access| {
                     let promise = generator.next(JsValue::undefined(), access)?;
-                    assert_eq!(promise.state(), PromiseState::Pending);
+                    assert_eq!(promise.state().unwrap(), PromiseState::Pending);
                     TIME.set(TIME.get() + Duration::from_millis(100));
                     Ok(promise)
                 },

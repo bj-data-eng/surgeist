@@ -735,7 +735,7 @@ mod tests {
         assert!(weak_capture.is_live().unwrap());
         context.run_jobs().unwrap();
         {
-            let PromiseState::Fulfilled(value) = promise.state() else {
+            let PromiseState::Fulfilled(value) = promise.state().unwrap() else {
                 panic!("the pending host callback must fulfill with its capture")
             };
             assert_eq!(value.as_object(), weak_capture.upgrade().unwrap());

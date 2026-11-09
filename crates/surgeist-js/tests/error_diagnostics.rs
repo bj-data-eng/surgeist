@@ -7,7 +7,7 @@ use surgeist_js::{
     error::{
         Diagnostic, DiagnosticEngine, DiagnosticFrame, DiagnosticKind, DiagnosticNative,
         DiagnosticNativeKind, DiagnosticStack, EngineError, EngineResourceError, ErasedEngineError,
-        JsErasedError, PanicDiagnostic, PanicError, RuntimeLimitError,
+        JobError, JsErasedError, PanicDiagnostic, PanicError, RuntimeLimitError,
     },
     job::JobRetirement,
     js_string,
@@ -177,6 +177,8 @@ fn assert_engine_view(view: Diagnostic<'_>, expected: &EngineError) {
         EngineError::Resource(error) => DiagnosticEngine::Resource(*error),
         EngineError::InvalidEntryPermit => DiagnosticEngine::InvalidEntryPermit,
         EngineError::ContextAccessBusy => DiagnosticEngine::ContextAccessBusy,
+        EngineError::ObjectAccessBusy => DiagnosticEngine::ObjectAccessBusy,
+        EngineError::Job(error) => DiagnosticEngine::Job(*error),
         EngineError::JobContextRequired { required } => {
             DiagnosticEngine::JobContextRequired { required }
         }
@@ -208,6 +210,9 @@ fn every_engine_family_preserves_typed_payloads_and_erased_export() {
         EngineError::Resource(EngineResourceError::Allocation),
         EngineError::InvalidEntryPermit,
         EngineError::ContextAccessBusy,
+        EngineError::ObjectAccessBusy,
+        EngineError::Job(JobError::TaskCompleted),
+        EngineError::Job(JobError::CancellationRevoked),
         EngineError::JobContextRequired {
             required: required.clone(),
         },
@@ -295,6 +300,15 @@ fn every_engine_family_preserves_typed_payloads_and_erased_export() {
                     required: required.clone()
                 })
             );
+        }
+        if let EngineError::ObjectAccessBusy = engine {
+            assert_eq!(
+                source.as_engine(),
+                Some(&ErasedEngineError::ObjectAccessBusy)
+            );
+        }
+        if let EngineError::Job(error) = engine {
+            assert_eq!(source.as_engine(), Some(&ErasedEngineError::Job(error)));
         }
     }
     fn send_sync<T: Send + Sync>() {}

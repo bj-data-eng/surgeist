@@ -901,11 +901,11 @@ fn parsed_module_lifecycle_and_exports_compose_through_one_scoped_access() {
         ), None, access.reborrow())?;
         let loaded = module.load(access.reborrow())?;
         access.run_jobs()?;
-        assert_eq!(loaded.state(), PromiseState::Fulfilled(JsValue::undefined()));
+        assert_eq!(loaded.state().unwrap(), PromiseState::Fulfilled(JsValue::undefined()));
         module.link(access.reborrow())?;
         let evaluated = module.evaluate(access.reborrow())?;
         access.run_jobs()?;
-        assert_eq!(evaluated.state(), PromiseState::Fulfilled(JsValue::undefined()));
+        assert_eq!(evaluated.state().unwrap(), PromiseState::Fulfilled(JsValue::undefined()));
         let namespace = module.namespace(access.reborrow())?;
         assert_eq!(namespace.get(js_string!("answer"), access.reborrow())?, JsValue::new(42));
         let exported = module.get_value(js_string!("answer"), access.reborrow())?;
@@ -934,7 +934,7 @@ fn json_and_value_default_modules_evaluate_and_expose_their_authored_exports() {
     let completed = value_module.load_link_evaluate(access.reborrow()).unwrap();
     access.run_jobs().unwrap();
     assert_eq!(
-        completed.state(),
+        completed.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     assert_eq!(
@@ -948,7 +948,7 @@ fn json_and_value_default_modules_evaluate_and_expose_their_authored_exports() {
     let completed = json_module.load_link_evaluate(access.reborrow()).unwrap();
     access.run_jobs().unwrap();
     assert_eq!(
-        completed.state(),
+        completed.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     let exported = json_module

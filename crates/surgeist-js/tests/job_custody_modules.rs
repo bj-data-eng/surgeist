@@ -95,7 +95,7 @@ fn complete_ready(job: &mut NativeAsyncJob, context: &mut Context) -> JobObserve
         panic!("the authored ready task must deliver its actual terminal result")
     };
     result.unwrap();
-    assert_eq!(observer.status(), JobStatus::Completed);
+    assert_eq!(observer.status().unwrap(), JobStatus::Completed);
     observer
 }
 
@@ -110,7 +110,7 @@ fn invoke(job: PromiseJob, context: &mut Context) -> JobObserver {
             panic!("unbounded explicit promise dispatch was deferred: {error:?}")
         }
     }
-    assert_eq!(observer.status(), JobStatus::Completed);
+    assert_eq!(observer.status().unwrap(), JobStatus::Completed);
     observer
 }
 
@@ -225,7 +225,7 @@ fn watch_guest_rejection(promise: &JsPromise, context: &mut Context) {
 }
 
 fn assert_guest_pending(promise: &JsPromise, context: &mut Context) {
-    assert_eq!(promise.state(), PromiseState::Pending);
+    assert_eq!(promise.state().unwrap(), PromiseState::Pending);
     assert_eq!(
         context.eval(Source::from_bytes("custodyRejected")).unwrap(),
         JsValue::new(false)
@@ -244,15 +244,15 @@ fn original_native_waiter_observes_drop_of_unstarted_assimilation_after_producer
     let producer_status = complete_ready(&mut producer, &mut context);
     let assimilation = executor.take_promise();
     let assimilation_status = assimilation.observer();
-    assert_eq!(assimilation_status.status(), JobStatus::Pending);
+    assert_eq!(assimilation_status.status().unwrap(), JobStatus::Pending);
     assert_guest_pending(&target, &mut context);
     wait.assert_pending();
 
     drop(assimilation);
     wait.assert_retired(JobRetirement::Dropped);
-    assert_eq!(producer_status.status(), JobStatus::Completed);
+    assert_eq!(producer_status.status().unwrap(), JobStatus::Completed);
     assert_eq!(
-        assimilation_status.status(),
+        assimilation_status.status().unwrap(),
         JobStatus::Retired(JobRetirement::Dropped)
     );
     assert_guest_pending(&target, &mut context);
@@ -274,14 +274,14 @@ fn former_producer_owner_loss_does_not_retire_its_unstarted_assimilation_success
     let assimilation = executor.take_promise();
 
     drop(context);
-    assert_eq!(producer_status.status(), JobStatus::Completed);
-    assert_eq!(target.state(), PromiseState::Pending);
+    assert_eq!(producer_status.status().unwrap(), JobStatus::Completed);
+    assert_eq!(target.state().unwrap(), PromiseState::Pending);
     wait.assert_pending();
     // The successor was never prepared on the former owner. It remains real
     // unbound queue work and can register its guest-only source on a peer.
     let assimilation_status = invoke(assimilation, &mut peer);
-    assert_eq!(assimilation_status.status(), JobStatus::Completed);
-    assert_eq!(target.state(), PromiseState::Pending);
+    assert_eq!(assimilation_status.status().unwrap(), JobStatus::Completed);
+    assert_eq!(target.state().unwrap(), PromiseState::Pending);
     wait.assert_pending();
 }
 
@@ -305,13 +305,13 @@ fn required_native_source_retirement_reaches_waiter_after_both_predecessors_comp
 
     drop(source_job);
     wait.assert_retired(JobRetirement::Dropped);
-    assert_eq!(producer_status.status(), JobStatus::Completed);
-    assert_eq!(assimilation_status.status(), JobStatus::Completed);
+    assert_eq!(producer_status.status().unwrap(), JobStatus::Completed);
+    assert_eq!(assimilation_status.status().unwrap(), JobStatus::Completed);
     assert_eq!(
-        source_status.status(),
+        source_status.status().unwrap(),
         JobStatus::Retired(JobRetirement::Dropped)
     );
-    assert_eq!(source.state(), PromiseState::Pending);
+    assert_eq!(source.state().unwrap(), PromiseState::Pending);
     assert_guest_pending(&target, &mut context);
 }
 
@@ -330,16 +330,16 @@ fn drop_of_selected_unstarted_reaction_retires_target_without_rejecting_settled_
         .resolve
         .call(&JsValue::undefined(), &[42.into()], context.access())
         .unwrap();
-    assert_eq!(source.state(), PromiseState::Fulfilled(42.into()));
+    assert_eq!(source.state().unwrap(), PromiseState::Fulfilled(42.into()));
     let reaction = executor.take_promise();
     let reaction_status = reaction.observer();
-    assert_eq!(reaction_status.status(), JobStatus::Pending);
+    assert_eq!(reaction_status.status().unwrap(), JobStatus::Pending);
 
     drop(reaction);
     wait.assert_retired(JobRetirement::Dropped);
-    assert_eq!(producer_status.status(), JobStatus::Completed);
-    assert_eq!(assimilation_status.status(), JobStatus::Completed);
-    assert_eq!(source.state(), PromiseState::Fulfilled(42.into()));
+    assert_eq!(producer_status.status().unwrap(), JobStatus::Completed);
+    assert_eq!(assimilation_status.status().unwrap(), JobStatus::Completed);
+    assert_eq!(source.state().unwrap(), PromiseState::Fulfilled(42.into()));
     assert_guest_pending(&target, &mut context);
 }
 
@@ -356,8 +356,8 @@ fn completing_native_source_and_selected_reaction_fulfills_the_original_native_w
     wait.assert_pending();
 
     let source_status = complete_ready(&mut source_job, &mut context);
-    assert_eq!(source.state(), PromiseState::Fulfilled(42.into()));
-    assert_eq!(target.state(), PromiseState::Pending);
+    assert_eq!(source.state().unwrap(), PromiseState::Fulfilled(42.into()));
+    assert_eq!(target.state().unwrap(), PromiseState::Pending);
     let reaction_status = invoke(executor.take_promise(), &mut context);
     wait.assert_fulfilled(42.into());
     for observer in [
@@ -366,9 +366,9 @@ fn completing_native_source_and_selected_reaction_fulfills_the_original_native_w
         source_status,
         reaction_status,
     ] {
-        assert_eq!(observer.status(), JobStatus::Completed);
+        assert_eq!(observer.status().unwrap(), JobStatus::Completed);
     }
-    assert_eq!(target.state(), PromiseState::Fulfilled(42.into()));
+    assert_eq!(target.state().unwrap(), PromiseState::Fulfilled(42.into()));
 }
 
 #[test]
@@ -379,18 +379,18 @@ fn already_settled_target_remains_native_ready_when_a_later_delivery_job_is_drop
     watch_guest_rejection(&target, &mut context);
     let mut producer = executor.take_async();
     let producer_status = complete_ready(&mut producer, &mut context);
-    assert_eq!(target.state(), PromiseState::Fulfilled(42.into()));
+    assert_eq!(target.state().unwrap(), PromiseState::Fulfilled(42.into()));
 
     let later_delivery = executor.take_promise();
     let delivery_status = later_delivery.observer();
     drop(later_delivery);
     assert_eq!(
-        delivery_status.status(),
+        delivery_status.status().unwrap(),
         JobStatus::Retired(JobRetirement::Dropped)
     );
-    assert_eq!(producer_status.status(), JobStatus::Completed);
+    assert_eq!(producer_status.status().unwrap(), JobStatus::Completed);
     wait.assert_fulfilled(42.into());
-    assert_eq!(target.state(), PromiseState::Fulfilled(42.into()));
+    assert_eq!(target.state().unwrap(), PromiseState::Fulfilled(42.into()));
 }
 
 #[test]
@@ -414,8 +414,8 @@ fn normally_completed_unresolved_thenable_retains_a_live_external_resolution_obl
     );
     context.runtime().collect().unwrap();
 
-    assert_eq!(producer_status.status(), JobStatus::Completed);
-    assert_eq!(assimilation_status.status(), JobStatus::Completed);
+    assert_eq!(producer_status.status().unwrap(), JobStatus::Completed);
+    assert_eq!(assimilation_status.status().unwrap(), JobStatus::Completed);
     wait.assert_pending();
     assert_guest_pending(&target, &mut context);
 }
@@ -461,7 +461,7 @@ fn late_native_adoption_retains_an_already_queued_guest_assimilation_obligation(
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(source.state(), PromiseState::Pending);
+    assert_eq!(source.state().unwrap(), PromiseState::Pending);
     assert_guest_pending(&target, &mut context);
     wait.assert_pending();
 
@@ -469,17 +469,17 @@ fn late_native_adoption_retains_an_already_queued_guest_assimilation_obligation(
     // resolving handlers that make its completion necessary for the target.
     let inner_assimilation = executor.take_promise();
     let inner_status = inner_assimilation.observer();
-    assert_eq!(inner_status.status(), JobStatus::Pending);
+    assert_eq!(inner_status.status().unwrap(), JobStatus::Pending);
     drop(inner_assimilation);
 
     assert_eq!(
-        inner_status.status(),
+        inner_status.status().unwrap(),
         JobStatus::Retired(JobRetirement::Dropped)
     );
-    assert_eq!(producer_status.status(), JobStatus::Completed);
-    assert_eq!(outer_status.status(), JobStatus::Completed);
+    assert_eq!(producer_status.status().unwrap(), JobStatus::Completed);
+    assert_eq!(outer_status.status().unwrap(), JobStatus::Completed);
     wait.assert_retired(JobRetirement::Dropped);
-    assert_eq!(source.state(), PromiseState::Pending);
+    assert_eq!(source.state().unwrap(), PromiseState::Pending);
     assert_guest_pending(&target, &mut context);
     assert_eq!(
         context
@@ -519,8 +519,8 @@ fn late_adoption_preserves_reaction_pair_after_original_assimilation_completed()
     // Complete the guest-created source's assimilation before the native target
     // exists. Its live obligation is now the pending root's reaction pair.
     let initial_status = invoke(executor.take_promise(), &mut context);
-    assert_eq!(adopted.state(), PromiseState::Pending);
-    assert_eq!(root.state(), PromiseState::Pending);
+    assert_eq!(adopted.state().unwrap(), PromiseState::Pending);
+    assert_eq!(root.state().unwrap(), PromiseState::Pending);
     assert_eq!(
         context
             .eval(Source::from_bytes("completedAssimilations"))
@@ -539,26 +539,26 @@ fn late_adoption_preserves_reaction_pair_after_original_assimilation_completed()
         .resolve
         .call(&JsValue::undefined(), &[42.into()], context.access())
         .unwrap();
-    assert_eq!(root.state(), PromiseState::Fulfilled(42.into()));
-    assert_eq!(adopted.state(), PromiseState::Pending);
+    assert_eq!(root.state().unwrap(), PromiseState::Fulfilled(42.into()));
+    assert_eq!(adopted.state().unwrap(), PromiseState::Pending);
     assert_guest_pending(&target, &mut context);
     wait.assert_pending();
 
     let selected = executor.take_promise();
     let selected_status = selected.observer();
-    assert_eq!(selected_status.status(), JobStatus::Pending);
+    assert_eq!(selected_status.status().unwrap(), JobStatus::Pending);
     drop(selected);
 
     assert_eq!(
-        selected_status.status(),
+        selected_status.status().unwrap(),
         JobStatus::Retired(JobRetirement::Dropped)
     );
     for observer in [initial_status, producer_status, adoption_status] {
-        assert_eq!(observer.status(), JobStatus::Completed);
+        assert_eq!(observer.status().unwrap(), JobStatus::Completed);
     }
     wait.assert_retired(JobRetirement::Dropped);
-    assert_eq!(root.state(), PromiseState::Fulfilled(42.into()));
-    assert_eq!(adopted.state(), PromiseState::Pending);
+    assert_eq!(root.state().unwrap(), PromiseState::Fulfilled(42.into()));
+    assert_eq!(adopted.state().unwrap(), PromiseState::Pending);
     assert_guest_pending(&target, &mut context);
     assert_eq!(
         context
@@ -687,9 +687,9 @@ fn one_loader_completion_does_not_settle_graph_and_dropping_the_other_wakes_orig
     let second_status = second.observer();
     drop(second);
     wait.assert_retired(JobRetirement::Dropped);
-    assert_eq!(first_status.status(), JobStatus::Completed);
+    assert_eq!(first_status.status().unwrap(), JobStatus::Completed);
     assert_eq!(
-        second_status.status(),
+        second_status.status().unwrap(),
         JobStatus::Retired(JobRetirement::Dropped)
     );
     assert_eq!(*loader.requests.borrow(), [js_string!("first")]);
@@ -708,7 +708,7 @@ fn owner_loss_of_remaining_required_loader_wakes_preexisting_graph_waiter() {
     let mut first = executor.take_async();
     let first_status = complete_ready(&mut first, &mut context);
     wait.assert_pending();
-    assert_eq!(graph.state(), PromiseState::Pending);
+    assert_eq!(graph.state().unwrap(), PromiseState::Pending);
     let mut second = executor.take_async();
     prepare(&mut second, &mut context);
     let second_status = second.observer();
@@ -719,12 +719,12 @@ fn owner_loss_of_remaining_required_loader_wakes_preexisting_graph_waiter() {
 
     drop(context);
     wait.assert_retired(JobRetirement::OwnerDropped);
-    assert_eq!(first_status.status(), JobStatus::Completed);
+    assert_eq!(first_status.status().unwrap(), JobStatus::Completed);
     assert_eq!(
-        second_status.status(),
+        second_status.status().unwrap(),
         JobStatus::Retired(JobRetirement::OwnerDropped)
     );
-    assert_eq!(graph.state(), PromiseState::Pending);
+    assert_eq!(graph.state().unwrap(), PromiseState::Pending);
 }
 
 #[test]
@@ -734,7 +734,7 @@ fn graph_native_waiter_completes_only_after_both_required_loaders_publish_succes
     let mut first = executor.take_async();
     let first_status = complete_ready(&mut first, &mut context);
     wait.assert_pending();
-    assert_eq!(graph.state(), PromiseState::Pending);
+    assert_eq!(graph.state().unwrap(), PromiseState::Pending);
     let mut second = executor.take_async();
     let second_status = complete_ready(&mut second, &mut context);
 
@@ -742,9 +742,12 @@ fn graph_native_waiter_completes_only_after_both_required_loaders_publish_succes
         *loader.requests.borrow(),
         [js_string!("first"), js_string!("second")]
     );
-    assert_eq!(first_status.status(), JobStatus::Completed);
-    assert_eq!(second_status.status(), JobStatus::Completed);
-    assert_eq!(graph.state(), PromiseState::Fulfilled(JsValue::undefined()));
+    assert_eq!(first_status.status().unwrap(), JobStatus::Completed);
+    assert_eq!(second_status.status().unwrap(), JobStatus::Completed);
+    assert_eq!(
+        graph.state().unwrap(),
+        PromiseState::Fulfilled(JsValue::undefined())
+    );
     wait.assert_fulfilled(JsValue::undefined());
 }
 
@@ -787,9 +790,9 @@ fn dynamic_import_native_waiter_observes_drop_of_selected_unstarted_module_react
 
     drop(selected);
     wait.assert_retired(JobRetirement::Dropped);
-    assert_eq!(producer_status.status(), JobStatus::Completed);
+    assert_eq!(producer_status.status().unwrap(), JobStatus::Completed);
     assert_eq!(
-        selected_status.status(),
+        selected_status.status().unwrap(),
         JobStatus::Retired(JobRetirement::Dropped)
     );
     assert_guest_pending(&imported, &mut context);
@@ -890,7 +893,7 @@ fn dynamic_import_committed_successor_survives_a_later_stop_in_its_loader() {
         Some(&expected_stop)
     );
     assert_eq!(
-        producer_status.status(),
+        producer_status.status().unwrap(),
         JobStatus::Retired(JobRetirement::Interrupted)
     );
     assert_eq!(*loader.requests.borrow(), [js_string!("entry")]);
@@ -915,7 +918,7 @@ fn dynamic_import_committed_successor_survives_a_later_stop_in_its_loader() {
     assert_guest_pending(&imported, &mut context);
     wait.assert_pending();
     let fulfillment_status = invoke(executor.queue.take_promise(), &mut context);
-    let PromiseState::Fulfilled(namespace) = imported.state() else {
+    let PromiseState::Fulfilled(namespace) = imported.state().unwrap() else {
         panic!("the surviving successor must publish the imported namespace")
     };
     assert_eq!(
@@ -927,10 +930,10 @@ fn dynamic_import_committed_successor_survives_a_later_stop_in_its_loader() {
         JsValue::new(42)
     );
     wait.assert_fulfilled(namespace);
-    assert_eq!(successor_status.status(), JobStatus::Completed);
-    assert_eq!(fulfillment_status.status(), JobStatus::Completed);
+    assert_eq!(successor_status.status().unwrap(), JobStatus::Completed);
+    assert_eq!(fulfillment_status.status().unwrap(), JobStatus::Completed);
     assert_eq!(
-        producer_status.status(),
+        producer_status.status().unwrap(),
         JobStatus::Retired(JobRetirement::Interrupted)
     );
     assert_eq!(*loader.requests.borrow(), [js_string!("entry")]);
@@ -958,14 +961,14 @@ fn native_promise_future_rejects_a_foreign_receiving_runtime_with_a_type_error()
         "foreign promise reception must return the ordinary TypeError: {error:?}"
     );
     assert_eq!(error.as_engine(), None);
-    assert_eq!(promise.state(), PromiseState::Pending);
+    assert_eq!(promise.state().unwrap(), PromiseState::Pending);
     owner_wait.assert_pending();
 
     let mut producer = executor.take_async();
     let producer_status = complete_ready(&mut producer, &mut owner);
     owner_wait.assert_fulfilled(42.into());
-    assert_eq!(promise.state(), PromiseState::Fulfilled(42.into()));
-    assert_eq!(producer_status.status(), JobStatus::Completed);
+    assert_eq!(promise.state().unwrap(), PromiseState::Fulfilled(42.into()));
+    assert_eq!(producer_status.status().unwrap(), JobStatus::Completed);
 }
 
 #[test]
@@ -988,7 +991,7 @@ fn native_wait_registered_before_thenable_resolution_observes_assimilation_retir
     assert_guest_pending(&promise, &mut context);
     let assimilation = executor.take_promise();
     let assimilation_status = assimilation.observer();
-    assert_eq!(assimilation_status.status(), JobStatus::Pending);
+    assert_eq!(assimilation_status.status().unwrap(), JobStatus::Pending);
     assert_eq!(
         context
             .eval(Source::from_bytes("pendingThenableEntered"))
@@ -1000,7 +1003,7 @@ fn native_wait_registered_before_thenable_resolution_observes_assimilation_retir
     drop(assimilation);
 
     assert_eq!(
-        assimilation_status.status(),
+        assimilation_status.status().unwrap(),
         JobStatus::Retired(JobRetirement::Dropped)
     );
     wait.assert_retired(JobRetirement::Dropped);

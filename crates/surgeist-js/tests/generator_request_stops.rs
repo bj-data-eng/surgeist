@@ -59,7 +59,7 @@ impl JobExecutor for ManualExecutor {
 impl ManualExecutor {
     fn settle(&self, promise: &JsPromise, context: &mut Context) -> PromiseState {
         for _ in 0..32 {
-            let state = promise.state();
+            let state = promise.state().unwrap();
             if state != PromiseState::Pending {
                 return state;
             }
@@ -337,7 +337,7 @@ fn retained_stop_adds_no_async_request_behind_a_waiting_body() {
         let (mut context, executor) = context();
         let generator = async_generator(&mut context, true);
         let first = request_async(Request::Next, &generator, &mut context);
-        assert_eq!(first.state(), PromiseState::Pending);
+        assert_eq!(first.state().unwrap(), PromiseState::Pending);
         assert_counts(&mut context, 1, 0, 0);
         after_retained_stop(&mut context, |access| {
             request.call_async(&generator, access)

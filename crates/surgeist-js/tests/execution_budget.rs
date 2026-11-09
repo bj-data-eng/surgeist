@@ -2723,7 +2723,7 @@ fn non_script_module_preparation_uses_the_operation_scope_budget() {
         )?;
         let loaded = module.load(context.reborrow())?;
         assert!(matches!(
-            loaded.state(),
+            loaded.state().unwrap(),
             surgeist_js::builtins::promise::PromiseState::Fulfilled(_)
         ));
         module.link(context.reborrow())?;
@@ -3264,7 +3264,7 @@ fn compiler_default_export_anonymous_query_charges_parenthesized_searches() {
         let loaded = module.load(context.access()).unwrap();
         context.run_jobs().unwrap();
         assert!(matches!(
-            loaded.state(),
+            loaded.state().unwrap(),
             surgeist_js::builtins::promise::PromiseState::Fulfilled(_)
         ));
         context
@@ -3277,7 +3277,7 @@ fn compiler_default_export_anonymous_query_charges_parenthesized_searches() {
                         let evaluated = module.evaluate(context.reborrow())?;
                         context.run_jobs()?;
                         assert!(matches!(
-                            evaluated.state(),
+                            evaluated.state().unwrap(),
                             surgeist_js::builtins::promise::PromiseState::Fulfilled(_)
                         ));
                         let function = module

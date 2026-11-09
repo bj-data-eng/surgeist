@@ -108,7 +108,7 @@ fn deferred_preparation_is_unbound_and_only_a_later_admitted_factory_selects_the
         .unwrap();
     assert_eq!(refused.report.job_preparations().unwrap(), 0);
     assert_eq!(factories.get(), 0);
-    assert_eq!(observer.status(), JobStatus::Pending);
+    assert_eq!(observer.status().unwrap(), JobStatus::Pending);
     let mut b = Context::builder()
         .runtime(a.runtime().clone())
         .build()
@@ -141,16 +141,16 @@ fn deferred_preparation_is_unbound_and_only_a_later_admitted_factory_selects_the
         .unwrap();
     wrong.result.unwrap();
     assert_eq!(wrong.report.job_polls().unwrap(), 0);
-    assert_eq!(observer.status(), JobStatus::Pending);
+    assert_eq!(observer.status().unwrap(), JobStatus::Pending);
     {
         let host = b.host_access();
         assert_eq!(completion(&mut job, &host).unwrap(), JsValue::new(42));
         assert!(matches!(
             step(&mut job, &host),
-            JobStep::Finished(JobStatus::Completed)
+            JobStep::Finished(Ok(JobStatus::Completed))
         ));
     }
-    assert_eq!(observer.status(), JobStatus::Completed);
+    assert_eq!(observer.status().unwrap(), JobStatus::Completed);
     assert_eq!(factories.get(), 1);
 }
 #[test]
@@ -194,7 +194,7 @@ fn a_deferred_poll_keeps_the_exact_task_and_charges_only_its_later_operation() {
     assert_eq!(first.report.job_polls().unwrap(), 0);
     assert_eq!(polls.get(), 0);
     assert_eq!(drops.get(), 0);
-    assert_eq!(observer.status(), JobStatus::Pending);
+    assert_eq!(observer.status().unwrap(), JobStatus::Pending);
     let second = owner
         .with_execution(ExecutionOptions::new(0).with_job_poll_limit(1), |access| {
             completion(&mut job, &access.into_host_access())
@@ -206,7 +206,7 @@ fn a_deferred_poll_keeps_the_exact_task_and_charges_only_its_later_operation() {
     assert_eq!(first.report.job_polls().unwrap(), 0);
     assert_eq!(polls.get(), 1);
     assert_eq!(drops.get(), 1);
-    assert_eq!(observer.status(), JobStatus::Completed);
+    assert_eq!(observer.status().unwrap(), JobStatus::Completed);
 }
 #[test]
 fn admitted_interruption_is_terminal_and_finished_steps_do_no_new_work() {
@@ -247,14 +247,14 @@ fn admitted_interruption_is_terminal_and_finished_steps_do_no_new_work() {
     assert_eq!(first.report.job_polls().unwrap(), 1);
     assert_eq!(drops.get(), 1);
     assert_eq!(
-        observer.status(),
+        observer.status().unwrap(),
         JobStatus::Retired(JobRetirement::Interrupted)
     );
     let next = owner
         .with_execution(ExecutionOptions::new(0), |access| {
             assert!(matches!(
                 step(&mut job, &access.into_host_access()),
-                JobStep::Finished(JobStatus::Retired(JobRetirement::Interrupted))
+                JobStep::Finished(Ok(JobStatus::Retired(JobRetirement::Interrupted)))
             ));
             Ok(())
         })
@@ -333,12 +333,12 @@ fn owner_drop_retires_prepared_and_pending_tasks_and_wakes_native_waiters() {
         drop(owner);
         assert!(wakes.0.load(Ordering::Relaxed) > 0);
         assert_eq!(
-            observer.status(),
+            observer.status().unwrap(),
             JobStatus::Retired(JobRetirement::OwnerDropped)
         );
         assert_eq!(drops.get(), 1);
         assert_eq!(
-            poll(&mut wait),
+            poll(&mut wait).map(Result::unwrap),
             Poll::Ready(JobStatus::Retired(JobRetirement::OwnerDropped))
         );
         let mut other = Context::default();
@@ -350,7 +350,7 @@ fn owner_drop_retires_prepared_and_pending_tasks_and_wakes_native_waiters() {
         );
         assert!(matches!(
             step(&mut job, &host),
-            JobStep::Finished(JobStatus::Retired(JobRetirement::OwnerDropped))
+            JobStep::Finished(Ok(JobStatus::Retired(JobRetirement::OwnerDropped)))
         ));
         assert_eq!(polls.get(), usize::from(started));
     }
@@ -373,18 +373,18 @@ fn final_direct_drop_retires_unbound_prepared_and_pending_controls_once() {
         }
         drop(job);
         assert_eq!(
-            observer.status(),
+            observer.status().unwrap(),
             JobStatus::Retired(JobRetirement::Dropped)
         );
         assert_eq!(
-            poll(&mut wait),
+            poll(&mut wait).map(Result::unwrap),
             Poll::Ready(JobStatus::Retired(JobRetirement::Dropped))
         );
         assert_eq!(drops.get(), 1);
         assert_eq!(polls.get(), usize::from(stage == 2));
         drop(owner);
         assert_eq!(
-            observer.status(),
+            observer.status().unwrap(),
             JobStatus::Retired(JobRetirement::Dropped)
         );
     }
@@ -507,7 +507,7 @@ fn a_nonready_affinity_bound_task_refuses_a_peer_drain_then_resumes_on_its_owner
         Some(&EngineError::JobContextRequired { required })
     );
     assert_eq!(gate.polls.get(), 1);
-    assert_eq!(observer.status(), JobStatus::Pending);
+    assert_eq!(observer.status().unwrap(), JobStatus::Pending);
     signal(&gate);
     let drained = a
         .with_execution(ExecutionOptions::new(0), |mut access| access.run_jobs())
@@ -517,7 +517,7 @@ fn a_nonready_affinity_bound_task_refuses_a_peer_drain_then_resumes_on_its_owner
     assert_eq!(drained.report.job_polls().unwrap(), 1);
     assert_eq!(gate.polls.get(), 2);
     assert_eq!(gate.drops.get(), 1);
-    assert_eq!(observer.status(), JobStatus::Completed);
+    assert_eq!(observer.status().unwrap(), JobStatus::Completed);
 }
 #[test]
 fn cancellation_retires_only_the_observing_runtime_and_wakes_started_job_waiters() {
@@ -544,7 +544,7 @@ fn cancellation_retires_only_the_observing_runtime_and_wakes_started_job_waiters
         let mut driver = Box::pin(executor.clone().run_jobs_async(&host));
         reach_pending(&mut driver, &gate);
     }
-    assert_eq!(started_observer.status(), JobStatus::Pending);
+    assert_eq!(started_observer.status().unwrap(), JobStatus::Pending);
     let queued_factories = Rc::new(Cell::new(0));
     let factories = queued_factories.clone();
     let queued = NativeAsyncJob::new(move |_| {
@@ -553,29 +553,29 @@ fn cancellation_retires_only_the_observing_runtime_and_wakes_started_job_waiters
     });
     let queued_observer = queued.observer();
     a.enqueue_job(queued.into());
-    assert_eq!(queued_observer.status(), JobStatus::Pending);
+    assert_eq!(queued_observer.status().unwrap(), JobStatus::Pending);
     executor
         .get_cancellation_token()
         .store(true, Ordering::Release);
     a.run_jobs().unwrap();
     assert_eq!(
-        started_observer.status(),
+        started_observer.status().unwrap(),
         JobStatus::Retired(JobRetirement::Cancelled)
     );
     assert_eq!(
-        poll(&mut wait),
+        poll(&mut wait).map(Result::unwrap),
         Poll::Ready(JobStatus::Retired(JobRetirement::Cancelled))
     );
     assert!(wakes.0.load(Ordering::Relaxed) > 0);
     assert_eq!(gate.drops.get(), 1);
     assert_eq!(
-        queued_observer.status(),
+        queued_observer.status().unwrap(),
         JobStatus::Retired(JobRetirement::Cancelled)
     );
     assert_eq!(queued_factories.get(), 0);
-    assert_eq!(other_observer.status(), JobStatus::Pending);
+    assert_eq!(other_observer.status().unwrap(), JobStatus::Pending);
     b.run_jobs().unwrap();
-    assert_eq!(other_observer.status(), JobStatus::Completed);
+    assert_eq!(other_observer.status().unwrap(), JobStatus::Completed);
 }
 #[test]
 fn reentrant_draining_never_polls_the_currently_claimed_task_twice() {
@@ -608,7 +608,7 @@ fn reentrant_draining_never_polls_the_currently_claimed_task_twice() {
     owner.run_jobs().unwrap();
     assert_eq!(polls.get(), 1);
     assert_eq!(*order.borrow(), ["outer", "new", "return"]);
-    assert_eq!(observer.status(), JobStatus::Completed);
+    assert_eq!(observer.status().unwrap(), JobStatus::Completed);
 }
 #[test]
 fn an_untouched_due_interval_survives_a_stop_and_can_cancel_itself_after_resumption() {
@@ -751,7 +751,7 @@ fn ordinary_factory_and_poll_errors_complete_once_without_retirement() {
                 assert_eq!(result.unwrap_err().as_opaque(), Some(&JsValue::new(7)));
                 assert!(matches!(
                     step(&mut job, &host),
-                    JobStep::Finished(JobStatus::Completed)
+                    JobStep::Finished(Ok(JobStatus::Completed))
                 ));
                 Ok(())
             })
@@ -762,8 +762,8 @@ fn ordinary_factory_and_poll_errors_complete_once_without_retirement() {
             outcome.report.job_polls().unwrap(),
             u64::from(!factory_error)
         );
-        assert_eq!(observer.status(), JobStatus::Completed);
+        assert_eq!(observer.status().unwrap(), JobStatus::Completed);
         drop(owner);
-        assert_eq!(observer.status(), JobStatus::Completed);
+        assert_eq!(observer.status().unwrap(), JobStatus::Completed);
     }
 }

@@ -2,29 +2,44 @@
 
 use crate::{
     Context, JsResult,
-    error::{EngineResourceError, PanicError},
-    job::{JobObserver, JobRetirement, RetirementRegistration, RetirementRelay},
+    error::PanicError,
+    job::{
+        JobFault, JobFaultCause, JobFaultOwner, JobObserver, JobRegistrationError, JobRetirement,
+        RetirementRegistration, RetirementRelay, UnwindCleanup,
+    },
 };
 use std::{
-    cell::{Cell, RefCell},
+    cell::Cell,
     rc::{Rc, Weak as LocalWeak},
     sync::{
         Arc, Mutex, MutexGuard, OnceLock, Weak,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU8, Ordering},
     },
     task::{Context as TaskContext, Poll, Waker},
 };
 use surgeist_js_gc::heap::{RecordRef, Rooted, Trace};
 
+// Test fixtures have their own synchronization assertions. Production poison is
+// always a fault followed by cleanup, never permission to resume registry work.
+#[cfg(test)]
 fn lock<T>(value: &Mutex<T>) -> MutexGuard<'_, T> {
-    value
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
+    value.lock().expect("test fixture mutex")
 }
 fn reserve<T>(values: &mut Vec<T>) -> JsResult<()> {
-    values
-        .try_reserve(1)
-        .map_err(|_| EngineResourceError::Allocation.into())
+    crate::job::reserve_registration(values)
+        .map_err(|error| JobRegistrationError::Resource(error).into())
+}
+fn fault(owner: JobFaultOwner, cause: JobFaultCause) -> JobFault {
+    JobFault::new(owner, cause)
+}
+fn signal_fault(cause: JobFaultCause) -> JobFault {
+    fault(JobFaultOwner::NativeSignal, cause)
+}
+fn domain_fault(cause: JobFaultCause) -> JobFault {
+    fault(JobFaultOwner::NativeDomain, cause)
+}
+fn engine_fault(value: JobFault) -> crate::JsError {
+    JobRegistrationError::Fault(value).into()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -34,15 +49,42 @@ pub(crate) enum SettlementStatus {
     Retired(JobRetirement),
     ModuleInterrupted,
 }
-
+impl SettlementStatus {
+    fn encode(self) -> u8 {
+        match self {
+            Self::Pending => 0,
+            Self::Settled => 1,
+            Self::ModuleInterrupted => 2,
+            Self::Retired(JobRetirement::Cancelled) => 3,
+            Self::Retired(JobRetirement::OwnerDropped) => 4,
+            Self::Retired(JobRetirement::Interrupted) => 5,
+            Self::Retired(JobRetirement::Dropped) => 6,
+        }
+    }
+    fn decode(raw: u8) -> Option<Self> {
+        match raw {
+            0 => Some(Self::Pending),
+            1 => Some(Self::Settled),
+            2 => Some(Self::ModuleInterrupted),
+            3 => Some(Self::Retired(JobRetirement::Cancelled)),
+            4 => Some(Self::Retired(JobRetirement::OwnerDropped)),
+            5 => Some(Self::Retired(JobRetirement::Interrupted)),
+            6 => Some(Self::Retired(JobRetirement::Dropped)),
+            _ => None,
+        }
+    }
+}
+const FAULTED: u8 = 7;
+#[derive(Clone, Copy)]
+enum WakePhase {
+    Direct,
+    Prepared,
+}
 struct Waiter {
-    live: bool,
-    waker: Option<Waker>,
+    waker: Mutex<Option<Waker>>,
 }
 struct SignalState {
-    module_epoch: Option<Arc<Epoch>>,
-    status: SettlementStatus,
-    waiters: Vec<Waiter>,
+    waiters: Vec<Option<Arc<Waiter>>>,
     dependents: Vec<Option<Weak<Dependency>>>,
 }
 struct NoticeQueue {
@@ -52,10 +94,152 @@ struct NoticeQueue {
     wake_tail: Option<Arc<Signal>>,
     driving: bool,
 }
+impl NoticeQueue {
+    fn new() -> Self {
+        Self {
+            head: None,
+            tail: None,
+            wake_head: None,
+            wake_tail: None,
+            driving: false,
+        }
+    }
+}
+enum MemberEntry {
+    Vacant(Option<usize>),
+    Live(Weak<Signal>),
+}
+impl MemberEntry {
+    fn signal(&self) -> Option<&Weak<Signal>> {
+        match self {
+            Self::Live(signal) => Some(signal),
+            Self::Vacant(_) => None,
+        }
+    }
+}
+struct Members {
+    entries: Vec<MemberEntry>,
+    free: Option<usize>,
+    live: usize,
+}
+impl Members {
+    fn new() -> Self {
+        Self {
+            entries: Vec::new(),
+            free: None,
+            live: 0,
+        }
+    }
+    fn free_next(&self, index: usize) -> Result<Option<usize>, JobFault> {
+        let next = match self.entries.get(index) {
+            Some(MemberEntry::Vacant(next)) => *next,
+            Some(MemberEntry::Live(_)) => {
+                return Err(domain_fault(JobFaultCause::InvalidFreeLink { index }));
+            }
+            None => return Err(domain_fault(JobFaultCause::InvalidIndex { index })),
+        };
+        if let Some(next) = next
+            && (next == index || !matches!(self.entries.get(next), Some(MemberEntry::Vacant(_))))
+        {
+            return Err(domain_fault(JobFaultCause::InvalidFreeLink { index: next }));
+        }
+        // A null next is exactly the final vacant slot. Validate the count
+        // correspondence without traversing the free chain.
+        let after_one = self
+            .live
+            .checked_add(1)
+            .ok_or_else(|| domain_fault(JobFaultCause::StateInconsistency))?;
+        if next.is_none() != (after_one == self.entries.len()) {
+            return Err(domain_fault(JobFaultCause::StateInconsistency));
+        }
+        Ok(next)
+    }
+    fn insert(
+        &mut self,
+        signal: &Arc<Signal>,
+        #[cfg(test)] fail_reservation: &AtomicBool,
+    ) -> Result<usize, JobRegistrationError> {
+        if self.live > self.entries.len() {
+            return Err(domain_fault(JobFaultCause::StateInconsistency).into());
+        }
+        let live = self
+            .live
+            .checked_add(1)
+            .ok_or_else(|| domain_fault(JobFaultCause::StateInconsistency))?;
+        let index = if let Some(index) = self.free {
+            if self.live == self.entries.len() {
+                return Err(domain_fault(JobFaultCause::StateInconsistency).into());
+            }
+            let next = self.free_next(index)?;
+            // All identity/link/count validation precedes either mutation.
+            let entry = self
+                .entries
+                .get_mut(index)
+                .ok_or_else(|| domain_fault(JobFaultCause::InvalidIndex { index }))?;
+            *entry = MemberEntry::Live(Arc::downgrade(signal));
+            self.free = next;
+            index
+        } else {
+            if self.live != self.entries.len() {
+                return Err(domain_fault(JobFaultCause::StateInconsistency).into());
+            }
+            #[cfg(test)]
+            if fail_reservation.swap(false, Ordering::AcqRel) {
+                return Err(crate::job::JobResourceError::Allocation.into());
+            }
+            crate::job::reserve_registration(&mut self.entries)?;
+            let index = self.entries.len();
+            self.entries.push(MemberEntry::Live(Arc::downgrade(signal)));
+            index
+        };
+        self.live = live;
+        Ok(index)
+    }
+    fn remove(&mut self, index: usize, signal: &Signal) -> Result<MemberEntry, JobFault> {
+        match self.entries.get(index) {
+            // This private removal entry requires the actual live Signal witness:
+            // constructor rollback retains its Arc, and Signal::drop executes
+            // before that same allocation can be reclaimed/reused. A bare index
+            // or address is never accepted from an independently lived key.
+            Some(MemberEntry::Live(entry)) if std::ptr::eq(entry.as_ptr(), signal) => {}
+            Some(_) => return Err(domain_fault(JobFaultCause::InvalidSlotIdentity { index })),
+            None => return Err(domain_fault(JobFaultCause::InvalidIndex { index })),
+        }
+        let live = self
+            .live
+            .checked_sub(1)
+            .ok_or_else(|| domain_fault(JobFaultCause::CounterUnderflow))?;
+        if self.live > self.entries.len() {
+            return Err(domain_fault(JobFaultCause::StateInconsistency));
+        }
+        if let Some(free) = self.free {
+            if self.live == self.entries.len() {
+                return Err(domain_fault(JobFaultCause::StateInconsistency));
+            }
+            self.free_next(free)?;
+        } else if self.live != self.entries.len() {
+            return Err(domain_fault(JobFaultCause::StateInconsistency));
+        }
+        let entry = self
+            .entries
+            .get_mut(index)
+            .ok_or_else(|| domain_fault(JobFaultCause::InvalidIndex { index }))?;
+        let removed = std::mem::replace(entry, MemberEntry::Vacant(self.free));
+        self.free = Some(index);
+        self.live = live;
+        Ok(removed)
+    }
+}
 struct Domain {
+    fault: OnceLock<JobFault>,
+    members: Mutex<Members>,
     queue: Mutex<NoticeQueue>,
     #[cfg(test)]
     empty_notice_hook: Option<EmptyNoticeHook>,
+    #[cfg(test)]
+    fail_reservation: AtomicBool,
+    #[cfg(test)]
+    isolated_module: OnceLock<Arc<Domain>>,
 }
 #[cfg(test)]
 struct EmptyNoticeHook {
@@ -63,8 +247,154 @@ struct EmptyNoticeHook {
     reached: std::sync::mpsc::Sender<()>,
     resume: Mutex<std::sync::mpsc::Receiver<()>>,
 }
-#[cfg(test)]
 impl Domain {
+    fn new() -> Self {
+        Self {
+            fault: OnceLock::new(),
+            members: Mutex::new(Members::new()),
+            queue: Mutex::new(NoticeQueue::new()),
+            #[cfg(test)]
+            empty_notice_hook: None,
+            #[cfg(test)]
+            fail_reservation: AtomicBool::new(false),
+            #[cfg(test)]
+            isolated_module: OnceLock::new(),
+        }
+    }
+    fn register(&self, signal: &Arc<Signal>) -> Result<usize, JobRegistrationError> {
+        if let Some(error) = signal.fault.get() {
+            return Err((*error).into());
+        }
+        if let Some(error) = self.fault.get() {
+            return Err((*error).into());
+        }
+        let mut members = match self.members.lock() {
+            Ok(members) => members,
+            Err(poison) => {
+                drop(poison.into_inner());
+                let error = domain_fault(JobFaultCause::PoisonedRegistry);
+                self.quarantine(error);
+                return Err(self.first_fault(error).into());
+            }
+        };
+        if let Some(error) = self.fault.get() {
+            return Err((*error).into());
+        }
+        if let Some(error) = signal.fault.get() {
+            return Err((*error).into());
+        }
+        #[cfg(test)]
+        let result = members.insert(signal, &self.fail_reservation);
+        #[cfg(not(test))]
+        let result = members.insert(signal);
+        drop(members);
+        if let Err(JobRegistrationError::Fault(error)) = result {
+            self.quarantine(error);
+            return Err(self.first_fault(error).into());
+        }
+        result
+    }
+    fn unregister(&self, index: usize, signal: &Signal) {
+        if self.fault.get().is_some() {
+            return;
+        }
+        let removed = match self.members.lock() {
+            Ok(mut members) => {
+                if self.fault.get().is_some() {
+                    return;
+                }
+                members.remove(index, signal)
+            }
+            Err(poison) => {
+                drop(poison.into_inner());
+                Err(domain_fault(JobFaultCause::PoisonedRegistry))
+            }
+        };
+        match removed {
+            Ok(removed) => drop(removed),
+            Err(error) => self.quarantine(error),
+        }
+    }
+    fn first_fault(&self, candidate: JobFault) -> JobFault {
+        *self.fault.get_or_init(|| candidate)
+    }
+    fn quarantine(&self, error: JobFault) {
+        // The first caller owns the physical cleanup bank. Concurrent callers
+        // may still publish the same diagnostic, but cannot reopen admission.
+        if self.fault.set(error).is_err() {
+            return;
+        }
+        let members = {
+            let mut guard = match self.members.lock() {
+                Ok(guard) => guard,
+                Err(poison) => poison.into_inner(),
+            };
+            std::mem::replace(&mut *guard, Members::new())
+        };
+        let queue = {
+            let mut guard = match self.queue.lock() {
+                Ok(guard) => guard,
+                Err(poison) => poison.into_inner(),
+            };
+            std::mem::replace(&mut *guard, NoticeQueue::new())
+        };
+        // Physical entries are authoritative even if every work link is corrupt.
+        // Mark the whole domain before detaching any owned links or invoking
+        // arbitrary native callbacks.
+        let mut unwind = UnwindCleanup::default();
+        for entry in &members.entries {
+            unwind.run(|| {
+                if let Some(signal) = entry.signal().and_then(Weak::upgrade)
+                    && signal.belongs_to(self)
+                {
+                    signal.mark_fault(error);
+                }
+            });
+        }
+        for entry in &members.entries {
+            unwind.run(|| {
+                if let Some(signal) = entry.signal().and_then(Weak::upgrade)
+                    && signal.belongs_to(self)
+                {
+                    signal.detach_links(self);
+                }
+            });
+        }
+        unwind.run(|| drop(queue));
+        for entry in &members.entries {
+            unwind.run(|| {
+                if let Some(signal) = entry.signal().and_then(Weak::upgrade)
+                    && signal.belongs_to(self)
+                {
+                    signal.notify_direct();
+                }
+            });
+        }
+        drop(members);
+        unwind.finish();
+    }
+    fn access(&self) -> Result<MutexGuard<'_, NoticeQueue>, JobFault> {
+        if let Some(error) = self.fault.get() {
+            return Err(*error);
+        }
+        match self.queue.lock() {
+            Ok(queue) => {
+                if let Some(error) = self.fault.get() {
+                    drop(queue);
+                    Err(*error)
+                } else {
+                    Ok(queue)
+                }
+            }
+            Err(poison) => {
+                drop(poison.into_inner());
+                let error = domain_fault(JobFaultCause::PoisonedRegistry);
+                self.quarantine(error);
+                Err(self.first_fault(error))
+            }
+        }
+    }
+    #[cfg(test)]
     fn after_empty_notice(&self) {
         if let Some(hook) = &self.empty_notice_hook
             && hook.visits.fetch_add(1, Ordering::SeqCst) == 1
@@ -80,25 +410,54 @@ impl Domain {
 }
 fn domain() -> &'static Domain {
     static DOMAIN: OnceLock<Domain> = OnceLock::new();
-    DOMAIN.get_or_init(|| Domain {
-        queue: Mutex::new(NoticeQueue {
-            head: None,
-            tail: None,
-            wake_head: None,
-            wake_tail: None,
-            driving: false,
-        }),
-        #[cfg(test)]
-        empty_notice_hook: None,
-    })
+    DOMAIN.get_or_init(Domain::new)
 }
-
+fn module_domain() -> &'static Domain {
+    static DOMAIN: OnceLock<Domain> = OnceLock::new();
+    DOMAIN.get_or_init(Domain::new)
+}
+enum DomainRef {
+    Shared(&'static Domain),
+    #[cfg(test)]
+    Isolated(Arc<Domain>),
+}
+impl DomainRef {
+    fn get(&self) -> &Domain {
+        match self {
+            Self::Shared(domain) => domain,
+            #[cfg(test)]
+            Self::Isolated(domain) => domain,
+        }
+    }
+}
+struct Memberships {
+    ordinary: usize,
+    module: usize,
+}
+struct MemberRollback<'a> {
+    domain: &'a Domain,
+    signal: &'a Signal,
+    index: usize,
+    armed: bool,
+}
+impl Drop for MemberRollback<'_> {
+    fn drop(&mut self) {
+        if self.armed {
+            self.domain.unregister(self.index, self.signal);
+        }
+    }
+}
 /// Status and prepared notification links only; never owns engine values.
 pub(crate) struct Signal {
-    #[cfg(test)]
-    isolated_domain: Option<Arc<Domain>>,
+    ordinary_domain: DomainRef,
+    module_domain: DomainRef,
+    memberships: OnceLock<Memberships>,
+    status: AtomicU8,
+    fault: OnceLock<JobFault>,
     notified: AtomicBool,
     module_notified: AtomicBool,
+    ordinary_work: AtomicU8,
+    module_work: AtomicU8,
     module_next: Mutex<Option<Arc<Signal>>>,
     state: Mutex<SignalState>,
     next: Mutex<Option<Arc<Signal>>>,
@@ -106,152 +465,436 @@ pub(crate) struct Signal {
 impl std::fmt::Debug for Signal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("NativeSettlementSignal")
-            .field(&self.status())
+            .field(&self.observation())
             .finish()
     }
 }
 impl Signal {
-    fn new() -> Arc<Self> {
-        let _ = domain();
-        Arc::new(Self {
-            #[cfg(test)]
-            isolated_domain: None,
+    fn new() -> Result<Arc<Self>, JobRegistrationError> {
+        Self::construct(
+            DomainRef::Shared(domain()),
+            DomainRef::Shared(module_domain()),
+        )
+    }
+    fn construct(
+        ordinary_domain: DomainRef,
+        module_domain: DomainRef,
+    ) -> Result<Arc<Self>, JobRegistrationError> {
+        if std::ptr::eq(ordinary_domain.get(), module_domain.get()) {
+            return Err(domain_fault(JobFaultCause::OwnerMismatch).into());
+        }
+        if let Some(error) = ordinary_domain
+            .get()
+            .fault
+            .get()
+            .or_else(|| module_domain.get().fault.get())
+        {
+            return Err((*error).into());
+        }
+        // Both routes exist before a Signal can become visible to engine state.
+        let signal = Arc::new(Self {
+            ordinary_domain,
+            module_domain,
+            memberships: OnceLock::new(),
+            status: AtomicU8::new(0),
+            fault: OnceLock::new(),
             notified: AtomicBool::new(false),
             module_notified: AtomicBool::new(false),
+            ordinary_work: AtomicU8::new(0),
+            module_work: AtomicU8::new(0),
             module_next: Mutex::new(None),
+            next: Mutex::new(None),
             state: Mutex::new(SignalState {
-                module_epoch: None,
-                status: SettlementStatus::Pending,
                 waiters: Vec::new(),
                 dependents: Vec::new(),
             }),
-            next: Mutex::new(None),
-        })
+        });
+        let ordinary = signal.notification_domain().register(&signal)?;
+        let mut rollback = MemberRollback {
+            domain: signal.notification_domain(),
+            signal: &signal,
+            index: ordinary,
+            armed: true,
+        };
+        let module = signal.module_notification_domain().register(&signal)?;
+        if signal
+            .memberships
+            .set(Memberships { ordinary, module })
+            .is_err()
+        {
+            signal
+                .module_notification_domain()
+                .unregister(module, &signal);
+            return Err(signal_fault(JobFaultCause::StateInconsistency).into());
+        }
+        rollback.armed = false;
+        drop(rollback);
+        if let Some(error) = signal.fault.get() {
+            return Err((*error).into());
+        }
+        Ok(signal)
     }
     fn notification_domain(&self) -> &Domain {
-        #[cfg(test)]
-        if let Some(domain) = &self.isolated_domain {
-            return domain;
-        }
-        domain()
+        self.ordinary_domain.get()
+    }
+    fn module_notification_domain(&self) -> &Domain {
+        self.module_domain.get()
+    }
+    fn belongs_to(&self, domain: &Domain) -> bool {
+        std::ptr::eq(self.notification_domain(), domain)
+            || std::ptr::eq(self.module_notification_domain(), domain)
     }
     #[cfg(test)]
-    fn in_isolated_domain(domain: Arc<Domain>) -> Arc<Self> {
-        let mut signal = Self::new();
-        Arc::get_mut(&mut signal)
-            .expect("new signal is uniquely owned")
-            .isolated_domain = Some(domain);
-        signal
+    fn in_isolated_domain(domain: Arc<Domain>) -> Result<Arc<Self>, JobRegistrationError> {
+        if let Some(error) = domain.fault.get() {
+            return Err((*error).into());
+        }
+        let module = domain
+            .isolated_module
+            .get_or_init(|| Arc::new(Domain::new()))
+            .clone();
+        Self::construct(DomainRef::Isolated(domain), DomainRef::Isolated(module))
     }
-    pub(crate) fn status(&self) -> SettlementStatus {
-        lock(&self.state).status
+    fn mark_fault(&self, error: JobFault) {
+        self.fault.get_or_init(|| error);
+        loop {
+            let raw = self.status.load(Ordering::Acquire);
+            if raw == FAULTED
+                || SettlementStatus::decode(raw)
+                    .is_some_and(|status| status != SettlementStatus::Pending)
+            {
+                return;
+            }
+            if self
+                .status
+                .compare_exchange(raw, FAULTED, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
+                break;
+            }
+        }
+    }
+    fn fail(self: &Arc<Self>, error: JobFault) {
+        self.mark_fault(error);
+        // Queue the source itself before visiting its dependency bank. The
+        // domain finishes the full same-domain notice closure before any wake.
+        self.notify();
+    }
+    fn reject_waker(self: &Arc<Self>, error: JobFault, waker: Waker) {
+        let mut unwind = UnwindCleanup::default();
+        unwind.run(|| self.fail(error));
+        unwind.run(|| drop(waker));
+        unwind.finish();
+    }
+    pub(crate) fn status(self: &Arc<Self>) -> Result<SettlementStatus, JobFault> {
+        let raw = self.status.load(Ordering::Acquire);
+        if let Some(status) = SettlementStatus::decode(raw) {
+            return Ok(status);
+        }
+        let error = if raw == FAULTED {
+            if let Some(error) = self.fault.get() {
+                return Err(*error);
+            }
+            signal_fault(JobFaultCause::MissingCause)
+        } else {
+            signal_fault(JobFaultCause::InvalidDisposition { raw })
+        };
+        self.fail(error);
+        self.observation()
+    }
+    fn check(self: &Arc<Self>) -> Result<(), JobFault> {
+        self.status()?;
+        match self.fault.get() {
+            Some(error) => Err(*error),
+            None => Ok(()),
+        }
+    }
+    fn state_access(self: &Arc<Self>) -> Result<MutexGuard<'_, SignalState>, JobFault> {
+        if let Some(error) = self.fault.get() {
+            return Err(*error);
+        }
+        match self.state.lock() {
+            Ok(state) => {
+                if let Some(error) = self.fault.get() {
+                    drop(state);
+                    Err(*error)
+                } else {
+                    Ok(state)
+                }
+            }
+            Err(poison) => {
+                drop(poison.into_inner());
+                let error = signal_fault(JobFaultCause::PoisonedRegistry);
+                self.fail(error);
+                Err(*self.fault.get_or_init(|| error))
+            }
+        }
+    }
+    fn publish_pending(&self, status: SettlementStatus) -> bool {
+        self.status
+            .compare_exchange(0, status.encode(), Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
     }
     fn retire_pending(self: &Arc<Self>, reason: JobRetirement) {
-        {
-            let mut state = lock(&self.state);
-            if state.status != SettlementStatus::Pending {
-                return;
-            }
-            state.status = SettlementStatus::Retired(reason);
+        if self.publish_pending(SettlementStatus::Retired(reason)) {
+            self.notify();
         }
-        self.notify();
     }
     fn retire_epoch(self: &Arc<Self>, epoch: &Epoch, reason: JobRetirement) {
-        {
-            let mut state = lock(&self.state);
-            if state.status != SettlementStatus::Pending || !epoch.active.load(Ordering::Acquire) {
-                return;
-            }
-            state.status = SettlementStatus::Retired(reason);
+        let Ok(_state) = self.state_access() else {
+            return;
+        };
+        let changed = epoch.active.load(Ordering::Acquire)
+            && self.publish_pending(SettlementStatus::Retired(reason));
+        drop(_state);
+        if changed {
+            self.notify();
         }
-        self.notify();
+    }
+    fn fault_epoch(self: &Arc<Self>, epoch: &Epoch, error: JobFault) {
+        // The active binding is checked under the same guard as handoff commit.
+        let Ok(state) = self.state_access() else {
+            return;
+        };
+        let active = epoch.active.load(Ordering::Acquire);
+        if active {
+            self.mark_fault(error);
+        }
+        drop(state);
+        if active {
+            self.notify();
+        }
     }
     fn notify(self: &Arc<Self>) {
         match self.status() {
-            SettlementStatus::Retired(_) if !self.notified.swap(true, Ordering::AcqRel) => {
-                self.notice()
+            Ok(SettlementStatus::Retired(_)) | Err(_)
+                if !self.notified.swap(true, Ordering::AcqRel) =>
+            {
+                self.notice_in(self.notification_domain(), false)
             }
-            SettlementStatus::Retired(_) => {}
-            SettlementStatus::ModuleInterrupted => self.notify_module(),
+            Ok(SettlementStatus::Retired(_)) | Err(_) => {}
+            Ok(SettlementStatus::ModuleInterrupted) => self.notify_module(),
             _ => self.wake(),
         }
     }
     pub(crate) fn settle(self: &Arc<Self>) {
-        {
-            let mut state = lock(&self.state);
-            if state.status == SettlementStatus::ModuleInterrupted {
+        // Actual guest settlement keeps the established precedence over generic
+        // retirement and observation defects. A real module cause remains final.
+        let mut raw = self.status.load(Ordering::Acquire);
+        loop {
+            if raw == SettlementStatus::ModuleInterrupted.encode() {
                 return;
             }
-            state.status = SettlementStatus::Settled;
+            if raw != FAULTED && SettlementStatus::decode(raw).is_none() {
+                self.mark_fault(signal_fault(JobFaultCause::InvalidDisposition { raw }));
+                raw = self.status.load(Ordering::Acquire);
+                continue;
+            }
+            match self.status.compare_exchange(
+                raw,
+                SettlementStatus::Settled.encode(),
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break,
+                Err(current) => raw = current,
+            }
         }
         self.wake();
     }
-    fn wake(&self) {
-        // Slots are reserved by observers. No Waker runs or is dropped under a lock.
-        let count = lock(&self.state).waiters.len();
-        let mut panic = None;
+    fn wake(self: &Arc<Self>) {
+        self.wake_waiters(WakePhase::Direct);
+    }
+    fn wake_ready(self: &Arc<Self>) {
+        self.wake_waiters(WakePhase::Prepared);
+    }
+    fn wake_cleanup_ready(&self, phase: WakePhase) -> bool {
+        matches!(phase, WakePhase::Prepared) || self.observation() == Ok(SettlementStatus::Settled)
+    }
+    fn wake_fault_waiters(self: &Arc<Self>) {
+        let waiters = {
+            let mut state = match self.state.lock() {
+                Ok(state) => state,
+                Err(poison) => poison.into_inner(),
+            };
+            std::mem::take(&mut state.waiters)
+        };
+        let mut unwind = UnwindCleanup::default();
+        for waiter in waiters.iter().filter_map(|entry| entry.as_ref()) {
+            unwind.run(|| self.wake_waiter(waiter, WakePhase::Prepared));
+        }
+        drop(waiters);
+        unwind.finish();
+    }
+    fn wake_waiters(self: &Arc<Self>, phase: WakePhase) {
+        if let Some(error) = self.fault.get() {
+            if self.wake_cleanup_ready(phase) {
+                self.wake_fault_waiters();
+            } else {
+                // Another publisher may have initialized the cause immediately
+                // before its terminal CAS. Complete the same checked mark before
+                // selecting a notification route; never recurse over Pending.
+                self.mark_fault(*error);
+                self.notify();
+            }
+            return;
+        }
+        let count = match self.state_access() {
+            Ok(state) => state.waiters.len(),
+            Err(_) => {
+                // state_access has published/queued the actual fault. A driver
+                // already in its Wake phase must still dispose its original bank.
+                if self.wake_cleanup_ready(phase) {
+                    self.wake_fault_waiters();
+                }
+                return;
+            }
+        };
+        let mut unwind = UnwindCleanup::default();
         for index in 0..count {
-            let waker = lock(&self.state)
-                .waiters
-                .get_mut(index)
-                .and_then(|slot| slot.waker.take());
-            if let Some(waker) = waker
-                && let Err(payload) =
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| waker.wake()))
-                && panic.is_none()
-            {
-                panic = Some(payload);
+            let waiter = match self.state_access() {
+                Ok(state) => state.waiters.get(index).and_then(Clone::clone),
+                Err(_) => {
+                    if self.wake_cleanup_ready(phase) {
+                        unwind.run(|| self.wake_fault_waiters());
+                    }
+                    break;
+                }
+            };
+            if let Some(waiter) = waiter {
+                unwind.run(|| self.wake_waiter(&waiter, phase));
             }
         }
-        if let Some(panic) = panic {
-            std::panic::resume_unwind(panic);
+        unwind.finish();
+    }
+    fn wake_waiter(self: &Arc<Self>, waiter: &Waiter, phase: WakePhase) {
+        let waker = match waiter.waker.lock() {
+            Ok(mut slot) => slot.take(),
+            Err(poison) => {
+                if !self.wake_cleanup_ready(phase) {
+                    // The existing slot retains its original waker. Let the
+                    // queued source fault mark every active dependent before
+                    // its prepared Wake phase consumes this poisoned slot.
+                    drop(poison.into_inner());
+                    self.fail(signal_fault(JobFaultCause::PoisonedWaker));
+                    return;
+                }
+                self.mark_fault(signal_fault(JobFaultCause::PoisonedWaker));
+                poison.into_inner().take()
+            }
+        };
+        if let Some(waker) = waker {
+            waker.wake();
+        }
+    }
+    fn notify_direct(self: &Arc<Self>) {
+        // Only domain quarantine uses this path, after its physical member bank
+        // has marked every matching-affiliation member. Cross-domain relays keep
+        // their own eventual delivery; they do not create a global transaction.
+        let state = {
+            let mut state = match self.state.lock() {
+                Ok(state) => state,
+                Err(poison) => poison.into_inner(),
+            };
+            SignalState {
+                waiters: std::mem::take(&mut state.waiters),
+                dependents: std::mem::take(&mut state.dependents),
+            }
+        };
+        let observation = self.observation();
+        let mut unwind = UnwindCleanup::default();
+        for dependent in state
+            .dependents
+            .iter()
+            .filter_map(|entry| entry.as_ref())
+            .filter_map(Weak::upgrade)
+        {
+            unwind.run(|| dependent.deliver(observation));
+        }
+        for waiter in state.waiters.iter().filter_map(|entry| entry.as_ref()) {
+            unwind.run(|| self.wake_waiter(waiter, WakePhase::Prepared));
+        }
+        unwind.run(|| drop(state));
+        unwind.finish();
+    }
+    fn observation(&self) -> Result<SettlementStatus, JobFault> {
+        let raw = self.status.load(Ordering::Acquire);
+        match SettlementStatus::decode(raw) {
+            Some(status) => Ok(status),
+            None => Err(self.fault.get().copied().unwrap_or_else(|| {
+                signal_fault(if raw == FAULTED {
+                    JobFaultCause::MissingCause
+                } else {
+                    JobFaultCause::InvalidDisposition { raw }
+                })
+            })),
         }
     }
     pub(crate) fn mark_module(&self) {
-        let mut state = lock(&self.state);
-        if state.status != SettlementStatus::Settled {
-            state.status = SettlementStatus::ModuleInterrupted;
+        let mut raw = self.status.load(Ordering::Acquire);
+        while raw != SettlementStatus::Settled.encode()
+            && raw != SettlementStatus::ModuleInterrupted.encode()
+        {
+            if raw != FAULTED && SettlementStatus::decode(raw).is_none() {
+                self.mark_fault(signal_fault(JobFaultCause::InvalidDisposition { raw }));
+                raw = self.status.load(Ordering::Acquire);
+                continue;
+            }
+            match self.status.compare_exchange(
+                raw,
+                SettlementStatus::ModuleInterrupted.encode(),
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => break,
+                Err(current) => raw = current,
+            }
         }
     }
     fn mark_module_epoch(self: &Arc<Self>, epoch: &Arc<Epoch>) {
-        let changed = {
-            let mut state = lock(&self.state);
-            if !epoch.active.load(Ordering::Acquire)
-                || matches!(
-                    state.status,
-                    SettlementStatus::Settled | SettlementStatus::ModuleInterrupted
-                )
-            {
-                false
-            } else {
-                state.status = SettlementStatus::ModuleInterrupted;
-                state.module_epoch = Some(epoch.clone());
-                true
-            }
+        // This publishes an actual source-module marker, not ordinary registry
+        // progress. Preserve its priority even when observation already failed;
+        // the same guard still serializes active-epoch handoff authority.
+        let (state, poisoned) = match self.state.lock() {
+            Ok(state) => (state, false),
+            Err(poison) => (poison.into_inner(), true),
         };
-        if changed {
-            self.notify_module();
+        if poisoned {
+            self.mark_fault(signal_fault(JobFaultCause::PoisonedRegistry));
+        }
+        let active = epoch.active.load(Ordering::Acquire);
+        if active {
+            self.mark_module();
+        }
+        drop(state);
+        if active || poisoned {
+            self.notify();
         }
     }
     pub(crate) fn notify_module(self: &Arc<Self>) {
-        if self.status() != SettlementStatus::ModuleInterrupted
+        if self.observation() != Ok(SettlementStatus::ModuleInterrupted)
             || self.module_notified.swap(true, Ordering::AcqRel)
         {
             return;
         }
-        static MODULE_DOMAIN: OnceLock<Domain> = OnceLock::new();
-        let domain = MODULE_DOMAIN.get_or_init(|| Domain {
-            queue: Mutex::new(NoticeQueue {
-                head: None,
-                tail: None,
-                wake_head: None,
-                wake_tail: None,
-                driving: false,
-            }),
-            #[cfg(test)]
-            empty_notice_hook: None,
-        });
-        self.notice_in(domain, true);
+        self.notice_in(self.module_notification_domain(), true);
+    }
+    fn work_state(&self, module: bool) -> &AtomicU8 {
+        if module {
+            &self.module_work
+        } else {
+            &self.ordinary_work
+        }
+    }
+    fn valid_route(&self, domain: &Domain, module: bool) -> bool {
+        std::ptr::eq(
+            if module {
+                self.module_notification_domain()
+            } else {
+                self.notification_domain()
+            },
+            domain,
+        )
     }
     fn link(&self, module: bool) -> &Mutex<Option<Arc<Signal>>> {
         if module {
@@ -260,22 +903,77 @@ impl Signal {
             &self.next
         }
     }
-    fn notice(self: &Arc<Self>) {
-        self.notice_in(self.notification_domain(), false);
+    fn detach_links(&self, domain: &Domain) {
+        let module = std::ptr::eq(self.module_notification_domain(), domain);
+        let old = {
+            let mut link = match self.link(module).lock() {
+                Ok(link) => link,
+                Err(poison) => poison.into_inner(),
+            };
+            link.take()
+        };
+        drop(old);
     }
     fn notice_in(self: &Arc<Self>, domain: &Domain, module: bool) {
-        let drive = {
-            let mut queue = lock(&domain.queue);
-            if let Some(tail) = queue.tail.replace(self.clone()) {
-                *lock(tail.link(module)) = Some(self.clone());
+        // Queue then link is the only nested lock order. No state access,
+        // callbacks or final Arc disposal occur while either guard is held.
+        let insertion = (|| {
+            let mut queue = domain.access()?;
+            if !self.valid_route(domain, module) {
+                drop(queue);
+                return Err(domain_fault(JobFaultCause::OwnerMismatch));
+            }
+            if queue.head.is_some() != queue.tail.is_some() {
+                drop(queue);
+                return Err(domain_fault(JobFaultCause::StateInconsistency));
+            }
+            if self
+                .work_state(module)
+                .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+                .is_err()
+            {
+                drop(queue);
+                return Err(domain_fault(JobFaultCause::StateInconsistency));
+            }
+            let previous = queue.tail.clone();
+            if let Some(tail) = &previous {
+                if !tail.valid_route(domain, module)
+                    || tail.work_state(module).load(Ordering::Acquire) != 1
+                {
+                    drop(queue);
+                    return Err(domain_fault(JobFaultCause::StateInconsistency));
+                }
+                match tail.link(module).lock() {
+                    Ok(mut link) => {
+                        if link.is_some() {
+                            drop(link);
+                            drop(queue);
+                            return Err(domain_fault(JobFaultCause::StateInconsistency));
+                        }
+                        *link = Some(self.clone());
+                    }
+                    Err(poison) => {
+                        drop(poison.into_inner());
+                        drop(queue);
+                        return Err(domain_fault(JobFaultCause::PoisonedLink));
+                    }
+                }
             } else {
                 queue.head = Some(self.clone());
             }
-            if queue.driving {
-                false
-            } else {
-                queue.driving = true;
-                true
+            let old_tail = queue.tail.replace(self.clone());
+            let drive = !queue.driving;
+            queue.driving = true;
+            drop(queue);
+            drop(old_tail);
+            drop(previous);
+            Ok(drive)
+        })();
+        let drive = match insertion {
+            Ok(drive) => drive,
+            Err(error) => {
+                domain.quarantine(error);
+                return;
             }
         };
         if !drive {
@@ -286,151 +984,381 @@ impl Signal {
             Wake(Arc<Signal>),
             Idle,
         }
-        let mut panic = None;
+        let mut unwind = UnwindCleanup::default();
         loop {
-            // The test forces an arrival after an optimistic empty observation.
-            // The authoritative selection below must see that arrival atomically.
             #[cfg(test)]
             {
-                let observed_empty = lock(&domain.queue).head.is_none();
-                if observed_empty {
+                let empty = match domain.access() {
+                    Ok(queue) => queue.head.is_none(),
+                    Err(_) => break,
+                };
+                if empty {
                     domain.after_empty_notice();
                 }
             }
-            let work = {
-                let mut queue = lock(&domain.queue);
-                if let Some(next) = queue.head.take() {
-                    queue.head = lock(next.link(module)).take();
-                    if queue.head.is_none() {
-                        queue.tail = None;
+            let selection = (|| {
+                let mut queue = domain.access()?;
+                if queue.head.is_some() != queue.tail.is_some()
+                    || queue.wake_head.is_some() != queue.wake_tail.is_some()
+                {
+                    drop(queue);
+                    return Err(domain_fault(JobFaultCause::StateInconsistency));
+                }
+                let module_work = queue.head.is_some();
+                let next = if module_work {
+                    queue.head.as_ref()
+                } else {
+                    queue.wake_head.as_ref()
+                }
+                .cloned();
+                if let Some(next) = next {
+                    if !next.valid_route(domain, module)
+                        || next
+                            .work_state(module)
+                            .compare_exchange(
+                                if module_work { 1 } else { 3 },
+                                if module_work { 2 } else { 4 },
+                                Ordering::AcqRel,
+                                Ordering::Acquire,
+                            )
+                            .is_err()
+                    {
+                        drop(queue);
+                        return Err(domain_fault(JobFaultCause::StateInconsistency));
                     }
-                    Work::Notice(next)
-                } else if let Some(wake) = queue.wake_head.take() {
-                    queue.wake_head = lock(wake.link(module)).take();
-                    if queue.wake_head.is_none() {
-                        queue.wake_tail = None;
+                    let following = match next.link(module).lock() {
+                        Ok(mut link) => link.take(),
+                        Err(poison) => {
+                            drop(poison.into_inner());
+                            drop(queue);
+                            return Err(domain_fault(JobFaultCause::PoisonedLink));
+                        }
+                    };
+                    let tail = if module_work {
+                        queue.tail.as_ref()
+                    } else {
+                        queue.wake_tail.as_ref()
+                    };
+                    let last = tail.is_some_and(|tail| Arc::ptr_eq(tail, &next));
+                    if last != following.is_none() {
+                        drop(queue);
+                        drop(following);
+                        return Err(domain_fault(JobFaultCause::StateInconsistency));
                     }
-                    Work::Wake(wake)
+                    let (old_head, old_tail) = if module_work {
+                        (
+                            std::mem::replace(&mut queue.head, following),
+                            if queue.head.is_none() {
+                                queue.tail.take()
+                            } else {
+                                None
+                            },
+                        )
+                    } else {
+                        (
+                            std::mem::replace(&mut queue.wake_head, following),
+                            if queue.wake_head.is_none() {
+                                queue.wake_tail.take()
+                            } else {
+                                None
+                            },
+                        )
+                    };
+                    drop(queue);
+                    drop(old_head);
+                    drop(old_tail);
+                    Ok(if module_work {
+                        Work::Notice(next)
+                    } else {
+                        Work::Wake(next)
+                    })
                 } else {
                     queue.driving = false;
-                    Work::Idle
+                    Ok(Work::Idle)
+                }
+            })();
+            let work = match selection {
+                Ok(work) => work,
+                Err(error) => {
+                    unwind.run(|| domain.quarantine(error));
+                    break;
                 }
             };
             match work {
                 Work::Notice(next) => {
-                    let count = lock(&next.state).dependents.len();
-                    for index in 0..count {
-                        let dependent = lock(&next.state)
-                            .dependents
-                            .get(index)
-                            .and_then(Clone::clone)
-                            .and_then(|value| value.upgrade());
-                        if let Some(dependent) = dependent {
-                            if module {
-                                dependent.module_interrupt();
-                            } else if let SettlementStatus::Retired(reason) = next.status() {
-                                dependent.retire(reason);
-                            }
+                    unwind.run(|| next.deliver_dependents());
+                    if domain.fault.get().is_some() {
+                        break;
+                    }
+                    let queued = (|| {
+                        let mut queue = domain.access()?;
+                        if queue.wake_head.is_some() != queue.wake_tail.is_some()
+                            || next
+                                .work_state(module)
+                                .compare_exchange(2, 3, Ordering::AcqRel, Ordering::Acquire)
+                                .is_err()
+                        {
+                            drop(queue);
+                            return Err(domain_fault(JobFaultCause::StateInconsistency));
                         }
-                    }
-                    let mut queue = lock(&domain.queue);
-                    if let Some(tail) = queue.wake_tail.replace(next.clone()) {
-                        *lock(tail.link(module)) = Some(next);
-                    } else {
-                        queue.wake_head = Some(next);
+                        let previous = queue.wake_tail.clone();
+                        if let Some(tail) = &previous {
+                            if !tail.valid_route(domain, module)
+                                || tail.work_state(module).load(Ordering::Acquire) != 3
+                            {
+                                drop(queue);
+                                return Err(domain_fault(JobFaultCause::StateInconsistency));
+                            }
+                            match tail.link(module).lock() {
+                                Ok(mut link) => {
+                                    if link.is_some() {
+                                        drop(link);
+                                        drop(queue);
+                                        return Err(domain_fault(
+                                            JobFaultCause::StateInconsistency,
+                                        ));
+                                    }
+                                    *link = Some(next.clone());
+                                }
+                                Err(poison) => {
+                                    drop(poison.into_inner());
+                                    drop(queue);
+                                    return Err(domain_fault(JobFaultCause::PoisonedLink));
+                                }
+                            }
+                        } else {
+                            queue.wake_head = Some(next.clone());
+                        }
+                        let old_tail = queue.wake_tail.replace(next);
+                        drop(queue);
+                        drop(old_tail);
+                        drop(previous);
+                        Ok(())
+                    })();
+                    if let Err(error) = queued {
+                        unwind.run(|| domain.quarantine(error));
+                        break;
                     }
                 }
-                Work::Wake(wake) => {
-                    // Notice work has priority: all currently reachable dependents
-                    // are marked before arbitrary native Wakers run.
-                    if let Err(payload) =
-                        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| wake.wake()))
-                        && panic.is_none()
-                    {
-                        panic = Some(payload);
-                    }
-                }
+                Work::Wake(wake) => unwind.run(|| wake.wake_ready()),
                 Work::Idle => break,
             }
         }
-        if let Some(panic) = panic {
-            std::panic::resume_unwind(panic);
-        }
+        unwind.finish();
     }
-    pub(crate) fn wait(self: &Arc<Self>) -> JsResult<SettlementWait> {
+    fn deliver_fault_dependents(self: &Arc<Self>) {
+        let dependents = {
+            let mut state = match self.state.lock() {
+                Ok(state) => state,
+                Err(poison) => poison.into_inner(),
+            };
+            std::mem::take(&mut state.dependents)
+        };
+        let observation = self.observation();
+        let mut unwind = UnwindCleanup::default();
+        for dependent in dependents
+            .iter()
+            .filter_map(|entry| entry.as_ref())
+            .filter_map(Weak::upgrade)
+        {
+            unwind.run(|| dependent.deliver(observation));
+        }
+        drop(dependents);
+        unwind.finish();
+    }
+    fn deliver_dependents(self: &Arc<Self>) {
+        // A malformed atomic seen by an existing driver is repaired by the same
+        // owner as ordinary observation, without bypassing notice priority.
+        let _ = self.status();
+        if self.fault.get().is_some() {
+            self.deliver_fault_dependents();
+            return;
+        }
+        let count = match self.state_access() {
+            Ok(state) => state.dependents.len(),
+            Err(_) => {
+                self.deliver_fault_dependents();
+                return;
+            }
+        };
+        let mut unwind = UnwindCleanup::default();
+        for index in 0..count {
+            let dependent = match self.state_access() {
+                Ok(state) => state
+                    .dependents
+                    .get(index)
+                    .and_then(Clone::clone)
+                    .and_then(|entry| entry.upgrade()),
+                Err(_) => {
+                    // A fault found during this notice does not discard the
+                    // unvisited tail. Detach and finish its physical bank now.
+                    unwind.run(|| self.deliver_fault_dependents());
+                    break;
+                }
+            };
+            if let Some(dependent) = dependent {
+                unwind.run(|| dependent.deliver(self.observation()));
+            }
+        }
+        unwind.finish();
+    }
+    pub(crate) fn wait(self: &Arc<Self>) -> Result<SettlementWait, JobRegistrationError> {
+        match self.status() {
+            Ok(status) if status != SettlementStatus::Pending => {
+                return Ok(SettlementWait {
+                    signal: self.clone(),
+                    index: 0,
+                    waiter: None,
+                });
+            }
+            Err(error) => return Err(error.into()),
+            Ok(_) => {}
+        }
+        let waiter = Arc::new(Waiter {
+            waker: Mutex::new(None),
+        });
         let index = {
-            let mut state = lock(&self.state);
-            if let Some(index) = state.waiters.iter().position(|slot| !slot.live) {
-                state.waiters[index].live = true;
+            let mut state = self.state_access()?;
+            if let Some((index, slot)) = state
+                .waiters
+                .iter_mut()
+                .enumerate()
+                .find(|(_, slot)| slot.is_none())
+            {
+                *slot = Some(waiter.clone());
                 index
             } else {
-                reserve(&mut state.waiters)?;
+                crate::job::reserve_registration(&mut state.waiters)?;
                 let index = state.waiters.len();
-                state.waiters.push(Waiter {
-                    live: true,
-                    waker: None,
-                });
+                state.waiters.push(Some(waiter.clone()));
                 index
             }
         };
         Ok(SettlementWait {
             signal: self.clone(),
             index,
+            waiter: Some(waiter),
         })
     }
     fn subscribe(
         self: &Arc<Self>,
         target: &Arc<Signal>,
         epoch: Arc<Epoch>,
-    ) -> JsResult<DependencyGuard> {
+    ) -> Result<DependencyGuard, JobRegistrationError> {
+        self.check()?;
+        target.check()?;
+        if let Some(error) = target.fault.get() {
+            return Err((*error).into());
+        }
         let dependency = Arc::new(Dependency {
             target: Arc::downgrade(target),
             epoch,
         });
         let index = {
-            let mut state = lock(&self.state);
-            if let Some(index) = state.dependents.iter().position(Option::is_none) {
-                state.dependents[index] = Some(Arc::downgrade(&dependency));
+            let mut state = self.state_access()?;
+            if let Some((index, slot)) = state
+                .dependents
+                .iter_mut()
+                .enumerate()
+                .find(|(_, slot)| slot.is_none())
+            {
+                *slot = Some(Arc::downgrade(&dependency));
                 index
             } else {
-                reserve(&mut state.dependents)?;
+                crate::job::reserve_registration(&mut state.dependents)?;
                 let index = state.dependents.len();
                 state.dependents.push(Some(Arc::downgrade(&dependency)));
                 index
             }
         };
-        if let SettlementStatus::Retired(reason) = self.status() {
-            dependency.retire(reason);
-        }
-        if self.status() == SettlementStatus::ModuleInterrupted {
-            dependency.module_interrupt();
-        }
+        dependency.deliver(self.status());
         Ok(DependencyGuard {
             source: Arc::downgrade(self),
             index,
-            _dependency: dependency,
+            dependency,
         })
+    }
+}
+impl Drop for Signal {
+    fn drop(&mut self) {
+        if let Some(memberships) = self.memberships.get() {
+            let mut unwind = UnwindCleanup::default();
+            unwind.run(|| {
+                self.notification_domain()
+                    .unregister(memberships.ordinary, self)
+            });
+            unwind.run(|| {
+                self.module_notification_domain()
+                    .unregister(memberships.module, self)
+            });
+            unwind.finish();
+        }
     }
 }
 pub(crate) struct SettlementWait {
     signal: Arc<Signal>,
     index: usize,
+    waiter: Option<Arc<Waiter>>,
 }
 impl SettlementWait {
-    pub(crate) fn poll(&mut self, cx: &mut TaskContext<'_>) -> Poll<SettlementStatus> {
+    pub(crate) fn poll(
+        &mut self,
+        cx: &mut TaskContext<'_>,
+    ) -> Poll<Result<SettlementStatus, JobFault>> {
         let status = self.signal.status();
-        if status != SettlementStatus::Pending {
+        if status != Ok(SettlementStatus::Pending) {
             return Poll::Ready(status);
         }
-        let new_waker = cx.waker().clone();
-        let (status, old) = {
-            let mut state = lock(&self.signal.state);
-            let status = state.status;
-            let old = state.waiters[self.index].waker.replace(new_waker);
-            (status, old)
+        let Some(waiter) = &self.waiter else {
+            let error = signal_fault(JobFaultCause::StateInconsistency);
+            self.signal.fail(error);
+            return Poll::Ready(self.signal.status());
         };
-        drop(old);
-        if status == SettlementStatus::Pending {
+        let new_waker = cx.waker().clone();
+        let replacement = {
+            let state = match self.signal.state_access() {
+                Ok(state) => state,
+                Err(error) => {
+                    drop(new_waker);
+                    return Poll::Ready(Err(error));
+                }
+            };
+            match state.waiters.get(self.index) {
+                Some(Some(slot)) if Arc::ptr_eq(slot, waiter) => {}
+                Some(_) => {
+                    drop(state);
+                    let error =
+                        signal_fault(JobFaultCause::InvalidSlotIdentity { index: self.index });
+                    self.signal.reject_waker(error, new_waker);
+                    return Poll::Ready(self.signal.status());
+                }
+                None => {
+                    drop(state);
+                    let error = signal_fault(JobFaultCause::InvalidIndex { index: self.index });
+                    self.signal.reject_waker(error, new_waker);
+                    return Poll::Ready(self.signal.status());
+                }
+            }
+            // Keep only the checked registration identity, not a registry guard,
+            // across waker-slot access or disposal.
+            drop(state);
+            match waiter.waker.lock() {
+                Ok(mut slot) => Ok(slot.replace(new_waker)),
+                Err(poison) => {
+                    drop(poison.into_inner());
+                    Err(new_waker)
+                }
+            }
+        };
+        match replacement {
+            Ok(old) => drop(old),
+            Err(new_waker) => {
+                self.signal
+                    .reject_waker(signal_fault(JobFaultCause::PoisonedWaker), new_waker);
+            }
+        }
+        let status = self.signal.status();
+        if status == Ok(SettlementStatus::Pending) {
             Poll::Pending
         } else {
             Poll::Ready(status)
@@ -439,19 +1367,37 @@ impl SettlementWait {
 }
 impl Drop for SettlementWait {
     fn drop(&mut self) {
-        let old = {
-            let mut state = lock(&self.signal.state);
-            let slot = &mut state.waiters[self.index];
-            slot.live = false;
-            slot.waker.take()
+        let Some(waiter) = &self.waiter else {
+            return;
         };
-        drop(old);
+        if self.signal.fault.get().is_some() {
+            return;
+        }
+        let removed = match self.signal.state_access() {
+            Ok(mut state) => match state.waiters.get_mut(self.index) {
+                Some(entry) if entry.as_ref().is_some_and(|slot| Arc::ptr_eq(slot, waiter)) => {
+                    Ok(entry.take())
+                }
+                Some(_) => Err(signal_fault(JobFaultCause::InvalidSlotIdentity {
+                    index: self.index,
+                })),
+                None => Err(signal_fault(JobFaultCause::InvalidIndex {
+                    index: self.index,
+                })),
+            },
+            Err(_) => return,
+        };
+        match removed {
+            Ok(removed) => drop(removed),
+            Err(error) => self.signal.fail(error),
+        }
     }
 }
 struct Epoch {
     module_pending: AtomicBool,
     active: AtomicBool,
-    pending: Mutex<Option<JobRetirement>>,
+    pending: OnceLock<JobRetirement>,
+    fault: OnceLock<JobFault>,
     completed: AtomicBool,
 }
 impl Epoch {
@@ -459,7 +1405,8 @@ impl Epoch {
         Arc::new(Self {
             module_pending: AtomicBool::new(false),
             active: AtomicBool::new(false),
-            pending: Mutex::new(None),
+            pending: OnceLock::new(),
+            fault: OnceLock::new(),
             completed: AtomicBool::new(false),
         })
     }
@@ -470,18 +1417,36 @@ struct Relay {
 }
 impl RetirementRelay for Relay {
     fn retire(&self, reason: JobRetirement) {
-        *lock(&self.epoch.pending) = Some(reason);
+        let reason = *self.epoch.pending.get_or_init(|| reason);
         if self.epoch.active.load(Ordering::Acquire)
             && let Some(target) = self.target.upgrade()
         {
             target.retire_epoch(&self.epoch, reason);
         }
     }
+    fn fault(&self, error: JobFault) {
+        let error = *self.epoch.fault.get_or_init(|| error);
+        if self.epoch.active.load(Ordering::Acquire)
+            && let Some(target) = self.target.upgrade()
+        {
+            target.fault_epoch(&self.epoch, error);
+        }
+    }
     fn completed(&self) {
         if let Some(target) = self.target.upgrade() {
-            let _state = lock(&target.state);
+            let (state, poisoned) = match target.state.lock() {
+                Ok(state) => (state, false),
+                Err(poison) => (poison.into_inner(), true),
+            };
             self.epoch.completed.store(true, Ordering::Release);
             self.epoch.active.store(false, Ordering::Release);
+            if poisoned {
+                target.mark_fault(signal_fault(JobFaultCause::PoisonedRegistry));
+            }
+            drop(state);
+            if poisoned {
+                target.notify();
+            }
         }
     }
 }
@@ -490,6 +1455,14 @@ struct Dependency {
     epoch: Arc<Epoch>,
 }
 impl Dependency {
+    fn deliver(&self, observation: Result<SettlementStatus, JobFault>) {
+        match observation {
+            Ok(SettlementStatus::Retired(reason)) => self.retire(reason),
+            Ok(SettlementStatus::ModuleInterrupted) => self.module_interrupt(),
+            Err(error) => self.fault(error),
+            _ => {}
+        }
+    }
     fn module_interrupt(&self) {
         self.epoch.module_pending.store(true, Ordering::Release);
         if let Some(target) = self.target.upgrade() {
@@ -497,28 +1470,54 @@ impl Dependency {
         }
     }
     fn retire(&self, reason: JobRetirement) {
-        *lock(&self.epoch.pending) = Some(reason);
+        let reason = *self.epoch.pending.get_or_init(|| reason);
         if self.epoch.active.load(Ordering::Acquire)
             && let Some(target) = self.target.upgrade()
         {
             target.retire_epoch(&self.epoch, reason);
         }
     }
+    fn fault(&self, error: JobFault) {
+        let error = *self.epoch.fault.get_or_init(|| error);
+        if self.epoch.active.load(Ordering::Acquire)
+            && let Some(target) = self.target.upgrade()
+        {
+            target.fault_epoch(&self.epoch, error);
+        }
+    }
 }
 struct DependencyGuard {
     source: Weak<Signal>,
     index: usize,
-    _dependency: Arc<Dependency>,
+    dependency: Arc<Dependency>,
 }
 impl Drop for DependencyGuard {
     fn drop(&mut self) {
         if let Some(source) = self.source.upgrade() {
-            let mut state = lock(&source.state);
-            if state.dependents[self.index]
-                .as_ref()
-                .is_some_and(|entry| entry.ptr_eq(&Arc::downgrade(&self._dependency)))
-            {
-                state.dependents[self.index] = None;
+            if source.fault.get().is_some() {
+                return;
+            }
+            let error = match source.state_access() {
+                Ok(mut state) => match state.dependents.get_mut(self.index) {
+                    Some(entry)
+                        if entry.as_ref().is_some_and(|entry| {
+                            entry.ptr_eq(&Arc::downgrade(&self.dependency))
+                        }) =>
+                    {
+                        *entry = None;
+                        None
+                    }
+                    Some(_) => Some(signal_fault(JobFaultCause::InvalidSlotIdentity {
+                        index: self.index,
+                    })),
+                    None => Some(signal_fault(JobFaultCause::InvalidIndex {
+                        index: self.index,
+                    })),
+                },
+                Err(_) => return,
+            };
+            if let Some(error) = error {
+                source.fail(error);
             }
         }
     }
@@ -539,8 +1538,32 @@ pub(crate) struct PreparedHandoff {
     binding: Binding,
     dependency: Option<AssociationEdge>,
 }
+/// A committed handoff retains its outgoing custody until the caller releases
+/// every object/heap borrow and completes the associated publication.
+#[must_use = "notify or dispose the handoff after releasing publication borrows"]
+pub(crate) struct HandoffNotification {
+    owner: Rooted<Association>,
+    previous: Option<Binding>,
+    previous_dependency: Option<AssociationEdge>,
+}
+impl HandoffNotification {
+    pub(crate) fn notify(self) {
+        drop(self);
+    }
+}
+impl Drop for HandoffNotification {
+    fn drop(&mut self) {
+        let previous = self.previous.take();
+        let previous_dependency = self.previous_dependency.take();
+        let mut cleanup = UnwindCleanup::default();
+        cleanup.run(|| drop(previous));
+        cleanup.run(|| drop(previous_dependency));
+        cleanup.run(|| self.owner.notify());
+        cleanup.finish();
+    }
+}
 impl PreparedHandoff {
-    pub(crate) fn commit(self) -> Rooted<Association> {
+    pub(crate) fn commit(self) -> HandoffNotification {
         let Self {
             owner,
             binding,
@@ -549,58 +1572,120 @@ impl PreparedHandoff {
         if owner.module_cause().is_some() {
             owner.signal.mark_module();
         }
-        let epoch = binding.epoch.clone();
-        let mut candidate = Some((binding, dependency));
-        let previous = {
-            let mut bindings = owner.bindings.borrow_mut();
-            let mut local_dependency = owner.view.dependency.borrow_mut();
-            let mut state = lock(&owner.signal.state);
-            if state.status == SettlementStatus::ModuleInterrupted {
-                None
-            } else {
-                let (binding, dependency) = candidate.take().expect("prepared handoff");
-                let old = bindings.primary.replace(binding);
-                if let Some(old) = &old {
-                    old.epoch.active.store(false, Ordering::Release);
-                }
-                let old_dependency = std::mem::replace(&mut *local_dependency, dependency);
-                let active = !epoch.completed.load(Ordering::Acquire);
-                epoch.active.store(active, Ordering::Release);
-                if active && epoch.module_pending.load(Ordering::Acquire) {
-                    state.status = SettlementStatus::ModuleInterrupted;
-                    state.module_epoch = Some(epoch.clone());
-                } else if active
-                    && state.status == SettlementStatus::Pending
-                    && let Some(reason) = *lock(&epoch.pending)
-                {
-                    state.status = SettlementStatus::Retired(reason);
-                }
-                Some((old, old_dependency))
+        // Commit can run under a caller's Promise borrow. Record any lock fault
+        // without invoking cleanup there; the returned notification owns it.
+        let state = match owner.signal.state.lock() {
+            Ok(state) => state,
+            Err(poison) => {
+                drop(poison.into_inner());
+                owner
+                    .signal
+                    .mark_fault(signal_fault(JobFaultCause::PoisonedRegistry));
+                return HandoffNotification {
+                    owner: owner.clone(),
+                    previous: Some(binding),
+                    previous_dependency: dependency,
+                };
             }
         };
-        drop(previous);
-        drop(candidate);
-        owner
+        let observation = owner.signal.observation();
+        if let Err(error) = observation {
+            owner.signal.mark_fault(error);
+        }
+        if owner.signal.fault.get().is_some()
+            || observation == Ok(SettlementStatus::ModuleInterrupted)
+        {
+            drop(state);
+            return HandoffNotification {
+                owner: owner.clone(),
+                previous: Some(binding),
+                previous_dependency: dependency,
+            };
+        }
+        // These cells contain private local ownership only. Their take/mutate/
+        // restore interval has no callback, allocation or fallible boundary.
+        let epoch = binding.epoch.clone();
+        let mut bindings = owner.bindings.take();
+        let previous = bindings.primary.replace(binding);
+        if let Some(previous) = &previous {
+            previous.epoch.active.store(false, Ordering::Release);
+        }
+        owner.bindings.set(bindings);
+        let previous_dependency = owner.view.dependency.replace(dependency);
+        let active = !epoch.completed.load(Ordering::Acquire);
+        epoch.active.store(active, Ordering::Release);
+        if active && epoch.module_pending.load(Ordering::Acquire) {
+            owner.signal.mark_module();
+        } else if active {
+            if let Some(error) = epoch.fault.get() {
+                owner.signal.mark_fault(*error);
+            } else if let Some(reason) = epoch.pending.get() {
+                owner
+                    .signal
+                    .publish_pending(SettlementStatus::Retired(*reason));
+            }
+        }
+        drop(state);
+        HandoffNotification {
+            owner,
+            previous,
+            previous_dependency,
+        }
     }
 }
 
 pub(crate) struct ResolutionLease(Option<Arc<Epoch>>);
 
+// Only these two local traced edge facts may inhabit a LocalSlot. Their
+// Clone operations cannot call the host, acquire the heap, or notify a Signal.
+trait LocalFact: Clone + Trace {}
+impl LocalFact for crate::module::lifecycle::EvaluationRef {}
+impl LocalFact for AssociationEdge {}
+struct LocalSlot<T: LocalFact>(Cell<Option<T>>);
+impl<T: LocalFact> Default for LocalSlot<T> {
+    fn default() -> Self {
+        Self(Cell::new(None))
+    }
+}
+impl<T: LocalFact> LocalSlot<T> {
+    fn get(&self) -> Option<T> {
+        let value = self.0.take();
+        let copy = value.clone();
+        self.0.set(value);
+        copy
+    }
+    fn replace(&self, value: Option<T>) -> Option<T> {
+        self.0.replace(value)
+    }
+    fn take(&self) -> Option<T> {
+        self.0.take()
+    }
+}
+impl<T: LocalFact> Trace for LocalSlot<T> {
+    fn trace(
+        &self,
+        edges: &mut surgeist_js_gc::heap::EdgeVisitor<'_>,
+    ) -> Result<(), surgeist_js_gc::heap::AccessError> {
+        // Restore the retained facts before invoking the heap visitor.
+        self.get().trace(edges)
+    }
+}
 #[derive(Default, Trace)]
 struct AssociationView {
     #[heap_trace(skip)]
     completes_origin: Cell<bool>,
-    origin: RefCell<Option<crate::module::lifecycle::EvaluationRef>>,
-    dependency: RefCell<Option<AssociationEdge>>,
+    origin: LocalSlot<crate::module::lifecycle::EvaluationRef>,
+    dependency: LocalSlot<AssociationEdge>,
 }
 #[derive(Trace)]
 pub(crate) struct Association {
     #[heap_trace(skip)]
     signal: Arc<Signal>,
     #[heap_trace(skip)]
-    bindings: RefCell<Bindings>,
+    bindings: Cell<Bindings>,
     view: Rc<AssociationView>,
 }
+#[derive(Default)]
 struct Bindings {
     primary: Option<Binding>,
     required: Vec<Binding>,
@@ -619,22 +1704,35 @@ pub(crate) struct AssociationEdge(
     #[heap_trace(skip)] Arc<Signal>,
 );
 impl AssociationEdge {
-    pub(crate) fn root(&self) -> Rooted<Association> {
-        self.0
-            .upgrade()
-            .expect("native association heap available")
-            .expect("traced owner retains native association")
+    pub(crate) fn root(&self) -> JsResult<Rooted<Association>> {
+        match self.0.upgrade() {
+            Ok(Some(owner)) => Ok(owner),
+            Ok(None) => {
+                let error = signal_fault(JobFaultCause::OwnerMismatch);
+                self.2.fail(error);
+                Err(engine_fault(error))
+            }
+            Err(_) => {
+                let error = signal_fault(JobFaultCause::InaccessibleRegistry);
+                self.2.fail(error);
+                Err(engine_fault(error))
+            }
+        }
     }
 }
 impl Association {
+    pub(crate) fn check(&self) -> JsResult<()> {
+        self.signal.check().map_err(crate::JsError::from)
+    }
     pub(crate) fn attach_module(&self, evaluation: crate::module::lifecycle::EvaluationRef) {
         self.view.completes_origin.set(true);
-        *self.view.origin.borrow_mut() = Some(evaluation);
+        let previous = self.view.origin.replace(Some(evaluation));
+        drop(previous);
     }
     pub(crate) fn bind_module(&self, evaluation: crate::module::lifecycle::EvaluationRef) {
-        let mut origin = self.view.origin.borrow_mut();
-        if origin.is_none() {
-            *origin = Some(evaluation);
+        if self.view.origin.get().is_none() {
+            let previous = self.view.origin.replace(Some(evaluation));
+            drop(previous);
         }
     }
     pub(crate) fn observe_module(&self, evaluation: crate::module::lifecycle::EvaluationRef) {
@@ -645,7 +1743,7 @@ impl Association {
         }
     }
     fn next_view(view: &Rc<AssociationView>) -> Option<(Rc<AssociationView>, Arc<Signal>)> {
-        let next = view.dependency.borrow().clone()?;
+        let next = view.dependency.get()?;
         Some((next.1.upgrade()?, next.2.clone()))
     }
     pub(crate) fn module_cause(&self) -> Option<Rc<crate::error::RetainedInterruption>> {
@@ -654,10 +1752,10 @@ impl Association {
         let mut fast = Some(self.view.clone());
         let mut collision = None;
         loop {
-            if cursor.1.status() == SettlementStatus::Settled {
+            if cursor.1.observation() == Ok(SettlementStatus::Settled) {
                 return None;
             }
-            if let Some(origin) = cursor.0.origin.borrow().as_ref()
+            if let Some(origin) = cursor.0.origin.get()
                 && let Some(cause) = origin.cause()
             {
                 return Some(cause);
@@ -677,8 +1775,6 @@ impl Association {
             if let (Some(slow), Some(fast)) = (&slow, &fast)
                 && Rc::ptr_eq(slow, fast)
             {
-                // A collision can precede an unvisited origin. Inspect one full
-                // lap from this cursor before concluding the cycle has no cause.
                 collision = Some(cursor.0.clone());
             }
         }
@@ -696,8 +1792,8 @@ impl Association {
             .runtime()
             .heap
             .allocate(Self {
-                signal: Signal::new(),
-                bindings: RefCell::new(Bindings {
+                signal: Signal::new().map_err(crate::JsError::from)?,
+                bindings: Cell::new(Bindings {
                     primary: None,
                     required: Vec::new(),
                 }),
@@ -725,6 +1821,10 @@ impl Association {
         owner: &Rooted<Self>,
         observer: &JobObserver,
     ) -> JsResult<PreparedHandoff> {
+        owner.check()?;
+        if let Some(error) = observer.fault() {
+            return Err(error.into());
+        }
         let epoch = Epoch::new();
         let relay: Arc<dyn RetirementRelay> = Arc::new(Relay {
             target: Arc::downgrade(&owner.signal),
@@ -745,6 +1845,8 @@ impl Association {
         owner: &Rooted<Self>,
         source: &Rooted<Self>,
     ) -> JsResult<PreparedHandoff> {
+        owner.check()?;
+        source.check()?;
         let epoch = Epoch::new();
         let subscription = source.signal.subscribe(&owner.signal, epoch.clone())?;
         Ok(PreparedHandoff {
@@ -757,33 +1859,39 @@ impl Association {
             dependency: Some(Self::edge(source)),
         })
     }
-    pub(crate) fn resolution_lease(&self) -> ResolutionLease {
-        ResolutionLease(
-            self.bindings
-                .borrow()
+    pub(crate) fn resolution_lease(&self) -> JsResult<ResolutionLease> {
+        if let Some(error) = self.signal.fault.get() {
+            return Err(engine_fault(*error));
+        }
+        let bindings = self.bindings.take();
+        let lease = ResolutionLease(
+            bindings
                 .primary
                 .as_ref()
                 .map(|binding| binding.epoch.clone()),
-        )
+        );
+        self.bindings.set(bindings);
+        Ok(lease)
     }
     pub(crate) fn interrupt_resolution(&self, expected: ResolutionLease) {
-        let notify = {
-            let bindings = self.bindings.borrow();
-            let current = bindings.primary.as_ref().map(|binding| &binding.epoch);
-            let same = match (current, expected.0.as_ref()) {
-                (None, None) => true,
-                (Some(current), Some(expected)) => Arc::ptr_eq(current, expected),
-                _ => false,
-            };
-            let mut state = lock(&self.signal.state);
-            if same && state.status == SettlementStatus::Pending {
-                state.status = SettlementStatus::Retired(JobRetirement::Interrupted);
-                true
-            } else {
-                false
-            }
+        let state = match self.signal.state_access() {
+            Ok(state) => state,
+            Err(_) => return,
         };
-        if notify {
+        let bindings = self.bindings.take();
+        let current = bindings.primary.as_ref().map(|binding| &binding.epoch);
+        let same = match (current, expected.0.as_ref()) {
+            (None, None) => true,
+            (Some(current), Some(expected)) => Arc::ptr_eq(current, expected),
+            _ => false,
+        };
+        let changed = same
+            && self
+                .signal
+                .publish_pending(SettlementStatus::Retired(JobRetirement::Interrupted));
+        self.bindings.set(bindings);
+        drop(state);
+        if changed {
             self.signal.notify();
         }
     }
@@ -794,6 +1902,13 @@ impl Association {
         self.signal.notify();
     }
     pub(crate) fn bind_job(&self, observer: &JobObserver, replace: bool) -> JsResult<()> {
+        self.check()?;
+        if let Some(error) = observer.fault() {
+            return Err(error.into());
+        }
+        if let Some(error) = self.signal.fault.get() {
+            return Err(engine_fault(*error));
+        }
         let epoch = Epoch::new();
         let relay: Arc<dyn RetirementRelay> = Arc::new(Relay {
             target: Arc::downgrade(&self.signal),
@@ -806,77 +1921,87 @@ impl Association {
             _dependency: None,
         };
         self.commit(binding, replace)?;
-        if replace && self.signal.status() != SettlementStatus::ModuleInterrupted {
-            self.view.dependency.borrow_mut().take();
+        if replace && self.signal.status() != Ok(SettlementStatus::ModuleInterrupted) {
+            let previous = self.view.dependency.take();
+            drop(previous);
         }
-        if let Some(reason) = *lock(&epoch.pending) {
+        if let Some(error) = epoch.fault.get() {
+            self.signal.fault_epoch(&epoch, *error);
+        } else if let Some(reason) = epoch.pending.get().copied() {
             self.signal.retire_epoch(&epoch, reason);
         }
-        if matches!(observer.status(), crate::job::JobStatus::Completed) {
+        if matches!(observer.status(), Ok(crate::job::JobStatus::Completed)) {
             epoch.active.store(false, Ordering::Release);
         }
         self.signal.notify();
+        if let Some(error) = self.signal.fault.get() {
+            return Err(engine_fault(*error));
+        }
         Ok(())
     }
     fn commit(&self, binding: Binding, replace: bool) -> JsResult<()> {
+        if let Some(error) = self.signal.fault.get() {
+            return Err(engine_fault(*error));
+        }
         let epoch = binding.epoch.clone();
-        let old = {
-            let mut bindings = self.bindings.borrow_mut();
-            if !replace
-                && !bindings
-                    .required
-                    .iter()
-                    .any(|slot| !slot.epoch.active.load(Ordering::Acquire))
-            {
-                reserve(&mut bindings.required)?;
-            }
-            let _signal = lock(&self.signal.state);
-            let old = if replace {
-                bindings.primary.replace(binding)
-            } else if let Some(slot) = bindings
+        let mut bindings = self.bindings.take();
+        if !replace
+            && !bindings
                 .required
-                .iter_mut()
-                .find(|slot| !slot.epoch.active.load(Ordering::Acquire))
-            {
-                Some(std::mem::replace(slot, binding))
-            } else {
-                bindings.required.push(binding);
-                None
-            };
-            if let Some(old) = &old {
-                old.epoch.active.store(false, Ordering::Release);
+                .iter()
+                .any(|slot| !slot.epoch.active.load(Ordering::Acquire))
+        {
+            let reserved = reserve(&mut bindings.required);
+            if let Err(error) = reserved {
+                self.bindings.set(bindings);
+                return Err(error);
             }
-            epoch
-                .active
-                .store(!epoch.completed.load(Ordering::Acquire), Ordering::Release);
-            old
+        }
+        // Restore the complete owner before acquiring any fallible native lock.
+        self.bindings.set(bindings);
+        let state = self.signal.state_access().map_err(crate::JsError::from)?;
+        let mut bindings = self.bindings.take();
+        let old = if replace {
+            bindings.primary.replace(binding)
+        } else if let Some(slot) = bindings
+            .required
+            .iter_mut()
+            .find(|slot| !slot.epoch.active.load(Ordering::Acquire))
+        {
+            Some(std::mem::replace(slot, binding))
+        } else {
+            bindings.required.push(binding);
+            None
         };
+        if let Some(old) = &old {
+            old.epoch.active.store(false, Ordering::Release);
+        }
+        epoch
+            .active
+            .store(!epoch.completed.load(Ordering::Acquire), Ordering::Release);
+        self.bindings.set(bindings);
+        drop(state);
         drop(old);
         Ok(())
     }
     pub(crate) fn settle(&self) {
         if self.module_cause().is_some()
-            || self.signal.status() == SettlementStatus::ModuleInterrupted
+            || self.signal.observation() == Ok(SettlementStatus::ModuleInterrupted)
         {
             self.signal.mark_module();
             self.signal.notify_module();
             return;
         }
+        let old_bindings = self.bindings.take();
+        let old_dependency = self.view.dependency.take();
         if self.view.completes_origin.get()
-            && let Some(origin) = self.view.origin.borrow().as_ref()
+            && let Some(origin) = self.view.origin.get()
         {
             origin.complete();
         }
-        let bindings = std::mem::replace(
-            &mut *self.bindings.borrow_mut(),
-            Bindings {
-                primary: None,
-                required: Vec::new(),
-            },
-        );
-        self.view.dependency.borrow_mut().take();
         self.signal.settle();
-        drop(bindings);
+        drop(old_bindings);
+        drop(old_dependency);
     }
 }
 
@@ -939,11 +2064,14 @@ mod tests {
         association.bind_job(&first, true).unwrap();
         let prepared = Association::prepare_handoff(&association, &successor).unwrap();
         successor.retire(JobRetirement::Dropped);
-        assert_eq!(association.signal.status(), SettlementStatus::Pending);
+        assert_eq!(
+            association.signal.status().unwrap(),
+            SettlementStatus::Pending
+        );
         drop(prepared);
         first.retire(JobRetirement::OwnerDropped);
         assert_eq!(
-            association.signal.status(),
+            association.signal.status().unwrap(),
             SettlementStatus::Retired(JobRetirement::OwnerDropped)
         );
     }
@@ -967,7 +2095,10 @@ mod tests {
         pending(&mut wait, &count);
         count.0.store(0, Ordering::SeqCst);
         first.retire(JobRetirement::OwnerDropped);
-        assert_eq!(association.signal.status(), SettlementStatus::Pending);
+        assert_eq!(
+            association.signal.status().unwrap(),
+            SettlementStatus::Pending
+        );
         assert_eq!(count.0.load(Ordering::SeqCst), 0);
         successor.retire(JobRetirement::Cancelled);
         count.wait_for_fresh_wake(0);
@@ -975,7 +2106,7 @@ mod tests {
         let waker = Waker::from(count);
         assert_eq!(
             wait.poll(&mut TaskContext::from_waker(&waker)),
-            Poll::Ready(SettlementStatus::Retired(JobRetirement::Cancelled))
+            Poll::Ready(Ok(SettlementStatus::Retired(JobRetirement::Cancelled)))
         );
     }
 
@@ -988,13 +2119,16 @@ mod tests {
         association.bind_job(&first, false).unwrap();
         association.bind_job(&second, false).unwrap();
         first.complete();
-        assert_eq!(association.signal.status(), SettlementStatus::Pending);
+        assert_eq!(
+            association.signal.status().unwrap(),
+            SettlementStatus::Pending
+        );
         second.retire(JobRetirement::OwnerDropped);
         assert_eq!(
-            association.signal.status(),
+            association.signal.status().unwrap(),
             SettlementStatus::Retired(JobRetirement::OwnerDropped)
         );
-        assert_eq!(first.status(), crate::job::JobStatus::Completed);
+        assert_eq!(first.status().unwrap(), crate::job::JobStatus::Completed);
     }
 
     struct CheckDescendant {
@@ -1004,7 +2138,7 @@ mod tests {
     impl Wake for CheckDescendant {
         fn wake(self: Arc<Self>) {
             assert_eq!(
-                self.last.status(),
+                self.last.status().unwrap(),
                 SettlementStatus::Retired(JobRetirement::Interrupted)
             );
             self.observed.store(true, Ordering::SeqCst);
@@ -1035,10 +2169,8 @@ mod tests {
         );
         chain[0].retire_pending(JobRetirement::Interrupted);
         assert!(wake.observed.load(Ordering::SeqCst));
-        assert!(
-            chain.iter().all(|value| value.signal.status()
-                == SettlementStatus::Retired(JobRetirement::Interrupted))
-        );
+        assert!(chain.iter().all(|value| value.signal.status().unwrap()
+            == SettlementStatus::Retired(JobRetirement::Interrupted)));
     }
 
     #[test]
@@ -1058,8 +2190,8 @@ mod tests {
         context.runtime().collect().unwrap();
         assert!(!left_edge.0.is_live().unwrap());
         assert!(!right_edge.0.is_live().unwrap());
-        assert_eq!(signals.0.status(), SettlementStatus::Pending);
-        assert_eq!(signals.1.status(), SettlementStatus::Pending);
+        assert_eq!(signals.0.status().unwrap(), SettlementStatus::Pending);
+        assert_eq!(signals.1.status().unwrap(), SettlementStatus::Pending);
     }
     #[test]
     fn concurrent_retirement_wakes_both_registered_native_waiters() {
@@ -1079,9 +2211,10 @@ mod tests {
                 reached: reached_tx,
                 resume: Mutex::new(resume_rx),
             }),
+            ..Domain::new()
         });
-        let first = Signal::in_isolated_domain(domain.clone());
-        let second = Signal::in_isolated_domain(domain);
+        let first = Signal::in_isolated_domain(domain.clone()).unwrap();
+        let second = Signal::in_isolated_domain(domain).unwrap();
         let first_count = Arc::new(WakeCount::default());
         let second_count = Arc::new(WakeCount::default());
         let mut first_wait = first.wait().unwrap();
@@ -1120,11 +2253,11 @@ mod tests {
         };
         drop(residue);
         assert_eq!(
-            first.status(),
+            first.status().unwrap(),
             SettlementStatus::Retired(JobRetirement::Dropped)
         );
         assert_eq!(
-            second.status(),
+            second.status().unwrap(),
             SettlementStatus::Retired(JobRetirement::Dropped)
         );
         assert_eq!(first_count.0.load(Ordering::SeqCst), 1);
@@ -1135,3 +2268,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod fault_tests;

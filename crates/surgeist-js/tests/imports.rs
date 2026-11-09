@@ -24,7 +24,7 @@ fn subdirectories() {
     let result = module.load_link_evaluate(context.access()).unwrap();
 
     context.run_jobs().unwrap();
-    match result.state() {
+    match result.state().unwrap() {
         PromiseState::Pending => {}
         PromiseState::Fulfilled(v) => {
             assert!(v.is_undefined());
@@ -70,7 +70,7 @@ fn json_import_attributes_are_part_of_the_cache_key() {
 
     context.run_jobs().unwrap();
     assert_eq!(
-        result.state(),
+        result.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
 
@@ -98,7 +98,7 @@ fn json_import_attributes_are_part_of_the_cache_key() {
     let p_obj = p.as_promise().unwrap();
     context.run_jobs().unwrap();
 
-    match p_obj.state() {
+    match p_obj.state().unwrap() {
         PromiseState::Rejected(e) => {
             let error = e
                 .as_object()

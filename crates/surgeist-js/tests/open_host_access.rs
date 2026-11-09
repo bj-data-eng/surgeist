@@ -464,7 +464,7 @@ fn promise_executor_reenters_through_access_and_retains_the_first_stop() {
         .unwrap();
     assert!(completed.report.instructions().unwrap() > 0);
     assert_eq!(
-        completed.result.unwrap().state(),
+        completed.result.unwrap().state().unwrap(),
         PromiseState::Fulfilled(JsValue::new(42))
     );
     let stopped = owner

@@ -92,7 +92,7 @@ fn schedule_fetch(failure: ResolveFailure) -> FetchCase {
         ))
         .unwrap();
     let promise = JsPromise::from_object(value.as_object().unwrap()).unwrap();
-    assert_eq!(promise.state(), PromiseState::Pending);
+    assert_eq!(promise.state().unwrap(), PromiseState::Pending);
     assert!(!resolve_invoked.get());
     assert!(!fetch_invoked.get());
     FetchCase {
@@ -111,13 +111,13 @@ fn fetch_uri_resolution_busy_reaches_the_driver_without_guest_rejection() {
     assert!(!case.fetch_invoked.get());
     let error = drained.expect_err("a real URI resolver lease conflict must reach the host driver");
     assert_eq!(error.as_engine(), Some(&EngineError::ContextAccessBusy));
-    assert_eq!(case.promise.state(), PromiseState::Pending);
+    assert_eq!(case.promise.state().unwrap(), PromiseState::Pending);
     assert_eq!(
         case.context.eval(Source::from_bytes("caught")).unwrap(),
         JsValue::new(false)
     );
     case.context.run_jobs().unwrap();
-    assert_eq!(case.promise.state(), PromiseState::Pending);
+    assert_eq!(case.promise.state().unwrap(), PromiseState::Pending);
     assert_eq!(
         case.context.eval(Source::from_bytes("caught")).unwrap(),
         JsValue::new(false)
@@ -130,7 +130,10 @@ fn fetch_uri_resolution_catchable_error_rejects_the_original_guest_promise() {
     case.context.run_jobs().unwrap();
     assert!(case.resolve_invoked.get());
     assert!(!case.fetch_invoked.get());
-    assert!(matches!(case.promise.state(), PromiseState::Rejected(_)));
+    assert!(matches!(
+        case.promise.state().unwrap(),
+        PromiseState::Rejected(_)
+    ));
     assert_eq!(
         case.context.eval(Source::from_bytes("caught")).unwrap(),
         JsValue::new(true)
@@ -250,7 +253,7 @@ fn cancelled_pending_fetch_notifies_its_native_waiter_without_guest_rejection() 
     );
     assert_eq!(case.polls.get(), 1);
     assert_eq!(case.drops.get(), 1);
-    assert_eq!(case.promise.state(), PromiseState::Pending);
+    assert_eq!(case.promise.state().unwrap(), PromiseState::Pending);
     assert_eq!(
         case.context.eval(Source::from_bytes("caught")).unwrap(),
         JsValue::new(false)
@@ -278,5 +281,5 @@ fn pending_fetch_owner_loss_notifies_its_native_waiter_without_guest_rejection()
     );
     assert_eq!(case.polls.get(), 1);
     assert_eq!(case.drops.get(), 1);
-    assert_eq!(case.promise.state(), PromiseState::Pending);
+    assert_eq!(case.promise.state().unwrap(), PromiseState::Pending);
 }

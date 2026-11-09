@@ -296,12 +296,16 @@ impl<'a> Diagnostic<'a> {
             StoredErrorRepr::ContextAccessBusy => {
                 DiagnosticKind::Engine(DiagnosticEngine::ContextAccessBusy)
             }
+            StoredErrorRepr::ObjectAccessBusy => {
+                DiagnosticKind::Engine(DiagnosticEngine::ObjectAccessBusy)
+            }
             StoredErrorRepr::JobContextRequired(required) => {
                 DiagnosticKind::Engine(DiagnosticEngine::JobContextRequired { required })
             }
             StoredErrorRepr::JobRetired(reason) => {
                 DiagnosticKind::Engine(DiagnosticEngine::JobRetired(*reason))
             }
+            StoredErrorRepr::Job(error) => DiagnosticKind::Engine(DiagnosticEngine::Job(*error)),
             StoredErrorRepr::InvocationIdExhausted => {
                 DiagnosticKind::Engine(DiagnosticEngine::InvocationIdExhausted)
             }
@@ -480,12 +484,14 @@ impl<'a> Diagnostic<'a> {
                 DiagnosticEngine::Resource(value) => ErasedEngineError::Resource(value),
                 DiagnosticEngine::InvalidEntryPermit => ErasedEngineError::InvalidEntryPermit,
                 DiagnosticEngine::ContextAccessBusy => ErasedEngineError::ContextAccessBusy,
+                DiagnosticEngine::ObjectAccessBusy => ErasedEngineError::ObjectAccessBusy,
                 DiagnosticEngine::JobContextRequired { required } => {
                     ErasedEngineError::JobContextRequired {
                         required: required.clone(),
                     }
                 }
                 DiagnosticEngine::JobRetired(reason) => ErasedEngineError::JobRetired(reason),
+                DiagnosticEngine::Job(error) => ErasedEngineError::Job(error),
                 DiagnosticEngine::InvocationIdExhausted => ErasedEngineError::InvocationIdExhausted,
                 DiagnosticEngine::ScopeAnalysis(value) => ErasedEngineError::ScopeAnalysis(value),
                 DiagnosticEngine::RuntimeLimit(value) => ErasedEngineError::RuntimeLimit(value),
@@ -695,6 +701,8 @@ pub enum DiagnosticEngine<'a> {
     InvalidEntryPermit,
     /// Context access is currently leased.
     ContextAccessBusy,
+    /// An object alias currently holds incompatible access.
+    ObjectAccessBusy,
     /// Work requires the same exact Context identity.
     JobContextRequired {
         /// Context-free diagnostic identity, without liveness/access authority.
@@ -702,6 +710,8 @@ pub enum DiagnosticEngine<'a> {
     },
     /// Owned work was retired.
     JobRetired(crate::job::JobRetirement),
+    /// A dynamic job operation is invalid for its current state.
+    Job(JobError),
     /// Invocation identities are exhausted.
     InvocationIdExhausted,
     /// Scope publication refusal.
@@ -1006,10 +1016,14 @@ impl fmt::Display for DiagnosticEngine<'_> {
             Self::ContextAccessBusy => {
                 f.write_str("ContextAccessBusy: host context access is already leased")
             }
+            Self::ObjectAccessBusy => {
+                f.write_str("ObjectAccessBusy: object access is already borrowed")
+            }
             Self::JobContextRequired { required } => {
                 write!(f, "JobContextRequired: task requires Context {required}")
             }
             Self::JobRetired(reason) => write!(f, "JobRetired: {reason:?}"),
+            Self::Job(error) => write!(f, "JobError: {error}"),
             Self::InvocationIdExhausted => {
                 f.write_str("InvocationIdExhausted: invocation identity space exhausted")
             }

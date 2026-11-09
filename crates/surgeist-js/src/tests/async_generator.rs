@@ -13,7 +13,7 @@ fn assert_promise_iter_value(
     context: &mut Context,
 ) {
     let promise = JsPromise::from_object(promise.as_object().unwrap().clone()).unwrap();
-    let PromiseState::Fulfilled(v) = promise.state() else {
+    let PromiseState::Fulfilled(v) = promise.state().unwrap() else {
         panic!("promise was not fulfilled");
     };
     let o = v.as_object().unwrap();

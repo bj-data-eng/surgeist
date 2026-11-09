@@ -69,7 +69,7 @@ fn native_async_job_owns_captures_after_the_function_drops() {
     assert!(weak_capture.is_live().unwrap());
     context.run_jobs().unwrap();
     {
-        let PromiseState::Fulfilled(value) = promise.state() else {
+        let PromiseState::Fulfilled(value) = promise.state().unwrap() else {
             panic!("native job did not fulfill its promise");
         };
         let captured = weak_capture.upgrade().unwrap().unwrap();

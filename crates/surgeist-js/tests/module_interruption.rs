@@ -36,7 +36,7 @@ fn linked_module(source: &str, path: &str, context: &mut Context) -> Module {
     .unwrap();
     let loaded = module.load(context.access()).unwrap();
     assert_eq!(
-        loaded.state(),
+        loaded.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     module.link(context.access()).unwrap();
@@ -164,10 +164,13 @@ fn ordinary_guest_throw_keeps_the_same_cached_rejected_promise_and_reason() {
     );
 
     let first = evaluate_with_fresh_budget(&module, &mut context);
-    assert_eq!(first.state(), PromiseState::Rejected(reason.clone()));
+    assert_eq!(
+        first.state().unwrap(),
+        PromiseState::Rejected(reason.clone())
+    );
     let second = evaluate_with_fresh_budget(&module, &mut context);
     assert_eq!(first.identity(), second.identity());
-    assert_eq!(second.state(), PromiseState::Rejected(reason));
+    assert_eq!(second.state().unwrap(), PromiseState::Rejected(reason));
     assert_eq!(effects(&mut context), 1.into());
 }
 
@@ -201,7 +204,10 @@ fn stop_retained_before_evaluation_preserves_the_linked_instances_first_valid_at
     assert_eq!(effects(&mut context), 0.into());
 
     let first = evaluate_with_fresh_budget(&module, &mut context);
-    assert_eq!(first.state(), PromiseState::Fulfilled(JsValue::undefined()));
+    assert_eq!(
+        first.state().unwrap(),
+        PromiseState::Fulfilled(JsValue::undefined())
+    );
     let second = evaluate_with_fresh_budget(&module, &mut context);
     assert_eq!(first.identity(), second.identity());
     assert_eq!(effects(&mut context), 1.into());
@@ -216,7 +222,10 @@ fn completed_success_is_preserved_after_an_unrelated_operations_stop() {
         &mut context,
     );
     let first = evaluate_with_fresh_budget(&module, &mut context);
-    assert_eq!(first.state(), PromiseState::Fulfilled(JsValue::undefined()));
+    assert_eq!(
+        first.state().unwrap(),
+        PromiseState::Fulfilled(JsValue::undefined())
+    );
 
     let unrelated = context
         .eval_with_budget(Source::from_bytes("0"), ExecutionOptions::new(0))
@@ -225,7 +234,7 @@ fn completed_success_is_preserved_after_an_unrelated_operations_stop() {
     let second = evaluate_with_fresh_budget(&module, &mut context);
     assert_eq!(first.identity(), second.identity());
     assert_eq!(
-        second.state(),
+        second.state().unwrap(),
         PromiseState::Fulfilled(JsValue::undefined())
     );
     assert_eq!(effects(&mut context), 1.into());
@@ -421,8 +430,8 @@ mod continuation {
                 .unwrap();
             let module = linked_module(source, path, &mut context);
             let evaluation = evaluate_with_fresh_budget(&module, &mut context);
-            assert_eq!(evaluation.state(), PromiseState::Pending);
-            assert_eq!(gate.state(), PromiseState::Pending);
+            assert_eq!(evaluation.state().unwrap(), PromiseState::Pending);
+            assert_eq!(gate.state().unwrap(), PromiseState::Pending);
             assert_eq!(effects(&mut context), 0.into());
             let wait = NativeWait::subscribe(&evaluation, &mut context);
             Self {
@@ -441,8 +450,11 @@ mod continuation {
                 .resolve
                 .call(&JsValue::undefined(), &[7.into()], self.context.access())
                 .unwrap();
-            assert_eq!(self.gate.state(), PromiseState::Fulfilled(7.into()));
-            assert_eq!(self.evaluation.state(), PromiseState::Pending);
+            assert_eq!(
+                self.gate.state().unwrap(),
+                PromiseState::Fulfilled(7.into())
+            );
+            assert_eq!(self.evaluation.state().unwrap(), PromiseState::Pending);
             self.wait.assert_pending();
         }
 
@@ -455,7 +467,7 @@ mod continuation {
             assert_instruction_stop(&outcome.result.unwrap_err(), INTERRUPTING_LIMIT);
             assert_eq!(outcome.report.instructions().unwrap(), INTERRUPTING_LIMIT);
             assert_eq!(effects(&mut self.context), 1.into());
-            assert_eq!(self.evaluation.state(), PromiseState::Pending);
+            assert_eq!(self.evaluation.state().unwrap(), PromiseState::Pending);
         }
     }
 
@@ -469,7 +481,7 @@ mod continuation {
         let mut fixture = SuspendedModule::new(INTERRUPTED_SOURCE, "post-await-interruption.js");
         fixture.interrupt_resume();
         assert_later_evaluation_is_terminal(&fixture.module, &mut fixture.context);
-        assert_eq!(fixture.evaluation.state(), PromiseState::Pending);
+        assert_eq!(fixture.evaluation.state().unwrap(), PromiseState::Pending);
         assert_eq!(effects(&mut fixture.context), 1.into());
     }
 
@@ -478,7 +490,7 @@ mod continuation {
         let mut fixture = SuspendedModule::new(INTERRUPTED_SOURCE, "native-wait-interruption.js");
         fixture.interrupt_resume();
         fixture.wait.assert_interrupted();
-        assert_eq!(fixture.evaluation.state(), PromiseState::Pending);
+        assert_eq!(fixture.evaluation.state().unwrap(), PromiseState::Pending);
         assert_eq!(effects(&mut fixture.context), 1.into());
     }
 
@@ -495,7 +507,7 @@ mod continuation {
             .eval_with_budget(Source::from_bytes("0"), ExecutionOptions::new(0))
             .unwrap();
         assert_instruction_stop(&unrelated.result.unwrap_err(), 0);
-        assert_eq!(fixture.evaluation.state(), PromiseState::Pending);
+        assert_eq!(fixture.evaluation.state().unwrap(), PromiseState::Pending);
         assert_eq!(effects(&mut fixture.context), 0.into());
         fixture.wait.assert_pending();
 
@@ -504,7 +516,7 @@ mod continuation {
         // reactions the implementation needs. Every selected job has a finite
         // operation budget and the drain itself has a bounded action count.
         for _ in 0..8 {
-            if fixture.evaluation.state() != PromiseState::Pending {
+            if fixture.evaluation.state().unwrap() != PromiseState::Pending {
                 break;
             }
             let (direct, outcome) = fixture.executor.run_next(&mut fixture.context, LATER_LIMIT);
@@ -512,7 +524,7 @@ mod continuation {
             outcome.result.unwrap();
         }
         assert_eq!(
-            fixture.evaluation.state(),
+            fixture.evaluation.state().unwrap(),
             PromiseState::Fulfilled(JsValue::undefined())
         );
         fixture.wait.assert_fulfilled();
@@ -570,7 +582,7 @@ mod continuation {
         fn load_and_link(&mut self, module: &Module) {
             let loaded = module.load(self.context.access()).unwrap();
             for _ in 0..128 {
-                if loaded.state() != PromiseState::Pending {
+                if loaded.state().unwrap() != PromiseState::Pending {
                     break;
                 }
                 let queued = self.executor.jobs.borrow_mut().pop_front();
@@ -590,7 +602,7 @@ mod continuation {
                 result.unwrap();
             }
             assert_eq!(
-                loaded.state(),
+                loaded.state().unwrap(),
                 PromiseState::Fulfilled(JsValue::undefined())
             );
             module.link(self.context.access()).unwrap();
@@ -629,7 +641,7 @@ mod continuation {
         graph.load_and_link(&root);
         let completed = evaluate_with_fresh_budget(&independent, &mut graph.context);
         assert_eq!(
-            completed.state(),
+            completed.state().unwrap(),
             PromiseState::Fulfilled(JsValue::undefined())
         );
         assert_eq!(graph.count("independentEffects"), 1.into());
@@ -700,7 +712,7 @@ mod continuation {
             let parent_promise = evaluate_with_fresh_budget(&parent, &mut graph.context);
             let grand_promise = evaluate_with_fresh_budget(&grandparent, &mut graph.context);
             for promise in [&sibling_promise, &parent_promise, &grand_promise] {
-                assert_eq!(promise.state(), PromiseState::Pending);
+                assert_eq!(promise.state().unwrap(), PromiseState::Pending);
             }
             assert_eq!(graph.count("parentEffects"), 0.into());
             assert_eq!(graph.count("grandEffects"), 0.into());
@@ -723,7 +735,7 @@ mod continuation {
         }
 
         fn interrupt_child(&mut self) {
-            assert_eq!(self.child_gate.state(), PromiseState::Pending);
+            assert_eq!(self.child_gate.state().unwrap(), PromiseState::Pending);
             self.child_resolvers
                 .resolve
                 .call(
@@ -744,15 +756,15 @@ mod continuation {
             assert_eq!(effects(&mut self.graph.context), 1.into());
             assert_eq!(self.graph.count("parentEffects"), 0.into());
             assert_eq!(self.graph.count("grandEffects"), 0.into());
-            assert_eq!(self.parent_promise.state(), PromiseState::Pending);
-            assert_eq!(self.grand_promise.state(), PromiseState::Pending);
+            assert_eq!(self.parent_promise.state().unwrap(), PromiseState::Pending);
+            assert_eq!(self.grand_promise.state().unwrap(), PromiseState::Pending);
         }
 
         fn finish_independent_sibling(&mut self) {
             // This is a new settlement of still-pending required
             // work, not an ignored second resolution of the interrupted gate.
-            assert_eq!(self.sibling_gate.state(), PromiseState::Pending);
-            assert_eq!(self.sibling_promise.state(), PromiseState::Pending);
+            assert_eq!(self.sibling_gate.state().unwrap(), PromiseState::Pending);
+            assert_eq!(self.sibling_promise.state().unwrap(), PromiseState::Pending);
             self.sibling_resolvers
                 .resolve
                 .call(
@@ -762,7 +774,7 @@ mod continuation {
                 )
                 .unwrap();
             for _ in 0..8 {
-                if self.sibling_promise.state() != PromiseState::Pending {
+                if self.sibling_promise.state().unwrap() != PromiseState::Pending {
                     break;
                 }
                 let (direct, outcome) = self
@@ -773,14 +785,14 @@ mod continuation {
                 outcome.result.unwrap();
             }
             assert_eq!(
-                self.sibling_promise.state(),
+                self.sibling_promise.state().unwrap(),
                 PromiseState::Fulfilled(JsValue::undefined())
             );
             assert_eq!(self.graph.count("independentEffects"), 1.into());
             assert_eq!(self.graph.count("parentEffects"), 0.into());
             assert_eq!(self.graph.count("grandEffects"), 0.into());
-            assert_eq!(self.parent_promise.state(), PromiseState::Pending);
-            assert_eq!(self.grand_promise.state(), PromiseState::Pending);
+            assert_eq!(self.parent_promise.state().unwrap(), PromiseState::Pending);
+            assert_eq!(self.grand_promise.state().unwrap(), PromiseState::Pending);
         }
     }
 
@@ -826,8 +838,11 @@ mod continuation {
     fn late_sibling_rejection_does_not_publish_guest_rejection_for_interrupted_ancestors() {
         let mut fixture = WaitingGraph::new();
         fixture.interrupt_child();
-        assert_eq!(fixture.sibling_gate.state(), PromiseState::Pending);
-        assert_eq!(fixture.sibling_promise.state(), PromiseState::Pending);
+        assert_eq!(fixture.sibling_gate.state().unwrap(), PromiseState::Pending);
+        assert_eq!(
+            fixture.sibling_promise.state().unwrap(),
+            PromiseState::Pending
+        );
         let reason = JsValue::from(js_string!("authored late sibling rejection"));
         fixture
             .sibling_resolvers
@@ -839,11 +854,11 @@ mod continuation {
             )
             .unwrap();
         assert_eq!(
-            fixture.sibling_gate.state(),
+            fixture.sibling_gate.state().unwrap(),
             PromiseState::Rejected(reason.clone())
         );
         for _ in 0..8 {
-            if fixture.sibling_promise.state() != PromiseState::Pending {
+            if fixture.sibling_promise.state().unwrap() != PromiseState::Pending {
                 break;
             }
             let (direct, outcome) = fixture
@@ -854,11 +869,17 @@ mod continuation {
             outcome.result.unwrap();
         }
         assert_eq!(
-            fixture.sibling_promise.state(),
+            fixture.sibling_promise.state().unwrap(),
             PromiseState::Rejected(reason)
         );
-        assert_eq!(fixture.parent_promise.state(), PromiseState::Pending);
-        assert_eq!(fixture.grand_promise.state(), PromiseState::Pending);
+        assert_eq!(
+            fixture.parent_promise.state().unwrap(),
+            PromiseState::Pending
+        );
+        assert_eq!(
+            fixture.grand_promise.state().unwrap(),
+            PromiseState::Pending
+        );
         assert_eq!(fixture.graph.count("independentEffects"), 0.into());
         assert_eq!(fixture.graph.count("parentEffects"), 0.into());
         assert_eq!(fixture.graph.count("grandEffects"), 0.into());

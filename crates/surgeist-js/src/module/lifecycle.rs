@@ -306,19 +306,13 @@ impl EvaluationRef {
             }
         }
         let mut cursor = notices.clone();
-        let mut panic = None;
+        let mut cleanup = crate::job::UnwindCleanup::default();
         while let Some(record) = cursor {
             let data = record.data();
             cursor = data.links.borrow().notice.clone();
             let suspended = data.links.borrow_mut().suspended.take();
             if let Some(suspended) = suspended {
-                let result =
-                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| suspended.retire()));
-                if let Err(payload) = result
-                    && panic.is_none()
-                {
-                    panic = Some(payload);
-                }
+                cleanup.run(|| suspended.retire());
             }
             if let Some(signal) = data.issued.get() {
                 signal.mark_module();
@@ -328,19 +322,10 @@ impl EvaluationRef {
             let data = record.data();
             notices = data.links.borrow_mut().notice.take();
             if let Some(signal) = data.issued.get() {
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    signal.notify_module()
-                }));
-                if let Err(payload) = result
-                    && panic.is_none()
-                {
-                    panic = Some(payload);
-                }
+                cleanup.run(|| signal.notify_module());
             }
         }
-        if let Some(panic) = panic {
-            std::panic::resume_unwind(panic);
-        }
+        cleanup.finish();
     }
     fn mark(
         record: &Self,

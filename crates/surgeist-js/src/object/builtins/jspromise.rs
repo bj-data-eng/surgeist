@@ -92,7 +92,7 @@ use std::{future::Future, pin::Pin, task};
 /// context.run_jobs();
 ///
 /// assert_eq!(
-///     promise.state(),
+///     promise.state().unwrap(),
 ///     PromiseState::Fulfilled(js_string!("hello world!").into())
 /// );
 ///
@@ -161,7 +161,7 @@ impl JsPromise {
     /// context.run_jobs();
     ///
     /// assert_eq!(
-    ///     promise.state(),
+    ///     promise.state().unwrap(),
     ///     PromiseState::Fulfilled(js_string!("hello world").into())
     /// );
     /// # Ok(())
@@ -213,13 +213,13 @@ impl JsPromise {
     ///
     /// let (promise, resolvers) = JsPromise::new_pending(context.access());
     ///
-    /// assert_eq!(promise.state(), PromiseState::Pending);
+    /// assert_eq!(promise.state().unwrap(), PromiseState::Pending);
     ///
     /// resolvers
     ///     .reject
     ///     .call(&JsValue::undefined(), &[5.into()], context.access())?;
     ///
-    /// assert_eq!(promise.state(), PromiseState::Rejected(5.into()));
+    /// assert_eq!(promise.state().unwrap(), PromiseState::Rejected(5.into()));
     ///
     /// # Ok(())
     /// # }
@@ -260,7 +260,7 @@ impl JsPromise {
     /// let promise = JsPromise::from_object(promise)?;
     ///
     /// assert_eq!(
-    ///     promise.state(),
+    ///     promise.state().unwrap(),
     ///     PromiseState::Fulfilled(JsValue::undefined())
     /// );
     ///
@@ -302,7 +302,7 @@ impl JsPromise {
     ///
     /// context.run_jobs();
     ///
-    /// assert_eq!(promise.state(), PromiseState::Fulfilled(JsValue::null()));
+    /// assert_eq!(promise.state().unwrap(), PromiseState::Fulfilled(JsValue::null()));
     /// ```
     ///
     /// [async_fn]: crate::native_function::NativeFunction::from_async_fn
@@ -383,13 +383,13 @@ impl JsPromise {
     ///
     /// let promise = JsPromise::from_result(do_thing(true), context.access())?;
     /// assert_eq!(
-    ///     promise.state(),
+    ///     promise.state().unwrap(),
     ///     PromiseState::Fulfilled(js_string!("resolved!").into())
     /// );
     ///
     /// let promise = JsPromise::from_result(do_thing(false), context.access())?;
     /// assert_eq!(
-    ///     promise.state(),
+    ///     promise.state().unwrap(),
     ///     PromiseState::Rejected(js_string!("rejected!").into())
     /// );
     /// # Ok(())
@@ -429,7 +429,7 @@ impl JsPromise {
     /// let promise = JsPromise::resolve(js_string!("resolved!"), context.access())?;
     ///
     /// assert_eq!(
-    ///     promise.state(),
+    ///     promise.state().unwrap(),
     ///     PromiseState::Fulfilled(js_string!("resolved!").into())
     /// );
     /// # Ok(())
@@ -480,7 +480,7 @@ impl JsPromise {
     /// )?;
     ///
     /// assert_eq!(
-    ///     promise.state(),
+    ///     promise.state().unwrap(),
     ///     PromiseState::Rejected(js_string!("oops!").into())
     /// );
     /// # Ok(())
@@ -504,6 +504,9 @@ impl JsPromise {
 
     /// Gets the current state of the promise.
     ///
+    /// Returns [`crate::error::EngineError::ObjectAccessBusy`] while a mutable
+    /// object alias holds its payload. Refusal leaves the promise unchanged.
+    ///
     /// # Examples
     ///
     /// ```
@@ -517,12 +520,16 @@ impl JsPromise {
     ///
     /// let promise = JsPromise::new_pending(context.access()).0;
     ///
-    /// assert_eq!(promise.state(), PromiseState::Pending);
+    /// assert_eq!(promise.state().unwrap(), PromiseState::Pending);
     /// ```
     #[inline]
-    #[must_use]
-    pub fn state(&self) -> PromiseState {
-        self.inner.borrow().data().state()
+    pub fn state(&self) -> JsResult<PromiseState> {
+        Ok(self
+            .inner
+            .try_borrow()
+            .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?
+            .data()
+            .state())
     }
 
     /// Schedules callback functions to run when the promise settles.
@@ -589,7 +596,7 @@ impl JsPromise {
     /// context.run_jobs();
     ///
     /// assert_eq!(
-    ///     promise.state(),
+    ///     promise.state().unwrap(),
     ///     PromiseState::Fulfilled(js_string!("255.255").into())
     /// );
     /// # Ok(())
@@ -660,7 +667,7 @@ impl JsPromise {
     /// context.run_jobs();
     ///
     /// assert_eq!(
-    ///     promise.state(),
+    ///     promise.state().unwrap(),
     ///     PromiseState::Fulfilled(js_string!("TypeError: thrown").into())
     /// );
     /// # Ok(())
@@ -801,7 +808,7 @@ impl JsPromise {
     /// context.run_jobs();
     ///
     /// let array = promise1
-    ///     .state()
+    ///     .state().unwrap()
     ///     .as_fulfilled()
     ///     .and_then(JsValue::as_object)
     ///     .unwrap()
@@ -811,7 +818,7 @@ impl JsPromise {
     /// assert_eq!(array.at(1, context.access())?, 2.into());
     /// assert_eq!(array.at(2, context.access())?, 4.into());
     ///
-    /// let error = promise2.state().as_rejected().unwrap().clone();
+    /// let error = promise2.state().unwrap().as_rejected().unwrap().clone();
     /// assert_eq!(error.to_string(context.access())?, js_string!("TypeError"));
     ///
     /// # Ok(())
@@ -874,7 +881,7 @@ impl JsPromise {
     /// context.run_jobs();
     ///
     /// let array = promise
-    ///     .state()
+    ///     .state().unwrap()
     ///     .as_fulfilled()
     ///     .and_then(JsValue::as_object)
     ///     .unwrap()
@@ -971,7 +978,7 @@ impl JsPromise {
     /// context.run_jobs();
     ///
     /// assert_eq!(
-    ///     promise.state(),
+    ///     promise.state().unwrap(),
     ///     PromiseState::Fulfilled(js_string!("fulfilled").into())
     /// );
     /// # Ok(())
@@ -1046,7 +1053,7 @@ impl JsPromise {
     /// context.run_jobs();
     ///
     /// assert_eq!(
-    ///     promise.state(),
+    ///     promise.state().unwrap(),
     ///     PromiseState::Rejected(JsValue::undefined())
     /// );
     ///
@@ -1231,15 +1238,18 @@ impl JsPromise {
         let context = context.into_owner();
         loop {
             context.check_execution_stop()?;
-            if let Some(association) = Promise::native_association(&self.inner)
+            if let Some(association) = Promise::native_association(&self.inner)?
                 && let Some(error) = Association::module_error(&association)
             {
                 return Err(error);
             }
-            match self.state() {
+            match self.state()? {
                 PromiseState::Pending => {
-                    if let Some(association) = Promise::native_association(&self.inner)
-                        && let SettlementStatus::Retired(reason) = association.signal().status()
+                    if let Some(association) = Promise::native_association(&self.inner)?
+                        && let SettlementStatus::Retired(reason) = association
+                            .signal()
+                            .status()
+                            .map_err(crate::JsError::from)?
                     {
                         return Err(crate::error::EngineError::JobRetired(reason).into());
                     }
@@ -1425,9 +1435,10 @@ impl Future for JsFuture {
     fn poll(self: Pin<&mut Self>, cx: &mut task::Context<'_>) -> task::Poll<Self::Output> {
         fn settled(promise: &JsPromise) -> Option<JsResult<JsValue>> {
             match promise.state() {
-                PromiseState::Pending => None,
-                PromiseState::Fulfilled(value) => Some(Ok(value)),
-                PromiseState::Rejected(value) => Some(Err(JsError::from_opaque(value))),
+                Ok(PromiseState::Pending) => None,
+                Ok(PromiseState::Fulfilled(value)) => Some(Ok(value)),
+                Ok(PromiseState::Rejected(value)) => Some(Err(JsError::from_opaque(value))),
+                Err(error) => Some(Err(error)),
             }
         }
 
@@ -1447,18 +1458,25 @@ impl Future for JsFuture {
         if let Some(result) = settled(&this.promise) {
             return task::Poll::Ready(result);
         }
+        if let Some(error) = Association::module_error(&this.association) {
+            return task::Poll::Ready(Err(error));
+        }
         match status {
-            SettlementStatus::ModuleInterrupted => {
-                task::Poll::Ready(Err(Association::module_error(&this.association)
-                    .expect("module signal has a local cause")))
+            Ok(
+                SettlementStatus::ModuleInterrupted
+                | SettlementStatus::Settled
+                | SettlementStatus::Pending,
+            ) => {
+                let fault = crate::job::JobFault::new(
+                    crate::job::JobFaultOwner::NativeSignal,
+                    crate::job::JobFaultCause::StateInconsistency,
+                );
+                task::Poll::Ready(Err(fault.into()))
             }
-            SettlementStatus::Retired(reason) => {
+            Ok(SettlementStatus::Retired(reason)) => {
                 task::Poll::Ready(Err(crate::error::EngineError::JobRetired(reason).into()))
             }
-            SettlementStatus::Settled => {
-                unreachable!("native settlement follows guest publication")
-            }
-            SettlementStatus::Pending => task::Poll::Pending,
+            Err(fault) => task::Poll::Ready(Err(fault.into())),
         }
     }
 }

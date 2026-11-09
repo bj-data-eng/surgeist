@@ -21,7 +21,7 @@ fn get_backtrace_from_rejection(
     let promise = module.load_link_evaluate(context.access()).unwrap();
     context.run_jobs().unwrap();
 
-    match promise.state() {
+    match promise.state().unwrap() {
         PromiseState::Rejected(err) => {
             let js_error = JsError::from_opaque(err);
             js_error

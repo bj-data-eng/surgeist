@@ -655,6 +655,46 @@ impl From<EngineResourceError> for JsError {
     }
 }
 
+/// An invalid dynamic operation on owned job state.
+#[derive(Debug, Clone, Copy, Error, Eq, PartialEq)]
+pub enum JobError {
+    /// A job owner found a structural invariant failure.
+    #[error("job owner fault: {0}")]
+    Fault(#[from] crate::job::JobFault),
+    /// A task already returned Ready or unwound from its poll command.
+    #[error("the context task has already completed")]
+    TaskCompleted,
+    /// A cancellation token no longer accepts callbacks.
+    #[error("the cancellation token has been revoked")]
+    CancellationRevoked,
+}
+
+impl From<JobError> for JsError {
+    fn from(error: JobError) -> Self {
+        EngineError::Job(error).into()
+    }
+}
+
+impl From<crate::job::JobFault> for JsError {
+    fn from(fault: crate::job::JobFault) -> Self {
+        JobError::Fault(fault).into()
+    }
+}
+
+impl From<crate::job::JobRegistrationError> for JsError {
+    fn from(error: crate::job::JobRegistrationError) -> Self {
+        match error {
+            crate::job::JobRegistrationError::Fault(fault) => fault.into(),
+            crate::job::JobRegistrationError::Resource(resource) => match resource {
+                crate::job::JobResourceError::Allocation => EngineResourceError::Allocation.into(),
+                crate::job::JobResourceError::SizeOverflow => {
+                    EngineResourceError::SizeOverflow.into()
+                }
+            },
+        }
+    }
+}
+
 /// Engine error that cannot be caught from within ECMAScript code.
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[allow(variant_size_differences)]
@@ -673,6 +713,10 @@ pub enum EngineError {
     #[error("ContextAccessBusy: host context access is already leased")]
     ContextAccessBusy,
 
+    /// An object alias currently holds incompatible access to the same object.
+    #[error("ObjectAccessBusy: object access is already borrowed")]
+    ObjectAccessBusy,
+
     /// A retained task requires another exact Context instance.
     #[error("JobContextRequired: task requires Context {required}")]
     JobContextRequired {
@@ -682,6 +726,9 @@ pub enum EngineError {
     /// Owned work was retired without a guest completion.
     #[error("JobRetired: {0:?}")]
     JobRetired(crate::job::JobRetirement),
+    /// A dynamic job operation is invalid for its current state.
+    #[error("JobError: {0}")]
+    Job(#[from] JobError),
 
     /// No further logical invocation identity can be represented.
     #[error("InvocationIdExhausted: invocation identity space exhausted")]
@@ -719,10 +766,12 @@ impl EngineError {
             EngineError::Resource(error) => ErasedEngineError::Resource(error),
             EngineError::InvalidEntryPermit => ErasedEngineError::InvalidEntryPermit,
             EngineError::ContextAccessBusy => ErasedEngineError::ContextAccessBusy,
+            EngineError::ObjectAccessBusy => ErasedEngineError::ObjectAccessBusy,
             EngineError::JobContextRequired { required } => {
                 ErasedEngineError::JobContextRequired { required }
             }
             EngineError::JobRetired(reason) => ErasedEngineError::JobRetired(reason),
+            EngineError::Job(error) => ErasedEngineError::Job(error),
             EngineError::InvocationIdExhausted => ErasedEngineError::InvocationIdExhausted,
             #[cfg(feature = "fuzz")]
             EngineError::NoInstructionsRemain => ErasedEngineError::NoInstructionsRemain,
@@ -753,8 +802,10 @@ enum StoredErrorRepr {
     Resource(#[heap_trace(skip)] EngineResourceError),
     InvalidEntryPermit,
     ContextAccessBusy,
+    ObjectAccessBusy,
     JobContextRequired(#[heap_trace(skip)] crate::job::ContextId),
     JobRetired(#[heap_trace(skip)] crate::job::JobRetirement),
+    Job(#[heap_trace(skip)] JobError),
     InvocationIdExhausted,
     ScopeAnalysis(#[heap_trace(skip)] surgeist_js_ast::scope::ScopeStateError),
     Opaque(StoredValue),
@@ -802,12 +853,14 @@ impl StoredJsError {
             }
             StoredErrorRepr::InvalidEntryPermit => Repr::Engine(EngineError::InvalidEntryPermit),
             StoredErrorRepr::ContextAccessBusy => Repr::Engine(EngineError::ContextAccessBusy),
+            StoredErrorRepr::ObjectAccessBusy => Repr::Engine(EngineError::ObjectAccessBusy),
             StoredErrorRepr::JobContextRequired(required) => {
                 Repr::Engine(EngineError::JobContextRequired {
                     required: required.clone(),
                 })
             }
             StoredErrorRepr::JobRetired(reason) => Repr::Engine(EngineError::JobRetired(*reason)),
+            StoredErrorRepr::Job(error) => Repr::Engine(EngineError::Job(*error)),
             StoredErrorRepr::InvocationIdExhausted => {
                 Repr::Engine(EngineError::InvocationIdExhausted)
             }
@@ -944,10 +997,12 @@ impl JsError {
             })),
             Repr::Engine(EngineError::InvalidEntryPermit) => StoredErrorRepr::InvalidEntryPermit,
             Repr::Engine(EngineError::ContextAccessBusy) => StoredErrorRepr::ContextAccessBusy,
+            Repr::Engine(EngineError::ObjectAccessBusy) => StoredErrorRepr::ObjectAccessBusy,
             Repr::Engine(EngineError::JobContextRequired { required }) => {
                 StoredErrorRepr::JobContextRequired(required)
             }
             Repr::Engine(EngineError::JobRetired(reason)) => StoredErrorRepr::JobRetired(reason),
+            Repr::Engine(EngineError::Job(error)) => StoredErrorRepr::Job(error),
             Repr::Engine(EngineError::InvocationIdExhausted) => {
                 StoredErrorRepr::InvocationIdExhausted
             }
@@ -2226,6 +2281,10 @@ pub enum ErasedEngineError {
     #[error("ContextAccessBusy: host context access is already leased")]
     ContextAccessBusy,
 
+    /// An object alias currently holds incompatible access to the same object.
+    #[error("ObjectAccessBusy: object access is already borrowed")]
+    ObjectAccessBusy,
+
     /// A retained task requires another exact Context instance.
     #[error("JobContextRequired: task requires Context {required}")]
     JobContextRequired {
@@ -2235,6 +2294,9 @@ pub enum ErasedEngineError {
     /// Owned work was retired without a guest completion.
     #[error("JobRetired: {0:?}")]
     JobRetired(crate::job::JobRetirement),
+    /// A dynamic job operation is invalid for its current state.
+    #[error("JobError: {0}")]
+    Job(#[from] JobError),
 
     /// No further logical invocation identity can be represented.
     #[error("InvocationIdExhausted: invocation identity space exhausted")]
