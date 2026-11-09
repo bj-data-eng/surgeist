@@ -3,6 +3,9 @@ use crate::engine::ComputeSession;
 use crate::test_support::layout_tree::PublicLayoutTreeOf;
 use crate::*;
 
+#[path = "fragment_margin_boundary_tests.rs"]
+mod margin_boundary;
+
 fn suspension<S: LayoutScalar>() {
     let block = |height: Option<f64>| NodeInputOf {
         display: Display::Block,

@@ -13,6 +13,9 @@ mod receipt_binding;
 #[path = "progress_tests.rs"]
 mod progress;
 
+#[path = "failure_tests.rs"]
+mod failure;
+
 thread_local! {
     static CALLS: Cell<usize> = const { Cell::new(0) };
 }
