@@ -438,6 +438,7 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
             containing_size: size,
             content_insets: crate::Edges::ZERO,
             cursor_block: S::ZERO,
+            adjoining_displacement: S::ZERO,
             axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             available: crate::AxisSizingRequestOf::new(
                 crate::AvailableSpaceOf::Indefinite,

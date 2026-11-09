@@ -759,7 +759,7 @@ impl<'input, Node: Copy + Eq, S: LayoutScalar> TextComputation<'input, Node, S> 
                                 PlacementEntry::NonFormatted(line) => line.atomics.clone(),
                             },
                             bands: *band,
-                            flow: *flow,
+                            flow: flow.clone(),
                         }
                     },
                 )

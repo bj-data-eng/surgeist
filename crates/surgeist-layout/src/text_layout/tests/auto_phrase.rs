@@ -309,6 +309,7 @@ fn intrinsic<S: LayoutScalar>(
             containing_size: size,
             content_insets: crate::Edges::ZERO,
             cursor_block: S::ZERO,
+            adjoining_displacement: S::ZERO,
             axes: FlowAxes::new(
                 WritingMode::HorizontalTb,
                 if rtl { Direction::Rtl } else { Direction::Ltr },

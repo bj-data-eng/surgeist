@@ -78,7 +78,7 @@ impl LineProof {
             placed: line.placed_start,
             available: line.available,
             bands: line.bands,
-            flow: line.flow,
+            flow: line.flow.clone(),
             feedback: line.finalized.feedback(),
             fit: line.finalized.measurements().fit(),
             margin_fit: line.finalized.measurements().margin_edge_fit(),
@@ -495,6 +495,7 @@ mod tests {
         );
         let lines = super::super::fit(
             FitInput {
+                adjoining_displacement: 0.0,
                 inline_boxes: None,
                 groups: crate::group_alignment::Snapshot::default(),
                 wrapping: None,

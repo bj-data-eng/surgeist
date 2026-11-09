@@ -111,6 +111,7 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
             containing_size: Size::new(40.0, 100.0),
             content_insets: crate::Edges::ZERO,
             cursor_block: 0.0,
+            adjoining_displacement: 0.0,
             axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             available: crate::AxisSizingRequestOf::new(
                 crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(40.0).unwrap()),

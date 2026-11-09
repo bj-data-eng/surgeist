@@ -60,6 +60,7 @@ pub(in super::super) fn fit_with_allocation(
     );
     super::super::fit(
         FitInput {
+            adjoining_displacement: 0.0,
             inline_boxes: None,
             groups: crate::group_alignment::Snapshot::default(),
             wrapping: None,
@@ -187,12 +188,8 @@ fn assert_completion(
             assert_eq!(line.disposition.baseline(&line.finalized), 8.0);
             let top = 10.0 * i as f64;
             assert_eq!(
-                line.flow,
-                LineFlow {
-                    start: top,
-                    end: top + 10.0,
-                    next: top + 10.0
-                }
+                (line.flow.frame.logical_start, line.flow.end, line.flow.next),
+                (top, top + 10.0, top + 10.0)
             );
             if *ending == LineEnd::Forced {
                 assert_eq!(
@@ -231,12 +228,8 @@ fn assert_completion(
             assert_eq!(line.disposition.baseline(&line.finalized), 0.0);
             let top = 10.0 * formatted_count as f64;
             assert_eq!(
-                line.flow,
-                LineFlow {
-                    start: top,
-                    end: top,
-                    next: top
-                }
+                (line.flow.frame.logical_start, line.flow.end, line.flow.next),
+                (top, top, top)
             );
         }
         for run in line.finalized.run_views() {
@@ -262,7 +255,9 @@ fn assert_completion(
         lines
             .iter()
             .filter(|line| line.disposition.is_formatted())
-            .map(|line| { line.flow.start + line.disposition.baseline(&line.finalized) })
+            .map(|line| {
+                line.flow.frame.logical_start + line.disposition.baseline(&line.finalized)
+            })
             .collect::<Vec<_>>(),
         (0..formatted_count)
             .map(|i| 8.0 + 10.0 * i as f64)

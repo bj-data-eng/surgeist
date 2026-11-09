@@ -237,6 +237,7 @@ fn fitting_ordinary_trials(
     );
     let lines = super::super::fit(
         FitInput {
+            adjoining_displacement: 0.0,
             inline_boxes: None,
             groups: crate::group_alignment::Snapshot::default(),
             wrapping: None,

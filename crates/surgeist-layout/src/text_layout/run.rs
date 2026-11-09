@@ -502,6 +502,7 @@ pub(crate) struct Context<Node, S: LayoutScalar> {
     pub containing_size: Size<S>,
     pub content_insets: crate::Edges<S>,
     pub cursor_block: S,
+    pub adjoining_displacement: S,
     pub axes: FlowAxes,
     pub available: AxisSizingRequestOf<S>,
     pub alignment: TextAlign,
@@ -1103,7 +1104,15 @@ pub(crate) struct SourceFragment<Node, S: LayoutScalar> {
     pub fragment: InlineFragmentOutputOf<S>,
 }
 
+/// Accepted signed owner-relative cursor, independent of nonnegative bounds.
+#[derive(Clone, Copy)]
+pub(crate) struct RunProgress<S: LayoutScalar> {
+    pub cursor_end: S,
+    pub phase: fit::EntryPhase,
+}
+
 pub(crate) struct Output<Node, S: LayoutScalar> {
+    pub progress: RunProgress<S>,
     pub formatted: super::formatted::FormattedTailUses,
     pub box_uses: Vec<super::boxes::BoxTrialUse>,
     pub report: MixedInlineRunReportOf<S>,
@@ -1255,6 +1264,7 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
         .map(|projection| projection as &fit::WrappingClassifier<'_>);
     let lines = fit::fit(
         fit::FitInput {
+            adjoining_displacement: context.adjoining_displacement.to_f64(),
             groups: context.groups.clone(),
             wrapping,
             formatted: &context.formatted,
@@ -1871,6 +1881,18 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         line_bands: Vec::new(),
         formatted_lines: None,
     };
+    // Only an accepted formatted line advances normal flow. A terminal
+    // nonformatted receiver retains source custody without adding movement.
+    let mut progress = RunProgress {
+        cursor_end: context.cursor_block,
+        phase: fit::EntryPhase::Pending,
+    };
+    for line in &lines {
+        if line.disposition.is_formatted() {
+            progress.cursor_end = number(add(context.cursor_block.to_f64(), line.flow.next)?)?;
+            progress.phase = fit::EntryPhase::Consumed;
+        }
+    }
     let program = lines.first().and_then(|line| line.program.clone());
     let mut natural_advances = Vec::new();
     let mut placements = Vec::new();
@@ -1997,7 +2019,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         // Every semantic receipt remains ordered, including a phantom
         // completion. Only formatted entries below create line geometry.
         bands.push(line.bands);
-        flows.push(line.flow);
+        flows.push(line.flow.clone());
         amounts.push(line.amounts);
         encounters.push(line.encounters);
         zones.push(line.zone_basis);
@@ -2104,7 +2126,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         let allocation = frame.allocation_rect(
             line.inline_start,
             width,
-            line.flow.start,
+            line.flow.frame.logical_start,
             feedback.line_height,
         )?;
         let metric_frame = line.finalized.metric_bounds();
@@ -2139,7 +2161,11 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         baselines.first.get_or_insert(local_baseline);
         baselines.last = Some(local_baseline);
         baselines.last_named = named;
-        report.block_extent = report.block_extent.max(number(line.flow.next)?);
+        // The report's geometric entry excludes the adjoining displacement;
+        // physical placement and retained raw flow/bands keep the common origin.
+        report.block_extent = report.block_extent.max(number(finite(
+            line.flow.next - context.adjoining_displacement.to_f64(),
+        )?)?);
         let inline_end = match css_width {
             Some(width) => add(line.inline_start, width)?,
             None => line.inline_start + contribution.advance() + indent,
@@ -2155,8 +2181,12 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         report.line_bands.push(LogicalLineBandOf {
             inline_start: number(line.inline_start)?,
             inline_end: number(line.inline_start + line.available)?,
-            block_start: number(line.flow.start)?,
-            block_end: number(line.flow.end)?,
+            block_start: number(finite(
+                line.flow.frame.logical_start - context.adjoining_displacement.to_f64(),
+            )?)?,
+            block_end: number(finite(
+                line.flow.end - context.adjoining_displacement.to_f64(),
+            )?)?,
         });
         report
             .post_line_clear_intents
@@ -2425,6 +2455,7 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     let hyphenation_end = report.hyphenation_state;
     let line_box_end = report.line_box_context;
     Ok(Output {
+        progress,
         formatted,
         box_uses,
         report,

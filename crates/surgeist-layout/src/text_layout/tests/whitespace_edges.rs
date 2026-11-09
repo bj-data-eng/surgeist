@@ -92,6 +92,7 @@ fn run_in_band<S: LayoutScalar>(
             containing_size: size,
             content_insets: crate::Edges::ZERO,
             cursor_block: S::ZERO,
+            adjoining_displacement: S::ZERO,
             axes: FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
             available,
             alignment: TextAlign::Start,

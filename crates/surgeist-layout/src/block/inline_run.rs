@@ -262,7 +262,6 @@ impl VisibleInlineRunTransition {
         }
 
         if placement.margin == InlineRunMargin::Separates {
-            *cursor_block = *cursor_block + adjoining_margin;
             *start_component_open = false;
         }
         if let (Some(flow), Some(item)) = (formatted.as_mut(), placement.formatted.take()) {
@@ -310,7 +309,7 @@ impl VisibleInlineRunTransition {
                 contribution.last_named,
             )
             .map_err(|error| error.layout(node))?;
-        *cursor_block = *cursor_block + placement.logical_block_extent(constants.flow_axes);
+        *cursor_block = placement.cursor_end;
         pending_floats.extend(placement.floats);
         static_positions.extend(placement.static_positions);
         if placement.margin == InlineRunMargin::Separates {
@@ -356,6 +355,7 @@ struct InlineRunPlacement<Node, S: LayoutScalar> {
     native_completion: Option<std::sync::Arc<crate::inline_wrapping::NativeOrderingProjection>>,
     native_lines: Vec<crate::inline_wrapping::family::NativeLineReceipt<S>>,
     margin: InlineRunMargin,
+    cursor_end: S,
     box_frontier: Option<crate::text_layout::boxes::BoxFrontier>,
     formatted: Option<crate::text_layout::formatted::FormattedFlowItem<Node, S>>,
     line_box_context: crate::line_box::LineBoxContext,
@@ -368,12 +368,6 @@ struct InlineRunPlacement<Node, S: LayoutScalar> {
     static_positions: Vec<(Node, StaticPositionOf<S>)>,
     baselines: crate::inline::PhysicalBaselineReport,
     resolved_float_terminal_block_end: Option<S>,
-}
-
-impl<Node, S: LayoutScalar> InlineRunPlacement<Node, S> {
-    fn logical_block_extent(&self, flow_axes: crate::geometry::FlowAxes) -> S {
-        flow_axes.logical_size(self.size).block
-    }
 }
 
 pub(super) struct InlineRunContext<'a, S: LayoutScalar> {
@@ -395,10 +389,9 @@ pub(super) struct InlineRunContext<'a, S: LayoutScalar> {
 
 fn resolved_inline_float_terminal_block_end<S: LayoutScalar>(
     report: &crate::inline::MixedInlineRunReportOf<S>,
-    cursor_block: S,
+    terminal_line_block_end: S,
     owned_float_block_end: S,
 ) -> Option<S> {
-    let terminal_line_block_end = cursor_block + report.block_extent;
     report.float_edge_phase.map(|phase| {
         if terminal_line_block_end > owned_float_block_end {
             terminal_line_block_end
@@ -513,9 +506,8 @@ where
         node_inner_size,
         set_layout,
     } = context;
-    // Settle adjoining-margin consumption before positioning, float-band
-    // queries or publication. Text-issued empty-origin units, rather than
-    // native source membership, prove this sufficient phantom-line case.
+    // Numeric participants establish line existence before placement. Text
+    // binds its actual candidate disposition to entry geometry in the fitter.
     let uncollapsed_cursor_block = cursor_block;
     let mut cursor_block = cursor_block + adjoining_margin;
     let mut margin = InlineRunMargin::Separates;
@@ -541,25 +533,9 @@ where
         .map_or(InsetReference::Measurement(node_inner_size), |frame| {
             InsetReference::Accepted(frame.measured_inset_basis)
         });
-    if text_run.as_ref().is_some_and(|run| {
-        let start = run.segment.start().view().participant_offset();
-        let end = run.segment.end().view().participant_offset();
-        run.binding
-            .prepared
-            .participants()
-            .skip(start)
-            .take(end - start)
-            .all(|participant| {
-                matches!(participant, surgeist_text::PreparedParticipant::Text(unit)
-                    if unit.view().empty_origin().is_some())
-            })
-    }) {
-        // The issued section contains only original empty anchors (or no
-        // participants). It selects no forced, atomic or boundary participant,
-        // while supplied strut metrics do not establish line existence. Keep
-        // source membership, allocations and the final nonformatted receipt
-        // without consuming adjoining margins.
-        margin = InlineRunMargin::Adjoins;
+    if text_binding.is_some() {
+        // Text's actual candidate disposition owns entry consumption. Every
+        // frame, source point and float query shares this unconsumed origin.
         cursor_block = uncollapsed_cursor_block;
     }
     let text_orientation = text_binding
@@ -943,6 +919,7 @@ where
     let logical_content_box_inset = constants.logical_content_box_inset();
     let provider_error = std::cell::RefCell::new(None);
     let mut text_output = None;
+    let mut text_progress = None;
     let mut formatted_item = None;
     let mut report = if let Some(binding) = text_binding {
         let (frame, frames, reusable, associations, scope_alignments) = {
@@ -1065,6 +1042,7 @@ where
             containing_size,
             content_insets,
             cursor_block,
+            adjoining_displacement: adjoining_margin,
             axes: constants.flow_axes,
             available,
             wrap_style: constants.wrap_style,
@@ -1343,6 +1321,12 @@ where
         }
         *float_exclusions = accepted.ledger;
         let report = output.report.clone();
+        text_progress = Some(output.progress);
+        margin = if output.progress.phase == crate::text_layout::fit::EntryPhase::Consumed {
+            InlineRunMargin::Separates
+        } else {
+            InlineRunMargin::Adjoins
+        };
         text_output = Some(output);
         report
     } else {
@@ -1493,11 +1477,22 @@ where
         }
         result.map_err(|error| crate::inline_wrapping::numeric_wrapping_error(container, error))?
     };
+    // Native outflows without a Text occurrence use the accepted run entry.
+    // Their static position consumes adjoining displacement only with an actual
+    // formatted line; Text-owned atomic slots below retain their own authority.
+    let static_entry = if text_progress
+        .as_ref()
+        .is_some_and(|progress| progress.phase == crate::text_layout::fit::EntryPhase::Consumed)
+    {
+        cursor_block + adjoining_margin
+    } else {
+        cursor_block
+    };
     for child in absolute_children {
         static_positions.push((
             child,
             absolute_static_position(
-                cursor_block,
+                static_entry,
                 constants,
                 containing_size,
                 StaticPositionGeometry::Point,
@@ -1523,8 +1518,14 @@ where
     if let Some(error) = provider_error.into_inner() {
         return Err(error);
     }
+    // Retain the accepted signed cursor, not max(0, geometric extent). The
+    // numeric association matches the original entered-cursor-plus-height fold.
+    let cursor_end = match text_progress {
+        Some(progress) => progress.cursor_end,
+        None => cursor_block + report.block_extent,
+    };
     let resolved_float_terminal_block_end =
-        resolved_inline_float_terminal_block_end(&report, cursor_block, owned_float_block_end);
+        resolved_inline_float_terminal_block_end(&report, cursor_end, owned_float_block_end);
     let report_logical_size = LogicalSizeOf::new(report.inline_extent, report.block_extent);
     let report_size = constants.flow_axes.physical_size(report_logical_size);
     let project_point = |inline: S, block: S, size: LogicalSizeOf<S>| {
@@ -2114,6 +2115,7 @@ where
         native_completion: report.native_completion,
         native_lines: report.native_lines,
         margin,
+        cursor_end,
         box_frontier,
         formatted: formatted_item,
         line_box_context: report.line_box_context,

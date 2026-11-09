@@ -15,10 +15,7 @@ pub(crate) struct RoleUse {
     pub(crate) basis: RoleBasis,
     pub(crate) bands: LineBands,
     pub(crate) encounters: Vec<EncounterBasis>,
-    pub(crate) logical_start: f64,
-    pub(crate) source_floor: f64,
-    pub(crate) minimum_block: Option<f64>,
-    pub(crate) deferred_from: Option<text::LineSelectionRequest>,
+    pub(crate) frame: super::fit::CandidateFrame,
     pub(crate) placed_start: f64,
 }
 
@@ -63,6 +60,7 @@ pub(crate) struct ProspectiveRoleBasis {
 
 #[derive(Clone, Debug, PartialEq)]
 struct EntryCheckpoint {
+    phase: super::fit::EntryPhase,
     entry: text::PreparedBoundary,
     first: bool,
     outside: bool,
@@ -72,6 +70,7 @@ struct EntryCheckpoint {
 
 #[derive(Clone, Debug)]
 struct CheckpointReceipt {
+    frame: super::fit::CandidateFrame,
     line: text::FinalizedLine,
     amounts: Vec<f64>,
     boxes: Option<super::boxes::BoxAssignment>,
@@ -81,7 +80,8 @@ impl PartialEq for CheckpointReceipt {
     fn eq(&self, other: &Self) -> bool {
         // Finalization is deterministic from these admitted inputs. Retain the
         // authentic receipt for observation without comparing its allocation.
-        self.line.selected_line().request() == other.line.selected_line().request()
+        self.frame == other.frame
+            && self.line.selected_line().request() == other.line.selected_line().request()
             && self.amounts == other.amounts
             && self.line.scope_allocations() == other.line.scope_allocations()
             && self.boxes == other.boxes
@@ -90,6 +90,7 @@ impl PartialEq for CheckpointReceipt {
 
 pub(super) struct RoleEntry<'a> {
     pub current_first: bool,
+    pub phase: super::fit::EntryPhase,
     pub query_start: &'a text::PreparedBoundary,
     pub query_incoming: Option<&'a text::HyphenationContinuation>,
     pub boxes: Option<&'a super::boxes::BoxAssignment>,
@@ -98,6 +99,7 @@ pub(super) struct RoleEntry<'a> {
         &'a text::FinalizedLine,
         &'a [f64],
         Option<&'a super::boxes::BoxAssignment>,
+        &'a super::fit::CandidateFrame,
     )>,
 }
 
@@ -289,6 +291,7 @@ fn prospective(
     recipe.validate_observations(&observations)?;
     let checkpoint = if phrase {
         EntryCheckpoint {
+            phase: entry.phase,
             entry: recipe.entry(),
             first: entry.current_first,
             outside: false,
@@ -319,7 +322,7 @@ fn checkpoint(
 ) -> Result<EntryCheckpoint, FitError> {
     let at = entry_boundary.view().participant_offset();
     let mut receipts = Vec::new();
-    for (line, amounts, first, boxes) in entry
+    for (line, amounts, first, boxes, frame) in entry
         .accepted
         .iter()
         .map(|line| {
@@ -328,13 +331,12 @@ fn checkpoint(
                 line.amounts.as_slice(),
                 line.first_formatted,
                 line.boxes.as_ref(),
+                &line.flow.frame,
             )
         })
-        .chain(
-            entry
-                .preceding
-                .map(|(line, amounts, boxes)| (line, amounts, entry.current_first, boxes)),
-        )
+        .chain(entry.preceding.map(|(line, amounts, boxes, frame)| {
+            (line, amounts, entry.current_first, boxes, frame)
+        }))
     {
         let selected = line.selected_line();
         let request = selected.request();
@@ -342,6 +344,7 @@ fn checkpoint(
         let to = request.end.view().participant_offset();
         if to <= at {
             receipts.push(CheckpointReceipt {
+                frame: frame.clone(),
                 line: line.clone(),
                 amounts: amounts.to_vec(),
                 boxes: boxes.cloned(),
@@ -364,11 +367,13 @@ fn checkpoint(
                 )
             };
             receipts.push(CheckpointReceipt {
+                frame: frame.clone(),
                 line: line.clone(),
                 amounts: amounts.to_vec(),
                 boxes: boxes.cloned(),
             });
             return Ok(EntryCheckpoint {
+                phase: entry.phase,
                 entry: entry_boundary.clone(),
                 first,
                 outside: outside || observed_outside,
@@ -402,6 +407,7 @@ fn checkpoint(
         false
     };
     Ok(EntryCheckpoint {
+        phase: entry.phase,
         entry: entry_boundary.clone(),
         first,
         outside: observed_outside,
