@@ -180,3 +180,23 @@ python3 crates/surgeist-html-semantics/tools/generate_bidi_class.py --check
 The Unicode first-strong provider is a selected HTML directionality input,
 not a full text-layout bidi implementation. Its pinned data and all other
 incorporated material retain their [attribution and licenses](NOTICE.md).
+
+## Accounting
+
+Capture formation, construction imports, semantic sessions, fact constructors, registry
+formation and the controlled OptionValue owner charge their work and resources through a
+`surgeist-ledger` operation of the HTML accounting schema (`HtmlWork` and `HtmlResource` of
+`surgeist_html::accounting`). Their limits are the caps of ledger scopes, and their usage types
+are typed reads of those scopes. Without accounting supplied, each builder, import, session and
+constructor charges an operation of its own that nothing observes. `HtmlSemanticAccounting::host`
+names a scope of an operation the host owns; `HtmlCaptureBuilder::with_accounting` and
+`HtmlSemanticSession::with_accounting` create their scopes below it, and an import uses the scope
+of its builder. `HtmlSemanticAccounting` documents the scope tree and the refusals a host cap
+reports. A ledger failure that is not a refused cap stops with `HtmlSemanticFailureKind::Accounting`,
+`HtmlCaptureError::LedgerState`, or the `LedgerState` variant of the error of the operation.
+
+The retained storage values (`retained_storage_usage` of a capture, Base facts graph, URL record
+and hyperlink snapshot) are measurements of actual capacities with checked sums, not counters,
+and a consumer charges them to its own accounting. The controlled OptionValue owner holds
+retained and temporary storage as ledger custody in a scope tree of its own and releases it when
+it drops.

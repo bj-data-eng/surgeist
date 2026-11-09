@@ -381,7 +381,7 @@ impl HtmlCaptureLimits {
         self.element_value_bytes
     }
 }
-/// Admitted capture retention, independent of future parser-work accounting.
+/// Admitted capture retention, read from the capture's ledger scope.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct HtmlCaptureUsage {
     subjects: usize,

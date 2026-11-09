@@ -353,7 +353,8 @@ impl HtmlBaseParseObservation {
     }
 }
 
-/// Bounded external input formation, separate from parse execution usage.
+/// Bounded external input formation, charged to its own ledger scope and separate from parse
+/// execution usage.
 #[derive(Clone, Copy, Debug)]
 pub struct HtmlBaseFactsLimits {
     records: usize,

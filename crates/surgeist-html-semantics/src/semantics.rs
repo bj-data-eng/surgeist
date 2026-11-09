@@ -144,6 +144,10 @@ use surgeist_ledger::Change;
 
 /// Finite cumulative admission for one semantic session.
 ///
+/// The limits are the caps of the session's ledger scope, `html-query`, and
+/// [`HtmlSemanticUsage`] is read from that scope and its observed sibling; see
+/// [`HtmlSemanticAccounting`](crate::HtmlSemanticAccounting).
+///
 /// Work charges visits, result writes, inspected UTF-16 units and conservative
 /// inspection envelopes for the existing intrinsic producers. Output counts
 /// result records reserved across batches. Scratch bounds simultaneous retained
