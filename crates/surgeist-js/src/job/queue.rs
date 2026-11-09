@@ -9,6 +9,7 @@ use crate::{
     Context, ContextAccess, HostContext, JsResult,
     context::time::{JsDuration, JsInstant},
     error::{EngineError, EngineResourceError},
+    execution::{ExecutionPhase, JobClaimWork},
 };
 use futures_lite::future;
 use portable_atomic::AtomicBool;
@@ -746,7 +747,7 @@ struct ClaimScratch {
     logical_capacity: usize,
 }
 impl ClaimScratch {
-    fn reserve_one(&mut self) -> JsResult<()> {
+    fn reserve_one(&mut self, context: &mut Context) -> JsResult<()> {
         if self.slots.len() < self.logical_capacity {
             return Ok(());
         }
@@ -764,8 +765,10 @@ impl ClaimScratch {
                 .ok_or(EngineResourceError::SizeOverflow)
         };
         bytes(capacity)?;
-        bytes(capacity - self.logical_capacity)?;
-        bytes(self.slots.len())?;
+        context.admit_job_claim(JobClaimWork::Capacity(bytes(
+            capacity - self.logical_capacity,
+        )?))?;
+        context.admit_job_claim(JobClaimWork::Relocate(bytes(self.slots.len())?))?;
         self.slots
             .try_reserve_exact(capacity - self.slots.len())
             .map_err(|_| EngineResourceError::Allocation)?;
@@ -854,9 +857,128 @@ impl<'a> StoreRelease<'a> {
         Self {
             queues,
             registry: queues.registry.upgrade(),
-            completed: false,
+            completed: true,
             unwinding_at_entry: std::thread::panicking(),
         }
+    }
+    fn with_store<T>(&mut self, run: impl FnOnce(&mut Store) -> QueueResult<T>) -> QueueResult<T> {
+        if let Some(fault) = self.queues.first_fault.get() {
+            return Err(fault.into());
+        }
+        self.unwinding_at_entry = std::thread::panicking();
+        self.completed = false;
+        let result = (|| {
+            let mut store = self.queues.store.try_borrow_mut().map_err(|_| {
+                self.queues
+                    .latch_fault(defect(JobFaultCause::InaccessibleRegistry))
+            })?;
+            let result = run(&mut store);
+            drop(store);
+            if let Err(QueueError::Fault(fault)) = result.as_ref() {
+                self.queues.latch_fault(*fault);
+            }
+            result
+        })();
+        self.completed = true;
+        result
+    }
+    fn prepare_claim(
+        &mut self,
+        selection: ClaimSelection,
+        context: &mut Context,
+    ) -> JsResult<Batch> {
+        let mut scratch = ClaimScratch::default();
+        match selection {
+            ClaimSelection::Async => {
+                self.snapshot_bucket(Kind::Ordinary(Ordinary::Async), &mut scratch, context)?
+            }
+            ClaimSelection::Promise => {
+                self.snapshot_bucket(Kind::Ordinary(Ordinary::Promise), &mut scratch, context)?
+            }
+            ClaimSelection::Generic => {
+                self.snapshot_bucket(Kind::Ordinary(Ordinary::Generic), &mut scratch, context)?
+            }
+            ClaimSelection::ClocksBefore(cutoff) => {
+                let mut previous = None;
+                loop {
+                    let time = self
+                        .with_store(|store| {
+                            Ok(store
+                                .clocks
+                                .get(previous.map_or(0, |previous| {
+                                    store
+                                        .clocks
+                                        .partition_point(|clock| clock.deadline <= previous)
+                                }))
+                                .filter(|clock| clock.deadline < cutoff)
+                                .map(|clock| clock.deadline))
+                        })
+                        .map_err(|error| crate::JsError::from(error.into_engine()))?;
+                    let Some(time) = time else { break };
+                    self.snapshot_bucket(Kind::Clock(time), &mut scratch, context)?;
+                    previous = Some(time);
+                }
+            }
+        }
+        context.admit_job_claim(JobClaimWork::Commit(scratch.slots.len()))?;
+        let batch = Batch {
+            slots: scratch.slots,
+        };
+        // Admission covers every mark; no fallible step or stop/token read splits it.
+        for slot in &batch.slots {
+            slot.status.set(Status::Claimed);
+        }
+        Ok(batch)
+    }
+    fn snapshot_bucket(
+        &mut self,
+        kind: Kind,
+        scratch: &mut ClaimScratch,
+        context: &mut Context,
+    ) -> JsResult<()> {
+        context.admit_job_claim(JobClaimWork::Bucket)?;
+        let (mut cursor, mut remaining) = self
+            .with_store(|store| {
+                let bucket = store.bucket(kind)?;
+                if bucket.head.is_some() != bucket.tail.is_some() {
+                    return Err(defect(JobFaultCause::StateInconsistency).into());
+                }
+                Ok((bucket.head, store.entries.len()))
+            })
+            .map_err(|error| crate::JsError::from(error.into_engine()))?;
+        let mut previous = None;
+        while let Some(index) = cursor {
+            context.admit_job_claim(JobClaimWork::Node)?;
+            let (next, available) = self
+                .with_store(|store| {
+                    if remaining == 0 {
+                        return Err(
+                            defect(JobFaultCause::InvalidQueueLink { index: index.0 }).into()
+                        );
+                    }
+                    let slot = store.node(index)?;
+                    store.validate_node(slot)?;
+                    if slot.kind.get() != kind || slot.previous.get() != previous {
+                        return Err(
+                            defect(JobFaultCause::InvalidQueueLink { index: index.0 }).into()
+                        );
+                    }
+                    Ok((slot.next.get(), slot.status.get() == Status::Available))
+                })
+                .map_err(|error| crate::JsError::from(error.into_engine()))?;
+            remaining -= 1;
+            previous = Some(index);
+            cursor = next;
+            if available {
+                scratch.reserve_one(context)?;
+                context.admit_job_claim(JobClaimWork::SnapshotCopy)?;
+                let slot = self
+                    .with_store(|store| Ok(store.node(index)?.clone()))
+                    .map_err(|error| crate::JsError::from(error.into_engine()))?;
+                scratch.slots.push(slot);
+            }
+        }
+        Ok(())
     }
 }
 impl Drop for StoreRelease<'_> {
@@ -865,10 +987,12 @@ impl Drop for StoreRelease<'_> {
             self.queues
                 .latch_fault(defect(JobFaultCause::StateInconsistency));
         }
-        self.queues.finish_fault_cleanup();
+        let mut cleanup = UnwindCleanup::default();
+        cleanup.run(|| self.queues.finish_fault_cleanup());
         if let Some(registry) = &self.registry {
-            registry.drive();
+            cleanup.run(|| registry.drive());
         }
+        cleanup.finish();
     }
 }
 impl RuntimeJobQueues {
@@ -900,6 +1024,7 @@ impl RuntimeJobQueues {
         run: impl FnOnce(&mut Store) -> Result<T, JobFault>,
     ) -> Result<T, JobFault> {
         let mut release = StoreRelease::new(self);
+        release.completed = false;
         let mut store = self
             .store
             .try_borrow_mut()
@@ -917,17 +1042,7 @@ impl RuntimeJobQueues {
             return Err(fault.into());
         }
         let mut release = StoreRelease::new(self);
-        let mut store = self
-            .store
-            .try_borrow_mut()
-            .map_err(|_| self.latch_fault(defect(JobFaultCause::InaccessibleRegistry)))?;
-        let result = run(&mut store);
-        release.completed = true;
-        drop(store);
-        if let Err(QueueError::Fault(fault)) = result.as_ref() {
-            self.latch_fault(*fault);
-        }
-        result
+        release.with_store(run)
     }
     fn physical_slot(&self, index: usize) -> Result<Option<Rc<Slot>>, JobFault> {
         let store = self
@@ -1056,100 +1171,25 @@ impl RuntimeJobQueues {
         })
     }
     fn claim(&self, selection: ClaimSelection, host: &HostContext<'_>) -> JsResult<Batch> {
-        host.with(|access| {
+        // The acquired claim owns one delivery pin across all short Store loans.
+        // It is released only after both the phase and protected access end.
+        let mut release = None;
+        let result = host.with(|access| {
             let context = access.into_owner();
             context.check_execution_stop()?;
-            let mut result = self.prepare_claim(selection);
-            if let Err(error) = &mut result {
-                context.retain_preparation_error(error);
-            }
+            let release = release.insert(StoreRelease::new(self));
+            let result = context.with_execution_phase(ExecutionPhase::JobClaim, |context| {
+                let mut result = release.prepare_claim(selection, context);
+                if let Err(error) = &mut result {
+                    context.retain_preparation_error(error);
+                }
+                result
+            });
             context.check_execution_stop().and(result)
-        })
-    }
-    fn prepare_claim(&self, selection: ClaimSelection) -> JsResult<Batch> {
-        let mut scratch = ClaimScratch::default();
-        match selection {
-            ClaimSelection::Async => {
-                self.snapshot_bucket(Kind::Ordinary(Ordinary::Async), &mut scratch)?
-            }
-            ClaimSelection::Promise => {
-                self.snapshot_bucket(Kind::Ordinary(Ordinary::Promise), &mut scratch)?
-            }
-            ClaimSelection::Generic => {
-                self.snapshot_bucket(Kind::Ordinary(Ordinary::Generic), &mut scratch)?
-            }
-            ClaimSelection::ClocksBefore(cutoff) => {
-                let mut previous = None;
-                loop {
-                    let time = self
-                        .with_store(|store| {
-                            Ok(store
-                                .clocks
-                                .get(previous.map_or(0, |previous| {
-                                    store
-                                        .clocks
-                                        .partition_point(|clock| clock.deadline <= previous)
-                                }))
-                                .filter(|clock| clock.deadline < cutoff)
-                                .map(|clock| clock.deadline))
-                        })
-                        .map_err(|error| crate::JsError::from(error.into_engine()))?;
-                    let Some(time) = time else { break };
-                    self.snapshot_bucket(Kind::Clock(time), &mut scratch)?;
-                    previous = Some(time);
-                }
-            }
-        }
-        let batch = Batch {
-            slots: scratch.slots,
-        };
-        // Install rollback custody before marking; no fallible step or stop/token read splits it.
-        for slot in &batch.slots {
-            slot.status.set(Status::Claimed);
-        }
-        Ok(batch)
-    }
-    fn snapshot_bucket(&self, kind: Kind, scratch: &mut ClaimScratch) -> JsResult<()> {
-        let (mut cursor, mut remaining) = self
-            .with_store(|store| {
-                let bucket = store.bucket(kind)?;
-                if bucket.head.is_some() != bucket.tail.is_some() {
-                    return Err(defect(JobFaultCause::StateInconsistency).into());
-                }
-                Ok((bucket.head, store.entries.len()))
-            })
-            .map_err(|error| crate::JsError::from(error.into_engine()))?;
-        let mut previous = None;
-        while let Some(index) = cursor {
-            let (next, available) = self
-                .with_store(|store| {
-                    if remaining == 0 {
-                        return Err(
-                            defect(JobFaultCause::InvalidQueueLink { index: index.0 }).into()
-                        );
-                    }
-                    let slot = store.node(index)?;
-                    store.validate_node(slot)?;
-                    if slot.kind.get() != kind || slot.previous.get() != previous {
-                        return Err(
-                            defect(JobFaultCause::InvalidQueueLink { index: index.0 }).into()
-                        );
-                    }
-                    Ok((slot.next.get(), slot.status.get() == Status::Available))
-                })
-                .map_err(|error| crate::JsError::from(error.into_engine()))?;
-            remaining -= 1;
-            previous = Some(index);
-            cursor = next;
-            if available {
-                scratch.reserve_one()?;
-                let slot = self
-                    .with_store(|store| Ok(store.node(index)?.clone()))
-                    .map_err(|error| crate::JsError::from(error.into_engine()))?;
-                scratch.slots.push(slot);
-            }
-        }
-        Ok(())
+        });
+        let mut cleanup = UnwindCleanup::default();
+        cleanup.run(|| drop(release));
+        cleanup.finish_with(result)
     }
     fn finish(&self, slot: &Rc<Slot>) -> Result<(), JobFault> {
         if slot.status.get() == Status::Retired {
@@ -1293,6 +1333,7 @@ impl RuntimeJobQueues {
             return Err((command, fault.into()));
         }
         let mut release = StoreRelease::new(self);
+        release.completed = false;
         let mut store = match self.store.try_borrow_mut() {
             Ok(store) => store,
             Err(_) => {
@@ -1319,6 +1360,7 @@ impl RuntimeJobQueues {
             return Err((source, fault.into()));
         }
         let mut release = StoreRelease::new(self);
+        release.completed = false;
         let mut subscriptions = match self.finalization_registry_subscriptions.try_borrow_mut() {
             Ok(subscriptions) => subscriptions,
             Err(_) => {
@@ -1364,8 +1406,7 @@ impl Drop for DrainGuard {
 
 impl RuntimeJobQueues {
     fn shutdown(&self) -> bool {
-        let mut release = StoreRelease::new(self);
-        release.completed = true;
+        let _release = StoreRelease::new(self);
         let mut cleanup = UnwindCleanup::default();
         cleanup.run(|| {
             let _ = self.clear();
@@ -1395,8 +1436,7 @@ impl RuntimeJobQueues {
         complete
     }
     fn take_ready_cleanup(self: &Rc<Self>) -> QueueResult<bool> {
-        let mut release = StoreRelease::new(self);
-        release.completed = true;
+        let _release = StoreRelease::new(self);
         if let Some(fault) = self.first_fault.get() {
             return Err(fault.into());
         }
@@ -2137,3 +2177,6 @@ impl JobExecutor for SimpleJobExecutor {
 
 #[cfg(test)]
 mod fault_tests;
+
+#[cfg(test)]
+mod claim_tests;

@@ -492,6 +492,12 @@ pub enum RuntimeLimitError {
         /// Maximum admitted inner job future polls.
         limit: u64,
     },
+    /// Error for exhausting finite executor batch snapshot and claim work.
+    #[error("reached the operation's limit of {limit} job claim credits")]
+    JobClaimWork {
+        /// Maximum admitted snapshot and claim credits.
+        limit: u64,
+    },
     /// Error for exhausting generator request admission.
     #[error("reached the operation's limit of {limit} generator requests")]
     GeneratorRequest {
@@ -546,6 +552,7 @@ impl RuntimeLimitError {
             | Self::JobPreparation { .. }
             | Self::JobInvocation { .. }
             | Self::JobPoll { .. }
+            | Self::JobClaimWork { .. }
             | Self::GeneratorRequest { .. }
             | Self::LoopIteration
             | Self::Recursion

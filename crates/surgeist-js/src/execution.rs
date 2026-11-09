@@ -19,8 +19,9 @@
 //! The `job-prepare`, `job-invoke` and `job-poll` phases observe admitted
 //! synchronous job actions and their owned cleanup. Native job preparation now
 //! dispatches its owned-task factory and therefore marks possible effects. No job observation spans
-//! Pending. `generator-request` observes each admitted request algorithm through
-//! its synchronous return and cleanup, including promise preparation, without
+//! Pending. `job-claim` observes finite snapshot preparation and claim commit,
+//! closing before job dispatch or waiting. `generator-request` observes each
+//! admitted request algorithm through its synchronous return and cleanup, including promise preparation, without
 //! spanning suspension. Host future internals are opaque; these timings do not certify their work.
 
 use std::time::Duration;
@@ -122,6 +123,39 @@ dimensions! {
         GeneratorRequest,
         /// One logical credit of module-owned metadata construction work.
         ModuleMetadataWork,
+        /// One logical credit of finite executor batch snapshot and claim work.
+        JobClaimWork,
+    }
+}
+const JOB_CLAIM_ORIGINS: [&str; 6] = [
+    "claim-bucket",
+    "claim-node",
+    "claim-snapshot-copy",
+    "claim-capacity",
+    "claim-relocate",
+    "claim-commit",
+];
+
+#[derive(Clone, Copy)]
+pub(crate) enum JobClaimWork {
+    Bucket,
+    Node,
+    SnapshotCopy,
+    Capacity(usize),
+    Relocate(usize),
+    Commit(usize),
+}
+
+impl JobClaimWork {
+    const fn origin_units(self) -> (usize, u64) {
+        match self {
+            Self::Bucket => (0, 1),
+            Self::Node => (1, 1),
+            Self::SnapshotCopy => (2, 1),
+            Self::Capacity(bytes) => (3, bytes as u64),
+            Self::Relocate(bytes) => (4, bytes as u64),
+            Self::Commit(count) => (5, count as u64),
+        }
     }
 }
 const OPTIMIZER_ORIGINS: [&str; 21] = [
@@ -183,7 +217,7 @@ const COMPILER_ORIGINS: [&str; 32] = [
 ];
 // Root, frontend + four sources, three scope phases + 36 origins, optimizer
 // + 21 origins, 32 compiler origins, three lifetime/VM scopes, three job scopes
-// and one generator scope, plus module metadata and its producer origins.
+// and one generator scope, plus metadata/claim phases and their producer origins.
 const FIXED_SCOPES: usize = 1
     + 1
     + 4
@@ -192,8 +226,9 @@ const FIXED_SCOPES: usize = 1
     + 1
     + OPTIMIZER_ORIGINS.len()
     + COMPILER_ORIGINS.len()
-    + 8
-    + crate::module::metadata::ORIGINS.len();
+    + 9
+    + crate::module::metadata::ORIGINS.len()
+    + JOB_CLAIM_ORIGINS.len();
 const SCOPE_ORIGINS: [&str; 12] = [
     "scope-node",
     "scope-probe",
@@ -387,6 +422,7 @@ pub struct ExecutionOptions {
     job_poll_limit: u64,
     generator_request_limit: u64,
     module_metadata_work_limit: u64,
+    job_claim_work_limit: u64,
     source_read_limit: u64,
     source_consumption_limit: u64,
     source_retention_limit: u64,
@@ -428,6 +464,7 @@ impl ExecutionOptions {
             job_poll_limit: u64::MAX,
             generator_request_limit: u64::MAX,
             module_metadata_work_limit: u64::MAX,
+            job_claim_work_limit: u64::MAX,
             source_read_limit: u64::MAX,
             source_consumption_limit: u64::MAX,
             source_retention_limit: u64::MAX,
@@ -481,6 +518,19 @@ impl ExecutionOptions {
     #[must_use]
     pub const fn with_job_poll_limit(mut self, limit: u64) -> Self {
         self.job_poll_limit = limit;
+        self
+    }
+
+    /// Caps finite executor batch snapshot and claim work.
+    ///
+    /// Credits cover selected bucket and linked-node inspections, snapshot
+    /// copies, logical scratch capacity and relocation, and final claim marks.
+    /// Discarding scratch or returning claims to the queue does not refund work.
+    /// This does not bound the whole drain, clock-tree searches, publication,
+    /// cancellation, live resources or arbitrary custom executor work.
+    #[must_use]
+    pub const fn with_job_claim_work_limit(mut self, limit: u64) -> Self {
+        self.job_claim_work_limit = limit;
         self
     }
 
@@ -764,6 +814,7 @@ pub(crate) enum ExecutionPhase {
     JobPoll,
     GeneratorRequest,
     ModuleMetadata,
+    JobClaim,
 }
 
 #[derive(Clone, Copy)]
@@ -786,7 +837,8 @@ impl JobAction {
 pub(crate) struct Execution {
     ledger: ExecutionLedger,
     prepared_report: PreparedReport,
-    execution_phases: [Scope; 8],
+    execution_phases: [Scope; 9],
+    claim_origins: [Scope; JOB_CLAIM_ORIGINS.len()],
     metadata_origins: [Scope; crate::module::metadata::ORIGINS.len()],
     instruction_limit: u64,
     job_preparation_limit: u64,
@@ -794,6 +846,7 @@ pub(crate) struct Execution {
     job_poll_limit: u64,
     generator_request_limit: u64,
     module_metadata_work_limit: u64,
+    job_claim_work_limit: u64,
     source_read_limit: u64,
     source_consumption_limit: u64,
     source_retention_limit: u64,
@@ -872,6 +925,7 @@ impl Execution {
                 JobPoll: options.job_poll_limit,
                 GeneratorRequest: options.generator_request_limit,
                 ModuleMetadataWork: options.module_metadata_work_limit,
+                JobClaimWork: options.job_claim_work_limit,
             },
             NoTable::EMPTY,
         );
@@ -944,7 +998,7 @@ impl Execution {
                 )
                 .map_err(Self::setup_error)?;
         }
-        let mut execution_phases = [ledger.root(); 8];
+        let mut execution_phases = [ledger.root(); 9];
         for (slot, name) in execution_phases.iter_mut().zip([
             "execution-lifetime",
             "vm-active",
@@ -954,6 +1008,7 @@ impl Execution {
             "job-poll",
             "generator-request",
             "module-metadata",
+            "job-claim",
         ]) {
             *slot = ledger
                 .child(
@@ -978,8 +1033,20 @@ impl Execution {
                 )
                 .map_err(Self::setup_error)?;
         }
+        let mut claim_origins = [execution_phases[8]; JOB_CLAIM_ORIGINS.len()];
+        for (slot, name) in claim_origins.iter_mut().zip(JOB_CLAIM_ORIGINS) {
+            *slot = ledger
+                .child(
+                    execution_phases[8],
+                    name,
+                    Limits::unlimited(),
+                    Tariffs::identity(),
+                )
+                .map_err(Self::setup_error)?;
+        }
         Ok(Self {
             ledger,
+            claim_origins,
             metadata_origins,
             prepared_report: PreparedReport::new(),
             execution_phases,
@@ -989,6 +1056,7 @@ impl Execution {
             job_poll_limit: options.job_poll_limit,
             generator_request_limit: options.generator_request_limit,
             module_metadata_work_limit: options.module_metadata_work_limit,
+            job_claim_work_limit: options.job_claim_work_limit,
             source_read_limit: options.source_read_limit,
             source_consumption_limit: options.source_consumption_limit,
             source_retention_limit: options.source_retention_limit,
@@ -1564,6 +1632,24 @@ impl Execution {
         }
     }
 
+    fn charge_job_claim(&mut self, work: JobClaimWork) -> JsResult<()> {
+        if let Some(stop) = &self.stop {
+            return Err(stop.clone());
+        }
+        let (origin, units) = work.origin_units();
+        match self.ledger.apply(
+            self.claim_origins[origin],
+            Change::Work(ExecutionWork::JobClaimWork, units),
+        ) {
+            Ok(()) => Ok(()),
+            Err(LedgerError::Refused(_)) => Err(RuntimeLimitError::JobClaimWork {
+                limit: self.job_claim_work_limit,
+            }
+            .into()),
+            Err(error) => Err(ledger_error(error)),
+        }
+    }
+
     fn charge_generator_request(&mut self) -> JsResult<()> {
         if let Some(stop) = &self.stop {
             return Err(stop.clone());
@@ -1639,6 +1725,17 @@ impl crate::Context {
     pub(crate) fn admit_job_action(&mut self, action: JobAction) -> JsResult<()> {
         if let Some(execution) = &mut self.execution
             && let Err(stop) = execution.charge_job_action(action)
+        {
+            execution.retain_stop(&stop);
+            return Err(stop);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn admit_job_claim(&mut self, work: JobClaimWork) -> JsResult<()> {
+        self.check_execution_stop()?;
+        if let Some(execution) = &mut self.execution
+            && let Err(stop) = execution.charge_job_claim(work)
         {
             execution.retain_stop(&stop);
             return Err(stop);
