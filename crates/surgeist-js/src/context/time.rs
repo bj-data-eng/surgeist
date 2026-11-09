@@ -22,6 +22,13 @@ pub struct JsInstant {
 }
 
 impl JsInstant {
+    /// Adds an exact duration, returning `None` if the deadline is unrepresentable.
+    #[must_use]
+    pub fn checked_add(self, duration: JsDuration) -> Option<Self> {
+        self.inner
+            .checked_add(duration.inner)
+            .map(Self::new_unchecked)
+    }
     /// Creates a new `JsInstant` from the given number of seconds and nanoseconds.
     #[must_use]
     pub fn new(secs: u64, nanos: u32) -> Self {

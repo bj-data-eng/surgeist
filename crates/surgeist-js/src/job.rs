@@ -44,6 +44,7 @@ mod asynchronous;
 mod fault;
 mod identity;
 mod observer;
+mod publication;
 mod queue;
 mod task;
 
@@ -54,6 +55,8 @@ pub use identity::ContextId;
 pub(crate) use identity::ContextLifetime;
 pub use observer::{JobObserver, JobRetirement, JobStatus, JobWait};
 pub(crate) use observer::{RetirementRegistration, RetirementRelay};
+pub(crate) use publication::finish_publication;
+pub use publication::{JobAcceptance, JobPublicationCause, JobPublicationError};
 pub(crate) use queue::RuntimeJobQueues;
 pub use queue::SimpleJobExecutor;
 pub use task::ContextTask;
@@ -957,6 +960,36 @@ pub enum Job {
     FinalizationRegistryCleanupJob(FinalizationRegistryCleanupJob),
 }
 
+impl Job {
+    /// Checks a selected realm against the actual receiving runtime.
+    ///
+    /// This does not invoke the job, charge invocation work or grant execution
+    /// authority. A valid continuation can still be accepted after an enclosing
+    /// operation stopped. Executors that deliberately discard inputs may apply
+    /// their discard policy without performing this check.
+    ///
+    /// # Errors
+    /// Returns a publication-specific foreign-realm cause, or an earlier
+    /// retained engine stop, without changing this original input.
+    pub fn check_publication(&self, context: ContextAccess<'_>) -> Result<(), JobPublicationCause> {
+        let realm = match self {
+            Self::PromiseJob(job) => job.realm(),
+            Self::AsyncJob(job) => job.realm(),
+            Self::GenericJob(job) => job.0.realm(),
+            Self::TimeoutJob(job) => job.job.realm(),
+            Self::IntervalJob(job) => job.job.realm(),
+            Self::FinalizationRegistryCleanupJob(_) => None,
+        };
+        let context = context.into_owner();
+        match realm.map_or(Ok(()), |realm| context.check_publication_realm(realm)) {
+            Ok(()) => Ok(()),
+            Err(error) => Err(publication::JobPublicationCause::from_receiving(
+                error, context,
+            )),
+        }
+    }
+}
+
 impl From<NativeAsyncJob> for Job {
     fn from(native_async_job: NativeAsyncJob) -> Self {
         Job::AsyncJob(native_async_job)
@@ -999,7 +1032,20 @@ pub trait JobExecutor: Any {
     /// See the [spec] for more information on the requirements that each operation must follow.
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-jobs
-    fn enqueue_job(self: Rc<Self>, job: Job, context: ContextAccess<'_>);
+    ///
+    /// Rejection returns the exact original unaccepted input. An inline failure
+    /// after acceptance is [`JobAcceptance::AcceptedWithError`], never a
+    /// replayable rejection. Explicit policy disposal is
+    /// [`JobAcceptance::Discarded`]. Receiving executors check a selected realm
+    /// with [`Job::check_publication`] before acceptance or invocation.
+    ///
+    /// # Errors
+    /// Returns the original job and a validated engine cause before acceptance.
+    fn enqueue_job(
+        self: Rc<Self>,
+        job: Job,
+        context: ContextAccess<'_>,
+    ) -> Result<JobAcceptance, JobPublicationError>;
 
     /// Runs all jobs in the executor.
     fn run_jobs(self: Rc<Self>, context: ContextAccess<'_>) -> JsResult<()>;
@@ -1038,7 +1084,14 @@ pub trait JobExecutor: Any {
 pub struct IdleJobExecutor;
 
 impl JobExecutor for IdleJobExecutor {
-    fn enqueue_job(self: Rc<Self>, _: Job, _: ContextAccess<'_>) {}
+    fn enqueue_job(
+        self: Rc<Self>,
+        job: Job,
+        _: ContextAccess<'_>,
+    ) -> Result<JobAcceptance, JobPublicationError> {
+        drop(job);
+        Ok(JobAcceptance::Discarded)
+    }
 
     fn run_jobs(self: Rc<Self>, _: ContextAccess<'_>) -> JsResult<()> {
         Ok(())

@@ -178,6 +178,19 @@ fn assert_engine_view(view: Diagnostic<'_>, expected: &EngineError) {
         EngineError::InvalidEntryPermit => DiagnosticEngine::InvalidEntryPermit,
         EngineError::ContextAccessBusy => DiagnosticEngine::ContextAccessBusy,
         EngineError::ObjectAccessBusy => DiagnosticEngine::ObjectAccessBusy,
+        EngineError::ForeignSelectedRealm(expected) => {
+            let DiagnosticEngine::ForeignSelectedRealm(actual) = actual else {
+                panic!("publication refusal lost its borrowed diagnostic variant")
+            };
+            assert_eq!(actual.selected_realm(), expected.selected_realm());
+            assert_eq!(actual.receiving_realm(), expected.receiving_realm());
+            assert_eq!(actual.diagnostic(), expected.diagnostic());
+            return;
+        }
+        EngineError::JobDeadlineOverflow { now, delay } => DiagnosticEngine::JobDeadlineOverflow {
+            now: *now,
+            delay: *delay,
+        },
         EngineError::Job(error) => DiagnosticEngine::Job(*error),
         EngineError::JobContextRequired { required } => {
             DiagnosticEngine::JobContextRequired { required }

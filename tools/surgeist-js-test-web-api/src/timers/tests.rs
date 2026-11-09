@@ -16,6 +16,102 @@ fn create_context(clock: Rc<impl Clock + 'static>) -> Context {
 }
 
 #[test]
+fn rejected_timeout_and_interval_leave_no_active_timer() {
+    use crate::publication_test_support::PublicationExecutor;
+    use surgeist_js::{
+        Source,
+        error::{EngineError, EngineResourceError},
+        interop::JsRest,
+        object::builtins::JsFunction,
+    };
+
+    for interval in [false, true] {
+        let executor = Rc::new(PublicationExecutor::new(false));
+        let mut context = Context::builder().job_executor(executor).build().unwrap();
+        let callback = context.eval(Source::from_bytes("(() => {})")).unwrap();
+        let callback = JsFunction::from_object(callback.as_object().unwrap()).unwrap();
+        let schedule = if interval {
+            super::set_interval
+        } else {
+            super::set_timeout
+        };
+        let error = schedule(Some(callback), None, JsRest(&[]), context.access()).unwrap_err();
+        assert_eq!(
+            error.as_engine(),
+            Some(&EngineError::Resource(EngineResourceError::Allocation))
+        );
+        assert!(
+            super::IntervalInnerState::from_context(&mut context.access())
+                .active_map
+                .is_empty()
+        );
+    }
+}
+
+#[test]
+fn discarded_timeout_and_interval_leave_no_active_timer() {
+    use surgeist_js::{
+        Source, interop::JsRest, job::IdleJobExecutor, object::builtins::JsFunction,
+    };
+
+    for interval in [false, true] {
+        let mut context = Context::builder()
+            .job_executor(Rc::new(IdleJobExecutor))
+            .build()
+            .unwrap();
+        let callback = context.eval(Source::from_bytes("(() => {})")).unwrap();
+        let callback = JsFunction::from_object(callback.as_object().unwrap()).unwrap();
+        let schedule = if interval {
+            super::set_interval
+        } else {
+            super::set_timeout
+        };
+        assert_ne!(
+            schedule(Some(callback), None, JsRest(&[]), context.access()).unwrap(),
+            0
+        );
+        assert!(
+            super::IntervalInnerState::from_context(&mut context.access())
+                .active_map
+                .is_empty()
+        );
+    }
+}
+
+#[test]
+fn accepted_timer_error_preserves_its_live_cancellation_custody() {
+    use crate::publication_test_support::PublicationExecutor;
+    use surgeist_js::{Source, interop::JsRest, object::builtins::JsFunction};
+
+    for interval in [false, true] {
+        let executor = Rc::new(PublicationExecutor::new(true));
+        let mut context = Context::builder().job_executor(executor).build().unwrap();
+        let callback = context.eval(Source::from_bytes("(() => {})")).unwrap();
+        let callback = JsFunction::from_object(callback.as_object().unwrap()).unwrap();
+        let schedule = if interval {
+            super::set_interval
+        } else {
+            super::set_timeout
+        };
+        assert!(schedule(Some(callback), None, JsRest(&[]), context.access()).is_err());
+        let tokens: Vec<_> = super::IntervalInnerState::from_context(&mut context.access())
+            .active_map
+            .values()
+            .cloned()
+            .collect();
+        assert_eq!(tokens.len(), 1);
+        assert!(!tokens[0].revoked());
+        super::clear_all(context.access());
+        assert!(tokens[0].revoked());
+        assert!(
+            super::IntervalInnerState::from_context(&mut context.access())
+                .active_map
+                .is_empty()
+        );
+    }
+}
+
+#[test]
 fn two_zero_delay_timeouts_both_fire() {
     let clock = Rc::new(FixedClock::default());
     let context = &mut create_context(clock.clone());

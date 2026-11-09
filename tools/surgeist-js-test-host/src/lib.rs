@@ -144,6 +144,8 @@ pub use surgeist_js_test_web_api::microtask;
 pub mod process;
 #[doc(inline)]
 pub use surgeist_js_test_web_api::store;
+#[cfg(test)]
+mod publication_test_support;
 /// Support for the `$262` test262 harness object.
 #[cfg(feature = "test262")]
 pub mod test262;

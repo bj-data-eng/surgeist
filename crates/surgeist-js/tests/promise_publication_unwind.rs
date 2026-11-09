@@ -80,7 +80,11 @@ struct RetainThenUnwind {
     attempts: Cell<usize>,
 }
 impl JobExecutor for RetainThenUnwind {
-    fn enqueue_job(self: Rc<Self>, job: Job, _: ContextAccess<'_>) {
+    fn enqueue_job(
+        self: Rc<Self>,
+        job: Job,
+        _: ContextAccess<'_>,
+    ) -> Result<surgeist_js::job::JobAcceptance, surgeist_js::job::JobPublicationError> {
         self.attempts.set(self.attempts.get() + 1);
         // This already accepted job must survive the executor's native unwind.
         // The engine still owns every unattempted prepared reaction tail.

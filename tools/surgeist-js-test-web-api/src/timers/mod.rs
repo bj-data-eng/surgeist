@@ -7,7 +7,7 @@
 //! Timer APIs are required in the `WinterTC` TC55 Minimum Common Web API.
 
 use surgeist_js::interop::JsRest;
-use surgeist_js::job::{CancellationToken, IntervalJob, NativeJobFn};
+use surgeist_js::job::{CancellationToken, IntervalJob, JobAcceptance, NativeJobFn};
 use surgeist_js::job::{NativeJob, TimeoutJob};
 use surgeist_js::object::builtins::JsFunction;
 
@@ -120,7 +120,7 @@ pub fn set_timeout(
 
     state.active_map.insert(id, token);
 
-    context.enqueue_job(job.into());
+    finish_timer_publication(context.enqueue_job(job.into()), id, context.reborrow())?;
 
     Ok(id.get())
 }
@@ -169,9 +169,34 @@ pub fn set_interval(
 
     state.active_map.insert(id, token);
 
-    context.enqueue_job(job.into());
+    finish_timer_publication(context.enqueue_job(job.into()), id, context.reborrow())?;
 
     Ok(id.get())
+}
+
+/// Remove only timers whose publication did not leave an accepted custodian.
+fn finish_timer_publication(
+    publication: Result<JobAcceptance, surgeist_js::job::JobPublicationError>,
+    id: NonZeroU32,
+    mut context: ContextAccess<'_>,
+) -> JsResult<()> {
+    match publication {
+        Ok(JobAcceptance::Discarded) => {
+            IntervalInnerState::from_context(&mut context)
+                .active_map
+                .remove(&id);
+            Ok(())
+        }
+        Ok(acceptance) => acceptance.into_result(),
+        Err(error) => {
+            IntervalInnerState::from_context(&mut context)
+                .active_map
+                .remove(&id);
+            // Extraction disposes only the returned, unpublished job. An accepted
+            // inline failure above may have transferred a valid successor.
+            Err(error.into_error())
+        }
+    }
 }
 
 /// Clears a timeout or interval currently running.

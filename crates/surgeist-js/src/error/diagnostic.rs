@@ -189,6 +189,11 @@ fn collect_live_roots(error: &JsError, roots: &mut RootBundle) {
                     .or_insert_with(|| RootLeaf::Interruption(value.clone()));
             }
         }
+        Repr::Engine(EngineError::ForeignSelectedRealm(value)) => {
+            for (id, root) in value.original.roots.iter() {
+                roots.entry(*id).or_insert_with(|| root.clone());
+            }
+        }
         Repr::Engine(EngineError::Panic(panic)) => {
             if let Some(source) = &panic.source {
                 for (id, root) in source.roots.iter() {
@@ -279,6 +284,23 @@ impl<'a> Diagnostic<'a> {
             });
         }
         match &self.node.inner {
+            StoredErrorRepr::ForeignSelectedRealm {
+                selected,
+                receiving,
+                original,
+            } => DiagnosticKind::Engine(DiagnosticEngine::ForeignSelectedRealm(
+                DiagnosticForeignSelectedRealm {
+                    selected: *selected,
+                    receiving: *receiving,
+                    diagnostic: original.view_with(self.mask),
+                },
+            )),
+            StoredErrorRepr::JobDeadlineOverflow((now, delay)) => {
+                DiagnosticKind::Engine(DiagnosticEngine::JobDeadlineOverflow {
+                    now: *now,
+                    delay: *delay,
+                })
+            }
             StoredErrorRepr::ModuleInterrupted(value) => DiagnosticKind::Engine(
                 DiagnosticEngine::ModuleInterrupted(DiagnosticModuleInterruption(value, self.mask)),
             ),
@@ -358,6 +380,9 @@ impl<'a> Diagnostic<'a> {
                     member.visit_roots(visit);
                 }
             }
+            DiagnosticKind::Engine(DiagnosticEngine::ForeignSelectedRealm(value)) => {
+                value.diagnostic().visit_roots(visit)
+            }
             DiagnosticKind::Engine(DiagnosticEngine::Panic {
                 diagnostic: Some(source),
                 ..
@@ -383,6 +408,9 @@ impl<'a> Diagnostic<'a> {
                 for member in native.members() {
                     member.trace(edges)?;
                 }
+            }
+            DiagnosticKind::Engine(DiagnosticEngine::ForeignSelectedRealm(value)) => {
+                value.diagnostic().trace(edges)?
             }
             DiagnosticKind::Engine(DiagnosticEngine::Panic {
                 diagnostic: Some(source),
@@ -422,6 +450,9 @@ impl<'a> Diagnostic<'a> {
                 for member in native.members() {
                     member.restore_roots(roots);
                 }
+            }
+            DiagnosticKind::Engine(DiagnosticEngine::ForeignSelectedRealm(value)) => {
+                value.diagnostic().restore_roots(roots)
             }
             DiagnosticKind::Engine(DiagnosticEngine::Panic {
                 diagnostic: Some(source),
@@ -480,6 +511,16 @@ impl<'a> Diagnostic<'a> {
                         identity: value.identity(),
                         cause: Box::new(value.cause().erase(context)),
                     }
+                }
+                DiagnosticEngine::ForeignSelectedRealm(value) => {
+                    ErasedEngineError::ForeignSelectedRealm(ErasedForeignSelectedRealm {
+                        selected: value.selected_realm(),
+                        receiving: value.receiving_realm(),
+                        diagnostic: Box::new(value.diagnostic().erase(context)),
+                    })
+                }
+                DiagnosticEngine::JobDeadlineOverflow { now, delay } => {
+                    ErasedEngineError::JobDeadlineOverflow { now, delay }
                 }
                 DiagnosticEngine::Resource(value) => ErasedEngineError::Resource(value),
                 DiagnosticEngine::InvalidEntryPermit => ErasedEngineError::InvalidEntryPermit,
@@ -693,6 +734,15 @@ impl Eq for DiagnosticNative<'_> {}
 /// Exact engine diagnostic payloads. Nested Panic sources remain borrowed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagnosticEngine<'a> {
+    /// Publication refused a selected realm from another runtime.
+    ForeignSelectedRealm(DiagnosticForeignSelectedRealm<'a>),
+    /// Exact timer operands whose sum cannot be represented.
+    JobDeadlineOverflow {
+        /// Sampled publication clock instant.
+        now: JsInstant,
+        /// Exact requested delay.
+        delay: JsDuration,
+    },
     /// A retained source-module interruption and its original cause.
     ModuleInterrupted(DiagnosticModuleInterruption<'a>),
     /// Engine resource refusal.
@@ -1009,6 +1059,13 @@ impl fmt::Display for DiagnosticNative<'_> {
 impl fmt::Display for DiagnosticEngine<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::ForeignSelectedRealm(_) => {
+                f.write_str("ForeignSelectedRealm: selected realm belongs to a different runtime")
+            }
+            Self::JobDeadlineOverflow { now, delay } => write!(
+                f,
+                "JobDeadlineOverflow: {now:?} + {delay:?} is unrepresentable"
+            ),
             Self::Resource(value) => write!(f, "EngineResourceError: {value}"),
             Self::InvalidEntryPermit => {
                 f.write_str("InvalidEntryPermit: execution entry authority does not match")

@@ -2697,9 +2697,10 @@ impl Promise {
         // Validate the exact stored pair before changing the promise or invoking an executor.
         let reactions = (fulfill_reaction.to_stored(), reject_reaction.to_stored());
         let heap = context.runtime().heap.clone();
-        let notifications = heap
+        let (notifications, publication) = heap
             .with_pending_edges(reactions, |(stored_fulfill, stored_reject)| {
-                let mut notifications = [None, None];
+                let mut notifications = ReactionNotifications::default();
+                let mut publication = Ok(());
                 match state {
                     // 9. If promise.[[PromiseState]] is pending, then
                     PromiseState::Pending => {
@@ -2719,8 +2720,10 @@ impl Promise {
                         reject_reactions
                             .try_reserve(1)
                             .map_err(|_| crate::error::EngineResourceError::Allocation)?;
-                        for (slot, prepared) in
-                            notifications.iter_mut().zip(dependency_handoffs.iter_mut())
+                        for (slot, prepared) in notifications
+                            .committed
+                            .iter_mut()
+                            .zip(dependency_handoffs.iter_mut())
                         {
                             *slot = prepared
                                 .take()
@@ -2739,13 +2742,8 @@ impl Promise {
                         let mut fulfill_job =
                             new_promise_reaction_job(fulfill_reaction, value, context)?;
                         fulfill_job.commit();
-                        notifications = fulfill_job.notifications;
-                        let fulfill_job = fulfill_job.job;
-
                         //   c. Perform HostEnqueuePromiseJob(fulfillJob.[[Job]], fulfillJob.[[Realm]]).
-                        context
-                            .job_executor()
-                            .enqueue_job(fulfill_job.into(), context.access());
+                        (publication, notifications) = fulfill_job.publish(context);
                     }
 
                     // 11. Else,
@@ -2765,13 +2763,8 @@ impl Promise {
                         let mut reject_job =
                             new_promise_reaction_job(reject_reaction, reason, context)?;
                         reject_job.commit();
-                        notifications = reject_job.notifications;
-                        let reject_job = reject_job.job;
-
                         //   e. Perform HostEnqueuePromiseJob(rejectJob.[[Job]], rejectJob.[[Realm]]).
-                        context
-                            .job_executor()
-                            .enqueue_job(reject_job.into(), context.access());
+                        (publication, notifications) = reject_job.publish(context);
                     }
                 }
 
@@ -2783,15 +2776,13 @@ impl Promise {
                 // 14. Else,
                 //   a. Return resultCapability.[[Promise]].
                 // skipped because we can already access the promise from `result_capability`
-                Ok::<_, JsError>(notifications)
+                Ok::<_, JsError>((notifications, publication))
             })
             .map_err(|error| {
                 JsError::from(JsNativeError::typ().with_message(error.to_string()))
             })??;
-        for association in notifications.into_iter().flatten() {
-            association.notify();
-        }
-        Ok(())
+        notifications.finish();
+        publication
     }
 
     /// `GetPromiseResolve ( promiseConstructor )`
@@ -2900,17 +2891,6 @@ impl Promise {
             }
             Ok(jobs)
         }
-        fn trigger_promise_reactions(jobs: Vec<PreparedReactionJob>, context: &mut Context) {
-            for prepared in jobs {
-                for association in prepared.notifications.into_iter().flatten() {
-                    association.notify();
-                }
-                let job = prepared.job;
-                context
-                    .job_executor()
-                    .enqueue_job(job.into(), context.access());
-            }
-        }
 
         /// `FulfillPromise ( promise, value )`
         ///
@@ -2964,13 +2944,12 @@ impl Promise {
                 StoredPromiseState::Fulfilled(value.clone().into_stored()),
             );
 
+            let batch = ReactionBatch::new(jobs, pending);
             // 7. Perform TriggerPromiseReactions(reactions, value).
             if let Some(association) = association {
                 association.settle();
             }
-            trigger_promise_reactions(jobs, context);
-            drop(pending);
-            Ok(())
+            batch.publish(context)
         }
 
         /// `RejectPromise ( promise, reason )`
@@ -3027,6 +3006,7 @@ impl Promise {
                 StoredPromiseState::Rejected(reason.clone().into_stored()),
             );
 
+            let batch = ReactionBatch::new(jobs, pending);
             if let Some(association) = association {
                 association.settle();
             }
@@ -3041,9 +3021,7 @@ impl Promise {
             }
 
             // 8. Perform TriggerPromiseReactions(reactions, reason).
-            trigger_promise_reactions(jobs, context);
-            drop(pending);
-            Ok(())
+            batch.publish(context)
         }
 
         // 1. Let alreadyResolved be the Record { [[Value]]: false }.
@@ -3146,16 +3124,19 @@ impl Promise {
                                         context,
                                     )?;
 
-                                    let notification =
-                                        handoff.map(native_settlement::PreparedHandoff::commit);
+                                    let notifications = ReactionNotifications {
+                                        pending: [None, None],
+                                        committed: [
+                                            handoff.map(native_settlement::PreparedHandoff::commit),
+                                            None,
+                                        ],
+                                    };
                                     // 15. Perform HostEnqueuePromiseJob(job.[[Job]], job.[[Realm]]).
-                                    context
-                                        .job_executor()
-                                        .enqueue_job(job.into(), context.access());
-                                    if let Some(association) = notification {
-                                        association.notify();
-                                    }
-                                    Ok(())
+                                    let publication = crate::job::finish_publication(
+                                        context.enqueue_job(job.into()),
+                                    );
+                                    notifications.finish();
+                                    publication
                                 })
                                 .map_err(|error| {
                                     JsError::from(
@@ -3165,6 +3146,9 @@ impl Promise {
                             });
                         if let Err(error) = result {
                             context.check_execution_stop()?;
+                            if error.as_engine().is_some() {
+                                return Err(error);
+                            }
                             reject_promise(
                                 &promise,
                                 error.into_opaque(context.access())?,
@@ -3260,6 +3244,33 @@ impl PreparedPendingReactions {
     }
 }
 
+/// Owns native handoff cleanup while the corresponding job crosses its host
+/// publication boundary. Each slot finishes independently during native unwind.
+#[derive(Default)]
+struct ReactionNotifications {
+    pending: [Option<native_settlement::PreparedHandoff>; 2],
+    committed: [Option<native_settlement::HandoffNotification>; 2],
+}
+impl ReactionNotifications {
+    fn finish(self) {
+        drop(self);
+    }
+}
+impl Drop for ReactionNotifications {
+    fn drop(&mut self) {
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        for slot in &mut self.pending {
+            let handoff = slot.take();
+            cleanup.run(|| drop(handoff));
+        }
+        for slot in &mut self.committed {
+            let notification = slot.take();
+            cleanup.run(|| drop(notification));
+        }
+        cleanup.finish();
+    }
+}
+
 struct PreparedReactionJob {
     job: PromiseJob,
     handoffs: [Option<native_settlement::PreparedHandoff>; 2],
@@ -3272,6 +3283,86 @@ impl PreparedReactionJob {
                 *notification = Some(handoff.commit());
             }
         }
+    }
+    fn publish(self, context: &mut Context) -> (JsResult<()>, ReactionNotifications) {
+        let Self {
+            job,
+            handoffs,
+            notifications,
+        } = self;
+        let notifications = ReactionNotifications {
+            pending: handoffs,
+            committed: notifications,
+        };
+        let publication = crate::job::finish_publication(context.enqueue_job(job.into()));
+        (publication, notifications)
+    }
+    fn dispose(self, cleanup: &mut crate::job::UnwindCleanup) {
+        let Self {
+            job,
+            handoffs,
+            notifications,
+        } = self;
+        let notifications = ReactionNotifications {
+            pending: handoffs,
+            committed: notifications,
+        };
+        cleanup.run(|| drop(job));
+        cleanup.run(|| notifications.finish());
+    }
+}
+
+/// Owns every prepared tail and the previous source roots before any host call.
+/// Native unwind disposes this custody without publishing another reaction.
+struct ReactionBatch {
+    jobs: std::vec::IntoIter<PreparedReactionJob>,
+    pending: Option<StoredPromiseState>,
+}
+impl ReactionBatch {
+    fn new(jobs: Vec<PreparedReactionJob>, pending: StoredPromiseState) -> Self {
+        Self {
+            jobs: jobs.into_iter(),
+            pending: Some(pending),
+        }
+    }
+    fn publish(mut self, context: &mut Context) -> JsResult<()> {
+        let mut first_error = None;
+        for prepared in self.jobs.by_ref() {
+            let (publication, notifications) = prepared.publish(context);
+            notifications.finish();
+            if let Err(error) = publication
+                && first_error.is_none()
+            {
+                first_error = Some(error);
+            }
+        }
+        match first_error {
+            Some(error) => Err(error),
+            None => Ok(()),
+        }
+    }
+}
+impl Drop for ReactionBatch {
+    fn drop(&mut self) {
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        for prepared in self.jobs.by_ref() {
+            prepared.dispose(&mut cleanup);
+        }
+        match self.pending.take() {
+            Some(StoredPromiseState::Pending {
+                fulfill_reactions,
+                reject_reactions,
+            }) => {
+                for reaction in fulfill_reactions.into_iter().chain(reject_reactions) {
+                    cleanup.run(|| drop(reaction));
+                }
+            }
+            Some(StoredPromiseState::Fulfilled(value) | StoredPromiseState::Rejected(value)) => {
+                cleanup.run(|| drop(value));
+            }
+            None => {}
+        }
+        cleanup.finish();
     }
 }
 

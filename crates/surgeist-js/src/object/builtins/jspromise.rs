@@ -355,7 +355,7 @@ impl JsPromise {
             realm,
         );
         association.bind_job(&job.observer(), true)?;
-        context.enqueue_job(job.into());
+        crate::job::finish_publication(context.enqueue_job(job.into()))?;
         Ok(promise)
     }
 

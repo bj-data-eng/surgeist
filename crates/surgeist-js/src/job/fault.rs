@@ -84,6 +84,10 @@ pub enum JobFaultOwner {
     NativeEpoch,
     /// A source-module evaluation's local custody.
     ModuleEvaluation,
+    /// Resident job storage, links, payload custody and drain state.
+    Queue,
+    /// The executor's runtime queue registry.
+    ExecutorRegistry,
 }
 
 /// A finite structural failure, with only rootless scalar diagnostic facts.
@@ -125,6 +129,13 @@ pub enum JobFaultCause {
     CounterUnderflow,
     /// A key or work item belonged to a different owner.
     OwnerMismatch,
+    /// A resident queue link did not match its reciprocal link or bucket.
+    InvalidQueueLink {
+        /// The queue node whose link was rejected.
+        index: usize,
+    },
+    /// A required existing clock bucket was absent.
+    MissingClockBucket,
 }
 
 /// The first detected invariant failure of a job owner.

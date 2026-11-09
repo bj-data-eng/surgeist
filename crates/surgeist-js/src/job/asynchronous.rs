@@ -162,6 +162,16 @@ impl Drop for StateLease {
 }
 pub(super) struct AsyncIdentity(Weak<Control>);
 impl AsyncIdentity {
+    pub(super) fn mark_fault(&self, fault: JobFault) {
+        if let Some(control) = self.0.upgrade() {
+            control.mark_fault(fault);
+        }
+    }
+    pub(super) fn fault(&self, fault: JobFault) {
+        if let Some(control) = self.0.upgrade() {
+            control.fault(fault);
+        }
+    }
     pub(super) fn owner(&self) -> Option<ContextId> {
         self.0.upgrade().and_then(|control| control.owner())
     }

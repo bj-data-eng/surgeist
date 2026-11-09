@@ -4,7 +4,7 @@ use super::*;
 use crate::{
     ContextAccess,
     execution::{ExecutionOptions, ProfileMode},
-    job::{Job, JobExecutor},
+    job::{Job, JobAcceptance, JobExecutor, JobPublicationError},
     module::{ImportAttribute, ModuleRepr, metadata::Entry},
 };
 use std::{convert::Infallible, mem::size_of};
@@ -13,8 +13,16 @@ use surgeist_js_ast::scope::{PreparedScopes, ScopeAnalysisError};
 #[derive(Default)]
 struct RecordingExecutor(RefCell<Vec<Job>>);
 impl JobExecutor for RecordingExecutor {
-    fn enqueue_job(self: Rc<Self>, job: Job, _: ContextAccess<'_>) {
+    fn enqueue_job(
+        self: Rc<Self>,
+        job: Job,
+        mut access: ContextAccess<'_>,
+    ) -> Result<JobAcceptance, JobPublicationError> {
+        if let Err(cause) = job.check_publication(access.reborrow()) {
+            return Err(JobPublicationError::new(job, cause));
+        }
         self.0.borrow_mut().push(job);
+        Ok(JobAcceptance::Accepted)
     }
     fn run_jobs(self: Rc<Self>, _: ContextAccess<'_>) -> JsResult<()> {
         panic!("constructor fixtures must not dispatch jobs")

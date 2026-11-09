@@ -25,13 +25,17 @@ fn queued_async_job_refuses_callback_entry_after_a_retained_instruction_stop() {
         .unwrap();
     let callbacks = Rc::new(Cell::new(0));
     let entered = callbacks.clone();
-    context.enqueue_job(
-        NativeAsyncJob::new(move |_| {
-            entered.set(entered.get() + 1);
-            Ok(ContextTask::from_future(async { Ok(JsValue::new(42)) }))
-        })
-        .into(),
-    );
+    context
+        .enqueue_job(
+            NativeAsyncJob::new(move |_| {
+                entered.set(entered.get() + 1);
+                Ok(ContextTask::from_future(async { Ok(JsValue::new(42)) }))
+            })
+            .into(),
+        )
+        .unwrap()
+        .into_result()
+        .unwrap();
     let actual_drain = RefCell::new(None);
     let outcome = context
         .with_execution(ExecutionOptions::new(0), |mut access| {

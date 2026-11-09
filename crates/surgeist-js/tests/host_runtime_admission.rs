@@ -366,14 +366,18 @@ fn dropping_a_direct_executor_releases_job_captures() {
     let mut context = Context::default();
     let dropped = Rc::new(Cell::new(false));
     let probe = Probe(dropped.clone());
-    Rc::new(SimpleJobExecutor::new()).enqueue_job(
-        NativeAsyncJob::new(move |_| {
-            drop(probe);
-            Ok(ContextTask::from_future(async { Ok(JsValue::undefined()) }))
-        })
-        .into(),
-        context.access(),
-    );
+    Rc::new(SimpleJobExecutor::new())
+        .enqueue_job(
+            NativeAsyncJob::new(move |_| {
+                drop(probe);
+                Ok(ContextTask::from_future(async { Ok(JsValue::undefined()) }))
+            })
+            .into(),
+            context.access(),
+        )
+        .unwrap()
+        .into_result()
+        .unwrap();
     assert!(dropped.get());
 }
 

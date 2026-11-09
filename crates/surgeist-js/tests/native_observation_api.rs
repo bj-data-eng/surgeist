@@ -13,7 +13,10 @@ use surgeist_js::{
     builtins::promise::PromiseState,
     error::{EngineError, JsNativeErrorKind, RuntimeLimitError},
     execution::{ExecutionOptions, ExecutionReport},
-    job::{ContextTask, Job, JobExecutor, JobRetirement, JobStatus, JobStep, NativeAsyncJob},
+    job::{
+        ContextTask, Job, JobAcceptance, JobExecutor, JobPublicationError, JobRetirement,
+        JobStatus, JobStep, NativeAsyncJob,
+    },
     object::builtins::{JsFuture, JsPromise},
 };
 
@@ -22,8 +25,16 @@ use surgeist_js::{
 #[derive(Default)]
 struct ManualExecutor(RefCell<VecDeque<Job>>);
 impl JobExecutor for ManualExecutor {
-    fn enqueue_job(self: Rc<Self>, job: Job, _: ContextAccess<'_>) {
+    fn enqueue_job(
+        self: Rc<Self>,
+        job: Job,
+        mut access: ContextAccess<'_>,
+    ) -> Result<JobAcceptance, JobPublicationError> {
+        if let Err(cause) = job.check_publication(access.reborrow()) {
+            return Err(JobPublicationError::new(job, cause));
+        }
         self.0.borrow_mut().push_back(job);
+        Ok(JobAcceptance::Accepted)
     }
     fn run_jobs(self: Rc<Self>, _: ContextAccess<'_>) -> JsResult<()> {
         panic!("this test dispatches the real wrapper explicitly")

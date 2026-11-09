@@ -41,7 +41,13 @@ impl OnMessageQueueSender {
     /// Create a `MessageQueueSender` that sends messages to a message queue
     /// array in the destination context. This type is send/sync and can be
     /// registered in any and many separate `Context` for `postMessage`.
-    pub fn create(destination: &mut Context) -> Self {
+    /// An executor's explicit discard policy returns an inert sender whose
+    /// channel is closed; sending then returns a channel error.
+    ///
+    /// # Errors
+    /// Returns an engine error if publication rejects the receiver or reports
+    /// an accepted failure. Accepted receiver work is never cancelled on error.
+    pub fn create(destination: &mut Context) -> JsResult<Self> {
         let (sender, receiver) = futures::channel::mpsc::unbounded::<JsValueStore>();
 
         let job = NativeAsyncJob::new(move |_| {
@@ -72,9 +78,12 @@ impl OnMessageQueueSender {
             }))
         });
         let observer = job.observer();
-        destination.enqueue_job(job.into());
+        destination
+            .enqueue_job(job.into())
+            .map_err(surgeist_js::job::JobPublicationError::into_error)?
+            .into_result()?;
 
-        Self { sender, observer }
+        Ok(Self { sender, observer })
     }
 
     /// Observes completion, cancellation, or owner loss of the receiving task.

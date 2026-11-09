@@ -14,7 +14,7 @@ use surgeist_js::{
     builtins::promise::PromiseState,
     error::{EngineError, EngineResourceError, RuntimeLimitError},
     execution::{EventFilter, ExecutionOptions, ProfileMode},
-    job::{Job, JobCall, JobExecutor},
+    job::{Job, JobAcceptance, JobCall, JobExecutor, JobPublicationError},
     js_string,
     object::builtins::{JsAsyncGenerator, JsFunction, JsGenerator, JsPromise},
 };
@@ -108,8 +108,16 @@ fn refusal(error: &JsError, limit: u64) {
 #[derive(Default)]
 struct ManualExecutor(RefCell<VecDeque<Job>>);
 impl JobExecutor for ManualExecutor {
-    fn enqueue_job(self: Rc<Self>, job: Job, _: ContextAccess<'_>) {
+    fn enqueue_job(
+        self: Rc<Self>,
+        job: Job,
+        mut access: ContextAccess<'_>,
+    ) -> Result<JobAcceptance, JobPublicationError> {
+        if let Err(cause) = job.check_publication(access.reborrow()) {
+            return Err(JobPublicationError::new(job, cause));
+        }
         self.0.borrow_mut().push_back(job);
+        Ok(JobAcceptance::Accepted)
     }
     fn run_jobs(self: Rc<Self>, _: ContextAccess<'_>) -> JsResult<()> {
         panic!("the fixture dispatches selected jobs explicitly")

@@ -659,7 +659,7 @@ impl SourceTextModule {
                         context.realm().clone(),
                     );
                     capability.associate_required_job(&async_job.observer(), context)?;
-                    context.enqueue_job(async_job.into());
+                    crate::job::finish_publication(context.enqueue_job(async_job.into()))?;
                 }
                 // iii. If state.[[IsLoading]] is false, return unused.
                 if !state.loading.get() {

@@ -37,7 +37,7 @@ fn every_reaction_survives_collection_during_job_enqueue() {
     use crate::{
         Context, JsObject, JsResult, JsValue, NativeFunction,
         builtins::promise::PromiseState,
-        job::{Job, JobExecutor, SimpleJobExecutor},
+        job::{Job, JobAcceptance, JobExecutor, JobPublicationError, SimpleJobExecutor},
         object::builtins::JsPromise,
     };
     use std::rc::Rc;
@@ -46,9 +46,13 @@ fn every_reaction_survives_collection_during_job_enqueue() {
     struct CollectingExecutor(Rc<SimpleJobExecutor>);
 
     impl JobExecutor for CollectingExecutor {
-        fn enqueue_job(self: Rc<Self>, job: Job, context: crate::ContextAccess<'_>) {
+        fn enqueue_job(
+            self: Rc<Self>,
+            job: Job,
+            context: crate::ContextAccess<'_>,
+        ) -> Result<JobAcceptance, JobPublicationError> {
             context.runtime().collect().unwrap();
-            self.0.clone().enqueue_job(job, context);
+            self.0.clone().enqueue_job(job, context)
         }
 
         fn run_jobs(self: Rc<Self>, context: crate::ContextAccess<'_>) -> JsResult<()> {

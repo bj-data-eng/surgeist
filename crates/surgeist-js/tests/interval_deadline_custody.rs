@@ -76,7 +76,11 @@ fn interval_rescheduling_overflow_returns_a_host_error_without_losing_the_reside
     let calls = Rc::new(Cell::new(0));
     let drops = Rc::new(Cell::new(0));
     let (interval, token) = self_cancelling_interval(&publisher, calls.clone(), drops.clone());
-    publisher.enqueue_job(interval.into()); // Initial 1s + 1ms is representable.
+    publisher
+        .enqueue_job(interval.into())
+        .unwrap()
+        .into_result()
+        .unwrap(); // Initial 1s + 1ms is representable.
     assert!(!token.revoked());
     let outcome = catch_unwind(AssertUnwindSafe(|| {
         overflowing.with_execution(ExecutionOptions::new(0), |mut access| access.run_jobs())
@@ -132,7 +136,11 @@ fn a_representable_peer_deadline_executes_the_same_self_cancelling_interval_once
     let calls = Rc::new(Cell::new(0));
     let drops = Rc::new(Cell::new(0));
     let (interval, token) = self_cancelling_interval(&publisher, calls.clone(), drops.clone());
-    publisher.enqueue_job(interval.into());
+    publisher
+        .enqueue_job(interval.into())
+        .unwrap()
+        .into_result()
+        .unwrap();
     assert_eq!(calls.get(), 0);
     assert_eq!(drops.get(), 0);
     let completed = receiver

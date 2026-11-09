@@ -17,10 +17,19 @@ use surgeist_js::{
         ProfileMode,
     },
     job::{
-        ContextTask, GenericJob, IntervalJob, Job, JobCall, JobExecutor, JobInvocation, JobStep,
-        NativeAsyncJob, NativeJob, NativeJobFn, PromiseJob, SimpleJobExecutor, TimeoutJob,
+        ContextTask, GenericJob, IntervalJob, Job, JobAcceptance, JobCall, JobExecutor,
+        JobInvocation, JobPublicationCause, JobPublicationError, JobStep, NativeAsyncJob,
+        NativeJob, NativeJobFn, PromiseJob, SimpleJobExecutor, TimeoutJob,
     },
 };
+
+fn vm_context() -> Context {
+    let builder = Context::builder();
+    // Keep the independent fuzz guard from preempting operation-limit stimuli.
+    #[cfg(feature = "fuzz")]
+    let builder = builder.instructions_remaining(1_000_000);
+    builder.build().unwrap()
+}
 
 thread_local! { static TIME: Cell<Duration> = const { Cell::new(Duration::ZERO) }; static CLOCK_READS: Cell<usize> = const { Cell::new(0) }; }
 fn clock() -> Duration {
@@ -337,12 +346,12 @@ fn every_wrapper_delegates_to_exactly_one_synchronous_invocation_owner() {
 }
 #[test]
 fn callback_vm_instructions_retain_their_own_units_beside_job_invocation() {
-    let control = Context::default()
+    let control = vm_context()
         .eval_with_budget(Source::from_bytes("40 + 2"), ExecutionOptions::new(64))
         .unwrap();
     assert_eq!(control.result.unwrap(), JsValue::new(42));
     assert!(control.report.instructions().unwrap() > 0);
-    let mut context = Context::default();
+    let mut context = vm_context();
     let outcome = context
         .with_execution(
             ExecutionOptions::new(64).with_job_invocation_limit(1),
@@ -420,7 +429,7 @@ fn reentry_preserves_the_first_invocation_stop_over_success_and_later_job_dimens
 fn availability_realm_validation_and_preexisting_stops_do_not_charge_new_job_units() {
     let foreign = Context::default();
     let foreign_realm = foreign.realm().clone();
-    let mut context = Context::default();
+    let mut context = vm_context();
     let calls = Rc::new(Cell::new(0));
     let outcome = context
         .with_execution(
@@ -521,16 +530,32 @@ struct InlineExecutor {
     deferred: RefCell<Vec<Job>>,
 }
 impl JobExecutor for InlineExecutor {
-    fn enqueue_job(self: Rc<Self>, job: Job, access: ContextAccess<'_>) {
+    fn enqueue_job(
+        self: Rc<Self>,
+        job: Job,
+        mut access: ContextAccess<'_>,
+    ) -> Result<JobAcceptance, JobPublicationError> {
+        if let Err(cause) = job.check_publication(access.reborrow()) {
+            return Err(JobPublicationError::new(job, cause));
+        }
         let Job::PromiseJob(job) = job else {
             panic!("only authored promise jobs are sent here")
         };
-        match job.call(access) {
-            JobCall::Complete(Ok(_)) => {}
-            JobCall::Complete(Err(error)) => self.errors.borrow_mut().push(error),
+        match job.call(access.reborrow()) {
+            JobCall::Complete(Ok(_)) => Ok(JobAcceptance::Accepted),
+            JobCall::Complete(Err(error)) => {
+                let cause = JobPublicationCause::try_new(error.clone(), access.reborrow());
+                self.errors.borrow_mut().push(error);
+                match cause {
+                    Ok(cause) => Ok(JobAcceptance::AcceptedWithError(cause)),
+                    // Preserve the fixture's recorded catchable callback-error policy.
+                    Err(_catchable) => Ok(JobAcceptance::Accepted),
+                }
+            }
             JobCall::Deferred { job, error } => {
                 self.deferred.borrow_mut().push(job.into());
                 self.errors.borrow_mut().push(error);
+                Ok(JobAcceptance::Accepted)
             }
         }
     }
@@ -553,15 +578,25 @@ fn inline_executor_dispatch_cannot_bypass_the_selected_job_invocation_cap() {
         .with_execution(
             ExecutionOptions::new(0).with_job_invocation_limit(1),
             |mut access| {
-                for _ in 0..2 {
+                for attempt in 0..2 {
                     let c = calls.clone();
-                    access.enqueue_job(
-                        PromiseJob::new(move |_| {
-                            c.set(c.get() + 1);
-                            Ok(JsValue::new(42))
-                        })
-                        .into(),
-                    );
+                    let accepted = access
+                        .enqueue_job(
+                            PromiseJob::new(move |_| {
+                                c.set(c.get() + 1);
+                                Ok(JsValue::new(42))
+                            })
+                            .into(),
+                        )
+                        .unwrap();
+                    if attempt == 0 {
+                        assert!(matches!(accepted, JobAcceptance::Accepted));
+                    } else {
+                        assert!(
+                            matches!(accepted, JobAcceptance::Accepted),
+                            "fallback storage accepts custody of the refused callback"
+                        );
+                    }
                 }
                 Ok(())
             },
@@ -637,15 +672,19 @@ fn queued_jobs_use_the_draining_operation_instead_of_capturing_enqueue_caps() {
                 .with_job_preparation_limit(0)
                 .with_job_poll_limit(0),
             |mut access| {
-                access.enqueue_job(
-                    NativeAsyncJob::new(move |_| {
-                        Ok(ContextTask::from_future(async move {
-                            c.set(c.get() + 1);
-                            Ok(JsValue::new(42))
-                        }))
-                    })
-                    .into(),
-                );
+                access
+                    .enqueue_job(
+                        NativeAsyncJob::new(move |_| {
+                            Ok(ContextTask::from_future(async move {
+                                c.set(c.get() + 1);
+                                Ok(JsValue::new(42))
+                            }))
+                        })
+                        .into(),
+                    )
+                    .unwrap()
+                    .into_result()
+                    .unwrap();
                 Ok(())
             },
         )

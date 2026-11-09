@@ -599,7 +599,7 @@ impl ImportCall {
             context.realm().clone(),
         );
         cap.associate_primary_job(&job.observer(), context)?;
-        context.enqueue_job(job.into());
+        crate::job::finish_publication(context.enqueue_job(job.into()))?;
 
         // 9. Return promiseCapability.[[Promise]].
         context.vm.set_register(specifier_op.into(), promise.into());

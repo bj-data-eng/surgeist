@@ -84,7 +84,8 @@ impl Default for JsAbortSignal {
 impl JsAbortSignal {
     /// # Errors
     ///
-    /// Returns an error if the signal has already been aborted.
+    /// Returns the first listener publication error after completing the
+    /// committed abort and attempting every listener publication.
     pub fn signal_abort(&self, reason: JsValue, mut context: ContextAccess<'_>) -> JsResult<()> {
         if self.aborted.get() {
             return Ok(());
@@ -102,8 +103,9 @@ impl JsAbortSignal {
             .collect();
 
         let realm = context.realm().clone();
+        let mut publication_error = None;
         for listener in listeners {
-            context.enqueue_job(
+            let publication = context.enqueue_job(
                 GenericJob::new(
                     move |context| {
                         listener.call(&JsValue::undefined(), &[], context)?;
@@ -113,11 +115,19 @@ impl JsAbortSignal {
                 )
                 .into(),
             );
+            let result = publication
+                .map_err(surgeist_js::job::JobPublicationError::into_error)
+                .and_then(surgeist_js::job::JobAcceptance::into_result);
+            if let Err(error) = result {
+                if publication_error.is_none() {
+                    publication_error = Some(error);
+                }
+            }
         }
 
         self.cancel_token.cancel();
 
-        Ok(())
+        publication_error.map_or(Ok(()), Err)
     }
 
     /// Returns `true` if this signal has been aborted.

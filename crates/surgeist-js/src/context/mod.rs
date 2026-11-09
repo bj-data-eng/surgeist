@@ -727,8 +727,21 @@ impl Context {
 
     /// Enqueues a [`Job`] on the [`JobExecutor`].
     #[inline]
-    pub fn enqueue_job(&mut self, job: Job) {
-        self.job_executor().enqueue_job(job, self.access());
+    ///
+    /// # Errors
+    /// Returns the exact original input if the executor rejects it before
+    /// acceptance. Accepted inline failures have a distinct disposition.
+    pub fn enqueue_job(
+        &mut self,
+        job: Job,
+    ) -> Result<crate::job::JobAcceptance, crate::job::JobPublicationError> {
+        match self.job_executor().enqueue_job(job, self.access()) {
+            Ok(crate::job::JobAcceptance::AcceptedWithError(cause)) => Ok(
+                crate::job::JobAcceptance::AcceptedWithError(cause.admit(self)),
+            ),
+            Ok(acceptance) => Ok(acceptance),
+            Err(error) => Err(error.admit(self)),
+        }
     }
 
     /// Runs all the jobs with the provided job executor.
@@ -769,12 +782,15 @@ impl Context {
     }
 
     pub(crate) fn check_realm(&self, realm: &Realm) -> JsResult<()> {
-        if !self.runtime().same_heap(&realm.runtime()) {
-            return Err(JsNativeError::typ()
-                .with_message("realm belongs to a different runtime")
-                .into());
-        }
-        Ok(())
+        crate::error::check_realm_ownership(self.runtime(), self.realm().identity(), realm)
+            .map_err(crate::error::RealmOwnershipMismatch::into_direct)
+    }
+
+    pub(crate) fn check_publication_realm(
+        &self,
+        realm: &Realm,
+    ) -> Result<(), crate::error::RealmOwnershipMismatch> {
+        crate::error::check_realm_ownership(self.runtime(), self.realm().identity(), realm)
     }
 
     /// Create a new Realm with the default global bindings.
@@ -905,15 +921,41 @@ impl Context {
         self.job_lifetime.id()
     }
 
+    pub(crate) fn prepare_simple_job_queue(
+        &mut self,
+    ) -> Result<(), crate::error::EngineResourceError> {
+        self.simple_job_queues
+            .len()
+            .checked_add(1)
+            .and_then(|count| count.checked_mul(std::mem::size_of::<Rc<RuntimeJobQueues>>()))
+            .filter(|bytes| *bytes <= isize::MAX as usize)
+            .ok_or(crate::error::EngineResourceError::SizeOverflow)?;
+        self.simple_job_queues
+            .try_reserve(1)
+            .map_err(|_| crate::error::EngineResourceError::Allocation)?;
+        // Dispose obsolete queue custody before acquiring the executor registry.
+        let mut index = 0;
+        while index < self.simple_job_queues.len() {
+            let obsolete = self
+                .simple_job_queues
+                .get(index)
+                .is_some_and(|queue| Rc::weak_count(queue) == 0);
+            if obsolete {
+                drop(self.simple_job_queues.remove(index));
+            } else {
+                index += 1;
+            }
+        }
+        Ok(())
+    }
+
     pub(crate) fn retain_simple_job_queue(&mut self, queue: &Rc<RuntimeJobQueues>) {
         if !self
             .simple_job_queues
             .iter()
             .any(|attached| Rc::ptr_eq(attached, queue))
         {
-            // A queue has a weak registry entry while its executor is alive.
-            self.simple_job_queues
-                .retain(|attached| Rc::weak_count(attached) != 0);
+            // Attachment reserved this slot before publishing either owner link.
             self.simple_job_queues.push(Rc::clone(queue));
         }
     }
@@ -1483,7 +1525,7 @@ impl ContextBuilder {
         };
 
         if let Some(executor) = context.downcast_job_executor::<SimpleJobExecutor>() {
-            executor.attach_context(&mut context);
+            executor.attach_context(&mut context)?;
         }
         builtins::set_default_global_bindings(&mut context)?;
 
