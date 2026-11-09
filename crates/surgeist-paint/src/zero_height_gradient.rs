@@ -1,8 +1,8 @@
 //! Native zero-height radial color projection. No replacement axes are created.
 
 use crate::{
-    GradientPosition, GradientStopItem, PaintError, PaintOptions, PaintReport, RadialGradientCase,
-    RadialGradientGeometry, ResourceKind, WorkKind,
+    GradientPosition, GradientStopItem, PaintError, PaintOptions, PaintPhase, PaintReport,
+    RadialGradientCase, RadialGradientGeometry, ResourceKind, WorkKind,
     accounting::{
         Meter, OperationKind, allocate, apply, bytes, charge, finish, release, setup_error,
     },
@@ -267,23 +267,26 @@ pub fn resolve_zero_height_gradient_colors<'a, C>(
 
 fn setup_scopes(meter: &mut Meter) -> Result<[Scope; 6], PaintError> {
     let mut scopes = [meter.root(); 6];
-    for (slot, name) in scopes.iter_mut().zip([
-        "gradient_validate",
-        "gradient_stop_resolution",
-        "gradient_stop_fixup",
-        "gradient_stop_distribution",
-        "publication",
-        "cleanup",
+    for (slot, phase) in scopes.iter_mut().zip([
+        PaintPhase::GradientValidation,
+        PaintPhase::GradientStopResolution,
+        PaintPhase::GradientStopFixup,
+        PaintPhase::GradientStopDistribution,
+        PaintPhase::Publication,
+        PaintPhase::Cleanup,
     ]) {
-        *slot = meter
-            .child(meter.root(), name, Limits::unlimited(), Tariffs::identity())
-            .map_err(setup_error)?;
+        *slot = meter.child(
+            meter.root(),
+            phase,
+            Limits::unlimited(),
+            Tariffs::identity(),
+        )?;
     }
     Ok(scopes)
 }
 
 fn lex_less(
-    work: &mut StopWork<'_, '_>,
+    work: &mut StopWork<'_, '_, '_>,
     a: GradientPosition,
     b: GradientPosition,
 ) -> Result<bool, PaintError> {
@@ -321,7 +324,7 @@ fn selected(position: GradientPosition, fraction: bool) -> f64 {
 }
 
 fn project<C>(
-    work: &mut StopWork<'_, '_>,
+    work: &mut StopWork<'_, '_, '_>,
     source: &[GradientStopItem<C>],
     pairs: &[UsedGradientRecord<GradientPosition>],
     normalized: &mut Vec<UsedGradientRecord<Normalized>>,
@@ -393,7 +396,7 @@ fn loss<P, Q>(left: UsedGradientRecord<P>, right: UsedGradientRecord<Q>) -> Pain
 }
 
 fn uniform<C>(
-    work: &mut StopWork<'_, '_>,
+    work: &mut StopWork<'_, '_, '_>,
     source: &[GradientStopItem<C>],
     pairs: &[UsedGradientRecord<GradientPosition>],
     weights: &mut Vec<UsedGradientRecord>,
@@ -430,7 +433,7 @@ fn uniform<C>(
 }
 
 fn weighted<C>(
-    work: &mut StopWork<'_, '_>,
+    work: &mut StopWork<'_, '_, '_>,
     source: &[GradientStopItem<C>],
     normalized: &[UsedGradientRecord<Normalized>],
     weights: &mut Vec<UsedGradientRecord>,
@@ -501,7 +504,7 @@ struct Distance {
     exponent: i32,
 }
 impl Distance {
-    fn positive(work: &mut StopWork<'_, '_>, value: f64) -> Result<Self, PaintError> {
+    fn positive(work: &mut StopWork<'_, '_, '_>, value: f64) -> Result<Self, PaintError> {
         let bits = work.numeric(|| value.to_bits())?;
         let raw = work.numeric(|| (bits >> 52) & 0x7ff)?;
         if work.numeric(|| raw == 0)? {
@@ -517,7 +520,7 @@ impl Distance {
         let exponent = work.numeric(|| raw - 1023)?;
         Ok(Self { mantissa, exponent })
     }
-    fn between(work: &mut StopWork<'_, '_>, a: f64, b: f64) -> Result<Self, PaintError> {
+    fn between(work: &mut StopWork<'_, '_, '_>, a: f64, b: f64) -> Result<Self, PaintError> {
         let difference = work.numeric(|| b - a)?;
         if work.numeric(|| difference.is_finite())? {
             Self::positive(work, difference)
@@ -530,7 +533,7 @@ impl Distance {
             Ok(result)
         }
     }
-    fn ratio(self, work: &mut StopWork<'_, '_>, denominator: Self) -> Result<f64, PaintError> {
+    fn ratio(self, work: &mut StopWork<'_, '_, '_>, denominator: Self) -> Result<f64, PaintError> {
         let quotient = work.numeric(|| self.mantissa / denominator.mantissa)?;
         let exponent = work.numeric(|| self.exponent - denominator.exponent)?;
         if work.numeric(|| exponent < -1075)? {
@@ -549,7 +552,7 @@ impl Distance {
         }
     }
 }
-fn power(work: &mut StopWork<'_, '_>, exponent: i32) -> Result<f64, PaintError> {
+fn power(work: &mut StopWork<'_, '_, '_>, exponent: i32) -> Result<f64, PaintError> {
     let biased = work.numeric(|| exponent + 1023)?;
     let biased = work.numeric(|| biased as u64)?;
     let bits = work.numeric(|| biased << 52)?;
@@ -561,14 +564,14 @@ struct Range {
     span: Distance,
 }
 impl Range {
-    fn new(work: &mut StopWork<'_, '_>, a: f64, b: f64) -> Result<Self, PaintError> {
+    fn new(work: &mut StopWork<'_, '_, '_>, a: f64, b: f64) -> Result<Self, PaintError> {
         Ok(Self {
             a,
             b,
             span: Distance::between(work, a, b)?,
         })
     }
-    fn normalize(&self, work: &mut StopWork<'_, '_>, value: f64) -> Result<f64, PaintError> {
+    fn normalize(&self, work: &mut StopWork<'_, '_, '_>, value: f64) -> Result<f64, PaintError> {
         if work.numeric(|| value == self.a)? {
             return Ok(0.0);
         }
@@ -636,10 +639,7 @@ mod tests {
                 Distance::positive(&mut StopWork::new(p, scopes[3]), 1.5)
             })
             .unwrap();
-        (
-            result,
-            PaintReport::new(meter.finish().unwrap().unwrap()).unwrap(),
-        )
+        (result, meter.finish().unwrap().unwrap())
     }
 
     #[test]

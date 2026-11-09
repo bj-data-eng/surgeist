@@ -5,8 +5,8 @@
 Start with the explicit `PaintLimits::unlimited()` policy, then select named
 `with_work_limit` and `with_resource_limit` caps and pass the limits to
 `PaintOptions::new`. Named getters expose the selected policy. Zero limits are
-meaningful. `PaintReport` exposes named phase/refusal/event views backed by
-Ledger; callers do not depend on an internal numeric schema.
+meaningful. `PaintReport` exposes phase/refusal/event values resolved from Ledger
+at construction; callers do not depend on numeric scope identities or name parsing.
 `plan_stacking`, `plan_paint_order`, `resolve_linear_gradient` and
 `resolve_gradient_stops`, `resolve_radial_gradient` and
 `resolve_zero_height_gradient_colors` each apply this policy to one complete operation.
@@ -36,6 +36,11 @@ Select Ledger `ProfileMode::Off`, untimed/timed Summary, or bounded Detailed
 observation. A supplied monotonic clock is configured with `with_clock`.
 Detailed event loss does not change totals or admission. Timing phases surround
 the actual synchronous algorithm; no async or GPU timing is claimed.
+
+Retain or borrow the owned `PaintReport`; it has no allocating `Clone` operation.
+Its resolved observation storage is reserved fallibly during setup. Match
+`AccountingFailure::LedgerDefect` to inspect the original named Ledger defect;
+Paint's own report-construction inconsistencies use `AccountingFailure::Invariant`.
 
 ## Check the crate
 

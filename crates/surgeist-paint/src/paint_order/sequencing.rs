@@ -43,7 +43,7 @@ mod growth_tests {
                 (accepted, old_bytes, new_bytes)
             })
             .unwrap();
-        let report = PaintReport::new(meter.finish().unwrap().unwrap()).unwrap();
+        let report = meter.finish().unwrap().unwrap();
         assert_eq!(report.live(ResourceKind::ScratchBytes), 0);
         assert_eq!(report.live(ResourceKind::RetainedResultBytes), 0);
         (accepted, old_bytes, new_bytes, report)
@@ -155,7 +155,7 @@ pub(super) struct SequenceState {
 impl SequenceState {
     pub(super) fn scratch_cleanup(
         &mut self,
-        p: &mut PhaseMeter<'_>,
+        p: &mut PhaseMeter<'_, '_>,
         root: Scope,
     ) -> Result<(), PaintError> {
         macro_rules! drop_scratch {
@@ -183,7 +183,7 @@ impl SequenceState {
 
     pub(super) fn result_cleanup(
         &mut self,
-        p: &mut PhaseMeter<'_>,
+        p: &mut PhaseMeter<'_, '_>,
         root: Scope,
     ) -> Result<(), PaintError> {
         release(
@@ -200,7 +200,7 @@ impl SequenceState {
 fn capacity<T: Copy>(
     values: &mut Vec<T>,
     wanted: usize,
-    p: &mut PhaseMeter<'_>,
+    p: &mut PhaseMeter<'_, '_>,
     root: Scope,
     phase: Scope,
 ) -> Result<(), PaintError> {
@@ -219,12 +219,12 @@ fn capacity<T: Copy>(
     Ok(())
 }
 
-struct Sequencer<'a, 'p, 'm> {
+struct Sequencer<'a, 'p, 'm, 'operation> {
     request: PaintRequest<'a>,
     core: &'p algorithm::State,
     index: &'p PaintIndex,
     state: &'p mut SequenceState,
-    p: &'p mut PhaseMeter<'m>,
+    p: &'p mut PhaseMeter<'m, 'operation>,
     root: Scope,
     phase: Scope,
 }
@@ -234,7 +234,7 @@ pub(super) fn run(
     core: &algorithm::State,
     index: &PaintIndex,
     state: &mut SequenceState,
-    p: &mut PhaseMeter<'_>,
+    p: &mut PhaseMeter<'_, '_>,
     root: Scope,
     phase: Scope,
 ) -> Result<(), PaintError> {
@@ -272,7 +272,7 @@ pub(super) fn run(
     Ok(())
 }
 
-impl Sequencer<'_, '_, '_> {
+impl Sequencer<'_, '_, '_, '_> {
     fn work(&mut self, kind: WorkKind, amount: usize) -> Result<(), PaintError> {
         charge(self.p, self.phase, kind, amount)
     }
@@ -593,7 +593,7 @@ impl Sequencer<'_, '_, '_> {
     }
 }
 
-impl Sequencer<'_, '_, '_> {
+impl Sequencer<'_, '_, '_, '_> {
     fn own_decoration(&mut self, invocation: Invocation) -> Result<(), PaintError> {
         let owner = invocation.box_id;
         let root = owner == self.request.root();

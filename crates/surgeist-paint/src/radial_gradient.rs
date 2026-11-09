@@ -1,5 +1,5 @@
 use crate::{
-    GradientPosition, GradientPositionComponent, PaintError, PaintOptions, PaintReport,
+    GradientPosition, GradientPositionComponent, PaintError, PaintOptions, PaintPhase, PaintReport,
     ResourceKind, WorkKind,
     accounting::{Meter, OperationKind, PhaseMeter, apply, bytes, charge, finish, setup_error},
 };
@@ -184,25 +184,28 @@ pub fn resolve_radial_gradient(
 
 fn setup_scopes(meter: &mut Meter) -> Result<[Scope; 4], PaintError> {
     let mut scopes = [meter.root(); 4];
-    for (slot, name) in scopes.iter_mut().zip([
-        "gradient_validate",
-        "gradient_geometry",
-        "publication",
-        "cleanup",
+    for (slot, phase) in scopes.iter_mut().zip([
+        PaintPhase::GradientValidation,
+        PaintPhase::GradientGeometry,
+        PaintPhase::Publication,
+        PaintPhase::Cleanup,
     ]) {
-        *slot = meter
-            .child(meter.root(), name, Limits::unlimited(), Tariffs::identity())
-            .map_err(setup_error)?;
+        *slot = meter.child(
+            meter.root(),
+            phase,
+            Limits::unlimited(),
+            Tariffs::identity(),
+        )?;
     }
     Ok(scopes)
 }
 
-struct RadialWork<'a, 'b> {
-    meter: &'a mut PhaseMeter<'b>,
+struct RadialWork<'a, 'b, 'operation> {
+    meter: &'a mut PhaseMeter<'b, 'operation>,
     scope: Scope,
 }
-impl<'a, 'b> RadialWork<'a, 'b> {
-    fn new(meter: &'a mut PhaseMeter<'b>, scope: Scope) -> Self {
+impl<'a, 'b, 'operation> RadialWork<'a, 'b, 'operation> {
+    fn new(meter: &'a mut PhaseMeter<'b, 'operation>, scope: Scope) -> Self {
         Self { meter, scope }
     }
     // One validation unit admits an input scalar's full domain check or one
@@ -224,7 +227,7 @@ impl<'a, 'b> RadialWork<'a, 'b> {
 }
 
 fn validate(
-    work: &mut RadialWork<'_, '_>,
+    work: &mut RadialWork<'_, '_, '_>,
     box_size: Size<f64>,
     center: Option<Point<f64>>,
     ending_size: RadialGradientSize,
@@ -267,7 +270,7 @@ fn validate(
 }
 
 fn validate_position(
-    work: &mut RadialWork<'_, '_>,
+    work: &mut RadialWork<'_, '_, '_>,
     axis: PhysicalAxis,
     position: GradientPosition,
 ) -> Result<(), PaintError> {
@@ -289,7 +292,7 @@ fn validate_position(
 }
 
 fn geometry(
-    work: &mut RadialWork<'_, '_>,
+    work: &mut RadialWork<'_, '_, '_>,
     box_size: Size<f64>,
     center: Option<Point<f64>>,
     ending_size: RadialGradientSize,
@@ -328,7 +331,7 @@ fn geometry(
     Ok(RadialGradientGeometry { center, case })
 }
 
-fn center_half(work: &mut RadialWork<'_, '_>, dimension: f64) -> Result<f64, PaintError> {
+fn center_half(work: &mut RadialWork<'_, '_, '_>, dimension: f64) -> Result<f64, PaintError> {
     let half = work.numeric(|| dimension * 0.5)?;
     if work.numeric(|| dimension > 0.0)? && work.numeric(|| half == 0.0)? {
         return unrepresentable();
@@ -337,7 +340,7 @@ fn center_half(work: &mut RadialWork<'_, '_>, dimension: f64) -> Result<f64, Pai
 }
 
 fn positive_ellipse(
-    work: &mut RadialWork<'_, '_>,
+    work: &mut RadialWork<'_, '_, '_>,
     x: f64,
     y: f64,
 ) -> Result<ResolvedCase, PaintError> {
@@ -351,7 +354,7 @@ fn positive_ellipse(
 }
 
 fn affine_radius(
-    work: &mut RadialWork<'_, '_>,
+    work: &mut RadialWork<'_, '_, '_>,
     position: GradientPosition,
     dimension: f64,
     axis: PhysicalAxis,
@@ -385,7 +388,7 @@ fn corner(extent: RadialGradientExtent) -> bool {
 }
 
 fn zero_axis(
-    work: &mut RadialWork<'_, '_>,
+    work: &mut RadialWork<'_, '_, '_>,
     dimension: f64,
     center: f64,
     near: bool,
@@ -398,7 +401,7 @@ fn zero_axis(
 }
 
 fn side_distance(
-    work: &mut RadialWork<'_, '_>,
+    work: &mut RadialWork<'_, '_, '_>,
     dimension: f64,
     center: f64,
     near: bool,
@@ -432,7 +435,7 @@ fn side_distance(
 }
 
 fn circle_extent(
-    work: &mut RadialWork<'_, '_>,
+    work: &mut RadialWork<'_, '_, '_>,
     size: Size<f64>,
     center: Point<f64>,
     extent: RadialGradientExtent,
@@ -459,7 +462,7 @@ fn circle_extent(
 }
 
 fn ellipse_extent(
-    work: &mut RadialWork<'_, '_>,
+    work: &mut RadialWork<'_, '_, '_>,
     size: Size<f64>,
     center: Point<f64>,
     extent: RadialGradientExtent,
@@ -493,7 +496,7 @@ struct Dyadic {
 
 /// Decodes a finite nonzero f64 as odd-significand * 2^exponent. The input
 /// precondition is established by validation and exact_affine_zero's zero guards.
-fn dyadic(work: &mut RadialWork<'_, '_>, value: f64) -> Result<Dyadic, PaintError> {
+fn dyadic(work: &mut RadialWork<'_, '_, '_>, value: f64) -> Result<Dyadic, PaintError> {
     let bits = work.numeric(|| value.to_bits())?;
     let exponent_field = work.numeric(|| (bits >> 52) & 0x7ff)?;
     let fraction = work.numeric(|| bits & 0x000f_ffff_ffff_ffff)?;
@@ -515,7 +518,7 @@ fn dyadic(work: &mut RadialWork<'_, '_>, value: f64) -> Result<Dyadic, PaintErro
 }
 
 fn exact_affine_zero(
-    work: &mut RadialWork<'_, '_>,
+    work: &mut RadialWork<'_, '_, '_>,
     a: f64,
     b: f64,
     c: f64,
@@ -584,10 +587,7 @@ mod tests {
                 exact_affine_zero(&mut RadialWork::new(p, scopes[1]), a, b, c)
             })
             .unwrap();
-        (
-            result,
-            PaintReport::new(meter.finish().unwrap().unwrap()).unwrap(),
-        )
+        (result, meter.finish().unwrap().unwrap())
     }
 
     #[test]

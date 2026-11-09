@@ -311,6 +311,13 @@ fn fixed_phase_timing_detail_loss_and_off_untimed_preserve_work_and_outcomes() {
         assert_eq!(phase.elapsed(), Some(Duration::from_nanos(1)));
     }
     assert_eq!(READS.with(Cell::get), 20);
+    let mut exact_limits = PaintLimits::unlimited();
+    for &kind in WorkKind::ALL {
+        exact_limits = exact_limits.with_work_limit(kind, baseline.work(kind));
+    }
+    for &kind in ResourceKind::ALL {
+        exact_limits = exact_limits.with_resource_limit(kind, baseline.peak(kind));
+    }
     for profile in [
         ProfileMode::Off,
         ProfileMode::Summary { timing: false },
@@ -327,7 +334,7 @@ fn fixed_phase_timing_detail_loss_and_off_untimed_preserve_work_and_outcomes() {
     ] {
         let outcome = plan_paint_order(
             fixture.request(),
-            PaintOptions::new(PaintLimits::unlimited(), profile).with_clock(forbidden_clock),
+            PaintOptions::new(exact_limits, profile).with_clock(forbidden_clock),
         );
         assert_eq!(events(&outcome.result.unwrap()), expected);
         if let Some(report) = outcome.report {

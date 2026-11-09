@@ -1,5 +1,5 @@
 use crate::{
-    PaintError, PaintOptions, PaintReport, ResourceKind, WorkKind,
+    PaintError, PaintOptions, PaintPhase, PaintReport, ResourceKind, WorkKind,
     accounting::{
         Meter, OperationKind, PhaseMeter, allocate, apply, bytes, charge, finish, release,
         setup_error,
@@ -265,30 +265,33 @@ pub fn resolve_gradient_stops<'a, C>(
 
 fn setup_scopes(meter: &mut Meter) -> Result<[Scope; 6], PaintError> {
     let mut scopes = [meter.root(); 6];
-    for (slot, name) in scopes.iter_mut().zip([
-        "gradient_validate",
-        "gradient_stop_resolution",
-        "gradient_stop_fixup",
-        "gradient_stop_distribution",
-        "publication",
-        "cleanup",
+    for (slot, phase) in scopes.iter_mut().zip([
+        PaintPhase::GradientValidation,
+        PaintPhase::GradientStopResolution,
+        PaintPhase::GradientStopFixup,
+        PaintPhase::GradientStopDistribution,
+        PaintPhase::Publication,
+        PaintPhase::Cleanup,
     ]) {
-        *slot = meter
-            .child(meter.root(), name, Limits::unlimited(), Tariffs::identity())
-            .map_err(setup_error)?;
+        *slot = meter.child(
+            meter.root(),
+            phase,
+            Limits::unlimited(),
+            Tariffs::identity(),
+        )?;
     }
     Ok(scopes)
 }
 
-pub(crate) struct StopWork<'a, 'b> {
-    meter: &'a mut PhaseMeter<'b>,
+pub(crate) struct StopWork<'a, 'b, 'operation> {
+    meter: &'a mut PhaseMeter<'b, 'operation>,
     scope: Scope,
 }
-impl<'a, 'b> StopWork<'a, 'b> {
-    pub(crate) fn new(meter: &'a mut PhaseMeter<'b>, scope: Scope) -> Self {
+impl<'a, 'b, 'operation> StopWork<'a, 'b, 'operation> {
+    pub(crate) fn new(meter: &'a mut PhaseMeter<'b, 'operation>, scope: Scope) -> Self {
         Self { meter, scope }
     }
-    pub(crate) fn meter(&mut self) -> &mut PhaseMeter<'b> {
+    pub(crate) fn meter(&mut self) -> &mut PhaseMeter<'b, 'operation> {
         self.meter
     }
     // A validation unit is one scalar's complete domain check, one emptiness
@@ -353,7 +356,7 @@ impl<'a, 'b> StopWork<'a, 'b> {
 }
 
 fn validate<C>(
-    work: &mut StopWork<'_, '_>,
+    work: &mut StopWork<'_, '_, '_>,
     line_length: f64,
     source: &[GradientStopItem<C>],
 ) -> Result<usize, PaintError> {
@@ -370,7 +373,7 @@ pub(crate) struct ValidatedStops {
 }
 
 pub(crate) fn validate_source<C>(
-    work: &mut StopWork<'_, '_>,
+    work: &mut StopWork<'_, '_, '_>,
     source: &[GradientStopItem<C>],
 ) -> Result<ValidatedStops, PaintError> {
     if work.validation(|| source.is_empty())? {
@@ -433,7 +436,7 @@ pub(crate) fn validate_source<C>(
 }
 
 fn validate_position(
-    work: &mut StopWork<'_, '_>,
+    work: &mut StopWork<'_, '_, '_>,
     source_index: usize,
     position_index: usize,
     position: GradientPosition,
@@ -458,7 +461,7 @@ fn validate_position(
 }
 
 fn affine(
-    work: &mut StopWork<'_, '_>,
+    work: &mut StopWork<'_, '_, '_>,
     line_length: f64,
     source_index: usize,
     position_index: usize,
@@ -478,7 +481,7 @@ fn affine(
 }
 
 fn expand<C>(
-    work: &mut StopWork<'_, '_>,
+    work: &mut StopWork<'_, '_, '_>,
     line_length: f64,
     source: &[GradientStopItem<C>],
     records: &mut Vec<UsedGradientRecord>,
@@ -495,12 +498,12 @@ fn expand<C>(
 }
 
 pub(crate) fn expand_with<C, P: Copy>(
-    work: &mut StopWork<'_, '_>,
+    work: &mut StopWork<'_, '_, '_>,
     source: &[GradientStopItem<C>],
     records: &mut Vec<UsedGradientRecord<P>>,
     omitted: P,
     mut resolve: impl FnMut(
-        &mut StopWork<'_, '_>,
+        &mut StopWork<'_, '_, '_>,
         usize,
         usize,
         GradientPosition,
@@ -559,7 +562,7 @@ pub(crate) fn expand_with<C, P: Copy>(
 }
 
 pub(crate) fn originally_omitted<C, P>(
-    work: &mut StopWork<'_, '_>,
+    work: &mut StopWork<'_, '_, '_>,
     source: &[GradientStopItem<C>],
     record: UsedGradientRecord<P>,
 ) -> Result<bool, PaintError> {
@@ -573,7 +576,7 @@ pub(crate) fn originally_omitted<C, P>(
 }
 
 pub(crate) fn interior_omitted<C, P>(
-    work: &mut StopWork<'_, '_>,
+    work: &mut StopWork<'_, '_, '_>,
     source: &[GradientStopItem<C>],
     record: UsedGradientRecord<P>,
     index: usize,
@@ -584,7 +587,7 @@ pub(crate) fn interior_omitted<C, P>(
 }
 
 fn fixup<C>(
-    work: &mut StopWork<'_, '_>,
+    work: &mut StopWork<'_, '_, '_>,
     line_length: f64,
     source: &[GradientStopItem<C>],
     records: &mut [UsedGradientRecord],
@@ -595,12 +598,12 @@ fn fixup<C>(
 }
 
 pub(crate) fn fixup_with<C, P: Copy>(
-    work: &mut StopWork<'_, '_>,
+    work: &mut StopWork<'_, '_, '_>,
     source: &[GradientStopItem<C>],
     records: &mut [UsedGradientRecord<P>],
     first_default: P,
     last_default: P,
-    mut less: impl FnMut(&mut StopWork<'_, '_>, P, P) -> Result<bool, PaintError>,
+    mut less: impl FnMut(&mut StopWork<'_, '_, '_>, P, P) -> Result<bool, PaintError>,
 ) -> Result<(), PaintError> {
     let first = work.record(records, 0)?;
     if originally_omitted(work, source, first)? {
@@ -636,7 +639,7 @@ pub(crate) fn fixup_with<C, P: Copy>(
 }
 
 fn distribute<C>(
-    work: &mut StopWork<'_, '_>,
+    work: &mut StopWork<'_, '_, '_>,
     source: &[GradientStopItem<C>],
     records: &mut [UsedGradientRecord],
 ) -> Result<(), PaintError> {
@@ -644,11 +647,11 @@ fn distribute<C>(
 }
 
 pub(crate) fn distribute_with<C, P: Copy>(
-    work: &mut StopWork<'_, '_>,
+    work: &mut StopWork<'_, '_, '_>,
     source: &[GradientStopItem<C>],
     records: &mut [UsedGradientRecord<P>],
     mut fill: impl FnMut(
-        &mut StopWork<'_, '_>,
+        &mut StopWork<'_, '_, '_>,
         &mut [UsedGradientRecord<P>],
         usize,
         usize,
@@ -693,7 +696,7 @@ impl ScalarPosition for f64 {
 }
 
 pub(crate) fn fill_run<P: ScalarPosition>(
-    work: &mut StopWork<'_, '_>,
+    work: &mut StopWork<'_, '_, '_>,
     records: &mut [UsedGradientRecord<P>],
     start: usize,
     end: usize,
@@ -748,7 +751,10 @@ pub(crate) fn fill_run<P: ScalarPosition>(
     Ok(())
 }
 
-fn qualify(work: &mut StopWork<'_, '_>, records: &[UsedGradientRecord]) -> Result<(), PaintError> {
+fn qualify(
+    work: &mut StopWork<'_, '_, '_>,
+    records: &[UsedGradientRecord],
+) -> Result<(), PaintError> {
     let mut previous: Option<UsedGradientRecord> = None;
     for index in 0..records.len() {
         let record = work.record(records, index)?;

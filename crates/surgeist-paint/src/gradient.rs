@@ -1,5 +1,5 @@
 use crate::{
-    PaintError, PaintOptions, PaintReport, ResourceKind, WorkKind,
+    PaintError, PaintOptions, PaintPhase, PaintReport, ResourceKind, WorkKind,
     accounting::{Meter, OperationKind, PhaseMeter, apply, bytes, charge, finish, setup_error},
 };
 use surgeist_layout::{Point, Size};
@@ -138,21 +138,24 @@ pub fn resolve_linear_gradient(
 
 fn setup_scopes(meter: &mut Meter) -> Result<[Scope; 4], PaintError> {
     let mut scopes = [meter.root(); 4];
-    for (slot, name) in scopes.iter_mut().zip([
-        "gradient_validate",
-        "gradient_geometry",
-        "publication",
-        "cleanup",
+    for (slot, phase) in scopes.iter_mut().zip([
+        PaintPhase::GradientValidation,
+        PaintPhase::GradientGeometry,
+        PaintPhase::Publication,
+        PaintPhase::Cleanup,
     ]) {
-        *slot = meter
-            .child(meter.root(), name, Limits::unlimited(), Tariffs::identity())
-            .map_err(setup_error)?;
+        *slot = meter.child(
+            meter.root(),
+            phase,
+            Limits::unlimited(),
+            Tariffs::identity(),
+        )?;
     }
     Ok(scopes)
 }
 
 fn validate(
-    p: &mut PhaseMeter<'_>,
+    p: &mut PhaseMeter<'_, '_>,
     scope: Scope,
     size: Size<f64>,
     direction: LinearGradientDirection,
@@ -177,11 +180,11 @@ fn validate(
     Ok(())
 }
 
-struct GeometryWork<'a, 'b> {
-    meter: &'a mut PhaseMeter<'b>,
+struct GeometryWork<'a, 'b, 'operation> {
+    meter: &'a mut PhaseMeter<'b, 'operation>,
     scope: Scope,
 }
-impl GeometryWork<'_, '_> {
+impl GeometryWork<'_, '_, '_> {
     // Every call admits exactly one action before invoking it. Direction units
     // are enum/scalar dispatches, scalar arithmetic (including a transcendental),
     // or scalar inspections. Coordinate units are scalar arithmetic or scalar
@@ -211,7 +214,7 @@ enum Axis {
 }
 
 fn resolve_direction(
-    work: &mut GeometryWork<'_, '_>,
+    work: &mut GeometryWork<'_, '_, '_>,
     size: Size<f64>,
     direction: LinearGradientDirection,
 ) -> Result<Axis, PaintError> {
@@ -241,7 +244,7 @@ fn resolve_direction(
 }
 
 fn corner_axis(
-    work: &mut GeometryWork<'_, '_>,
+    work: &mut GeometryWork<'_, '_, '_>,
     size: Size<f64>,
     x_sign: f64,
     y_sign: f64,
@@ -279,7 +282,7 @@ fn corner_axis(
     Ok(Axis::Vector { x, y })
 }
 
-fn angle_axis(work: &mut GeometryWork<'_, '_>, angle: f64) -> Result<Axis, PaintError> {
+fn angle_axis(work: &mut GeometryWork<'_, '_, '_>, angle: f64) -> Result<Axis, PaintError> {
     // Signed remainder retains tiny negative angles: adding a full turn could
     // round them onto a cardinal. Reduce before converting degrees to radians.
     let reduced = work.direction(|| angle % 360.0)?;
@@ -332,7 +335,7 @@ fn angle_axis(work: &mut GeometryWork<'_, '_>, angle: f64) -> Result<Axis, Paint
 }
 
 fn resolve_line(
-    work: &mut GeometryWork<'_, '_>,
+    work: &mut GeometryWork<'_, '_, '_>,
     size: Size<f64>,
     axis: Axis,
 ) -> Result<LinearGradientLine, PaintError> {
@@ -370,7 +373,7 @@ fn resolve_line(
 }
 
 fn projected_line(
-    work: &mut GeometryWork<'_, '_>,
+    work: &mut GeometryWork<'_, '_, '_>,
     size: Size<f64>,
     center: Point<f64>,
     x: f64,
@@ -412,7 +415,7 @@ fn projected_line(
 }
 
 fn inspect_line(
-    work: &mut GeometryWork<'_, '_>,
+    work: &mut GeometryWork<'_, '_, '_>,
     line: LinearGradientLine,
 ) -> Result<(), PaintError> {
     // Each actual inspected scalar is charged, even though previous steps have

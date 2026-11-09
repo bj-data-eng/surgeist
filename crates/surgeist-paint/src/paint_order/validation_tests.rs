@@ -1,7 +1,7 @@
 use super::*;
 use crate::{
-    BoxFacts, ContextEffect, PaintLimits, PaintOptions, PaintReport, Position, ProfileMode, ZIndex,
-    accounting::OperationKind,
+    BoxFacts, ContextEffect, PaintLimits, PaintOptions, PaintPhase, PaintReport, Position,
+    ProfileMode, ZIndex, accounting::OperationKind,
 };
 use surgeist_layout::ItemOrder;
 use surgeist_ledger::{Limits, Tariffs};
@@ -32,7 +32,7 @@ fn exercise(
     let validation = meter
         .child(
             root,
-            "paint_validate",
+            PaintPhase::PaintValidation,
             Limits::unlimited(),
             Tariffs::identity(),
         )
@@ -73,7 +73,7 @@ fn exercise(
             core.result_cleanup(p, root).unwrap();
         })
         .unwrap();
-    let report = PaintReport::new(meter.finish().unwrap().unwrap()).unwrap();
+    let report = meter.finish().unwrap().unwrap();
     assert_eq!(report.live(ResourceKind::ScratchBytes), 0);
     assert_eq!(report.live(ResourceKind::RetainedResultBytes), 0);
     (result, report)
