@@ -180,3 +180,14 @@ fn report_records_not_matching_the_scopes_are_a_defect() {
         Err(Error::Defect(Defect::ReportScope))
     );
 }
+
+#[test]
+fn snapshot_finding_mismatched_report_records_latches_the_defect() {
+    let mut operation = profiled();
+    unrecorded_scope(&mut operation);
+    assert_eq!(
+        operation.snapshot().map(|_| ()),
+        Err(Error::Defect(Defect::ReportScope))
+    );
+    assert_latched(operation, Defect::ReportScope);
+}
