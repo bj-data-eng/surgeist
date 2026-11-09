@@ -234,6 +234,66 @@ where
         }
     }
 
+    /// Disposable custody for an exact native child trial. A framed caller
+    /// installs its authenticated resident chain before any child dispatch.
+    pub(crate) fn child_staging(
+        &self,
+        node: Tree::Node,
+        trial: FloatChildTrial,
+        incoming: Option<crate::block::float_context::Incoming<Tree::Node, Tree::Scalar>>,
+    ) -> SessionResult<Tree, Self> {
+        if incoming
+            .as_ref()
+            .is_some_and(|entry| entry.node != node || trial != FloatChildTrial::InFlow)
+        {
+            return Err(crate::block::float_context::missing(node));
+        }
+        let mut scope = Vec::new();
+        let mut visit = vec![node];
+        while let Some(subject) = visit.pop() {
+            if !scope.contains(&subject) {
+                scope.push(subject);
+                visit.extend(self.tree.children(subject));
+            }
+        }
+        let dirty = self
+            .invalidated_nodes
+            .iter()
+            .copied()
+            .filter(|node| scope.contains(node))
+            .collect();
+        let mut probe = Self::new(self.tree, dirty);
+        probe.block_floats = match incoming {
+            Some(incoming) => self.block_floats.fork_framed(incoming),
+            None => self.block_floats.fork(),
+        };
+        probe.groups = self.groups.as_ref().map(|groups| groups.fork());
+        probe.wrapping = self.wrapping.clone();
+        probe.flow_graph = self.flow_graph;
+        probe.bound = self.bound.clone();
+        probe.fragment_allocations = self.fragment_allocations.clone();
+        probe.fragment_intrinsics = self.fragment_intrinsics.clone();
+        probe.fragment_margins = self.fragment_margins.clone();
+        probe.wrapping_uncached = self.wrapping_uncached.clone();
+        if let Some(text) = &self.text {
+            let mut state = crate::text_layout::state::TextComputation::new(
+                text.paragraphs,
+                text.associations.clone(),
+                text.scope_resources.clone(),
+            );
+            state.frames = std::sync::Arc::clone(&text.frames);
+            state.wrapping = text.wrapping.clone();
+            state.reusable = std::sync::Arc::clone(&text.reusable);
+            state.graph = text.graph;
+            state.formatted = text.formatted.as_ref().map(|state| match trial {
+                FloatChildTrial::Detached => state.fork(),
+                FloatChildTrial::InFlow => state.fork_in_flow(),
+            });
+            probe.text = Some(state);
+        }
+        Ok(probe)
+    }
+
     pub(super) fn bind_fragment_frame(
         &mut self,
         target: crate::LayoutTargetBasis,
@@ -1663,53 +1723,11 @@ where
         Self::Scalar,
         Tree::MeasureError,
     > {
-        // The request is the block owner's complete child request. Reuse the
-        // validated topology and the same dependency/phase-bearing input; do
-        // not enter a fresh public root computation or reset a Grid probe.
-        let mut scope = Vec::new();
-        let mut visit = vec![node];
-        while let Some(subject) = visit.pop() {
-            if !scope.contains(&subject) {
-                scope.push(subject);
-                visit.extend(self.tree.children(subject));
-            }
-        }
-        let dirty = self
-            .invalidated_nodes
-            .iter()
-            .copied()
-            .filter(|node| scope.contains(node))
-            .collect();
-        let mut probe = Self::new(self.tree, dirty);
-        probe.block_floats = self.block_floats.fork();
-        probe.groups = self.groups.as_ref().map(|groups| groups.fork());
-        probe.wrapping = self.wrapping.clone();
-        probe.flow_graph = self.flow_graph;
-        probe.bound = self.bound.clone();
-        probe.fragment_allocations = self.fragment_allocations.clone();
-        probe.fragment_intrinsics = self.fragment_intrinsics.clone();
-        probe.fragment_margins = self.fragment_margins.clone();
-        probe.wrapping_uncached = self.wrapping_uncached.clone();
-        let frames = if let Some(text) = &self.text {
-            let mut state = crate::text_layout::state::TextComputation::new(
-                text.paragraphs,
-                text.associations.clone(),
-                text.scope_resources.clone(),
-            );
-            state.frames = std::sync::Arc::clone(&text.frames);
-            state.wrapping = text.wrapping.clone();
-            state.reusable = std::sync::Arc::clone(&text.reusable);
-            state.graph = text.graph;
-            state.formatted = text.formatted.as_ref().map(|state| match trial {
-                FloatChildTrial::Detached => state.fork(),
-                FloatChildTrial::InFlow => state.fork_in_flow(),
-            });
-            let frames = std::sync::Arc::clone(&state.frames);
-            probe.text = Some(state);
-            frames
-        } else {
-            std::sync::Arc::from([])
-        };
+        let mut probe = self.child_staging(node, trial, None)?;
+        let frames = probe.text.as_ref().map_or_else(
+            || std::sync::Arc::from([]),
+            |state| std::sync::Arc::clone(&state.frames),
+        );
         let output = probe.compute_child(node, input)?;
         let (pending, absolute_baselines, scope_fragments, formatted, boxes) =
             probe.text.map_or_else(

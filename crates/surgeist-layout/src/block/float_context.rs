@@ -127,6 +127,14 @@ impl<Node: Copy + Eq, S: LayoutScalar> State<Node, S> {
             ..Self::new()
         }
     }
+    /// A partial entry trial is resident in the original same-BFC ancestry.
+    /// Its own completion and request stack remain private to the trial.
+    pub(crate) fn fork_framed(&self, entry: Incoming<Node, S>) -> Self {
+        let mut trial = self.fork();
+        trial.incoming = self.incoming.clone();
+        trial.incoming.push(entry);
+        trial
+    }
     pub(crate) fn reset(&mut self) {
         self.incoming.clear();
         self.completed = None;
@@ -229,6 +237,10 @@ pub(crate) fn missing<Node, S: LayoutScalar, M>(node: Node) -> crate::LayoutErro
         crate::LayoutErrorKindOf::MissingContext(crate::LayoutMissingContext::RequiredBasis),
     )
 }
+
+#[cfg(test)]
+#[path = "float_context/staging_tests.rs"]
+mod staging_tests;
 
 #[cfg(test)]
 mod tests {
