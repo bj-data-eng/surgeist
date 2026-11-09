@@ -2,6 +2,7 @@
 //!
 //! Every callback runs outside the operational mutex. A session owns only weak
 //! cleanup authority, and an occupied root makes a second session bypass.
+use super::html_credits::Credits;
 #[cfg(test)]
 use super::scale_metrics::Event;
 use super::{DomError, custody};
@@ -13,7 +14,9 @@ use surgeist_html::bounded::values::{
     HtmlStringPool, HtmlValuePoolMark, HtmlValuePoolRoot, HtmlValuePoolSeal,
 };
 use surgeist_html::values::DocumentString;
-use surgeist_ledger::{Change, Charge};
+#[cfg(test)]
+use surgeist_ledger::Change;
+use surgeist_ledger::Charge;
 
 mod banks;
 #[cfg(test)]
@@ -180,40 +183,40 @@ impl<'a, 'b> PoolCharge<'a, 'b> {
         self.closing = closing;
     }
 }
+/// The five pool work dimensions of a batch, in the order records, inspected bytes, copied bytes,
+/// providers, reserved bytes.
+#[cfg(test)]
+fn coordinates_of(batch: &[HtmlChange]) -> [usize; 5] {
+    let mut coordinates = [0_usize; 5];
+    for change in batch {
+        let Change::Work(dimension, amount) = *change else {
+            continue;
+        };
+        let slot = match dimension {
+            HtmlWork::RecordVisit => coordinates.get_mut(0),
+            HtmlWork::InspectByte => coordinates.get_mut(1),
+            HtmlWork::CopyByte => coordinates.get_mut(2),
+            HtmlWork::ProviderCall => coordinates.get_mut(3),
+            HtmlWork::ReserveByte => coordinates.get_mut(4),
+            _ => None,
+        };
+        if let Some(slot) = slot {
+            *slot = usize::try_from(amount).unwrap_or(usize::MAX);
+        }
+    }
+    coordinates
+}
 impl Charge<HtmlWork, HtmlResource> for PoolCharge<'_, '_> {
     type Stop = DomError;
 
     fn charge(&mut self, batch: &[HtmlChange]) -> Result<(), DomError> {
-        let mut credits = 0_u64;
+        let admission = &mut *self.admission;
+        Credits(|credits| {
+            admission.work(usize::try_from(credits).map_err(|_| DomError::RepresentationExhausted)?)
+        })
+        .charge(batch)?;
         #[cfg(test)]
-        let mut coordinates = [0_usize; 5];
-        for change in batch {
-            let Change::Work(dimension, amount) = *change else {
-                return Err(DomError::HtmlChargeProtocol);
-            };
-            let Some(rate) = dimension.credits_per_unit() else {
-                return Err(DomError::HtmlChargeProtocol);
-            };
-            credits = amount
-                .checked_mul(rate)
-                .and_then(|weighed| credits.checked_add(weighed))
-                .ok_or(DomError::RepresentationExhausted)?;
-            #[cfg(test)]
-            if let Some(slot) = match dimension {
-                HtmlWork::RecordVisit => coordinates.get_mut(0),
-                HtmlWork::InspectByte => coordinates.get_mut(1),
-                HtmlWork::CopyByte => coordinates.get_mut(2),
-                HtmlWork::ProviderCall => coordinates.get_mut(3),
-                HtmlWork::ReserveByte => coordinates.get_mut(4),
-                _ => None,
-            } {
-                *slot = usize::try_from(amount).unwrap_or(usize::MAX);
-            }
-        }
-        let credits = usize::try_from(credits).map_err(|_| DomError::RepresentationExhausted)?;
-        self.admission.work(credits)?;
-        #[cfg(test)]
-        admitted_html(coordinates, self.closing);
+        admitted_html(coordinates_of(batch), self.closing);
         Ok(())
     }
 
