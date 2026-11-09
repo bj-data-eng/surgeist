@@ -1889,3 +1889,168 @@ impl ObjectTemplates {
         &self.wait_async
     }
 }
+
+#[cfg(test)]
+mod projection_tests {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    use crate::{
+        Context, JsObject, JsValue, Source, builtins::promise::PromiseState,
+        execution::ExecutionOptions, object::builtins::JsPromise,
+    };
+    use surgeist_js_gc::heap::{AccessError, RuntimeHeap};
+
+    fn context() -> Context {
+        let builder = Context::builder();
+        #[cfg(feature = "fuzz")]
+        let builder = builder.instructions_remaining(100_000);
+        builder.build().unwrap()
+    }
+
+    fn guest_object(context: &mut Context, source: &str) -> JsObject {
+        context
+            .with_execution(ExecutionOptions::new(100_000), |mut access| {
+                access.eval(Source::from_bytes(source))
+            })
+            .unwrap()
+            .result
+            .unwrap()
+            .as_object()
+            .unwrap()
+    }
+
+    fn under_heap_read<T>(
+        heap: &RuntimeHeap,
+        operation: impl FnOnce() -> T,
+    ) -> std::thread::Result<T> {
+        heap.read(|_| {
+            assert_eq!(
+                heap.allocate(()).unwrap_err().reason,
+                AccessError::HeapBorrowed
+            );
+            catch_unwind(AssertUnwindSafe(operation))
+        })
+        .unwrap()
+    }
+
+    #[test]
+    fn standard_prototype_projection_under_heap_read_does_not_unwind_and_retries_identity() {
+        let mut context = context();
+        let expected = guest_object(&mut context, "Promise.prototype");
+        let heap = context.runtime().heap.clone();
+        let attempt = under_heap_read(&heap, || {
+            context.intrinsics().constructors().promise().prototype()
+        });
+        assert!(
+            attempt.is_ok(),
+            "intrinsic prototype acquisition must refuse without a Rust unwind"
+        );
+        drop(attempt);
+        let retried = context.intrinsics().constructors().promise().prototype();
+        assert_eq!(retried.identity(), expected.identity());
+        assert_eq!(retried, expected);
+    }
+
+    #[test]
+    fn standard_constructor_projection_under_heap_read_does_not_unwind_and_retries_identity() {
+        let mut context = context();
+        let expected = guest_object(&mut context, "Promise");
+        let heap = context.runtime().heap.clone();
+        let attempt = under_heap_read(&heap, || {
+            context.intrinsics().constructors().promise().constructor()
+        });
+        assert!(
+            attempt.is_ok(),
+            "intrinsic constructor acquisition must refuse without a Rust unwind"
+        );
+        drop(attempt);
+        let retried = context.intrinsics().constructors().promise().constructor();
+        assert_eq!(retried.identity(), expected.identity());
+        assert_eq!(retried, expected);
+    }
+
+    #[test]
+    fn intrinsic_runtime_association_under_heap_read_does_not_root_or_unwind() {
+        let context = context();
+        let heap = context.runtime().heap.clone();
+        let attempt = under_heap_read(&heap, || context.intrinsics().runtime());
+        assert!(
+            attempt.is_ok(),
+            "runtime association must not acquire an intrinsic object root"
+        );
+        let associated = attempt.unwrap();
+        assert!(associated.same_heap(context.runtime()));
+        let retried = context.intrinsics().runtime();
+        assert!(retried.same_heap(context.runtime()));
+    }
+
+    #[test]
+    fn pending_factory_under_heap_read_does_not_unwind_and_allows_fresh_resolution() {
+        let mut context = context();
+        let heap = context.runtime().heap.clone();
+        let attempt = under_heap_read(&heap, || JsPromise::new_pending(context.access()));
+        assert!(
+            attempt.is_ok(),
+            "actual heap access refusal must not become a Rust unwind"
+        );
+        drop(attempt);
+        context.runtime().collect().unwrap();
+
+        let (promise, functions) = JsPromise::new_pending(context.access());
+        assert_eq!(promise.state().unwrap(), PromiseState::Pending);
+        functions
+            .resolve
+            .call(&JsValue::undefined(), &[71.into()], context.access())
+            .unwrap();
+        assert_eq!(promise.state().unwrap(), PromiseState::Fulfilled(71.into()));
+    }
+
+    #[test]
+    fn unborrowed_intrinsic_identity_and_pending_factory_preserve_actual_guest_objects() {
+        let mut context = context();
+        let expected_constructor = guest_object(&mut context, "Promise");
+        let expected_prototype = guest_object(&mut context, "Promise.prototype");
+        assert_eq!(
+            context.intrinsics().constructors().promise().constructor(),
+            expected_constructor
+        );
+        assert_eq!(
+            context.intrinsics().constructors().promise().prototype(),
+            expected_prototype
+        );
+        assert!(context.intrinsics().runtime().same_heap(context.runtime()));
+
+        let value = JsValue::from(JsObject::with_null_proto(context.runtime()));
+        let (promise, functions) = JsPromise::new_pending(context.access());
+        assert_eq!(promise.state().unwrap(), PromiseState::Pending);
+        functions
+            .resolve
+            .call(&JsValue::undefined(), &[value.clone()], context.access())
+            .unwrap();
+        assert_eq!(promise.state().unwrap(), PromiseState::Fulfilled(value));
+    }
+
+    #[test]
+    fn runtime_association_keeps_the_heap_without_rooting_intrinsic_objects_after_context_drop() {
+        let context = context();
+        let weak_constructor = context
+            .intrinsics()
+            .constructors()
+            .promise()
+            .constructor()
+            .edge();
+        let weak_prototype = context
+            .intrinsics()
+            .constructors()
+            .promise()
+            .prototype()
+            .edge();
+        let runtime = context.intrinsics().runtime();
+        assert!(runtime.same_heap(context.runtime()));
+        drop(context);
+
+        runtime.collect().unwrap();
+        assert!(!weak_constructor.is_live().unwrap());
+        assert!(!weak_prototype.is_live().unwrap());
+    }
+}
