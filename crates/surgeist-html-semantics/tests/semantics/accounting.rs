@@ -359,3 +359,294 @@ fn a_scope_bound_without_room_for_the_session_is_an_accounting_fault() {
         &HtmlSemanticFailureKind::Accounting(HtmlSemanticAccountingFault::ScopeLimit { limit: 2 })
     );
 }
+
+mod capture {
+    use super::*;
+    use surgeist_html::{
+        bounded::construction::HtmlConstructionResult,
+        construction::{
+            HtmlConstructionLimits, HtmlDocument, HtmlDocumentMode, HtmlNodeId, HtmlNodeKind,
+        },
+        values::DocumentString,
+    };
+    use surgeist_html_semantics::{
+        HtmlCaptureError, HtmlCaptureLimits, HtmlCaptureResource, HtmlCapturedIsValue,
+        HtmlConstructionCaptureAdapter, HtmlConstructionCaptureDocument,
+        HtmlConstructionCaptureDocumentFacts, HtmlConstructionCaptureElementFacts,
+        HtmlConstructionCaptureError, HtmlConstructionCaptureFacts, HtmlConstructionCaptureLimits,
+        HtmlConstructionCaptureNodeFacts, HtmlHostFactsRevision, HtmlScriptingStatus,
+    };
+
+    fn limits() -> HtmlCaptureLimits {
+        HtmlCaptureLimits::new(200, 2000, 200, 100_000, 200, 10, 10, 16_777_216)
+    }
+
+    fn hosted(
+        capture_limits: HtmlCaptureLimits,
+        scopes: usize,
+    ) -> (HtmlCaptureBuilder, Ledger, Scope) {
+        hosted_at(capture_limits, scopes, HtmlHostFactsRevision::fresh())
+    }
+
+    fn hosted_at(
+        capture_limits: HtmlCaptureLimits,
+        scopes: usize,
+        revision: HtmlHostFactsRevision,
+    ) -> (HtmlCaptureBuilder, Ledger, Scope) {
+        let (ledger, root) = host(HtmlLimits::unlimited(), scopes);
+        let accounting = HtmlSemanticAccounting::host(ledger.clone(), root);
+        let builder =
+            HtmlCaptureBuilder::with_accounting(capture_limits, revision, &accounting).unwrap();
+        (builder, ledger, root)
+    }
+
+    fn add_document(builder: &mut HtmlCaptureBuilder) -> HtmlCaptureBuilderSubject {
+        builder
+            .add_document(
+                HtmlDocumentMode::NoQuirks,
+                surgeist_html_semantics::HtmlScriptingStatus::Unavailable,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap()
+    }
+
+    /// A document with a `div` holding a text, and the facts of its nodes.
+    fn source(revision: &HtmlHostFactsRevision) -> (HtmlDocument, HtmlConstructionCaptureFacts) {
+        let mut native = HtmlDocument::builder(
+            HtmlConstructionLimits::new(100, 200, 100, 10_000, 100),
+            HtmlDocumentMode::NoQuirks,
+        )
+        .unwrap();
+        let root = native.root();
+        let div = native
+            .append_element(
+                &root,
+                QualifiedName::new(Namespace::html(), None, "div"),
+                OrderedAttributes::default(),
+            )
+            .unwrap();
+        native
+            .append_text(&div, DocumentString::from("text"))
+            .unwrap();
+        let document = native.finish().unwrap();
+        let result = HtmlConstructionResult::Document(document.clone());
+        let mut ids: Vec<HtmlNodeId> = vec![document.root().id()];
+        let mut pending = ids.clone();
+        while let Some(id) = pending.pop() {
+            for child in result.node(&id).unwrap().children() {
+                ids.push(child.clone());
+                pending.push(child);
+            }
+        }
+        let rows = ids
+            .into_iter()
+            .map(|id| {
+                let kind = result.node(&id).unwrap();
+                let document_facts = matches!(kind.kind(), HtmlNodeKind::Document(_)).then(|| {
+                    HtmlConstructionCaptureDocumentFacts::new(
+                        HtmlScriptingStatus::Disabled,
+                        HtmlCaptureRegistryInput::Unavailable,
+                    )
+                });
+                let element_facts = matches!(kind.kind(), HtmlNodeKind::Element(_)).then(|| {
+                    HtmlConstructionCaptureElementFacts::new(
+                        HtmlCapturedIsValue::Unavailable,
+                        HtmlCaptureRegistryInput::Unavailable,
+                    )
+                });
+                HtmlConstructionCaptureNodeFacts::new(
+                    id,
+                    HtmlConstructionCaptureDocument::ResultDocument,
+                    document_facts,
+                    element_facts,
+                    None,
+                )
+            })
+            .collect();
+        (
+            document,
+            HtmlConstructionCaptureFacts::new(revision.clone(), rows),
+        )
+    }
+
+    #[test]
+    fn a_hosted_builder_charges_the_capture_scope_and_the_host_sees_the_counts() {
+        let (mut builder, ledger, root) = hosted(limits(), 4);
+        let document = add_document(&mut builder);
+        let element = html(&mut builder, &document, "div");
+        builder.establish_children(&document, &[element]).unwrap();
+        let usage = builder.usage();
+        assert_eq!(
+            (usage.subjects(), usage.relationships(), usage.depth()),
+            (2, 4, 1)
+        );
+        let report = report(&ledger);
+        assert_eq!(report.scopes.len(), 2);
+        let capture = scope(&report, "html-capture");
+        assert_eq!(capture.parent, Some(root));
+        for (resource, value) in [
+            (HtmlResource::CapturedSubjects, usage.subjects()),
+            (HtmlResource::CapturedRelationships, usage.relationships()),
+            (HtmlResource::CapturedUtf16Units, usage.utf16_units()),
+            (HtmlResource::ElementValueBytes, usage.element_value_bytes()),
+        ] {
+            assert_eq!(capture.usage.live(resource), value as u64, "{resource:?}");
+            assert_eq!(
+                report.scopes[0].usage.live(resource),
+                value as u64,
+                "{resource:?}"
+            );
+        }
+        // A gauge stays in the scope that observed it.
+        assert_eq!(
+            capture.usage.live(HtmlResource::CapturedDepth),
+            usage.depth() as u64
+        );
+        assert_eq!(report.scopes[0].usage.live(HtmlResource::CapturedDepth), 0);
+    }
+
+    #[test]
+    fn a_host_cap_refuses_a_capture_with_the_host_limit_and_the_value_it_would_reach() {
+        let caps = HtmlLimits::from_fn(
+            |_| u64::MAX,
+            |resource| match resource {
+                HtmlResource::CapturedSubjects => 1,
+                _ => u64::MAX,
+            },
+        );
+        let (ledger, root) = host(caps, 4);
+        let accounting = HtmlSemanticAccounting::host(ledger, root);
+        let mut builder = HtmlCaptureBuilder::with_accounting(
+            limits(),
+            HtmlHostFactsRevision::fresh(),
+            &accounting,
+        )
+        .unwrap();
+        let document = add_document(&mut builder);
+        let before = builder.usage();
+        let refused = builder
+            .add_element(
+                &document,
+                QualifiedName::new(Namespace::html(), None, "div"),
+                OrderedAttributes::new([]).unwrap(),
+                HtmlCapturedIsValue::Unavailable,
+                HtmlCaptureRegistryInput::Null,
+            )
+            .unwrap_err();
+        assert_eq!(
+            refused,
+            HtmlCaptureError::LimitExceeded {
+                resource: HtmlCaptureResource::Subjects,
+                limit: 1,
+                required: 2,
+            }
+        );
+        assert_eq!(builder.usage(), before);
+    }
+
+    #[test]
+    fn the_builder_depth_cap_is_a_gauge_that_refuses_at_its_value() {
+        let tight = HtmlCaptureLimits::new(200, 2000, 200, 100_000, 1, 10, 10, 16_777_216);
+        let (mut builder, _, _) = hosted(tight, 4);
+        let document = add_document(&mut builder);
+        let a = html(&mut builder, &document, "a");
+        let b = html(&mut builder, &document, "b");
+        builder
+            .establish_children(&document, std::slice::from_ref(&a))
+            .unwrap();
+        let before = builder.usage();
+        assert_eq!(before.depth(), 1);
+        let refused = builder
+            .establish_children(&a, std::slice::from_ref(&b))
+            .unwrap_err();
+        assert_eq!(
+            refused,
+            HtmlCaptureError::LimitExceeded {
+                resource: HtmlCaptureResource::Depth,
+                limit: 1,
+                required: 2,
+            }
+        );
+        assert_eq!(builder.usage(), before);
+    }
+
+    #[test]
+    fn a_scope_of_another_operation_is_an_accounting_fault_for_a_builder() {
+        let (ledger, _) = host(HtmlLimits::unlimited(), 4);
+        let (_, foreign) = host(HtmlLimits::unlimited(), 4);
+        let accounting = HtmlSemanticAccounting::host(ledger, foreign);
+        let error = HtmlCaptureBuilder::with_accounting(
+            limits(),
+            HtmlHostFactsRevision::fresh(),
+            &accounting,
+        )
+        .expect_err("a foreign scope is refused");
+        assert_eq!(error, HtmlSemanticAccountingFault::ForeignScope);
+    }
+
+    #[test]
+    fn a_hosted_import_charges_its_own_scope_and_a_refused_import_gives_back_the_capture() {
+        let revision = HtmlHostFactsRevision::fresh();
+        let (mut builder, ledger, root) = hosted_at(limits(), 4, revision.clone());
+        add_document(&mut builder);
+        let before = builder.usage();
+        let (document, facts) = source(&revision);
+        // The import's own mapping cap refuses the third node.
+        let refused = HtmlConstructionCaptureAdapter::document(
+            builder,
+            document.clone(),
+            facts,
+            HtmlConstructionCaptureLimits::new(2, 1000, 1_000_000),
+            HtmlSemanticCancellation::new(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            refused.reason(),
+            &HtmlConstructionCaptureError::LimitExceeded
+        );
+        assert_eq!(refused.usage().mapping_entries(), 2);
+        assert_eq!(refused.builder().usage(), before);
+        let report = report(&ledger);
+        let import = scope(&report, "html-capture-import");
+        assert_eq!(import.parent, Some(root));
+        assert_eq!(import.usage.live(HtmlResource::MappingEntries), 2);
+        assert_eq!(import.usage.live(HtmlResource::ScratchRecords), 0);
+        // The capture's subjects are given back with the refused import.
+        assert_eq!(
+            report.scopes[0].usage.live(HtmlResource::CapturedSubjects),
+            before.subjects() as u64
+        );
+    }
+
+    #[test]
+    fn a_finished_import_leaves_no_scratch_and_reports_the_work_and_peak_it_charged() {
+        let (ledger, root) = host(HtmlLimits::unlimited(), 4);
+        let accounting = HtmlSemanticAccounting::host(ledger.clone(), root);
+        let revision = HtmlHostFactsRevision::fresh();
+        let builder =
+            HtmlCaptureBuilder::with_accounting(limits(), revision.clone(), &accounting).unwrap();
+        let (document, facts) = source(&revision);
+        let import = HtmlConstructionCaptureAdapter::document(
+            builder,
+            document,
+            facts,
+            HtmlConstructionCaptureLimits::new(100, 1000, 1_000_000),
+            HtmlSemanticCancellation::new(),
+        )
+        .unwrap();
+        let usage = import.usage();
+        assert_eq!(usage.mapping_entries(), 3);
+        assert!(usage.work() > 0 && usage.scratch_entries() > 0);
+        let report = report(&ledger);
+        let import = scope(&report, "html-capture-import");
+        assert_eq!(
+            import.usage.work(HtmlWork::SemanticStep),
+            usage.work() as u64
+        );
+        assert_eq!(
+            import.usage.peak(HtmlResource::ScratchRecords),
+            usage.scratch_entries() as u64
+        );
+        assert_eq!(import.usage.live(HtmlResource::ScratchRecords), 0);
+    }
+}

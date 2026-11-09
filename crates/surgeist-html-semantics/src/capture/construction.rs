@@ -192,9 +192,9 @@ impl HtmlConstructionCaptureLimits {
 /// Admitted adapter work and peak simultaneously live logical scratch entries.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct HtmlConstructionCaptureUsage {
-    mapping_entries: usize,
-    scratch_entries: usize,
-    work: usize,
+    pub(super) mapping_entries: usize,
+    pub(super) scratch_entries: usize,
+    pub(super) work: usize,
 }
 impl HtmlConstructionCaptureUsage {
     pub fn mapping_entries(self) -> usize {
@@ -224,6 +224,10 @@ pub enum HtmlConstructionCaptureError {
     AllocationFailed,
     Cancelled,
     Capture(HtmlCaptureError),
+    /// The ledger that carries the import's accounting reported a state its own sequencing rules
+    /// out: a release that matches nothing held, a refusal that names no import resource, or a
+    /// ledger defect. Valid use never reaches it.
+    LedgerState,
 }
 impl fmt::Display for HtmlConstructionCaptureError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -247,10 +251,8 @@ fn failure(
 }
 #[derive(Debug)]
 struct Control {
-    limits: HtmlConstructionCaptureLimits,
-    usage: HtmlConstructionCaptureUsage,
+    account: account::ImportAccount,
     cancellation: HtmlSemanticCancellation,
-    scratch_live: usize,
 }
 impl Control {
     fn poll(&self) -> Result<(), HtmlConstructionCaptureError> {
@@ -260,31 +262,23 @@ impl Control {
             Ok(())
         }
     }
+    fn usage(&self) -> HtmlConstructionCaptureUsage {
+        self.account.usage()
+    }
     fn work(&mut self, count: usize) -> Result<(), HtmlConstructionCaptureError> {
         self.poll()?;
-        let next = self
-            .usage
-            .work
-            .checked_add(count)
-            .ok_or(HtmlConstructionCaptureError::RepresentationExhausted)?;
-        if next > self.limits.work {
-            return Err(HtmlConstructionCaptureError::LimitExceeded);
-        }
-        self.usage.work = next;
-        Ok(())
+        self.account.work(count)
     }
     fn scratch(&mut self, count: usize) -> Result<(), HtmlConstructionCaptureError> {
         self.work(1)?;
-        let next = self
-            .scratch_live
-            .checked_add(count)
-            .ok_or(HtmlConstructionCaptureError::RepresentationExhausted)?;
-        if next > self.limits.scratch_entries {
-            return Err(HtmlConstructionCaptureError::LimitExceeded);
-        }
-        self.scratch_live = next;
-        self.usage.scratch_entries = self.usage.scratch_entries.max(next);
-        Ok(())
+        self.account.scratch(count)
+    }
+    /// The live scratch entries, to give back to later with `release_to`.
+    fn mark(&self) -> Result<usize, HtmlConstructionCaptureError> {
+        self.account.mark()
+    }
+    fn release_to(&mut self, mark: usize) -> Result<(), HtmlConstructionCaptureError> {
+        self.account.release_to(mark)
     }
     fn reserve<T>(
         &mut self,
@@ -544,7 +538,7 @@ impl HtmlConstructionCaptureImport {
         &self.mapping
     }
     pub fn usage(&self) -> HtmlConstructionCaptureUsage {
-        self.control.usage
+        self.control.usage()
     }
     pub fn into_parts(
         self,
@@ -554,20 +548,27 @@ impl HtmlConstructionCaptureImport {
         HtmlConstructionCaptureMap,
         HtmlConstructionCaptureUsage,
     ) {
-        (self.builder, self.source, self.mapping, self.control.usage)
+        (
+            self.builder,
+            self.source,
+            self.mapping,
+            self.control.usage(),
+        )
     }
     #[expect(clippy::result_large_err)] // Refusal retains the complete owner without allocating after failure.
     pub fn finish(
         mut self,
     ) -> Result<HtmlConstructionCapturedResult, HtmlConstructionCaptureFinishFailure> {
         let mut scratch = preflight::DepthScratch::new();
-        let mark = self.control.scratch_live;
+        let mark = self.control.mark();
         let result = self
             .builder
             .preflight_finish(&mut scratch, &mut |action| self.control.action(action))
             .map_err(failure)
             .and_then(|()| self.control.poll());
-        self.control.scratch_live = mark;
+        let released = mark.and_then(|mark| self.control.release_to(mark));
+        let synced = self.control.account.sync();
+        let result = result.and(released).and(synced);
         if let Err(reason) = result {
             return Err(HtmlConstructionCaptureFinishFailure {
                 reason,
@@ -675,11 +676,26 @@ impl HtmlConstructionCaptureAdapter {
             HtmlConstructionResult::Fragment(value) => value.root().id(),
         };
         let checkpoint = (builder.data.records.len(), builder.data.usage);
+        let account = builder
+            .account
+            .ready(builder.limits)
+            .map_err(HtmlConstructionCaptureError::from)
+            .and_then(|account| account.import_account(limits));
+        let account = match account {
+            Ok(account) => account,
+            Err(reason) => {
+                return Err(HtmlConstructionCaptureFailure {
+                    reason,
+                    builder,
+                    source,
+                    facts,
+                    usage: HtmlConstructionCaptureUsage::default(),
+                });
+            }
+        };
         let mut control = Control {
-            limits,
-            usage: HtmlConstructionCaptureUsage::default(),
+            account,
             cancellation,
-            scratch_live: 0,
         };
         let mut mapping = HtmlConstructionCaptureMap {
             root,
@@ -689,15 +705,20 @@ impl HtmlConstructionCaptureAdapter {
             index: Positions::new(),
         };
         let result = import(&mut builder, &source, &facts, &mut mapping, &mut control);
+        let synced = control.account.sync();
+        let result = result.and(synced);
         if let Err(reason) = result {
             builder.data.records.truncate(checkpoint.0);
-            builder.data.usage = checkpoint.1;
+            // A refused give-back can only be a ledger defect, which stays latched in the
+            // operation and fails the builder's next charge; the import's own refusal is the one
+            // reported.
+            let _ = builder.roll_back_usage(checkpoint.1);
             return Err(HtmlConstructionCaptureFailure {
                 reason,
                 builder,
                 source,
                 facts,
-                usage: control.usage,
+                usage: control.usage(),
             });
         }
         Ok(HtmlConstructionCaptureImport {
@@ -737,10 +758,7 @@ fn reached(
         .len()
         .checked_add(1)
         .ok_or(HtmlConstructionCaptureError::RepresentationExhausted)?;
-    if next > control.limits.mapping_entries {
-        return Err(HtmlConstructionCaptureError::LimitExceeded);
-    }
-    control.usage.mapping_entries = next;
+    control.account.mapping_entry()?;
     // Only growth moves the existing entries; amortized growth keeps the moves
     // proportional to the final count.
     if map.entries.len() == map.entries.capacity() {
@@ -838,7 +856,7 @@ fn import(
     map: &mut HtmlConstructionCaptureMap,
     control: &mut Control,
 ) -> Result<(), HtmlConstructionCaptureError> {
-    let mark = control.scratch_live;
+    let mark = control.mark()?;
     let mut fact_index = Positions::new();
     let mut node_index = Positions::new();
     let result = traverse(
@@ -861,8 +879,8 @@ fn import(
     } else {
         drop(node_index);
     }
-    control.scratch_live = mark;
-    result
+    let released = control.release_to(mark);
+    result.and(released)
 }
 fn traverse<'a>(
     builder: &mut HtmlCaptureBuilder,
@@ -879,7 +897,7 @@ fn traverse<'a>(
     control.reserve(&mut pending, 1)?;
     pending.push((map.root.clone(), true));
     while let Some((id, structural)) = pending.pop() {
-        control.scratch_live -= 1;
+        control.account.release_scratch(1)?;
         control.work(2)?;
         let index = reached(map, node_index, id.clone(), structural, control)?;
         let node = source
@@ -1121,7 +1139,7 @@ fn traverse<'a>(
                 HtmlNodeKind::Document(_) | HtmlNodeKind::Fragment | HtmlNodeKind::Element(_)
             )
         {
-            let mark = control.scratch_live;
+            let mark = control.mark()?;
             let mut children = Vec::new();
             control.reserve(&mut children, node.children().len())?;
             for id in node.children() {
@@ -1142,7 +1160,7 @@ fn traverse<'a>(
                 .map_err(failure)?;
             control.poll()?;
             drop(children);
-            control.scratch_live = mark;
+            control.release_to(mark)?;
         }
         // Associations from supplemental fragment views are still established.
         if let Some(HtmlFragmentOwner::Template(host)) = node.fragment_owner() {
@@ -1150,13 +1168,13 @@ fn traverse<'a>(
                 .get(host, control)?
                 .and_then(|i| map.entries[i].subject.as_ref())
                 .ok_or(HtmlConstructionCaptureError::OutsideImportedClosure)?;
-            let mark = control.scratch_live;
+            let mark = control.mark()?;
             builder
                 .establish_template_contents_controlled(host, subject, &mut |action| {
                     control.action(action)
                 })
                 .map_err(failure)?;
-            control.scratch_live = mark;
+            control.release_to(mark)?;
             control.poll()?;
         }
         if entry.structural

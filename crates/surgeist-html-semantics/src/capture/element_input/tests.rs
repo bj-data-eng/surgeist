@@ -13,7 +13,10 @@ fn limits(bytes: usize) -> HtmlCaptureLimits {
     HtmlCaptureLimits::new(20, 100, 100, 10_000, 20, 0, 0, bytes)
 }
 fn builder(bytes: usize) -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
-    let mut builder = HtmlCaptureBuilder::new(limits(bytes), HtmlHostFactsRevision::fresh());
+    builder_with(limits(bytes))
+}
+fn builder_with(limits: HtmlCaptureLimits) -> (HtmlCaptureBuilder, HtmlCaptureBuilderSubject) {
+    let mut builder = HtmlCaptureBuilder::new(limits, HtmlHostFactsRevision::fresh());
     let doc = builder
         .add_document(
             HtmlDocumentMode::NoQuirks,
@@ -80,7 +83,7 @@ fn owned_values_admit_actual_reserved_capacity_exactly_and_refuse_one_byte_short
         })
     );
     assert_eq!(owner.usage(), before);
-    owner.limits = limits(expected);
+    let (mut owner, doc) = builder(expected);
     let subject = owner
         .add_element(
             &doc,
@@ -126,15 +129,36 @@ fn borrowed_empty_values_have_an_exact_same_builder_byte_gate_and_cumulative_rec
         matches!(add(&mut owner), Err(HtmlCaptureElementError::Capture(HtmlCaptureError::LimitExceeded { resource: HtmlCaptureResource::ElementValueBytes, limit, required })) if limit == bytes - 1 && required == bytes)
     );
     assert_eq!(owner.usage(), before);
-    owner.limits = limits(bytes);
-    let first = add(&mut owner).unwrap();
+    let (mut owner, doc) = builder(bytes);
+    let add = |owner: &mut HtmlCaptureBuilder| {
+        owner.add_element_from_inputs(
+            &doc,
+            &name,
+            attrs,
+            HtmlCapturedIsValue::Absent,
+            HtmlCaptureRegistryInput::Null,
+            || Ok::<_, Infallible>(()),
+        )
+    };
+    add(&mut owner).unwrap();
     assert_eq!(owner.usage().element_value_bytes(), bytes);
     let before = owner.usage();
     assert!(
         matches!(add(&mut owner), Err(HtmlCaptureElementError::Capture(HtmlCaptureError::LimitExceeded { resource: HtmlCaptureResource::ElementValueBytes, required, .. })) if required == 2 * bytes)
     );
     assert_eq!(owner.usage(), before);
-    owner.limits = limits(2 * bytes);
+    let (mut owner, doc) = builder(2 * bytes);
+    let add = |owner: &mut HtmlCaptureBuilder| {
+        owner.add_element_from_inputs(
+            &doc,
+            &name,
+            attrs,
+            HtmlCapturedIsValue::Absent,
+            HtmlCaptureRegistryInput::Null,
+            || Ok::<_, Infallible>(()),
+        )
+    };
+    let first = add(&mut owner).unwrap();
     let second = add(&mut owner).unwrap();
     assert_ne!(first, second);
     assert_eq!(owner.usage().element_value_bytes(), 2 * bytes);
@@ -338,11 +362,11 @@ fn actual_name_unit_limit_precedes_owned_cloning_and_later_interruption() {
         reads: Cell::new(0),
     };
     let attrs = [Attribute::new(qname("a"), "v")];
-    let (mut owner, doc) = builder(1_000_000);
     // The initial name, attribute name and value are one unit each. The actual
     // second-pass local name alone has eight units and must be refused before
     // an owned occurrence exists, regardless of the generous byte allowance.
-    owner.limits.utf16_units = 3;
+    let (mut owner, doc) =
+        builder_with(HtmlCaptureLimits::new(20, 100, 100, 3, 20, 0, 0, 1_000_000));
     let before = owner.usage();
     let original_strong = Arc::strong_count(input.large.shared_code_units());
     let observed_unadmitted_clone = Cell::new(false);

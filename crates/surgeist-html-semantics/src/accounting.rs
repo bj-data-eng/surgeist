@@ -190,6 +190,19 @@ impl Ledger {
         }
     }
 
+    /// Reads the accepted usage of a scope. An owned operation lends its usage; a shared one
+    /// copies it under its lock.
+    pub(crate) fn read<T>(
+        &self,
+        scope: Scope,
+        read: impl FnOnce(&Usage<HtmlWork, HtmlResource>) -> T,
+    ) -> Result<T, LedgerError> {
+        match self {
+            Self::Owned(operation) => operation.usage(scope).map(read),
+            Self::Shared(operation) => operation.usage(scope).map(|usage| read(&usage)),
+        }
+    }
+
     /// The accepted usage of a scope, as a copy.
     pub(crate) fn usage(&self, scope: Scope) -> Result<Usage<HtmlWork, HtmlResource>, LedgerError> {
         match self {

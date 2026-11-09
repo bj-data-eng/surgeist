@@ -192,17 +192,19 @@ impl QueryAccount {
 
     /// The typed usage.
     pub(super) fn read(&self) -> Result<HtmlSemanticUsage, LedgerError> {
-        let capped = self.operation.usage(self.caps)?;
-        let observed = self.operation.usage(self.observed)?;
         let read = |value: u64| usize::try_from(value).unwrap_or(usize::MAX);
-        Ok(HtmlSemanticUsage {
-            work: read(capped.work(HtmlWork::SemanticStep)),
-            output_records: read(observed.live(HtmlResource::OutputRecords)),
-            scratch_records: read(observed.live(HtmlResource::ScratchRecords)),
-            allocated_bytes: read(observed.live(HtmlResource::AllocatedBytes)),
-            peak_scratch_records: read(observed.peak(HtmlResource::ScratchRecords)),
-            nested_output_records: read(observed.live(HtmlResource::NestedOutputRecords)),
-        })
+        let work = self.operation.read(self.caps, |capped| {
+            read(capped.work(HtmlWork::SemanticStep))
+        })?;
+        self.operation
+            .read(self.observed, |observed| HtmlSemanticUsage {
+                work,
+                output_records: read(observed.live(HtmlResource::OutputRecords)),
+                scratch_records: read(observed.live(HtmlResource::ScratchRecords)),
+                allocated_bytes: read(observed.live(HtmlResource::AllocatedBytes)),
+                peak_scratch_records: read(observed.peak(HtmlResource::ScratchRecords)),
+                nested_output_records: read(observed.live(HtmlResource::NestedOutputRecords)),
+            })
     }
 }
 
@@ -224,7 +226,10 @@ mod tests {
     }
 
     fn live(account: &QueryAccount, scope: Scope, resource: HtmlResource) -> u64 {
-        account.operation.usage(scope).unwrap().live(resource)
+        account
+            .operation
+            .read(scope, |usage| usage.live(resource))
+            .unwrap()
     }
 
     #[test]
