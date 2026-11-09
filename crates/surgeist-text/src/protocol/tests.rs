@@ -33,6 +33,7 @@ mod phase_two;
 mod raw_automatic_hyphenation;
 mod scope_alignment;
 mod scope_incidence_locality;
+mod semantic_windows;
 mod separators;
 mod shared_unit_endpoints;
 mod sideways;

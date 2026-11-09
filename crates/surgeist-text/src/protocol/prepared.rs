@@ -4,6 +4,7 @@ pub(crate) mod cell_sources;
 pub(crate) mod cells;
 mod fragments;
 pub(crate) mod presentation;
+pub(crate) mod semantic;
 #[cfg(test)]
 pub(crate) use fragments::selected_origin_intersections;
 pub(crate) use fragments::visit_selected_origin_intersections;
@@ -173,6 +174,8 @@ pub(crate) struct SuppressedOpportunityData {
 
 #[derive(Clone, Debug)]
 pub(crate) struct AlternativeData {
+    /// Actual structural owner assigned before any equal-cut frontier alias.
+    pub(crate) source_segment: Option<usize>,
     pub(crate) text: crate::Text,
     pub(crate) placement: crate::HyphenationPlacement,
     pub(crate) resolution: IndicationResolution,
@@ -243,11 +246,15 @@ impl AlternativeData {
 /// issued public source/preparation. Every retained face/instance comes from
 /// actual resolution before publication. Finalization never queries a newer
 /// catalogue to reconstruct it.
-pub(crate) struct PreparedIndicationFonts {
+pub(crate) struct PreparedIndication {
+    pub(crate) semantic: SemanticIndication,
+    pub(crate) font_queries: Vec<crate::engine::shape::FontQueryWitness>,
+}
+
+pub(crate) struct SemanticIndication {
     pub(crate) inserted_atoms: IndexRange<usize>,
     pub(crate) projection: SourceProjection,
     pub(crate) analysis: Analysis,
-    pub(crate) font_queries: Vec<crate::engine::shape::FontQueryWitness>,
 }
 
 /// Exact selected presentation correspondence, separate from authored text.
@@ -266,6 +273,16 @@ pub(crate) struct SelectedPresentation {
     pub(crate) projection: SourceProjection,
     pub(crate) analysis: Analysis,
     pub(crate) assignments: Vec<RetainedAssignment>,
+    pub(crate) originals: Vec<Option<usize>>,
+    pub(crate) domains: Vec<presentation::IndicationDomain>,
+    pub(crate) mapping: std::sync::Arc<SelectedMapping>,
+}
+
+/// Canonical selected spelling and occurrence correspondence before font work.
+pub(crate) struct SemanticPresentation {
+    pub(crate) units: Vec<PresentationUnit>,
+    pub(crate) projection: SourceProjection,
+    pub(crate) analysis: Analysis,
     pub(crate) originals: Vec<Option<usize>>,
     pub(crate) domains: Vec<presentation::IndicationDomain>,
     pub(crate) mapping: std::sync::Arc<SelectedMapping>,
@@ -880,6 +897,7 @@ fn issue_opportunities(
                 alternatives = texts
                     .into_iter()
                     .map(|text| AlternativeData {
+                        source_segment: None,
                         text,
                         placement: used_placement(authored, &resolution),
                         resolution: resolution.clone(),
@@ -904,6 +922,7 @@ fn issue_opportunities(
             let authored = analyzed.styles[style].style.authored();
             let (texts, resolution) = indication(catalogue, styles, authored, style, None)?;
             alternatives.extend(texts.into_iter().map(|text| AlternativeData {
+                source_segment: None,
                 text,
                 placement: used_placement(authored, &resolution),
                 resolution: resolution.clone(),
@@ -1887,14 +1906,14 @@ fn disappearing_space_wrap(analyzed: &AnalyzedData, atom: usize) -> Option<crate
 
 /// Performs actual alternative font matching while the original
 /// catalogue capture is still owned by preparation. No finalizer can requery it.
-pub(crate) fn prepare_indication_fonts(
+pub(crate) fn prepare_indications(
     catalogue: &mut surgeist_font::FontCatalogue,
     analyzed: &std::sync::Arc<AnalyzedData>,
     styles: &[ResolvedStyleRun],
     tables: &PreparedTables,
     scratch: &mut crate::engine::shape::ShapeContext,
     options: crate::PreparationOptions,
-) -> crate::Result<Vec<PreparedIndicationFonts>> {
+) -> crate::Result<Vec<PreparedIndication>> {
     let css_tabs = options.tabs() == crate::TabPreparation::CssStops;
     let orientation = options.orientation();
     let baseline_reference = options.resolved_baseline_reference();
@@ -1942,7 +1961,7 @@ pub(crate) fn prepare_indication_fonts(
         )?;
         // Capture only the selected side. Unselected original text
         // cannot change an indication's query EGC or script inheritance.
-        let mut capture_side = |after: bool| -> crate::Result<PreparedIndicationFonts> {
+        let mut capture_side = |after: bool| -> crate::Result<PreparedIndication> {
             let side = if after {
                 inserted_atoms.start..projection.atoms.len()
             } else {
@@ -2097,10 +2116,12 @@ pub(crate) fn prepare_indication_fonts(
                     analyzed.typography,
                 )?;
             }
-            Ok(PreparedIndicationFonts {
-                inserted_atoms,
-                projection,
-                analysis,
+            Ok(PreparedIndication {
+                semantic: SemanticIndication {
+                    inserted_atoms,
+                    projection,
+                    analysis,
+                },
                 font_queries,
             })
         };
@@ -2297,13 +2318,14 @@ struct PresentationOutput {
     atoms: Vec<crate::engine::OriginalAtom>,
     indices: Vec<usize>,
 }
-struct UnitCapture {
-    source: Range,
-    processed: Range,
-    participant: Option<usize>,
-    kind: PresentationUnitKind,
-    level: u8,
-    bidi_class: Option<icu_properties::props::BidiClass>,
+#[derive(Clone, Copy)]
+pub(crate) struct UnitCapture {
+    pub(crate) source: Range,
+    pub(crate) processed: Range,
+    pub(crate) participant: Option<usize>,
+    pub(crate) kind: PresentationUnitKind,
+    pub(crate) level: u8,
+    pub(crate) bidi_class: Option<icu_properties::props::BidiClass>,
 }
 fn push_presentation_unit(
     output: &mut PresentationOutput,

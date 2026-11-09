@@ -282,7 +282,7 @@ pub(crate) fn assign_fonts(
                 .iter()
                 .chain(
                     prepared
-                        .indication_fonts
+                        .indications
                         .iter()
                         .flat_map(|a| a.font_queries.iter()),
                 )

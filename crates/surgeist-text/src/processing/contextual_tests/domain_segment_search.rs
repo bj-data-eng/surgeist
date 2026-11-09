@@ -4,6 +4,41 @@
 use crate::*;
 use std::sync::Arc;
 
+#[test]
+fn semantic_windows_keep_distinct_empty_section_authority_at_equal_cuts() {
+    let (_, p) = parent_output(false);
+    let sections = p.source_segments().collect::<Vec<_>>();
+    assert_eq!(sections.len(), 2);
+    let first_request = SemanticWindowRequest::new(sections[0].clone());
+    let second_request = SemanticWindowRequest::new(sections[1].clone());
+    let first = p.semantic_window(&first_request).unwrap();
+    let second = p.semantic_window(&second_request).unwrap();
+    for proof in [&first, &second] {
+        assert_eq!(proof.partitions().len(), 1);
+        assert!(!proof.partitions()[0].has_in_flow_content());
+        assert_eq!(
+            proof.partitions()[0]
+                .terminal()
+                .view()
+                .alternatives()
+                .count(),
+            0
+        );
+    }
+    assert_ne!(
+        first.partitions()[0].terminal(),
+        second.partitions()[0].terminal()
+    );
+    assert!(!first.matches(&second_request));
+    let mut crossed = first_request;
+    crossed.completion = sections[1].end_opportunity();
+    assert_eq!(
+        reason(p.semantic_window(&crossed).unwrap_err().error()),
+        &ProtocolError::InvalidSemanticWindow
+    );
+    assert!(second.matches(&second_request));
+}
+
 fn parent_output(nonempty: bool) -> (Arc<ProcessedSource>, PreparedText) {
     let text = if nonempty { "AC" } else { "" };
     let mut input = super::input(text, WhiteSpace::Preserve);

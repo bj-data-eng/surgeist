@@ -17,6 +17,7 @@ pub enum ScopeAlignmentProduct<'a> {
     InlineBoxFamily(&'a super::PreparedInlineBoxFamily),
     Selected(&'a SelectedLine),
     Finalized(&'a FinalizedLine),
+    SemanticWindow(&'a super::SemanticWindowEvidence),
 }
 
 /// Actual resource roots for a snapshot or a valid prospective native operation.
@@ -32,6 +33,10 @@ pub enum ScopeAlignmentCensusInput<'a> {
     Selection {
         prepared: &'a PreparedText,
         request: &'a LineSelectionRequest,
+    },
+    SemanticWindow {
+        prepared: &'a PreparedText,
+        request: &'a super::SemanticWindowRequest,
     },
     Flow {
         prepared: &'a PreparedText,

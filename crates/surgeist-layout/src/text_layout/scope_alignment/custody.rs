@@ -318,9 +318,15 @@ impl<S: LayoutScalar> ScopeAlignmentResources<S> {
                 ScopeAlignmentProduct::Finalized(value) => {
                     (value.prepared_text(), value.scope_alignment_retention())
                 }
+                ScopeAlignmentProduct::SemanticWindow(value) => {
+                    let prepared = value.request().segment.prepared_text();
+                    let retained = prepared.scope_alignment_retention();
+                    (prepared, retained)
+                }
             },
             ScopeAlignmentCensusInput::InlineBoxFamily { prepared, .. }
             | ScopeAlignmentCensusInput::Selection { prepared, .. }
+            | ScopeAlignmentCensusInput::SemanticWindow { prepared, .. }
             | ScopeAlignmentCensusInput::Flow { prepared, .. } => {
                 (prepared.clone(), prepared.scope_alignment_retention())
             }

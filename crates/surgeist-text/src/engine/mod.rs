@@ -9,7 +9,7 @@ use crate::projection::SourceProjection;
 use crate::protocol::{
     PreparationOptions,
     paragraph::{ParagraphContext, ParagraphData},
-    prepared::{PreparedIndicationFonts, PreparedTables, SelectedMapping},
+    prepared::{PreparedIndication, PreparedTables, SelectedMapping},
     selection::SelectedData,
 };
 use crate::{AnalysisTypography, CataloguePublication, InlineBox, Point, Range};
@@ -91,7 +91,7 @@ pub(crate) struct PreparedData {
     pub(crate) shaped: layout::data::ShapedData,
     pub(crate) vertical_units: Vec<analysis::upright::VerticalUnit>,
     pub(crate) tables: PreparedTables,
-    pub(crate) indication_fonts: Vec<PreparedIndicationFonts>,
+    pub(crate) indications: Vec<PreparedIndication>,
 }
 
 /// Inputs coupled to one shaping operation, without a mutable System escape.
@@ -556,14 +556,14 @@ pub(crate) fn prepare(
         profile,
         &mut scope_budget,
     )?;
-    let indication_fonts = crate::protocol::prepared::prepare_indication_fonts(
+    let indications = crate::protocol::prepared::prepare_indications(
         catalogue, &analyzed, &styles, &tables, scratch, options,
     )?;
     let tab_metrics = crate::tabs::prepare(
         catalogue,
         &analyzed,
         &styles,
-        &indication_fonts,
+        &indications,
         options,
         scratch,
         &mut scope_budget,
@@ -589,6 +589,6 @@ pub(crate) fn prepare(
         vertical_units: upright_units,
         shaped,
         tables,
-        indication_fonts,
+        indications,
     }))
 }

@@ -6,6 +6,33 @@ use crate::*;
 use crate::{baseline_test_fonts as base, test_fonts as sfnt, vertical_test_fonts as vertical};
 use std::sync::Arc;
 
+#[test]
+fn semantic_window_keeps_an_authentic_source_empty_cell_without_metric_work() {
+    let (mut system, _, analyzed, _) = setup(" ", WhiteSpace::Collapse);
+    assert_eq!(
+        analyzed.combined_cells().next().unwrap().used_unit_count(),
+        0
+    );
+    let p = system
+        .prepare(
+            &analyzed,
+            PreparationOptions::default().with_orientation(LineOrientation::Vertical),
+        )
+        .unwrap();
+    let request = SemanticWindowRequest::new(p.source_segments().next().unwrap());
+    let before = system.stats();
+    let proof = p.semantic_window(&request).unwrap();
+    assert!(proof.partitions()[0].has_in_flow_content());
+    assert!(
+        proof
+            .participants()
+            .any(|p| matches!(p, PreparedParticipant::Cell(_)))
+    );
+    assert_eq!(proof.scope_alignment_usage().unwrap().font_queries(), 0);
+    assert_eq!(system.stats(), before);
+    assert!(finalize(&p).has_in_flow_content());
+}
+
 fn font_reference() -> ScopeFontReference {
     ScopeFontReference {
         script: FontBaselineScript::from_iso15924(*b"Latn").unwrap(),

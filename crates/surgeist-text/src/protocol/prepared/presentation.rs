@@ -294,7 +294,7 @@ impl Output {
         outer: u8,
         attachment: Attachment,
     ) -> crate::Result<()> {
-        let variant = &prepared.indication_fonts[alternative];
+        let variant = &prepared.indications[alternative].semantic;
         let row = &prepared.tables.alternatives[alternative];
         let mut analysis = variant.analysis.clone();
         local_levels(
@@ -352,198 +352,30 @@ impl Output {
     }
 }
 
-pub(super) fn select(
+pub(crate) fn semantic(
     prepared: &crate::engine::PreparedData,
     request: super::super::input::RequestInput<'_>,
-) -> crate::Result<SelectedPresentation> {
+) -> crate::Result<SemanticPresentation> {
     let tables = &prepared.tables;
     let start = tables.boundaries[request.start.index];
     let end = tables.boundaries[request.end.index];
     let projection = &prepared.analyzed.projection;
     let analysis = &prepared.analyzed.analysis;
     let alternative = request.alternative.as_ref().map(|value| value.index);
-    let definition = alternative.map(|i| tables.alternatives[i].definition);
-    let before = alternative.filter(|&i| tables.alternatives[i].placement.includes_before());
     let mut output = Output::default();
-    for (local, participant) in tables.participants[start.participant..end.participant]
-        .iter()
-        .enumerate()
+    for emission in
+        super::semantic::Overlay::new(prepared, start.participant..end.participant, alternative)
     {
-        let defining = match (definition, *participant) {
-            (Some(AlternativeDefinition::Source { source, .. }), ParticipantData::Text(i)) => {
-                !tables.units[i].deleted
-                    && tables.units[i].source.start <= source.start
-                    && tables.units[i].source.end >= source.end
-            }
-            (Some(AlternativeDefinition::Control { control, .. }), ParticipantData::Control(i)) => {
-                tables.controls[i].occurrence == control
-            }
-            _ => false,
-        };
-        if defining && let ParticipantData::Text(i) = *participant {
-            let row = &tables.units[i];
-            output.emit(
-                projection,
-                analysis,
-                &[],
-                UnitCapture {
-                    source: row.source,
-                    processed: row.processed,
-                    participant: Some(local),
-                    kind: PresentationUnitKind::Deleted,
-                    level: row.level,
-                    bidi_class: row
-                        .atoms
-                        .clone()
-                        .next()
-                        .map(|i| analysis.infos[i].0.bidi_class),
-                },
+        match emission? {
+            super::semantic::Emission::Original(unit) => output.emit_atoms(
+                unit.projection,
+                unit.analysis,
+                unit.atoms,
+                unit.capture,
                 true,
-            )?;
+            )?,
+            super::semantic::Emission::Indication(i) => output.before_indication(prepared, i)?,
         }
-        if defining && let Some(i) = before {
-            output.before_indication(prepared, i)?;
-        }
-        match *participant {
-            ParticipantData::Cell(i) => {
-                let row = &tables.cells[i];
-                let cell = &prepared.shaped.cells[row.cell];
-                let output_cells = prepared
-                    .analyzed
-                    .combination
-                    .as_deref()
-                    .ok_or_else(composition_error)?;
-                let binding = &output_cells.bindings[row.binding];
-                output.emit_atoms(
-                    projection,
-                    analysis,
-                    binding.atoms.clone(),
-                    UnitCapture {
-                        source: row.source,
-                        processed: row.processed,
-                        participant: Some(local),
-                        kind: PresentationUnitKind::Cell { cell: row.cell },
-                        level: cell.level,
-                        bidi_class: Some(BidiClass::LeftToRight),
-                    },
-                    true,
-                )?;
-            }
-            ParticipantData::Text(i) if !defining => {
-                let row = &tables.units[i];
-                let kind = if let Some(origin) = row.empty_origin {
-                    PresentationUnitKind::EmptyOrigin { origin }
-                } else if row.deleted {
-                    PresentationUnitKind::Deleted
-                } else if let Some(control) = prepared
-                    .analyzed
-                    .transform
-                    .controls_for_atoms(row.atoms.clone())
-                    .first()
-                    .copied()
-                {
-                    PresentationUnitKind::GeneratedSeparator {
-                        owner: GeneratedSeparatorOwner::Control(control),
-                    }
-                } else if let Some(index) = prepared
-                    .analyzed
-                    .transform
-                    .virtuals_for_atoms(row.atoms.clone())
-                    .first()
-                    .copied()
-                {
-                    PresentationUnitKind::GeneratedSeparator {
-                        owner: GeneratedSeparatorOwner::Virtual(index),
-                    }
-                } else {
-                    PresentationUnitKind::Text
-                };
-                let atoms: Vec<_> = row.atoms.clone().collect();
-                output.emit(
-                    projection,
-                    analysis,
-                    &atoms,
-                    UnitCapture {
-                        source: row.source,
-                        processed: row.processed,
-                        participant: Some(local),
-                        kind,
-                        level: row.level,
-                        bidi_class: atoms.first().map(|&i| analysis.infos[i].0.bidi_class),
-                    },
-                    true,
-                )?;
-            }
-            ParticipantData::Text(_) => {}
-            ParticipantData::Atomic(i) => {
-                let row = tables.atomics[i];
-                output.emit(
-                    projection,
-                    analysis,
-                    &[],
-                    UnitCapture {
-                        source: Range::new(row.source, row.source),
-                        processed: Range::new(row.processed, row.processed),
-                        participant: Some(local),
-                        kind: PresentationUnitKind::Atomic {
-                            occurrence: row.occurrence,
-                        },
-                        level: analysis.box_levels[row.occurrence],
-                        bidi_class: None,
-                    },
-                    true,
-                )?;
-            }
-            ParticipantData::ComputedLineBoundary(i) => {
-                let row = tables.computed_boundaries[i];
-                output.emit(
-                    projection,
-                    analysis,
-                    &[],
-                    UnitCapture {
-                        source: Range::new(row.source, row.source),
-                        processed: Range::new(row.processed, row.processed),
-                        participant: Some(local),
-                        kind: PresentationUnitKind::ComputedLineBoundary { boundary: i },
-                        level: row.level,
-                        bidi_class: Some(BidiClass::ParagraphSeparator),
-                    },
-                    true,
-                )?;
-            }
-            ParticipantData::Control(i) => {
-                let row = tables.controls[i];
-                let kind = &prepared.analyzed.paragraph.controls[row.occurrence].kind;
-                let cp = if *kind == ParagraphControlKind::ForcedBreak {
-                    Some(10)
-                } else {
-                    kind.code_point()
-                };
-                output.emit(
-                    projection,
-                    analysis,
-                    &[],
-                    UnitCapture {
-                        source: Range::new(row.source, row.source),
-                        processed: Range::new(row.processed, row.processed),
-                        participant: Some(local),
-                        kind: PresentationUnitKind::Control {
-                            occurrence: row.occurrence,
-                        },
-                        level: analysis.control_levels[row.occurrence],
-                        bidi_class: cp.map(|cp| {
-                            icu_properties::CodePointMapData::<BidiClass>::new().get32(cp)
-                        }),
-                    },
-                    true,
-                )?;
-            }
-        }
-    }
-    if matches!(definition, Some(AlternativeDefinition::Automatic { .. }))
-        && let Some(i) = before
-    {
-        output.before_indication(prepared, i)?;
     }
     // Original L1 is computed without generated strings. Only original units
     // supply the receiving-side authority; transparent occurrences are not it.
@@ -554,13 +386,21 @@ pub(super) fn select(
         analysis.base_level,
     );
     if let Some(incoming) = &request.incoming {
-        let receiver_index = output.output.units.iter().position(|unit| {
-            ((!unit.atoms.is_empty() && unit.kind == PresentationUnitKind::Text)
-                    || (unit.kind == PresentationUnitKind::Deleted && unit.bidi_class.is_some()))
-                || matches!(unit.kind, PresentationUnitKind::Cell { .. })
-                || matches!(unit.kind, PresentationUnitKind::Atomic { occurrence } if prepared.analyzed.processed.source().boxes()[occurrence].kind() == crate::InlineBoxKind::InFlow)
-                || matches!(unit.kind, PresentationUnitKind::Control { .. }) && unit.bidi_class.is_some()
-        }).ok_or_else(|| crate::hyphenation::error(crate::HyphenationError::MissingReceivingBidiAuthority))?;
+        let receiver_index = output
+            .output
+            .units
+            .iter()
+            .position(|unit| {
+                super::semantic::receives_incoming(
+                    prepared,
+                    unit.kind,
+                    !unit.atoms.is_empty(),
+                    unit.bidi_class.is_some(),
+                )
+            })
+            .ok_or_else(|| {
+                crate::hyphenation::error(crate::HyphenationError::MissingReceivingBidiAuthority)
+            })?;
         let receiver = &output.output.units[receiver_index];
         let outer = receiver.line_level;
         let participant = start.participant
@@ -697,23 +537,6 @@ pub(super) fn select(
         computed_levels: analysis.computed_levels.clone(),
         cell_levels: Vec::new(),
     };
-    let mut scopes = vec![DirectionalScope::Outer(0); projection.atoms.len()];
-    for unit in &output.output.units {
-        for i in unit.atoms.clone() {
-            scopes[i] = DirectionalScope::Outer(unit.level);
-        }
-    }
-    for (d, domain) in output.domains.iter().enumerate() {
-        for unit in &output.output.units[domain.units.clone()] {
-            for i in unit.atoms.clone() {
-                scopes[i] = if selected_analysis.levels[i] == domain.base {
-                    DirectionalScope::Outer(domain.outer)
-                } else {
-                    DirectionalScope::Local(d, selected_analysis.levels[i])
-                };
-            }
-        }
-    }
     if !output.domains.is_empty() {
         prove_graphemes(
             &output.output.units,
@@ -732,15 +555,56 @@ pub(super) fn select(
             return Err(composition_error());
         }
     }
+    Ok(SemanticPresentation {
+        units: output.output.units,
+        projection,
+        analysis: selected_analysis,
+        originals: output.originals,
+        domains: output.domains,
+        mapping: std::sync::Arc::new(SelectedMapping {
+            pieces: output.output.pieces,
+        }),
+    })
+}
+
+pub(super) fn select(
+    prepared: &crate::engine::PreparedData,
+    request: super::super::input::RequestInput<'_>,
+) -> crate::Result<SelectedPresentation> {
+    let SemanticPresentation {
+        units,
+        projection,
+        analysis,
+        originals,
+        domains,
+        mapping,
+    } = semantic(prepared, request)?;
+    let mut scopes = vec![DirectionalScope::Outer(0); projection.atoms.len()];
+    for unit in &units {
+        for i in unit.atoms.clone() {
+            scopes[i] = DirectionalScope::Outer(unit.level);
+        }
+    }
+    for (d, domain) in domains.iter().enumerate() {
+        for unit in &units[domain.units.clone()] {
+            for i in unit.atoms.clone() {
+                scopes[i] = if analysis.levels[i] == domain.base {
+                    DirectionalScope::Outer(domain.outer)
+                } else {
+                    DirectionalScope::Local(d, analysis.levels[i])
+                };
+            }
+        }
+    }
     let provenance = crate::engine::upright::UprightProvenance::Selected {
         original: &prepared.analyzed.projection,
-        originals: &output.originals,
-        units: &output.output.units,
+        originals: &originals,
+        units: &units,
     };
     let upright_units = crate::engine::upright::units(
         &prepared.analyzed,
         &projection,
-        &selected_analysis,
+        &analysis,
         &provenance,
         prepared.options.orientation(),
     )?;
@@ -766,17 +630,36 @@ pub(super) fn select(
             provenance,
         },
     };
-    let assignments = if output.domains.is_empty() {
-        crate::engine::shape::retain_original_fonts(prepared, &projection, &output.originals)?
+    let assignments = if domains.is_empty() {
+        crate::engine::shape::retain_original_fonts(prepared, &projection, &originals)?
     } else {
-        crate::engine::shape::assign_fonts(
-            prepared,
-            &projection,
-            &selected_analysis,
-            profile,
-            &scopes,
-        )?
+        crate::engine::shape::assign_fonts(prepared, &projection, &analysis, profile, &scopes)?
     };
+    let (source, selected_relation) =
+        selected_correspondence(prepared, request, &units, &originals)?;
+    Ok(SelectedPresentation {
+        vertical_units: upright_units,
+        source,
+        selected_relation,
+        units,
+        projection,
+        analysis,
+        assignments,
+        originals,
+        domains,
+        mapping,
+    })
+}
+
+fn selected_correspondence(
+    prepared: &crate::engine::PreparedData,
+    request: super::super::input::RequestInput<'_>,
+    units: &[PresentationUnit],
+    originals: &[Option<usize>],
+) -> crate::Result<(Range, SelectedRelation)> {
+    let tables = &prepared.tables;
+    let start = tables.boundaries[request.start.index];
+    let end = tables.boundaries[request.end.index];
     let relation_end = if prepared.analyzed.paragraph.scope_topology.is_none()
         && end.participant == tables.participants.len()
         && request.context.end == crate::LineEnd::Paragraph
@@ -788,8 +671,8 @@ pub(super) fn select(
     let relation = start.relation_cut..relation_end;
     let selected_relation = selected_relation(
         prepared,
-        &output.output.units,
-        &output.originals,
+        units,
+        originals,
         request.segment,
         start.participant..end.participant,
         relation.clone(),
@@ -808,20 +691,7 @@ pub(super) fn select(
         })
         .reduce(|a, b| Range::new(a.start.min(b.start), a.end.max(b.end)))
         .unwrap_or(Range::new(start.source_after, end.source_before));
-    Ok(SelectedPresentation {
-        vertical_units: upright_units,
-        source,
-        selected_relation,
-        units: output.output.units,
-        projection,
-        analysis: selected_analysis,
-        assignments,
-        originals: output.originals,
-        domains: output.domains,
-        mapping: std::sync::Arc::new(SelectedMapping {
-            pieces: output.output.pieces,
-        }),
-    })
+    Ok((source, selected_relation))
 }
 
 fn selected_relation(
@@ -1064,7 +934,7 @@ fn reorder(
     Ok(output)
 }
 
-fn composition_error() -> crate::Error {
+pub(super) fn composition_error() -> crate::Error {
     crate::hyphenation::error(crate::HyphenationError::UnsupportedIndicationComposition)
 }
 /// An OOF occurrence retains source/placement custody but has no L2

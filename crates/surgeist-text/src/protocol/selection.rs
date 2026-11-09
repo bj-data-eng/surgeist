@@ -403,101 +403,136 @@ pub(crate) fn admit_range<'a>(
     &'a super::prepared::BoundaryData,
     &'a super::prepared::BoundaryData,
 )> {
-    if let Some(family) = request.inline_boxes {
-        family.require_prepared(&prepared.inner)?;
-    }
-    super::segments::admit(prepared, request.segment)?;
-    super::continuation::validate(prepared, request.segment, request.start, request.incoming)?;
+    let (start, end) = admit_window(
+        prepared,
+        request.segment,
+        request.start,
+        request.end,
+        request.incoming,
+        request.inline_boxes,
+        Some(request.participants.len()),
+    )?;
     let tables = &prepared.inner.tables;
-    require_prepared(
-        prepared,
-        &request.start.prepared,
-        ProtocolHandleKind::Boundary,
-        request.start.index,
-    )?;
-    require_prepared(
-        prepared,
-        &request.end.prepared,
-        ProtocolHandleKind::Boundary,
-        request.end.index,
-    )?;
-    let bounds_error = || {
-        protocol_error(ProtocolError::InvalidBoundaryRange {
-            start: request.start.index,
-            end: request.end.index,
-            participants: tables.participants.len(),
-        })
-    };
-    let start = tables
-        .boundaries
-        .get(request.start.index)
-        .ok_or_else(bounds_error)?;
-    let end = tables
-        .boundaries
-        .get(request.end.index)
-        .ok_or_else(bounds_error)?;
-    if start.participant > end.participant
-        || start.relation_cut > end.relation_cut
-        || end.participant > tables.participants.len()
-        || request.participants.len() != end.participant - start.participant
-    {
-        return Err(bounds_error());
-    }
-    super::segments::admit_boundaries(prepared, request.segment, request.start, request.end)?;
     for (position, (actual, expected)) in request
         .participants
         .iter()
         .zip(&tables.participants[start.participant..end.participant])
         .enumerate()
     {
-        let (owner, index, kind, matches_kind) = match (actual, expected) {
-            (PreparedParticipant::Cell(value), ParticipantData::Cell(index)) => (
-                &value.prepared,
-                value.index,
-                ProtocolHandleKind::Cell,
-                value.index == *index,
-            ),
-            (PreparedParticipant::Text(value), ParticipantData::Text(index)) => (
-                &value.prepared,
-                value.index,
-                ProtocolHandleKind::Unit,
-                value.index == *index,
-            ),
-            (PreparedParticipant::Atomic(value), ParticipantData::Atomic(index)) => (
-                &value.prepared,
-                value.index,
-                ProtocolHandleKind::Atomic,
-                value.index == *index,
-            ),
-            (
-                PreparedParticipant::ComputedLineBoundary(value),
-                ParticipantData::ComputedLineBoundary(index),
-            ) => (
-                &value.prepared,
-                value.index,
-                ProtocolHandleKind::ComputedLineBoundary,
-                value.index == *index,
-            ),
-            (PreparedParticipant::Control(value), ParticipantData::Control(index)) => (
-                &value.prepared,
-                value.index,
-                ProtocolHandleKind::Control,
-                value.index == *index,
-            ),
-            _ => {
-                return Err(protocol_error(ProtocolError::ParticipantMismatch {
-                    position,
-                }));
-            }
-        };
-        require_prepared(prepared, owner, kind, index)?;
-        if !matches_kind {
+        admit_participant(prepared, actual, expected, position)?;
+    }
+    Ok((start, end))
+}
+
+pub(crate) fn admit_window<'a>(
+    prepared: &'a PreparedText,
+    segment: &super::PreparedSourceSegment,
+    start_handle: &super::PreparedBoundary,
+    end_handle: &super::PreparedBoundary,
+    incoming: Option<&super::HyphenationContinuation>,
+    inline_boxes: Option<&super::PreparedInlineBoxFamily>,
+    participant_count: Option<usize>,
+) -> Result<(
+    &'a super::prepared::BoundaryData,
+    &'a super::prepared::BoundaryData,
+)> {
+    if let Some(family) = inline_boxes {
+        family.require_prepared(&prepared.inner)?;
+    }
+    super::segments::admit(prepared, segment)?;
+    super::continuation::validate(prepared, segment, start_handle, incoming)?;
+    let tables = &prepared.inner.tables;
+    require_prepared(
+        prepared,
+        &start_handle.prepared,
+        ProtocolHandleKind::Boundary,
+        start_handle.index,
+    )?;
+    require_prepared(
+        prepared,
+        &end_handle.prepared,
+        ProtocolHandleKind::Boundary,
+        end_handle.index,
+    )?;
+    let bounds_error = || {
+        protocol_error(ProtocolError::InvalidBoundaryRange {
+            start: start_handle.index,
+            end: end_handle.index,
+            participants: tables.participants.len(),
+        })
+    };
+    let start = tables
+        .boundaries
+        .get(start_handle.index)
+        .ok_or_else(bounds_error)?;
+    let end = tables
+        .boundaries
+        .get(end_handle.index)
+        .ok_or_else(bounds_error)?;
+    if start.participant > end.participant
+        || start.relation_cut > end.relation_cut
+        || end.participant > tables.participants.len()
+        || participant_count.is_some_and(|count| count != end.participant - start.participant)
+    {
+        return Err(bounds_error());
+    }
+    super::segments::admit_boundaries(prepared, segment, start_handle, end_handle)?;
+    Ok((start, end))
+}
+
+fn admit_participant(
+    prepared: &PreparedText,
+    actual: &super::PreparedParticipant,
+    expected: &ParticipantData,
+    position: usize,
+) -> Result<()> {
+    let (owner, index, kind, matches_kind) = match (actual, expected) {
+        (PreparedParticipant::Cell(value), ParticipantData::Cell(index)) => (
+            &value.prepared,
+            value.index,
+            ProtocolHandleKind::Cell,
+            value.index == *index,
+        ),
+        (PreparedParticipant::Text(value), ParticipantData::Text(index)) => (
+            &value.prepared,
+            value.index,
+            ProtocolHandleKind::Unit,
+            value.index == *index,
+        ),
+        (PreparedParticipant::Atomic(value), ParticipantData::Atomic(index)) => (
+            &value.prepared,
+            value.index,
+            ProtocolHandleKind::Atomic,
+            value.index == *index,
+        ),
+        (
+            PreparedParticipant::ComputedLineBoundary(value),
+            ParticipantData::ComputedLineBoundary(index),
+        ) => (
+            &value.prepared,
+            value.index,
+            ProtocolHandleKind::ComputedLineBoundary,
+            value.index == *index,
+        ),
+        (PreparedParticipant::Control(value), ParticipantData::Control(index)) => (
+            &value.prepared,
+            value.index,
+            ProtocolHandleKind::Control,
+            value.index == *index,
+        ),
+        _ => {
             return Err(protocol_error(ProtocolError::ParticipantMismatch {
                 position,
             }));
         }
+    };
+    require_prepared(prepared, owner, kind, index)?;
+    if !matches_kind {
+        return Err(protocol_error(ProtocolError::ParticipantMismatch {
+            position,
+        }));
     }
-    Ok((start, end))
+    Ok(())
 }
 
 pub(crate) fn admit_geometry(

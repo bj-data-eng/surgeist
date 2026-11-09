@@ -661,30 +661,37 @@ impl PreparedText {
             .tables
             .participants
             .iter()
-            .map(|participant| match *participant {
-                ParticipantData::Cell(index) => PreparedParticipant::Cell(PreparedCell {
-                    prepared: Arc::clone(&self.inner),
-                    index,
-                }),
-                ParticipantData::Text(index) => PreparedParticipant::Text(PreparedUnit {
-                    prepared: Arc::clone(&self.inner),
-                    index,
-                }),
-                ParticipantData::Atomic(index) => PreparedParticipant::Atomic(PreparedAtomic {
-                    prepared: Arc::clone(&self.inner),
-                    index,
-                }),
-                ParticipantData::ComputedLineBoundary(index) => {
-                    PreparedParticipant::ComputedLineBoundary(PreparedComputedLineBoundary {
-                        prepared: Arc::clone(&self.inner),
-                        index,
-                    })
-                }
-                ParticipantData::Control(index) => PreparedParticipant::Control(PreparedControl {
-                    prepared: Arc::clone(&self.inner),
-                    index,
-                }),
+            .map(|value| participant(&self.inner, *value))
+    }
+}
+
+pub(crate) fn participant(
+    prepared: &Arc<PreparedData>,
+    participant: ParticipantData,
+) -> PreparedParticipant {
+    match participant {
+        ParticipantData::Cell(index) => PreparedParticipant::Cell(PreparedCell {
+            prepared: Arc::clone(prepared),
+            index,
+        }),
+        ParticipantData::Text(index) => PreparedParticipant::Text(PreparedUnit {
+            prepared: Arc::clone(prepared),
+            index,
+        }),
+        ParticipantData::Atomic(index) => PreparedParticipant::Atomic(PreparedAtomic {
+            prepared: Arc::clone(prepared),
+            index,
+        }),
+        ParticipantData::ComputedLineBoundary(index) => {
+            PreparedParticipant::ComputedLineBoundary(PreparedComputedLineBoundary {
+                prepared: Arc::clone(prepared),
+                index,
             })
+        }
+        ParticipantData::Control(index) => PreparedParticipant::Control(PreparedControl {
+            prepared: Arc::clone(prepared),
+            index,
+        }),
     }
 }
 

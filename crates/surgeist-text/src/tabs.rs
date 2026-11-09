@@ -115,7 +115,7 @@ pub(crate) fn prepare(
     catalogue: &mut surgeist_font::FontCatalogue,
     analyzed: &crate::engine::AnalyzedData,
     styles: &[crate::engine::resolve::ResolvedStyleRun],
-    alternatives: &[crate::protocol::prepared::PreparedIndicationFonts],
+    alternatives: &[crate::protocol::prepared::PreparedIndication],
     options: crate::PreparationOptions,
     scratch: &mut crate::engine::shape::ShapeContext,
     ledger: &mut crate::engine::scope_alignment::accounting::Ledger,
@@ -130,7 +130,7 @@ pub(crate) fn prepare(
         std::iter::once((&analyzed.projection, &analyzed.analysis, true)).chain(
             alternatives
                 .iter()
-                .map(|alt| (&alt.projection, &alt.analysis, false)),
+                .map(|alt| (&alt.semantic.projection, &alt.semantic.analysis, false)),
         )
     {
         for (i, atom) in projection.atoms.iter().enumerate() {
