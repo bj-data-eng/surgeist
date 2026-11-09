@@ -224,7 +224,9 @@ fn an_overshoot_the_cap_holds_is_recorded_for_the_caller_to_stop_on() {
     c.record_capacity(40, 120, 100).unwrap();
     let usage = c.usage();
     assert_eq!(
-        usage.resource(HtmlParseResource::ManagedCapacityBytes).current,
+        usage
+            .resource(HtmlParseResource::ManagedCapacityBytes)
+            .current,
         180
     );
     assert_eq!(usage.actual_capacity_bytes, 180);

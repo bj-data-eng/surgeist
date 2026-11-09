@@ -232,7 +232,13 @@ fn a_credit_cap_of_the_host_scope_stops_the_parse_with_the_hosts_limit() {
 fn a_resource_cap_of_the_host_scope_stops_the_parse_with_the_hosts_limit() {
     let limits = HtmlLimits::from_fn(
         |_| u64::MAX,
-        |resource| if resource == HtmlResource::ManagedNodes { 3 } else { u64::MAX },
+        |resource| {
+            if resource == HtmlResource::ManagedNodes {
+                3
+            } else {
+                u64::MAX
+            }
+        },
     );
     let (ledger, root) = host_with(limits, 3, ProfileMode::Off);
     let Err(failure) = request()
@@ -537,7 +543,12 @@ fn a_fragment_parse_profiles_its_own_operation_when_its_request_selects_a_mode()
     let profile = report.profile().unwrap().expect("a summary was selected");
     assert_eq!(profile.scopes.len(), 7);
     assert_eq!(
-        profile.scopes.first().unwrap().usage.work(HtmlWork::Credits),
+        profile
+            .scopes
+            .first()
+            .unwrap()
+            .usage
+            .work(HtmlWork::Credits),
         credits(report.usage())
     );
     let failed = HtmlFragmentParseRequest::new(
