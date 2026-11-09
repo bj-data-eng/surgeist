@@ -8,6 +8,9 @@ use crate::{
     accounting::{Account, RenderWork},
 };
 
+mod sweep;
+pub(super) use sweep::qualify_sweep;
+
 fn invalid_geometry(value: &'static str) -> Error {
     Error::invalid_value(
         "native gradient realization",

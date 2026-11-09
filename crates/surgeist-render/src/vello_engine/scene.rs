@@ -188,7 +188,7 @@ impl VelloScene {
         effective_transform: &QualifiedTransform,
         account: &Account,
     ) -> Result<()> {
-        let SceneBrush { brush, sampling } = brush;
+        let (brush, sampling) = brush.qualify(effective_transform, account)?.into_parts();
         account.work(RenderWork::PaintVisits, 1)?;
         if matches!(brush, BrushRef::Image(_)) {
             geometry::qualify_inverse(effective_transform, account)?;
@@ -695,7 +695,7 @@ impl VelloScene {
             .patches
             .push(Patch::GlyphRun { index });
         let first_patch = self.encoding.resources.patches.len();
-        self.brush(brush.scene_brush(), &native_paint, account)?;
+        self.brush(brush.scene_brush(target_extent), &native_paint, account)?;
         if let Some((source_id, expansion)) = image_expansion {
             self.mark_image_expansion(first_patch, source_id, expansion, account)?;
         }
@@ -827,11 +827,7 @@ impl VelloScene {
             x += 1.0;
         }
         path.finish(true);
-        self.brush(
-            BrushRef::Solid(peniko::Color::BLACK).into(),
-            &qualified,
-            account,
-        )
+        self.brush(peniko::Color::BLACK.into(), &qualified, account)
     }
 
     #[cfg(test)]
@@ -1207,6 +1203,43 @@ mod pixelated_tests {
     use super::*;
 
     #[test]
+    fn original_font_glyph_diagnostic_precedes_sweep_field_capacity() {
+        let font = crate::FontData::try_from_bytes(
+            include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
+            0,
+            surgeist_test::fixtures::FONT_LIMITS,
+        )
+        .unwrap();
+        let gradient = crate::Gradient::try_sweep(
+            crate::Point::new(f64::MAX, f64::MAX),
+            vec![
+                crate::GradientStop::try_new(0.0, crate::Color::BLACK).unwrap(),
+                crate::GradientStop::try_new(1.0, crate::Color::TRANSPARENT).unwrap(),
+            ],
+        )
+        .unwrap();
+        let glyphs = [crate::TextGlyph::try_new(u32::MAX, 0.0, 16.0, 16.0).unwrap()];
+        let run = crate::TextRun::try_new(
+            crate::FontRef::new(2123).with_data(font),
+            16.0,
+            crate::Transform::identity(),
+            crate::TextPaint::try_fill(gradient.into()).unwrap(),
+            &glyphs,
+            crate::TextRunBounds::unspecified(),
+        )
+        .unwrap();
+        let error = VelloScene::default()
+            .encode_text_run(&run, &Account::for_test())
+            .unwrap_err();
+        assert_eq!(error.code(), crate::ErrorCode::InvalidInput);
+        assert_eq!(
+            error.invalid_value_diagnostic().unwrap().field(),
+            "text_glyph.id"
+        );
+        assert!(error.gradient_realization_diagnostic().is_none());
+    }
+
+    #[test]
     fn font_backing_miss_counts_source_clone_blob_clone_and_registry_write() {
         let bytes = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
         let resource =
@@ -1295,7 +1328,7 @@ mod pixelated_tests {
             .fill(
                 Fill::NonZero,
                 kurbo::Affine::IDENTITY,
-                &gradient,
+                SceneBrush::new((&gradient).into(), None, crate::PhysicalSize::new(32, 16)),
                 None,
                 &kurbo::Rect::new(0.0, 0.0, 16.0, 4.0),
                 &account,

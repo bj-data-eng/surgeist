@@ -665,11 +665,37 @@ impl GradientStop {
     }
 }
 
+/// A borrowed sweep with its validated, nonempty stop list.
+pub(crate) struct SweepGradient<'a> {
+    center: Point,
+    stops: &'a [GradientStop],
+}
+
 impl Gradient {
+    pub(crate) fn sweep(&self) -> Option<SweepGradient<'_>> {
+        match &self.kind {
+            GradientKind::Sweep { center, stops } => Some(SweepGradient {
+                center: *center,
+                stops,
+            }),
+            _ => None,
+        }
+    }
+}
+
+impl SweepGradient<'_> {
+    pub(crate) const fn center(&self) -> Point {
+        self.center
+    }
+
+    pub(crate) const fn stops(&self) -> &[GradientStop] {
+        self.stops
+    }
+
     /// The native ramp starts its first color at zero. Anchor that same color
     /// there when a multistop Pad field has a positive first supplied offset.
-    /// A single stop already selects the native solid path, even for coincident
-    /// linear endpoints, so its offset is deliberately not inspected here.
+    /// A single stop already selects the native solid path, so its offset is
+    /// deliberately not inspected here.
     pub(crate) fn native_leading_stop(
         &self,
         account: &crate::accounting::Account,

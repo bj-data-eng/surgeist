@@ -55,6 +55,15 @@ Ordinary realization uses this correspondence with absolute linear phase and
 the actual pair of concentric radii, including a negative starting radius.
 Repeating realization retains its separate phase reduction and averaging rules.
 
+Sweep receiving qualification follows the same `draw_leaf.wgsl` source's
+transform/center composition and inverse setup, together with
+`shader/shared/transform.wgsl` recorded below. It checks the actual effective
+native factors, rather than encoding a replacement CPU inverse. Its bounded
+consumer follows the integer raster lanes and slope/angle expressions in the
+same `fine.wgsl` source identified below. The native angle polynomial, center
+handling and ramp sampling remain unchanged. The qualification retains the
+existing shader license alternatives and modification notice.
+
 The same checked fine-program source adapter defines the zero/subnormal circular
 norm boundary from `vello_shaders` 0.9.0 `shader/fine.wgsl`, whose source SHA-256 is
 `efd4a38f4a6a32518b33b497789723b8f163ada361f683c2dfa3700fe8b2d68d`.
