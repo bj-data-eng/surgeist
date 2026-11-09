@@ -1997,9 +1997,8 @@ mod tests {
 
     // Characterization of existing behaviour after B07 (a refused credit on
     // Drop is latched, not a panic); not RED against an earlier commit.
-    const UNDERFLOW: HtmlParseStop = HtmlParseStop::InternalInvariant(
-        crate::parser::control::HtmlParseInvariant::ReleaseUnderflow,
-    );
+    const UNDERFLOW: HtmlParseStop =
+        HtmlParseStop::Accounting(surgeist_html::accounting::HtmlAccountingFault::ReleaseUnderflow);
 
     #[test]
     fn characterization_dropping_a_pending_over_unadmitted_storage_latches_the_refusal() {
@@ -2474,8 +2473,8 @@ mod tests {
                     let refused = pools.string(&equal, sharing.control);
                     assert!(matches!(
                         refused,
-                        Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
-                            crate::parser::control::HtmlParseInvariant::ReleaseUnderflow
+                        Err(SessionError::Stop(HtmlParseStop::Accounting(
+                            surgeist_html::accounting::HtmlAccountingFault::ReleaseUnderflow
                         )))
                     ));
                     pools.strings_usage = real;
@@ -2486,8 +2485,8 @@ mod tests {
                     };
                     assert!(matches!(
                         pools.string(&text, sharing.control),
-                        Err(SessionError::Stop(HtmlParseStop::InternalInvariant(
-                            crate::parser::control::HtmlParseInvariant::ReleaseUnderflow
+                        Err(SessionError::Stop(HtmlParseStop::Accounting(
+                            surgeist_html::accounting::HtmlAccountingFault::ReleaseUnderflow
                         )))
                     ));
                     pools.strings_usage = Usage::default();

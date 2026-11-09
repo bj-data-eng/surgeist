@@ -5,6 +5,7 @@
 
 use crate::HtmlSemanticAccounting;
 use std::{collections::HashSet, error::Error, fmt, hash::Hash, sync::Arc};
+use surgeist_html::accounting::HtmlAccountingFault;
 use surgeist_html::bounded::lexical::validate_custom_element_name;
 use surgeist_html::{
     construction::{HtmlDoctype, HtmlDocumentMode, HtmlShadowRootMode, HtmlShadowRootProperties},
@@ -547,10 +548,10 @@ pub enum HtmlCaptureError {
         required: usize,
     },
     RepresentationExhausted,
-    /// The ledger that carries the capture's accounting reported a state its own sequencing rules
-    /// out: a release that matches nothing held, a refusal that names no capture resource, or a
-    /// ledger defect. Valid use never reaches it.
-    LedgerState,
+    /// The ledger that carries the accounting failed in a way that is not a refused limit: a release
+    /// that matches nothing held, a ledger that cannot allocate, a scope that is not the
+    /// operation's, or a change the operation does not charge. It carries the accounting fault.
+    Accounting(HtmlAccountingFault),
     /// A bounded HTML operation charged a change that the capture's work steps do not admit: a
     /// resource change or a gauge record. The capture charges only work, so an operation that does
     /// this breaks its contract with the capture.
@@ -1062,7 +1063,7 @@ impl HtmlCaptureBuilder {
         limits: HtmlCaptureLimits,
         host_revision: HtmlHostFactsRevision,
         accounting: &HtmlSemanticAccounting,
-    ) -> Result<Self, crate::HtmlSemanticAccountingFault> {
+    ) -> Result<Self, HtmlAccountingFault> {
         let mut builder = Self::new(limits, host_revision);
         builder.account =
             account::Account::hosted(limits, accounting).map_err(crate::accounting::fault)?;
@@ -1886,7 +1887,7 @@ impl HtmlCaptureBuilder {
             Ok(()) => preflight::Failure::Capture(match self.depth(height) {
                 Err(error) => error,
                 // The walk found no refusal where the check that sent it here found one.
-                Ok(()) => HtmlCaptureError::LedgerState,
+                Ok(()) => HtmlCaptureError::Accounting(HtmlAccountingFault::UnexpectedChange),
             }),
         }
     }

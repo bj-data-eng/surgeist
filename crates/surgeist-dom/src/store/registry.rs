@@ -8,6 +8,7 @@ use crate::hosted::{
     DomHostedError, DomHostedResource, DomHostedSource, RegistryQuota, Retained, Work,
 };
 use crate::registry::{DomRegistry, DomRegistryId};
+use surgeist_html::accounting::HtmlAccountingFault;
 
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureRegistryId, HtmlEmptyGlobalRegistryError, HtmlHostFactsRevision,
@@ -129,8 +130,12 @@ impl Bank {
             HtmlEmptyGlobalRegistryError::RepresentationExhausted => {
                 DomHostedError::RepresentationExhausted
             }
-            HtmlEmptyGlobalRegistryError::AllocationFailed => DomHostedError::AllocationFailed,
-            HtmlEmptyGlobalRegistryError::Capture(_) => DomHostedError::UnsupportedProfile,
+            HtmlEmptyGlobalRegistryError::AllocationFailed
+            | HtmlEmptyGlobalRegistryError::Accounting(HtmlAccountingFault::Allocation) => {
+                DomHostedError::AllocationFailed
+            }
+            HtmlEmptyGlobalRegistryError::Accounting(_)
+            | HtmlEmptyGlobalRegistryError::Capture(_) => DomHostedError::UnsupportedProfile,
         })?;
         let payload_bytes = formed.retained_storage_usage().retained_bytes();
         let payload = source.retain(payload_bytes, cancel)?;

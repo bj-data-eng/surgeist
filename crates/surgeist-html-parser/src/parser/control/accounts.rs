@@ -5,7 +5,7 @@
 //! takes no lock on the admission path. Both forms charge the same scopes, so the
 //! same batches reach the same admission rules.
 
-use crate::accounting::{Lease, LedgerError, ParsePhase, PhaseScopes, private};
+use crate::accounting::{Lease, LedgerError, ParsePhase, PhaseScopes, SetupFault, private};
 use crate::{HtmlParseLimits, HtmlParseResource};
 use std::sync::Arc;
 use surgeist_html::accounting::{HtmlChange, HtmlLimits, HtmlResource, HtmlWork};
@@ -72,9 +72,9 @@ impl Accounts {
     pub(crate) fn new(
         limits: &HtmlParseLimits,
         lease: Option<&Arc<Lease>>,
-    ) -> Result<Self, crate::HtmlParseAccountingFault> {
+    ) -> Result<Self, SetupFault> {
         let Some(lease) = lease else {
-            let (operation, cap, charging) = private(limits)?;
+            let (operation, cap, charging) = private(limits).map_err(SetupFault::from)?;
             return Ok(Self {
                 ledger: Ledger::Owned(operation),
                 cap,

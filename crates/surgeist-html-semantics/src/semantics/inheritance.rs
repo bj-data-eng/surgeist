@@ -8,6 +8,7 @@ use super::index::FactIndex;
 use super::scan::{Caps, ScanError, ScanMeter};
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
+use surgeist_html::accounting::HtmlAccountingFault;
 use surgeist_html::accounting::{HtmlCapScope, HtmlResource};
 use surgeist_html::attributes::{
     HtmlContentEditable, HtmlContentEditableState, HtmlSpellcheck, HtmlSpellcheckState,
@@ -92,8 +93,10 @@ pub enum HtmlGlobalInheritanceError {
     Capture(HtmlCaptureError),
     HostRevisionMismatch,
     RepresentationExhausted,
-    /// The ledger that enforces the limits reported a state its own sequencing rules out.
-    LedgerState,
+    /// The ledger that carries the accounting failed in a way that is not a refused limit: a release
+    /// that matches nothing held, a ledger that cannot allocate, a scope that is not the
+    /// operation's, or a change the operation does not charge. It carries the accounting fault.
+    Accounting(HtmlAccountingFault),
     RecordCapacity {
         limit: usize,
         required: usize,
@@ -134,8 +137,8 @@ impl ScanError for HtmlGlobalInheritanceError {
     fn capture(error: HtmlCaptureError) -> Self {
         Self::Capture(error)
     }
-    fn ledger_state() -> Self {
-        Self::LedgerState
+    fn accounting(fault: HtmlAccountingFault) -> Self {
+        Self::Accounting(fault)
     }
 }
 impl HtmlGlobalInheritanceFacts {

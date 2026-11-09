@@ -2,6 +2,7 @@
 use super::*;
 use source::checkpoint::Charge;
 use source::storage::Payload;
+use surgeist_html::accounting::HtmlAccountingFault;
 use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html_semantics::*;
 mod rows;
@@ -192,7 +193,10 @@ impl Draft {
             HtmlOptionValueControlError::RepresentationExhausted => {
                 DomError::RepresentationExhausted
             }
-            HtmlOptionValueControlError::ProtocolViolated => DomError::SelectProtocol,
+            HtmlOptionValueControlError::Accounting(HtmlAccountingFault::Allocation) => {
+                DomError::AllocationFailed
+            }
+            HtmlOptionValueControlError::Accounting(_) => DomError::SelectProtocol,
             HtmlOptionValueControlError::LimitExceeded { resource, .. } => {
                 let limits = self
                     .source_limits
@@ -520,8 +524,16 @@ mod tests {
         let cancel = AtomicBool::new(false);
         let draft = Draft::new(&dom, Arc::new(crate::batch::BatchIdentity), &cancel).unwrap();
         assert_eq!(
-            draft.option_value_control_error(HtmlOptionValueControlError::ProtocolViolated),
+            draft.option_value_control_error(HtmlOptionValueControlError::Accounting(
+                HtmlAccountingFault::ReleaseUnderflow
+            )),
             DomError::SelectProtocol
+        );
+        assert_eq!(
+            draft.option_value_control_error(HtmlOptionValueControlError::Accounting(
+                HtmlAccountingFault::Allocation
+            )),
+            DomError::AllocationFailed
         );
     }
 

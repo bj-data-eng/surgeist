@@ -2,6 +2,7 @@
 
 use super::index::FactIndex;
 use super::*;
+use surgeist_html::accounting::HtmlAccountingFault;
 use surgeist_html::values::DocumentString;
 
 /// One producer-established custom-control classification at the context revision.
@@ -387,13 +388,13 @@ impl super::scan::ScanError for HtmlSemanticContextError {
     }
     fn work_exceeded(_limit: usize, _required: usize) -> Self {
         // The meter of a capacity cap carries no work cap, so no work charge is refused.
-        Self::LedgerState
+        Self::Accounting(HtmlAccountingFault::UnexpectedChange)
     }
     fn capture(error: HtmlCaptureError) -> Self {
         Self::Capture(error)
     }
-    fn ledger_state() -> Self {
-        Self::LedgerState
+    fn accounting(fault: HtmlAccountingFault) -> Self {
+        Self::Accounting(fault)
     }
 }
 /// A ledger scope that caps the capacity of one supplied record vector at `cap`.
@@ -427,9 +428,10 @@ pub enum HtmlSemanticContextError {
     NaturalDimensionsRevisionMismatch,
     Capture(HtmlCaptureError),
     HostRevisionMismatch,
-    /// The ledger that enforces the capacity limits reported a state its own sequencing rules
-    /// out.
-    LedgerState,
+    /// The ledger that carries the accounting failed in a way that is not a refused limit: a release
+    /// that matches nothing held, a ledger that cannot allocate, a scope that is not the
+    /// operation's, or a change the operation does not charge. It carries the accounting fault.
+    Accounting(HtmlAccountingFault),
     ClassificationLimit {
         limit: usize,
         retained_capacity: usize,

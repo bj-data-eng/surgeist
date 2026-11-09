@@ -5,7 +5,9 @@
 use super::support::{fragment_context, limits};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
-use surgeist_html::accounting::{HtmlLimits, HtmlResource, HtmlWork};
+use surgeist_html::accounting::{
+    HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapScope, HtmlLimits, HtmlResource, HtmlWork,
+};
 use surgeist_html_parser::*;
 use surgeist_ledger::{
     Change, Dimension, Error, Operation, ProfileMode, Refusal, RefusalReason, Report, Scope,
@@ -329,9 +331,9 @@ fn a_scope_bound_too_small_for_the_parse_stops_it_with_a_typed_fault() {
     };
     assert_eq!(
         failure.first_stop(),
-        Some(HtmlParseStop::Accounting(
-            HtmlParseAccountingFault::ScopeLimit { limit: 2 }
-        ))
+        Some(HtmlParseStop::Accounting(HtmlAccountingFault::ScopeLimit {
+            limit: 2
+        }))
     );
 }
 
@@ -347,9 +349,7 @@ fn a_scope_of_another_operation_stops_the_parse_without_a_report() {
     };
     assert_eq!(
         failure.first_stop(),
-        Some(HtmlParseStop::Accounting(
-            HtmlParseAccountingFault::ForeignScope
-        ))
+        Some(HtmlParseStop::Accounting(HtmlAccountingFault::ForeignScope))
     );
     // The failure describes the accounting stop as it describes the others.
     assert_eq!(
@@ -773,4 +773,47 @@ fn a_parse_stopped_in_any_phase_releases_its_custody_when_the_failure_drops() {
         assert_eq!(live_total(&ledger, charging), 0, "{name}");
         assert_eq!(live_total(&ledger, root), 0, "{name}");
     }
+}
+
+/// Every scope a parse creates takes its name from the schema: the cap scope from
+/// `HtmlCapScope`, and the charging scope, the phase scopes and a profiled operation's root from
+/// `HtmlAuxiliaryScope`.
+#[test]
+fn every_scope_a_parse_creates_is_named_by_the_schema() {
+    let report = request()
+        .with_accounting(
+            HtmlParseAccounting::profiled(ProfileMode::Summary { timing: false })
+                .observing_phases(),
+        )
+        .parse()
+        .unwrap()
+        .profile()
+        .unwrap()
+        .expect("a summary was selected");
+    assert_eq!(
+        names(&report),
+        [
+            HtmlAuxiliaryScope::ParseHost.name(),
+            HtmlCapScope::Parse.name(),
+            HtmlAuxiliaryScope::ParseCharging.name(),
+            HtmlAuxiliaryScope::ParseAdmission.name(),
+            HtmlAuxiliaryScope::ParseConstruction.name(),
+            HtmlAuxiliaryScope::ParseFinalization.name(),
+            HtmlAuxiliaryScope::ParsePublication.name(),
+        ]
+    );
+    // An operation without profiling names its cap scope the same way.
+    let (ledger, root) = host(3);
+    let _kept = request()
+        .with_accounting(HtmlParseAccounting::host(ledger.clone(), root))
+        .parse()
+        .unwrap();
+    assert_eq!(
+        names(&report_of(&ledger)),
+        [
+            "host",
+            HtmlCapScope::Parse.name(),
+            HtmlAuxiliaryScope::ParseCharging.name(),
+        ]
+    );
 }

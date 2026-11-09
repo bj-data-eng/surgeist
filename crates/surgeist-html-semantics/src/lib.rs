@@ -13,7 +13,7 @@ mod hyperlink;
 #[cfg(test)]
 mod schema_tests;
 mod semantics;
-pub use accounting::{HtmlSemanticAccounting, HtmlSemanticAccountingFault};
+pub use accounting::HtmlSemanticAccounting;
 pub use base::*;
 pub use capture::*;
 pub use controlled_option_value::*;

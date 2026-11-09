@@ -1,80 +1,28 @@
 //! Where capture, import and semantic queries charge their work and resources.
 
-use std::{error::Error as StdError, fmt};
-use surgeist_html::accounting::{HtmlChange, HtmlLimits, HtmlResource, HtmlTariffs, HtmlWork};
-use surgeist_ledger::{Charge, Defect, Error, Operation, Scope, SharedOperation, Usage};
+use std::fmt;
+use surgeist_html::accounting::{
+    HtmlAccountingFault, HtmlChange, HtmlLedgerOutcome, HtmlLimits, HtmlResource, HtmlTariffs,
+    HtmlWork, classify,
+};
+use surgeist_ledger::{Charge, Error, Operation, Scope, SharedOperation, Usage};
 
 /// The ledger error type of the HTML schema pair.
 pub(crate) type LedgerError = Error<HtmlWork, HtmlResource>;
 
-/// A ledger failure that is not a refusal of a charged change.
-///
-/// A refusal at a cap is reported as the typed limit stop of the operation that
-/// charged. Every other ledger error stops that operation with one of these.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum HtmlSemanticAccountingFault {
-    /// The supplied scope belongs to another operation.
-    ForeignScope,
-    /// The operation's scope bound leaves no room for the scopes of the operation.
-    ScopeLimit {
-        /// The operation's scope bound.
-        limit: usize,
-    },
-    /// The ledger could not allocate its storage.
-    Allocation,
-    /// The ledger's identities are exhausted.
-    IdentityExhausted,
-    /// Timed profiling needs a clock the platform does not supply.
-    TimingUnavailable,
-    /// A checkpoint operation failed. Nothing here opens a checkpoint, so only a
-    /// ledger that reports one for another reason produces it.
-    Checkpoint,
-    /// The ledger refused a change where nothing here charges one, such as the
-    /// creation of a scope, or a refusal that names a dimension the operation does
-    /// not report.
-    UnexpectedRefusal,
-    /// The ledger found a broken invariant of its own. It stays latched in the
-    /// operation.
-    Defect(Defect),
+/// Widens a platform amount; an amount beyond `u64` saturates and every finite cap refuses it.
+pub(crate) fn wide(value: usize) -> u64 {
+    u64::try_from(value).unwrap_or(u64::MAX)
 }
 
-impl fmt::Display for HtmlSemanticAccountingFault {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::ForeignScope => f.write_str("the supplied scope belongs to another operation"),
-            Self::ScopeLimit { limit } => write!(
-                f,
-                "the operation's scope bound of {limit} leaves no room for the scopes"
-            ),
-            Self::Allocation => f.write_str("the ledger could not allocate its storage"),
-            Self::IdentityExhausted => f.write_str("the ledger's identities are exhausted"),
-            Self::TimingUnavailable => f.write_str("timed profiling needs a host clock"),
-            Self::Checkpoint => f.write_str("a ledger checkpoint operation failed"),
-            Self::UnexpectedRefusal => {
-                f.write_str("the ledger refused a change where nothing charges one")
-            }
-            Self::Defect(defect) => write!(f, "the ledger found a defect: {defect}"),
+/// The fault of a ledger error where nothing here charges a change that a cap can refuse, such
+/// as the creation of a scope: a refusal that names a change is not one the operation charges.
+pub(crate) fn fault(error: LedgerError) -> HtmlAccountingFault {
+    match classify(error) {
+        HtmlLedgerOutcome::Fault(fault) => fault,
+        HtmlLedgerOutcome::Cap(_) | HtmlLedgerOutcome::Exhausted(_) => {
+            HtmlAccountingFault::UnexpectedChange
         }
-    }
-}
-
-impl StdError for HtmlSemanticAccountingFault {}
-
-/// The fault of a ledger error that is not a refusal of a charged change.
-pub(crate) fn fault(error: LedgerError) -> HtmlSemanticAccountingFault {
-    match error {
-        Error::Refused(_) => HtmlSemanticAccountingFault::UnexpectedRefusal,
-        Error::ForeignScope => HtmlSemanticAccountingFault::ForeignScope,
-        Error::ScopeLimit { limit } => HtmlSemanticAccountingFault::ScopeLimit { limit },
-        Error::Allocation => HtmlSemanticAccountingFault::Allocation,
-        Error::IdentityExhausted => HtmlSemanticAccountingFault::IdentityExhausted,
-        Error::TimingUnavailable => HtmlSemanticAccountingFault::TimingUnavailable,
-        Error::ForeignCheckpoint
-        | Error::StaleCheckpoint
-        | Error::CheckpointLimit { .. }
-        | Error::CheckpointsConfigured => HtmlSemanticAccountingFault::Checkpoint,
-        Error::Defect(defect) => HtmlSemanticAccountingFault::Defect(defect),
     }
 }
 

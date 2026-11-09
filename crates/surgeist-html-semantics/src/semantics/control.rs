@@ -6,6 +6,7 @@ use super::index::FactIndex;
 use super::scan::{Caps, ScanError, ScanMeter};
 use super::*;
 use crate::{HtmlCapturedFragmentKind, HtmlCapturedHost};
+use surgeist_html::accounting::HtmlAccountingFault;
 use surgeist_html::accounting::{HtmlCapScope, HtmlResource};
 use surgeist_html::attributes::{HtmlAttributeReport, HtmlInputType};
 use surgeist_html::bounded::form::{HtmlFormOwnerLookup, form_owner_lookup};
@@ -232,8 +233,10 @@ pub enum HtmlControlFactsError {
         required: usize,
     },
     RepresentationExhausted,
-    /// The ledger that enforces the limits reported a state its own sequencing rules out.
-    LedgerState,
+    /// The ledger that carries the accounting failed in a way that is not a refused limit: a release
+    /// that matches nothing held, a ledger that cannot allocate, a scope that is not the
+    /// operation's, or a change the operation does not charge. It carries the accounting fault.
+    Accounting(HtmlAccountingFault),
     DuplicateSubject(HtmlCaptureSubjectId),
     InapplicableSubject(HtmlCaptureSubjectId),
     InvalidFormOwner(HtmlCaptureSubjectId),
@@ -272,8 +275,8 @@ impl ScanError for HtmlControlFactsError {
     fn capture(error: HtmlCaptureError) -> Self {
         Self::Capture(error)
     }
-    fn ledger_state() -> Self {
-        Self::LedgerState
+    fn accounting(fault: HtmlAccountingFault) -> Self {
+        Self::Accounting(fault)
     }
 }
 /// The topmost ancestor of `subject`, or `None` when an ancestor is unavailable.

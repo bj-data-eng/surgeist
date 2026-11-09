@@ -480,20 +480,24 @@ fn usage(bytes: usize, units: usize) -> HtmlOptionValueStorageUsage {
     HtmlOptionValueStorageUsage { bytes, units }
 }
 
-/// Storage that was never added cannot be released: the refusal is a protocol breach and the held
+/// Storage that was never added cannot be released: the refusal is a release underflow and the held
 /// amount is neither changed nor wrapped around.
 #[test]
-fn releasing_storage_that_was_never_added_is_a_protocol_violation() {
+fn releasing_storage_that_was_never_added_is_a_release_underflow() {
     let control = Control::for_tests(envelope());
     assert_eq!(
         control.release(usage(1, 0), false),
-        Err(HtmlOptionValueControlError::ProtocolViolated)
+        Err(HtmlOptionValueControlError::Accounting(
+            HtmlAccountingFault::ReleaseUnderflow
+        ))
     );
     assert_eq!(control.temporary_usage(), usage(0, 0));
     control.hold_for_tests(false, usage(4, 1));
     assert_eq!(
         control.release(usage(4, 2), false),
-        Err(HtmlOptionValueControlError::ProtocolViolated)
+        Err(HtmlOptionValueControlError::Accounting(
+            HtmlAccountingFault::ReleaseUnderflow
+        ))
     );
     assert_eq!(control.temporary_usage(), usage(4, 1));
     assert_eq!(control.release(usage(4, 1), false), Ok(()));
@@ -502,11 +506,13 @@ fn releasing_storage_that_was_never_added_is_a_protocol_violation() {
 
 /// Moving storage that is not held as temporary storage is refused and changes nothing.
 #[test]
-fn transferring_storage_that_is_not_held_is_a_protocol_violation() {
+fn transferring_storage_that_is_not_held_is_a_release_underflow() {
     let control = Control::for_tests(envelope());
     assert_eq!(
         control.transfer(usage(8, 2)),
-        Err(HtmlOptionValueControlError::ProtocolViolated)
+        Err(HtmlOptionValueControlError::Accounting(
+            HtmlAccountingFault::ReleaseUnderflow
+        ))
     );
     assert_eq!(control.temporary_usage(), usage(0, 0));
     assert_eq!(control.live_usage(), usage(0, 0));
@@ -647,4 +653,23 @@ fn a_refused_transfer_keeps_each_scope_at_its_own_amount() {
     );
     assert_eq!(scope_live(&control, control.temporary), (2, 1));
     assert_eq!(scope_live(&control, control.retained), (u64::MAX, 0));
+}
+
+/// A ledger that cannot allocate, a scope of another operation and a spent scope bound are each
+/// the one accounting fault, and an overflow stays exhaustion.
+#[test]
+fn ledger_failures_other_than_a_refused_allowance_are_accounting_faults() {
+    for (error, fault) in [
+        (LedgerError::Allocation, HtmlAccountingFault::Allocation),
+        (LedgerError::ForeignScope, HtmlAccountingFault::ForeignScope),
+        (
+            LedgerError::ScopeLimit { limit: 2 },
+            HtmlAccountingFault::ScopeLimit { limit: 2 },
+        ),
+    ] {
+        assert_eq!(
+            Control::error(error),
+            HtmlOptionValueControlError::Accounting(fault)
+        );
+    }
 }

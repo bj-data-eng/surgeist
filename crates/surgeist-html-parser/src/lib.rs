@@ -29,7 +29,7 @@ mod request;
 mod schema_support;
 mod settings;
 mod source;
-pub use accounting::{HtmlParseAccounting, HtmlParseAccountingFault};
+pub use accounting::HtmlParseAccounting;
 pub use request::*;
 pub use settings::*;
 pub use source::*;

@@ -10,9 +10,12 @@
 use super::*;
 use crate::{HtmlCapture, HtmlCaptureError, HtmlCapturedElement, HtmlCapturedNode};
 use std::{fmt, marker::PhantomData};
-use surgeist_html::accounting::{HtmlCapScope, HtmlLimits, HtmlResource, HtmlWork};
+use surgeist_html::accounting::{
+    HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapScope, HtmlLedgerOutcome, HtmlLimits,
+    HtmlResource, HtmlWork, classify,
+};
 use surgeist_html::vocabulary::KnownHtmlElement;
-use surgeist_ledger::{Change, Error, Operation, RefusalReason, Scope, Tariff, Tariffs};
+use surgeist_ledger::{Change, Error, Operation, Scope, Tariff, Tariffs};
 
 /// The namespace URI of HTML elements.
 pub(super) const HTML_NAMESPACE: &str = "http://www.w3.org/1999/xhtml";
@@ -61,15 +64,14 @@ pub(super) fn namespace_is_with<E>(
 /// The refusals a fact constructor's validation scan can report. Each
 /// constructor keeps its own error type and its own spelling of the work refusal.
 pub(crate) trait ScanError: Sized {
-    /// A work total or envelope that does not fit in `usize`, or a ledger allocation that
-    /// failed while the constructor's scopes were created.
+    /// A work total or envelope that does not fit in `usize`.
     fn representation_exhausted() -> Self;
     /// The validation work limit was exceeded: `required` is the total that was refused.
     fn work_exceeded(limit: usize, required: usize) -> Self;
     /// The capture refused a node lookup.
     fn capture(error: HtmlCaptureError) -> Self;
-    /// The ledger that enforces the limits reported a state its own sequencing rules out.
-    fn ledger_state() -> Self;
+    /// The ledger that enforces the limits failed in a way that is not a refused limit.
+    fn accounting(fault: HtmlAccountingFault) -> Self;
 }
 
 /// The caps of one constructor's ledger scope. A cap left unset is unlimited.
@@ -154,7 +156,7 @@ impl<E: ScanError> ScanMeter<E> {
         let grown = operation
             .child(
                 scope,
-                "html-fact-grown",
+                HtmlAuxiliaryScope::FactGrown.name(),
                 HtmlLimits::unlimited(),
                 Tariffs::from_fn(
                     |work| Tariff::new(work, 0),
@@ -170,29 +172,39 @@ impl<E: ScanError> ScanMeter<E> {
         })
     }
     /// The typed refusal of a ledger error. A refused work cap is the constructor's work refusal,
-    /// and an overflow or a failed ledger allocation its representation exhaustion; anything else
-    /// is a ledger state.
+    /// an overflow its representation exhaustion, and anything else an accounting fault.
     fn refusal_of(error: Error<HtmlWork, HtmlResource>) -> E {
-        let refusal = match error {
-            Error::Refused(refusal) => refusal,
-            Error::Allocation => return E::representation_exhausted(),
-            _ => return E::ledger_state(),
-        };
-        match (refusal.reason, refusal.change) {
-            (RefusalReason::Overflow, _) => E::representation_exhausted(),
-            (RefusalReason::Limit { limit }, Change::Work(HtmlWork::SemanticStep, amount)) => {
-                match (
-                    usize::try_from(limit),
-                    refusal
-                        .current
-                        .checked_add(amount)
-                        .and_then(|required| usize::try_from(required).ok()),
-                ) {
-                    (Ok(limit), Some(required)) => E::work_exceeded(limit, required),
-                    _ => E::representation_exhausted(),
+        match classify(error) {
+            HtmlLedgerOutcome::Fault(fault) => E::accounting(fault),
+            HtmlLedgerOutcome::Exhausted(_) => E::representation_exhausted(),
+            HtmlLedgerOutcome::Cap(refusal) => match (refusal.change(), refusal.figures()) {
+                (Change::Work(HtmlWork::SemanticStep, _), Ok(figures)) => {
+                    E::work_exceeded(figures.limit, figures.required)
                 }
-            }
-            _ => E::ledger_state(),
+                (Change::Work(HtmlWork::SemanticStep, _), Err(_)) => E::representation_exhausted(),
+                _ => E::accounting(HtmlAccountingFault::UnexpectedChange),
+            },
+        }
+    }
+    /// The typed refusal of a ledger error at the cap of a fact `resource`: the refused total goes
+    /// through `refuse`.
+    fn resource_refusal(
+        error: Error<HtmlWork, HtmlResource>,
+        resource: HtmlResource,
+        refuse: impl FnOnce(usize, usize) -> E,
+    ) -> E {
+        match classify(error) {
+            HtmlLedgerOutcome::Fault(fault) => E::accounting(fault),
+            HtmlLedgerOutcome::Exhausted(_) => E::representation_exhausted(),
+            HtmlLedgerOutcome::Cap(refusal) => match (refusal.change(), refusal.figures()) {
+                (Change::Acquire(refused, _), Ok(figures)) if refused == resource => {
+                    refuse(figures.limit, figures.required)
+                }
+                (Change::Acquire(refused, _), Err(_)) if refused == resource => {
+                    E::representation_exhausted()
+                }
+                _ => E::accounting(HtmlAccountingFault::UnexpectedChange),
+            },
         }
     }
     /// The work admitted so far.
@@ -245,29 +257,7 @@ impl<E: ScanError> ScanMeter<E> {
         }
         self.operation
             .apply(self.scope, Change::Acquire(resource, owed))
-            .map_err(|error| {
-                let Error::Refused(refusal) = error else {
-                    return E::ledger_state();
-                };
-                match (refusal.reason, refusal.change) {
-                    (RefusalReason::Overflow, _) => E::representation_exhausted(),
-                    (RefusalReason::Limit { limit }, Change::Acquire(refused, _))
-                        if refused == resource =>
-                    {
-                        match (
-                            usize::try_from(limit),
-                            refusal
-                                .current
-                                .checked_add(owed)
-                                .and_then(|required| usize::try_from(required).ok()),
-                        ) {
-                            (Ok(limit), Some(required)) => refuse(limit, required),
-                            _ => E::representation_exhausted(),
-                        }
-                    }
-                    _ => E::ledger_state(),
-                }
-            })
+            .map_err(|error| Self::resource_refusal(error, resource, refuse))
     }
     /// Admits `amount` of a fact resource: takes it, then checks the cap.
     pub(crate) fn acquire(
@@ -289,29 +279,7 @@ impl<E: ScanError> ScanMeter<E> {
         let amount = u64::try_from(amount).unwrap_or(u64::MAX);
         self.operation
             .check_batch(self.scope, &[Change::Acquire(resource, amount)])
-            .map_err(|error| {
-                let Error::Refused(refusal) = error else {
-                    return E::ledger_state();
-                };
-                match (refusal.reason, refusal.change) {
-                    (RefusalReason::Overflow, _) => E::representation_exhausted(),
-                    (RefusalReason::Limit { limit }, Change::Acquire(refused, _))
-                        if refused == resource =>
-                    {
-                        match (
-                            usize::try_from(limit),
-                            refusal
-                                .current
-                                .checked_add(amount)
-                                .and_then(|required| usize::try_from(required).ok()),
-                        ) {
-                            (Ok(limit), Some(required)) => refuse(limit, required),
-                            _ => E::representation_exhausted(),
-                        }
-                    }
-                    _ => E::ledger_state(),
-                }
-            })
+            .map_err(|error| Self::resource_refusal(error, resource, refuse))
     }
     /// The total of a fact resource taken so far, checked or not.
     pub(crate) fn taken(&self, resource: HtmlResource) -> Result<usize, E> {
@@ -363,7 +331,7 @@ mod tests {
         Exhausted,
         Work { limit: usize, required: usize },
         Capture,
-        State,
+        Accounting(HtmlAccountingFault),
     }
     impl ScanError for Refusal {
         fn representation_exhausted() -> Self {
@@ -375,8 +343,8 @@ mod tests {
         fn capture(_: HtmlCaptureError) -> Self {
             Self::Capture
         }
-        fn ledger_state() -> Self {
-            Self::State
+        fn accounting(fault: HtmlAccountingFault) -> Self {
+            Self::Accounting(fault)
         }
     }
 
@@ -574,13 +542,13 @@ mod tests {
     }
 
     #[test]
-    fn a_ledger_state_the_meter_does_not_charge_is_the_constructors_ledger_state() {
+    fn a_ledger_failure_that_is_not_a_refused_cap_is_the_constructors_accounting_fault() {
         let mut meter = meter(Caps::work(10));
         // A release that matches no custody is a state the constructors' own sequencing rules out;
         // an acquisition of another dimension than the one asked for cannot occur either.
         assert_eq!(
             ScanMeter::<Refusal>::refusal_of(Error::ForeignScope),
-            Refusal::State
+            Refusal::Accounting(HtmlAccountingFault::ForeignScope)
         );
         assert_eq!(
             ScanMeter::<Refusal>::refusal_of(Error::Refused(surgeist_ledger::Refusal {
@@ -588,18 +556,22 @@ mod tests {
                 item: 0,
                 change: Change::Release(HtmlResource::FactRecords, 1),
                 current: 0,
-                reason: RefusalReason::Underflow,
+                reason: surgeist_ledger::RefusalReason::Underflow,
             })),
-            Refusal::State
+            Refusal::Accounting(HtmlAccountingFault::ReleaseUnderflow)
+        );
+        assert_eq!(
+            ScanMeter::<Refusal>::refusal_of(Error::ScopeLimit { limit: 2 }),
+            Refusal::Accounting(HtmlAccountingFault::ScopeLimit { limit: 2 })
         );
         meter.charge(1).unwrap();
     }
 
     #[test]
-    fn a_failed_ledger_allocation_is_the_constructors_representation_exhaustion() {
+    fn a_failed_ledger_allocation_is_the_constructors_accounting_fault() {
         assert_eq!(
             ScanMeter::<Refusal>::refusal_of(Error::Allocation),
-            Refusal::Exhausted
+            Refusal::Accounting(HtmlAccountingFault::Allocation)
         );
     }
 }

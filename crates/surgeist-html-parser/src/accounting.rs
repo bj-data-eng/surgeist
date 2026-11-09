@@ -9,103 +9,41 @@
 //! The scope tree a parse creates and the custody its report keeps are described
 //! on [`HtmlParseAccounting`].
 
-use crate::HtmlParseLimits;
-use std::{
-    error::Error as StdError,
-    fmt,
-    sync::{Arc, Mutex, OnceLock, PoisonError},
-};
+use crate::{HtmlParseLimits, HtmlParseStop};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use surgeist_html::accounting::{
-    HtmlChange, HtmlLimits, HtmlResource, HtmlWork, aggregate_tariffs, charging_tariffs,
+    HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapScope, HtmlChange, HtmlLedgerOutcome,
+    HtmlLimits, HtmlResource, HtmlWork, aggregate_tariffs, charging_tariffs, classify,
 };
 use surgeist_ledger::{
-    Change, Defect, Dimension, Error, Operation, ProfileMode, Report, Scope, SharedOperation,
-    Tariffs,
+    Change, Dimension, Error, Operation, ProfileMode, Report, Scope, SharedOperation, Tariffs,
 };
 
 /// The ledger error type of the HTML schema pair.
 pub(crate) type LedgerError = Error<HtmlWork, HtmlResource>;
 
-/// A ledger failure that is not a refusal of a charged change.
-///
-/// A refusal at a parse cap is reported as
-/// [`HtmlParseStop::LimitExceeded`](crate::HtmlParseStop::LimitExceeded). Every
-/// other ledger error stops the parse with one of these.
+/// Why a parse could not set up its accounting: the supplied accounting already serves another
+/// parse, or the ledger failed.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum HtmlParseAccountingFault {
-    /// The supplied scope belongs to another operation.
-    ForeignScope,
-    /// The operation's scope bound leaves no room for the scopes of the parse.
-    ScopeLimit {
-        /// The operation's scope bound.
-        limit: usize,
-    },
-    /// The ledger could not allocate its storage.
-    Allocation,
-    /// The ledger's identities are exhausted.
-    IdentityExhausted,
-    /// Timed profiling needs a clock the platform does not supply.
-    TimingUnavailable,
-    /// The supplied accounting already serves another parse.
+pub(crate) enum SetupFault {
     InUse,
-    /// A checkpoint operation failed. The parser opens no checkpoint, so only a
-    /// ledger that reports one for another reason produces it.
-    Checkpoint,
-    /// The ledger refused a change where the parser charges none, such as the
-    /// creation of a scope.
-    UnexpectedRefusal,
-    /// The ledger found a broken invariant of its own. It stays latched in the
-    /// operation.
-    Defect(Defect),
+    Accounting(HtmlAccountingFault),
 }
 
-impl fmt::Display for HtmlParseAccountingFault {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl SetupFault {
+    /// The stop a parse that could not set up reports.
+    pub(crate) const fn stop(self) -> HtmlParseStop {
         match self {
-            Self::ForeignScope => f.write_str("the supplied scope belongs to another operation"),
-            Self::ScopeLimit { limit } => {
-                write!(
-                    f,
-                    "the operation's scope bound of {limit} leaves no room for the parse"
-                )
-            }
-            Self::Allocation => f.write_str("the ledger could not allocate its storage"),
-            Self::IdentityExhausted => f.write_str("the ledger's identities are exhausted"),
-            Self::TimingUnavailable => f.write_str("timed profiling needs a host clock"),
-            Self::InUse => f.write_str("the supplied accounting already serves another parse"),
-            Self::Checkpoint => f.write_str("a ledger checkpoint operation failed"),
-            Self::UnexpectedRefusal => {
-                f.write_str("the ledger refused a change where the parser charges none")
-            }
-            Self::Defect(defect) => write!(f, "the ledger found a defect: {defect}"),
+            Self::InUse => HtmlParseStop::AccountingInUse,
+            Self::Accounting(fault) => HtmlParseStop::Accounting(fault),
         }
     }
 }
 
-impl StdError for HtmlParseAccountingFault {}
-
-/// The split of a ledger error: a refusal the parser maps to a limit stop, or a
-/// fault.
-pub(crate) enum Classified {
-    Refusal(surgeist_ledger::Refusal<HtmlWork, HtmlResource>),
-    Fault(HtmlParseAccountingFault),
-}
-
-pub(crate) fn classify(error: LedgerError) -> Classified {
-    Classified::Fault(match error {
-        Error::Refused(refusal) => return Classified::Refusal(refusal),
-        Error::ForeignScope => HtmlParseAccountingFault::ForeignScope,
-        Error::ScopeLimit { limit } => HtmlParseAccountingFault::ScopeLimit { limit },
-        Error::Allocation => HtmlParseAccountingFault::Allocation,
-        Error::IdentityExhausted => HtmlParseAccountingFault::IdentityExhausted,
-        Error::TimingUnavailable => HtmlParseAccountingFault::TimingUnavailable,
-        Error::ForeignCheckpoint
-        | Error::StaleCheckpoint
-        | Error::CheckpointLimit { .. }
-        | Error::CheckpointsConfigured => HtmlParseAccountingFault::Checkpoint,
-        Error::Defect(defect) => HtmlParseAccountingFault::Defect(defect),
-    })
+impl From<HtmlAccountingFault> for SetupFault {
+    fn from(fault: HtmlAccountingFault) -> Self {
+        Self::Accounting(fault)
+    }
 }
 
 /// The scopes of the parse phases that receive work when phases are observed.
@@ -120,10 +58,10 @@ pub(crate) enum ParsePhase {
 impl ParsePhase {
     pub(crate) const fn name(self) -> &'static str {
         match self {
-            Self::Admission => "html-parse-admission",
-            Self::Construction => "html-parse-construction",
-            Self::Finalization => "html-parse-finalization",
-            Self::Publication => "html-parse-publication",
+            Self::Admission => HtmlAuxiliaryScope::ParseAdmission.name(),
+            Self::Construction => HtmlAuxiliaryScope::ParseConstruction.name(),
+            Self::Finalization => HtmlAuxiliaryScope::ParseFinalization.name(),
+            Self::Publication => HtmlAuxiliaryScope::ParsePublication.name(),
         }
     }
 }
@@ -216,22 +154,26 @@ impl Lease {
     /// Creates the parse's scopes and records its charging scope, once. A lease
     /// serves one parse: the check and the creation of the scopes happen under
     /// one lock, so a second parse creates none.
-    pub(crate) fn bind(&self, limits: &HtmlParseLimits) -> Result<Bound, HtmlParseAccountingFault> {
+    pub(crate) fn bind(&self, limits: &HtmlParseLimits) -> Result<Bound, SetupFault> {
         let mut charging = self.charging.lock().unwrap_or_else(PoisonError::into_inner);
         if charging.is_some() {
-            return Err(HtmlParseAccountingFault::InUse);
+            return Err(SetupFault::InUse);
         }
         let (ledger, parent) = match &self.kind {
             LeaseKind::Host { ledger, scope } => (ledger.clone(), *scope),
             LeaseKind::Profiled { mode, ledger } => {
                 // The root, the two parse scopes and the four phase scopes.
-                let operation =
-                    Operation::with_profile("html-parse-host", HtmlLimits::unlimited(), 7, *mode)
-                        .map_err(fault)?;
+                let operation = Operation::with_profile(
+                    HtmlAuxiliaryScope::ParseHost.name(),
+                    HtmlLimits::unlimited(),
+                    7,
+                    *mode,
+                )
+                .map_err(fault)?;
                 let root = operation.root();
                 let shared = operation.share();
                 if ledger.set(shared.clone()).is_err() {
-                    return Err(HtmlParseAccountingFault::InUse);
+                    return Err(SetupFault::InUse);
                 }
                 (shared, root)
             }
@@ -247,10 +189,14 @@ impl Lease {
     }
 }
 
-fn fault(error: LedgerError) -> HtmlParseAccountingFault {
+/// The fault of a ledger error where the parser charges no change, such as the creation of a
+/// scope or a profile read.
+fn fault(error: LedgerError) -> HtmlAccountingFault {
     match classify(error) {
-        Classified::Fault(fault) => fault,
-        Classified::Refusal(_) => HtmlParseAccountingFault::UnexpectedRefusal,
+        HtmlLedgerOutcome::Fault(fault) => fault,
+        HtmlLedgerOutcome::Cap(_) | HtmlLedgerOutcome::Exhausted(_) => {
+            HtmlAccountingFault::UnexpectedChange
+        }
     }
 }
 
@@ -260,16 +206,21 @@ fn scopes(
     parent: Scope,
     limits: &HtmlParseLimits,
     phases: bool,
-) -> Result<(Scope, Scope, Option<PhaseScopes>), HtmlParseAccountingFault> {
+) -> Result<(Scope, Scope, Option<PhaseScopes>), HtmlAccountingFault> {
     let cap = ledger
         .child(
             parent,
-            "html-parse",
+            HtmlCapScope::Parse.name(),
             limits.ledger_limits(),
             aggregate_tariffs(),
         )
         .map_err(fault)?;
-    let charging = child(ledger, cap, "html-parse-charging", charging_tariffs())?;
+    let charging = child(
+        ledger,
+        cap,
+        HtmlAuxiliaryScope::ParseCharging.name(),
+        charging_tariffs(),
+    )?;
     let phases = if phases {
         let phase = |phase: ParsePhase| child(ledger, charging, phase.name(), Tariffs::identity());
         Some(PhaseScopes {
@@ -289,7 +240,7 @@ fn child(
     parent: Scope,
     name: &'static str,
     tariffs: surgeist_html::accounting::HtmlTariffs,
-) -> Result<Scope, HtmlParseAccountingFault> {
+) -> Result<Scope, HtmlAccountingFault> {
     ledger
         .child(parent, name, HtmlLimits::unlimited(), tariffs)
         .map_err(fault)
@@ -299,13 +250,14 @@ fn child(
 /// the root, and the charging scope its only child.
 pub(crate) fn private(
     limits: &HtmlParseLimits,
-) -> Result<(Operation<HtmlWork, HtmlResource>, Scope, Scope), HtmlParseAccountingFault> {
-    let mut operation = Operation::new("html-parse", limits.ledger_limits(), 2).map_err(fault)?;
+) -> Result<(Operation<HtmlWork, HtmlResource>, Scope, Scope), HtmlAccountingFault> {
+    let mut operation =
+        Operation::new(HtmlCapScope::Parse.name(), limits.ledger_limits(), 2).map_err(fault)?;
     let cap = operation.root();
     let charging = operation
         .child(
             cap,
-            "html-parse-charging",
+            HtmlAuxiliaryScope::ParseCharging.name(),
             HtmlLimits::unlimited(),
             charging_tariffs(),
         )
@@ -497,7 +449,7 @@ impl RequestAccounting {
     /// host's operation, or without profiling, has none to report.
     pub(crate) fn profile(
         &self,
-    ) -> Result<Option<Report<HtmlWork, HtmlResource>>, HtmlParseAccountingFault> {
+    ) -> Result<Option<Report<HtmlWork, HtmlResource>>, HtmlAccountingFault> {
         self.0
             .as_ref()
             .map_or(Ok(None), |lease| lease.profile())
@@ -557,7 +509,7 @@ mod tests {
             ParseControl::with_accounting(limits(), HtmlParseCancellation::new(), request.lease());
         assert_eq!(first.stop(), None);
         first.charge(HtmlParseWorkCategory::StateStep, 1).unwrap();
-        let in_use = HtmlParseStop::Accounting(HtmlParseAccountingFault::InUse);
+        let in_use = HtmlParseStop::AccountingInUse;
         assert_eq!(second.stop(), Some(in_use));
         assert_eq!(
             second.charge(HtmlParseWorkCategory::StateStep, 1),
@@ -580,49 +532,6 @@ mod tests {
     }
 
     #[test]
-    fn every_ledger_error_but_a_refusal_maps_to_a_fault() {
-        use surgeist_ledger::Error;
-        for (error, fault) in [
-            (Error::ForeignScope, HtmlParseAccountingFault::ForeignScope),
-            (
-                Error::ScopeLimit { limit: 3 },
-                HtmlParseAccountingFault::ScopeLimit { limit: 3 },
-            ),
-            (Error::Allocation, HtmlParseAccountingFault::Allocation),
-            (
-                Error::IdentityExhausted,
-                HtmlParseAccountingFault::IdentityExhausted,
-            ),
-            (
-                Error::TimingUnavailable,
-                HtmlParseAccountingFault::TimingUnavailable,
-            ),
-            (
-                Error::ForeignCheckpoint,
-                HtmlParseAccountingFault::Checkpoint,
-            ),
-            (Error::StaleCheckpoint, HtmlParseAccountingFault::Checkpoint),
-            (
-                Error::CheckpointLimit { limit: 1 },
-                HtmlParseAccountingFault::Checkpoint,
-            ),
-            (
-                Error::CheckpointsConfigured,
-                HtmlParseAccountingFault::Checkpoint,
-            ),
-            (
-                Error::Defect(Defect::ScopeEntry),
-                HtmlParseAccountingFault::Defect(Defect::ScopeEntry),
-            ),
-        ] {
-            let Classified::Fault(found) = classify(error) else {
-                panic!("{error:?} is not a refusal");
-            };
-            assert_eq!(found, fault);
-        }
-    }
-
-    #[test]
     fn parses_racing_to_bind_one_lease_create_one_set_of_scopes() {
         use std::sync::Barrier;
         const RACERS: usize = 8;
@@ -639,7 +548,7 @@ mod tests {
         let lease = request.lease().unwrap();
         let barrier = Barrier::new(RACERS);
         let limits = limits();
-        let outcomes: Vec<Result<Bound, HtmlParseAccountingFault>> = std::thread::scope(|scope| {
+        let outcomes: Vec<Result<Bound, SetupFault>> = std::thread::scope(|scope| {
             let racers: Vec<_> = (0..RACERS)
                 .map(|_| {
                     scope.spawn(|| {
@@ -657,28 +566,11 @@ mod tests {
         assert_eq!(bound, 1);
         for outcome in outcomes {
             if let Err(fault) = outcome {
-                assert_eq!(fault, HtmlParseAccountingFault::InUse);
+                assert_eq!(fault, SetupFault::InUse);
             }
         }
         // The root and the two scopes of the one parse that bound; the others
         // created none.
         assert_eq!(ledger.snapshot().unwrap().unwrap().scopes.len(), 3);
-    }
-
-    #[test]
-    fn a_fault_displays_and_is_an_error() {
-        let fault = HtmlParseAccountingFault::ScopeLimit { limit: 3 };
-        assert_eq!(
-            fault.to_string(),
-            "the operation's scope bound of 3 leaves no room for the parse"
-        );
-        let defect = HtmlParseAccountingFault::Defect(Defect::ScopeEntry);
-        assert!(
-            defect
-                .to_string()
-                .contains("scope identity names no scope entry")
-        );
-        let boxed: Box<dyn std::error::Error> = Box::new(fault);
-        assert!(boxed.source().is_none());
     }
 }

@@ -1,5 +1,5 @@
 //! Scratch accounting pairs every release with the reservation it returns. A release the session
-//! never reserved is a defect in this crate: it is reported as a protocol breach, never wrapped
+//! never reserved is a defect in this crate: it is reported as a release underflow, never wrapped
 //! into a huge count, and an enclosing controlled OptionValue execution tracks every live scratch
 //! vector.
 use super::*;
@@ -52,7 +52,7 @@ fn session<'a>(
 
 /// Nothing was reserved, so nothing can be released: the count stays zero instead of wrapping.
 #[test]
-fn releasing_scratch_that_was_never_reserved_is_a_protocol_violation() {
+fn releasing_scratch_that_was_never_reserved_is_a_release_underflow() {
     let c = capture();
     let cx = context(&c);
     let mut s = session(&c, &cx);
@@ -60,11 +60,13 @@ fn releasing_scratch_that_was_never_reserved_is_a_protocol_violation() {
     assert_eq!(s.usage().scratch_records(), 0);
     assert_eq!(
         s.failure().map(HtmlSemanticFailure::kind),
-        Some(&HtmlSemanticFailureKind::ProtocolViolated)
+        Some(&HtmlSemanticFailureKind::Accounting(
+            HtmlAccountingFault::ReleaseUnderflow
+        ))
     );
     assert_eq!(
         s.poll().unwrap_err().kind(),
-        &HtmlSemanticFailureKind::ProtocolViolated
+        &HtmlSemanticFailureKind::Accounting(HtmlAccountingFault::ReleaseUnderflow)
     );
 }
 
@@ -81,7 +83,9 @@ fn releasing_more_scratch_than_was_reserved_keeps_the_reserved_count() {
     assert_eq!(s.usage().scratch_records(), reserved);
     assert_eq!(
         s.failure().map(HtmlSemanticFailure::kind),
-        Some(&HtmlSemanticFailureKind::ProtocolViolated)
+        Some(&HtmlSemanticFailureKind::Accounting(
+            HtmlAccountingFault::ReleaseUnderflow
+        ))
     );
 }
 

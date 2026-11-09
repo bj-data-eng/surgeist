@@ -1,17 +1,20 @@
 //! Controlled formation and one OptionValue read over an ordinary captured tree.
-use crate::accounting::LedgerError;
+use crate::accounting::{LedgerError, wide};
 use crate::capture::preflight::ActionPolicy;
 use crate::*;
 use std::mem::size_of;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::{error::Error, fmt};
-use surgeist_html::accounting::{HtmlCapScope, HtmlLimits, HtmlResource, HtmlWork};
+use surgeist_html::accounting::{
+    HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapRefusal, HtmlCapScope, HtmlLedgerOutcome,
+    HtmlLimits, HtmlResource, HtmlWork, classify,
+};
 use surgeist_html::{
     construction::{HtmlDoctype, HtmlDocumentMode},
     values::{DocumentString, HtmlAttributesInput, HtmlNameInput, HtmlValueInterpreter},
 };
-use surgeist_ledger::{Change, Operation, RefusalReason, Scope, SharedOperation, Tariff, Tariffs};
+use surgeist_ledger::{Change, Operation, Scope, SharedOperation, Tariff, Tariffs};
 
 /// Total producer live allowance after excluding the producer's current graph
 /// from the caller's other live storage. Work is the remaining allowance for
@@ -64,10 +67,11 @@ pub enum HtmlOptionValueControlError {
         required: u64,
     },
     RepresentationExhausted,
-    /// The session returned storage it never took from this execution, or moved storage it did not
-    /// hold. Valid captures and valid use never reach this cause; it reports a defect in this
-    /// crate's accounting.
-    ProtocolViolated,
+    /// The ledger that carries the owner's accounting failed in a way that is not a refused
+    /// allowance: the session returned storage it never took from this execution, a ledger could
+    /// not allocate, or a change the owner does not charge. Valid captures and valid use never
+    /// reach the release and change causes; they report a defect in this crate's accounting.
+    Accounting(HtmlAccountingFault),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -165,10 +169,6 @@ impl Counter<u64> for AtomicU64 {
     }
 }
 
-fn wide(value: usize) -> u64 {
-    u64::try_from(value).unwrap_or(u64::MAX)
-}
-
 fn narrow(value: u64) -> Result<usize, HtmlOptionValueControlError> {
     usize::try_from(value).map_err(|_| HtmlOptionValueControlError::RepresentationExhausted)
 }
@@ -233,9 +233,9 @@ impl Control {
                 )
                 .map_err(ledger_error)
         };
-        let retained = child("html-option-value-retained")?;
-        let temporary = child("html-option-value-temporary")?;
-        let observed = child("html-option-value-observed")?;
+        let retained = child(HtmlAuxiliaryScope::OptionValueRetained.name())?;
+        let temporary = child(HtmlAuxiliaryScope::OptionValueTemporary.name())?;
+        let observed = child(HtmlAuxiliaryScope::OptionValueObserved.name())?;
         Ok(Self {
             ledger: operation.share(),
             gate,
@@ -248,16 +248,15 @@ impl Control {
             cancel_after: AtomicU64::new(u64::MAX),
         })
     }
-    /// The control error of a ledger error that is not a refusal of the gate's caps: a refused
-    /// operation is a ledger state the owner's own sequencing rules out.
+    /// The control error of a ledger error that is not a refusal of the gate's caps: an overflow
+    /// is exhaustion, and every other failure is the accounting fault.
     fn error(error: LedgerError) -> HtmlOptionValueControlError {
-        match error {
-            LedgerError::Refused(refusal) => match refusal.reason {
-                RefusalReason::Overflow => HtmlOptionValueControlError::RepresentationExhausted,
-                _ => HtmlOptionValueControlError::ProtocolViolated,
-            },
-            LedgerError::Allocation => HtmlOptionValueControlError::RepresentationExhausted,
-            _ => HtmlOptionValueControlError::ProtocolViolated,
+        match classify(error) {
+            HtmlLedgerOutcome::Fault(fault) => HtmlOptionValueControlError::Accounting(fault),
+            HtmlLedgerOutcome::Exhausted(_) => HtmlOptionValueControlError::RepresentationExhausted,
+            HtmlLedgerOutcome::Cap(_) => {
+                HtmlOptionValueControlError::Accounting(HtmlAccountingFault::UnexpectedChange)
+            }
         }
     }
     /// Whether `scope` is the gate, whose refusals the nested session reports as this control's.
@@ -267,23 +266,13 @@ impl Control {
     /// The control error of a refusal by the gate: a refused storage cap keeps its resource, its
     /// limit and the total the storage would have reached, and a refused work cap the call's
     /// remaining work and the work spent since the call began.
-    pub(crate) fn refusal(
-        &self,
-        refusal: &surgeist_ledger::Refusal<HtmlWork, HtmlResource>,
-    ) -> HtmlOptionValueControlError {
+    pub(crate) fn refusal(&self, refusal: &HtmlCapRefusal) -> HtmlOptionValueControlError {
         use HtmlOptionValueControlError as Error;
-        let RefusalReason::Limit { limit } = refusal.reason else {
-            return Self::error(LedgerError::Refused(*refusal));
-        };
-        let amount = match refusal.change {
-            Change::Work(_, amount) | Change::Acquire(_, amount) | Change::Release(_, amount) => {
-                amount
-            }
-        };
-        let Some(required) = refusal.current.checked_add(amount) else {
+        let limit = refusal.limit();
+        let Ok(required) = refusal.required() else {
             return Error::RepresentationExhausted;
         };
-        match refusal.change {
+        match refusal.change() {
             Change::Acquire(HtmlResource::RetainedBytes, _) => Error::LimitExceeded {
                 resource: HtmlOptionValueResource::LiveBytes,
                 limit,
@@ -305,16 +294,16 @@ impl Control {
                         limit: allowance,
                         required: spent,
                     },
-                    None => Error::ProtocolViolated,
+                    None => Error::Accounting(HtmlAccountingFault::UnexpectedChange),
                 }
             }
-            _ => Error::ProtocolViolated,
+            _ => Error::Accounting(HtmlAccountingFault::UnexpectedChange),
         }
     }
     fn refused(&self, error: LedgerError) -> HtmlOptionValueControlError {
-        match error {
-            LedgerError::Refused(refusal) => self.refusal(&refusal),
-            other => Self::error(other),
+        match classify(error) {
+            HtmlLedgerOutcome::Cap(refusal) => self.refusal(&refusal),
+            _ => Self::error(error),
         }
     }
     fn storage(
@@ -358,7 +347,7 @@ impl Control {
             .work(HtmlWork::SemanticStep))
     }
     /// The usage after every call, including refused ones. A ledger that cannot be read has
-    /// latched a defect, which the next charge reports as a protocol breach; the usage then is
+    /// latched a defect, which the next charge reports as an accounting fault; the usage then is
     /// the unread one.
     fn usage(&self) -> HtmlControlledOptionValueUsage {
         HtmlControlledOptionValueUsage {
@@ -601,10 +590,7 @@ impl QueryControl<'_> {
     pub(crate) fn is_gate(self, scope: Scope) -> bool {
         self.control.is_gate(scope)
     }
-    pub(crate) fn refusal(
-        self,
-        refusal: &surgeist_ledger::Refusal<HtmlWork, HtmlResource>,
-    ) -> HtmlOptionValueControlError {
+    pub(crate) fn refusal(self, refusal: &HtmlCapRefusal) -> HtmlOptionValueControlError {
         self.control.refusal(refusal)
     }
     fn bank(

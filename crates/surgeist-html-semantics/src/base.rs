@@ -10,6 +10,7 @@ use crate::{
     HtmlCapturedNodeKind, HtmlHostFactsRevision,
 };
 use std::{error::Error, fmt, sync::Arc};
+use surgeist_html::accounting::HtmlAccountingFault;
 use surgeist_html::accounting::{HtmlCapScope, HtmlResource};
 use surgeist_html::values::DocumentString;
 
@@ -399,8 +400,10 @@ pub enum HtmlBaseFactsError {
     Utf16Limit,
     WorkLimit,
     RepresentationExhausted,
-    /// The ledger that enforces the limits reported a state its own sequencing rules out.
-    LedgerState,
+    /// The ledger that carries the accounting failed in a way that is not a refused limit: a release
+    /// that matches nothing held, a ledger that cannot allocate, a scope that is not the
+    /// operation's, or a change the operation does not charge. It carries the accounting fault.
+    Accounting(HtmlAccountingFault),
     WrongBase,
     WrongDocument,
 }
@@ -430,8 +433,8 @@ impl ScanError for HtmlBaseFactsError {
     fn capture(error: HtmlCaptureError) -> Self {
         Self::Capture(error)
     }
-    fn ledger_state() -> Self {
-        Self::LedgerState
+    fn accounting(fault: HtmlAccountingFault) -> Self {
+        Self::Accounting(fault)
     }
 }
 impl Validation {

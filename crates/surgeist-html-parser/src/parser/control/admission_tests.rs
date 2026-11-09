@@ -186,8 +186,8 @@ fn a_release_beyond_the_held_custody_is_a_release_underflow_and_credits_nothing(
             (HtmlParseResource::ManagedEdges, 1),
             (HtmlParseResource::ManagedEdges, 2),
         ]),
-        Err(HtmlParseStop::InternalInvariant(
-            HtmlParseInvariant::ReleaseUnderflow
+        Err(HtmlParseStop::Accounting(
+            HtmlAccountingFault::ReleaseUnderflow
         ))
     );
     assert_eq!(
@@ -419,7 +419,7 @@ fn a_phase_the_ledger_cannot_observe_stops_the_parse_with_the_fault() {
         .unwrap()
         .replace_phases_for_test(crate::accounting::PhaseScopes::all_at(other.root()));
     c.enter_phase(ParsePhase::Construction);
-    let fault = HtmlParseStop::Accounting(HtmlParseAccountingFault::ForeignScope);
+    let fault = HtmlParseStop::Accounting(HtmlAccountingFault::ForeignScope);
     assert_eq!(c.stop(), Some(fault));
     assert_eq!(c.charge(HtmlParseWorkCategory::StateStep, 1), Err(fault));
 }
@@ -497,10 +497,13 @@ fn a_refusal_whose_item_carries_nothing_reports_the_rate_as_one() {
         current: 0,
         reason: surgeist_ledger::RefusalReason::Limit { limit: 3 },
     };
+    let HtmlLedgerOutcome::Cap(refusal) = classify(LedgerError::Refused(refusal)) else {
+        panic!("a limit refusal is a cap refusal");
+    };
     assert_eq!(
-        c.refusal_stop(
+        c.cap_stop(
             refusal,
-            Site::RELEASE,
+            Site::PLAIN,
             &[HtmlParseWorkCategory::CopyByte.change(0)]
         ),
         limit(HtmlParseResource::WorkCredits, 3, 0, 0)
@@ -508,7 +511,7 @@ fn a_refusal_whose_item_carries_nothing_reports_the_rate_as_one() {
 }
 
 #[test]
-fn a_host_tariff_that_leaves_the_parse_resources_stops_with_the_typed_invariant() {
+fn a_host_tariff_that_leaves_the_parse_resources_stops_with_an_unexpected_change() {
     use surgeist_ledger::Tariff;
     // The tenant scope counts managed nodes as output records of the scope above.
     let tariffs = surgeist_html::accounting::HtmlTariffs::from_fn(
@@ -525,8 +528,8 @@ fn a_host_tariff_that_leaves_the_parse_resources_stops_with_the_typed_invariant(
     );
     assert_eq!(
         c.acquire(HtmlParseResource::ManagedNodes, 4),
-        Err(HtmlParseStop::InternalInvariant(
-            HtmlParseInvariant::LedgerState
+        Err(HtmlParseStop::Accounting(
+            HtmlAccountingFault::UnexpectedChange
         ))
     );
 }
@@ -545,4 +548,58 @@ fn a_refused_record_after_an_owned_vector_reserve_leaves_it_releasable() {
     ));
     vector.release(&mut c).unwrap();
     crate::parser::tree_builder::tests::assert_released(&c);
+}
+
+/// A release that matches nothing held, a ledger that cannot allocate, a scope of another
+/// operation and a spent scope bound each stop the parse with the one accounting fault, at every
+/// admission site: a resource batch, a work batch and a check.
+#[test]
+fn each_ledger_condition_that_is_not_a_cap_stops_with_one_accounting_fault() {
+    for (error, fault) in [
+        (LedgerError::Allocation, HtmlAccountingFault::Allocation),
+        (LedgerError::ForeignScope, HtmlAccountingFault::ForeignScope),
+        (
+            LedgerError::ScopeLimit { limit: 4 },
+            HtmlAccountingFault::ScopeLimit { limit: 4 },
+        ),
+    ] {
+        let stop = HtmlParseStop::Accounting(fault);
+        let batch = [Change::Acquire(HtmlResource::ManagedNodes, 1)];
+        let mut c = control_with(builder());
+        assert_eq!(c.ledger_stop(error, Site::PLAIN, &batch), stop);
+        let mut c = control_with(builder());
+        assert_eq!(
+            c.work_stop(error, &[HtmlParseWorkCategory::StateStep.change(1)]),
+            stop
+        );
+        let mut c = control_with(builder());
+        assert_eq!(
+            c.storage_stop(error, &[(HtmlParseResource::ManagedNodes, 1)], &batch),
+            stop
+        );
+    }
+}
+
+/// The release of storage the parse never held is refused by the ledger, and the parse reports
+/// the release underflow as the accounting fault, whichever site released.
+#[test]
+fn a_ledger_release_underflow_is_the_accounting_fault_at_every_release_site() {
+    let underflow = HtmlParseStop::Accounting(HtmlAccountingFault::ReleaseUnderflow);
+    let mut c = control_with(builder());
+    assert_eq!(
+        c.admit_resources(
+            &[Change::Release(HtmlResource::ManagedEdges, 1)],
+            Site::PLAIN
+        ),
+        Err(underflow)
+    );
+    let mut c = control_with(builder());
+    assert_eq!(
+        c.admit_resources(
+            &[Change::Release(HtmlResource::ManagedCapacityBytes, 8)],
+            Site::PLAIN.growth(4)
+        ),
+        Err(underflow)
+    );
+    assert_eq!(c.stop(), Some(underflow));
 }

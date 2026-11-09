@@ -3,6 +3,7 @@ use super::*;
 use crate::HtmlSemanticCancellation;
 use preflight::ActionPolicy;
 use std::collections::HashMap;
+use surgeist_html::accounting::HtmlAccountingFault;
 use surgeist_html::construction::{
     HtmlDocument, HtmlFragment, HtmlFragmentOwner, HtmlNodeId, HtmlNodeKind,
     HtmlTemplateContentsKind,
@@ -224,10 +225,10 @@ pub enum HtmlConstructionCaptureError {
     AllocationFailed,
     Cancelled,
     Capture(HtmlCaptureError),
-    /// The ledger that carries the import's accounting reported a state its own sequencing rules
-    /// out: a release that matches nothing held, a refusal that names no import resource, or a
-    /// ledger defect. Valid use never reaches it.
-    LedgerState,
+    /// The ledger that carries the accounting failed in a way that is not a refused limit: a release
+    /// that matches nothing held, a ledger that cannot allocate, a scope that is not the
+    /// operation's, or a change the operation does not charge. It carries the accounting fault.
+    Accounting(HtmlAccountingFault),
 }
 impl fmt::Display for HtmlConstructionCaptureError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

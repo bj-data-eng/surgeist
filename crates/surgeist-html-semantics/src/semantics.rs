@@ -126,7 +126,9 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
-use surgeist_html::accounting::{HtmlCapScope, HtmlResource};
+use surgeist_html::accounting::{
+    HtmlAccountingFault, HtmlCapScope, HtmlLedgerOutcome, HtmlResource, classify,
+};
 use surgeist_html::bounded::{
     numeric::{
         HtmlIntegerRecoveryError, HtmlIntegerUnitStep, HtmlIntegerUnitStepError,
@@ -1321,7 +1323,7 @@ pub enum HtmlSemanticFailureKind {
     /// The ledger that carries the session's accounting failed in a way that is not a refused
     /// cap: a host scope that is not the host operation's, no room for the session's scopes, an
     /// exhausted ledger resource or a ledger defect.
-    Accounting(crate::HtmlSemanticAccountingFault),
+    Accounting(HtmlAccountingFault),
     Capture(HtmlCaptureError),
     ContextCaptureMismatch,
     Attribute(HtmlValueAdmissionError),
@@ -1504,7 +1506,7 @@ impl<'a> HtmlSemanticSession<'a> {
         })
     }
     /// The usage read from the session's ledger scopes. A ledger that cannot be read has latched a
-    /// defect, which the session reports as its terminal `ProtocolViolated` failure; the usage
+    /// defect, which the session reports as its terminal `Accounting` failure; the usage
     /// then is that failure's.
     pub fn usage(&self) -> HtmlSemanticUsage {
         self.snapshot()
@@ -1539,12 +1541,12 @@ impl<'a> HtmlSemanticSession<'a> {
     }
     /// Stops with the typed stop of a ledger error.
     fn ledger_stop(&mut self, error: query_account::LedgerError) -> HtmlSemanticFailure {
-        if let (Some(control), query_account::LedgerError::Refused(refusal)) =
-            (self.option_control, &error)
-            && control.is_gate(refusal.scope)
+        if let (Some(control), HtmlLedgerOutcome::Cap(refusal)) =
+            (self.option_control, classify(error))
+            && control.is_gate(refusal.scope())
         {
             // The parent's allowance refused it, and the parent reports its own limit.
-            let kind = HtmlSemanticFailureKind::ControlledOptionValue(control.refusal(refusal));
+            let kind = HtmlSemanticFailureKind::ControlledOptionValue(control.refusal(&refusal));
             return self.stop(kind);
         }
         self.stop(query_account::stop_kind(error))
@@ -2130,11 +2132,7 @@ impl<'a> HtmlSemanticSession<'a> {
     fn release_scratch_backing(&mut self, backing: ScratchBacking) {
         if let Err(error) = self.account.release_scratch(backing.records) {
             // A release that matches no reservation changed nothing.
-            let kind = match error {
-                query_account::LedgerError::Refused(_) => HtmlSemanticFailureKind::ProtocolViolated,
-                other => query_account::stop_kind(other),
-            };
-            self.stop(kind);
+            self.stop(query_account::stop_kind(error));
             return;
         }
         if let Some(control) = self.option_control

@@ -3,14 +3,16 @@
 
 use crate::semantics::support::{builder, context, semantic_limits};
 use surgeist_html::{
-    accounting::{HtmlLimits, HtmlResource, HtmlWork},
+    accounting::{
+        HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapScope, HtmlLimits, HtmlResource, HtmlWork,
+    },
     values::{Namespace, OrderedAttributes, QualifiedName},
 };
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
-    HtmlCapturedIsValue, HtmlSemanticAccounting, HtmlSemanticAccountingFault,
-    HtmlSemanticCancellation, HtmlSemanticFailureKind, HtmlSemanticLimits, HtmlSemanticQuery,
-    HtmlSemanticReport, HtmlSemanticRequest, HtmlSemanticResource, HtmlSemanticSession,
+    HtmlCapturedIsValue, HtmlSemanticAccounting, HtmlSemanticCancellation, HtmlSemanticFailureKind,
+    HtmlSemanticLimits, HtmlSemanticQuery, HtmlSemanticReport, HtmlSemanticRequest,
+    HtmlSemanticResource, HtmlSemanticSession,
 };
 use surgeist_ledger::{Operation, ProfileMode, Report, Scope, SharedOperation};
 
@@ -155,7 +157,15 @@ fn a_session_creates_the_capped_and_the_observed_scope_below_the_host_scope() {
     let (_, ledger, root) = queried(&c, &requests, semantic_limits());
     let report = report(&ledger);
     let names: Vec<_> = report.scopes.iter().map(|scope| scope.name).collect();
-    assert_eq!(names, ["host", "html-query", "html-query-observed"]);
+    assert_eq!(
+        names,
+        [
+            "host",
+            HtmlCapScope::Query.name(),
+            HtmlAuxiliaryScope::QueryObserved.name()
+        ]
+    );
+    assert_eq!(names[1..], ["html-query", "html-query-observed"]);
     assert_eq!(report.scopes[1].parent, Some(root));
     assert_eq!(report.scopes[2].parent, Some(root));
 }
@@ -340,7 +350,7 @@ fn a_scope_of_another_operation_is_an_accounting_fault() {
         .expect("a foreign scope is refused");
     assert_eq!(
         failure.kind(),
-        &HtmlSemanticFailureKind::Accounting(HtmlSemanticAccountingFault::ForeignScope)
+        &HtmlSemanticFailureKind::Accounting(HtmlAccountingFault::ForeignScope)
     );
     assert!(failure.qualification().is_none());
 }
@@ -356,7 +366,7 @@ fn a_scope_bound_without_room_for_the_session_is_an_accounting_fault() {
         .expect("the scope bound is exhausted");
     assert_eq!(
         failure.kind(),
-        &HtmlSemanticFailureKind::Accounting(HtmlSemanticAccountingFault::ScopeLimit { limit: 2 })
+        &HtmlSemanticFailureKind::Accounting(HtmlAccountingFault::ScopeLimit { limit: 2 })
     );
 }
 
@@ -581,7 +591,7 @@ mod capture {
             &accounting,
         )
         .expect_err("a foreign scope is refused");
-        assert_eq!(error, HtmlSemanticAccountingFault::ForeignScope);
+        assert_eq!(error, HtmlAccountingFault::ForeignScope);
     }
 
     #[test]
@@ -649,4 +659,34 @@ mod capture {
         );
         assert_eq!(import.usage.live(HtmlResource::ScratchRecords), 0);
     }
+}
+
+/// A builder opens its capped scope in a host operation whose scope bound it spends: the host's
+/// bound is the one accounting fault, as it is for a parse and a session.
+#[test]
+fn a_scope_bound_too_small_for_a_builder_is_an_accounting_fault() {
+    let (ledger, root) = host(HtmlLimits::unlimited(), 1);
+    let accounting = HtmlSemanticAccounting::host(ledger, root);
+    let error = HtmlCaptureBuilder::with_accounting(
+        surgeist_html_semantics::HtmlCaptureLimits::new(10, 100, 10, 1000, 10, 0, 0, 16_777_216),
+        surgeist_html_semantics::HtmlHostFactsRevision::fresh(),
+        &accounting,
+    )
+    .expect_err("the host has no room for a scope");
+    assert_eq!(error, HtmlAccountingFault::ScopeLimit { limit: 1 });
+}
+
+/// The scopes a builder creates for a capture take their names from the schema.
+#[test]
+fn a_hosted_builder_names_its_scope_by_the_schema() {
+    let (ledger, root) = host(HtmlLimits::unlimited(), 4);
+    let accounting = HtmlSemanticAccounting::host(ledger.clone(), root);
+    let _builder = HtmlCaptureBuilder::with_accounting(
+        surgeist_html_semantics::HtmlCaptureLimits::new(10, 100, 10, 1000, 10, 0, 0, 16_777_216),
+        surgeist_html_semantics::HtmlHostFactsRevision::fresh(),
+        &accounting,
+    )
+    .unwrap();
+    let names: Vec<_> = report(&ledger).scopes.iter().map(|s| s.name).collect();
+    assert_eq!(names, ["host", HtmlCapScope::Capture.name()]);
 }

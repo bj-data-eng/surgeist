@@ -8,18 +8,15 @@
 //! the observed one.
 
 use super::*;
-use crate::accounting::{Ledger, fault};
+use crate::accounting::Ledger;
+pub(super) use crate::accounting::wide;
 use surgeist_html::accounting::{
-    HtmlChange, HtmlLimits, HtmlResource, HtmlWork, aggregate_tariffs,
+    HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapScope, HtmlChange, HtmlLedgerOutcome,
+    HtmlLimits, HtmlResource, HtmlWork, aggregate_tariffs, classify,
 };
-use surgeist_ledger::{Change, Operation, RefusalReason, Scope, Tariff, Tariffs};
+use surgeist_ledger::{Change, Operation, Scope, Tariff, Tariffs};
 
 pub(super) use crate::accounting::LedgerError;
-
-/// Widens a platform amount; an amount beyond `u64` saturates and every finite cap refuses it.
-pub(super) fn wide(value: usize) -> u64 {
-    u64::try_from(value).unwrap_or(u64::MAX)
-}
 
 /// The ledger dimension of a record resource of the session.
 pub(super) fn record_dimension(resource: HtmlSemanticResource) -> HtmlResource {
@@ -47,50 +44,31 @@ fn limits(limits: HtmlSemanticLimits) -> HtmlLimits {
 }
 
 /// The typed stop of a ledger error: a refused cap keeps its resource, its limit and the total the
-/// change would have reached.
+/// change would have reached, and every other failure is the accounting fault.
 pub(super) fn stop_kind(error: LedgerError) -> HtmlSemanticFailureKind {
     use HtmlSemanticFailureKind as Kind;
-    let LedgerError::Refused(refusal) = error else {
-        return match error {
-            LedgerError::Allocation => Kind::AllocationFailed,
-            other => Kind::Accounting(fault(other)),
-        };
+    let refusal = match classify(error) {
+        HtmlLedgerOutcome::Fault(fault) => return Kind::Accounting(fault),
+        HtmlLedgerOutcome::Exhausted(_) => return Kind::RepresentationExhausted,
+        HtmlLedgerOutcome::Cap(refusal) => refusal,
     };
-    let RefusalReason::Limit { limit } = refusal.reason else {
-        return match refusal.reason {
-            RefusalReason::Overflow => Kind::RepresentationExhausted,
-            _ => Kind::ProtocolViolated,
-        };
+    let resource = match refusal.change() {
+        Change::Work(HtmlWork::SemanticStep, _) => HtmlSemanticResource::Work,
+        Change::Acquire(HtmlResource::OutputRecords, _) => HtmlSemanticResource::OutputRecords,
+        Change::Acquire(HtmlResource::ScratchRecords, _) => HtmlSemanticResource::ScratchRecords,
+        Change::Acquire(HtmlResource::AllocatedBytes, _) => HtmlSemanticResource::AllocatedBytes,
+        Change::Acquire(HtmlResource::NestedOutputRecords, _) => {
+            HtmlSemanticResource::NestedOutputRecords
+        }
+        _ => return Kind::Accounting(HtmlAccountingFault::UnexpectedChange),
     };
-    let (resource, amount) = match refusal.change {
-        Change::Work(HtmlWork::SemanticStep, amount) => (HtmlSemanticResource::Work, amount),
-        Change::Acquire(HtmlResource::OutputRecords, amount) => {
-            (HtmlSemanticResource::OutputRecords, amount)
-        }
-        Change::Acquire(HtmlResource::ScratchRecords, amount) => {
-            (HtmlSemanticResource::ScratchRecords, amount)
-        }
-        Change::Acquire(HtmlResource::AllocatedBytes, amount) => {
-            (HtmlSemanticResource::AllocatedBytes, amount)
-        }
-        Change::Acquire(HtmlResource::NestedOutputRecords, amount) => {
-            (HtmlSemanticResource::NestedOutputRecords, amount)
-        }
-        _ => return Kind::ProtocolViolated,
-    };
-    match (
-        usize::try_from(limit),
-        refusal
-            .current
-            .checked_add(amount)
-            .and_then(|required| usize::try_from(required).ok()),
-    ) {
-        (Ok(limit), Some(required)) => Kind::LimitExceeded {
+    match refusal.figures() {
+        Ok(figures) => Kind::LimitExceeded {
             resource,
-            limit,
-            required,
+            limit: figures.limit,
+            required: figures.required,
         },
-        _ => Kind::RepresentationExhausted,
+        Err(_) => Kind::RepresentationExhausted,
     }
 }
 
@@ -113,21 +91,21 @@ impl QueryAccount {
                 let mut operation = Ledger::Shared(host.ledger.clone());
                 let caps = operation.child(
                     host.scope,
-                    "html-query",
+                    HtmlCapScope::Query.name(),
                     limits(session),
                     aggregate_tariffs(),
                 )?;
                 (operation, caps, host.scope)
             }
             None => {
-                let operation = Operation::new("html-query", limits(session), 2)?;
+                let operation = Operation::new(HtmlCapScope::Query.name(), limits(session), 2)?;
                 let caps = operation.root();
                 (Ledger::Owned(operation), caps, caps)
             }
         };
         let observed = operation.child(
             parent,
-            "html-query-observed",
+            HtmlAuxiliaryScope::QueryObserved.name(),
             HtmlLimits::unlimited(),
             Tariffs::from_fn(
                 |work| Tariff::new(work, 0),
@@ -204,8 +182,8 @@ impl QueryAccount {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::HtmlSemanticAccountingFault as Fault;
-    use surgeist_ledger::{Defect, Refusal};
+    use surgeist_html::accounting::HtmlAccountingFault as Fault;
+    use surgeist_ledger::{Defect, Refusal, RefusalReason};
 
     fn limits(scratch: usize, bytes: usize) -> HtmlSemanticLimits {
         HtmlSemanticLimits::new(100, 100, scratch, 0, bytes, 100)
@@ -332,7 +310,7 @@ mod tests {
         );
         assert_eq!(
             stop_kind(refusal(RefusalReason::Underflow, step)),
-            Kind::ProtocolViolated
+            Kind::Accounting(Fault::ReleaseUnderflow)
         );
         // A cap refusal that names a dimension the session does not report.
         assert_eq!(
@@ -340,9 +318,12 @@ mod tests {
                 RefusalReason::Limit { limit: 5 },
                 Change::Acquire(HtmlResource::TreeDepth, 1)
             )),
-            Kind::ProtocolViolated
+            Kind::Accounting(Fault::UnexpectedChange)
         );
-        assert_eq!(stop_kind(LedgerError::Allocation), Kind::AllocationFailed);
+        assert_eq!(
+            stop_kind(LedgerError::Allocation),
+            Kind::Accounting(Fault::Allocation)
+        );
         for (error, fault) in [
             (LedgerError::ForeignScope, Fault::ForeignScope),
             (

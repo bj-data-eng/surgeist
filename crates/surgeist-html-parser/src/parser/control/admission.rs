@@ -7,34 +7,23 @@
 use super::*;
 #[cfg(test)]
 use surgeist_html::accounting::HtmlCustody;
+use surgeist_html::accounting::{HtmlAccountingFault, HtmlCapRefusal, HtmlLedgerOutcome};
 use surgeist_ledger::{Charge, Dimension};
 
 /// How a refusal at one of the parse's own scopes is reported.
 #[derive(Clone, Copy)]
 pub(super) struct Site {
-    /// The invariant that a release beyond the held custody is.
-    pub(super) underflow: HtmlParseInvariant,
     /// The requested change reported for [`HtmlParseResource::ManagedCapacityBytes`]
     /// when it differs from the refused amount: the net growth of a replacement.
     pub(super) growth: Option<u64>,
 }
 
 impl Site {
-    /// A release beyond what is held is a release underflow.
-    pub(super) const RELEASE: Self = Self {
-        underflow: HtmlParseInvariant::ReleaseUnderflow,
-        growth: None,
-    };
-    /// A release of an old layout beyond what is held disagrees with the
-    /// capacity the caller was charged.
-    pub(super) const REPLACEMENT: Self = Self {
-        underflow: HtmlParseInvariant::CapacityMismatch,
-        growth: None,
-    };
+    /// A refusal that reports the refused amount as the requested change.
+    pub(super) const PLAIN: Self = Self { growth: None };
     pub(super) const fn growth(self, growth: u64) -> Self {
         Self {
             growth: Some(growth),
-            ..self
         }
     }
 }
@@ -63,13 +52,13 @@ impl ParseControl {
             // Setup latched its fault when it failed, so the stop exists.
             return Err(match &self.stopped {
                 Some(first) => first.reason,
-                None => HtmlParseStop::InternalInvariant(HtmlParseInvariant::LedgerState),
+                None => HtmlParseStop::Accounting(HtmlAccountingFault::UnexpectedChange),
             });
         }
         match self.accounts.as_mut() {
             Some(accounts) => Ok(accounts),
-            None => Err(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::LedgerState,
+            None => Err(HtmlParseStop::Accounting(
+                HtmlAccountingFault::UnexpectedChange,
             )),
         }
     }
@@ -82,7 +71,7 @@ impl ParseControl {
             return;
         };
         if let Err(error) = accounts.enter(phase) {
-            self.ledger_stop(error, Site::RELEASE, &[]);
+            self.ledger_stop(error, Site::PLAIN, &[]);
         }
     }
 
@@ -117,16 +106,16 @@ impl ParseControl {
     pub(super) fn live(&mut self, resource: HtmlParseResource) -> Result<u64, HtmlParseStop> {
         let Some(dimension) = resource.dimension() else {
             let credits = self.accounts_mut()?.credits();
-            return credits.map_err(|error| self.ledger_stop(error, Site::RELEASE, &[]));
+            return credits.map_err(|error| self.ledger_stop(error, Site::PLAIN, &[]));
         };
         let live = self.accounts_mut()?.live(dimension);
-        live.map_err(|error| self.ledger_stop(error, Site::RELEASE, &[]))
+        live.map_err(|error| self.ledger_stop(error, Site::PLAIN, &[]))
     }
 
     /// The cap of a resource, read from the ledger scope that carries it.
     pub(super) fn limit(&mut self, resource: HtmlParseResource) -> Result<u64, HtmlParseStop> {
         let limit = self.accounts_mut()?.limit(resource);
-        limit.map_err(|error| self.ledger_stop(error, Site::RELEASE, &[]))
+        limit.map_err(|error| self.ledger_stop(error, Site::PLAIN, &[]))
     }
 
     /// Records `value` as the largest reached by a gauge resource, in a batch
@@ -137,8 +126,19 @@ impl ParseControl {
         value: u64,
     ) -> Result<[HtmlChange; 2], HtmlParseStop> {
         let held = self.accounts_mut()?.live(resource);
-        let held = held.map_err(|error| self.ledger_stop(error, Site::RELEASE, &[]))?;
+        let held = held.map_err(|error| self.ledger_stop(error, Site::PLAIN, &[]))?;
         Ok(record_largest(resource, held, value))
+    }
+
+    /// A change the parser does not charge reached its ledger: the parse stops with the
+    /// accounting fault, after the cancellation check every invariant stop takes.
+    pub(crate) fn unexpected_change(&mut self) -> HtmlParseStop {
+        if let Err(reason) = self.checkpoint() {
+            return reason;
+        }
+        self.latch_stop(HtmlParseStop::Accounting(
+            HtmlAccountingFault::UnexpectedChange,
+        ))
     }
 
     /// The stop for a ledger error that refused a batch of resource changes.
@@ -149,90 +149,87 @@ impl ParseControl {
         changes: &[HtmlChange],
     ) -> HtmlParseStop {
         match classify(error) {
-            Classified::Fault(fault) => self.latch_stop(HtmlParseStop::Accounting(fault)),
-            Classified::Refusal(refusal) => self.refusal_stop(refusal, site, changes),
+            HtmlLedgerOutcome::Fault(fault) => self.latch_stop(HtmlParseStop::Accounting(fault)),
+            HtmlLedgerOutcome::Exhausted(change) => match resource_of(change) {
+                Some(resource) => self.stop_representation(resource),
+                None => self.unexpected_change(),
+            },
+            HtmlLedgerOutcome::Cap(refusal) => self.cap_stop(refusal, site, changes),
         }
     }
 
-    pub(super) fn refusal_stop(
+    pub(super) fn cap_stop(
         &mut self,
-        refusal: Refusal<HtmlWork, HtmlResource>,
+        refusal: HtmlCapRefusal,
         site: Site,
         changes: &[HtmlChange],
     ) -> HtmlParseStop {
-        let Some(resource) = resource_of(refusal.change) else {
-            return self.fail_invariant(HtmlParseInvariant::LedgerState);
+        let Some(resource) = resource_of(refusal.change()) else {
+            return self.unexpected_change();
         };
         let owned = self
             .accounts
             .as_ref()
-            .is_some_and(|accounts| accounts.owns(refusal.scope));
-        let amount = amount_of(refusal.change);
-        match refusal.reason {
-            RefusalReason::Overflow => self.stop_representation(resource),
-            RefusalReason::Underflow => {
-                self.latch_stop(HtmlParseStop::InternalInvariant(site.underflow))
-            }
-            RefusalReason::Limit { limit } if !owned => {
-                // A scope above the parse's own refused. The refused batch
-                // changed nothing there either, so its value is its value before
-                // the batch, and the figures are in its own units: the rate its
-                // tariffs apply to the refused item is the rate of the whole
-                // batch.
-                let current = self
-                    .accounts
-                    .as_ref()
-                    .and_then(|accounts| accounts.value_at(refusal.scope, refusal.change).ok());
-                let Some(current) = current else {
-                    return self.fail_invariant(HtmlParseInvariant::LedgerState);
-                };
-                let parsed = changes.get(refusal.item).copied().map_or(0, amount_of);
-                let rate = if parsed == 0 {
-                    1
-                } else {
-                    amount.checked_div(parsed).unwrap_or(1)
-                };
-                let requested_delta = match (refusal.change, site.growth) {
-                    (Change::Work(..), _) => changes
-                        .iter()
-                        .filter_map(|change| match change {
-                            Change::Work(_, units) => Some(*units),
-                            Change::Acquire(..) | Change::Release(..) => None,
-                        })
-                        .fold(0_u64, u64::saturating_add)
-                        .saturating_mul(rate),
-                    (_, Some(growth)) if resource == HtmlParseResource::ManagedCapacityBytes => {
-                        growth.saturating_mul(rate)
-                    }
-                    _ => amount,
-                };
-                self.latch_stop(HtmlParseStop::LimitExceeded {
-                    resource,
-                    limit,
-                    current,
-                    requested_delta,
-                })
-            }
-            RefusalReason::Limit { limit } => {
-                // The refused batch changed nothing, so the live value is the
-                // value before the batch.
-                let current = match self.live(resource) {
-                    Ok(current) => current,
-                    Err(stop) => return stop,
-                };
-                let requested_delta = match resource {
-                    HtmlParseResource::TreeDepth => amount.saturating_sub(current),
-                    HtmlParseResource::ManagedCapacityBytes => site.growth.unwrap_or(amount),
-                    _ => amount,
-                };
-                self.latch_stop(HtmlParseStop::LimitExceeded {
-                    resource,
-                    limit,
-                    current,
-                    requested_delta,
-                })
-            }
+            .is_some_and(|accounts| accounts.owns(refusal.scope()));
+        let amount = refusal.amount();
+        let limit = refusal.limit();
+        if !owned {
+            // A scope above the parse's own refused. The refused batch
+            // changed nothing there either, so its value is its value before
+            // the batch, and the figures are in its own units: the rate its
+            // tariffs apply to the refused item is the rate of the whole
+            // batch.
+            let current = self
+                .accounts
+                .as_ref()
+                .and_then(|accounts| accounts.value_at(refusal.scope(), refusal.change()).ok());
+            let Some(current) = current else {
+                return self.unexpected_change();
+            };
+            let parsed = changes.get(refusal.item()).copied().map_or(0, amount_of);
+            let rate = if parsed == 0 {
+                1
+            } else {
+                amount.checked_div(parsed).unwrap_or(1)
+            };
+            let requested_delta = match (refusal.change(), site.growth) {
+                (Change::Work(..), _) => changes
+                    .iter()
+                    .filter_map(|change| match change {
+                        Change::Work(_, units) => Some(*units),
+                        Change::Acquire(..) | Change::Release(..) => None,
+                    })
+                    .fold(0_u64, u64::saturating_add)
+                    .saturating_mul(rate),
+                (_, Some(growth)) if resource == HtmlParseResource::ManagedCapacityBytes => {
+                    growth.saturating_mul(rate)
+                }
+                _ => amount,
+            };
+            return self.latch_stop(HtmlParseStop::LimitExceeded {
+                resource,
+                limit,
+                current,
+                requested_delta,
+            });
         }
+        // The refused batch changed nothing, so the live value is the value
+        // before the batch.
+        let current = match self.live(resource) {
+            Ok(current) => current,
+            Err(stop) => return stop,
+        };
+        let requested_delta = match resource {
+            HtmlParseResource::TreeDepth => amount.saturating_sub(current),
+            HtmlParseResource::ManagedCapacityBytes => site.growth.unwrap_or(amount),
+            _ => amount,
+        };
+        self.latch_stop(HtmlParseStop::LimitExceeded {
+            resource,
+            limit,
+            current,
+            requested_delta,
+        })
     }
 
     /// The stop for a ledger error that refused a work batch. The ledger names
@@ -240,26 +237,33 @@ impl ParseControl {
     /// parser checks the credit cap once for the whole batch: it reports the
     /// credits before the batch and the sum of every item, and reports an
     /// arithmetic overflow of any item before a cap.
-    fn work_stop(&mut self, error: LedgerError, changes: &[HtmlChange]) -> HtmlParseStop {
+    pub(super) fn work_stop(
+        &mut self,
+        error: LedgerError,
+        changes: &[HtmlChange],
+    ) -> HtmlParseStop {
         let refusal = match classify(error) {
-            Classified::Fault(fault) => {
+            HtmlLedgerOutcome::Fault(fault) => {
                 return self.latch_stop(HtmlParseStop::Accounting(fault));
             }
-            Classified::Refusal(refusal) => refusal,
+            HtmlLedgerOutcome::Exhausted(_) => {
+                return self.stop_representation(HtmlParseResource::WorkCredits);
+            }
+            HtmlLedgerOutcome::Cap(refusal) => refusal,
         };
         let owned = self
             .accounts
             .as_ref()
-            .is_some_and(|accounts| accounts.owns(refusal.scope));
+            .is_some_and(|accounts| accounts.owns(refusal.scope()));
         if !owned {
-            return self.refusal_stop(refusal, Site::RELEASE, changes);
+            return self.cap_stop(refusal, Site::PLAIN, changes);
         }
         let Some((usage, credits)) = self
             .accounts
             .as_ref()
             .and_then(|accounts| accounts.usage().ok())
         else {
-            return self.fail_invariant(HtmlParseInvariant::LedgerState);
+            return self.unexpected_change();
         };
         let mut totals = [0_u64; HtmlWork::ALL.len()];
         for (total, &dimension) in totals.iter_mut().zip(HtmlWork::ALL) {
@@ -268,7 +272,7 @@ impl ParseControl {
         let mut increment = 0_u64;
         for &change in changes {
             let Change::Work(dimension, units) = change else {
-                return self.fail_invariant(HtmlParseInvariant::LedgerState);
+                return self.unexpected_change();
             };
             let slot = HtmlWork::ALL
                 .iter()
@@ -286,18 +290,12 @@ impl ParseControl {
         if credits.checked_add(increment).is_none() {
             return self.stop_representation(HtmlParseResource::WorkCredits);
         }
-        match refusal.reason {
-            RefusalReason::Limit { limit } => self.latch_stop(HtmlParseStop::LimitExceeded {
-                resource: HtmlParseResource::WorkCredits,
-                limit,
-                current: credits,
-                requested_delta: increment,
-            }),
-            RefusalReason::Overflow => self.stop_representation(HtmlParseResource::WorkCredits),
-            RefusalReason::Underflow => self.latch_stop(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::LedgerState,
-            )),
-        }
+        self.latch_stop(HtmlParseStop::LimitExceeded {
+            resource: HtmlParseResource::WorkCredits,
+            limit: refusal.limit(),
+            current: credits,
+            requested_delta: increment,
+        })
     }
 
     /// The stop for a refused storage batch built from `requests`. An overflow
@@ -311,7 +309,7 @@ impl ParseControl {
         if let Some(resource) = self.storage_overflow(requests) {
             return self.stop_representation(resource);
         }
-        self.ledger_stop(error, Site::RELEASE, changes)
+        self.ledger_stop(error, Site::PLAIN, changes)
     }
 
     /// The first request, in order, whose live value plus the requests so far
@@ -360,7 +358,7 @@ impl Charge<HtmlWork, HtmlResource> for ParseControl {
             {
                 self.charge_changes(batch)
             }
-            _ => Err(self.fail_invariant(HtmlParseInvariant::LedgerState)),
+            _ => Err(self.unexpected_change()),
         }
     }
 
@@ -374,7 +372,7 @@ impl Charge<HtmlWork, HtmlResource> for ParseControl {
                 }
             },
             HtmlResource::TreeDepth => self.observe_tree_depth(value),
-            _ => Err(self.fail_invariant(HtmlParseInvariant::LedgerState)),
+            _ => Err(self.unexpected_change()),
         }
     }
 }

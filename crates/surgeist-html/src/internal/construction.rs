@@ -2,7 +2,9 @@
 
 pub(crate) mod bounded;
 
-use crate::internal::accounting::{HtmlCapScope, HtmlResource, HtmlWork, wide};
+use crate::internal::accounting::{
+    HtmlAccountingFault, HtmlCapScope, HtmlLedgerOutcome, HtmlResource, HtmlWork, classify, wide,
+};
 #[cfg(test)]
 use crate::internal::values::Namespace;
 use crate::{
@@ -16,7 +18,7 @@ use std::{
     hash::{Hash, Hasher},
     sync::{Arc, Weak},
 };
-use surgeist_ledger::{Change, Charge, Error as LedgerError, Operation, RefusalReason, Scope};
+use surgeist_ledger::{Change, Charge, Error as LedgerError, Operation, Scope};
 
 /// The HTML document's selected compatibility mode.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -192,8 +194,8 @@ pub(crate) enum HtmlConstructionErrorKind {
     RepresentationExhausted,
     /// Reserving arena or edge storage failed.
     AllocationFailed,
-    /// The ledger scope that enforces the limits reported a state its own sequencing rules out.
-    LedgerState,
+    /// The ledger scope that enforces the limits failed in a way that is not a refused limit.
+    Accounting(HtmlAccountingFault),
 }
 impl HtmlConstructionErrorKind {
     /// Wraps this cause as the public error where inference cannot convert it.
@@ -329,7 +331,8 @@ impl HtmlConstructionError {
             HtmlConstructionErrorKind::SharedAllocationAliased
         )
     }
-    /// Whether the cause is: released usage exceeds the admitted usage.
+    /// Whether the cause is: the builder's own arithmetic released more than it admitted. A
+    /// release that the ledger refuses is reported by [`Self::accounting_fault`].
     pub fn is_release_underflow(&self) -> bool {
         matches!(self.kind, HtmlConstructionErrorKind::ReleaseUnderflow)
     }
@@ -340,14 +343,19 @@ impl HtmlConstructionError {
             HtmlConstructionErrorKind::RepresentationExhausted
         )
     }
-    /// Whether the cause is: reserving arena or edge storage failed.
+    /// Whether the cause is: reserving arena or edge storage failed. A ledger that cannot allocate
+    /// is reported by [`Self::accounting_fault`].
     pub fn is_allocation_failed(&self) -> bool {
         matches!(self.kind, HtmlConstructionErrorKind::AllocationFailed)
     }
-    /// Whether the cause is: the ledger scope that enforces the limits reported a state its own
-    /// sequencing rules out.
-    pub fn is_ledger_state(&self) -> bool {
-        matches!(self.kind, HtmlConstructionErrorKind::LedgerState)
+    /// The accounting fault, when the cause is a failure of the ledger scope that enforces the
+    /// limits that is not a refused limit: a release it refused, an allocation it could not make or
+    /// a state its own sequencing rules out.
+    pub fn accounting_fault(&self) -> Option<HtmlAccountingFault> {
+        match self.kind {
+            HtmlConstructionErrorKind::Accounting(fault) => Some(fault),
+            _ => None,
+        }
     }
     /// Whether two attributes share a namespace and local name.
     pub fn is_duplicate_attribute(&self) -> bool {
@@ -437,8 +445,9 @@ impl fmt::Display for HtmlConstructionError {
             Kind::InvalidOutputRoot => {
                 f.write_str("published output root is not a detached document or fragment")
             }
-            Kind::LedgerState => f.write_str(
-                "the ledger scope that enforces the limits reported an impossible state",
+            Kind::Accounting(fault) => write!(
+                f,
+                "the ledger scope that enforces the limits failed: {fault}"
             ),
             Kind::OperationNotReady => {
                 f.write_str("construction operation still has pending actions")
@@ -1418,7 +1427,10 @@ impl Accounting {
             Change::Acquire(HtmlResource::TreeDepth, wide(depth)),
         ];
         let Some(batch) = batch.get(..if raises { 6 } else { 4 }) else {
-            return Err(HtmlConstructionErrorKind::LedgerState.into());
+            return Err(HtmlConstructionErrorKind::Accounting(
+                HtmlAccountingFault::UnexpectedChange,
+            )
+            .into());
         };
         self.operation
             .apply_batch(self.scope, batch)
@@ -1472,56 +1484,40 @@ impl Accounting {
 /// The construction error of a ledger error: a refused limit keeps its resource, limit and the
 /// total the charge would have reached.
 fn ledger_error(error: LedgerError<HtmlWork, HtmlResource>) -> HtmlConstructionError {
-    let kind = match error {
-        LedgerError::Refused(refusal) => match refusal.reason {
-            RefusalReason::Overflow => HtmlConstructionErrorKind::RepresentationExhausted,
-            RefusalReason::Underflow => HtmlConstructionErrorKind::ReleaseUnderflow,
-            RefusalReason::Limit { limit } => {
-                let resource = match refusal.change {
-                    Change::Acquire(HtmlResource::ManagedNodes, _) => {
-                        Some(HtmlConstructionResource::Nodes)
-                    }
-                    Change::Acquire(HtmlResource::ManagedEdges, _) => {
-                        Some(HtmlConstructionResource::Edges)
-                    }
-                    Change::Acquire(HtmlResource::ManagedAttributes, _) => {
-                        Some(HtmlConstructionResource::Attributes)
-                    }
-                    Change::Acquire(HtmlResource::ManagedUtf16Units, _) => {
-                        Some(HtmlConstructionResource::Utf16Units)
-                    }
-                    Change::Acquire(HtmlResource::TreeDepth, _) => {
-                        Some(HtmlConstructionResource::Depth)
-                    }
-                    _ => None,
-                };
-                let amount = match refusal.change {
-                    Change::Work(_, amount)
-                    | Change::Acquire(_, amount)
-                    | Change::Release(_, amount) => amount,
-                };
-                match (
-                    resource,
-                    usize::try_from(limit),
-                    refusal
-                        .current
-                        .checked_add(amount)
-                        .and_then(|attempted| usize::try_from(attempted).ok()),
-                ) {
-                    (Some(resource), Ok(limit), Some(attempted)) => {
-                        HtmlConstructionErrorKind::LimitExceeded {
-                            resource,
-                            limit,
-                            attempted,
-                        }
-                    }
-                    (None, ..) => HtmlConstructionErrorKind::LedgerState,
-                    _ => HtmlConstructionErrorKind::RepresentationExhausted,
+    let kind = match classify(error) {
+        HtmlLedgerOutcome::Fault(fault) => HtmlConstructionErrorKind::Accounting(fault),
+        HtmlLedgerOutcome::Exhausted(_) => HtmlConstructionErrorKind::RepresentationExhausted,
+        HtmlLedgerOutcome::Cap(refusal) => {
+            let resource = match refusal.change() {
+                Change::Acquire(HtmlResource::ManagedNodes, _) => {
+                    Some(HtmlConstructionResource::Nodes)
                 }
+                Change::Acquire(HtmlResource::ManagedEdges, _) => {
+                    Some(HtmlConstructionResource::Edges)
+                }
+                Change::Acquire(HtmlResource::ManagedAttributes, _) => {
+                    Some(HtmlConstructionResource::Attributes)
+                }
+                Change::Acquire(HtmlResource::ManagedUtf16Units, _) => {
+                    Some(HtmlConstructionResource::Utf16Units)
+                }
+                Change::Acquire(HtmlResource::TreeDepth, _) => {
+                    Some(HtmlConstructionResource::Depth)
+                }
+                _ => None,
+            };
+            match (resource, refusal.figures()) {
+                (Some(resource), Ok(figures)) => HtmlConstructionErrorKind::LimitExceeded {
+                    resource,
+                    limit: figures.limit,
+                    attempted: figures.required,
+                },
+                (None, _) => {
+                    HtmlConstructionErrorKind::Accounting(HtmlAccountingFault::UnexpectedChange)
+                }
+                (Some(_), Err(_)) => HtmlConstructionErrorKind::RepresentationExhausted,
             }
-        },
-        LedgerError::Allocation => HtmlConstructionErrorKind::AllocationFailed,
-        _ => HtmlConstructionErrorKind::LedgerState,
+        }
     };
     kind.into()
 }
@@ -2418,6 +2414,75 @@ mod accounting_tests {
         let mut accounting = self::accounting(HtmlConstructionLimits::new(1, 1, 1, 1, 1));
         let (resource, ..) = refused(accounting.admit(2, 2, 2, 2, 2).unwrap_err());
         assert_eq!(resource, HtmlConstructionResource::Nodes);
+    }
+
+    /// A release that matches nothing held is a release underflow of the ledger, and it changes
+    /// nothing.
+    #[test]
+    fn a_release_beyond_the_admitted_amounts_is_a_ledger_release_underflow() {
+        let mut accounting = accounting(HtmlConstructionLimits::new(9, 9, 9, 9, 9));
+        accounting.admit(1, 0, 0, 0, 1).unwrap();
+        let before = accounting.usage;
+        let error = accounting
+            .release(Charged {
+                nodes: 2,
+                edges: 0,
+                attributes: 0,
+                units: 0,
+                depth: None,
+            })
+            .unwrap_err();
+        assert_eq!(
+            error.accounting_fault(),
+            Some(HtmlAccountingFault::ReleaseUnderflow)
+        );
+        assert!(!error.is_release_underflow());
+        assert_eq!(accounting.usage, before);
+    }
+
+    /// A ledger that cannot allocate, a foreign scope and a spent scope bound each reach the caller
+    /// as the one accounting fault, not as the builder's own allocation failure.
+    #[test]
+    fn a_ledger_failure_that_is_not_a_refused_limit_is_an_accounting_fault() {
+        for (error, fault) in [
+            (LedgerError::Allocation, HtmlAccountingFault::Allocation),
+            (LedgerError::ForeignScope, HtmlAccountingFault::ForeignScope),
+            (
+                LedgerError::ScopeLimit { limit: 2 },
+                HtmlAccountingFault::ScopeLimit { limit: 2 },
+            ),
+        ] {
+            let error = ledger_error(error);
+            assert_eq!(error.accounting_fault(), Some(fault));
+            assert!(!error.is_allocation_failed());
+            assert!(!error.is_representation_exhausted());
+        }
+    }
+
+    /// A refusal that names a dimension the construction scope does not report is a change the
+    /// builder does not charge.
+    #[test]
+    fn a_cap_refusal_of_another_dimension_is_an_unexpected_change() {
+        let limits = surgeist_html_limits_for_unrelated_dimension();
+        let mut operation = Operation::new("scope", limits, 1).unwrap();
+        let root = operation.root();
+        let error = operation
+            .apply(root, Change::Acquire(HtmlResource::FactRecords, 2))
+            .unwrap_err();
+        assert_eq!(
+            ledger_error(error).accounting_fault(),
+            Some(HtmlAccountingFault::UnexpectedChange)
+        );
+    }
+
+    fn surgeist_html_limits_for_unrelated_dimension() -> crate::accounting::HtmlLimits {
+        crate::accounting::HtmlLimits::from_fn(
+            |_| u64::MAX,
+            |resource| match resource {
+                HtmlResource::FactRecords => 1,
+                _ => u64::MAX,
+            },
+        )
     }
 
     /// A rejected append gives back its amounts and the depth it raised.

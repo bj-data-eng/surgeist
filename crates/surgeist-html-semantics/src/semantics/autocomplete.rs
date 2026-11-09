@@ -152,8 +152,8 @@ impl HtmlSemanticSession<'_> {
                     HtmlAutocompleteMaterializationError::Representation => {
                         HtmlSemanticFailureKind::RepresentationExhausted
                     }
-                    HtmlAutocompleteMaterializationError::LedgerState => {
-                        HtmlSemanticFailureKind::ProtocolViolated
+                    HtmlAutocompleteMaterializationError::Accounting(fault) => {
+                        HtmlSemanticFailureKind::Accounting(fault)
                     }
                 };
                 self.stop(kind)

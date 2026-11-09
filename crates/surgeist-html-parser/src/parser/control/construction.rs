@@ -51,7 +51,7 @@ impl ParseControl {
         self.check_acquire_many(requests)?;
         let (mut changes, count) = self.storage_batch(requests)?;
         let Some(admitted) = changes.get_mut(..count) else {
-            return Err(self.fail_invariant(HtmlParseInvariant::LedgerState));
+            return Err(self.unexpected_change());
         };
         // The admitted state is the requests with the removal credited: the
         // edges are acquired net of it, or released when it is larger.
@@ -86,9 +86,9 @@ impl ParseControl {
             length = length.saturating_add(1);
         }
         let Some(batch) = batch.get(..length) else {
-            return Err(self.fail_invariant(HtmlParseInvariant::LedgerState));
+            return Err(self.unexpected_change());
         };
-        self.admit_resources(batch, Site::RELEASE)
+        self.admit_resources(batch, Site::PLAIN)
     }
     /// Preflight the precise old/new reserve overlap before its HTML provider call.
     pub(crate) fn prepare_construction_reserve(

@@ -328,7 +328,7 @@ impl HtmlParseReport {
                 surgeist_html::accounting::HtmlResource,
             >,
         >,
-        crate::HtmlParseAccountingFault,
+        surgeist_html::accounting::HtmlAccountingFault,
     > {
         match &self.context {
             ReportContext::Document { request, .. } => request.accounting().profile(),
