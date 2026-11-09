@@ -1,9 +1,10 @@
 //! Renderer-lifetime explicit CPU backing. Ledger is the only byte/work authority.
 use super::{
-    Account, AccountedVec, RenderAccountingError, RenderAccountingOptions, RenderClock,
-    RenderCpuIdentity, RenderCpuInterval, RenderCpuScope, RenderCpuSnapshot, RenderLedger,
-    RenderLifetimeUsage, RenderQuantity, RenderRefusalReason, RenderResource, RenderResourceTable,
-    RenderWork, RenderWorkTable, StorageAccount, map_ledger_failure,
+    Account, AccountedVec, IntervalNumbers, ObserverBudget, RenderAccountingError,
+    RenderAccountingOptions, RenderClock, RenderCpuIdentity, RenderCpuInterval, RenderCpuScope,
+    RenderCpuSnapshot, RenderLedger, RenderLifetimeUsage, RenderQuantity, RenderRefusalReason,
+    RenderResource, RenderResourceTable, RenderWork, RenderWorkTable, ReportBacking,
+    StorageAccount, map_ledger_failure,
 };
 use crate::{Error, Image, PreparedGlyphRun, Result, image::ImageContentIdentity};
 use std::{
@@ -20,6 +21,7 @@ const SCOPE_COUNT: usize = RenderCpuScope::ALL.len();
 struct Core {
     ledger: RenderLedger,
     scopes: [Scope; SCOPE_COUNT],
+    observer_budget: ObserverBudget,
     fault: Mutex<Option<RenderAccountingError>>,
 }
 impl Core {
@@ -182,6 +184,7 @@ impl RendererCpu {
         let core = Arc::new(Core {
             ledger: operation.share(),
             scopes,
+            observer_budget: ObserverBudget::new(profile),
             fault: Mutex::new(None),
         });
         let account = CpuAccount {
@@ -223,6 +226,7 @@ impl RendererCpu {
         if let Some(error) = *fault {
             return Err(error.into());
         }
+        let report_backing = ReportBacking::interval(self.0.core.observer_budget)?;
         let checkpoint = self
             .0
             .core
@@ -232,12 +236,14 @@ impl RendererCpu {
         Ok(CpuCheckpoint {
             cpu: self.clone(),
             checkpoint: Some(checkpoint),
+            report_backing: Some(report_backing),
         })
     }
     /// One coherent profiled report, or one exact root read when observation is
     /// off. This never changes the import registry, faults or attempt reports.
     pub(crate) fn snapshot(&self) -> Result<RenderCpuSnapshot> {
         let fault = self.0.core.lock();
+        let backing = ReportBacking::snapshot(self.0.core.observer_budget)?;
         let profile = self
             .0
             .core
@@ -262,6 +268,8 @@ impl RendererCpu {
             RenderLifetimeUsage::new(usage),
             profile,
             *fault,
+            &self.0.core.scopes,
+            backing,
         )?)
     }
 }
@@ -955,6 +963,7 @@ impl Registry {
 pub(crate) struct CpuCheckpoint {
     cpu: RendererCpu,
     checkpoint: Option<Checkpoint>,
+    report_backing: Option<ReportBacking<RenderCpuScope, IntervalNumbers>>,
 }
 impl CpuCheckpoint {
     pub(crate) fn finish(mut self) -> Result<RenderCpuInterval> {
@@ -970,6 +979,10 @@ impl CpuCheckpoint {
         Ok(RenderCpuInterval::new(
             RenderCpuIdentity(core.scopes[RenderCpuScope::Root.index()]),
             interval,
+            &core.scopes,
+            self.report_backing
+                .take()
+                .ok_or(RenderAccountingError::Invariant)?,
         )?)
     }
 }

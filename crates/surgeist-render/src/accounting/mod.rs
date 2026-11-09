@@ -16,6 +16,8 @@ pub use cpu_model::*;
 pub use generation_model::*;
 pub(crate) use history::{HistoryCommit, HistoryDraft, HistoryObserver, ImageHistory};
 mod model;
+mod report;
+use report::{IntervalNumbers, ObserverBudget, ReportBacking};
 mod storage;
 pub(crate) use generation::{
     CacheRegistration, Generation, GenerationCheckpoint, GenerationClass, GpuObjectKind, OwnedGpu,
@@ -124,6 +126,7 @@ pub(crate) struct Attempt<'a> {
     context: &'a mut RenderAccountingContext,
     account: Account,
     checkpoint: Option<Checkpoint>,
+    report_backing: Option<ReportBacking<RenderPhase, IntervalNumbers>>,
     kind: RenderAttemptKind,
 }
 impl<'a> Attempt<'a> {
@@ -133,7 +136,7 @@ impl<'a> Attempt<'a> {
         legacy: GlyphRunLimits,
         #[cfg(feature = "render-text")] text_caps: Option<[usize; 3]>,
     ) -> Result<Self> {
-        let (account, checkpoint) = build_account(
+        let (account, checkpoint, report_backing) = build_account(
             context.options,
             kind,
             legacy,
@@ -145,6 +148,7 @@ impl<'a> Attempt<'a> {
             context,
             account,
             checkpoint: Some(checkpoint),
+            report_backing: Some(report_backing),
             kind,
         })
     }
@@ -248,8 +252,20 @@ impl<'a> Attempt<'a> {
             .first_refusal
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut attempt = interval
-            .and_then(|interval| RenderAttemptReport::new(self.kind, status, interval, refusal));
+        let mut attempt = interval.and_then(|interval| {
+            let backing = self
+                .report_backing
+                .take()
+                .ok_or(RenderAccountingError::Invariant)?;
+            RenderAttemptReport::new(
+                self.kind,
+                status,
+                interval,
+                refusal,
+                account.scopes.as_ref(),
+                backing,
+            )
+        });
         if let Err(error) = &attempt {
             fault.get_or_insert(*error);
         }
@@ -280,8 +296,13 @@ fn build_account(
     legacy: GlyphRunLimits,
     #[cfg(feature = "render-text")] text_caps: Option<[usize; 3]>,
     cpu: Option<CpuAccount>,
-) -> Result<(Account, Checkpoint)> {
+) -> Result<(
+    Account,
+    Checkpoint,
+    ReportBacking<RenderPhase, IntervalNumbers>,
+)> {
     options.limits.validate(kind)?;
+    let report_backing = ReportBacking::interval(ObserverBudget::new(options.profile.ledger()))?;
     let setup = |error| Error::from(map_ledger_failure(error));
     let mut operation = match options.clock {
         RenderClock::Platform => Operation::with_profile(
@@ -322,10 +343,16 @@ fn build_account(
         },
     );
     for phase in RenderPhase::ALL.into_iter().skip(1) {
-        let parent = phase.parent().expect("nonroot phase has parent");
+        let parent = phase.parent().ok_or(RenderAccountingError::Invariant)?;
+        let parent_scope = *scopes
+            .get(parent.index())
+            .ok_or(RenderAccountingError::Invariant)?;
+        if parent != RenderPhase::Attempt && parent_scope == root {
+            return Err(RenderAccountingError::Invariant.into());
+        }
         scopes[phase.index()] = operation
             .child(
-                scopes[parent.index()],
+                parent_scope,
                 phase.name(),
                 if phase == RenderPhase::Preparation {
                     caps
@@ -370,7 +397,7 @@ fn build_account(
         fault: Arc::new(Mutex::new(None)),
         kind,
     };
-    Ok((account, checkpoint))
+    Ok((account, checkpoint, report_backing))
 }
 
 fn map_ledger_failure(error: LedgerError) -> RenderAccountingError {
@@ -615,7 +642,7 @@ impl Account {
     pub(crate) fn for_test() -> Self {
         let options = RenderAccountingOptions::default();
         let cpu = RendererCpu::new(options).expect("fixture CPU");
-        let (account, checkpoint) = build_account(
+        let (account, checkpoint, _report_backing) = build_account(
             options,
             RenderAttemptKind::Frame,
             GlyphRunLimits::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX),

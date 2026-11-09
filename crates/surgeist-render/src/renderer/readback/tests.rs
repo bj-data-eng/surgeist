@@ -25,7 +25,7 @@ fn failed_finalization_disposes_real_decoded_output_without_caller_transfer() {
                 .render(&mut surface, &scene, Parameters::default())
                 .await
                 .unwrap();
-            let frame = renderer.last_attempt().unwrap().clone();
+            let frame = renderer.last_attempt().unwrap().snapshot_for_test();
             if overflow {
                 // Seed cumulative lifetime history before the readback interval;
                 // the next real transfer must overflow atomically.

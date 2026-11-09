@@ -1280,3 +1280,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod report_tests;

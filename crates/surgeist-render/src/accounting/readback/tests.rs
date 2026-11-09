@@ -12,7 +12,7 @@ fn completed_readback_retains_pretransfer_output_and_uses_its_own_destination() 
     let frames = FrameReportSlot::default();
     let frame = FrameAttempt::begin(frames.clone(), &cpu, options).unwrap();
     let (frame, _) = frame.finish(RenderAttemptStatus::Succeeded, None);
-    frames.store(frame.clone());
+    frames.store(frame.snapshot_for_test());
     let readbacks = ReadbackReportSlot::default();
     let attempt = ReadbackAttempt::begin(readbacks.clone(), &cpu, options).unwrap();
     assert!(attempt.started());
@@ -71,7 +71,7 @@ fn completed_readback_retains_pretransfer_output_and_uses_its_own_destination() 
         readbacks.read().is_none(),
         "finish returns the report for final handoff"
     );
-    readbacks.store(report.clone());
+    readbacks.store(report.snapshot_for_test());
     {
         let first = readbacks.read().unwrap();
         let second = readbacks.read().unwrap();
@@ -175,7 +175,7 @@ fn rejected_setup_preserves_the_previous_readback_and_cpu_lifetime() {
     let slot = ReadbackReportSlot::default();
     let prior = ReadbackAttempt::begin(slot.clone(), &cpu, options).unwrap();
     let (prior, _) = prior.finish(RenderAttemptStatus::Succeeded, None);
-    slot.store(prior.clone());
+    slot.store(prior.snapshot_for_test());
     let before = cpu.snapshot().unwrap().usage();
     let invalid = RenderAccountingOptions::new().with_limits(
         RenderLimits::new()
@@ -285,7 +285,7 @@ fn failed_final_transfer_changes_both_statuses_without_rewriting_closed_observat
         .unwrap();
     let (mut report, fault) = attempt.finish(RenderAttemptStatus::Succeeded, None);
     assert_eq!(fault, None);
-    let before = report.clone();
+    let before = report.snapshot_for_test();
     let first = RenderAccountingError::CpuRefused {
         scope: RenderCpuScope::ReadbackOutput,
         quantity: RenderQuantity::Work(RenderWork::ReadbackTransferredBytes),

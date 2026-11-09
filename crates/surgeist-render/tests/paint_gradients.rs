@@ -6,11 +6,11 @@ use surgeist_layout as layout;
 use surgeist_paint as paint;
 use surgeist_render::{
     Color, Error, ErrorCode, GradientStop, PaintGradientError, RenderAccountingContext,
-    RenderAccountingError, RenderAccountingOptions, RenderAccountingSetupError, RenderAttemptKind,
-    RenderAttemptReport, RenderAttemptStatus, RenderClock, RenderEvent, RenderLimits, RenderPhase,
-    RenderPhaseFilter, RenderProfile, RenderQuantity, RenderResource, RenderWork,
-    RepeatingGradient, prepare_linear_gradient, prepare_radial_gradient,
-    prepare_repeating_linear_gradient, prepare_repeating_radial_gradient,
+    RenderAccountingError, RenderAccountingOptions, RenderAttemptKind, RenderAttemptReport,
+    RenderAttemptStatus, RenderClock, RenderEvent, RenderLimits, RenderPhase, RenderPhaseFilter,
+    RenderProfile, RenderQuantity, RenderResource, RenderWork, RepeatingGradient,
+    prepare_linear_gradient, prepare_radial_gradient, prepare_repeating_linear_gradient,
+    prepare_repeating_radial_gradient,
 };
 
 fn red() -> Color {
@@ -687,59 +687,6 @@ fn retained_backing_is_transferred_once_and_every_named_refusal_releases_its_pre
     assert_eq!(
         prepare_repeating_linear_gradient(&geometry, &used, &mut account).unwrap(),
         expected
-    );
-}
-
-#[test]
-fn invalid_limit_and_report_setup_failure_preserve_the_previous_completed_attempt() {
-    let geometry = line(8.0);
-    let source = [at(0.0, red()), at(8.0, blue())];
-    let used = stops(8.0, &source);
-    let mut account = context(RenderLimits::new());
-    prepare_repeating_linear_gradient(&geometry, &used, &mut account).unwrap();
-    let observe = |account: &RenderAccountingContext| {
-        let report = account.last_attempt().unwrap();
-        (
-            report.kind(),
-            report.status(),
-            report.attempt().cloned(),
-            report.cleanup_fault(),
-        )
-    };
-    let previous = observe(&account);
-    account.set_options(
-        RenderAccountingOptions::new().with_limits(
-            RenderLimits::new()
-                .with_work_limit(RenderWork::GlyphVisits, 0)
-                .unwrap(),
-        ),
-    );
-    let error = prepare_repeating_linear_gradient(&geometry, &used, &mut account).unwrap_err();
-    assert!(matches!(
-        error.accounting_diagnostic(),
-        Some(RenderAccountingError::InvalidLimit(RenderWork::GlyphVisits))
-    ));
-    assert_eq!(observe(&account), previous);
-    account.set_options(
-        RenderAccountingOptions::new().with_profile(RenderProfile::Detailed {
-            timing: false,
-            event_limit: usize::MAX,
-            filter: RenderPhaseFilter::All,
-        }),
-    );
-    let error = prepare_repeating_linear_gradient(&geometry, &used, &mut account).unwrap_err();
-    assert!(matches!(
-        error.accounting_diagnostic(),
-        Some(RenderAccountingError::Setup(
-            RenderAccountingSetupError::Allocation
-        ))
-    ));
-    assert_eq!(observe(&account), previous);
-    account.set_options(RenderAccountingOptions::new());
-    prepare_repeating_linear_gradient(&geometry, &used, &mut account).unwrap();
-    assert_eq!(
-        account.last_attempt().unwrap().attempt().unwrap().status(),
-        RenderAttemptStatus::Succeeded
     );
 }
 

@@ -414,7 +414,7 @@ fn rejected_frame_setup_preserves_previous_report_and_cpu_lifetime_usage() {
         .unwrap();
     let (prior, fault) = prior.finish(RenderAttemptStatus::Succeeded, None);
     assert_eq!(fault, None);
-    slot.store(prior.clone());
+    slot.store(prior.snapshot_for_test());
     let before = cpu.snapshot().unwrap().usage();
     let invalid = RenderAccountingOptions::new().with_limits(
         RenderLimits::new()

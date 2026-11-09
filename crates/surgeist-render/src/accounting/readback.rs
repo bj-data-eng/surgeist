@@ -9,7 +9,7 @@ use std::{ops::Deref, sync::RwLockReadGuard};
 /// Each domain retains its actual closing boundary. Successful extraction closes
 /// before the final output transfer while guarded output is still renderer-owned;
 /// later transfer failure or disposal does not rewrite the closed intervals.
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Eq, PartialEq)]
 pub struct RenderReadbackReport(RendererReport);
 impl std::fmt::Debug for RenderReadbackReport {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -17,6 +17,10 @@ impl std::fmt::Debug for RenderReadbackReport {
     }
 }
 impl RenderReadbackReport {
+    #[cfg(test)]
+    pub(crate) fn snapshot_for_test(&self) -> Self {
+        Self(self.0.snapshot_for_test())
+    }
     /// Terminal status after inner cleanup and required finalization.
     pub const fn status(&self) -> RenderAttemptStatus {
         self.0.status()

@@ -305,7 +305,7 @@ fn pending_cancel_with_late_callback(profile: RenderProfile, retire: bool, timed
         submission,
         prefix,
     } = PreparedMap::new(&cpu, options);
-    let prefix_before = prefix.clone();
+    let prefix_before = prefix.snapshot_for_test();
     let slot = ReadbackReportSlot::default();
     let mut attempt = ReadbackAttempt::begin(slot.clone(), &cpu, options).unwrap();
     attempt.attach_generation(&generation).unwrap();
@@ -352,7 +352,7 @@ fn pending_cancel_with_late_callback(profile: RenderProfile, retire: bool, timed
     );
     drop(attempt);
     let canceled = slot.take().unwrap();
-    let closed = canceled.clone();
+    let closed = canceled.snapshot_for_test();
     assert_eq!(canceled.status(), RenderAttemptStatus::Canceled);
     let attempt = canceled.attempt().unwrap();
     let work = attempt.usage();

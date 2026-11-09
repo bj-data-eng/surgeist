@@ -1,10 +1,11 @@
 //! Typed observations of one retained native device-generation owner.
+use super::report::{IntervalNumbers, LifetimeNumbers, ReportBacking, ResolvedReport};
 use super::{
     RenderAccountingError, RenderChangeKind, RenderLifetimeUsage, RenderQuantity, RenderResource,
-    RenderUsage, RenderWork, interval_resolves, profile_resolves,
+    RenderUsage, RenderWork,
 };
 use std::{fmt, sync::Arc, time::Duration};
-use surgeist_ledger::{Change, Event, IntervalReport, Report, Scope};
+use surgeist_ledger::{IntervalReport, Report, Scope};
 
 /// Identity of one generation's accounting owner, independent of native health.
 #[derive(Clone)]
@@ -109,6 +110,27 @@ impl RenderGenerationScope {
     pub(crate) const fn index(self) -> usize {
         self as usize
     }
+    pub(crate) const fn parent(self) -> Option<Self> {
+        match self {
+            Self::Root => None,
+            Self::Vello | Self::Effects | Self::Masks | Self::Kernels => Some(Self::Cache),
+            Self::SurfaceTargets | Self::PassBuffers | Self::ReadbackStaging => {
+                Some(Self::External)
+            }
+            Self::ShaderModule
+            | Self::BindGroupLayout
+            | Self::PipelineLayout
+            | Self::ComputePipeline
+            | Self::RenderPipeline
+            | Self::Sampler
+            | Self::BindGroup
+            | Self::TextureView
+            | Self::CommandEncoder
+            | Self::CommandBuffer
+            | Self::DependencyUtility => Some(Self::Objects),
+            _ => Some(Self::Root),
+        }
+    }
     pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::Root => "render.device",
@@ -172,69 +194,21 @@ pub enum RenderGenerationEvent {
         elapsed: Option<Duration>,
     },
 }
-fn project(
-    event: &Event<RenderWork, RenderResource>,
-    scopes: impl Fn(Scope) -> Option<RenderGenerationScope>,
-) -> Option<RenderGenerationEvent> {
-    Some(match *event {
-        Event::Phase {
-            scope,
-            duration,
-            elapsed,
-        } => RenderGenerationEvent::Phase {
-            scope: scopes(scope)?,
-            duration,
-            elapsed,
-        },
-        Event::Refused {
-            origin, elapsed, ..
-        } => RenderGenerationEvent::Refused {
-            scope: scopes(origin)?,
-            elapsed,
-        },
-        Event::Accepted {
-            scope,
-            change,
-            elapsed,
-        } => {
-            let (quantity, amount, kind) = match change {
-                Change::Work(d, n) => (RenderQuantity::Work(d), n, RenderChangeKind::Work),
-                Change::Acquire(d, n) => {
-                    (RenderQuantity::Resource(d), n, RenderChangeKind::Acquire)
-                }
-                Change::Release(d, n) => {
-                    (RenderQuantity::Resource(d), n, RenderChangeKind::Release)
-                }
-            };
-            RenderGenerationEvent::Change {
-                scope: scopes(scope)?,
-                quantity,
-                amount,
-                kind,
-                elapsed,
-            }
-        }
-    })
-}
-
-/// One exact generation checkpoint interval. Its peak and timing are distinct
-/// from the attempt and CPU intervals and cannot be added to them.
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// One exact generation interval, with its own peak and timing authority.
+#[derive(Debug, Eq, PartialEq)]
 pub struct RenderGenerationInterval {
     identity: RenderGenerationIdentity,
-    interval: IntervalReport<RenderWork, RenderResource>,
+    data: ResolvedReport<RenderGenerationScope, IntervalNumbers>,
 }
 impl RenderGenerationInterval {
-    /// Builds an interval, or refuses one that does not hold the fixed scopes.
-    pub(crate) fn new(
+    pub(super) fn new(
         identity: RenderGenerationIdentity,
         interval: IntervalReport<RenderWork, RenderResource>,
+        handles: &[Scope],
+        backing: ReportBacking<RenderGenerationScope, IntervalNumbers>,
     ) -> Result<Self, RenderAccountingError> {
-        if interval_resolves(&interval, RenderGenerationScope::ALL.len()) {
-            Ok(Self { identity, interval })
-        } else {
-            Err(RenderAccountingError::Invariant)
-        }
+        let (_, data) = ResolvedReport::interval(interval, handles, backing)?;
+        Ok(Self { identity, data })
     }
     /// Identity of the selected generation owner.
     pub const fn identity(&self) -> &RenderGenerationIdentity {
@@ -244,65 +218,41 @@ impl RenderGenerationInterval {
     pub fn usage(&self) -> RenderUsage {
         self.scope_usage(RenderGenerationScope::Root)
     }
-    /// Exact inclusive fixed-scope interval attribution in every profile mode.
+    /// Inclusive fixed-scope interval attribution in every profile mode.
     pub fn scope_usage(&self, scope: RenderGenerationScope) -> RenderUsage {
-        RenderUsage::new(self.interval.scopes[scope.index()].usage)
+        RenderUsage::new(self.data.rows[scope.index()].usage)
     }
-    /// Custody already live when this interval opened.
+    /// Root custody already live when the interval opened.
     pub fn opening(&self, resource: RenderResource) -> u64 {
         self.scope_opening(RenderGenerationScope::Root, resource)
     }
-    /// Inclusive scope custody live when this interval opened.
+    /// Scope custody already live when the interval opened.
     pub fn scope_opening(&self, scope: RenderGenerationScope, resource: RenderResource) -> u64 {
-        self.interval.scopes[scope.index()]
-            .usage
-            .opening_live(resource)
+        self.data.rows[scope.index()].usage.opening_live(resource)
     }
-    /// This generation interval's host elapsed time, absent Off or untimed.
+    /// This interval's host elapsed time.
     pub fn elapsed(&self) -> Option<Duration> {
-        self.interval.profile.as_ref().and_then(|p| p.elapsed)
+        self.data.elapsed
     }
-    /// Sum of actual ended inclusive phases at this scope.
+    /// Sum of inclusive ended phases at this scope.
     pub fn scope_elapsed(&self, scope: RenderGenerationScope) -> Option<Duration> {
-        self.interval
-            .profile
-            .as_ref()
-            .and_then(|p| p.scopes[scope.index()].phase_elapsed)
+        self.data.rows[scope.index()].phase_elapsed
     }
-    /// Actual ended phase count; zero when observation is Off.
+    /// Ended phase invocations; zero when observation is Off.
     pub fn scope_count(&self, scope: RenderGenerationScope) -> u64 {
-        self.interval
-            .profile
-            .as_ref()
-            .map_or(0, |p| p.scopes[scope.index()].phases)
+        self.data.rows[scope.index()].phases
     }
-    /// Selected events discarded by the bounded observer.
+    /// Selected detail lost to the configured bound.
     pub fn dropped_events(&self) -> u64 {
-        self.interval
-            .profile
-            .as_ref()
-            .map_or(0, |p| p.dropped_events)
+        self.data.dropped_events
     }
     /// Whether optional observational counters saturated.
     pub fn saturated(&self) -> bool {
-        self.interval.profile.as_ref().is_some_and(|p| p.saturated)
+        self.data.saturated
     }
-    /// Selected detail without allocating another event buffer.
+    /// Already resolved bounded detail in its original order.
     pub fn events(&self) -> impl Iterator<Item = RenderGenerationEvent> + '_ {
-        self.interval
-            .profile
-            .iter()
-            .flat_map(|p| &p.events)
-            .filter_map(|e| {
-                project(e, |s| {
-                    RenderGenerationScope::ALL.into_iter().find(|r| {
-                        self.interval
-                            .scopes
-                            .get(r.index())
-                            .is_some_and(|entry| entry.scope == s)
-                    })
-                })
-            })
+        self.data.events.iter().copied()
     }
     pub(crate) fn cache_allocations(&self) -> u64 {
         self.scope_usage(RenderGenerationScope::Cache)
@@ -316,43 +266,42 @@ impl RenderGenerationInterval {
         self.scope_usage(RenderGenerationScope::Cache)
             .live(RenderResource::IdleCacheGpuBytes)
     }
+    #[cfg(test)]
+    pub(crate) fn snapshot_for_test(&self) -> Self {
+        Self {
+            identity: self.identity.clone(),
+            data: self.data.snapshot_for_test(),
+        }
+    }
 }
 
-/// Pure coherent lifetime observation of one retained generation. Retirement
-/// reports already-observed custody state, not a live driver-health probe.
-#[derive(Clone, Debug, Eq, PartialEq)]
+/// Pure coherent lifetime observation. Off retains root usage without role buffers.
+#[derive(Debug, Eq, PartialEq)]
 pub struct RenderDeviceSnapshot {
     identity: RenderGenerationIdentity,
     usage: RenderLifetimeUsage,
-    profile: Option<Report<RenderWork, RenderResource>>,
+    data: ResolvedReport<RenderGenerationScope, LifetimeNumbers>,
     retired: bool,
     fault: Option<RenderAccountingError>,
 }
 impl RenderDeviceSnapshot {
-    /// Builds a snapshot, or refuses a profile that does not hold the fixed scopes.
-    pub(crate) fn new(
+    pub(super) fn new(
         identity: RenderGenerationIdentity,
         usage: RenderLifetimeUsage,
         profile: Option<Report<RenderWork, RenderResource>>,
         retired: bool,
         fault: Option<RenderAccountingError>,
+        handles: &[Scope],
+        backing: ReportBacking<RenderGenerationScope, LifetimeNumbers>,
     ) -> Result<Self, RenderAccountingError> {
-        let resolves = profile.as_ref().is_none_or(|profile| {
-            profile_resolves(profile, RenderGenerationScope::ALL.len(), |scope| {
-                profile.scopes.iter().any(|entry| entry.scope == scope)
-            })
-        });
-        if resolves {
-            Ok(Self {
-                identity,
-                usage,
-                profile,
-                retired,
-                fault,
-            })
-        } else {
-            Err(RenderAccountingError::Invariant)
-        }
+        let (_, data) = ResolvedReport::snapshot(profile, handles, backing)?;
+        Ok(Self {
+            identity,
+            usage,
+            data,
+            retired,
+            fault,
+        })
     }
     /// Identity of the retained native generation owner.
     pub const fn identity(&self) -> &RenderGenerationIdentity {
@@ -362,59 +311,60 @@ impl RenderDeviceSnapshot {
     pub const fn usage(&self) -> RenderLifetimeUsage {
         self.usage
     }
-    /// Inclusive lifetime attribution from the same coherent profile snapshot.
-    /// Absent when observation is Off.
+    /// Scoped usage is unavailable when observation is Off.
     pub fn scope_usage(&self, scope: RenderGenerationScope) -> Option<RenderLifetimeUsage> {
-        self.profile
-            .as_ref()
-            .map(|p| RenderLifetimeUsage::new(p.scopes[scope.index()].usage))
+        self.data
+            .observed
+            .then(|| RenderLifetimeUsage::new(self.data.rows[scope.index()].usage))
     }
-    /// Whether this owner has already retired its native custody.
+    /// Whether this owner already retired its native custody.
     pub const fn retired(&self) -> bool {
         self.retired
     }
-    /// First persistent checked-accounting fault, if any.
+    /// First persistent checked-accounting fault.
     pub const fn fault(&self) -> Option<RenderAccountingError> {
         self.fault
     }
-    /// Host time since this generation owner was constructed, including idle gaps.
+    /// Host elapsed time since generation construction.
     pub fn elapsed(&self) -> Option<Duration> {
-        self.profile.as_ref().and_then(|p| p.elapsed)
+        self.data.elapsed
     }
-    /// Sum of ended inclusive phase durations over this owner's lifetime.
+    /// Inclusive ended-scope duration; unavailable when observation is Off.
     pub fn scope_elapsed(&self, scope: RenderGenerationScope) -> Option<Duration> {
-        self.profile
-            .as_ref()
-            .and_then(|p| p.scopes[scope.index()].phase_elapsed)
+        if self.data.observed {
+            self.data.rows[scope.index()].phase_elapsed
+        } else {
+            None
+        }
     }
-    /// Ended lifetime phase count; zero when observation is Off.
+    /// Ended invocations; zero when observation is Off.
     pub fn scope_count(&self, scope: RenderGenerationScope) -> u64 {
-        self.profile
-            .as_ref()
-            .map_or(0, |p| p.scopes[scope.index()].phases)
+        if self.data.observed {
+            self.data.rows[scope.index()].phases
+        } else {
+            0
+        }
     }
-    /// Selected lifetime events discarded by this bounded observer.
+    /// Selected lifetime detail lost to the configured bound.
     pub fn dropped_events(&self) -> u64 {
-        self.profile.as_ref().map_or(0, |p| p.dropped_events)
+        self.data.dropped_events
     }
     /// Whether optional observational counters saturated.
     pub fn saturated(&self) -> bool {
-        self.profile.as_ref().is_some_and(|p| p.saturated)
+        self.data.saturated
     }
-    /// Selected lifetime detail without allocating another event buffer.
+    /// Already resolved bounded detail.
     pub fn events(&self) -> impl Iterator<Item = RenderGenerationEvent> + '_ {
-        let profile = self.profile.as_ref();
-        self.profile
-            .iter()
-            .flat_map(|p| &p.events)
-            .filter_map(move |e| {
-                project(e, |s| {
-                    RenderGenerationScope::ALL.into_iter().find(|r| {
-                        profile
-                            .and_then(|p| p.scopes.get(r.index()))
-                            .is_some_and(|entry| entry.scope == s)
-                    })
-                })
-            })
+        self.data.events.iter().copied()
+    }
+    #[cfg(test)]
+    pub(crate) fn snapshot_for_test(&self) -> Self {
+        Self {
+            identity: self.identity.clone(),
+            usage: self.usage,
+            data: self.data.snapshot_for_test(),
+            retired: self.retired,
+            fault: self.fault,
+        }
     }
 }

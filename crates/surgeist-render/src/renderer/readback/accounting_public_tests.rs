@@ -1,7 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
+use crate::*;
 use std::time::Duration;
-use surgeist_render::*;
 
 async fn published(options: RenderAccountingOptions) -> (Renderer, Surface, Stats) {
     let mut renderer = Renderer::new(Options::default().with_accounting(options))
@@ -48,7 +48,7 @@ fn explicit_readback_reports_actual_work_without_replacing_frame_observations() 
                     .with_clock(RenderClock::Host(no_clock)),
             )
             .await;
-            let frame = renderer.last_attempt().unwrap().clone();
+            let frame = renderer.last_attempt().unwrap().snapshot_for_test();
             assert!(renderer.last_readback_attempt().is_none());
             drop(renderer.read_headless(&surface));
             assert!(
@@ -135,7 +135,7 @@ fn readback_limits_admit_only_actual_prefixes_and_preserve_the_published_frame()
             let limits = RenderLimits::new().with_work_limit(work, limit).unwrap();
             let (mut renderer, surface, stats) =
                 published(RenderAccountingOptions::new().with_limits(limits)).await;
-            let frame = renderer.last_attempt().unwrap().clone();
+            let frame = renderer.last_attempt().unwrap().snapshot_for_test();
             for _ in 0..2 {
                 let result = renderer.read_headless(&surface).await;
                 assert_eq!(result.is_ok(), succeeds);

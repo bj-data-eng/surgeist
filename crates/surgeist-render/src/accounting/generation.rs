@@ -1,10 +1,10 @@
 //! One device generation's observed native-handle custody. Descriptor units
 //! include returned provisional handles, not proof of driver allocation.
 use super::{
-    Account, RenderAccountingError, RenderAccountingOptions, RenderClock, RenderDeviceSnapshot,
-    RenderGenerationIdentity, RenderGenerationInterval, RenderGenerationScope, RenderLedger,
-    RenderLifetimeUsage, RenderQuantity, RenderRefusalReason, RenderResource, RenderWork,
-    map_ledger_failure,
+    Account, IntervalNumbers, ObserverBudget, RenderAccountingError, RenderAccountingOptions,
+    RenderClock, RenderDeviceSnapshot, RenderGenerationIdentity, RenderGenerationInterval,
+    RenderGenerationScope, RenderLedger, RenderLifetimeUsage, RenderQuantity, RenderRefusalReason,
+    RenderResource, RenderWork, ReportBacking, map_ledger_failure,
 };
 use crate::{Error, Result};
 use std::{
@@ -83,6 +83,7 @@ struct State {
     identity: RenderGenerationIdentity,
     ledger: RenderLedger,
     scopes: [Scope; SCOPE_COUNT],
+    observer_budget: ObserverBudget,
     lifecycle: Mutex<Lifecycle>,
 }
 #[derive(Clone)]
@@ -116,45 +117,28 @@ impl Generation {
         .map_err(|e| Error::from(map_ledger_failure(e)))?;
         let root = op.root();
         let mut scopes = [root; SCOPE_COUNT];
-        let table = [
-            (0, "cache"),
-            (1, "vello"),
-            (1, "effects"),
-            (1, "masks"),
-            (1, "kernels"),
-            (0, "external"),
-            (6, "surface_targets"),
-            (6, "pass_buffers"),
-            (6, "readback_staging"),
-            (0, "objects"),
-            (10, "shader_module"),
-            (10, "bind_group_layout"),
-            (10, "pipeline_layout"),
-            (10, "compute_pipeline"),
-            (10, "render_pipeline"),
-            (10, "sampler"),
-            (10, "bind_group"),
-            (10, "texture_view"),
-            (10, "command_encoder"),
-            (10, "command_buffer"),
-            (10, "dependency_utility"),
-            (0, "retirement"),
-            (0, "initialization"),
-        ];
-        for (index, (parent, name)) in table.into_iter().enumerate() {
-            scopes[index + 1] = op
+        for scope in RenderGenerationScope::ALL.into_iter().skip(1) {
+            let parent = scope.parent().ok_or(RenderAccountingError::Invariant)?;
+            let parent_scope = *scopes
+                .get(parent.index())
+                .ok_or(RenderAccountingError::Invariant)?;
+            if parent != RenderGenerationScope::Root && parent_scope == root {
+                return Err(RenderAccountingError::Invariant.into());
+            }
+            scopes[scope.index()] = op
                 .child(
-                    scopes[parent],
-                    name,
+                    parent_scope,
+                    scope.name(),
                     Limits::unlimited(),
                     Tariffs::identity(),
                 )
-                .map_err(|e| Error::from(map_ledger_failure(e)))?;
+                .map_err(|error| Error::from(map_ledger_failure(error)))?;
         }
         Ok(Self(Arc::new(State {
             identity: RenderGenerationIdentity::new(),
             ledger: op.share(),
             scopes,
+            observer_budget: ObserverBudget::new(options.profile.ledger_generation()),
             lifecycle: Mutex::new(Lifecycle {
                 retired: false,
                 fault: None,
@@ -478,6 +462,7 @@ impl Generation {
     /// Pure observation: neither observes a native signal nor retires custody.
     pub(crate) fn snapshot(&self) -> Result<RenderDeviceSnapshot> {
         let life = self.lock();
+        let backing = ReportBacking::snapshot(self.0.observer_budget)?;
         let profile = self
             .0
             .ledger
@@ -501,6 +486,8 @@ impl Generation {
             profile,
             life.retired,
             life.fault,
+            &self.0.scopes,
+            backing,
         )?)
     }
     pub(crate) fn lease_return(&self, class: GenerationClass) {
@@ -597,6 +584,7 @@ impl Generation {
     }
     pub(crate) fn begin_interval(&self) -> Result<GenerationCheckpoint> {
         self.ensure_healthy()?;
+        let report_backing = ReportBacking::interval(self.0.observer_budget)?;
         let checkpoint = self
             .0
             .ledger
@@ -605,6 +593,7 @@ impl Generation {
         Ok(GenerationCheckpoint {
             generation: self.clone(),
             checkpoint: Some(checkpoint),
+            report_backing: Some(report_backing),
         })
     }
     #[cfg(test)]
@@ -835,6 +824,7 @@ impl GenerationUsage {
 pub(crate) struct GenerationCheckpoint {
     generation: Generation,
     checkpoint: Option<Checkpoint>,
+    report_backing: Option<ReportBacking<RenderGenerationScope, IntervalNumbers>>,
 }
 impl GenerationCheckpoint {
     pub(crate) fn finish(mut self) -> Result<RenderGenerationInterval> {
@@ -854,6 +844,10 @@ impl GenerationCheckpoint {
                 Ok(RenderGenerationInterval::new(
                     self.generation.0.identity.clone(),
                     interval,
+                    &self.generation.0.scopes,
+                    self.report_backing
+                        .take()
+                        .ok_or(RenderAccountingError::Invariant)?,
                 )?)
             })
     }

@@ -712,6 +712,36 @@ Accounting errors retain their typed cause without allocating during constructio
 `Error::message` formats and caches human-readable text on first observation;
 typed diagnostic access and Display formatting leave that cache uninitialized.
 
+### Resolved accounting reports
+
+Accounting reports resolve Ledger scope handles through their owning typed table
+when they are constructed. The constructor checks the registered root, unique
+rows, parent relationships and every referenced scope, including both scopes of
+a refusal. Invalid attribution returns `RenderAccountingError::Invariant` before
+publication. Display labels do not determine scope meaning. Scope creation follows
+the declared parent relationships; report summaries use semantic scope order.
+
+Published reports retain resolved numeric summaries, typed events and observation
+metadata. Their readers perform no scope search or validation and cannot silently
+drop an unresolved event. Forward-report equality retains the validated operation
+identity; CPU and generation reports retain their owner identities. Equality uses
+those identities and resolved content, rather than display labels or redundant
+raw rows.
+
+Resolved summary and event backing is reserved fallibly before attempt or
+checkpoint work, within the fixed scope count and configured event bound.
+Snapshots reserve at observation setup. Raw Ledger buffers and reserved adapter
+buffers coexist during conversion; raw buffers are discarded before publication.
+This backing belongs to the existing bounded observer/control-plane exclusion,
+so observing an operation does not consume its algorithm byte caps or work units.
+Off intervals still retain all fixed-scope numeric summaries. Off snapshots retain
+exact root usage and identity without role or event buffers.
+
+Owned reports have no allocating `Clone` implementation. Borrow the latest record
+or take it into caller custody to retain it. This applies to forward, CPU and
+generation reports and their frame/readback composition records; nonallocating
+identity and report-slot handle clones retain their existing behavior.
+
 `Renderer::cpu_accounting_snapshot` observes current Renderer CPU lifetime usage.
 `device_accounting_snapshot(None)` observes the existing default generation;
 passing `Some(&surface)` selects that Renderer's owned surface generation. These
@@ -949,6 +979,7 @@ Huffman arrays. Arc allocator headers, hash-table bucket overhead, dependency
 internal allocations and process/RSS usage are outside these units.
 The fixed accounting participant, bounded reserved report/profile storage and
 typed error/control-plane storage are also outside admitted preparation backing.
+The [resolved report buffers](#resolved-accounting-reports) use the same exclusion.
 Failure reporting therefore does not recursively consume an exhausted output cap.
 
 Capacity growth previews the requested replacement without committing usage,

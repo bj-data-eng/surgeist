@@ -765,7 +765,7 @@ fn off_and_untimed_profile_read_no_clock_and_timed_zero_detail_keeps_elapsed() {
     );
     assert_eq!(interval.events().count(), 0);
     assert!(interval.dropped_events() > 0);
-    let frozen = interval.clone();
+    let frozen = interval.snapshot_for_test();
     let before = CLOCK_READS.load(Ordering::Relaxed);
     drop(hold);
     let snapshot = cpu.snapshot().unwrap();

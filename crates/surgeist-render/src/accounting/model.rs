@@ -1,6 +1,6 @@
 use crate::ErrorCode;
 use std::time::Duration;
-use surgeist_ledger::{Dimension, Event, IntervalReport, IntervalUsage, Report, Scope, dimensions};
+use surgeist_ledger::{Dimension, IntervalReport, IntervalUsage, Scope, dimensions};
 
 dimensions! {
     /// Named work units for preparation, frame execution and generation custody.
@@ -492,13 +492,13 @@ impl RenderPhase {
         Self::Atlas,
         Self::AtlasQuota,
         Self::Filter,
-        Self::Kernel,
         Self::GpuPrepare,
+        Self::Kernel,
         Self::Configure,
+        Self::Present,
         Self::Acquire,
         Self::Submit,
         Self::Resolve,
-        Self::Present,
         Self::Publish,
         Self::Initialization,
         Self::Readback,
@@ -1070,43 +1070,15 @@ pub enum RenderChangeKind {
     /// Custody released or transferred.
     Release,
 }
-/// Scope the event is attributed to. A refusal is attributed to its origin.
-fn event_scope(event: &Event<RenderWork, RenderResource>) -> Scope {
-    match *event {
-        Event::Accepted { scope, .. } | Event::Phase { scope, .. } => scope,
-        Event::Refused { origin, .. } => origin,
-    }
-}
-/// Whether a profile holds one entry per fixed scope and its events name only
-/// scopes listed by `known`. Reports are built only from profiles that pass,
-/// so reading a fixed scope's entry or an event's scope cannot fail.
-pub(crate) fn profile_resolves(
-    profile: &Report<RenderWork, RenderResource>,
-    count: usize,
-    known: impl Fn(Scope) -> bool,
-) -> bool {
-    profile.scopes.len() == count && profile.events.iter().all(|e| known(event_scope(e)))
-}
-/// Whether an interval holds one entry per fixed scope and so does its profile.
-pub(crate) fn interval_resolves(
-    interval: &IntervalReport<RenderWork, RenderResource>,
-    count: usize,
-) -> bool {
-    let known = |scope| interval.scopes.iter().any(|entry| entry.scope == scope);
-    interval.scopes.len() == count
-        && interval
-            .profile
-            .as_ref()
-            .is_none_or(|profile| profile_resolves(profile, count, known))
-}
 /// Closed forward-work report, available with profiling off and after failures.
 /// Standalone contexts retain one latest started attempt; a frame composes this
 /// interval with its CPU and generation observations. Event detail is bounded.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct RenderAttemptReport {
     pub(crate) kind: RenderAttemptKind,
     pub(crate) status: RenderAttemptStatus,
-    pub(crate) interval: IntervalReport<RenderWork, RenderResource>,
+    identity: AttemptIdentity,
+    data: super::report::ResolvedReport<RenderPhase, super::report::IntervalNumbers>,
     pub(crate) refusal: Option<RenderRefusal>,
 }
 
@@ -1123,6 +1095,19 @@ pub struct RenderStandaloneReport {
 }
 
 impl RenderStandaloneReport {
+    #[cfg(test)]
+    pub(crate) fn snapshot_for_test(&self) -> Self {
+        Self {
+            kind: self.kind,
+            status: self.status,
+            attempt: self
+                .attempt
+                .as_ref()
+                .map(RenderAttemptReport::snapshot_for_test)
+                .map_err(|error| *error),
+            cleanup_fault: self.cleanup_fault,
+        }
+    }
     /// Operation that produced this terminal record.
     pub const fn kind(&self) -> RenderAttemptKind {
         self.kind
@@ -1145,25 +1130,31 @@ impl RenderStandaloneReport {
         self.cleanup_fault
     }
 }
+#[derive(Clone, Copy, Eq, PartialEq)]
+struct AttemptIdentity(Scope);
+impl std::fmt::Debug for AttemptIdentity {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("AttemptIdentity(..)")
+    }
+}
 impl RenderAttemptReport {
-    /// Builds a report from a ledger interval, or refuses one that does not hold
-    /// the attempt's fixed scopes.
-    pub(crate) fn new(
+    /// Resolves the complete interval against its owner's registered handles.
+    pub(super) fn new(
         kind: RenderAttemptKind,
         status: RenderAttemptStatus,
         interval: IntervalReport<RenderWork, RenderResource>,
         refusal: Option<RenderRefusal>,
+        handles: &[Scope],
+        backing: super::report::ReportBacking<RenderPhase, super::report::IntervalNumbers>,
     ) -> Result<Self, RenderAccountingError> {
-        if interval_resolves(&interval, PHASE_COUNT) {
-            Ok(Self {
-                kind,
-                status,
-                interval,
-                refusal,
-            })
-        } else {
-            Err(RenderAccountingError::Invariant)
-        }
+        let (root, data) = super::report::ResolvedReport::interval(interval, handles, backing)?;
+        Ok(Self {
+            kind,
+            status,
+            identity: AttemptIdentity(root),
+            data,
+            refusal,
+        })
     }
     /// Operation represented by this report.
     pub const fn kind(&self) -> RenderAttemptKind {
@@ -1179,7 +1170,7 @@ impl RenderAttemptReport {
     }
     /// Inclusive phase attribution. Do not add it to ancestor totals.
     pub fn phase_usage(&self, phase: RenderPhase) -> RenderUsage {
-        RenderUsage(self.interval.scopes[phase.index()].usage)
+        RenderUsage(self.data.rows[phase.index()].usage)
     }
     /// First refusal, including a noncommitting pre-allocation preview.
     pub const fn refusal(&self) -> Option<RenderRefusal> {
@@ -1187,89 +1178,36 @@ impl RenderAttemptReport {
     }
     /// Total measured interval, absent when off/untimed.
     pub fn elapsed(&self) -> Option<Duration> {
-        self.interval.profile.as_ref().and_then(|p| p.elapsed)
+        self.data.elapsed
     }
     /// Sum of ended inclusive phase durations, absent when off/untimed.
     pub fn phase_elapsed(&self, phase: RenderPhase) -> Option<Duration> {
-        self.interval
-            .profile
-            .as_ref()
-            .and_then(|p| p.scopes[phase.index()].phase_elapsed)
+        self.data.rows[phase.index()].phase_elapsed
     }
-    /// Number of ended invocations (observational, zero with profiling off).
+    /// Number of ended invocations; zero with profiling off.
     pub fn phase_count(&self, phase: RenderPhase) -> u64 {
-        self.interval
-            .profile
-            .as_ref()
-            .map_or(0, |p| p.scopes[phase.index()].phases)
+        self.data.rows[phase.index()].phases
     }
-    /// Detail lost to the configured bounded buffer; exact usage is unaffected.
+    /// Detail lost to the configured bounded buffer.
     pub fn dropped_events(&self) -> u64 {
-        self.interval
-            .profile
-            .as_ref()
-            .map_or(0, |p| p.dropped_events)
+        self.data.dropped_events
     }
-    /// Whether any optional observational counter saturated.
+    /// Whether optional observational counters saturated.
     pub fn saturated(&self) -> bool {
-        self.interval.profile.as_ref().is_some_and(|p| p.saturated)
+        self.data.saturated
     }
-    /// Bounded selected detail, projected without allocating another event buffer.
+    /// Already resolved bounded detail in its original order.
     pub fn events(&self) -> impl Iterator<Item = RenderEvent> + '_ {
-        self.interval
-            .profile
-            .iter()
-            .flat_map(|p| p.events.iter())
-            .filter_map(|e| {
-                let phase = |scope| {
-                    RenderPhase::ALL.into_iter().find(|p| {
-                        self.interval
-                            .scopes
-                            .get(p.index())
-                            .is_some_and(|entry| entry.scope == scope)
-                    })
-                };
-                Some(match *e {
-                    surgeist_ledger::Event::Phase {
-                        scope,
-                        duration,
-                        elapsed,
-                    } => RenderEvent::Phase {
-                        phase: phase(scope)?,
-                        duration,
-                        elapsed,
-                    },
-                    surgeist_ledger::Event::Refused {
-                        origin, elapsed, ..
-                    } => RenderEvent::Refused {
-                        phase: phase(origin)?,
-                        elapsed,
-                    },
-                    surgeist_ledger::Event::Accepted {
-                        scope,
-                        change,
-                        elapsed,
-                    } => {
-                        let (quantity, amount, kind) = match change {
-                            surgeist_ledger::Change::Work(d, n) => {
-                                (RenderQuantity::Work(d), n, RenderChangeKind::Work)
-                            }
-                            surgeist_ledger::Change::Acquire(d, n) => {
-                                (RenderQuantity::Resource(d), n, RenderChangeKind::Acquire)
-                            }
-                            surgeist_ledger::Change::Release(d, n) => {
-                                (RenderQuantity::Resource(d), n, RenderChangeKind::Release)
-                            }
-                        };
-                        RenderEvent::Change {
-                            phase: phase(scope)?,
-                            quantity,
-                            amount,
-                            kind,
-                            elapsed,
-                        }
-                    }
-                })
-            })
+        self.data.events.iter().copied()
+    }
+    #[cfg(test)]
+    pub(crate) fn snapshot_for_test(&self) -> Self {
+        Self {
+            kind: self.kind,
+            status: self.status,
+            identity: self.identity,
+            data: self.data.snapshot_for_test(),
+            refusal: self.refusal,
+        }
     }
 }

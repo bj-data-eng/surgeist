@@ -6,11 +6,11 @@ use surgeist_render::{
     Antialiasing, Color, EffectQualityPolicy, FontData, FontRef, GlyphRunLimits, GlyphSynthesis,
     Gradient, GradientStop, Image, ImageBuffer, ImageFit, Layer, Options, Parameters, Point,
     PreparedGlyphRun, Rect, RenderAccountingContext, RenderAccountingError,
-    RenderAccountingOptions, RenderAttemptReport, RenderAttemptStatus, RenderClock,
-    RenderCpuInterval, RenderCpuScope, RenderEvent, RenderLimits, RenderPhase, RenderPhaseFilter,
-    RenderProfile, RenderQuantity, RenderResource, RenderRoute, RenderWork, Renderer,
-    RepeatingGradient, ResolvedLayerAlphaMask, Scene, Shape, Size, Stroke, Surface, TextGlyph,
-    TextInstance, TextPaint, TextRun, TextRunBounds, Transform,
+    RenderAccountingOptions, RenderAttemptStatus, RenderClock, RenderCpuScope, RenderEvent,
+    RenderFrameReport, RenderLimits, RenderPhase, RenderPhaseFilter, RenderProfile, RenderQuantity,
+    RenderResource, RenderRoute, RenderWork, Renderer, RepeatingGradient, ResolvedLayerAlphaMask,
+    Scene, Shape, Size, Stroke, Surface, TextGlyph, TextInstance, TextPaint, TextRun,
+    TextRunBounds, Transform,
 };
 
 fn color(r: f32, g: f32, b: f32) -> Color {
@@ -374,8 +374,7 @@ fn descriptor_profiles_preserve_pixels_usage_and_a_refused_frame_can_retry_witho
     let target = descriptor_scene();
     let mut solid = Scene::new();
     solid.fill(rect(0.0, 0.0, 8.0, 4.0), green());
-    let mut baseline: Option<RenderAttemptReport> = None;
-    let mut baseline_cpu: Option<RenderCpuInterval> = None;
+    let mut baseline: Option<RenderFrameReport> = None;
     let mut baseline_pixels = None;
     for profile in [
         RenderProfile::Off,
@@ -422,7 +421,8 @@ fn descriptor_profiles_preserve_pixels_usage_and_a_refused_frame_can_retry_witho
         if profile != RenderProfile::Off {
             assert!(attempt.phase_count(RenderPhase::GradientPrepare) > 0);
         }
-        if let Some(expected) = &baseline {
+        if let Some(previous_frame) = &baseline {
+            let expected = previous_frame.attempt().unwrap();
             assert_eq!(attempt.usage(), expected.usage());
             for phase in [
                 RenderPhase::Normalize,
@@ -432,7 +432,7 @@ fn descriptor_profiles_preserve_pixels_usage_and_a_refused_frame_can_retry_witho
                 assert_eq!(attempt.phase_usage(phase), expected.phase_usage(phase));
             }
             let cpu = frame.renderer_cpu().unwrap();
-            let previous = baseline_cpu.as_ref().unwrap();
+            let previous = previous_frame.renderer_cpu().unwrap();
             for scope in [
                 RenderCpuScope::FrameBacking,
                 RenderCpuScope::DeviceBacking,
@@ -460,9 +460,6 @@ fn descriptor_profiles_preserve_pixels_usage_and_a_refused_frame_can_retry_witho
                 assert_eq!(actual.live(resource), expected.live(resource));
                 assert_eq!(actual.peak(resource), expected.peak(resource));
             }
-        } else {
-            baseline = Some(attempt.clone());
-            baseline_cpu = Some(frame.renderer_cpu().unwrap().clone());
         }
         if let RenderProfile::Detailed {
             event_limit,
@@ -500,8 +497,13 @@ fn descriptor_profiles_preserve_pixels_usage_and_a_refused_frame_can_retry_witho
         } else {
             baseline_pixels = Some(image);
         }
+        if baseline.is_none() {
+            baseline = Some(frame);
+        }
     }
     let total = baseline
+        .unwrap()
+        .attempt()
         .unwrap()
         .usage()
         .work(RenderWork::GradientStopVisits);

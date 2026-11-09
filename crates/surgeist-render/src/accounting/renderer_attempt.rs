@@ -2,7 +2,7 @@
 use super::*;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub(super) struct RendererReport {
     status: RenderAttemptStatus,
     attempt: std::result::Result<RenderAttemptReport, RenderAccountingError>,
@@ -12,6 +12,30 @@ pub(super) struct RendererReport {
     cleanup_fault: Option<RenderAccountingError>,
 }
 impl RendererReport {
+    #[cfg(test)]
+    pub(super) fn snapshot_for_test(&self) -> Self {
+        Self {
+            status: self.status,
+            attempt: self
+                .attempt
+                .as_ref()
+                .map(RenderAttemptReport::snapshot_for_test)
+                .map_err(|error| *error),
+            cpu: self
+                .cpu
+                .as_ref()
+                .map(RenderCpuInterval::snapshot_for_test)
+                .map_err(|error| *error),
+            generation: self.generation.as_ref().map(|interval| {
+                interval
+                    .as_ref()
+                    .map(RenderGenerationInterval::snapshot_for_test)
+                    .map_err(|error| *error)
+            }),
+            diagnostic: self.diagnostic,
+            cleanup_fault: self.cleanup_fault,
+        }
+    }
     pub(super) fn fmt(
         &self,
         name: &str,
@@ -84,8 +108,12 @@ impl RendererReport {
 }
 
 /// A bounded, preallocated report destination. Replacement and take never allocate.
-#[derive(Clone)]
 pub(super) struct ReportSlot<T>(Arc<RwLock<Option<T>>>);
+impl<T> Clone for ReportSlot<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
 impl<T> Default for ReportSlot<T> {
     fn default() -> Self {
         Self(Arc::new(RwLock::new(None)))
@@ -116,6 +144,7 @@ impl<T> ReportSlot<T> {
 pub(super) struct RendererAttempt {
     account: Account,
     checkpoint: Option<Checkpoint>,
+    report_backing: Option<ReportBacking<RenderPhase, IntervalNumbers>>,
     cpu: RendererCpu,
     pub(super) cpu_checkpoint: Option<CpuCheckpoint>,
     generation: Option<Generation>,
@@ -135,7 +164,7 @@ impl RendererAttempt {
             RenderAttemptKind::Readback => RenderCpuScope::ReadbackOutput,
             _ => return Err(RenderAccountingError::Invariant.into()),
         };
-        let (account, checkpoint) = build_account(
+        let (account, checkpoint, report_backing) = build_account(
             options,
             kind,
             GlyphRunLimits::new(usize::MAX, usize::MAX, usize::MAX, usize::MAX),
@@ -153,6 +182,7 @@ impl RendererAttempt {
         Ok(Self {
             account,
             checkpoint: Some(checkpoint),
+            report_backing: Some(report_backing),
             cpu: cpu.clone(),
             cpu_checkpoint: Some(cpu_checkpoint),
             generation: None,
@@ -255,15 +285,27 @@ impl RendererAttempt {
                     .ledger
                     .end_checkpoint(&checkpoint)
                     .map_err(map_ledger_failure)
-            })
-            .and_then(|interval| {
-                if super::interval_resolves(&interval, super::PHASE_COUNT) {
-                    Ok(interval)
-                } else {
-                    Err(RenderAccountingError::Invariant)
-                }
             });
-        if let Err(error) = &interval {
+        let refusal = *self
+            .account
+            .first_refusal
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut attempt = interval.and_then(|interval| {
+            let backing = self
+                .report_backing
+                .take()
+                .ok_or(RenderAccountingError::Invariant)?;
+            RenderAttemptReport::new(
+                self.kind,
+                status,
+                interval,
+                refusal,
+                self.account.scopes.as_ref(),
+                backing,
+            )
+        });
+        if let Err(error) = &attempt {
             fault = fault.or(Some(*error));
         }
         let status = if status == RenderAttemptStatus::Succeeded && fault.is_some() {
@@ -271,17 +313,9 @@ impl RendererAttempt {
         } else {
             status
         };
-        let refusal = *self
-            .account
-            .first_refusal
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let attempt = interval.map(|interval| RenderAttemptReport {
-            kind: self.kind,
-            status,
-            interval,
-            refusal,
-        });
+        if let Ok(attempt) = &mut attempt {
+            attempt.status = status;
+        }
         (
             RendererReport {
                 status,
