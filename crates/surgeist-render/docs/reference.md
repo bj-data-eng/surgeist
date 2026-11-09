@@ -125,6 +125,23 @@ previous pixels and successful statistics; a fresh valid attempt can retry.
 The [geometry contribution](https://github.com/bj-data-eng/surgeist/issues/2111)
 records the receiving scope and precision boundaries.
 
+## Path stroke support bounds
+
+Path bounds include the centerline bounding box and the selected stroke support.
+For width `w`, round and bevel joins require half-width support. A square cap at
+either end can project up to `w / sqrt(2)` onto an axis. Miter joins also require
+`(w / 2) * max(miter_limit, 1)` support. The bounds use the greatest applicable
+support. Square-cap support is rounded outward; only miter joins use the
+configured miter limit.
+Rotations and nonuniform transforms preserve coverage of these local bounds.
+
+This conservative calculation uses the fixed stroke style without another path
+walk or outline materialization. An unrepresentable bounds rectangle returns
+typed `InvalidInput` before publication; native stroke receiving retains its
+separate `GeometryRealization` capacity checks. The
+[bounds owner](../src/command.rs) and
+[public rendering regressions](../tests/stroke_bounds.rs) cover these boundaries.
+
 ## Native stroke dash cycles
 
 `Dash` retains a finite authored offset and finite nonnegative interval values.

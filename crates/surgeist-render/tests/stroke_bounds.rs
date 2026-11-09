@@ -213,7 +213,7 @@ fn graph_square_caps_preserve_visible_corners_with_unused_miter_limit_one() {
 }
 
 #[test]
-fn genuine_miter_join_keeps_visible_tip_and_obeys_limit() {
+fn miter_join_keeps_visible_tip_and_obeys_limit() {
     let (mut renderer, mut surface) = renderer();
     for graph in [false, true] {
         let target = |limit| {
