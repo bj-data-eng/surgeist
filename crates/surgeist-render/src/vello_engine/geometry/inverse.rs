@@ -7,7 +7,9 @@
 //! The finite consumer envelope is format-derived: RasterParameters reserves
 //! fifteen u32 units for 16-pixel tile rounding, native config rounds to those
 //! tiles, and fine.wgsl forms xy from u32 global IDs and bounded lane offsets.
-//! Float rounding, including image pixel-center +0.5, can reach at most 2^32.
+//! The integer-to-float conversion can reach 2^32. The lane and image-center
+//! additions may each round upward by one neighboring binary32 step of 512,
+//! so the complete consumer domain reaches 2^32 + 1024.
 
 use super::{QualifiedTransform, Reason, action};
 use crate::Result;
@@ -18,7 +20,7 @@ const MAX_NATIVE: f64 = f32::MAX as f64;
 const U: f64 = f32::EPSILON as f64;
 const MIN_SUBNORMAL: f64 = f32::from_bits(1) as f64;
 const DIVISION_ABSOLUTE: f64 = 2.5 * MIN_SUBNORMAL;
-const DEVICE_MAX: f64 = 4_294_967_296.0;
+const DEVICE_MAX: f64 = 4_294_968_320.0;
 const MAX_DIVISOR: f64 = (1_u128 << 126) as f64;
 
 #[derive(Clone, Copy)]

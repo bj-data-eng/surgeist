@@ -88,7 +88,8 @@ its actual GPU determinant underflows; that is insufficient native capacity.
 The proof covers reassociated division/product forms and propagates bounded
 zero neighborhoods and subnormal flushing. Required nonzero factors must not
 collapse. It also encloses finite image/blur mapping across the raster format's
-padded device-coordinate domain, without adding a color-accuracy guarantee.
+padded device-coordinate domain, including permitted upward rounding of the lane
+and pixel-center additions, without adding a color-accuracy guarantee.
 Gradient field precision and its diagnostics remain with the gradient owner.
 
 Qualification follows existing semantic elimination. Empty paths and glyphs,

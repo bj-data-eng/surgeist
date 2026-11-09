@@ -133,6 +133,8 @@ or raster guarantee: the retained backend approximation is separately additive.
 The source/native affine-difference bound is Surgeist-owned qualification.
 Image and blurred-rectangle inverse qualification follows the actual
 `shared/transform.wgsl` determinant, reciprocal, matrix and translation chain.
+Its consumer envelope also follows the permitted upward rounding of the actual
+fine-shader integer conversion, lane addition and image pixel-center addition.
 
 Native glyph qualification also uses the existing locked Skrifa 0.42.1 provider
 to distinguish a true empty outline from loss during its default scaled
