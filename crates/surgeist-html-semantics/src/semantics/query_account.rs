@@ -159,11 +159,6 @@ impl QueryAccount {
         self.operation.apply_batch(self.caps, batch)
     }
 
-    /// Records a batch in the observed scope only.
-    pub(super) fn observe_only(&mut self, batch: &[HtmlChange]) -> Result<(), LedgerError> {
-        self.operation.apply_batch(self.observed, batch)
-    }
-
     /// Returns scratch backing: the observed scope gives back `records`, which it must hold, then
     /// the capped scope gives back what it holds of them. After a refused overshoot the capped
     /// scope holds less than the observed one.
@@ -180,6 +175,12 @@ impl QueryAccount {
             self.caps,
             Change::Release(HtmlResource::ScratchRecords, held.min(wide(records))),
         )
+    }
+
+    /// The ledger and the capped and observed scopes, for an operation that charges in them
+    /// itself.
+    pub(super) fn scopes(&mut self) -> (&mut Ledger, Scope, Scope) {
+        (&mut self.operation, self.caps, self.observed)
     }
 
     /// The typed usage.

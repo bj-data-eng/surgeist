@@ -225,3 +225,34 @@ impl Ledger {
         }
     }
 }
+
+impl surgeist_ledger::ScopeLedger<HtmlWork, HtmlResource> for Ledger {
+    fn child(
+        &mut self,
+        parent: Scope,
+        name: &'static str,
+        limits: HtmlLimits,
+        tariffs: HtmlTariffs,
+    ) -> Result<Scope, LedgerError> {
+        Ledger::child(self, parent, name, limits, tariffs)
+    }
+
+    fn check_batch(&mut self, scope: Scope, changes: &[HtmlChange]) -> Result<(), LedgerError> {
+        Ledger::check_batch(self, scope, changes)
+    }
+
+    fn apply_batch(&mut self, scope: Scope, changes: &[HtmlChange]) -> Result<(), LedgerError> {
+        Ledger::apply_batch(self, scope, changes)
+    }
+
+    fn set_limits(&mut self, scope: Scope, limits: HtmlLimits) -> Result<(), LedgerError> {
+        match self {
+            Self::Owned(operation) => operation.set_limits(scope, limits),
+            Self::Shared(operation) => operation.set_limits(scope, limits),
+        }
+    }
+
+    fn usage(&self, scope: Scope) -> Result<Usage<HtmlWork, HtmlResource>, LedgerError> {
+        self.read(scope, |usage| *usage)
+    }
+}
