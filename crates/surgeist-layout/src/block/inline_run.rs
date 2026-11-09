@@ -514,8 +514,8 @@ where
         set_layout,
     } = context;
     // Settle adjoining-margin consumption before positioning, float-band
-    // queries or publication. Text-issued participant bounds, rather than
-    // native source membership, prove an empty structural segment.
+    // queries or publication. Text-issued empty-origin units, rather than
+    // native source membership, prove this sufficient phantom-line case.
     let uncollapsed_cursor_block = cursor_block;
     let mut cursor_block = cursor_block + adjoining_margin;
     let mut margin = InlineRunMargin::Separates;
@@ -544,22 +544,21 @@ where
     if text_run.as_ref().is_some_and(|run| {
         let start = run.segment.start().view().participant_offset();
         let end = run.segment.end().view().participant_offset();
-        run.binding.line_strut.is_none()
-            && run
-                .binding
-                .prepared
-                .participants()
-                .skip(start)
-                .take(end - start)
-                .all(|participant| {
-                    matches!(participant, surgeist_text::PreparedParticipant::Text(unit)
+        run.binding
+            .prepared
+            .participants()
+            .skip(start)
+            .take(end - start)
+            .all(|participant| {
+                matches!(participant, surgeist_text::PreparedParticipant::Text(unit)
                     if unit.view().empty_origin().is_some())
-                })
+            })
     }) {
         // The issued section contains only original empty anchors (or no
         // participants). It selects no forced, atomic or boundary participant,
-        // and no caller allocation supplies a strut. Keep source membership
-        // and the final nonformatted receipt without consuming adjoining margins.
+        // while supplied strut metrics do not establish line existence. Keep
+        // source membership, allocations and the final nonformatted receipt
+        // without consuming adjoining margins.
         margin = InlineRunMargin::Adjoins;
         cursor_block = uncollapsed_cursor_block;
     }
