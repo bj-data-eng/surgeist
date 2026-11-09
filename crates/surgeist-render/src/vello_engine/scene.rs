@@ -1065,6 +1065,36 @@ mod pixelated_tests {
     use super::*;
 
     #[test]
+    fn font_backing_miss_counts_source_clone_blob_clone_and_registry_write() {
+        let bytes = include_bytes!("../../tests/fixtures/fonts/ahem/Ahem.ttf");
+        let resource =
+            FontResource::decode(bytes.to_vec(), surgeist_test::fixtures::FONT_LIMITS).unwrap();
+        let account = Account::for_test();
+        let mut scene = VelloScene::default();
+        let first = scene.font_backing(&resource, &account).unwrap();
+        assert_eq!(first.data(), resource.bytes());
+        // One retained source-owner clone, one Blob clone, and one new registry
+        // record copy. The first empty registry has no elements to relocate.
+        assert_eq!(
+            account
+                .work_count(RenderWork::RasterResourceCopies)
+                .unwrap(),
+            3
+        );
+        let second = scene.font_backing(&resource, &account).unwrap();
+        assert_eq!(second.id(), first.id());
+        // A hit clones only the existing Blob; it does not insert another record.
+        assert_eq!(
+            account
+                .work_count(RenderWork::RasterResourceCopies)
+                .unwrap(),
+            4
+        );
+        drop((first, second));
+        drop(scene);
+    }
+
+    #[test]
     fn empty_pixelated_brush_keeps_transparent_draw_without_expansion() {
         let account = Account::for_test();
         let image = crate::Image::from_rgba(crate::Size::new(0.0, 2.0), Vec::<u8>::new()).unwrap();
