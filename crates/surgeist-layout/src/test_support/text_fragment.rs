@@ -26,6 +26,7 @@ pub(crate) fn fragment_for(
     );
     let lines = crate::text_layout::fit::fit(
         crate::text_layout::fit::FitInput {
+            entry_funding: None,
             adjoining_displacement: 0.0,
             inline_boxes: None,
             groups: crate::group_alignment::Snapshot::default(),
@@ -82,11 +83,11 @@ pub(crate) fn fragment_for(
         },
         |_, _| Ok(None),
         crate::text_layout::fit::EncounterCallbacks {
-            checkpoint_group: || {},
+            checkpoint_group: || Ok(()),
             replay: |_: &surgeist_text::FinalizedLine,
                      _: crate::text_layout::fit::EncounterReplay| Ok(Vec::new()),
             accept: || Ok(()),
-            reset: |_| {},
+            reset: |_| Ok(()),
         },
     )
     .unwrap_or_else(|_| panic!("registered Ahem paragraph finalizes"));

@@ -79,15 +79,18 @@ fn ordinary<S: LayoutScalar>(input: MixedInlineRunInputOf<S>) -> MixedInlineRunR
     let available = resolved_inline_available(&input, &supplied).unwrap();
     layout_mixed_inline_run_with_formatted_observation(
         input,
-        |_, _| LogicalLineBandQueryResultOf {
-            inline_start: S::ZERO,
-            inline_end: available,
-            next_transition: None,
+        |_, _| {
+            Ok(LogicalLineBandQueryResultOf {
+                inline_start: S::ZERO,
+                inline_end: available,
+                next_transition: None,
+            })
         },
         |block, _| block,
         true,
         unavailable_atomic_receiver,
     )
+    .map_err(crate::inline::NumericRunError::into_numeric)
     .unwrap()
 }
 

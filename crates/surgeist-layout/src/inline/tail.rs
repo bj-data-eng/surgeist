@@ -39,7 +39,7 @@ fn final_pair<S: LayoutScalar>(lines: &[SelectedInlineLineOf<S>]) -> Option<Tail
     Some(TailPair::new(penultimate, last))
 }
 
-fn trial<S, B, C>(
+fn trial<S, B, C, BandError>(
     request: NumericWalkInput<'_, S>,
     boundaries: &[InlineSourceCursor],
     sequence: &mut NumericSequence<S>,
@@ -47,10 +47,10 @@ fn trial<S, B, C>(
     goal: Option<TailGoal>,
     band: &mut B,
     clear: &mut C,
-) -> Result<Option<TailTrial<NumericTailBasis<S>>>, crate::inline_wrapping::NumericWrappingError>
+) -> Result<Option<TailTrial<NumericTailBasis<S>>>, NumericRunError<BandError>>
 where
     S: LayoutScalar,
-    B: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
     C: FnMut(S, PostLineClearIntent) -> S,
 {
     let (entry, reference) = target;
@@ -120,16 +120,16 @@ where
     }))
 }
 
-fn prepare_target<S, B, C>(
+fn prepare_target<S, B, C, BandError>(
     request: NumericWalkInput<'_, S>,
     boundaries: &[InlineSourceCursor],
     sequence: &mut NumericSequence<S>,
     band: &mut B,
     clear: &mut C,
-) -> Result<Option<NumericTailTarget<S>>, crate::inline_wrapping::NumericWrappingError>
+) -> Result<Option<NumericTailTarget<S>>, NumericRunError<BandError>>
 where
     S: LayoutScalar,
-    B: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
     C: FnMut(S, PostLineClearIntent) -> S,
 {
     // Ordinary completion records each actual group entry once. No
@@ -162,17 +162,17 @@ where
     prepare_group_target(request, boundaries, sequence, entry, band, clear)
 }
 
-fn prepare_group_target<S, B, C>(
+fn prepare_group_target<S, B, C, BandError>(
     request: NumericWalkInput<'_, S>,
     boundaries: &[InlineSourceCursor],
     sequence: &mut NumericSequence<S>,
     entry: NumericGroupEntry<S>,
     band: &mut B,
     clear: &mut C,
-) -> Result<Option<NumericTailTarget<S>>, crate::inline_wrapping::NumericWrappingError>
+) -> Result<Option<NumericTailTarget<S>>, NumericRunError<BandError>>
 where
     S: LayoutScalar,
-    B: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
     C: FnMut(S, PostLineClearIntent) -> S,
 {
     let lines = &sequence.selected_lines[entry.selected_len..];
@@ -221,7 +221,7 @@ where
     )?
     .ok_or(crate::inline_wrapping::NumericWrappingError::InvalidTailBasis)?;
     if baseline.value.group != ordinary || baseline.pair != pair {
-        return Err(crate::inline_wrapping::NumericWrappingError::InvalidTailBasis);
+        return Err(crate::inline_wrapping::NumericWrappingError::InvalidTailBasis.into());
     }
     reference.frontier = Some(baseline.value.frontier);
     Ok(Some(NumericTailTarget {
@@ -248,16 +248,16 @@ fn restore_program<S: LayoutScalar>(
     sequence.tail_frontier = Some(basis.frontier);
 }
 
-pub(super) fn repair_numeric_tail<S, B, C>(
+pub(super) fn repair_numeric_tail<S, B, C, BandError>(
     request: NumericWalkInput<'_, S>,
     boundaries: &[InlineSourceCursor],
     sequence: &mut NumericSequence<S>,
     band: &mut B,
     clear: &mut C,
-) -> Result<(), crate::inline_wrapping::NumericWrappingError>
+) -> Result<(), NumericRunError<BandError>>
 where
     S: LayoutScalar,
-    B: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
     C: FnMut(S, PostLineClearIntent) -> S,
 {
     let Some(target) = prepare_target(request, boundaries, sequence, band, clear)? else {
@@ -266,17 +266,17 @@ where
     repair_target(request, boundaries, sequence, target, band, clear).map(|_| ())
 }
 
-fn repair_target<S, B, C>(
+fn repair_target<S, B, C, BandError>(
     request: NumericWalkInput<'_, S>,
     boundaries: &[InlineSourceCursor],
     sequence: &mut NumericSequence<S>,
     target: NumericTailTarget<S>,
     band: &mut B,
     clear: &mut C,
-) -> Result<Option<TailGoal>, crate::inline_wrapping::NumericWrappingError>
+) -> Result<Option<TailGoal>, NumericRunError<BandError>>
 where
     S: LayoutScalar,
-    B: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
     C: FnMut(S, PostLineClearIntent) -> S,
 {
     let winner = choose_tail(target.pair, |goal| {
@@ -293,7 +293,7 @@ where
         if let Some(candidate) = &candidate {
             tests::observe(target.pair, &target.reference, candidate);
         }
-        Ok::<_, crate::inline_wrapping::NumericWrappingError>(candidate)
+        Ok::<_, NumericRunError<BandError>>(candidate)
     })?;
     let Some(winner) = winner else {
         restore_program(sequence, target.entry, &target.auto);
@@ -310,23 +310,23 @@ where
     )?
     .ok_or(crate::inline_wrapping::NumericWrappingError::InvalidTailBasis)?;
     if replay.value != winner.trial.value || replay.pair != winner.trial.pair {
-        return Err(crate::inline_wrapping::NumericWrappingError::InvalidTailBasis);
+        return Err(crate::inline_wrapping::NumericWrappingError::InvalidTailBasis.into());
     }
     Ok(Some(winner.goal))
 }
 
 /// The same Tail phase at the current group's authentic ordinary entry.
-pub(super) fn repair_group_from_auto<S, B, C>(
+pub(super) fn repair_group_from_auto<S, B, C, BandError>(
     request: NumericWalkInput<'_, S>,
     boundaries: &[InlineSourceCursor],
     sequence: &mut NumericSequence<S>,
     entry: NumericGroupEntry<S>,
     band: &mut B,
     clear: &mut C,
-) -> Result<Option<TailGoal>, crate::inline_wrapping::NumericWrappingError>
+) -> Result<Option<TailGoal>, NumericRunError<BandError>>
 where
     S: LayoutScalar,
-    B: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
     C: FnMut(S, PostLineClearIntent) -> S,
 {
     let Some(target) = prepare_group_target(request, boundaries, sequence, entry, band, clear)?
@@ -336,17 +336,17 @@ where
     repair_target(request, boundaries, sequence, target, band, clear)
 }
 
-pub(super) fn replay_group_from_auto<S, B, C>(
+pub(super) fn replay_group_from_auto<S, B, C, BandError>(
     request: NumericWalkInput<'_, S>,
     boundaries: &[InlineSourceCursor],
     sequence: &mut NumericSequence<S>,
     phase: (NumericGroupEntry<S>, TailGoal),
     band: &mut B,
     clear: &mut C,
-) -> Result<bool, crate::inline_wrapping::NumericWrappingError>
+) -> Result<bool, NumericRunError<BandError>>
 where
     S: LayoutScalar,
-    B: FnMut(S, S) -> LogicalLineBandQueryResultOf<S>,
+    B: FnMut(S, S) -> Result<LogicalLineBandQueryResultOf<S>, BandError>,
     C: FnMut(S, PostLineClearIntent) -> S,
 {
     let (entry, goal) = phase;

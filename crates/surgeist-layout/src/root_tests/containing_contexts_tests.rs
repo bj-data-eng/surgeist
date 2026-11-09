@@ -7942,9 +7942,9 @@ fn assert_logical_flex_public_contexts_hidden_layout_recurses_with_containing_fl
             node: Self::Node,
             input: &ComputeInputOf<S>,
             context: crate::CacheKeyContext,
-        ) -> Option<ComputeOutputOf<S>> {
+        ) -> crate::engine::contracts::CacheLookupResult<Self::Node, Self::Scalar> {
             self.cache_get_calls.set(self.cache_get_calls.get() + 1);
-            self.caches[&node].get_with_context(input, context)
+            Ok(self.caches[&node].get_with_context(input, context))
         }
 
         fn cache_store(
@@ -7953,16 +7953,21 @@ fn assert_logical_flex_public_contexts_hidden_layout_recurses_with_containing_fl
             input: &ComputeInputOf<S>,
             context: crate::CacheKeyContext,
             output: ComputeOutputOf<S>,
-        ) {
+        ) -> crate::LayoutResultOf<Self::Node, (), Self::Scalar> {
             *self.cache_store_calls += 1;
             self.caches
                 .get_mut(&node)
                 .expect("test hidden node cache exists")
                 .store_with_context(input, context, output);
+            Ok(())
         }
 
-        fn cache_clear(&mut self, node: Self::Node) {
+        fn cache_clear(
+            &mut self,
+            node: Self::Node,
+        ) -> crate::LayoutResultOf<Self::Node, (), Self::Scalar> {
             self.caches.get_mut(&node).unwrap().clear();
+            Ok(())
         }
     }
 

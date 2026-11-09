@@ -7,6 +7,12 @@ use std::cell::Cell;
 #[path = "funding_tests.rs"]
 mod funding;
 
+#[path = "receipt_binding_tests.rs"]
+mod receipt_binding;
+
+#[path = "progress_tests.rs"]
+mod progress;
+
 thread_local! {
     static CALLS: Cell<usize> = const { Cell::new(0) };
 }

@@ -38,7 +38,7 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
     }
     fn fragment_margin_state(
         &mut self,
-    ) -> Option<&mut crate::block::fragment_margins::State<Self::Node>> {
+    ) -> Option<&mut crate::block::fragment_margins::State<Self::Node, Self::Scalar>> {
         None
     }
     fn fragment_minimum(
@@ -94,7 +94,14 @@ pub(crate) trait Compute<'input, M = core::convert::Infallible>:
     ) -> FloatContextChildResult<Self::Node, Self::Scalar, M> {
         self.block_float_state()
             .ok_or_else(|| crate::block::float_context::missing(node))?
-            .push(node, input, frame, cut);
+            .push(node, input, frame, cut)
+            .map_err(|error| {
+                crate::LayoutErrorOf::new(
+                    crate::LayoutErrorSiteOf::Node(node),
+                    crate::LayoutOperation::ChildLayout,
+                    crate::LayoutErrorKindOf::Text(error),
+                )
+            })?;
         let result = self.compute_child(node, input);
         let completed = self
             .block_float_state()
@@ -288,6 +295,9 @@ pub(crate) enum UnroundedInlineFragmentState<'a, S: LayoutScalar> {
     Present(&'a [InlineFragmentOutputOf<S>]),
 }
 
+pub(crate) type CacheLookupResult<Node, S, M = core::convert::Infallible> =
+    LayoutResultOf<Node, Option<ComputeOutputOf<S>>, S, M>;
+
 pub(crate) trait CacheAccess<M = core::convert::Infallible> {
     type Node: Copy + Eq;
     type Scalar: LayoutScalar;
@@ -298,24 +308,24 @@ pub(crate) trait CacheAccess<M = core::convert::Infallible> {
         node: Self::Node,
         input: &ComputeInputOf<Self::Scalar>,
         context: CacheKeyContext,
-    ) -> Option<ComputeOutputOf<Self::Scalar>>;
+    ) -> CacheLookupResult<Self::Node, Self::Scalar, M>;
     fn cache_store(
         &mut self,
         node: Self::Node,
         input: &ComputeInputOf<Self::Scalar>,
         context: CacheKeyContext,
         output: ComputeOutputOf<Self::Scalar>,
-    );
+    ) -> LayoutResultOf<Self::Node, (), Self::Scalar, M>;
     /// Restore invocation-local semantic receipts accompanying an admitted
     /// geometry hit. Box-only executors have no such additional state.
     fn cache_restore_semantics(
         &mut self,
         _node: Self::Node,
         _input: &ComputeInputOf<Self::Scalar>,
-    ) -> bool {
-        true
+    ) -> LayoutResultOf<Self::Node, bool, Self::Scalar, M> {
+        Ok(true)
     }
-    fn cache_clear(&mut self, node: Self::Node);
+    fn cache_clear(&mut self, node: Self::Node) -> LayoutResultOf<Self::Node, (), Self::Scalar, M>;
 }
 
 pub(crate) fn compute_cached<Tree, ComputeFn, M>(
@@ -338,13 +348,13 @@ where
     }
 
     let context = tree.cache_context();
-    if let Some(output) = tree.cache_get(node, &input, context)
-        && tree.cache_restore_semantics(node, &input)
+    if let Some(output) = tree.cache_get(node, &input, context)?
+        && tree.cache_restore_semantics(node, &input)?
     {
         return Ok(output);
     }
 
     let output = compute(tree, node, input)?;
-    tree.cache_store(node, &input, context, output);
+    tree.cache_store(node, &input, context, output)?;
     Ok(output)
 }

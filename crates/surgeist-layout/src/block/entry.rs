@@ -1,5 +1,6 @@
 //! Entry facts that do not require the completed descendant body.
 use super::*;
+use crate::text_layout::scope_alignment::{EntryBacking, EntryFunding, ScopeLease};
 
 mod adjoining;
 pub(super) use adjoining::AdjoiningFlow;
@@ -51,6 +52,9 @@ pub(crate) struct EntrySummary<Node, S: LayoutScalar> {
     pub(crate) separation: Option<canonical::Separation<Node, S>>,
     native: Vec<NativeObservation<Node>>,
     floats: Vec<canonical::SourceFloat<Node, S>>,
+    funding: Option<EntryFunding<S>>,
+    _native_custody: EntryBacking,
+    _float_custody: EntryBacking,
 }
 
 impl<Node, S: LayoutScalar> EntrySummary<Node, S> {
@@ -149,8 +153,10 @@ struct PrefixFrame<Node, S: LayoutScalar> {
     constants: Constants<S>,
     prepared_inline: bool,
     children: Vec<Node>,
+    _children_lease: Option<ScopeLease>,
     next: usize,
     slots: Vec<crate::text_layout::capture::NativeRunSlot>,
+    _slots_lease: Option<ScopeLease>,
     slot_cursor: usize,
     window: Option<EntryWindow>,
     first_in_flow: bool,
@@ -168,6 +174,57 @@ enum PrefixStep<Node, S: LayoutScalar> {
     Child(Node, ComputeInputOf<S>, PhysicalSide),
     Complete(Prefix<S>),
     Frontier(EntryFrontier),
+}
+
+fn case_error<Node: Copy, S: LayoutScalar, M>(
+    node: Node,
+    error: surgeist_text::Error,
+) -> crate::LayoutErrorOf<Node, S, M> {
+    super::inline_run::text_run_error(node, error.into())
+}
+
+fn case_work<Node: Copy, S: LayoutScalar, M>(
+    funding: Option<&EntryFunding<S>>,
+    node: Node,
+    count: usize,
+) -> LayoutResultOf<Node, (), S, M> {
+    funding
+        .map_or(Ok(()), |funding| funding.visit(count))
+        .map_err(|error| case_error(node, error))
+}
+
+type CaseChildren<Node> = (Vec<Node>, Option<ScopeLease>);
+
+fn case_children<'input, Tree, M>(
+    tree: &Tree,
+    node: Tree::Node,
+    funding: Option<&EntryFunding<Tree::Scalar>>,
+) -> LayoutResultOf<Tree::Node, CaseChildren<Tree::Node>, Tree::Scalar, M>
+where
+    Tree: Compute<'input, M>,
+{
+    let Some(funding) = funding else {
+        return Ok((tree.children(node).collect(), None));
+    };
+    let count = tree.child_count(node);
+    if count == 0 {
+        return Ok((Vec::new(), None));
+    }
+    let (lease, mut children) = funding
+        .buffer(count)
+        .map(|(rows, lease)| (lease, rows))
+        .map_err(|error| case_error(node, error))?;
+    for child in tree.children(node) {
+        funding.visit(1).map_err(|error| case_error(node, error))?;
+        if children.len() == count {
+            return Err(float_context::missing(node));
+        }
+        children.push(child);
+    }
+    if children.len() != count {
+        return Err(float_context::missing(node));
+    }
+    Ok((children, Some(lease)))
 }
 
 impl<Node: Copy + Eq, S: LayoutScalar> PrefixFrame<Node, S> {
@@ -236,12 +293,14 @@ impl<Node: Copy + Eq, S: LayoutScalar> PrefixFrame<Node, S> {
         &mut self,
         tree: &mut Tree,
         purpose: EntryPurpose,
+        funding: Option<&EntryFunding<S>>,
     ) -> LayoutResultOf<Node, PrefixStep<Node, S>, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
         Node: 'input,
     {
         if !matches!(self.through, Through::Blocked) {
+            case_work(funding, self.node, 1)?;
             if let Some(slot) = self
                 .slots
                 .get(self.slot_cursor)
@@ -255,6 +314,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> PrefixFrame<Node, S> {
                 return Ok(PrefixStep::Frontier(EntryFrontier::NativeRun));
             }
             while let Some(&child) = self.children.get(self.next) {
+                case_work(funding, child, 1)?;
                 if self.stop_before == Some((self.next, child)) {
                     self.through = Through::Blocked;
                     break;
@@ -262,11 +322,13 @@ impl<Node: Copy + Eq, S: LayoutScalar> PrefixFrame<Node, S> {
                 let start = self.next;
                 self.next += 1;
                 if purpose.needs_frame() {
-                    let captured = tree.text_computation().and_then(|state| {
-                        state
-                            .run_starting(self.node, &self.children[start..])
-                            .map(|run| run.segment.clone())
-                    });
+                    let captured = match tree.text_computation() {
+                        Some(state) => state
+                            .entry_run_starting(self.node, &self.children[start..], funding)
+                            .map_err(|error| case_error(self.node, error))?
+                            .map(|run| run.segment.clone()),
+                        None => None,
+                    };
                     if captured.is_some() || crate::inline::starts_run(tree.layout_input(child)) {
                         let end = super::inline_run::inline_run_end(
                             tree,
@@ -277,6 +339,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> PrefixFrame<Node, S> {
                             self.slots
                                 .get(self.slot_cursor)
                                 .map_or(self.children.len(), |slot| slot.gap),
+                            funding,
                         )?;
                         self.window = Some(EntryWindow {
                             nodes: start..end,

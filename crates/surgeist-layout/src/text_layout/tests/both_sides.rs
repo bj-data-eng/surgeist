@@ -573,6 +573,7 @@ fn assert_outgoing_counter_once_with_style(
     );
     let fitted = fit::fit(
         fit::FitInput {
+            entry_funding: None,
             adjoining_displacement: 0.0,
             inline_boxes: None,
             groups: crate::group_alignment::Snapshot::default(),
@@ -631,10 +632,10 @@ fn assert_outgoing_counter_once_with_style(
         },
         |_, _| Ok(None),
         fit::EncounterCallbacks {
-            checkpoint_group: || {},
+            checkpoint_group: || Ok(()),
             replay: |_: &text::FinalizedLine, _: fit::EncounterReplay| Ok(Vec::new()),
             accept: || Ok(()),
-            reset: |_| {},
+            reset: |_| Ok(()),
         },
     )
     .unwrap_or_else(|_| panic!("the actual two-cut BothSides fitter must complete"));

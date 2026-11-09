@@ -1,54 +1,6 @@
 //! Native producer observations shared by one entry operation and its trials.
-use crate::text_layout::scope_alignment::{
-    ScopeAlignmentFacts, ScopeAlignmentResources, ScopeLease, allocation_buffer, allocation_header,
-};
+use crate::text_layout::scope_alignment::{EntryFunding, ScopeLease};
 use crate::{LayoutScalar, LeafMeasureInputOf, Size};
-use surgeist_text::{PreparedText, ScopeAlignmentCensusInput, ScopeAlignmentProduct};
-
-pub(super) struct Funding<S: LayoutScalar> {
-    pub(super) resources: ScopeAlignmentResources<S>,
-    pub(super) prepared: PreparedText,
-}
-impl<S: LayoutScalar> Funding<S> {
-    fn visit(&self) -> surgeist_text::Result<()> {
-        if let Some(limits) = self
-            .prepared
-            .captured_owner()
-            .and_then(|owner| owner.domain().scope_alignment_limits())
-        {
-            self.resources.visit(limits, 1)?;
-        }
-        Ok(())
-    }
-    pub(super) fn header<T>(&self) -> surgeist_text::Result<ScopeLease> {
-        let operation = self
-            .resources
-            .begin(
-                ScopeAlignmentCensusInput::Product(ScopeAlignmentProduct::Prepared(&self.prepared)),
-                0,
-            )?
-            .ok_or_else(|| {
-                crate::text_layout::scope_alignment::refusal(
-                    surgeist_text::ScopeAlignmentError::MissingCapture,
-                )
-            })?;
-        allocation_header::<T>(&self.resources, &operation)
-    }
-    fn buffer<T>(&self, count: usize) -> surgeist_text::Result<(Vec<T>, ScopeLease)> {
-        let operation = self
-            .resources
-            .begin(
-                ScopeAlignmentCensusInput::Product(ScopeAlignmentProduct::Prepared(&self.prepared)),
-                0,
-            )?
-            .ok_or_else(|| {
-                crate::text_layout::scope_alignment::refusal(
-                    surgeist_text::ScopeAlignmentError::MissingCapture,
-                )
-            })?;
-        allocation_buffer(&self.resources, &operation, count)
-    }
-}
 
 #[derive(Clone, Copy)]
 struct Sample<Node, S: LayoutScalar> {
@@ -76,11 +28,11 @@ impl<Node: Copy + Eq, S: LayoutScalar> SourceMemo<Node, S> {
     pub(super) fn contains(
         &self,
         node: Node,
-        funding: Option<&Funding<S>>,
+        funding: Option<&EntryFunding<S>>,
     ) -> surgeist_text::Result<bool> {
         for sample in &self.samples {
             if let Some(funding) = funding {
-                funding.visit()?;
+                funding.visit(1)?;
             }
             if sample.node == node {
                 return Ok(true);
@@ -93,11 +45,11 @@ impl<Node: Copy + Eq, S: LayoutScalar> SourceMemo<Node, S> {
         &self,
         node: Node,
         request: LeafMeasureInputOf<S>,
-        funding: Option<&Funding<S>>,
+        funding: Option<&EntryFunding<S>>,
     ) -> surgeist_text::Result<Option<Size<S>>> {
         for sample in &self.samples {
             if let Some(funding) = funding {
-                funding.visit()?;
+                funding.visit(1)?;
             }
             if sample.node == node && sample.request == request {
                 return Ok(Some(sample.result));
@@ -108,7 +60,10 @@ impl<Node: Copy + Eq, S: LayoutScalar> SourceMemo<Node, S> {
 
     /// Fund the actual new backing before invoking the provider. Discarded
     /// copies release their live lease, never materialization/work history.
-    pub(super) fn reserve(&mut self, funding: Option<&Funding<S>>) -> surgeist_text::Result<()> {
+    pub(super) fn reserve(
+        &mut self,
+        funding: Option<&EntryFunding<S>>,
+    ) -> surgeist_text::Result<()> {
         if self.samples.len() < self.admitted {
             return Ok(());
         }
@@ -119,10 +74,12 @@ impl<Node: Copy + Eq, S: LayoutScalar> SourceMemo<Node, S> {
                 },
             )
         })?;
-        let (mut values, backing) = match funding {
+        let backing;
+        let mut values = match funding {
             Some(funding) => {
                 let (values, lease) = funding.buffer(count)?;
-                (values, Some(lease))
+                backing = Some(lease);
+                values
             }
             None => {
                 let mut values = Vec::new();
@@ -133,12 +90,13 @@ impl<Node: Copy + Eq, S: LayoutScalar> SourceMemo<Node, S> {
                         },
                     )
                 })?;
-                (values, None)
+                backing = None;
+                values
             }
         };
         for value in &self.samples {
             if let Some(funding) = funding {
-                funding.visit()?;
+                funding.visit(1)?;
             }
             values.push(*value);
         }
@@ -153,10 +111,10 @@ impl<Node: Copy + Eq, S: LayoutScalar> SourceMemo<Node, S> {
         node: Node,
         request: LeafMeasureInputOf<S>,
         result: Size<S>,
-        funding: Option<&Funding<S>>,
+        funding: Option<&EntryFunding<S>>,
     ) -> surgeist_text::Result<()> {
         if let Some(funding) = funding {
-            funding.visit()?;
+            funding.visit(1)?;
         }
         assert!(
             self.samples.len() < self.admitted,

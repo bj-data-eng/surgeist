@@ -438,3 +438,329 @@ fn pure_native_semantic_observation_never_activates_scope_funding() {
     assert!(proof.evidence().scope_alignment_usage().is_none());
     assert_eq!(mixed.active_owner().unwrap().state.lock().work, before + 1);
 }
+
+#[test]
+fn entry_funding_requires_the_live_captured_owner_and_keeps_native_inactive() {
+    use crate::text_layout::scope_alignment::EntryFunding;
+    let native = crate::test_support::text::PreparedParagraph::plain(
+        10,
+        text::Source::new("X"),
+        crate::test_support::text::ahem_style(10.0, 10.0),
+    )
+    .prepared;
+    let inactive = owner(&native);
+    assert!(
+        EntryFunding::new(inactive.clone(), native)
+            .unwrap()
+            .is_none()
+    );
+    let captured = captured("Y");
+    let error = match EntryFunding::new(inactive, captured.clone()) {
+        Ok(_) => panic!("captured entry work requires actual live resource custody"),
+        Err(error) => error,
+    };
+    assert!(matches!(
+        error.detail(),
+        Some(text::ErrorDetail::ScopeAlignment {
+            reason: ScopeAlignmentError::MissingCapture,
+        })
+    ));
+    assert!(
+        EntryFunding::new(owner(&captured), captured)
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[test]
+fn entry_backing_adopts_funded_rows_and_rejects_unrepresented_storage() {
+    use crate::text_layout::scope_alignment::{EntryBacking, EntryFunding};
+    let prepared = captured("X");
+    let resources = owner(&prepared);
+    let funding = EntryFunding::new(resources.clone(), prepared.clone())
+        .unwrap()
+        .unwrap();
+    let (lease, mut values) = funding
+        .buffer::<u32>(4)
+        .map(|(values, lease)| (lease, values))
+        .unwrap();
+    funding.visit(2).unwrap();
+    values.extend([1, 2]);
+    let before = resources.active_owner().unwrap().state.lock().materialized;
+    let work = resources.active_owner().unwrap().state.lock().work;
+    let live = resources.census();
+    let (mut values, mut backing) = EntryBacking::from_buffer(values, 4, lease, &funding).unwrap();
+    assert_eq!(
+        resources.active_owner().unwrap().state.lock().materialized,
+        before
+    );
+    assert_eq!(resources.active_owner().unwrap().state.lock().work, work);
+    assert_eq!(resources.census(), live);
+    values.pop();
+    backing.reserve_push(&mut values, Some(&funding)).unwrap();
+    values.push(9);
+    assert!(resources.active_owner().unwrap().state.lock().materialized > before);
+    assert_eq!(resources.census(), live);
+    let before_spare = resources.active_owner().unwrap().state.lock().materialized;
+    backing.reserve_push(&mut values, Some(&funding)).unwrap();
+    values.push(3);
+    assert_eq!(
+        resources.active_owner().unwrap().state.lock().materialized,
+        before_spare
+    );
+    assert_eq!(values, [1, 9, 3]);
+    drop((values, backing));
+
+    for invalid_case in 0..3 {
+        let baseline = resources.census();
+        let (lease, mut values) = funding
+            .buffer::<u32>(4)
+            .map(|(values, lease)| (lease, values))
+            .unwrap();
+        funding.visit(2).unwrap();
+        values.extend([1, 2]);
+        let admitted = match invalid_case {
+            0 => 1,
+            1 => values.capacity() + 1,
+            _ => 3,
+        };
+        let records = resources.active_owner().unwrap().state.lock().materialized;
+        let work = resources.active_owner().unwrap().state.lock().work;
+        let error = match EntryBacking::from_buffer(values, admitted, lease, &funding) {
+            Ok(_) => panic!("unrepresented buffer rows cannot acquire entry custody"),
+            Err(error) => error,
+        };
+        assert!(
+            matches!(error.detail(), Some(text::ErrorDetail::ScopeAlignment {
+            reason: ScopeAlignmentError::UnrepresentedOwnership { scope },
+        }) if *scope == prepared.captured_owner().unwrap().domain().capture_ordinal())
+        );
+        assert_eq!(resources.census(), baseline);
+        assert_eq!(
+            resources.active_owner().unwrap().state.lock().materialized,
+            records
+        );
+        assert_eq!(resources.active_owner().unwrap().state.lock().work, work);
+    }
+}
+
+fn formatted_input() -> crate::ComputeInputOf<f64> {
+    crate::ComputeInputOf::leaf_layout(
+        crate::Size::NONE,
+        crate::Size::NONE,
+        crate::ContainingLayoutContext::new(
+            crate::FlowAxes::new(crate::WritingMode::HorizontalTb, crate::Direction::Ltr),
+            crate::ParentFormattingContext::BlockFlow,
+        ),
+        crate::SizingRequestOf::new(
+            crate::Size::new(
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Definite(
+                        crate::NonNegativeFiniteOf::new(40.0).unwrap(),
+                    ),
+                    crate::SizingOperation::Normal,
+                ),
+                crate::AxisSizingRequestOf::new(
+                    crate::AvailableSpaceOf::Indefinite,
+                    crate::SizingOperation::Normal,
+                ),
+            ),
+            crate::OrthogonalFallbackOf::new(
+                crate::Size::NONE,
+                crate::NearestScrollportOf::Unknown,
+                crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+            ),
+        ),
+    )
+    .unwrap()
+}
+
+#[test]
+fn funded_formatted_fork_growth_replacement_and_shared_basis_keep_custody() {
+    use crate::text_layout::formatted::{
+        BoundAssignment, ComputeScope, FormattedFlow, FormattedState, FormattedTailAssignment,
+        FormattedTailEndpoint, FormattedTailUses, TailPredicate,
+    };
+    use crate::text_layout::scope_alignment::EntryFunding;
+    let prepared = captured("X");
+    let resources = owner(&prepared);
+    let funding = EntryFunding::new(resources.clone(), prepared.clone())
+        .unwrap()
+        .unwrap();
+    let baseline = resources.census();
+    let work_before = resources.active_owner().unwrap().state.lock().work;
+    let records_before = resources.active_owner().unwrap().state.lock().materialized;
+    let input = formatted_input();
+    let scope = ComputeScope {
+        node: 0_u32,
+        input,
+        anonymous: false,
+        frame: None,
+    };
+    let segment = prepared.source_segments().next().unwrap();
+    let mode = crate::AxisSizingRequestOf::new(
+        crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(40.0).unwrap()),
+        crate::SizingOperation::Normal,
+    );
+    let mut original = FormattedState::new_entry(None, Arc::from([]), None).unwrap();
+    original.push_scope(scope.clone()).unwrap();
+    let binding = original.binding(0, &[1, 2], &segment, input, mode).unwrap();
+    let endpoint = FormattedTailEndpoint::new(segment.end(), None);
+    original.assignments.push(BoundAssignment {
+        binding,
+        assignment: FormattedTailAssignment {
+            endpoint,
+            predicate: TailPredicate::AcceptedEndpoint,
+            last: true,
+        },
+    });
+    original.demanded.push(0);
+    let mut fork = original.fork_entry(Some(&funding), true).unwrap();
+    assert!(resources.census().bytes > baseline.bytes);
+    for node in 1..10 {
+        fork.push_scope(ComputeScope {
+            node,
+            ..scope.clone()
+        })
+        .unwrap();
+    }
+    let item = fork
+        .merge_run(
+            0,
+            &[1, 2],
+            &segment,
+            input,
+            mode,
+            FormattedTailUses::default(),
+        )
+        .unwrap();
+    let mut flow = FormattedFlow::new(None, Some(&funding));
+    flow.push(item).unwrap();
+    fork.record(flow).unwrap();
+    let live_after_record = resources.census();
+    let before_replacement = resources.active_owner().unwrap().state.lock().materialized;
+    let item = fork
+        .merge_run(
+            0,
+            &[1, 2],
+            &segment,
+            input,
+            mode,
+            FormattedTailUses::default(),
+        )
+        .unwrap();
+    let mut flow = FormattedFlow::new(None, Some(&funding));
+    flow.push(item).unwrap();
+    fork.record(flow).unwrap();
+    assert_eq!(resources.census(), live_after_record);
+    assert!(resources.active_owner().unwrap().state.lock().materialized > before_replacement);
+    let basis = fork.entry_basis(Some(&funding), true).unwrap();
+    let mut accepted =
+        FormattedState::new_entry(Some(&funding), original.frames.clone(), None).unwrap();
+    accepted.accept(&fork).unwrap();
+    let spent_work = resources.active_owner().unwrap().state.lock().work;
+    let spent_records = resources.active_owner().unwrap().state.lock().materialized;
+    assert!(spent_work > work_before);
+    assert!(spent_records > records_before);
+    drop(fork);
+    assert!(resources.census().bytes > baseline.bytes);
+    drop(accepted);
+    assert!(resources.census().bytes > baseline.bytes);
+    drop(basis);
+    assert_eq!(resources.census(), baseline);
+    assert_eq!(
+        resources.active_owner().unwrap().state.lock().work,
+        spent_work
+    );
+    assert_eq!(
+        resources.active_owner().unwrap().state.lock().materialized,
+        spent_records
+    );
+}
+
+#[test]
+fn borrowed_entry_payload_clone_shares_live_header_and_keeps_completed_charges() {
+    use crate::text_layout::formatted::{EntryCopies, SharedPayload};
+    use crate::text_layout::scope_alignment::EntryFunding;
+    let prepared = captured("X");
+    let resources = owner(&prepared);
+    let funding = EntryFunding::new(resources.clone(), prepared)
+        .unwrap()
+        .unwrap();
+    let baseline = resources.census();
+    let mut copies = EntryCopies::default();
+    let mut rows = copies.rows_ref::<u32>(Some(funding.as_ref()), 3).unwrap();
+    funding.as_ref().visit(3).unwrap();
+    rows.extend([1, 2, 3]);
+    let payload = SharedPayload::with_copies_ref(rows, copies, Some(funding.as_ref())).unwrap();
+    let live = resources.census();
+    let work = resources.active_owner().unwrap().state.lock().work;
+    let records = resources.active_owner().unwrap().state.lock().materialized;
+    let clone = payload.clone();
+    assert_eq!(&**clone, &[1, 2, 3]);
+    assert_eq!(resources.census(), live);
+    drop(payload);
+    assert_eq!(resources.census(), live);
+    let clone = match clone.into_native() {
+        Err(owner) => owner,
+        Ok(_) => panic!("funded rows keep their original custody"),
+    };
+    assert_eq!(resources.census(), live);
+    let mut rows = clone.into_rows();
+    assert_eq!(rows.next(), Some(1));
+    assert_eq!(rows.next(), Some(2));
+    assert_eq!(rows.next(), Some(3));
+    assert_eq!(rows.next(), None);
+    assert_eq!(resources.census(), live);
+    drop(rows);
+    assert_eq!(resources.census(), baseline);
+    assert_eq!(resources.active_owner().unwrap().state.lock().work, work);
+    assert_eq!(
+        resources.active_owner().unwrap().state.lock().materialized,
+        records
+    );
+    let ordinary = SharedPayload::new(vec![4_u32, 5], None).unwrap();
+    assert_eq!(ordinary.into_native().unwrap(), [4, 5]);
+    assert_eq!(resources.census(), baseline);
+}
+
+#[test]
+fn funded_margin_fork_grows_and_replaces_without_refunding_history() {
+    use crate::block::fragment_margins::State;
+    use crate::engine::block_scope::ProductionId;
+    use crate::text_layout::scope_alignment::EntryFunding;
+    let prepared = captured("X");
+    let resources = owner(&prepared);
+    let funding = EntryFunding::new(resources.clone(), prepared)
+        .unwrap()
+        .unwrap();
+    let baseline = resources.census();
+    let mut source = State::<u32, f64>::new();
+    source.bind(1, ProductionId(7)).unwrap();
+    let mut fork = source.fork_entry(Some(&funding)).unwrap();
+    for node in 2..20 {
+        fork.bind(node, ProductionId(node as usize)).unwrap();
+    }
+    let live = resources.census();
+    let records = resources.active_owner().unwrap().state.lock().materialized;
+    fork.bind(1, ProductionId(9)).unwrap();
+    assert_eq!(resources.census(), live);
+    assert!(resources.active_owner().unwrap().state.lock().materialized > records);
+    assert!(
+        fork.reported(1, crate::PhysicalSide::Top)
+            .unwrap()
+            .is_empty()
+    );
+    let spent_work = resources.active_owner().unwrap().state.lock().work;
+    let spent_records = resources.active_owner().unwrap().state.lock().materialized;
+    drop(fork);
+    assert_eq!(resources.census(), baseline);
+    assert_eq!(
+        resources.active_owner().unwrap().state.lock().work,
+        spent_work
+    );
+    assert_eq!(
+        resources.active_owner().unwrap().state.lock().materialized,
+        spent_records
+    );
+}

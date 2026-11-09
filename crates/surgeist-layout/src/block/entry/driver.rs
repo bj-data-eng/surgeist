@@ -6,6 +6,11 @@ pub(super) struct PrefixDriver<Node, S: LayoutScalar> {
     offers: Vec<super::canonical::Offer<Node, S>>,
     native: Vec<NativeObservation<Node>>,
     floats: Vec<super::canonical::SourceFloat<Node, S>>,
+    funding: Option<EntryFunding<S>>,
+    frames_custody: EntryBacking,
+    offers_custody: EntryBacking,
+    native_custody: EntryBacking,
+    floats_custody: EntryBacking,
 }
 
 enum Progress<Node, S: LayoutScalar> {
@@ -21,20 +26,40 @@ impl<Node: Copy + Eq, S: LayoutScalar> PrefixDriver<Node, S> {
             offers: Vec::new(),
             native: Vec::new(),
             floats: Vec::new(),
+            funding: None,
+            frames_custody: EntryBacking::default(),
+            offers_custody: EntryBacking::default(),
+            native_custody: EntryBacking::default(),
+            floats_custody: EntryBacking::default(),
         }
     }
 
     pub(super) fn begin<'input, Tree, M>(
-        self,
+        mut self,
         tree: &mut Tree,
     ) -> LayoutResultOf<Node, EntryObservation<Node, S>, S, M>
     where
         Tree: Compute<'input, M, Node = Node, Scalar = S>,
         Node: 'input,
     {
+        if self.query.purpose.needs_frame()
+            && let Some(state) = tree.text_computation()
+        {
+            self.funding = state
+                .entry_funding()
+                .map_err(|error| case_error(self.query.node, error))?;
+        }
         let initial =
             Progress::Descend(self.query.node, self.query.input, self.query.reporting_side);
         self.advance(tree, initial)
+    }
+
+    fn push_frame<M>(&mut self, frame: PrefixFrame<Node, S>) -> LayoutResultOf<Node, (), S, M> {
+        self.frames_custody
+            .reserve_push(&mut self.frames, self.funding.as_ref())
+            .map_err(|error| case_error(frame.node, error))?;
+        self.frames.push(frame);
+        Ok(())
     }
 
     fn suspend(
@@ -67,8 +92,12 @@ impl<Node: Copy + Eq, S: LayoutScalar> PrefixDriver<Node, S> {
     {
         'drive: loop {
             let mut fact = match progress {
-                Progress::Fold(fact) => fact,
+                Progress::Fold(fact) => {
+                    case_work(self.funding.as_ref(), self.query.node, 1)?;
+                    fact
+                }
                 Progress::Descend(node, input, reporting_side) => {
+                    case_work(self.funding.as_ref(), node, 1)?;
                     let raw = tree.node_input(node);
                     let own = crate::FlowAxes::new(raw.writing_mode, raw.direction);
                     if tree.has_leaf_measurement(node) {
@@ -119,21 +148,29 @@ impl<Node: Copy + Eq, S: LayoutScalar> PrefixDriver<Node, S> {
                                 through: Through::Blocked,
                             }
                         } else {
+                            let (children_lease, children) =
+                                case_children(tree, node, self.funding.as_ref())
+                                    .map(|(rows, lease)| (lease, rows))?;
+                            let (slots_lease, slots) = if self.query.purpose.needs_frame() {
+                                match tree.text_computation() {
+                                    Some(state) => state
+                                        .semantic_slots(node, self.funding.as_ref())
+                                        .map(|(rows, lease)| (lease, rows))?,
+                                    None => (None, Vec::new()),
+                                }
+                            } else {
+                                (None, Vec::new())
+                            };
                             let mut frame = PrefixFrame {
                                 node,
                                 input,
                                 constants,
                                 prepared_inline: false,
-                                children: tree.children(node).collect(),
+                                children,
+                                _children_lease: children_lease,
                                 next: 0,
-                                slots: if self.query.purpose.needs_frame() {
-                                    match tree.text_computation() {
-                                        Some(state) => state.semantic_slots(node)?,
-                                        None => Vec::new(),
-                                    }
-                                } else {
-                                    Vec::new()
-                                },
+                                slots,
+                                _slots_lease: slots_lease,
                                 slot_cursor: 0,
                                 window: None,
                                 first_in_flow: true,
@@ -160,15 +197,19 @@ impl<Node: Copy + Eq, S: LayoutScalar> PrefixDriver<Node, S> {
                                     &frame,
                                 )?);
                             }
-                            match frame.step::<Tree, M>(tree, self.query.purpose)? {
+                            match frame.step::<Tree, M>(
+                                tree,
+                                self.query.purpose,
+                                self.funding.as_ref(),
+                            )? {
                                 PrefixStep::Child(child, request, side) => {
-                                    self.frames.push(frame);
+                                    self.push_frame(frame)?;
                                     progress = Progress::Descend(child, request, side);
                                     continue 'drive;
                                 }
                                 PrefixStep::Complete(fact) => fact,
                                 PrefixStep::Frontier(kind) => {
-                                    self.frames.push(frame);
+                                    self.push_frame(frame)?;
                                     return Ok(self.suspend(kind, node, input, reporting_side));
                                 }
                             }
@@ -185,24 +226,28 @@ impl<Node: Copy + Eq, S: LayoutScalar> PrefixDriver<Node, S> {
                         separation: None,
                         native: self.native,
                         floats: self.floats,
+                        funding: self.funding,
+                        _native_custody: self.native_custody,
+                        _float_custody: self.floats_custody,
                     };
                     if summary.query.purpose == EntryPurpose::Component {
-                        super::canonical::resolve(&mut summary, self.offers)?;
+                        super::canonical::resolve(&mut summary, self.offers, self.offers_custody)?;
                     }
                     return Ok(EntryObservation::Summary(summary));
                 };
+                case_work(self.funding.as_ref(), frame.node, 1)?;
                 if !frame.accept(fact) {
                     let (node, input, side) = (
                         frame.node,
                         frame.input,
                         frame.constants.flow_axes.block_start(),
                     );
-                    self.frames.push(frame);
+                    self.push_frame(frame)?;
                     return Ok(self.suspend(EntryFrontier::AmbiguousStart, node, input, side));
                 }
-                match frame.step::<Tree, M>(tree, self.query.purpose)? {
+                match frame.step::<Tree, M>(tree, self.query.purpose, self.funding.as_ref())? {
                     PrefixStep::Child(child, request, side) => {
-                        self.frames.push(frame);
+                        self.push_frame(frame)?;
                         progress = Progress::Descend(child, request, side);
                         continue 'drive;
                     }
@@ -213,7 +258,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> PrefixDriver<Node, S> {
                             frame.input,
                             frame.constants.flow_axes.block_start(),
                         );
-                        self.frames.push(frame);
+                        self.push_frame(frame)?;
                         return Ok(self.suspend(kind, node, input, side));
                     }
                 }
@@ -236,6 +281,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> EntryDemand<Node, S> {
         if !self.driver.query.purpose.needs_frame() || self.kind != EntryFrontier::NativeRun {
             return Ok(());
         }
+        case_work(self.driver.funding.as_ref(), self.node, 1)?;
         let frame = self
             .driver
             .frames
@@ -255,10 +301,11 @@ impl<Node: Copy + Eq, S: LayoutScalar> EntryDemand<Node, S> {
                     .text_computation()
                     .ok_or_else(|| float_context::missing(self.node))?;
                 let run = if nodes.is_empty() {
-                    state.semantic_run(self.node, segment)
+                    state.entry_semantic_run(self.node, segment, self.driver.funding.as_ref())
                 } else {
-                    state.run(self.node, nodes)
+                    state.entry_run(self.node, nodes, self.driver.funding.as_ref())
                 }
+                .map_err(|error| case_error(self.node, error))?
                 .ok_or_else(|| float_context::missing(self.node))?;
                 if run.segment != *segment {
                     return Err(float_context::missing(self.node));
@@ -292,6 +339,10 @@ impl<Node: Copy + Eq, S: LayoutScalar> EntryDemand<Node, S> {
         if self.kind != EntryFrontier::Float || !self.is_component() {
             return Err(float_context::missing(self.node));
         }
+        self.driver
+            .floats_custody
+            .reserve_push(&mut self.driver.floats, self.driver.funding.as_ref())
+            .map_err(|error| case_error(self.node, error))?;
         let frame = self
             .driver
             .frames
@@ -368,6 +419,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> EntryDemand<Node, S> {
         if self.kind != EntryFrontier::NativeRun || !self.is_component() {
             return Err(float_context::missing(self.node));
         }
+        case_work(self.driver.funding.as_ref(), self.node, 1)?;
         let frame = self
             .driver
             .frames
@@ -382,8 +434,20 @@ impl<Node: Copy + Eq, S: LayoutScalar> EntryDemand<Node, S> {
             .get(window.nodes.clone())
             .ok_or_else(|| float_context::missing(self.node))?;
         let separates = if window.segment.is_some() {
-            let proof = super::semantic::observe(tree, self.node, window, nodes, &frame.constants)?;
-            let separates = super::semantic::separates(&proof);
+            self.driver
+                .native_custody
+                .reserve_push(&mut self.driver.native, self.driver.funding.as_ref())
+                .map_err(|error| case_error(self.node, error))?;
+            let proof = super::semantic::observe(
+                tree,
+                self.node,
+                window,
+                nodes,
+                &frame.constants,
+                self.driver.funding.as_ref(),
+            )?;
+            let separates = super::semantic::separates(&proof, self.driver.funding.as_ref())
+                .map_err(|error| case_error(self.node, error))?;
             self.driver.native.push(NativeObservation {
                 container: self.node,
                 window: window.clone(),
@@ -391,8 +455,20 @@ impl<Node: Copy + Eq, S: LayoutScalar> EntryDemand<Node, S> {
             });
             separates
         } else {
-            crate::inline::entry_participation(nodes.iter().map(|&node| tree.layout_input(node)))
-                .ok_or_else(|| float_context::missing(self.node))?
+            let mut next = nodes.iter();
+            let mut failure = None;
+            let participation = crate::inline::entry_participation(std::iter::from_fn(|| {
+                let &node = next.next()?;
+                if let Err(error) = case_work(self.driver.funding.as_ref(), node, 1) {
+                    failure = Some(error);
+                    return None;
+                }
+                Some(tree.layout_input(node))
+            }));
+            if let Some(error) = failure {
+                return Err(error);
+            }
+            participation.ok_or_else(|| float_context::missing(self.node))?
         };
         let window = window.clone();
         let frame = self
@@ -428,6 +504,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> EntryDemand<Node, S> {
             .last_mut()
             .ok_or_else(|| float_context::missing(self.node))?;
         while frame.next < window.nodes.end {
+            case_work(self.driver.funding.as_ref(), self.node, 1)?;
             let node = frame.children[frame.next];
             frame.next += 1;
             if let crate::LayoutInputViewOf::Box(style) = tree.layout_input(node)
@@ -458,6 +535,10 @@ impl<Node: Copy + Eq, S: LayoutScalar> EntryDemand<Node, S> {
         {
             return Err(float_context::missing(self.node));
         }
+        self.driver
+            .offers_custody
+            .reserve_push(&mut self.driver.offers, self.driver.funding.as_ref())
+            .map_err(|error| case_error(self.node, error))?;
         let frame = self
             .driver
             .frames
@@ -475,6 +556,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> EntryDemand<Node, S> {
             .iter()
             .rev()
         {
+            case_work(self.driver.funding.as_ref(), ancestor.node, 1)?;
             before = ancestor
                 .start
                 .collapse_with(before)
@@ -509,9 +591,14 @@ impl<Node: Copy + Eq, S: LayoutScalar> EntryDemand<Node, S> {
             .frames
             .pop()
             .ok_or_else(|| float_context::missing(self.node))?;
-        match frame.step::<Tree, M>(tree, self.driver.query.purpose)? {
+        case_work(self.driver.funding.as_ref(), frame.node, 1)?;
+        match frame.step::<Tree, M>(
+            tree,
+            self.driver.query.purpose,
+            self.driver.funding.as_ref(),
+        )? {
             PrefixStep::Child(child, input, side) => {
-                self.driver.frames.push(frame);
+                self.driver.push_frame(frame)?;
                 self.driver
                     .advance(tree, Progress::Descend(child, input, side))
             }
@@ -520,7 +607,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> EntryDemand<Node, S> {
                 let node = frame.node;
                 let input = frame.input;
                 let side = frame.constants.flow_axes.block_start();
-                self.driver.frames.push(frame);
+                self.driver.push_frame(frame)?;
                 Ok(self.driver.suspend(kind, node, input, side))
             }
         }
@@ -537,6 +624,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> EntryDemand<Node, S> {
         if self.kind != EntryFrontier::Leaf || !tree.has_leaf_measurement(self.node) {
             return Err(float_context::missing(self.node));
         }
+        case_work(self.driver.funding.as_ref(), self.node, 1)?;
         let output = tree.measure_entry_leaf(self.node, self.input)?;
         let own = tree.node_input(self.node);
         let axes = crate::FlowAxes::new(own.writing_mode, own.direction);

@@ -156,23 +156,31 @@ fn projected_bound<Node: Copy, S: LayoutScalar, M>(
         .get(..count)
         .ok_or_else(|| float_context::missing(summary.query.node))?;
     let Some(first) = floats.first() else {
-        return incoming.frame.relevant_bound(clear, axes).map_err(|error| {
-            crate::error::sizing_resolution_error(summary.query.node, error.into())
-        });
+        return incoming.frame.entry_relevant_bound::<M>(
+            summary.query.node,
+            clear,
+            axes,
+            summary.funding.as_ref(),
+        );
     };
-    let mut ledger = incoming
+    let (_ledger_lease, mut ledger) = incoming
         .frame
-        .entry_ledger(first.inline_start, first.inline_end);
+        .entry_ledger_funded(
+            first.inline_start,
+            first.inline_end,
+            count,
+            summary.funding.as_ref(),
+        )
+        .map(|(ledger, lease)| (lease, ledger))
+        .map_err(|error| case_error(summary.query.node, error))?;
     for source in floats {
+        case_work(summary.funding.as_ref(), source.pending.node, 1)?;
         ledger.entry_inline_window(source.inline_start, source.inline_end);
         let mut pending = source.pending.clone();
         pending.block_start = position.hypothetical(support);
-        ledger.place_float_for_line::<M>(summary.query.node, &pending, None)?;
+        ledger.entry_place_float::<M>(summary.query.node, &pending, summary.funding.as_ref())?;
     }
-    ledger
-        .for_ordinary_child(LogicalPointOf::new(S::ZERO, S::ZERO))
-        .relevant_bound(clear, axes)
-        .map_err(|error| crate::error::sizing_resolution_error(summary.query.node, error.into()))
+    ledger.entry_relevant_bound::<M>(summary.query.node, clear, axes, summary.funding.as_ref())
 }
 
 /// One offered cut before its own top group, in the original source inventory.
@@ -230,6 +238,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> Separation<Node, S> {
 pub(super) fn resolve<Node: Copy + Eq, S: LayoutScalar, M>(
     summary: &mut EntrySummary<Node, S>,
     offers: Vec<Offer<Node, S>>,
+    _offers_custody: EntryBacking,
 ) -> LayoutResultOf<Node, (), S, M> {
     let position = summary
         .query
@@ -241,6 +250,7 @@ pub(super) fn resolve<Node: Copy + Eq, S: LayoutScalar, M>(
         .as_ref()
         .ok_or_else(|| float_context::missing(summary.query.node))?;
     for offer in offers.into_iter().rev() {
+        case_work(summary.funding.as_ref(), offer.node, 1)?;
         let hypothetical = incoming
             .frame
             .common_border(position.hypothetical(summary.start))
@@ -271,8 +281,8 @@ pub(super) fn resolve<Node: Copy + Eq, S: LayoutScalar, M>(
 }
 
 impl<Node: Copy + Eq, S: LayoutScalar> EntrySummary<Node, S> {
-    /// Reuse is tied to the actual cut occurrence and retained hypothetical
-    /// ledger, rather than merely to the resulting scalar group.
+    /// Recheck the freshly observed cut occurrence and hypothetical ledger
+    /// before returning the summary.
     pub(crate) fn validate_separation<'input, Tree, M>(
         &self,
         tree: &mut Tree,
@@ -282,6 +292,7 @@ impl<Node: Copy + Eq, S: LayoutScalar> EntrySummary<Node, S> {
         Node: 'input,
     {
         for observation in &self.native {
+            case_work(self.funding.as_ref(), observation.container, 1)?;
             let state = tree
                 .text_computation()
                 .ok_or_else(|| float_context::missing(observation.container))?;
@@ -291,15 +302,24 @@ impl<Node: Copy + Eq, S: LayoutScalar> EntrySummary<Node, S> {
                 .as_ref()
                 .ok_or_else(|| float_context::missing(observation.container))?;
             let run = state
-                .run_from_segment(observation.container, segment)
+                .entry_run_from_segment(observation.container, segment, self.funding.as_ref())
+                .map_err(|error| case_error(observation.container, error))?
                 .ok_or_else(|| float_context::missing(observation.container))?;
-            if !tree
-                .children(observation.container)
-                .skip(observation.window.nodes.start)
-                .take(observation.window.nodes.len())
-                .eq(run.nodes().iter().copied())
-            {
+            if run.nodes().len() != observation.window.nodes.len() {
                 return Err(float_context::missing(observation.container));
+            }
+            let mut children = tree.children(observation.container);
+            for _ in 0..observation.window.nodes.start {
+                case_work(self.funding.as_ref(), observation.container, 1)?;
+                if children.next().is_none() {
+                    return Err(float_context::missing(observation.container));
+                }
+            }
+            for &node in run.nodes() {
+                case_work(self.funding.as_ref(), observation.container, 1)?;
+                if children.next() != Some(node) {
+                    return Err(float_context::missing(observation.container));
+                }
             }
             if observation.proof.evidence().request().segment != run.segment
                 || observation.proof.evidence().request().inline_boxes.as_ref()
@@ -311,7 +331,15 @@ impl<Node: Copy + Eq, S: LayoutScalar> EntrySummary<Node, S> {
         let Some(cut) = &self.separation else {
             return Ok(());
         };
-        let source = tree.children(cut.container).nth(cut.index);
+        let mut children = tree.children(cut.container);
+        let mut source = None;
+        for _ in 0..=cut.index {
+            case_work(self.funding.as_ref(), cut.container, 1)?;
+            source = children.next();
+            if source.is_none() {
+                break;
+            }
+        }
         let raw = tree.node_input(cut.container);
         let axes = crate::FlowAxes::new(raw.writing_mode, raw.direction);
         if source != Some(cut.node)

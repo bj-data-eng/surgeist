@@ -240,8 +240,14 @@ where
         content_inline_size,
         constants.logical_content_box_inset(),
     );
+    let entry_case_funding = tree
+        .text_computation()
+        .and_then(|text| text.entry_case_funding().cloned());
+    float_exclusions.fund_entry(entry_case_funding.as_ref());
     if physical_float_context && let Some(inherited) = inherited {
-        float_exclusions.inherit_into_child(inherited);
+        float_exclusions
+            .inherit_into_child(inherited)
+            .map_err(|error| super::inline_run::text_run_error(node, error.into()))?;
     }
     let inherited_floats = float_exclusions.len();
     let content_box_size = Size::new(
@@ -267,7 +273,8 @@ where
 
     let mut index = 0;
     if let Some(text) = tree.text_computation() {
-        text.formatted_begin_flow(input, flow_request, set_layout);
+        text.formatted_begin_flow(input, flow_request, set_layout)
+            .map_err(|error| super::inline_run::text_run_error(node, error.into()))?;
     }
     if let Some(groups) = tree.group_computation() {
         groups.begin_flow(input, flow_request, set_layout);
@@ -287,9 +294,9 @@ where
     let tail_active = constants.hyphenate_limit_last == crate::HyphenateLimitLast::Always
         && crate::layout_math::normal_available_size(flow_request).is_some();
     let mut tail_ledger = crate::hyphenation::BlockTailLedger::default();
-    let slots = match tree.text_computation() {
-        Some(state) => state.semantic_slots(node)?,
-        None => Vec::new(),
+    let (slots, _slot_lease) = match tree.text_computation() {
+        Some(state) => state.semantic_slots(node, None)?,
+        None => (Vec::new(), None),
     };
     let mut slot_cursor = 0;
     while index < children.len() || slot_cursor < slots.len() {
@@ -316,7 +323,15 @@ where
                 .is_some_and(|state| state.run_starting(node, &children[index..]).is_some());
             let child_start = if captured_start {
                 let run_start = index;
-                index = inline_run_end(tree, node, children, constants, index + 1, semantic_end)?;
+                index = inline_run_end(
+                    tree,
+                    node,
+                    children,
+                    constants,
+                    index + 1,
+                    semantic_end,
+                    None,
+                )?;
                 InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
                     run_start, index,
                 ))
@@ -376,6 +391,7 @@ where
                                 constants,
                                 index + 1,
                                 semantic_end,
+                                None,
                             )?;
                             InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
                                 run_start, index,
@@ -394,6 +410,7 @@ where
                             constants,
                             index + 1,
                             semantic_end,
+                            None,
                         )?;
                         InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
                             run_start, index,
@@ -426,6 +443,7 @@ where
                             constants,
                             index + 1,
                             semantic_end,
+                            None,
                         )?;
                         InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
                             run_start, index,
@@ -442,6 +460,7 @@ where
                             constants,
                             index + 1,
                             semantic_end,
+                            None,
                         )?;
                         InFlowChildStart::VisibleInlineRun(VisibleInlineRunTransition::new(
                             run_start, index,
@@ -579,6 +598,7 @@ where
             && !tree.has_leaf_measurement(child)
             && (!float_exclusions.is_empty() || tree.block_float_work(child));
         let mut shared_child = None;
+        let mut clearance_funding = None;
         let resident_cut = remaining_cut;
         let mut introduced_cut = resident_cut
             .filter(|cut| cut.container == node && cut.node == child && cut.index == index);
@@ -653,8 +673,22 @@ where
             let entry_input = child_input
                 .with_run_mode(RunMode::ComputeSize)
                 .with_settled_auto_scrollbars(crate::scroll::SettledAutoScrollbarState::INITIAL);
+            clearance_funding = match tree.text_computation() {
+                Some(state) => {
+                    state
+                        .prepare_entry()
+                        .map_err(|error| super::inline_run::text_run_error(child, error.into()))?;
+                    state
+                        .entry_funding()
+                        .map_err(|error| super::inline_run::text_run_error(child, error.into()))?
+                }
+                None => None,
+            };
+            let funding = clearance_funding.as_ref();
             let frame = std::sync::Arc::new(
-                float_exclusions.for_ordinary_child(LogicalPointOf::new(S::ZERO, S::ZERO)),
+                float_exclusions
+                    .for_entry_child(LogicalPointOf::new(S::ZERO, S::ZERO), funding)
+                    .map_err(|error| super::inline_run::text_run_error(child, error.into()))?,
             );
             let position = entry::canonical::EntryPosition {
                 cursor: adjoining.cursor,
@@ -687,9 +721,12 @@ where
             let hypothetical = frame
                 .common_border(position.hypothetical(summary.start_fact().margin))
                 .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
-            let bound = frame
-                .relevant_bound(child_style.clear, constants.flow_axes)
-                .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
+            let bound = frame.entry_relevant_bound(
+                child,
+                child_style.clear,
+                constants.flow_axes,
+                funding,
+            )?;
             introduced_cut = resident_cut
                 .filter(|cut| cut.container == node && cut.node == child && cut.index == index);
             if introduced_cut.is_none()
@@ -726,7 +763,9 @@ where
                 child_input.with_settled_auto_scrollbars(
                     crate::scroll::SettledAutoScrollbarState::INITIAL,
                 ),
-                float_exclusions.for_ordinary_child(location),
+                float_exclusions
+                    .for_entry_child(location, funding)
+                    .map_err(|error| super::inline_run::text_run_error(child, error.into()))?,
                 child_cut,
             )?;
             if let Some(previous) = remaining_cut
@@ -986,9 +1025,13 @@ where
                 tree.node_input(child).block_generation == crate::BlockGeneration::Anonymous;
             if let Some(item) = tree
                 .text_computation()
-                .and_then(|text| text.formatted_child(child, child_input, anonymous))
+                .map(|text| text.formatted_child(child, child_input, anonymous))
+                .transpose()
+                .map_err(|error| super::inline_run::text_run_error(child, error.into()))?
+                .flatten()
             {
-                flow.items.push(item);
+                flow.push(item)
+                    .map_err(|error| super::inline_run::text_run_error(child, error.into()))?;
             }
         }
         let deferred_inset =
@@ -1017,8 +1060,19 @@ where
         let collapses_through = output
             .block_margin_collapse
             .can_collapse_through(constants.flow_axes);
-        let bound_frame =
-            float_exclusions.for_ordinary_child(LogicalPointOf::new(S::ZERO, S::ZERO));
+        let bound_frame = &float_exclusions;
+        if child_style.clear != Clear::None
+            && !float_exclusions.is_empty()
+            && clearance_funding.is_none()
+            && let Some(state) = tree.text_computation()
+        {
+            state
+                .prepare_entry()
+                .map_err(|error| super::inline_run::text_run_error(child, error.into()))?;
+            clearance_funding = state
+                .entry_funding()
+                .map_err(|error| super::inline_run::text_run_error(child, error.into()))?;
+        }
         if introduced_cut.is_none() && child_style.clear != Clear::None {
             let hypothetical = bound_frame
                 .common_border(
@@ -1032,10 +1086,12 @@ where
                             .offset,
                 )
                 .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
-            if let Some(bound) = bound_frame
-                .relevant_bound(child_style.clear, constants.flow_axes)
-                .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?
-                && hypothetical < bound
+            if let Some(bound) = bound_frame.entry_relevant_bound(
+                child,
+                child_style.clear,
+                constants.flow_axes,
+                clearance_funding.as_ref(),
+            )? && hypothetical < bound
             {
                 introduced_cut = Some(entry::canonical::Separation::own(
                     node,
@@ -1057,8 +1113,12 @@ where
                 .common_border(base_block + prior_internal + top_margin_set.resolve())
                 .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?;
             let current = bound_frame
-                .relevant_bound(child_style.clear, constants.flow_axes)
-                .map_err(|error| crate::error::sizing_resolution_error(child, error.into()))?
+                .entry_relevant_bound(
+                    child,
+                    child_style.clear,
+                    constants.flow_axes,
+                    clearance_funding.as_ref(),
+                )?
                 .ok_or_else(|| float_context::missing(child))?;
             let origin = bound_frame
                 .common_border(S::ZERO)
@@ -1071,12 +1131,18 @@ where
         } else {
             None
         };
-        let margin_groups = tree.fragment_margin_state().map(|state| {
-            (
-                state.child(child, constants.flow_axes.block_start()),
-                state.child(child, constants.flow_axes.block_end()),
-            )
-        });
+        let margin_error =
+            |error: surgeist_text::Error| super::inline_run::text_run_error(child, error.into());
+        let margin_groups = tree
+            .fragment_margin_state()
+            .map(|state| {
+                Ok::<_, surgeist_text::Error>((
+                    state.child(child, constants.flow_axes.block_start())?,
+                    state.child(child, constants.flow_axes.block_end())?,
+                ))
+            })
+            .transpose()
+            .map_err(margin_error)?;
         if let Some(settlement) = clearance {
             if let Some(previous) = remaining_cut
                 && introduced_cut.is_some_and(|cut| cut.same_cut(previous))
@@ -1095,12 +1161,12 @@ where
             tree.fragment_margin_state(),
         ) && !flow.started
         {
-            flow.initial = state.join(flow.initial, top);
+            flow.initial = state.join(flow.initial, top).map_err(margin_error)?;
             if output
                 .block_margin_collapse
                 .can_collapse_through(constants.flow_axes)
             {
-                flow.initial = state.join(flow.initial, bottom);
+                flow.initial = state.join(flow.initial, bottom).map_err(margin_error)?;
             } else {
                 flow.started = true;
             }
@@ -1118,9 +1184,11 @@ where
             let group = if start.exposes_child {
                 flow.active
             } else {
-                state.join(flow.active, top)
+                state.join(flow.active, top).map_err(margin_error)?
             };
-            state.record_entry(child, constants.flow_axes, group);
+            state
+                .record_entry(child, constants.flow_axes, group)
+                .map_err(margin_error)?;
         }
         if adjoining.start_open
             && start.exposes_child
@@ -1130,9 +1198,9 @@ where
                 tree.fragment_margin_state(),
             )
         {
-            flow.top = state.join(flow.top, top);
+            flow.top = state.join(flow.top, top).map_err(margin_error)?;
             if collapses_through {
-                flow.top = state.join(flow.top, bottom);
+                flow.top = state.join(flow.top, bottom).map_err(margin_error)?;
             }
         }
         if clearance.is_none() {
@@ -1174,7 +1242,10 @@ where
         );
         if let Some(shared) = shared_child {
             let flow_origin = logical_location;
-            if !float_exclusions.import_child(&shared, flow_origin) {
+            if !float_exclusions
+                .import_child(&shared, flow_origin)
+                .map_err(|error| super::inline_run::text_run_error(child, error.into()))?
+            {
                 return Err(float_context::missing(child).into());
             }
             owned_float_block_end = owned_float_block_end.max(float_exclusions.bottom());
@@ -1276,8 +1347,8 @@ where
                 margin_groups,
                 tree.fragment_margin_state(),
             ) {
-                let joined = state.join(flow.active, top);
-                flow.active = state.join(joined, bottom);
+                let joined = state.join(flow.active, top).map_err(margin_error)?;
+                flow.active = state.join(joined, bottom).map_err(margin_error)?;
             }
         } else if let (Some(flow), Some((_, bottom))) = (&mut fragment_margins, margin_groups) {
             flow.active = bottom;
@@ -1307,7 +1378,8 @@ where
         .into());
     }
     if let Some(text) = tree.text_computation() {
-        text.formatted_record_traversal(&formatted);
+        text.formatted_record_traversal(&formatted)
+            .map_err(|error| super::inline_run::text_run_error(node, error.into()))?;
     }
     let groups = tree
         .group_computation()

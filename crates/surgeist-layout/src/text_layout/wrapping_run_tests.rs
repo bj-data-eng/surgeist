@@ -87,6 +87,7 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
         &[],
         &controls,
         Context {
+            entry_funding: None,
             scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
                 input.scope_alignments.clone(),
                 crate::text_layout::fragmentation::InlineBoxFamilies::default(),
@@ -128,7 +129,7 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
         },
         &[],
         LineEnvironment {
-            checkpoint_group: || {},
+            checkpoint_group: || Ok(()),
             band: |_, _| {
                 Ok(Band {
                     start: 0.0,
@@ -146,7 +147,7 @@ fn a_changed_comparison_band_cannot_publish_a_scoped_choice() {
                 Ok(Vec::new())
             },
             accept: || Ok(()),
-            reset: |_| {},
+            reset: |_| Ok(()),
         },
     );
     assert!(changed.get(), "the actual completion was evaluated");

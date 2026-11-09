@@ -2,6 +2,70 @@
 use super::*;
 use std::cell::{Cell, RefCell};
 
+fn band_failure_stops_before_post_line_work<S: LayoutScalar>() {
+    let flow = InlineFlowOf::new(
+        WritingMode::HorizontalTb,
+        Direction::Ltr,
+        crate::AxisSizingRequestOf::new(
+            crate::AvailableSpaceOf::Definite(crate::NonNegativeFiniteOf::new(n(60.0)).unwrap()),
+            crate::SizingOperation::Normal,
+        ),
+    );
+    let force = ForcedLineBreakControlOf::new(
+        53,
+        flow,
+        InlineMetricsOf::try_new(crate::InlineBaselineContext::Physical, S::ZERO, S::ZERO).unwrap(),
+        InlineControlAlignment::Baseline,
+        Clear::Both,
+    );
+    let query = input(
+        Direction::Ltr,
+        vec![MixedInlineParticipantOf::ForcedLineBreak(force)],
+    );
+    let cause = Box::new(std::io::Error::other("external band refusal"));
+    let pointer = std::ptr::from_ref(cause.as_ref());
+    let mut cause = Some(cause);
+    let calls = Cell::new(0);
+    let clears = Cell::new(0);
+    let result = layout_mixed_inline_run_with_formatted_observation(
+        query,
+        |_, _| {
+            calls.set(calls.get() + 1);
+            Err(cause.take().expect("one failed band operation"))
+        },
+        |block, _| {
+            clears.set(clears.get() + 1);
+            block
+        },
+        true,
+        unavailable_atomic_receiver,
+    );
+    let error = match result {
+        Err(NumericRunError::Band(error)) => error,
+        Err(NumericRunError::Numeric(error)) => panic!("unexpected numerical failure: {error:?}"),
+        Ok(_) => panic!("a refused actual band cannot complete a run"),
+    };
+    assert!(
+        std::ptr::eq(error.as_ref(), pointer),
+        "the original non-Clone cause is transported"
+    );
+    assert_eq!(calls.get(), 1);
+    assert_eq!(
+        clears.get(),
+        0,
+        "post-line clearance cannot run after band refusal"
+    );
+}
+
+#[test]
+fn band_failure_stops_before_post_line_work_f32() {
+    band_failure_stops_before_post_line_work::<f32>();
+}
+#[test]
+fn band_failure_stops_before_post_line_work_f64() {
+    band_failure_stops_before_post_line_work::<f64>();
+}
+
 fn n<S: LayoutScalar>(value: f64) -> S {
     S::from_f64(value)
 }
@@ -140,6 +204,7 @@ fn phantom<S: LayoutScalar>(direction: Direction) {
         true,
         crate::inline::unavailable_atomic_receiver,
     )
+    .map_err(crate::inline::NumericRunError::into_numeric)
     .unwrap();
     assert_eq!(observed.inline_extent, S::ZERO);
     assert_eq!(observed.block_extent, S::ZERO);
@@ -186,12 +251,14 @@ fn zero_atomic<S: LayoutScalar>(direction: Direction) {
     let report = layout_mixed_inline_run_with_formatted_observation(
         query,
         |_, _| {
-            calls.set(calls.get() + 1);
-            LogicalLineBandQueryResultOf {
-                inline_start: S::ZERO,
-                inline_end: n(60.0),
-                next_transition: None,
-            }
+            Ok({
+                calls.set(calls.get() + 1);
+                LogicalLineBandQueryResultOf {
+                    inline_start: S::ZERO,
+                    inline_end: n(60.0),
+                    next_transition: None,
+                }
+            })
         },
         |block, intent| {
             clears.borrow_mut().push(intent);
@@ -200,6 +267,7 @@ fn zero_atomic<S: LayoutScalar>(direction: Direction) {
         true,
         crate::inline::unavailable_atomic_receiver,
     )
+    .map_err(crate::inline::NumericRunError::into_numeric)
     .unwrap();
     assert!(
         calls.get() > 0,
@@ -260,12 +328,14 @@ fn zero_forced<S: LayoutScalar>(direction: Direction) {
     let report = layout_mixed_inline_run_with_formatted_observation(
         query,
         |_, _| {
-            calls.set(calls.get() + 1);
-            LogicalLineBandQueryResultOf {
-                inline_start: S::ZERO,
-                inline_end: n(60.0),
-                next_transition: None,
-            }
+            Ok({
+                calls.set(calls.get() + 1);
+                LogicalLineBandQueryResultOf {
+                    inline_start: S::ZERO,
+                    inline_end: n(60.0),
+                    next_transition: None,
+                }
+            })
         },
         |block, intent| {
             clears.borrow_mut().push(intent);
@@ -274,6 +344,7 @@ fn zero_forced<S: LayoutScalar>(direction: Direction) {
         true,
         crate::inline::unavailable_atomic_receiver,
     )
+    .map_err(crate::inline::NumericRunError::into_numeric)
     .unwrap();
     assert!(calls.get() > 0);
     // The real Forced ending consumes clearance once. Its empty Paragraph
@@ -470,12 +541,14 @@ fn authentic_mandatory_edge<S: LayoutScalar>(direction: Direction) {
     let report = layout_mixed_inline_run_with_formatted_observation(
         query,
         |_, _| {
-            calls.set(calls.get() + 1);
-            LogicalLineBandQueryResultOf {
-                inline_start: S::ZERO,
-                inline_end: n(60.0),
-                next_transition: None,
-            }
+            Ok({
+                calls.set(calls.get() + 1);
+                LogicalLineBandQueryResultOf {
+                    inline_start: S::ZERO,
+                    inline_end: n(60.0),
+                    next_transition: None,
+                }
+            })
         },
         |block, intent| {
             clears.borrow_mut().push(intent);
@@ -484,6 +557,7 @@ fn authentic_mandatory_edge<S: LayoutScalar>(direction: Direction) {
         true,
         crate::inline::unavailable_atomic_receiver,
     )
+    .map_err(crate::inline::NumericRunError::into_numeric)
     .unwrap();
     assert!(calls.get() > 0);
     assert_eq!(*clears.borrow(), [PostLineClearIntent::None]);
@@ -603,7 +677,8 @@ fn scoped_metric_witness<S: LayoutScalar>(
         |_, _| panic!("metric validation or phantom completion cannot demand clearance"),
         true,
         crate::inline::unavailable_atomic_receiver,
-    );
+    )
+    .map_err(crate::inline::NumericRunError::into_numeric);
     if conflicting {
         assert_eq!(
             result.expect_err("valid9/10 numbers contradict these actual8/10 endpoint witnesses"),

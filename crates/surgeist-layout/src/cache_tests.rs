@@ -577,8 +577,8 @@ fn cached_compute_uses_tree_cache_before_running_expensive_layout() {
             _node: Self::Node,
             input: &ComputeInput,
             context: CacheKeyContext,
-        ) -> Option<ComputeOutput> {
-            self.cache.get_with_context(input, context)
+        ) -> crate::engine::contracts::CacheLookupResult<Self::Node, Self::Scalar> {
+            Ok(self.cache.get_with_context(input, context))
         }
 
         fn cache_store(
@@ -587,12 +587,17 @@ fn cached_compute_uses_tree_cache_before_running_expensive_layout() {
             input: &ComputeInput,
             context: CacheKeyContext,
             output: ComputeOutput,
-        ) {
+        ) -> crate::LayoutResultOf<Self::Node, (), Self::Scalar> {
             self.cache.store_with_context(input, context, output);
+            Ok(())
         }
 
-        fn cache_clear(&mut self, _node: Self::Node) {
+        fn cache_clear(
+            &mut self,
+            _node: Self::Node,
+        ) -> crate::LayoutResultOf<Self::Node, (), Self::Scalar> {
             self.cache.clear();
+            Ok(())
         }
     }
 

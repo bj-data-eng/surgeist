@@ -408,6 +408,7 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
         &[],
         &[],
         super::run::Context {
+            entry_funding: None,
             scope_alignments: crate::text_layout::scope_alignment::ScopeAlignmentResources::new(
                 capture.scope_alignments.clone(),
                 crate::text_layout::fragmentation::InlineBoxFamilies::default(),
@@ -455,8 +456,8 @@ fn assert_intrinsic_line_box<S: LayoutScalar>() {
         },
         &[],
         super::run::LineEnvironment {
-            checkpoint_group: || {},
-            reset: |_| {},
+            checkpoint_group: || Ok(()),
+            reset: |_| Ok(()),
             band: |_, _| {
                 Ok(super::fit::Band {
                     start: 0.0,

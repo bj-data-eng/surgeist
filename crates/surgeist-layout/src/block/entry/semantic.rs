@@ -1,6 +1,6 @@
 //! Consume Text's issued semantic source-window evidence at Block entry.
 use super::*;
-use crate::text_layout::scope_alignment::{ScopeAlignmentFacts, SemanticWindowProof};
+use crate::text_layout::scope_alignment::{EntryFunding, SemanticWindowProof};
 use surgeist_text as text;
 
 /// The normal fitter and this adapter share endpoint allocation and the final
@@ -11,6 +11,7 @@ pub(super) fn observe<'input, Tree, M>(
     window: &EntryWindow,
     nodes: &[Tree::Node],
     constants: &Constants<Tree::Scalar>,
+    funding: Option<&EntryFunding<Tree::Scalar>>,
 ) -> LayoutResultOf<Tree::Node, SemanticWindowProof, Tree::Scalar, M>
 where
     Tree: Compute<'input, M>,
@@ -19,15 +20,18 @@ where
         .segment
         .as_ref()
         .ok_or_else(|| float_context::missing(container))?;
+    let error =
+        |error: text::Error| super::super::inline_run::text_run_error(container, error.into());
     let (run, associations, resources) = {
         let state = tree
             .text_computation()
             .ok_or_else(|| float_context::missing(container))?;
         let run = if window.nodes.is_empty() {
-            state.semantic_run(container, segment)
+            state.entry_semantic_run(container, segment, funding)
         } else {
-            state.run(container, nodes)
+            state.entry_run(container, nodes, funding)
         }
+        .map_err(error)?
         .ok_or_else(|| float_context::missing(container))?;
         (
             run,
@@ -35,15 +39,10 @@ where
             state.scope_resources.clone(),
         )
     };
-    let error =
-        |error: text::Error| super::super::inline_run::text_run_error(container, error.into());
     let prepared = &run.binding.prepared;
-    let limits = prepared
-        .captured_owner()
-        .and_then(|owner| owner.domain().scope_alignment_limits());
     let inspect = || -> text::Result<()> {
-        if let Some(limits) = limits {
-            resources.visit(limits, 1)?;
+        if let Some(funding) = funding {
+            funding.visit(1)?;
         }
         Ok(())
     };
@@ -176,24 +175,41 @@ where
     resources.observe_semantic(request).map_err(error)
 }
 
-pub(super) fn separates(proof: &SemanticWindowProof) -> bool {
+pub(super) fn separates<S: LayoutScalar>(
+    proof: &SemanticWindowProof,
+    funding: Option<&EntryFunding<S>>,
+) -> text::Result<bool> {
     let evidence = proof.evidence();
-    let edge = evidence.request().controls.iter().any(|control| {
-        control
+    let mut edge = false;
+    for control in &evidence.request().controls {
+        if let Some(funding) = funding {
+            funding.visit(1)?;
+        }
+        if control
             .boundary
             .as_ref()
             .is_some_and(|boundary| boundary.participates())
-    });
-    evidence.partitions().iter().any(|partition| {
+        {
+            edge = true;
+            break;
+        }
+    }
+    for partition in evidence.partitions() {
+        if let Some(funding) = funding {
+            funding.visit(1)?;
+        }
         let end = if partition.terminal().view().kind() == text::PreparedBreakKind::Forced {
             text::LineEnd::Forced
         } else {
             text::LineEnd::Paragraph
         };
-        crate::text_layout::fit::LineDisposition::participates(
+        if crate::text_layout::fit::LineDisposition::participates(
             end,
             partition.has_in_flow_content(),
             edge,
-        )
-    })
+        ) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }

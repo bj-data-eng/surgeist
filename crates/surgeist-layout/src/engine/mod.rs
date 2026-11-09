@@ -2,6 +2,7 @@ pub(crate) mod block_scope;
 pub(crate) mod containment;
 pub(crate) mod contracts;
 mod entry_sources;
+mod entry_staging;
 mod root;
 mod rounding;
 pub(crate) use rounding::FragmentAnchor;
@@ -669,7 +670,7 @@ fn run_session<Tree: LayoutTree>(
         }
         if rejected_bases.last() == Some(&basis)
             && (!session.has_text() || frames == session.text_basis())
-            && session.formatted_text_valid()
+            && session.formatted_text_valid(root)?
             && groups.as_ref().is_none_or(|groups| groups.is_reproduced())
         {
             return if session.has_text() {
@@ -693,7 +694,7 @@ fn run_session<Tree: LayoutTree>(
         }
         rejected_bases.push(basis);
         session.next_groups(&groups);
-        session.begin_text_pass(frames);
+        session.begin_text_pass(root, frames)?;
     }
 }
 

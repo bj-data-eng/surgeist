@@ -36,16 +36,23 @@ pub(super) fn inline_run_end<'input, Tree, M>(
     constants: &Constants<<Tree as Traverse>::Scalar>,
     mut index: usize,
     semantic_end: usize,
+    funding: Option<&crate::text_layout::scope_alignment::EntryFunding<Tree::Scalar>>,
 ) -> LayoutResultOf<<Tree as Traverse>::Node, usize, <Tree as Traverse>::Scalar, M>
 where
     Tree: Compute<'input, M>,
 {
-    let captured_end = tree.text_computation().and_then(|state| {
-        state
-            .run_starting(container, &children[index - 1..])
-            .map(|run| index - 1 + run.nodes().len())
-    });
+    let error = |error| text_run_error(container, crate::text_layout::fit::FitError::Text(error));
+    let captured_end = match tree.text_computation() {
+        Some(state) => state
+            .entry_run_starting(container, &children[index - 1..], funding)
+            .map_err(error)?
+            .map(|run| index - 1 + run.nodes().len()),
+        None => None,
+    };
     while index < captured_end.unwrap_or(children.len()).min(semantic_end) {
+        if let Some(funding) = funding {
+            funding.visit(1).map_err(error)?;
+        }
         if captured_end.is_none()
             && !crate::inline::continues_run(tree.layout_input(children[index]))
         {
@@ -254,7 +261,8 @@ impl VisibleInlineRunTransition {
         }
 
         if let (Some(flow), Some(item)) = (formatted.as_mut(), placement.formatted.take()) {
-            flow.items.push(item);
+            flow.push(item)
+                .map_err(|error| text_run_error(node, error.into()))?;
         }
 
         if !placement.lines.is_empty() {
@@ -907,7 +915,7 @@ where
     let mut text_progress = None;
     let mut formatted_item = None;
     let mut report = if let Some(binding) = text_binding {
-        let (frame, frames, reusable, associations, scope_alignments) = {
+        let (frame, frames, reusable, associations, scope_alignments, entry_funding) = {
             let state = tree
                 .text_computation()
                 .expect("capture-backed branch retains its session state");
@@ -917,6 +925,7 @@ where
                 state.reusable.clone(),
                 state.associations.clone(),
                 state.scope_resources.clone(),
+                state.entry_case_funding().cloned(),
             )
         };
         let canonical_exclusions = float_exclusions
@@ -961,6 +970,8 @@ where
                     formatted_mode,
                 )
             })
+            .transpose()
+            .map_err(|error| text_run_error(container, error.into()))?
             .unwrap_or_default();
         let group_snapshot = tree
             .group_computation()
@@ -1009,6 +1020,7 @@ where
         };
         let context = crate::text_layout::run::Context {
             scope_alignments,
+            entry_funding,
             orientation: text_orientation
                 .expect("the actual Text binding has its resolved orientation"),
             inline_baseline_context: constants.inline_baseline_context,
@@ -1125,20 +1137,25 @@ where
                 | crate::TextWrapStyle::AvoidShortLastLine
                 | crate::TextWrapStyle::Pretty
         ) && crate::layout_math::normal_available_size(available).is_some();
-        let encounters = std::cell::RefCell::new(super::float_text::Encounters::new(
-            float_events,
-            exclusions.clone(),
-            cursor_block,
-            if intrinsic_max {
-                super::floats::FloatInlineSpace::IntrinsicMaximum
-            } else {
-                super::floats::FloatInlineSpace::Finite
-            },
-            quality_replay
-                || tail == crate::text_layout::fit::TailContext::CompleteBlock
-                    && crate::layout_math::normal_available_size(available).is_some(),
-            quality_replay,
-        ));
+        let encounters = std::cell::RefCell::new(
+            super::float_text::Encounters::new(
+                float_events,
+                exclusions
+                    .try_clone()
+                    .map_err(|error| text_run_error(container, error.into()))?,
+                cursor_block,
+                if intrinsic_max {
+                    super::floats::FloatInlineSpace::IntrinsicMaximum
+                } else {
+                    super::floats::FloatInlineSpace::Finite
+                },
+                quality_replay
+                    || tail == crate::text_layout::fit::TailContext::CompleteBlock
+                        && crate::layout_math::normal_available_size(available).is_some(),
+                quality_replay,
+            )
+            .map_err(|error| text_run_error(container, error))?,
+        );
         let result = crate::text_layout::run::layout(
             text_run.as_ref().expect("actual admitted native run"),
             &associations,
@@ -1180,7 +1197,7 @@ where
                         encounters
                             .borrow()
                             .band()
-                            .query_rectangular_line_band(start, end)
+                            .query_rectangular_line_band(start, end)?
                     };
                     let inset_inline = constants
                         .flow_axes
@@ -1234,29 +1251,31 @@ where
                         Err(crate::text_layout::fit::FitError::Dependency)
                     }
                 },
-                accept: || {
-                    encounters.borrow_mut().accept();
-                    Ok(())
-                },
+                accept: || encounters.borrow_mut().accept(),
             },
         );
         if let Some(error) = provider_error.borrow_mut().take() {
             return Err(error);
         }
-        let output = result.map_err(|error| text_run_error(container, error))?;
-        formatted_item = tree.text_computation().and_then(|state| {
-            state.formatted_merge_run(
-                container,
-                run,
-                &text_run
-                    .as_ref()
-                    .expect("actual native source segment")
-                    .segment,
-                input,
-                formatted_mode,
-                output.formatted.clone(),
-            )
-        });
+        let mut output = result.map_err(|error| text_run_error(container, error))?;
+        formatted_item = tree
+            .text_computation()
+            .map(|state| {
+                state.formatted_merge_run(
+                    container,
+                    run,
+                    &text_run
+                        .as_ref()
+                        .expect("actual native source segment")
+                        .segment,
+                    input,
+                    formatted_mode,
+                    core::mem::take(&mut output.formatted),
+                )
+            })
+            .transpose()
+            .map_err(|error| text_run_error(container, error.into()))?
+            .flatten();
         let accepted = encounters.into_inner().finish();
         for child in accepted.children {
             tree.accept_float_child(&child.packet)?;
@@ -1357,37 +1376,31 @@ where
         let result = layout_mixed_inline_run_with_formatted_observation(
             numeric_input,
             |block_start, block_end| {
+                if let Some(error) = provider_error.borrow_mut().take() {
+                    return Err(error);
+                }
                 let query_block_start = cursor_block + block_start;
                 let query_block_end = cursor_block + block_end;
-                let band = if !provider_enabled || provider_error.borrow().is_some() {
-                    float_exclusions.query_rectangular_line_band(query_block_start, query_block_end)
+                let query = if !provider_enabled {
+                    float_exclusions
+                        .query_rectangular_line_band(query_block_start, query_block_end)
+                        .map_err(|error| text_run_error(container, error.into()))
                 } else {
-                    match float_exclusions.query_provider_band(
+                    float_exclusions.query_provider_band(
                         &**numeric_tree.borrow(),
                         container,
                         query_block_start,
                         query_block_end,
-                    ) {
-                        Ok(band) => band,
-                        Err(error) => {
-                            *provider_error.borrow_mut() = Some(error);
-                            FloatBand {
-                                inline_start: float_exclusions.containing_inline_start,
-                                inline_end: float_exclusions.containing_inline_end,
-                                next_transition: None,
-                                #[cfg(test)]
-                                evaluated: 0,
-                            }
-                        }
-                    }
+                    )
                 };
-                LogicalLineBandQueryResultOf {
+                let band = query?;
+                Ok(LogicalLineBandQueryResultOf {
                     inline_start: band.inline_start - logical_content_box_inset.inline_start,
                     inline_end: band.inline_end - logical_content_box_inset.inline_start,
                     next_transition: band
                         .next_transition
                         .map(|transition| transition - cursor_block),
-                }
+                })
             },
             |block, clear| {
                 float_exclusions.clearance_for_line_intent(cursor_block + block, clear)
@@ -1421,7 +1434,12 @@ where
         if let Some(error) = provider_error.borrow_mut().take() {
             return Err(error);
         }
-        result.map_err(|error| crate::inline_wrapping::numeric_wrapping_error(container, error))?
+        result.map_err(|error| match error {
+            crate::inline::NumericRunError::Numeric(error) => {
+                crate::inline_wrapping::numeric_wrapping_error(container, error)
+            }
+            crate::inline::NumericRunError::Band(error) => error,
+        })?
     };
     // Native outflows without a Text occurrence use the accepted run entry.
     // Their static position consumes adjoining displacement only with an actual
@@ -1447,10 +1465,17 @@ where
     }
     if text_output.is_none() {
         if let Some(lines) = &report.formatted_lines {
-            formatted_item = Some(crate::text_layout::formatted::FormattedFlowItem::Numeric(
-                run.to_vec(),
-                lines.clone(),
-            ));
+            let funding = tree
+                .text_computation()
+                .and_then(|state| state.entry_case_funding().cloned());
+            formatted_item = Some(
+                crate::text_layout::formatted::FormattedFlowItem::numeric(
+                    run,
+                    lines,
+                    funding.as_ref(),
+                )
+                .map_err(|error| text_run_error(container, error.into()))?,
+            );
         }
         report.hyphenation_state = hyphenation_state;
         if crate::layout_math::normal_available_size(available_inline_extent).is_some()

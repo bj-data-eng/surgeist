@@ -73,7 +73,7 @@ where
         &[surgeist_text::LineBoxStrut],
     ) -> Result<LineAllocations, FitError>,
     R: FnMut(&FinalizedLine, EncounterReplay) -> Result<Vec<EncounterBasis>, FitError>,
-    X: FnMut(EncounterReset),
+    X: FnMut(EncounterReset) -> Result<(), FitError>,
     Accept: FnMut() -> Result<(), FitError>,
     Clear: FnMut(f64, &LineSelectionRequest) -> Result<Option<f64>, FitError>,
 {
@@ -104,7 +104,7 @@ where
             result,
         )?;
         let lines = &result[entry.prefix_len..];
-        observations.record(lines);
+        observations.record(lines, self.input.entry_funding)?;
         let SequenceOutcome::Complete(outgoing) = outcome else {
             return Ok(None);
         };
@@ -124,7 +124,7 @@ where
 pub(super) fn fit<B, C, A, R, X, Accept, Clear>(
     runner: &mut SequenceRunner<'_, B, C, A, R, X, Accept, Clear>,
     initial: SequenceEntry,
-    mut checkpoint: impl FnMut(),
+    mut checkpoint: impl FnMut() -> Result<(), FitError>,
 ) -> Result<Vec<FittedLine>, FitError>
 where
     B: FnMut(f64, f64) -> Result<Band, FitError>,
@@ -136,7 +136,7 @@ where
         &[surgeist_text::LineBoxStrut],
     ) -> Result<LineAllocations, FitError>,
     R: FnMut(&FinalizedLine, EncounterReplay) -> Result<Vec<EncounterBasis>, FitError>,
-    X: FnMut(EncounterReset),
+    X: FnMut(EncounterReset) -> Result<(), FitError>,
     Accept: FnMut() -> Result<(), FitError>,
     Clear: FnMut(f64, &LineSelectionRequest) -> Result<Option<f64>, FitError>,
 {
@@ -193,17 +193,17 @@ where
     };
     let prefix = &original[final_start..final_start + penultimate];
     let mut observations = Observations::default();
-    observations.record(&result);
+    observations.record(&result, runner.input.entry_funding)?;
 
     // One rolling ordinary replay constructs the actual incoming float ledger
     // and complete state of the final group. No earlier group is walked per
     // target, nor is an entry fabricated from its ending source offset.
-    (runner.environment.reset)(EncounterReset::Sequence);
+    (runner.environment.reset)(EncounterReset::Sequence)?;
     result.clear();
     let mut entry = initial.clone();
     let mut ordinary_valid = true;
     for reference in &references[..references.len() - 1] {
-        checkpoint();
+        checkpoint()?;
         let start = entry.prefix_len;
         let Some(trial) = runner.group(&entry, reference, None, &mut result, &mut observations)?
         else {
@@ -219,7 +219,7 @@ where
     }
     let mut selected_goal = None;
     if ordinary_valid && entry.prefix_len == final_start {
-        checkpoint();
+        checkpoint()?;
         if let Some(winner) = choose_tail(reference_pair, |goal| {
             runner.tail_group(
                 TailAttempt {
@@ -254,12 +254,12 @@ where
 
     if let Some(goal) = selected_goal {
         let chosen = result.iter().map(LineProof::of).collect::<Vec<_>>();
-        (runner.environment.reset)(EncounterReset::Sequence);
+        (runner.environment.reset)(EncounterReset::Sequence)?;
         result.clear();
         let mut entry = initial.clone();
         let mut valid = true;
         for (index, reference) in references.iter().enumerate() {
-            checkpoint();
+            checkpoint()?;
             let outgoing = if index + 1 == references.len() {
                 runner
                     .tail_group(
@@ -299,6 +299,6 @@ where
         return Err(FitError::InvalidTailBasis);
     }
     attach(&mut result, Some(target), selected_goal);
-    observations.attach(&mut result);
+    observations.attach(&mut result, runner.input.entry_funding)?;
     Ok(result)
 }

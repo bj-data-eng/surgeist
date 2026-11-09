@@ -80,8 +80,7 @@ fn framed<S: LayoutScalar>() {
         .unwrap()
         .completed
         .as_ref()
-        .unwrap()
-        .clone();
+        .unwrap();
     assert_eq!(root.node, 0);
     assert_eq!(root.ledger.len(), 1);
     let resident_request = normal_request(40.0, 10.0, root.output.size);
@@ -94,11 +93,12 @@ fn framed<S: LayoutScalar>() {
         S::from_f64(40.0),
         LogicalEdgesOf::new(S::ZERO, S::ZERO, S::ZERO, S::ZERO),
     );
-    resident_ledger.inherit_into_child(&resident_frame);
+    resident_ledger.inherit_into_child(&resident_frame).unwrap();
     owner
         .block_float_state()
         .unwrap()
-        .push(2, resident_request, resident_frame, None);
+        .push(2, resident_request, resident_frame, None)
+        .unwrap();
     let resident = owner
         .block_float_state()
         .unwrap()

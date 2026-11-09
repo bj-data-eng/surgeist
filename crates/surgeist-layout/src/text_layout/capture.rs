@@ -334,10 +334,31 @@ impl<Node: Copy + Eq> ScopeAssociations<Node> {
         paragraphs: &'input [TextParagraphBinding<Node>],
         row: &NativeRun,
     ) -> super::AdmittedRun<'input, Node> {
+        match self.try_admitted_run(paragraphs, row, || Ok::<(), core::convert::Infallible>(())) {
+            Ok(run) => run,
+            Err(never) => match never {},
+        }
+    }
+
+    pub(crate) fn try_admitted_run<'input, E>(
+        &self,
+        paragraphs: &'input [TextParagraphBinding<Node>],
+        row: &NativeRun,
+        mut inspect: impl FnMut() -> Result<(), E>,
+    ) -> Result<super::AdmittedRun<'input, Node>, E> {
+        let mut owned = false;
+        for actual in &self.runs {
+            inspect()?;
+            if std::ptr::eq(actual, row) {
+                owned = true;
+                break;
+            }
+        }
         assert!(
-            self.runs.iter().any(|actual| std::ptr::eq(actual, row)),
+            owned,
             "a native run is borrowed from this admitted inventory"
         );
+        inspect()?;
         let binding = &paragraphs[row.paragraph];
         assert!(
             binding.prepared == self.paragraphs[row.paragraph].prepared
@@ -345,14 +366,14 @@ impl<Node: Copy + Eq> ScopeAssociations<Node> {
                 && binding.inline_box_fragments == self.inline_boxes.state(row.paragraph).demand(),
             "the native run uses its original binding family"
         );
-        super::AdmittedRun {
+        Ok(super::AdmittedRun {
             binding_index: row.paragraph,
             binding,
             inventory: row.nodes.clone(),
             native: row.children.clone(),
             segment: row.segment.clone(),
             inline_boxes: self.inline_boxes.state(row.paragraph),
-        }
+        })
     }
 
     pub(crate) fn semantic_slot(

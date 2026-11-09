@@ -262,15 +262,21 @@ fn lane<S: LayoutScalar>() {
         S::from_f64(100.0),
         crate::geometry::LogicalEdgesOf::new(S::ZERO, S::ZERO, S::ZERO, S::ZERO),
     );
+    let failure = |error| {
+        super::super::inline_run::text_run_error::<u32, S, core::convert::Infallible>(0, error)
+    };
     let mut encounters =
-        Encounters::new(events, base, S::ZERO, FloatInlineSpace::Finite, true, true);
+        Encounters::new(events, base, S::ZERO, FloatInlineSpace::Finite, true, true)
+            .map_err(failure)
+            .unwrap();
     let width = |encounters: &Encounters<u32, S>, block: f64| {
         let band = encounters
             .band()
-            .query_rectangular_line_band(S::from_f64(block), S::from_f64(block + 5.0));
+            .query_rectangular_line_band(S::from_f64(block), S::from_f64(block + 5.0))
+            .unwrap();
         band.inline_end - band.inline_start
     };
-    encounters.checkpoint_group();
+    encounters.checkpoint_group().map_err(failure).unwrap();
     let first_basis = encounters
         .replay::<core::convert::Infallible>(0, &first, replay_at(0.0))
         .unwrap();
@@ -282,9 +288,9 @@ fn lane<S: LayoutScalar>() {
         encounters.replay_event_visits, 1,
         "the later group's event is not scanned"
     );
-    encounters.accept();
+    encounters.accept().map_err(failure).unwrap();
     assert_eq!(width(&encounters, 0.0), S::from_f64(90.0));
-    encounters.checkpoint_group();
+    encounters.checkpoint_group().map_err(failure).unwrap();
     let prefix = encounters.accepted[0]
         .as_ref()
         .unwrap()
@@ -307,14 +313,14 @@ fn lane<S: LayoutScalar>() {
         "accepted earlier events are not rescanned"
     );
     assert_eq!(width(&encounters, 30.0), S::from_f64(80.0));
-    encounters.reset_candidate();
+    encounters.reset_candidate().map_err(failure).unwrap();
     assert!(encounters.accepted[1].is_none());
     assert!(encounters.tentative[1].is_none());
     assert_eq!(width(&encounters, 30.0), S::from_f64(100.0));
     encounters
         .replay::<core::convert::Infallible>(0, &second, replay_at(30.0))
         .unwrap();
-    encounters.accept();
+    encounters.accept().map_err(failure).unwrap();
     assert_eq!(
         encounters.accepted[1]
             .as_ref()
@@ -326,7 +332,7 @@ fn lane<S: LayoutScalar>() {
             .block,
         S::from_f64(30.0)
     );
-    encounters.restart_group();
+    encounters.restart_group().map_err(failure).unwrap();
     assert!(encounters.accepted[1].is_none());
     let retained = encounters.accepted[0]
         .as_ref()
@@ -341,7 +347,7 @@ fn lane<S: LayoutScalar>() {
     let winner = encounters
         .replay::<core::convert::Infallible>(0, &second, replay_at(10.0))
         .unwrap();
-    encounters.accept();
+    encounters.accept().map_err(failure).unwrap();
     assert_eq!(
         encounters.accepted[1]
             .as_ref()
@@ -356,7 +362,7 @@ fn lane<S: LayoutScalar>() {
 
     // The final whole replay starts from the true incoming ledger and produces
     // the same selected encounter basis; discarded trials publish no packets.
-    encounters.restart_sequence();
+    encounters.restart_sequence().map_err(failure).unwrap();
     assert!(encounters.accepted.iter().all(Option::is_none));
     assert_eq!(width(&encounters, 0.0), S::from_f64(100.0));
     assert_eq!(
@@ -365,14 +371,14 @@ fn lane<S: LayoutScalar>() {
             .unwrap(),
         first_basis
     );
-    encounters.accept();
+    encounters.accept().map_err(failure).unwrap();
     assert_eq!(
         encounters
             .replay::<core::convert::Infallible>(0, &second, replay_at(10.0))
             .unwrap(),
         winner
     );
-    encounters.accept();
+    encounters.accept().map_err(failure).unwrap();
     let output = encounters.finish();
     assert_eq!(
         output

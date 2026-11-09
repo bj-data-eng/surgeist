@@ -492,6 +492,7 @@ pub(crate) struct CanonicalLineFrame<S: LayoutScalar> {
 
 pub(crate) struct Context<Node, S: LayoutScalar> {
     pub scope_alignments: super::scope_alignment::ScopeAlignmentResources<S>,
+    pub entry_funding: Option<super::scope_alignment::EntryFunding<S>>,
     pub orientation: LineOrientation,
     pub inline_baseline_context: crate::InlineBaselineContext,
     pub groups: crate::group_alignment::Snapshot,
@@ -1146,8 +1147,8 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
         impl FnMut(f64, &surgeist_text::LineSelectionRequest) -> Result<Option<f64>, FitError>,
         impl FnMut(&FinalizedLine, fit::EncounterReplay) -> Result<Vec<fit::EncounterBasis>, FitError>,
         impl FnMut() -> Result<(), FitError>,
-        impl FnMut(fit::EncounterReset),
-        impl FnMut(),
+        impl FnMut(fit::EncounterReset) -> Result<(), FitError>,
+        impl FnMut() -> Result<(), FitError>,
     >,
 ) -> Result<Output<Node, S>, FitError> {
     let binding = run.binding;
@@ -1264,6 +1265,10 @@ pub(crate) fn layout<Node: Copy + Eq, S: LayoutScalar>(
         .map(|projection| projection as &fit::WrappingClassifier<'_>);
     let lines = fit::fit(
         fit::FitInput {
+            entry_funding: context
+                .entry_funding
+                .as_ref()
+                .map(super::scope_alignment::EntryFunding::as_ref),
             adjoining_displacement: context.adjoining_displacement.to_f64(),
             groups: context.groups.clone(),
             wrapping,
@@ -1912,12 +1917,23 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
     let mut nonformatted_controls = Vec::new();
     let mut outflows = Vec::new();
     let mut formatted = super::formatted::FormattedTailUses::default();
-    let observe_formatted = context.formatted.observes()
-        || lines.iter().any(|line| {
-            line.role_uses
-                .iter()
-                .any(|used| used.demanded_assignment().is_some())
-        });
+    let entry_funding = context
+        .entry_funding
+        .as_ref()
+        .map(super::scope_alignment::EntryFunding::as_ref);
+    let mut observe_formatted = context.formatted.observes();
+    if !observe_formatted {
+        'roles: for line in &lines {
+            super::roles::visit(entry_funding, 1)?;
+            for used in line.role_uses.iter() {
+                super::roles::visit(entry_funding, 1)?;
+                if used.demanded_assignment().is_some() {
+                    observe_formatted = true;
+                    break 'roles;
+                }
+            }
+        }
+    }
     for (entry_index, line) in lines.into_iter().enumerate() {
         natural_advances.push(line.natural_advance);
         let line_index = report.line_bands.len();
@@ -1943,22 +1959,32 @@ fn output<Node: Copy + Eq, S: LayoutScalar>(
         }
         box_assignments.push(line.boxes.clone());
         box_uses.extend(line.box_uses);
-        for used in line.role_uses {
-            if let Some(demand) = used.demanded_assignment()
-                && !formatted.demands.contains(demand)
-            {
-                formatted.demands.push(demand.clone());
+        for used in line.role_uses.into_rows() {
+            super::roles::visit(entry_funding, 1)?;
+            if let Some(demand) = used.demanded_assignment() {
+                let mut seen = false;
+                for existing in &formatted.demands {
+                    super::roles::visit(entry_funding, 1)?;
+                    if existing == demand {
+                        seen = true;
+                        break;
+                    }
+                }
+                if !seen {
+                    formatted.push_demand(demand.clone(), entry_funding)?;
+                }
             }
-            formatted.roles.push(used);
+            formatted.push_role(used, entry_funding)?;
         }
         if observe_formatted && is_formatted {
             let selected = line.finalized.selected_line();
-            formatted
-                .accepted
-                .push(super::formatted::FormattedTailEndpoint::new(
+            formatted.push_accepted(
+                super::formatted::FormattedTailEndpoint::new(
                     selected.request().end.clone(),
                     selected.request().alternative.clone(),
-                ));
+                ),
+                entry_funding,
+            )?;
         }
         if is_formatted
             && context.tail != fit::TailContext::Unrestricted

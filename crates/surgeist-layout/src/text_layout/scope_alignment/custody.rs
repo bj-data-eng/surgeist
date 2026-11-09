@@ -20,6 +20,11 @@ pub(crate) struct ScopeCensus {
     pub(super) bytes: usize,
 }
 impl ScopeCensus {
+    #[cfg(test)]
+    pub(crate) fn payload_bytes(self) -> usize {
+        self.bytes
+    }
+
     pub(super) fn add(self, other: Self) -> surgeist_text::Result<Self> {
         Ok(Self {
             records: self
@@ -91,6 +96,11 @@ impl LiveScopeResources {
 pub(crate) struct ScopeLease {
     state: Arc<LiveScopeResources>,
     census: ScopeCensus,
+}
+impl ScopeLease {
+    pub(super) fn retained(&self) -> ScopeCensus {
+        self.census
+    }
 }
 impl Drop for ScopeLease {
     fn drop(&mut self) {

@@ -16,6 +16,19 @@ pub(crate) struct Fixture {
 }
 
 impl Fixture {
+    pub(crate) fn with_scope_limits(value: &str, limits: text::ScopeAlignmentLimits) -> Self {
+        let mut input = Self::capture_input(
+            value,
+            (0, value.encode_utf16().count()),
+            text::WhiteSpace::Collapse,
+            false,
+            false,
+            false,
+        );
+        input.scope_alignment_limits = Some(limits);
+        Self::prepare_input(input, false)
+    }
+
     pub(crate) fn new(
         value: &str,
         scope: (usize, usize),

@@ -33,7 +33,7 @@ pub(super) struct LineProof {
     disposition: LineDisposition,
     boxes: Option<BoxAssignment>,
     box_uses: Vec<super::super::boxes::BoxTrialUse>,
-    roles: Vec<RoleUse>,
+    roles: RoleUseRows,
     first: bool,
     line_box_end: crate::line_box::LineBoxContext,
     zone: ZoneBasis,
@@ -98,29 +98,51 @@ pub(super) struct GroupProof {
 pub(super) struct Observations {
     roles: Vec<RoleUse>,
     boxes: Vec<super::super::boxes::BoxTrialUse>,
+    roles_backing: super::super::scope_alignment::EntryBacking,
 }
 
 impl Observations {
-    pub(super) fn role(&mut self, used: &RoleUse) {
+    pub(super) fn role(
+        &mut self,
+        used: &RoleUse,
+        funding: Option<super::super::scope_alignment::EntryFundingRef<'_>>,
+    ) -> Result<(), FitError> {
+        self.roles_backing
+            .reserve_push_ref(&mut self.roles, funding)?;
         self.roles.push(used.clone());
+        Ok(())
     }
     pub(super) fn box_use(&mut self, used: &super::super::boxes::BoxTrialUse) {
         self.boxes.push(used.clone());
     }
-    pub(super) fn record(&mut self, lines: &[FittedLine]) {
+    pub(super) fn record(
+        &mut self,
+        lines: &[FittedLine],
+        funding: Option<super::super::scope_alignment::EntryFundingRef<'_>>,
+    ) -> Result<(), FitError> {
         // Repeated authentic observations are harmless. Global membership
         // scans would make unrelated earlier groups part of every local trial.
-        self.roles
-            .extend(lines.iter().flat_map(|line| line.role_uses.iter().cloned()));
+        for line in lines {
+            super::super::roles::visit(funding, 1)?;
+            for used in line.role_uses.iter() {
+                self.role(used, funding)?;
+            }
+        }
         self.boxes
             .extend(lines.iter().flat_map(|line| line.box_uses.iter().cloned()));
+        Ok(())
     }
 
-    pub(super) fn attach(self, lines: &mut [FittedLine]) {
+    pub(super) fn attach(
+        self,
+        lines: &mut [FittedLine],
+        funding: Option<super::super::scope_alignment::EntryFundingRef<'_>>,
+    ) -> Result<(), FitError> {
         if let Some(last) = lines.last_mut() {
-            last.role_uses.extend(self.roles);
+            super::super::roles::append_rows(&mut last.role_uses, self.roles, funding)?;
             last.box_uses.extend(self.boxes);
         }
+        Ok(())
     }
 }
 
@@ -247,7 +269,7 @@ where
         &[surgeist_text::LineBoxStrut],
     ) -> Result<LineAllocations, FitError>,
     R: FnMut(&FinalizedLine, EncounterReplay) -> Result<Vec<EncounterBasis>, FitError>,
-    X: FnMut(EncounterReset),
+    X: FnMut(EncounterReset) -> Result<(), FitError>,
     Accept: FnMut() -> Result<(), FitError>,
     Clear: FnMut(f64, &LineSelectionRequest) -> Result<Option<f64>, FitError>,
 {
@@ -273,7 +295,7 @@ where
             },
             result,
         )?;
-        observations.record(&result[entry.prefix_len..]);
+        observations.record(&result[entry.prefix_len..], self.input.entry_funding)?;
         let SequenceOutcome::Complete(outgoing) = outcome else {
             return Ok(None);
         };
@@ -285,15 +307,15 @@ where
         initial: &SequenceEntry,
         references: &[GroupReference],
         goals: &[Option<BalanceGoal>],
-        mut checkpoint: impl FnMut(),
+        mut checkpoint: impl FnMut() -> Result<(), FitError>,
         result: &mut Vec<FittedLine>,
         observations: &mut Observations,
     ) -> Result<bool, FitError> {
-        (self.environment.reset)(EncounterReset::Sequence);
+        (self.environment.reset)(EncounterReset::Sequence)?;
         result.clear();
         let mut entry = initial.clone();
         for (reference, goal) in references.iter().zip(goals) {
-            checkpoint();
+            checkpoint()?;
             let Some(trial) = self.group(&entry, reference, *goal, result, observations)? else {
                 return Ok(false);
             };
@@ -306,7 +328,7 @@ where
 pub(super) fn fit<B, C, A, R, X, Accept, Clear>(
     runner: &mut SequenceRunner<'_, B, C, A, R, X, Accept, Clear>,
     initial: SequenceEntry,
-    mut checkpoint: impl FnMut(),
+    mut checkpoint: impl FnMut() -> Result<(), FitError>,
 ) -> Result<Vec<FittedLine>, FitError>
 where
     B: FnMut(f64, f64) -> Result<Band, FitError>,
@@ -318,7 +340,7 @@ where
         &[surgeist_text::LineBoxStrut],
     ) -> Result<LineAllocations, FitError>,
     R: FnMut(&FinalizedLine, EncounterReplay) -> Result<Vec<EncounterBasis>, FitError>,
-    X: FnMut(EncounterReset),
+    X: FnMut(EncounterReset) -> Result<(), FitError>,
     Accept: FnMut() -> Result<(), FitError>,
     Clear: FnMut(f64, &LineSelectionRequest) -> Result<Option<f64>, FitError>,
 {
@@ -342,15 +364,15 @@ where
     let references = references(&result, &runner.opportunities)?;
     let original: Vec<_> = result.iter().map(LineProof::of).collect();
     let mut observations = Observations::default();
-    observations.record(&result);
-    (runner.environment.reset)(EncounterReset::Sequence);
+    observations.record(&result, runner.input.entry_funding)?;
+    (runner.environment.reset)(EncounterReset::Sequence)?;
     result.clear();
     let mut entry = initial.clone();
     let mut goals = Vec::new();
     let mut improved = false;
     let mut admissible = true;
     for reference in &references {
-        checkpoint();
+        checkpoint()?;
         let auto = runner.group(&entry, reference, None, &mut result, &mut observations)?;
         let eligible = (2..=10).contains(&reference.basis.count);
         let winner = if eligible {
@@ -434,7 +456,7 @@ where
     for line in &mut result {
         line.program = Some(Arc::clone(&basis));
     }
-    observations.attach(&mut result);
+    observations.attach(&mut result, runner.input.entry_funding)?;
     Ok(result)
 }
 
@@ -495,6 +517,7 @@ mod tests {
         );
         let lines = super::super::fit(
             FitInput {
+                entry_funding: None,
                 adjoining_displacement: 0.0,
                 inline_boxes: None,
                 groups: crate::group_alignment::Snapshot::default(),
@@ -555,8 +578,8 @@ mod tests {
             EncounterCallbacks {
                 replay: |_: &FinalizedLine, _: EncounterReplay| Ok(Vec::new()),
                 accept: || Ok(()),
-                reset: |_| {},
-                checkpoint_group: || {},
+                reset: |_| Ok(()),
+                checkpoint_group: || Ok(()),
             },
         )
         .unwrap_or_else(|_| panic!("real prepared forced groups fit"));
