@@ -1,6 +1,8 @@
 //! Captured scope facts reach real Layout geometry. Ahem's retained tables and
 //! CSS2 10.8.1 aligned subtrees supply the independent metric/edge expectations.
 use crate::test_support::readback::{self, Phase};
+#[path = "scope_alignment/census_failure_usage.rs"]
+mod census_failure_usage;
 #[path = "scope_alignment/resource_comparisons.rs"]
 mod resource_comparisons;
 #[path = "scope_alignment/wrapping_continuation.rs"]
