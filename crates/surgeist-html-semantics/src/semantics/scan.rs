@@ -61,14 +61,14 @@ pub(super) fn namespace_is_with<E>(
 /// The refusals a fact constructor's validation scan can report. Each
 /// constructor keeps its own error type and its own spelling of the work refusal.
 pub(crate) trait ScanError: Sized {
-    /// A work total or envelope that does not fit in `usize`.
+    /// A work total or envelope that does not fit in `usize`, or a ledger allocation that
+    /// failed while the constructor's scopes were created.
     fn representation_exhausted() -> Self;
     /// The validation work limit was exceeded: `required` is the total that was refused.
     fn work_exceeded(limit: usize, required: usize) -> Self;
     /// The capture refused a node lookup.
     fn capture(error: HtmlCaptureError) -> Self;
-    /// The ledger that enforces the limits reported a state its own sequencing rules out, or the
-    /// operation's scope could not be created.
+    /// The ledger that enforces the limits reported a state its own sequencing rules out.
     fn ledger_state() -> Self;
 }
 
@@ -593,5 +593,13 @@ mod tests {
             Refusal::State
         );
         meter.charge(1).unwrap();
+    }
+
+    #[test]
+    fn a_failed_ledger_allocation_is_the_constructors_representation_exhaustion() {
+        assert_eq!(
+            ScanMeter::<Refusal>::refusal_of(Error::Allocation),
+            Refusal::Exhausted
+        );
     }
 }

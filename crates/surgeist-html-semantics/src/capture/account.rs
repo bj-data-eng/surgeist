@@ -255,6 +255,8 @@ impl CaptureAccount {
     ) -> Result<HtmlCaptureUsage, HtmlCaptureError> {
         let (mut batch, length) = charges.counts();
         let mut length = length;
+        // An operation that retains element value bytes charges at most four counts, so the
+        // batch has a free slot; a full batch is a state the capture's own sequencing rules out.
         if charges.element_value_bytes != 0 {
             let slot = batch.get_mut(length).ok_or(HtmlCaptureError::LedgerState)?;
             *slot = Change::Acquire(
