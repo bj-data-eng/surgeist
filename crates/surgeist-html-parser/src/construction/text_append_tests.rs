@@ -750,13 +750,13 @@ pub(crate) fn observed_capacity()
 fn a_refused_record_after_a_text_reserve_leaves_the_ticket_releasable_for_what_was_admitted() {
     let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
     let (mut session, root, node) = aggregate(&mut c);
+    let mut input = Some(owned_text(&mut c, &[0xd800; 300]));
     let held = c
         .usage()
         .resource(HtmlParseResource::ManagedCapacityBytes)
         .current;
     c.test_limit(HtmlParseResource::ManagedCapacityBytes, held + 16_000);
     c.overshoot_next_capacity_record(1_000_000);
-    let mut input = Some(owned_text(&mut c, &[0xd800; 300]));
     assert!(matches!(
         session
             .insert_text(&mut c, &root, None, &mut input, None)
