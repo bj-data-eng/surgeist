@@ -307,6 +307,17 @@ still active at closing are excluded; finish an attempt's phases before ending
 its checkpoint to include all of them. Profiling off still exposes exact interval
 usage, without reading a clock or retaining observation counters/events.
 
+## Charge through a caller's scope
+
+A component that owns a bounded operation takes a `Charge` instead of an
+operation and a scope. `charge` applies one ordered batch, all or nothing, and
+`record_largest` records the largest value a gauge resource reached. Both return
+the implementation's `Stop`. `Operation::charge_at` and
+`SharedOperation::charge_at` give the stock implementations, which charge a scope
+of the operation and report the ledger `Error`. A consumer with its own admission
+rules implements the trait over its accounting and maps the refusal into its own
+stop type. Dispatch is static and each call carries a whole batch.
+
 ## Share short accounting calls
 
 `share()` moves an operation into `SharedOperation`, a cloneable participant with
