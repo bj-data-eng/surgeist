@@ -519,10 +519,16 @@ impl<W: Dimension, R: Dimension> Operation<W, R> {
     /// only phases that have ended. This is not an interval-peak calculation.
     pub fn snapshot(&self) -> Result<Option<Report<W, R>>, Error<W, R>> {
         self.healthy()?;
-        self.profile
+        let snapshot = self
+            .profile
             .first()
             .map(|profile| profile.snapshot(self.scopes.iter().map(|entry| entry.usage)))
-            .transpose()
+            .transpose();
+        // A defect is latched; an allocation failure leaves the operation usable.
+        match snapshot {
+            Err(Error::Defect(defect)) => Err(self.latch(defect)),
+            other => other,
+        }
     }
 
     /// Consumes the ledger and returns its structured report if enabled.
