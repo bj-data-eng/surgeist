@@ -138,7 +138,9 @@ impl ConstructionOwner {
                 .map_err(|e| construction_error(control, e))?
             {
                 let description = action.description();
-                control.admit_attribute_work(description.work())?;
+                description
+                    .charge(0, control)
+                    .map_err(|error| charge_fault(control, error))?;
                 let report = matches!(
                     description,
                     HtmlConstructionAttributeDescription::PrepareAllocationReport(_)
@@ -288,19 +290,15 @@ impl ConstructionOwner {
                     break;
                 };
                 let description = action.description();
-                let mut work = description.work();
                 // The original reserve policy below admits the same actual
                 // allocator provider once; it is not a second provider call.
-                if matches!(
+                let prepaid = u64::from(matches!(
                     description,
                     HtmlConstructionAttributeDescription::ReservePlan { .. }
-                ) {
-                    let Some(calls) = work.provider_calls.checked_sub(1) else {
-                        return Err(plan_below_charge(control));
-                    };
-                    work.provider_calls = calls;
-                }
-                control.admit_attribute_work(work)?;
+                ));
+                description
+                    .charge(prepaid, control)
+                    .map_err(|error| charge_fault(control, error))?;
                 let prior = description.prior_index();
                 // A plan reservation doubles the plan, up to the candidate count it will hold, so
                 // planning N names requests O(log N) reallocations. The capacity depends only on
@@ -412,7 +410,9 @@ pub(in crate::construction) fn prepare_attribute_slot<'a>(
             break;
         };
         let description = action.description();
-        control.admit_attribute_work(description.work())?;
+        description
+            .charge(0, control)
+            .map_err(|error| charge_fault(control, error))?;
         let unique = matches!(
             description,
             HtmlConstructionAttributeDescription::UniqueBacking(_)

@@ -1,4 +1,4 @@
-use crate::html::support::string_sanitization as string_policy;
+use crate::html::support::{Recorder, string_sanitization as string_policy};
 use surgeist_html::{
     attributes::HtmlInputType,
     elements::{
@@ -228,8 +228,9 @@ fn checkbox_cloning_copies_four_flags_without_user_validity_or_kind_overwrite() 
 #[test]
 fn checkbox_value_finish_never_requests_text_cursor_effects() {
     let mut comparison = HtmlInputValueComparisonCursor::new(&[65], &[66]);
-    while comparison.required_work().is_some() {
-        comparison.advance();
+    let mut meter = Recorder::default();
+    while comparison.result().is_none() {
+        comparison.advance(&mut meter).unwrap();
     }
     assert_eq!(
         input_value_setter_finish(

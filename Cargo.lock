@@ -4993,6 +4993,7 @@ name = "surgeist-html-semantics"
 version = "0.1.0"
 dependencies = [
  "surgeist-html",
+ "surgeist-ledger",
 ]
 
 [[package]]

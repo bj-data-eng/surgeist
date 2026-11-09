@@ -9,18 +9,17 @@
 //! outside that accounting.
 
 use super::*;
+use surgeist_html::accounting::{HtmlChange, HtmlResource, HtmlWork};
 use surgeist_html::bounded::{
     numeric::{HtmlIntegerUnitStepError, HtmlNumericMaterializationError},
-    temporal::{
-        HtmlTimeElementInterpretation, HtmlTimeElementInterpretationActionKind,
-        HtmlTimeElementInterpretationError,
-    },
+    temporal::{HtmlTimeElementInterpretation, HtmlTimeElementInterpretationError},
 };
 use surgeist_html::microsyntax::temporal::{HtmlMachineReadableTime, HtmlTimeElementValue};
 use surgeist_html::{
     values::{Attribute, DocumentString, HtmlValueReport},
     vocabulary::KnownHtmlElement,
 };
+use surgeist_ledger::{Change, Charge};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HtmlTimeElementValueOrigin {
@@ -146,16 +145,12 @@ impl HtmlSemanticSession<'_> {
             let Some(action) = action else {
                 break;
             };
-            let layout = action.layout();
-            // Fixed continuations after a numeric poll belong to the already
-            // admitted operation; the original path added no fee or poll here.
-            if layout.work() != 0
-                || layout.kind() != HtmlTimeElementInterpretationActionKind::Assembly
-            {
-                self.charge(layout.work())?;
-            }
             let baseline = self.usage.allocated_bytes;
-            let step = action.advance(self.limits.integer_digits, self.remaining_allocated_bytes());
+            let (digits, remaining) =
+                (self.limits.integer_digits, self.remaining_allocated_bytes());
+            // The action charges its own semantic work before it runs. Fixed continuations after a
+            // numeric poll belong to the already admitted operation and charge nothing.
+            let step = action.advance(&mut StepCharge(self), digits, remaining)?;
             // Every numeric attempt's actual capacity is observed exactly once,
             // including allocations preceding a later failure in that attempt.
             self.record_allocated_bytes(step.capacity_bytes())?;
@@ -222,6 +217,34 @@ impl HtmlSemanticSession<'_> {
     }
 }
 
+/// Charges the semantic steps of `surgeist-html` operations to the session's work.
+struct StepCharge<'s, 'a>(&'s mut HtmlSemanticSession<'a>);
+
+impl Charge<HtmlWork, HtmlResource> for StepCharge<'_, '_> {
+    type Stop = HtmlSemanticFailure;
+
+    fn charge(&mut self, batch: &[HtmlChange]) -> Result<(), HtmlSemanticFailure> {
+        let mut steps = 0_usize;
+        for change in batch {
+            let Change::Work(HtmlWork::SemanticStep, amount) = *change else {
+                return Err(self.0.stop(HtmlSemanticFailureKind::ProtocolViolated));
+            };
+            steps = usize::try_from(amount)
+                .ok()
+                .and_then(|amount| steps.checked_add(amount))
+                .ok_or_else(|| {
+                    self.0
+                        .stop(HtmlSemanticFailureKind::RepresentationExhausted)
+                })?;
+        }
+        self.0.charge(steps)
+    }
+
+    fn record_largest(&mut self, _: HtmlResource, _: u64) -> Result<(), HtmlSemanticFailure> {
+        Err(self.0.stop(HtmlSemanticFailureKind::ProtocolViolated))
+    }
+}
+
 #[cfg(test)]
 mod schema_tests {
     use super::super::*;
@@ -229,13 +252,14 @@ mod schema_tests {
         HtmlCaptureBuilder, HtmlCaptureLimits, HtmlCaptureRegistryInput, HtmlScriptingStatus,
     };
     use surgeist_html::{
-        accounting::{HtmlChange, HtmlWork, time_interpretation_work},
+        accounting::{HtmlLimits, HtmlWork},
         bounded::temporal::HtmlTimeElementInterpretation,
         construction::HtmlDocumentMode,
     };
+    use surgeist_ledger::Operation;
 
-    /// The session charges each interpretation action's `work()` as semantic work.
-    /// The schema converts the same layouts to semantic steps.
+    /// The session charges each interpretation action's semantic work. The same actions run through
+    /// the stock ledger charger record the same total.
     #[test]
     fn time_interpretation_layouts_convert_to_the_work_the_session_charges() {
         let mut builder = HtmlCaptureBuilder::new(
@@ -278,20 +302,17 @@ mod schema_tests {
             let _ = session.interpret_time_element(&raw);
             let mut owner =
                 HtmlTimeElementInterpretation::new(&raw, HtmlValueInterpreter::new(4096)).unwrap();
-            let mut steps: Vec<HtmlChange> = Vec::new();
+            let mut ledger = Operation::new("steps", HtmlLimits::unlimited(), 1).unwrap();
+            let root = ledger.root();
             while let Ok(Some(action)) = owner.next_action() {
-                steps.push(time_interpretation_work(action.layout()));
-                if action.advance(64, 1 << 30).outcome().is_err() {
+                let step = action
+                    .advance(&mut ledger.charge_at(root), 64, 1 << 30)
+                    .unwrap();
+                if step.outcome().is_err() {
                     break;
                 }
             }
-            let expected: u64 = steps
-                .iter()
-                .map(|change| match *change {
-                    HtmlChange::Work(HtmlWork::SemanticStep, amount) => amount,
-                    other => panic!("unexpected change {other:?}"),
-                })
-                .sum();
+            let expected = ledger.usage(root).unwrap().work(HtmlWork::SemanticStep);
             assert_eq!(session.usage().work() as u64, expected, "{text:?}");
             assert_ne!(expected, 0, "{text:?}");
         }

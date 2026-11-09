@@ -2,6 +2,7 @@
 use super::control::Meter;
 use super::*;
 use crate::parsed_style::*;
+use crate::store::html_credits::{Credits, charged};
 use crate::{DomParsedHtmlAssociationLimits, DomParsedHtmlAssociationRuntimeUsage};
 use std::sync::{MutexGuard, TryLockError};
 
@@ -620,7 +621,10 @@ impl DomParsedHtmlStyleRuntimeHold<'_> {
                 .ok_or(DomError::RepresentationExhausted)?,
             usage.units(),
         ))?;
-        formed.spend(layout.disposal().work_credits(), cancel)?;
+        layout
+            .disposal()
+            .charge_with_calls(0, &mut Credits(|credits| formed.spend(credits, cancel)))
+            .map_err(charged)?;
         formed.retain(bytes, usage.units(), 0, cancel)?;
         let next = self.dom.pending_associations.usage.checked_add(usage)?;
         Bank::admit_usage(next, self.dom.limits)?;
@@ -872,7 +876,10 @@ fn form_original_policy(
                 meter.check_peak(
                     usage.checked_add(custody::Usage::new(layout.disposal().atomic_bytes(), 0))?,
                 )?;
-                meter.spend(layout.disposal().work_credits(), cancel)?;
+                layout
+                    .disposal()
+                    .charge_with_calls(0, &mut Credits(|credits| meter.spend(credits, cancel)))
+                    .map_err(charged)?;
                 meter.retain(usage.bytes(), usage.units(), 0, cancel)?;
                 meter.step(cancel)?;
                 return Ok((policy.clone(), usage, layout.disposal().atomic_bytes()));

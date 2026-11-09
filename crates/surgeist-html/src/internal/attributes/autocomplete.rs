@@ -3,6 +3,10 @@
 //! separate contextual/effect owners. WHATWG attribution is in the crate notice.
 
 use super::*;
+use crate::internal::accounting::{
+    HtmlCapScope, HtmlChange, HtmlLimits, HtmlResource, HtmlTariffs, HtmlWork, autocomplete_limits,
+    wide,
+};
 use crate::{
     internal::microsyntax::tokens::DeclaredKeyword,
     internal::microsyntax::tokens::HtmlSpaceSeparatedTokens,
@@ -10,6 +14,7 @@ use crate::{
     internal::microsyntax::tokens::declared_keyword,
 };
 use std::{error::Error, fmt};
+use surgeist_ledger::{Change, Error as LedgerError, Operation, RefusalReason, Scope};
 
 const RULE: RuleMetadata = RuleMetadata {
     attribute: KnownHtmlAttribute::Autocomplete,
@@ -133,6 +138,9 @@ pub enum HtmlAutocompleteMaterializationError {
     /// A size computation overflowed `usize` or exceeded `isize::MAX` bytes, so the request cannot
     /// be represented on this platform.
     Representation,
+    /// The ledger scope that enforces the allowances reported a state its own sequencing rules
+    /// out.
+    LedgerState,
 }
 
 /// A refused materialization with the storage it had taken when it stopped.
@@ -245,6 +253,9 @@ impl fmt::Display for HtmlAutocompleteMaterializationError {
             Self::Representation => f.write_str(
                 "autocomplete materialization size cannot be represented on this platform",
             ),
+            Self::LedgerState => f.write_str(
+                "the ledger scope that enforces the allowances reported an impossible state",
+            ),
         }
     }
 }
@@ -281,19 +292,151 @@ enum StoragePurpose {
 /// One reservation owner used by both interpreter front doors. Both reserve with the fallible
 /// allocator and report a refusal; standalone sets no resource cap, so the allocator and the
 /// platform are its only limits.
+///
+/// The allowances are the caps of one ledger scope. A second, uncapped scope records what was
+/// actually taken, so growth the allocator made beyond a cap is observed before it is refused.
+/// The typed usage is read back from that second scope.
 struct Materialization {
-    limits: Option<HtmlAutocompleteMaterializationLimits>,
+    operation: Operation<HtmlWork, HtmlResource>,
+    /// The scope that carries the allowances.
+    caps: Scope,
+    /// The scope that records the observed growth.
+    observed: Scope,
     usage: HtmlAutocompleteMaterializationUsage,
+    /// The live scratch records read from the observed scope.
     scratch: usize,
 }
 
+impl StoragePurpose {
+    fn resource(self) -> HtmlResource {
+        match self {
+            Self::Output => HtmlResource::NestedOutputRecords,
+            Self::Scratch => HtmlResource::ScratchRecords,
+        }
+    }
+}
+
 impl Materialization {
-    fn new(limits: Option<HtmlAutocompleteMaterializationLimits>) -> Self {
-        Self {
-            limits,
+    fn new(
+        limits: Option<HtmlAutocompleteMaterializationLimits>,
+    ) -> Result<Self, HtmlAutocompleteMaterializationError> {
+        use HtmlAutocompleteMaterializationError as E;
+        let allocation = || E::Allocation {
+            requested_bytes: std::mem::size_of::<Operation<HtmlWork, HtmlResource>>(),
+        };
+        let mut operation = Operation::new(
+            HtmlCapScope::Autocomplete.name(),
+            HtmlLimits::unlimited(),
+            3,
+        )
+        .map_err(|_| allocation())?;
+        let root = operation.root();
+        let caps = operation
+            .child(
+                root,
+                HtmlCapScope::Autocomplete.name(),
+                limits.map_or_else(HtmlLimits::unlimited, autocomplete_limits),
+                HtmlTariffs::identity(),
+            )
+            .map_err(|_| allocation())?;
+        let observed = operation
+            .child(
+                root,
+                "html-autocomplete-observed",
+                HtmlLimits::unlimited(),
+                HtmlTariffs::identity(),
+            )
+            .map_err(|_| allocation())?;
+        Ok(Self {
+            operation,
+            caps,
+            observed,
             usage: HtmlAutocompleteMaterializationUsage::default(),
             scratch: 0,
+        })
+    }
+
+    /// The materialization error of a ledger error: a refused allowance keeps its limit and the
+    /// total the growth would have reached.
+    fn refused(error: LedgerError<HtmlWork, HtmlResource>) -> HtmlAutocompleteMaterializationError {
+        use HtmlAutocompleteMaterializationError as E;
+        let LedgerError::Refused(refusal) = error else {
+            return E::LedgerState;
+        };
+        let (RefusalReason::Limit { limit }, Change::Acquire(resource, amount)) =
+            (refusal.reason, refusal.change)
+        else {
+            return match refusal.reason {
+                RefusalReason::Overflow => E::Representation,
+                _ => E::LedgerState,
+            };
+        };
+        let (Ok(limit), Some(required)) = (
+            usize::try_from(limit),
+            refusal
+                .current
+                .checked_add(amount)
+                .and_then(|required| usize::try_from(required).ok()),
+        ) else {
+            return E::Representation;
+        };
+        match resource {
+            HtmlResource::AllocatedBytes => E::BytesLimit { limit, required },
+            HtmlResource::NestedOutputRecords => E::OutputLimit { limit, required },
+            HtmlResource::ScratchRecords => E::ScratchLimit { limit, required },
+            _ => E::LedgerState,
         }
+    }
+
+    /// The growth of one purpose as one batch: bytes first, then records.
+    fn growth_batch(growth: usize, bytes: usize, purpose: StoragePurpose) -> [HtmlChange; 2] {
+        [
+            Change::Acquire(HtmlResource::AllocatedBytes, wide(bytes)),
+            Change::Acquire(purpose.resource(), wide(growth)),
+        ]
+    }
+
+    /// Reads the typed usage and the live scratch from the observed scope.
+    fn read(&mut self) -> Result<(), HtmlAutocompleteMaterializationError> {
+        use HtmlAutocompleteMaterializationError as E;
+        let usage = self
+            .operation
+            .usage(self.observed)
+            .map_err(|_| E::LedgerState)?;
+        let read = |value: u64| usize::try_from(value).map_err(|_| E::Representation);
+        self.usage = HtmlAutocompleteMaterializationUsage {
+            allocated_bytes: read(usage.live(HtmlResource::AllocatedBytes))?,
+            nested_output_records: read(usage.live(HtmlResource::NestedOutputRecords))?,
+            peak_scratch_records: read(usage.peak(HtmlResource::ScratchRecords))?,
+        };
+        self.scratch = read(usage.live(HtmlResource::ScratchRecords))?;
+        Ok(())
+    }
+
+    /// Gives back the live scratch records, which are local to one processing step. Each scope
+    /// gives back what it holds: after a refused overshoot the observed scope holds growth that
+    /// the capped scope never admitted. Both scopes are released whatever the first returns, and
+    /// the first failure is reported after the live scratch is read back.
+    fn release_scratch(&mut self) -> Result<(), HtmlAutocompleteMaterializationError> {
+        let mut first = Ok(());
+        for scope in [self.observed, self.caps] {
+            let released = self
+                .operation
+                .usage(scope)
+                .map(|usage| usage.live(HtmlResource::ScratchRecords))
+                .and_then(|live| {
+                    self.operation.apply_batch(
+                        scope,
+                        &[Change::Release(HtmlResource::ScratchRecords, live)],
+                    )
+                })
+                .map_err(Self::refused);
+            if first.is_ok() {
+                first = released;
+            }
+        }
+        let read = self.read();
+        first.and(read)
     }
 
     fn reserve<T>(
@@ -341,49 +484,18 @@ impl Materialization {
     }
 
     fn check_growth(
-        &self,
+        &mut self,
         growth: usize,
         bytes: usize,
         purpose: StoragePurpose,
     ) -> Result<(), HtmlAutocompleteMaterializationError> {
-        use HtmlAutocompleteMaterializationError as E;
-        let bytes = self
-            .usage
-            .allocated_bytes
-            .checked_add(bytes)
-            .ok_or(E::Representation)?;
-        let records = match purpose {
-            StoragePurpose::Output => self.usage.nested_output_records,
-            StoragePurpose::Scratch => self.scratch,
-        }
-        .checked_add(growth)
-        .ok_or(E::Representation)?;
-        if let Some(limits) = self.limits {
-            if bytes > limits.allocated_bytes {
-                return Err(E::BytesLimit {
-                    limit: limits.allocated_bytes,
-                    required: bytes,
-                });
-            }
-            match purpose {
-                StoragePurpose::Output if records > limits.nested_output_records => {
-                    return Err(E::OutputLimit {
-                        limit: limits.nested_output_records,
-                        required: records,
-                    });
-                }
-                StoragePurpose::Scratch if records > limits.scratch_records => {
-                    return Err(E::ScratchLimit {
-                        limit: limits.scratch_records,
-                        required: records,
-                    });
-                }
-                _ => {}
-            }
-        }
-        Ok(())
+        self.operation
+            .check_batch(self.caps, &Self::growth_batch(growth, bytes, purpose))
+            .map_err(Self::refused)
     }
 
+    /// Observes the growth the allocator actually made, before the allowances can refuse it: the
+    /// observed scope takes it unconditionally, then the capped scope admits or refuses it.
     fn observe_growth(
         &mut self,
         growth: usize,
@@ -391,25 +503,15 @@ impl Materialization {
         purpose: StoragePurpose,
     ) -> Result<(), HtmlAutocompleteMaterializationError> {
         use HtmlAutocompleteMaterializationError as E;
-        self.usage.allocated_bytes = growth
-            .checked_mul(item_bytes)
-            .and_then(|bytes| self.usage.allocated_bytes.checked_add(bytes))
-            .ok_or(E::Representation)?;
-        match purpose {
-            StoragePurpose::Output => {
-                self.usage.nested_output_records = self
-                    .usage
-                    .nested_output_records
-                    .checked_add(growth)
-                    .ok_or(E::Representation)?
-            }
-            StoragePurpose::Scratch => {
-                self.scratch = self.scratch.checked_add(growth).ok_or(E::Representation)?;
-                self.usage.peak_scratch_records = self.usage.peak_scratch_records.max(self.scratch);
-            }
-        }
-        // Observation precedes the rejection, including allocator overshoot.
-        self.check_growth(0, 0, purpose)
+        let bytes = growth.checked_mul(item_bytes).ok_or(E::Representation)?;
+        let batch = Self::growth_batch(growth, bytes, purpose);
+        self.operation
+            .apply_batch(self.observed, &batch)
+            .map_err(Self::refused)?;
+        self.read()?;
+        self.operation
+            .apply_batch(self.caps, &batch)
+            .map_err(Self::refused)
     }
 
     fn keyword(
@@ -1512,8 +1614,9 @@ fn process(
     // All temporary IDL handle storage is local to process_inner, including its
     // failure/default paths. Drop it before releasing current scratch accounting.
     let result = process_inner(tokens, mantle, storage);
-    storage.scratch = 0;
-    result
+    let released = storage.release_scratch();
+    let state = result?;
+    released.map(|()| state)
 }
 
 fn process_inner(
@@ -1684,22 +1787,26 @@ impl HtmlValueInterpreter {
         raw: Option<&impl crate::internal::values::semantic_input::HtmlAttributeInput>,
         state: Option<HtmlInputType>,
     ) -> Result<HtmlAutocompleteReport, HtmlValueInterpretationError> {
-        self.materialize_autocomplete(element, raw, state, &mut Materialization::new(None))
-            .map_err(|error| match error {
-                HtmlAutocompleteMaterializationError::RawAdmission(error) => error.into(),
-                HtmlAutocompleteMaterializationError::Allocation { .. } => {
-                    HtmlValueInterpretationError::AllocationFailed
-                }
-                HtmlAutocompleteMaterializationError::Representation => {
-                    HtmlValueInterpretationError::RepresentationExhausted
-                }
-                // Allowances belong to the controlled operation; this one sets none.
-                HtmlAutocompleteMaterializationError::BytesLimit { .. }
-                | HtmlAutocompleteMaterializationError::OutputLimit { .. }
-                | HtmlAutocompleteMaterializationError::ScratchLimit { .. } => {
-                    HtmlValueInterpretationError::ProtocolViolated
-                }
-            })
+        let interpretation = |error| match error {
+            HtmlAutocompleteMaterializationError::RawAdmission(error) => error.into(),
+            HtmlAutocompleteMaterializationError::Allocation { .. } => {
+                HtmlValueInterpretationError::AllocationFailed
+            }
+            HtmlAutocompleteMaterializationError::Representation => {
+                HtmlValueInterpretationError::RepresentationExhausted
+            }
+            // Allowances belong to the controlled operation; this one sets none, so a limit or a
+            // ledger state that no valid use produces breaks the protocol.
+            HtmlAutocompleteMaterializationError::BytesLimit { .. }
+            | HtmlAutocompleteMaterializationError::OutputLimit { .. }
+            | HtmlAutocompleteMaterializationError::ScratchLimit { .. }
+            | HtmlAutocompleteMaterializationError::LedgerState => {
+                HtmlValueInterpretationError::ProtocolViolated
+            }
+        };
+        let mut storage = Materialization::new(None).map_err(interpretation)?;
+        self.materialize_autocomplete(element, raw, state, &mut storage)
+            .map_err(interpretation)
     }
 
     /// Materializes the actual attribute's grammar and processing observations
@@ -1714,7 +1821,12 @@ impl HtmlValueInterpreter {
         state: Option<HtmlInputType>,
         limits: HtmlAutocompleteMaterializationLimits,
     ) -> Result<HtmlAutocompleteMaterialized, HtmlAutocompleteMaterializationFailure> {
-        let mut storage = Materialization::new(Some(limits));
+        let mut storage = Materialization::new(Some(limits)).map_err(|kind| {
+            HtmlAutocompleteMaterializationFailure {
+                kind,
+                usage: HtmlAutocompleteMaterializationUsage::default(),
+            }
+        })?;
         let result = self.materialize_autocomplete(element, raw, state, &mut storage);
         debug_assert_eq!(storage.scratch, 0);
         result
@@ -2067,7 +2179,7 @@ mod controlled_tests {
         assert!(default.usage.nested_output_records > 0);
         assert!(default.usage.peak_scratch_records > 0);
         assert!(default.usage.allocated_bytes > 0);
-        let mut storage = Materialization::new(Some(limits()));
+        let mut storage = Materialization::new(Some(limits())).unwrap();
         let tokens = storage
             .tokens(&DocumentString::from("unknown name"))
             .unwrap();
@@ -2086,7 +2198,8 @@ mod controlled_tests {
             allocated_bytes: 8,
             nested_output_records: 4,
             scratch_records: 4,
-        }));
+        }))
+        .unwrap();
         storage.check_growth(4, 8, StoragePurpose::Output).unwrap();
         assert_eq!(
             storage.observe_growth(5, 2, StoragePurpose::Output),
@@ -2100,7 +2213,8 @@ mod controlled_tests {
         let mut storage = Materialization::new(Some(HtmlAutocompleteMaterializationLimits {
             scratch_records: 4,
             ..limits()
-        }));
+        }))
+        .unwrap();
         assert_eq!(
             storage.observe_growth(5, 8, StoragePurpose::Scratch),
             Err(HtmlAutocompleteMaterializationError::ScratchLimit {
@@ -2110,6 +2224,71 @@ mod controlled_tests {
         );
         assert_eq!(storage.usage.allocated_bytes, 40);
         assert_eq!(storage.usage.peak_scratch_records, 5);
+    }
+
+    /// Growth the allocator made past the scratch allowance is recorded by the observed scope and
+    /// refused by the capped scope, so only the observed scope holds it. Releasing the scratch
+    /// afterwards must still leave both scopes and the live scratch at zero.
+    #[test]
+    fn releasing_scratch_after_a_refused_overshoot_leaves_both_scopes_at_zero() {
+        let mut storage = Materialization::new(Some(HtmlAutocompleteMaterializationLimits {
+            scratch_records: 4,
+            ..limits()
+        }))
+        .unwrap();
+        assert_eq!(
+            storage.observe_growth(5, 8, StoragePurpose::Scratch),
+            Err(HtmlAutocompleteMaterializationError::ScratchLimit {
+                limit: 4,
+                required: 5
+            })
+        );
+        assert_eq!(storage.scratch, 5);
+        assert_eq!(storage.release_scratch(), Ok(()));
+        assert_eq!(storage.scratch, 0);
+        for scope in [storage.observed, storage.caps] {
+            let live = storage
+                .operation
+                .usage(scope)
+                .unwrap()
+                .live(HtmlResource::ScratchRecords);
+            assert_eq!(live, 0);
+        }
+        // The largest scratch reached stays reported.
+        assert_eq!(storage.usage.peak_scratch_records, 5);
+    }
+
+    /// A processing step whose scratch growth is refused stops with the scratch refusal and ends
+    /// with no live scratch in either scope, so the front door's closing check holds.
+    #[test]
+    fn a_refused_scratch_growth_stops_processing_with_no_live_scratch() {
+        let mut storage = Materialization::new(Some(HtmlAutocompleteMaterializationLimits {
+            scratch_records: 0,
+            ..limits()
+        }))
+        .unwrap();
+        let tokens = storage.tokens(&DocumentString::from("name")).unwrap();
+        assert_eq!(
+            process(
+                Some(&tokens),
+                HtmlAutocompleteMantle::Expectation,
+                &mut storage,
+            )
+            .map(|_| ()),
+            Err(HtmlAutocompleteMaterializationError::ScratchLimit {
+                limit: 0,
+                required: 1
+            })
+        );
+        assert_eq!(storage.scratch, 0);
+        for scope in [storage.observed, storage.caps] {
+            let live = storage
+                .operation
+                .usage(scope)
+                .unwrap()
+                .live(HtmlResource::ScratchRecords);
+            assert_eq!(live, 0);
+        }
     }
 
     #[test]
@@ -2164,7 +2343,7 @@ mod controlled_tests {
 
     #[test]
     fn representation_and_work_envelope_are_checked_before_growth() {
-        let mut storage = Materialization::new(Some(limits()));
+        let mut storage = Materialization::new(Some(limits())).unwrap();
         assert_eq!(
             storage.reserve(&mut Vec::<u16>::new(), usize::MAX, StoragePurpose::Output),
             Err(HtmlAutocompleteMaterializationError::Representation)

@@ -17,6 +17,7 @@ pub use crate::internal::construction::bounded::operations::{
     HtmlConstructionContent, HtmlConstructionGrowth, HtmlConstructionObservation,
     HtmlConstructionOperation, HtmlConstructionReadyOperation, HtmlConstructionRetirement,
     HtmlConstructionRetirementAction, HtmlConstructionRetirementDescription,
+    HtmlConstructionStepWork,
 };
 pub use crate::internal::construction::bounded::text_append::{
     HtmlConstructionTextAppend, HtmlConstructionTextAppendAction,
@@ -26,9 +27,9 @@ pub use crate::internal::construction::bounded::text_append::{
 };
 pub use crate::internal::construction::bounded::{
     HtmlConstructionAllocationId, HtmlConstructionAllocationRole,
-    HtmlConstructionAllocationSnapshot, HtmlConstructionInitialization,
-    HtmlConstructionInitializationAction, HtmlConstructionInitializationObservation,
-    HtmlConstructionLease, HtmlConstructionNode, HtmlConstructionReadyInitialization,
-    HtmlConstructionRecovery, HtmlConstructionRefusal, HtmlConstructionResult,
-    HtmlConstructionRetired, HtmlConstructionStorage,
+    HtmlConstructionAllocationSnapshot, HtmlConstructionChargeFault,
+    HtmlConstructionInitialization, HtmlConstructionInitializationAction,
+    HtmlConstructionInitializationObservation, HtmlConstructionLease, HtmlConstructionNode,
+    HtmlConstructionReadyInitialization, HtmlConstructionRecovery, HtmlConstructionRefusal,
+    HtmlConstructionResult, HtmlConstructionRetired, HtmlConstructionStorage,
 };

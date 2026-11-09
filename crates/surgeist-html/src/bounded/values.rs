@@ -3,7 +3,7 @@
 pub use crate::internal::values::attribute_name_index::HtmlAttributeNameIndex;
 pub use crate::internal::values::bounded::{
     HtmlAttributeStorage, HtmlAttributeValidation, HtmlAttributeValidationAction,
-    HtmlAttributeValidationError, HtmlAttributeValidationLayout, HtmlValidatedAttributes,
+    HtmlAttributeValidationError, HtmlValidatedAttributes,
 };
 pub use crate::internal::values::finish::HtmlFinishFailure;
 pub use crate::internal::values::name_index::{
@@ -18,5 +18,5 @@ pub use crate::internal::values::sharing::{
     HtmlStringPoolResult, HtmlValuePoolAction, HtmlValuePoolActionKind, HtmlValuePoolChange,
     HtmlValuePoolError, HtmlValuePoolLayout, HtmlValuePoolMark, HtmlValuePoolOccurrence,
     HtmlValuePoolProgress, HtmlValuePoolRoot, HtmlValuePoolSeal, HtmlValuePoolSealRefusal,
-    HtmlValuePoolUsage, HtmlValuePoolWork,
+    HtmlValuePoolUsage,
 };

@@ -1,11 +1,12 @@
+use crate::html::support::Recorder;
 use surgeist_html::{
+    accounting::HtmlWork,
     attributes::HtmlInputType,
     elements::input::{
         HtmlInputFileSelection, HtmlInputFilenameInvalidState, HtmlInputFlags,
-        HtmlInputImageCoordinate, HtmlInputReset, HtmlInputResetEffect, HtmlInputRuleWork,
-        HtmlInputSanitization, HtmlInputTypeChange, HtmlInputTypeCursor, HtmlInputTypeEffect,
-        HtmlInputValueMode, HtmlInputValueSanitization, HtmlInputValueSetterStart,
-        input_filename_setter,
+        HtmlInputImageCoordinate, HtmlInputReset, HtmlInputResetEffect, HtmlInputSanitization,
+        HtmlInputTypeChange, HtmlInputTypeCursor, HtmlInputTypeEffect, HtmlInputValueMode,
+        HtmlInputValueSanitization, HtmlInputValueSetterStart, input_filename_setter,
     },
 };
 
@@ -20,8 +21,16 @@ fn fresh_image_coordinates_are_zero_without_host_activation_facts() {
 fn missing_input_type_uses_the_text_state() {
     assert_eq!(HtmlInputType::missing_value_default(), HtmlInputType::Text);
     let mut cursor = HtmlInputTypeCursor::new(None);
-    assert_eq!(cursor.required_work(), Some(HtmlInputRuleWork::ReadField));
-    cursor.advance();
+    let mut meter = Recorder::default();
+    cursor.advance(&mut meter).unwrap();
+    // The first action reads one keyword-row field.
+    assert_eq!(
+        meter.batches(),
+        [vec![surgeist_ledger::Change::Work(
+            HtmlWork::RecordVisit,
+            1
+        )]]
+    );
     assert_eq!(cursor.result(), Some(HtmlInputType::Text));
 }
 

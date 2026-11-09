@@ -5,6 +5,7 @@
 //! and custody, then perform the owned action. No method calls consumer code.
 
 use super::{Attribute, DocumentString, OrderedAttributes};
+use crate::internal::accounting::{HtmlResource, HtmlWork, wide};
 use std::{
     error::Error,
     fmt,
@@ -14,6 +15,7 @@ use std::{
         atomic::{AtomicU64, Ordering},
     },
 };
+use surgeist_ledger::{Change, Charge};
 
 pub(crate) mod policy;
 use policy::{Operation, Pool, State, Value};
@@ -53,7 +55,7 @@ impl HtmlValuePoolUsage {
 
 /// Work admitted before an action reads operands or writes retained storage.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct HtmlValuePoolWork {
+pub(crate) struct HtmlValuePoolWork {
     record_visits: usize,
     inspected_bytes: usize,
     copied_bytes: usize,
@@ -62,24 +64,43 @@ pub struct HtmlValuePoolWork {
 }
 impl HtmlValuePoolWork {
     /// The retained entries, pages or records the action visits.
-    pub fn record_visits(self) -> usize {
+    #[cfg(test)]
+    pub(crate) fn record_visits(self) -> usize {
         self.record_visits
     }
     /// The bytes of operand or entry text the action hashes or compares without copying.
-    pub fn inspected_bytes(self) -> usize {
+    #[cfg(test)]
+    pub(crate) fn inspected_bytes(self) -> usize {
         self.inspected_bytes
     }
     /// The bytes the action copies, including bookkeeping values it moves.
-    pub fn copied_bytes(self) -> usize {
+    #[cfg(test)]
+    pub(crate) fn copied_bytes(self) -> usize {
         self.copied_bytes
     }
     /// The provider requests the action makes.
-    pub fn provider_calls(self) -> usize {
+    #[cfg(test)]
+    pub(crate) fn provider_calls(self) -> usize {
         self.provider_calls
     }
     /// The bytes of storage the action reserves.
-    pub fn reserve_bytes(self) -> usize {
+    #[cfg(test)]
+    pub(crate) fn reserve_bytes(self) -> usize {
         self.reserve_bytes
+    }
+    /// Charges the five dimensions as one batch, in a fixed order. An amount that
+    /// does not fit the ledger's `u64` saturates, and every finite cap refuses it.
+    pub(crate) fn charge<C: Charge<HtmlWork, HtmlResource>>(
+        self,
+        charge: &mut C,
+    ) -> Result<(), C::Stop> {
+        charge.charge(&[
+            Change::Work(HtmlWork::RecordVisit, wide(self.record_visits)),
+            Change::Work(HtmlWork::InspectByte, wide(self.inspected_bytes)),
+            Change::Work(HtmlWork::CopyByte, wide(self.copied_bytes)),
+            Change::Work(HtmlWork::ProviderCall, wide(self.provider_calls)),
+            Change::Work(HtmlWork::ReserveByte, wide(self.reserve_bytes)),
+        ])
     }
 }
 
@@ -107,7 +128,8 @@ impl HtmlValuePoolLayout {
         self.candidate
     }
     /// The work the consumer admits before performing the action.
-    pub fn work(self) -> HtmlValuePoolWork {
+    #[cfg(test)]
+    pub(crate) fn work(self) -> HtmlValuePoolWork {
         self.work
     }
     /// Prepaid work for storage introduced by this action and for later inverse
@@ -115,8 +137,32 @@ impl HtmlValuePoolLayout {
     /// including a Prepare or Upgrade: abandoning its provisional storage or
     /// temporary strong candidate must never require failure-time admission.
     /// Payment remains spent when the value moves into another owner.
-    pub fn closing_work(self) -> HtmlValuePoolWork {
+    #[cfg(test)]
+    pub(crate) fn closing_work(self) -> HtmlValuePoolWork {
         self.closing_work
+    }
+    /// Charges the work of the action and then its prepaid closing work, each as one
+    /// batch of the five pool work dimensions, before the action is performed. The
+    /// closing work is charged including for a Prepare or Upgrade, so abandoning its
+    /// provisional storage or temporary strong candidate never needs failure-time
+    /// admission. Payment remains spent when the value moves into another owner.
+    pub fn charge<C: Charge<HtmlWork, HtmlResource>>(self, charge: &mut C) -> Result<(), C::Stop> {
+        self.charge_work(charge)?;
+        self.charge_closing_work(charge)
+    }
+    /// Charges only the work of the action, as one batch.
+    pub fn charge_work<C: Charge<HtmlWork, HtmlResource>>(
+        self,
+        charge: &mut C,
+    ) -> Result<(), C::Stop> {
+        self.work.charge(charge)
+    }
+    /// Charges only the prepaid closing work, as one batch.
+    pub fn charge_closing_work<C: Charge<HtmlWork, HtmlResource>>(
+        self,
+        charge: &mut C,
+    ) -> Result<(), C::Stop> {
+        self.closing_work.charge(charge)
     }
 }
 
@@ -547,30 +593,54 @@ macro_rules! concrete_pool {
                 size_of::<Self>()
             }
             /// Fixed upper bound for destroying this whole owner in any state.
-            /// Admit once BEFORE constructing it, including an empty owner.
+            /// Charge once BEFORE constructing it, including an empty owner.
             /// This covers live/old Weak entries, initialized pages and undo
             /// records, and backing release, even after sealing. It is separate
             /// from root metadata and each action's temporary/inverse work.
-            /// Drop invokes no admission callback and issues no qualifier.
-            pub fn disposal_work() -> HtmlValuePoolWork {
-                policy::disposal_work()
+            /// Drop charges nothing and issues no qualifier.
+            pub fn charge_disposal<C: Charge<HtmlWork, HtmlResource>>(
+                charge: &mut C,
+            ) -> Result<(), C::Stop> {
+                policy::disposal_work().charge(charge)
             }
-            /// Admit before beginning root authority; includes its fixed close.
-            pub fn root_work() -> HtmlValuePoolWork {
-                policy::root_work::<$value>()
+            /// Charge before beginning root authority; includes its fixed close.
+            pub fn charge_root<C: Charge<HtmlWork, HtmlResource>>(
+                charge: &mut C,
+            ) -> Result<(), C::Stop> {
+                policy::root_work::<$value>().charge(charge)
             }
-            /// Admit before issuing a nested mark; includes accept or restore's
+            /// Charge before issuing a nested mark; includes accept or restore's
             /// fixed metadata work. Inverse work is paid by mutation layouts.
-            pub fn mark_work() -> HtmlValuePoolWork {
-                policy::mark_work::<$value>()
+            pub fn charge_mark<C: Charge<HtmlWork, HtmlResource>>(
+                charge: &mut C,
+            ) -> Result<(), C::Stop> {
+                policy::mark_work::<$value>().charge(charge)
             }
-            /// Admit before each attempt to freeze a root, including a retry
+            /// Charge before each attempt to freeze a root, including a retry
             /// after unresolved marks refused preparation. This pays the
             /// bounded readiness/metadata checks, not another root copy.
             /// Root construction already prepays fixed closing/header moves;
             /// mutation layouts prepay inverse and backing cleanup. Validation
             /// and closing afterward need no further admission callback.
-            pub fn seal_work() -> HtmlValuePoolWork {
+            pub fn charge_seal<C: Charge<HtmlWork, HtmlResource>>(
+                charge: &mut C,
+            ) -> Result<(), C::Stop> {
+                policy::seal_work().charge(charge)
+            }
+            #[cfg(test)]
+            pub(crate) fn disposal_work() -> HtmlValuePoolWork {
+                policy::disposal_work()
+            }
+            #[cfg(test)]
+            pub(crate) fn root_work() -> HtmlValuePoolWork {
+                policy::root_work::<$value>()
+            }
+            #[cfg(test)]
+            pub(crate) fn mark_work() -> HtmlValuePoolWork {
+                policy::mark_work::<$value>()
+            }
+            #[cfg(test)]
+            pub(crate) fn seal_work() -> HtmlValuePoolWork {
                 policy::seal_work()
             }
             /// O(1) admitted heap extent, including undo and conservative

@@ -1,9 +1,7 @@
 //! Original parser policy and tickets for HTML-owned exclusive attribute edits.
 use super::*;
 
-use surgeist_html::bounded::construction::{
-    HtmlConstructionAttributeCapacity as Capacity, HtmlConstructionAttributeWork as Work,
-};
+use surgeist_html::bounded::construction::HtmlConstructionAttributeCapacity as Capacity;
 impl ParseControl {
     #[cfg(test)]
     pub(crate) fn observe_construction_attribute_append(&mut self) {
@@ -11,16 +9,6 @@ impl ParseControl {
     }
     pub(crate) fn cleanup_auxiliary_entries(&mut self, entries: u64) -> Result<(), HtmlParseStop> {
         self.cleanup_storage(HtmlParseResource::AuxiliaryEntries, entries, 0)
-    }
-    pub(crate) fn admit_attribute_work(&mut self, work: Work) -> Result<(), HtmlParseStop> {
-        self.charge_changes(&attribute_edit_work(&work))?;
-        if work.atomic_layout_bytes != 0 {
-            self.admit_atomic_layout(work.atomic_layout_bytes)?;
-        }
-        if work.auxiliary_entries != 0 {
-            self.acquire_change(attribute_edit_entries(&work))?;
-        }
-        Ok(())
     }
     pub(crate) fn prepare_controlled_attribute_edit(
         &mut self,

@@ -27,9 +27,8 @@ pub(super) fn input_type_state(
     value: &DocumentString,
 ) -> Result<surgeist_html::attributes::HtmlInputType, SessionError> {
     let mut cursor = surgeist_html::elements::input::HtmlInputTypeCursor::new(Some(value));
-    while let Some(work) = cursor.required_work() {
-        control.charge_change(surgeist_html::accounting::input_rule_work(work))?;
-        cursor.advance();
+    while cursor.result().is_none() {
+        cursor.advance(control)?;
     }
     // The loop above admitted every recognition step, so the result exists.
     cursor.result().ok_or_else(|| latch_registry_row(control))
@@ -289,7 +288,7 @@ fn copy_whole_generated_input_value(
             retained = retained.saturating_add(1);
         }
     }
-    while cursor.required_work().is_some() {
+    while !cursor.is_complete() {
         next_input_range(c, &mut cursor)?;
     }
     let count = cursor.email_value_count();
@@ -324,15 +323,16 @@ fn next_input_range(
     control: &mut ParseControl,
     cursor: &mut surgeist_html::elements::input::HtmlInputSanitizationCursor<'_>,
 ) -> Result<Option<surgeist_html::elements::input::HtmlInputRetainedRange>, SessionError> {
-    while let Some(work) = cursor.required_work() {
-        control.charge_change(surgeist_html::accounting::input_rule_work(work))?;
+    while !cursor.is_complete() {
+        // The step's work is charged first, then the parser's own writes, then the step.
+        let step = cursor.charge_next(control)?;
         payload_write::<surgeist_html::elements::input::HtmlInputSanitizationCursor<'_>>(
             control, 1,
         )?;
         payload_write::<Option<surgeist_html::elements::input::HtmlInputRetainedRange>>(
             control, 1,
         )?;
-        if let Some(range) = cursor.advance() {
+        if let Some(range) = step.advance() {
             return Ok(Some(range));
         }
     }
@@ -454,7 +454,7 @@ fn copy_input_value_core(
             return Ok(true);
         }
         if let Some(cursor) = &mut selection {
-            while cursor.required_work().is_some() {
+            while !cursor.is_complete() {
                 next_input_range(control, cursor)?;
             }
         }

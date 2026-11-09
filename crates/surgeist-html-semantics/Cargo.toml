@@ -10,3 +10,4 @@ readme = "README.md"
 
 [dependencies]
 surgeist-html = { path = "../surgeist-html", version = "=0.1.0" }
+surgeist-ledger = { path = "../surgeist-ledger", version = "=0.1.0" }

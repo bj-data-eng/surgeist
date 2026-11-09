@@ -1,6 +1,8 @@
 //! Public retained time interpretation, using the pinned time-element rules.
 #![forbid(unsafe_code)]
+use crate::html::support::Recorder;
 use surgeist_html::{
+    accounting::HtmlWork,
     bounded::{
         numeric::{HtmlIntegerUnitStepError, HtmlNumericMaterializationError},
         temporal::{
@@ -32,15 +34,14 @@ fn try_finish<'a>(
 }
 
 fn drive(owner: &mut Interpretation<'_>) -> (usize, usize) {
-    let mut work = 0;
+    let mut meter = Recorder::default();
     let mut capacity = 0;
     for _ in 0..100_000 {
         let Some(action) = owner.next_action().unwrap() else {
-            return (work, capacity);
+            return (meter.total(HtmlWork::SemanticStep) as usize, capacity);
         };
         let layout = action.layout();
-        work += layout.work();
-        let step = action.advance(100_000, usize::MAX);
+        let step = action.advance(&mut meter, 100_000, usize::MAX).unwrap();
         assert!(layout.can_allocate() || step.capacity_bytes() == 0);
         capacity += step.capacity_bytes();
         step.outcome().unwrap();
@@ -79,7 +80,7 @@ fn early_finish_and_refused_guard_preserve_exact_raw_and_pending_recognition() {
 fn publication_requires_admitted_report_assembly_after_all_attempts() {
     let raw = DocumentString::from("0001");
     let mut owner = Some(Interpretation::new(&raw, HtmlValueInterpreter::new(4)).unwrap());
-    let mut work = 0;
+    let mut meter = Recorder::default();
     let mut capacity = 0;
     let mut numeric = 0;
     loop {
@@ -89,8 +90,7 @@ fn publication_requires_admitted_report_assembly_after_all_attempts() {
             break;
         }
         numeric += usize::from(layout.can_allocate());
-        work += layout.work();
-        let step = action.advance(4, usize::MAX);
+        let step = action.advance(&mut meter, 4, usize::MAX).unwrap();
         capacity += step.capacity_bytes();
         step.outcome().unwrap();
     }
@@ -98,8 +98,8 @@ fn publication_requires_admitted_report_assembly_after_all_attempts() {
     assert!(std::ptr::eq(owner.as_ref().unwrap().raw(), &raw));
     let action = owner.as_mut().unwrap().next_action().unwrap().unwrap();
     assert_eq!(action.layout().kind(), Kind::ReportAssembly);
-    work += action.layout().work();
-    let step = action.advance(0, 0);
+    let step = action.advance(&mut meter, 0, 0).unwrap();
+    let work = meter.total(HtmlWork::SemanticStep);
     assert_eq!(step.capacity_bytes(), 0);
     step.outcome().unwrap();
     // Source-basis characterization: nine alternatives in each phase at
@@ -204,7 +204,7 @@ fn failed_fraction_retains_owner_and_observes_earlier_capacity_once() {
     let mut owner = Some(Interpretation::new(&raw, HtmlValueInterpreter::new(raw.len())).unwrap());
     let (error, observed) = loop {
         let action = owner.as_mut().unwrap().next_action().unwrap().unwrap();
-        let step = action.advance(100, 1);
+        let step = action.advance(&mut Recorder::default(), 100, 1).unwrap();
         if let Err(error) = step.outcome() {
             break (error, step.capacity_bytes());
         }
@@ -235,7 +235,11 @@ fn caller_cancellation_at_each_action_recovers_raw_without_a_partial_report() {
                 completed = true;
                 break;
             };
-            action.advance(100, usize::MAX).outcome().unwrap();
+            action
+                .advance(&mut Recorder::default(), 100, usize::MAX)
+                .unwrap()
+                .outcome()
+                .unwrap();
         }
         if completed {
             break;
@@ -255,7 +259,9 @@ fn raw_admission_and_processing_digit_limits_preserve_the_original_operand() {
     let mut owner = Some(Interpretation::new(&raw, HtmlValueInterpreter::new(5)).unwrap());
     let error = loop {
         let action = owner.as_mut().unwrap().next_action().unwrap().unwrap();
-        let step = action.advance(4, usize::MAX);
+        let step = action
+            .advance(&mut Recorder::default(), 4, usize::MAX)
+            .unwrap();
         assert_eq!(step.capacity_bytes(), 0);
         if let Err(error) = step.outcome() {
             break error;
@@ -785,7 +791,11 @@ fn digit_limited_failure(
     let mut owner = Some(Interpretation::new(&raw, HtmlValueInterpreter::new(raw.len())).unwrap());
     for steps in 0..100_000 {
         let action = owner.as_mut().unwrap().next_action().unwrap().unwrap();
-        if let Err(error) = action.advance(max_digits, usize::MAX).outcome() {
+        if let Err(error) = action
+            .advance(&mut Recorder::default(), max_digits, usize::MAX)
+            .unwrap()
+            .outcome()
+        {
             assert_eq!(try_finish(&mut owner).unwrap_err(), error);
             return (steps, error);
         }
@@ -818,7 +828,11 @@ fn a_running_duration_total_fails_at_the_addition_that_exceeds_the_digit_limit()
     let raw = DocumentString::from(format!("{}s0s", "9".repeat(400)).as_str());
     let mut owner = Some(Interpretation::new(&raw, HtmlValueInterpreter::new(raw.len())).unwrap());
     while let Some(action) = owner.as_mut().unwrap().next_action().unwrap() {
-        action.advance(400, usize::MAX).outcome().unwrap();
+        action
+            .advance(&mut Recorder::default(), 400, usize::MAX)
+            .unwrap()
+            .outcome()
+            .unwrap();
     }
     let report = try_finish(&mut owner).unwrap();
     assert!(matches!(

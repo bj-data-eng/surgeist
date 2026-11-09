@@ -23,6 +23,7 @@ impl ChildHook {
 
 use crate::hosted::*;
 use crate::store::hosted as canonical;
+use crate::store::html_credits;
 use crate::{DomDocumentStamp, DomOpaqueOrigin};
 use surgeist_html::{attributes::sandbox::HtmlSandboxFlag, vocabulary::KnownHtmlAttribute};
 use surgeist_html_semantics::{HtmlBaseFactsRevision, HtmlBaseParseOutcome};
@@ -1028,14 +1029,15 @@ impl Draft {
                         // A new callback starts only after the previous native
                         // action returned, so its temporary frame is retired.
                         drop(action_reservation.take());
-                        let work = action
-                            .work_credits()
-                            .checked_add(action.closing_work().work_credits())
-                            .ok_or(DomError::RepresentationExhausted)?;
-                        for _ in 0..work {
-                            self.source_step(cancel)?;
-                            inner.request().work.step(cancel)?;
-                        }
+                        action
+                            .charge_work(&mut html_credits::Credits(|credits| {
+                                for _ in 0..credits {
+                                    self.source_step(cancel)?;
+                                    inner.request().work.step(cancel)?;
+                                }
+                                Ok::<(), DomHostedError>(())
+                            }))
+                            .map_err(html_credits::charged)?;
                         let peak = action
                             .peak()
                             .bytes()

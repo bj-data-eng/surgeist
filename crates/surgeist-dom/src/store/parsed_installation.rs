@@ -76,11 +76,11 @@ impl Control<'_> {
     }
     /// Prepay transitive closing work before acquiring any new protocol graph.
     fn csp(&mut self, layout: surgeist_html::security::csp::HtmlCspLayout) -> Result<(), Error> {
-        let work = layout
-            .work_credits()
-            .checked_add(layout.closing_work().work_credits())
-            .ok_or(Error::RepresentationExhausted)?;
-        self.step(usize::try_from(work).map_err(|_| Error::RepresentationExhausted)?)?;
+        layout
+            .charge_work(&mut super::html_credits::Credits(|credits| {
+                self.step(usize::try_from(credits).map_err(|_| Error::RepresentationExhausted)?)
+            }))
+            .map_err(super::html_credits::charged)?;
         let peak = layout
             .peak()
             .bytes()

@@ -1,7 +1,7 @@
 //! Creation of elements for the tree builder, including implied and profiled elements.
 
 use super::*;
-use surgeist_html::accounting::attribute_validation_work;
+use surgeist_html::accounting::HtmlChargedError;
 #[cfg(test)]
 use surgeist_html::construction::HtmlElement;
 use surgeist_html::{
@@ -123,8 +123,10 @@ pub(super) fn validate_parser_attributes(
     };
     let outcome = (|| {
         while let Some(action) = validation.next_action().map_err(validation_error)? {
-            control.charge_each_nonzero(&attribute_validation_work(action.layout()))?;
-            action.advance().map_err(validation_error)?;
+            action.advance(control).map_err(|error| match error {
+                HtmlChargedError::Stopped(stop) => SessionError::from(stop),
+                HtmlChargedError::Faulted(fault) => validation_error(fault),
+            })?;
         }
         Ok(())
     })();

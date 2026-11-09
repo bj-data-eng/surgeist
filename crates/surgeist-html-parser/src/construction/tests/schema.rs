@@ -4,35 +4,50 @@
 
 use super::*;
 use crate::meta_csp::{Account, Caller};
-use crate::schema_support::{charged, through_schema};
+use crate::schema_support::{charged, through_ledger};
 use surgeist_html::{
-    accounting::{
-        HtmlChange, HtmlResource, HtmlWork, attribute_validation_work, csp_storage, csp_work,
-        input_rule_work, script_type_work,
-    },
+    accounting::{HtmlChargedError, HtmlWork},
     bounded::{
-        script::HtmlScriptTypeWork,
+        script::HtmlScriptTypeCursor,
         values::{HtmlAttributeNameIndex, HtmlAttributeStorage, HtmlNameIndexSlot},
     },
-    elements::input::{HtmlInputRuleWork, HtmlInputTypeCursor},
+    elements::input::HtmlInputTypeCursor,
     security::csp::{HtmlCspDisposalWork, HtmlCspLayout, HtmlCspStorage},
     values::{Attribute, DocumentString, Namespace, QualifiedName},
 };
 
 #[test]
-fn script_type_work_converts_to_the_categories_the_adapter_charges() {
-    for work in [
-        HtmlScriptTypeWork::RecordVisit(5),
-        HtmlScriptTypeWork::InspectByte(7),
+fn script_classification_charges_what_the_stock_ledger_charger_records() {
+    for (explicit, language) in [
+        (Some("text/javascript"), None),
+        (Some(" MODULE "), None),
+        (None, Some("javascript")),
+        (Some("text/unknown"), Some("x")),
+        (None, None),
     ] {
+        let explicit = explicit.map(DocumentString::from);
+        let language = language.map(DocumentString::from);
         let mut c = control();
-        super::super::script_type::script_type_charge(&mut c, work).unwrap();
-        assert_eq!(charged(&c), through_schema(&[script_type_work(work)]));
+        let mut parser_cursor =
+            HtmlScriptTypeCursor::preparation(explicit.as_ref(), language.as_ref());
+        while parser_cursor.result().is_none() {
+            parser_cursor.advance(&mut c).unwrap();
+        }
+        let expected = through_ledger(|charge| {
+            let mut cursor =
+                HtmlScriptTypeCursor::preparation(explicit.as_ref(), language.as_ref());
+            while cursor.result().is_none() {
+                cursor.advance(charge)?;
+            }
+            Ok(())
+        });
+        assert_eq!(charged(&c), expected, "{explicit:?} {language:?}");
+        assert_ne!(expected.credits, 0);
     }
 }
 
 #[test]
-fn input_type_recognition_converts_each_cursor_step_to_the_adapter_charge() {
+fn input_type_recognition_charges_what_the_stock_ledger_charger_records() {
     for text in [
         "text",
         "TeXt",
@@ -44,48 +59,19 @@ fn input_type_recognition_converts_each_cursor_step_to_the_adapter_charge() {
         let raw = DocumentString::from(text);
         let mut c = control();
         super::super::input_values::input_type_state(&mut c, &raw).unwrap();
-        let mut steps: Vec<HtmlChange> = Vec::new();
-        let mut cursor = HtmlInputTypeCursor::new(Some(&raw));
-        while let Some(work) = cursor.required_work() {
-            steps.push(input_rule_work(work));
-            cursor.advance();
-        }
-        assert_eq!(charged(&c), through_schema(&steps), "{text:?}");
+        let expected = through_ledger(|charge| {
+            let mut cursor = HtmlInputTypeCursor::new(Some(&raw));
+            while cursor.result().is_none() {
+                cursor.advance(charge)?;
+            }
+            Ok(())
+        });
+        assert_eq!(charged(&c), expected, "{text:?}");
     }
 }
 
 #[test]
-fn every_input_rule_work_converts_to_the_amount_the_adapters_charge() {
-    // The type recognizer charges `RecordVisit` 1 and 2 for field and length
-    // reads, three inspected bytes for an ASCII pair and two for a value unit.
-    for (work, visits, inspected) in [
-        (HtmlInputRuleWork::ReadField, 1, 0),
-        (HtmlInputRuleWork::ReadValueLengths, 2, 0),
-        (HtmlInputRuleWork::CompareAsciiUnit, 0, 3),
-        (HtmlInputRuleWork::CompareValueUnits, 0, 2),
-        (HtmlInputRuleWork::InspectValueUnit, 0, 2),
-    ] {
-        let mut expected = control();
-        if visits != 0 {
-            expected
-                .charge(HtmlParseWorkCategory::RecordVisit, visits)
-                .unwrap();
-        }
-        if inspected != 0 {
-            expected
-                .charge(HtmlParseWorkCategory::InspectByte, inspected)
-                .unwrap();
-        }
-        assert_eq!(
-            charged(&expected),
-            through_schema(&[input_rule_work(work)]),
-            "{work:?}"
-        );
-    }
-}
-
-#[test]
-fn attribute_validation_layouts_convert_to_the_charges_of_the_validation_loop() {
+fn attribute_validation_charges_what_the_stock_ledger_charger_records() {
     // A short list compares every pair. A list of at least the index threshold
     // validates through a table of names, which also copies and writes slots.
     let indexed = super::super::construction_owner::NAME_INDEX_MIN_ENTRIES + 3;
@@ -108,17 +94,21 @@ fn attribute_validation_layouts_convert_to_the_charges_of_the_validation_loop() 
             }
             _ => storage.validate(),
         };
-        let mut steps: Vec<HtmlChange> = Vec::new();
-        while let Some(action) = validation.next_action().unwrap() {
-            steps.extend(attribute_validation_work(action.layout()));
-            action.advance().unwrap();
-        }
-        let mut expected = through_schema(&steps);
+        let mut steps = through_ledger(|charge| {
+            while let Some(action) = validation.next_action().unwrap() {
+                match action.advance(charge) {
+                    Ok(()) => {}
+                    Err(HtmlChargedError::Stopped(stop)) => return Err(stop),
+                    Err(HtmlChargedError::Faulted(fault)) => panic!("validation fault: {fault}"),
+                }
+            }
+            Ok(())
+        });
         if let Some(slots) = HtmlAttributeNameIndex::slots_required(count)
             .filter(|_| count >= super::super::construction_owner::NAME_INDEX_MIN_ENTRIES)
         {
             // The name table's vector is reserved and released around the loop;
-            // those charges are not part of any validation layout.
+            // those charges are not part of any validation action.
             let mut table = control();
             let (mut vector, mut ticket) = table.new_vector::<HtmlNameIndexSlot>().unwrap();
             table
@@ -126,17 +116,16 @@ fn attribute_validation_layouts_convert_to_the_charges_of_the_validation_loop() 
                 .unwrap();
             super::super::cleanup::release_vector(&mut table, vector, ticket).unwrap();
             let reserve = charged(&table);
-            for (total, extra) in expected.categories.iter_mut().zip(reserve.categories) {
+            for (total, extra) in steps.categories.iter_mut().zip(reserve.categories) {
                 *total += extra;
             }
-            expected.credits += reserve.credits;
+            steps.credits += reserve.credits;
         }
-        assert_eq!(charged(&c), expected, "{count} attributes");
-        let amounts = through_schema(&steps);
         if count == indexed {
-            assert_ne!(amounts.categories[HtmlWork::RecordWrite as usize], 0);
-            assert_ne!(amounts.categories[HtmlWork::CopyByte as usize], 0);
+            assert_ne!(steps.categories[HtmlWork::RecordWrite as usize], 0);
+            assert_ne!(steps.categories[HtmlWork::CopyByte as usize], 0);
         }
+        assert_eq!(charged(&c), steps, "{count} attributes");
     }
 }
 
@@ -148,7 +137,14 @@ fn csp_actions_convert_to_the_work_layout_and_storage_the_account_admits() {
     let mut c = control();
     let mut account = Account::default();
     account.admit(&mut c, layout, Caller::Parser).unwrap();
-    assert_eq!(charged(&c), through_schema(&[csp_work(&layout).unwrap()]));
+    assert_eq!(
+        charged(&c),
+        through_ledger(|charge| match layout.charge_work(charge) {
+            Ok(()) => Ok(()),
+            Err(HtmlChargedError::Stopped(stop)) => Err(stop),
+            Err(HtmlChargedError::Faulted(overflow)) => panic!("{overflow}"),
+        })
+    );
     let layout_bytes = layout.atomic_bytes() as u64;
     assert_eq!(
         c.usage()
@@ -156,14 +152,12 @@ fn csp_actions_convert_to_the_work_layout_and_storage_the_account_admits() {
             .high_water(),
         layout_bytes
     );
-    for (resource, amount) in csp_storage(storage) {
-        let parse = match resource {
-            HtmlResource::ManagedCapacityBytes => HtmlParseResource::ManagedCapacityBytes,
-            HtmlResource::PeakTransientBytes => HtmlParseResource::PeakTransientBytes,
-            HtmlResource::ManagedUtf16Units => HtmlParseResource::ManagedUtf16Units,
-            HtmlResource::AuxiliaryEntries => HtmlParseResource::AuxiliaryEntries,
-            other => panic!("unexpected storage resource {other:?}"),
-        };
-        assert_eq!(c.usage().resource(parse).current(), amount, "{resource:?}");
+    for (parse, amount) in [
+        (HtmlParseResource::AuxiliaryEntries, 2),
+        (HtmlParseResource::ManagedUtf16Units, 8),
+        (HtmlParseResource::ManagedCapacityBytes, 64),
+        (HtmlParseResource::PeakTransientBytes, 64),
+    ] {
+        assert_eq!(c.usage().resource(parse).current(), amount, "{parse:?}");
     }
 }

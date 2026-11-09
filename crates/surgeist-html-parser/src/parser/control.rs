@@ -16,8 +16,7 @@ use std::{
     sync::{Arc, Weak},
 };
 use surgeist_html::accounting::{
-    HtmlChange, HtmlResource, HtmlWork, attribute_edit_entries, attribute_edit_work,
-    record_largest, retained_provider_storage, value_pool_work,
+    HtmlChange, HtmlResource, HtmlWork, record_largest, retained_provider_storage,
 };
 use surgeist_ledger::{Change, Refusal, RefusalReason};
 
@@ -1108,23 +1107,6 @@ impl ParseControl {
     pub(crate) fn charge_changes(&mut self, changes: &[HtmlChange]) -> Result<(), HtmlParseStop> {
         self.checkpoint()?;
         self.admit_work(changes)
-    }
-    /// Charges one work change.
-    pub(crate) fn charge_change(&mut self, change: HtmlChange) -> Result<(), HtmlParseStop> {
-        self.charge_changes(&[change])
-    }
-    /// Charges each change of a conversion on its own, in order, leaving out the
-    /// ones that carry no work.
-    pub(crate) fn charge_each_nonzero(
-        &mut self,
-        changes: &[HtmlChange],
-    ) -> Result<(), HtmlParseStop> {
-        for &change in changes {
-            if !matches!(change, Change::Work(_, 0)) {
-                self.charge_change(change)?;
-            }
-        }
-        Ok(())
     }
     /// Acquires one resource change of a conversion.
     pub(crate) fn acquire_change(&mut self, change: HtmlChange) -> Result<(), HtmlParseStop> {

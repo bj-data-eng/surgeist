@@ -1,8 +1,11 @@
-use std::sync::Arc;
+use crate::html::support::{Recorder, Refused, Refuser};
+use std::{convert::Infallible, sync::Arc};
 use surgeist_html::{
+    accounting::{HtmlChargedError, HtmlWork},
     bounded::values::{
         HtmlAttributeNameIndex, HtmlAttributeStorage, HtmlAttributeValidation,
-        HtmlAttributeValidationError, HtmlNameIndexSlot, HtmlValidatedAttributes,
+        HtmlAttributeValidationAction, HtmlAttributeValidationError, HtmlNameIndexSlot,
+        HtmlValidatedAttributes,
     },
     values::{Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
@@ -18,10 +21,27 @@ fn attribute(
     )
 }
 
+/// Charges and performs one action, returning the operation's own fault. The recorder admits every
+/// charge, so no charge stops.
+fn advance(
+    action: HtmlAttributeValidationAction<'_>,
+    meter: &mut Recorder,
+) -> Result<(), HtmlAttributeValidationError> {
+    match action.advance(meter) {
+        Ok(()) => Ok(()),
+        Err(HtmlChargedError::Faulted(fault)) => Err(fault),
+        Err(HtmlChargedError::Stopped(never)) => {
+            let never: Infallible = never;
+            match never {}
+        }
+    }
+}
+
 /// Performs every comparison, leaving the cursor with its latched failure when one occurs.
 fn run(validation: &mut HtmlAttributeValidation) -> Result<(), HtmlAttributeValidationError> {
+    let mut meter = Recorder::default();
     while let Some(action) = validation.next_action()? {
-        action.advance()?;
+        advance(action, &mut meter)?;
     }
     Ok(())
 }
@@ -137,23 +157,28 @@ fn exact_namespace_comparison_precedes_local_name_and_ignores_prefix_and_value()
     let expected = [(2, 0), (2, 0), (0, 4), (0, 4), (2, 0), (0, 4)];
     for (index, (visits, bytes)) in expected.into_iter().enumerate() {
         let action = validation.next_action().unwrap().unwrap();
+        let mut meter = Recorder::default();
+        let outcome = advance(action, &mut meter);
         assert_eq!(
             (
-                action.layout().record_visits(),
-                action.layout().inspected_bytes()
+                meter.total(HtmlWork::RecordVisit),
+                meter.total(HtmlWork::InspectByte)
             ),
             (visits, bytes)
         );
+        // A pairwise comparison has no index to write or copy.
+        assert_eq!(meter.total(HtmlWork::RecordWrite), 0);
+        assert_eq!(meter.total(HtmlWork::CopyByte), 0);
         if index == expected.len() - 1 {
             assert_eq!(
-                action.advance(),
+                outcome,
                 Err(HtmlAttributeValidationError::Duplicate {
                     first: 0,
                     duplicate: 1
                 })
             );
         } else {
-            action.advance().unwrap();
+            outcome.unwrap();
         }
     }
 }
@@ -168,26 +193,28 @@ fn every_interrupted_comparison_recovers_all_storage_without_publication() {
     for completed_actions in 0..10 {
         let mut validation =
             HtmlAttributeStorage::from_shared_attributes(backing.clone()).validate();
+        let mut meter = Recorder::default();
         for _ in 0..completed_actions {
-            validation
-                .next_action()
-                .unwrap()
-                .unwrap()
-                .advance()
-                .unwrap();
+            advance(validation.next_action().unwrap().unwrap(), &mut meter).unwrap();
         }
+        // An action whose charge is refused leaves the cursor at the same comparison.
+        let mut refused = Refuser::default();
+        let action = validation.next_action().unwrap().unwrap();
+        assert_eq!(
+            action.advance(&mut refused),
+            Err(HtmlChargedError::Stopped(Refused))
+        );
         // The finish is refused as not ready and hands the cursor back at the same comparison.
         let refusal = validation.finish().unwrap_err();
         assert_eq!(*refusal.cause(), HtmlAttributeValidationError::NotReady);
         let (mut validation, _) = refusal.into_parts();
-        let refused_layout = {
-            let action = validation.next_action().unwrap().unwrap();
-            action.layout()
-        };
+        let mut again = Refuser::default();
+        let action = validation.next_action().unwrap().unwrap();
         assert_eq!(
-            validation.next_action().unwrap().unwrap().layout(),
-            refused_layout
+            action.advance(&mut again),
+            Err(HtmlChargedError::Stopped(Refused))
         );
+        assert_eq!(again.attempts, refused.attempts);
         let recovered = validation.abort();
         assert!(Arc::ptr_eq(recovered.shared_attributes(), &backing));
         assert_eq!(recovered.shared_attributes().as_slice(), backing.as_slice());
@@ -292,7 +319,7 @@ fn indexed_validation_matches_pairwise_validation_and_returns_the_borrowed_slots
         loop {
             match owner.next_action() {
                 Ok(Some(action)) => {
-                    if let Err(error) = action.advance() {
+                    if let Err(error) = advance(action, &mut Recorder::default()) {
                         outcome = Err(error);
                         break;
                     }

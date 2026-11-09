@@ -1,6 +1,7 @@
 //! HTML 877d #prepare-the-script-element literal state/effect oracles.
 //! This adapter applies actual public script flags and records each real slot
 //! write. Qualified tree/document acquisition remains the consuming owner's job.
+use crate::html::support::Recorder;
 use surgeist_html::bounded::script::{
     HtmlScriptPreparationAction, HtmlScriptPreparationCursor, HtmlScriptPreparationError,
     HtmlScriptPreparationReply, HtmlScriptPreparationResult, HtmlScriptTypeCursor,
@@ -87,8 +88,9 @@ impl Fixture {
                     self.explicit_type.as_ref(),
                     self.language.as_ref(),
                 );
-                while kind.required_work().is_some() {
-                    kind.advance();
+                let mut meter = Recorder::default();
+                while kind.result().is_none() {
+                    kind.advance(&mut meter).unwrap();
                 }
                 R::Classified(kind.result().expect("complete admitted classification"))
             }

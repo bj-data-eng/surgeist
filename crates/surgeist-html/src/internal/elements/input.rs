@@ -10,10 +10,12 @@
 //! family effects. Reset/type cursors alone do not complete a live operation.
 
 use crate::{
+    internal::accounting::{HtmlChange, HtmlResource, HtmlWork},
     internal::attributes::HtmlInputType,
     internal::elements::control_values::HtmlTextControlValueSetterFinish,
     internal::values::DocumentString,
 };
+use surgeist_ledger::{Change, Charge};
 
 impl HtmlInputType {
     /// Whether this Input state uses its current value for auto directionality.
@@ -449,10 +451,9 @@ impl<'a> HtmlInputSanitizationCursor<'a> {
             .filter(|&separator| separator == position)
             .map(|_| 0x54)
     }
-    /// The fixed work the next `advance` performs: `InspectValueUnit` when it examines one source
-    /// unit, `ReadField` for a state transition, and `None` once the cursor is done. The caller
-    /// admits this work before it calls `advance`.
-    pub fn required_work(&self) -> Option<HtmlInputRuleWork> {
+    /// The fixed work the next step performs: `InspectValueUnit` when it examines one source
+    /// unit, `ReadField` for a state transition, and `None` once the cursor is done.
+    fn required_work(&self) -> Option<HtmlInputRuleWork> {
         match &self.step {
             SanitizerStep::Done => None,
             SanitizerStep::Number(cursor) => Some(if cursor.inspects_unit() {
@@ -474,10 +475,35 @@ impl<'a> HtmlInputSanitizationCursor<'a> {
             _ => Some(HtmlInputRuleWork::ReadField),
         }
     }
-    /// Performs one admitted step. It returns a retained source interval when the step emits one
-    /// and `None` otherwise, including after the cursor is done. An Email list yields each token
-    /// and each separating comma as its own interval.
-    pub fn advance(&mut self) -> Option<HtmlInputRetainedRange> {
+    /// Whether the cursor is done, so that no further step has work to charge.
+    pub fn is_complete(&self) -> bool {
+        matches!(self.step, SanitizerStep::Done)
+    }
+    /// Charges the work of the next step, as one schema change, and charges nothing once the
+    /// cursor is done. The returned step is the only way to perform a step after charging
+    /// separately, for a caller that charges work of its own between this charge and the step.
+    /// Dropping it performs nothing.
+    pub fn charge_next<C: Charge<HtmlWork, HtmlResource>>(
+        &mut self,
+        charge: &mut C,
+    ) -> Result<HtmlInputChargedStep<'_, 'a>, C::Stop> {
+        if let Some(work) = self.required_work() {
+            charge.charge(&[work.change()])?;
+        }
+        Ok(HtmlInputChargedStep { cursor: self })
+    }
+    /// Charges the next step's work, then performs the step. See
+    /// [`HtmlInputChargedStep::advance`] for the result.
+    pub fn advance<C: Charge<HtmlWork, HtmlResource>>(
+        &mut self,
+        charge: &mut C,
+    ) -> Result<Option<HtmlInputRetainedRange>, C::Stop> {
+        Ok(self.charge_next(charge)?.advance())
+    }
+    /// Performs one step whose work has been charged. It returns a retained source interval when
+    /// the step emits one and `None` otherwise, including after the cursor is done. An Email list
+    /// yields each token and each separating comma as its own interval.
+    fn step(&mut self) -> Option<HtmlInputRetainedRange> {
         match &mut self.step {
             SanitizerStep::Number(cursor) => {
                 cursor.advance();
@@ -904,10 +930,10 @@ impl HtmlInputTypeChange {
     }
 }
 
-/// Admission before one fixed cursor action. Adapters map these credits to
-/// their own ledger; these cursors neither poll nor hold a controller.
+/// Admission before one fixed cursor action, charged as the schema's record
+/// visits or inspected bytes; these cursors neither poll nor hold a controller.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlInputRuleWork {
+pub(crate) enum HtmlInputRuleWork {
     /// One keyword-row or length metadata decision.
     ReadField,
     /// The actual old/current length metadata pair.
@@ -918,6 +944,38 @@ pub enum HtmlInputRuleWork {
     CompareValueUnits,
     /// One source UTF-16 unit used by a sanitizer boundary decision.
     InspectValueUnit,
+}
+
+/// A step of an [`HtmlInputSanitizationCursor`] whose work has been charged. Only
+/// [`HtmlInputSanitizationCursor::charge_next`] makes one, it borrows the cursor, and performing
+/// it consumes it, so a step cannot be performed without its charge or twice for one charge.
+#[derive(Debug)]
+#[must_use = "a charged step performs nothing until it is advanced"]
+pub struct HtmlInputChargedStep<'c, 'a> {
+    cursor: &'c mut HtmlInputSanitizationCursor<'a>,
+}
+impl HtmlInputChargedStep<'_, '_> {
+    /// Performs the charged step. It returns a retained source interval when the step emits one
+    /// and `None` otherwise, including after the cursor is done.
+    pub fn advance(self) -> Option<HtmlInputRetainedRange> {
+        self.cursor.step()
+    }
+}
+
+impl HtmlInputRuleWork {
+    /// The schema change that admits this work. A length pair reads two records. An ASCII
+    /// comparison inspects the unit's two bytes and the literal's one. A value unit comparison or
+    /// inspection inspects the unit's two bytes.
+    pub(crate) fn change(self) -> HtmlChange {
+        match self {
+            Self::ReadField => Change::Work(HtmlWork::RecordVisit, 1),
+            Self::ReadValueLengths => Change::Work(HtmlWork::RecordVisit, 2),
+            Self::CompareAsciiUnit => Change::Work(HtmlWork::InspectByte, 3),
+            Self::CompareValueUnits | Self::InspectValueUnit => {
+                Change::Work(HtmlWork::InspectByte, 2)
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -945,17 +1003,28 @@ impl<'a> HtmlInputTypeCursor<'a> {
             step: TypeStep::Row,
         }
     }
-    /// The fixed work the next `advance` performs, or `None` once `result` is available.
-    pub fn required_work(&self) -> Option<HtmlInputRuleWork> {
+    /// The fixed work the next step performs, or `None` once `result` is available.
+    fn required_work(&self) -> Option<HtmlInputRuleWork> {
         match self.step {
             TypeStep::Done(_) => None,
             TypeStep::Unit(..) => Some(HtmlInputRuleWork::CompareAsciiUnit),
             _ => Some(HtmlInputRuleWork::ReadField),
         }
     }
-    /// At most one row lookup, length decision or UTF-16/ASCII comparison.
-    /// The caller admits required_work before calling this method.
-    pub fn advance(&mut self) {
+    /// Charges the next step's work as one schema change and performs at most one row lookup,
+    /// length decision or UTF-16/ASCII comparison. A refused charge leaves the cursor as it was.
+    /// A completed cursor charges nothing.
+    pub fn advance<C: Charge<HtmlWork, HtmlResource>>(
+        &mut self,
+        charge: &mut C,
+    ) -> Result<(), C::Stop> {
+        if let Some(work) = self.required_work() {
+            charge.charge(&[work.change()])?;
+        }
+        self.step();
+        Ok(())
+    }
+    fn step(&mut self) {
         self.step = match self.step {
             TypeStep::Row => {
                 if let Some(value) = self.value {
@@ -1044,17 +1113,28 @@ impl<'a> HtmlInputColorSpaceCursor<'a> {
             step: ColorSpaceStep::Row,
         }
     }
-    /// The fixed work the next `advance` performs, or `None` once `result` is available.
-    pub fn required_work(&self) -> Option<HtmlInputRuleWork> {
+    /// The fixed work the next step performs, or `None` once `result` is available.
+    fn required_work(&self) -> Option<HtmlInputRuleWork> {
         match self.step {
             ColorSpaceStep::Done(_) => None,
             ColorSpaceStep::Unit(..) => Some(HtmlInputRuleWork::CompareAsciiUnit),
             _ => Some(HtmlInputRuleWork::ReadField),
         }
     }
-    /// At most one row lookup, length decision or UTF-16/ASCII comparison.
-    /// The caller admits required_work before calling this method.
-    pub fn advance(&mut self) {
+    /// Charges the next step's work as one schema change and performs at most one row lookup,
+    /// length decision or UTF-16/ASCII comparison. A refused charge leaves the cursor as it was.
+    /// A completed cursor charges nothing.
+    pub fn advance<C: Charge<HtmlWork, HtmlResource>>(
+        &mut self,
+        charge: &mut C,
+    ) -> Result<(), C::Stop> {
+        if let Some(work) = self.required_work() {
+            charge.charge(&[work.change()])?;
+        }
+        self.step();
+        Ok(())
+    }
+    fn step(&mut self) {
         self.step = match self.step {
             ColorSpaceStep::Row => {
                 if let Some(value) = self.value {
@@ -1142,8 +1222,8 @@ impl<'a> HtmlInputValueComparisonCursor<'a> {
             length_pending: true,
         }
     }
-    /// The fixed work the next `advance` performs, or `None` once `result` is available.
-    pub fn required_work(&self) -> Option<HtmlInputRuleWork> {
+    /// The fixed work the next step performs, or `None` once `result` is available.
+    fn required_work(&self) -> Option<HtmlInputRuleWork> {
         if self.result.is_some() {
             None
         } else if self.length_pending {
@@ -1152,9 +1232,20 @@ impl<'a> HtmlInputValueComparisonCursor<'a> {
             Some(HtmlInputRuleWork::CompareValueUnits)
         }
     }
-    /// Performs one admitted step: the length check, or the comparison of one code unit pair. It
-    /// does nothing after the result is known.
-    pub fn advance(&mut self) {
+    /// Charges the next step's work as one schema change and performs it: the length check, or the
+    /// comparison of one code unit pair. A refused charge leaves the cursor as it was. It charges
+    /// nothing and does nothing after the result is known.
+    pub fn advance<C: Charge<HtmlWork, HtmlResource>>(
+        &mut self,
+        charge: &mut C,
+    ) -> Result<(), C::Stop> {
+        if let Some(work) = self.required_work() {
+            charge.charge(&[work.change()])?;
+        }
+        self.step();
+        Ok(())
+    }
+    fn step(&mut self) {
         if self.result.is_some() {
             return;
         }

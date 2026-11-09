@@ -319,13 +319,8 @@ fn observe(storage: HtmlConstructionStorage, command: HtmlConstructionCommand) -
     let mut operation = Some(storage.prepare(command));
     let mut commit = None;
     while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
-        if let HtmlConstructionActionDescription::Commit {
-            record_writes,
-            copied_bytes,
-            ..
-        } = action.description()
-        {
-            commit = Some((record_writes, copied_bytes));
+        if let HtmlConstructionActionDescription::Commit { work, .. } = action.description() {
+            commit = Some((work.record_writes, work.copied_bytes));
         }
         action.perform().unwrap().accept();
     }

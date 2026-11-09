@@ -3,8 +3,10 @@
 //! The sixteen essence strings are incorporated under the WHATWG BSD permission
 //! recorded by this crate's NOTICE. This is not MIME parsing or author validation.
 
+use crate::internal::accounting::{HtmlChange, HtmlResource, HtmlWork};
 use crate::internal::microsyntax::tokens::{ascii_case_insensitive_unit, is_ascii_whitespace};
 use crate::internal::values::DocumentString;
+use surgeist_ledger::{Change, Charge};
 
 /// A script kind selected by HTML's type/language classification step.
 /// This value alone does not establish preparation, saved metadata or execution.
@@ -49,16 +51,25 @@ const KEYWORDS: [(&[u8], HtmlScriptKind); 3] = [
     (b"speculationrules", HtmlScriptKind::SpeculationRules),
 ];
 
-/// Required admission before the cursor's next actual action. Parser adapters
-/// map these concrete credits to their existing categories; no controller is held.
+/// Required admission before the cursor's next actual action, charged as the
+/// schema's record visits or inspected bytes.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HtmlScriptTypeWork {
+pub(crate) enum HtmlScriptTypeWork {
     /// Charge this many visits before a read: two for the initial selection of the input, then,
     /// for each candidate comparison, one to start it and one for its length step, which precedes
     /// any unit comparison.
     RecordVisit(u64),
     /// Actual inspected bytes, including UTF-16 operands and ASCII keywords.
     InspectByte(u64),
+}
+impl HtmlScriptTypeWork {
+    /// The schema change that admits this work.
+    pub(crate) fn change(self) -> HtmlChange {
+        match self {
+            Self::RecordVisit(units) => Change::Work(HtmlWork::RecordVisit, units),
+            Self::InspectByte(units) => Change::Work(HtmlWork::InspectByte, units),
+        }
+    }
 }
 /// Borrowed ASCII-insensitive virtual-prefix/range matcher consumed by
 /// [`HtmlScriptTypeCursor`]. Credits precede length comparison and each read;
@@ -269,8 +280,8 @@ enum State<'a> {
     Done(Option<HtmlScriptKind>),
 }
 
-/// Stack-only borrowed cursor. Each `advance` follows its `required_work`
-/// admission. Raw units are read only by advance, never by credit inspection.
+/// Stack-only borrowed cursor. Each `advance` charges the work of its action first.
+/// Raw units are read only by advance, never by credit inspection.
 /// Ordinary native reports use the same actions under their ordinary contract.
 /// Finite work: sixteen raw matches, at most two linear trim passes and sixteen
 /// stripped matches for explicit preparation, then three exact keyword matches.
@@ -313,12 +324,20 @@ impl<'a> HtmlScriptTypeCursor<'a> {
             State::Done(result) => Err(*result),
         }
     }
-    /// Describes the next read; admit it before calling advance.
-    pub fn required_work(&mut self) -> Option<HtmlScriptTypeWork> {
-        self.pending().ok()
+    /// Charges the next read as one schema change, then performs it. A completed cursor charges
+    /// nothing and remains completed. A refused charge leaves the cursor at the same read.
+    pub fn advance<C: Charge<HtmlWork, HtmlResource>>(
+        &mut self,
+        charge: &mut C,
+    ) -> Result<(), C::Stop> {
+        if let Ok(work) = self.pending() {
+            charge.charge(&[work.change()])?;
+        }
+        self.step();
+        Ok(())
     }
     /// Performs one admitted action; a completed cursor remains completed.
-    pub fn advance(&mut self) {
+    fn step(&mut self) {
         if self.pending().is_err() {
             return;
         }
@@ -367,7 +386,7 @@ impl<'a> HtmlScriptTypeCursor<'a> {
     pub(crate) fn finish_ordinary(mut self) -> Option<HtmlScriptKind> {
         loop {
             match self.pending() {
-                Ok(_) => self.advance(),
+                Ok(_) => self.step(),
                 Err(result) => return result,
             }
         }

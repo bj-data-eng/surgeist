@@ -85,6 +85,27 @@ pub(super) fn plan_below_charge(control: &mut ParseControl) -> SessionError {
     )
 }
 
+/// The session error of a construction step's charge: the parser's own stop, or a step and a
+/// charge that disagree, which is an invariant of the owner.
+pub(super) fn charge_fault(
+    control: &mut ParseControl,
+    error: surgeist_html::accounting::HtmlChargedError<
+        crate::parser::control::HtmlParseStop,
+        surgeist_html::bounded::construction::HtmlConstructionChargeFault,
+    >,
+) -> SessionError {
+    use surgeist_html::accounting::HtmlChargedError;
+    use surgeist_html::bounded::construction::HtmlConstructionChargeFault;
+    match error {
+        HtmlChargedError::Stopped(stop) => SessionError::Stop(stop),
+        // The step describes fewer provider calls than the parser already charged for it.
+        HtmlChargedError::Faulted(HtmlConstructionChargeFault::PrepaidCallsExceedPlan) => {
+            plan_below_charge(control)
+        }
+        HtmlChargedError::Faulted(_) => latch_owner_refusal(control),
+    }
+}
+
 /// An impossible registry state, latched as the controller's first stop.
 pub(super) fn latch_registry_row(control: &mut ParseControl) -> SessionError {
     SessionError::Stop(

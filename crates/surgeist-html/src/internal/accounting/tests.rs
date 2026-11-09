@@ -1,18 +1,8 @@
 use super::*;
-use crate::bounded::values::{HtmlStringPool, HtmlValuePoolUsage};
+use crate::bounded::values::HtmlStringPool;
 use surgeist_ledger::{Dimension, Error, Operation, RefusalReason};
 
 type Op = Operation<HtmlWork, HtmlResource>;
-
-fn work_of(changes: &[HtmlChange]) -> Vec<(HtmlWork, u64)> {
-    changes
-        .iter()
-        .filter_map(|change| match *change {
-            Change::Work(dimension, amount) => Some((dimension, amount)),
-            _ => None,
-        })
-        .collect()
-}
 
 /// A cap scope with the given caps and one charging scope below it.
 fn charging(limits: HtmlLimits) -> (Op, surgeist_ledger::Scope, surgeist_ledger::Scope) {
@@ -112,7 +102,7 @@ fn the_credit_cap_refuses_the_charge_that_exceeds_it() {
 }
 
 #[test]
-fn value_pool_actions_convert_to_the_sum_of_their_five_fields() {
+fn value_pool_work_charges_the_sum_of_its_five_fields_as_credits() {
     for work in [
         HtmlStringPool::root_work(),
         HtmlStringPool::mark_work(),
@@ -125,9 +115,7 @@ fn value_pool_actions_convert_to_the_sum_of_their_five_fields() {
             + work.provider_calls() as u64
             + work.reserve_bytes() as u64;
         let (mut operation, cap, charging) = charging(HtmlLimits::unlimited());
-        operation
-            .apply_batch(charging, &value_pool_work(work))
-            .unwrap();
+        work.charge(&mut operation.charge_at(charging)).unwrap();
         assert_eq!(
             operation.usage(cap).unwrap().work(HtmlWork::Credits),
             expected
@@ -383,27 +371,6 @@ fn autocomplete_limits_cap_bytes_nested_output_and_scratch() {
     assert_eq!(limits.live(HtmlResource::OutputRecords), u64::MAX);
 }
 
-#[test]
-fn csp_work_sums_its_own_and_closing_credits() {
-    use crate::security::csp::{HtmlCspDisposalWork, HtmlCspLayout, HtmlCspStorage};
-    let storage = HtmlCspStorage::try_new(64, 8, 2).unwrap();
-    let closing = HtmlCspDisposalWork::try_new(5, 16).unwrap();
-    let layout = HtmlCspLayout::processing(37, storage, closing, 32).unwrap();
-    assert_eq!(
-        work_of(&[csp_work(&layout).unwrap()]),
-        [(HtmlWork::ProviderCall, 42)]
-    );
-    assert_eq!(
-        csp_storage(storage),
-        [
-            (HtmlResource::AuxiliaryEntries, 2),
-            (HtmlResource::ManagedUtf16Units, 8),
-            (HtmlResource::ManagedCapacityBytes, 64),
-            (HtmlResource::PeakTransientBytes, 64),
-        ]
-    );
-}
-
 /// The schema dimension of each construction limit resource.
 fn construction(resource: crate::construction::HtmlConstructionResource) -> HtmlResource {
     use crate::construction::HtmlConstructionResource as Resource;
@@ -496,7 +463,6 @@ fn the_autocomplete_limits_fields_are_the_autocomplete_scope_caps() {
 /// which is the declaration order of the resources.
 #[test]
 fn retained_storage_conversions_follow_the_resource_precedence() {
-    use crate::security::csp::HtmlCspStorage;
     let position = |resource: HtmlResource| {
         HtmlResource::ALL
             .iter()
@@ -508,8 +474,4 @@ fn retained_storage_conversions_follow_the_resource_precedence() {
             .all(|pair| position(pair[0].0) < position(pair[1].0))
     };
     assert!(ordered(retained_provider_storage(1, 2, 3)));
-    assert!(ordered(csp_storage(
-        HtmlCspStorage::try_new(64, 8, 2).unwrap()
-    )));
-    assert!(ordered(value_pool_usage(HtmlValuePoolUsage::default())));
 }

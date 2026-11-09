@@ -1,5 +1,6 @@
 //! Retained time-element recognition and admitted exact materialization.
 use super::*;
+use crate::internal::accounting::{HtmlChange, HtmlResource, HtmlWork, wide};
 use crate::internal::microsyntax::numeric::{
     HtmlIntegerUnitStep, HtmlNumericMaterializationError, HtmlNumericMaterializationFailure,
     HtmlNumericMaterialized,
@@ -11,6 +12,7 @@ use crate::{
     internal::values::interpretation::HtmlValueInterpreter,
     internal::values::interpretation::HtmlValueReport,
 };
+use surgeist_ledger::{Change, Charge};
 
 /// A refused owner transition or latched processing failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -117,17 +119,19 @@ pub enum HtmlTimeElementInterpretationActionKind {
     /// Assembling the published report from the authored value and the processed value.
     ReportAssembly,
 }
-/// Work to admit before execution and whether the operation can allocate.
+/// The role of the next operation and whether it can allocate. Its work is charged by
+/// [`HtmlTimeElementInterpretationAction::advance`].
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct HtmlTimeElementInterpretationLayout {
     work: usize,
     kind: HtmlTimeElementInterpretationActionKind,
 }
 impl HtmlTimeElementInterpretationLayout {
-    /// Original semantic work credits. A zero-credit Assembly completes an
-    /// already admitted numeric operation after its post-operation poll.
-    pub fn work(self) -> usize {
-        self.work
+    /// The schema change that admits this action's work, or `None` for a zero-credit Assembly:
+    /// it completes a numeric operation whose work was already admitted, so it adds no charge.
+    fn change(self) -> Option<HtmlChange> {
+        (self.work != 0 || self.kind != HtmlTimeElementInterpretationActionKind::Assembly)
+            .then(|| Change::Work(HtmlWork::SemanticStep, wide(self.work)))
     }
     /// The role of the next operation.
     pub fn kind(self) -> HtmlTimeElementInterpretationActionKind {
@@ -1085,18 +1089,24 @@ pub struct HtmlTimeElementInterpretationAction<'step, 'raw> {
     layout: HtmlTimeElementInterpretationLayout,
 }
 impl HtmlTimeElementInterpretationAction<'_, '_> {
-    /// The work to admit and the kind of the action, known before it runs.
+    /// The kind of the action and whether it can allocate, known before it runs.
     pub fn layout(&self) -> HtmlTimeElementInterpretationLayout {
         self.layout
     }
-    /// Executes the action, which the caller has admitted. `max_integer_digits` and
-    /// `max_allocation_bytes` bound any numeric allocation the action makes. The step reports the
-    /// capacity actually observed, even on failure, the outcome, and whether to poll afterward.
-    pub fn advance(
+    /// Charges the action's work as one change of semantic steps, then executes it. A zero-credit
+    /// Assembly charges nothing. A refused charge leaves the interpretation at the same action.
+    /// `max_integer_digits` and `max_allocation_bytes` bound any numeric allocation the action
+    /// makes. The step reports the capacity actually observed, even on failure, the outcome, and
+    /// whether to poll afterward.
+    pub fn advance<C: Charge<HtmlWork, HtmlResource>>(
         self,
+        charge: &mut C,
         max_integer_digits: usize,
         max_allocation_bytes: usize,
-    ) -> HtmlTimeElementInterpretationStep {
+    ) -> Result<HtmlTimeElementInterpretationStep, C::Stop> {
+        if let Some(change) = self.layout.change() {
+            charge.charge(&[change])?;
+        }
         let mut capacity = 0;
         let outcome = self
             .owner
@@ -1104,11 +1114,11 @@ impl HtmlTimeElementInterpretationAction<'_, '_> {
         if let Err(error) = outcome {
             self.owner.failure = Some(error);
         }
-        HtmlTimeElementInterpretationStep {
+        Ok(HtmlTimeElementInterpretationStep {
             capacity,
             outcome,
             poll_after: self.layout.can_allocate(),
-        }
+        })
     }
 }
 

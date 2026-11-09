@@ -148,8 +148,6 @@ use ordinary_view::{append_descendant_text, find_output_state};
 use ordinary_view::{
     next_ordinary_view_after_subtree, next_ordinary_view_node, ordinary_view_parent,
 };
-#[cfg(test)]
-use script_type::script_type_charge;
 use script_type::{classify_script, script_attribute};
 #[cfg(test)]
 pub(crate) use test_support::csp_protocol_error;
@@ -183,8 +181,8 @@ pub(crate) use session_error::{
     ElementInsertionIgnored, SessionClass, SessionError, session_class,
 };
 use session_error::{
-    count_set, end_session_on, latch_creation_fault, latch_effect_fault, latch_owner_refusal,
-    latch_registry_row, next_cursor, plan_below_charge, session_fault_invariant, successor,
+    charge_fault, count_set, end_session_on, latch_creation_fault, latch_effect_fault,
+    latch_owner_refusal, latch_registry_row, next_cursor, session_fault_invariant, successor,
 };
 use string_storage::{AttributeStorage, ReleasedStorage, mirrored_position};
 pub(crate) use string_storage::{StringLocation, TextInsertion};

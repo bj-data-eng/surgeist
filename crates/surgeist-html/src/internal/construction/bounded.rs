@@ -3,12 +3,34 @@
 use super::*;
 use std::mem::{align_of, size_of};
 
+/// A fault of charging a construction step: the step and what the caller says about it disagree.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum HtmlConstructionChargeFault {
+    /// The caller declared more prepaid provider calls than the step describes. The caller's own
+    /// charge for the step and the step's plan disagree.
+    PrepaidCallsExceedPlan,
+    /// The caller asked a description to charge a part it does not have.
+    WrongStep,
+}
+impl fmt::Display for HtmlConstructionChargeFault {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::PrepaidCallsExceedPlan => {
+                f.write_str("the prepaid provider calls exceed the step's described calls")
+            }
+            Self::WrongStep => f.write_str("the description has no such part to charge"),
+        }
+    }
+}
+impl std::error::Error for HtmlConstructionChargeFault {}
+
 pub(crate) mod attribute_edit;
 
 pub(crate) mod operations;
 use operations::{
     HtmlConstructionActionDescription, HtmlConstructionCommand, HtmlConstructionOperation,
-    HtmlConstructionRetirement,
+    HtmlConstructionRetirement, HtmlConstructionStepWork,
 };
 
 pub(crate) mod text_append;
@@ -729,8 +751,11 @@ impl<'a> HtmlConstructionInitializationAction<'a> {
     pub fn description(&self) -> HtmlConstructionActionDescription<'_> {
         HtmlConstructionActionDescription::InitializeIdentity {
             payload_bytes: size_of::<Identity>(),
-            initialized_bytes: size_of::<Arena>(),
-            provider_calls: 2,
+            work: HtmlConstructionStepWork {
+                initialized_bytes: size_of::<Arena>(),
+                provider_calls: 2,
+                ..HtmlConstructionStepWork::default()
+            },
         }
     }
     /// Allocates the shared identity. The observation reports that allocation and must be accepted

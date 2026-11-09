@@ -1,12 +1,14 @@
-use crate::html::support::string_sanitization as string_policy;
+use crate::html::support::{Recorder, string_sanitization as string_policy};
+use surgeist_html::accounting::HtmlWork;
 use surgeist_html::elements::input::HtmlInputValueSanitization;
 use surgeist_html::{
     attributes::HtmlInputType,
     elements::input::{
-        HtmlInputEmailMode, HtmlInputRuleWork, HtmlInputSanitization, HtmlInputSanitizationCursor,
+        HtmlInputEmailMode, HtmlInputSanitization, HtmlInputSanitizationCursor,
         HtmlInputTypeChange, HtmlInputTypeEffect, HtmlInputValueMode,
     },
 };
+use surgeist_ledger::Change;
 
 fn sanitize(
     policy: HtmlInputSanitization,
@@ -15,12 +17,19 @@ fn sanitize(
 ) -> (Vec<u16>, Option<usize>) {
     let mut cursor = HtmlInputSanitizationCursor::new(policy, units, mode);
     let mut result = Vec::new();
-    while let Some(work) = cursor.required_work() {
+    let mut meter = Recorder::default();
+    while !cursor.is_complete() {
+        let charged = meter.batches().len();
+        let step = cursor.advance(&mut meter).unwrap();
+        // One record visit for a state transition, or two inspected bytes for one source unit.
         assert!(matches!(
-            work,
-            HtmlInputRuleWork::ReadField | HtmlInputRuleWork::InspectValueUnit
+            meter.batches()[charged..],
+            [ref batch] if matches!(
+                batch.as_slice(),
+                [Change::Work(HtmlWork::RecordVisit, 1)] | [Change::Work(HtmlWork::InspectByte, 2)]
+            )
         ));
-        if let Some(range) = cursor.advance() {
+        if let Some(range) = step {
             for &unit in &units[range.start()..range.end()] {
                 if cursor.retain_unit(unit) {
                     result.push(unit);
@@ -158,12 +167,15 @@ fn a_cursor_has_no_final_email_count_before_its_real_completion() {
     );
     assert_eq!(cursor.email_value_count(), None);
     let mut actions = 0;
-    while cursor.required_work().is_some() {
-        cursor.advance();
+    let mut meter = Recorder::default();
+    while !cursor.is_complete() {
+        cursor.advance(&mut meter).unwrap();
         actions += 1;
     }
     assert!(actions > 3);
     assert_eq!(cursor.email_value_count(), Some(2));
-    assert_eq!(cursor.advance(), None);
-    assert_eq!(cursor.required_work(), None);
+    let charged = meter.batches().len();
+    assert_eq!(cursor.advance(&mut meter).unwrap(), None);
+    assert_eq!(meter.batches().len(), charged);
+    assert!(cursor.is_complete());
 }

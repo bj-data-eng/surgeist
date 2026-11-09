@@ -22,6 +22,13 @@ pub const surgeist_html::accounting::HtmlCapScope::ALL: [Self; 13]
 pub const fn surgeist_html::accounting::HtmlCapScope::capped_resources(self) -> &'static [surgeist_html::accounting::HtmlResource]
 pub const fn surgeist_html::accounting::HtmlCapScope::capped_work(self) -> &'static [surgeist_html::accounting::HtmlWork]
 pub const fn surgeist_html::accounting::HtmlCapScope::name(self) -> &'static str
+pub enum surgeist_html::accounting::HtmlChargedError<Stop, Fault>
+pub surgeist_html::accounting::HtmlChargedError::Faulted(Fault)
+pub surgeist_html::accounting::HtmlChargedError::Stopped(Stop)
+impl<Stop: core::error::Error + 'static, Fault: core::error::Error + 'static> core::error::Error for surgeist_html::accounting::HtmlChargedError<Stop, Fault>
+pub fn surgeist_html::accounting::HtmlChargedError<Stop, Fault>::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl<Stop: core::fmt::Display, Fault: core::fmt::Display> core::fmt::Display for surgeist_html::accounting::HtmlChargedError<Stop, Fault>
+pub fn surgeist_html::accounting::HtmlChargedError<Stop, Fault>::fmt(&self, formatter: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 pub enum surgeist_html::accounting::HtmlCustody
 pub surgeist_html::accounting::HtmlCustody::Balance
 pub surgeist_html::accounting::HtmlCustody::Gauge
@@ -100,6 +107,7 @@ pub surgeist_html::accounting::HtmlWork::SemanticStep
 pub surgeist_html::accounting::HtmlWork::StateStep
 impl surgeist_html::accounting::HtmlWork
 pub const fn surgeist_html::accounting::HtmlWork::charging_tariff(self) -> surgeist_ledger::Tariff<surgeist_html::accounting::HtmlWork>
+pub const fn surgeist_html::accounting::HtmlWork::credits_per_unit(self) -> core::option::Option<u64>
 pub const fn surgeist_html::accounting::HtmlWork::unit(self) -> surgeist_html::accounting::HtmlUnit
 impl surgeist_ledger::__private::Sealed for surgeist_html::accounting::HtmlWork
 impl surgeist_ledger::dimension::Dimension for surgeist_html::accounting::HtmlWork
@@ -166,22 +174,9 @@ pub surgeist_html::accounting::HtmlWorkTable::StateStep: T
 impl<T: core::marker::Copy> surgeist_html::accounting::HtmlWorkTable<T>
 pub const fn surgeist_html::accounting::HtmlWorkTable<T>::splat(value: T) -> Self
 pub fn surgeist_html::accounting::aggregate_tariffs() -> surgeist_html::accounting::HtmlTariffs
-pub fn surgeist_html::accounting::attribute_edit_entries(work: &surgeist_html::bounded::construction::HtmlConstructionAttributeWork) -> surgeist_html::accounting::HtmlChange
-pub fn surgeist_html::accounting::attribute_edit_work(work: &surgeist_html::bounded::construction::HtmlConstructionAttributeWork) -> [surgeist_html::accounting::HtmlChange; 5]
-pub fn surgeist_html::accounting::attribute_validation_work(layout: surgeist_html::bounded::values::HtmlAttributeValidationLayout) -> [surgeist_html::accounting::HtmlChange; 4]
-pub fn surgeist_html::accounting::autocomplete_limits(limits: surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationLimits) -> surgeist_html::accounting::HtmlLimits
 pub fn surgeist_html::accounting::charging_tariffs() -> surgeist_html::accounting::HtmlTariffs
-pub fn surgeist_html::accounting::construction_limits(limits: surgeist_html::construction::HtmlConstructionLimits) -> surgeist_html::accounting::HtmlLimits
-pub fn surgeist_html::accounting::csp_storage(storage: surgeist_html::security::csp::HtmlCspStorage) -> [(surgeist_html::accounting::HtmlResource, u64); 4]
-pub fn surgeist_html::accounting::csp_work(layout: &surgeist_html::security::csp::HtmlCspLayout) -> core::result::Result<surgeist_html::accounting::HtmlChange, surgeist_html::accounting::HtmlChargeOverflow>
-pub fn surgeist_html::accounting::input_rule_work(work: surgeist_html::elements::input::HtmlInputRuleWork) -> surgeist_html::accounting::HtmlChange
 pub fn surgeist_html::accounting::record_largest(resource: surgeist_html::accounting::HtmlResource, held: u64, value: u64) -> [surgeist_html::accounting::HtmlChange; 2]
 pub fn surgeist_html::accounting::retained_provider_storage(bytes: u64, units: u64, entries: u64) -> [(surgeist_html::accounting::HtmlResource, u64); 4]
-pub fn surgeist_html::accounting::script_type_work(work: surgeist_html::bounded::script::HtmlScriptTypeWork) -> surgeist_html::accounting::HtmlChange
-pub fn surgeist_html::accounting::text_append_work(work: &surgeist_html::bounded::construction::HtmlConstructionTextAppendWork) -> [surgeist_html::accounting::HtmlChange; 5]
-pub fn surgeist_html::accounting::time_interpretation_work(layout: surgeist_html::bounded::temporal::HtmlTimeElementInterpretationLayout) -> surgeist_html::accounting::HtmlChange
-pub fn surgeist_html::accounting::value_pool_usage(usage: surgeist_html::bounded::values::HtmlValuePoolUsage) -> [(surgeist_html::accounting::HtmlResource, u64); 4]
-pub fn surgeist_html::accounting::value_pool_work(work: surgeist_html::bounded::values::HtmlValuePoolWork) -> [surgeist_html::accounting::HtmlChange; 5]
 pub type surgeist_html::accounting::HtmlChange = surgeist_ledger::Change<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>
 pub type surgeist_html::accounting::HtmlLimits = surgeist_ledger::Limits<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>
 pub type surgeist_html::accounting::HtmlTariffs = surgeist_ledger::Tariffs<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>
@@ -2286,6 +2281,7 @@ pub surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError::Al
 pub surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError::BytesLimit
 pub surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError::BytesLimit::limit: usize
 pub surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError::BytesLimit::required: usize
+pub surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError::LedgerState
 pub surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError::OutputLimit
 pub surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError::OutputLimit::limit: usize
 pub surgeist_html::bounded::attributes::HtmlAutocompleteMaterializationError::OutputLimit::required: usize
@@ -2405,46 +2401,45 @@ pub fn surgeist_html::bounded::attributes::th_scope_work_bound(input_units: usiz
 pub mod surgeist_html::bounded::construction
 pub enum surgeist_html::bounded::construction::HtmlConstructionActionDescription<'a>
 pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Commit
-pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Commit::copied_bytes: usize
-pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Commit::depth_observation: core::option::Option<usize>
-pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Commit::initialized_bytes: usize
-pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Commit::record_visits: usize
-pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Commit::record_writes: usize
 pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Commit::usage: surgeist_html::construction::HtmlConstructionUsage
+pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Commit::work: surgeist_html::bounded::construction::HtmlConstructionStepWork
 pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Compare
-pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Compare::inspected_bytes: usize
+pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Compare::work: surgeist_html::bounded::construction::HtmlConstructionStepWork
 pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::InitializeChildren
-pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::InitializeChildren::copied_bytes: usize
 pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::InitializeChildren::element_alignment: usize
 pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::InitializeChildren::element_size: usize
 pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::InitializeChildren::position: usize
-pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::InitializeChildren::provider_calls: usize
-pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::InitializeChildren::record_writes: usize
+pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::InitializeChildren::work: surgeist_html::bounded::construction::HtmlConstructionStepWork
 pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::InitializeIdentity
-pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::InitializeIdentity::initialized_bytes: usize
 pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::InitializeIdentity::payload_bytes: usize
-pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::InitializeIdentity::provider_calls: usize
+pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::InitializeIdentity::work: surgeist_html::bounded::construction::HtmlConstructionStepWork
 pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Inspect
-pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Inspect::inspected_bytes: usize
-pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Inspect::record_visits: usize
+pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Inspect::work: surgeist_html::bounded::construction::HtmlConstructionStepWork
 pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Preflight
 pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Preflight::usage: surgeist_html::construction::HtmlConstructionUsage
 pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::PrepareAllocationReport
-pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::PrepareAllocationReport::copied_bytes: usize
-pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::PrepareAllocationReport::provider_calls: usize
-pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::PrepareAllocationReport::record_visits: usize
+pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::PrepareAllocationReport::work: surgeist_html::bounded::construction::HtmlConstructionStepWork
 pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Reserve
 pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Reserve::allocation: &'a surgeist_html::bounded::construction::HtmlConstructionAllocationSnapshot
 pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Reserve::growth: surgeist_html::bounded::construction::HtmlConstructionGrowth
 pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Reserve::minimum_capacity: usize
-pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Reserve::report_provider_calls: usize
 pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Reserve::required_len: usize
+pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Reserve::work: surgeist_html::bounded::construction::HtmlConstructionStepWork
 pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Share
 pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Share::allocation: &'a surgeist_html::bounded::construction::HtmlConstructionAllocationSnapshot
-pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Share::report_provider_calls: usize
+pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::Share::work: surgeist_html::bounded::construction::HtmlConstructionStepWork
 pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::ShareReferences
-pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::ShareReferences::copied_bytes: usize
-pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::ShareReferences::provider_calls: usize
+pub surgeist_html::bounded::construction::HtmlConstructionActionDescription::ShareReferences::work: surgeist_html::bounded::construction::HtmlConstructionStepWork
+impl surgeist_html::bounded::construction::HtmlConstructionActionDescription<'_>
+pub fn surgeist_html::bounded::construction::HtmlConstructionActionDescription<'_>::charge_children_calls<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&self, charge: &mut C) -> core::result::Result<(), surgeist_html::accounting::HtmlChargedError<<C as surgeist_ledger::charge::Charge>::Stop, surgeist_html::bounded::construction::HtmlConstructionChargeFault>>
+pub fn surgeist_html::bounded::construction::HtmlConstructionActionDescription<'_>::charge_children_initialization<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&self, charge: &mut C) -> core::result::Result<(), surgeist_html::accounting::HtmlChargedError<<C as surgeist_ledger::charge::Charge>::Stop, surgeist_html::bounded::construction::HtmlConstructionChargeFault>>
+pub fn surgeist_html::bounded::construction::HtmlConstructionActionDescription<'_>::charge_commit<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&self, charge: &mut C) -> core::result::Result<(), surgeist_html::accounting::HtmlChargedError<<C as surgeist_ledger::charge::Charge>::Stop, surgeist_html::bounded::construction::HtmlConstructionChargeFault>>
+pub fn surgeist_html::bounded::construction::HtmlConstructionActionDescription<'_>::charge_depth<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&self, charge: &mut C) -> core::result::Result<(), surgeist_html::accounting::HtmlChargedError<<C as surgeist_ledger::charge::Charge>::Stop, surgeist_html::bounded::construction::HtmlConstructionChargeFault>>
+pub fn surgeist_html::bounded::construction::HtmlConstructionActionDescription<'_>::charge_identity<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&self, prepaid_provider_calls: u64, charge: &mut C) -> core::result::Result<(), surgeist_html::accounting::HtmlChargedError<<C as surgeist_ledger::charge::Charge>::Stop, surgeist_html::bounded::construction::HtmlConstructionChargeFault>>
+pub fn surgeist_html::bounded::construction::HtmlConstructionActionDescription<'_>::charge_inspection<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&self, charge: &mut C) -> core::result::Result<(), surgeist_html::accounting::HtmlChargedError<<C as surgeist_ledger::charge::Charge>::Stop, surgeist_html::bounded::construction::HtmlConstructionChargeFault>>
+pub fn surgeist_html::bounded::construction::HtmlConstructionActionDescription<'_>::charge_references<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&self, charge: &mut C) -> core::result::Result<(), surgeist_html::accounting::HtmlChargedError<<C as surgeist_ledger::charge::Charge>::Stop, surgeist_html::bounded::construction::HtmlConstructionChargeFault>>
+pub fn surgeist_html::bounded::construction::HtmlConstructionActionDescription<'_>::charge_report_calls<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&self, charge: &mut C) -> core::result::Result<(), surgeist_html::accounting::HtmlChargedError<<C as surgeist_ledger::charge::Charge>::Stop, surgeist_html::bounded::construction::HtmlConstructionChargeFault>>
+pub fn surgeist_html::bounded::construction::HtmlConstructionActionDescription<'_>::charge_report_preparation<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&self, charge: &mut C) -> core::result::Result<(), surgeist_html::accounting::HtmlChargedError<<C as surgeist_ledger::charge::Charge>::Stop, surgeist_html::bounded::construction::HtmlConstructionChargeFault>>
 pub enum surgeist_html::bounded::construction::HtmlConstructionAllocationRole
 pub surgeist_html::bounded::construction::HtmlConstructionAllocationRole::ArenaWrapper
 pub surgeist_html::bounded::construction::HtmlConstructionAllocationRole::AttributePlan
@@ -2471,8 +2466,8 @@ pub surgeist_html::bounded::construction::HtmlConstructionAttributeDescription::
 pub surgeist_html::bounded::construction::HtmlConstructionAttributeDescription::ReservePlan::work: surgeist_html::bounded::construction::HtmlConstructionAttributeWork
 pub surgeist_html::bounded::construction::HtmlConstructionAttributeDescription::UniqueBacking(surgeist_html::bounded::construction::HtmlConstructionAttributeWork)
 impl surgeist_html::bounded::construction::HtmlConstructionAttributeDescription<'_>
+pub fn surgeist_html::bounded::construction::HtmlConstructionAttributeDescription<'_>::charge<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&self, prepaid_provider_calls: u64, charge: &mut C) -> core::result::Result<(), surgeist_html::accounting::HtmlChargedError<<C as surgeist_ledger::charge::Charge>::Stop, surgeist_html::bounded::construction::HtmlConstructionChargeFault>>
 pub fn surgeist_html::bounded::construction::HtmlConstructionAttributeDescription<'_>::prior_index(&self) -> core::option::Option<usize>
-pub fn surgeist_html::bounded::construction::HtmlConstructionAttributeDescription<'_>::work(&self) -> surgeist_html::bounded::construction::HtmlConstructionAttributeWork
 pub enum surgeist_html::bounded::construction::HtmlConstructionAttributeEditMode
 pub surgeist_html::bounded::construction::HtmlConstructionAttributeEditMode::NamedMerge
 pub surgeist_html::bounded::construction::HtmlConstructionAttributeEditMode::NamedMerge::candidate_count: usize
@@ -2482,6 +2477,12 @@ pub surgeist_html::bounded::construction::HtmlConstructionAttributeRetirementDes
 pub surgeist_html::bounded::construction::HtmlConstructionAttributeRetirementDescription::NameWitness
 pub surgeist_html::bounded::construction::HtmlConstructionAttributeRetirementDescription::NameWitness::auxiliary_entries: usize
 pub surgeist_html::bounded::construction::HtmlConstructionAttributeRetirementDescription::NameWitness::provider_calls: usize
+#[non_exhaustive] pub enum surgeist_html::bounded::construction::HtmlConstructionChargeFault
+pub surgeist_html::bounded::construction::HtmlConstructionChargeFault::PrepaidCallsExceedPlan
+pub surgeist_html::bounded::construction::HtmlConstructionChargeFault::WrongStep
+impl core::error::Error for surgeist_html::bounded::construction::HtmlConstructionChargeFault
+impl core::fmt::Display for surgeist_html::bounded::construction::HtmlConstructionChargeFault
+pub fn surgeist_html::bounded::construction::HtmlConstructionChargeFault::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 #[non_exhaustive] pub enum surgeist_html::bounded::construction::HtmlConstructionCommand
 pub surgeist_html::bounded::construction::HtmlConstructionCommand::AttachShadow
 pub surgeist_html::bounded::construction::HtmlConstructionCommand::AttachShadow::contents: surgeist_html::construction::HtmlBuilderNode
@@ -2591,7 +2592,7 @@ pub surgeist_html::bounded::construction::HtmlConstructionTextAppendDescription:
 pub surgeist_html::bounded::construction::HtmlConstructionTextAppendDescription::Reserve::work: surgeist_html::bounded::construction::HtmlConstructionTextAppendWork
 pub surgeist_html::bounded::construction::HtmlConstructionTextAppendDescription::SelectBacking(surgeist_html::bounded::construction::HtmlConstructionTextAppendWork)
 impl surgeist_html::bounded::construction::HtmlConstructionTextAppendDescription
-pub fn surgeist_html::bounded::construction::HtmlConstructionTextAppendDescription::work(self) -> surgeist_html::bounded::construction::HtmlConstructionTextAppendWork
+pub fn surgeist_html::bounded::construction::HtmlConstructionTextAppendDescription::charge<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(self, prepaid_provider_calls: u64, charge: &mut C) -> core::result::Result<(), surgeist_html::accounting::HtmlChargedError<<C as surgeist_ledger::charge::Charge>::Stop, surgeist_html::bounded::construction::HtmlConstructionChargeFault>>
 pub struct surgeist_html::bounded::construction::HtmlConstructionAbort
 impl surgeist_html::bounded::construction::HtmlConstructionAbort
 pub fn surgeist_html::bounded::construction::HtmlConstructionAbort::into_parts(self) -> (surgeist_html::bounded::construction::HtmlConstructionStorage, surgeist_html::bounded::construction::HtmlConstructionCommand, core::option::Option<surgeist_html::bounded::construction::HtmlConstructionRetired>)
@@ -2706,13 +2707,6 @@ pub fn surgeist_html::bounded::construction::HtmlConstructionAttributeSlotObserv
 pub fn surgeist_html::bounded::construction::HtmlConstructionAttributeSlotObservation<'_, '_>::capacity(&self) -> core::option::Option<surgeist_html::bounded::construction::HtmlConstructionAttributeCapacity>
 pub fn surgeist_html::bounded::construction::HtmlConstructionAttributeSlotObservation<'_, '_>::shared_attributes(&self) -> core::result::Result<&alloc::sync::Arc<alloc::vec::Vec<surgeist_html::values::Attribute>>, surgeist_html::construction::HtmlConstructionError>
 pub struct surgeist_html::bounded::construction::HtmlConstructionAttributeWork
-pub surgeist_html::bounded::construction::HtmlConstructionAttributeWork::atomic_layout_bytes: usize
-pub surgeist_html::bounded::construction::HtmlConstructionAttributeWork::auxiliary_entries: usize
-pub surgeist_html::bounded::construction::HtmlConstructionAttributeWork::copied_bytes: usize
-pub surgeist_html::bounded::construction::HtmlConstructionAttributeWork::inspected_bytes: usize
-pub surgeist_html::bounded::construction::HtmlConstructionAttributeWork::provider_calls: usize
-pub surgeist_html::bounded::construction::HtmlConstructionAttributeWork::record_visits: usize
-pub surgeist_html::bounded::construction::HtmlConstructionAttributeWork::record_writes: usize
 pub struct surgeist_html::bounded::construction::HtmlConstructionInitialization
 impl surgeist_html::bounded::construction::HtmlConstructionInitialization
 pub fn surgeist_html::bounded::construction::HtmlConstructionInitialization::abort(self) -> core::option::Option<surgeist_html::bounded::construction::HtmlConstructionRetired>
@@ -2790,6 +2784,7 @@ pub struct surgeist_html::bounded::construction::HtmlConstructionRetirementActio
 impl surgeist_html::bounded::construction::HtmlConstructionRetirementAction<'_>
 pub fn surgeist_html::bounded::construction::HtmlConstructionRetirementAction<'_>::description(&self) -> surgeist_html::bounded::construction::HtmlConstructionRetirementDescription<'_>
 pub fn surgeist_html::bounded::construction::HtmlConstructionRetirementAction<'_>::perform(self) -> core::option::Option<surgeist_html::bounded::construction::HtmlConstructionRetired>
+pub struct surgeist_html::bounded::construction::HtmlConstructionStepWork
 pub struct surgeist_html::bounded::construction::HtmlConstructionStorage
 impl surgeist_html::bounded::construction::HtmlConstructionStorage
 pub fn surgeist_html::bounded::construction::HtmlConstructionStorage::begin() -> surgeist_html::bounded::construction::HtmlConstructionInitialization
@@ -2842,13 +2837,6 @@ impl surgeist_html::bounded::construction::HtmlConstructionTextAppendReady
 pub fn surgeist_html::bounded::construction::HtmlConstructionTextAppendReady::abort(self) -> core::result::Result<surgeist_html::bounded::construction::HtmlConstructionTextAppendCompletion, surgeist_html::bounded::construction::HtmlConstructionRefusal<Self>>
 pub fn surgeist_html::bounded::construction::HtmlConstructionTextAppendReady::commit(self) -> core::result::Result<surgeist_html::bounded::construction::HtmlConstructionTextAppendCompletion, surgeist_html::bounded::construction::HtmlConstructionRefusal<Self>>
 pub struct surgeist_html::bounded::construction::HtmlConstructionTextAppendWork
-pub surgeist_html::bounded::construction::HtmlConstructionTextAppendWork::atomic_layout_bytes: usize
-pub surgeist_html::bounded::construction::HtmlConstructionTextAppendWork::copied_bytes: usize
-pub surgeist_html::bounded::construction::HtmlConstructionTextAppendWork::inspected_bytes: usize
-pub surgeist_html::bounded::construction::HtmlConstructionTextAppendWork::provider_calls: usize
-pub surgeist_html::bounded::construction::HtmlConstructionTextAppendWork::record_visits: usize
-pub surgeist_html::bounded::construction::HtmlConstructionTextAppendWork::record_writes: usize
-pub surgeist_html::bounded::construction::HtmlConstructionTextAppendWork::relocation_bound_bytes: usize
 pub mod surgeist_html::bounded::form
 pub enum surgeist_html::bounded::form::HtmlFormOwnerLookup
 pub surgeist_html::bounded::form::HtmlFormOwnerLookup::FirstId
@@ -3582,9 +3570,6 @@ pub surgeist_html::bounded::script::HtmlScriptPreparationResult::Disconnected
 pub surgeist_html::bounded::script::HtmlScriptPreparationResult::Empty
 pub surgeist_html::bounded::script::HtmlScriptPreparationResult::ParserDocumentMismatch
 pub surgeist_html::bounded::script::HtmlScriptPreparationResult::UnrecognizedType
-pub enum surgeist_html::bounded::script::HtmlScriptTypeWork
-pub surgeist_html::bounded::script::HtmlScriptTypeWork::InspectByte(u64)
-pub surgeist_html::bounded::script::HtmlScriptTypeWork::RecordVisit(u64)
 pub struct surgeist_html::bounded::script::HtmlScriptPreparationCursor
 impl surgeist_html::bounded::script::HtmlScriptPreparationCursor
 pub fn surgeist_html::bounded::script::HtmlScriptPreparationCursor::action(&self) -> surgeist_html::bounded::script::HtmlScriptPreparationAction
@@ -3594,10 +3579,9 @@ impl core::default::Default for surgeist_html::bounded::script::HtmlScriptPrepar
 pub fn surgeist_html::bounded::script::HtmlScriptPreparationCursor::default() -> Self
 pub struct surgeist_html::bounded::script::HtmlScriptTypeCursor<'a>
 impl<'a> surgeist_html::bounded::script::HtmlScriptTypeCursor<'a>
-pub fn surgeist_html::bounded::script::HtmlScriptTypeCursor<'a>::advance(&mut self)
+pub fn surgeist_html::bounded::script::HtmlScriptTypeCursor<'a>::advance<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&mut self, charge: &mut C) -> core::result::Result<(), <C as surgeist_ledger::charge::Charge>::Stop>
 pub fn surgeist_html::bounded::script::HtmlScriptTypeCursor<'a>::content(explicit: core::option::Option<&'a surgeist_html::values::DocumentString>) -> Self
 pub fn surgeist_html::bounded::script::HtmlScriptTypeCursor<'a>::preparation(explicit: core::option::Option<&'a surgeist_html::values::DocumentString>, language: core::option::Option<&'a surgeist_html::values::DocumentString>) -> Self
-pub fn surgeist_html::bounded::script::HtmlScriptTypeCursor<'a>::required_work(&mut self) -> core::option::Option<surgeist_html::bounded::script::HtmlScriptTypeWork>
 pub fn surgeist_html::bounded::script::HtmlScriptTypeCursor<'a>::result(&self) -> core::option::Option<core::option::Option<surgeist_html::elements::script::HtmlScriptKind>>
 pub mod surgeist_html::bounded::security
 pub const surgeist_html::bounded::security::HTML_NONCE_INSPECTION_BOUND: usize
@@ -3783,7 +3767,7 @@ pub fn surgeist_html::bounded::temporal::HtmlTimeElementInterpretation<'raw>::ne
 pub fn surgeist_html::bounded::temporal::HtmlTimeElementInterpretation<'raw>::raw(&self) -> &'raw surgeist_html::values::DocumentString
 pub struct surgeist_html::bounded::temporal::HtmlTimeElementInterpretationAction<'step, 'raw>
 impl surgeist_html::bounded::temporal::HtmlTimeElementInterpretationAction<'_, '_>
-pub fn surgeist_html::bounded::temporal::HtmlTimeElementInterpretationAction<'_, '_>::advance(self, max_integer_digits: usize, max_allocation_bytes: usize) -> surgeist_html::bounded::temporal::HtmlTimeElementInterpretationStep
+pub fn surgeist_html::bounded::temporal::HtmlTimeElementInterpretationAction<'_, '_>::advance<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(self, charge: &mut C, max_integer_digits: usize, max_allocation_bytes: usize) -> core::result::Result<surgeist_html::bounded::temporal::HtmlTimeElementInterpretationStep, <C as surgeist_ledger::charge::Charge>::Stop>
 pub fn surgeist_html::bounded::temporal::HtmlTimeElementInterpretationAction<'_, '_>::layout(&self) -> surgeist_html::bounded::temporal::HtmlTimeElementInterpretationLayout
 pub struct surgeist_html::bounded::temporal::HtmlTimeElementInterpretationError
 impl surgeist_html::bounded::temporal::HtmlTimeElementInterpretationError
@@ -3799,7 +3783,6 @@ pub struct surgeist_html::bounded::temporal::HtmlTimeElementInterpretationLayout
 impl surgeist_html::bounded::temporal::HtmlTimeElementInterpretationLayout
 pub fn surgeist_html::bounded::temporal::HtmlTimeElementInterpretationLayout::can_allocate(self) -> bool
 pub fn surgeist_html::bounded::temporal::HtmlTimeElementInterpretationLayout::kind(self) -> surgeist_html::bounded::temporal::HtmlTimeElementInterpretationActionKind
-pub fn surgeist_html::bounded::temporal::HtmlTimeElementInterpretationLayout::work(self) -> usize
 pub struct surgeist_html::bounded::temporal::HtmlTimeElementInterpretationStep
 impl surgeist_html::bounded::temporal::HtmlTimeElementInterpretationStep
 pub fn surgeist_html::bounded::temporal::HtmlTimeElementInterpretationStep::capacity_bytes(self) -> usize
@@ -3892,11 +3875,13 @@ pub fn surgeist_html::bounded::values::HtmlAttributePool::abort_root(&mut self, 
 pub fn surgeist_html::bounded::values::HtmlAttributePool::abort_seal(&mut self, seal: surgeist_html::bounded::values::HtmlValuePoolSeal) -> core::result::Result<surgeist_html::bounded::values::HtmlValuePoolChange, surgeist_html::bounded::values::HtmlValuePoolError>
 pub fn surgeist_html::bounded::values::HtmlAttributePool::accept_mark(&mut self, mark: surgeist_html::bounded::values::HtmlValuePoolMark) -> core::result::Result<(), surgeist_html::bounded::values::HtmlValuePoolError>
 pub fn surgeist_html::bounded::values::HtmlAttributePool::begin_root(&mut self) -> core::option::Option<surgeist_html::bounded::values::HtmlValuePoolRoot>
-pub fn surgeist_html::bounded::values::HtmlAttributePool::disposal_work() -> surgeist_html::bounded::values::HtmlValuePoolWork
+pub fn surgeist_html::bounded::values::HtmlAttributePool::charge_disposal<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(charge: &mut C) -> core::result::Result<(), <C as surgeist_ledger::charge::Charge>::Stop>
+pub fn surgeist_html::bounded::values::HtmlAttributePool::charge_mark<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(charge: &mut C) -> core::result::Result<(), <C as surgeist_ledger::charge::Charge>::Stop>
+pub fn surgeist_html::bounded::values::HtmlAttributePool::charge_root<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(charge: &mut C) -> core::result::Result<(), <C as surgeist_ledger::charge::Charge>::Stop>
+pub fn surgeist_html::bounded::values::HtmlAttributePool::charge_seal<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(charge: &mut C) -> core::result::Result<(), <C as surgeist_ledger::charge::Charge>::Stop>
 pub fn surgeist_html::bounded::values::HtmlAttributePool::heap_usage(&self) -> surgeist_html::bounded::values::HtmlValuePoolUsage
 pub fn surgeist_html::bounded::values::HtmlAttributePool::inline_bytes() -> usize
 pub fn surgeist_html::bounded::values::HtmlAttributePool::mark(&mut self, root: &surgeist_html::bounded::values::HtmlValuePoolRoot) -> core::result::Result<core::option::Option<surgeist_html::bounded::values::HtmlValuePoolMark>, surgeist_html::bounded::values::HtmlValuePoolError>
-pub fn surgeist_html::bounded::values::HtmlAttributePool::mark_work() -> surgeist_html::bounded::values::HtmlValuePoolWork
 pub fn surgeist_html::bounded::values::HtmlAttributePool::new() -> Self
 pub fn surgeist_html::bounded::values::HtmlAttributePool::next_action(&mut self, operation: &mut surgeist_html::bounded::values::HtmlAttributePoolOperation<'_>) -> core::result::Result<core::option::Option<surgeist_html::bounded::values::HtmlValuePoolAction>, surgeist_html::bounded::values::HtmlValuePoolError>
 pub fn surgeist_html::bounded::values::HtmlAttributePool::offer<'a>(&mut self, input: &'a surgeist_html::values::OrderedAttributes) -> surgeist_html::bounded::values::HtmlAttributePoolOperation<'a>
@@ -3905,9 +3890,7 @@ pub fn surgeist_html::bounded::values::HtmlAttributePool::perform(&mut self, ope
 pub fn surgeist_html::bounded::values::HtmlAttributePool::prepare_seal(&mut self, root: surgeist_html::bounded::values::HtmlValuePoolRoot) -> core::result::Result<surgeist_html::bounded::values::HtmlValuePoolSeal, surgeist_html::bounded::values::HtmlValuePoolSealRefusal>
 pub fn surgeist_html::bounded::values::HtmlAttributePool::probe<'a>(&mut self, input: &'a surgeist_html::values::OrderedAttributes) -> surgeist_html::bounded::values::HtmlAttributePoolOperation<'a>
 pub fn surgeist_html::bounded::values::HtmlAttributePool::restore_mark(&mut self, mark: surgeist_html::bounded::values::HtmlValuePoolMark) -> core::result::Result<surgeist_html::bounded::values::HtmlValuePoolChange, surgeist_html::bounded::values::HtmlValuePoolError>
-pub fn surgeist_html::bounded::values::HtmlAttributePool::root_work() -> surgeist_html::bounded::values::HtmlValuePoolWork
 pub fn surgeist_html::bounded::values::HtmlAttributePool::seal(&mut self, seal: surgeist_html::bounded::values::HtmlValuePoolSeal) -> core::result::Result<surgeist_html::bounded::values::HtmlValuePoolChange, surgeist_html::bounded::values::HtmlValuePoolError>
-pub fn surgeist_html::bounded::values::HtmlAttributePool::seal_work() -> surgeist_html::bounded::values::HtmlValuePoolWork
 pub fn surgeist_html::bounded::values::HtmlAttributePool::suspend_mutations(&mut self, root: &surgeist_html::bounded::values::HtmlValuePoolRoot) -> core::result::Result<(), surgeist_html::bounded::values::HtmlValuePoolError>
 pub fn surgeist_html::bounded::values::HtmlAttributePool::validate_seal(&self, seal: &surgeist_html::bounded::values::HtmlValuePoolSeal) -> core::result::Result<(), surgeist_html::bounded::values::HtmlValuePoolError>
 impl core::default::Default for surgeist_html::bounded::values::HtmlAttributePool
@@ -3942,14 +3925,7 @@ pub fn surgeist_html::bounded::values::HtmlAttributeValidation::next_action(&mut
 pub fn surgeist_html::bounded::values::HtmlAttributeValidation::take_index(&mut self) -> core::option::Option<surgeist_html::bounded::values::HtmlAttributeNameIndex>
 pub struct surgeist_html::bounded::values::HtmlAttributeValidationAction<'a>
 impl surgeist_html::bounded::values::HtmlAttributeValidationAction<'_>
-pub fn surgeist_html::bounded::values::HtmlAttributeValidationAction<'_>::advance(self) -> core::result::Result<(), surgeist_html::bounded::values::HtmlAttributeValidationError>
-pub fn surgeist_html::bounded::values::HtmlAttributeValidationAction<'_>::layout(&self) -> surgeist_html::bounded::values::HtmlAttributeValidationLayout
-pub struct surgeist_html::bounded::values::HtmlAttributeValidationLayout
-impl surgeist_html::bounded::values::HtmlAttributeValidationLayout
-pub fn surgeist_html::bounded::values::HtmlAttributeValidationLayout::copied_bytes(self) -> u64
-pub fn surgeist_html::bounded::values::HtmlAttributeValidationLayout::inspected_bytes(self) -> u64
-pub fn surgeist_html::bounded::values::HtmlAttributeValidationLayout::record_visits(self) -> u64
-pub fn surgeist_html::bounded::values::HtmlAttributeValidationLayout::record_writes(self) -> u64
+pub fn surgeist_html::bounded::values::HtmlAttributeValidationAction<'_>::advance<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(self, charge: &mut C) -> core::result::Result<(), surgeist_html::accounting::HtmlChargedError<<C as surgeist_ledger::charge::Charge>::Stop, surgeist_html::bounded::values::HtmlAttributeValidationError>>
 pub struct surgeist_html::bounded::values::HtmlFinishFailure<T, E>
 impl<T, E> surgeist_html::bounded::values::HtmlFinishFailure<T, E>
 pub fn surgeist_html::bounded::values::HtmlFinishFailure<T, E>::cause(&self) -> &E
@@ -3998,11 +3974,13 @@ pub fn surgeist_html::bounded::values::HtmlStringPool::abort_root(&mut self, roo
 pub fn surgeist_html::bounded::values::HtmlStringPool::abort_seal(&mut self, seal: surgeist_html::bounded::values::HtmlValuePoolSeal) -> core::result::Result<surgeist_html::bounded::values::HtmlValuePoolChange, surgeist_html::bounded::values::HtmlValuePoolError>
 pub fn surgeist_html::bounded::values::HtmlStringPool::accept_mark(&mut self, mark: surgeist_html::bounded::values::HtmlValuePoolMark) -> core::result::Result<(), surgeist_html::bounded::values::HtmlValuePoolError>
 pub fn surgeist_html::bounded::values::HtmlStringPool::begin_root(&mut self) -> core::option::Option<surgeist_html::bounded::values::HtmlValuePoolRoot>
-pub fn surgeist_html::bounded::values::HtmlStringPool::disposal_work() -> surgeist_html::bounded::values::HtmlValuePoolWork
+pub fn surgeist_html::bounded::values::HtmlStringPool::charge_disposal<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(charge: &mut C) -> core::result::Result<(), <C as surgeist_ledger::charge::Charge>::Stop>
+pub fn surgeist_html::bounded::values::HtmlStringPool::charge_mark<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(charge: &mut C) -> core::result::Result<(), <C as surgeist_ledger::charge::Charge>::Stop>
+pub fn surgeist_html::bounded::values::HtmlStringPool::charge_root<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(charge: &mut C) -> core::result::Result<(), <C as surgeist_ledger::charge::Charge>::Stop>
+pub fn surgeist_html::bounded::values::HtmlStringPool::charge_seal<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(charge: &mut C) -> core::result::Result<(), <C as surgeist_ledger::charge::Charge>::Stop>
 pub fn surgeist_html::bounded::values::HtmlStringPool::heap_usage(&self) -> surgeist_html::bounded::values::HtmlValuePoolUsage
 pub fn surgeist_html::bounded::values::HtmlStringPool::inline_bytes() -> usize
 pub fn surgeist_html::bounded::values::HtmlStringPool::mark(&mut self, root: &surgeist_html::bounded::values::HtmlValuePoolRoot) -> core::result::Result<core::option::Option<surgeist_html::bounded::values::HtmlValuePoolMark>, surgeist_html::bounded::values::HtmlValuePoolError>
-pub fn surgeist_html::bounded::values::HtmlStringPool::mark_work() -> surgeist_html::bounded::values::HtmlValuePoolWork
 pub fn surgeist_html::bounded::values::HtmlStringPool::new() -> Self
 pub fn surgeist_html::bounded::values::HtmlStringPool::next_action(&mut self, operation: &mut surgeist_html::bounded::values::HtmlStringPoolOperation<'_>) -> core::result::Result<core::option::Option<surgeist_html::bounded::values::HtmlValuePoolAction>, surgeist_html::bounded::values::HtmlValuePoolError>
 pub fn surgeist_html::bounded::values::HtmlStringPool::offer<'a>(&mut self, input: &'a surgeist_html::values::DocumentString) -> surgeist_html::bounded::values::HtmlStringPoolOperation<'a>
@@ -4011,9 +3989,7 @@ pub fn surgeist_html::bounded::values::HtmlStringPool::perform(&mut self, operat
 pub fn surgeist_html::bounded::values::HtmlStringPool::prepare_seal(&mut self, root: surgeist_html::bounded::values::HtmlValuePoolRoot) -> core::result::Result<surgeist_html::bounded::values::HtmlValuePoolSeal, surgeist_html::bounded::values::HtmlValuePoolSealRefusal>
 pub fn surgeist_html::bounded::values::HtmlStringPool::probe<'a>(&mut self, input: &'a surgeist_html::values::DocumentString) -> surgeist_html::bounded::values::HtmlStringPoolOperation<'a>
 pub fn surgeist_html::bounded::values::HtmlStringPool::restore_mark(&mut self, mark: surgeist_html::bounded::values::HtmlValuePoolMark) -> core::result::Result<surgeist_html::bounded::values::HtmlValuePoolChange, surgeist_html::bounded::values::HtmlValuePoolError>
-pub fn surgeist_html::bounded::values::HtmlStringPool::root_work() -> surgeist_html::bounded::values::HtmlValuePoolWork
 pub fn surgeist_html::bounded::values::HtmlStringPool::seal(&mut self, seal: surgeist_html::bounded::values::HtmlValuePoolSeal) -> core::result::Result<surgeist_html::bounded::values::HtmlValuePoolChange, surgeist_html::bounded::values::HtmlValuePoolError>
-pub fn surgeist_html::bounded::values::HtmlStringPool::seal_work() -> surgeist_html::bounded::values::HtmlValuePoolWork
 pub fn surgeist_html::bounded::values::HtmlStringPool::suspend_mutations(&mut self, root: &surgeist_html::bounded::values::HtmlValuePoolRoot) -> core::result::Result<(), surgeist_html::bounded::values::HtmlValuePoolError>
 pub fn surgeist_html::bounded::values::HtmlStringPool::validate_seal(&self, seal: &surgeist_html::bounded::values::HtmlValuePoolSeal) -> core::result::Result<(), surgeist_html::bounded::values::HtmlValuePoolError>
 impl core::default::Default for surgeist_html::bounded::values::HtmlStringPool
@@ -4051,9 +4027,10 @@ pub fn surgeist_html::bounded::values::HtmlValuePoolChange::released_occurrences
 pub struct surgeist_html::bounded::values::HtmlValuePoolLayout
 impl surgeist_html::bounded::values::HtmlValuePoolLayout
 pub fn surgeist_html::bounded::values::HtmlValuePoolLayout::candidate(self) -> surgeist_html::bounded::values::HtmlValuePoolUsage
-pub fn surgeist_html::bounded::values::HtmlValuePoolLayout::closing_work(self) -> surgeist_html::bounded::values::HtmlValuePoolWork
+pub fn surgeist_html::bounded::values::HtmlValuePoolLayout::charge<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(self, charge: &mut C) -> core::result::Result<(), <C as surgeist_ledger::charge::Charge>::Stop>
+pub fn surgeist_html::bounded::values::HtmlValuePoolLayout::charge_closing_work<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(self, charge: &mut C) -> core::result::Result<(), <C as surgeist_ledger::charge::Charge>::Stop>
+pub fn surgeist_html::bounded::values::HtmlValuePoolLayout::charge_work<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(self, charge: &mut C) -> core::result::Result<(), <C as surgeist_ledger::charge::Charge>::Stop>
 pub fn surgeist_html::bounded::values::HtmlValuePoolLayout::pool(self) -> surgeist_html::bounded::values::HtmlValuePoolUsage
-pub fn surgeist_html::bounded::values::HtmlValuePoolLayout::work(self) -> surgeist_html::bounded::values::HtmlValuePoolWork
 pub struct surgeist_html::bounded::values::HtmlValuePoolMark
 pub struct surgeist_html::bounded::values::HtmlValuePoolOccurrence
 pub struct surgeist_html::bounded::values::HtmlValuePoolRoot
@@ -4069,13 +4046,6 @@ pub struct surgeist_html::bounded::values::HtmlValuePoolUsage
 impl surgeist_html::bounded::values::HtmlValuePoolUsage
 pub fn surgeist_html::bounded::values::HtmlValuePoolUsage::bytes(self) -> usize
 pub fn surgeist_html::bounded::values::HtmlValuePoolUsage::utf16_units(self) -> usize
-pub struct surgeist_html::bounded::values::HtmlValuePoolWork
-impl surgeist_html::bounded::values::HtmlValuePoolWork
-pub fn surgeist_html::bounded::values::HtmlValuePoolWork::copied_bytes(self) -> usize
-pub fn surgeist_html::bounded::values::HtmlValuePoolWork::inspected_bytes(self) -> usize
-pub fn surgeist_html::bounded::values::HtmlValuePoolWork::provider_calls(self) -> usize
-pub fn surgeist_html::bounded::values::HtmlValuePoolWork::record_visits(self) -> usize
-pub fn surgeist_html::bounded::values::HtmlValuePoolWork::reserve_bytes(self) -> usize
 pub mod surgeist_html::construction
 pub enum surgeist_html::construction::HtmlConstructionResource
 pub surgeist_html::construction::HtmlConstructionResource::Attributes
@@ -4164,6 +4134,7 @@ pub fn surgeist_html::construction::HtmlConstructionError::is_invalid_contents_r
 pub fn surgeist_html::construction::HtmlConstructionError::is_invalid_output_root(&self) -> bool
 pub fn surgeist_html::construction::HtmlConstructionError::is_invalid_shadow_association(&self) -> bool
 pub fn surgeist_html::construction::HtmlConstructionError::is_invalid_template_association(&self) -> bool
+pub fn surgeist_html::construction::HtmlConstructionError::is_ledger_state(&self) -> bool
 pub fn surgeist_html::construction::HtmlConstructionError::is_limit_exceeded(&self) -> bool
 pub fn surgeist_html::construction::HtmlConstructionError::is_operation_not_ready(&self) -> bool
 pub fn surgeist_html::construction::HtmlConstructionError::is_parent_cannot_have_children(&self) -> bool
@@ -4807,12 +4778,6 @@ pub surgeist_html::elements::input::HtmlInputResetEffect::EmptySelectedFiles
 pub surgeist_html::elements::input::HtmlInputResetEffect::ReplaceCurrentFromDefault
 pub surgeist_html::elements::input::HtmlInputResetEffect::Sanitize(surgeist_html::elements::input::HtmlInputValueSanitization)
 pub surgeist_html::elements::input::HtmlInputResetEffect::SetCheckedFromPresence
-pub enum surgeist_html::elements::input::HtmlInputRuleWork
-pub surgeist_html::elements::input::HtmlInputRuleWork::CompareAsciiUnit
-pub surgeist_html::elements::input::HtmlInputRuleWork::CompareValueUnits
-pub surgeist_html::elements::input::HtmlInputRuleWork::InspectValueUnit
-pub surgeist_html::elements::input::HtmlInputRuleWork::ReadField
-pub surgeist_html::elements::input::HtmlInputRuleWork::ReadValueLengths
 pub enum surgeist_html::elements::input::HtmlInputSanitization
 pub surgeist_html::elements::input::HtmlInputSanitization::Email
 pub surgeist_html::elements::input::HtmlInputSanitization::Number
@@ -4866,6 +4831,9 @@ pub surgeist_html::elements::input::HtmlRadioTrigger::Connected
 pub surgeist_html::elements::input::HtmlRadioTrigger::FormOwner
 pub surgeist_html::elements::input::HtmlRadioTrigger::Name
 pub surgeist_html::elements::input::HtmlRadioTrigger::Type
+pub struct surgeist_html::elements::input::HtmlInputChargedStep<'c, 'a>
+impl surgeist_html::elements::input::HtmlInputChargedStep<'_, '_>
+pub fn surgeist_html::elements::input::HtmlInputChargedStep<'_, '_>::advance(self) -> core::option::Option<surgeist_html::elements::input::HtmlInputRetainedRange>
 pub struct surgeist_html::elements::input::HtmlInputColorSerialization
 impl surgeist_html::elements::input::HtmlInputColorSerialization
 pub fn surgeist_html::elements::input::HtmlInputColorSerialization::html_compatible(&self) -> bool
@@ -4873,9 +4841,8 @@ pub fn surgeist_html::elements::input::HtmlInputColorSerialization::new(alpha: b
 pub fn surgeist_html::elements::input::HtmlInputColorSerialization::next_effect(&mut self) -> core::option::Option<surgeist_html::elements::input::HtmlInputColorEffect>
 pub struct surgeist_html::elements::input::HtmlInputColorSpaceCursor<'a>
 impl<'a> surgeist_html::elements::input::HtmlInputColorSpaceCursor<'a>
-pub fn surgeist_html::elements::input::HtmlInputColorSpaceCursor<'a>::advance(&mut self)
+pub fn surgeist_html::elements::input::HtmlInputColorSpaceCursor<'a>::advance<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&mut self, charge: &mut C) -> core::result::Result<(), <C as surgeist_ledger::charge::Charge>::Stop>
 pub fn surgeist_html::elements::input::HtmlInputColorSpaceCursor<'a>::new(value: core::option::Option<&'a surgeist_html::values::DocumentString>) -> Self
-pub fn surgeist_html::elements::input::HtmlInputColorSpaceCursor<'a>::required_work(&self) -> core::option::Option<surgeist_html::elements::input::HtmlInputRuleWork>
 pub fn surgeist_html::elements::input::HtmlInputColorSpaceCursor<'a>::result(&self) -> core::option::Option<surgeist_html::attributes::input_colorspace::HtmlInputColorSpace>
 pub struct surgeist_html::elements::input::HtmlInputFilenameInvalidState
 impl core::error::Error for surgeist_html::elements::input::HtmlInputFilenameInvalidState
@@ -4925,11 +4892,12 @@ pub fn surgeist_html::elements::input::HtmlInputRetainedRange::end(self) -> usiz
 pub fn surgeist_html::elements::input::HtmlInputRetainedRange::start(self) -> usize
 pub struct surgeist_html::elements::input::HtmlInputSanitizationCursor<'a>
 impl<'a> surgeist_html::elements::input::HtmlInputSanitizationCursor<'a>
-pub fn surgeist_html::elements::input::HtmlInputSanitizationCursor<'a>::advance(&mut self) -> core::option::Option<surgeist_html::elements::input::HtmlInputRetainedRange>
+pub fn surgeist_html::elements::input::HtmlInputSanitizationCursor<'a>::advance<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&mut self, charge: &mut C) -> core::result::Result<core::option::Option<surgeist_html::elements::input::HtmlInputRetainedRange>, <C as surgeist_ledger::charge::Charge>::Stop>
+pub fn surgeist_html::elements::input::HtmlInputSanitizationCursor<'a>::charge_next<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&mut self, charge: &mut C) -> core::result::Result<surgeist_html::elements::input::HtmlInputChargedStep<'_, 'a>, <C as surgeist_ledger::charge::Charge>::Stop>
 pub fn surgeist_html::elements::input::HtmlInputSanitizationCursor<'a>::email_value_count(&self) -> core::option::Option<usize>
+pub fn surgeist_html::elements::input::HtmlInputSanitizationCursor<'a>::is_complete(&self) -> bool
 pub fn surgeist_html::elements::input::HtmlInputSanitizationCursor<'a>::new(policy: surgeist_html::elements::input::HtmlInputSanitization, units: &'a [u16], mode: surgeist_html::elements::input::HtmlInputEmailMode) -> Self
 pub fn surgeist_html::elements::input::HtmlInputSanitizationCursor<'a>::replacement_unit(&self, position: usize) -> core::option::Option<u16>
-pub fn surgeist_html::elements::input::HtmlInputSanitizationCursor<'a>::required_work(&self) -> core::option::Option<surgeist_html::elements::input::HtmlInputRuleWork>
 pub fn surgeist_html::elements::input::HtmlInputSanitizationCursor<'a>::retain_unit(&self, unit: u16) -> bool
 impl core::fmt::Debug for surgeist_html::elements::input::HtmlInputSanitizationCursor<'_>
 pub fn surgeist_html::elements::input::HtmlInputSanitizationCursor<'_>::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
@@ -4949,18 +4917,16 @@ pub fn surgeist_html::elements::input::HtmlInputTypeChange::new(previous: surgei
 pub fn surgeist_html::elements::input::HtmlInputTypeChange::next_effect(&mut self) -> core::option::Option<surgeist_html::elements::input::HtmlInputTypeEffect>
 pub struct surgeist_html::elements::input::HtmlInputTypeCursor<'a>
 impl<'a> surgeist_html::elements::input::HtmlInputTypeCursor<'a>
-pub fn surgeist_html::elements::input::HtmlInputTypeCursor<'a>::advance(&mut self)
+pub fn surgeist_html::elements::input::HtmlInputTypeCursor<'a>::advance<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&mut self, charge: &mut C) -> core::result::Result<(), <C as surgeist_ledger::charge::Charge>::Stop>
 pub fn surgeist_html::elements::input::HtmlInputTypeCursor<'a>::new(value: core::option::Option<&'a surgeist_html::values::DocumentString>) -> Self
-pub fn surgeist_html::elements::input::HtmlInputTypeCursor<'a>::required_work(&self) -> core::option::Option<surgeist_html::elements::input::HtmlInputRuleWork>
 pub fn surgeist_html::elements::input::HtmlInputTypeCursor<'a>::result(&self) -> core::option::Option<surgeist_html::attributes::HtmlInputType>
 pub struct surgeist_html::elements::input::HtmlInputValueComparison
 impl surgeist_html::elements::input::HtmlInputValueComparison
 pub fn surgeist_html::elements::input::HtmlInputValueComparison::is_equal(self) -> bool
 pub struct surgeist_html::elements::input::HtmlInputValueComparisonCursor<'a>
 impl<'a> surgeist_html::elements::input::HtmlInputValueComparisonCursor<'a>
-pub fn surgeist_html::elements::input::HtmlInputValueComparisonCursor<'a>::advance(&mut self)
+pub fn surgeist_html::elements::input::HtmlInputValueComparisonCursor<'a>::advance<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(&mut self, charge: &mut C) -> core::result::Result<(), <C as surgeist_ledger::charge::Charge>::Stop>
 pub fn surgeist_html::elements::input::HtmlInputValueComparisonCursor<'a>::new(old: &'a [u16], current: &'a [u16]) -> Self
-pub fn surgeist_html::elements::input::HtmlInputValueComparisonCursor<'a>::required_work(&self) -> core::option::Option<surgeist_html::elements::input::HtmlInputRuleWork>
 pub fn surgeist_html::elements::input::HtmlInputValueComparisonCursor<'a>::result(&self) -> core::option::Option<surgeist_html::elements::input::HtmlInputValueComparison>
 pub const fn surgeist_html::elements::input::input_color_standard_failure_fallback() -> surgeist_html::microsyntax::color::HtmlLegacyColor
 pub const fn surgeist_html::elements::input::input_color_value_source(dirty_value: bool) -> surgeist_html::elements::input::HtmlInputColorValueSource
@@ -6421,20 +6387,20 @@ pub fn surgeist_html::security::csp::HtmlCspAssociationOrigin::transferred_from(
 pub struct surgeist_html::security::csp::HtmlCspDisposalWork
 impl surgeist_html::security::csp::HtmlCspDisposalWork
 pub fn surgeist_html::security::csp::HtmlCspDisposalWork::atomic_bytes(self) -> usize
+pub fn surgeist_html::security::csp::HtmlCspDisposalWork::charge_with_calls<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(self, calls: u64, charge: &mut C) -> core::result::Result<(), surgeist_html::accounting::HtmlChargedError<<C as surgeist_ledger::charge::Charge>::Stop, surgeist_html::accounting::HtmlChargeOverflow>>
 pub fn surgeist_html::security::csp::HtmlCspDisposalWork::try_new(work_credits: u64, atomic_bytes: usize) -> core::result::Result<Self, surgeist_html::security::csp::HtmlCspProtocolError>
-pub fn surgeist_html::security::csp::HtmlCspDisposalWork::work_credits(self) -> u64
 pub struct surgeist_html::security::csp::HtmlCspDocumentId
 impl surgeist_html::security::csp::HtmlCspDocumentId
 pub fn surgeist_html::security::csp::HtmlCspDocumentId::owner(&self) -> &surgeist_html::security::csp::HtmlCspOwnerId
 pub struct surgeist_html::security::csp::HtmlCspLayout
 impl surgeist_html::security::csp::HtmlCspLayout
 pub fn surgeist_html::security::csp::HtmlCspLayout::atomic_bytes(self) -> usize
+pub fn surgeist_html::security::csp::HtmlCspLayout::charge_work<C: surgeist_ledger::charge::Charge<surgeist_html::accounting::HtmlWork, surgeist_html::accounting::HtmlResource>>(self, charge: &mut C) -> core::result::Result<(), surgeist_html::accounting::HtmlChargedError<<C as surgeist_ledger::charge::Charge>::Stop, surgeist_html::accounting::HtmlChargeOverflow>>
 pub fn surgeist_html::security::csp::HtmlCspLayout::closing_work(self) -> surgeist_html::security::csp::HtmlCspDisposalWork
 pub fn surgeist_html::security::csp::HtmlCspLayout::peak(self) -> surgeist_html::security::csp::HtmlCspStorage
 pub fn surgeist_html::security::csp::HtmlCspLayout::processing(work_credits: u64, live: surgeist_html::security::csp::HtmlCspStorage, closing_work: surgeist_html::security::csp::HtmlCspDisposalWork, atomic_bytes: usize) -> core::result::Result<Self, surgeist_html::security::csp::HtmlCspProtocolError>
 pub fn surgeist_html::security::csp::HtmlCspLayout::retained(self) -> surgeist_html::security::csp::HtmlCspArtifactLayout
 pub fn surgeist_html::security::csp::HtmlCspLayout::transferred(self) -> surgeist_html::security::csp::HtmlCspArtifactLayout
-pub fn surgeist_html::security::csp::HtmlCspLayout::work_credits(self) -> u64
 pub struct surgeist_html::security::csp::HtmlCspOwner
 impl surgeist_html::security::csp::HtmlCspOwner
 pub fn surgeist_html::security::csp::HtmlCspOwner::associate_document_with<E>(&mut self, source: &surgeist_html::security::csp::HtmlCspAssociation, cause: surgeist_html::security::csp::HtmlCspAssociationCause, admit: &mut impl core::ops::function::FnMut(surgeist_html::security::csp::HtmlCspLayout) -> core::result::Result<(), E>) -> core::result::Result<surgeist_html::security::csp::HtmlCspAssociation, surgeist_html::security::csp::HtmlCspError<E>>

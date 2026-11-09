@@ -3,8 +3,8 @@
 //! custody policy, conversion rate and cap scope.
 //!
 //! Three crates charge these dimensions. The parser charges work categories and
-//! parse resources, `surgeist-html` describes the work of its bounded
-//! operations, and semantics charges query, fact and capture dimensions. One pair
+//! parse resources, `surgeist-html` charges the work of its bounded operations,
+//! and semantics charges query, fact and capture dimensions. One pair
 //! of dimension sets, [`HtmlWork`] and [`HtmlResource`], covers all of them, so
 //! one ledger operation can hold every HTML charge and a host can read them in
 //! its own scope tree.
@@ -127,29 +127,27 @@
 //! recomputes those two figures from the usage it read before the batch and the
 //! batch's amounts.
 //!
-//! # Conversions
+//! # Charging
 //!
-//! Each function below converts one existing work, layout or limits shape into
-//! ledger changes or limits, with the amounts a consumer charges for that shape.
-//! Fields that no consumer charges are named in the function that skips them.
+//! A bounded operation of this crate charges its own work through a
+//! [`surgeist_ledger::Charge`] that its caller supplies, before the work runs. A
+//! cursor charges in its advancing call, and a description, pool action or layout
+//! has a charging method. Each charges the dimensions of this schema in the
+//! batches and the order the consumers charge them. The parser, the DOM and
+//! semantics implement the trait over their own accounting. An operation that can
+//! find a fault of its own reports [`HtmlChargedError`], which keeps the caller's
+//! stop and the operation's fault apart.
 //!
-//! Three shapes have no conversion. `HtmlRangeNumericLayout` and the request
-//! byte accessors of the range numeric machine describe register and buffer
-//! sizes whose charges the parser composes from its own record sizes, so they
-//! carry no amount rule of their own. `HtmlCspArtifactLayout` and
-//! `HtmlValuePoolLayout` bundle storage and work already converted through
-//! [`csp_storage`], [`csp_work`], [`value_pool_usage`] and [`value_pool_work`].
+//! The native builders and the controlled autocomplete materialization enforce
+//! their typed limits with a private ledger scope built from the caps below, and
+//! read their typed usage back from it.
+//!
+//! `HtmlRangeNumericLayout` and the request byte accessors of the range numeric
+//! machine describe register and buffer sizes whose charges the consumers compose
+//! from their own record sizes, so they carry no amount rule of their own.
 
-use crate::bounded::{
-    attributes::HtmlAutocompleteMaterializationLimits,
-    construction::{HtmlConstructionAttributeWork, HtmlConstructionTextAppendWork},
-    script::HtmlScriptTypeWork,
-    temporal::HtmlTimeElementInterpretationLayout,
-    values::{HtmlAttributeValidationLayout, HtmlValuePoolUsage, HtmlValuePoolWork},
-};
+use crate::bounded::attributes::HtmlAutocompleteMaterializationLimits;
 use crate::construction::HtmlConstructionLimits;
-use crate::elements::input::HtmlInputRuleWork;
-use crate::security::csp::{HtmlCspLayout, HtmlCspStorage};
 use std::{error::Error, fmt};
 use surgeist_ledger::{Change, Limits, Tariff, Tariffs, dimensions};
 
@@ -344,8 +342,10 @@ impl HtmlWork {
         }
     }
 
-    /// The tariff of this dimension from a charging scope to its cap scope.
-    pub const fn charging_tariff(self) -> Tariff<HtmlWork> {
+    /// How many credits one unit of this dimension counts in a cap scope, or
+    /// `None` for a dimension that has no conversion into credits. Each of the
+    /// eight parser categories and the credits themselves weigh one.
+    pub const fn credits_per_unit(self) -> Option<u64> {
         match self {
             Self::InputUnitRead
             | Self::InspectByte
@@ -355,8 +355,16 @@ impl HtmlWork {
             | Self::RecordWrite
             | Self::ReserveByte
             | Self::ProviderCall
-            | Self::Credits => Tariff::new(Self::Credits, 1),
-            Self::SemanticStep => Tariff::new(Self::SemanticStep, 1),
+            | Self::Credits => Some(1),
+            Self::SemanticStep => None,
+        }
+    }
+
+    /// The tariff of this dimension from a charging scope to its cap scope.
+    pub const fn charging_tariff(self) -> Tariff<HtmlWork> {
+        match self.credits_per_unit() {
+            Some(rate) => Tariff::new(Self::Credits, rate),
+            None => Tariff::new(Self::SemanticStep, 1),
         }
     }
 }
@@ -628,6 +636,38 @@ impl HtmlCapScope {
     }
 }
 
+/// How a bounded operation that charges before it runs can fail: the charge
+/// stopped, or the operation found a fault of its own.
+///
+/// `Stopped` carries the caller's stop from the charge, so the caller keeps its own
+/// typed stop and its first-failure rule. `Faulted` carries the operation's typed
+/// fault, which the charge did not cause.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum HtmlChargedError<Stop, Fault> {
+    /// The charge before the operation was refused or failed.
+    Stopped(Stop),
+    /// The operation reported its own fault.
+    Faulted(Fault),
+}
+
+impl<Stop: fmt::Display, Fault: fmt::Display> fmt::Display for HtmlChargedError<Stop, Fault> {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Stopped(stop) => write!(formatter, "the charge stopped: {stop}"),
+            Self::Faulted(fault) => fault.fmt(formatter),
+        }
+    }
+}
+
+impl<Stop: Error + 'static, Fault: Error + 'static> Error for HtmlChargedError<Stop, Fault> {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Stopped(stop) => Some(stop),
+            Self::Faulted(fault) => Some(fault),
+        }
+    }
+}
+
 /// A conversion amount that does not fit the ledger's `u64`.
 ///
 /// Callers stop with their own representation failure.
@@ -644,7 +684,7 @@ impl Error for HtmlChargeOverflow {}
 
 /// Widens a platform amount. An amount beyond `u64` saturates, and every finite
 /// cap refuses `u64::MAX`.
-fn wide(value: usize) -> u64 {
+pub(crate) fn wide(value: usize) -> u64 {
     u64::try_from(value).unwrap_or(u64::MAX)
 }
 
@@ -682,114 +722,8 @@ pub fn retained_provider_storage(bytes: u64, units: u64, entries: u64) -> [(Html
     ]
 }
 
-/// The retained storage of a content security policy graph.
-pub fn csp_storage(storage: HtmlCspStorage) -> [(HtmlResource, u64); 4] {
-    retained_provider_storage(
-        wide(storage.bytes()),
-        wide(storage.utf16_units()),
-        wide(storage.entries()),
-    )
-}
-
-/// The retained storage of a value pool.
-pub fn value_pool_usage(usage: HtmlValuePoolUsage) -> [(HtmlResource, u64); 4] {
-    retained_provider_storage(wide(usage.bytes()), wide(usage.utf16_units()), 0)
-}
-
-/// The work of a value pool action. Their sum is the single pool-work count of
-/// the DOM adapter once converted through [`charging_tariffs`].
-pub fn value_pool_work(work: HtmlValuePoolWork) -> [HtmlChange; 5] {
-    [
-        Change::Work(HtmlWork::RecordVisit, wide(work.record_visits())),
-        Change::Work(HtmlWork::InspectByte, wide(work.inspected_bytes())),
-        Change::Work(HtmlWork::CopyByte, wide(work.copied_bytes())),
-        Change::Work(HtmlWork::ProviderCall, wide(work.provider_calls())),
-        Change::Work(HtmlWork::ReserveByte, wide(work.reserve_bytes())),
-    ]
-}
-
-/// The work of an attribute edit step. The step's atomic layout is recorded
-/// with [`record_largest`] on [`HtmlResource::AtomicLayoutBytes`] and its
-/// auxiliary entries are acquired through [`attribute_edit_entries`].
-pub fn attribute_edit_work(work: &HtmlConstructionAttributeWork) -> [HtmlChange; 5] {
-    [
-        Change::Work(HtmlWork::RecordVisit, wide(work.record_visits)),
-        Change::Work(HtmlWork::ProviderCall, wide(work.provider_calls)),
-        Change::Work(HtmlWork::InspectByte, wide(work.inspected_bytes)),
-        Change::Work(HtmlWork::CopyByte, wide(work.copied_bytes)),
-        Change::Work(HtmlWork::RecordWrite, wide(work.record_writes)),
-    ]
-}
-
-/// The name-witness entries an attribute edit step creates, acquired as
-/// [`HtmlResource::AuxiliaryEntries`].
-pub fn attribute_edit_entries(work: &HtmlConstructionAttributeWork) -> HtmlChange {
-    Change::Acquire(HtmlResource::AuxiliaryEntries, wide(work.auxiliary_entries))
-}
-
-/// The work of a text append step. The relocation bound is not charged: the
-/// parser charges its own reservation plan as [`HtmlWork::ReserveByte`]. The step's
-/// atomic layout is recorded with [`record_largest`].
-pub fn text_append_work(work: &HtmlConstructionTextAppendWork) -> [HtmlChange; 5] {
-    [
-        Change::Work(HtmlWork::RecordVisit, wide(work.record_visits)),
-        Change::Work(HtmlWork::ProviderCall, wide(work.provider_calls)),
-        Change::Work(HtmlWork::InspectByte, wide(work.inspected_bytes)),
-        Change::Work(HtmlWork::CopyByte, wide(work.copied_bytes)),
-        Change::Work(HtmlWork::RecordWrite, wide(work.record_writes)),
-    ]
-}
-
-/// The work of the next attribute validation step.
-pub fn attribute_validation_work(layout: HtmlAttributeValidationLayout) -> [HtmlChange; 4] {
-    [
-        Change::Work(HtmlWork::RecordVisit, layout.record_visits()),
-        Change::Work(HtmlWork::InspectByte, layout.inspected_bytes()),
-        Change::Work(HtmlWork::RecordWrite, layout.record_writes()),
-        Change::Work(HtmlWork::CopyByte, layout.copied_bytes()),
-    ]
-}
-
-/// The work of a script type matching step.
-pub fn script_type_work(work: HtmlScriptTypeWork) -> HtmlChange {
-    match work {
-        HtmlScriptTypeWork::RecordVisit(units) => Change::Work(HtmlWork::RecordVisit, units),
-        HtmlScriptTypeWork::InspectByte(units) => Change::Work(HtmlWork::InspectByte, units),
-    }
-}
-
-/// The work of an input rule cursor step. A length pair reads two records. An
-/// ASCII comparison inspects the unit's two bytes and the literal's one. A value
-/// unit comparison or inspection inspects the unit's two bytes.
-pub fn input_rule_work(work: HtmlInputRuleWork) -> HtmlChange {
-    match work {
-        HtmlInputRuleWork::ReadField => Change::Work(HtmlWork::RecordVisit, 1),
-        HtmlInputRuleWork::ReadValueLengths => Change::Work(HtmlWork::RecordVisit, 2),
-        HtmlInputRuleWork::CompareAsciiUnit => Change::Work(HtmlWork::InspectByte, 3),
-        HtmlInputRuleWork::CompareValueUnits | HtmlInputRuleWork::InspectValueUnit => {
-            Change::Work(HtmlWork::InspectByte, 2)
-        }
-    }
-}
-
-/// The provider work of a content security policy action: its own credits and
-/// the prepaid credits of its closing work. The action's atomic bytes are
-/// recorded with [`record_largest`].
-pub fn csp_work(layout: &HtmlCspLayout) -> Result<HtmlChange, HtmlChargeOverflow> {
-    layout
-        .work_credits()
-        .checked_add(layout.closing_work().work_credits())
-        .map(|credits| Change::Work(HtmlWork::ProviderCall, credits))
-        .ok_or(HtmlChargeOverflow)
-}
-
-/// The semantic work of the next time element interpretation action.
-pub fn time_interpretation_work(layout: HtmlTimeElementInterpretationLayout) -> HtmlChange {
-    Change::Work(HtmlWork::SemanticStep, wide(layout.work()))
-}
-
 /// The caps of a construction arena.
-pub fn construction_limits(limits: HtmlConstructionLimits) -> HtmlLimits {
+pub(crate) fn construction_limits(limits: HtmlConstructionLimits) -> HtmlLimits {
     Limits::from_fn(
         |_| u64::MAX,
         |resource| match resource {
@@ -804,7 +738,7 @@ pub fn construction_limits(limits: HtmlConstructionLimits) -> HtmlLimits {
 }
 
 /// The caps of a controlled autocomplete materialization.
-pub fn autocomplete_limits(limits: HtmlAutocompleteMaterializationLimits) -> HtmlLimits {
+pub(crate) fn autocomplete_limits(limits: HtmlAutocompleteMaterializationLimits) -> HtmlLimits {
     Limits::from_fn(
         |_| u64::MAX,
         |resource| match resource {

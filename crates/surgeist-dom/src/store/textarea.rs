@@ -180,9 +180,9 @@ impl Draft {
             old_api.code_units(),
             new_api.code_units(),
         );
-        while cursor.required_work().is_some() {
-            self.source_step(cancel)?;
-            cursor.advance();
+        let mut steps = super::input::StepMeter(&mut || self.source_step(cancel));
+        while cursor.result().is_none() {
+            cursor.advance(&mut steps)?;
         }
         if surgeist_html::elements::form::textarea_value_setter_finish(
             cursor.result().expect("completed actual API comparison"),

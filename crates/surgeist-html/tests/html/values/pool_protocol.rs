@@ -1,15 +1,17 @@
 //! Public consumer regressions for root authority and bounded rollback.
 //! The driver sees only exported actions, layouts, progress and final results.
-use std::{cell::Cell, mem::size_of, rc::Rc, sync::Arc};
+use std::{cell::Cell, convert::Infallible, mem::size_of, rc::Rc, sync::Arc};
+use surgeist_html::accounting::{HtmlChange, HtmlResource, HtmlWork};
 use surgeist_html::bounded::values::{
     HtmlAttributePool, HtmlAttributePoolOperation, HtmlAttributePoolResult, HtmlStringPool,
     HtmlStringPoolOperation, HtmlStringPoolResult, HtmlValuePoolActionKind, HtmlValuePoolError,
     HtmlValuePoolMark, HtmlValuePoolProgress, HtmlValuePoolRoot, HtmlValuePoolSeal,
-    HtmlValuePoolSealRefusal, HtmlValuePoolUsage, HtmlValuePoolWork,
+    HtmlValuePoolSealRefusal, HtmlValuePoolUsage,
 };
 use surgeist_html::values::{
     Attribute, DocumentString, Namespace, OrderedAttributes, QualifiedName,
 };
+use surgeist_ledger::{Change, Charge, Dimension};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 struct Storage {
@@ -73,6 +75,7 @@ struct Ledger {
     spent: Cell<usize>,
     actions: Cell<usize>,
     reads: Cell<usize>,
+    work: [Cell<u64>; HtmlWork::ALL.len()],
 }
 #[derive(Clone, Debug)]
 struct Meter(Rc<Ledger>);
@@ -83,25 +86,16 @@ impl Meter {
             spent: Cell::new(0),
             actions: Cell::new(0),
             reads: Cell::new(0),
+            work: std::array::from_fn(|_| Cell::new(0)),
         }))
     }
-    fn pay(&self, work: HtmlValuePoolWork) {
-        let amount = [
-            work.record_visits(),
-            work.inspected_bytes(),
-            work.copied_bytes(),
-            work.provider_calls(),
-            work.reserve_bytes(),
-        ]
-        .into_iter()
-        .try_fold(0_usize, usize::checked_add)
-        .unwrap();
-        let next = self.0.spent.get().checked_add(amount).unwrap();
-        assert!(
-            next <= 16_000_000,
-            "public driver exhausted its finite work allowance"
-        );
-        self.0.spent.set(next);
+    /// The amount charged to one work dimension so far.
+    fn charged(&self, dimension: HtmlWork) -> u64 {
+        HtmlWork::ALL
+            .iter()
+            .position(|candidate| *candidate == dimension)
+            .and_then(|index| self.0.work.get(index))
+            .map_or(0, Cell::get)
     }
     fn reserve(&self, amount: Storage) -> Receipt {
         let mut receipt = Receipt {
@@ -116,6 +110,39 @@ impl Meter {
             value,
             _receipt: self.reserve(amount),
         }
+    }
+}
+/// The consumer's allowance: every batch of work counts toward one finite total
+/// and is recorded per dimension.
+impl Charge<HtmlWork, HtmlResource> for Meter {
+    type Stop = Infallible;
+    fn charge(&mut self, batch: &[HtmlChange]) -> Result<(), Infallible> {
+        for change in batch {
+            let Change::Work(dimension, amount) = *change else {
+                panic!("a pool charges work only: {change:?}");
+            };
+            let amount = usize::try_from(amount).unwrap();
+            let next = self.0.spent.get().checked_add(amount).unwrap();
+            assert!(
+                next <= 16_000_000,
+                "public driver exhausted its finite work allowance"
+            );
+            self.0.spent.set(next);
+            let index = HtmlWork::ALL
+                .iter()
+                .position(|candidate| *candidate == dimension)
+                .unwrap();
+            let slot = self.0.work.get(index).unwrap();
+            slot.set(
+                slot.get()
+                    .checked_add(u64::try_from(amount).unwrap())
+                    .unwrap(),
+            );
+        }
+        Ok(())
+    }
+    fn record_largest(&mut self, resource: HtmlResource, _: u64) -> Result<(), Infallible> {
+        panic!("a pool records no gauge: {resource:?}");
     }
 }
 #[derive(Debug)]
@@ -177,7 +204,7 @@ macro_rules! consumer {
         }
         impl $owner {
             fn new(meter: &Meter) -> Self {
-                meter.pay(<$pool>::disposal_work()); // Before owner existence.
+                <$pool>::charge_disposal(&mut meter.clone()).unwrap(); // Before owner existence.
                 let metadata = meter.reserve(Storage {
                     bytes: <$pool>::inline_bytes(),
                     units: 0,
@@ -201,13 +228,13 @@ macro_rules! consumer {
                 );
             }
             fn begin(&mut self) -> HtmlValuePoolRoot {
-                self.meter.pay(<$pool>::root_work());
+                <$pool>::charge_root(&mut self.meter.clone()).unwrap();
                 self.pool
                     .begin_root()
                     .expect("available root authority in this fixture")
             }
             fn mark(&mut self, root: &HtmlValuePoolRoot) -> Option<HtmlValuePoolMark> {
-                self.meter.pay(<$pool>::mark_work());
+                <$pool>::charge_mark(&mut self.meter.clone()).unwrap();
                 self.pool.mark(root).unwrap()
             }
             fn accept(&mut self, mark: HtmlValuePoolMark) {
@@ -229,7 +256,7 @@ macro_rules! consumer {
                 &mut self,
                 root: HtmlValuePoolRoot,
             ) -> Result<HtmlValuePoolSeal, HtmlValuePoolSealRefusal> {
-                self.meter.pay(<$pool>::seal_work());
+                <$pool>::charge_seal(&mut self.meter.clone()).unwrap();
                 self.pool.prepare_seal(root)
             }
             fn seal(&mut self, seal: HtmlValuePoolSeal) {
@@ -257,8 +284,7 @@ macro_rules! consumer {
                 while let Some(action) = self.pool.next_action(operation.as_mut().unwrap()).unwrap()
                 {
                     let layout = action.layout();
-                    self.meter.pay(layout.work());
-                    self.meter.pay(layout.closing_work());
+                    layout.charge(&mut self.meter.clone()).unwrap();
                     self.metadata.resize(
                         Storage {
                             bytes: <$pool>::inline_bytes(),
@@ -737,8 +763,7 @@ macro_rules! public_guard_edges {
                         .unwrap()
                     {
                         let layout = action.layout();
-                        meter.pay(layout.work());
-                        meter.pay(layout.closing_work());
+                        layout.charge(&mut meter.clone()).unwrap();
                         session.owner.metadata.resize(
                             Storage {
                                 bytes: <$pool>::inline_bytes(),
@@ -804,8 +829,7 @@ macro_rules! public_guard_edges {
                         .next_action(first.as_mut().unwrap())
                         .unwrap()
                         .unwrap();
-                    meter.pay(action.layout().work());
-                    meter.pay(action.layout().closing_work());
+                    action.layout().charge(&mut meter.clone()).unwrap();
                     if action.kind() == HtmlValuePoolActionKind::Pool {
                         break action;
                     }
@@ -876,14 +900,15 @@ macro_rules! miss_promotion {
                     trace.descriptors += 1;
                     let Some(action) = owner.pool.next_action(operation.as_mut().unwrap()).unwrap() else { break; };
                     let layout = action.layout();
-                    owner.meter.pay(layout.work());
-                    owner.meter.pay(layout.closing_work());
+                    layout.charge(&mut owner.meter.clone()).unwrap();
                     owner.metadata.resize(Storage { bytes: <$pool>::inline_bytes(), units: 0 }.add(layout.pool().into()));
                     candidate.resize(layout.candidate().into());
                     let progress = match action.kind() {
                         HtmlValuePoolActionKind::Read => {
                             trace.reads += 1;
-                            trace.bytes += layout.work().inspected_bytes();
+                            let probe = Meter::new();
+                            layout.charge_work(&mut probe.clone()).unwrap();
+                            trace.bytes += usize::try_from(probe.charged(HtmlWork::InspectByte)).unwrap();
                             operation.as_mut().unwrap().read(action).unwrap()
                         }
                         HtmlValuePoolActionKind::Pool => {
@@ -1028,7 +1053,8 @@ macro_rules! freeze_readiness_only {
         #[test]
         fn $test() {
             let meter = Meter::new();
-            let freeze_work = <$pool>::seal_work();
+            let freeze_work = Meter::new();
+            <$pool>::charge_seal(&mut freeze_work.clone()).unwrap();
             {
                 let mut owner = $owner::new(&meter);
                 let original = $input(&meter, 41);
@@ -1099,15 +1125,15 @@ macro_rules! freeze_readiness_only {
             // layouts prepaid inverse/storage cleanup. Freezing checks only
             // readiness; it must not bill those already admitted operations again.
             assert_eq!(
-                freeze_work.copied_bytes(),
+                freeze_work.charged(HtmlWork::CopyByte),
                 0,
                 "freeze must not recopy root state"
             );
-            assert_eq!(freeze_work.inspected_bytes(), 0);
-            assert_eq!(freeze_work.reserve_bytes(), 0);
-            assert_eq!(freeze_work.provider_calls(), 0);
+            assert_eq!(freeze_work.charged(HtmlWork::InspectByte), 0);
+            assert_eq!(freeze_work.charged(HtmlWork::ReserveByte), 0);
+            assert_eq!(freeze_work.charged(HtmlWork::ProviderCall), 0);
             assert!(
-                freeze_work.record_visits() > 0,
+                freeze_work.charged(HtmlWork::RecordVisit) > 0,
                 "freeze still admits readiness checks"
             );
         }

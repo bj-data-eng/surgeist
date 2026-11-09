@@ -696,13 +696,16 @@ fn commit_description(
     let mut operation = Some(storage.prepare(command));
     let mut described = None;
     while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
-        if let HtmlConstructionActionDescription::Commit {
-            record_visits,
-            record_writes,
-            ..
-        } = action.description()
-        {
-            described = Some((record_visits, record_writes));
+        let description = action.description();
+        if matches!(
+            description,
+            HtmlConstructionActionDescription::Commit { .. }
+        ) {
+            let charged = charged_by(|meter| description.charge_commit(meter));
+            described = Some((
+                charged.total(HtmlWork::RecordVisit) as usize,
+                charged.total(HtmlWork::RecordWrite) as usize,
+            ));
         }
         action.perform().unwrap().accept();
     }

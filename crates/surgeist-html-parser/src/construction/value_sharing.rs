@@ -7,7 +7,6 @@ use surgeist_html::bounded::values::{
     HtmlAttributePool, HtmlAttributePoolOperation, HtmlAttributePoolResult, HtmlStringPool,
     HtmlStringPoolOperation, HtmlStringPoolResult, HtmlValuePoolActionKind, HtmlValuePoolError,
     HtmlValuePoolProgress, HtmlValuePoolRoot, HtmlValuePoolSeal, HtmlValuePoolUsage,
-    HtmlValuePoolWork,
 };
 #[cfg(test)]
 use surgeist_html::construction::HtmlNodeId;
@@ -28,10 +27,6 @@ fn pool_stop(c: &mut ParseControl, error: HtmlValuePoolError) -> HtmlParseStop {
 }
 fn pool_error(c: &mut ParseControl, error: HtmlValuePoolError) -> SessionError {
     pool_stop(c, error).into()
-}
-fn work(c: &mut ParseControl, work: HtmlValuePoolWork) -> Result<(), SessionError> {
-    c.admit_pool_work(work)?;
-    Ok(())
 }
 #[derive(Clone, Copy, Default)]
 struct Usage {
@@ -314,8 +309,7 @@ macro_rules! drive {
                     .map_err(|e| pool_error(control, e))?
                 {
                     let layout = action.layout();
-                    work(control, layout.work())?;
-                    work(control, layout.closing_work())?;
+                    layout.charge(control)?;
                     self.$usage.grow(Usage::pool(layout.pool()), control)?;
                     candidate.grow(Usage::pool(layout.candidate()), control)?;
                     let progress = match action.kind() {
@@ -382,8 +376,8 @@ impl Pools {
     ) -> Result<Self, SessionError> {
         // This fixed producer envelope covers final destruction even if a
         // later admission refuses. No terminal cleanup callback is required.
-        work(c, HtmlStringPool::disposal_work())?;
-        work(c, HtmlAttributePool::disposal_work())?;
+        HtmlStringPool::charge_disposal(c)?;
+        HtmlAttributePool::charge_disposal(c)?;
         Usage {
             bytes: mem::size_of::<Self>() as u64,
             units: 0,
@@ -468,8 +462,8 @@ impl Pools {
         self.enabled()
     }
     fn open(&mut self, c: &mut ParseControl) -> Result<(), SessionError> {
-        work(c, HtmlStringPool::root_work())?;
-        work(c, HtmlAttributePool::root_work())?;
+        HtmlStringPool::charge_root(c)?;
+        HtmlAttributePool::charge_root(c)?;
         if let Some(root) = self.strings.begin_root() {
             self.strings_root = Authority::Open(root);
         } else {
@@ -488,8 +482,8 @@ impl Pools {
         }
         // Both closing allowances precede either freeze. A later refusal still
         // leaves every already-owned root/plan abortable without admission.
-        work(c, HtmlStringPool::seal_work())?;
-        work(c, HtmlAttributePool::seal_work())?;
+        HtmlStringPool::charge_seal(c)?;
+        HtmlAttributePool::charge_seal(c)?;
         // Both roots were open when this began and nothing since has moved
         // them, so a root that is not open breaks the pool protocol.
         let Some(root) = self.strings_root.take_open() else {
@@ -1882,15 +1876,12 @@ mod tests {
     }
 
     /// The usage a pool action reports, retained as provider storage, is the
-    /// schema's `value_pool_usage`: the controller acquires its bytes as capacity
+    /// pool's storage: the controller acquires its bytes as capacity
     /// and peak bytes and its UTF-16 units as managed units.
     #[test]
     fn value_pool_usage_converts_to_the_resources_the_controller_acquires() {
-        use surgeist_html::{
-            accounting::value_pool_usage,
-            bounded::values::{
-                HtmlStringPoolOperation, HtmlValuePoolActionKind, HtmlValuePoolUsage,
-            },
+        use surgeist_html::bounded::values::{
+            HtmlStringPoolOperation, HtmlValuePoolActionKind, HtmlValuePoolUsage,
         };
         let input = DocumentString::from("provider storage of a pooled string");
         let equal = DocumentString::from_utf16(input.code_units().to_vec());
@@ -1929,9 +1920,14 @@ mod tests {
                 crate::HtmlParseCancellation::new(),
             );
             Usage::pool(usage).retain(&mut c).unwrap();
-            for (resource, amount) in value_pool_usage(usage) {
-                let parse = crate::settings::RESOURCES[resource as usize];
-                assert_eq!(c.usage().resource(parse).current(), amount, "{resource:?}");
+            let (bytes, units) = (usage.bytes() as u64, usage.utf16_units() as u64);
+            for (parse, amount) in [
+                (HtmlParseResource::AuxiliaryEntries, 0),
+                (HtmlParseResource::ManagedUtf16Units, units),
+                (HtmlParseResource::ManagedCapacityBytes, bytes),
+                (HtmlParseResource::PeakTransientBytes, bytes),
+            ] {
+                assert_eq!(c.usage().resource(parse).current(), amount, "{parse:?}");
             }
         }
     }
@@ -1967,7 +1963,7 @@ mod tests {
             pools.offer_attributes(&bank, sharing.control).unwrap();
             assert!(pools.strings.heap_usage().bytes() > 0);
             assert!(pools.attributes.heap_usage().bytes() > 0);
-            work(sharing.control, HtmlAttributePool::mark_work()).unwrap();
+            HtmlAttributePool::charge_mark(sharing.control).unwrap();
             let Authority::Open(root) = &pools.attributes_root else {
                 panic!("open pair")
             };

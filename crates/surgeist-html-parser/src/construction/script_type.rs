@@ -22,14 +22,6 @@ pub(super) fn script_attribute<'a>(
     Ok(None)
 }
 
-pub(super) fn script_type_charge(
-    control: &mut ParseControl,
-    work: surgeist_html::bounded::script::HtmlScriptTypeWork,
-) -> Result<(), SessionError> {
-    control.charge_change(surgeist_html::accounting::script_type_work(work))?;
-    Ok(())
-}
-
 pub(super) fn classify_script(
     control: &mut ParseControl,
     element: &HtmlElement,
@@ -38,9 +30,8 @@ pub(super) fn classify_script(
     let language = script_attribute(control, element, "language")?;
     let mut cursor =
         surgeist_html::bounded::script::HtmlScriptTypeCursor::preparation(explicit, language);
-    while let Some(work) = cursor.required_work() {
-        script_type_charge(control, work)?;
-        cursor.advance();
+    while cursor.result().is_none() {
+        cursor.advance(control)?;
     }
     // Classification returns the shared kind; the saved metadata slot remains
     // independent and is installed only by the actual preparation algorithm.

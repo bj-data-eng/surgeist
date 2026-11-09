@@ -225,13 +225,17 @@ fn commit_description(
     let mut operation = Some(storage.prepare(command));
     let mut described = None;
     while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
-        if let HtmlConstructionActionDescription::Commit {
-            record_writes,
-            copied_bytes,
-            ..
-        } = action.description()
-        {
-            assert!(described.replace((record_writes, copied_bytes)).is_none());
+        let description = action.description();
+        if matches!(
+            description,
+            HtmlConstructionActionDescription::Commit { .. }
+        ) {
+            let charged = charged_by(|meter| description.charge_commit(meter));
+            let amounts = (
+                charged.total(HtmlWork::RecordWrite) as usize,
+                charged.total(HtmlWork::CopyByte) as usize,
+            );
+            assert!(described.replace(amounts).is_none());
         }
         action.perform().unwrap().accept();
     }

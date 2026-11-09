@@ -1126,7 +1126,18 @@ fn csp_transfer_prices_real_graph_overlap_and_closing_without_retaining_atomic_s
     assert_eq!(control.bytes, graph);
     assert_eq!(control.peak_bytes, peak);
     assert_eq!(transferred.policy(), original.policy());
-    assert!(control.work >= 2 * (10 + 8 + layout.disposal().work_credits()));
+    let mut disposal = 0_u64;
+    layout
+        .disposal()
+        .charge_with_calls(
+            0,
+            &mut crate::store::html_credits::Credits(|credits| {
+                disposal += credits;
+                Ok::<(), crate::DomError>(())
+            }),
+        )
+        .unwrap();
+    assert!(control.work >= 2 * (10 + 8 + disposal));
     let before = control.bytes;
     let cancelled = AtomicBool::new(true);
     control.cancel = &cancelled;

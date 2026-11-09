@@ -35,6 +35,17 @@ impl<W: Dimension, R: Dimension> SharedOperation<W, R> {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
+    /// Records `value` as the largest reached by a gauge resource under one lock, so concurrent
+    /// records of one gauge cannot release a stale amount.
+    pub(crate) fn record_largest(
+        &self,
+        scope: Scope,
+        resource: R,
+        value: u64,
+    ) -> Result<(), Error<W, R>> {
+        self.lock().record_largest(scope, resource, value)
+    }
+
     pub fn root(&self) -> Scope {
         self.lock().root()
     }
