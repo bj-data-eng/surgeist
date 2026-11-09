@@ -27,16 +27,20 @@ fn test_async_job_not_blocking_event_loop() {
             // There are no jobs in our queue. Push
             // an async job that will consistently yield to the executor.
             ctx.with(|mut access| {
-                access.enqueue_job(
-                    NativeAsyncJob::new(|_| {
-                        Ok(ContextTask::from_future(async {
-                            loop {
-                                future::yield_now().await;
-                            }
-                        }))
-                    })
-                    .into(),
-                );
+                access
+                    .enqueue_job(
+                        NativeAsyncJob::new(|_| {
+                            Ok(ContextTask::from_future(async {
+                                loop {
+                                    future::yield_now().await;
+                                }
+                            }))
+                        })
+                        .into(),
+                    )
+                    .unwrap()
+                    .into_result()
+                    .unwrap();
                 Ok(())
             })
             .unwrap();
@@ -51,16 +55,20 @@ fn test_async_job_not_blocking_event_loop() {
                 // Thus, enqueue a generic job that should resolve in the next loop.
                 let realm = ctx.with(|access| Ok(access.realm().clone())).unwrap();
                 ctx.with(|mut access| {
-                    access.enqueue_job(
-                        GenericJob::new(
-                            move |_| {
-                                checker.set(true);
-                                Ok(JsValue::undefined())
-                            },
-                            realm,
+                    access
+                        .enqueue_job(
+                            GenericJob::new(
+                                move |_| {
+                                    checker.set(true);
+                                    Ok(JsValue::undefined())
+                                },
+                                realm,
+                            )
+                            .into(),
                         )
-                        .into(),
-                    );
+                        .unwrap()
+                        .into_result()
+                        .unwrap();
                     Ok(())
                 })
                 .unwrap();

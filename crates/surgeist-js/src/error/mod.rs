@@ -3,6 +3,7 @@
 use crate::ContextAccess;
 mod diagnostic;
 mod interruption;
+mod publication;
 use diagnostic::StoredDiagnostic;
 pub use diagnostic::{
     Diagnostic, DiagnosticBacktrace, DiagnosticEngine, DiagnosticFrame, DiagnosticFrames,
@@ -13,6 +14,10 @@ pub(crate) use interruption::RetainedInterruption;
 #[cfg(test)]
 pub(crate) use interruption::metadata_layout_tests::expected_cause_payloads;
 pub use interruption::{DiagnosticModuleInterruption, ModuleInterruption};
+pub use publication::{
+    DiagnosticForeignSelectedRealm, ErasedForeignSelectedRealm, ForeignSelectedRealm,
+};
+pub(crate) use publication::{RealmOwnershipMismatch, check_realm_ownership};
 #[cfg(test)]
 mod tests;
 
@@ -28,6 +33,7 @@ use crate::{
         Array,
         error::{Error, ErrorKind},
     },
+    context::time::{JsDuration, JsInstant},
     js_string,
     object::JsObject,
     property::PropertyDescriptor,
@@ -699,6 +705,17 @@ impl From<crate::job::JobRegistrationError> for JsError {
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[allow(variant_size_differences)]
 pub enum EngineError {
+    /// Publication refused a selected realm from another runtime.
+    #[error("ForeignSelectedRealm: {0}")]
+    ForeignSelectedRealm(ForeignSelectedRealm),
+    /// The exact timer delay cannot be added to the sampled clock instant.
+    #[error("JobDeadlineOverflow: {now:?} + {delay:?} is unrepresentable")]
+    JobDeadlineOverflow {
+        /// Clock instant sampled for this publication.
+        now: JsInstant,
+        /// Exact requested delay.
+        delay: JsDuration,
+    },
     /// This source module instance was terminally interrupted by an earlier host failure.
     #[error("ModuleInterrupted: {0}")]
     ModuleInterrupted(ModuleInterruption),
@@ -759,6 +776,16 @@ impl EngineError {
     /// error reporting frameworks such as `anyhow`, `eyre` or `miette`.
     fn into_erased(self, context: &mut Context) -> ErasedEngineError {
         match self {
+            EngineError::ForeignSelectedRealm(error) => {
+                ErasedEngineError::ForeignSelectedRealm(ErasedForeignSelectedRealm {
+                    selected: error.selected_realm(),
+                    receiving: error.receiving_realm(),
+                    diagnostic: Box::new(error.diagnostic().erase(context)),
+                })
+            }
+            EngineError::JobDeadlineOverflow { now, delay } => {
+                ErasedEngineError::JobDeadlineOverflow { now, delay }
+            }
             EngineError::ModuleInterrupted(error) => ErasedEngineError::ModuleInterrupted {
                 identity: error.identity(),
                 cause: Box::new(error.cause().erase(context)),
@@ -798,6 +825,14 @@ pub(crate) struct StoredJsError {
 
 #[derive(Debug, Clone, surgeist_js_gc::heap::Trace)]
 enum StoredErrorRepr {
+    ForeignSelectedRealm {
+        #[heap_trace(skip)]
+        selected: surgeist_js_gc::heap::ObjectId,
+        #[heap_trace(skip)]
+        receiving: surgeist_js_gc::heap::ObjectId,
+        original: StoredDiagnostic,
+    },
+    JobDeadlineOverflow(#[heap_trace(skip)] (JsInstant, JsDuration)),
     ModuleInterrupted(Rc<RetainedInterruption>),
     Resource(#[heap_trace(skip)] EngineResourceError),
     InvalidEntryPermit,
@@ -848,6 +883,19 @@ enum StoredNativeErrorKind {
 impl StoredJsError {
     pub(crate) fn to_error(&self) -> JsError {
         let inner = match &self.inner {
+            StoredErrorRepr::ForeignSelectedRealm {
+                selected,
+                receiving,
+                original,
+            } => Repr::Engine(EngineError::ForeignSelectedRealm(
+                ForeignSelectedRealm::from_stored(*selected, *receiving, original),
+            )),
+            StoredErrorRepr::JobDeadlineOverflow((now, delay)) => {
+                Repr::Engine(EngineError::JobDeadlineOverflow {
+                    now: *now,
+                    delay: *delay,
+                })
+            }
             StoredErrorRepr::ModuleInterrupted(error) => {
                 Repr::Engine(EngineError::ModuleInterrupted(error.external()))
             }
@@ -922,6 +970,10 @@ impl JsError {
                     {
                         interruption.admit(runtime);
                     }
+                    if let Repr::Engine(EngineError::ForeignSelectedRealm(value)) = &mut error.inner
+                    {
+                        value.original.admit(runtime);
+                    }
                     if let Repr::Engine(EngineError::Panic(panic)) = &mut error.inner
                         && let Some(source) = &mut panic.source
                     {
@@ -972,6 +1024,16 @@ impl JsError {
 
     pub(crate) fn into_stored(self) -> StoredJsError {
         let inner = match self.inner {
+            Repr::Engine(EngineError::ForeignSelectedRealm(error)) => {
+                StoredErrorRepr::ForeignSelectedRealm {
+                    selected: error.selected_realm(),
+                    receiving: error.receiving_realm(),
+                    original: error.original.into_stored(),
+                }
+            }
+            Repr::Engine(EngineError::JobDeadlineOverflow { now, delay }) => {
+                StoredErrorRepr::JobDeadlineOverflow((now, delay))
+            }
             Repr::Engine(EngineError::ModuleInterrupted(error)) => {
                 StoredErrorRepr::ModuleInterrupted(error.retained)
             }
@@ -2262,6 +2324,17 @@ impl ErasedPanicError {
 #[derive(Debug, Clone, Error, Eq, PartialEq)]
 #[allow(variant_size_differences)]
 pub enum ErasedEngineError {
+    /// Publication refused a selected realm from another runtime.
+    #[error("ForeignSelectedRealm: {0}")]
+    ForeignSelectedRealm(ErasedForeignSelectedRealm),
+    /// The exact timer delay cannot be added to the sampled clock instant.
+    #[error("JobDeadlineOverflow: {now:?} + {delay:?} is unrepresentable")]
+    JobDeadlineOverflow {
+        /// Sampled publication clock instant.
+        now: JsInstant,
+        /// Exact requested delay.
+        delay: JsDuration,
+    },
     /// A source module is terminally interrupted; the cause is an explicit erased export.
     #[error("ModuleInterrupted: {cause}")]
     ModuleInterrupted {

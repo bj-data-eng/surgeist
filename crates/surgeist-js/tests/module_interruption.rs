@@ -256,7 +256,7 @@ mod continuation {
         Context, ContextAccess, JsResult, JsValue, Module, Source,
         builtins::promise::{PromiseState, ResolvingFunctions},
         execution::{ExecutionOptions, ExecutionOutcome},
-        job::{Job, JobCall, JobExecutor},
+        job::{Job, JobAcceptance, JobCall, JobExecutor, JobPublicationError},
         js_string,
         object::builtins::{JsFuture, JsPromise},
     };
@@ -274,8 +274,16 @@ mod continuation {
     }
 
     impl JobExecutor for ManualExecutor {
-        fn enqueue_job(self: Rc<Self>, job: Job, _: ContextAccess<'_>) {
+        fn enqueue_job(
+            self: Rc<Self>,
+            job: Job,
+            mut access: ContextAccess<'_>,
+        ) -> Result<JobAcceptance, JobPublicationError> {
+            if let Err(cause) = job.check_publication(access.reborrow()) {
+                return Err(JobPublicationError::new(job, cause));
+            }
             self.jobs.borrow_mut().push_back(job);
+            Ok(JobAcceptance::Accepted)
         }
 
         fn run_jobs(self: Rc<Self>, _: ContextAccess<'_>) -> JsResult<()> {

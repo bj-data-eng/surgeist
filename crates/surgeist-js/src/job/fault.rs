@@ -52,6 +52,23 @@ impl UnwindCleanup {
         }
     }
 
+    /// Returns an owned result, or disposes it before resuming cleanup's unwind.
+    /// During an existing outer unwind, secondary cleanup failure is discarded
+    /// under the same policy as `finish`, and the result remains caller-owned.
+    pub(crate) fn finish_with<T>(mut self, value: T) -> T {
+        match self.first.take() {
+            Some(original) if !std::thread::panicking() => {
+                self.run(move || drop(value));
+                self.resume(original)
+            }
+            Some(secondary) => {
+                Self::discard_secondary(secondary);
+                value
+            }
+            None => value,
+        }
+    }
+
     /// Resumes an initiating unwind already caught by the owning action.
     pub(crate) fn resume(self, original: Box<dyn std::any::Any + Send>) -> ! {
         if let Some(secondary) = self.first {
@@ -84,6 +101,10 @@ pub enum JobFaultOwner {
     NativeEpoch,
     /// A source-module evaluation's local custody.
     ModuleEvaluation,
+    /// Resident job storage, links, payload custody and drain state.
+    Queue,
+    /// The executor's runtime queue registry.
+    ExecutorRegistry,
 }
 
 /// A finite structural failure, with only rootless scalar diagnostic facts.
@@ -125,6 +146,13 @@ pub enum JobFaultCause {
     CounterUnderflow,
     /// A key or work item belonged to a different owner.
     OwnerMismatch,
+    /// A resident queue link did not match its reciprocal link or bucket.
+    InvalidQueueLink {
+        /// The queue node whose link was rejected.
+        index: usize,
+    },
+    /// A required existing clock bucket was absent.
+    MissingClockBucket,
 }
 
 /// The first detected invariant failure of a job owner.
@@ -182,3 +210,6 @@ pub enum JobRegistrationError {
     #[error(transparent)]
     Fault(#[from] JobFault),
 }
+
+#[cfg(test)]
+mod cleanup_tests;

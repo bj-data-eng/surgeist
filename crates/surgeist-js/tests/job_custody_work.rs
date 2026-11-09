@@ -228,7 +228,10 @@ fn admitted_interruption_is_terminal_and_finished_steps_do_no_new_work() {
         }))
     });
     let observer = job.observer();
-    let mut owner = Context::default();
+    let builder = Context::builder();
+    #[cfg(feature = "fuzz")]
+    let builder = builder.instructions_remaining(1_000_000);
+    let mut owner = builder.build().unwrap();
     let first = owner
         .with_execution(ExecutionOptions::new(0), |access| {
             let host = access.into_host_access();
@@ -478,7 +481,7 @@ fn a_nonready_affinity_bound_task_refuses_a_peer_drain_then_resumes_on_its_owner
     let g = gate.clone();
     let job = NativeAsyncJob::new(move |_| Ok(ContextTask::from_future(GateFuture(g))));
     let observer = job.observer();
-    a.enqueue_job(job.into());
+    a.enqueue_job(job.into()).unwrap().into_result().unwrap();
     {
         let host = a.host_access();
         let mut driver = Box::pin(executor.clone().run_jobs_async(&host));
@@ -535,10 +538,13 @@ fn cancellation_retires_only_the_observing_runtime_and_wakes_started_job_waiters
     let started = NativeAsyncJob::new(move |_| Ok(ContextTask::from_future(GateFuture(g))));
     let started_observer = started.observer();
     let (mut wait, wakes) = pending_wait(&started_observer);
-    a.enqueue_job(started.into());
+    a.enqueue_job(started.into())
+        .unwrap()
+        .into_result()
+        .unwrap();
     let other = NativeAsyncJob::new(|_| Ok(ready()));
     let other_observer = other.observer();
-    b.enqueue_job(other.into());
+    b.enqueue_job(other.into()).unwrap().into_result().unwrap();
     {
         let host = a.host_access();
         let mut driver = Box::pin(executor.clone().run_jobs_async(&host));
@@ -552,7 +558,7 @@ fn cancellation_retires_only_the_observing_runtime_and_wakes_started_job_waiters
         Ok(ready())
     });
     let queued_observer = queued.observer();
-    a.enqueue_job(queued.into());
+    a.enqueue_job(queued.into()).unwrap().into_result().unwrap();
     assert_eq!(queued_observer.status().unwrap(), JobStatus::Pending);
     executor
         .get_cancellation_token()
@@ -590,13 +596,17 @@ fn reentrant_draining_never_polls_the_currently_claimed_task_twice() {
             o.borrow_mut().push("outer");
             let inner_order = o.clone();
             host.with(|mut access| {
-                access.enqueue_job(
-                    PromiseJob::new(move |_| {
-                        inner_order.borrow_mut().push("new");
-                        Ok(JsValue::new(7))
-                    })
-                    .into(),
-                );
+                access
+                    .enqueue_job(
+                        PromiseJob::new(move |_| {
+                            inner_order.borrow_mut().push("new");
+                            Ok(JsValue::new(7))
+                        })
+                        .into(),
+                    )
+                    .unwrap()
+                    .into_result()
+                    .unwrap();
                 access.run_jobs()
             })?;
             o.borrow_mut().push("return");
@@ -604,7 +614,11 @@ fn reentrant_draining_never_polls_the_currently_claimed_task_twice() {
         }))
     });
     let observer = job.observer();
-    owner.enqueue_job(job.into());
+    owner
+        .enqueue_job(job.into())
+        .unwrap()
+        .into_result()
+        .unwrap();
     owner.run_jobs().unwrap();
     assert_eq!(polls.get(), 1);
     assert_eq!(*order.borrow(), ["outer", "new", "return"]);
@@ -613,14 +627,21 @@ fn reentrant_draining_never_polls_the_currently_claimed_task_twice() {
 #[test]
 fn an_untouched_due_interval_survives_a_stop_and_can_cancel_itself_after_resumption() {
     let clock = Rc::new(FixedClock::from_millis(100));
-    let mut owner = Context::builder().clock(clock.clone()).build().unwrap();
-    owner.enqueue_job(
-        TimeoutJob::new(
-            NativeJob::new(|mut access| access.eval(Source::from_bytes("0"))),
-            0,
+    let builder = Context::builder().clock(clock.clone());
+    #[cfg(feature = "fuzz")]
+    let builder = builder.instructions_remaining(1_000_000);
+    let mut owner = builder.build().unwrap();
+    owner
+        .enqueue_job(
+            TimeoutJob::new(
+                NativeJob::new(|mut access| access.eval(Source::from_bytes("0"))),
+                0,
+            )
+            .into(),
         )
-        .into(),
-    );
+        .unwrap()
+        .into_result()
+        .unwrap();
     let calls = Rc::new(Cell::new(0));
     let c = calls.clone();
     let token: Rc<RefCell<Option<surgeist_js::job::CancellationToken>>> =
@@ -640,7 +661,11 @@ fn an_untouched_due_interval_survives_a_stop_and_can_cancel_itself_after_resumpt
         0,
     );
     *token.borrow_mut() = Some(interval.cancellation_token().clone());
-    owner.enqueue_job(interval.into());
+    owner
+        .enqueue_job(interval.into())
+        .unwrap()
+        .into_result()
+        .unwrap();
     clock.forward(1);
     let refused = owner
         .with_execution(ExecutionOptions::new(0), |mut access| access.run_jobs())

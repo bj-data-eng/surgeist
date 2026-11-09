@@ -18,7 +18,7 @@ use crate::{
         promise::ResolvingFunctions,
         typed_array::Element,
     },
-    job::{CancellationToken, ContextTask, NativeAsyncJob, TimeoutJob},
+    job::{CancellationToken, ContextTask, NativeAsyncJob, TimeoutJob, finish_publication},
     js_string,
     sys::time::{Duration, Instant},
 };
@@ -244,6 +244,7 @@ pub(super) fn wait_async<E: Element + PartialEq>(
         timeout: None,
     };
     let realm = context.realm().clone();
+    let mut publication_error = None;
     if let Some(timeout) = timeout {
         let registration = Rc::downgrade(&pending.registration);
         let job = TimeoutJob::with_realm(
@@ -257,7 +258,12 @@ pub(super) fn wait_async<E: Element + PartialEq>(
             timeout,
         );
         pending.timeout = Some(job.cancellation_token().clone());
-        context.enqueue_job(job.into());
+        // Accepted timeout work keeps its custody while the async owner is
+        // published, even when the timeout publication reported an error.
+        publication_error = match context.enqueue_job(job.into()) {
+            Ok(acceptance) => acceptance.into_result().err(),
+            Err(rejected) => return Err(rejected.into_error()),
+        };
     }
 
     let task_functions = functions.clone();
@@ -283,10 +289,15 @@ pub(super) fn wait_async<E: Element + PartialEq>(
         },
         realm,
     );
-    functions.associate_job(&job.observer(), context)?;
-    context.enqueue_job(job.into());
-
-    Ok(AtomicsWaitResult::Ok)
+    if let Err(error) = functions.associate_job(&job.observer(), context) {
+        drop(job);
+        return Err(publication_error.unwrap_or(error));
+    }
+    let published = finish_publication(context.enqueue_job(job.into()));
+    match publication_error.or(published.err()) {
+        Some(error) => Err(error),
+        None => Ok(AtomicsWaitResult::Ok),
+    }
 }
 
 /// Removes and notifies at most `count` waiters in FIFO order.
@@ -442,5 +453,327 @@ mod tests {
             Ok(AtomicsWaitResult::Ok)
         ));
         assert_eq!(notify(&backing, 0, 3).unwrap(), 0);
+    }
+}
+
+#[cfg(test)]
+mod publication_tests {
+    use super::*;
+    use crate::{
+        ContextAccess,
+        builtins::promise::PromiseState,
+        context::time::FixedClock,
+        error::EngineError,
+        execution::ExecutionOptions,
+        job::{
+            Job, JobAcceptance, JobExecutor, JobObserver, JobPublicationCause, JobPublicationError,
+            JobRetirement, JobStatus, SimpleJobExecutor,
+        },
+        object::{JsPromise, JsSharedArrayBuffer},
+    };
+    use std::cell::{Cell, RefCell};
+
+    #[derive(Clone, Copy)]
+    enum Policy {
+        Accept,
+        Reject,
+        AcceptedError,
+        Discard,
+    }
+    struct Publisher {
+        inner: Rc<SimpleJobExecutor>,
+        timeout: Policy,
+        asynchronous: Policy,
+        publications: RefCell<Vec<&'static str>>,
+        timeout_tokens: RefCell<Vec<CancellationToken>>,
+        timeout_observers: RefCell<Vec<JobObserver>>,
+        inline_backing: RefCell<Option<SharedArrayBuffer>>,
+    }
+    impl Publisher {
+        fn new(timeout: Policy, asynchronous: Policy) -> Rc<Self> {
+            Rc::new(Self {
+                inner: Rc::new(SimpleJobExecutor::new()),
+                timeout,
+                asynchronous,
+                publications: RefCell::new(Vec::new()),
+                timeout_tokens: RefCell::new(Vec::new()),
+                timeout_observers: RefCell::new(Vec::new()),
+                inline_backing: RefCell::new(None),
+            })
+        }
+    }
+    impl JobExecutor for Publisher {
+        fn enqueue_job(
+            self: Rc<Self>,
+            job: Job,
+            mut access: ContextAccess<'_>,
+        ) -> Result<JobAcceptance, JobPublicationError> {
+            let asynchronous = matches!(&job, Job::AsyncJob(_));
+            let (policy, failure) = match &job {
+                Job::TimeoutJob(timeout) => {
+                    self.publications.borrow_mut().push("timeout");
+                    self.timeout_tokens
+                        .borrow_mut()
+                        .push(timeout.cancellation_token().clone());
+                    self.timeout_observers.borrow_mut().push(timeout.observer());
+                    (self.timeout, EngineError::InvalidEntryPermit)
+                }
+                Job::AsyncJob(_) => {
+                    self.publications.borrow_mut().push("async");
+                    (self.asynchronous, EngineError::ContextAccessBusy)
+                }
+                _ => return self.inner.clone().enqueue_job(job, access),
+            };
+            match policy {
+                Policy::Reject => Err(JobPublicationError::new(
+                    job,
+                    JobPublicationCause::try_new(failure.into(), access).unwrap(),
+                )),
+                Policy::Discard => {
+                    drop(job);
+                    Ok(JobAcceptance::Discarded)
+                }
+                Policy::Accept => self.inner.clone().enqueue_job(job, access),
+                Policy::AcceptedError => {
+                    let cause =
+                        JobPublicationCause::try_new(failure.into(), access.reborrow()).unwrap();
+                    match self.inner.clone().enqueue_job(job, access.reborrow()) {
+                        Ok(JobAcceptance::Accepted) => {
+                            let backing = self.inline_backing.borrow().clone();
+                            if asynchronous && let Some(backing) = backing {
+                                assert_eq!(notify(&backing, 0, 1).unwrap(), 1);
+                                self.inner.clone().run_jobs(access).unwrap();
+                            }
+                            Ok(JobAcceptance::AcceptedWithError(cause))
+                        }
+                        other => other,
+                    }
+                }
+            }
+        }
+        fn run_jobs(self: Rc<Self>, access: ContextAccess<'_>) -> JsResult<()> {
+            self.inner.clone().run_jobs(access)
+        }
+    }
+    fn context(executor: Rc<Publisher>, clock: Rc<FixedClock>) -> Context {
+        let builder = Context::builder().job_executor(executor).clock(clock);
+        #[cfg(feature = "fuzz")]
+        let builder = builder.instructions_remaining(100_000);
+        builder.build().unwrap()
+    }
+    fn register(
+        context: &mut Context,
+        backing: &SharedArrayBuffer,
+        timeout: Option<Duration>,
+    ) -> (JsResult<AtomicsWaitResult>, JsPromise) {
+        let (promise, functions) = JsPromise::new_pending(context.access());
+        let outcome = context
+            .with_execution(ExecutionOptions::new(4096), |access| {
+                wait_async(
+                    backing,
+                    8,
+                    0,
+                    0_i32,
+                    timeout,
+                    functions,
+                    access.into_owner(),
+                )
+            })
+            .unwrap();
+        (outcome.result, promise)
+    }
+    fn drain(context: &mut Context) {
+        context
+            .with_execution(ExecutionOptions::new(4096), |mut access| access.run_jobs())
+            .unwrap()
+            .result
+            .unwrap();
+    }
+
+    #[test]
+    fn rejected_timeout_publication_removes_the_wait_without_publishing_its_async_task() {
+        let publisher = Publisher::new(Policy::Reject, Policy::Accept);
+        let clock = Rc::new(FixedClock::from_millis(0));
+        let mut context = context(publisher.clone(), clock.clone());
+        let backing = JsSharedArrayBuffer::new(8, context.access())
+            .unwrap()
+            .inner();
+        let (result, promise) = register(&mut context, &backing, Some(Duration::from_millis(10)));
+        assert_eq!(
+            result.unwrap_err().as_engine(),
+            Some(&EngineError::InvalidEntryPermit)
+        );
+        assert_eq!(&*publisher.publications.borrow(), &["timeout"]);
+        assert!(publisher.timeout_tokens.borrow()[0].revoked());
+        assert_eq!(notify(&backing, 0, 1).unwrap(), 0);
+        clock.forward(11);
+        drain(&mut context);
+        assert_eq!(promise.state().unwrap(), PromiseState::Pending);
+    }
+
+    #[test]
+    fn rejected_async_publication_releases_only_its_registration_and_accepted_timeout() {
+        let publisher = Publisher::new(Policy::Accept, Policy::Reject);
+        let clock = Rc::new(FixedClock::from_millis(0));
+        let mut context = context(publisher.clone(), clock.clone());
+        let backing = JsSharedArrayBuffer::new(8, context.access())
+            .unwrap()
+            .inner();
+        let unrelated_calls = Rc::new(Cell::new(0));
+        let calls = unrelated_calls.clone();
+        let unrelated = TimeoutJob::with_realm(
+            move |_| {
+                calls.set(calls.get() + 1);
+                Ok(JsValue::undefined())
+            },
+            context.realm().clone(),
+            Duration::from_millis(10),
+        );
+        let unrelated_token = unrelated.cancellation_token().clone();
+        finish_publication(context.enqueue_job(unrelated.into())).unwrap();
+        publisher.publications.borrow_mut().clear();
+        publisher.timeout_tokens.borrow_mut().clear();
+        publisher.timeout_observers.borrow_mut().clear();
+        let (sender, received) = oneshot::channel();
+        let _unrelated_wait = {
+            let mut lists = backing.wait_queues().lock().unwrap();
+            Registration::insert(&mut lists, &backing, 4, Signal::Async(sender))
+        };
+
+        let (result, promise) = register(&mut context, &backing, Some(Duration::from_millis(10)));
+        assert_eq!(
+            result.unwrap_err().as_engine(),
+            Some(&EngineError::ContextAccessBusy)
+        );
+        assert_eq!(&*publisher.publications.borrow(), &["timeout", "async"]);
+        assert!(publisher.timeout_tokens.borrow()[0].revoked());
+        assert!(!unrelated_token.revoked());
+        assert_eq!(notify(&backing, 0, 1).unwrap(), 0);
+        assert_eq!(notify(&backing, 4, 1).unwrap(), 1);
+        assert!(matches!(received.try_recv(), Ok(AtomicsWaitResult::Ok)));
+        clock.forward(11);
+        drain(&mut context);
+        assert_eq!(unrelated_calls.get(), 1);
+        assert_eq!(
+            publisher.timeout_observers.borrow()[0].status(),
+            Ok(JobStatus::Retired(JobRetirement::Cancelled))
+        );
+        assert_eq!(promise.state().unwrap(), PromiseState::Pending);
+    }
+
+    #[test]
+    fn accepted_publication_errors_preserve_the_async_wait_and_the_first_cause() {
+        for (timeout_policy, async_policy, expected) in [
+            (
+                Policy::AcceptedError,
+                Policy::Accept,
+                EngineError::InvalidEntryPermit,
+            ),
+            (
+                Policy::Accept,
+                Policy::AcceptedError,
+                EngineError::ContextAccessBusy,
+            ),
+            (
+                Policy::AcceptedError,
+                Policy::AcceptedError,
+                EngineError::InvalidEntryPermit,
+            ),
+        ] {
+            let publisher = Publisher::new(timeout_policy, async_policy);
+            let clock = Rc::new(FixedClock::from_millis(0));
+            let mut context = context(publisher.clone(), clock);
+            let backing = JsSharedArrayBuffer::new(8, context.access())
+                .unwrap()
+                .inner();
+            let (result, promise) =
+                register(&mut context, &backing, Some(Duration::from_millis(10)));
+            assert_eq!(result.unwrap_err().as_engine(), Some(&expected));
+            assert_eq!(&*publisher.publications.borrow(), &["timeout", "async"]);
+            assert!(!publisher.timeout_tokens.borrow()[0].revoked());
+            assert_eq!(promise.state().unwrap(), PromiseState::Pending);
+            assert_eq!(notify(&backing, 0, 1).unwrap(), 1);
+            drain(&mut context);
+            assert_eq!(
+                promise.state().unwrap(),
+                PromiseState::Fulfilled(js_string!("ok").into())
+            );
+            assert!(publisher.timeout_tokens.borrow()[0].revoked());
+            assert_eq!(notify(&backing, 0, 1).unwrap(), 0);
+        }
+    }
+
+    #[test]
+    fn inline_accepted_failure_keeps_the_already_fulfilled_wait() {
+        let publisher = Publisher::new(Policy::Accept, Policy::AcceptedError);
+        let clock = Rc::new(FixedClock::from_millis(0));
+        let mut context = context(publisher.clone(), clock);
+        let backing = JsSharedArrayBuffer::new(8, context.access())
+            .unwrap()
+            .inner();
+        publisher.inline_backing.replace(Some(backing.clone()));
+        let (result, promise) = register(&mut context, &backing, Some(Duration::from_millis(10)));
+        assert_eq!(
+            result.unwrap_err().as_engine(),
+            Some(&EngineError::ContextAccessBusy)
+        );
+        assert_eq!(
+            promise.state().unwrap(),
+            PromiseState::Fulfilled(js_string!("ok").into())
+        );
+        assert!(publisher.timeout_tokens.borrow()[0].revoked());
+        assert_eq!(notify(&backing, 0, 1).unwrap(), 0);
+        drain(&mut context);
+        assert_eq!(
+            promise.state().unwrap(),
+            PromiseState::Fulfilled(js_string!("ok").into())
+        );
+    }
+
+    #[test]
+    fn accepted_waits_resolve_by_notification_or_timeout_and_discard_keeps_its_policy() {
+        for (timeout, timed_out) in [
+            (None, false),
+            (Some(Duration::from_millis(10)), false),
+            (Some(Duration::from_millis(10)), true),
+        ] {
+            let publisher = Publisher::new(Policy::Accept, Policy::Accept);
+            let clock = Rc::new(FixedClock::from_millis(0));
+            let mut context = context(publisher, clock.clone());
+            let backing = JsSharedArrayBuffer::new(8, context.access())
+                .unwrap()
+                .inner();
+            let (result, promise) = register(&mut context, &backing, timeout);
+            assert!(matches!(result, Ok(AtomicsWaitResult::Ok)));
+            if timed_out {
+                clock.forward(11);
+            } else {
+                assert_eq!(notify(&backing, 0, 1).unwrap(), 1);
+            }
+            drain(&mut context);
+            let expected = if timed_out {
+                js_string!("timed-out")
+            } else {
+                js_string!("ok")
+            };
+            assert_eq!(
+                promise.state().unwrap(),
+                PromiseState::Fulfilled(expected.into())
+            );
+            assert_eq!(notify(&backing, 0, 1).unwrap(), 0);
+        }
+        let publisher = Publisher::new(Policy::Accept, Policy::Discard);
+        let clock = Rc::new(FixedClock::from_millis(0));
+        let mut context = context(publisher.clone(), clock.clone());
+        let backing = JsSharedArrayBuffer::new(8, context.access())
+            .unwrap()
+            .inner();
+        let (result, promise) = register(&mut context, &backing, Some(Duration::from_millis(10)));
+        assert!(matches!(result, Ok(AtomicsWaitResult::Ok)));
+        assert!(publisher.timeout_tokens.borrow()[0].revoked());
+        assert_eq!(notify(&backing, 0, 1).unwrap(), 0);
+        clock.forward(11);
+        drain(&mut context);
+        assert_eq!(promise.state().unwrap(), PromiseState::Pending);
     }
 }

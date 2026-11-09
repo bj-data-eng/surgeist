@@ -960,12 +960,7 @@ impl Context {
     where
         F: FnOnce(&mut Context, Opcode) -> ControlFlow<CompletionRecord>,
     {
-        if let Some(stop) = self
-            .execution
-            .as_ref()
-            .and_then(|execution| execution.stop())
-            .cloned()
-        {
+        if let Err(stop) = self.check_execution_stop() {
             return self.handle_error(stop);
         }
         if let Err(error) = self.vm.frame().require_executable() {
@@ -1234,6 +1229,7 @@ impl Context {
             .execution
             .as_ref()
             .and_then(|execution| execution.stop())
+            .or_else(|| self.module_run_stop())
         {
             return Err(stop.clone());
         }

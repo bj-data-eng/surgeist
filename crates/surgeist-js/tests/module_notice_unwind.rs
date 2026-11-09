@@ -16,7 +16,7 @@ use surgeist_js::{
     builtins::promise::PromiseState,
     error::{DiagnosticEngine, DiagnosticKind, EngineError, ModuleInterruption, RuntimeLimitError},
     execution::ExecutionOptions,
-    job::{Job, JobCall, JobExecutor, JobStep},
+    job::{Job, JobAcceptance, JobCall, JobExecutor, JobPublicationError, JobStep},
     js_string,
     module::MapModuleLoader,
     object::builtins::{JsFuture, JsPromise},
@@ -30,8 +30,16 @@ struct ManualExecutor {
     jobs: RefCell<VecDeque<Job>>,
 }
 impl JobExecutor for ManualExecutor {
-    fn enqueue_job(self: Rc<Self>, job: Job, _: ContextAccess<'_>) {
+    fn enqueue_job(
+        self: Rc<Self>,
+        job: Job,
+        mut access: ContextAccess<'_>,
+    ) -> Result<JobAcceptance, JobPublicationError> {
+        if let Err(cause) = job.check_publication(access.reborrow()) {
+            return Err(JobPublicationError::new(job, cause));
+        }
         self.jobs.borrow_mut().push_back(job);
+        Ok(JobAcceptance::Accepted)
     }
     fn run_jobs(self: Rc<Self>, _: ContextAccess<'_>) -> JsResult<()> {
         panic!("this fixture explicitly drives its real loader and reaction jobs")

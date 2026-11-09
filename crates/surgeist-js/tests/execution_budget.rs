@@ -1806,7 +1806,10 @@ use surgeist_js::{
     Context, ContextAccess, JsError, JsResult, JsString, JsValue, NativeFunction, Source,
     error::{EngineError, RuntimeLimitError},
     execution::{EventFilter, ExecutionOptions, ExecutionSetupError, ProfileMode},
-    job::{Job, JobCall, JobExecutor, JobInvocation},
+    job::{
+        Job, JobAcceptance, JobCall, JobExecutor, JobInvocation, JobPublicationCause,
+        JobPublicationError,
+    },
     js_string,
     property::Attribute,
 };
@@ -1949,18 +1952,32 @@ struct InlinePromiseExecutor {
 }
 
 impl JobExecutor for InlinePromiseExecutor {
-    fn enqueue_job(self: Rc<Self>, job: Job, context: ContextAccess<'_>) {
+    fn enqueue_job(
+        self: Rc<Self>,
+        job: Job,
+        mut context: ContextAccess<'_>,
+    ) -> Result<JobAcceptance, JobPublicationError> {
+        if let Err(cause) = job.check_publication(context.reborrow()) {
+            return Err(JobPublicationError::new(job, cause));
+        }
         let Job::PromiseJob(job) = job else {
             panic!("unexpected job kind");
         };
-        match job.call(context) {
-            JobCall::Complete(Ok(_)) => {}
+        match job.call(context.reborrow()) {
+            JobCall::Complete(Ok(_)) => Ok(JobAcceptance::Accepted),
             JobCall::Complete(Err(error)) => {
+                let cause = JobPublicationCause::try_new(error.clone(), context.reborrow());
                 self.error.replace(Some(error));
+                match cause {
+                    Ok(cause) => Ok(JobAcceptance::AcceptedWithError(cause)),
+                    // Preserve the fixture's recorded catchable callback-error policy.
+                    Err(_catchable) => Ok(JobAcceptance::Accepted),
+                }
             }
             JobCall::Deferred { job, error } => {
                 self.deferred.borrow_mut().push(job.into());
                 self.error.replace(Some(error));
+                Ok(JobAcceptance::Accepted)
             }
         }
     }

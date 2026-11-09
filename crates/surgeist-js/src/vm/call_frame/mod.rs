@@ -117,6 +117,8 @@ pub struct CallFrame {
     invocation: InvocationId,
     first_dispatch: Option<FirstDispatchPermit>,
     stack_custody: StackCustody,
+    await_origin: Option<crate::vm::opcode::AwaitRoot>,
+    await_finish: Option<crate::vm::opcode::AwaitRoot>,
     pub(crate) pc: u32,
     /// The frame pointer, points to the start of this frame's data in the stack
     /// (i.e., the `this` value position).
@@ -199,6 +201,8 @@ impl StoredCallFrame {
             invocation: self.invocation,
             first_dispatch: None,
             stack_custody: self.stack_custody,
+            await_origin: None,
+            await_finish: None,
             pc: self.pc,
             fp: self.fp,
             argument_count: self.argument_count,
@@ -229,6 +233,40 @@ impl StoredCallFrame {
 }
 
 impl CallFrame {
+    pub(crate) fn invocation(&self) -> InvocationId {
+        self.invocation
+    }
+    pub(crate) fn await_origin(&self) -> Option<&crate::vm::opcode::AwaitRoot> {
+        self.await_origin.as_ref()
+    }
+    pub(crate) fn set_await_origin(&mut self, root: crate::vm::opcode::AwaitRoot) -> JsResult<()> {
+        if root.invocation() != self.invocation {
+            return Err(crate::error::EngineError::InvalidEntryPermit.into());
+        }
+        self.await_origin = Some(root);
+        self.await_finish = None;
+        Ok(())
+    }
+    pub(crate) fn set_await_finish(
+        &mut self,
+        invocation: InvocationId,
+        root: crate::vm::opcode::AwaitRoot,
+    ) -> JsResult<()> {
+        if invocation != self.invocation || root.invocation() != invocation {
+            return Err(crate::error::EngineError::InvalidEntryPermit.into());
+        }
+        self.await_finish = Some(root);
+        Ok(())
+    }
+    pub(crate) fn continuation_finish(&self) -> JsResult<crate::vm::opcode::ContinuationFinish> {
+        if self.owns_continuation() {
+            return Ok(crate::vm::opcode::ContinuationFinish::Owning);
+        }
+        self.await_finish.as_ref().map_or(
+            Ok(crate::vm::opcode::ContinuationFinish::Unavailable),
+            crate::vm::opcode::AwaitRoot::finish,
+        )
+    }
     pub(crate) fn owns_continuation(&self) -> bool {
         self.stack_custody == StackCustody::Invocation
     }
@@ -237,15 +275,26 @@ impl CallFrame {
         self.stack_custody != StackCustody::Transferred
     }
 
-    pub(crate) fn transfer_stack(&mut self) {
-        assert!(self.owns_continuation(), "frame cannot transfer its stack");
+    pub(crate) fn check_suspension(&self) -> JsResult<()> {
+        if !self.owns_continuation() || self.first_dispatch.is_some() {
+            return Err(crate::error::EngineError::InvalidEntryPermit.into());
+        }
+        Ok(())
+    }
+    pub(crate) fn transfer_stack(&mut self) -> JsResult<()> {
+        self.check_suspension()?;
         self.stack_custody = StackCustody::Transferred;
+        Ok(())
     }
 
     /// Reclaims a capture that was never consumed by its reaction.
-    pub(crate) fn restore_stack(&mut self) {
-        assert!(!self.has_stack(), "frame still owns its stack");
+    pub(crate) fn restore_stack(&mut self) -> JsResult<()> {
+        if self.has_stack() {
+            return Err(crate::error::EngineError::InvalidEntryPermit.into());
+        }
         self.stack_custody = StackCustody::Invocation;
+        self.await_finish = None;
+        Ok(())
     }
 
     #[cfg(feature = "experimental")]
@@ -312,6 +361,8 @@ impl Clone for CallFrame {
             invocation: self.invocation,
             first_dispatch: None,
             stack_custody: self.stack_custody,
+            await_origin: self.await_origin.clone(),
+            await_finish: self.await_finish.clone(),
             pc: self.pc,
             fp: self.fp,
             argument_count: self.argument_count,
@@ -399,6 +450,8 @@ impl CallFrame {
             invocation,
             first_dispatch,
             stack_custody: StackCustody::Invocation,
+            await_origin: None,
+            await_finish: None,
             pc: 0,
             fp: 0,
             env_fp: 0,

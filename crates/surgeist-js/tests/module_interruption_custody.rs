@@ -14,7 +14,10 @@ use surgeist_js::{
     builtins::promise::{PromiseState, ResolvingFunctions},
     error::{DiagnosticEngine, DiagnosticKind, EngineError, RuntimeLimitError},
     execution::ExecutionOptions,
-    job::{Job, JobCall, JobExecutor, JobRetirement, JobStatus, JobStep, PromiseJob},
+    job::{
+        Job, JobAcceptance, JobCall, JobExecutor, JobPublicationCause, JobPublicationError,
+        JobRetirement, JobStatus, JobStep, PromiseJob,
+    },
     js_string,
     module::MapModuleLoader,
     object::builtins::{JsFuture, JsPromise},
@@ -31,8 +34,16 @@ struct ManualExecutor {
 }
 
 impl JobExecutor for ManualExecutor {
-    fn enqueue_job(self: Rc<Self>, job: Job, _: ContextAccess<'_>) {
+    fn enqueue_job(
+        self: Rc<Self>,
+        job: Job,
+        mut access: ContextAccess<'_>,
+    ) -> Result<JobAcceptance, JobPublicationError> {
+        if let Err(cause) = job.check_publication(access.reborrow()) {
+            return Err(JobPublicationError::new(job, cause));
+        }
         self.jobs.borrow_mut().push_back(job);
+        Ok(JobAcceptance::Accepted)
     }
 
     fn run_jobs(self: Rc<Self>, _: ContextAccess<'_>) -> JsResult<()> {
@@ -365,10 +376,17 @@ struct InlineTransferExecutor {
 }
 
 impl JobExecutor for InlineTransferExecutor {
-    fn enqueue_job(self: Rc<Self>, job: Job, mut access: ContextAccess<'_>) {
+    fn enqueue_job(
+        self: Rc<Self>,
+        job: Job,
+        mut access: ContextAccess<'_>,
+    ) -> Result<JobAcceptance, JobPublicationError> {
+        if let Err(cause) = job.check_publication(access.reborrow()) {
+            return Err(JobPublicationError::new(job, cause));
+        }
         if !self.inline_first.replace(false) {
             self.queue.jobs.borrow_mut().push_back(job);
-            return;
+            return Ok(JobAcceptance::Accepted);
         }
         let Job::PromiseJob(job) = job else {
             panic!("the first immediate await supplies a promise reaction")
@@ -387,7 +405,10 @@ impl JobExecutor for InlineTransferExecutor {
                 "for (let step = 0; step < 1000; step++) {}",
             ))
             .expect_err("the enclosing publication hook exhausts the finite operation budget");
+        let cause = JobPublicationCause::try_new(error.clone(), access.reborrow())
+            .expect("the authored instruction stop is engine-valued");
         assert!(self.publication_stop.replace(Some(error)).is_none());
+        Ok(JobAcceptance::AcceptedWithError(cause))
     }
 
     fn run_jobs(self: Rc<Self>, _: ContextAccess<'_>) -> JsResult<()> {
@@ -628,17 +649,38 @@ struct FullyInlineExecutor {
 }
 
 impl JobExecutor for FullyInlineExecutor {
-    fn enqueue_job(self: Rc<Self>, job: Job, access: ContextAccess<'_>) {
+    fn enqueue_job(
+        self: Rc<Self>,
+        job: Job,
+        mut access: ContextAccess<'_>,
+    ) -> Result<JobAcceptance, JobPublicationError> {
+        if let Err(cause) = job.check_publication(access.reborrow()) {
+            return Err(JobPublicationError::new(job, cause));
+        }
         match job {
-            Job::PromiseJob(job) if self.inline.get() => match job.call(access) {
-                JobCall::Complete(Ok(_)) => {}
-                JobCall::Complete(Err(error)) => self.errors.borrow_mut().push(error),
+            Job::PromiseJob(job) if self.inline.get() => match job.call(access.reborrow()) {
+                JobCall::Complete(Ok(_)) => Ok(JobAcceptance::Accepted),
+                JobCall::Complete(Err(error)) => {
+                    let cause = JobPublicationCause::try_new(error.clone(), access.reborrow());
+                    self.errors.borrow_mut().push(error);
+                    match cause {
+                        Ok(cause) => Ok(JobAcceptance::AcceptedWithError(cause)),
+                        // Preserve the fixture's recorded catchable callback-error policy.
+                        Err(_catchable) => Ok(JobAcceptance::Accepted),
+                    }
+                }
                 JobCall::Deferred { job, error } => {
                     self.deferred.borrow_mut().push_back(job);
                     self.errors.borrow_mut().push(error);
+                    // The refused attempt precedes fallback acceptance. The
+                    // existing operation stop and recorded diagnostic remain.
+                    Ok(JobAcceptance::Accepted)
                 }
             },
-            job => self.queued.jobs.borrow_mut().push_back(job),
+            job => {
+                self.queued.jobs.borrow_mut().push_back(job);
+                Ok(JobAcceptance::Accepted)
+            }
         }
     }
 

@@ -68,6 +68,27 @@ impl StoredGeneratorContext {
 }
 
 impl GeneratorContext {
+    pub(crate) fn continuation_finish(&self) -> JsResult<crate::vm::opcode::ContinuationFinish> {
+        self.call_frame.as_ref().map_or(
+            Err(crate::error::EngineError::InvalidEntryPermit.into()),
+            CallFrame::continuation_finish,
+        )
+    }
+    pub(crate) fn resume_from_await(
+        &mut self,
+        value: Option<JsValue>,
+        kind: GeneratorResumeKind,
+        context: &mut Context,
+        origin: crate::vm::opcode::AwaitRoot,
+    ) -> CompletionRecord {
+        let Some(frame) = self.call_frame.as_mut() else {
+            return CompletionRecord::Throw(crate::error::EngineError::InvalidEntryPermit.into());
+        };
+        if let Err(error) = frame.set_await_origin(origin) {
+            return CompletionRecord::Throw(error);
+        }
+        self.resume(value, kind, context)
+    }
     /// Await can transfer this invocation's stack while its frame is still
     /// unwinding. Native snapshots have storage but no publication authority.
     pub(crate) fn owns_continuation(&self) -> bool {
@@ -88,8 +109,11 @@ impl GeneratorContext {
     }
 
     /// Creates a new `GeneratorContext` from the current `Context` state.
-    pub(crate) fn from_current(context: &mut Context, async_generator: Option<JsObject>) -> Self {
-        assert!(context.vm.frame().owns_continuation());
+    pub(crate) fn from_current(
+        context: &mut Context,
+        async_generator: Option<JsObject>,
+    ) -> JsResult<Self> {
+        context.vm.frame().check_suspension()?;
         let mut frame = context.vm.frame().clone();
         frame.environments = context.vm.frame().environments.clone();
         frame.realm = context.realm().clone();
@@ -97,7 +121,7 @@ impl GeneratorContext {
         // Split the stack at fp. The split-off portion starts at what was fp,
         // so adjust rp and fp to be relative to the new base.
         let mut stack = context.vm.stack.split_off_frame(&frame);
-        context.vm.frame_mut().transfer_stack();
+        context.vm.frame_mut().transfer_stack()?;
         frame.rp -= frame.fp;
         frame.fp = 0;
 
@@ -113,10 +137,10 @@ impl GeneratorContext {
             );
         }
 
-        Self {
+        Ok(Self {
             call_frame: Some(frame),
             stack,
-        }
+        })
     }
 
     /// Copies ambient state for native callbacks without suspending the caller
@@ -148,13 +172,13 @@ impl GeneratorContext {
         &mut self,
         context: &mut Context,
         call: impl FnOnce(&mut Context) -> R,
-    ) -> R {
+    ) -> JsResult<R> {
         // Stored captures always have a frame. Take it before moving any stack,
         // leaving this context unable to publish if the callback unwinds.
         let frame = self
             .call_frame
             .take()
-            .expect("stored continuation must have a call frame");
+            .ok_or(crate::error::EngineError::InvalidEntryPermit)?;
         let fp = frame.fp;
         let rp = frame.rp;
         let checkpoint = context.vm.call_checkpoint();
@@ -174,9 +198,13 @@ impl GeneratorContext {
 
         self.stack = std::mem::take(&mut active.vm.stack);
         self.call_frame = active.vm.pop_frame();
-        assert!(self.call_frame.is_some());
+        let recovered = self.call_frame.is_some();
         drop(active);
-        result
+        if recovered {
+            Ok(result)
+        } else {
+            Err(crate::error::EngineError::InvalidEntryPermit.into())
+        }
     }
 
     /// Resumes execution with `GeneratorContext` as the current execution context.
@@ -186,21 +214,29 @@ impl GeneratorContext {
         resume_kind: GeneratorResumeKind,
         context: &mut Context,
     ) -> CompletionRecord {
-        assert!(
-            self.owns_continuation(),
-            "only an invocation can resume bytecode"
-        );
-        self.call_frame
-            .as_mut()
-            .expect("owning continuation must have a call frame")
-            .set_exit_early(true);
-        self.with_attached(context, |context| {
+        if !self.owns_continuation() {
+            return CompletionRecord::Throw(crate::error::EngineError::InvalidEntryPermit.into());
+        }
+        let Some(frame) = self.call_frame.as_mut() else {
+            return CompletionRecord::Throw(crate::error::EngineError::InvalidEntryPermit.into());
+        };
+        frame.set_exit_early(true);
+        let mut first_error = None;
+        let attached = self.with_attached(context, |context| {
             if let Some(value) = value {
                 context.vm.stack.push(value);
             }
             context.vm.stack.push(resume_kind);
-            context.run()
-        })
+            let result = context.run();
+            if let CompletionRecord::Throw(error) = &result {
+                first_error = Some(error.clone());
+            }
+            result
+        });
+        match attached {
+            Ok(result) => result,
+            Err(later) => CompletionRecord::Throw(first_error.unwrap_or(later)),
+        }
     }
 
     /// Returns the async generator object, if the function that this [`GeneratorContext`] is from an async generator, [`None`] otherwise.
@@ -218,7 +254,9 @@ impl GeneratorContext {
             .get_register(frame, CallFrame::ASYNC_GENERATOR_OBJECT_REGISTER_INDEX)
             .js_expect("registers must have an async generator object")?;
 
-        Ok(val.as_object())
+        val.as_object()
+            .map(Some)
+            .ok_or_else(|| crate::error::EngineError::InvalidEntryPermit.into())
     }
 }
 

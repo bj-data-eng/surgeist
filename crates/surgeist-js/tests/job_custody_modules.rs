@@ -16,8 +16,9 @@ use surgeist_js::{
     builtins::promise::PromiseState,
     error::EngineError,
     job::{
-        ContextTask, Job, JobCall, JobExecutor, JobObserver, JobRetirement, JobStatus, JobStep,
-        NativeAsyncJob, PromiseJob, SimpleJobExecutor,
+        ContextTask, Job, JobAcceptance, JobCall, JobExecutor, JobObserver, JobPublicationCause,
+        JobPublicationError, JobRetirement, JobStatus, JobStep, NativeAsyncJob, PromiseJob,
+        SimpleJobExecutor,
     },
     js_string,
     module::{ModuleLoader, ModuleRequest, Referrer},
@@ -33,8 +34,16 @@ struct ManualExecutor {
 }
 
 impl JobExecutor for ManualExecutor {
-    fn enqueue_job(self: Rc<Self>, job: Job, _: ContextAccess<'_>) {
+    fn enqueue_job(
+        self: Rc<Self>,
+        job: Job,
+        mut access: ContextAccess<'_>,
+    ) -> Result<JobAcceptance, JobPublicationError> {
+        if let Err(cause) = job.check_publication(access.reborrow()) {
+            return Err(JobPublicationError::new(job, cause));
+        }
         self.jobs.borrow_mut().push_back(job);
+        Ok(JobAcceptance::Accepted)
     }
 
     fn run_jobs(self: Rc<Self>, _: ContextAccess<'_>) -> JsResult<()> {
@@ -810,7 +819,14 @@ fn dynamic_import_committed_successor_survives_a_later_stop_in_its_loader() {
     }
 
     impl JobExecutor for InterruptingExecutor {
-        fn enqueue_job(self: Rc<Self>, job: Job, mut access: ContextAccess<'_>) {
+        fn enqueue_job(
+            self: Rc<Self>,
+            job: Job,
+            mut access: ContextAccess<'_>,
+        ) -> Result<JobAcceptance, JobPublicationError> {
+            if let Err(cause) = job.check_publication(access.reborrow()) {
+                return Err(JobPublicationError::new(job, cause));
+            }
             let selected_reaction = matches!(&job, Job::PromiseJob(_));
             self.queue.jobs.borrow_mut().push_back(job);
             if selected_reaction && self.interrupt_next_promise.replace(false) {
@@ -819,8 +835,12 @@ fn dynamic_import_committed_successor_survives_a_later_stop_in_its_loader() {
                 let error = access
                     .eval(Source::from_bytes("0"))
                     .expect_err("zero instructions must reject the nested evaluator");
+                let cause = JobPublicationCause::try_new(error.clone(), access.reborrow())
+                    .expect("the authored instruction stop is engine-valued");
                 self.actual_stops.borrow_mut().push(error);
+                return Ok(JobAcceptance::AcceptedWithError(cause));
             }
+            Ok(JobAcceptance::Accepted)
         }
 
         fn run_jobs(self: Rc<Self>, _: ContextAccess<'_>) -> JsResult<()> {

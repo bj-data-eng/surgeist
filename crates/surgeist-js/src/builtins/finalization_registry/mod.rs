@@ -7,7 +7,7 @@ use surgeist_js_gc::heap::Trace as HeapTrace;
 use crate::{
     Context, JsArgs, JsData, JsObject, JsResult, JsSymbol, JsValue, JsVariant,
     context::intrinsics::{Intrinsics, StandardConstructor, StandardConstructors},
-    job::{Job, JobCallback, NativeJob, StoredJobCallback},
+    job::{Job, JobCallback, NativeJob, StoredJobCallback, finish_publication},
     js_error, js_string,
     object::{JsFunction, ObjectEdge, internal_methods::get_prototype_from_constructor},
     property::Attribute,
@@ -186,12 +186,12 @@ impl BuiltInConstructor for FinalizationRegistry {
         )?;
         drop(callback);
 
-        context.enqueue_job(Job::FinalizationRegistryCleanupJob(
+        finish_publication(context.enqueue_job(Job::FinalizationRegistryCleanupJob(
             FinalizationRegistryCleanupJob {
                 registry: registry.edge(),
                 receiver,
             },
-        ));
+        )))?;
 
         // 8. Return finalizationRegistry.
         Ok(registry.upcast().into())
@@ -387,5 +387,148 @@ impl FinalizationRegistry {
 
         // 4. Return unused.
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod publication_tests {
+    use super::*;
+    use crate::{
+        ContextAccess, NativeFunction, Source,
+        error::EngineError,
+        execution::ExecutionOptions,
+        job::{JobAcceptance, JobExecutor, JobPublicationCause, JobPublicationError},
+    };
+    use std::cell::{Cell, RefCell};
+
+    #[derive(Clone, Copy)]
+    enum Policy {
+        Accept,
+        Reject,
+        AcceptedError,
+        Discard,
+    }
+    struct Publisher {
+        policy: Policy,
+        attempts: Cell<usize>,
+        subscriptions: RefCell<Vec<FinalizationRegistryCleanupJob>>,
+    }
+    impl JobExecutor for Publisher {
+        fn enqueue_job(
+            self: Rc<Self>,
+            job: Job,
+            access: ContextAccess<'_>,
+        ) -> Result<JobAcceptance, JobPublicationError> {
+            let Job::FinalizationRegistryCleanupJob(subscription) = job else {
+                drop(job);
+                return Ok(JobAcceptance::Discarded);
+            };
+            self.attempts.set(self.attempts.get() + 1);
+            match self.policy {
+                Policy::Reject => Err(JobPublicationError::new(
+                    Job::FinalizationRegistryCleanupJob(subscription),
+                    JobPublicationCause::try_new(EngineError::ContextAccessBusy.into(), access)
+                        .unwrap(),
+                )),
+                Policy::Discard => {
+                    drop(subscription);
+                    Ok(JobAcceptance::Discarded)
+                }
+                Policy::Accept => {
+                    self.subscriptions.borrow_mut().push(subscription);
+                    Ok(JobAcceptance::Accepted)
+                }
+                Policy::AcceptedError => {
+                    let cause =
+                        JobPublicationCause::try_new(EngineError::ContextAccessBusy.into(), access)
+                            .unwrap();
+                    self.subscriptions.borrow_mut().push(subscription);
+                    Ok(JobAcceptance::AcceptedWithError(cause))
+                }
+            }
+        }
+        fn run_jobs(self: Rc<Self>, _: ContextAccess<'_>) -> JsResult<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn subscription_rejection_prevents_registry_exposure_and_discard_remains_explicit_policy() {
+        for policy in [
+            Policy::Accept,
+            Policy::Reject,
+            Policy::AcceptedError,
+            Policy::Discard,
+        ] {
+            let publisher = Rc::new(Publisher {
+                policy,
+                attempts: Cell::new(0),
+                subscriptions: RefCell::new(Vec::new()),
+            });
+            let builder = Context::builder().job_executor(publisher.clone());
+            #[cfg(feature = "fuzz")]
+            let builder = builder.instructions_remaining(100_000);
+            let mut context = builder.build().unwrap();
+            let capture = JsObject::with_null_proto(context.runtime());
+            let capture_edge = capture.edge();
+            let callback = NativeFunction::from_fn_with_captures(
+                |_, _, capture, _| Ok(capture.clone().into()),
+                capture,
+            )
+            .to_js_function(context.realm())
+            .unwrap();
+            context
+                .register_global_property(
+                    js_string!("publicationCleanup"),
+                    callback,
+                    Attribute::all(),
+                )
+                .unwrap();
+            let outcome = context.with_execution(ExecutionOptions::new(4096), |mut access| {
+                access.eval(Source::from_bytes("globalThis.publicationRegistry = new FinalizationRegistry(publicationCleanup)"))
+            }).unwrap();
+            let exposed = match policy {
+                Policy::Reject | Policy::AcceptedError => {
+                    assert_eq!(
+                        outcome.result.unwrap_err().as_engine(),
+                        Some(&EngineError::ContextAccessBusy)
+                    );
+                    assert!(
+                        context
+                            .global_object()
+                            .get(js_string!("publicationRegistry"), context.access())
+                            .unwrap()
+                            .is_undefined()
+                    );
+                    None
+                }
+                Policy::Accept | Policy::Discard => {
+                    let value = outcome.result.unwrap();
+                    assert!(value.as_object().unwrap().is::<FinalizationRegistry>());
+                    Some(value)
+                }
+            };
+            assert_eq!(publisher.attempts.get(), 1);
+            assert_eq!(
+                publisher.subscriptions.borrow().len(),
+                usize::from(matches!(policy, Policy::Accept | Policy::AcceptedError))
+            );
+            context
+                .global_object()
+                .delete_property_or_throw(js_string!("publicationCleanup"), context.access())
+                .unwrap();
+            context
+                .global_object()
+                .delete_property_or_throw(js_string!("publicationRegistry"), context.access())
+                .unwrap();
+            context.runtime().collect().unwrap();
+            assert_eq!(capture_edge.is_live().unwrap(), exposed.is_some());
+            drop(exposed);
+            context.runtime().collect().unwrap();
+            assert!(!capture_edge.is_live().unwrap());
+            for subscription in publisher.subscriptions.borrow().iter() {
+                assert!(matches!(subscription.try_take(), Poll::Ready(None)));
+            }
+        }
     }
 }

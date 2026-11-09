@@ -1,8 +1,18 @@
 //! Boa's implementation of ECMAScript's global `Promise` object.
 
 pub(crate) mod native_settlement;
+mod reaction;
+use reaction::PublicationHold;
+pub(crate) use reaction::{
+    CommittedReactions, ReactionCustody, ReactionJobLifecycle, ReactionLifecycle,
+    ReactionRegistration, RegistrationOutcome,
+};
 #[cfg(test)]
 mod pending_bridge_cleanup_tests;
+#[cfg(test)]
+mod registration_root_refusal_tests;
+#[cfg(test)]
+mod remaining_owner_tests;
 #[cfg(test)]
 mod tests;
 
@@ -229,7 +239,7 @@ impl NativeCapture for PromiseCapability {
 ///
 /// [spec]: https://tc39.es/ecma262/#sec-promisereaction-records
 struct ReactionRecord {
-    module_action: Option<crate::module::lifecycle::ModuleAction>,
+    lifecycle: ReactionLifecycle,
     native_result_target: Option<JsObject<Promise>>,
     native_target: Option<JsObject<Promise>>,
     /// The `[[Capability]]` field.
@@ -245,7 +255,7 @@ struct ReactionRecord {
 impl ReactionRecord {
     fn to_stored(&self) -> StoredReactionRecord {
         StoredReactionRecord {
-            module_action: self.module_action.clone(),
+            lifecycle: self.lifecycle.clone(),
             native_result_target: self.native_result_target.as_ref().map(JsObject::edge),
             native_target: self.native_target.as_ref().map(JsObject::edge),
             promise_capability: self
@@ -260,7 +270,7 @@ impl ReactionRecord {
 
 #[derive(HeapTrace)]
 struct StoredReactionRecord {
-    module_action: Option<crate::module::lifecycle::ModuleAction>,
+    lifecycle: ReactionLifecycle,
     native_result_target: Option<ObjectEdge>,
     native_target: Option<ObjectEdge>,
     promise_capability: Option<StoredPromiseCapability>,
@@ -272,7 +282,7 @@ struct StoredReactionRecord {
 impl StoredReactionRecord {
     fn to_reaction(&self) -> ReactionRecord {
         ReactionRecord {
-            module_action: self.module_action.clone(),
+            lifecycle: self.lifecycle.clone(),
             native_result_target: self
                 .native_result_target
                 .clone()
@@ -2414,7 +2424,8 @@ impl Promise {
             on_rejected,
             Some(result_capability),
             context,
-        )?;
+        )
+        .into_result()?;
 
         Ok(result_promise)
     }
@@ -2431,7 +2442,7 @@ impl Promise {
         on_rejected: Option<JsFunction>,
         result_capability: Option<PromiseCapability>,
         context: &mut Context,
-    ) -> JsResult<()> {
+    ) -> ReactionRegistration {
         let target = on_fulfilled
             .as_ref()
             .and_then(Self::native_handler_target)
@@ -2442,8 +2453,12 @@ impl Promise {
                     .and_then(|cap| cap.promise.clone().downcast::<Self>().ok())
             });
         let target = match target {
-            Some(target) if Self::native_association(&target)?.is_some() => Some(target),
-            _ => None,
+            Some(target) => match Self::native_association(&target) {
+                Ok(Some(_)) => Some(target),
+                Ok(None) => None,
+                Err(error) => return ReactionRegistration::uncommitted(error),
+            },
+            None => None,
         };
         Self::perform_promise_then_target(
             promise,
@@ -2451,25 +2466,25 @@ impl Promise {
             on_rejected,
             result_capability,
             target,
-            None,
+            ReactionLifecycle::untracked(),
             context,
         )
     }
-    pub(crate) fn perform_promise_then_module(
+    pub(crate) fn perform_promise_then_with_lifecycle(
         promise: &JsObject<Self>,
         on_fulfilled: Option<JsFunction>,
         on_rejected: Option<JsFunction>,
         result_capability: Option<PromiseCapability>,
-        action: Option<crate::module::lifecycle::ModuleAction>,
+        lifecycle: ReactionLifecycle,
         context: &mut Context,
-    ) -> JsResult<()> {
+    ) -> ReactionRegistration {
         Self::perform_promise_then_target(
             promise,
             on_fulfilled,
             on_rejected,
             result_capability,
             None,
-            action,
+            lifecycle,
             context,
         )
     }
@@ -2480,19 +2495,25 @@ impl Promise {
         result_capability: Option<PromiseCapability>,
         target: &PromiseCapability,
         context: &mut Context,
-    ) -> JsResult<()> {
-        context.check_execution_stop()?;
-        let target = target.native_promise()?;
-        Self::ensure_native_association(&target, context)?;
-        Self::perform_promise_then_target(
-            promise,
-            on_fulfilled,
-            on_rejected,
-            result_capability,
-            Some(target),
-            None,
-            context,
-        )
+    ) -> ReactionRegistration {
+        let target = (|| {
+            context.check_execution_stop()?;
+            let target = target.native_promise()?;
+            Self::ensure_native_association(&target, context)?;
+            Ok::<_, JsError>(target)
+        })();
+        match target {
+            Ok(target) => Self::perform_promise_then_target(
+                promise,
+                on_fulfilled,
+                on_rejected,
+                result_capability,
+                Some(target),
+                ReactionLifecycle::untracked(),
+                context,
+            ),
+            Err(error) => ReactionRegistration::uncommitted(error),
+        }
     }
     fn prepare_then_records(
         promise: &JsObject<Promise>,
@@ -2500,7 +2521,7 @@ impl Promise {
         on_rejected: Option<JsFunction>,
         result_capability: Option<PromiseCapability>,
         native_target: Option<JsObject<Self>>,
-        module_action: Option<crate::module::lifecycle::ModuleAction>,
+        lifecycle: ReactionLifecycle,
         context: &mut Context,
     ) -> JsResult<(ReactionRecord, ReactionRecord)> {
         // 1. Assert: IsPromise(promise) is true.
@@ -2553,7 +2574,7 @@ impl Promise {
         });
         // 7. Let fulfillReaction be the PromiseReaction { [[Capability]]: resultCapability, [[Type]]: Fulfill, [[Handler]]: onFulfilledJobCallback }.
         let fulfill_reaction = ReactionRecord {
-            module_action: module_action.clone(),
+            lifecycle: lifecycle.clone(),
             native_result_target: native_result_target.clone(),
             native_target: native_target.clone(),
             promise_capability: result_capability.clone(),
@@ -2563,7 +2584,7 @@ impl Promise {
 
         // 8. Let rejectReaction be the PromiseReaction { [[Capability]]: resultCapability, [[Type]]: Reject, [[Handler]]: onRejectedJobCallback }.
         let reject_reaction = ReactionRecord {
-            module_action,
+            lifecycle,
             native_result_target,
             native_target,
             promise_capability: result_capability,
@@ -2591,7 +2612,7 @@ impl Promise {
             Some(rejected),
             None,
             Some(target_promise.clone()),
-            None,
+            ReactionLifecycle::untracked(),
             context,
         )?;
         let stored = (fulfill.to_stored(), reject.to_stored());
@@ -2658,140 +2679,174 @@ impl Promise {
         on_rejected: Option<JsFunction>,
         result_capability: Option<PromiseCapability>,
         native_target: Option<JsObject<Self>>,
-        module_action: Option<crate::module::lifecycle::ModuleAction>,
+        lifecycle: ReactionLifecycle,
         context: &mut Context,
-    ) -> JsResult<()> {
-        let (fulfill_reaction, reject_reaction) = Self::prepare_then_records(
-            promise,
-            on_fulfilled,
-            on_rejected,
-            result_capability,
-            native_target,
-            module_action,
-            context,
-        )?;
-        let (state, handled) = {
-            let promise = promise.borrow();
-            let promise = promise.data();
-            (promise.state(), promise.handled)
-        };
-
-        let mut dependency_handoffs = [None, None];
-        if matches!(state, PromiseState::Pending)
-            && let Some(source) = Self::native_association(promise)?
-        {
-            for (slot, target) in dependency_handoffs.iter_mut().zip([
-                fulfill_reaction.native_target.as_ref(),
-                fulfill_reaction.native_result_target.as_ref(),
-            ]) {
-                if let Some(target) = target
-                    && promise.identity() != target.identity()
-                {
-                    let target = Self::ensure_native_association(target, context)?;
-                    *slot = Some(native_settlement::Association::prepare_follow(
-                        &target, &source,
-                    )?);
+    ) -> ReactionRegistration {
+        let mut preparation = RegistrationPreparation::new(lifecycle);
+        let registration = (|| {
+            context.check_execution_stop()?;
+            let (fulfilled, rejected) = Self::prepare_then_records(
+                promise,
+                on_fulfilled,
+                on_rejected,
+                result_capability,
+                native_target,
+                preparation.lifecycle.clone(),
+                context,
+            )?;
+            preparation.fulfilled = Some(fulfilled);
+            preparation.rejected = Some(rejected);
+            let (state, handled) = {
+                let promise = promise
+                    .try_borrow()
+                    .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?;
+                (promise.data().state(), promise.data().handled)
+            };
+            if matches!(state, PromiseState::Pending) {
+                // Both actual live records remain owned before the first root
+                // attempt. The lease survives commit, bookkeeping and notices.
+                preparation.publication.hold = Some(preparation.lifecycle.hold()?);
+                if let Some(source) = Self::native_association(promise)? {
+                    let targets = {
+                        let fulfilled = preparation.fulfilled()?;
+                        [
+                            fulfilled.native_target.clone(),
+                            fulfilled.native_result_target.clone(),
+                        ]
+                    };
+                    for (slot, target) in preparation
+                        .publication
+                        .notifications
+                        .pending
+                        .iter_mut()
+                        .zip(targets)
+                    {
+                        if let Some(target) = target
+                            && promise.identity() != target.identity()
+                        {
+                            let target = Self::ensure_native_association(&target, context)?;
+                            *slot = Some(native_settlement::Association::prepare_follow(
+                                &target, &source,
+                            )?);
+                        }
+                    }
                 }
             }
-        }
-        // Validate the exact stored pair before changing the promise or invoking an executor.
-        let reactions = (fulfill_reaction.to_stored(), reject_reaction.to_stored());
-        let heap = context.runtime().heap.clone();
-        let notifications = heap
-            .with_pending_edges(reactions, |(stored_fulfill, stored_reject)| {
-                let mut notifications = [None, None];
-                match state {
-                    // 9. If promise.[[PromiseState]] is pending, then
-                    PromiseState::Pending => {
-                        let mut promise = promise.borrow_mut();
-                        let StoredPromiseState::Pending {
-                            fulfill_reactions,
-                            reject_reactions,
-                        } = &mut promise.data_mut().state
-                        else {
-                            unreachable!("promise is pending");
-                        };
-
-                        //   a. Append fulfillReaction as the last element of the List that is promise.[[PromiseFulfillReactions]].
-                        fulfill_reactions
-                            .try_reserve(1)
-                            .map_err(|_| crate::error::EngineResourceError::Allocation)?;
-                        reject_reactions
-                            .try_reserve(1)
-                            .map_err(|_| crate::error::EngineResourceError::Allocation)?;
-                        for (slot, prepared) in
-                            notifications.iter_mut().zip(dependency_handoffs.iter_mut())
-                        {
-                            *slot = prepared
-                                .take()
-                                .map(native_settlement::PreparedHandoff::commit);
-                        }
-                        fulfill_reactions.push(stored_fulfill);
-
-                        //   b. Append rejectReaction as the last element of the List that is promise.[[PromiseRejectReactions]].
-                        reject_reactions.push(stored_reject);
-                    }
-
-                    // 10. Else if promise.[[PromiseState]] is fulfilled, then
-                    //   a. Let value be promise.[[PromiseResult]].
-                    PromiseState::Fulfilled(value) => {
-                        //   b. Let fulfillJob be NewPromiseReactionJob(fulfillReaction, value).
-                        let mut fulfill_job =
-                            new_promise_reaction_job(fulfill_reaction, value, context)?;
-                        fulfill_job.commit();
-                        notifications = fulfill_job.notifications;
-                        let fulfill_job = fulfill_job.job;
-
-                        //   c. Perform HostEnqueuePromiseJob(fulfillJob.[[Job]], fulfillJob.[[Realm]]).
-                        context
-                            .job_executor()
-                            .enqueue_job(fulfill_job.into(), context.access());
-                    }
-
-                    // 11. Else,
-                    //   a. Assert: The value of promise.[[PromiseState]] is rejected.
-                    //   b. Let reason be promise.[[PromiseResult]].
-                    PromiseState::Rejected(reason) => {
-                        //   c. If promise.[[PromiseIsHandled]] is false, perform HostPromiseRejectionTracker(promise, "handle").
-                        if !handled {
-                            context.host_hooks().promise_rejection_tracker(
-                                promise,
-                                OperationType::Handle,
-                                context.access(),
+            let stored = (
+                preparation.fulfilled()?.to_stored(),
+                preparation.rejected()?.to_stored(),
+            );
+            let heap = context.runtime().heap.clone();
+            let registration = heap
+                .with_pending_edges(stored, |(stored_fulfill, stored_reject)| {
+                    match state {
+                        PromiseState::Pending => {
+                            let hold = preparation
+                                .publication
+                                .hold
+                                .as_ref()
+                                .ok_or_else(reaction_state_error)?;
+                            let mut promise = promise
+                                .try_borrow_mut()
+                                .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?;
+                            let StoredPromiseState::Pending {
+                                fulfill_reactions,
+                                reject_reactions,
+                            } = &mut promise.data_mut().state
+                            else {
+                                return Err(reaction_state_error());
+                            };
+                            fulfill_reactions
+                                .try_reserve(1)
+                                .map_err(|_| crate::error::EngineResourceError::Allocation)?;
+                            reject_reactions
+                                .try_reserve(1)
+                                .map_err(|_| crate::error::EngineResourceError::Allocation)?;
+                            for (notification, handoff) in preparation
+                                .publication
+                                .notifications
+                                .committed
+                                .iter_mut()
+                                .zip(preparation.publication.notifications.pending.iter_mut())
+                            {
+                                if let Some(handoff) = handoff.take() {
+                                    *notification = Some(handoff.commit());
+                                }
+                            }
+                            fulfill_reactions.push(stored_fulfill);
+                            reject_reactions.push(stored_reject);
+                            // This sealed fact binds the actual Await before any
+                            // notification can reenter and before live roots leave.
+                            let registration = ReactionRegistration::committed(
+                                ReactionCustody::SourcePending,
+                                Ok(()),
+                                hold,
                             );
+                            promise.data_mut().handled = true;
+                            Ok(registration)
                         }
-
-                        //   d. Let rejectJob be NewPromiseReactionJob(rejectReaction, reason).
-                        let mut reject_job =
-                            new_promise_reaction_job(reject_reaction, reason, context)?;
-                        reject_job.commit();
-                        notifications = reject_job.notifications;
-                        let reject_job = reject_job.job;
-
-                        //   e. Perform HostEnqueuePromiseJob(rejectJob.[[Job]], rejectJob.[[Realm]]).
-                        context
-                            .job_executor()
-                            .enqueue_job(reject_job.into(), context.access());
+                        PromiseState::Fulfilled(value) => {
+                            let fulfilled = preparation
+                                .fulfilled
+                                .take()
+                                .ok_or_else(reaction_state_error)?;
+                            preparation.job.live = Some(fulfilled);
+                            new_promise_reaction_job(&mut preparation.job, value, context)?;
+                            let mut job = preparation.job.take_prepared()?;
+                            job.commit();
+                            Ok(job.publish(&mut preparation.publication, context))
+                        }
+                        PromiseState::Rejected(reason) => {
+                            if !handled {
+                                context.host_hooks().promise_rejection_tracker(
+                                    promise,
+                                    OperationType::Handle,
+                                    context.access(),
+                                );
+                            }
+                            let rejected = preparation
+                                .rejected
+                                .take()
+                                .ok_or_else(reaction_state_error)?;
+                            preparation.job.live = Some(rejected);
+                            new_promise_reaction_job(&mut preparation.job, reason, context)?;
+                            let mut job = preparation.job.take_prepared()?;
+                            job.commit();
+                            Ok(job.publish(&mut preparation.publication, context))
+                        }
                     }
-                }
-
-                // 12. Set promise.[[PromiseIsHandled]] to true.
-                promise.borrow_mut().data_mut().handled = true;
-
-                // 13. If resultCapability is undefined, then
-                //   a. Return undefined.
-                // 14. Else,
-                //   a. Return resultCapability.[[Promise]].
-                // skipped because we can already access the promise from `result_capability`
-                Ok::<_, JsError>(notifications)
-            })
-            .map_err(|error| {
-                JsError::from(JsNativeError::typ().with_message(error.to_string()))
-            })??;
-        for association in notifications.into_iter().flatten() {
-            association.notify();
+                })
+                .map_err(|error| {
+                    use surgeist_js_gc::heap::AccessError;
+                    match error {
+                        // Opaque host callback data is first admitted here.
+                        AccessError::ForeignHeap
+                        | AccessError::StaleHandle
+                        | AccessError::WrongType => {
+                            JsNativeError::typ().with_message(error.to_string()).into()
+                        }
+                        AccessError::HeapBorrowed | AccessError::PayloadBorrowed => {
+                            reaction_access_error(error)
+                        }
+                    }
+                })??;
+            let registration = if registration.is_committed() {
+                let handled = promise
+                    .try_borrow_mut()
+                    .map_err(|_| crate::error::EngineError::ObjectAccessBusy.into())
+                    .map(|mut promise| {
+                        promise.data_mut().handled = true;
+                    });
+                registration.complete(handled)
+            } else {
+                registration
+            };
+            Ok::<_, JsError>(registration)
+        })();
+        match registration {
+            Ok(registration) => preparation.finish(registration),
+            Err(error) => preparation.fail(error),
         }
-        Ok(())
     }
 
     /// `GetPromiseResolve ( promiseConstructor )`
@@ -2877,39 +2932,32 @@ impl Promise {
             argument: &JsValue,
             context: &mut Context,
         ) -> JsResult<Vec<PreparedReactionJob>> {
-            let mut jobs = Vec::new();
-            let prepared = (|| {
-                jobs.try_reserve(reactions.len())
-                    .map_err(|_| crate::error::EngineResourceError::Allocation)?;
-                for reaction in reactions {
-                    jobs.push(new_promise_reaction_job(
-                        reaction,
-                        argument.clone(),
-                        context,
-                    )?);
-                }
-                Ok::<_, JsError>(())
-            })();
-            if let Err(error) = prepared {
-                // The source resolving capability has already been consumed.
-                // Its accepted native-target pairs cannot silently wait forever.
-                if let Some(association) = association {
-                    association.retire_pending(crate::job::JobRetirement::Interrupted);
-                }
-                return Err(error);
+            let mut preparation = ReactionPreparation {
+                remaining: reactions.into_iter(),
+                prepared: Vec::new(),
+                current: ReactionJobPreparation::new(),
+                association,
+            };
+            if preparation
+                .prepared
+                .try_reserve(preparation.remaining.len())
+                .is_err()
+            {
+                return Err(preparation.fail(crate::error::EngineResourceError::Allocation.into()));
             }
-            Ok(jobs)
-        }
-        fn trigger_promise_reactions(jobs: Vec<PreparedReactionJob>, context: &mut Context) {
-            for prepared in jobs {
-                for association in prepared.notifications.into_iter().flatten() {
-                    association.notify();
+            while let Some(reaction) = preparation.remaining.next() {
+                preparation.current.live = Some(reaction);
+                if let Err(error) =
+                    new_promise_reaction_job(&mut preparation.current, argument.clone(), context)
+                {
+                    return Err(preparation.fail(error));
                 }
-                let job = prepared.job;
-                context
-                    .job_executor()
-                    .enqueue_job(job.into(), context.access());
+                match preparation.current.take_prepared() {
+                    Ok(job) => preparation.prepared.push(job),
+                    Err(error) => return Err(preparation.fail(error)),
+                }
             }
+            Ok(std::mem::take(&mut preparation.prepared))
         }
 
         /// `FulfillPromise ( promise, value )`
@@ -2937,40 +2985,41 @@ impl Promise {
             {
                 return Err(error);
             }
-            // Root all reactions before clearing the pending state. Enqueueing the first
-            // job can run host code while the remaining reactions still await enqueueing.
-            let reactions = {
-                let promise = promise.borrow();
-                let StoredPromiseState::Pending {
-                    fulfill_reactions, ..
-                } = &promise.data().state
-                else {
-                    panic!("promise was not pending");
-                };
-                fulfill_reactions
-                    .iter()
-                    .map(StoredReactionRecord::to_reaction)
-                    .collect()
-            };
-
-            let mut jobs =
-                prepare_promise_reactions(reactions, association.as_ref(), &value, context)?;
-            for job in &mut jobs {
-                job.commit();
-            }
-            // 3–6. Store the result, clear both reaction lists, and mark the promise fulfilled.
-            let pending = std::mem::replace(
-                &mut promise.borrow_mut().data_mut().state,
-                StoredPromiseState::Fulfilled(value.clone().into_stored()),
-            );
-
-            // 7. Perform TriggerPromiseReactions(reactions, value).
-            if let Some(association) = association {
-                association.settle();
-            }
-            trigger_promise_reactions(jobs, context);
-            drop(pending);
-            Ok(())
+            let mut setup = ReactionRestoration::new(promise, association.as_ref());
+            let heap = context.runtime().heap.clone();
+            let result = heap.with_pending_edges(ReactionSourceRoots(promise.clone()), |_| {
+                let mut restoration = ReactionRestoration::new(promise, association.as_ref());
+                setup.enabled = false;
+                let result = (|| {
+                    restoration.detach()?;
+                    let reactions = restoration.restore(ReactionType::Fulfill)?;
+                    let mut jobs = prepare_promise_reactions(
+                        reactions,
+                        association.as_ref(),
+                        &value,
+                        context,
+                    )?;
+                    for job in &mut jobs {
+                        job.commit();
+                    }
+                    let pending = restoration.take_pending()?;
+                    let batch = ReactionBatch::new(jobs, pending);
+                    // 3–6. Store the result and mark the promise fulfilled.
+                    promise
+                        .try_borrow_mut()
+                        .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?
+                        .data_mut()
+                        .state = StoredPromiseState::Fulfilled(value.clone().into_stored());
+                    restoration.enabled = false;
+                    // 7. Perform TriggerPromiseReactions(reactions, value).
+                    if let Some(association) = &association {
+                        association.settle();
+                    }
+                    batch.publish(context)
+                })();
+                restoration.finish(result)
+            });
+            setup.finish(result.map_err(reaction_access_error).flatten())
         }
 
         /// `RejectPromise ( promise, reason )`
@@ -2998,52 +3047,49 @@ impl Promise {
             {
                 return Err(error);
             }
-            let (reactions, handled) = {
-                let promise = promise.borrow();
-                let promise = promise.data();
-                let StoredPromiseState::Pending {
-                    reject_reactions, ..
-                } = &promise.state
-                else {
-                    panic!("promise was not pending");
-                };
-
-                // Root all rejection reactions before clearing the pending state.
-                let reactions = reject_reactions
-                    .iter()
-                    .map(StoredReactionRecord::to_reaction)
-                    .collect();
-                (reactions, promise.handled)
-            };
-
-            let mut jobs =
-                prepare_promise_reactions(reactions, association.as_ref(), &reason, context)?;
-            for job in &mut jobs {
-                job.commit();
-            }
-            // 3–6. Store the reason, clear both reaction lists, and mark the promise rejected.
-            let pending = std::mem::replace(
-                &mut promise.borrow_mut().data_mut().state,
-                StoredPromiseState::Rejected(reason.clone().into_stored()),
-            );
-
-            if let Some(association) = association {
-                association.settle();
-            }
-
-            // 7. If promise.[[PromiseIsHandled]] is false, perform HostPromiseRejectionTracker(promise, "reject").
-            if !handled {
-                context.host_hooks().promise_rejection_tracker(
-                    promise,
-                    OperationType::Reject,
-                    context.access(),
-                );
-            }
-
-            // 8. Perform TriggerPromiseReactions(reactions, reason).
-            trigger_promise_reactions(jobs, context);
-            drop(pending);
-            Ok(())
+            let mut setup = ReactionRestoration::new(promise, association.as_ref());
+            let heap = context.runtime().heap.clone();
+            let result = heap.with_pending_edges(ReactionSourceRoots(promise.clone()), |_| {
+                let mut restoration = ReactionRestoration::new(promise, association.as_ref());
+                setup.enabled = false;
+                let result = (|| {
+                    let handled = restoration.detach()?;
+                    let reactions = restoration.restore(ReactionType::Reject)?;
+                    let mut jobs = prepare_promise_reactions(
+                        reactions,
+                        association.as_ref(),
+                        &reason,
+                        context,
+                    )?;
+                    for job in &mut jobs {
+                        job.commit();
+                    }
+                    let pending = restoration.take_pending()?;
+                    let batch = ReactionBatch::new(jobs, pending);
+                    // 3–6. Store the reason and mark the promise rejected.
+                    promise
+                        .try_borrow_mut()
+                        .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?
+                        .data_mut()
+                        .state = StoredPromiseState::Rejected(reason.clone().into_stored());
+                    restoration.enabled = false;
+                    if let Some(association) = &association {
+                        association.settle();
+                    }
+                    // 7. Track an unhandled rejection after actual settlement.
+                    if !handled {
+                        context.host_hooks().promise_rejection_tracker(
+                            promise,
+                            OperationType::Reject,
+                            context.access(),
+                        );
+                    }
+                    // 8. Perform TriggerPromiseReactions(reactions, reason).
+                    batch.publish(context)
+                })();
+                restoration.finish(result)
+            });
+            setup.finish(result.map_err(reaction_access_error).flatten())
         }
 
         // 1. Let alreadyResolved be the Record { [[Value]]: false }.
@@ -3146,16 +3192,19 @@ impl Promise {
                                         context,
                                     )?;
 
-                                    let notification =
-                                        handoff.map(native_settlement::PreparedHandoff::commit);
+                                    let notifications = ReactionNotifications {
+                                        pending: [None, None],
+                                        committed: [
+                                            handoff.map(native_settlement::PreparedHandoff::commit),
+                                            None,
+                                        ],
+                                    };
                                     // 15. Perform HostEnqueuePromiseJob(job.[[Job]], job.[[Realm]]).
-                                    context
-                                        .job_executor()
-                                        .enqueue_job(job.into(), context.access());
-                                    if let Some(association) = notification {
-                                        association.notify();
-                                    }
-                                    Ok(())
+                                    let publication = crate::job::finish_publication(
+                                        context.enqueue_job(job.into()),
+                                    );
+                                    notifications.finish();
+                                    publication
                                 })
                                 .map_err(|error| {
                                     JsError::from(
@@ -3165,6 +3214,9 @@ impl Promise {
                             });
                         if let Err(error) = result {
                             context.check_execution_stop()?;
+                            if error.as_engine().is_some() {
+                                return Err(error);
+                            }
                             reject_promise(
                                 &promise,
                                 error.into_opaque(context.access())?,
@@ -3260,10 +3312,143 @@ impl PreparedPendingReactions {
     }
 }
 
+/// Owns native handoff cleanup while the corresponding job crosses its host
+/// publication boundary. Each slot finishes independently during native unwind.
+#[derive(Default)]
+struct ReactionNotifications {
+    pending: [Option<native_settlement::PreparedHandoff>; 2],
+    committed: [Option<native_settlement::HandoffNotification>; 2],
+}
+impl ReactionNotifications {
+    fn finish(self) {
+        drop(self);
+    }
+}
+impl Drop for ReactionNotifications {
+    fn drop(&mut self) {
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        for slot in &mut self.pending {
+            let handoff = slot.take();
+            cleanup.run(|| drop(handoff));
+        }
+        for slot in &mut self.committed {
+            let notification = slot.take();
+            cleanup.run(|| drop(notification));
+        }
+        cleanup.finish();
+    }
+}
+
+fn reaction_state_error() -> JsError {
+    crate::job::JobFault::new(
+        crate::job::JobFaultOwner::Task,
+        crate::job::JobFaultCause::StateInconsistency,
+    )
+    .into()
+}
+
+fn reaction_access_error(error: surgeist_js_gc::heap::AccessError) -> JsError {
+    use crate::job::{JobFault, JobFaultCause, JobFaultOwner};
+    use surgeist_js_gc::heap::AccessError;
+    let cause = match error {
+        AccessError::PayloadBorrowed => return crate::error::EngineError::ObjectAccessBusy.into(),
+        AccessError::HeapBorrowed => JobFaultCause::InaccessibleRegistry,
+        AccessError::ForeignHeap | AccessError::StaleHandle => JobFaultCause::OwnerMismatch,
+        AccessError::WrongType => JobFaultCause::StateInconsistency,
+    };
+    JobFault::new(JobFaultOwner::Task, cause).into()
+}
+
+/// Producer-only custody. Its root lease is released after every saved notice.
+#[derive(Default)]
+struct ReactionPublication {
+    rejected: Option<crate::job::Job>,
+    notifications: ReactionNotifications,
+    hold: Option<PublicationHold>,
+}
+impl ReactionPublication {
+    fn cleanup(&mut self, cleanup: &mut crate::job::UnwindCleanup) {
+        let rejected = self.rejected.take();
+        cleanup.run(|| drop(rejected));
+        let notifications = std::mem::take(&mut self.notifications);
+        cleanup.run(|| notifications.finish());
+        let hold = self.hold.take();
+        cleanup.run(|| drop(hold));
+    }
+    fn finish<T>(mut self, value: T) -> T {
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        self.cleanup(&mut cleanup);
+        cleanup.finish_with(value)
+    }
+}
+impl Drop for ReactionPublication {
+    fn drop(&mut self) {
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        self.cleanup(&mut cleanup);
+        cleanup.finish();
+    }
+}
+
+struct RegistrationPreparation {
+    lifecycle: ReactionLifecycle,
+    fulfilled: Option<ReactionRecord>,
+    rejected: Option<ReactionRecord>,
+    job: ReactionJobPreparation,
+    publication: ReactionPublication,
+}
+impl RegistrationPreparation {
+    fn new(lifecycle: ReactionLifecycle) -> Self {
+        Self {
+            lifecycle,
+            fulfilled: None,
+            rejected: None,
+            job: ReactionJobPreparation::new(),
+            publication: ReactionPublication::default(),
+        }
+    }
+    fn fulfilled(&self) -> JsResult<&ReactionRecord> {
+        self.fulfilled.as_ref().ok_or_else(reaction_state_error)
+    }
+    fn rejected(&self) -> JsResult<&ReactionRecord> {
+        self.rejected.as_ref().ok_or_else(reaction_state_error)
+    }
+    fn cleanup(&mut self, cleanup: &mut crate::job::UnwindCleanup) {
+        cleanup.run(|| self.job.unavailable());
+        let fulfilled = self.fulfilled.take();
+        cleanup.run(|| drop(fulfilled));
+        let rejected = self.rejected.take();
+        cleanup.run(|| drop(rejected));
+        self.job.cleanup(cleanup);
+        self.publication.cleanup(cleanup);
+    }
+    fn finish(mut self, registration: ReactionRegistration) -> ReactionRegistration {
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        self.cleanup(&mut cleanup);
+        cleanup.finish_with(registration)
+    }
+    fn fail(mut self, error: JsError) -> ReactionRegistration {
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        cleanup.run(|| {
+            let _secondary = self.lifecycle.preparation_failed(&error);
+        });
+        cleanup.run(|| self.job.preparation_failed(&error));
+        self.cleanup(&mut cleanup);
+        cleanup.finish_with(ReactionRegistration::uncommitted(error))
+    }
+}
+impl Drop for RegistrationPreparation {
+    fn drop(&mut self) {
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        self.cleanup(&mut cleanup);
+        cleanup.finish();
+    }
+}
+
 struct PreparedReactionJob {
     job: PromiseJob,
     handoffs: [Option<native_settlement::PreparedHandoff>; 2],
     notifications: [Option<native_settlement::HandoffNotification>; 2],
+    hold: PublicationHold,
 }
 impl PreparedReactionJob {
     fn commit(&mut self) {
@@ -3273,13 +3458,562 @@ impl PreparedReactionJob {
             }
         }
     }
+    fn publish(
+        self,
+        publication: &mut ReactionPublication,
+        context: &mut Context,
+    ) -> ReactionRegistration {
+        let Self {
+            job,
+            handoffs,
+            notifications,
+            hold,
+        } = self;
+        publication.notifications = ReactionNotifications {
+            pending: handoffs,
+            committed: notifications,
+        };
+        publication.hold = Some(hold);
+        let hold = match publication.hold.as_ref() {
+            Some(hold) => hold,
+            None => {
+                publication.rejected = Some(job.into());
+                return ReactionRegistration::uncommitted(reaction_state_error());
+            }
+        };
+        match context.enqueue_job(job.into()) {
+            Ok(crate::job::JobAcceptance::Accepted) => {
+                ReactionRegistration::committed(ReactionCustody::ExecutorAccepted, Ok(()), hold)
+            }
+            Ok(crate::job::JobAcceptance::AcceptedWithError(cause)) => {
+                ReactionRegistration::committed(
+                    ReactionCustody::ExecutorAccepted,
+                    Err(cause.into_error()),
+                    hold,
+                )
+            }
+            Ok(crate::job::JobAcceptance::Discarded) => {
+                ReactionRegistration::committed(ReactionCustody::PolicyDiscarded, Ok(()), hold)
+            }
+            Err(error) => {
+                let (job, cause) = error.into_parts();
+                publication.rejected = Some(job);
+                let error = cause.into_error();
+                let mut cleanup = crate::job::UnwindCleanup::default();
+                cleanup.run(|| {
+                    let _secondary = hold.refused(&error);
+                });
+                cleanup.finish_with(ReactionRegistration::uncommitted(error))
+            }
+        }
+    }
+    fn preparation_failed(&self, error: &JsError) {
+        if let Err(fault) = self.hold.preparation_failed(error) {
+            self.job.observer().record_fault(fault);
+        }
+    }
+    fn dispose(self, cleanup: &mut crate::job::UnwindCleanup) {
+        let Self {
+            job,
+            handoffs,
+            notifications,
+            hold,
+        } = self;
+        let publication = ReactionPublication {
+            rejected: Some(job.into()),
+            notifications: ReactionNotifications {
+                pending: handoffs,
+                committed: notifications,
+            },
+            hold: Some(hold),
+        };
+        cleanup.run(|| publication.finish(()));
+    }
+}
+
+/// Caller-owned slots retain the live input or its partial job through failure.
+struct ReactionJobPreparation {
+    live: Option<ReactionRecord>,
+    prepared: Option<PreparedReactionJob>,
+}
+impl ReactionJobPreparation {
+    fn new() -> Self {
+        Self {
+            live: None,
+            prepared: None,
+        }
+    }
+    fn take_prepared(&mut self) -> JsResult<PreparedReactionJob> {
+        self.prepared.take().ok_or_else(reaction_state_error)
+    }
+    fn is_empty(&self) -> bool {
+        self.live.is_none() && self.prepared.is_none()
+    }
+    fn unavailable(&self) {
+        // Intrinsic secondary faults are latched by the actual Await owner;
+        // they cannot replace this preparation's earlier full error.
+        if let Some(record) = &self.live {
+            let _secondary = record.lifecycle.unavailable();
+        }
+        if let Some(job) = &self.prepared {
+            let _secondary = job.hold.unavailable();
+        }
+    }
+    fn preparation_failed(&self, error: &JsError) {
+        if let Some(record) = &self.live {
+            let _secondary = record.lifecycle.preparation_failed(error);
+        }
+        if let Some(job) = &self.prepared {
+            job.preparation_failed(error);
+        }
+    }
+    fn cleanup(&mut self, cleanup: &mut crate::job::UnwindCleanup) {
+        let live = self.live.take();
+        cleanup.run(|| drop(live));
+        if let Some(job) = self.prepared.take() {
+            job.dispose(cleanup);
+        }
+    }
+}
+impl Drop for ReactionJobPreparation {
+    fn drop(&mut self) {
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        cleanup.run(|| self.unavailable());
+        self.cleanup(&mut cleanup);
+        cleanup.finish();
+    }
+}
+
+/// Snapshot the outgoing bank edges before moving either bank out of its owner.
+/// The pending-edge barrier retains these direct roots throughout its callback.
+struct ReactionSourceRoots(JsObject<Promise>);
+impl HeapTrace for ReactionSourceRoots {
+    fn trace(
+        &self,
+        edges: &mut surgeist_js_gc::heap::EdgeVisitor<'_>,
+    ) -> Result<(), surgeist_js_gc::heap::AccessError> {
+        let promise = self
+            .0
+            .try_borrow()
+            .map_err(|_| surgeist_js_gc::heap::AccessError::PayloadBorrowed)?;
+        let StoredPromiseState::Pending {
+            fulfill_reactions,
+            reject_reactions,
+        } = &promise.data().state
+        else {
+            return Err(surgeist_js_gc::heap::AccessError::WrongType);
+        };
+        fulfill_reactions.trace(edges)?;
+        reject_reactions.trace(edges)
+    }
+}
+
+/// Owns original stored tails and the restored live prefix before host restore.
+/// A detached instance never escapes the pending-edge barrier that roots it.
+struct ReactionRestoration<'a> {
+    source: &'a JsObject<Promise>,
+    association: Option<&'a Rooted<native_settlement::Association>>,
+    pending: Option<StoredPromiseState>,
+    live: Vec<ReactionRecord>,
+    detached: bool,
+    availability_finished: bool,
+    enabled: bool,
+}
+impl<'a> ReactionRestoration<'a> {
+    fn new(
+        source: &'a JsObject<Promise>,
+        association: Option<&'a Rooted<native_settlement::Association>>,
+    ) -> Self {
+        Self {
+            source,
+            association,
+            pending: None,
+            live: Vec::new(),
+            detached: false,
+            availability_finished: false,
+            enabled: true,
+        }
+    }
+    fn detach(&mut self) -> JsResult<bool> {
+        let mut source = self
+            .source
+            .try_borrow_mut()
+            .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?;
+        let handled = source.data().handled;
+        let StoredPromiseState::Pending {
+            fulfill_reactions,
+            reject_reactions,
+        } = &mut source.data_mut().state
+        else {
+            return Err(reaction_state_error());
+        };
+        self.pending = Some(StoredPromiseState::Pending {
+            fulfill_reactions: std::mem::take(fulfill_reactions),
+            reject_reactions: std::mem::take(reject_reactions),
+        });
+        self.detached = true;
+        Ok(handled)
+    }
+    fn restore(&mut self, kind: ReactionType) -> JsResult<Vec<ReactionRecord>> {
+        let Some(StoredPromiseState::Pending {
+            fulfill_reactions,
+            reject_reactions,
+        }) = &self.pending
+        else {
+            return Err(reaction_state_error());
+        };
+        let records = match kind {
+            ReactionType::Fulfill => fulfill_reactions,
+            ReactionType::Reject => reject_reactions,
+        };
+        self.live
+            .try_reserve(records.len())
+            .map_err(|_| crate::error::EngineResourceError::Allocation)?;
+        for record in records {
+            self.live.push(record.to_reaction());
+        }
+        Ok(std::mem::take(&mut self.live))
+    }
+    fn take_pending(&mut self) -> JsResult<StoredPromiseState> {
+        self.pending.take().ok_or_else(reaction_state_error)
+    }
+    fn attached_lifecycle(
+        &self,
+        kind: ReactionType,
+        index: usize,
+    ) -> JsResult<Option<ReactionLifecycle>> {
+        let source = self
+            .source
+            .try_borrow()
+            .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?;
+        let StoredPromiseState::Pending {
+            fulfill_reactions,
+            reject_reactions,
+        } = &source.data().state
+        else {
+            return Err(reaction_state_error());
+        };
+        let records = match kind {
+            ReactionType::Fulfill => fulfill_reactions,
+            ReactionType::Reject => reject_reactions,
+        };
+        Ok(records.get(index).map(|record| record.lifecycle.clone()))
+    }
+    fn unavailable_attached(&self, cleanup: &mut crate::job::UnwindCleanup) -> JsResult<()> {
+        // Only setup refusal reaches this path: no opaque restore has run and
+        // the original source still roots its banks. Read each closed edge fact,
+        // release the source borrow, then perform the owning cleanup event.
+        // This event only withdraws stored continuations and exact evaluation
+        // links; it does not restore/drop opaque callback captures, collect the
+        // heap, or notify native waiters. Valid Trace/NativeCapture operations
+        // leave the owner unchanged, so original indices stay readable until
+        // the full pass ends. Module failure and retirement notifications must
+        // remain outside this attached-source loop.
+        let lengths = {
+            let source = self
+                .source
+                .try_borrow()
+                .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?;
+            let StoredPromiseState::Pending {
+                fulfill_reactions,
+                reject_reactions,
+            } = &source.data().state
+            else {
+                return Err(reaction_state_error());
+            };
+            [fulfill_reactions.len(), reject_reactions.len()]
+        };
+        for (kind, length) in [ReactionType::Fulfill, ReactionType::Reject]
+            .into_iter()
+            .zip(lengths)
+        {
+            for index in 0..length {
+                let lifecycle = self
+                    .attached_lifecycle(kind, index)?
+                    .ok_or_else(reaction_state_error)?;
+                cleanup.run(|| {
+                    let _secondary = lifecycle.unavailable();
+                });
+            }
+        }
+        Ok(())
+    }
+    fn forward_failure(&mut self, error: &JsError, cleanup: &mut crate::job::UnwindCleanup) {
+        // This owner must outlive the source borrow and drain before source or
+        // detached bank custody ends. EvaluationRef alone is not a GC root.
+        let mut notices = crate::module::lifecycle::ModuleFailureNotices::default();
+        let prepared = if let Some(StoredPromiseState::Pending {
+            fulfill_reactions,
+            reject_reactions,
+        }) = &self.pending
+        {
+            for record in fulfill_reactions.iter().chain(reject_reactions) {
+                cleanup.run(|| {
+                    let _secondary = record
+                        .lifecycle
+                        .defer_preparation_failed(error, &mut notices);
+                });
+                cleanup.run(|| {
+                    let _secondary = record.lifecycle.unavailable();
+                });
+            }
+            Ok(())
+        } else if !self.detached {
+            (|| {
+                let source = self
+                    .source
+                    .try_borrow()
+                    .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?;
+                let StoredPromiseState::Pending {
+                    fulfill_reactions,
+                    reject_reactions,
+                } = &source.data().state
+                else {
+                    return Err(reaction_state_error());
+                };
+                let fulfill_length = fulfill_reactions.len();
+                let reject_length = reject_reactions.len();
+                // The shared resolving slot was consumed before this cleanup.
+                // Reentry can append records but cannot settle/replace these
+                // banks. This pass performs no native notification: exact
+                // closed continuation cleanup and graph marking happen first.
+                for record in fulfill_reactions
+                    .iter()
+                    .take(fulfill_length)
+                    .chain(reject_reactions.iter().take(reject_length))
+                {
+                    cleanup.run(|| {
+                        let _secondary = record
+                            .lifecycle
+                            .defer_preparation_failed(error, &mut notices);
+                    });
+                    cleanup.run(|| {
+                        let _secondary = record.lifecycle.unavailable();
+                    });
+                }
+                Ok(())
+            })()
+        } else {
+            Ok(())
+        };
+        if prepared.is_ok() {
+            // No attached-source reads may follow arbitrary notice callbacks:
+            // they could append records or retain an incompatible object alias.
+            self.availability_finished = true;
+        }
+        cleanup.run(|| drop(prepared));
+        // The source borrow has ended, but all original records and persistent
+        // evaluation graph links still trace every queued notice through panic
+        // cleanup. Only then can original record custody be released.
+        cleanup.run(|| notices.finish());
+    }
+    fn cleanup(&mut self, cleanup: &mut crate::job::UnwindCleanup) {
+        if self.enabled {
+            if !self.availability_finished {
+                if let Some(StoredPromiseState::Pending {
+                    fulfill_reactions,
+                    reject_reactions,
+                }) = &self.pending
+                {
+                    for record in fulfill_reactions.iter().chain(reject_reactions) {
+                        cleanup.run(|| {
+                            let _secondary = record.lifecycle.unavailable();
+                        });
+                    }
+                } else if !self.detached {
+                    // An access refusal is a secondary checked setup failure,
+                    // never authority to replace an existing cause.
+                    let result = self.unavailable_attached(cleanup);
+                    cleanup.run(|| drop(result));
+                }
+            }
+            if let Some(association) = self.association {
+                cleanup.run(|| association.retire_pending(crate::job::JobRetirement::Interrupted));
+            }
+            self.enabled = false;
+        }
+        for record in self.live.drain(..) {
+            cleanup.run(|| drop(record));
+        }
+        match self.pending.take() {
+            Some(StoredPromiseState::Pending {
+                fulfill_reactions,
+                reject_reactions,
+            }) => {
+                for record in fulfill_reactions.into_iter().chain(reject_reactions) {
+                    cleanup.run(|| drop(record));
+                }
+            }
+            Some(StoredPromiseState::Fulfilled(value) | StoredPromiseState::Rejected(value)) => {
+                cleanup.run(|| drop(value));
+            }
+            None => {}
+        }
+    }
+    fn finish<T>(mut self, value: JsResult<T>) -> JsResult<T> {
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        if self.enabled
+            && let Err(error) = &value
+        {
+            self.forward_failure(error, &mut cleanup);
+        }
+        self.cleanup(&mut cleanup);
+        cleanup.finish_with(value)
+    }
+}
+impl Drop for ReactionRestoration<'_> {
+    fn drop(&mut self) {
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        self.cleanup(&mut cleanup);
+        cleanup.finish();
+    }
+}
+
+/// Current, already-prepared and unprepared records stay owned before rooting.
+/// Failure invalidates every required tail before disposal or native notices.
+struct ReactionPreparation<'a> {
+    remaining: std::vec::IntoIter<ReactionRecord>,
+    prepared: Vec<PreparedReactionJob>,
+    current: ReactionJobPreparation,
+    association: Option<&'a Rooted<native_settlement::Association>>,
+}
+impl ReactionPreparation<'_> {
+    fn unavailable(&self, cleanup: &mut crate::job::UnwindCleanup) {
+        cleanup.run(|| self.current.unavailable());
+        for job in &self.prepared {
+            cleanup.run(|| {
+                let _secondary = job.hold.unavailable();
+            });
+        }
+        for record in self.remaining.as_slice() {
+            cleanup.run(|| {
+                let _secondary = record.lifecycle.unavailable();
+            });
+        }
+    }
+    fn cleanup(&mut self, cleanup: &mut crate::job::UnwindCleanup) {
+        self.current.cleanup(cleanup);
+        for job in self.prepared.drain(..) {
+            job.dispose(cleanup);
+        }
+        for record in self.remaining.by_ref() {
+            cleanup.run(|| drop(record));
+        }
+    }
+    fn fail(mut self, error: JsError) -> JsError {
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        self.unavailable(&mut cleanup);
+        cleanup.run(|| self.current.preparation_failed(&error));
+        for job in &self.prepared {
+            cleanup.run(|| job.preparation_failed(&error));
+        }
+        for record in self.remaining.as_slice() {
+            cleanup.run(|| {
+                let _secondary = record.lifecycle.preparation_failed(&error);
+            });
+        }
+        if let Some(association) = self.association {
+            cleanup.run(|| association.retire_pending(crate::job::JobRetirement::Interrupted));
+        }
+        self.cleanup(&mut cleanup);
+        cleanup.finish_with(error)
+    }
+}
+impl Drop for ReactionPreparation<'_> {
+    fn drop(&mut self) {
+        if self.current.is_empty()
+            && self.prepared.is_empty()
+            && self.remaining.as_slice().is_empty()
+        {
+            return;
+        }
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        self.unavailable(&mut cleanup);
+        if let Some(association) = self.association {
+            cleanup.run(|| association.retire_pending(crate::job::JobRetirement::Interrupted));
+        }
+        self.cleanup(&mut cleanup);
+        cleanup.finish();
+    }
+}
+
+/// Owns every prepared tail and the previous source roots before any host call.
+/// Native unwind disposes this custody without publishing another reaction.
+struct ReactionBatch {
+    jobs: std::vec::IntoIter<PreparedReactionJob>,
+    pending: Option<StoredPromiseState>,
+    first_error: Option<JsError>,
+}
+impl ReactionBatch {
+    fn new(jobs: Vec<PreparedReactionJob>, pending: StoredPromiseState) -> Self {
+        Self {
+            jobs: jobs.into_iter(),
+            pending: Some(pending),
+            first_error: None,
+        }
+    }
+    fn publish(mut self, context: &mut Context) -> JsResult<()> {
+        for prepared in self.jobs.by_ref() {
+            let mut publication = ReactionPublication::default();
+            let registration = prepared.publish(&mut publication, context);
+            let registration = publication.finish(registration);
+            if let Err(error) = registration.into_result() {
+                if self.first_error.is_none() {
+                    self.first_error = Some(error);
+                } else {
+                    let mut cleanup = crate::job::UnwindCleanup::default();
+                    cleanup.run(|| drop(error));
+                    cleanup.finish();
+                }
+            }
+        }
+        let result = match self.first_error.take() {
+            Some(error) => Err(error),
+            None => Ok(()),
+        };
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        self.cleanup(&mut cleanup);
+        cleanup.finish_with(result)
+    }
+    fn cleanup(&mut self, cleanup: &mut crate::job::UnwindCleanup) {
+        for prepared in self.jobs.by_ref() {
+            prepared.dispose(cleanup);
+        }
+        match self.pending.take() {
+            Some(StoredPromiseState::Pending {
+                fulfill_reactions,
+                reject_reactions,
+            }) => {
+                for reaction in fulfill_reactions.into_iter().chain(reject_reactions) {
+                    cleanup.run(|| drop(reaction));
+                }
+            }
+            Some(StoredPromiseState::Fulfilled(value) | StoredPromiseState::Rejected(value)) => {
+                cleanup.run(|| drop(value));
+            }
+            None => {}
+        }
+        let error = self.first_error.take();
+        cleanup.run(|| drop(error));
+    }
+}
+impl Drop for ReactionBatch {
+    fn drop(&mut self) {
+        let mut cleanup = crate::job::UnwindCleanup::default();
+        self.cleanup(&mut cleanup);
+        cleanup.finish();
+    }
 }
 
 fn new_promise_reaction_job(
-    mut reaction: ReactionRecord,
+    preparation: &mut ReactionJobPreparation,
     argument: JsValue,
     context: &mut Context,
-) -> JsResult<PreparedReactionJob> {
+) -> JsResult<()> {
+    if preparation.prepared.is_some() {
+        return Err(reaction_state_error());
+    }
+    let reaction = preparation.live.as_ref().ok_or_else(reaction_state_error)?;
     // Inverting order since `job` captures `reaction` by value.
 
     // 2. Let handlerRealm be null.
@@ -3296,9 +4030,11 @@ fn new_promise_reaction_job(
         .unwrap_or_else(|| context.realm().clone());
 
     // 1. Let job be a new Job Abstract Closure with no parameters that captures reaction and argument and performs the following steps when called:
-    let module_action = reaction.module_action.clone();
+    let hold = reaction.lifecycle.hold()?;
+    let lifecycle_owner = hold.job_owner();
     let native_result_target = reaction.native_result_target.clone();
     let native_target = reaction.native_target.clone();
+    let mut reaction = preparation.live.take().ok_or_else(reaction_state_error)?;
     let job = move |context: crate::ContextAccess<'_>| {
         let context = context.into_owner();
         //   a. Let promiseCapability be reaction.[[Capability]].
@@ -3361,21 +4097,27 @@ fn new_promise_reaction_job(
     };
 
     // 4. Return the Record { [[Job]]: job, [[Realm]]: handlerRealm }.
-    let job = PromiseJob::with_realm(job, realm).with_module_action(module_action);
-    let mut handoffs = [None, None];
-    for (slot, target) in handoffs
+    let job = PromiseJob::with_realm(job, realm).with_reaction_lifecycle(lifecycle_owner);
+    preparation.prepared = Some(PreparedReactionJob {
+        job,
+        handoffs: [None, None],
+        notifications: [None, None],
+        hold,
+    });
+    let prepared = preparation
+        .prepared
+        .as_mut()
+        .ok_or_else(reaction_state_error)?;
+    for (slot, target) in prepared
+        .handoffs
         .iter_mut()
         .zip([native_target, native_result_target])
     {
         if let Some(target) = target {
-            *slot = Promise::prepare_native_handoff(&target, &job.observer())?;
+            *slot = Promise::prepare_native_handoff(&target, &prepared.job.observer())?;
         }
     }
-    Ok(PreparedReactionJob {
-        job,
-        handoffs,
-        notifications: [None, None],
-    })
+    Ok(())
 }
 
 /// More information:

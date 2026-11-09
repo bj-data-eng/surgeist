@@ -483,6 +483,9 @@ fn load_dyn_import(
                             rejected: on_rejected.clone(),
                         };
                         if let Err(error) = module.evaluate_for_native(&bridge, context) {
+                            if error.as_engine().is_some() {
+                                return Err(error);
+                            }
                             let reason = error.into_opaque(context.access())?;
                             cap.reject().call(
                                 &JsValue::undefined(),
@@ -507,7 +510,12 @@ fn load_dyn_import(
                 None,
                 &cap,
                 context,
-            ) {
+            )
+            .into_result()
+            {
+                if error.as_engine().is_some() {
+                    return Err(error);
+                }
                 let reason = error.into_opaque(context.access())?;
                 cap.reject()
                     .call(&JsValue::undefined(), &[reason], context.access())?;
@@ -599,7 +607,7 @@ impl ImportCall {
             context.realm().clone(),
         );
         cap.associate_primary_job(&job.observer(), context)?;
-        context.enqueue_job(job.into());
+        crate::job::finish_publication(context.enqueue_job(job.into()))?;
 
         // 9. Return promiseCapability.[[Promise]].
         context.vm.set_register(specifier_op.into(), promise.into());

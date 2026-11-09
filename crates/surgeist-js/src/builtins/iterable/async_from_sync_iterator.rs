@@ -438,11 +438,19 @@ impl AsyncFromSyncIterator {
             Some(promise_capability.clone()),
             context,
         );
-        let result = match result {
-            Err(error) if !done && close_on_rejection => {
+        let result = match result.into_outcome() {
+            crate::builtins::promise::RegistrationOutcome::Committed(committed) => {
+                // Published reactions already own completion. A later host
+                // failure cannot authorize iterator close or guest rejection.
+                committed.into_result()?;
+                return Ok(promise_capability.promise().clone().into());
+            }
+            crate::builtins::promise::RegistrationOutcome::Uncommitted(error)
+                if !done && close_on_rejection =>
+            {
                 sync_iterator_record.close(Err(error), context).map(|_| ())
             }
-            result => result,
+            crate::builtins::promise::RegistrationOutcome::Uncommitted(error) => Err(error),
         };
         if_abrupt_reject_promise!(result, promise_capability, context);
 

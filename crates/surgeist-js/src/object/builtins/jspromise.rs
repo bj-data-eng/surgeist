@@ -355,7 +355,7 @@ impl JsPromise {
             realm,
         );
         association.bind_job(&job.observer(), true)?;
-        context.enqueue_job(job.into());
+        crate::job::finish_publication(context.enqueue_job(job.into()))?;
         Ok(promise)
     }
 
@@ -1284,7 +1284,7 @@ impl JsPromise {
             .runtime()
             .heap
             .allocate(RefCell::new(Some(generator.stored())))
-            .expect("generator context belongs to the continuation runtime");
+            .map_err(|_| crate::error::EngineResourceError::Allocation)?;
 
         type Captures = (
             crate::native_function::NativeCoroutine,
@@ -1307,16 +1307,20 @@ impl JsPromise {
                     } else {
                         CompletionRecord::Normal(value)
                     };
-                    let result = generator.with_attached(context, |context| {
-                        match continuation.call(completion, context) {
-                            ControlFlow::Continue(value) => {
-                                JsPromise::resolve(value, context.access()).and_then(|promise| {
+                    let result = generator
+                        .with_attached(context, |context| {
+                            match continuation.call(completion, context) {
+                                ControlFlow::Continue(value) => JsPromise::resolve(
+                                    value,
+                                    context.access(),
+                                )
+                                .and_then(|promise| {
                                     promise.await_native(continuation.clone(), reject, context)
-                                })
+                                }),
+                                ControlFlow::Break(result) => result,
                             }
-                            ControlFlow::Break(result) => result,
-                        }
-                    });
+                        })
+                        .flatten();
 
                     if let Err(error) = result {
                         let reason = error.into_opaque(context.access())?;
@@ -1335,13 +1339,11 @@ impl JsPromise {
         let on_fulfilled = FunctionObjectBuilder::new(context.realm(), reaction(false))
             .name(js_string!())
             .length(1)
-            .build()
-            .expect("native await reaction retains the current runtime");
+            .build()?;
         let on_rejected = FunctionObjectBuilder::new(context.realm(), reaction(true))
             .name(js_string!())
             .length(1)
-            .build()
-            .expect("native await reaction retains the current runtime");
+            .build()?;
 
         let result = Promise::perform_promise_then(
             &self.inner,
@@ -1350,13 +1352,18 @@ impl JsPromise {
             None,
             context,
         );
-        if result.is_err() {
-            // A retained host callback must not later run an installation that
-            // failed. A reaction already taken by an inline executor stays taken.
-            let abandoned = frame.borrow_mut().take();
-            drop(abandoned);
+        match result.into_outcome() {
+            crate::builtins::promise::RegistrationOutcome::Uncommitted(error) => {
+                // Only an unpublished registration leaves this local snapshot
+                // available for rollback. Accepted callbacks keep their frame.
+                let abandoned = frame.borrow_mut().take();
+                drop(abandoned);
+                Err(error)
+            }
+            crate::builtins::promise::RegistrationOutcome::Committed(committed) => {
+                committed.into_result()
+            }
         }
-        result
     }
 }
 

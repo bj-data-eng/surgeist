@@ -541,6 +541,16 @@ impl AsyncGenerator {
         // Guest exceptions settle requests inside the VM. An engine stop
         // leaves the continuation unable to run and must reach the host.
         if let CompletionRecord::Throw(error) = result {
+            if generator.borrow().data().state == AsyncGeneratorState::Completed {
+                return Err(error);
+            }
+            match generator_context.continuation_finish() {
+                Ok(finish) if finish.is_transferred() => return Err(error),
+                // A later custody fault neither replaces the first engine
+                // failure nor grants authority to revoke another continuation.
+                Err(_later_fault) => return Err(error),
+                Ok(_) => {}
+            }
             Self::discard_aborted_execution(generator);
             return Err(error);
         }
@@ -586,7 +596,12 @@ impl AsyncGenerator {
         {
             let mut generator = generator.borrow_mut();
             let generator = generator.data_mut();
-            assert_eq!(generator.state, AsyncGeneratorState::AwaitingReturn);
+            if generator.state != AsyncGeneratorState::AwaitingReturn {
+                return Err(crate::error::PanicError::new(
+                    "async generator return reaction requires its awaiting request",
+                )
+                .into());
+            }
             generator.state = AsyncGeneratorState::DrainingQueue;
         }
         Self::complete_step(generator, completion, true, None, context)
@@ -611,10 +626,12 @@ impl AsyncGenerator {
         context: &mut Context,
     ) -> JsResult<()> {
         // 1. Assert: generator.[[AsyncGeneratorState]] is draining-queue.
-        assert_eq!(
-            generator.borrow().data().state,
-            AsyncGeneratorState::DrainingQueue
-        );
+        if generator.borrow().data().state != AsyncGeneratorState::DrainingQueue {
+            return Err(crate::error::PanicError::new(
+                "async generator awaited return requires queue drain ownership",
+            )
+            .into());
+        }
 
         // 2. Let queue be generator.[[AsyncGeneratorQueue]].
         // 3. Assert: queue is not empty.
@@ -680,19 +697,26 @@ impl AsyncGenerator {
         .build()?;
 
         // 15. Perform PerformPromiseThen(promise, onFulfilled, onRejected).
-        // The executor may run the reaction during publication. On failure
-        // neither reaction has been published.
+        // Publish the state before a reentrant executor can run the reaction.
+        // Only uncommitted registration permits reverting this request.
         generator.borrow_mut().data_mut().state = AsyncGeneratorState::AwaitingReturn;
-        if let Err(error) = Promise::perform_promise_then(
+        match Promise::perform_promise_then(
             &promise,
             Some(on_fulfilled),
             Some(on_rejected),
             None,
             context,
-        ) {
-            generator.borrow_mut().data_mut().state = AsyncGeneratorState::DrainingQueue;
-            Self::complete_step(generator, Err(error), true, None, context)?;
-            Self::drain_queue(generator, context)?;
+        )
+        .into_outcome()
+        {
+            crate::builtins::promise::RegistrationOutcome::Uncommitted(error) => {
+                generator.borrow_mut().data_mut().state = AsyncGeneratorState::DrainingQueue;
+                Self::complete_step(generator, Err(error), true, None, context)?;
+                Self::drain_queue(generator, context)?;
+            }
+            crate::builtins::promise::RegistrationOutcome::Committed(committed) => {
+                committed.into_result()?;
+            }
         }
 
         // 16. Return unused.

@@ -1,6 +1,70 @@
 use crate::test::{TestAction, run_test_actions};
 
 #[test]
+fn publication_failure_finishes_abort_and_every_listener_tail() {
+    use crate::publication_test_support::PublicationExecutor;
+    use std::rc::Rc;
+    use surgeist_js::{
+        Context, JsValue, Source,
+        error::{EngineError, EngineResourceError},
+        job::{JobRetirement, JobStatus},
+        js_string,
+        object::builtins::JsFunction,
+    };
+
+    for accepted_attempt in [None, Some(0), Some(1)] {
+        let executor = Rc::new(PublicationExecutor::new(accepted_attempt));
+        let mut context = Context::builder()
+            .job_executor(executor.clone())
+            .build()
+            .unwrap();
+        let signal = super::JsAbortSignal::default();
+        for _ in 0..2 {
+            let callback = context.eval(Source::from_bytes("(() => {})")).unwrap();
+            let callback = JsFunction::from_object(callback.as_object().unwrap()).unwrap();
+            signal.add_event_listener(js_string!("abort"), callback, context.access());
+        }
+        let token = signal.cancellation_token();
+        let error = signal
+            .signal_abort(JsValue::new(42), context.access())
+            .unwrap_err();
+        assert_eq!(
+            error.as_engine(),
+            Some(&EngineError::Resource(EngineResourceError::Allocation))
+        );
+        assert!(signal.is_aborted());
+        assert!(token.is_cancelled());
+        assert_eq!(signal.abort_reason(context.access()), JsValue::new(42));
+        assert_eq!(executor.attempts.get(), 2);
+        let observations = executor.observations.borrow();
+        let dropped = JobStatus::Retired(JobRetirement::Dropped);
+        for (index, observer) in observations.iter().enumerate() {
+            assert_eq!(
+                observer.status().unwrap(),
+                if accepted_attempt == Some(index) {
+                    JobStatus::Pending
+                } else {
+                    dropped
+                }
+            );
+        }
+        drop(observations);
+        signal
+            .signal_abort(JsValue::new(43), context.access())
+            .unwrap();
+        assert_eq!(executor.attempts.get(), 2);
+        assert_eq!(signal.abort_reason(context.access()), JsValue::new(42));
+        if let Some(index) = accepted_attempt {
+            context.run_jobs().unwrap();
+            assert_eq!(
+                executor.observations.borrow()[index].status().unwrap(),
+                JobStatus::Completed
+            );
+        }
+    }
+}
+
+#[test]
 fn abort_controller_exists() {
     run_test_actions([
         TestAction::run("let ctrl = new AbortController()"),

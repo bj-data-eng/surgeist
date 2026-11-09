@@ -44,6 +44,7 @@ mod asynchronous;
 mod fault;
 mod identity;
 mod observer;
+mod publication;
 mod queue;
 mod task;
 
@@ -54,6 +55,8 @@ pub use identity::ContextId;
 pub(crate) use identity::ContextLifetime;
 pub use observer::{JobObserver, JobRetirement, JobStatus, JobWait};
 pub(crate) use observer::{RetirementRegistration, RetirementRelay};
+pub(crate) use publication::finish_publication;
+pub use publication::{JobAcceptance, JobPublicationCause, JobPublicationError};
 pub(crate) use queue::RuntimeJobQueues;
 pub use queue::SimpleJobExecutor;
 pub use task::ContextTask;
@@ -93,7 +96,6 @@ type NativeCallback = Box<dyn for<'call> FnOnce(ContextAccess<'call>) -> JsResul
 pub struct NativeJob {
     custody: InvocationCustody,
     f: NativeCallback,
-    module_action: Option<crate::module::lifecycle::ModuleActionRoot>,
     realm: Option<Realm>,
 }
 
@@ -132,14 +134,24 @@ fn invoke_native_job(
 struct InvocationCustody {
     observer: JobObserver,
     entered: bool,
+    lifecycle: crate::builtins::promise::ReactionJobLifecycle,
 }
 impl Drop for InvocationCustody {
     fn drop(&mut self) {
-        self.observer.retire(if self.entered {
-            JobRetirement::Interrupted
-        } else {
-            JobRetirement::Dropped
+        let mut cleanup = UnwindCleanup::default();
+        cleanup.run(|| {
+            if let Err(fault) = self.lifecycle.dispose(self.entered) {
+                self.observer.record_fault(fault);
+            }
         });
+        cleanup.run(|| {
+            self.observer.retire(if self.entered {
+                JobRetirement::Interrupted
+            } else {
+                JobRetirement::Dropped
+            })
+        });
+        cleanup.finish();
     }
 }
 
@@ -159,9 +171,9 @@ impl NativeJob {
             custody: InvocationCustody {
                 observer: JobObserver::new(),
                 entered: false,
+                lifecycle: crate::builtins::promise::ReactionJobLifecycle::untracked(),
             },
             f: Box::new(f),
-            module_action: None,
             realm: None,
         }
     }
@@ -175,9 +187,9 @@ impl NativeJob {
             custody: InvocationCustody {
                 observer: JobObserver::new(),
                 entered: false,
+                lifecycle: crate::builtins::promise::ReactionJobLifecycle::untracked(),
             },
             f: Box::new(f),
-            module_action: None,
             realm: Some(realm),
         }
     }
@@ -230,21 +242,27 @@ impl NativeJob {
         let Self {
             mut custody,
             f: call,
-            module_action,
             realm,
         } = self;
         custody.entered = true;
-        let mut result = if let Some(action) = &module_action {
-            match action.check() {
+        let is_module = custody.lifecycle.is_module();
+        let run = |context: &mut Context| {
+            let result = match custody.lifecycle.check() {
                 Ok(()) => invoke_native_job(context, realm, call),
                 Err(error) => Err(error),
+            };
+            if let Err(error) = &result
+                && let Err(fault) = custody.lifecycle.finish(error)
+            {
+                custody.observer.record_fault(fault);
             }
-        } else {
-            invoke_native_job(context, realm, call)
+            result
         };
-        if let (Some(action), Err(error)) = (&module_action, &result) {
-            action.finish(error);
-        }
+        let mut result = if is_module {
+            context.with_module_run(run)
+        } else {
+            run(context)
+        };
         if result
             .as_ref()
             .is_err_and(|error| error.as_engine().is_some())
@@ -435,8 +453,7 @@ impl CancellationToken {
 #[derive(Debug)]
 pub struct TimeoutJob {
     cancellation: CancellationLease,
-    /// The distance in milliseconds in the future when the job should run.
-    /// This will be added to the current time when the job is enqueued.
+    /// The delay added to the current clock when the job is enqueued.
     timeout: JsDuration,
     /// The job to run after the specified timeout.
     job: NativeJob,
@@ -451,23 +468,28 @@ impl Drop for CancellationLease {
 }
 
 impl TimeoutJob {
-    /// Create a new `TimeoutJob` with a timeout and a job.
+    /// Creates a timeout for an existing job with a delay in milliseconds.
     #[must_use]
     pub fn new(job: NativeJob, timeout_in_millis: u64) -> Self {
+        Self::with_duration(job, JsDuration::from_millis(timeout_in_millis))
+    }
+
+    fn with_duration(job: NativeJob, timeout: JsDuration) -> Self {
         Self {
             cancellation: CancellationLease(CancellationToken::new()),
-            timeout: JsDuration::from_millis(timeout_in_millis),
+            timeout,
             job,
         }
     }
 
     /// Creates a new `TimeoutJob` from a closure and a timeout as [`std::time::Duration`].
+    /// Preserves the supplied duration's nanosecond precision and range.
     #[must_use]
     pub fn from_duration<F>(f: F, timeout: impl Into<JsDuration>) -> Self
     where
         F: for<'call> FnOnce(ContextAccess<'call>) -> JsResult<JsValue> + 'static,
     {
-        Self::new(NativeJob::new(f), timeout.into().as_millis())
+        Self::with_duration(NativeJob::new(f), timeout.into())
     }
 
     /// Creates a new `TimeoutJob` from a closure, a timeout, and an execution realm.
@@ -476,7 +498,7 @@ impl TimeoutJob {
     where
         F: for<'call> FnOnce(ContextAccess<'call>) -> JsResult<JsValue> + 'static,
     {
-        Self::new(NativeJob::with_realm(f, realm), timeout.as_millis() as u64)
+        Self::with_duration(NativeJob::with_realm(f, realm), timeout.into())
     }
 
     /// Calls the native job with the specified [`Context`].
@@ -512,7 +534,7 @@ impl TimeoutJob {
         self.job.observer()
     }
 
-    /// Returns the timeout value in milliseconds since epoch.
+    /// Returns the configured timeout duration.
     #[inline]
     #[must_use]
     pub fn timeout(&self) -> JsDuration {
@@ -540,8 +562,7 @@ impl TimeoutJob {
 /// [`setInterval`]: https://developer.mozilla.org/en-US/docs/Web/API/Window/setInterval
 #[derive(Debug)]
 pub struct IntervalJob {
-    /// The distance in milliseconds in the future when the job should run.
-    /// This will be added to the current time when the job is enqueued.
+    /// The delay added to the current clock for each subsequent invocation.
     interval: JsDuration,
     /// The job to run after every interval of time.
     job: NativeJobFn,
@@ -556,35 +577,37 @@ impl Drop for IntervalJob {
 }
 
 impl IntervalJob {
-    /// Create a new `IntervalJob` with an interval and a job.
+    /// Creates an interval for an existing job with a period in milliseconds.
     #[must_use]
     pub fn new(job: NativeJobFn, interval_in_millis: u64) -> Self {
+        Self::with_duration(job, JsDuration::from_millis(interval_in_millis))
+    }
+
+    fn with_duration(job: NativeJobFn, interval: JsDuration) -> Self {
         Self {
-            interval: JsDuration::from_millis(interval_in_millis),
+            interval,
             job,
             cancellation_token: CancellationToken::new(),
         }
     }
 
     /// Creates a new `IntervalJob` from a closure and an interval as [`std::time::Duration`].
+    /// Preserves the supplied duration's nanosecond precision and range.
     #[must_use]
     pub fn from_duration<F>(f: F, interval: impl Into<JsDuration>) -> Self
     where
         F: for<'call> Fn(ContextAccess<'call>) -> JsResult<JsValue> + 'static,
     {
-        Self::new(NativeJobFn::new(f), interval.into().as_millis())
+        Self::with_duration(NativeJobFn::new(f), interval.into())
     }
 
-    /// Creates a new `TimeoutJob` from a closure, an interval, and an execution realm.
+    /// Creates a new `IntervalJob` from a closure, an interval, and an execution realm.
     #[must_use]
     pub fn with_realm<F>(f: F, realm: Realm, interval: time::Duration) -> Self
     where
         F: for<'call> Fn(ContextAccess<'call>) -> JsResult<JsValue> + 'static,
     {
-        Self::new(
-            NativeJobFn::with_realm(f, realm),
-            interval.as_millis() as u64,
-        )
+        Self::with_duration(NativeJobFn::with_realm(f, realm), interval.into())
     }
 
     /// Calls the interval job with the specified [`Context`].
@@ -600,7 +623,7 @@ impl IntervalJob {
         self.job.call(context.access())
     }
 
-    /// Returns the interval value in milliseconds.
+    /// Returns the configured interval duration.
     #[inline]
     #[must_use]
     pub fn interval(&self) -> JsDuration {
@@ -704,11 +727,11 @@ impl Debug for PromiseJob {
 }
 
 impl PromiseJob {
-    pub(crate) fn with_module_action(
+    pub(crate) fn with_reaction_lifecycle(
         mut self,
-        action: Option<crate::module::lifecycle::ModuleAction>,
+        lifecycle: crate::builtins::promise::ReactionJobLifecycle,
     ) -> Self {
-        self.0.module_action = action.map(|action| action.root());
+        self.0.custody.lifecycle = lifecycle;
         self
     }
     /// Creates a new `PromiseJob` from a closure.
@@ -952,6 +975,36 @@ pub enum Job {
     FinalizationRegistryCleanupJob(FinalizationRegistryCleanupJob),
 }
 
+impl Job {
+    /// Checks a selected realm against the actual receiving runtime.
+    ///
+    /// This does not invoke the job, charge invocation work or grant execution
+    /// authority. A valid continuation can still be accepted after an enclosing
+    /// operation stopped. Executors that deliberately discard inputs may apply
+    /// their discard policy without performing this check.
+    ///
+    /// # Errors
+    /// Returns a publication-specific foreign-realm cause, or an earlier
+    /// retained engine stop, without changing this original input.
+    pub fn check_publication(&self, context: ContextAccess<'_>) -> Result<(), JobPublicationCause> {
+        let realm = match self {
+            Self::PromiseJob(job) => job.realm(),
+            Self::AsyncJob(job) => job.realm(),
+            Self::GenericJob(job) => job.0.realm(),
+            Self::TimeoutJob(job) => job.job.realm(),
+            Self::IntervalJob(job) => job.job.realm(),
+            Self::FinalizationRegistryCleanupJob(_) => None,
+        };
+        let context = context.into_owner();
+        match realm.map_or(Ok(()), |realm| context.check_publication_realm(realm)) {
+            Ok(()) => Ok(()),
+            Err(error) => Err(publication::JobPublicationCause::from_receiving(
+                error, context,
+            )),
+        }
+    }
+}
+
 impl From<NativeAsyncJob> for Job {
     fn from(native_async_job: NativeAsyncJob) -> Self {
         Job::AsyncJob(native_async_job)
@@ -994,7 +1047,24 @@ pub trait JobExecutor: Any {
     /// See the [spec] for more information on the requirements that each operation must follow.
     ///
     /// [spec]: https://tc39.es/ecma262/#sec-jobs
-    fn enqueue_job(self: Rc<Self>, job: Job, context: ContextAccess<'_>);
+    ///
+    /// Rejection returns the exact original unaccepted input. An inline failure
+    /// after acceptance is [`JobAcceptance::AcceptedWithError`], never a
+    /// replayable rejection. Explicit policy disposal is
+    /// [`JobAcceptance::Discarded`]. Receiving executors check a selected realm
+    /// with [`Job::check_publication`] before acceptance or invocation.
+    ///
+    /// # Errors
+    /// Returns the original job and a validated engine cause before acceptance.
+    #[expect(
+        clippy::result_large_err,
+        reason = "retain original job ownership without allocating to box the refused input"
+    )]
+    fn enqueue_job(
+        self: Rc<Self>,
+        job: Job,
+        context: ContextAccess<'_>,
+    ) -> Result<JobAcceptance, JobPublicationError>;
 
     /// Runs all jobs in the executor.
     fn run_jobs(self: Rc<Self>, context: ContextAccess<'_>) -> JsResult<()>;
@@ -1033,7 +1103,14 @@ pub trait JobExecutor: Any {
 pub struct IdleJobExecutor;
 
 impl JobExecutor for IdleJobExecutor {
-    fn enqueue_job(self: Rc<Self>, _: Job, _: ContextAccess<'_>) {}
+    fn enqueue_job(
+        self: Rc<Self>,
+        job: Job,
+        _: ContextAccess<'_>,
+    ) -> Result<JobAcceptance, JobPublicationError> {
+        drop(job);
+        Ok(JobAcceptance::Discarded)
+    }
 
     fn run_jobs(self: Rc<Self>, _: ContextAccess<'_>) -> JsResult<()> {
         Ok(())

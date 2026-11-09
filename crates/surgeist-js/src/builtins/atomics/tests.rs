@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc, time::Duration};
 use crate::{
     Context, JsResult, JsValue, Source, TestAction,
     builtins::atomics::Atomics,
-    job::{IdleJobExecutor, Job, JobExecutor, TimeoutJob},
+    job::{IdleJobExecutor, Job, JobAcceptance, JobExecutor, JobPublicationError, TimeoutJob},
     js_string,
     module::IdleModuleLoader,
     object::{JsInt32Array, JsPromise, JsSharedArrayBuffer},
@@ -80,9 +80,24 @@ fn discarded_async_job_revokes_its_pending_timeout() {
     struct KeepTimeout(RefCell<Option<TimeoutJob>>);
 
     impl JobExecutor for KeepTimeout {
-        fn enqueue_job(self: Rc<Self>, job: Job, _: crate::ContextAccess<'_>) {
+        fn enqueue_job(
+            self: Rc<Self>,
+            job: Job,
+            mut access: crate::ContextAccess<'_>,
+        ) -> Result<JobAcceptance, JobPublicationError> {
             if let Job::TimeoutJob(timeout) = job {
+                let job = Job::TimeoutJob(timeout);
+                if let Err(cause) = job.check_publication(access.reborrow()) {
+                    return Err(JobPublicationError::new(job, cause));
+                }
+                let Job::TimeoutJob(timeout) = job else {
+                    unreachable!("the retained job is the authored timeout")
+                };
                 self.0.replace(Some(timeout));
+                Ok(JobAcceptance::Accepted)
+            } else {
+                drop(job);
+                Ok(JobAcceptance::Discarded)
             }
         }
 

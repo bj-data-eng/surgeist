@@ -7,7 +7,11 @@ use crate::{
     JsError, JsResult,
     builtins::promise::native_settlement::Signal,
     error::{EngineError, ModuleInterruption, RetainedInterruption},
-    vm::{call_frame::InvocationId, opcode::AwaitRef},
+    job::{JobFault, JobFaultCause, JobFaultOwner, UnwindCleanup},
+    vm::{
+        call_frame::InvocationId,
+        opcode::{AwaitPhase, AwaitRef, AwaitRoot},
+    },
 };
 use std::{
     cell::{Cell, OnceCell, RefCell},
@@ -50,6 +54,7 @@ struct ParentSlot {
 }
 pub(crate) struct EvaluationData {
     phase: Cell<Phase>,
+    fault: Cell<Option<JobFault>>,
     invocation: Cell<Option<InvocationId>>,
     prepared: Rc<RetainedInterruption>,
     interrupted: OnceCell<Rc<RetainedInterruption>>,
@@ -108,6 +113,7 @@ impl EvaluationRef {
         let (prepared, anchor) = RetainedInterruption::prepare(control.context())?;
         let data = Rc::new(EvaluationData {
             phase: Cell::new(Phase::NotEntered),
+            fault: Cell::new(None),
             invocation: Cell::new(None),
             prepared,
             interrupted: OnceCell::new(),
@@ -136,6 +142,35 @@ impl EvaluationRef {
     }
     fn data(&self) -> Rc<EvaluationData> {
         self.data.upgrade().expect("rooted evaluation remains live")
+    }
+    fn checked_data(&self) -> Result<Rc<EvaluationData>, JobFault> {
+        self.data.upgrade().ok_or_else(|| {
+            JobFault::new(
+                JobFaultOwner::ModuleEvaluation,
+                JobFaultCause::OwnerMismatch,
+            )
+        })
+    }
+    pub(crate) fn is_complete(&self) -> JsResult<bool> {
+        let data = self.checked_data()?;
+        if data.phase.get() == Phase::Complete {
+            return Ok(true);
+        }
+        data.fault
+            .get()
+            .map_or(Ok(false), |error| Err(error.into()))
+    }
+    pub(crate) fn same(&self, other: &Self) -> bool {
+        self.edge == other.edge
+    }
+    fn record_fault(&self, fault: JobFault) -> JobFault {
+        if let Some(data) = self.data.upgrade() {
+            let first = data.fault.get().unwrap_or(fault);
+            data.fault.set(Some(first));
+            first
+        } else {
+            fault
+        }
     }
     pub(crate) fn cause(&self) -> Option<Rc<RetainedInterruption>> {
         self.data().interrupted.get().cloned()
@@ -178,19 +213,41 @@ impl EvaluationRef {
             let _ = data.issued.set(signal);
         }
     }
-    pub(crate) fn suspended(&self, state: AwaitRef) {
-        self.data().links.borrow_mut().suspended = Some(state);
+    pub(crate) fn suspended(&self, state: AwaitRef) -> Result<(), JobFault> {
+        let data = self.checked_data()?;
+        let result = data
+            .links
+            .try_borrow_mut()
+            .map_err(|_| {
+                JobFault::new(
+                    JobFaultOwner::ModuleEvaluation,
+                    JobFaultCause::InaccessibleRegistry,
+                )
+            })
+            .map(|mut links| links.suspended = Some(state));
+        result.map_err(|fault| self.record_fault(fault))
     }
-    pub(crate) fn consume(&self, state: &AwaitRef) {
-        let data = self.data();
-        let mut links = data.links.borrow_mut();
-        if links
-            .suspended
-            .as_ref()
-            .is_some_and(|current| current.same(state))
-        {
-            links.suspended = None;
-        }
+    pub(crate) fn consume(&self, state: &AwaitRef) -> Result<(), JobFault> {
+        let data = self.checked_data()?;
+        let result = data
+            .links
+            .try_borrow_mut()
+            .map_err(|_| {
+                JobFault::new(
+                    JobFaultOwner::ModuleEvaluation,
+                    JobFaultCause::InaccessibleRegistry,
+                )
+            })
+            .map(|mut links| {
+                if links
+                    .suspended
+                    .as_ref()
+                    .is_some_and(|current| current.same(state))
+                {
+                    links.suspended = None;
+                }
+            });
+        result.map_err(|fault| self.record_fault(fault))
     }
     pub(crate) fn has_invocation(&self) -> bool {
         self.data().invocation.get().is_some()
@@ -226,9 +283,6 @@ impl EvaluationRef {
         }
         count
     }
-    pub(crate) fn has_suspension(&self) -> bool {
-        self.data().links.borrow().suspended.is_some()
-    }
     pub(crate) fn cycle(&self, root: &Self, next: &Self) {
         let data = self.data();
         let mut links = data.links.borrow_mut();
@@ -263,17 +317,21 @@ impl EvaluationRef {
         Parents(self.data().links.borrow().parents.clone())
     }
     pub(crate) fn interrupt(&self, error: &JsError) {
+        let mut notices = ModuleFailureNotices::default();
+        self.defer_interrupt(error, &mut notices);
+        notices.finish();
+    }
+    fn defer_interrupt(&self, error: &JsError, notices: &mut ModuleFailureNotices) {
         let data = self.data();
         if data.phase.get() != Phase::Incomplete {
             return;
         }
         let cause = data.prepared.seal(error);
         let mut work = None;
-        let mut notices = None;
         let mut active = Some(self.clone());
         while let Some(record) = active {
             active = record.data().links.borrow().dfs_parent.clone();
-            Self::mark(&record, &cause, &mut work, &mut notices);
+            Self::mark(&record, &cause, &mut work, &mut notices.head);
         }
         while let Some(current) = work.take() {
             let current_data = current.data();
@@ -287,7 +345,7 @@ impl EvaluationRef {
             if !root.data().walked.replace(true) {
                 let mut member = root.clone();
                 loop {
-                    Self::mark(&member, &cause, &mut work, &mut notices);
+                    Self::mark(&member, &cause, &mut work, &mut notices.head);
                     let next = member
                         .data()
                         .links
@@ -302,30 +360,9 @@ impl EvaluationRef {
                 }
             }
             for parent in current.parents() {
-                Self::mark(&parent.key.evaluation, &cause, &mut work, &mut notices);
+                Self::mark(&parent.key.evaluation, &cause, &mut work, &mut notices.head);
             }
         }
-        let mut cursor = notices.clone();
-        let mut cleanup = crate::job::UnwindCleanup::default();
-        while let Some(record) = cursor {
-            let data = record.data();
-            cursor = data.links.borrow().notice.clone();
-            let suspended = data.links.borrow_mut().suspended.take();
-            if let Some(suspended) = suspended {
-                cleanup.run(|| suspended.retire());
-            }
-            if let Some(signal) = data.issued.get() {
-                signal.mark_module();
-            }
-        }
-        while let Some(record) = notices {
-            let data = record.data();
-            notices = data.links.borrow_mut().notice.take();
-            if let Some(signal) = data.issued.get() {
-                cleanup.run(|| signal.notify_module());
-            }
-        }
-        cleanup.finish();
     }
     fn mark(
         record: &Self,
@@ -344,6 +381,47 @@ impl EvaluationRef {
         links.notice = notices.take();
         *work = Some(record.clone());
         *notices = Some(record.clone());
+    }
+}
+
+/// Transient ownership of already-marked graph notices, using their existing links.
+/// This is not a GC root. Callers retain every originating module/source bank
+/// through the complete drain, including cleanup after a native callback unwind.
+#[derive(Default)]
+pub(crate) struct ModuleFailureNotices {
+    head: Option<EvaluationRef>,
+}
+impl ModuleFailureNotices {
+    fn drain(&mut self) {
+        let mut cleanup = UnwindCleanup::default();
+        let mut cursor = self.head.clone();
+        while let Some(record) = cursor {
+            let data = record.data();
+            cursor = data.links.borrow().notice.clone();
+            let suspended = data.links.borrow_mut().suspended.take();
+            if let Some(suspended) = suspended {
+                cleanup.run(|| suspended.retire());
+            }
+            if let Some(signal) = data.issued.get() {
+                cleanup.run(|| signal.mark_module());
+            }
+        }
+        while let Some(record) = self.head.take() {
+            let data = record.data();
+            self.head = data.links.borrow_mut().notice.take();
+            if let Some(signal) = data.issued.get() {
+                cleanup.run(|| signal.notify_module());
+            }
+        }
+        cleanup.finish();
+    }
+    pub(crate) fn finish(mut self) {
+        self.drain();
+    }
+}
+impl Drop for ModuleFailureNotices {
+    fn drop(&mut self) {
+        self.drain();
     }
 }
 pub(crate) struct Parents(Option<ParentKey>);
@@ -465,59 +543,186 @@ pub(crate) struct ModuleAction {
     resume: Option<AwaitRef>,
 }
 impl ModuleAction {
-    pub(crate) fn complete(module: &Module) -> Self {
-        Self {
-            evaluation: module
-                .kind()
-                .as_source_text()
-                .expect("source action")
-                .evaluation
-                .clone(),
+    pub(crate) fn complete(module: &Module) -> JsResult<Self> {
+        let source = module
+            .kind()
+            .as_source_text()
+            .ok_or(EngineError::InvalidEntryPermit)?;
+        Ok(Self {
+            evaluation: source.evaluation.clone(),
             module: module.edge(),
             resume: None,
-        }
+        })
     }
-    pub(crate) fn resume(module: &Module, state: AwaitRef) -> Self {
-        Self {
-            resume: Some(state),
-            ..Self::complete(module)
+    pub(crate) fn resume(module: &Module, state: AwaitRef) -> JsResult<Self> {
+        let mut action = Self::complete(module)?;
+        if !state.matches_evaluation(&action.evaluation)? {
+            return Err(EngineError::InvalidEntryPermit.into());
         }
+        action.resume = Some(state);
+        Ok(action)
     }
-    pub(crate) fn root(&self) -> ModuleActionRoot {
-        ModuleActionRoot {
+    pub(crate) fn await_ref(&self) -> Option<&AwaitRef> {
+        self.resume.as_ref()
+    }
+    pub(crate) fn hold(&self) -> JsResult<ModuleActionHold> {
+        let data = self.evaluation.checked_data()?;
+        if let Some(error) = data.fault.get() {
+            return Err(error.into());
+        }
+        let await_root = self.resume.as_ref().map(AwaitRef::root).transpose()?;
+        let inner = self
+            .module
+            .0
+            .upgrade()
+            .map_err(|error| {
+                JobFault::new(
+                    JobFaultOwner::ModuleEvaluation,
+                    match error {
+                        AccessError::HeapBorrowed | AccessError::PayloadBorrowed => {
+                            JobFaultCause::InaccessibleRegistry
+                        }
+                        AccessError::ForeignHeap
+                        | AccessError::StaleHandle
+                        | AccessError::WrongType => JobFaultCause::OwnerMismatch,
+                    },
+                )
+            })?
+            .ok_or_else(|| {
+                JobFault::new(
+                    JobFaultOwner::ModuleEvaluation,
+                    JobFaultCause::OwnerMismatch,
+                )
+            })?;
+        Ok(ModuleActionHold {
             action: self.clone(),
-            module: Module::from_edge(self.module.clone()),
+            module: Module { inner },
+            await_root,
+        })
+    }
+    pub(crate) fn preparation_failed(&self, error: &JsError) -> Result<(), JobFault> {
+        let mut notices = ModuleFailureNotices::default();
+        let result = self.defer_preparation_failed(error, &mut notices);
+        notices.finish();
+        result
+    }
+    pub(crate) fn defer_preparation_failed(
+        &self,
+        error: &JsError,
+        notices: &mut ModuleFailureNotices,
+    ) -> Result<(), JobFault> {
+        // No heap acquisition or native notification belongs to this pass.
+        // Availability cleanup releases only stored continuation data; intrinsic
+        // access faults latch in the actual evaluation's scalar fault slot.
+        // The caller keeps its source/module roots and drains notices only
+        // after releasing every owning record borrow.
+        let result = self.preparation_failed_inner(error, notices);
+        result.map_err(|fault| self.evaluation.record_fault(fault))
+    }
+    fn preparation_failed_inner(
+        &self,
+        error: &JsError,
+        notices: &mut ModuleFailureNotices,
+    ) -> Result<(), JobFault> {
+        let Some(reference) = &self.resume else {
+            return Ok(());
+        };
+        if matches!(
+            reference.phase()?,
+            AwaitPhase::Prepared | AwaitPhase::Uncommitted | AwaitPhase::PolicyDiscarded
+        ) {
+            return Ok(());
         }
+        reference.preparation_failed()?;
+        self.finish_failure_inner(error, notices)
+    }
+    fn finish_failure(&self, error: &JsError) -> Result<(), JobFault> {
+        let mut notices = ModuleFailureNotices::default();
+        let result = self
+            .finish_failure_inner(error, &mut notices)
+            .map_err(|fault| self.evaluation.record_fault(fault));
+        notices.finish();
+        result
+    }
+    fn finish_failure_inner(
+        &self,
+        error: &JsError,
+        notices: &mut ModuleFailureNotices,
+    ) -> Result<(), JobFault> {
+        if error.as_engine().is_none() {
+            return Ok(());
+        }
+        let data = self.evaluation.checked_data()?;
+        if matches!(data.phase.get(), Phase::Complete | Phase::Interrupted) {
+            return Ok(());
+        }
+        let suspended = data
+            .links
+            .try_borrow()
+            .map_err(|_| {
+                JobFault::new(
+                    JobFaultOwner::ModuleEvaluation,
+                    JobFaultCause::InaccessibleRegistry,
+                )
+            })?
+            .suspended
+            .clone();
+        if let Some(current) = suspended
+            && self.resume.as_ref().is_none_or(|old| !old.same(&current))
+        {
+            let phase = current.phase()?;
+            if matches!(
+                phase,
+                AwaitPhase::SourcePending | AwaitPhase::ExecutorAccepted
+            ) {
+                return Ok(());
+            }
+        }
+        self.evaluation.defer_interrupt(error, notices);
+        Ok(())
+    }
+}
+/// Root leases only. Drop cannot dispose an action or change phase.
+#[derive(Clone)]
+pub(crate) struct ModuleActionHold {
+    action: ModuleAction,
+    module: Module,
+    await_root: Option<AwaitRoot>,
+}
+impl ModuleActionHold {
+    pub(crate) fn await_root(&self) -> Option<&AwaitRoot> {
+        self.await_root.as_ref()
+    }
+    pub(crate) fn job_owner(&self) -> ModuleActionRoot {
+        ModuleActionRoot { hold: self.clone() }
+    }
+    pub(crate) fn preparation_failed(&self, error: &JsError) -> Result<(), JobFault> {
+        self.action.preparation_failed(error)
     }
 }
 pub(crate) struct ModuleActionRoot {
-    action: ModuleAction,
-    module: Module,
+    hold: ModuleActionHold,
 }
 impl ModuleActionRoot {
-    pub(crate) fn check(&self) -> JsResult<()> {
-        self.action
-            .evaluation
-            .error(&self.module)
-            .map_or(Ok(()), Err)
+    pub(crate) fn await_root(&self) -> Option<&AwaitRoot> {
+        self.hold.await_root()
     }
-    pub(crate) fn finish(&self, error: &JsError) {
-        if error.as_engine().is_none() {
-            return;
+    pub(crate) fn check(&self) -> JsResult<()> {
+        let data = self.hold.action.evaluation.checked_data()?;
+        if let Some(cause) = data.interrupted.get() {
+            return Err(EngineError::ModuleInterrupted(ModuleInterruption::module(
+                cause.clone(),
+                self.hold.module.clone(),
+            ))
+            .into());
         }
-        let data = self.action.evaluation.data();
-        let suspended = data.links.borrow().suspended.clone();
-        // A different authoritative suspension is a valid accepted successor.
-        if let Some(current) = suspended
-            && self
-                .action
-                .resume
-                .as_ref()
-                .is_none_or(|old| !old.same(&current))
-        {
-            return;
+        if let Some(fault) = data.fault.get() {
+            return Err(fault.into());
         }
-        self.action.evaluation.interrupt(error);
+        Ok(())
+    }
+    pub(crate) fn finish(&self, error: &JsError) -> Result<(), JobFault> {
+        self.hold.action.finish_failure(error)
     }
 }
 

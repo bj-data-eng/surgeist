@@ -61,28 +61,36 @@ fn unrelated_queued_callback_keeps_its_captures_and_order_after_another_jobs_sto
     let observed_capture = Rc::new(RefCell::new(None));
     let first_order = order.clone();
     let first_entries = refusal_entries.clone();
-    context.enqueue_job(
-        PromiseJob::new(move |mut access| {
-            first_entries.set(first_entries.get() + 1);
-            first_order.borrow_mut().push("refusal");
-            access.eval(Source::from_bytes("0"))
-        })
-        .into(),
-    );
+    context
+        .enqueue_job(
+            PromiseJob::new(move |mut access| {
+                first_entries.set(first_entries.get() + 1);
+                first_order.borrow_mut().push("refusal");
+                access.eval(Source::from_bytes("0"))
+            })
+            .into(),
+        )
+        .unwrap()
+        .into_result()
+        .unwrap();
     let second_order = order.clone();
     let second_entries = unrelated_entries.clone();
     let second_capture = observed_capture.clone();
     let tag = String::from("accepted callback payload");
     let values = (40, 2);
-    context.enqueue_job(
-        PromiseJob::new(move |_| {
-            second_entries.set(second_entries.get() + 1);
-            second_order.borrow_mut().push("unrelated");
-            *second_capture.borrow_mut() = Some((tag, values.0 + values.1));
-            Ok(JsValue::new(values.0 + values.1))
-        })
-        .into(),
-    );
+    context
+        .enqueue_job(
+            PromiseJob::new(move |_| {
+                second_entries.set(second_entries.get() + 1);
+                second_order.borrow_mut().push("unrelated");
+                *second_capture.borrow_mut() = Some((tag, values.0 + values.1));
+                Ok(JsValue::new(values.0 + values.1))
+            })
+            .into(),
+        )
+        .unwrap()
+        .into_result()
+        .unwrap();
 
     let actual_drain = drain_in_zero_instruction_scope(&mut context);
     assert_eq!(
@@ -173,30 +181,38 @@ fn unrelated_pending_future_survives_another_jobs_stop_and_resumes_without_resta
     let state = Rc::new(PendingState::default());
     let callback_state = state.clone();
     let tag = String::from("accepted future payload");
-    context.enqueue_job(
-        NativeAsyncJob::new(move |_| {
-            Ok(ContextTask::from_future(AcceptedFuture::new(
-                callback_state,
-                tag,
-                (40, 2),
-            )))
-        })
-        .into(),
-    );
+    context
+        .enqueue_job(
+            NativeAsyncJob::new(move |_| {
+                Ok(ContextTask::from_future(AcceptedFuture::new(
+                    callback_state,
+                    tag,
+                    (40, 2),
+                )))
+            })
+            .into(),
+        )
+        .unwrap()
+        .into_result()
+        .unwrap();
     let refusal_entries = Rc::new(Cell::new(0));
     let callback_entries = refusal_entries.clone();
     let callback_state = state.clone();
-    context.enqueue_job(
-        GenericJob::new(
-            move |mut access| {
-                callback_entries.set(callback_entries.get() + 1);
-                callback_state.order.borrow_mut().push("refusal");
-                access.eval(Source::from_bytes("0"))
-            },
-            context.realm().clone(),
+    context
+        .enqueue_job(
+            GenericJob::new(
+                move |mut access| {
+                    callback_entries.set(callback_entries.get() + 1);
+                    callback_state.order.borrow_mut().push("refusal");
+                    access.eval(Source::from_bytes("0"))
+                },
+                context.realm().clone(),
+            )
+            .into(),
         )
-        .into(),
-    );
+        .unwrap()
+        .into_result()
+        .unwrap();
 
     let actual_drain = drain_in_zero_instruction_scope(&mut context);
     assert_eq!(
@@ -257,16 +273,20 @@ fn dropping_a_pending_drain_preserves_the_started_future_for_the_next_drain() {
         .unwrap();
     let state = Rc::new(PendingState::default());
     let callback_state = state.clone();
-    context.enqueue_job(
-        NativeAsyncJob::new(move |_| {
-            Ok(ContextTask::from_future(AcceptedFuture::new(
-                callback_state,
-                String::from("accepted temporary-drain payload"),
-                (40, 2),
-            )))
-        })
-        .into(),
-    );
+    context
+        .enqueue_job(
+            NativeAsyncJob::new(move |_| {
+                Ok(ContextTask::from_future(AcceptedFuture::new(
+                    callback_state,
+                    String::from("accepted temporary-drain payload"),
+                    (40, 2),
+                )))
+            })
+            .into(),
+        )
+        .unwrap()
+        .into_result()
+        .unwrap();
     let outcome = context
         .with_execution(ExecutionOptions::new(0), |access| {
             let holder = access.into_host_access();
@@ -330,34 +350,42 @@ fn an_untouched_due_timeout_keeps_its_captures_after_another_timeout_stops() {
     let observed_capture = Rc::new(RefCell::new(None));
     let first_order = order.clone();
     let first_entries = refusal_entries.clone();
-    context.enqueue_job(
-        TimeoutJob::new(
-            NativeJob::new(move |mut access| {
-                first_entries.set(first_entries.get() + 1);
-                first_order.borrow_mut().push("timeout-refusal");
-                access.eval(Source::from_bytes("0"))
-            }),
-            0,
+    context
+        .enqueue_job(
+            TimeoutJob::new(
+                NativeJob::new(move |mut access| {
+                    first_entries.set(first_entries.get() + 1);
+                    first_order.borrow_mut().push("timeout-refusal");
+                    access.eval(Source::from_bytes("0"))
+                }),
+                0,
+            )
+            .into(),
         )
-        .into(),
-    );
+        .unwrap()
+        .into_result()
+        .unwrap();
     let second_order = order.clone();
     let second_entries = tail_entries.clone();
     let second_capture = observed_capture.clone();
     let tag = String::from("accepted timeout payload");
     let values = (40, 2);
-    context.enqueue_job(
-        TimeoutJob::new(
-            NativeJob::new(move |_| {
-                second_entries.set(second_entries.get() + 1);
-                second_order.borrow_mut().push("timeout-tail");
-                *second_capture.borrow_mut() = Some((tag, values.0 + values.1));
-                Ok(JsValue::new(values.0 + values.1))
-            }),
-            0,
+    context
+        .enqueue_job(
+            TimeoutJob::new(
+                NativeJob::new(move |_| {
+                    second_entries.set(second_entries.get() + 1);
+                    second_order.borrow_mut().push("timeout-tail");
+                    *second_capture.borrow_mut() = Some((tag, values.0 + values.1));
+                    Ok(JsValue::new(values.0 + values.1))
+                }),
+                0,
+            )
+            .into(),
         )
-        .into(),
-    );
+        .unwrap()
+        .into_result()
+        .unwrap();
     // Both requests have the same deadline, and it is strictly in the past
     // before either drain starts. No later clock advancement is needed.
     clock.forward(1);
@@ -406,41 +434,53 @@ fn reentrant_drain_runs_new_work_without_losing_or_running_the_outer_promise_tai
     let callback_first_entries = first_entries.clone();
     let callback_new_entries = new_entries.clone();
     let callback_inner_drain = actual_inner_drain.clone();
-    context.enqueue_job(
-        PromiseJob::new(move |mut access| {
-            callback_first_entries.set(callback_first_entries.get() + 1);
-            callback_order.borrow_mut().push("A");
-            let new_order = callback_order.clone();
-            access.enqueue_job(
-                PromiseJob::new(move |_| {
-                    callback_new_entries.set(callback_new_entries.get() + 1);
-                    new_order.borrow_mut().push("N");
-                    Ok(JsValue::new(7))
-                })
-                .into(),
-            );
-            let inner = access.run_jobs();
-            *callback_inner_drain.borrow_mut() = Some(inner.clone());
-            inner?;
-            callback_order.borrow_mut().push("A-stop");
-            access.eval(Source::from_bytes("0"))
-        })
-        .into(),
-    );
+    context
+        .enqueue_job(
+            PromiseJob::new(move |mut access| {
+                callback_first_entries.set(callback_first_entries.get() + 1);
+                callback_order.borrow_mut().push("A");
+                let new_order = callback_order.clone();
+                access
+                    .enqueue_job(
+                        PromiseJob::new(move |_| {
+                            callback_new_entries.set(callback_new_entries.get() + 1);
+                            new_order.borrow_mut().push("N");
+                            Ok(JsValue::new(7))
+                        })
+                        .into(),
+                    )
+                    .unwrap()
+                    .into_result()
+                    .unwrap();
+                let inner = access.run_jobs();
+                *callback_inner_drain.borrow_mut() = Some(inner.clone());
+                inner?;
+                callback_order.borrow_mut().push("A-stop");
+                access.eval(Source::from_bytes("0"))
+            })
+            .into(),
+        )
+        .unwrap()
+        .into_result()
+        .unwrap();
     let callback_order = order.clone();
     let callback_tail_entries = tail_entries.clone();
     let callback_capture = observed_capture.clone();
     let tag = String::from("old promise tail payload");
     let values = (40, 2);
-    context.enqueue_job(
-        PromiseJob::new(move |_| {
-            callback_tail_entries.set(callback_tail_entries.get() + 1);
-            callback_order.borrow_mut().push("B");
-            *callback_capture.borrow_mut() = Some((tag, values.0 + values.1));
-            Ok(JsValue::new(values.0 + values.1))
-        })
-        .into(),
-    );
+    context
+        .enqueue_job(
+            PromiseJob::new(move |_| {
+                callback_tail_entries.set(callback_tail_entries.get() + 1);
+                callback_order.borrow_mut().push("B");
+                *callback_capture.borrow_mut() = Some((tag, values.0 + values.1));
+                Ok(JsValue::new(values.0 + values.1))
+            })
+            .into(),
+        )
+        .unwrap()
+        .into_result()
+        .unwrap();
 
     let actual_outer_drain = drain_in_zero_instruction_scope(&mut context);
     assert_eq!(
