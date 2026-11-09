@@ -326,6 +326,59 @@ fn sort_buffers_exact_initialized_backing_accepts_empty_and_multi_entry_values()
 }
 
 #[test]
+fn refused_membership_child_visit_queues_no_child_and_retries_cleanly() {
+    let boxes = [root(), child(0, 0, -1), child(0, 1, 1)];
+    // Three-box topology initialization, parent walks and child indexing use
+    // 28 visits; sibling owners use three. Membership's root push and consume
+    // reach 33 before the first reverse-ordered child may be read and queued.
+    let limited = options()
+        .with_limits(PaintLimits::unlimited().with_work_limit(WorkKind::TopologyVisit, 33));
+    let mut meter = limited.operation(OperationKind::Stacking).unwrap();
+    let root = meter.root();
+    let scopes = setup_scopes(&mut meter).unwrap();
+    let PreparationFailure { error, mut cleanup } =
+        match prepare(&mut meter, root, &scopes, &boxes, BoxId::new(0)) {
+            Break(failure) => failure,
+            Continue(_) => panic!("expected membership child refusal"),
+        };
+    let PaintError::Budget(refusal) = error else {
+        panic!("expected work refusal");
+    };
+    assert_eq!(refusal.origin, PaintPhase::Membership);
+    assert_eq!(refusal.limiting_phase, PaintPhase::Operation);
+    assert_eq!(refusal.current, 33);
+    assert_eq!(
+        refusal.change,
+        PaintChange::Work {
+            kind: WorkKind::TopologyVisit,
+            amount: 1
+        }
+    );
+    assert!(cleanup.state.stack.is_empty());
+    assert_eq!(cleanup.state.contexts.len(), 1);
+    assert_eq!(cleanup.state.contexts[0].box_id, BoxId::new(0));
+    assert_eq!(cleanup.state.membership, [0, 0, 0]);
+    meter
+        .with_phase(scopes[6], |p| {
+            cleanup.scratch_cleanup(p).unwrap();
+            cleanup.result_cleanup(p).unwrap();
+        })
+        .unwrap();
+    let report = meter.finish().unwrap().unwrap();
+    assert_eq!(report.work(WorkKind::TopologyVisit), 33);
+    assert_eq!(report.work(WorkKind::MembershipVisit), 1);
+    for &kind in ResourceKind::ALL {
+        assert_eq!(report.live(kind), 0);
+    }
+    let retry = plan_stacking(&boxes, BoxId::new(0), options())
+        .result
+        .unwrap();
+    assert_eq!(children(retry.root_context()), [1, 2]);
+    assert_eq!(membership_ids(&retry), [0, 1, 2]);
+    assert!(std::ptr::eq(retry.facts(), boxes.as_slice()));
+}
+
+#[test]
 fn refused_traversal_consume_keeps_pending_root_until_cleanup_and_retry() {
     let boxes = [root()];
     // Topology admits node/merge initialization, the outer visit and parent

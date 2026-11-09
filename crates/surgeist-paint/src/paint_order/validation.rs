@@ -801,8 +801,9 @@ fn content(
         }
     }
     index.content = scratch(p, root, index.content_order.len())?;
-    for &slot in &index.content_order {
+    for slot in &index.content_order {
         charge(p, phase, WorkKind::InlineMemberVisit, 1)?;
+        let slot = *slot;
         push(&mut index.content, index.content_entries[slot], p, phase)?;
     }
     index.content_ranges = ranges(
