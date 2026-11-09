@@ -52,14 +52,7 @@ impl<W: Dimension, R: Dimension> Charge<W, R> for ScopeCharge<'_, W, R> {
     }
 
     fn record_largest(&mut self, resource: R, value: u64) -> Result<(), Self::Stop> {
-        let held = self.operation.usage(self.scope)?.live(resource);
-        self.operation.apply_batch(
-            self.scope,
-            &[
-                Change::Release(resource, held),
-                Change::Acquire(resource, value),
-            ],
-        )
+        self.operation.record_largest(self.scope, resource, value)
     }
 }
 

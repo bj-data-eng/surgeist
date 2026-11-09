@@ -610,6 +610,24 @@ impl<W: Dimension, R: Dimension> Operation<W, R> {
         self.note(result)
     }
 
+    /// Records `value` as the largest reached by a gauge resource at `scope`: one batch releases
+    /// the value held and acquires `value`, so a refusal leaves the held value as it was.
+    pub(crate) fn record_largest(
+        &mut self,
+        scope: Scope,
+        resource: R,
+        value: u64,
+    ) -> Result<(), Error<W, R>> {
+        let held = self.usage(scope)?.live(resource);
+        self.apply_batch(
+            scope,
+            &[
+                Change::Release(resource, held),
+                Change::Acquire(resource, value),
+            ],
+        )
+    }
+
     /// Records an admission in the profile and every open interval. A defect
     /// found while recording is latched and returned.
     fn observe_admission(
