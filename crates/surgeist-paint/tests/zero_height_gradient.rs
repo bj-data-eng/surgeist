@@ -202,6 +202,62 @@ struct Opaque {
     drops: Rc<Cell<usize>>,
 }
 
+#[test]
+fn single_authored_two_and_hinted_pairs_keep_arity_during_partial_iteration() {
+    let drops = Rc::new(Cell::new(0));
+    for (first, last) in [(0.0, 0.0), (-f64::MAX, f64::MAX)] {
+        let source = [GradientStopItem::Stop {
+            payload: Opaque {
+                label: "one payload, two occurrences".to_owned(),
+                drops: Rc::clone(&drops),
+            },
+            positions: GradientStopPositions::Two(position(first, 0.0), position(last, 0.0)),
+        }];
+        let GradientStopItem::Stop { payload, .. } = &source[0] else {
+            unreachable!()
+        };
+        let average = resolved(20.0, &source, GradientRepeat::Repeat);
+        let mut colors = average.colors();
+        assert_eq!(colors.len(), 2);
+        let first = colors.next().unwrap();
+        assert_eq!(
+            (first.source_index, first.position_index, first.weight),
+            (0, 0, 0.5)
+        );
+        assert!(ptr::eq(first.payload, payload));
+        assert_eq!(colors.len(), 1);
+        drop(colors);
+        assert_eq!(observed(&average), [(0, 0, 0.5), (0, 1, 0.5)]);
+        let last = resolved(20.0, &source, GradientRepeat::None);
+        let mut colors = last.colors();
+        assert_eq!(colors.len(), 1);
+        let color = colors.next().unwrap();
+        assert_eq!(
+            (color.source_index, color.position_index, color.weight),
+            (0, 1, 1.0)
+        );
+        assert!(ptr::eq(color.payload, payload));
+        assert_eq!(colors.len(), 0);
+        assert!(colors.next().is_none());
+        assert!(colors.next().is_none());
+    }
+    assert_eq!(drops.get(), 2);
+    for source in [
+        vec![at(0.0, 0.0), at(0.0, 1.0)],
+        vec![at(0.0, 0.0), hint(0.0, 0.25), at(0.0, 1.0)],
+        vec![at(0.0, 1.0), hint(0.0, 1.0), at(0.0, 1.0)],
+    ] {
+        let result = resolved(20.0, &source, GradientRepeat::Repeat);
+        assert_eq!(observed(&result), [(0, 0, 0.5), (source.len() - 1, 0, 0.5)]);
+        let mut colors = result.colors();
+        assert_eq!(colors.len(), 2);
+        assert_eq!(colors.next().unwrap().source_index, 0);
+        assert_eq!(colors.len(), 1);
+        drop(colors);
+        assert_eq!(result.colors().len(), 2);
+    }
+}
+
 impl Drop for Opaque {
     fn drop(&mut self) {
         self.drops.set(self.drops.get() + 1);
@@ -381,6 +437,25 @@ fn case_priority_raw_grammar_and_real_normalized_loss_have_exact_diagnostics() {
             vec![at(0.0, 0.0), at(f64::from_bits(1), 0.0), at(f64::MAX, 0.0)],
             (0, 0),
             (1, 0),
+        ),
+        // The normalized interval survives as the minimum subnormal, but its
+        // required positive half-weight does not survive binary64 rounding.
+        (
+            vec![at(0.0, 0.0), at(f64::from_bits(1), 0.0), at(1.0, 0.0)],
+            (0, 0),
+            (1, 0),
+        ),
+        // The hint carries strictness; the following color equals that hint.
+        // Losing the tiny color interval still names colors, excluding the hint.
+        (
+            vec![
+                at(0.0, 0.0),
+                hint(f64::from_bits(1), 0.0),
+                at(f64::from_bits(1), 0.0),
+                at(f64::MAX, 0.0),
+            ],
+            (0, 0),
+            (2, 0),
         ),
         (
             vec![
