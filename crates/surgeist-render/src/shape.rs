@@ -1,8 +1,8 @@
 use super::{
     Point, Radii, Rect, Result, Size,
     validation::{
-        validate_dash, validate_finite_f64, validate_non_negative_f64, validate_path,
-        validate_point, validate_positive_f64, validate_radii, validate_rect, validate_size,
+        validate_finite_f64, validate_non_negative_f64, validate_path, validate_point,
+        validate_positive_f64, validate_radii, validate_rect, validate_size,
     },
 };
 
@@ -278,10 +278,9 @@ impl Stroke {
 
     /// Returns this stroke with a validated dash pattern.
     ///
-    /// A non-finite offset or negative or non-finite interval returns
-    /// [`crate::ErrorCode::InvalidInput`].
+    /// [`Dash::try_new`] establishes intrinsic validity. Required native cycle
+    /// capacity is qualified contextually when the stroke is encoded.
     pub fn try_dash(mut self, dash: Dash) -> Result<Self> {
-        validate_dash(dash)?;
         self.dash = Some(dash);
         Ok(self)
     }
@@ -327,6 +326,8 @@ impl Stroke {
 ///
 /// The offset is finite and each interval is finite and non-negative. Empty
 /// patterns and zero-length intervals are currently accepted.
+/// A required native cycle that cannot qualify returns a contextual geometry
+/// realization refusal during encoding, preserving authored input validity.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Dash {
     offset: f64,

@@ -709,6 +709,7 @@ pub surgeist_render::RenderWork::CoordinateInputs
 pub surgeist_render::RenderWork::CoordinateVisits
 pub surgeist_render::RenderWork::CopyOperations
 pub surgeist_render::RenderWork::CustomPresentPasses
+pub surgeist_render::RenderWork::DashInitializations
 pub surgeist_render::RenderWork::EncodingStreamCopies
 pub surgeist_render::RenderWork::FillsEmitted
 pub surgeist_render::RenderWork::FilterOperationVisits
@@ -1768,6 +1769,7 @@ pub surgeist_render::RenderWorkTable::CoordinateInputs: T
 pub surgeist_render::RenderWorkTable::CoordinateVisits: T
 pub surgeist_render::RenderWorkTable::CopyOperations: T
 pub surgeist_render::RenderWorkTable::CustomPresentPasses: T
+pub surgeist_render::RenderWorkTable::DashInitializations: T
 pub surgeist_render::RenderWorkTable::EncodingStreamCopies: T
 pub surgeist_render::RenderWorkTable::FillsEmitted: T
 pub surgeist_render::RenderWorkTable::FilterOperationVisits: T

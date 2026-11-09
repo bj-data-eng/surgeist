@@ -170,6 +170,10 @@ dimensions! {
         /// Typed elements actually copied between independently owned Vello
         /// encoding streams; excludes replacement-backing relocation.
         EncodingStreamCopies,
+        /// Qualified opaque dash initializers entered, admitted once before
+        /// dependency entry. Internal arithmetic is indivisible; owned cycle
+        /// proof and interval conversion retain their separate visit units.
+        DashInitializations,
         /// Private raster recording commands actually appended.
         RasterCommandsEmitted,
         /// Private raster recording command records actually inspected.
@@ -280,6 +284,7 @@ impl RenderWork {
                         | Self::ShaderBindingVisits
                         | Self::ShaderKeyCopies
                         | Self::EncodingStreamCopies
+                        | Self::DashInitializations
                         | Self::RasterCommandsEmitted
                         | Self::RasterCommandVisits
                         | Self::RasterResourceCopies

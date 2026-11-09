@@ -14,6 +14,7 @@ use vello_encoding::{DrawTag, PathTag, Style};
 use crate::{BackendErrorCode, Error, Result, TextRun, encode::glyph_paint_brush};
 
 use super::bounded::{self, EncodingBacking, Growth, PayloadCustody};
+use super::dash::QualifiedDash;
 use super::geometry::{self, QualifiedTransform};
 use super::gradient_endpoints::{EndpointRecords, SceneBrush};
 use crate::accounting::{Account, AccountedVec, RenderPhase, RenderWork, SharedValue};
@@ -319,19 +320,16 @@ impl VelloScene {
         if style.width == 0.0 {
             return Ok(());
         }
-        let elements = if style.dash_pattern.is_empty() {
-            bounded::materialize(shape.path_elements(0.1), account)?
+        let tolerance = if geometry_action(account, || style.dash_pattern.is_empty())? {
+            0.1
         } else {
-            let source = bounded::materialize(shape.path_elements(0.01), account)?;
-            bounded::materialize(
-                kurbo::dash(
-                    source.iter().copied(),
-                    style.dash_offset,
-                    &style.dash_pattern,
-                ),
-                account,
-            )?
+            0.01
         };
+        let source = bounded::materialize(shape.path_elements(tolerance), account)?;
+        if !geometry::has_segments(&source, account)? {
+            return Ok(());
+        }
+        let elements = QualifiedDash::try_new(style, account)?.materialize(source, account)?;
         if !geometry::has_segments(&elements, account)? {
             return Ok(());
         }

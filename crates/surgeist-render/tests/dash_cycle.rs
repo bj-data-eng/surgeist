@@ -4,8 +4,8 @@
 use std::io::Write;
 use surgeist_render::{
     Color, Dash, EffectQualityPolicy, ErrorCode, GeometryRealizationError, Image, Layer, Options,
-    Parameters, Rect, RenderAccountingOptions, RenderAttemptStatus, RenderProfile, RenderRoute,
-    RenderWork, Renderer, ResolvedLayerAlphaMask, Scene, Size, Stroke,
+    Parameters, Rect, RenderAccountingOptions, RenderAttemptStatus, RenderProfile, RenderResource,
+    RenderRoute, RenderWork, Renderer, ResolvedLayerAlphaMask, Scene, Size, Stroke,
 };
 
 fn bounds() -> Rect {
@@ -87,6 +87,30 @@ fn check_overflow(graph: bool, offset: f64) {
             .attempt()
             .unwrap()
             .usage()
+            .work(RenderWork::DashInitializations),
+        0
+    );
+    assert_eq!(
+        report
+            .attempt()
+            .unwrap()
+            .usage()
+            .live(RenderResource::ScratchCpuBytes),
+        0
+    );
+    assert_eq!(
+        report
+            .attempt()
+            .unwrap()
+            .usage()
+            .live(RenderResource::RetainedCpuBytes),
+        0
+    );
+    assert_eq!(
+        report
+            .attempt()
+            .unwrap()
+            .usage()
             .work(RenderWork::Submissions),
         0
     );
@@ -130,4 +154,165 @@ fn direct_overflowed_cycle_at_negative_offset_refuses_before_initialization() {
 #[test]
 fn graph_overflowed_cycle_at_negative_offset_refuses_before_initialization() {
     check_overflow(true, -1.0);
+}
+
+fn line_scene(graph: bool, dash: Dash) -> Scene {
+    use surgeist_render::{Path, Point, Shape};
+    scene(graph, |scene| {
+        scene.fill(bounds(), Color::try_rgba(0.0, 0.0, 1.0, 1.0).unwrap());
+        let mut path = Path::new();
+        path.move_to(Point::try_new(0.0, 8.0).unwrap())
+            .line_to(Point::try_new(32.0, 8.0).unwrap());
+        scene.stroke(
+            Shape::path(path),
+            Stroke::try_new(2.0).unwrap().try_dash(dash).unwrap(),
+            Color::try_rgba(1.0, 0.0, 0.0, 1.0).unwrap(),
+        );
+    })
+}
+
+#[test]
+fn open_dash_patterns_keep_lengths_offsets_and_solid_zero_semantics() {
+    let cases: &[(f64, &'static [f64], [bool; 3], u64)] = &[
+        (0.0, &[4.0, 4.0], [true, false, true], 1),
+        (0.0, &[4.0], [true, false, true], 1),
+        (2.0, &[4.0, 4.0], [true, false, true], 1),
+        (-2.0, &[4.0, 4.0], [false, true, false], 1),
+        (0.0, &[], [true, true, true], 0),
+        (-2.0, &[0.0, 0.0, 0.0], [true, true, true], 0),
+    ];
+    for graph in [false, true] {
+        let mut renderer = pollster::block_on(Renderer::new(
+            Options::default()
+                .with_effect_quality_policy(EffectQualityPolicy::AllowReducedPrecision),
+        ))
+        .unwrap();
+        let mut surface =
+            pollster::block_on(renderer.create_headless(Size::try_new(32.0, 16.0).unwrap(), 1.0))
+                .unwrap();
+        for &(offset, intervals, red, initializations) in cases {
+            let input = line_scene(graph, Dash::try_new(offset, intervals).unwrap());
+            pollster::block_on(renderer.render(&mut surface, &input, Parameters::default()))
+                .unwrap();
+            let report = renderer.take_last_attempt().unwrap();
+            assert_eq!(
+                report
+                    .attempt()
+                    .unwrap()
+                    .usage()
+                    .work(RenderWork::DashInitializations),
+                initializations
+            );
+            let pixels = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+            for (x, red) in [0, 4, 8].into_iter().zip(red) {
+                let byte_offset = (8 * 32 + x) * 4;
+                let color = if red { [255, 0, 0] } else { [0, 0, 255] };
+                assert_eq!(
+                    &pixels.rgba()[byte_offset..byte_offset + 3],
+                    color,
+                    "{intervals:?} phase {offset}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn native_initializer_admission_preserves_profiles_prefix_custody_and_retry() {
+    use surgeist_render::{
+        RenderAccountingError, RenderLimits, RenderPhase, RenderPhaseFilter, RenderQuantity,
+        RenderRefusalReason,
+    };
+    for graph in [false, true] {
+        let mut expected_usage = None;
+        for profile in [
+            RenderProfile::Off,
+            RenderProfile::Summary { timing: false },
+            RenderProfile::Summary { timing: true },
+            RenderProfile::Detailed {
+                timing: false,
+                event_limit: 1,
+                filter: RenderPhaseFilter::Phase(RenderPhase::Encode),
+            },
+            RenderProfile::Detailed {
+                timing: true,
+                event_limit: 0,
+                filter: RenderPhaseFilter::All,
+            },
+        ] {
+            let limits = RenderLimits::new()
+                .with_work_limit(RenderWork::DashInitializations, 0)
+                .unwrap();
+            let mut renderer = pollster::block_on(Renderer::new(
+                Options::default()
+                    .with_effect_quality_policy(EffectQualityPolicy::AllowReducedPrecision)
+                    .with_accounting(
+                        RenderAccountingOptions::new()
+                            .with_profile(profile)
+                            .with_limits(limits),
+                    ),
+            ))
+            .unwrap();
+            let mut surface = pollster::block_on(
+                renderer.create_headless(Size::try_new(32.0, 16.0).unwrap(), 1.0),
+            )
+            .unwrap();
+            let baseline = scene(graph, |scene| {
+                scene.fill(bounds(), Color::try_rgba(0.0, 0.0, 1.0, 1.0).unwrap());
+            });
+            let previous =
+                pollster::block_on(renderer.render(&mut surface, &baseline, Parameters::default()))
+                    .unwrap();
+            let pixels = pollster::block_on(renderer.read_headless(&surface)).unwrap();
+            let input = line_scene(graph, Dash::try_new(-1.0, &[4.0, 3.0]).unwrap());
+            let error =
+                pollster::block_on(renderer.render(&mut surface, &input, Parameters::default()))
+                    .unwrap_err();
+            let Some(RenderAccountingError::Refused(refusal)) = error.accounting_diagnostic()
+            else {
+                panic!("expected the actual native initializer admission refusal");
+            };
+            assert_eq!(
+                refusal.quantity(),
+                RenderQuantity::Work(RenderWork::DashInitializations)
+            );
+            assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 0 });
+            assert_eq!(refusal.current(), 0);
+            assert_eq!(refusal.amount(), 1);
+            assert!(error.geometry_realization_diagnostic().is_none());
+            assert_eq!(renderer.stats(), previous);
+            let report = renderer.take_last_attempt().unwrap();
+            assert_eq!(report.status(), RenderAttemptStatus::Refused);
+            assert_eq!(report.cleanup_fault(), None);
+            let usage = report.attempt().unwrap().usage();
+            assert_eq!(usage.work(RenderWork::DashInitializations), 0);
+            assert_eq!(usage.work(RenderWork::Submissions), 0);
+            assert!(usage.work(RenderWork::CoordinateVisits) > 0);
+            assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+            assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+            if let Some(expected) = expected_usage {
+                assert_eq!(usage, expected);
+            } else {
+                expected_usage = Some(usage);
+            }
+            assert_eq!(
+                pollster::block_on(renderer.read_headless(&surface)).unwrap(),
+                pixels
+            );
+            let retry = line_scene(graph, Dash::try_new(0.0, &[0.0]).unwrap());
+            pollster::block_on(renderer.render(&mut surface, &retry, Parameters::default()))
+                .unwrap();
+            let report = renderer.take_last_attempt().unwrap();
+            assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
+            assert_eq!(report.cleanup_fault(), None);
+            assert_eq!(
+                report
+                    .attempt()
+                    .unwrap()
+                    .usage()
+                    .work(RenderWork::DashInitializations),
+                0
+            );
+        }
+    }
 }

@@ -125,17 +125,8 @@ pub(crate) fn validate_path(path: &Path) -> Result<()> {
 pub(crate) fn validate_stroke(stroke: Stroke) -> Result<()> {
     validate_positive_f64(stroke.width(), "stroke width")?;
     validate_positive_f64(stroke.miter_limit(), "stroke miter limit")?;
-    if let Some(dash) = stroke.dash() {
-        validate_dash(dash)?;
-    }
-    Ok(())
-}
-
-pub(crate) fn validate_dash(dash: Dash) -> Result<()> {
-    validate_finite_f64(dash.offset(), "dash offset")?;
-    for interval in dash.intervals() {
-        validate_non_negative_f64(*interval, "dash interval")?;
-    }
+    // The immutable Dash constructor owns authored interval validity. The
+    // actual native receiver qualifies its separate algorithm capacity.
     Ok(())
 }
 
