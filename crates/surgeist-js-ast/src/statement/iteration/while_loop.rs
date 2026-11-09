@@ -3,8 +3,8 @@ use crate::{
     statement::Statement,
     visitor::{VisitWith, Visitor, VisitorMut},
 };
-use surgeist_js_interner::{Interner, ToIndentedString, ToInternedString};
 use core::ops::ControlFlow;
+use surgeist_js_interner::{Interner, ToIndentedString, ToInternedString};
 
 /// The `while` statement creates a loop that executes a specified statement as long as the
 /// test condition evaluates to `true`.

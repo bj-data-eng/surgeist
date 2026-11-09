@@ -6,9 +6,9 @@ use crate::{
     statement::Statement,
     visitor::{VisitWith, Visitor, VisitorMut},
 };
-use surgeist_js_interner::{Interner, ToIndentedString};
 use core::ops::ControlFlow;
 use std::ops::Deref;
+use surgeist_js_interner::{Interner, ToIndentedString};
 
 /// An item inside a [`StatementList`] Parse Node, as defined by the [spec].
 ///

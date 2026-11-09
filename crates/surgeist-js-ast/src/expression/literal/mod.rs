@@ -20,8 +20,8 @@ use crate::{
     LinearSpan, LinearSpanIgnoreEq, Span, Spanned,
     visitor::{VisitWith, Visitor, VisitorMut},
 };
-use surgeist_js_interner::{Interner, Sym, ToInternedString};
 use num_bigint::BigInt;
+use surgeist_js_interner::{Interner, Sym, ToInternedString};
 
 use super::Expression;
 

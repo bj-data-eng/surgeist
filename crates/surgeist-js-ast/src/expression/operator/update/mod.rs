@@ -14,8 +14,8 @@ use crate::{
     expression::{Identifier, access::PropertyAccess},
     visitor::{VisitWith, Visitor, VisitorMut},
 };
-use surgeist_js_interner::{Interner, ToInternedString};
 use core::ops::ControlFlow;
+use surgeist_js_interner::{Interner, ToInternedString};
 
 pub use op::*;
 

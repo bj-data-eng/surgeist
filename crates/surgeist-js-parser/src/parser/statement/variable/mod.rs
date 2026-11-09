@@ -10,12 +10,12 @@ use crate::{
     },
     source::ReadChar,
 };
+use std::convert::TryInto;
 use surgeist_js_ast::{
     Keyword, Punctuator,
     declaration::{VarDeclaration, Variable},
 };
 use surgeist_js_interner::Interner;
-use std::convert::TryInto;
 
 /// Variable statement parsing.
 ///

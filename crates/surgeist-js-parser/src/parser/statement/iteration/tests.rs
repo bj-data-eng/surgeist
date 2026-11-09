@@ -1,4 +1,5 @@
 use crate::parser::tests::{check_invalid_script, check_script_parser};
+use indoc::indoc;
 use surgeist_js_ast::{
     Expression, Span, Statement, StatementListItem,
     declaration::{VarDeclaration, Variable},
@@ -17,7 +18,6 @@ use surgeist_js_ast::{
 };
 use surgeist_js_interner::Interner;
 use surgeist_js_macros::utf16;
-use indoc::indoc;
 
 const PSEUDO_LINEAR_POS: surgeist_js_ast::LinearPosition = surgeist_js_ast::LinearPosition::new(0);
 

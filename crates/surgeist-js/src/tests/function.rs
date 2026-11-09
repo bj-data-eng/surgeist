@@ -1,6 +1,6 @@
 use crate::{JsNativeErrorKind, JsValue, TestAction, run_test_actions};
-use surgeist_js_macros::js_str;
 use indoc::indoc;
+use surgeist_js_macros::js_str;
 
 #[test]
 fn function_declaration_returns_undefined() {

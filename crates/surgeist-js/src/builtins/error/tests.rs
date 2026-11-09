@@ -1,6 +1,6 @@
 use crate::{TestAction, run_test_actions};
-use surgeist_js_macros::js_str;
 use indoc::indoc;
+use surgeist_js_macros::js_str;
 
 #[test]
 fn error_to_string() {

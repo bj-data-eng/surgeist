@@ -3,11 +3,11 @@
 use crate::lexer::{Cursor, Error, Token, TokenKind, Tokenizer};
 use crate::source::ReadChar;
 use bitflags::bitflags;
-use surgeist_js_ast::PositionGroup;
-use surgeist_js_interner::Interner;
 use regress::Flags;
 use std::fmt::{Display, Write};
 use std::str::{self, FromStr};
+use surgeist_js_ast::PositionGroup;
+use surgeist_js_interner::Interner;
 
 const MAXIMUM_REGEX_FLAGS: usize = 8;
 

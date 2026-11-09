@@ -1,7 +1,7 @@
 #![cfg(any(not(feature = "intl"), feature = "intl_bundled"))]
 
-use surgeist_js_macros::js_str;
 use indoc::indoc;
+use surgeist_js_macros::js_str;
 
 mod async_generator;
 mod class;

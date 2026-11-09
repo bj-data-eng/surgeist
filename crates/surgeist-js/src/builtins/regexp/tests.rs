@@ -2,8 +2,8 @@ use crate::{
     JsNativeErrorKind, JsValue, TestAction, js_string, native_function::NativeFunctionObject,
     run_test_actions,
 };
-use surgeist_js_macros::js_str;
 use indoc::indoc;
+use surgeist_js_macros::js_str;
 
 #[test]
 fn constructors() {

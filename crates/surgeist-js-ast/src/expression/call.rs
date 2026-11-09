@@ -1,7 +1,7 @@
 use crate::visitor::{VisitWith, Visitor, VisitorMut};
 use crate::{Span, Spanned, join_nodes};
-use surgeist_js_interner::{Interner, ToInternedString};
 use core::ops::ControlFlow;
+use surgeist_js_interner::{Interner, ToInternedString};
 
 use super::Expression;
 

@@ -21,8 +21,8 @@ use crate::{
     function::ClassDeclaration,
     visitor::{VisitWith, Visitor, VisitorMut},
 };
-use surgeist_js_interner::{Interner, Sym, ToIndentedString, ToInternedString};
 use core::ops::ControlFlow;
+use surgeist_js_interner::{Interner, Sym, ToIndentedString, ToInternedString};
 
 mod export;
 mod import;

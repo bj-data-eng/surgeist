@@ -38,7 +38,6 @@ pub use arrow_function::ArrowFunction;
 pub use async_arrow_function::AsyncArrowFunction;
 pub use async_function::{AsyncFunctionDeclaration, AsyncFunctionExpression};
 pub use async_generator::{AsyncGeneratorDeclaration, AsyncGeneratorExpression};
-use surgeist_js_interner::{Interner, ToIndentedString};
 pub use class::{
     ClassDeclaration, ClassElement, ClassElementName, ClassExpression, ClassFieldDefinition,
     ClassMethodDefinition, PrivateFieldDefinition, PrivateName, StaticBlockBody,
@@ -46,6 +45,7 @@ pub use class::{
 pub use generator::{GeneratorDeclaration, GeneratorExpression};
 pub use ordinary_function::{FunctionDeclaration, FunctionExpression};
 pub use parameters::{FormalParameter, FormalParameterList, FormalParameterListFlags};
+use surgeist_js_interner::{Interner, ToIndentedString};
 
 use crate::{
     LinearPosition, Span, Spanned, StatementList, StatementListItem,

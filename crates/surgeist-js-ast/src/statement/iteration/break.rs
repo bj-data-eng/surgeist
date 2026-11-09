@@ -1,5 +1,5 @@
-use surgeist_js_interner::{Interner, Sym, ToInternedString};
 use core::ops::ControlFlow;
+use surgeist_js_interner::{Interner, Sym, ToInternedString};
 
 use crate::Statement;
 use crate::visitor::{VisitWith, Visitor, VisitorMut};

@@ -1,8 +1,8 @@
 use crate::expression::Call;
 use crate::visitor::{VisitWith, Visitor, VisitorMut};
 use crate::{Span, Spanned};
-use surgeist_js_interner::{Interner, ToInternedString};
 use core::ops::ControlFlow;
+use surgeist_js_interner::{Interner, ToInternedString};
 
 use super::Expression;
 

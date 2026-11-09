@@ -5,8 +5,8 @@ use crate::{
     join_nodes,
     visitor::{VisitWith, Visitor, VisitorMut},
 };
-use surgeist_js_interner::{Interner, ToInternedString};
 use core::{fmt::Write as _, ops::ControlFlow};
+use surgeist_js_interner::{Interner, ToInternedString};
 
 /// List of valid operations in an [`Optional`] chain.
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

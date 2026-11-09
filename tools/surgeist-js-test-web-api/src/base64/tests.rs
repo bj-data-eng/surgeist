@@ -1,6 +1,6 @@
 use crate::test::{TestAction, run_test_actions_with};
-use surgeist_js::Context;
 use indoc::indoc;
+use surgeist_js::Context;
 
 #[test]
 fn btoa_basic() {

@@ -18,8 +18,8 @@ use crate::{
     },
     visitor::{VisitWith, Visitor, VisitorMut},
 };
-use surgeist_js_interner::Sym;
 use std::ops::ControlFlow;
+use surgeist_js_interner::Sym;
 
 /// The kind of re-export in an [`ExportDeclaration`].
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

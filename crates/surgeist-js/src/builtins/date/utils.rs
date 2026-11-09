@@ -1,9 +1,9 @@
 use crate::{JsStr, JsString, context::HostHooks, js_string, value::IntegerOrInfinity};
-use surgeist_js_macros::js_str;
-use surgeist_js_string::JsStrVariant;
 use std::slice::Iter;
 use std::str;
 use std::{borrow::Cow, iter::Peekable};
+use surgeist_js_macros::js_str;
+use surgeist_js_string::JsStrVariant;
 use time::{OffsetDateTime, PrimitiveDateTime, macros::format_description};
 
 // Time-related Constants

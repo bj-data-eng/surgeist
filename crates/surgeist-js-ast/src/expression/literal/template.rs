@@ -5,8 +5,8 @@ use crate::{
     expression::Expression,
     visitor::{VisitWith, Visitor, VisitorMut},
 };
-use surgeist_js_interner::{Interner, Sym, ToInternedString};
 use core::{fmt::Write as _, ops::ControlFlow};
+use surgeist_js_interner::{Interner, Sym, ToInternedString};
 
 /// Template literals are string literals allowing embedded expressions.
 ///

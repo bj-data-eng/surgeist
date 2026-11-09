@@ -5,8 +5,8 @@ use crate::{
     expression::Identifier,
     visitor::{VisitWith, Visitor, VisitorMut},
 };
-use surgeist_js_interner::{Interner, ToInternedString};
 use core::ops::ControlFlow;
+use surgeist_js_interner::{Interner, ToInternedString};
 
 /// `PropertyName` can be either a literal or computed.
 ///

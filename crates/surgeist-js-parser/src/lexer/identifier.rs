@@ -4,10 +4,10 @@ use crate::lexer::{
     Cursor, Error, StringLiteral, Token, TokenKind, Tokenizer, token::ContainsEscapeSequence,
 };
 use crate::source::ReadChar;
-use surgeist_js_ast::PositionGroup;
-use surgeist_js_interner::Interner;
 use icu_properties::props::{IdContinue, IdStart};
 use icu_properties::{CodePointSetData, CodePointSetDataBorrowed};
+use surgeist_js_ast::PositionGroup;
+use surgeist_js_interner::Interner;
 /// Identifier lexing.
 ///
 /// More information:
