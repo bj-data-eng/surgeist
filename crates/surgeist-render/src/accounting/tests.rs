@@ -1,5 +1,7 @@
 use super::*;
 
+mod resolved_reports;
+
 fn terminal_summary(
     context: &RenderAccountingContext,
 ) -> (
