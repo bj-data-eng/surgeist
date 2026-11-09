@@ -127,3 +127,34 @@ fn a_scope_of_another_operation_is_a_foreign_scope_error() {
         Err(Error::ForeignScope)
     );
 }
+
+/// Recording one gauge from several chargers of one shared scope never refuses a record whose
+/// value fits the cap and leaves the live value equal to a value that was recorded.
+#[test]
+fn concurrent_gauge_records_on_one_shared_scope_leave_a_recorded_value() {
+    let (operation, _, child) = scopes(u64::MAX, 100);
+    let shared = operation.share();
+    let threads: Vec<_> = (1..=4_u64)
+        .map(|id| {
+            let shared = shared.clone();
+            std::thread::spawn(move || {
+                for round in 0..20_000_u64 {
+                    // Every value is within the cap of 100.
+                    let value = 1 + (id * 7 + round) % 50;
+                    shared
+                        .charge_at(child)
+                        .record_largest(Resource::Depth, value)
+                        .unwrap_or_else(|error| panic!("record of {value} refused: {error:?}"));
+                }
+            })
+        })
+        .collect();
+    for thread in threads {
+        thread.join().unwrap();
+    }
+    let live = shared.usage(child).unwrap().live(Resource::Depth);
+    assert!(
+        (1..=50).contains(&live),
+        "live {live} is not a recorded value"
+    );
+}
