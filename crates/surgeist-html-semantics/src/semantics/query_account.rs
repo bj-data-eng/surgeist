@@ -8,10 +8,13 @@
 //! the observed one.
 
 use super::*;
-use surgeist_html::accounting::{HtmlChange, HtmlLimits, HtmlResource, HtmlWork};
-use surgeist_ledger::{Change, Error, Operation, RefusalReason, Scope, Tariff, Tariffs};
+use crate::accounting::{Ledger, fault};
+use surgeist_html::accounting::{
+    HtmlChange, HtmlLimits, HtmlResource, HtmlWork, aggregate_tariffs,
+};
+use surgeist_ledger::{Change, Operation, RefusalReason, Scope, Tariff, Tariffs};
 
-pub(super) type LedgerError = Error<HtmlWork, HtmlResource>;
+pub(super) use crate::accounting::LedgerError;
 
 /// Widens a platform amount; an amount beyond `u64` saturates and every finite cap refuses it.
 pub(super) fn wide(value: usize) -> u64 {
@@ -50,7 +53,7 @@ pub(super) fn stop_kind(error: LedgerError) -> HtmlSemanticFailureKind {
     let LedgerError::Refused(refusal) = error else {
         return match error {
             LedgerError::Allocation => Kind::AllocationFailed,
-            _ => Kind::ProtocolViolated,
+            other => Kind::Accounting(fault(other)),
         };
     };
     let RefusalReason::Limit { limit } = refusal.reason else {
@@ -93,17 +96,37 @@ pub(super) fn stop_kind(error: LedgerError) -> HtmlSemanticFailureKind {
 
 /// The operation and scopes of one session.
 pub(super) struct QueryAccount {
-    operation: Operation<HtmlWork, HtmlResource>,
+    operation: Ledger,
     caps: Scope,
     observed: Scope,
 }
 
 impl QueryAccount {
-    pub(super) fn new(session: HtmlSemanticLimits) -> Result<Self, LedgerError> {
-        let mut operation = Operation::new("html-query", limits(session), 2)?;
-        let caps = operation.root();
+    /// The scopes of a session: below the host's scope when it supplies one, else in an operation
+    /// of the session's own whose root carries the caps.
+    pub(super) fn new(
+        session: HtmlSemanticLimits,
+        accounting: Option<&HtmlSemanticAccounting>,
+    ) -> Result<Self, LedgerError> {
+        let (mut operation, caps, parent) = match accounting {
+            Some(host) => {
+                let mut operation = Ledger::Shared(host.ledger.clone());
+                let caps = operation.child(
+                    host.scope,
+                    "html-query",
+                    limits(session),
+                    aggregate_tariffs(),
+                )?;
+                (operation, caps, host.scope)
+            }
+            None => {
+                let operation = Operation::new("html-query", limits(session), 2)?;
+                let caps = operation.root();
+                (Ledger::Owned(operation), caps, caps)
+            }
+        };
         let observed = operation.child(
-            caps,
+            parent,
             "html-query-observed",
             HtmlLimits::unlimited(),
             Tariffs::from_fn(
@@ -180,5 +203,163 @@ impl QueryAccount {
             peak_scratch_records: read(observed.peak(HtmlResource::ScratchRecords)),
             nested_output_records: read(observed.live(HtmlResource::NestedOutputRecords)),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::HtmlSemanticAccountingFault as Fault;
+    use surgeist_ledger::{Defect, Refusal};
+
+    fn limits(scratch: usize, bytes: usize) -> HtmlSemanticLimits {
+        HtmlSemanticLimits::new(100, 100, scratch, 0, bytes, 100)
+    }
+
+    fn scratch(records: u64) -> [HtmlChange; 2] {
+        [
+            Change::Acquire(HtmlResource::ScratchRecords, records),
+            Change::Acquire(HtmlResource::AllocatedBytes, records * 8),
+        ]
+    }
+
+    fn live(account: &QueryAccount, scope: Scope, resource: HtmlResource) -> u64 {
+        account.operation.usage(scope).unwrap().live(resource)
+    }
+
+    #[test]
+    fn a_refused_overshoot_is_observed_and_each_scope_gives_back_its_own_amount() {
+        let mut account = QueryAccount::new(limits(2, 1000), None).unwrap();
+        // Two records fit, then the allocator exposes three more: the caps refuse them but the
+        // observed scope has taken them.
+        account.observe(&scratch(2)).unwrap();
+        let refused = account.observe(&scratch(3)).unwrap_err();
+        assert_eq!(
+            stop_kind(refused),
+            HtmlSemanticFailureKind::LimitExceeded {
+                resource: HtmlSemanticResource::ScratchRecords,
+                limit: 2,
+                required: 5,
+            }
+        );
+        assert_eq!(account.read().unwrap().scratch_records, 5);
+        assert_eq!(
+            live(&account, account.caps, HtmlResource::ScratchRecords),
+            2
+        );
+        assert_eq!(
+            live(&account, account.observed, HtmlResource::ScratchRecords),
+            5
+        );
+        // The backing of the two vectors comes back in either order, and both scopes end at zero.
+        account.release_scratch(3).unwrap();
+        account.release_scratch(2).unwrap();
+        for scope in [account.caps, account.observed] {
+            assert_eq!(live(&account, scope, HtmlResource::ScratchRecords), 0);
+        }
+        assert_eq!(account.read().unwrap().scratch_records, 0);
+        assert_eq!(account.read().unwrap().peak_scratch_records, 5);
+    }
+
+    #[test]
+    fn a_release_that_matches_no_reservation_is_refused_and_changes_nothing() {
+        let mut account = QueryAccount::new(limits(10, 1000), None).unwrap();
+        account.observe(&scratch(2)).unwrap();
+        let before = account.read().unwrap();
+        let refused = account.release_scratch(3).unwrap_err();
+        assert!(matches!(
+            refused,
+            LedgerError::Refused(Refusal {
+                reason: RefusalReason::Underflow,
+                ..
+            })
+        ));
+        assert_eq!(account.read().unwrap(), before);
+        assert_eq!(
+            live(&account, account.caps, HtmlResource::ScratchRecords),
+            2
+        );
+    }
+
+    #[test]
+    fn bytes_are_refused_after_records_and_keep_their_own_limit() {
+        let mut account = QueryAccount::new(limits(10, 30), None).unwrap();
+        account.observe(&scratch(2)).unwrap();
+        // Records fit; the bytes of three more records do not.
+        let refused = account.check(&scratch(3)).unwrap_err();
+        assert_eq!(
+            stop_kind(refused),
+            HtmlSemanticFailureKind::LimitExceeded {
+                resource: HtmlSemanticResource::AllocatedBytes,
+                limit: 30,
+                required: 40,
+            }
+        );
+        // Both over: the records are named first.
+        let refused = account.check(&scratch(20)).unwrap_err();
+        assert!(matches!(
+            stop_kind(refused),
+            HtmlSemanticFailureKind::LimitExceeded {
+                resource: HtmlSemanticResource::ScratchRecords,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn every_ledger_error_maps_to_one_typed_stop() {
+        use HtmlSemanticFailureKind as Kind;
+        let scope = QueryAccount::new(limits(1, 1), None).unwrap().caps;
+        let refusal = |reason, change| {
+            LedgerError::Refused(Refusal {
+                scope,
+                item: 0,
+                change,
+                current: 4,
+                reason,
+            })
+        };
+        let step = Change::Work(HtmlWork::SemanticStep, 3);
+        assert_eq!(
+            stop_kind(refusal(RefusalReason::Limit { limit: 5 }, step)),
+            Kind::LimitExceeded {
+                resource: HtmlSemanticResource::Work,
+                limit: 5,
+                required: 7,
+            }
+        );
+        assert_eq!(
+            stop_kind(refusal(RefusalReason::Overflow, step)),
+            Kind::RepresentationExhausted
+        );
+        assert_eq!(
+            stop_kind(refusal(RefusalReason::Underflow, step)),
+            Kind::ProtocolViolated
+        );
+        // A cap refusal that names a dimension the session does not report.
+        assert_eq!(
+            stop_kind(refusal(
+                RefusalReason::Limit { limit: 5 },
+                Change::Acquire(HtmlResource::TreeDepth, 1)
+            )),
+            Kind::ProtocolViolated
+        );
+        assert_eq!(stop_kind(LedgerError::Allocation), Kind::AllocationFailed);
+        for (error, fault) in [
+            (LedgerError::ForeignScope, Fault::ForeignScope),
+            (
+                LedgerError::ScopeLimit { limit: 2 },
+                Fault::ScopeLimit { limit: 2 },
+            ),
+            (LedgerError::IdentityExhausted, Fault::IdentityExhausted),
+            (LedgerError::TimingUnavailable, Fault::TimingUnavailable),
+            (LedgerError::StaleCheckpoint, Fault::Checkpoint),
+            (
+                LedgerError::Defect(Defect::ScopeEntry),
+                Fault::Defect(Defect::ScopeEntry),
+            ),
+        ] {
+            assert_eq!(stop_kind(error), Kind::Accounting(fault));
+        }
     }
 }

@@ -116,7 +116,7 @@ use crate::{
     HtmlBaseFactsRevision, HtmlBaseMissing, HtmlBaseUrlRecord, HtmlCapture, HtmlCaptureError,
     HtmlCaptureId, HtmlCaptureSubjectId, HtmlCapturedBaseFacts, HtmlCapturedChildIds,
     HtmlCapturedChildren, HtmlCapturedElement, HtmlCapturedNode, HtmlCapturedNodeKind,
-    HtmlCapturedParent, HtmlDocumentClass, HtmlHostFactsRevision,
+    HtmlCapturedParent, HtmlDocumentClass, HtmlHostFactsRevision, HtmlSemanticAccounting,
 };
 use std::{
     error::Error,
@@ -1324,6 +1324,10 @@ pub enum HtmlSemanticFailureKind {
     /// the owner's protocol. Valid captures and valid use never reach this cause; it reports a
     /// defect in this crate, as `ProtocolViolated` does for the value interpretations.
     ProtocolViolated,
+    /// The ledger that carries the session's accounting failed in a way that is not a refused
+    /// cap: a host scope that is not the host operation's, no room for the session's scopes, an
+    /// exhausted ledger resource or a ledger defect.
+    Accounting(crate::HtmlSemanticAccountingFault),
     Capture(HtmlCaptureError),
     ContextCaptureMismatch,
     Attribute(HtmlValueAdmissionError),
@@ -1422,6 +1426,35 @@ impl<'a> HtmlSemanticSession<'a> {
         limits: HtmlSemanticLimits,
         cancellation: HtmlSemanticCancellation,
     ) -> Result<Self, HtmlSemanticFailure> {
+        Self::open(capture, context, interpreter, limits, cancellation, None)
+    }
+    /// A session that charges below the scope `accounting` names, in the host's operation. See
+    /// [`HtmlSemanticAccounting`] for the scopes it creates.
+    pub fn with_accounting(
+        capture: &'a HtmlCapture,
+        context: &'a HtmlSemanticContext,
+        interpreter: HtmlValueInterpreter,
+        limits: HtmlSemanticLimits,
+        cancellation: HtmlSemanticCancellation,
+        accounting: &HtmlSemanticAccounting,
+    ) -> Result<Self, HtmlSemanticFailure> {
+        Self::open(
+            capture,
+            context,
+            interpreter,
+            limits,
+            cancellation,
+            Some(accounting),
+        )
+    }
+    fn open(
+        capture: &'a HtmlCapture,
+        context: &'a HtmlSemanticContext,
+        interpreter: HtmlValueInterpreter,
+        limits: HtmlSemanticLimits,
+        cancellation: HtmlSemanticCancellation,
+        accounting: Option<&HtmlSemanticAccounting>,
+    ) -> Result<Self, HtmlSemanticFailure> {
         if capture.identity() != context.capture() {
             return Err(HtmlSemanticFailure {
                 kind: HtmlSemanticFailureKind::ContextCaptureMismatch,
@@ -1429,12 +1462,13 @@ impl<'a> HtmlSemanticSession<'a> {
                 qualification: None,
             });
         }
-        let account =
-            query_account::QueryAccount::new(limits).map_err(|error| HtmlSemanticFailure {
+        let account = query_account::QueryAccount::new(limits, accounting).map_err(|error| {
+            HtmlSemanticFailure {
                 kind: query_account::stop_kind(error),
                 usage: HtmlSemanticUsage::default(),
                 qualification: None,
-            })?;
+            }
+        })?;
         Ok(Self {
             capture,
             context,
