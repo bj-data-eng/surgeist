@@ -429,7 +429,7 @@ fn frozen_native_projection_cancellation_partitions_only_committed_diagnostics()
         );
         assert_eq!(location.source, source.range(25, 26).unwrap());
     }
-    assert_eq!(parts.retained_usage(), &before); // fixed lender performs no admitted work
+    assert_eq!(parts.retained_usage(), before); // fixed lender performs no admitted work
     request.cancellation().cancel();
     assert!(matches!(
         parts.document(),
@@ -495,7 +495,7 @@ fn frozen_native_projection_alias_refusal_keeps_partition_and_reclaims_it_once()
     );
     let retained = parts.retained_usage().clone();
     assert!(parts.cleanup_failure().is_err());
-    assert_eq!(parts.retained_usage(), &retained);
+    assert_eq!(parts.retained_usage(), retained);
     drop(alias);
     parts.cleanup_failure().unwrap();
     assert_eq!(
@@ -851,7 +851,7 @@ fn frozen_parts_stopped_evidence_foreign_owner_refusal_preserves_actual_store() 
             .take_stopped_evidence(&mut foreign)
             .is_err()
     );
-    assert_eq!(foreign.usage(), &before);
+    assert_eq!(foreign.usage(), before);
     assert_eq!(parts.diagnostics().unwrap().records_pointer(), pointer);
     assert!(parts.control.stop().is_none());
     parts.release().unwrap();
@@ -2497,7 +2497,7 @@ fn failed_evidence_retains_only_committed_prefix_and_actual_storage_tickets() {
         )
     );
     assert_eq!((source.start(), source.end()), (0, 7));
-    assert_eq!(failed.retained_usage(), failed.after_cleanup());
+    assert_eq!(failed.retained_usage(), failed.after_cleanup().clone());
     failed.release().unwrap();
     assert!(failed.diagnostics().is_none());
     super::super::tests::assert_released(&failed.control);

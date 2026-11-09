@@ -6,10 +6,6 @@ use surgeist_html::bounded::construction::{
 };
 impl ParseControl {
     #[cfg(test)]
-    pub(crate) fn test_limit(&mut self, resource: HtmlParseResource, limit: u64) {
-        *self.limits.get_mut(resource) = limit;
-    }
-    #[cfg(test)]
     pub(crate) fn observe_construction_attribute_append(&mut self) {
         self.observe_attribute_append(1);
     }
@@ -17,33 +13,12 @@ impl ParseControl {
         self.cleanup_storage(HtmlParseResource::AuxiliaryEntries, entries, 0)
     }
     pub(crate) fn admit_attribute_work(&mut self, work: Work) -> Result<(), HtmlParseStop> {
-        self.charge_many(&[
-            (
-                HtmlParseWorkCategory::RecordVisit,
-                work.record_visits as u64,
-            ),
-            (
-                HtmlParseWorkCategory::ProviderCall,
-                work.provider_calls as u64,
-            ),
-            (
-                HtmlParseWorkCategory::InspectByte,
-                work.inspected_bytes as u64,
-            ),
-            (HtmlParseWorkCategory::CopyByte, work.copied_bytes as u64),
-            (
-                HtmlParseWorkCategory::RecordWrite,
-                work.record_writes as u64,
-            ),
-        ])?;
+        self.charge_changes(&attribute_edit_work(&work))?;
         if work.atomic_layout_bytes != 0 {
             self.admit_atomic_layout(work.atomic_layout_bytes)?;
         }
         if work.auxiliary_entries != 0 {
-            self.acquire(
-                HtmlParseResource::AuxiliaryEntries,
-                work.auxiliary_entries as u64,
-            )?;
+            self.acquire_change(attribute_edit_entries(&work))?;
         }
         Ok(())
     }
@@ -148,25 +123,19 @@ impl ParseControl {
         ) else {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
-        let current = self
-            .usage
-            .resource(HtmlParseResource::ManagedCapacityBytes)
-            .current;
-        let Some(total) = current
+        let current = self.live(HtmlParseResource::ManagedCapacityBytes)?;
+        if current
             .checked_sub(old as u64)
             .and_then(|v| v.checked_add(actual as u64))
-        else {
+            .is_none()
+        {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
-        };
-        vector.capacity = after.capacity;
-        self.usage.actual_capacity_bytes = total;
-        self.usage.actual_capacity_high_water = self.usage.actual_capacity_high_water.max(total);
-        self.set(HtmlParseResource::ManagedCapacityBytes, total);
-        let Some(overlap) = current.checked_add(actual as u64) else {
+        }
+        if current.checked_add(actual as u64).is_none() {
             return self.representation(HtmlParseResource::PeakTransientBytes);
-        };
-        self.set(HtmlParseResource::PeakTransientBytes, overlap);
-        self.set(HtmlParseResource::PeakTransientBytes, total);
+        }
+        self.record_capacity(old as u64, actual as u64, expected as u64)?;
+        vector.capacity = after.capacity;
         if actual > expected {
             return self.fail(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::ManagedCapacityBytes,

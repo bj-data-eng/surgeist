@@ -3314,7 +3314,7 @@ fn name_growth_foreign_and_cancelled_owners_keep_the_actual_index_for_cleanup() 
             HtmlParseInvariant::ForeignControl
         ))
     );
-    assert_eq!(c.usage(), &before);
+    assert_eq!(c.usage(), before);
     assert_eq!((names.nodes.len(), names.nodes.capacity()), (len, capacity));
     assert_eq!(names.insert(&[97], &[vec![97]][..], 1, &mut c), Ok(true));
     cancellation.cancel();
@@ -3451,7 +3451,7 @@ fn retained_attribute_growth_foreign_controller_refuses_without_consuming_draft(
             HtmlParseInvariant::ForeignControl
         ))
     );
-    assert_eq!(c.usage(), &before);
+    assert_eq!(c.usage(), before);
     let tag = t.tag.as_ref().unwrap();
     assert_eq!(tag.attributes.len(), 0);
     let draft = tag.attribute.as_ref().unwrap();
@@ -3721,7 +3721,7 @@ fn draft_text_origin_growth_admits_the_doubled_target_and_keeps_post_value_refus
                 draft.push(99, &third, HtmlParseOriginKind::Literal, &mut c),
                 Err(stop)
             );
-            assert_eq!(c.usage(), &before);
+            assert_eq!(c.usage(), before);
             assert_eq!(draft.value.units(), &[97, 98, 99]);
         } else {
             assert_eq!(result, Ok(()));
@@ -3844,7 +3844,7 @@ fn draft_text_origin_foreign_and_cancelled_push_preserve_exact_owned_prefix() {
             HtmlParseInvariant::ForeignControl
         ))
     );
-    assert_eq!(c.usage(), &before);
+    assert_eq!(c.usage(), before);
     assert_eq!(draft.value.units(), &[97]);
     assert_eq!((draft.origins.len(), draft.origins.capacity()), (1, 1));
     assert_eq!(

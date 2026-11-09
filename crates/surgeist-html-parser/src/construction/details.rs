@@ -1125,7 +1125,7 @@ mod tests {
                         crate::parser::control::HtmlParseInvariant::ForeignControl
                     )))
                 ));
-                assert_eq!(c.usage(), &before);
+                assert_eq!(c.usage(), before);
                 zero(&foreign);
             }
             assert_eq!(

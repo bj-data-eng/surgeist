@@ -1472,7 +1472,7 @@ mod tests {
                 .current,
             0
         );
-        assert_eq!(c.usage(), &before);
+        assert_eq!(c.usage(), before);
         assert_eq!(evidence.native.projection.as_ref().unwrap().len(), 2);
         // A real original-owner retry is permitted after foreign refusal.
         evidence.project_lineage(&mut c).unwrap();
@@ -2322,7 +2322,7 @@ mod tests {
                     Err(SessionError::Stop(c.stop().unwrap()))
                 );
                 assert_eq!(c.first_stop_usage(), Some(&first));
-                assert_eq!(c.usage(), &after_cleanup);
+                assert_eq!(c.usage(), after_cleanup);
                 evidence.release(&mut c).unwrap();
                 assert_eq!(c.first_stop_usage(), Some(&first));
                 crate::parser::tree_builder::tests::assert_released(&c);
@@ -2591,7 +2591,7 @@ mod tests {
             evidence.project_lineage(&mut c),
             Err(SessionError::Stop(c.stop().unwrap()))
         );
-        assert_eq!(c.usage(), &terminal);
+        assert_eq!(c.usage(), terminal);
         evidence.release(&mut c).unwrap();
         assert_eq!(c.first_stop_usage(), Some(&first));
         assert_eq!(

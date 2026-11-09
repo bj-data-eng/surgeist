@@ -145,7 +145,7 @@ fn cancellation_before_pair_retains_unfinished_cursor_and_canonical_first_stop()
         admit(&mut c, cursor.required_work().unwrap()),
         Err(HtmlParseStop::Cancelled)
     );
-    assert_eq!(c.first_stop_usage(), Some(c.usage()));
+    assert_eq!(c.first_stop_usage(), Some(c.usage()).as_ref());
     assert_eq!(c.usage().actual_capacity_high_water, 0);
 }
 

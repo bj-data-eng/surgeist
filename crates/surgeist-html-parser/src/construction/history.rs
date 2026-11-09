@@ -943,7 +943,7 @@ mod tests {
         }
         assert_eq!(
             c.usage(),
-            &before,
+            before,
             "completed reads do no parser work/allocation"
         );
         owner.release(&mut c).unwrap();
@@ -1169,7 +1169,7 @@ mod tests {
             );
             assert!(matches!(cursor.advance(), HtmlParseHistoryStep::Complete));
         }
-        assert_eq!(c.usage(), &before);
+        assert_eq!(c.usage(), before);
         owner.release(&mut c).unwrap();
         zero(&c);
     }
@@ -1281,7 +1281,7 @@ mod tests {
             // 128 leaves have 127 binary headers, plus exactly four aliases.
             assert_eq!((leaves, progress), (128, 131));
         }
-        assert_eq!(c.usage(), &before);
+        assert_eq!(c.usage(), before);
         owner.release(&mut c).unwrap();
         zero(&c);
     }

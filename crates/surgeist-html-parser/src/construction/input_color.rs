@@ -336,11 +336,9 @@ impl SessionStorage {
                     c, 1,
                 )?;
                 match work {
-                    surgeist_html::elements::input::HtmlInputRuleWork::CompareAsciiUnit => {
-                        c.charge_unit_literal_comparison()?;
-                    }
-                    surgeist_html::elements::input::HtmlInputRuleWork::ReadField => {
-                        c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
+                    surgeist_html::elements::input::HtmlInputRuleWork::CompareAsciiUnit
+                    | surgeist_html::elements::input::HtmlInputRuleWork::ReadField => {
+                        c.charge_change(surgeist_html::accounting::input_rule_work(work))?;
                     }
                     _ => return Err(integrity(c)),
                 }

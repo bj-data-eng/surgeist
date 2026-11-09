@@ -12,6 +12,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
     },
 };
+use surgeist_html::accounting::{HtmlLimits, HtmlResource, HtmlWork};
 
 pub(crate) const RESOURCE_COUNT: usize = 20;
 /// One value per [`HtmlParseResource`]; a lookup cannot be out of range.
@@ -132,6 +133,75 @@ impl HtmlParseResource {
     pub(crate) fn storage(self) -> bool {
         (self as usize) > 0 && (self as usize) < 15
     }
+    /// The schema resource this parse resource is charged as. The work credit
+    /// total is a work dimension in the schema, so it has none.
+    pub(crate) const fn dimension(self) -> Option<HtmlResource> {
+        Some(match self {
+            Self::SourceUnits => HtmlResource::SourceUnits,
+            Self::BufferedUtf16Units => HtmlResource::BufferedUtf16Units,
+            Self::TokenAttributes => HtmlResource::TokenAttributes,
+            Self::AuxiliaryEntries => HtmlResource::AuxiliaryEntries,
+            Self::ManagedNodes => HtmlResource::ManagedNodes,
+            Self::ManagedEdges => HtmlResource::ManagedEdges,
+            Self::ManagedAttributes => HtmlResource::ManagedAttributes,
+            Self::ManagedUtf16Units => HtmlResource::ManagedUtf16Units,
+            Self::SourceMapEntries => HtmlResource::SourceMapEntries,
+            Self::SourceMapPayloadUnits => HtmlResource::SourceMapPayloadUnits,
+            Self::Diagnostics => HtmlResource::Diagnostics,
+            Self::DiagnosticPayloadUnits => HtmlResource::DiagnosticPayloadUnits,
+            Self::ContextEffects => HtmlResource::ContextEffects,
+            Self::OpenElements => HtmlResource::OpenElements,
+            Self::ActiveFormattingEntries => HtmlResource::ActiveFormattingEntries,
+            Self::TreeDepth => HtmlResource::TreeDepth,
+            Self::ManagedCapacityBytes => HtmlResource::ManagedCapacityBytes,
+            Self::PeakTransientBytes => HtmlResource::PeakTransientBytes,
+            Self::AtomicLayoutBytes => HtmlResource::AtomicLayoutBytes,
+            Self::WorkCredits => return None,
+        })
+    }
+    /// The parse resource a schema resource is reported as, if the parser
+    /// charges it.
+    pub(crate) const fn from_dimension(dimension: HtmlResource) -> Option<Self> {
+        Some(match dimension {
+            HtmlResource::SourceUnits => Self::SourceUnits,
+            HtmlResource::BufferedUtf16Units => Self::BufferedUtf16Units,
+            HtmlResource::TokenAttributes => Self::TokenAttributes,
+            HtmlResource::AuxiliaryEntries => Self::AuxiliaryEntries,
+            HtmlResource::ManagedNodes => Self::ManagedNodes,
+            HtmlResource::ManagedEdges => Self::ManagedEdges,
+            HtmlResource::ManagedAttributes => Self::ManagedAttributes,
+            HtmlResource::ManagedUtf16Units => Self::ManagedUtf16Units,
+            HtmlResource::SourceMapEntries => Self::SourceMapEntries,
+            HtmlResource::SourceMapPayloadUnits => Self::SourceMapPayloadUnits,
+            HtmlResource::Diagnostics => Self::Diagnostics,
+            HtmlResource::DiagnosticPayloadUnits => Self::DiagnosticPayloadUnits,
+            HtmlResource::ContextEffects => Self::ContextEffects,
+            HtmlResource::OpenElements => Self::OpenElements,
+            HtmlResource::ActiveFormattingEntries => Self::ActiveFormattingEntries,
+            HtmlResource::TreeDepth => Self::TreeDepth,
+            HtmlResource::ManagedCapacityBytes => Self::ManagedCapacityBytes,
+            HtmlResource::PeakTransientBytes => Self::PeakTransientBytes,
+            HtmlResource::AtomicLayoutBytes => Self::AtomicLayoutBytes,
+            HtmlResource::OutputRecords
+            | HtmlResource::ScratchRecords
+            | HtmlResource::NestedOutputRecords
+            | HtmlResource::AllocatedBytes
+            | HtmlResource::FactRecords
+            | HtmlResource::FactCodeUnits
+            | HtmlResource::AssignedNodes
+            | HtmlResource::MappingEntries
+            | HtmlResource::CapturedSubjects
+            | HtmlResource::CapturedRelationships
+            | HtmlResource::CapturedAttributes
+            | HtmlResource::CapturedUtf16Units
+            | HtmlResource::CapturedDepth
+            | HtmlResource::CapturedRegistries
+            | HtmlResource::CapturedDefinitions
+            | HtmlResource::ElementValueBytes
+            | HtmlResource::RetainedBytes
+            | HtmlResource::RetainedUtf16Units => return None,
+        })
+    }
 }
 
 /// Every cap is explicitly supplied and representable. Zero is a valid cap.
@@ -155,6 +225,28 @@ impl HtmlParseLimits {
     }
     pub(crate) fn values(self) -> ResourceTable<u64> {
         self.values
+    }
+    /// These limits with one cap replaced.
+    #[cfg(test)]
+    pub(crate) fn with_cap(mut self, resource: HtmlParseResource, cap: u64) -> Self {
+        *self.values.get_mut(resource) = cap;
+        self
+    }
+    /// The caps of the parse scope: the credit cap on the credit total and one
+    /// cap per parse resource. Dimensions the parser never charges are
+    /// unlimited.
+    pub(crate) fn ledger_limits(&self) -> HtmlLimits {
+        let values = self.values;
+        HtmlLimits::from_fn(
+            |work| match work {
+                HtmlWork::Credits => values.copy(HtmlParseResource::WorkCredits),
+                _ => u64::MAX,
+            },
+            |resource| {
+                HtmlParseResource::from_dimension(resource)
+                    .map_or(u64::MAX, |parse| values.copy(parse))
+            },
+        )
     }
     /// Returns the source units cap.
     pub fn source_units(&self) -> u64 {

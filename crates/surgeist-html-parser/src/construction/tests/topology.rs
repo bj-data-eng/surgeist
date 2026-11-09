@@ -705,13 +705,13 @@ fn successful_transfers_consume_each_owner_once_without_failure_time_allocation(
         Err(SessionError::Consumed)
     ));
     assert_eq!(session.release(&mut control), Err(SessionError::Consumed));
-    assert_eq!(control.usage(), &before);
+    assert_eq!(control.usage(), before);
     output.release(&mut control).unwrap();
     assert!(output.fragment().is_none());
     assert!(output.document().is_none());
     let before = control.usage().clone();
     assert_eq!(output.release(&mut control), Err(SessionError::Consumed));
-    assert_eq!(control.usage(), &before);
+    assert_eq!(control.usage(), before);
     assert_eq!(control.usage().actual_capacity_bytes, 0);
 }
 
@@ -742,7 +742,7 @@ fn foreign_freeze_and_frozen_cleanup_preserve_the_borrowed_original_owner() {
             .collect::<Vec<_>>(),
         [node.index]
     );
-    assert_eq!(owner.usage(), &before);
+    assert_eq!(owner.usage(), before);
     let mut output = session
         .freeze(&mut owner)
         .unwrap_or_else(|error| panic!("freeze failed: {error:?}"));
@@ -752,7 +752,7 @@ fn foreign_freeze_and_frozen_cleanup_preserve_the_borrowed_original_owner() {
         Err(SessionError::Stop(_))
     ));
     assert_eq!(locals(output.fragment().unwrap()), ["x"]);
-    assert_eq!(owner.usage(), &before);
+    assert_eq!(owner.usage(), before);
     output.release(&mut owner).unwrap();
     assert_eq!(owner.usage().actual_capacity_bytes, 0);
 }

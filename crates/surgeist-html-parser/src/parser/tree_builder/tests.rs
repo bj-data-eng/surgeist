@@ -6428,7 +6428,7 @@ fn body_temporary_head_open_cap_failure_retains_obligation_and_created_raw_node_
     );
     let before = driver.control.usage().clone();
     assert!(driver.step().is_err());
-    assert_eq!(driver.control.usage(), &before);
+    assert_eq!(driver.control.usage(), before);
     driver.release().unwrap();
     assert_released(&driver.control);
 }
@@ -15012,7 +15012,7 @@ fn ordinary_checkbox_actual_work_and_storage_boundaries_stop_once_and_release_ev
                 let at_stop = driver.control.usage().clone();
                 assert!(driver.step().is_err());
                 assert_eq!(driver.control.stop(), Some(first));
-                assert_eq!(driver.control.usage(), &at_stop);
+                assert_eq!(driver.control.usage(), at_stop);
                 driver.release().unwrap();
                 assert_released(&driver.control);
                 assert_eq!(driver.control.stop(), Some(first));
@@ -19285,7 +19285,7 @@ fn afterhead_template_open_slot_refusal_retains_actual_temporary_head_and_first_
         let at = driver.control.first_stop_usage().unwrap().clone();
         let usage = driver.control.usage().clone();
         assert!(driver.step().is_err());
-        assert_eq!(driver.control.usage(), &usage);
+        assert_eq!(driver.control.usage(), usage);
         assert_eq!(driver.control.first_stop_usage(), Some(&at));
         driver.release().unwrap();
         assert_eq!(
@@ -19372,7 +19372,7 @@ fn afterhead_template_cancel_and_one_short_work_precede_input_and_cleanup_do_no_
         let at = driver.control.first_stop_usage().unwrap().clone();
         let usage = driver.control.usage().clone();
         assert!(driver.step().is_err());
-        assert_eq!(driver.control.usage(), &usage);
+        assert_eq!(driver.control.usage(), usage);
         assert_eq!(
             driver
                 .control
@@ -19770,7 +19770,7 @@ mod complete_hostile_scan {
             assert!(usage.work(HtmlParseWorkCategory::StateStep) > 0);
             assert!(usage.actual_capacity_bytes > 0);
             assert!(driver.step().is_err());
-            assert_eq!(driver.control.usage(), &usage);
+            assert_eq!(driver.control.usage(), usage);
             let mut slot = Some(driver);
             assert!(matches!(
                 StandaloneDocumentDriver::take_completed(&mut slot),
@@ -19779,7 +19779,7 @@ mod complete_hostile_scan {
             let driver = slot
                 .as_mut()
                 .expect("terminal take cannot publish or consume a partial document");
-            assert_eq!(driver.control.usage(), &usage);
+            assert_eq!(driver.control.usage(), usage);
             driver.release().unwrap();
             assert_released(&driver.control);
             assert_eq!(driver.control.usage().actual_capacity_bytes, 0);
@@ -19802,7 +19802,7 @@ mod complete_hostile_scan {
             assert_eq!(driver.control.stop(), Some(HtmlParseStop::Cancelled));
             let released = driver.control.usage().clone();
             assert!(driver.step().is_err());
-            assert_eq!(driver.control.usage(), &released);
+            assert_eq!(driver.control.usage(), released);
         }
     }
 
@@ -20036,7 +20036,7 @@ mod complete_hostile_scan {
             );
             assert!(usage.actual_capacity_bytes > 0);
             assert!(driver.step().is_err());
-            assert_eq!(driver.control.usage(), &usage);
+            assert_eq!(driver.control.usage(), usage);
             let mut slot = Some(driver);
             assert!(
                 matches!(StandaloneDocumentDriver::take_completed(&mut slot), Err(StandaloneError::Stop(stop)) if stop == expected)
@@ -20044,7 +20044,7 @@ mod complete_hostile_scan {
             let driver = slot
                 .as_mut()
                 .expect("failed take retains actual partial owner");
-            assert_eq!(driver.control.usage(), &usage);
+            assert_eq!(driver.control.usage(), usage);
             driver.release().unwrap();
             assert_released(&driver.control);
             assert_eq!(driver.control.usage().actual_capacity_bytes, 0);
@@ -20071,7 +20071,7 @@ mod complete_hostile_scan {
             );
             let released = driver.control.usage().clone();
             assert!(driver.step().is_err());
-            assert_eq!(driver.control.usage(), &released);
+            assert_eq!(driver.control.usage(), released);
         }
 
         #[test]

@@ -1123,7 +1123,7 @@ fn script_classification_cursor_admission_refuses_before_the_next_read() {
         let first = c.stop();
         assert!(classify(&mut c, &value).is_err());
         assert_eq!(c.stop(), first);
-        assert_eq!(c.usage(), &stopped);
+        assert_eq!(c.usage(), stopped);
     }
     let cancellation = HtmlParseCancellation::new();
     cancellation.cancel();

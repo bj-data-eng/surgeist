@@ -307,7 +307,7 @@ impl ParseEvidence {
         // The `Diagnostics` cap bounds retention only. Past it the diagnostic
         // is counted, with the count charged before it is written, and nothing
         // is allocated, so no other resource is touched either.
-        if c.diagnostics_retention_full() {
+        if c.diagnostics_retention_full()? {
             c.charge_dropped_diagnostic()?;
             // Every drop was charged at least one work credit, and work credits
             // never exceed `u64::MAX`, so the count cannot saturate.
@@ -701,7 +701,7 @@ mod tests {
             Err(SessionError::WrongToken)
         ));
         assert_eq!(input.as_ref().unwrap().records_pointer(), pointer);
-        assert_eq!(c.usage(), &before);
+        assert_eq!(c.usage(), before);
 
         let mut foreign = ParseControl::new(limits(100), HtmlParseCancellation::new());
         foreign.fail_invariant(HtmlParseInvariant::InputCursorState);
@@ -710,8 +710,8 @@ mod tests {
         assert!(ParseEvidence::partition_failed(&mut input, &mut foreign).is_err());
         assert_eq!(input.as_ref().unwrap().records_pointer(), pointer);
         assert_eq!(foreign.stop(), foreign_stop);
-        assert_eq!(foreign.usage(), &foreign_before);
-        assert_eq!(c.usage(), &before);
+        assert_eq!(foreign.usage(), foreign_before);
+        assert_eq!(c.usage(), before);
 
         c.fail_invariant(HtmlParseInvariant::InputCursorState);
         let first = c.stop();
@@ -1160,7 +1160,7 @@ mod tests {
         ));
         assert!(append(&mut e, &mut foreign, &source, 1).is_err());
         assert_eq!((e.len(), e.locations.len()), (1, 1));
-        assert_eq!(c.usage(), &before);
+        assert_eq!(c.usage(), before);
         e.release(&mut c).unwrap();
         assert_released(&c);
     }
@@ -1185,8 +1185,8 @@ mod tests {
         );
         assert_eq!(e.dropped, 0);
         assert_eq!((e.len(), e.locations.len()), (1, 1));
-        assert_eq!(c.usage(), &before);
-        assert_eq!(foreign.usage(), &foreign_before);
+        assert_eq!(c.usage(), before);
+        assert_eq!(foreign.usage(), foreign_before);
         // The owner still counts its own drops afterwards.
         e.release(&mut c).unwrap();
         assert_released(&c);
@@ -1466,7 +1466,7 @@ mod tests {
                 (evidence.records.capacity(), evidence.locations.capacity()),
                 (4, 4)
             );
-            assert_eq!(c.usage(), &before);
+            assert_eq!(c.usage(), before);
             for offset in 0..4 {
                 let (record, location) = evidence.retained_record(offset).unwrap();
                 assert_eq!(record.location, offset);

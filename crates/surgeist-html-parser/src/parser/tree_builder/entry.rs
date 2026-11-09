@@ -88,7 +88,11 @@ impl<'source> OrdinaryDocumentEntry<'source> {
         // it performs no variable allocation for an error envelope.
         let mut driver = StandaloneDocumentDriver {
             source: request.source(),
-            control: ParseControl::new(*request.limits(), request.cancellation().clone()),
+            control: ParseControl::with_accounting(
+                *request.limits(),
+                request.cancellation().clone(),
+                request.accounting().lease(),
+            ),
             prologue: None,
             tokenizer: None,
             event: None,
@@ -100,7 +104,12 @@ impl<'source> OrdinaryDocumentEntry<'source> {
             evidence_taken: false,
         };
         let phase = match Self::prepare(&mut driver, request, owned, target) {
-            Ok(()) => Phase::Ready,
+            Ok(()) => {
+                driver
+                    .control
+                    .enter_phase(crate::accounting::ParsePhase::Construction);
+                Phase::Ready
+            }
             Err(error) => {
                 // Resource/cancellation failure already owns the first stop. An
                 // unexpected nonterminal stage error cannot leave a runnable
@@ -222,7 +231,7 @@ impl<'source> OrdinaryDocumentEntry<'source> {
         self.after_cleanup.as_ref()
     }
     #[cfg(test)]
-    pub(crate) fn retained_usage(&self) -> Option<&HtmlParseUsage> {
+    pub(crate) fn retained_usage(&self) -> Option<HtmlParseUsage> {
         self.driver.as_ref().map(|driver| driver.control.usage())
     }
     #[cfg(test)]
@@ -400,7 +409,7 @@ impl StoppedInitialization {
     pub(super) fn after_cleanup(&self) -> &HtmlParseUsage {
         &self.after_cleanup
     }
-    pub(super) fn retained_usage(&self) -> &HtmlParseUsage {
+    pub(super) fn retained_usage(&self) -> HtmlParseUsage {
         self.control.usage()
     }
     pub(super) fn diagnostics(
@@ -520,7 +529,7 @@ mod tests {
             Err(StandaloneError::Stop(HtmlParseStop::Cancelled))
         ));
         entry.release_failure().unwrap();
-        assert_eq!(entry.retained_usage(), Some(&at_stop));
+        assert_eq!(entry.retained_usage(), Some(&at_stop).cloned());
     }
     #[test]
     fn source_cap_rejection_precedes_layout_and_keeps_actual_record_visit() {
@@ -675,7 +684,7 @@ mod tests {
         assert_eq!(entry.after_cleanup(), Some(&observation));
         entry.release_failure().unwrap();
         assert!(entry.diagnostics().is_none());
-        released(entry.retained_usage().unwrap());
+        released(&entry.retained_usage().unwrap());
         assert_eq!(entry.after_cleanup(), Some(&observation));
     }
     #[test]
@@ -698,18 +707,18 @@ mod tests {
                 entry.release_failure().unwrap();
                 assert_eq!(entry.failure(), Some(first));
                 assert_eq!(entry.at_stop(), Some(&snapshot));
-                released(entry.retained_usage().unwrap());
+                released(&entry.retained_usage().unwrap());
             } else {
                 match entry.take_driver() {
                     Ok(mut driver) => {
                         if driver.release().is_err() {
                             driver.release().unwrap();
                         }
-                        released(driver.control.usage());
+                        released(&driver.control.usage());
                     }
                     Err(_) => {
                         entry.release_failure().unwrap();
-                        released(entry.retained_usage().unwrap());
+                        released(&entry.retained_usage().unwrap());
                     }
                 }
             }
@@ -731,7 +740,7 @@ mod tests {
         assert!(entry.failure().is_none());
         let mut driver = entry.take_driver().unwrap();
         driver.release().unwrap();
-        released(driver.control.usage());
+        released(&driver.control.usage());
     }
     #[test]
     fn a_ready_entry_whose_driver_is_gone_reports_consumed_and_the_driver_still_releases() {
@@ -748,7 +757,7 @@ mod tests {
         entry.driver = Some(lost);
         let mut driver = entry.take_driver().unwrap();
         driver.release().unwrap();
-        released(driver.control.usage());
+        released(&driver.control.usage());
     }
     #[test]
     fn a_failed_entry_whose_driver_is_gone_reports_consumed_and_the_driver_still_cleans() {
@@ -767,7 +776,7 @@ mod tests {
         ));
         entry.driver = Some(lost);
         entry.release_failure().unwrap();
-        released(entry.retained_usage().unwrap());
+        released(&entry.retained_usage().unwrap());
     }
     #[test]
     fn empty_ready_entry_transfers_actual_driver_once_and_reaches_real_completion() {
@@ -782,7 +791,7 @@ mod tests {
         for _ in 0..100 {
             if driver.step().unwrap() == super::super::head::HeadStep::Complete {
                 driver.release().unwrap();
-                released(driver.control.usage());
+                released(&driver.control.usage());
                 return;
             }
         }

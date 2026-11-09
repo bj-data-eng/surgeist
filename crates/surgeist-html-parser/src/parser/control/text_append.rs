@@ -174,25 +174,26 @@ impl ParseControl {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
         let actual = value.payload_bytes() as u64;
-        let current = self
-            .usage
-            .resource(HtmlParseResource::ManagedCapacityBytes)
-            .current;
-        let Some(total) = current.checked_sub(old).and_then(|v| v.checked_add(actual)) else {
+        let current = self.live(HtmlParseResource::ManagedCapacityBytes)?;
+        if current
+            .checked_sub(old)
+            .and_then(|v| v.checked_add(actual))
+            .is_none()
+        {
             return self.fail(HtmlParseStop::InternalInvariant(
                 HtmlParseInvariant::CapacityMismatch,
             ));
-        };
-        let Some(overlap) = current.checked_add(actual) else {
+        }
+        if current.checked_add(actual).is_none() {
             return self.representation(HtmlParseResource::PeakTransientBytes);
-        };
+        }
+        self.record_capacity(
+            old,
+            actual,
+            (expected_capacity as u64).saturating_mul(UNIT_BYTES),
+        )?;
         allocation.vector_capacity = value.capacity();
         allocation.data_pointer = value.data_address();
-        self.set(HtmlParseResource::ManagedCapacityBytes, total);
-        self.set(HtmlParseResource::PeakTransientBytes, overlap);
-        self.set(HtmlParseResource::PeakTransientBytes, total);
-        self.usage.actual_capacity_bytes = total;
-        self.usage.actual_capacity_high_water = self.usage.actual_capacity_high_water.max(total);
         if value.capacity() > expected_capacity {
             return self.fail(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::ManagedCapacityBytes,
@@ -233,30 +234,23 @@ impl ParseControl {
     ) -> Result<(), HtmlParseStop> {
         self.checkpoint()?;
         if allocation.resource == HtmlParseResource::BufferedUtf16Units {
-            let managed = self
-                .usage
-                .resource(HtmlParseResource::ManagedUtf16Units)
-                .current;
-            let buffered = self
-                .usage
-                .resource(HtmlParseResource::BufferedUtf16Units)
-                .current;
-            let Some(total) = managed.checked_add(allocation.units) else {
-                return self.representation(HtmlParseResource::ManagedUtf16Units);
-            };
-            self.check_value(
-                HtmlParseResource::ManagedUtf16Units,
-                total,
-                allocation.units,
+            // The appended units were admitted as buffered text. The managed
+            // cap is checked first: the units are released from the buffered
+            // total only once they fit.
+            self.check_resources(
+                &[Change::Acquire(
+                    HtmlResource::ManagedUtf16Units,
+                    allocation.units,
+                )],
+                Site::RELEASE,
             )?;
-            // The appended units were admitted as buffered text.
-            let Some(buffered) = buffered.checked_sub(allocation.units) else {
-                return self.fail(HtmlParseStop::InternalInvariant(
-                    HtmlParseInvariant::ReleaseUnderflow,
-                ));
-            };
-            self.set(HtmlParseResource::BufferedUtf16Units, buffered);
-            self.set(HtmlParseResource::ManagedUtf16Units, total);
+            self.admit_resources(
+                &[
+                    Change::Release(HtmlResource::BufferedUtf16Units, allocation.units),
+                    Change::Acquire(HtmlResource::ManagedUtf16Units, allocation.units),
+                ],
+                Site::RELEASE,
+            )?;
             allocation.resource = HtmlParseResource::ManagedUtf16Units;
         }
         Ok(())

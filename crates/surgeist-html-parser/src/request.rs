@@ -1,6 +1,7 @@
 //! Checked decoded requests. Construction selects context and configuration;
 //! source admission, preprocessing and parsing remain execution operations.
 
+use crate::accounting::RequestAccounting;
 use crate::{
     HtmlCapture, HtmlCaptureDocumentId, HtmlCaptureError, HtmlCaptureFact, HtmlCaptureSubjectKind,
     HtmlCapturedDocument, HtmlCapturedNodeKind, HtmlFragmentContext, HtmlParseCancellation,
@@ -193,10 +194,31 @@ pub struct HtmlDocumentParseRequest {
     base_facts: Option<crate::HtmlParseBaseFacts>,
     initial_policy_base: bool,
     associated: InputBank,
+    accounting: RequestAccounting,
     #[cfg(test)]
     value_sharing: ValueSharingMode,
 }
 impl HtmlDocumentParseRequest {
+    /// Charges the parse in the operation and scope of `accounting` instead of
+    /// an operation of its own. See [`HtmlParseAccounting`](crate::HtmlParseAccounting)
+    /// for the scopes the parse adds and the custody its report keeps.
+    #[must_use]
+    pub fn with_accounting(mut self, accounting: crate::HtmlParseAccounting) -> Self {
+        self.accounting = RequestAccounting::host(accounting);
+        self
+    }
+    /// Profiles the parse's own operation in `mode`; [`ProfileMode::Off`](surgeist_ledger::ProfileMode::Off) reads
+    /// no clock and keeps no observation. The profile is read from the report
+    /// or failure. A request that supplies accounting is profiled by the
+    /// operation of its host instead.
+    #[must_use]
+    pub fn with_profile(mut self, mode: surgeist_ledger::ProfileMode) -> Self {
+        self.accounting = RequestAccounting::profiled(mode);
+        self
+    }
+    pub(crate) fn accounting(&self) -> &RequestAccounting {
+        &self.accounting
+    }
     pub(crate) fn initial_policy_base(&self) -> bool {
         self.initial_policy_base
     }
@@ -245,6 +267,7 @@ impl HtmlDocumentParseRequest {
             context: self.context,
             base_facts: self.base_facts,
             associated: self.associated.into_shared(),
+            accounting: self.accounting,
             #[cfg(test)]
             value_sharing: self.value_sharing,
         }
@@ -260,6 +283,7 @@ impl HtmlDocumentParseRequest {
             base_facts: None,
             initial_policy_base: false,
             associated: InputBank::default(),
+            accounting: RequestAccounting::default(),
             #[cfg(test)]
             value_sharing: ValueSharingMode::Combined,
         }
@@ -303,6 +327,7 @@ impl HtmlDocumentParseRequest {
             base_facts: None,
             initial_policy_base: false,
             associated: InputBank::default(),
+            accounting: RequestAccounting::default(),
             #[cfg(test)]
             value_sharing: ValueSharingMode::Combined,
         })
@@ -426,10 +451,14 @@ pub(crate) struct DocumentRequestParts {
     context: DocumentContext,
     base_facts: Option<crate::HtmlParseBaseFacts>,
     associated: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
+    accounting: RequestAccounting,
     #[cfg(test)]
     value_sharing: ValueSharingMode,
 }
 impl DocumentRequestParts {
+    pub(crate) fn accounting(&self) -> &RequestAccounting {
+        &self.accounting
+    }
     #[cfg(test)]
     pub(crate) fn value_sharing(&self) -> ValueSharingMode {
         self.value_sharing
@@ -488,10 +517,28 @@ pub struct HtmlFragmentParseRequest {
     image_support: crate::HtmlImageSupport,
     base_facts: Option<std::sync::Arc<crate::HtmlCapturedBaseFacts>>,
     associated: InputBank,
+    accounting: RequestAccounting,
     #[cfg(test)]
     value_sharing: ValueSharingMode,
 }
 impl HtmlFragmentParseRequest {
+    /// Charges the parse in the operation and scope of `accounting` instead of
+    /// an operation of its own; see [`HtmlDocumentParseRequest::with_accounting`].
+    #[must_use]
+    pub fn with_accounting(mut self, accounting: crate::HtmlParseAccounting) -> Self {
+        self.accounting = RequestAccounting::host(accounting);
+        self
+    }
+    /// Profiles the parse's own operation in `mode`; see
+    /// [`HtmlDocumentParseRequest::with_profile`].
+    #[must_use]
+    pub fn with_profile(mut self, mode: surgeist_ledger::ProfileMode) -> Self {
+        self.accounting = RequestAccounting::profiled(mode);
+        self
+    }
+    pub(crate) fn accounting(&self) -> &RequestAccounting {
+        &self.accounting
+    }
     #[cfg(test)]
     pub(crate) fn with_value_sharing(mut self, mode: ValueSharingMode) -> Self {
         self.value_sharing = mode;
@@ -525,6 +572,7 @@ impl HtmlFragmentParseRequest {
             image_support: self.image_support,
             base_facts: self.base_facts,
             associated: self.associated.into_shared(),
+            accounting: self.accounting,
             #[cfg(test)]
             value_sharing: self.value_sharing,
         }
@@ -567,6 +615,7 @@ impl HtmlFragmentParseRequest {
             image_support,
             base_facts: None,
             associated: InputBank::default(),
+            accounting: RequestAccounting::default(),
             #[cfg(test)]
             value_sharing: ValueSharingMode::Combined,
         })
@@ -703,10 +752,14 @@ pub(crate) struct FragmentRequestParts {
     image_support: crate::HtmlImageSupport,
     base_facts: Option<std::sync::Arc<crate::HtmlCapturedBaseFacts>>,
     associated: Option<std::sync::Arc<crate::construction::associated::Inputs>>,
+    accounting: RequestAccounting,
     #[cfg(test)]
     value_sharing: ValueSharingMode,
 }
 impl FragmentRequestParts {
+    pub(crate) fn accounting(&self) -> &RequestAccounting {
+        &self.accounting
+    }
     #[cfg(test)]
     pub(crate) fn value_sharing(&self) -> ValueSharingMode {
         self.value_sharing

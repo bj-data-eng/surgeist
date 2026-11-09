@@ -26,14 +26,7 @@ pub(super) fn script_type_charge(
     control: &mut ParseControl,
     work: surgeist_html::bounded::script::HtmlScriptTypeWork,
 ) -> Result<(), SessionError> {
-    match work {
-        surgeist_html::bounded::script::HtmlScriptTypeWork::RecordVisit(units) => {
-            control.charge(HtmlParseWorkCategory::RecordVisit, units)?
-        }
-        surgeist_html::bounded::script::HtmlScriptTypeWork::InspectByte(units) => {
-            control.charge(HtmlParseWorkCategory::InspectByte, units)?
-        }
-    }
+    control.charge_change(surgeist_html::accounting::script_type_work(work))?;
     Ok(())
 }
 

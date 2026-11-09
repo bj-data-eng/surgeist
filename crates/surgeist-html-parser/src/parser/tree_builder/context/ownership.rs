@@ -28,7 +28,11 @@ impl<'source> FragmentEntry<'source> {
         // Bootstrap fixed ownership exists before the first source admission.
         let mut driver = ContextFragmentDriver {
             request,
-            control: ParseControl::new(*request.limits(), request.cancellation().clone()),
+            control: ParseControl::with_accounting(
+                *request.limits(),
+                request.cancellation().clone(),
+                request.accounting().lease(),
+            ),
             head: None,
             failed_evidence: None,
             evidence_taken: false,
@@ -43,7 +47,12 @@ impl<'source> FragmentEntry<'source> {
             &mut tokenizer,
             target,
         ) {
-            Ok(()) => None,
+            Ok(()) => {
+                driver
+                    .control
+                    .enter_phase(crate::accounting::ParsePhase::Construction);
+                None
+            }
             Err(error) => {
                 error.stop_cause().latch(&mut driver.control);
                 Some(error)
@@ -559,7 +568,7 @@ impl<'owner> FragmentInitializationAttempt<'owner> {
         self.entry.reason()
     }
     #[cfg(test)]
-    pub(crate) fn usage(&self) -> Option<&HtmlParseUsage> {
+    pub(crate) fn usage(&self) -> Option<HtmlParseUsage> {
         self.entry.driver.as_ref().map(|d| d.control.usage())
     }
     pub(crate) fn retain_failure(&mut self) -> Result<(), FragmentExecutionError> {
@@ -801,7 +810,7 @@ impl StoppedFragmentConstruction {
     pub(crate) fn after_cleanup(&self) -> &HtmlParseUsage {
         &self.after_cleanup
     }
-    pub(crate) fn retained_usage(&self) -> &HtmlParseUsage {
+    pub(crate) fn retained_usage(&self) -> HtmlParseUsage {
         self.control.usage()
     }
     pub(crate) fn diagnostics(
@@ -872,7 +881,7 @@ impl OwnedFragmentFailure {
     pub(crate) fn after_cleanup(&self) -> &HtmlParseUsage {
         self.failure.after_cleanup()
     }
-    pub(crate) fn retained_usage(&self) -> &HtmlParseUsage {
+    pub(crate) fn retained_usage(&self) -> HtmlParseUsage {
         self.failure.retained_usage()
     }
     pub(crate) fn diagnostics(
@@ -922,6 +931,9 @@ impl SealedFragmentConstruction {
     pub(crate) fn limits(&self) -> &crate::HtmlParseLimits {
         self.request.limits()
     }
+    pub(crate) fn accounting(&self) -> &crate::accounting::RequestAccounting {
+        self.request.accounting()
+    }
     pub(crate) fn context(&self) -> &crate::HtmlFragmentContext {
         self.request.context()
     }
@@ -967,7 +979,7 @@ impl SealedFragmentConstruction {
     pub(crate) fn final_usage(&self) -> &HtmlParseUsage {
         &self.parts.final_usage
     }
-    pub(crate) fn retained_usage(&self) -> &HtmlParseUsage {
+    pub(crate) fn retained_usage(&self) -> HtmlParseUsage {
         self.parts.control.usage()
     }
     #[cfg(test)]
@@ -1155,9 +1167,9 @@ mod tests {
                 surgeist_html::construction::HtmlNodeKind::Document(_)
             ));
         }
-        assert_eq!(sealed.retained_usage(), &before);
+        assert_eq!(sealed.retained_usage(), before);
         sealed.release().unwrap();
-        assert_reclaimed(sealed.retained_usage());
+        assert_reclaimed(&sealed.retained_usage());
     }
     #[test]
     fn original_fragment_source_capture_and_options_move_into_cancel_independent_native_seal() {
@@ -1234,7 +1246,7 @@ mod tests {
             sealed.source().len() as u64
         );
         sealed.release().unwrap();
-        assert_reclaimed(sealed.retained_usage());
+        assert_reclaimed(&sealed.retained_usage());
     }
     #[test]
     fn pre_source_zero_work_zero_and_cancel_keep_original_error_and_absent_binding() {
@@ -1283,7 +1295,7 @@ mod tests {
             );
             assert_reclaimed(failure.after_cleanup());
             failure.release().unwrap();
-            assert_reclaimed(failure.retained_usage());
+            assert_reclaimed(&failure.retained_usage());
             assert!(owner.take_failure().is_err());
         }
     }
@@ -1321,7 +1333,7 @@ mod tests {
         assert!(failure.failure.source_binding().is_some());
         assert_eq!(failure.context().capture().identity(), &capture);
         failure.release().unwrap();
-        assert_reclaimed(failure.retained_usage());
+        assert_reclaimed(&failure.retained_usage());
     }
     #[test]
     fn active_cancel_failure_detaches_before_original_request_move_and_keeps_committed_diagnostics()
@@ -1345,7 +1357,7 @@ mod tests {
         assert!(!failure.diagnostics().unwrap().is_empty());
         assert!(failure.reason().is_some());
         failure.release().unwrap();
-        assert_reclaimed(failure.retained_usage());
+        assert_reclaimed(&failure.retained_usage());
     }
     #[test]
     fn foreign_original_request_refuses_seal_without_moving_frozen_or_original_slots() {
@@ -1363,7 +1375,7 @@ mod tests {
         assert!(parts.is_some());
         let mut sealed = first.seal(&mut parts).unwrap();
         sealed.release().unwrap();
-        assert_reclaimed(sealed.retained_usage());
+        assert_reclaimed(&sealed.retained_usage());
     }
     #[test]
     fn cancelled_seal_retains_both_slots_then_moves_only_diagnostics_to_original_failure() {
@@ -1388,7 +1400,7 @@ mod tests {
         assert_eq!(first, HtmlParseStop::Cancelled);
         assert!(!failure.diagnostics().unwrap().is_empty());
         failure.release().unwrap();
-        assert_reclaimed(failure.retained_usage());
+        assert_reclaimed(&failure.retained_usage());
     }
     #[test]
     fn frozen_failure_alias_refusal_retains_owner_and_first_stop_for_real_retry() {
@@ -1424,7 +1436,7 @@ mod tests {
         assert_eq!(failure.stop(), first);
         assert_eq!(failure.diagnostics().unwrap().len(), 1);
         failure.release().unwrap();
-        assert_reclaimed(failure.retained_usage());
+        assert_reclaimed(&failure.retained_usage());
     }
     #[test]
     fn sealed_native_alias_refusal_preserves_original_and_actual_arena_until_disposal_retry() {
@@ -1441,7 +1453,7 @@ mod tests {
         drop(alias);
         sealed.release().unwrap();
         assert!(sealed.fragment().is_none());
-        assert_reclaimed(sealed.retained_usage());
+        assert_reclaimed(&sealed.retained_usage());
     }
     #[test]
     fn source_qualified_seal_exact_and_one_short_fixed_transfer_preserve_both_real_slots() {
@@ -1530,7 +1542,7 @@ mod tests {
                 if sealed.release().is_err() {
                     sealed.release().unwrap();
                 }
-                assert_reclaimed(sealed.retained_usage());
+                assert_reclaimed(&sealed.retained_usage());
             } else {
                 assert!(matches!(
                     result,
@@ -1551,7 +1563,7 @@ mod tests {
                 assert_eq!(failure.stop(), first);
                 assert_eq!(failure.diagnostics().unwrap().len(), 1);
                 failure.release().unwrap();
-                assert_reclaimed(failure.retained_usage());
+                assert_reclaimed(&failure.retained_usage());
             }
         }
     }
@@ -1596,7 +1608,7 @@ mod tests {
         let mut failure = owner.take_failure().unwrap();
         assert!(failure.diagnostics().is_none());
         failure.release().unwrap();
-        assert_reclaimed(failure.retained_usage());
+        assert_reclaimed(&failure.retained_usage());
     }
     #[test]
     fn every_new_initial_fixed_admission_cut_keeps_actual_request_stop_and_zero_cleanup() {
@@ -1650,7 +1662,7 @@ mod tests {
             assert!(failure.diagnostics().is_none());
             assert!(owner.begin().is_err());
             failure.release().unwrap();
-            assert_reclaimed(failure.retained_usage());
+            assert_reclaimed(&failure.retained_usage());
             assert_eq!(
                 failure
                     .retained_usage()
@@ -1703,7 +1715,7 @@ mod tests {
                 assert_eq!(diagnostics.len(), 0);
             }
             failure.release().unwrap();
-            assert_reclaimed(failure.retained_usage());
+            assert_reclaimed(&failure.retained_usage());
             assert_eq!(
                 failure
                     .retained_usage()
@@ -1737,7 +1749,7 @@ mod tests {
         assert_eq!(failure.stop(), HtmlParseStop::Cancelled);
         assert_eq!(failure.diagnostics().unwrap().len(), 0);
         failure.release().unwrap();
-        assert_reclaimed(failure.retained_usage());
+        assert_reclaimed(&failure.retained_usage());
     }
     /// The request join of a fragment failure, listed term by term from what
     /// production moves rather than read from `request_join_layout`: the
@@ -1898,7 +1910,7 @@ mod tests {
                 ));
                 assert_eq!(failure.diagnostics().unwrap().len(), 0);
                 failure.release().unwrap();
-                assert_reclaimed(failure.retained_usage());
+                assert_reclaimed(&failure.retained_usage());
             }
         }
     }
@@ -1950,7 +1962,7 @@ mod tests {
             HtmlParseStop::UnsupportedStandaloneState(HtmlParseUnsupportedState::Provenance)
         );
         failure.release().unwrap();
-        assert_reclaimed(failure.retained_usage());
+        assert_reclaimed(&failure.retained_usage());
     }
     #[test]
     fn sealed_captured_shadow_effects_keep_literal_order_properties_nodes_and_source_after_cancel()
@@ -2048,7 +2060,7 @@ mod tests {
             before
         );
         sealed.release().unwrap();
-        assert_reclaimed(sealed.retained_usage());
+        assert_reclaimed(&sealed.retained_usage());
     }
     #[test]
     fn frozen_effect_registry_rows_are_actual_borrowed_capture_qualifications_after_cancel() {
@@ -2146,7 +2158,7 @@ mod tests {
         );
         drop(names);
         sealed.release().unwrap();
-        assert_reclaimed(sealed.retained_usage());
+        assert_reclaimed(&sealed.retained_usage());
     }
     #[test]
     fn sealed_owned_shadow_host_effect_uses_same_native_arena_without_capture_impersonation() {
@@ -2205,6 +2217,6 @@ mod tests {
             before
         );
         sealed.release().unwrap();
-        assert_reclaimed(sealed.retained_usage());
+        assert_reclaimed(&sealed.retained_usage());
     }
 }

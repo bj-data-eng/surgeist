@@ -400,7 +400,7 @@ fn foreign_history_cursor_lender_disposal_keeps_cleanup_owned() {
             )))
         );
     }
-    assert_eq!(c.usage(), &owning_usage);
+    assert_eq!(c.usage(), owning_usage);
     assert!(c.stop().is_none());
     assert!(cursor.is_some());
     {
@@ -772,7 +772,7 @@ fn materialized_history_alias_and_foreign_refusals_preserve_slot_for_real_cleanu
     );
     assert!(output.is_some());
     assert_eq!(alias.code_units(), [65, 66]);
-    assert_eq!(c.usage(), &before);
+    assert_eq!(c.usage(), before);
     assert!(c.stop().is_none());
     let mut foreign = control();
     assert_eq!(
@@ -782,7 +782,7 @@ fn materialized_history_alias_and_foreign_refusals_preserve_slot_for_real_cleanu
         )))
     );
     assert!(output.is_some());
-    assert_eq!(c.usage(), &before);
+    assert_eq!(c.usage(), before);
     assert!(c.stop().is_none());
     drop(alias);
     // The original slot can be released successfully after its alias dies.

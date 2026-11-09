@@ -156,25 +156,7 @@ impl ParseControl {
         &mut self,
         work: surgeist_html::bounded::values::HtmlValuePoolWork,
     ) -> Result<(), HtmlParseStop> {
-        self.charge_many(&[
-            (
-                HtmlParseWorkCategory::RecordVisit,
-                work.record_visits() as u64,
-            ),
-            (
-                HtmlParseWorkCategory::InspectByte,
-                work.inspected_bytes() as u64,
-            ),
-            (HtmlParseWorkCategory::CopyByte, work.copied_bytes() as u64),
-            (
-                HtmlParseWorkCategory::ProviderCall,
-                work.provider_calls() as u64,
-            ),
-            (
-                HtmlParseWorkCategory::ReserveByte,
-                work.reserve_bytes() as u64,
-            ),
-        ])
+        self.charge_changes(&value_pool_work(work))
     }
     /// Credits a finalized vector ticket. A ticket of another controller or a
     /// capacity that does not fit the ledger is refused with a latched stop,
@@ -220,28 +202,29 @@ impl ParseControl {
         units: u64,
         attributes: u64,
     ) -> Result<(), HtmlParseStop> {
-        let values = self.plan_storage(&[
+        let requests = [
             (HtmlParseResource::ManagedUtf16Units, units),
             (HtmlParseResource::ManagedAttributes, attributes),
-        ])?;
-        let total = self
-            .usage
-            .resource(HtmlParseResource::ManagedCapacityBytes)
-            .current
-            .checked_add(bytes)
-            .ok_or_else(|| self.stop_representation(HtmlParseResource::ManagedCapacityBytes))?;
-        self.check_value(HtmlParseResource::ManagedCapacityBytes, total, bytes)?;
-        self.check_value(HtmlParseResource::PeakTransientBytes, total, bytes)?;
-        for resource in RESOURCES {
-            if resource.storage() {
-                self.set(resource, values.copy(resource));
-            }
+        ];
+        let (storage, count) = self.storage_batch(&requests)?;
+        let mut batch = [Change::Acquire(HtmlResource::SourceUnits, 0); STORAGE_RESOURCES + 2];
+        let mut length = 0_usize;
+        let capacity = [
+            Change::Acquire(HtmlResource::ManagedCapacityBytes, bytes),
+            Change::Acquire(HtmlResource::PeakTransientBytes, bytes),
+        ];
+        for change in storage.iter().take(count).chain(capacity.iter()).copied() {
+            let Some(slot) = batch.get_mut(length) else {
+                return Err(self.fail_invariant(HtmlParseInvariant::LedgerState));
+            };
+            *slot = change;
+            length = length.saturating_add(1);
         }
-        self.set(HtmlParseResource::ManagedCapacityBytes, total);
-        self.set(HtmlParseResource::PeakTransientBytes, total);
-        self.usage.actual_capacity_bytes = total;
-        self.usage.actual_capacity_high_water = self.usage.actual_capacity_high_water.max(total);
-        Ok(())
+        let Some(batch) = batch.get(..length) else {
+            return Err(self.fail_invariant(HtmlParseInvariant::LedgerState));
+        };
+        let result = self.accounts_mut()?.charge(batch);
+        result.map_err(|error| self.storage_stop(error, &requests))
     }
     pub(crate) fn final_string_ticket(
         &mut self,

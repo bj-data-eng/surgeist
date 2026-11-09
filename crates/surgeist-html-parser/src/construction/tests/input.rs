@@ -705,7 +705,7 @@ fn checkbox_clone_partial_work_and_cancellation_keep_original_owner_and_first_st
             session.freeze(&mut c).err(),
             Some(SessionError::Stop(first))
         );
-        assert_eq!(c.usage(), &usage);
+        assert_eq!(c.usage(), usage);
         lexer.release(&mut c).unwrap();
         session.release(&mut c).unwrap();
         storage_zero(&c);
@@ -826,7 +826,7 @@ fn checkbox_on_fallback_exact_two_unit_admission_preserves_an_existing_output_pr
                     session.append_input_value(&mut c, &node, &mut buffer)
                 };
                 assert_eq!(retry.err(), Some(SessionError::Stop(first)));
-                assert_eq!(c.usage(), &usage);
+                assert_eq!(c.usage(), usage);
             }
             let first = c.stop();
             let work = c.usage().resource(HtmlParseResource::WorkCredits).current;

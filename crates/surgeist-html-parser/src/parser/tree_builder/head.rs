@@ -2227,7 +2227,7 @@ mod event_retention_tests {
                 let before = driver.control.usage().clone();
                 let stop = driver.control.stop();
                 assert!(driver.step().is_err());
-                assert_eq!(driver.control.usage(), &before);
+                assert_eq!(driver.control.usage(), before);
                 assert_eq!(driver.control.stop(), stop);
                 preprocessing(driver.event.as_ref().unwrap(), &source, 8);
             } else {
@@ -2351,7 +2351,7 @@ mod event_retention_tests {
         let at_stop = driver.control.first_stop_usage().unwrap().clone();
         let before = driver.control.usage().clone();
         assert!(driver.step().is_err());
-        assert_eq!(driver.control.usage(), &before);
+        assert_eq!(driver.control.usage(), before);
         driver.release().unwrap();
         assert_released(&driver.control);
         assert_eq!(driver.control.usage().actual_capacity_bytes, 0);
@@ -2441,7 +2441,7 @@ mod event_retention_tests {
         let at_stop = driver.control.first_stop_usage().unwrap().clone();
         let before = driver.control.usage().clone();
         assert!(driver.step().is_err());
-        assert_eq!(driver.control.usage(), &before);
+        assert_eq!(driver.control.usage(), before);
         driver.release().unwrap();
         assert_released(&driver.control);
         assert_eq!(driver.control.usage().actual_capacity_bytes, 0);
@@ -2476,7 +2476,7 @@ mod event_retention_tests {
                 HtmlParseStop::InternalInvariant(HtmlParseInvariant::ForeignControl)
             )))
         ));
-        assert_eq!(driver.control.usage(), &before);
+        assert_eq!(driver.control.usage(), before);
         assert!(
             driver
                 .head
@@ -2488,7 +2488,7 @@ mod event_retention_tests {
                 .lexical_pending
                 .is_none()
         );
-        assert_eq!(foreign.first_stop_usage().unwrap(), foreign.usage());
+        assert_eq!(foreign.first_stop_usage().unwrap(), &foreign.usage());
         for _ in 0..128 {
             match driver.step().unwrap() {
                 HeadStep::Consumed => {}

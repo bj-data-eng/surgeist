@@ -1,6 +1,9 @@
 //! Private accounting owner for parsing. Counts describe admitted physical work
 //! and owned storage, not CPU instructions, elapsed time, allocator metadata or RSS.
 
+use crate::accounting::{
+    Classified, HtmlParseAccountingFault, Lease, LedgerError, ParsePhase, classify,
+};
 use crate::keyed::{Table, slots};
 use crate::settings::{RESOURCES, ResourceTable};
 use crate::{
@@ -12,7 +15,16 @@ use std::{
     mem::size_of,
     sync::{Arc, Weak},
 };
+use surgeist_html::accounting::{
+    HtmlChange, HtmlResource, HtmlWork, attribute_edit_entries, attribute_edit_work,
+    record_largest, retained_provider_storage, value_pool_work,
+};
+use surgeist_ledger::{Change, Refusal, RefusalReason};
 
+mod accounts;
+use accounts::{Accounts, LedgerUsage};
+mod admission;
+use admission::Site;
 mod attributes;
 mod construction;
 mod css_value;
@@ -32,6 +44,9 @@ const WORK_COUNT: usize = 8;
 /// One value per [`HtmlParseWorkCategory`]; a lookup cannot be out of range.
 type WorkTable<T> = Table<HtmlParseWorkCategory, T, WORK_COUNT>;
 pub(crate) const WORK_QUANTUM: usize = 256;
+/// The resources that are plain storage: every one that
+/// [`HtmlParseResource::storage`] accepts.
+const STORAGE_RESOURCES: usize = 14;
 
 /// Each category has weight one; units are physical bytes or individual events.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -56,6 +71,36 @@ slots!(HtmlParseWorkCategory, WORK_COUNT, {
     ReserveByte => 6,
     ProviderCall => 7,
 });
+impl HtmlParseWorkCategory {
+    /// Every category, in declaration order.
+    const ALL: [Self; WORK_COUNT] = [
+        Self::InputUnitRead,
+        Self::InspectByte,
+        Self::CopyByte,
+        Self::StateStep,
+        Self::RecordVisit,
+        Self::RecordWrite,
+        Self::ReserveByte,
+        Self::ProviderCall,
+    ];
+    /// The schema work dimension that carries this category.
+    pub(crate) const fn work(self) -> HtmlWork {
+        match self {
+            Self::InputUnitRead => HtmlWork::InputUnitRead,
+            Self::InspectByte => HtmlWork::InspectByte,
+            Self::CopyByte => HtmlWork::CopyByte,
+            Self::StateStep => HtmlWork::StateStep,
+            Self::RecordVisit => HtmlWork::RecordVisit,
+            Self::RecordWrite => HtmlWork::RecordWrite,
+            Self::ReserveByte => HtmlWork::ReserveByte,
+            Self::ProviderCall => HtmlWork::ProviderCall,
+        }
+    }
+    /// One work change.
+    pub(crate) const fn change(self, units: u64) -> HtmlChange {
+        Change::Work(self.work(), units)
+    }
+}
 
 /// A state the parser's own sequencing rules out, reported instead of a panic.
 ///
@@ -173,6 +218,9 @@ pub enum HtmlParseInvariant {
     /// admission or release callback while another callback of the same call
     /// was still running.
     ReentrantProviderCallback,
+    /// A ledger change named a dimension the parser does not charge, or the
+    /// ledger scopes are not in the state setup produced.
+    LedgerState,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -196,6 +244,9 @@ pub enum HtmlParseStop {
     InternalInvariant(HtmlParseInvariant),
     UnsupportedStandaloneState(HtmlParseUnsupportedState),
     InvalidAssociatedFacts,
+    /// The ledger the parse charges failed in a way that is not a refusal of a
+    /// charged change, or the supplied accounting cannot serve the parse.
+    Accounting(HtmlParseAccountingFault),
     /// Reached CSS processing/fact failure, distinct from invalid CSS syntax.
     ColorProcessing(HtmlColorProcessingError),
     /// A finite CSS property owner refused its actual reached resource.
@@ -262,6 +313,8 @@ pub struct HtmlParseResourceUsage {
     pub(crate) high_water: u64,
 }
 
+/// The parse's usage as the ledger holds it: each resource's live value and
+/// peak, each work category's total, and the credit total.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct HtmlParseUsage {
     resources: ResourceTable<HtmlParseResourceUsage>,
@@ -274,6 +327,41 @@ pub struct HtmlParseUsage {
     pub(crate) largest_atomic_layout: u64,
 }
 impl HtmlParseUsage {
+    /// A usage that records nothing.
+    fn empty() -> Self {
+        Self {
+            resources: ResourceTable::filled(HtmlParseResourceUsage::default()),
+            work: WorkTable::filled(0),
+            actual_capacity_bytes: 0,
+            actual_capacity_high_water: 0,
+            largest_atomic_layout: 0,
+        }
+    }
+    /// Reads the usage of a charging scope and the credit total of its cap
+    /// scope.
+    fn from_ledger(usage: &LedgerUsage, credits: u64) -> Self {
+        let mut view = Self::empty();
+        for resource in RESOURCES {
+            let reading = match resource.dimension() {
+                Some(dimension) => HtmlParseResourceUsage {
+                    current: usage.live(dimension),
+                    high_water: usage.peak(dimension),
+                },
+                None => HtmlParseResourceUsage {
+                    current: credits,
+                    high_water: credits,
+                },
+            };
+            *view.resources.get_mut(resource) = reading;
+        }
+        for category in HtmlParseWorkCategory::ALL {
+            *view.work.get_mut(category) = usage.work(category.work());
+        }
+        view.actual_capacity_bytes = usage.live(HtmlResource::ManagedCapacityBytes);
+        view.actual_capacity_high_water = usage.peak(HtmlResource::ManagedCapacityBytes);
+        view.largest_atomic_layout = usage.peak(HtmlResource::AtomicLayoutBytes);
+        view
+    }
     pub fn resource(&self, resource: HtmlParseResource) -> HtmlParseResourceUsage {
         self.resources.copy(resource)
     }
@@ -292,8 +380,13 @@ struct FirstStop {
 const SIBLING_HINTS: usize = 16;
 /// Exclusively mutable owner. Only the cancellation handle can be cloned.
 pub(crate) struct ParseControl {
-    limits: ResourceTable<u64>,
-    usage: HtmlParseUsage,
+    /// The ledger operation and scopes every charge goes through. It is absent
+    /// only when the parse could not set them up; the control is then stopped
+    /// from its creation with the fault.
+    accounts: Option<Accounts>,
+    /// The caps the accounts were built with, for tests that lower one.
+    #[cfg(test)]
+    configured: HtmlParseLimits,
     cancellation: HtmlParseCancellation,
     // The first stop and its fixed usage observation, captured together before
     // any producer cleanup, so neither can exist without the other.
@@ -459,19 +552,34 @@ const UNIT_LITERAL_PAIR_BYTES: u64 = 3;
 const BYTE_PAIR_BYTES: u64 = 2;
 
 impl ParseControl {
+    /// A control with its own ledger operation.
+    #[cfg(test)]
     pub(crate) fn new(limits: HtmlParseLimits, cancellation: HtmlParseCancellation) -> Self {
-        let limits = limits.values();
-        Self {
-            limits,
-            usage: HtmlParseUsage {
-                resources: ResourceTable::filled(HtmlParseResourceUsage::default()),
-                work: WorkTable::filled(0),
-                actual_capacity_bytes: 0,
-                actual_capacity_high_water: 0,
-                largest_atomic_layout: 0,
-            },
+        Self::with_accounting(limits, cancellation, None)
+    }
+    /// A control that charges the operation of `lease`, or its own operation
+    /// when there is none. A setup fault latches as the first stop.
+    pub(crate) fn with_accounting(
+        limits: HtmlParseLimits,
+        cancellation: HtmlParseCancellation,
+        lease: Option<&Arc<Lease>>,
+    ) -> Self {
+        let (accounts, stopped) = match Accounts::new(&limits, lease) {
+            Ok(accounts) => (Some(accounts), None),
+            Err(fault) => (
+                None,
+                Some(FirstStop {
+                    reason: HtmlParseStop::Accounting(fault),
+                    usage: HtmlParseUsage::empty(),
+                }),
+            ),
+        };
+        let mut control = Self {
+            accounts,
+            #[cfg(test)]
+            configured: limits,
             cancellation,
-            stopped: None,
+            stopped,
             source: None,
             identity: Arc::new(()),
             sibling_hints: [None; SIBLING_HINTS],
@@ -507,7 +615,9 @@ impl ParseControl {
             space_token_overshoot: 0,
             #[cfg(test)]
             stop_armed: false,
-        }
+        };
+        control.enter_phase(ParsePhase::Admission);
+        control
     }
     /// Counts one prepared payload slot, records where it was asked for, and arms
     /// the stop a test asked for.
@@ -519,8 +629,16 @@ impl ParseControl {
         hook.prepared = hook.prepared.saturating_add(1);
         PREPARED_SLOT_STOP.set(hook);
     }
-    pub(crate) fn usage(&self) -> &HtmlParseUsage {
-        &self.usage
+    /// The usage the ledger holds now. A ledger that cannot be read has found a
+    /// defect of its own, which the next admission reports as the stop; the
+    /// usage then reads as empty.
+    pub(crate) fn usage(&self) -> HtmlParseUsage {
+        self.accounts
+            .as_ref()
+            .and_then(|accounts| accounts.usage().ok())
+            .map_or_else(HtmlParseUsage::empty, |(usage, credits)| {
+                HtmlParseUsage::from_ledger(&usage, credits)
+            })
     }
     pub(crate) fn identity(&self) -> ControlIdentity {
         ControlIdentity(self.identity.clone())
@@ -611,7 +729,7 @@ impl ParseControl {
         // this observation. Denied requests remain in the stop, not in usage.
         self.stopped = Some(FirstStop {
             reason,
-            usage: self.usage.clone(),
+            usage: self.usage(),
         });
         reason
     }
@@ -829,32 +947,13 @@ impl ParseControl {
         let Ok(bytes) = u64::try_from(bytes) else {
             return self.representation(HtmlParseResource::AtomicLayoutBytes);
         };
-        self.check_value(HtmlParseResource::AtomicLayoutBytes, bytes, bytes)?;
-        self.set(HtmlParseResource::AtomicLayoutBytes, bytes);
-        self.usage.largest_atomic_layout = self.usage.largest_atomic_layout.max(bytes);
-        Ok(())
+        self.record_layout(bytes)
     }
-    fn check_value(
-        &mut self,
-        resource: HtmlParseResource,
-        value: u64,
-        delta: u64,
-    ) -> Result<(), HtmlParseStop> {
-        let limit = self.limits.copy(resource);
-        if value > limit {
-            return self.fail(HtmlParseStop::LimitExceeded {
-                resource,
-                limit,
-                current: self.usage.resource(resource).current,
-                requested_delta: delta,
-            });
-        }
-        Ok(())
-    }
-    fn set(&mut self, resource: HtmlParseResource, value: u64) {
-        let usage = self.usage.resources.get_mut(resource);
-        usage.current = value;
-        usage.high_water = usage.high_water.max(value);
+    /// Records `bytes` as the latest indivisible layout; the largest one reached
+    /// is its peak.
+    pub(super) fn record_layout(&mut self, bytes: u64) -> Result<(), HtmlParseStop> {
+        let layout = self.gauge_changes(HtmlResource::AtomicLayoutBytes, bytes)?;
+        self.admit_resources(&layout, Site::RELEASE)
     }
     pub(crate) fn admit_source(&mut self, source: &HtmlSource) -> Result<(), HtmlParseStop> {
         self.checkpoint()?;
@@ -871,8 +970,10 @@ impl ParseControl {
         let Ok(units) = u64::try_from(source.len()) else {
             return self.representation(HtmlParseResource::SourceUnits);
         };
-        self.check_value(HtmlParseResource::SourceUnits, units, units)?;
-        self.set(HtmlParseResource::SourceUnits, units);
+        self.admit_resources(
+            &[Change::Acquire(HtmlResource::SourceUnits, units)],
+            Site::RELEASE,
+        )?;
         self.source = Some((source.identity().clone(), source.coordinates()));
         Ok(())
     }
@@ -971,35 +1072,44 @@ impl ParseControl {
     pub(crate) fn charge_byte_pair_comparison(&mut self) -> Result<(), HtmlParseStop> {
         self.charge(HtmlParseWorkCategory::InspectByte, BYTE_PAIR_BYTES)
     }
-    fn charge_many(
+    fn charge_many<const N: usize>(
         &mut self,
-        charges: &[(HtmlParseWorkCategory, u64)],
+        charges: &[(HtmlParseWorkCategory, u64); N],
     ) -> Result<(), HtmlParseStop> {
+        let changes: [HtmlChange; N] = charges.map(|(category, units)| category.change(units));
+        self.charge_changes(&changes)
+    }
+    /// Charges work changes, which name schema work dimensions, as one batch.
+    pub(crate) fn charge_changes(&mut self, changes: &[HtmlChange]) -> Result<(), HtmlParseStop> {
         self.checkpoint()?;
-        let mut work = self.usage.work;
-        let mut increment = 0_u64;
-        for &(category, units) in charges {
-            let (Some(next), Some(total)) = (
-                work.copy(category).checked_add(units),
-                increment.checked_add(units),
-            ) else {
-                return self.representation(HtmlParseResource::WorkCredits);
-            };
-            *work.get_mut(category) = next;
-            increment = total;
+        self.admit_work(changes)
+    }
+    /// Charges one work change.
+    pub(crate) fn charge_change(&mut self, change: HtmlChange) -> Result<(), HtmlParseStop> {
+        self.charge_changes(&[change])
+    }
+    /// Charges each change of a conversion on its own, in order, leaving out the
+    /// ones that carry no work.
+    pub(crate) fn charge_each_nonzero(
+        &mut self,
+        changes: &[HtmlChange],
+    ) -> Result<(), HtmlParseStop> {
+        for &change in changes {
+            if !matches!(change, Change::Work(_, 0)) {
+                self.charge_change(change)?;
+            }
         }
-        let Some(total) = self
-            .usage
-            .resource(HtmlParseResource::WorkCredits)
-            .current
-            .checked_add(increment)
-        else {
-            return self.representation(HtmlParseResource::WorkCredits);
-        };
-        self.check_value(HtmlParseResource::WorkCredits, total, increment)?;
-        self.usage.work = work;
-        self.set(HtmlParseResource::WorkCredits, total);
         Ok(())
+    }
+    /// Acquires one resource change of a conversion.
+    pub(crate) fn acquire_change(&mut self, change: HtmlChange) -> Result<(), HtmlParseStop> {
+        let Change::Acquire(dimension, units) = change else {
+            return Err(self.fail_invariant(HtmlParseInvariant::LedgerState));
+        };
+        let Some(resource) = HtmlParseResource::from_dimension(dimension) else {
+            return Err(self.fail_invariant(HtmlParseInvariant::LedgerState));
+        };
+        self.acquire(resource, units)
     }
     /// Owned scans/loops must execute only the returned span before calling again.
     /// Allocations are separately precharged indivisible provider submissions.
@@ -1013,12 +1123,14 @@ impl ParseControl {
         self.charge(category, batch as u64)?;
         Ok(batch)
     }
-    fn plan_storage(
+    /// The acquisitions of `requests` as one batch in resource precedence order,
+    /// one change per resource with the sum of its requests. Zero sums are left
+    /// out: they change nothing.
+    fn storage_batch(
         &mut self,
         requests: &[(HtmlParseResource, u64)],
-    ) -> Result<ResourceTable<u64>, HtmlParseStop> {
+    ) -> Result<([HtmlChange; STORAGE_RESOURCES], usize), HtmlParseStop> {
         self.checkpoint()?;
-        let mut values = self.usage.resources.map(|usage| usage.current);
         let mut deltas = ResourceTable::filled(0_u64);
         for &(resource, delta) in requests {
             if !resource.storage() {
@@ -1026,35 +1138,68 @@ impl ParseControl {
                     HtmlParseInvariant::NonStorageResource,
                 ));
             }
-            let (Some(value), Some(sum)) = (
-                values.copy(resource).checked_add(delta),
-                deltas.copy(resource).checked_add(delta),
-            ) else {
-                return self.representation(resource);
+            let Some(sum) = deltas.copy(resource).checked_add(delta) else {
+                // A live value plus an earlier request can overflow first.
+                let first = self.storage_overflow(requests).unwrap_or(resource);
+                return self.representation(first);
             };
-            *values.get_mut(resource) = value;
             *deltas.get_mut(resource) = sum;
         }
+        let mut changes = [Change::Acquire(HtmlResource::SourceUnits, 0); STORAGE_RESOURCES];
+        let mut count = 0_usize;
         for resource in RESOURCES {
-            if resource.storage() {
-                self.check_value(resource, values.copy(resource), deltas.copy(resource))?;
+            let delta = deltas.copy(resource);
+            if !resource.storage() || delta == 0 {
+                continue;
             }
+            let (Some(dimension), Some(slot)) = (resource.dimension(), changes.get_mut(count))
+            else {
+                return Err(self.fail_invariant(HtmlParseInvariant::LedgerState));
+            };
+            *slot = Change::Acquire(dimension, delta);
+            count = count.saturating_add(1);
         }
-        Ok(values)
+        Ok((changes, count))
+    }
+    /// Admits the storage `requests` as one atomic batch.
+    fn admit_storage(
+        &mut self,
+        requests: &[(HtmlParseResource, u64)],
+    ) -> Result<(), HtmlParseStop> {
+        let (changes, count) = self.storage_batch(requests)?;
+        let Some(batch) = changes.get(..count) else {
+            return Err(self.fail_invariant(HtmlParseInvariant::LedgerState));
+        };
+        let result = self.accounts_mut()?.charge(batch);
+        result.map_err(|error| self.storage_stop(error, requests))
     }
     pub(crate) fn acquire(
         &mut self,
         resource: HtmlParseResource,
         units: u64,
     ) -> Result<(), HtmlParseStop> {
-        self.acquire_many(&[(resource, units)])
+        // One request is its own batch: nothing to sum.
+        self.checkpoint()?;
+        let Some(dimension) = resource.dimension().filter(|_| resource.storage()) else {
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::NonStorageResource,
+            ));
+        };
+        if units == 0 {
+            return Ok(());
+        }
+        let result = self
+            .accounts_mut()?
+            .charge(&[Change::Acquire(dimension, units)]);
+        result.map_err(|error| self.storage_stop(error, &[(resource, units)]))
     }
     /// Whether the retained diagnostics have reached the `Diagnostics` limit.
     /// That limit bounds retention only: a diagnostic emitted while this holds
     /// is dropped and counted, never refused, so the parse continues.
-    pub(crate) fn diagnostics_retention_full(&self) -> bool {
-        self.usage.resource(HtmlParseResource::Diagnostics).current
-            >= self.limits.copy(HtmlParseResource::Diagnostics)
+    pub(crate) fn diagnostics_retention_full(&mut self) -> Result<bool, HtmlParseStop> {
+        let retained = self.live(HtmlParseResource::Diagnostics)?;
+        let limit = self.limit(HtmlParseResource::Diagnostics)?;
+        Ok(retained >= limit)
     }
     /// Charges counting one dropped diagnostic, before the count is written:
     /// one visit of the retention state and one write of the counter.
@@ -1069,13 +1214,10 @@ impl ParseControl {
         &mut self,
         requests: &[(HtmlParseResource, u64)],
     ) -> Result<(), HtmlParseStop> {
-        let values = self.plan_storage(requests)?;
-        for resource in RESOURCES {
-            if resource.storage() {
-                self.set(resource, values.copy(resource));
-            }
+        if let &[(resource, units)] = requests {
+            return self.acquire(resource, units);
         }
-        Ok(())
+        self.admit_storage(requests)
     }
     /// Admits an immutable provider graph retained by this original owner.
     /// Provider-computed bytes include its backing capacities, rather than a
@@ -1086,30 +1228,19 @@ impl ParseControl {
         units: u64,
         entries: u64,
     ) -> Result<(), HtmlParseStop> {
-        let values = self.plan_storage(&[
-            (HtmlParseResource::ManagedUtf16Units, units),
-            (HtmlParseResource::AuxiliaryEntries, entries),
-        ])?;
-        let Some(total) = self
-            .usage
-            .resource(HtmlParseResource::ManagedCapacityBytes)
-            .current
-            .checked_add(bytes)
-        else {
-            return self.representation(HtmlParseResource::ManagedCapacityBytes);
-        };
-        self.check_value(HtmlParseResource::ManagedCapacityBytes, total, bytes)?;
-        self.check_value(HtmlParseResource::PeakTransientBytes, total, bytes)?;
-        for resource in RESOURCES {
-            if resource.storage() {
-                self.set(resource, values.copy(resource));
-            }
-        }
-        self.set(HtmlParseResource::ManagedCapacityBytes, total);
-        self.set(HtmlParseResource::PeakTransientBytes, total);
-        self.usage.actual_capacity_bytes = total;
-        self.usage.actual_capacity_high_water = self.usage.actual_capacity_high_water.max(total);
-        Ok(())
+        self.checkpoint()?;
+        let changes = retained_provider_storage(bytes, units, entries)
+            .map(|(resource, amount)| Change::Acquire(resource, amount));
+        let result = self.accounts_mut()?.charge(&changes);
+        result.map_err(|error| {
+            self.storage_stop(
+                error,
+                &[
+                    (HtmlParseResource::ManagedUtf16Units, units),
+                    (HtmlParseResource::AuxiliaryEntries, entries),
+                ],
+            )
+        })
     }
     /// Ownership disposal after the retained provider handle has been dropped.
     /// This does not execute source work or observe a later cancellation.
@@ -1130,13 +1261,17 @@ impl ParseControl {
     /// Whether [`Self::release_retained_provider`] of this storage by this
     /// controller's own identity would be accepted. Nothing changes.
     pub(crate) fn can_release_retained_provider(
-        &self,
+        &mut self,
         bytes: u64,
         units: u64,
         entries: u64,
     ) -> bool {
-        self.after_release(&Self::provider_release(bytes, units, entries))
-            .is_some()
+        let Some(changes) = Self::release_changes(&Self::provider_release(bytes, units, entries))
+        else {
+            return false;
+        };
+        self.accounts_mut()
+            .is_ok_and(|accounts| accounts.check(&changes).is_ok())
     }
     fn provider_release(bytes: u64, units: u64, entries: u64) -> [(HtmlParseResource, u64); 4] {
         [
@@ -1146,6 +1281,17 @@ impl ParseControl {
             (HtmlParseResource::AuxiliaryEntries, entries),
         ]
     }
+    /// The release of each request, or `None` for a request that names the work
+    /// credit total, which is not a resource.
+    fn release_changes<const N: usize>(
+        requests: &[(HtmlParseResource, u64); N],
+    ) -> Option<[HtmlChange; N]> {
+        let mut changes = [Change::Release(HtmlResource::SourceUnits, 0); N];
+        for (slot, &(resource, units)) in changes.iter_mut().zip(requests) {
+            *slot = Change::Release(resource.dimension()?, units);
+        }
+        Some(changes)
+    }
     /// Nonmutating logical preflight before actual storage reservations. The
     /// session rechecks with `acquire_many` immediately before graph mutation;
     /// no logical acquisition may intervene between that commit and mutation.
@@ -1153,7 +1299,12 @@ impl ParseControl {
         &mut self,
         requests: &[(HtmlParseResource, u64)],
     ) -> Result<(), HtmlParseStop> {
-        self.plan_storage(requests).map(|_| ())
+        let (changes, count) = self.storage_batch(requests)?;
+        let Some(batch) = changes.get(..count) else {
+            return Err(self.fail_invariant(HtmlParseInvariant::LedgerState));
+        };
+        let result = self.accounts_mut()?.check(batch);
+        result.map_err(|error| self.storage_stop(error, requests))
     }
     /// Commits the actual ordinary-edge delta of a child-order change. The
     /// construction owner precharges the bounded in-place edits before this
@@ -1167,22 +1318,15 @@ impl ParseControl {
         edge_remove: u64,
     ) -> Result<(), HtmlParseStop> {
         self.require_identity(owner)?;
-        let Some(retained_edges) = self
-            .usage
-            .resource(HtmlParseResource::ManagedEdges)
-            .current
-            .checked_sub(edge_remove)
-        else {
-            return self.fail(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::ReleaseUnderflow,
-            ));
-        };
-        let Some(edges) = retained_edges.checked_add(edge_add) else {
-            return self.representation(HtmlParseResource::ManagedEdges);
-        };
-        self.check_value(HtmlParseResource::ManagedEdges, edges, edge_add)?;
-        self.set(HtmlParseResource::ManagedEdges, edges);
-        Ok(())
+        // The edges that remain are checked against the cap, so the release
+        // comes first.
+        self.admit_resources(
+            &[
+                Change::Release(HtmlResource::ManagedEdges, edge_remove),
+                Change::Acquire(HtmlResource::ManagedEdges, edge_add),
+            ],
+            Site::RELEASE,
+        )
     }
     /// Produces the actual empty vector and its unique accounting ticket.
     /// This creates no allocation or logical node/edge/storage admission.
@@ -1471,29 +1615,19 @@ impl ParseControl {
         }
     }
     fn cleanup_capacity(&mut self, bytes: u64) -> Result<(), HtmlParseStop> {
-        let capacity = self.capacity_after_release(bytes)?;
-        self.commit_capacity(capacity);
-        Ok(())
+        self.admit_resources(&Self::capacity_release(bytes), Site::RELEASE)
     }
-    /// The retained capacity left once `bytes` are credited; nothing changes.
-    fn capacity_after_release(&mut self, bytes: u64) -> Result<u64, HtmlParseStop> {
-        match self
-            .usage
-            .resource(HtmlParseResource::ManagedCapacityBytes)
-            .current
-            .checked_sub(bytes)
-        {
-            Some(capacity) => Ok(capacity),
-            None => self.fail(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::ReleaseUnderflow,
-            )),
-        }
+    /// The credit of `bytes` of retained capacity.
+    const fn capacity_release(bytes: u64) -> [HtmlChange; 2] {
+        [
+            Change::Release(HtmlResource::ManagedCapacityBytes, bytes),
+            Change::Release(HtmlResource::PeakTransientBytes, bytes),
+        ]
     }
-    /// Records a capacity that [`Self::capacity_after_release`] has qualified.
-    fn commit_capacity(&mut self, capacity: u64) {
-        self.set(HtmlParseResource::ManagedCapacityBytes, capacity);
-        self.set(HtmlParseResource::PeakTransientBytes, capacity);
-        self.usage.actual_capacity_bytes = capacity;
+    /// Checks that `bytes` of retained capacity can be credited; nothing
+    /// changes.
+    fn check_capacity_release(&mut self, bytes: u64) -> Result<(), HtmlParseStop> {
+        self.check_resources(&Self::capacity_release(bytes), Site::RELEASE)
     }
     /// Builds an actual fixed shared payload after admission and a final poll.
     /// Nested vectors keep their own tickets. Arc headers/allocator metadata and
@@ -1534,24 +1668,22 @@ impl ParseControl {
             (HtmlParseWorkCategory::CopyByte, bytes),
             (HtmlParseWorkCategory::RecordWrite, 1),
         ])?;
-        let Some(total) = self
-            .usage
-            .resource(HtmlParseResource::ManagedCapacityBytes)
-            .current
-            .checked_add(bytes)
-        else {
-            return self.representation(HtmlParseResource::ManagedCapacityBytes);
-        };
-        self.check_value(HtmlParseResource::ManagedCapacityBytes, total, bytes)?;
-        self.check_value(HtmlParseResource::PeakTransientBytes, total, bytes)?;
-        self.check_value(HtmlParseResource::AtomicLayoutBytes, bytes, bytes)?;
-        self.set(HtmlParseResource::ManagedCapacityBytes, total);
-        self.set(HtmlParseResource::PeakTransientBytes, total);
-        self.set(HtmlParseResource::AtomicLayoutBytes, bytes);
-        self.usage.largest_atomic_layout = self.usage.largest_atomic_layout.max(bytes);
-        self.usage.actual_capacity_bytes = total;
-        self.usage.actual_capacity_high_water = self.usage.actual_capacity_high_water.max(total);
+        self.admit_layout(bytes)?;
         Ok(bytes)
+    }
+    /// Admits `bytes` of fixed layout as retained capacity and as the largest
+    /// layout reached: the two capacity caps, then the layout cap.
+    fn admit_layout(&mut self, bytes: u64) -> Result<(), HtmlParseStop> {
+        let [release, acquire] = self.gauge_changes(HtmlResource::AtomicLayoutBytes, bytes)?;
+        self.admit_resources(
+            &[
+                Change::Acquire(HtmlResource::ManagedCapacityBytes, bytes),
+                Change::Acquire(HtmlResource::PeakTransientBytes, bytes),
+                release,
+                acquire,
+            ],
+            Site::RELEASE,
+        )
     }
     /// Polls once more after [`Self::admit_shared_layout`]; a stop refunds the
     /// capacity just charged. Admission proved that capacity and no other
@@ -1605,19 +1737,23 @@ impl ParseControl {
                 allocation,
             });
         }
-        let remaining = match self.capacity_after_release(allocation.bytes) {
-            Ok(remaining) => remaining,
-            Err(stop) => {
-                return Err(SharedReleaseError {
-                    stop,
-                    shared,
-                    allocation,
-                });
-            }
-        };
+        if let Err(stop) = self.check_capacity_release(allocation.bytes) {
+            return Err(SharedReleaseError {
+                stop,
+                shared,
+                allocation,
+            });
+        }
         match Arc::try_unwrap(shared) {
             Ok(payload) => {
-                self.commit_capacity(remaining);
+                // The release was checked above and nothing intervened.
+                if let Err(stop) = self.cleanup_capacity(allocation.bytes) {
+                    return Err(SharedReleaseError {
+                        stop,
+                        shared: Arc::new(payload),
+                        allocation,
+                    });
+                }
                 Ok(payload)
             }
             Err(shared) => {
@@ -1679,13 +1815,19 @@ impl ParseControl {
                 HtmlParseInvariant::NonReclaimableNodes,
             ));
         }
-        let Some(value) = self.usage.resource(resource).current.checked_sub(units) else {
-            return self.fail(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::ReleaseUnderflow,
-            ));
+        self.release_storage(resource, units)
+    }
+    /// Credits `units` of a storage resource; a credit beyond what is held is a
+    /// release underflow.
+    fn release_storage(
+        &mut self,
+        resource: HtmlParseResource,
+        units: u64,
+    ) -> Result<(), HtmlParseStop> {
+        let Some(dimension) = resource.dimension() else {
+            return Err(self.fail_invariant(HtmlParseInvariant::NonStorageResource));
         };
-        self.set(resource, value);
-        Ok(())
+        self.admit_resources(&[Change::Release(dimension, units)], Site::RELEASE)
     }
     /// Fixed original-owner disposal of exactly admitted resources. Selected
     /// replacement and cleanup retain the private ownership receipt; final
@@ -1693,32 +1835,14 @@ impl ParseControl {
     /// This cannot execute source work or observe a later cancellation. A
     /// request beyond what is admitted latches `ReleaseUnderflow` and credits
     /// nothing, not even the requests that precede it.
-    pub(crate) fn commit_prepared_release(
+    pub(crate) fn commit_prepared_release<const N: usize>(
         &mut self,
-        requests: &[(HtmlParseResource, u64)],
+        requests: &[(HtmlParseResource, u64); N],
     ) -> Result<(), HtmlParseStop> {
-        let Some(values) = self.after_release(requests) else {
-            return self.fail(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::ReleaseUnderflow,
-            ));
+        let Some(changes) = Self::release_changes(requests) else {
+            return Err(self.fail_invariant(HtmlParseInvariant::NonStorageResource));
         };
-        for &(resource, _) in requests {
-            self.set(resource, values.copy(resource));
-        }
-        self.usage.actual_capacity_bytes = self
-            .usage
-            .resource(HtmlParseResource::ManagedCapacityBytes)
-            .current;
-        Ok(())
-    }
-    /// Every resource's current value once `requests` are credited, or `None`
-    /// when one asks for more than is admitted.
-    fn after_release(&self, requests: &[(HtmlParseResource, u64)]) -> Option<ResourceTable<u64>> {
-        let mut values = self.usage.resources.map(|usage| usage.current);
-        for &(resource, units) in requests {
-            *values.get_mut(resource) = values.copy(resource).checked_sub(units)?;
-        }
-        Some(values)
+        self.admit_resources(&changes, Site::RELEASE)
     }
     /// Releases actually deallocated non-node logical slots after first-stop.
     /// No successful engine transition may use this cleanup-only path.
@@ -1746,23 +1870,12 @@ impl ParseControl {
                 HtmlParseInvariant::NonReclaimableNodes,
             ));
         }
-        let Some(value) = self.usage.resource(resource).current.checked_sub(units) else {
-            return self.fail(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::ReleaseUnderflow,
-            ));
-        };
-        self.set(resource, value);
-        Ok(())
+        self.release_storage(resource, units)
     }
     pub(crate) fn observe_tree_depth(&mut self, depth: u64) -> Result<(), HtmlParseStop> {
         self.checkpoint()?;
-        self.check_value(
-            HtmlParseResource::TreeDepth,
-            depth,
-            depth.saturating_sub(self.usage.resource(HtmlParseResource::TreeDepth).current),
-        )?;
-        self.set(HtmlParseResource::TreeDepth, depth);
-        Ok(())
+        let record = self.gauge_changes(HtmlResource::TreeDepth, depth)?;
+        self.admit_resources(&record, Site::RELEASE)
     }
     fn reserve<T>(
         &mut self,
@@ -1770,47 +1883,13 @@ impl ParseControl {
         plan: ReservationPlan,
     ) -> Result<(), HtmlParseStop> {
         self.checkpoint()?;
-        let current = self
-            .usage
-            .resource(HtmlParseResource::ManagedCapacityBytes)
-            .current;
-        let Some(without_old) = current.checked_sub(plan.old_bytes) else {
-            return self.fail(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::CapacityMismatch,
-            ));
-        };
-        let (Some(new_total), Some(overlap)) = (
-            without_old.checked_add(plan.new_bytes),
-            current.checked_add(plan.new_bytes),
-        ) else {
-            return self.representation(HtmlParseResource::ManagedCapacityBytes);
-        };
         // A reservation never shrinks the allocation it replaces.
-        let Some(growth) = plan.new_bytes.checked_sub(plan.old_bytes) else {
-            return self.fail(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::CapacityMismatch,
-            ));
-        };
-        self.check_value(HtmlParseResource::ManagedCapacityBytes, new_total, growth)?;
-        self.check_value(
-            HtmlParseResource::PeakTransientBytes,
-            overlap,
-            plan.new_bytes,
-        )?;
-        self.check_value(
-            HtmlParseResource::AtomicLayoutBytes,
-            plan.new_bytes,
-            plan.new_bytes,
-        )?;
-        self.set(HtmlParseResource::PeakTransientBytes, overlap);
-        self.set(HtmlParseResource::AtomicLayoutBytes, plan.new_bytes);
-        self.usage.largest_atomic_layout = self.usage.largest_atomic_layout.max(plan.new_bytes);
+        self.preflight_capacity(plan.old_bytes, plan.new_bytes, true)?;
         // Only an allocator refusal of the spare room falls back to the slots
         // that are needed; a limit that refuses the target never does.
         if vector.try_reserve_exact(plan.additional).is_err()
             && (plan.needed >= plan.additional || vector.try_reserve_exact(plan.needed).is_err())
         {
-            self.set(HtmlParseResource::PeakTransientBytes, current);
             return self.fail(HtmlParseStop::AllocationFailed {
                 resource: HtmlParseResource::ManagedCapacityBytes,
                 layout_bytes: plan.new_bytes,
@@ -1823,18 +1902,7 @@ impl ParseControl {
         else {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
-        let Some(actual_total) = without_old.checked_add(actual) else {
-            return self.representation(HtmlParseResource::ManagedCapacityBytes);
-        };
-        self.usage.actual_capacity_bytes = actual_total;
-        self.usage.actual_capacity_high_water =
-            self.usage.actual_capacity_high_water.max(actual_total);
-        self.set(HtmlParseResource::ManagedCapacityBytes, actual_total);
-        let Some(actual_overlap) = current.checked_add(actual) else {
-            return self.representation(HtmlParseResource::PeakTransientBytes);
-        };
-        self.set(HtmlParseResource::PeakTransientBytes, actual_overlap);
-        self.set(HtmlParseResource::PeakTransientBytes, actual_total);
+        self.record_capacity(plan.old_bytes, actual, plan.new_bytes)?;
         if actual > plan.new_bytes {
             // `actual` exceeds `new_bytes`, which is at least `old_bytes`.
             let requested_delta = actual.saturating_sub(plan.old_bytes);
@@ -1847,6 +1915,81 @@ impl ParseControl {
         }
         self.checkpoint()
     }
+    /// Admits the layout of a replacement allocation before it is made: the
+    /// capacity left once `old` bytes are credited and `new` are held must fit
+    /// the capacity cap, the overlap of both layouts must fit the transient
+    /// cap, and `new` must fit the layout cap. The capacity cap is checked and
+    /// not recorded; the overlap and the layout are recorded, the overlap as a
+    /// peak that is released again.
+    pub(super) fn preflight_capacity(
+        &mut self,
+        old: u64,
+        new: u64,
+        never_shrinks: bool,
+    ) -> Result<(), HtmlParseStop> {
+        let current = self.live(HtmlParseResource::ManagedCapacityBytes)?;
+        let Some(without_old) = current.checked_sub(old) else {
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::CapacityMismatch,
+            ));
+        };
+        if without_old.checked_add(new).is_none() || current.checked_add(new).is_none() {
+            return self.representation(HtmlParseResource::ManagedCapacityBytes);
+        }
+        if never_shrinks && new < old {
+            return self.fail(HtmlParseStop::InternalInvariant(
+                HtmlParseInvariant::CapacityMismatch,
+            ));
+        }
+        self.check_resources(
+            &[
+                Change::Release(HtmlResource::ManagedCapacityBytes, old),
+                Change::Acquire(HtmlResource::ManagedCapacityBytes, new),
+            ],
+            Site::REPLACEMENT.growth(new.saturating_sub(old)),
+        )?;
+        let [release, acquire] = self.gauge_changes(HtmlResource::AtomicLayoutBytes, new)?;
+        self.admit_resources(
+            &[
+                Change::Acquire(HtmlResource::PeakTransientBytes, new),
+                Change::Release(HtmlResource::PeakTransientBytes, new),
+                release,
+                acquire,
+            ],
+            Site::RELEASE,
+        )
+    }
+    /// Records the capacity an allocation actually holds in place of the `old`
+    /// bytes it was charged. The allocation exists whatever its size, so the
+    /// record is not refused for exceeding the planned `expected` layout: an
+    /// overshoot is recorded and the caller stops. When the ledger cannot hold
+    /// an overshoot under the cap the stop names the overshoot and the ledger
+    /// keeps the capacity from before.
+    pub(super) fn record_capacity(
+        &mut self,
+        old: u64,
+        actual: u64,
+        expected: u64,
+    ) -> Result<(), HtmlParseStop> {
+        let recorded = self.accounts_mut()?.charge(&[
+            Change::Release(HtmlResource::ManagedCapacityBytes, old),
+            Change::Acquire(HtmlResource::ManagedCapacityBytes, actual),
+            Change::Acquire(HtmlResource::PeakTransientBytes, actual),
+            Change::Release(HtmlResource::PeakTransientBytes, old),
+        ]);
+        let Err(error) = recorded else {
+            return Ok(());
+        };
+        if actual > expected && matches!(classify(error), Classified::Refusal(_)) {
+            return self.fail(HtmlParseStop::LimitExceeded {
+                resource: HtmlParseResource::ManagedCapacityBytes,
+                limit: expected,
+                current: old,
+                requested_delta: actual.saturating_sub(old),
+            });
+        }
+        Err(self.ledger_stop(error, Site::REPLACEMENT))
+    }
     /// Cleanup is permitted after a terminal stop; it refunds no admitted work or
     /// high-water observation. The vector owner supplies its exact retained size.
     fn cleanup_storage(
@@ -1855,22 +1998,17 @@ impl ParseControl {
         units: u64,
         bytes: u64,
     ) -> Result<(), HtmlParseStop> {
-        let (Some(logical), Some(capacity)) = (
-            self.usage.resource(resource).current.checked_sub(units),
-            self.usage
-                .resource(HtmlParseResource::ManagedCapacityBytes)
-                .current
-                .checked_sub(bytes),
-        ) else {
-            return self.fail(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::ReleaseUnderflow,
-            ));
+        let Some(dimension) = resource.dimension() else {
+            return Err(self.fail_invariant(HtmlParseInvariant::NonStorageResource));
         };
-        self.set(resource, logical);
-        self.set(HtmlParseResource::ManagedCapacityBytes, capacity);
-        self.set(HtmlParseResource::PeakTransientBytes, capacity);
-        self.usage.actual_capacity_bytes = capacity;
-        Ok(())
+        self.admit_resources(
+            &[
+                Change::Release(dimension, units),
+                Change::Release(HtmlResource::ManagedCapacityBytes, bytes),
+                Change::Release(HtmlResource::PeakTransientBytes, bytes),
+            ],
+            Site::RELEASE,
+        )
     }
     /// Admits only the known fixed Arc payload. Arc headers, allocator metadata,
     /// and its infallible setup are provider limitations, not measured capacity.
@@ -1922,23 +2060,8 @@ impl ParseControl {
             (HtmlParseWorkCategory::ReserveByte, bytes),
             (HtmlParseWorkCategory::ProviderCall, 1),
         ])?;
-        let current = self
-            .usage
-            .resource(HtmlParseResource::ManagedCapacityBytes)
-            .current;
-        let Some(total) = current.checked_add(bytes) else {
-            return self.representation(HtmlParseResource::ManagedCapacityBytes);
-        };
-        self.check_value(HtmlParseResource::ManagedCapacityBytes, total, bytes)?;
-        self.check_value(HtmlParseResource::PeakTransientBytes, total, bytes)?;
-        self.check_value(HtmlParseResource::AtomicLayoutBytes, bytes, bytes)?;
-        self.set(HtmlParseResource::ManagedCapacityBytes, total);
-        self.set(HtmlParseResource::PeakTransientBytes, total);
-        self.set(HtmlParseResource::AtomicLayoutBytes, bytes);
-        self.usage.largest_atomic_layout = self.usage.largest_atomic_layout.max(bytes);
         // This total includes known fixed payloads, never opaque provider headers.
-        self.usage.actual_capacity_bytes = total;
-        self.usage.actual_capacity_high_water = self.usage.actual_capacity_high_water.max(total);
+        self.admit_layout(bytes)?;
         Ok(bytes)
     }
     /// Owns actual wrapper construction, including the empty-vector case where
@@ -2026,12 +2149,8 @@ impl ParseControl {
         else {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
         };
-        if allocation.units > self.usage.resource(allocation.resource).current
-            || bytes
-                > self
-                    .usage
-                    .resource(HtmlParseResource::ManagedCapacityBytes)
-                    .current
+        if allocation.units > self.live(allocation.resource)?
+            || bytes > self.live(HtmlParseResource::ManagedCapacityBytes)?
         {
             return self.fail(HtmlParseStop::InternalInvariant(
                 HtmlParseInvariant::ReleaseUnderflow,
@@ -2089,29 +2208,13 @@ impl ParseControl {
                 HtmlParseInvariant::NonStorageResource,
             ));
         }
-        let buffered = self
-            .usage
-            .resource(HtmlParseResource::BufferedUtf16Units)
-            .current;
-        let managed = self
-            .usage
-            .resource(HtmlParseResource::ManagedUtf16Units)
-            .current;
-        let Some(buffered) = buffered.checked_sub(allocation.units) else {
-            return self.fail(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::ReleaseUnderflow,
-            ));
-        };
-        let Some(managed) = managed.checked_add(allocation.units) else {
-            return self.representation(HtmlParseResource::ManagedUtf16Units);
-        };
-        self.check_value(
-            HtmlParseResource::ManagedUtf16Units,
-            managed,
-            allocation.units,
+        self.admit_resources(
+            &[
+                Change::Release(HtmlResource::BufferedUtf16Units, allocation.units),
+                Change::Acquire(HtmlResource::ManagedUtf16Units, allocation.units),
+            ],
+            Site::RELEASE,
         )?;
-        self.set(HtmlParseResource::BufferedUtf16Units, buffered);
-        self.set(HtmlParseResource::ManagedUtf16Units, managed);
         allocation.resource = HtmlParseResource::ManagedUtf16Units;
         Ok(())
     }
@@ -2458,9 +2561,7 @@ impl<T> OwnedVec<T> {
             (HtmlParseWorkCategory::CopyByte, bytes),
         ])?;
         if size_of::<T>() > WORK_QUANTUM - 2 {
-            control.check_value(HtmlParseResource::AtomicLayoutBytes, bytes, bytes)?;
-            control.set(HtmlParseResource::AtomicLayoutBytes, bytes);
-            control.usage.largest_atomic_layout = control.usage.largest_atomic_layout.max(bytes);
+            control.record_layout(bytes)?;
         }
         control.release(self.resource, 1)?;
         Ok(self.vector.pop())
@@ -2578,7 +2679,7 @@ impl<T> OwnedVec<T> {
                 u64::from(plan.is_some()),
             ),
         ])?;
-        control.plan_storage(&[(self.resource, units)])?;
+        control.check_acquire_many(&[(self.resource, units)])?;
         if let Some(plan) = plan {
             control.reserve(&mut self.vector, plan)?;
         }
@@ -2659,9 +2760,7 @@ impl<T> OwnedVec<T> {
         let bytes = size_of::<T>() as u64;
         self.prepare(control, 1, bytes, 1, growth)?;
         if size_of::<T>() >= WORK_QUANTUM {
-            control.check_value(HtmlParseResource::AtomicLayoutBytes, bytes, bytes)?;
-            control.set(HtmlParseResource::AtomicLayoutBytes, bytes);
-            control.usage.largest_atomic_layout = control.usage.largest_atomic_layout.max(bytes);
+            control.record_layout(bytes)?;
         }
         control.acquire(self.resource, 1)?;
         self.vector.push(value);
@@ -2707,10 +2806,7 @@ impl<T> OwnedVec<T> {
                 (HtmlParseWorkCategory::CopyByte, bytes),
             ])?;
             if const { size_of::<T>() + 2 > WORK_QUANTUM } {
-                control.check_value(HtmlParseResource::AtomicLayoutBytes, bytes, bytes)?;
-                control.set(HtmlParseResource::AtomicLayoutBytes, bytes);
-                control.usage.largest_atomic_layout =
-                    control.usage.largest_atomic_layout.max(bytes);
+                control.record_layout(bytes)?;
             }
             control.release(self.resource, 1)?;
             drop(self.vector.pop());
@@ -2747,10 +2843,7 @@ impl<T> OwnedVec<T> {
             let bytes = size_of::<T>() as u64;
             self.prepare(control, 1, bytes, 1, growth)?;
             if size_of::<T>() >= WORK_QUANTUM {
-                control.check_value(HtmlParseResource::AtomicLayoutBytes, bytes, bytes)?;
-                control.set(HtmlParseResource::AtomicLayoutBytes, bytes);
-                control.usage.largest_atomic_layout =
-                    control.usage.largest_atomic_layout.max(bytes);
+                control.record_layout(bytes)?;
             }
             control.acquire(self.resource, 1)
         })();
@@ -2826,10 +2919,7 @@ impl<T: Copy> OwnedVec<T> {
             let bytes = std::mem::size_of_val(chunk) as u64;
             control.charge(HtmlParseWorkCategory::CopyByte, bytes)?;
             if bytes > WORK_QUANTUM as u64 {
-                control.check_value(HtmlParseResource::AtomicLayoutBytes, bytes, bytes)?;
-                control.set(HtmlParseResource::AtomicLayoutBytes, bytes);
-                control.usage.largest_atomic_layout =
-                    control.usage.largest_atomic_layout.max(bytes);
+                control.record_layout(bytes)?;
             }
             control.acquire(self.resource, chunk.len() as u64)?;
             self.vector.extend_from_slice(chunk);
@@ -2858,6 +2948,8 @@ impl HtmlParseUsage {
     }
 }
 
+#[cfg(test)]
+mod admission_tests;
 #[cfg(test)]
 mod html_value_tests;
 #[cfg(test)]
@@ -3002,7 +3094,7 @@ mod tests {
             c.stop_unsupported_standalone(HtmlParseUnsupportedState::Provenance),
             stop
         );
-        assert_eq!(c.usage(), &before);
+        assert_eq!(c.usage(), before);
         assert_eq!(
             c.stop_unsupported_standalone(HtmlParseUnsupportedState::PendingScript),
             stop
@@ -3077,7 +3169,7 @@ mod tests {
         assert_eq!(&binding.0, source.identity());
         assert_eq!(binding.1, source.coordinates());
         assert!(c.stopped_source_binding().unwrap().is_none());
-        assert_eq!(c.usage(), &current);
+        assert_eq!(c.usage(), current);
         assert_eq!(c.first_stop_usage(), Some(&first));
     }
 
@@ -3334,7 +3426,7 @@ mod tests {
             );
             assert_eq!((records.len(), locations.len()), (0, 0));
             assert_eq!((records.capacity(), locations.capacity()), (0, 0));
-            assert_eq!(foreign.usage(), &foreign_before);
+            assert_eq!(foreign.usage(), foreign_before);
             assert_eq!(foreign.stop(), None);
             let first = c.stop();
             let snapshot = c.first_stop_usage().unwrap().clone();
@@ -3445,6 +3537,7 @@ mod tests {
         let old_bytes = (len * size_of::<u64>()) as u64;
         let new_bytes = ((len + 1) * size_of::<u64>()) as u64;
         c.set(HtmlParseResource::ManagedCapacityBytes, old_bytes);
+        c.set(HtmlParseResource::PeakTransientBytes, old_bytes);
         // Without the fallback the larger request alone is refused.
         assert!(values.clone().try_reserve_exact(usize::MAX - len).is_err());
         let plan = ReservationPlan {
@@ -3821,7 +3914,7 @@ mod tests {
                 .resource(HtmlParseResource::AuxiliaryEntries)
                 .current;
             if let Some(additional) = additional {
-                *c.limits.get_mut(HtmlParseResource::AuxiliaryEntries) = slots + additional;
+                c.test_limit(HtmlParseResource::AuxiliaryEntries, slots + additional);
             }
             let result = session.allocate_input_for_creation(
                 &mut c,
@@ -4377,7 +4470,7 @@ mod tests {
                 };
                 // The refused charge applies nothing to any counter.
                 assert_eq!(result, Err(first));
-                assert_eq!(control.usage(), &before);
+                assert_eq!(control.usage(), before);
                 assert_eq!(control.stop(), Some(first));
                 assert_eq!(control.first_stop_usage(), Some(&before));
                 // The first stop is sticky: a request that would now fit, and
@@ -4390,7 +4483,7 @@ mod tests {
                     control.charge(HtmlParseWorkCategory::InputUnitRead, 7),
                     Err(first)
                 );
-                assert_eq!(control.usage(), &before);
+                assert_eq!(control.usage(), before);
                 assert_eq!(control.first_stop_usage(), Some(&before));
             } else {
                 // Spending exactly the cap succeeds and records every credit.
@@ -4856,7 +4949,7 @@ mod tests {
     fn every_storage_cap_rejects_its_own_growth() {
         for resource in RESOURCES.into_iter().filter(|resource| resource.storage()) {
             let mut control = control();
-            *control.limits.get_mut(resource) = 0;
+            control.test_limit(resource, 0);
             assert_eq!(
                 control.acquire(resource, 1),
                 Err(HtmlParseStop::LimitExceeded {
@@ -4925,7 +5018,7 @@ mod tests {
                 HtmlParseInvariant::ForeignControl
             ))
         );
-        assert_eq!(second.usage(), &previous);
+        assert_eq!(second.usage(), previous);
         second.release_document_string(second_ticket).unwrap();
         drop(vector);
     }
@@ -4977,7 +5070,7 @@ mod tests {
             .usage()
             .resource(HtmlParseResource::WorkCredits)
             .current;
-        *control.limits.get_mut(HtmlParseResource::WorkCredits) = previous + 4;
+        control.test_limit(HtmlParseResource::WorkCredits, previous + 4);
         let stop = buffer.clear(&mut control).unwrap_err();
         assert_eq!(buffer.as_slice(), &[1, 2]);
         assert_eq!(
@@ -5085,7 +5178,7 @@ mod tests {
                 HtmlParseInvariant::ForeignControl
             ))
         );
-        assert_eq!(foreign.usage(), &before);
+        assert_eq!(foreign.usage(), before);
         assert_eq!(entries.as_slice(), &[7]);
         entries.release(&mut owner).unwrap();
     }
@@ -5101,7 +5194,7 @@ mod tests {
             Err(HtmlParseStop::Cancelled)
         );
         assert_eq!(entries.try_pop(&mut control), Err(HtmlParseStop::Cancelled));
-        assert_eq!(control.usage(), &before);
+        assert_eq!(control.usage(), before);
         assert_eq!(entries.as_slice(), &[7]);
         entries.release(&mut control).unwrap();
     }
@@ -5277,7 +5370,7 @@ mod tests {
             ))
         );
         assert_eq!(entries.as_slice(), &[7]);
-        assert_eq!(control.usage(), &before);
+        assert_eq!(control.usage(), before);
         assert_eq!(
             entries.try_pop(&mut control),
             Err(HtmlParseStop::InternalInvariant(
@@ -5347,7 +5440,7 @@ mod tests {
         let before = foreign.usage().clone();
         assert_eq!(entries.cleanup_pop(&mut foreign), Err(stop));
         assert_eq!(entries.as_slice(), &[7]);
-        assert_eq!(foreign.usage(), &before);
+        assert_eq!(foreign.usage(), before);
         assert_eq!(foreign.stop(), Some(stop));
         owner.cancellation.cancel();
         owner.checkpoint().unwrap_err();
@@ -5585,7 +5678,7 @@ mod tests {
                 HtmlParseInvariant::ForeignControl
             ))
         );
-        assert_eq!(foreign.usage(), &before);
+        assert_eq!(foreign.usage(), before);
         assert_eq!(ticket.capacity(), 2);
         let (stop, vector, ticket) = foreign
             .release_vector(vector, ticket)
@@ -5670,7 +5763,7 @@ mod tests {
             control.reserve_vector(&mut vector, &mut ticket, 1),
             Err(HtmlParseStop::Cancelled)
         );
-        assert_eq!(control.usage(), &before);
+        assert_eq!(control.usage(), before);
         assert_eq!(ticket.capacity(), 0);
         control.release_vector(vector, ticket).unwrap();
     }
@@ -5954,7 +6047,7 @@ mod tests {
             control.cleanup_release(&identity, HtmlParseResource::WorkCredits, 1),
             Err(stop)
         );
-        assert_eq!(control.usage(), &before);
+        assert_eq!(control.usage(), before);
         control
             .cleanup_release(&identity, HtmlParseResource::AuxiliaryEntries, 3)
             .unwrap();
@@ -6001,7 +6094,7 @@ mod tests {
                 HtmlParseInvariant::CleanupWhileRunning
             ))
         );
-        assert_eq!(control.usage(), &before);
+        assert_eq!(control.usage(), before);
         control
             .cleanup_release(&identity, HtmlParseResource::AuxiliaryEntries, 1)
             .unwrap();
@@ -6056,13 +6149,13 @@ mod tests {
         );
         owner.cancellation.cancel();
         assert_eq!(owner.admit_atomic_layout(0), Err(stop));
-        assert_eq!(owner.usage(), &before);
+        assert_eq!(owner.usage(), before);
 
         let mut owner = control();
         owner.cancellation.cancel();
         let before = owner.usage().clone();
         assert_eq!(owner.admit_atomic_layout(1), Err(HtmlParseStop::Cancelled));
-        assert_eq!(owner.usage(), &before);
+        assert_eq!(owner.usage(), before);
     }
     #[test]
     fn fixed_record_layout_checks_representable_span_and_zero_layout() {
@@ -6075,7 +6168,7 @@ mod tests {
                 resource: HtmlParseResource::AtomicLayoutBytes,
             })
         );
-        assert_eq!(owner.usage(), &before);
+        assert_eq!(owner.usage(), before);
     }
     #[test]
     fn checked_arithmetic_failure_latches_observation_and_preserves_first_stop() {
@@ -6097,7 +6190,7 @@ mod tests {
             owner.representation::<()>(HtmlParseResource::ManagedEdges),
             Err(stop)
         );
-        assert_eq!(owner.usage(), &before);
+        assert_eq!(owner.usage(), before);
 
         let mut owner = control();
         owner.cancellation.cancel();
@@ -6118,7 +6211,7 @@ mod tests {
         let before = owner.usage().clone();
         owner.release_zero_sized_shared(shared, allocation).unwrap();
         assert_eq!(Arc::strong_count(&alias), 1);
-        assert_eq!(owner.usage(), &before);
+        assert_eq!(owner.usage(), before);
         assert_eq!(owner.stop(), Some(stop));
     }
     #[test]
@@ -6145,14 +6238,14 @@ mod tests {
             stop,
             HtmlParseStop::InternalInvariant(HtmlParseInvariant::CapacityMismatch)
         );
-        assert_eq!(owner.usage(), &before);
+        assert_eq!(owner.usage(), before);
         owner
             .release_zero_sized_shared(first, first_ticket)
             .unwrap();
         owner
             .release_zero_sized_shared(second, second_ticket)
             .unwrap();
-        assert_eq!(owner.usage(), &before);
+        assert_eq!(owner.usage(), before);
     }
     #[test]
     fn zero_sized_cleanup_rejects_nonzero_payload_without_refunding_its_layout() {
@@ -6167,7 +6260,7 @@ mod tests {
             stop,
             HtmlParseStop::InternalInvariant(HtmlParseInvariant::CapacityMismatch)
         );
-        assert_eq!(owner.usage(), &before);
+        assert_eq!(owner.usage(), before);
         assert_eq!(owner.release_shared(shared, allocation).unwrap(), 77);
         assert_eq!(owner.usage().actual_capacity_bytes, 0);
         assert_eq!(owner.usage().actual_capacity_high_water, 4);
@@ -6226,7 +6319,7 @@ mod tests {
         );
         let before = owner.usage().clone();
         owner.commit_construction_edges(&identity, 0, 0).unwrap();
-        assert_eq!(owner.usage(), &before);
+        assert_eq!(owner.usage(), before);
     }
     #[test]
     fn child_order_cap_failure_retains_edges_and_first_stop() {
@@ -6245,10 +6338,10 @@ mod tests {
             requested_delta: 1,
         };
         assert_eq!(owner.commit_construction_edges(&identity, 1, 0), Err(stop));
-        assert_eq!(owner.usage(), &before);
+        assert_eq!(owner.usage(), before);
         owner.cancellation.cancel();
         assert_eq!(owner.commit_construction_edges(&identity, 0, 0), Err(stop));
-        assert_eq!(owner.usage(), &before);
+        assert_eq!(owner.usage(), before);
         assert_eq!(owner.stop(), Some(stop));
     }
     #[test]
@@ -6265,7 +6358,7 @@ mod tests {
                 HtmlParseInvariant::ForeignControl
             ))
         );
-        assert_eq!(owner.usage(), &before);
+        assert_eq!(owner.usage(), before);
     }
     #[test]
     fn child_order_underflow_rejects_the_counter_before_edge_arithmetic() {
@@ -6281,7 +6374,7 @@ mod tests {
                 HtmlParseInvariant::ReleaseUnderflow
             ))
         );
-        assert_eq!(owner.usage(), &before);
+        assert_eq!(owner.usage(), before);
     }
     #[test]
     fn child_order_edge_addition_overflow_retains_existing_edges() {
@@ -6297,7 +6390,7 @@ mod tests {
                 resource: HtmlParseResource::ManagedEdges,
             })
         );
-        assert_eq!(owner.usage(), &before);
+        assert_eq!(owner.usage(), before);
     }
     #[test]
     fn child_order_final_checkpoint_cancellation_precedes_validation_even_for_empty_commit() {
@@ -6313,12 +6406,12 @@ mod tests {
                 owner.commit_construction_edges(&identity, addition, removal),
                 Err(HtmlParseStop::Cancelled)
             );
-            assert_eq!(owner.usage(), &before);
+            assert_eq!(owner.usage(), before);
             assert_eq!(
                 owner.commit_construction_edges(&identity, 0, 1),
                 Err(HtmlParseStop::Cancelled)
             );
-            assert_eq!(owner.usage(), &before);
+            assert_eq!(owner.usage(), before);
         }
     }
     /// The colour operation error CSS itself reports for `input` when every

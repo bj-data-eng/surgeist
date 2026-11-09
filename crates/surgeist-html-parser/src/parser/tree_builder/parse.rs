@@ -78,11 +78,13 @@ impl HtmlParseFailure {
         if storage == crate::meta_csp::Storage::ZERO {
             return ReturnableCspStorage(storage);
         }
-        let condition = match &self.storage {
-            FailureStorage::Ordinary(owner) if owner.csp_storage_fits(storage) => {
-                return ReturnableCspStorage(storage);
+        let condition = match &mut self.storage {
+            FailureStorage::Ordinary(owner) => {
+                if owner.csp_storage_fits(storage) {
+                    return ReturnableCspStorage(storage);
+                }
+                HtmlParseEngineCondition::Cleanup
             }
-            FailureStorage::Ordinary(_) => HtmlParseEngineCondition::Cleanup,
             _ => HtmlParseEngineCondition::Ownership,
         };
         self.cleanup_error.get_or_insert(condition);
@@ -219,7 +221,7 @@ impl HtmlParseFailure {
     }
     /// Usage of the actual retained terminal evidence owner. This does not
     /// relabel the first-stop or completed cleanup snapshots.
-    pub fn retained_usage(&self) -> Option<&HtmlParseUsage> {
+    pub fn retained_usage(&self) -> Option<HtmlParseUsage> {
         match &self.storage {
             FailureStorage::OrdinaryInitialization(o) => o.retained_usage(),
             FailureStorage::Ordinary(o) => Some(o.retained_usage()),
@@ -247,6 +249,31 @@ impl HtmlParseFailure {
             FailureStorage::Fragment(o) => o.original_request().limits(),
             FailureStorage::OrdinaryFrozen(o) => o.limits(),
             FailureStorage::FragmentFrozen(o) => o.limits(),
+        }
+    }
+    /// The profile of the parse's own operation, if its request selected a
+    /// profile mode, as of this call. A parse that ran in a host's operation
+    /// has none: the host reads its own operation.
+    pub fn profile(
+        &self,
+    ) -> Result<
+        Option<
+            surgeist_ledger::Report<
+                surgeist_html::accounting::HtmlWork,
+                surgeist_html::accounting::HtmlResource,
+            >,
+        >,
+        crate::HtmlParseAccountingFault,
+    > {
+        match &self.storage {
+            FailureStorage::OrdinaryInitialization(o) => o.request().accounting().profile(),
+            FailureStorage::Ordinary(o) => o.original_request().accounting().profile(),
+            FailureStorage::FragmentInitialization(o) => {
+                o.original_request().accounting().profile()
+            }
+            FailureStorage::Fragment(o) => o.original_request().accounting().profile(),
+            FailureStorage::OrdinaryFrozen(o) => o.accounting().profile(),
+            FailureStorage::FragmentFrozen(o) => o.accounting().profile(),
         }
     }
     /// The original captured-document request, absent for offline documents
@@ -970,7 +997,7 @@ mod tests {
         let mut failed = request.parse().unwrap_err();
         assert!(!matches!(failed.storage, FailureStorage::Ordinary(_)));
         assert_eq!(failed.cleanup_error(), None);
-        let retained = failed.retained_usage().cloned();
+        let retained = failed.retained_usage();
         let claimed = failed.claim_csp_storage(crate::meta_csp::Storage {
             bytes: 1,
             units: 1,
@@ -986,7 +1013,7 @@ mod tests {
             failed.reason(),
             HtmlParseFailureReason::Stop(HtmlParseStop::Cancelled)
         );
-        assert_eq!(failed.retained_usage().cloned(), retained);
+        assert_eq!(failed.retained_usage(), retained);
     }
 
     /// An ordinary failure whose controller was holding processor storage when
@@ -1023,12 +1050,12 @@ mod tests {
         };
         let mut failed = ordinary_failure_holding(storage);
         assert!(matches!(failed.storage, FailureStorage::Ordinary(_)));
-        let held = failed.retained_usage().cloned().unwrap();
+        let held = failed.retained_usage().unwrap();
         let claimed = failed.claim_csp_storage(storage);
         assert_eq!(claimed, ReturnableCspStorage(storage));
         assert_eq!(failed.cleanup_error(), None);
         // Claiming decides; it changes no accounting.
-        assert_eq!(failed.retained_usage().cloned().unwrap(), held);
+        assert_eq!(failed.retained_usage().unwrap(), held);
         failed.return_csp_storage(claimed).unwrap();
         let returned = failed.retained_usage().unwrap();
         for (resource, amount) in [
@@ -1114,7 +1141,7 @@ mod tests {
         let mut failed = request.parse().unwrap_err();
         assert!(matches!(failed.storage, FailureStorage::Ordinary(_)));
         assert_eq!(failed.cleanup_error(), None);
-        let retained = failed.retained_usage().cloned();
+        let retained = failed.retained_usage();
         // The controller admitted no provider storage, so a return of this
         // storage could only underflow it.
         let claimed = failed.claim_csp_storage(crate::meta_csp::Storage {
@@ -1127,7 +1154,7 @@ mod tests {
             failed.cleanup_error(),
             Some(HtmlParseEngineCondition::Cleanup)
         );
-        assert_eq!(failed.retained_usage().cloned(), retained);
+        assert_eq!(failed.retained_usage(), retained);
     }
 
     #[test]

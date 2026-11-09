@@ -105,6 +105,10 @@ impl HtmlParseReport {
     ) -> Result<(HtmlParseDocumentState, ReportStorage, HtmlParseUsage), SessionError> {
         sealed
             .parts
+            .control
+            .enter_phase(crate::accounting::ParsePhase::Publication);
+        sealed
+            .parts
             .arena
             .as_ref()
             .ok_or(SessionError::Consumed)?
@@ -180,6 +184,10 @@ impl HtmlParseReport {
     fn commit_fragment(
         sealed: &mut SealedFragmentConstruction,
     ) -> Result<(ReportStorage, HtmlParseUsage), SessionError> {
+        sealed
+            .parts
+            .control
+            .enter_phase(crate::accounting::ParsePhase::Publication);
         sealed
             .parts
             .arena
@@ -307,6 +315,25 @@ impl HtmlParseReport {
     }
     pub fn usage(&self) -> &HtmlParseUsage {
         &self.usage
+    }
+    /// The profile of the parse's own operation, if its request selected a
+    /// profile mode, as of this call. A parse that ran in a host's operation
+    /// has none: the host reads its own operation.
+    pub fn profile(
+        &self,
+    ) -> Result<
+        Option<
+            surgeist_ledger::Report<
+                surgeist_html::accounting::HtmlWork,
+                surgeist_html::accounting::HtmlResource,
+            >,
+        >,
+        crate::HtmlParseAccountingFault,
+    > {
+        match &self.context {
+            ReportContext::Document { request, .. } => request.accounting().profile(),
+            ReportContext::Fragment(request) => request.accounting().profile(),
+        }
     }
     pub(crate) fn history(&self) -> &crate::construction::history::FrozenHistory {
         self.storage.history()
@@ -1085,14 +1112,19 @@ mod tests {
                 PreparedReportStorage::prepare(&mut sealed.parts.arena, c, None, true).unwrap();
             // The same original controller has completed all strict alias/history
             // qualification. Deny new finalization custody, without re-forming it.
-            c.test_limit(HtmlParseResource::ManagedCapacityBytes, 0);
+            // The cap is the custody held now, so any further capacity is denied.
+            let held = c
+                .usage()
+                .resource(HtmlParseResource::ManagedCapacityBytes)
+                .current();
+            c.test_limit(HtmlParseResource::ManagedCapacityBytes, held);
             assert!(matches!(
                 prepared.share_values(c, crate::request::ValueSharingMode::Combined),
                 Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
                     resource: HtmlParseResource::ManagedCapacityBytes,
-                    limit: 0,
+                    limit,
                     ..
-                }))
+                })) if limit == held
             ));
         }
         assert!(sealed.parts.arena.is_some());

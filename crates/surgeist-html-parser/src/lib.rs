@@ -18,6 +18,7 @@
 )]
 
 use surgeist_html_semantics::*;
+mod accounting;
 mod construction;
 mod keyed;
 mod meta_csp;
@@ -28,6 +29,7 @@ mod request;
 mod schema_support;
 mod settings;
 mod source;
+pub use accounting::{HtmlParseAccounting, HtmlParseAccountingFault};
 pub use request::*;
 pub use settings::*;
 pub use source::*;

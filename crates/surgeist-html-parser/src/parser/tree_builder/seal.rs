@@ -98,7 +98,7 @@ impl OrdinaryInitialization {
     pub(crate) fn after_cleanup(&self) -> Option<&crate::parser::control::HtmlParseUsage> {
         self.failure.as_ref().map(|failure| failure.after_cleanup())
     }
-    pub(crate) fn retained_usage(&self) -> Option<&crate::parser::control::HtmlParseUsage> {
+    pub(crate) fn retained_usage(&self) -> Option<crate::parser::control::HtmlParseUsage> {
         self.failure
             .as_ref()
             .map(|failure| failure.retained_usage())
@@ -245,7 +245,7 @@ impl OrdinaryInitializationOwner {
     pub(crate) fn after_cleanup(&self) -> Option<&crate::parser::control::HtmlParseUsage> {
         self.held.as_ref()?.after_cleanup()
     }
-    pub(crate) fn retained_usage(&self) -> Option<&crate::parser::control::HtmlParseUsage> {
+    pub(crate) fn retained_usage(&self) -> Option<crate::parser::control::HtmlParseUsage> {
         self.held.as_ref()?.retained_usage()
     }
     pub(crate) fn diagnostics(
@@ -412,6 +412,9 @@ impl SealedOrdinaryConstruction {
     pub(crate) fn limits(&self) -> &crate::HtmlParseLimits {
         self.request.limits()
     }
+    pub(crate) fn accounting(&self) -> &crate::accounting::RequestAccounting {
+        self.request.accounting()
+    }
     #[cfg(test)]
     pub(crate) fn is_offline(&self) -> bool {
         self.request.is_offline()
@@ -432,7 +435,7 @@ impl SealedOrdinaryConstruction {
     pub(crate) fn final_usage(&self) -> &crate::parser::control::HtmlParseUsage {
         self.parts.final_usage()
     }
-    pub(crate) fn retained_usage(&self) -> &crate::parser::control::HtmlParseUsage {
+    pub(crate) fn retained_usage(&self) -> crate::parser::control::HtmlParseUsage {
         self.parts.retained_usage()
     }
     /// Actual fallible disposal remains explicit. A live borrowed/owned native
@@ -450,7 +453,7 @@ pub(crate) struct OwnedOrdinaryFailure {
     failure: super::terminal::DetachedStandaloneFailure,
 }
 impl OwnedOrdinaryFailure {
-    pub(crate) fn csp_storage_fits(&self, storage: crate::meta_csp::Storage) -> bool {
+    pub(crate) fn csp_storage_fits(&mut self, storage: crate::meta_csp::Storage) -> bool {
         self.failure.csp_storage_fits(storage)
     }
     pub(crate) fn release_csp_storage(
@@ -523,7 +526,7 @@ impl OwnedOrdinaryFailure {
     pub(crate) fn after_cleanup(&self) -> &crate::parser::control::HtmlParseUsage {
         self.failure.after_cleanup()
     }
-    pub(crate) fn retained_usage(&self) -> &crate::parser::control::HtmlParseUsage {
+    pub(crate) fn retained_usage(&self) -> crate::parser::control::HtmlParseUsage {
         self.failure.retained_usage()
     }
     pub(crate) fn diagnostics(
@@ -690,7 +693,7 @@ mod tests {
         assert_eq!(owner.after_cleanup(), Some(&first));
         assert!(owner.diagnostics().is_none());
         owner.release_failure().unwrap();
-        assert_eq!(owner.retained_usage(), Some(&first));
+        assert_eq!(owner.retained_usage(), Some(&first).cloned());
         assert!(matches!(owner.begin(), Err(StandaloneError::Consumed)));
     }
 
@@ -728,7 +731,7 @@ mod tests {
         owner.release_failure().unwrap();
         assert_eq!(owner.at_stop(), Some(&first));
         assert_eq!(owner.after_cleanup(), Some(&first));
-        assert_eq!(owner.retained_usage(), Some(&first));
+        assert_eq!(owner.retained_usage(), Some(&first).cloned());
     }
 
     #[test]
@@ -778,7 +781,7 @@ mod tests {
             );
             owner.release_failure().unwrap();
             assert_eq!(owner.at_stop(), Some(&first));
-            no_retained_storage(owner.retained_usage().unwrap());
+            no_retained_storage(&owner.retained_usage().unwrap());
         }
     }
 
@@ -819,7 +822,7 @@ mod tests {
             owner.release_failure().unwrap();
             assert_eq!(owner.at_stop(), Some(&first));
             assert_eq!(owner.after_cleanup(), Some(&first));
-            no_retained_storage(owner.retained_usage().unwrap());
+            no_retained_storage(&owner.retained_usage().unwrap());
         }
     }
 
@@ -853,7 +856,7 @@ mod tests {
         assert_eq!(first.resource(HtmlParseResource::ManagedNodes).current, 1);
         assert_eq!(owner.source_admitted(), Some(true));
         assert!(owner.diagnostics().is_none());
-        no_retained_storage(owner.retained_usage().unwrap());
+        no_retained_storage(&owner.retained_usage().unwrap());
         assert_eq!(
             owner
                 .retained_usage()
@@ -894,12 +897,12 @@ mod tests {
         assert_eq!(owner.diagnostics().unwrap().len(), 0);
         // The initialized empty store retains its actual zero-sized issuer
         // ticket, not an invented nonzero Vec capacity or Arc-header estimate.
-        no_retained_storage(owner.retained_usage().unwrap());
+        no_retained_storage(&owner.retained_usage().unwrap());
         let after = owner.after_cleanup().unwrap().clone();
         assert_eq!(owner.at_stop(), Some(&first));
         owner.release_failure().unwrap();
         assert!(owner.diagnostics().is_none());
-        no_retained_storage(owner.retained_usage().unwrap());
+        no_retained_storage(&owner.retained_usage().unwrap());
         assert_eq!(owner.at_stop(), Some(&first));
         assert_eq!(owner.after_cleanup(), Some(&after));
     }
@@ -1045,7 +1048,7 @@ mod tests {
                         if driver.release().is_err() {
                             driver.release().unwrap();
                         }
-                        no_retained_storage(driver.control.usage());
+                        no_retained_storage(&driver.control.usage());
                         expected = None;
                     }
                     Err(_) => {
@@ -1076,7 +1079,7 @@ mod tests {
                 owner.release_failure().unwrap();
                 assert_eq!(owner.at_stop(), Some(&first));
                 assert_eq!(owner.after_cleanup(), Some(&after));
-                no_retained_storage(owner.retained_usage().unwrap());
+                no_retained_storage(&owner.retained_usage().unwrap());
             }
         }
     }
@@ -1179,7 +1182,7 @@ mod tests {
             assert_eq!(sealed.evidence().unwrap() as *const _, evidence);
             assert_eq!(sealed.document().unwrap().root().id(), root);
         }
-        assert_eq!(sealed.retained_usage(), &before);
+        assert_eq!(sealed.retained_usage(), before);
         drop(document);
         sealed.release().unwrap();
         assert!(sealed.document().is_none());
@@ -1207,7 +1210,7 @@ mod tests {
         assert!(sealed.document().is_some());
         assert_eq!(sealed.evidence().unwrap() as *const _, evidence);
         assert_eq!(sealed.final_usage(), &final_usage);
-        assert_eq!(sealed.retained_usage(), &retained);
+        assert_eq!(sealed.retained_usage(), retained);
         sealed.release().unwrap();
         assert_eq!(
             sealed
@@ -1360,7 +1363,7 @@ mod tests {
         );
         assert_eq!(owned.at_stop(), at_stop.as_ref());
         assert_eq!(owned.after_cleanup(), &cleaned);
-        assert_eq!(owned.retained_usage(), &retained);
+        assert_eq!(owned.retained_usage(), retained);
         assert_eq!(owned.diagnostics().unwrap().len(), records);
         owned.release().unwrap();
         assert_eq!(owned.at_stop(), at_stop.as_ref());
@@ -1389,7 +1392,7 @@ mod tests {
         let before = failure.as_ref().unwrap().retained_usage().clone();
         assert!(OwnedOrdinaryFailure::take(&mut foreign, &mut failure).is_err());
         assert!(foreign.is_some() && failure.is_some());
-        assert_eq!(failure.as_ref().unwrap().retained_usage(), &before);
+        assert_eq!(failure.as_ref().unwrap().retained_usage(), before);
         let mut owned = OwnedOrdinaryFailure::take(&mut request, &mut failure).unwrap();
         owned.release().unwrap();
     }
@@ -1412,7 +1415,7 @@ mod tests {
         assert_eq!(&binding.0, request.source().identity());
         assert_eq!(binding.1, request.source().coordinates());
         assert!(control.take_stopped_source_binding().is_err());
-        assert_eq!(control.usage(), &before);
+        assert_eq!(control.usage(), before);
         assert_eq!(control.first_stop_usage(), Some(&first));
     }
     #[test]

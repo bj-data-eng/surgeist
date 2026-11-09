@@ -1941,7 +1941,7 @@ fn range_copy_requires_actual_generated_group_and_rejects_a_foreign_controller()
             crate::parser::control::HtmlParseInvariant::ForeignControl
         )))
     ));
-    assert_eq!(c.usage(), &before);
+    assert_eq!(c.usage(), before);
     storage_zero(&foreign);
 
     // A real source-less implied literal is not a Range computation. Its

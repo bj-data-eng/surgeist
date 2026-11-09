@@ -40,22 +40,49 @@ impl ParseControl {
             return self.commit_construction_edges(owner, addition, edge_remove);
         }
         self.require_identity(owner)?;
-        let mut values = self.plan_storage(requests)?;
-        let Some(edges) = values
-            .copy(HtmlParseResource::ManagedEdges)
-            .checked_sub(edge_remove)
-        else {
-            return self.fail(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::ReleaseUnderflow,
-            ));
+        // The requests are checked against the caps before the removed edges are
+        // credited, so the removal is not netted into the request.
+        self.check_acquire_many(requests)?;
+        let (mut changes, count) = self.storage_batch(requests)?;
+        let Some(admitted) = changes.get_mut(..count) else {
+            return Err(self.fail_invariant(HtmlParseInvariant::LedgerState));
         };
-        *values.get_mut(HtmlParseResource::ManagedEdges) = edges;
-        for resource in RESOURCES {
-            if resource.storage() {
-                self.set(resource, values.copy(resource));
+        // The admitted state is the requests with the removal credited: the
+        // edges are acquired net of it, or released when it is larger.
+        let mut batch = [Change::Release(HtmlResource::ManagedEdges, 0); STORAGE_RESOURCES + 1];
+        let mut length = 0_usize;
+        let mut edges = None;
+        for change in admitted.iter().copied() {
+            match change {
+                Change::Acquire(HtmlResource::ManagedEdges, delta) => edges = Some(delta),
+                other => {
+                    if let Some(slot) = batch.get_mut(length) {
+                        *slot = other;
+                        length = length.saturating_add(1);
+                    }
+                }
             }
         }
-        Ok(())
+        let added = edges.unwrap_or(0);
+        let net = if added >= edge_remove {
+            Change::Acquire(
+                HtmlResource::ManagedEdges,
+                added.saturating_sub(edge_remove),
+            )
+        } else {
+            Change::Release(
+                HtmlResource::ManagedEdges,
+                edge_remove.saturating_sub(added),
+            )
+        };
+        if let Some(slot) = batch.get_mut(length) {
+            *slot = net;
+            length = length.saturating_add(1);
+        }
+        let Some(batch) = batch.get(..length) else {
+            return Err(self.fail_invariant(HtmlParseInvariant::LedgerState));
+        };
+        self.admit_resources(batch, Site::RELEASE)
     }
     /// Preflight the precise old/new reserve overlap before its HTML provider call.
     pub(crate) fn prepare_construction_reserve(
@@ -135,30 +162,7 @@ impl ParseControl {
         old: u64,
         new: u64,
     ) -> Result<(), HtmlParseStop> {
-        let current = self
-            .usage
-            .resource(HtmlParseResource::ManagedCapacityBytes)
-            .current;
-        let Some(without_old) = current.checked_sub(old) else {
-            return self.fail(HtmlParseStop::InternalInvariant(
-                HtmlParseInvariant::CapacityMismatch,
-            ));
-        };
-        let (Some(total), Some(overlap)) = (without_old.checked_add(new), current.checked_add(new))
-        else {
-            return self.representation(HtmlParseResource::ManagedCapacityBytes);
-        };
-        self.check_value(
-            HtmlParseResource::ManagedCapacityBytes,
-            total,
-            new.saturating_sub(old),
-        )?;
-        self.check_value(HtmlParseResource::PeakTransientBytes, overlap, new)?;
-        self.check_value(HtmlParseResource::AtomicLayoutBytes, new, new)?;
-        self.set(HtmlParseResource::PeakTransientBytes, overlap);
-        self.set(HtmlParseResource::AtomicLayoutBytes, new);
-        self.usage.largest_atomic_layout = self.usage.largest_atomic_layout.max(new);
-        Ok(())
+        self.preflight_capacity(old, new, false)
     }
     fn require_construction_snapshot(
         &mut self,
@@ -232,26 +236,23 @@ impl ParseControl {
             }
         }
         let actual = snapshot.payload_bytes() as u64;
-        let current = self
-            .usage
-            .resource(HtmlParseResource::ManagedCapacityBytes)
-            .current;
-        let Some(total) = current.checked_sub(old).and_then(|v| v.checked_add(actual)) else {
+        let current = self.live(HtmlParseResource::ManagedCapacityBytes)?;
+        if current
+            .checked_sub(old)
+            .and_then(|v| v.checked_add(actual))
+            .is_none()
+        {
             return self.representation(HtmlParseResource::ManagedCapacityBytes);
-        };
-        let Some(overlap) = current.checked_add(actual) else {
+        }
+        if current.checked_add(actual).is_none() {
             return self.representation(HtmlParseResource::PeakTransientBytes);
-        };
+        }
+        self.record_capacity(old, actual, expected_capacity_bytes as u64)?;
         // Snapshot/owner clones are fixed provider calls prepaid by the driver.
         *ticket = Some(ConstructionAllocation {
             owner: self.identity.clone(),
             snapshot: snapshot.clone(),
         });
-        self.usage.actual_capacity_bytes = total;
-        self.usage.actual_capacity_high_water = self.usage.actual_capacity_high_water.max(total);
-        self.set(HtmlParseResource::ManagedCapacityBytes, total);
-        self.set(HtmlParseResource::PeakTransientBytes, overlap);
-        self.set(HtmlParseResource::PeakTransientBytes, total);
         if actual > expected_capacity_bytes as u64 {
             return self.fail(HtmlParseStop::LimitExceeded {
                 resource: HtmlParseResource::ManagedCapacityBytes,
@@ -268,12 +269,7 @@ impl ParseControl {
         snapshot: &Snapshot,
     ) -> Result<(), HtmlParseStop> {
         self.require_construction_snapshot(snapshot, Some(ticket))?;
-        if self
-            .usage
-            .resource(HtmlParseResource::ManagedCapacityBytes)
-            .current
-            < snapshot.payload_bytes() as u64
-        {
+        if self.live(HtmlParseResource::ManagedCapacityBytes)? < snapshot.payload_bytes() as u64 {
             return self.fail(HtmlParseStop::InternalInvariant(
                 HtmlParseInvariant::ReleaseUnderflow,
             ));
