@@ -49,8 +49,7 @@ pub(crate) struct EncounterReplay {
     pub boxes: Option<BoxAssignment>,
     /// Actual preceding source encounters of a pure portion measurement.
     pub preceding: Option<PrecedingEncounter>,
-    pub source_floor: f64,
-    pub logical: f64,
+    pub frame: CandidateFrame,
     pub placed: f64,
     pub defer_preceding: bool,
 }
@@ -68,6 +67,7 @@ pub(crate) struct PrecedingEncounter {
     pub boxes: Option<BoxAssignment>,
     pub line: FinalizedLine,
     pub placed: f64,
+    pub frame: CandidateFrame,
 }
 
 /// Constraints from the two actual footprints, never their bounding union.
@@ -154,11 +154,75 @@ struct CandidateBasis {
     amounts: Vec<f64>,
     scopes: super::scope_alignment::ScopeBasis,
     natural_advance: f64,
-    logical_start: f64,
+    frame: CandidateFrame,
     placed_start: f64,
     bands: LineBands,
     height: f64,
-    minimum_block: Option<f64>,
+}
+
+/// Consumption is semantic, including zero displacement and zero-height lines.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum EntryPhase {
+    Pending,
+    Consumed,
+}
+
+/// One prospective candidate's coupled origin and source-entry authority.
+/// It becomes an evaluated frame only after disposition, allocations and bands agree.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct CandidateFrame {
+    pub(crate) entry_phase: EntryPhase,
+    pub(crate) phase: EntryPhase,
+    pub(crate) offset: f64,
+    pub(crate) float_source_floor: f64,
+    pub(crate) logical_start: f64,
+    pub(crate) minimum_block: Option<f64>,
+    pub(crate) deferred_from: Option<LineSelectionRequest>,
+}
+
+impl CandidateFrame {
+    fn project(
+        position: &CandidatePosition,
+        displacement: f64,
+        formatted: bool,
+    ) -> Result<Self, FitError> {
+        let pending_displacement = if position.phase == EntryPhase::Pending {
+            displacement
+        } else {
+            0.0
+        };
+        let offset = if formatted { pending_displacement } else { 0.0 };
+        let (logical, minimum, deferred_from) = if formatted {
+            (
+                position.logical_start,
+                position.minimum_block,
+                position.deferred_from.clone(),
+            )
+        } else {
+            // An ignored line does not inherit a rejected formatted trial's
+            // avoidance cursor or tentative deferral.
+            (position.source_floor, position.source_minimum, None)
+        };
+        Ok(Self {
+            entry_phase: position.phase,
+            phase: if formatted {
+                EntryPhase::Consumed
+            } else {
+                position.phase
+            },
+            offset,
+            // A source float's hypothetical empty parent retains the adjoining
+            // displacement even when this completion generates no line.
+            float_source_floor: finite(position.source_floor + pending_displacement)?,
+            logical_start: finite(logical + offset)?,
+            minimum_block: minimum.map(|value| finite(value + offset)).transpose()?,
+            deferred_from,
+        })
+    }
+
+    fn query_coordinate(&self, actual: f64) -> Result<f64, FitError> {
+        finite(actual - self.offset)
+    }
 }
 
 /// A proposed line position and earlier float/clearance constraint.
@@ -170,9 +234,9 @@ pub(crate) struct BlockPosition {
 }
 
 /// Accepted logical allocation and any following clearance movement.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct LineFlow {
-    pub start: f64,
+    pub frame: CandidateFrame,
     pub end: f64,
     pub next: f64,
 }
@@ -293,6 +357,7 @@ impl From<crate::inline_wrapping::WrappingScopeError> for FitError {
 pub(crate) type WrappingClassifier<'a> = dyn BoxResolver + 'a;
 
 pub(crate) struct FitInput<'a> {
+    pub adjoining_displacement: f64,
     pub groups: crate::group_alignment::Snapshot,
     pub wrapping: Option<&'a WrappingClassifier<'a>>,
     pub formatted: &'a FormattedTailSnapshot,
@@ -872,7 +937,9 @@ fn constrain_spacing_budget(
 /// Candidate-local coordinates are distinct from the accepted source checkpoint.
 #[derive(Clone, Debug, PartialEq)]
 struct CandidatePosition {
+    phase: EntryPhase,
     source_floor: f64,
+    source_minimum: Option<f64>,
     logical_start: f64,
     minimum_block: Option<f64>,
     deferred_from: Option<LineSelectionRequest>,
@@ -880,6 +947,7 @@ struct CandidatePosition {
 
 #[derive(Clone)]
 struct EvaluatedCandidate {
+    frame: CandidateFrame,
     boxes: Option<BoxAssignment>,
     request: LineSelectionRequest,
     finalized: FinalizedLine,
@@ -895,7 +963,7 @@ struct EvaluatedCandidate {
 }
 
 impl EvaluatedCandidate {
-    fn basis(&self, position: &CandidatePosition) -> CandidateBasis {
+    fn basis(&self) -> CandidateBasis {
         CandidateBasis {
             disposition: self.disposition.clone(),
             encounters: self.encounters.clone(),
@@ -904,11 +972,10 @@ impl EvaluatedCandidate {
             amounts: self.amounts.clone(),
             scopes: self.scopes.clone(),
             natural_advance: self.natural_advance,
-            logical_start: position.logical_start,
+            frame: self.frame.clone(),
             placed_start: self.placed_start,
             bands: self.bands,
             height: self.disposition.height(&self.finalized),
-            minimum_block: position.minimum_block,
         }
     }
 
@@ -920,9 +987,9 @@ impl EvaluatedCandidate {
         )
     }
 
-    fn observed(&self, position: &CandidatePosition) -> ObservedCandidateBasis {
+    fn observed(&self) -> ObservedCandidateBasis {
         ObservedCandidateBasis {
-            candidate: self.basis(position),
+            candidate: self.basis(),
             fits: self.fits,
             formatted: self.disposition.is_formatted(),
             usage: self.finalized.measurements().formatted_line_usage(),
@@ -1168,6 +1235,7 @@ fn box_checkpoint<'a>(
 
 #[derive(Clone, Debug, PartialEq)]
 struct CandidateKey {
+    frame: CandidateFrame,
     request: LineSelectionRequest,
     boxes: Option<BoxAssignment>,
     scopes: super::scope_alignment::ScopeBasis,
@@ -1175,6 +1243,7 @@ struct CandidateKey {
 impl EvaluatedCandidate {
     fn key(&self) -> CandidateKey {
         CandidateKey {
+            frame: self.frame.clone(),
             request: self.request.clone(),
             boxes: self.boxes.clone(),
             scopes: self.scopes.clone(),
@@ -1184,6 +1253,7 @@ impl EvaluatedCandidate {
 impl FittedLine {
     fn key(&self) -> CandidateKey {
         CandidateKey {
+            frame: self.flow.frame.clone(),
             request: self.finalized.selected_line().request().clone(),
             boxes: self.boxes.clone(),
             scopes: self.scopes.clone(),
@@ -1343,6 +1413,7 @@ where
         let position = query.position;
         let entry = super::roles::RoleEntry {
             current_first: query.indent_state.first_formatted(),
+            phase: position.phase,
             query_start: query.start,
             query_incoming: query.incoming,
             boxes: boxes.as_ref(),
@@ -1352,15 +1423,17 @@ where
                     &candidate.finalized,
                     candidate.amounts.as_slice(),
                     candidate.boxes.as_ref(),
+                    &candidate.frame,
                 )
             }),
         };
         (self.reset)(EncounterReset::Candidate);
         let mut height = 0.0;
-        let mut placed_start = position.logical_start;
+        let mut frame = CandidateFrame::project(position, input.adjoining_displacement, true)?;
+        let mut placed_start = frame.logical_start;
         let mut rejected: Vec<CandidateBasis> = Vec::new();
         loop {
-            let bands = query_bands(&mut self.band, position.logical_start, placed_start, height)?;
+            let bands = query_bands(&mut self.band, frame.logical_start, placed_start, height)?;
             let band = bands.combined();
             request.context.available_inline = selection_width(input.available, band)?;
             request.context.alignment_insets = if request.context.available_inline.is_some() {
@@ -1414,7 +1487,7 @@ where
                 request = candidate.request;
                 (self.replay)(
                     &candidate.finalized,
-                    position
+                    frame
                         .replay(placed_start, preceding)
                         .with_boxes(boxes.clone()),
                 )?;
@@ -1465,26 +1538,37 @@ where
             };
             let encounters = (self.replay)(
                 &finalized,
-                position
+                frame
                     .replay(placed_start, preceding)
                     .with_boxes(boxes.clone()),
             )?;
             let disposition = LineDisposition::resolve(&finalized)?;
             let actual_height = finite(disposition.height(&finalized))?;
+            let actual_frame = CandidateFrame::project(
+                position,
+                input.adjoining_displacement,
+                disposition.is_formatted(),
+            )?;
             let actual_start = (self.canonical)(
                 BlockPosition {
-                    proposed: position.logical_start,
-                    minimum: position.minimum_block,
+                    proposed: actual_frame.logical_start,
+                    minimum: actual_frame.minimum_block,
                     height: actual_height,
                 },
                 disposition.baseline(&finalized),
             )?;
-            let actual_bands = query_bands(
-                &mut self.band,
-                position.logical_start,
-                actual_start,
-                actual_height,
-            )?;
+            // A frame change invalidates the provisional encounter ledger. It
+            // must be replayed in that frame before querying its real bands.
+            let actual_bands = if actual_frame == frame {
+                Some(query_bands(
+                    &mut self.band,
+                    actual_frame.logical_start,
+                    actual_start,
+                    actual_height,
+                )?)
+            } else {
+                None
+            };
             let basis = CandidateBasis {
                 disposition: disposition.clone(),
                 encounters: encounters.clone(),
@@ -1493,13 +1577,12 @@ where
                 amounts: amounts.clone(),
                 scopes: scopes.clone(),
                 natural_advance,
-                logical_start: position.logical_start,
+                frame: frame.clone(),
                 placed_start,
                 bands,
                 height,
-                minimum_block: position.minimum_block,
             };
-            if actual_bands != bands || actual_start != placed_start {
+            if actual_bands != Some(bands) || actual_start != placed_start {
                 basis.scopes.admit_comparisons(
                     input.scope_alignments,
                     rejected.iter().map(|old| &old.scopes),
@@ -1508,6 +1591,10 @@ where
                     return Err(FitError::FeedbackCycle);
                 }
                 rejected.push(basis);
+                if frame != actual_frame {
+                    (self.reset)(EncounterReset::Candidate);
+                }
+                frame = actual_frame;
                 height = actual_height;
                 placed_start = actual_start;
                 continue;
@@ -1548,10 +1635,7 @@ where
                     basis,
                     bands,
                     encounters: encounters.clone(),
-                    logical_start: position.logical_start,
-                    source_floor: position.source_floor,
-                    minimum_block: position.minimum_block,
-                    deferred_from: position.deferred_from.clone(),
+                    frame: frame.clone(),
                     placed_start,
                 };
                 if let Some(observed) = &mut self.observed {
@@ -1564,6 +1648,7 @@ where
             if let Some(assignment) = &boxes {
                 let used = super::boxes::BoxTrialUse {
                     disposition: disposition.clone(),
+                    frame: frame.clone(),
                     assignment: assignment.clone(),
                     request: request.clone(),
                     amounts: amounts.clone(),
@@ -1579,6 +1664,7 @@ where
                 }
             }
             return Ok(Some(EvaluatedCandidate {
+                frame,
                 boxes,
                 request,
                 finalized,
@@ -2024,10 +2110,10 @@ where
             return Err(FitError::InvalidGeometry);
         };
         let basis = PhraseBasis {
-            ordinary: ordinary.basis(query.position),
+            ordinary: ordinary.basis(),
             position: empty_position.clone(),
             indent_state: empty_indent,
-            trial: trial.basis(&empty_position),
+            trial: trial.basis(),
             fits: trial.fits,
         };
         let decision = if trial.fits {
@@ -2044,18 +2130,18 @@ where
         &mut self,
         input: &FitInput<'_>,
         candidate: &EvaluatedCandidate,
-        position: &CandidatePosition,
     ) -> Result<(), FitError> {
         (self.reset)(EncounterReset::Candidate);
         let encounters = (self.replay)(
             &candidate.finalized,
-            position
+            candidate
+                .frame
                 .replay(candidate.placed_start, None)
                 .with_boxes(candidate.boxes.clone()),
         )?;
         let bands = query_bands(
             &mut self.band,
-            position.logical_start,
+            candidate.frame.logical_start,
             candidate.placed_start,
             candidate.disposition.height(&candidate.finalized),
         )?;
@@ -2090,7 +2176,7 @@ where
     }
 }
 
-impl CandidatePosition {
+impl CandidateFrame {
     fn replay(&self, placed: f64, preceding: Option<&EvaluatedCandidate>) -> EncounterReplay {
         EncounterReplay {
             boxes: None,
@@ -2098,9 +2184,9 @@ impl CandidatePosition {
                 boxes: candidate.boxes.clone(),
                 line: candidate.finalized.clone(),
                 placed: candidate.placed_start,
+                frame: candidate.frame.clone(),
             }),
-            source_floor: self.source_floor,
-            logical: self.logical_start,
+            frame: self.clone(),
             placed,
             defer_preceding: self.deferred_from.is_some(),
         }
@@ -2331,7 +2417,9 @@ pub(crate) fn fit(
         replay: replay_encounters,
         reset: reset_candidate,
     };
+    finite(input.adjoining_displacement)?;
     let entry = SequenceEntry {
+        phase: EntryPhase::Pending,
         boundary: input.segment.start(),
         logical_start: 0.0,
         minimum_block: None,
@@ -2396,6 +2484,7 @@ type Opportunity = (
 
 #[derive(Clone, Debug, PartialEq)]
 struct SequenceEntry {
+    phase: EntryPhase,
     boundary: PreparedBoundary,
     logical_start: f64,
     minimum_block: Option<f64>,
@@ -2489,6 +2578,7 @@ where
             result.truncate(entry.prefix_len);
             let mut start = entry.boundary.view().participant_offset();
             let mut logical_start = entry.logical_start;
+            let mut phase = entry.phase;
             let mut minimum_block = entry.minimum_block;
             let mut indent_state = entry.indent_state;
             let mut line_box_context = entry.line_box_context;
@@ -2514,7 +2604,9 @@ where
                     &[]
                 };
                 let mut position = CandidatePosition {
+                    phase,
                     source_floor: logical_start,
+                    source_minimum: minimum_block,
                     logical_start,
                     minimum_block,
                     deferred_from: None,
@@ -2604,7 +2696,7 @@ where
                                     opportunity.view().boundary(),
                                     endpoint_choice
                                         .as_ref()
-                                        .map(|candidate| candidate.observed(&position)),
+                                        .map(|candidate| candidate.observed()),
                                 ));
                             }
                             if let Some(candidate) = endpoint_choice {
@@ -2655,9 +2747,7 @@ where
                         if wrapping.is_some() {
                             let observed = ComparisonBasis {
                                 position: position.clone(),
-                                normal: choice
-                                    .as_ref()
-                                    .map(|candidate| candidate.observed(&position)),
+                                normal: choice.as_ref().map(|candidate| candidate.observed()),
                                 terminal,
                                 progress: None,
                                 ceiling: first_ceiling.as_ref().map(
@@ -2863,11 +2953,11 @@ where
                                         position: position.clone(),
                                         normal: stage_choice
                                             .as_ref()
-                                            .map(|candidate| candidate.observed(&position)),
+                                            .map(|candidate| candidate.observed()),
                                         terminal: None,
                                         progress: stage_progress
                                             .as_ref()
-                                            .map(|candidate| candidate.observed(&position)),
+                                            .map(|candidate| candidate.observed()),
                                         ceiling: None,
                                         fitting_none: blocked_none,
                                         ends,
@@ -2931,7 +3021,7 @@ where
                             batch = next;
                         }
                     }
-                    environment.restore(input, &candidate, &position)?;
+                    environment.restore(input, &candidate)?;
                     let basis = (
                         candidate.request.clone(),
                         candidate.boxes.clone(),
@@ -2939,9 +3029,7 @@ where
                         candidate.encounters.clone(),
                         candidate.bands,
                         candidate.placed_start,
-                        position.logical_start,
-                        position.minimum_block,
-                        position.deferred_from.clone(),
+                        candidate.frame.clone(),
                         zone_basis.clone(),
                     );
                     if transitions.contains(&basis) {
@@ -2958,7 +3046,7 @@ where
                                 preceding: None,
                                 boxes: candidate.boxes.clone(),
                                 defer_preceding: true,
-                                ..position.replay(candidate.placed_start, None)
+                                ..candidate.frame.replay(candidate.placed_start, None)
                             },
                         )?;
                         if deferred != candidate.encounters {
@@ -2970,13 +3058,14 @@ where
                         && let Some(progress) = minimal_progress
                     {
                         candidate = progress;
-                        environment.restore(input, &candidate, &position)?;
+                        environment.restore(input, &candidate)?;
                     }
                     if !candidate.fits
                         && let Some(next) = candidate
                             .bands
-                            .next_transition(position.logical_start, candidate.placed_start)
+                            .next_transition(candidate.frame.logical_start, candidate.placed_start)
                     {
+                        let next = candidate.frame.query_coordinate(next)?;
                         position.logical_start = position.logical_start.max(next);
                         position.minimum_block = Some(
                             position
@@ -2987,9 +3076,10 @@ where
                     }
                     // Deferred replay above may have been a no-op. Restore the exact
                     // candidate once more before any clear/accept operation observes it.
-                    environment.restore(input, &candidate, &position)?;
+                    environment.restore(input, &candidate)?;
                     let logical_end = finite(
-                        position.logical_start + candidate.disposition.height(&candidate.finalized),
+                        candidate.frame.logical_start
+                            + candidate.disposition.height(&candidate.finalized),
                     )?;
                     let cleared = if candidate.disposition.is_formatted() {
                         clear_source(logical_end, &candidate.request)?
@@ -2999,7 +3089,8 @@ where
                     } else {
                         logical_end
                     };
-                    minimum_block = position.minimum_block;
+                    minimum_block = candidate.frame.minimum_block;
+                    phase = candidate.frame.phase;
                     if cleared > logical_end {
                         minimum_block =
                             Some(minimum_block.map_or(cleared, |minimum| minimum.max(cleared)));
@@ -3043,7 +3134,7 @@ where
                         available,
                         bands: candidate.bands,
                         flow: LineFlow {
-                            start: position.logical_start,
+                            frame: candidate.frame,
                             end: logical_end,
                             next: cleared,
                         },
@@ -3111,6 +3202,7 @@ where
                 continue 'sequence;
             }
             return Ok(SequenceOutcome::Complete(SequenceEntry {
+                phase,
                 boundary: current_boundary,
                 logical_start,
                 minimum_block,

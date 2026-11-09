@@ -357,6 +357,7 @@ fn intrinsic_with_indent(
             containing_size: Size::new(width, 10.0),
             content_insets: crate::Edges::ZERO,
             cursor_block: 0.0,
+            adjoining_displacement: 0.0,
             axes: FlowAxes::new(
                 WritingMode::HorizontalTb,
                 if block_rtl {

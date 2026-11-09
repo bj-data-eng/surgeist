@@ -573,6 +573,7 @@ fn assert_outgoing_counter_once_with_style(
     );
     let fitted = fit::fit(
         fit::FitInput {
+            adjoining_displacement: 0.0,
             inline_boxes: None,
             groups: crate::group_alignment::Snapshot::default(),
             wrap_style,

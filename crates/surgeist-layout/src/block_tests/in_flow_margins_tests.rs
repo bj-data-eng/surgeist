@@ -5285,3 +5285,606 @@ fn leading_component_text_supplied_strut_between_empty_and_body_f32() {
 fn leading_component_text_supplied_strut_between_empty_and_body_f64() {
     assert_leading_component_text_lines::<f64>(false, true);
 }
+
+#[derive(Clone, Copy)]
+enum ProcessedBlockEntry {
+    LeadingEmpty,
+    Positive,
+    Zero,
+    Negative,
+}
+
+fn assert_processed_whitespace_preserves_block_adjacency<S: LayoutScalar>(
+    entry: ProcessedBlockEntry,
+) {
+    let prefix_margin = match entry {
+        ProcessedBlockEntry::LeadingEmpty => None,
+        ProcessedBlockEntry::Positive => Some(12.0),
+        ProcessedBlockEntry::Zero => Some(0.0),
+        ProcessedBlockEntry::Negative => Some(-12.0),
+    };
+    let px = S::from_f64;
+    for visible in [true, false] {
+        let value = if visible { "X" } else { " " };
+        // This fixture performs contextual source processing before analysis
+        // and prepares the retained source with registered Ahem10 metrics.
+        let fixture = crate::test_support::inline_endpoint::Fixture::new(
+            value,
+            (0, 1),
+            surgeist_text::WhiteSpace::Collapse,
+            false,
+            false,
+        );
+        assert!(fixture.binding.prepared.captured_owner().is_some());
+        let ordinary = NodeInputOf {
+            display: Display::Block,
+            size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+            min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+            ..Default::default()
+        };
+        let tree = fixture
+            .tree::<S>(
+                InlineBoundaryEdgeOf::ZERO,
+                InlineBoundaryEdgeOf::ZERO,
+                false,
+                Some(100.0),
+                false,
+            )
+            .children(100, [50])
+            .style(100, ordinary.clone())
+            .children(50, [0, 51])
+            .style(50, ordinary.clone())
+            .style(
+                0,
+                NodeInputOf {
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(8.0)),
+                        bottom: LengthAutoOf::px(px(12.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary.clone()
+                },
+            )
+            .children(51, [])
+            .style(
+                51,
+                NodeInputOf {
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(10.0)),
+                    ),
+                    margin: Edges {
+                        top: LengthAutoOf::px(px(7.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary.clone()
+                },
+            );
+        let tree = if let Some(margin) = prefix_margin {
+            tree.children(
+                0,
+                std::iter::once(52).chain(fixture.binding.nodes.iter().copied()),
+            )
+            .style(0, ordinary.clone())
+            .children(52, [])
+            .style(
+                52,
+                NodeInputOf {
+                    size: Size::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(10.0)),
+                    ),
+                    margin: Edges {
+                        bottom: LengthAutoOf::px(px(margin)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary
+                },
+            )
+        } else {
+            tree
+        };
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            100,
+            vec![fixture.binding.clone()],
+            WrappingInput::default(),
+            Vec::new(),
+        )
+        .unwrap();
+        let request = crate::test_support::requests::NativeRootFrameOf::new(
+            FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+            Size::new(Some(NonNegativeFiniteOf::new(px(100.0)).unwrap()), None),
+            OrthogonalFallbackOf::new(
+                Size::NONE,
+                NearestScrollportOf::Absent,
+                Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+            ),
+        )
+        .request(Size::new(
+            AxisSizingRequestOf::new(
+                AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(px(100.0)).unwrap()),
+                SizingOperation::Normal,
+            ),
+            AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+        ));
+        let batch = compute_layout_with_flow(&capture, 100, request).unwrap();
+        if prefix_margin.is_some() {
+            let prefix = public_final_output(&batch, 52);
+            assert_eq!(prefix.location.y, S::ZERO);
+            assert_eq!(prefix.size.height, px(10.0));
+        }
+        let [placed] = batch.placed_text() else {
+            panic!("one actual processed paragraph");
+        };
+        assert_eq!(
+            placed.layout().source().text(),
+            &surgeist_text::Text::from(value)
+        );
+        assert_eq!(placed.layout().lines().len(), usize::from(visible));
+        if !visible {
+            let completions = placed.layout().nonformatted_lines().collect::<Vec<_>>();
+            assert_eq!(completions.len(), 1);
+            let receipt = completions[0].line.finalized_line();
+            assert_eq!(receipt.prepared_text(), fixture.binding.prepared);
+            assert!(!receipt.has_in_flow_content());
+            assert_eq!(receipt.feedback().line_height, 10.0);
+            let selected = receipt.selected_line();
+            assert_eq!(selected.request().controls.len(), 2);
+            assert!(selected.request().controls.iter().all(|control| {
+                control
+                    .boundary
+                    .as_ref()
+                    .is_some_and(|edge| !edge.participates())
+            }));
+        }
+        // A real10px line blocks E's own margins from adjoining through it.
+        // Its12px bottom then separates B. A fully discarded line leaves
+        // E8/12 and B7 in the one adjoining start group12.
+        let (parent_y, height, empty_height, body_y, root_height) = match (entry, visible) {
+            (ProcessedBlockEntry::LeadingEmpty, true) => (8.0, 32.0, 10.0, 22.0, 40.0),
+            (ProcessedBlockEntry::LeadingEmpty, false) => (12.0, 10.0, 0.0, 0.0, 22.0),
+            (ProcessedBlockEntry::Positive, true) => (0.0, 49.0, 32.0, 39.0, 49.0),
+            (ProcessedBlockEntry::Positive, false) => (0.0, 32.0, 10.0, 22.0, 32.0),
+            (ProcessedBlockEntry::Zero, true) => (0.0, 37.0, 20.0, 27.0, 37.0),
+            (ProcessedBlockEntry::Zero, false) => (0.0, 27.0, 10.0, 17.0, 27.0),
+            (ProcessedBlockEntry::Negative, true) => (0.0, 25.0, 8.0, 15.0, 25.0),
+            (ProcessedBlockEntry::Negative, false) => (0.0, 15.0, 10.0, 5.0, 15.0),
+        };
+        let parent = public_final_output(&batch, 50);
+        let empty = public_final_output(&batch, 0);
+        let body = public_final_output(&batch, 51);
+        let root = public_final_output(&batch, 100);
+        assert_eq!(
+            (
+                parent.location.y,
+                parent.size.height,
+                empty.location.y,
+                empty.size.height,
+                body.location.y,
+                root.size.height
+            ),
+            (
+                px(parent_y),
+                px(height),
+                S::ZERO,
+                px(empty_height),
+                px(body_y),
+                px(root_height)
+            ),
+            "processed text visible {visible}"
+        );
+    }
+}
+
+#[test]
+fn processed_whitespace_preserves_block_adjacency_f32() {
+    assert_processed_whitespace_preserves_block_adjacency::<f32>(ProcessedBlockEntry::LeadingEmpty);
+}
+#[test]
+fn processed_whitespace_preserves_block_adjacency_f64() {
+    assert_processed_whitespace_preserves_block_adjacency::<f64>(ProcessedBlockEntry::LeadingEmpty);
+}
+
+#[test]
+fn processed_whitespace_preserves_positive_adjoining_displacement_f32() {
+    assert_processed_whitespace_preserves_block_adjacency::<f32>(ProcessedBlockEntry::Positive);
+}
+
+#[test]
+fn processed_whitespace_preserves_positive_adjoining_displacement_f64() {
+    assert_processed_whitespace_preserves_block_adjacency::<f64>(ProcessedBlockEntry::Positive);
+}
+
+#[test]
+fn processed_whitespace_preserves_zero_adjoining_displacement_f32() {
+    assert_processed_whitespace_preserves_block_adjacency::<f32>(ProcessedBlockEntry::Zero);
+}
+
+#[test]
+fn processed_whitespace_preserves_zero_adjoining_displacement_f64() {
+    assert_processed_whitespace_preserves_block_adjacency::<f64>(ProcessedBlockEntry::Zero);
+}
+
+#[test]
+fn processed_whitespace_preserves_negative_adjoining_displacement_f32() {
+    assert_processed_whitespace_preserves_block_adjacency::<f32>(ProcessedBlockEntry::Negative);
+}
+
+#[test]
+fn processed_whitespace_preserves_negative_adjoining_displacement_f64() {
+    assert_processed_whitespace_preserves_block_adjacency::<f64>(ProcessedBlockEntry::Negative);
+}
+
+fn entry_progress_request<S: LayoutScalar>(width: S) -> LayoutRootRequestOf<S> {
+    crate::test_support::requests::NativeRootFrameOf::new(
+        FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr),
+        Size::new(Some(NonNegativeFiniteOf::new(width).unwrap()), None),
+        OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(Size::new(
+        AxisSizingRequestOf::new(
+            AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(width).unwrap()),
+            SizingOperation::Normal,
+        ),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+    ))
+}
+
+fn assert_entry_displacement_under_line_selection<S: LayoutScalar>() {
+    let px = S::from_f64;
+    for policy in [
+        TextWrapStyle::Auto,
+        TextWrapStyle::Balance,
+        TextWrapStyle::Pretty,
+        TextWrapStyle::AvoidShortLastLine,
+    ] {
+        for (margin, float) in [(12.0, false), (-12.0, false), (12.0, true)] {
+            let fixture = crate::test_support::inline_endpoint::Fixture::new(
+                "A B C D",
+                (0, 7),
+                surgeist_text::WhiteSpace::Collapse,
+                false,
+                false,
+            );
+            let ordinary = NodeInputOf {
+                display: Display::Block,
+                size: Size::new(PreferredSizeOf::px(px(30.0)), PreferredSizeOf::AUTO),
+                min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+                ..Default::default()
+            };
+            let mut binding = fixture.binding.clone();
+            if float {
+                // The float is the first native event in the actual captured
+                // window, before any allocated inline control or Text origin.
+                binding.nodes.insert(0, 2);
+            }
+            let mut children = vec![52];
+            children.extend(binding.nodes.iter().copied());
+            let tree = fixture
+                .tree::<S>(
+                    InlineBoundaryEdgeOf::ZERO,
+                    InlineBoundaryEdgeOf::ZERO,
+                    false,
+                    Some(30.0),
+                    float,
+                )
+                .children(100, [0])
+                .style(100, ordinary.clone())
+                .children(0, children)
+                .style(
+                    0,
+                    NodeInputOf {
+                        text_wrap_style: policy,
+                        ..ordinary.clone()
+                    },
+                )
+                .children(52, [])
+                .style(
+                    52,
+                    NodeInputOf {
+                        size: Size::new(
+                            PreferredSizeOf::px(px(30.0)),
+                            PreferredSizeOf::px(px(10.0)),
+                        ),
+                        margin: Edges {
+                            bottom: LengthAutoOf::px(px(margin)),
+                            ..Edges::all(LengthAutoOf::ZERO)
+                        },
+                        ..ordinary
+                    },
+                );
+            // Float replay is qualified in its actual owning root BFC.
+            // The ordinary nested case separately exercises shared entry.
+            let root = if float { 0 } else { 100 };
+            let capture = LayoutFlowInput::try_new(
+                &tree,
+                root,
+                vec![binding],
+                WrappingInput::default(),
+                Vec::new(),
+            )
+            .unwrap();
+            let batch =
+                compute_layout_with_flow(&capture, root, entry_progress_request(px(30.0))).unwrap();
+            let layout = batch.placed_text()[0].layout();
+            let lines = layout.lines();
+            assert_eq!(
+                lines.len(),
+                2,
+                "policy {policy:?},margin {margin},float {float}"
+            );
+            // Each Ahem word is10px; 30px admits exactly two words per line.
+            // The25px float leaves5px, so the first word waits its20px height.
+            let first = 10.0 + margin + if float { 20.0 } else { 0.0 };
+            assert_eq!(
+                lines
+                    .iter()
+                    .map(|line| line.bounds().origin.y)
+                    .collect::<Vec<_>>(),
+                vec![first, first + 10.0]
+            );
+            assert_eq!(layout.metrics().size().height, 20.0);
+            assert_eq!(layout.bounds().origin.y, first);
+            assert_eq!(layout.bounds().size.height, 20.0);
+            assert_eq!(public_final_output(&batch, 0).size.height, px(first + 20.0));
+            assert_eq!(
+                public_final_output(&batch, root).size.height,
+                px(first + 20.0)
+            );
+            if float {
+                assert_eq!(public_final_output(&batch, 2).location.y, px(22.0));
+                assert_eq!(public_final_output(&batch, 2).size.height, px(20.0));
+            }
+        }
+    }
+}
+
+#[test]
+fn entry_displacement_survives_quality_multiline_and_float_replay_f32() {
+    assert_entry_displacement_under_line_selection::<f32>();
+}
+#[test]
+fn entry_displacement_survives_quality_multiline_and_float_replay_f64() {
+    assert_entry_displacement_under_line_selection::<f64>();
+}
+
+#[test]
+fn numeric_entry_progress_preserves_f32_addition_association() {
+    let ordinary = NodeInputOf::<f32> {
+        display: Display::Block,
+        size: Size::new(PreferredSizeOf::px(100.0), PreferredSizeOf::AUTO),
+        min_size: Size::new(MinSizeOf::px(0.0), MinSizeOf::px(0.0)),
+        ..Default::default()
+    };
+    let tree = PublicBlockTree::default()
+        .with_children(0, [1, 2])
+        .with_children(1, [])
+        .with_children(2, [])
+        .with_style(0, ordinary.clone())
+        .with_style(
+            1,
+            NodeInputOf {
+                size: Size::new(
+                    PreferredSizeOf::px(100.0),
+                    PreferredSizeOf::px(33_554_432.0),
+                ),
+                margin: Edges {
+                    bottom: LengthAutoOf::px(-33_554_432.0),
+                    ..Edges::all(LengthAutoOf::ZERO)
+                },
+                ..ordinary.clone()
+            },
+        )
+        .with_style(
+            2,
+            NodeInputOf {
+                display: Display::InlineBlock,
+                size: Size::new(PreferredSizeOf::px(1.0), PreferredSizeOf::px(1.0)),
+                atomic_inline_participation: Some(fri06_atomic_participation()),
+                ..ordinary
+            },
+        );
+    let batch = compute_layout(&tree, 0, entry_progress_request(100.0)).unwrap();
+    assert_eq!(public_final_output(&batch, 1).size.height, 33_554_432.0);
+    assert_eq!(public_final_output(&batch, 2).location.y, 0.0);
+    assert_eq!(public_final_output(&batch, 2).size.height, 1.0);
+    assert_eq!(public_final_output(&batch, 0).size.height, 1.0);
+}
+
+fn assert_zero_height_forced_line_consumes_entry<S: LayoutScalar>() {
+    use crate::test_support::text::{ParagraphPart, PreparedParagraph, ahem_style};
+    let px = S::from_f64;
+    let style = ahem_style(10.0, 10.0);
+    let paragraph = PreparedParagraph::with_strut_at_boundary(
+        vec![ParagraphPart::Control {
+            node: 20,
+            kind: surgeist_text::ParagraphControlKind::ForcedBreak,
+        }],
+        style,
+        surgeist_text::ParagraphBaseDirection::LeftToRight,
+        surgeist_text::ParagraphStrut::AllocatedContributions,
+        Vec::new(),
+        surgeist_text::ParagraphTerminalEdge::BlockEnd,
+    );
+    let ordinary = NodeInputOf {
+        display: Display::Block,
+        size: Size::new(PreferredSizeOf::px(px(100.0)), PreferredSizeOf::AUTO),
+        min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+        ..Default::default()
+    };
+    let tree = PublicBlockTree::default()
+        .with_children(100, [0])
+        .with_children(0, [52, 20])
+        .with_children(52, [])
+        .with_children(20, [])
+        .with_style(100, ordinary.clone())
+        .with_style(0, ordinary.clone())
+        .with_style(
+            52,
+            NodeInputOf {
+                size: Size::new(
+                    PreferredSizeOf::px(px(100.0)),
+                    PreferredSizeOf::px(px(10.0)),
+                ),
+                margin: Edges {
+                    bottom: LengthAutoOf::px(px(12.0)),
+                    ..Edges::all(LengthAutoOf::ZERO)
+                },
+                ..ordinary
+            },
+        )
+        .with_style(20, NodeInputOf::non_box())
+        .with_layout_input(
+            20,
+            LayoutInputOf::line_break(
+                LineBreakInputOf::new().with_metrics(
+                    InlineMetricsOf::from_ascent_descent(
+                        crate::InlineBaselineContext::Physical,
+                        S::ZERO,
+                        S::ZERO,
+                    )
+                    .unwrap(),
+                ),
+            ),
+        );
+    let mut binding = paragraph.binding(0);
+    binding.line_strut = Some(surgeist_text::LineStrut {
+        baseline: 0.0,
+        line_extent: 0.0,
+    });
+    let capture = LayoutFlowInput::try_new(
+        &tree,
+        100,
+        vec![binding],
+        WrappingInput::default(),
+        Vec::new(),
+    )
+    .unwrap();
+    let batch = compute_layout_with_flow(&capture, 100, entry_progress_request(px(100.0))).unwrap();
+    let layout = batch.placed_text()[0].layout();
+    assert_eq!(layout.lines().len(), 1);
+    assert_eq!(layout.lines()[0].bounds().size.height, 0.0);
+    assert_eq!(layout.lines()[0].baseline(), 22.0);
+    assert_eq!(layout.nonformatted_lines().count(), 1);
+    assert_eq!(public_final_output(&batch, 0).size.height, px(22.0));
+    assert_eq!(public_final_output(&batch, 100).size.height, px(22.0));
+}
+#[test]
+fn zero_height_forced_line_consumes_entry_before_phantom_receiver_f32() {
+    assert_zero_height_forced_line_consumes_entry::<f32>();
+}
+#[test]
+fn zero_height_forced_line_consumes_entry_before_phantom_receiver_f64() {
+    assert_zero_height_forced_line_consumes_entry::<f64>();
+}
+
+fn assert_nonformatted_capture_retains_float_entry<S: LayoutScalar>() {
+    let px = S::from_f64;
+    for visible in [true, false] {
+        let value = if visible { "A B C D" } else { " " };
+        let fixture = crate::test_support::inline_endpoint::Fixture::new(
+            value,
+            (0, value.len()),
+            surgeist_text::WhiteSpace::Collapse,
+            false,
+            false,
+        );
+        assert!(fixture.binding.prepared.captured_owner().is_some());
+        let mut binding = fixture.binding.clone();
+        binding.nodes.insert(0, 2);
+        let ordinary = NodeInputOf {
+            display: Display::Block,
+            size: Size::new(PreferredSizeOf::px(px(30.0)), PreferredSizeOf::AUTO),
+            min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+            ..Default::default()
+        };
+        let tree = fixture
+            .tree::<S>(
+                InlineBoundaryEdgeOf::ZERO,
+                InlineBoundaryEdgeOf::ZERO,
+                false,
+                Some(30.0),
+                true,
+            )
+            .children(0, std::iter::once(52).chain(binding.nodes.iter().copied()))
+            .style(0, ordinary.clone())
+            .children(52, [])
+            .style(
+                52,
+                NodeInputOf {
+                    size: Size::new(PreferredSizeOf::px(px(30.0)), PreferredSizeOf::px(px(10.0))),
+                    margin: Edges {
+                        bottom: LengthAutoOf::px(px(12.0)),
+                        ..Edges::all(LengthAutoOf::ZERO)
+                    },
+                    ..ordinary
+                },
+            );
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![binding],
+            WrappingInput::default(),
+            Vec::new(),
+        )
+        .unwrap();
+        let batch =
+            compute_layout_with_flow(&capture, 0, entry_progress_request(px(30.0))).unwrap();
+        assert_eq!(public_final_output(&batch, 52).location.y, S::ZERO);
+        assert_eq!(public_final_output(&batch, 52).size.height, px(10.0));
+        let [placed] = batch.placed_text() else {
+            panic!("one actual processed capture");
+        };
+        let layout = placed.layout();
+        assert_eq!(layout.source().text(), &surgeist_text::Text::from(value));
+        if visible {
+            assert_eq!(
+                layout
+                    .lines()
+                    .iter()
+                    .map(|line| line.bounds().origin.y)
+                    .collect::<Vec<_>>(),
+                vec![42.0, 52.0]
+            );
+        } else {
+            assert!(layout.lines().is_empty());
+            let completions = layout.nonformatted_lines().collect::<Vec<_>>();
+            assert_eq!(completions.len(), 1);
+            let receipt = completions[0].line.finalized_line();
+            assert_eq!(receipt.prepared_text(), fixture.binding.prepared);
+            assert!(!receipt.has_in_flow_content());
+            assert_eq!(receipt.feedback().line_height, 10.0);
+            let selected = receipt.selected_line();
+            assert_eq!(selected.request().controls.len(), 2);
+            assert!(selected.request().controls.iter().all(|control| {
+                control
+                    .boundary
+                    .as_ref()
+                    .is_some_and(|edge| !edge.participates())
+            }));
+        }
+        let float = public_final_output(&batch, 2);
+        assert_eq!(float.size, Size::new(px(25.0), px(20.0)));
+        // The float's hypothetical empty parent follows A's10px border end
+        // plus its12px adjoining margin, independently of line existence.
+        assert_eq!(float.location.y, px(22.0), "visible {visible}");
+        assert_eq!(
+            public_final_output(&batch, 0).size.height,
+            px(if visible { 62.0 } else { 42.0 })
+        );
+    }
+}
+
+#[test]
+fn nonformatted_capture_retains_float_adjoining_entry_f32() {
+    assert_nonformatted_capture_retains_float_entry::<f32>();
+}
+#[test]
+fn nonformatted_capture_retains_float_adjoining_entry_f64() {
+    assert_nonformatted_capture_retains_float_entry::<f64>();
+}

@@ -26,6 +26,7 @@ pub(crate) fn fragment_for(
     );
     let lines = crate::text_layout::fit::fit(
         crate::text_layout::fit::FitInput {
+            adjoining_displacement: 0.0,
             inline_boxes: None,
             groups: crate::group_alignment::Snapshot::default(),
             wrap_style: crate::TextWrapStyle::Auto,

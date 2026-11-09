@@ -405,8 +405,10 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             let boxes = prefix
                 .map_or(replay.boxes.as_ref(), |frame| frame.boxes.as_ref())
                 .cloned();
-            let (line, placed) =
-                prefix.map_or((line, replay.placed), |frame| (&frame.line, frame.placed));
+            let (line, placed, frame) = prefix
+                .map_or((line, replay.placed, &replay.frame), |earlier| {
+                    (&earlier.line, earlier.placed, &earlier.frame)
+                });
             let selected = line.selected_line();
             let request = selected.request();
             let start = request.start.view().participant_offset();
@@ -488,9 +490,9 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
                 .map_err(|error| super::inline_run::text_run_error(container, error))?
                 .height(line);
             let encounter_floor = if preceding && replay.defer_preceding {
-                replay.logical.max(placed) + used_height
+                frame.logical_start.max(placed) + used_height
             } else {
-                replay.source_floor
+                frame.float_source_floor
             };
             pending.block_start = self.cursor
                 + crate::text_layout::run::number::<S>(encounter_floor)
@@ -502,8 +504,10 @@ impl<Node: Copy + Eq, S: LayoutScalar> Encounters<Node, S> {
             }
             let encounter_floor = (pending.block_start - self.cursor).to_f64();
             let line_end = self.cursor
-                + crate::text_layout::run::number::<S>(replay.logical.max(placed) + used_height)
-                    .map_err(|e| super::inline_run::text_run_error(container, e))?;
+                + crate::text_layout::run::number::<S>(
+                    frame.logical_start.max(placed) + used_height,
+                )
+                .map_err(|e| super::inline_run::text_run_error(container, e))?;
             let location = match self.inline_space {
                 FloatInlineSpace::Finite => self.current.place_float_for_line(
                     container,

@@ -81,8 +81,15 @@ fn replay_at(block: f64) -> EncounterReplay {
     EncounterReplay {
         boxes: None,
         preceding: None,
-        source_floor: block,
-        logical: block,
+        frame: crate::text_layout::fit::CandidateFrame {
+            entry_phase: crate::text_layout::fit::EntryPhase::Consumed,
+            phase: crate::text_layout::fit::EntryPhase::Consumed,
+            offset: 0.0,
+            float_source_floor: block,
+            logical_start: block,
+            minimum_block: None,
+            deferred_from: None,
+        },
         placed: block,
         defer_preceding: false,
     }
