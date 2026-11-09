@@ -78,10 +78,11 @@ assert_eq!(limits.work(ParseWork::NodeVisit), 512);
 A table names every dimension, so a limit or a tariff cannot be left out, and a
 lookup cannot go out of range. `Limits::from_fn`, `Tariffs::from_fn` and
 `Limits::unlimited` build tables by calling a function once per dimension, and
-`Tariffs::identity` keeps every dimension and unit in the parent. `Limits::work`
-and `Limits::live` read a cap back. `Operation::limits` returns the caps a scope has, through a `Phase` as well, and `SharedOperation::limits` returns a
-copy. It reports that scope's own caps, not those of its ancestors, so a consumer
-that runs inside a scope its caller supplied can read the caps it works under.
+`Tariffs::identity` keeps every dimension and unit in the parent. `Limits::work` and
+`Limits::live` read a cap back. `Operation::limits` returns the caps a scope has,
+through a `Phase` as well, and `SharedOperation::limits` returns a copy. It reports
+that scope's own caps, not those of its ancestors, so a consumer that runs inside a
+scope its caller supplied can read the caps it works under.
 
 `Operation::set_limits` and `SharedOperation::set_limits` replace a scope's caps for
 the batches admitted after the call, for a consumer whose allowance changes between

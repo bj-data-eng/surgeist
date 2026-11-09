@@ -245,13 +245,6 @@ impl surgeist_ledger::ScopeLedger<HtmlWork, HtmlResource> for Ledger {
         Ledger::apply_batch(self, scope, changes)
     }
 
-    fn set_limits(&mut self, scope: Scope, limits: HtmlLimits) -> Result<(), LedgerError> {
-        match self {
-            Self::Owned(operation) => operation.set_limits(scope, limits),
-            Self::Shared(operation) => operation.set_limits(scope, limits),
-        }
-    }
-
     fn usage(&self, scope: Scope) -> Result<Usage<HtmlWork, HtmlResource>, LedgerError> {
         self.read(scope, |usage| *usage)
     }

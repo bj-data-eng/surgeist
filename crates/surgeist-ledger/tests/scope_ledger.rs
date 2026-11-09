@@ -17,8 +17,9 @@ fn caps(bytes: u64) -> Limits<Work, Resource> {
     )
 }
 
-/// Opens a child below `parent`, checks a batch against it, admits it, raises the cap and admits
-/// what the old cap refused, then returns the child's live bytes. Runs the same on every ledger.
+/// Opens a child below `parent`, checks a batch against it, admits it, releases it and admits
+/// what the cap refused before, then returns the child's live bytes. Runs the same on every
+/// ledger.
 fn exercise(mut ledger: impl ScopeLedger<Work, Resource>, parent: Scope) -> u64 {
     let child = ledger
         .child(parent, "child", caps(10), Tariffs::identity())
@@ -32,8 +33,12 @@ fn exercise(mut ledger: impl ScopeLedger<Work, Resource>, parent: Scope) -> u64 
         refused,
         Error::Refused(refusal) if refusal.reason == RefusalReason::Limit { limit: 10 }
     ));
-    ledger.set_limits(child, caps(20)).unwrap();
-    ledger.apply_batch(child, &batch).unwrap();
+    ledger
+        .apply_batch(child, &[Change::Release(Resource::Bytes, 8)])
+        .unwrap();
+    ledger
+        .apply_batch(child, &[Change::Acquire(Resource::Bytes, 10)])
+        .unwrap();
     ledger.usage(child).unwrap().live(Resource::Bytes)
 }
 
@@ -41,19 +46,19 @@ fn exercise(mut ledger: impl ScopeLedger<Work, Resource>, parent: Scope) -> u64 
 fn an_owned_operation_a_shared_one_and_references_to_both_behave_alike() {
     let mut owned = Operation::<Work, Resource>::new("root", caps(100), 2).unwrap();
     let root = owned.root();
-    assert_eq!(exercise(&mut owned, root), 16);
-    assert_eq!(owned.usage(root).unwrap().live(Resource::Bytes), 16);
+    assert_eq!(exercise(&mut owned, root), 10);
+    assert_eq!(owned.usage(root).unwrap().live(Resource::Bytes), 10);
 
     let owned = Operation::<Work, Resource>::new("root", caps(100), 2).unwrap();
     let root = owned.root();
-    assert_eq!(exercise(owned, root), 16);
+    assert_eq!(exercise(owned, root), 10);
 
     let shared = Operation::<Work, Resource>::new("root", caps(100), 2)
         .unwrap()
         .share();
     let root = shared.root();
-    assert_eq!(exercise(shared.clone(), root), 16);
-    assert_eq!(shared.usage(root).unwrap().live(Resource::Bytes), 16);
+    assert_eq!(exercise(shared.clone(), root), 10);
+    assert_eq!(shared.usage(root).unwrap().live(Resource::Bytes), 10);
 }
 
 #[test]

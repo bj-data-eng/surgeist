@@ -128,7 +128,6 @@ impl<W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension> surgeist_ledg
 pub fn surgeist_ledger::Operation<W, R>::apply_batch(&mut self, scope: surgeist_ledger::Scope, changes: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::check_batch(&mut self, scope: surgeist_ledger::Scope, changes: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::child(&mut self, parent: surgeist_ledger::Scope, name: &'static str, limits: surgeist_ledger::Limits<W, R>, tariffs: surgeist_ledger::Tariffs<W, R>) -> core::result::Result<surgeist_ledger::Scope, surgeist_ledger::Error<W, R>>
-pub fn surgeist_ledger::Operation<W, R>::set_limits(&mut self, scope: surgeist_ledger::Scope, limits: surgeist_ledger::Limits<W, R>) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::usage(&self, scope: surgeist_ledger::Scope) -> core::result::Result<surgeist_ledger::Usage<W, R>, surgeist_ledger::Error<W, R>>
 pub struct surgeist_ledger::Phase<'a, W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension>
 impl<W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension> surgeist_ledger::Phase<'_, W, R>
@@ -201,7 +200,6 @@ impl<W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension> surgeist_ledg
 pub fn surgeist_ledger::SharedOperation<W, R>::apply_batch(&mut self, scope: surgeist_ledger::Scope, changes: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::SharedOperation<W, R>::check_batch(&mut self, scope: surgeist_ledger::Scope, changes: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::SharedOperation<W, R>::child(&mut self, parent: surgeist_ledger::Scope, name: &'static str, limits: surgeist_ledger::Limits<W, R>, tariffs: surgeist_ledger::Tariffs<W, R>) -> core::result::Result<surgeist_ledger::Scope, surgeist_ledger::Error<W, R>>
-pub fn surgeist_ledger::SharedOperation<W, R>::set_limits(&mut self, scope: surgeist_ledger::Scope, limits: surgeist_ledger::Limits<W, R>) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::SharedOperation<W, R>::usage(&self, scope: surgeist_ledger::Scope) -> core::result::Result<surgeist_ledger::Usage<W, R>, surgeist_ledger::Error<W, R>>
 pub struct surgeist_ledger::SharedScopeCharge<'a, W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension>
 impl<W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension> surgeist_ledger::Charge<W, R> for surgeist_ledger::SharedScopeCharge<'_, W, R>
@@ -252,25 +250,21 @@ pub trait surgeist_ledger::ScopeLedger<W: surgeist_ledger::Dimension, R: surgeis
 pub fn surgeist_ledger::ScopeLedger::apply_batch(&mut self, scope: surgeist_ledger::Scope, changes: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::ScopeLedger::check_batch(&mut self, scope: surgeist_ledger::Scope, changes: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::ScopeLedger::child(&mut self, parent: surgeist_ledger::Scope, name: &'static str, limits: surgeist_ledger::Limits<W, R>, tariffs: surgeist_ledger::Tariffs<W, R>) -> core::result::Result<surgeist_ledger::Scope, surgeist_ledger::Error<W, R>>
-pub fn surgeist_ledger::ScopeLedger::set_limits(&mut self, scope: surgeist_ledger::Scope, limits: surgeist_ledger::Limits<W, R>) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::ScopeLedger::usage(&self, scope: surgeist_ledger::Scope) -> core::result::Result<surgeist_ledger::Usage<W, R>, surgeist_ledger::Error<W, R>>
 impl<W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension, L: surgeist_ledger::ScopeLedger<W, R> + ?core::marker::Sized> surgeist_ledger::ScopeLedger<W, R> for &mut L
 pub fn &mut L::apply_batch(&mut self, scope: surgeist_ledger::Scope, changes: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn &mut L::check_batch(&mut self, scope: surgeist_ledger::Scope, changes: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn &mut L::child(&mut self, parent: surgeist_ledger::Scope, name: &'static str, limits: surgeist_ledger::Limits<W, R>, tariffs: surgeist_ledger::Tariffs<W, R>) -> core::result::Result<surgeist_ledger::Scope, surgeist_ledger::Error<W, R>>
-pub fn &mut L::set_limits(&mut self, scope: surgeist_ledger::Scope, limits: surgeist_ledger::Limits<W, R>) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn &mut L::usage(&self, scope: surgeist_ledger::Scope) -> core::result::Result<surgeist_ledger::Usage<W, R>, surgeist_ledger::Error<W, R>>
 impl<W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension> surgeist_ledger::ScopeLedger<W, R> for surgeist_ledger::Operation<W, R>
 pub fn surgeist_ledger::Operation<W, R>::apply_batch(&mut self, scope: surgeist_ledger::Scope, changes: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::check_batch(&mut self, scope: surgeist_ledger::Scope, changes: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::child(&mut self, parent: surgeist_ledger::Scope, name: &'static str, limits: surgeist_ledger::Limits<W, R>, tariffs: surgeist_ledger::Tariffs<W, R>) -> core::result::Result<surgeist_ledger::Scope, surgeist_ledger::Error<W, R>>
-pub fn surgeist_ledger::Operation<W, R>::set_limits(&mut self, scope: surgeist_ledger::Scope, limits: surgeist_ledger::Limits<W, R>) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::Operation<W, R>::usage(&self, scope: surgeist_ledger::Scope) -> core::result::Result<surgeist_ledger::Usage<W, R>, surgeist_ledger::Error<W, R>>
 impl<W: surgeist_ledger::Dimension, R: surgeist_ledger::Dimension> surgeist_ledger::ScopeLedger<W, R> for surgeist_ledger::SharedOperation<W, R>
 pub fn surgeist_ledger::SharedOperation<W, R>::apply_batch(&mut self, scope: surgeist_ledger::Scope, changes: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::SharedOperation<W, R>::check_batch(&mut self, scope: surgeist_ledger::Scope, changes: &[surgeist_ledger::Change<W, R>]) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::SharedOperation<W, R>::child(&mut self, parent: surgeist_ledger::Scope, name: &'static str, limits: surgeist_ledger::Limits<W, R>, tariffs: surgeist_ledger::Tariffs<W, R>) -> core::result::Result<surgeist_ledger::Scope, surgeist_ledger::Error<W, R>>
-pub fn surgeist_ledger::SharedOperation<W, R>::set_limits(&mut self, scope: surgeist_ledger::Scope, limits: surgeist_ledger::Limits<W, R>) -> core::result::Result<(), surgeist_ledger::Error<W, R>>
 pub fn surgeist_ledger::SharedOperation<W, R>::usage(&self, scope: surgeist_ledger::Scope) -> core::result::Result<surgeist_ledger::Usage<W, R>, surgeist_ledger::Error<W, R>>
 pub trait surgeist_ledger::TableValue: core::marker::Copy + core::cmp::Eq + core::fmt::Debug + core::marker::Send + core::marker::Sync + 'static
 impl<T: core::marker::Copy + core::cmp::Eq + core::fmt::Debug + core::marker::Send + core::marker::Sync + 'static> surgeist_ledger::TableValue for T

@@ -6,7 +6,8 @@ use crate::{Change, Dimension, Error, Limits, Operation, Scope, SharedOperation,
 /// applies it, and open child scopes below a scope its caller supplied takes a `ScopeLedger`
 /// instead of an operation. The stock implementations are an owned [`Operation`], a
 /// [`SharedOperation`] and a mutable reference to either. Dispatch is static. Every method has
-/// the meaning of the operation method of the same name.
+/// the meaning of the operation method of the same name, and an implementation outside this
+/// crate forwards each method to such an operation.
 pub trait ScopeLedger<W: Dimension, R: Dimension> {
     /// Opens a child scope; see [`Operation::child`].
     fn child(
@@ -22,9 +23,6 @@ pub trait ScopeLedger<W: Dimension, R: Dimension> {
 
     /// Admits a batch; see [`Operation::apply_batch`].
     fn apply_batch(&mut self, scope: Scope, changes: &[Change<W, R>]) -> Result<(), Error<W, R>>;
-
-    /// Replaces the caps of a scope; see [`Operation::set_limits`].
-    fn set_limits(&mut self, scope: Scope, limits: Limits<W, R>) -> Result<(), Error<W, R>>;
 
     /// A copy of the accepted usage of a scope; see [`Operation::usage`].
     fn usage(&self, scope: Scope) -> Result<Usage<W, R>, Error<W, R>>;
@@ -47,10 +45,6 @@ impl<W: Dimension, R: Dimension> ScopeLedger<W, R> for Operation<W, R> {
 
     fn apply_batch(&mut self, scope: Scope, changes: &[Change<W, R>]) -> Result<(), Error<W, R>> {
         Operation::apply_batch(self, scope, changes)
-    }
-
-    fn set_limits(&mut self, scope: Scope, limits: Limits<W, R>) -> Result<(), Error<W, R>> {
-        Operation::set_limits(self, scope, limits)
     }
 
     fn usage(&self, scope: Scope) -> Result<Usage<W, R>, Error<W, R>> {
@@ -77,10 +71,6 @@ impl<W: Dimension, R: Dimension> ScopeLedger<W, R> for SharedOperation<W, R> {
         SharedOperation::apply_batch(self, scope, changes)
     }
 
-    fn set_limits(&mut self, scope: Scope, limits: Limits<W, R>) -> Result<(), Error<W, R>> {
-        SharedOperation::set_limits(self, scope, limits)
-    }
-
     fn usage(&self, scope: Scope) -> Result<Usage<W, R>, Error<W, R>> {
         SharedOperation::usage(self, scope)
     }
@@ -103,10 +93,6 @@ impl<W: Dimension, R: Dimension, L: ScopeLedger<W, R> + ?Sized> ScopeLedger<W, R
 
     fn apply_batch(&mut self, scope: Scope, changes: &[Change<W, R>]) -> Result<(), Error<W, R>> {
         (**self).apply_batch(scope, changes)
-    }
-
-    fn set_limits(&mut self, scope: Scope, limits: Limits<W, R>) -> Result<(), Error<W, R>> {
-        (**self).set_limits(scope, limits)
     }
 
     fn usage(&self, scope: Scope) -> Result<Usage<W, R>, Error<W, R>> {
