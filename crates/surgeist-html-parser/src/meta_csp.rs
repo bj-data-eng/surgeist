@@ -1,8 +1,6 @@
 //! Explicit caller-supplied processing for original Meta CSP transitions.
 use crate::construction::SessionError;
-use crate::parser::control::{
-    HtmlParseInvariant, HtmlParseStop, HtmlParseWorkCategory, ParseControl,
-};
+use crate::parser::control::{HtmlParseInvariant, HtmlParseStop, ParseControl};
 use crate::parser::tree_builder::parse::ReturnableCspStorage;
 use crate::{HtmlDocumentParseRequest, HtmlParseFailure, HtmlParseReport};
 use std::{
@@ -152,7 +150,7 @@ impl Storage {
         c.acquire_retained_provider(self.bytes as u64, self.units as u64, self.entries as u64)
     }
     /// Whether `c` holds this much admitted provider storage to credit.
-    pub fn fits(self, c: &ParseControl) -> bool {
+    pub fn fits(self, c: &mut ParseControl) -> bool {
         c.can_release_retained_provider(self.bytes as u64, self.units as u64, self.entries as u64)
     }
     pub fn release(self, c: &mut ParseControl) -> Result<(), HtmlParseStop> {
@@ -206,11 +204,9 @@ impl Account {
     ) -> Result<(), HtmlParseStop> {
         self.processor_touched |= caller == Caller::Processor;
         self.settle(c)?;
-        let work = a
-            .work_credits()
-            .checked_add(a.closing_work().work_credits())
-            .ok_or_else(|| c.stop_representation(crate::HtmlParseResource::WorkCredits))?;
-        c.charge(HtmlParseWorkCategory::ProviderCall, work)?;
+        let work = surgeist_html::accounting::csp_work(&a)
+            .map_err(|_| c.stop_representation(crate::HtmlParseResource::WorkCredits))?;
+        c.charge_change(work)?;
         c.admit_atomic_layout(a.atomic_bytes())?;
         let base = self
             .live
@@ -529,7 +525,7 @@ mod tests {
         let stop = HtmlParseStop::InternalInvariant(HtmlParseInvariant::ReentrantProviderCallback);
         assert!(matches!(shared.finish(), Err(SessionError::Stop(s)) if s == stop));
         assert_eq!(c.stop(), Some(stop));
-        assert_eq!(c.usage(), &before);
+        assert_eq!(c.usage(), before);
         assert_eq!(account.live, Storage::ZERO);
         assert_eq!(account.last, Storage::ZERO);
     }
@@ -602,7 +598,7 @@ mod tests {
         let request =
             crate::HtmlDocumentParseRequest::offline(crate::HtmlSource::utf8("<p>x</p>"), tight);
         let parse = request.parse().unwrap_err();
-        let retained = parse.retained_usage().cloned();
+        let retained = parse.retained_usage();
         let failure = HtmlParseCspFailure::<()>::new(
             parse,
             None,
@@ -620,7 +616,7 @@ mod tests {
             Some(crate::HtmlParseEngineCondition::Cleanup)
         );
         assert_eq!(failure.storage, ReturnableCspStorage::NONE);
-        assert_eq!(failure.parse_failure().retained_usage().cloned(), retained);
+        assert_eq!(failure.parse_failure().retained_usage(), retained);
         drop(failure);
     }
 }

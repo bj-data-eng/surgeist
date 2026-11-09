@@ -1,11 +1,13 @@
 //! Real append ownership: one native backing, original registry and controller.
 use super::*;
 use construction_owner::construction_error;
+use surgeist_html::accounting::{HtmlWork, text_append_work};
 use surgeist_html::bounded::construction::{
     HtmlConstructionTextAppend as Append, HtmlConstructionTextAppendDescription as Description,
     HtmlConstructionTextAppendWork as Work,
 };
 use surgeist_html::{construction::HtmlNodeKind, values::DocumentString};
+use surgeist_ledger::Change;
 
 fn admit_work(
     control: &mut ParseControl,
@@ -13,28 +15,21 @@ fn admit_work(
     wrapper_prepared: bool,
 ) -> Result<(), SessionError> {
     control.admit_atomic_layout(work.atomic_layout_bytes)?;
-    control.charge(
-        HtmlParseWorkCategory::RecordVisit,
-        work.record_visits as u64,
-    )?;
-    let Some(provider_calls) = work
-        .provider_calls
-        .checked_sub(usize::from(wrapper_prepared))
-    else {
-        // The wrapper's call was charged when it was prepared; a plan that
-        // counts fewer differs from the work already charged for it.
-        return Err(plan_below_charge(control));
-    };
-    control.charge(HtmlParseWorkCategory::ProviderCall, provider_calls as u64)?;
-    control.charge(
-        HtmlParseWorkCategory::InspectByte,
-        work.inspected_bytes as u64,
-    )?;
-    control.charge(HtmlParseWorkCategory::CopyByte, work.copied_bytes as u64)?;
-    control.charge(
-        HtmlParseWorkCategory::RecordWrite,
-        work.record_writes as u64,
-    )?;
+    // Each part of the plan is charged on its own, in order.
+    for change in text_append_work(&work) {
+        let change = match change {
+            Change::Work(HtmlWork::ProviderCall, calls) => {
+                let Some(calls) = calls.checked_sub(u64::from(wrapper_prepared)) else {
+                    // The wrapper's call was charged when it was prepared; a plan
+                    // that counts fewer differs from the work already charged for it.
+                    return Err(plan_below_charge(control));
+                };
+                Change::Work(HtmlWork::ProviderCall, calls)
+            }
+            other => other,
+        };
+        control.charge_change(change)?;
+    }
     Ok(())
 }
 

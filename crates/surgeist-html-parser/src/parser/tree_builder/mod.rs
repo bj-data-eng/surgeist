@@ -1612,7 +1612,7 @@ impl<'source> StandaloneDocumentDriver<'source> {
         Some((&mut self.control, session, capability))
     }
     #[cfg(test)]
-    pub(crate) fn usage(&self) -> &super::control::HtmlParseUsage {
+    pub(crate) fn usage(&self) -> super::control::HtmlParseUsage {
         self.control.usage()
     }
     /// The only fixture issuer moves the real admitted owners after a

@@ -211,6 +211,17 @@ than 32 attributes, which compares names pair by pair, is not. One hash key serv
 whole process, so within it the same list charges the same work every time; across processes the
 probes it admits, and so its work, can differ by a small share.
 
+A parse charges its work and resources through a `surgeist-ledger` operation of the HTML
+accounting schema (`HtmlWork` and `HtmlResource` of `surgeist_html::accounting`). A request
+that sets nothing charges an operation of its own that nothing observes. `with_accounting`
+takes one `HtmlParseAccounting`: `host(ledger, scope)` charges a scope of an operation the
+host owns, so the parse is charged once in the host's totals, and `profiled(mode)` charges
+the parse's own operation under a ledger profile mode, read back from the report's or
+failure's `profile()`. `observing_phases()` adds a scope and a ledger phase for each parse
+phase. `HtmlParseAccounting` documents the scope tree, the two scopes a parse adds (six with
+phase observation) and the custody a hosted report releases when it drops. A ledger failure
+that is not a refusal of a charged change stops the parse with `HtmlParseStop::Accounting`.
+
 From the repository root, run focused checks through bounded `pisct run`:
 
 ```sh

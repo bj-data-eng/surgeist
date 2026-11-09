@@ -4989,7 +4989,7 @@ mod whole_source_comparisons {
         assert_eq!(owner.after_cleanup(), Some(&first));
         assert!(owner.diagnostics().is_none());
         owner.release_failure().unwrap();
-        zero_storage(owner.retained_usage().unwrap());
+        zero_storage(&owner.retained_usage().unwrap());
         assert_eq!(owner.at_stop(), Some(&first));
     }
     #[test]
@@ -5039,7 +5039,7 @@ mod whole_source_comparisons {
             assert_eq!(location.token, l.errors[0].token);
             check_range(failed.source(), &location.source, l.errors[0].source);
             failed.release().unwrap();
-            zero_storage(failed.retained_usage());
+            zero_storage(&failed.retained_usage());
             assert_eq!(failed.at_stop(), &first);
             assert_eq!(failed.stop(), HtmlParseStop::Cancelled);
         }
@@ -5098,7 +5098,7 @@ mod whole_source_comparisons {
                 assert!(kept.parts.arena.is_none());
                 assert_eq!(kept.parts.diagnostics().unwrap().len(), 1);
                 kept.parts.release().unwrap();
-                zero_storage(kept.retained_usage());
+                zero_storage(&kept.retained_usage());
                 assert_eq!(kept.parts.control.stop(), stop);
                 assert_eq!(kept.parts.control.first_stop_usage(), Some(&first));
             }

@@ -3801,7 +3801,7 @@ mod merge_cleanup_tests {
             Err(SessionError::Stop(HtmlParseStop::Cancelled))
         ));
         assert_original_groups(&evidence, &old, &incoming);
-        assert_eq!(c.usage(), &before);
+        assert_eq!(c.usage(), before);
         drop((old, incoming));
         evidence.release(&mut c).unwrap();
         assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));

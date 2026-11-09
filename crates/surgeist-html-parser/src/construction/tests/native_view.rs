@@ -91,7 +91,7 @@ impl<'a> NativeView<'a> {
         self.control
     }
     #[cfg(test)]
-    pub(crate) fn usage(&self) -> &crate::parser::control::HtmlParseUsage {
+    pub(crate) fn usage(&self) -> crate::parser::control::HtmlParseUsage {
         self.control.usage()
     }
     #[cfg(test)]

@@ -745,3 +745,29 @@ pub(crate) fn observed_capacity()
     storage_zero(&c);
     capacity
 }
+
+#[test]
+fn a_refused_record_after_a_text_reserve_leaves_the_ticket_releasable_for_what_was_admitted() {
+    let mut c = ParseControl::new(limits(), HtmlParseCancellation::new());
+    let (mut session, root, node) = aggregate(&mut c);
+    let mut input = Some(owned_text(&mut c, &[0xd800; 300]));
+    let held = c
+        .usage()
+        .resource(HtmlParseResource::ManagedCapacityBytes)
+        .current;
+    c.test_limit(HtmlParseResource::ManagedCapacityBytes, held + 16_000);
+    c.overshoot_next_capacity_record(1_000_000);
+    assert!(matches!(
+        session
+            .insert_text(&mut c, &root, None, &mut input, None)
+            .err(),
+        Some(SessionError::Stop(HtmlParseStop::LimitExceeded {
+            resource: HtmlParseResource::ManagedCapacityBytes,
+            ..
+        }))
+    ));
+    exact_current_ticket(&session, &mut c, &node);
+    session.release(&mut c).unwrap();
+    storage_zero(&c);
+    crate::parser::tree_builder::tests::assert_released(&c);
+}

@@ -778,7 +778,7 @@ mod tests {
         cancellation.cancel();
         assert!(mathml_text_point(&name, &mut short).is_err());
         assert_eq!(short.stop(), first);
-        assert_eq!(short.usage(), &usage);
+        assert_eq!(short.usage(), usage);
 
         // An element outside the MathML namespace is refused with the answer
         // false, at a budget that accepting would not fit. HTML 877d lists

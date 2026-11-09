@@ -36,14 +36,8 @@ impl CssSchemeValue {
         let usage = self.report.retained_storage();
         if self.receipt.bytes != usage.bytes() as u64
             || self.receipt.units != usage.utf16_units() as u64
-            || c.usage
-                .resource(HtmlParseResource::ManagedCapacityBytes)
-                .current
-                < self.receipt.bytes
-            || c.usage
-                .resource(HtmlParseResource::ManagedUtf16Units)
-                .current
-                < self.receipt.units
+            || c.live(HtmlParseResource::ManagedCapacityBytes)? < self.receipt.bytes
+            || c.live(HtmlParseResource::ManagedUtf16Units)? < self.receipt.units
         {
             return Err(c.fail_invariant(HtmlParseInvariant::CapacityMismatch));
         }
@@ -203,10 +197,9 @@ impl<'c> SchemeCallbacks<'c> {
 impl ParseControl {
     fn remaining_css(&mut self, resource: HtmlParseResource) -> Result<usize, HtmlParseStop> {
         self.checkpoint()?;
-        let remaining = self
-            .limits
-            .copy(resource)
-            .checked_sub(self.usage.resource(resource).current)
+        let (limit, live) = (self.limit(resource)?, self.live(resource)?);
+        let remaining = limit
+            .checked_sub(live)
             .ok_or_else(|| self.fail_invariant(HtmlParseInvariant::ReleaseUnderflow))?;
         Ok(usize::try_from(remaining).unwrap_or(usize::MAX))
     }
@@ -220,7 +213,7 @@ impl ParseControl {
         let work = self.remaining_css(HtmlParseResource::WorkCredits)?;
         let entries = self.remaining_css(HtmlParseResource::AuxiliaryEntries)?;
         // AtomicLayoutBytes observes a maximum, rather than a consumed extent.
-        let scratch = usize::try_from(self.limits.copy(HtmlParseResource::AtomicLayoutBytes))
+        let scratch = usize::try_from(self.limit(HtmlParseResource::AtomicLayoutBytes)?)
             .unwrap_or(usize::MAX);
         // CSS caps nesting at 256 levels; a depth within it is always accepted.
         const DEPTH_CEILING: u32 = 256;

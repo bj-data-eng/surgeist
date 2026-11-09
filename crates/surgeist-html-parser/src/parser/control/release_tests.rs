@@ -60,7 +60,7 @@ fn provider_release_for_another_controller_latches_foreign_control_and_credits_n
         Err(FOREIGN)
     );
     assert_eq!(c.stop(), Some(FOREIGN));
-    assert_eq!(c.usage(), &before);
+    assert_eq!(c.usage(), before);
     let owner = c.identity();
     assert_eq!(c.release_retained_provider(&owner, 8, 2, 1), Ok(()));
     for resource in [
@@ -87,7 +87,7 @@ fn prepared_release_beyond_the_admitted_amount_latches_underflow_and_credits_not
         Err(UNDERFLOW)
     );
     assert_eq!(c.stop(), Some(UNDERFLOW));
-    assert_eq!(c.usage(), &before, "no partial credit");
+    assert_eq!(c.usage(), before, "no partial credit");
     assert_eq!(
         c.commit_prepared_release(&[
             (HtmlParseResource::AuxiliaryEntries, 1),
@@ -107,7 +107,7 @@ fn final_vector_release_of_another_controllers_ticket_is_refused_and_credits_not
     let (stop, ticket) = c.release_final_vector(ticket, 0).unwrap_err().into_parts();
     assert_eq!(stop, FOREIGN);
     assert_eq!(c.stop(), Some(FOREIGN));
-    assert_eq!(c.usage(), &before);
+    assert_eq!(c.usage(), before);
     // The ticket comes back intact for its own controller.
     assert!(other.release_final_vector(ticket, 0).is_ok());
 }
@@ -120,7 +120,7 @@ fn final_shared_release_of_an_unfinalized_ticket_is_refused_and_credits_nothing(
     let (stop, ticket) = c.release_final_shared(ticket).unwrap_err().into_parts();
     assert_eq!(stop, MISMATCH);
     assert_eq!(c.stop(), Some(MISMATCH));
-    assert_eq!(c.usage(), &before);
+    assert_eq!(c.usage(), before);
     // The ticket comes back intact for the ordinary shared release.
     assert_eq!(c.release_shared(shared, ticket).unwrap(), 7);
     assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 0);
@@ -136,7 +136,7 @@ fn final_shared_release_of_another_controllers_ticket_is_refused_and_credits_not
     let (stop, ticket) = c.release_final_shared(ticket).unwrap_err().into_parts();
     assert_eq!(stop, FOREIGN);
     assert_eq!(c.stop(), Some(FOREIGN));
-    assert_eq!(c.usage(), &before);
+    assert_eq!(c.usage(), before);
     assert!(other.release_final_shared(ticket).is_ok());
 }
 
@@ -153,7 +153,7 @@ fn final_attribute_release_of_another_controllers_tickets_is_refused() {
         .into_parts();
     assert_eq!(stop, FOREIGN);
     assert_eq!(c.stop(), Some(FOREIGN));
-    assert_eq!(c.usage(), &before);
+    assert_eq!(c.usage(), before);
     // The bank and both tickets come back intact for their own controller.
     assert!(
         other
@@ -175,7 +175,7 @@ fn final_attribute_release_of_a_different_bank_is_refused() {
         .into_parts();
     assert_eq!(stop, MISMATCH);
     assert_eq!(c.stop(), Some(MISMATCH));
-    assert_eq!(c.usage(), &before);
+    assert_eq!(c.usage(), before);
     assert!(c.release_final_attributes(values, vector, shared).is_ok());
     assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 0);
 }
@@ -193,7 +193,7 @@ fn final_attribute_release_with_a_forged_capacity_is_refused() {
         .into_parts();
     assert_eq!(stop, MISMATCH);
     assert_eq!(c.stop(), Some(MISMATCH));
-    assert_eq!(c.usage(), &before);
+    assert_eq!(c.usage(), before);
     vector.capacity -= 1;
     assert!(c.release_final_attributes(values, vector, shared).is_ok());
     assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 0);
@@ -202,20 +202,20 @@ fn final_attribute_release_with_a_forged_capacity_is_refused() {
 // Characterization of existing behaviour after the release paths became
 // fallible; these were not RED against any earlier commit.
 #[test]
-fn characterization_final_vector_release_with_an_unrepresentable_capacity_hands_the_ticket_back() {
+fn characterization_final_vector_release_beyond_the_admitted_bytes_hands_the_ticket_back() {
     let mut c = control();
     let values = bank();
     let (mut vector, shared) = c.final_attribute_tickets(&values).unwrap();
-    let real = vector.capacity;
-    // No allocation spans this many bytes, so the byte count overflows.
-    vector.capacity = usize::MAX;
+    let real = vector.admitted;
+    // The ticket claims more bytes than the ledger holds for the bank.
+    vector.admitted = u64::MAX;
     let before = c.usage().clone();
     let (stop, mut vector) = c.release_final_vector(vector, 1).unwrap_err().into_parts();
-    assert_eq!(stop, REPRESENTATION);
-    assert_eq!(c.stop(), Some(REPRESENTATION));
-    assert_eq!(c.usage(), &before);
+    assert_eq!(stop, UNDERFLOW);
+    assert_eq!(c.stop(), Some(UNDERFLOW));
+    assert_eq!(c.usage(), before);
     // The ticket came back intact: restored, the owner's release drains it.
-    vector.capacity = real;
+    vector.admitted = real;
     c.release_final_vector(vector, 1).unwrap();
     c.release_final_shared(shared).unwrap();
     drop(values);
@@ -239,7 +239,7 @@ fn characterization_final_attribute_release_with_an_unrepresentable_byte_count_h
         .into_parts();
     assert_eq!(stop, REPRESENTATION);
     assert_eq!(c.stop(), Some(REPRESENTATION));
-    assert_eq!(c.usage(), &before);
+    assert_eq!(c.usage(), before);
     shared.bytes = real;
     c.release_final_attributes(values, vector, shared).unwrap();
     assert_drained(&c);
@@ -272,7 +272,7 @@ fn restoring_another_controllers_text_ticket_is_refused() {
         Err(FOREIGN)
     );
     assert_eq!(c.stop(), Some(FOREIGN));
-    assert_eq!(c.usage(), &before);
+    assert_eq!(c.usage(), before);
     assert!(ticket.backing.is_none(), "the ticket is left as it was");
 }
 
@@ -288,7 +288,7 @@ fn restoring_a_text_ticket_that_already_has_backing_is_refused() {
         Err(MISMATCH)
     );
     assert_eq!(c.stop(), Some(MISMATCH));
-    assert_eq!(c.usage(), &before);
+    assert_eq!(c.usage(), before);
 }
 
 #[test]
@@ -303,7 +303,7 @@ fn restoring_a_text_ticket_with_fewer_units_than_the_value_is_refused() {
         Err(UNDERFLOW)
     );
     assert_eq!(c.stop(), Some(UNDERFLOW));
-    assert_eq!(c.usage(), &before);
+    assert_eq!(c.usage(), before);
     assert!(ticket.backing.is_none());
 }
 
@@ -319,7 +319,7 @@ fn restoring_more_discarded_units_than_are_admitted_is_refused() {
         Err(UNDERFLOW)
     );
     assert_eq!(c.stop(), Some(UNDERFLOW));
-    assert_eq!(c.usage(), &before);
+    assert_eq!(c.usage(), before);
     assert!(ticket.backing.is_none());
 }
 
@@ -335,7 +335,7 @@ fn restoring_a_text_ticket_whose_capacity_differs_from_the_value_is_refused() {
         Err(MISMATCH)
     );
     assert_eq!(c.stop(), Some(MISMATCH));
-    assert_eq!(c.usage(), &before);
+    assert_eq!(c.usage(), before);
     assert!(ticket.backing.is_none());
 }
 
@@ -353,7 +353,7 @@ fn recording_growth_against_another_controllers_ticket_reports_foreign_control()
         Err(FOREIGN)
     );
     assert_eq!(c.stop(), Some(FOREIGN));
-    assert_eq!(c.usage(), &before, "nothing is recorded for the ticket");
+    assert_eq!(c.usage(), before, "nothing is recorded for the ticket");
 }
 
 /// A growth recorded against a ticket that is already bound to a backing is a
@@ -372,7 +372,7 @@ fn recording_growth_against_a_bound_ticket_reports_the_capacity_mismatch() {
         Err(MISMATCH)
     );
     assert_eq!(c.stop(), Some(MISMATCH));
-    assert_eq!(c.usage(), &before, "nothing is recorded for the ticket");
+    assert_eq!(c.usage(), before, "nothing is recorded for the ticket");
 }
 
 #[test]
@@ -397,7 +397,7 @@ fn text_domain_commit_beyond_the_buffered_amount_latches_underflow_and_changes_n
     let before = c.usage().clone();
     assert_eq!(c.commit_text_append_domain(&mut ticket), Err(UNDERFLOW));
     assert_eq!(c.stop(), Some(UNDERFLOW));
-    assert_eq!(c.usage(), &before);
+    assert_eq!(c.usage(), before);
     assert_eq!(ticket.resource, HtmlParseResource::BufferedUtf16Units);
 }
 
@@ -432,9 +432,12 @@ fn reserving_a_plan_that_shrinks_the_allocation_is_refused_before_any_change() {
         old_bytes: 10,
         new_bytes: 5,
     };
-    assert_eq!(c.reserve(&mut vector, plan), Err(MISMATCH));
+    assert_eq!(
+        c.reserve(&mut vector, plan, &mut plan.old_bytes.clone()),
+        Err(MISMATCH)
+    );
     assert_eq!(c.stop(), Some(MISMATCH));
-    assert_eq!(c.usage(), &before);
+    assert_eq!(c.usage(), before);
     assert_eq!(vector.capacity(), 0);
 }
 
@@ -468,4 +471,20 @@ fn a_shared_admission_whose_charge_vanished_still_reports_the_post_poll_stop() {
         Err(HtmlParseStop::Cancelled)
     );
     assert_eq!(c.stop(), Some(HtmlParseStop::Cancelled));
+}
+
+#[test]
+fn final_attribute_release_credits_the_admitted_bytes_not_the_physical_capacity() {
+    let mut c = control();
+    let values = bank();
+    let (mut vector, shared) = c.final_attribute_tickets(&values).unwrap();
+    // The ledger holds eight bytes fewer for the vector than it physically has.
+    vector.admitted -= 8;
+    let held = current(&c, HtmlParseResource::ManagedCapacityBytes);
+    c.release_final_attributes(values, vector, shared)
+        .unwrap_or_else(|_| panic!("the release is accepted"));
+    // The bytes the ticket never admitted are not credited.
+    assert_eq!(current(&c, HtmlParseResource::ManagedCapacityBytes), 8);
+    assert_eq!(current(&c, HtmlParseResource::PeakTransientBytes), 8);
+    assert!(held > 8);
 }

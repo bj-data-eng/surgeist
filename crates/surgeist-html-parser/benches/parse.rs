@@ -4,16 +4,19 @@
 //! The report lists each document's size and its `HtmlParseUsage` work and
 //! resource totals beside the median, minimum and maximum parse time over the
 //! rounds. Totals depend only on the document and the limits, so they identify
-//! the accounted work a timing change is measured against.
+//! the accounted work a timing change is measured against. A second table
+//! repeats the rounds with the parse's own ledger operation profiled in summary
+//! mode without timing.
 //!
 //! Run with `cargo bench --offline --locked -j 1 -p surgeist-html-parser --bench parse`.
 
 use std::{fmt::Write as _, hint::black_box, time::Instant};
 
 use surgeist_html_parser::{
-    HtmlDocumentParseRequest, HtmlParseLimits, HtmlParseResource, HtmlParseUsage,
-    HtmlParseWorkCategory, HtmlSource,
+    HtmlDocumentParseRequest, HtmlParseAccounting, HtmlParseLimits, HtmlParseResource,
+    HtmlParseUsage, HtmlParseWorkCategory, HtmlSource,
 };
+use surgeist_ledger::ProfileMode;
 
 /// Measured rounds per document, after one unmeasured warm-up parse.
 const ROUNDS: usize = 11;
@@ -202,9 +205,13 @@ fn parse(source: &HtmlSource) -> HtmlParseUsage {
     usage
 }
 
-fn timed(source: &HtmlSource) -> f64 {
+fn timed(source: &HtmlSource, mode: Option<ProfileMode>) -> f64 {
     let start = Instant::now();
-    let report = HtmlDocumentParseRequest::offline(black_box(source).clone(), limits())
+    let mut request = HtmlDocumentParseRequest::offline(black_box(source).clone(), limits());
+    if let Some(mode) = mode {
+        request = request.with_accounting(HtmlParseAccounting::profiled(mode).observing_phases());
+    }
+    let report = request
         .parse()
         .unwrap_or_else(|failure| panic!("benchmark document failed to parse: {failure:?}"));
     let elapsed = start.elapsed().as_secs_f64() * 1_000.0;
@@ -227,10 +234,11 @@ fn main() {
         "document", "bytes", "median ms", "min ms", "max ms"
     );
     let mut details = String::new();
+    let mut summary = String::new();
     for (name, text) in &documents {
         let source = HtmlSource::utf8(text.as_str());
         let usage = parse(&source);
-        let mut rounds: Vec<f64> = (0..ROUNDS).map(|_| timed(&source)).collect();
+        let mut rounds: Vec<f64> = (0..ROUNDS).map(|_| timed(&source, None)).collect();
         rounds.sort_by(f64::total_cmp);
         let median = rounds[ROUNDS / 2];
         println!(
@@ -240,6 +248,19 @@ fn main() {
             median,
             rounds[0],
             rounds[ROUNDS - 1]
+        );
+        let mut profiled: Vec<f64> = (0..ROUNDS)
+            .map(|_| timed(&source, Some(ProfileMode::Summary { timing: false })))
+            .collect();
+        profiled.sort_by(f64::total_cmp);
+        let _ = writeln!(
+            summary,
+            "{:<18} {:>10} {:>10.2} {:>10.2} {:>10.2}",
+            name,
+            text.len(),
+            profiled[ROUNDS / 2],
+            profiled[0],
+            profiled[ROUNDS - 1]
         );
         let _ = writeln!(details, "{name} ({} bytes)", text.len());
         let _ = write!(details, "  work:");
@@ -262,6 +283,13 @@ fn main() {
         }
         let _ = writeln!(details);
     }
+    println!();
+    println!("profile summary, no timing");
+    println!(
+        "{:<18} {:>10} {:>10} {:>10} {:>10}",
+        "document", "bytes", "median ms", "min ms", "max ms"
+    );
+    print!("{summary}");
     println!();
     print!("{details}");
 }

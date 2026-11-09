@@ -156,25 +156,7 @@ impl ParseControl {
         &mut self,
         work: surgeist_html::bounded::values::HtmlValuePoolWork,
     ) -> Result<(), HtmlParseStop> {
-        self.charge_many(&[
-            (
-                HtmlParseWorkCategory::RecordVisit,
-                work.record_visits() as u64,
-            ),
-            (
-                HtmlParseWorkCategory::InspectByte,
-                work.inspected_bytes() as u64,
-            ),
-            (HtmlParseWorkCategory::CopyByte, work.copied_bytes() as u64),
-            (
-                HtmlParseWorkCategory::ProviderCall,
-                work.provider_calls() as u64,
-            ),
-            (
-                HtmlParseWorkCategory::ReserveByte,
-                work.reserve_bytes() as u64,
-            ),
-        ])
+        self.charge_changes(&value_pool_work(work))
     }
     /// Credits a finalized vector ticket. A ticket of another controller or a
     /// capacity that does not fit the ledger is refused with a latched stop,
@@ -190,13 +172,7 @@ impl ParseControl {
                     HtmlParseInvariant::ForeignControl,
                 ));
             }
-            let Some(bytes) = vector
-                .capacity
-                .checked_mul(size_of::<T>())
-                .and_then(|bytes| u64::try_from(bytes).ok())
-            else {
-                return self.representation(HtmlParseResource::ManagedCapacityBytes);
-            };
+            let bytes = vector.admitted;
             self.commit_prepared_release(&[
                 (HtmlParseResource::ManagedCapacityBytes, bytes),
                 (HtmlParseResource::PeakTransientBytes, bytes),
@@ -220,28 +196,29 @@ impl ParseControl {
         units: u64,
         attributes: u64,
     ) -> Result<(), HtmlParseStop> {
-        let values = self.plan_storage(&[
+        let requests = [
             (HtmlParseResource::ManagedUtf16Units, units),
             (HtmlParseResource::ManagedAttributes, attributes),
-        ])?;
-        let total = self
-            .usage
-            .resource(HtmlParseResource::ManagedCapacityBytes)
-            .current
-            .checked_add(bytes)
-            .ok_or_else(|| self.stop_representation(HtmlParseResource::ManagedCapacityBytes))?;
-        self.check_value(HtmlParseResource::ManagedCapacityBytes, total, bytes)?;
-        self.check_value(HtmlParseResource::PeakTransientBytes, total, bytes)?;
-        for resource in RESOURCES {
-            if resource.storage() {
-                self.set(resource, values.copy(resource));
-            }
+        ];
+        let (storage, count) = self.storage_batch(&requests)?;
+        let mut batch = [Change::Acquire(HtmlResource::SourceUnits, 0); STORAGE_RESOURCES + 2];
+        let mut length = 0_usize;
+        let capacity = [
+            Change::Acquire(HtmlResource::ManagedCapacityBytes, bytes),
+            Change::Acquire(HtmlResource::PeakTransientBytes, bytes),
+        ];
+        for change in storage.iter().take(count).chain(capacity.iter()).copied() {
+            let Some(slot) = batch.get_mut(length) else {
+                return Err(self.fail_invariant(HtmlParseInvariant::LedgerState));
+            };
+            *slot = change;
+            length = length.saturating_add(1);
         }
-        self.set(HtmlParseResource::ManagedCapacityBytes, total);
-        self.set(HtmlParseResource::PeakTransientBytes, total);
-        self.usage.actual_capacity_bytes = total;
-        self.usage.actual_capacity_high_water = self.usage.actual_capacity_high_water.max(total);
-        Ok(())
+        let Some(batch) = batch.get(..length) else {
+            return Err(self.fail_invariant(HtmlParseInvariant::LedgerState));
+        };
+        let result = self.accounts_mut()?.charge(batch);
+        result.map_err(|error| self.storage_stop(error, &requests, batch))
     }
     pub(crate) fn final_string_ticket(
         &mut self,
@@ -262,6 +239,7 @@ impl ParseControl {
             owner: self.identity.clone(),
             units: value.len() as u64,
             vector_capacity: capacity,
+            vector_admitted: bytes.saturating_sub(size_of::<Vec<u16>>() as u64),
             wrapper_bytes: size_of::<Vec<u16>>() as u64,
             resource: HtmlParseResource::ManagedUtf16Units,
             data_pointer: value.code_units().as_ptr() as usize,
@@ -288,6 +266,7 @@ impl ParseControl {
             VectorCapacity {
                 owner: self.identity.clone(),
                 capacity,
+                admitted: bytes.saturating_sub(size_of::<Vec<Attribute>>() as u64),
                 element: PhantomData,
             },
             SharedAllocation {
@@ -357,12 +336,7 @@ impl ParseControl {
                     HtmlParseInvariant::CapacityMismatch,
                 ));
             }
-            let Some(bytes) = vector
-                .capacity
-                .checked_mul(size_of::<Attribute>())
-                .and_then(|bytes| u64::try_from(bytes).ok())
-                .and_then(|bytes| bytes.checked_add(shared.bytes))
-            else {
+            let Some(bytes) = vector.admitted.checked_add(shared.bytes) else {
                 return self.representation(HtmlParseResource::ManagedCapacityBytes);
             };
             self.commit_prepared_release(&[

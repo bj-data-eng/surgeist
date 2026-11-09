@@ -28,21 +28,7 @@ pub(super) fn input_type_state(
 ) -> Result<surgeist_html::attributes::HtmlInputType, SessionError> {
     let mut cursor = surgeist_html::elements::input::HtmlInputTypeCursor::new(Some(value));
     while let Some(work) = cursor.required_work() {
-        match work {
-            surgeist_html::elements::input::HtmlInputRuleWork::ReadField => {
-                control.charge(HtmlParseWorkCategory::RecordVisit, 1)?
-            }
-            surgeist_html::elements::input::HtmlInputRuleWork::ReadValueLengths => {
-                control.charge(HtmlParseWorkCategory::RecordVisit, 2)?
-            }
-            surgeist_html::elements::input::HtmlInputRuleWork::CompareAsciiUnit => {
-                control.charge_unit_literal_comparison()?
-            }
-            surgeist_html::elements::input::HtmlInputRuleWork::CompareValueUnits
-            | surgeist_html::elements::input::HtmlInputRuleWork::InspectValueUnit => {
-                control.charge_unit_inspection()?
-            }
-        }
+        control.charge_change(surgeist_html::accounting::input_rule_work(work))?;
         cursor.advance();
     }
     // The loop above admitted every recognition step, so the result exists.
@@ -339,12 +325,7 @@ fn next_input_range(
     cursor: &mut surgeist_html::elements::input::HtmlInputSanitizationCursor<'_>,
 ) -> Result<Option<surgeist_html::elements::input::HtmlInputRetainedRange>, SessionError> {
     while let Some(work) = cursor.required_work() {
-        match work {
-            surgeist_html::elements::input::HtmlInputRuleWork::InspectValueUnit => {
-                control.charge_unit_inspection()?
-            }
-            _ => control.charge(HtmlParseWorkCategory::RecordVisit, 1)?,
-        }
+        control.charge_change(surgeist_html::accounting::input_rule_work(work))?;
         payload_write::<surgeist_html::elements::input::HtmlInputSanitizationCursor<'_>>(
             control, 1,
         )?;

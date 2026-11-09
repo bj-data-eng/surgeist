@@ -853,3 +853,32 @@ fn provoked_owner_errors_classify_as_exactly_one_fault() {
         assert_eq!(classify(&error), fault, "{error}");
     }
 }
+
+#[test]
+fn a_refused_record_after_a_bank_reserve_leaves_the_bank_retirable_for_what_was_admitted() {
+    let mut control = ParseControl::new(
+        crate::construction::tests::limits(),
+        crate::HtmlParseCancellation::new(),
+    );
+    let mut owner = ConstructionOwner::new(&mut control).unwrap();
+    let held = control
+        .usage()
+        .resource(HtmlParseResource::ManagedCapacityBytes)
+        .current;
+    control.test_limit(HtmlParseResource::ManagedCapacityBytes, held + 16_000);
+    control.overshoot_next_capacity_record(1_000_000);
+    let result = owner.apply(
+        &mut control,
+        HtmlConstructionCommand::CreateFragment,
+        &[(HtmlParseResource::ManagedNodes, 1)],
+    );
+    assert!(matches!(
+        result,
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
+            resource: HtmlParseResource::ManagedCapacityBytes,
+            ..
+        }))
+    ));
+    owner.retire(&mut control).unwrap();
+    crate::parser::tree_builder::tests::assert_released(&control);
+}

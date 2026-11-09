@@ -307,7 +307,7 @@ impl ParseEvidence {
         // The `Diagnostics` cap bounds retention only. Past it the diagnostic
         // is counted, with the count charged before it is written, and nothing
         // is allocated, so no other resource is touched either.
-        if c.diagnostics_retention_full() {
+        if c.diagnostics_retention_full()? {
             c.charge_dropped_diagnostic()?;
             // Every drop was charged at least one work credit, and work credits
             // never exceed `u64::MAX`, so the count cannot saturate.
@@ -341,7 +341,14 @@ impl ParseEvidence {
             role: input.role,
             token: input.token,
         };
-        self.records.try_push_pair(
+        // The slot is taken first: a cap that fills after the check above, in a
+        // scope the parse shares, drops the diagnostic as the check does.
+        if !c.try_retain_diagnostic()? {
+            c.charge_dropped_diagnostic()?;
+            self.dropped = self.dropped.saturating_add(1);
+            return Ok(DiagnosticAdmission::Dropped);
+        }
+        let pushed = self.records.try_push_pair_held(
             &mut self.locations,
             c,
             HtmlParseDiagnostic {
@@ -352,7 +359,11 @@ impl ParseEvidence {
                 location,
             },
             source,
-        )?;
+        );
+        if let Err(stop) = pushed {
+            c.release_unretained_diagnostic();
+            return Err(stop);
+        }
         Ok(DiagnosticAdmission::Retained(DiagnosticId {
             index,
             owner,
@@ -701,7 +712,7 @@ mod tests {
             Err(SessionError::WrongToken)
         ));
         assert_eq!(input.as_ref().unwrap().records_pointer(), pointer);
-        assert_eq!(c.usage(), &before);
+        assert_eq!(c.usage(), before);
 
         let mut foreign = ParseControl::new(limits(100), HtmlParseCancellation::new());
         foreign.fail_invariant(HtmlParseInvariant::InputCursorState);
@@ -710,8 +721,8 @@ mod tests {
         assert!(ParseEvidence::partition_failed(&mut input, &mut foreign).is_err());
         assert_eq!(input.as_ref().unwrap().records_pointer(), pointer);
         assert_eq!(foreign.stop(), foreign_stop);
-        assert_eq!(foreign.usage(), &foreign_before);
-        assert_eq!(c.usage(), &before);
+        assert_eq!(foreign.usage(), foreign_before);
+        assert_eq!(c.usage(), before);
 
         c.fail_invariant(HtmlParseInvariant::InputCursorState);
         let first = c.stop();
@@ -1160,7 +1171,7 @@ mod tests {
         ));
         assert!(append(&mut e, &mut foreign, &source, 1).is_err());
         assert_eq!((e.len(), e.locations.len()), (1, 1));
-        assert_eq!(c.usage(), &before);
+        assert_eq!(c.usage(), before);
         e.release(&mut c).unwrap();
         assert_released(&c);
     }
@@ -1185,8 +1196,8 @@ mod tests {
         );
         assert_eq!(e.dropped, 0);
         assert_eq!((e.len(), e.locations.len()), (1, 1));
-        assert_eq!(c.usage(), &before);
-        assert_eq!(foreign.usage(), &foreign_before);
+        assert_eq!(c.usage(), before);
+        assert_eq!(foreign.usage(), foreign_before);
         // The owner still counts its own drops afterwards.
         e.release(&mut c).unwrap();
         assert_released(&c);
@@ -1466,7 +1477,7 @@ mod tests {
                 (evidence.records.capacity(), evidence.locations.capacity()),
                 (4, 4)
             );
-            assert_eq!(c.usage(), &before);
+            assert_eq!(c.usage(), before);
             for offset in 0..4 {
                 let (record, location) = evidence.retained_record(offset).unwrap();
                 assert_eq!(record.location, offset);
@@ -1778,5 +1789,59 @@ mod tests {
             ))
         );
         assert!(matches!(view.retained_record(1), Ok(None)));
+    }
+
+    /// A parse sharing a host scope takes the last `Diagnostics` slot between
+    /// the retention check and the acquisition. Retention bounds what is kept
+    /// and never ends a parse, so the diagnostic is dropped and counted.
+    #[test]
+    fn a_host_slot_taken_after_the_retention_check_drops_the_diagnostic_and_the_parse_goes_on() {
+        use surgeist_html::accounting::{HtmlLimits, HtmlResource};
+        use surgeist_ledger::{Change, Operation, Tariffs};
+        let host_limits = HtmlLimits::from_fn(
+            |_| u64::MAX,
+            |resource| {
+                if resource == HtmlResource::Diagnostics {
+                    1
+                } else {
+                    u64::MAX
+                }
+            },
+        );
+        let ledger = Operation::new("host", host_limits, 8).unwrap().share();
+        let root = ledger.root();
+        let sibling = ledger
+            .child(
+                root,
+                "sibling",
+                HtmlLimits::unlimited(),
+                Tariffs::identity(),
+            )
+            .unwrap();
+        let request = crate::HtmlParseAccounting::host(ledger.clone(), root).into_request();
+        let source = HtmlSource::utf8("\0");
+        let mut c = ParseControl::with_accounting(
+            limits(100),
+            HtmlParseCancellation::new(),
+            request.lease(),
+        );
+        c.admit_source(&source).unwrap();
+        let mut evidence = ParseEvidence::prepare(&mut c).unwrap();
+        evidence.initialize_native_source(&mut c, &source).unwrap();
+        let taker = ledger.clone();
+        c.after_next_retention_check(move || {
+            taker
+                .apply(sibling, Change::Acquire(HtmlResource::Diagnostics, 1))
+                .unwrap();
+        });
+        assert!(matches!(
+            append(&mut evidence, &mut c, &source, 0),
+            Ok(DiagnosticAdmission::Dropped)
+        ));
+        assert_eq!(c.stop(), None);
+        assert_eq!(evidence.dropped(), 1);
+        assert_eq!(evidence.len(), 0);
+        evidence.release(&mut c).unwrap();
+        assert_released(&c);
     }
 }

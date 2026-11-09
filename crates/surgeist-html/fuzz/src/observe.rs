@@ -846,7 +846,7 @@ pub(crate) fn verify_failure(
     let first = f.first_stop();
     let at = f.at_stop().cloned();
     let after = f.after_cleanup().cloned();
-    let retained = f.retained_usage().cloned();
+    let retained = f.retained_usage();
     if let Some(ref usage) = after {
         for resource in [
             HtmlParseResource::BufferedUtf16Units,
@@ -876,7 +876,7 @@ pub(crate) fn verify_failure(
         || f.first_stop() != first
         || f.at_stop() != at.as_ref()
         || f.after_cleanup() != after.as_ref()
-        || f.retained_usage() != retained.as_ref()
+        || f.retained_usage() != retained
     {
         return props.failure(
             4,

@@ -184,6 +184,8 @@ impl<'source> ContextFragmentDriver<'source> {
     pub(crate) fn into_completed(
         mut self,
     ) -> Result<CompletedContextFragment<'source>, (FragmentExecutionError, Self)> {
+        self.control
+            .enter_phase(crate::accounting::ParsePhase::Finalization);
         match self.qualify_completed_driver() {
             Ok(()) => Ok(CompletedContextFragment {
                 driver: Some(self),
@@ -5577,7 +5579,7 @@ mod owned_fragment_details_effect_tests {
             session.set_details_attribute(&mut c, &node, &mut input, &proof),
             Err(SessionError::Stop(expected))
         );
-        assert_eq!(c.usage(), &usage);
+        assert_eq!(c.usage(), usage);
         assert_eq!(
             session.freeze(&mut c).err(),
             Some(SessionError::Stop(expected))
@@ -5755,7 +5757,7 @@ mod owned_fragment_details_effect_tests {
                     session.set_details_attribute(&mut c, &node, &mut input, &foreign_proof),
                     Err(SessionError::Stop(expected))
                 );
-                assert_eq!(foreign.usage(), &unchanged);
+                assert_eq!(foreign.usage(), unchanged);
                 other.release(&mut foreign).unwrap();
                 super::super::tests::assert_released(&foreign);
                 expected
@@ -5780,7 +5782,7 @@ mod owned_fragment_details_effect_tests {
                 session.set_details_attribute(&mut c, &node, &mut input, &proof),
                 Err(SessionError::Stop(expected))
             );
-            assert_eq!(c.usage(), &usage);
+            assert_eq!(c.usage(), usage);
             release_attribute(&mut input, &mut c);
             lexer.release(&mut c).unwrap();
             session.release(&mut c).unwrap();
@@ -5833,13 +5835,13 @@ mod owned_fragment_details_effect_tests {
                 .as_ptr(),
             pointer
         );
-        assert_eq!(foreign.usage(), &foreign_usage);
+        assert_eq!(foreign.usage(), foreign_usage);
         let usage = c.usage().clone();
         assert_eq!(
             session.set_details_attribute(&mut c, &node, &mut input, &proof),
             Err(SessionError::Stop(expected))
         );
-        assert_eq!(c.usage(), &usage);
+        assert_eq!(c.usage(), usage);
         assert_eq!(
             session.freeze(&mut c).err(),
             Some(SessionError::Stop(expected))
@@ -6103,7 +6105,7 @@ mod owned_fragment_details_completion_tests {
             assert_eq!(driver.control.stop(), Some(HtmlParseStop::Cancelled));
             let usage = driver.control.usage().clone();
             assert!(driver.step().is_err());
-            assert_eq!(driver.control.usage(), &usage);
+            assert_eq!(driver.control.usage(), usage);
             assert!(driver.completed_native_view().is_err());
             assert_eq!(driver.control.stop(), Some(HtmlParseStop::Cancelled));
             driver.release().unwrap();

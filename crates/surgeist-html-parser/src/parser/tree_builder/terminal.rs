@@ -37,6 +37,8 @@ impl<'source> StandaloneDocumentDriver<'source> {
     pub(crate) fn into_completed(
         mut self,
     ) -> Result<CompletedStandaloneDocument<'source>, (StandaloneError, Self)> {
+        self.control
+            .enter_phase(crate::accounting::ParsePhase::Finalization);
         match self.qualify_completed_driver() {
             Ok(()) => Ok(CompletedStandaloneDocument {
                 driver: Some(self),
@@ -303,7 +305,7 @@ impl<'source> CompletedStandaloneDocument<'source> {
             .map_err(HeadError::from)?)
     }
     #[cfg(test)]
-    pub(crate) fn usage(&self) -> Result<&super::super::control::HtmlParseUsage, StandaloneError> {
+    pub(crate) fn usage(&self) -> Result<super::super::control::HtmlParseUsage, StandaloneError> {
         Ok(self
             .driver
             .as_ref()
@@ -695,7 +697,7 @@ impl FrozenStandaloneParts {
     pub(crate) fn final_usage(&self) -> &super::super::control::HtmlParseUsage {
         &self.final_usage
     }
-    pub(crate) fn retained_usage(&self) -> &super::super::control::HtmlParseUsage {
+    pub(crate) fn retained_usage(&self) -> super::super::control::HtmlParseUsage {
         self.control.usage()
     }
     pub(crate) fn at_stop(&self) -> Option<&super::super::control::HtmlParseUsage> {
@@ -775,8 +777,8 @@ pub(crate) struct DetachedStandaloneFailure {
     evidence: Option<crate::construction::evidence::FailureDiagnosticEvidence>,
 }
 impl DetachedStandaloneFailure {
-    pub(crate) fn csp_storage_fits(&self, storage: crate::meta_csp::Storage) -> bool {
-        storage.fits(&self.control)
+    pub(crate) fn csp_storage_fits(&mut self, storage: crate::meta_csp::Storage) -> bool {
+        storage.fits(&mut self.control)
     }
     pub(crate) fn release_csp_storage(
         &mut self,
@@ -796,7 +798,7 @@ impl DetachedStandaloneFailure {
     pub(super) fn after_cleanup(&self) -> &super::super::control::HtmlParseUsage {
         &self.after_cleanup
     }
-    pub(super) fn retained_usage(&self) -> &super::super::control::HtmlParseUsage {
+    pub(super) fn retained_usage(&self) -> super::super::control::HtmlParseUsage {
         self.control.usage()
     }
     pub(super) fn diagnostics(
@@ -945,7 +947,7 @@ impl FailedStandaloneDocument<'_> {
         &self.after_cleanup
     }
     #[cfg(test)]
-    pub(crate) fn retained_usage(&self) -> &super::super::control::HtmlParseUsage {
+    pub(crate) fn retained_usage(&self) -> super::super::control::HtmlParseUsage {
         self.control.usage()
     }
     #[cfg(test)]

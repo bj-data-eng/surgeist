@@ -613,7 +613,7 @@ fn public_partial_work_failure_has_admitted_source_first_stop_and_actual_cleanup
         panic!("{f:?}")
     };
     assert_eq!(f.first_stop(), Some(stop));
-    let retained = f.retained_usage().unwrap().clone();
+    let retained = f.retained_usage().unwrap();
     let at = f.at_stop().unwrap().clone();
     let after = f.after_cleanup().unwrap().clone();
     assert!(at.resource(HtmlParseResource::WorkCredits).current() > 0);
@@ -630,7 +630,7 @@ fn public_partial_work_failure_has_admitted_source_first_stop_and_actual_cleanup
     assert_eq!(f.cleanup_error(), None);
     cancel.cancel();
     assert_eq!(f.first_stop(), Some(stop));
-    assert_eq!(f.retained_usage(), Some(&retained));
+    assert_eq!(f.retained_usage(), Some(retained));
     assert_eq!(f.at_stop(), Some(&at));
     assert_eq!(f.after_cleanup(), Some(&after));
 }
