@@ -125,7 +125,7 @@ pub fn resolve_radial_gradient(
     };
     let mut retained = false;
     let result = (|| {
-        meter
+        let request = meter
             .with_phase(scopes[0], |p| {
                 validate(
                     &mut RadialWork::new(p, scopes[0]),
@@ -137,12 +137,7 @@ pub fn resolve_radial_gradient(
             .map_err(setup_error)??;
         let geometry = meter
             .with_phase(scopes[1], |p| {
-                geometry(
-                    &mut RadialWork::new(p, scopes[1]),
-                    box_size,
-                    center,
-                    ending_size,
-                )
+                geometry(&mut RadialWork::new(p, scopes[1]), request)
             })
             .map_err(setup_error)??;
         meter
@@ -226,95 +221,130 @@ impl<'a, 'b, 'operation> RadialWork<'a, 'b, 'operation> {
     }
 }
 
+// Validation carries its facts into geometry, including each affine radius's
+// matching full box dimension. No raw size variant survives this boundary.
+struct ValidatedRequest {
+    box_size: Size<qualified::Finite>,
+    center: Option<Point<qualified::Finite>>,
+    ending_size: ValidatedSize,
+}
+
+enum ValidatedSize {
+    CircleRadius(qualified::Finite),
+    EllipseRadii(Size<AffineRadius>),
+    CircleExtent(RadialGradientExtent),
+    EllipseExtent(RadialGradientExtent),
+}
+
+#[derive(Clone, Copy)]
+struct AffineRadius {
+    fraction: qualified::Finite,
+    dimension: qualified::Finite,
+    length: qualified::Finite,
+}
+
 fn validate(
     work: &mut RadialWork<'_, '_, '_>,
     box_size: Size<f64>,
     center: Option<Point<f64>>,
     ending_size: RadialGradientSize,
-) -> Result<(), PaintError> {
-    if !work.validation(|| box_size.width.is_finite() && box_size.width >= 0.0)? {
-        return Err(RadialGradientError::InvalidWidth.into());
-    }
-    if !work.validation(|| box_size.height.is_finite() && box_size.height >= 0.0)? {
-        return Err(RadialGradientError::InvalidHeight.into());
-    }
+) -> Result<ValidatedRequest, PaintError> {
+    use qualified::Finite;
+    let width = Finite::nonnegative(work, box_size.width, RadialGradientError::InvalidWidth)?;
+    let height = Finite::nonnegative(work, box_size.height, RadialGradientError::InvalidHeight)?;
     work.validation(|| ())?;
-    if let Some(center) = center {
-        if !work.validation(|| center.x.is_finite())? {
-            return Err(RadialGradientError::NonFiniteCenter {
+    let center = if let Some(center) = center {
+        let x = Finite::new(
+            work,
+            center.x,
+            RadialGradientError::NonFiniteCenter {
                 axis: PhysicalAxis::Horizontal,
-            }
-            .into());
-        }
-        if !work.validation(|| center.y.is_finite())? {
-            return Err(RadialGradientError::NonFiniteCenter {
+            },
+        )?;
+        let y = Finite::new(
+            work,
+            center.y,
+            RadialGradientError::NonFiniteCenter {
                 axis: PhysicalAxis::Vertical,
-            }
-            .into());
-        }
-    }
+            },
+        )?;
+        Some(Point::new(x, y))
+    } else {
+        None
+    };
     work.validation(|| ())?;
-    match ending_size {
-        RadialGradientSize::CircleRadius(radius) => {
-            if !work.validation(|| radius.is_finite() && radius >= 0.0)? {
-                return Err(RadialGradientError::InvalidCircleRadius.into());
-            }
-        }
+    let ending_size = match ending_size {
+        RadialGradientSize::CircleRadius(radius) => ValidatedSize::CircleRadius(
+            Finite::nonnegative(work, radius, RadialGradientError::InvalidCircleRadius)?,
+        ),
         RadialGradientSize::EllipseRadii(radii) => {
-            validate_position(work, PhysicalAxis::Horizontal, radii.width)?;
-            validate_position(work, PhysicalAxis::Vertical, radii.height)?;
+            let x = validate_position(work, PhysicalAxis::Horizontal, radii.width, width)?;
+            let y = validate_position(work, PhysicalAxis::Vertical, radii.height, height)?;
+            ValidatedSize::EllipseRadii(Size::new(x, y))
         }
-        RadialGradientSize::CircleExtent(_) | RadialGradientSize::EllipseExtent(_) => {}
-    }
-    Ok(())
+        RadialGradientSize::CircleExtent(extent) => ValidatedSize::CircleExtent(extent),
+        RadialGradientSize::EllipseExtent(extent) => ValidatedSize::EllipseExtent(extent),
+    };
+    Ok(ValidatedRequest {
+        box_size: Size::new(width, height),
+        center,
+        ending_size,
+    })
 }
 
 fn validate_position(
     work: &mut RadialWork<'_, '_, '_>,
     axis: PhysicalAxis,
     position: GradientPosition,
-) -> Result<(), PaintError> {
-    if !work.validation(|| position.length.is_finite())? {
-        return Err(RadialGradientError::NonFiniteRadiusComponent {
+    dimension: qualified::Finite,
+) -> Result<AffineRadius, PaintError> {
+    let length = qualified::Finite::new(
+        work,
+        position.length,
+        RadialGradientError::NonFiniteRadiusComponent {
             axis,
             component: GradientPositionComponent::Length,
-        }
-        .into());
-    }
-    if !work.validation(|| position.fraction.is_finite())? {
-        return Err(RadialGradientError::NonFiniteRadiusComponent {
+        },
+    )?;
+    let fraction = qualified::Finite::new(
+        work,
+        position.fraction,
+        RadialGradientError::NonFiniteRadiusComponent {
             axis,
             component: GradientPositionComponent::Fraction,
-        }
-        .into());
-    }
-    Ok(())
+        },
+    )?;
+    Ok(AffineRadius {
+        fraction,
+        dimension,
+        length,
+    })
 }
 
 fn geometry(
     work: &mut RadialWork<'_, '_, '_>,
-    box_size: Size<f64>,
-    center: Option<Point<f64>>,
-    ending_size: RadialGradientSize,
+    request: ValidatedRequest,
 ) -> Result<RadialGradientGeometry, PaintError> {
-    let center = match center {
-        Some(center) => center,
+    let box_size = Size::new(request.box_size.width.get(), request.box_size.height.get());
+    let center = match request.center {
+        Some(center) => Point::new(center.x.get(), center.y.get()),
         None => Point::new(
             center_half(work, box_size.width)?,
             center_half(work, box_size.height)?,
         ),
     };
-    let case = match ending_size {
-        RadialGradientSize::CircleRadius(radius) => {
+    let case = match request.ending_size {
+        ValidatedSize::CircleRadius(radius) => {
+            let radius = radius.get();
             if work.numeric(|| radius == 0.0)? {
                 ResolvedCase::ZeroCircle
             } else {
                 positive_ellipse(work, radius, radius)?
             }
         }
-        RadialGradientSize::EllipseRadii(radii) => {
-            let x = affine_radius(work, radii.width, box_size.width, PhysicalAxis::Horizontal)?;
-            let y = affine_radius(work, radii.height, box_size.height, PhysicalAxis::Vertical)?;
+        ValidatedSize::EllipseRadii(radii) => {
+            let x = affine_radius(work, radii.width, PhysicalAxis::Horizontal)?;
+            let y = affine_radius(work, radii.height, PhysicalAxis::Vertical)?;
             if work.numeric(|| x == 0.0)? {
                 ResolvedCase::ZeroWidth
             } else if work.numeric(|| y == 0.0)? {
@@ -323,10 +353,8 @@ fn geometry(
                 positive_ellipse(work, x, y)?
             }
         }
-        RadialGradientSize::CircleExtent(extent) => circle_extent(work, box_size, center, extent)?,
-        RadialGradientSize::EllipseExtent(extent) => {
-            ellipse_extent(work, box_size, center, extent)?
-        }
+        ValidatedSize::CircleExtent(extent) => circle_extent(work, box_size, center, extent)?,
+        ValidatedSize::EllipseExtent(extent) => ellipse_extent(work, box_size, center, extent)?,
     };
     Ok(RadialGradientGeometry { center, case })
 }
@@ -355,20 +383,22 @@ fn positive_ellipse(
 
 fn affine_radius(
     work: &mut RadialWork<'_, '_, '_>,
-    position: GradientPosition,
-    dimension: f64,
+    terms: AffineRadius,
     axis: PhysicalAxis,
 ) -> Result<f64, PaintError> {
-    let radius = work.numeric(|| position.fraction.mul_add(dimension, position.length))?;
+    let radius = work.numeric(|| {
+        terms
+            .fraction
+            .get()
+            .mul_add(terms.dimension.get(), terms.length.get())
+    })?;
     if !work.numeric(|| radius.is_finite())? {
         return unrepresentable();
     }
     if work.numeric(|| radius < 0.0)? {
         return Err(RadialGradientError::NegativeRadius { axis }.into());
     }
-    if work.numeric(|| radius == 0.0)?
-        && !exact_affine_zero(work, position.fraction, dimension, position.length)?
-    {
+    if work.numeric(|| radius == 0.0)? && !exact_affine_zero(work, terms)? {
         return unrepresentable();
     }
     Ok(radius)
@@ -494,57 +524,142 @@ struct Dyadic {
     exponent: i32,
 }
 
-/// Decodes a finite nonzero f64 as odd-significand * 2^exponent. The input
-/// precondition is established by validation and exact_affine_zero's zero guards.
-fn dyadic(work: &mut RadialWork<'_, '_, '_>, value: f64) -> Result<Dyadic, PaintError> {
-    let bits = work.numeric(|| value.to_bits())?;
-    let exponent_field = work.numeric(|| (bits >> 52) & 0x7ff)?;
-    let fraction = work.numeric(|| bits & 0x000f_ffff_ffff_ffff)?;
-    let (significand, exponent) = if work.numeric(|| exponent_field == 0)? {
-        (fraction, -1074)
-    } else {
-        let significand = work.numeric(|| fraction | (1_u64 << 52))?;
-        let exponent = work.numeric(|| i32::try_from(exponent_field).expect("11-bit exponent"))?;
-        (significand, work.numeric(|| exponent - 1075)?)
-    };
-    let zeros = work.numeric(|| significand.trailing_zeros())?;
-    let significand = work.numeric(|| significand >> zeros)?;
-    let zeros = work.numeric(|| i32::try_from(zeros).expect("nonzero u64 trailing zeros"))?;
-    let exponent = work.numeric(|| exponent + zeros)?;
-    Ok(Dyadic {
-        significand,
-        exponent,
-    })
+// This owner alone issues finite values and classifies them as zero/nonzero.
+// Its private fields prevent raw values from bypassing either boundary.
+mod qualified {
+    use super::{Dyadic, PaintError, RadialGradientError, RadialWork};
+
+    #[derive(Clone, Copy)]
+    pub(super) struct Finite(f64);
+
+    pub(super) enum ZeroClass {
+        Zero,
+        Nonzero(Nonzero),
+    }
+
+    #[derive(Clone, Copy)]
+    pub(super) struct Nonzero(Finite);
+
+    impl Finite {
+        pub(super) fn new(
+            work: &mut RadialWork<'_, '_, '_>,
+            value: f64,
+            error: RadialGradientError,
+        ) -> Result<Self, PaintError> {
+            work.validation(|| {
+                if value.is_finite() {
+                    Some(Self(value))
+                } else {
+                    None
+                }
+            })?
+            .ok_or_else(|| error.into())
+        }
+
+        pub(super) fn nonnegative(
+            work: &mut RadialWork<'_, '_, '_>,
+            value: f64,
+            error: RadialGradientError,
+        ) -> Result<Self, PaintError> {
+            work.validation(|| {
+                if value.is_finite() && value >= 0.0 {
+                    Some(Self(value))
+                } else {
+                    None
+                }
+            })?
+            .ok_or_else(|| error.into())
+        }
+
+        pub(super) fn get(self) -> f64 {
+            self.0
+        }
+
+        pub(super) fn classify_zero(
+            self,
+            work: &mut RadialWork<'_, '_, '_>,
+        ) -> Result<ZeroClass, PaintError> {
+            if work.numeric(|| self.0 == 0.0)? {
+                Ok(ZeroClass::Zero)
+            } else {
+                Ok(ZeroClass::Nonzero(Nonzero(self)))
+            }
+        }
+    }
+
+    impl Nonzero {
+        pub(super) fn get(self) -> f64 {
+            self.0.get()
+        }
+
+        /// Decodes this finite nonzero value as odd-significand * 2^exponent.
+        pub(super) fn dyadic(
+            self,
+            work: &mut RadialWork<'_, '_, '_>,
+        ) -> Result<Dyadic, PaintError> {
+            let bits = work.numeric(|| self.get().to_bits())?;
+            let exponent_field = work.numeric(|| (bits >> 52) & 0x7ff)?;
+            let fraction = work.numeric(|| bits & 0x000f_ffff_ffff_ffff)?;
+            let (significand, exponent) = if work.numeric(|| exponent_field == 0)? {
+                // Finite nonzero subnormals have significand 1..2^52-1.
+                (fraction, -1074)
+            } else {
+                // Normals have significand 2^52..2^53-1. The 11-bit
+                // exponent field is at most 2046 for this finite value.
+                let significand = work.numeric(|| fraction | (1_u64 << 52))?;
+                let exponent = work.numeric(|| exponent_field as i32)?;
+                (significand, work.numeric(|| exponent - 1075)?)
+            };
+            // The nonzero significand has at most 52 trailing zeros (51 for
+            // subnormals), so the shift is <64 and the conversion fits i32.
+            let zeros = work.numeric(|| significand.trailing_zeros())?;
+            let significand = work.numeric(|| significand >> zeros)?;
+            let zeros = work.numeric(|| zeros as i32)?;
+            // Normalized exponents lie in -1074..1023; the subnormal upper
+            // bound is -1023. All normalization arithmetic fits i32.
+            let exponent = work.numeric(|| exponent + zeros)?;
+            Ok(Dyadic {
+                significand,
+                exponent,
+            })
+        }
+    }
 }
 
 fn exact_affine_zero(
     work: &mut RadialWork<'_, '_, '_>,
-    a: f64,
-    b: f64,
-    c: f64,
+    terms: AffineRadius,
 ) -> Result<bool, PaintError> {
+    use qualified::ZeroClass::{Nonzero, Zero};
     // No product, decode, or zero shift is needed for a zero factor.
-    if work.numeric(|| a == 0.0)? || work.numeric(|| b == 0.0)? {
-        return work.numeric(|| c == 0.0);
-    }
-    if work.numeric(|| c == 0.0)? {
-        return Ok(false);
-    }
-    let negative_a = work.numeric(|| a.is_sign_negative())?;
-    let negative_b = work.numeric(|| b.is_sign_negative())?;
+    let a = match terms.fraction.classify_zero(work)? {
+        Zero => return Ok(matches!(terms.length.classify_zero(work)?, Zero)),
+        Nonzero(value) => value,
+    };
+    let b = match terms.dimension.classify_zero(work)? {
+        Zero => return Ok(matches!(terms.length.classify_zero(work)?, Zero)),
+        Nonzero(value) => value,
+    };
+    let c = match terms.length.classify_zero(work)? {
+        Zero => return Ok(false),
+        Nonzero(value) => value,
+    };
+    let negative_a = work.numeric(|| a.get().is_sign_negative())?;
+    let negative_b = work.numeric(|| b.get().is_sign_negative())?;
     let negative_product = work.numeric(|| negative_a ^ negative_b)?;
-    let negative_c = work.numeric(|| c.is_sign_negative())?;
+    let negative_c = work.numeric(|| c.get().is_sign_negative())?;
     if work.numeric(|| negative_product == negative_c)? {
         return Ok(false);
     }
-    let a = dyadic(work, a)?;
-    let b = dyadic(work, b)?;
-    let c = dyadic(work, c)?;
+    let a = a.dyadic(work)?;
+    let b = b.dyadic(work)?;
+    let c = c.dyadic(work)?;
     let a_significand = work.numeric(|| u128::from(a.significand))?;
     let b_significand = work.numeric(|| u128::from(b.significand))?;
     // Each normalized significand is odd and at most 53 bits: the exact odd
     // product fits below 2^106, with no variable shift/alignment or allocation.
     let product = work.numeric(|| a_significand * b_significand)?;
+    // The sum lies in -2148..2046, well within i32.
     let exponent = work.numeric(|| a.exponent + b.exponent)?;
     if !work.numeric(|| exponent == c.exponent)? {
         return Ok(false);
@@ -582,12 +697,145 @@ mod tests {
             .operation(OperationKind::RadialGradient)
             .unwrap();
         let scopes = setup_scopes(&mut meter).unwrap();
+        let terms = validated_terms(&mut meter, scopes[0], a, b, c);
         let result = meter
             .with_phase(scopes[1], |p| {
-                exact_affine_zero(&mut RadialWork::new(p, scopes[1]), a, b, c)
+                exact_affine_zero(&mut RadialWork::new(p, scopes[1]), terms)
             })
             .unwrap();
         (result, meter.finish().unwrap().unwrap())
+    }
+
+    fn validated_terms(meter: &mut Meter, scope: Scope, a: f64, b: f64, c: f64) -> AffineRadius {
+        let request = meter
+            .with_phase(scope, |p| {
+                validate(
+                    &mut RadialWork::new(p, scope),
+                    Size::new(b, 1.0),
+                    Some(Point::new(0.0, 0.0)),
+                    RadialGradientSize::EllipseRadii(Size::new(
+                        GradientPosition {
+                            length: c,
+                            fraction: a,
+                        },
+                        GradientPosition {
+                            length: 1.0,
+                            fraction: 0.0,
+                        },
+                    )),
+                )
+            })
+            .unwrap()
+            .unwrap();
+        match request.ending_size {
+            ValidatedSize::EllipseRadii(radii) => radii.width,
+            _ => panic!("validated ellipse must carry its affine terms"),
+        }
+    }
+
+    fn decode(value: f64) -> (Dyadic, PaintReport) {
+        let mut meter = options(PaintLimits::unlimited())
+            .operation(OperationKind::RadialGradient)
+            .unwrap();
+        let scopes = setup_scopes(&mut meter).unwrap();
+        let value = validated_terms(&mut meter, scopes[0], 0.0, 1.0, value).length;
+        let result = meter
+            .with_phase(scopes[1], |p| {
+                let mut work = RadialWork::new(p, scopes[1]);
+                match value.classify_zero(&mut work)? {
+                    qualified::ZeroClass::Nonzero(value) => value.dyadic(&mut work),
+                    qualified::ZeroClass::Zero => panic!("boundary fixture must be nonzero"),
+                }
+            })
+            .unwrap()
+            .unwrap();
+        (result, meter.finish().unwrap().unwrap())
+    }
+
+    #[test]
+    fn finite_nonzero_boundaries_decode_to_exact_odd_dyadics() {
+        // IEEE binary64 encodings give these independent exact values. The
+        // powers of two exercise all 52 possible normal trailing zero bits.
+        for (value, significand, exponent, work) in [
+            (f64::from_bits(1), 1, -1074, 8),
+            (f64::from_bits(1_u64 << 51), 1, -1023, 8),
+            (
+                f64::from_bits(0x000f_ffff_ffff_ffff),
+                (1_u64 << 52) - 1,
+                -1074,
+                8,
+            ),
+            (f64::MIN_POSITIVE, 1, -1022, 11),
+            (1.0, 1, 0, 11),
+            (f64::from_bits(0x7fe0_0000_0000_0000), 1, 1023, 11),
+            (f64::MAX, (1_u64 << 53) - 1, 971, 11),
+        ] {
+            for signed in [value, -value] {
+                let (actual, report) = decode(signed);
+                assert_eq!(actual.significand, significand);
+                assert_eq!(actual.exponent, exponent);
+                // One preceding charged zero classification issues Nonzero.
+                assert_eq!(report.work(WorkKind::GradientCoordinate), work + 1);
+            }
+        }
+    }
+
+    #[test]
+    fn signed_zero_guards_short_circuit_before_decode_and_preserve_opposing_signs() {
+        for zero in [0.0, -0.0] {
+            for (a, b, c, expected, work) in [
+                (zero, f64::MAX, -0.0, true, 2),
+                (f64::MAX, zero, 0.0, true, 3),
+                (zero, f64::MAX, f64::MIN_POSITIVE, false, 2),
+                (f64::MAX, 1.0, zero, false, 3),
+            ] {
+                let (result, report) = proof(PaintLimits::unlimited(), a, b, c);
+                assert_eq!(result.unwrap(), expected);
+                assert_eq!(report.work(WorkKind::GradientCoordinate), work);
+            }
+        }
+        // A negative fraction and positive dimension oppose a positive length.
+        // The same signs cannot cancel, and stop before any dyadic decode.
+        for (c, expected, work) in [(3.0, true, 48), (-3.0, false, 8)] {
+            let (result, report) = proof(PaintLimits::unlimited(), -1.5, 2.0, c);
+            assert_eq!(result.unwrap(), expected);
+            assert_eq!(report.work(WorkKind::GradientCoordinate), work);
+        }
+    }
+
+    #[test]
+    fn subnormal_cancellation_charges_literal_work_and_refuses_before_proof_actions() {
+        let tiny = f64::from_bits(1);
+        let (result, report) = proof(PaintLimits::unlimited(), tiny, 1.0, -tiny);
+        assert!(result.unwrap());
+        // Guards3 + signs5 + subnormal8/normal11/subnormal8 + product and
+        // final comparisons7 =42. After the guards/signs, the first decode
+        // starts at9, its normalization shift at14, and multiplication at38.
+        assert_eq!(report.work(WorkKind::GradientCoordinate), 42);
+        for limit in [8, 13, 37] {
+            let (result, report) = proof(
+                PaintLimits::unlimited().with_work_limit(WorkKind::GradientCoordinate, limit),
+                tiny,
+                1.0,
+                -tiny,
+            );
+            let Err(PaintError::Budget(refusal)) = result else {
+                panic!("the next exact-proof action must refuse");
+            };
+            assert_eq!(refusal.origin, PaintPhase::GradientGeometry);
+            assert_eq!(refusal.current, limit);
+            assert_eq!(
+                refusal.change,
+                PaintChange::Work {
+                    kind: WorkKind::GradientCoordinate,
+                    amount: 1,
+                }
+            );
+            assert_eq!(report.work(WorkKind::GradientCoordinate), limit);
+            for &kind in ResourceKind::ALL {
+                assert_eq!(report.live(kind), 0);
+            }
+        }
     }
 
     #[test]
