@@ -156,7 +156,7 @@ where
         .map(|_| super::fragment_margins::Flow::default());
     let mut active_margin = CollapsibleMarginOf::<S>::ZERO;
     let mut top_margin = CollapsibleMarginOf::<S>::ZERO;
-    let mut is_collapsing_first_margin = constants.collapse_top_margin;
+    let mut start_component_open = constants.collapse_top_margin;
     let mut all_in_flow_children_can_collapse_through = true;
     let mut active_margin_can_collapse_with_parent = constants.collapse_top_margin;
     let mut pending_floats = Vec::new();
@@ -492,7 +492,7 @@ where
                         static_positions: &mut static_positions,
                         resolved_terminal_float_block_end: &mut resolved_terminal_float_block_end,
                         active_margin: &mut active_margin,
-                        is_collapsing_first_margin: &mut is_collapsing_first_margin,
+                        start_component_open: &mut start_component_open,
                         active_margin_can_collapse_with_parent:
                             &mut active_margin_can_collapse_with_parent,
                         all_in_flow_children_can_collapse_through:
@@ -595,7 +595,7 @@ where
                     occupied: occupied_block_end,
                     active: active_margin,
                     top: top_margin,
-                    first: is_collapsing_first_margin,
+                    first: start_component_open,
                 },
             )?;
             if tree.block_scope_child(child) {
@@ -632,16 +632,14 @@ where
                 );
             let child_margin_can_collapse_with_parent =
                 child_margin_can_collapse_with_parent(&child_style);
-            let collapsed_margin = if is_collapsing_first_margin {
-                if constants.collapse_top_margin && child_margin_can_collapse_with_parent {
-                    active_margin.resolve()
-                } else {
-                    active_margin.collapse_with(preview_top_margin).resolve()
-                }
-            } else {
-                active_margin.collapse_with(preview_top_margin).resolve()
-            };
-            let preview_cursor_block = cursor_block + collapsed_margin;
+            let start = entry::reduce_start(
+                start_component_open,
+                constants.collapse_top_margin,
+                child_margin_can_collapse_with_parent,
+                active_margin,
+                preview_top_margin,
+            );
+            let preview_cursor_block = cursor_block + start.offset;
             let child_logical_location = LogicalPointOf::new(
                 in_flow_child_inline_offset(
                     logical_child_size.inline,
@@ -688,15 +686,14 @@ where
                     .collapse_with_margin(
                         margin.at_physical_side(constants.flow_axes.block_start()),
                     );
-                let collapsed_margin = if is_collapsing_first_margin
-                    && constants.collapse_top_margin
-                    && child_margin_can_collapse_with_parent(&child_style)
-                {
-                    active_margin.resolve()
-                } else {
-                    active_margin.collapse_with(preview_top_margin).resolve()
-                };
-                cursor_block + collapsed_margin
+                let start = entry::reduce_start(
+                    start_component_open,
+                    constants.collapse_top_margin,
+                    child_margin_can_collapse_with_parent(&child_style),
+                    active_margin,
+                    preview_top_margin,
+                );
+                cursor_block + start.offset
             };
             let preview_cursor_block = block_start_for(output, child_margin);
             let inline_size_can_shrink =
@@ -935,6 +932,9 @@ where
             .collapse_with_margin(child_margin.at_physical_side(constants.flow_axes.block_end()));
         let child_margin_can_collapse_with_parent =
             child_margin_can_collapse_with_parent(&child_style);
+        let collapses_through = output
+            .block_margin_collapse
+            .can_collapse_through(constants.flow_axes);
         let margin_groups = tree.fragment_margin_state().map(|state| {
             (
                 state.child(child, constants.flow_axes.block_start()),
@@ -959,7 +959,7 @@ where
         }
         let base_block = cursor_block;
         let start = entry::reduce_start(
-            is_collapsing_first_margin,
+            start_component_open,
             constants.collapse_top_margin,
             child_margin_can_collapse_with_parent,
             active_margin,
@@ -977,18 +977,24 @@ where
             };
             state.record_entry(child, constants.flow_axes, group);
         }
-        if is_collapsing_first_margin {
+        if start_component_open {
             if start.exposes_child {
                 top_margin = top_margin.collapse_with(top_margin_set);
-                if let (Some(flow), Some((top, _)), Some(state)) = (
+                if collapses_through {
+                    top_margin = top_margin.collapse_with(bottom_margin_set);
+                }
+                if let (Some(flow), Some((top, bottom)), Some(state)) = (
                     &mut fragment_margins,
                     margin_groups,
                     tree.fragment_margin_state(),
                 ) {
                     flow.top = state.join(flow.top, top);
+                    if collapses_through {
+                        flow.top = state.join(flow.top, bottom);
+                    }
                 }
             }
-            is_collapsing_first_margin = false;
+            start_component_open = start.exposes_child && collapses_through;
         }
         cursor_block = cursor_block + start.offset;
         let logical_location = LogicalPointOf::new(
@@ -1137,10 +1143,7 @@ where
                     },
                 )
             })?;
-        if output
-            .block_margin_collapse
-            .can_collapse_through(constants.flow_axes)
-        {
+        if collapses_through {
             cursor_block = if child_style.clear == Clear::None {
                 base_block + logical_child_size.block
             } else {

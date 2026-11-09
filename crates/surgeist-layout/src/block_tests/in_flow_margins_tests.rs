@@ -4657,3 +4657,175 @@ fn leading_empty_margins_expose_whole_group_with_external_float_f32() {
 fn leading_empty_margins_expose_whole_group_with_external_float_f64() {
     assert_leading_empty_margins_expose_whole_group::<f64>(true);
 }
+
+#[test]
+fn leading_margin_components_keep_extrema_and_actual_barriers_in_all_flows() {
+    fn lane<S: LayoutScalar>() {
+        use crate::geometry::{LogicalEdgesOf, LogicalSizeOf};
+        let px = S::from_f64;
+        for (writing_mode, direction) in all_writing_mode_directions() {
+            let axes = FlowAxes::new(writing_mode, direction);
+            let margins = |top, bottom| {
+                axes.physical_edges(LogicalEdgesOf::new(S::ZERO, S::ZERO, px(top), px(bottom)))
+                    .map(LengthAutoOf::px)
+            };
+            let edge = axes
+                .physical_edges(LogicalEdgesOf::new(S::ZERO, S::ZERO, px(1.0), S::ZERO))
+                .map(LengthOf::px);
+            let ordinary = NodeInputOf {
+                display: Display::Block,
+                writing_mode,
+                direction,
+                size: axes.physical_size(LogicalSizeOf::new(
+                    PreferredSizeOf::px(px(100.0)),
+                    PreferredSizeOf::AUTO,
+                )),
+                min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+                ..Default::default()
+            };
+            let request = crate::test_support::requests::NativeRootFrameOf::new(
+                axes,
+                axes.physical_size(LogicalSizeOf::new(
+                    Some(NonNegativeFiniteOf::new(px(100.0)).unwrap()),
+                    None,
+                )),
+                OrthogonalFallbackOf::new(
+                    Size::NONE,
+                    NearestScrollportOf::Absent,
+                    Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+                ),
+            )
+            .request(axes.physical_size(LogicalSizeOf::new(
+                AxisSizingRequestOf::new(
+                    AvailableSpaceOf::Definite(NonNegativeFiniteOf::new(px(100.0)).unwrap()),
+                    SizingOperation::Normal,
+                ),
+                AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+            )));
+            for (case, y, height, empty_y, empty_height, body_y) in [
+                ("baseline", 12.0, 10.0, 0.0, 0.0, 0.0),
+                ("larger_body_margin", 20.0, 10.0, 0.0, 0.0, 0.0),
+                ("multiple", 15.0, 10.0, 0.0, 0.0, 0.0),
+                ("signed", 3.0, 10.0, 0.0, 0.0, 0.0),
+                ("own_positive", 20.0, 10.0, 0.0, 0.0, 0.0),
+                ("own_negative", 8.0, 10.0, 0.0, 0.0, 0.0),
+                ("parent_border", 0.0, 23.0, 9.0, 0.0, 13.0),
+                ("parent_padding", 0.0, 23.0, 9.0, 0.0, 13.0),
+                ("parent_independent", 0.0, 22.0, 8.0, 0.0, 12.0),
+                ("child_border", 8.0, 23.0, 0.0, 1.0, 13.0),
+                ("child_padding", 8.0, 23.0, 0.0, 1.0, 13.0),
+                ("child_minimum", 8.0, 23.0, 0.0, 1.0, 13.0),
+                ("child_independent", 8.0, 22.0, 0.0, 0.0, 12.0),
+                ("parent_minimum", 12.0, 10.0, 0.0, 0.0, 0.0),
+                ("all_empty_minimum", 12.0, 5.0, 0.0, 0.0, 0.0),
+                ("direct_root", 0.0, 22.0, 8.0, 0.0, 12.0),
+            ] {
+                let mut parent = ordinary.clone();
+                let mut empty = NodeInputOf {
+                    margin: margins(8.0, 12.0),
+                    ..ordinary.clone()
+                };
+                let mut body = NodeInputOf {
+                    size: axes.physical_size(LogicalSizeOf::new(
+                        PreferredSizeOf::px(px(100.0)),
+                        PreferredSizeOf::px(px(10.0)),
+                    )),
+                    margin: margins(7.0, 0.0),
+                    ..ordinary.clone()
+                };
+                match case {
+                    "larger_body_margin" => body.margin = margins(20.0, 0.0),
+                    "signed" => empty.margin = margins(8.0, -12.0),
+                    "own_positive" => parent.margin = margins(20.0, 0.0),
+                    "own_negative" => parent.margin = margins(-4.0, 0.0),
+                    "parent_border" => parent.border = edge,
+                    "parent_padding" => parent.padding = edge,
+                    "parent_independent" => {
+                        parent.block_flow_context = BlockFlowContext::Independent
+                    }
+                    "child_border" => empty.border = edge,
+                    "child_padding" => empty.padding = edge,
+                    "child_minimum" => {
+                        empty.min_size = axes.physical_size(LogicalSizeOf::new(
+                            MinSizeOf::px(S::ZERO),
+                            MinSizeOf::px(px(1.0)),
+                        ))
+                    }
+                    "child_independent" => empty.block_flow_context = BlockFlowContext::Independent,
+                    "parent_minimum" | "all_empty_minimum" => {
+                        parent.min_size = axes.physical_size(LogicalSizeOf::new(
+                            MinSizeOf::px(S::ZERO),
+                            MinSizeOf::px(px(if case == "parent_minimum" { 1.0 } else { 5.0 })),
+                        ))
+                    }
+                    _ => {}
+                }
+                let mut children = vec![3, 4];
+                if case == "multiple" || case == "signed" {
+                    children.insert(1, 5);
+                }
+                if case == "all_empty_minimum" {
+                    children.pop();
+                }
+                let direct = case == "direct_root";
+                let mut tree = PublicBlockTree::default()
+                    .with_children(0, if direct { children.clone() } else { vec![2] })
+                    .with_style(0, ordinary.clone())
+                    .with_children(3, [])
+                    .with_style(3, empty)
+                    .with_children(4, [])
+                    .with_style(4, body);
+                if !direct {
+                    tree = tree.with_children(2, children).with_style(2, parent);
+                }
+                if case == "multiple" || case == "signed" {
+                    tree = tree.with_children(5, []).with_style(
+                        5,
+                        NodeInputOf {
+                            margin: margins(15.0, if case == "signed" { -3.0 } else { 3.0 }),
+                            ..ordinary.clone()
+                        },
+                    );
+                }
+                let batch = compute_layout(&tree, 0, request).unwrap();
+                let root = public_final_output(&batch, 0);
+                let parent = public_final_output(&batch, if direct { 0 } else { 2 });
+                assert_eq!(
+                    axes.logical_point(parent.location, parent.size, root.size)
+                        .block,
+                    px(y),
+                    "{axes:?}, {case}: parent origin"
+                );
+                assert_eq!(
+                    axes.logical_size(parent.size).block,
+                    px(height),
+                    "{axes:?}, {case}: parent height"
+                );
+                let empty = public_final_output(&batch, 3);
+                assert_eq!(
+                    axes.logical_point(empty.location, empty.size, parent.size)
+                        .block,
+                    px(empty_y),
+                    "{axes:?}, {case}: empty origin"
+                );
+                assert_eq!(
+                    axes.logical_size(empty.size).block,
+                    px(empty_height),
+                    "{axes:?}, {case}: empty height"
+                );
+                if case != "all_empty_minimum" {
+                    let body = public_final_output(&batch, 4);
+                    assert_eq!(
+                        axes.logical_point(body.location, body.size, parent.size)
+                            .block,
+                        px(body_y),
+                        "{axes:?}, {case}: body origin"
+                    );
+                    assert_eq!(axes.logical_size(body.size).block, px(10.0));
+                }
+            }
+        }
+    }
+    lane::<f32>();
+    lane::<f64>();
+}

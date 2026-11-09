@@ -217,7 +217,7 @@ impl VisibleInlineRunTransition {
             static_positions,
             resolved_terminal_float_block_end,
             active_margin,
-            is_collapsing_first_margin,
+            start_component_open,
             active_margin_can_collapse_with_parent,
             all_in_flow_children_can_collapse_through,
             float_exclusions,
@@ -226,7 +226,11 @@ impl VisibleInlineRunTransition {
             owned_float_block_end,
             contributions,
         } = state;
-        let adjoining_margin = active_margin.resolve();
+        let adjoining_margin = if *start_component_open {
+            S::ZERO
+        } else {
+            active_margin.resolve()
+        };
         context.cursor_block = *cursor_block;
         let constants = context.constants;
         let semantic = self.semantic.as_ref().map(|segment| {
@@ -259,7 +263,7 @@ impl VisibleInlineRunTransition {
 
         if placement.margin == InlineRunMargin::Separates {
             *cursor_block = *cursor_block + adjoining_margin;
-            *is_collapsing_first_margin = false;
+            *start_component_open = false;
         }
         if let (Some(flow), Some(item)) = (formatted.as_mut(), placement.formatted.take()) {
             flow.items.push(item);
@@ -332,7 +336,7 @@ pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
     pub(super) static_positions: &'a mut Vec<(Node, StaticPositionOf<S>)>,
     pub(super) resolved_terminal_float_block_end: &'a mut Option<S>,
     pub(super) active_margin: &'a mut CollapsibleMarginOf<S>,
-    pub(super) is_collapsing_first_margin: &'a mut bool,
+    pub(super) start_component_open: &'a mut bool,
     pub(super) active_margin_can_collapse_with_parent: &'a mut bool,
     pub(super) all_in_flow_children_can_collapse_through: &'a mut bool,
     pub(super) float_exclusions: &'a mut FloatExclusions<S, Node>,
