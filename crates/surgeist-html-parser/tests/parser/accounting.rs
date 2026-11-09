@@ -616,7 +616,7 @@ fn the_last_accounting_a_request_names_is_the_only_one_that_applies() {
 }
 
 #[test]
-fn a_profiled_request_reports_the_two_parse_scopes_and_phases_only_when_observed() {
+fn a_profiled_request_without_phase_observation_reports_three_scopes() {
     let report = request()
         .with_accounting(HtmlParseAccounting::profiled(ProfileMode::Summary {
             timing: false,

@@ -154,7 +154,7 @@ impl ParseControl {
         }
     }
 
-    fn refusal_stop(
+    pub(super) fn refusal_stop(
         &mut self,
         refusal: Refusal<HtmlWork, HtmlResource>,
         site: Site,

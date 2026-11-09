@@ -423,3 +423,126 @@ fn a_phase_the_ledger_cannot_observe_stops_the_parse_with_the_fault() {
     assert_eq!(c.stop(), Some(fault));
     assert_eq!(c.charge(HtmlParseWorkCategory::StateStep, 1), Err(fault));
 }
+
+/// Host scope tariffs that count every resource `rate` times over in the scope
+/// above.
+fn scaled_resources(rate: u64) -> surgeist_html::accounting::HtmlTariffs {
+    use surgeist_ledger::Tariff;
+    surgeist_html::accounting::HtmlTariffs::from_fn(
+        |work| Tariff::new(work, 1),
+        |resource| Tariff::new(resource, rate),
+    )
+}
+
+#[test]
+fn a_replacement_refused_above_a_scaling_tariff_reports_the_growth_in_that_scopes_units() {
+    let (mut c, _request) = hosted(
+        host_cap_on(None, Some((HtmlResource::ManagedCapacityBytes, 300))),
+        Some(scaled_resources(2)),
+        builder(),
+    );
+    c.set(HtmlParseResource::ManagedCapacityBytes, 100);
+    c.set(HtmlParseResource::PeakTransientBytes, 100);
+    // The root holds 200 and would hold 320: it counts the net growth of 60
+    // twice over.
+    assert_eq!(
+        c.preflight_capacity(40, 100, true),
+        Err(limit(
+            HtmlParseResource::ManagedCapacityBytes,
+            300,
+            200,
+            120
+        ))
+    );
+}
+
+#[test]
+fn storage_refused_above_a_scaling_tariff_reports_the_amount_in_that_scopes_units() {
+    let (mut c, _request) = hosted(
+        host_cap_on(None, Some((HtmlResource::ManagedNodes, 30))),
+        Some(scaled_resources(3)),
+        builder(),
+    );
+    c.acquire(HtmlParseResource::ManagedNodes, 4).unwrap();
+    c.acquire(HtmlParseResource::ManagedNodes, 5).unwrap();
+    // The root holds 27 and the four nodes count 12 there.
+    assert_eq!(
+        c.acquire(HtmlParseResource::ManagedNodes, 4),
+        Err(limit(HtmlParseResource::ManagedNodes, 30, 27, 12))
+    );
+}
+
+#[test]
+fn a_refusal_whose_item_carries_nothing_reports_the_rate_as_one() {
+    let ledger = surgeist_ledger::Operation::new(
+        "host",
+        surgeist_html::accounting::HtmlLimits::unlimited(),
+        8,
+    )
+    .unwrap()
+    .share();
+    let root = ledger.root();
+    let request = crate::HtmlParseAccounting::host(ledger, root).into_request();
+    let mut c = ParseControl::with_accounting(
+        builder().finish().unwrap(),
+        HtmlParseCancellation::new(),
+        request.lease(),
+    );
+    // A zero item cannot cross a cap, so no ledger produces this refusal; the
+    // figures still name the scope's value and the batch sum without a rate.
+    let refusal = surgeist_ledger::Refusal {
+        scope: root,
+        item: 0,
+        change: Change::Work(HtmlWork::Credits, 5),
+        current: 0,
+        reason: surgeist_ledger::RefusalReason::Limit { limit: 3 },
+    };
+    assert_eq!(
+        c.refusal_stop(
+            refusal,
+            Site::RELEASE,
+            &[HtmlParseWorkCategory::CopyByte.change(0)]
+        ),
+        limit(HtmlParseResource::WorkCredits, 3, 0, 0)
+    );
+}
+
+#[test]
+fn a_host_tariff_that_leaves_the_parse_resources_stops_with_the_typed_invariant() {
+    use surgeist_ledger::Tariff;
+    // The tenant scope counts managed nodes as output records of the scope above.
+    let tariffs = surgeist_html::accounting::HtmlTariffs::from_fn(
+        |work| Tariff::new(work, 1),
+        |resource| match resource {
+            HtmlResource::ManagedNodes => Tariff::new(HtmlResource::OutputRecords, 1),
+            other => Tariff::new(other, 1),
+        },
+    );
+    let (mut c, _request) = hosted(
+        host_cap_on(None, Some((HtmlResource::OutputRecords, 3))),
+        Some(tariffs),
+        builder(),
+    );
+    assert_eq!(
+        c.acquire(HtmlParseResource::ManagedNodes, 4),
+        Err(HtmlParseStop::InternalInvariant(
+            HtmlParseInvariant::LedgerState
+        ))
+    );
+}
+
+#[test]
+fn a_refused_record_after_an_owned_vector_reserve_leaves_it_releasable() {
+    let mut c = control_with(builder().managed_capacity_bytes(200));
+    let mut vector = OwnedVec::<u64>::new(HtmlParseResource::AuxiliaryEntries).unwrap();
+    c.overshoot_next_capacity_record(1_000);
+    assert!(matches!(
+        vector.reserve_geometric(&mut c, 4),
+        Err(HtmlParseStop::LimitExceeded {
+            resource: HtmlParseResource::ManagedCapacityBytes,
+            ..
+        })
+    ));
+    vector.release(&mut c).unwrap();
+    crate::parser::tree_builder::tests::assert_released(&c);
+}

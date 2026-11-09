@@ -402,4 +402,28 @@ mod tests {
     fn every_work_cut_of_an_extension_that_grows_the_backing_is_exact() {
         assert_every_work_cut_is_exact(&[1, 2, 3, 4, 5, 6, 7, 8], &[9; 300]);
     }
+
+    #[test]
+    fn a_refused_record_after_an_extension_reserve_leaves_the_ticket_releasable() {
+        let mut c = control();
+        let (value, mut allocation) = registered(&mut c, &[1, 2, 3, 4, 5]);
+        let held = current(&c, HtmlParseResource::ManagedCapacityBytes);
+        // Room for the planned growth, not for the capacity the provider reports.
+        c.test_limit(HtmlParseResource::ManagedCapacityBytes, held + 16_000);
+        c.overshoot_next_capacity_record(1_000_000);
+        let refused = c
+            .extend_managed_document_string(&mut allocation, value, &[0; 20])
+            .err()
+            .unwrap();
+        assert!(matches!(
+            refused.stop,
+            HtmlParseStop::LimitExceeded {
+                resource: HtmlParseResource::ManagedCapacityBytes,
+                ..
+            }
+        ));
+        drop(refused.value);
+        c.release_document_string(allocation).unwrap();
+        crate::parser::tree_builder::tests::assert_released(&c);
+    }
 }
