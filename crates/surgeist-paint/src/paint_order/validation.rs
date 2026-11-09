@@ -20,11 +20,15 @@ struct SourceKey {
 struct FragmentKey {
     owner: usize,
     order: usize,
-    promoted: bool,
-    parent: Option<usize>,
+    placement: FragmentPlacement,
     parent_owner: Option<usize>,
     parent_order: Option<usize>,
     line_order: Option<usize>,
+}
+#[derive(Clone, Copy)]
+enum FragmentPlacement {
+    Ordinary,
+    Promoted { container: FragmentId },
 }
 #[derive(Clone, Copy)]
 struct LineKey {
@@ -391,7 +395,7 @@ fn fragments(
         };
         charge(p, phase, WorkKind::PaintValidation, 1)?;
         let mut parent_owner = None;
-        let parent_order = match fragment.parent() {
+        let (placement, parent_order) = match fragment.parent() {
             Some(parent) => {
                 let Some(parent_record) = request.fragments().get(parent.get()) else {
                     return Err(PaintInputError::MissingFragmentParent {
@@ -400,19 +404,28 @@ fn fragments(
                     }
                     .into());
                 };
-                if fragment.block_in_inline_placement().is_some() {
-                    promotion(request, id, fragment, *parent_record, p, phase)?;
-                } else if semantic_parent.map(FragmentOwner::Box) != Some(parent_record.owner()) {
-                    return Err(PaintInputError::InvalidFragmentParent {
-                        fragment: id,
-                        parent: Some(parent),
+                let placement = match fragment.data() {
+                    FragmentData::BlockInInline { owner, placement } => {
+                        promotion(request, id, owner, placement, *parent_record, p, phase)?;
+                        FragmentPlacement::Promoted {
+                            container: placement.container(),
+                        }
                     }
-                    .into());
-                }
+                    FragmentData::Box { .. } | FragmentData::Text { .. } => {
+                        if semantic_parent.map(FragmentOwner::Box) != Some(parent_record.owner()) {
+                            return Err(PaintInputError::InvalidFragmentParent {
+                                fragment: id,
+                                parent: Some(parent),
+                            }
+                            .into());
+                        }
+                        FragmentPlacement::Ordinary
+                    }
+                };
                 if let FragmentOwner::Box(parent_box) = parent_record.owner() {
                     parent_owner = Some(parent_box.get());
                 }
-                if fragment.block_in_inline_placement().is_none()
+                if matches!(placement, FragmentPlacement::Ordinary)
                     && let FragmentOwner::Box(box_id) = fragment.owner()
                 {
                     charge(p, phase, WorkKind::PaintValidation, 1)?;
@@ -434,7 +447,7 @@ fn fragments(
                         .into());
                     }
                 }
-                Some(parent_record.logical_order())
+                (placement, Some(parent_record.logical_order()))
             }
             None => {
                 if semantic_parent.is_some() {
@@ -444,7 +457,7 @@ fn fragments(
                     }
                     .into());
                 }
-                None
+                (FragmentPlacement::Ordinary, None)
             }
         };
         charge(p, phase, WorkKind::PaintValidation, 1)?;
@@ -464,8 +477,7 @@ fn fragments(
             FragmentKey {
                 owner,
                 order: fragment.logical_order(),
-                promoted: fragment.block_in_inline_placement().is_some(),
-                parent: fragment.parent().map(FragmentId::get),
+                placement,
                 parent_owner,
                 parent_order,
                 line_order,
@@ -505,17 +517,23 @@ fn fragments(
             }
             .into());
         }
-        if a.promoted != b.promoted {
-            let (slot, key) = if a.promoted {
-                (pair[0], a)
-            } else {
-                (pair[1], b)
-            };
-            return Err(PaintInputError::InvalidBlockInInlinePlacement {
-                fragment: FragmentId::new(slot),
-                container: FragmentId::new(key.parent.expect("promotion has a container")),
+        match (a.placement, b.placement) {
+            (FragmentPlacement::Promoted { container }, FragmentPlacement::Ordinary) => {
+                return Err(PaintInputError::InvalidBlockInInlinePlacement {
+                    fragment: first,
+                    container,
+                }
+                .into());
             }
-            .into());
+            (FragmentPlacement::Ordinary, FragmentPlacement::Promoted { container }) => {
+                return Err(PaintInputError::InvalidBlockInInlinePlacement {
+                    fragment: other,
+                    container,
+                }
+                .into());
+            }
+            (FragmentPlacement::Ordinary, FragmentPlacement::Ordinary)
+            | (FragmentPlacement::Promoted { .. }, FragmentPlacement::Promoted { .. }) => {}
         }
         if a.parent_owner > b.parent_owner
             || (a.parent_owner == b.parent_owner
@@ -609,14 +627,12 @@ fn lines(
 fn promotion(
     request: PaintRequest<'_>,
     id: FragmentId,
-    fragment: PaintFragment,
+    owner: BoxId,
+    placement: BlockInInlinePlacement,
     parent: PaintFragment,
     p: &mut PhaseMeter<'_, '_>,
     phase: Scope,
 ) -> Result<(), PaintError> {
-    let placement = fragment
-        .block_in_inline_placement()
-        .expect("promotion record");
     let invalid = || {
         PaintError::Input(PaintInputError::InvalidBlockInInlinePlacement {
             fragment: id,
@@ -624,9 +640,6 @@ fn promotion(
         })
     };
     charge(p, phase, WorkKind::PaintValidation, 1)?;
-    let FragmentOwner::Box(owner) = fragment.owner() else {
-        return Err(invalid());
-    };
     let facts = request.boxes()[owner.get()];
     let appearance = request.box_paint()[owner.get()];
     if !matches!(
@@ -843,6 +856,24 @@ fn incidences(
     Ok(())
 }
 
+fn primitive_target(
+    request: PaintRequest<'_>,
+    primitive: PrimitiveId,
+    fragment: FragmentId,
+) -> Result<PaintFragment, PaintError> {
+    request
+        .fragments()
+        .get(fragment.get())
+        .copied()
+        .ok_or_else(|| {
+            PaintInputError::MissingPrimitiveFragment {
+                primitive,
+                fragment,
+            }
+            .into()
+        })
+}
+
 fn primitives(
     request: PaintRequest<'_>,
     core: &State,
@@ -859,24 +890,17 @@ fn primitives(
         let primitive = *record;
         let id = PrimitiveId::new(slot);
         charge(p, phase, WorkKind::PaintValidation, 1)?;
-        let target = match primitive.fragment_id() {
-            Some(fragment) => {
-                let Some(record) = request.fragments().get(fragment.get()) else {
-                    return Err(PaintInputError::MissingPrimitiveFragment {
-                        primitive: id,
-                        fragment,
-                    }
-                    .into());
-                };
-                Some((fragment, *record))
-            }
-            None => None,
-        };
-        let role = match primitive.kind() {
-            PrimitiveKind::Canvas(CanvasPaintKind::BackgroundColor) => 0,
-            PrimitiveKind::Canvas(CanvasPaintKind::BackgroundImages) => 1,
-            PrimitiveKind::Fragment(kind) => {
-                let (fragment, record) = target.expect("fragment primitive has a target");
+        let (bucket, role, applicator) = match primitive.data() {
+            PrimitiveData::Canvas(kind) => (
+                0,
+                match kind {
+                    CanvasPaintKind::BackgroundColor => 0,
+                    CanvasPaintKind::BackgroundImages => 1,
+                },
+                0,
+            ),
+            PrimitiveData::Fragment { fragment, kind } => {
+                let record = primitive_target(request, id, fragment)?;
                 let valid = match (record.owner(), kind) {
                     (FragmentOwner::Text(_), FragmentPaintKind::Text) => true,
                     (FragmentOwner::Box(owner), FragmentPaintKind::ReplacedContent) => {
@@ -910,16 +934,21 @@ fn primitives(
                     }
                     .into());
                 }
-                match kind {
+                let role = match kind {
                     FragmentPaintKind::BackgroundColor => 0,
                     FragmentPaintKind::BackgroundImages => 1,
                     FragmentPaintKind::Border => 2,
                     FragmentPaintKind::ReplacedContent | FragmentPaintKind::Text => 5,
                     FragmentPaintKind::Outline => 7,
-                }
+                };
+                (fragment.get() + 1, role, 0)
             }
-            PrimitiveKind::Decoration(kind) => {
-                let (fragment, record) = target.expect("decoration has a target");
+            PrimitiveData::Decoration {
+                text_fragment: fragment,
+                applying_box,
+                kind,
+            } => {
+                let record = primitive_target(request, id, fragment)?;
                 let FragmentOwner::Text(text) = record.owner() else {
                     return Err(PaintInputError::InvalidPrimitiveTarget {
                         primitive: id,
@@ -927,9 +956,6 @@ fn primitives(
                     }
                     .into());
                 };
-                let applying_box = primitive
-                    .applying_box()
-                    .expect("decoration has an applicator");
                 charge(p, phase, WorkKind::PaintValidation, 1)?;
                 if applying_box.get() >= request.boxes().len() {
                     return Err(PaintInputError::MissingDecorationApplicator {
@@ -954,19 +980,22 @@ fn primitives(
                         }
                     }
                 }
-                match kind {
+                let role = match kind {
                     DecorationKind::Underline => 3,
                     DecorationKind::Overline => 4,
                     DecorationKind::LineThrough => 6,
-                }
+                };
+                (
+                    fragment.get() + 1,
+                    role,
+                    core.nodes[applying_box.get()].rank,
+                )
             }
         };
         let key = PrimitiveKey {
-            bucket: target.map_or(0, |(fragment, _)| fragment.get() + 1),
+            bucket,
             role,
-            applicator: primitive
-                .applying_box()
-                .map_or(0, |owner| core.nodes[owner.get()].rank),
+            applicator,
             order: primitive.record_order(),
         };
         push(&mut index.primitive_keys, key, p, phase)?;

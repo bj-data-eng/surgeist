@@ -158,7 +158,7 @@ impl BlockInInlinePlacement {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum FragmentData {
+pub(super) enum FragmentData {
     Box {
         owner: BoxId,
         parent: Option<FragmentId>,
@@ -186,6 +186,10 @@ pub struct PaintFragment {
     logical_order: usize,
 }
 impl PaintFragment {
+    pub(super) const fn data(self) -> FragmentData {
+        self.data
+    }
+
     pub const fn box_fragment(
         owner: BoxId,
         parent: Option<FragmentId>,
@@ -302,7 +306,7 @@ pub enum PrimitiveKind {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum PrimitiveData {
+pub(super) enum PrimitiveData {
     Canvas(CanvasPaintKind),
     Fragment {
         fragment: FragmentId,
@@ -324,6 +328,10 @@ pub struct PaintPrimitive {
     record_order: usize,
 }
 impl PaintPrimitive {
+    pub(super) const fn data(self) -> PrimitiveData {
+        self.data
+    }
+
     pub const fn canvas(kind: CanvasPaintKind, record_order: usize) -> Self {
         Self {
             data: PrimitiveData::Canvas(kind),
