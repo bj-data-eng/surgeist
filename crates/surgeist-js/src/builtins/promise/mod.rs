@@ -3603,6 +3603,7 @@ struct ReactionRestoration<'a> {
     pending: Option<StoredPromiseState>,
     live: Vec<ReactionRecord>,
     detached: bool,
+    availability_finished: bool,
     enabled: bool,
 }
 impl<'a> ReactionRestoration<'a> {
@@ -3616,6 +3617,7 @@ impl<'a> ReactionRestoration<'a> {
             pending: None,
             live: Vec::new(),
             detached: false,
+            availability_finished: false,
             enabled: true,
         }
     }
@@ -3723,23 +3725,94 @@ impl<'a> ReactionRestoration<'a> {
         }
         Ok(())
     }
-    fn cleanup(&mut self, cleanup: &mut crate::job::UnwindCleanup) {
-        if self.enabled {
-            if let Some(StoredPromiseState::Pending {
-                fulfill_reactions,
-                reject_reactions,
-            }) = &self.pending
-            {
-                for record in fulfill_reactions.iter().chain(reject_reactions) {
+    fn forward_failure(&mut self, error: &JsError, cleanup: &mut crate::job::UnwindCleanup) {
+        // This owner must outlive the source borrow and drain before source or
+        // detached bank custody ends. EvaluationRef alone is not a GC root.
+        let mut notices = crate::module::lifecycle::ModuleFailureNotices::default();
+        let prepared = if let Some(StoredPromiseState::Pending {
+            fulfill_reactions,
+            reject_reactions,
+        }) = &self.pending
+        {
+            for record in fulfill_reactions.iter().chain(reject_reactions) {
+                cleanup.run(|| {
+                    let _secondary = record
+                        .lifecycle
+                        .defer_preparation_failed(error, &mut notices);
+                });
+                cleanup.run(|| {
+                    let _secondary = record.lifecycle.unavailable();
+                });
+            }
+            Ok(())
+        } else if !self.detached {
+            (|| {
+                let source = self
+                    .source
+                    .try_borrow()
+                    .map_err(|_| crate::error::EngineError::ObjectAccessBusy)?;
+                let StoredPromiseState::Pending {
+                    fulfill_reactions,
+                    reject_reactions,
+                } = &source.data().state
+                else {
+                    return Err(reaction_state_error());
+                };
+                let fulfill_length = fulfill_reactions.len();
+                let reject_length = reject_reactions.len();
+                // The shared resolving slot was consumed before this cleanup.
+                // Reentry can append records but cannot settle/replace these
+                // banks. This pass performs no native notification: exact
+                // closed continuation cleanup and graph marking happen first.
+                for record in fulfill_reactions
+                    .iter()
+                    .take(fulfill_length)
+                    .chain(reject_reactions.iter().take(reject_length))
+                {
+                    cleanup.run(|| {
+                        let _secondary = record
+                            .lifecycle
+                            .defer_preparation_failed(error, &mut notices);
+                    });
                     cleanup.run(|| {
                         let _secondary = record.lifecycle.unavailable();
                     });
                 }
-            } else if !self.detached {
-                // An access refusal is a secondary checked setup failure, never
-                // authority to replace an existing cause or invent guest failure.
-                let result = self.unavailable_attached(cleanup);
-                cleanup.run(|| drop(result));
+                Ok(())
+            })()
+        } else {
+            Ok(())
+        };
+        if prepared.is_ok() {
+            // No attached-source reads may follow arbitrary notice callbacks:
+            // they could append records or retain an incompatible object alias.
+            self.availability_finished = true;
+        }
+        cleanup.run(|| drop(prepared));
+        // The source borrow has ended, but all original records and persistent
+        // evaluation graph links still trace every queued notice through panic
+        // cleanup. Only then can original record custody be released.
+        cleanup.run(|| notices.finish());
+    }
+    fn cleanup(&mut self, cleanup: &mut crate::job::UnwindCleanup) {
+        if self.enabled {
+            if !self.availability_finished {
+                if let Some(StoredPromiseState::Pending {
+                    fulfill_reactions,
+                    reject_reactions,
+                }) = &self.pending
+                {
+                    for record in fulfill_reactions.iter().chain(reject_reactions) {
+                        cleanup.run(|| {
+                            let _secondary = record.lifecycle.unavailable();
+                        });
+                    }
+                } else if !self.detached {
+                    // An access refusal is a secondary checked setup failure,
+                    // never authority to replace an existing cause.
+                    let result = self.unavailable_attached(cleanup);
+                    cleanup.run(|| drop(result));
+                }
             }
             if let Some(association) = self.association {
                 cleanup.run(|| association.retire_pending(crate::job::JobRetirement::Interrupted));
@@ -3764,8 +3837,13 @@ impl<'a> ReactionRestoration<'a> {
             None => {}
         }
     }
-    fn finish<T>(mut self, value: T) -> T {
+    fn finish<T>(mut self, value: JsResult<T>) -> JsResult<T> {
         let mut cleanup = crate::job::UnwindCleanup::default();
+        if self.enabled
+            && let Err(error) = &value
+        {
+            self.forward_failure(error, &mut cleanup);
+        }
         self.cleanup(&mut cleanup);
         cleanup.finish_with(value)
     }

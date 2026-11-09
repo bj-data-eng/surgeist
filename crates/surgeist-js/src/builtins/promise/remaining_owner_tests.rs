@@ -367,7 +367,7 @@ fn actual_lifecycle_root_contention_cleans_prepared_prefix_current_record_and_st
                 Ok(JobStatus::Retired(JobRetirement::Dropped))
             );
             assert_eq!(prefix_observer.fault(), None);
-            restoration.finish(error)
+            restoration.finish(Err::<(), _>(error)).unwrap_err()
         })
         .unwrap();
     let fault = task_fault(&actual);

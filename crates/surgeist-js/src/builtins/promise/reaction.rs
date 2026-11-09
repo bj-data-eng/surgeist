@@ -3,7 +3,7 @@
 use crate::{
     JsError, JsResult,
     job::{JobFault, JobFaultCause, JobFaultOwner},
-    module::lifecycle::{ModuleAction, ModuleActionHold, ModuleActionRoot},
+    module::lifecycle::{ModuleAction, ModuleActionHold, ModuleActionRoot, ModuleFailureNotices},
     vm::opcode::{AwaitPhase, AwaitRef, AwaitRoot, PreparedAwaitRef},
 };
 use surgeist_js_gc::heap::{ObjectId, Trace};
@@ -185,6 +185,17 @@ impl ReactionLifecycle {
             action.preparation_failed(error)?;
         }
         Ok(())
+    }
+    pub(super) fn defer_preparation_failed(
+        &self,
+        error: &JsError,
+        notices: &mut ModuleFailureNotices,
+    ) -> Result<(), JobFault> {
+        match &self.kind {
+            LifecycleKind::Untracked => Ok(()),
+            LifecycleKind::OrdinaryAwait(state) => state.preparation_failed(),
+            LifecycleKind::Module(action) => action.defer_preparation_failed(error, notices),
+        }
     }
 }
 
