@@ -73,6 +73,35 @@ fn geometry_action<T>(account: &Account, action: impl FnOnce() -> T) -> Result<T
     Ok(action())
 }
 
+// The immutable style borrow is the same one qualified and encoded. Empty
+// strokes are eliminated by their owning branch before constructing this state.
+struct QualifiedStroke<'a>(&'a kurbo::Stroke);
+
+impl<'a> QualifiedStroke<'a> {
+    fn try_new(
+        style: &'a kurbo::Stroke,
+        transform: &QualifiedTransform,
+        account: &Account,
+    ) -> Result<Self> {
+        let width = geometry_action(account, || style.width)?;
+        if geometry_action(account, || width == 0.0)? {
+            return Err(crate::GeometryRealizationError::UnrepresentableStroke.into());
+        }
+        geometry::qualify_stroke(style, transform, account)?;
+        Ok(Self(style))
+    }
+
+    fn encode(self, encoding: &mut Encoding) -> Result<()> {
+        if !encoding.encode_stroke_style(self.0) {
+            return Err(Error::new(
+                BackendErrorCode::RenderFailed,
+                "locked native nonzero stroke correspondence changed",
+            ));
+        }
+        Ok(())
+    }
+}
+
 impl VelloScene {
     pub(crate) fn import_image(&mut self, image: &crate::Image, account: &Account) -> Result<()> {
         self.payloads.keep(account.import_image(image)?, account)
@@ -129,9 +158,9 @@ impl VelloScene {
         account: &Account,
     ) -> Result<QualifiedTransform> {
         let qualified = geometry::qualify_transform(transform, account)?;
-        if let Some(stroke) = stroke {
-            geometry::qualify_stroke(stroke, &qualified, account)?;
-        }
+        let stroke = stroke
+            .map(|style| QualifiedStroke::try_new(style, &qualified, account))
+            .transpose()?;
         self.backing.reserve(
             &mut self.encoding,
             Growth {
@@ -147,8 +176,7 @@ impl VelloScene {
             self.encoding.encode_fill_style(fill);
         }
         if let Some(stroke) = stroke {
-            let encoded = self.encoding.encode_stroke_style(stroke);
-            debug_assert!(encoded, "non-zero strokes must encode");
+            stroke.encode(&mut self.encoding)?;
         }
         Ok(qualified)
     }
@@ -538,20 +566,14 @@ impl VelloScene {
                 format!("internal Vello scene cannot append selected {context}"),
             ));
         }
-        if validated.drawable_count() == 0 {
+        let Some(first_occurrence) = validated.occurrences().next() else {
             return Ok(());
-        }
+        };
         if let crate::paint::PaintKind::Image(image) = validated.paint().fill().kind() {
             self.import_image(image, account)?;
         }
-        let mut first_drawable = 0;
-        for (index, position) in validated.native_positions().iter().enumerate() {
-            account.work(RenderWork::GlyphVisits, 1)?;
-            if position.is_some() {
-                first_drawable = index;
-                break;
-            }
-        }
+        account.work(RenderWork::GlyphVisits, 1)?;
+        let first_drawable = first_occurrence.source_index();
         let paint_transform = geometry::affine_product(
             transform,
             kurbo::Affine::from(validated.transform()),
@@ -593,16 +615,12 @@ impl VelloScene {
         )?;
         let stream_offsets = self.encoding.stream_offsets();
         let glyph_start = self.encoding.resources.glyphs.len();
-        for (glyph_index, (glyph, position)) in validated
-            .glyphs()
-            .iter()
-            .zip(validated.native_positions())
-            .enumerate()
-        {
+        for occurrence in validated.occurrences() {
             account.work(RenderWork::GlyphVisits, 1)?;
-            let Some([x, y]) = *position else {
-                continue;
-            };
+            let glyph = occurrence.glyph();
+            let glyph_index = occurrence.source_index();
+            account.work(RenderWork::CoordinateVisits, 2)?;
+            let [x, y] = occurrence.native_position();
             let native_placement = VelloTransform {
                 matrix: [1.0, 0.0, 0.0, -1.0],
                 translation: [x, y],
@@ -616,7 +634,7 @@ impl VelloScene {
                     .map_err(|error| glyph_geometry_error(error, glyph_index))?;
             let qualified = geometry::qualify_native_transform(source_product, product, account)
                 .map_err(|error| glyph_geometry_error(error, glyph_index))?;
-            qualify_native_outline(&validated, glyph_index, &qualified, account)?;
+            qualify_native_outline(occurrence, &qualified, account)?;
             self.encoding.resources.glyphs.push(Glyph {
                 id: glyph.id(),
                 x,

@@ -54,16 +54,41 @@ const SKRIFA_NORMALIZED_COORDS: &[skrifa::instance::NormalizedCoord] = &[];
 
 pub(crate) struct ValidatedGlyphRun<'a> {
     font_data: &'a FontData,
-    glyphs: &'a [TextGlyph],
     size: f32,
     transform: Transform,
     paint: &'a TextPaint,
     representations: AccountedVec<SelectedGlyphRepresentation>,
-    native_positions: AccountedVec<Option<[f32; 2]>>,
-    drawable_count: usize,
+    drawables: AccountedVec<DrawableGlyph<'a>>,
     stream_sizes: StreamOffsets,
     #[cfg(test)]
     selected_glyph_traces: AccountedVec<SelectedGlyphTrace>,
+}
+
+// One authoritative occurrence record couples the actual source glyph, its
+// diagnostic ordinal, and the native position admitted for that same glyph.
+struct DrawableGlyph<'a> {
+    glyph: &'a TextGlyph,
+    source_index: usize,
+    position: [f32; 2],
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct GlyphOccurrence<'a> {
+    font_data: &'a FontData,
+    size: &'a f32,
+    drawable: &'a DrawableGlyph<'a>,
+}
+
+impl<'a> GlyphOccurrence<'a> {
+    pub(crate) fn glyph(self) -> &'a TextGlyph {
+        self.drawable.glyph
+    }
+    pub(crate) fn source_index(self) -> usize {
+        self.drawable.source_index
+    }
+    pub(crate) fn native_position(self) -> [f32; 2] {
+        self.drawable.position
+    }
 }
 
 pub(crate) enum SelectedGlyphRepresentation {
@@ -177,10 +202,6 @@ impl<'a> ValidatedGlyphRun<'a> {
         self.font_data
     }
 
-    pub(crate) const fn glyphs(&self) -> &[TextGlyph] {
-        self.glyphs
-    }
-
     pub(crate) const fn paint(&self) -> &TextPaint {
         self.paint
     }
@@ -193,12 +214,16 @@ impl<'a> ValidatedGlyphRun<'a> {
         self.representations.as_slice()
     }
 
-    pub(crate) fn native_positions(&self) -> &[Option<[f32; 2]>] {
-        &self.native_positions
+    pub(crate) fn occurrences(&self) -> impl ExactSizeIterator<Item = GlyphOccurrence<'_>> {
+        self.drawables.iter().map(|drawable| GlyphOccurrence {
+            font_data: self.font_data,
+            size: &self.size,
+            drawable,
+        })
     }
 
-    pub(crate) const fn drawable_count(&self) -> usize {
-        self.drawable_count
+    pub(crate) fn drawable_count(&self) -> usize {
+        self.drawables.len()
     }
 
     #[cfg(test)]
@@ -229,8 +254,7 @@ pub(crate) fn preflight_selected_glyphs<'a>(
     let outlines = font.outline_glyphs();
     let mut representations = account.temporary(run.glyphs().len())?;
     let mut stream_sizes = StreamOffsets::default();
-    let mut native_positions = account.temporary(run.glyphs().len())?;
-    let mut drawable_count = 0;
+    let mut drawables = account.temporary(run.glyphs().len())?;
     #[cfg(test)]
     let mut selected_glyph_traces = account.temporary(run.glyphs().len())?;
 
@@ -292,7 +316,7 @@ pub(crate) fn preflight_selected_glyphs<'a>(
             selected_glyph_traces.push(SelectedGlyphTrace::Outline)?;
             SelectedGlyphRepresentation::Outline
         };
-        let position = if drawable {
+        if drawable {
             let reason = crate::GeometryRealizationError::UnrepresentableGlyph { glyph_index };
             account.work(RenderWork::CoordinateVisits, 1)?;
             let x = glyph.x();
@@ -300,16 +324,18 @@ pub(crate) fn preflight_selected_glyphs<'a>(
             let y = glyph.y();
             let x = geometry::scalar(x, reason, account)?;
             let y = geometry::scalar(y, reason, account)?;
-            drawable_count = bounded::add(drawable_count, 1, account)?;
-            Some([x, y])
-        } else {
-            None
-        };
+            account.work(RenderWork::RasterResourceCopies, 1)?;
+            drawables.push_reserved(DrawableGlyph {
+                glyph,
+                source_index: glyph_index,
+                position: [x, y],
+            });
+        }
         account.work(RenderWork::RasterResourceCopies, 1)?;
-        native_positions.push_reserved(position);
         representations.push(representation)?;
     }
 
+    let drawable_count = drawables.len();
     if drawable_count != 0 {
         stream_sizes.path_tags = bounded::add(
             stream_sizes.path_tags,
@@ -324,13 +350,11 @@ pub(crate) fn preflight_selected_glyphs<'a>(
     }
     Ok(ValidatedGlyphRun {
         font_data,
-        glyphs: run.glyphs(),
         size: run.size(),
         transform: run.transform(),
         paint: run.paint(),
         representations,
-        native_positions,
-        drawable_count,
+        drawables,
         stream_sizes,
         #[cfg(test)]
         selected_glyph_traces,
@@ -477,16 +501,16 @@ fn preflight_outline(
 }
 
 pub(crate) fn qualify_native_outline(
-    run: &ValidatedGlyphRun<'_>,
-    glyph_index: usize,
+    occurrence: GlyphOccurrence<'_>,
     qualified: &QualifiedTransform,
     account: &Account,
 ) -> Result<()> {
-    let font_data = run.font_data();
+    let font_data = occurrence.font_data;
     let font = skrifa::FontRef::from_index(font_data.bytes(), font_data.index())
         .map_err(|_| font_data_error(font_data))?;
     account.work(RenderWork::GlyphVisits, 1)?;
-    let glyph = &run.glyphs()[glyph_index];
+    let glyph = occurrence.glyph();
+    let glyph_index = occurrence.source_index();
     let outlines = font.outline_glyphs();
     let outline = outlines
         .get(GlyphId::new(glyph.id()))
@@ -498,7 +522,7 @@ pub(crate) fn qualify_native_outline(
     };
     let drawn = outline.draw(
         DrawSettings::unhinted(
-            Size::new(run.size()),
+            Size::new(*occurrence.size),
             LocationRef::new(SKRIFA_NORMALIZED_COORDS),
         ),
         &mut pen,
@@ -1429,6 +1453,66 @@ mod receiving_tests {
             index,
             account,
         )
+    }
+
+    #[test]
+    fn drawable_occurrences_keep_source_identity_and_placement_after_empty_glyphs() {
+        let (font, visible, space) = fixture();
+        let glyphs = [
+            TextGlyph::try_new(space, f64::MAX, f64::MAX, 16.0).unwrap(),
+            TextGlyph::try_new(visible, 3.0, 16.0, 16.0).unwrap(),
+            TextGlyph::try_new(visible, 11.0, 20.0, 16.0).unwrap(),
+        ];
+        let run = TextRun::try_new(
+            crate::FontRef::new(1_u64).with_data(font),
+            16.0,
+            Transform::identity(),
+            TextPaint::try_fill(crate::Paint::color(crate::Color::BLACK)).unwrap(),
+            &glyphs,
+            crate::TextRunBounds::unspecified(),
+        )
+        .unwrap();
+        // The first empty source glyph contributes its representation record.
+        // Refuse the next actual drawable record copy before it is appended.
+        let mut limited = RenderAccountingContext::new(
+            RenderAccountingOptions::new().with_limits(
+                RenderLimits::new()
+                    .with_work_limit(RenderWork::RasterResourceCopies, 1)
+                    .unwrap(),
+            ),
+        );
+        let error = limited
+            .run(RenderAttemptKind::Frame, RenderPhase::Qualify, |account| {
+                let _validated = preflight_selected_glyphs(&run, account)?;
+                Ok(())
+            })
+            .unwrap_err();
+        assert!(error.accounting_diagnostic().is_some());
+        let usage = limited.last_attempt().unwrap().usage();
+        assert_eq!(usage.work(RenderWork::RasterResourceCopies), 1);
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
+        let mut retry = RenderAccountingContext::default();
+        retry
+            .run(RenderAttemptKind::Frame, RenderPhase::Qualify, |account| {
+                let validated = preflight_selected_glyphs(&run, account)?;
+                let mut occurrences = validated.occurrences();
+                assert_eq!(occurrences.len(), 2);
+                let first = occurrences.next().unwrap();
+                assert!(std::ptr::eq(first.glyph(), &glyphs[1]));
+                assert_eq!(first.source_index(), 1);
+                assert_eq!(first.native_position(), [3.0, 16.0]);
+                let second = occurrences.next().unwrap();
+                assert!(std::ptr::eq(second.glyph(), &glyphs[2]));
+                assert_eq!(second.source_index(), 2);
+                assert_eq!(second.native_position(), [11.0, 20.0]);
+                assert!(occurrences.next().is_none());
+                Ok(())
+            })
+            .unwrap();
+        let usage = retry.last_attempt().unwrap().usage();
+        assert_eq!(usage.live(RenderResource::ScratchCpuBytes), 0);
+        assert_eq!(usage.live(RenderResource::RetainedCpuBytes), 0);
     }
 
     #[test]

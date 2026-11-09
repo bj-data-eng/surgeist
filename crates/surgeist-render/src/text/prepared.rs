@@ -1552,8 +1552,7 @@ fn qualify_preparation_native_bounds(
         let (x, y, x1, y1) = (rect.x0, rect.y0, rect.x1, rect.y1);
         let width = placement_action(account, || x1 - x)?;
         let height = placement_action(account, || y1 - y)?;
-        let mut placed: Option<kurbo::Rect> = None;
-        for (x, y) in [(x, y), (x1, y), (x, y1), (x1, y1)] {
+        let map_corner = |x, y| -> Result<kurbo::Point> {
             let local_x = placement_action(account, || x as f32)?;
             let local_y = placement_action(account, || y as f32)?;
             let ax = placement_action(account, || a * local_x)?;
@@ -1575,17 +1574,17 @@ fn qualify_preparation_native_bounds(
             }
             let x = placement_action(account, || f64::from(placed_x))?;
             let y = placement_action(account, || f64::from(placed_y))?;
-            let point = kurbo::Point::new(x, y);
-            if let Some(previous) = placed {
-                account.work(RenderWork::CoordinateVisits, 4)?;
-                placed = Some(previous.union_pt(point));
-            } else {
-                // Rect::from_points evaluates min/max on both axes.
-                account.work(RenderWork::CoordinateVisits, 4)?;
-                placed = Some(kurbo::Rect::from_points(point, point));
-            }
+            Ok(kurbo::Point::new(x, y))
+        };
+        let first = map_corner(x, y)?;
+        // Rect::from_points evaluates min/max on both axes.
+        account.work(RenderWork::CoordinateVisits, 4)?;
+        let mut placed = kurbo::Rect::from_points(first, first);
+        for (x, y) in [(x1, y), (x, y1), (x1, y1)] {
+            let point = map_corner(x, y)?;
+            account.work(RenderWork::CoordinateVisits, 4)?;
+            placed = placed.union_pt(point);
         }
-        let placed = placed.expect("four corners are always visited");
         if placement_action(account, || determinant != 0.0)?
             && placement_action(account, || width > 0.0)?
             && placement_action(account, || height > 0.0)?
