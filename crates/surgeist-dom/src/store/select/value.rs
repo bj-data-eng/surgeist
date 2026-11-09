@@ -2,6 +2,7 @@
 use super::*;
 use source::checkpoint::Charge;
 use source::storage::Payload;
+#[cfg(test)]
 use surgeist_html::accounting::HtmlAccountingFault;
 use surgeist_html::values::HtmlValueInterpreter;
 use surgeist_html_semantics::*;
@@ -193,10 +194,9 @@ impl Draft {
             HtmlOptionValueControlError::RepresentationExhausted => {
                 DomError::RepresentationExhausted
             }
-            HtmlOptionValueControlError::Accounting(HtmlAccountingFault::Allocation) => {
-                DomError::AllocationFailed
+            HtmlOptionValueControlError::Accounting(fault) => {
+                DomError::from_accounting_fault(fault)
             }
-            HtmlOptionValueControlError::Accounting(_) => DomError::SelectProtocol,
             HtmlOptionValueControlError::LimitExceeded { resource, .. } => {
                 let limits = self
                     .source_limits
@@ -517,9 +517,10 @@ mod tests {
     }
 
     /// The producer's accounting refused storage it never took, a defect in the producer: the
-    /// store reports it as a select protocol breach, not as exhaustion or a resource limit.
+    /// store reports it as an HTML charge protocol breach, not as exhaustion or a resource limit,
+    /// and a ledger that cannot allocate is an allocation failure.
     #[test]
-    fn a_producer_accounting_breach_is_a_select_protocol_error() {
+    fn a_producer_accounting_breach_is_an_html_charge_protocol_error() {
         let (dom, _, _, _) = fixture();
         let cancel = AtomicBool::new(false);
         let draft = Draft::new(&dom, Arc::new(crate::batch::BatchIdentity), &cancel).unwrap();
@@ -527,7 +528,7 @@ mod tests {
             draft.option_value_control_error(HtmlOptionValueControlError::Accounting(
                 HtmlAccountingFault::ReleaseUnderflow
             )),
-            DomError::SelectProtocol
+            DomError::HtmlChargeProtocol
         );
         assert_eq!(
             draft.option_value_control_error(HtmlOptionValueControlError::Accounting(

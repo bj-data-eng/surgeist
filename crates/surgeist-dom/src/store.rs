@@ -423,10 +423,11 @@ pub enum DomError {
     InvalidLimit(DomResource),
     AllocationFailed,
     RepresentationExhausted,
-    /// An HTML operation charged a change that the DOM's work owner does not
-    /// admit: a resource change, a gauge record or a dimension with no credit
-    /// rate. The DOM charges only work, so an HTML operation that does this
-    /// breaks its contract with this adapter.
+    /// An HTML operation broke its accounting contract with this adapter. Either it charged a
+    /// change that the DOM's work owner does not admit (a resource change, a gauge record or a
+    /// dimension with no credit rate, since the DOM charges only work), or the ledger of an HTML
+    /// crate reported a fault that is not a refused limit and not a failed allocation: a release
+    /// that matches nothing held, a foreign scope, a spent scope bound or a ledger defect.
     HtmlChargeProtocol,
     /// The processing-instruction pseudo-attribute driver and its cursor disagree about the
     /// committed names or the cursor's own replies. A driver that answers only what the cursor asks
@@ -453,6 +454,18 @@ impl std::fmt::Display for DomError {
     }
 }
 impl std::error::Error for DomError {}
+impl DomError {
+    /// The outcome of an accounting fault of an HTML crate: a ledger that cannot allocate is an
+    /// allocation failure, and every other fault breaks the HTML operation's accounting contract.
+    pub(crate) fn from_accounting_fault(
+        fault: surgeist_html::accounting::HtmlAccountingFault,
+    ) -> Self {
+        match fault {
+            surgeist_html::accounting::HtmlAccountingFault::Allocation => Self::AllocationFailed,
+            _ => Self::HtmlChargeProtocol,
+        }
+    }
+}
 
 /// Explicit finite admission policy. No hidden or unlimited default is selected.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

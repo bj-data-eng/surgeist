@@ -130,12 +130,9 @@ impl Bank {
             HtmlEmptyGlobalRegistryError::RepresentationExhausted => {
                 DomHostedError::RepresentationExhausted
             }
-            HtmlEmptyGlobalRegistryError::AllocationFailed
-            | HtmlEmptyGlobalRegistryError::Accounting(HtmlAccountingFault::Allocation) => {
-                DomHostedError::AllocationFailed
-            }
-            HtmlEmptyGlobalRegistryError::Accounting(_)
-            | HtmlEmptyGlobalRegistryError::Capture(_) => DomHostedError::UnsupportedProfile,
+            HtmlEmptyGlobalRegistryError::AllocationFailed => DomHostedError::AllocationFailed,
+            HtmlEmptyGlobalRegistryError::Accounting(fault) => hosted_accounting_error(fault),
+            HtmlEmptyGlobalRegistryError::Capture(_) => DomHostedError::UnsupportedProfile,
         })?;
         let payload_bytes = formed.retained_storage_usage().retained_bytes();
         let payload = source.retain(payload_bytes, cancel)?;
@@ -292,5 +289,40 @@ impl Draft {
         }
         self.establish_element_registry(key, binding, cancel)?;
         Ok(())
+    }
+}
+
+/// The hosted outcome of an accounting fault of the registry formation: a ledger that cannot
+/// allocate is the hosted allocation failure, and every other fault breaks the HTML operation's
+/// accounting contract.
+fn hosted_accounting_error(fault: HtmlAccountingFault) -> DomHostedError {
+    match fault {
+        HtmlAccountingFault::Allocation => DomHostedError::AllocationFailed,
+        _ => DomError::HtmlChargeProtocol.into(),
+    }
+}
+
+#[cfg(test)]
+mod accounting_fault_tests {
+    use super::*;
+
+    #[test]
+    fn a_registry_formation_ledger_fault_is_an_allocation_failure_or_a_charge_protocol_fault() {
+        assert_eq!(
+            hosted_accounting_error(HtmlAccountingFault::Allocation),
+            DomHostedError::AllocationFailed
+        );
+        for fault in [
+            HtmlAccountingFault::ReleaseUnderflow,
+            HtmlAccountingFault::ForeignScope,
+            HtmlAccountingFault::ScopeLimit { limit: 1 },
+            HtmlAccountingFault::UnexpectedChange,
+        ] {
+            assert_eq!(
+                hosted_accounting_error(fault),
+                DomHostedError::Dom(DomError::HtmlChargeProtocol),
+                "{fault:?}"
+            );
+        }
     }
 }
