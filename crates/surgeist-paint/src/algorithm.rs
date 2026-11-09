@@ -1,5 +1,5 @@
 use crate::{
-    BoxFacts, BoxId, ChildOrder, PaintError, PaintOptions, PaintReport, Participation,
+    BoxFacts, BoxId, ChildOrder, PaintError, PaintOptions, PaintPhase, PaintReport, Participation,
     ResourceKind, StackingPlan, WorkKind,
 };
 use crate::{
@@ -44,7 +44,7 @@ pub(crate) struct State {
 impl State {
     pub(crate) fn scratch_cleanup(
         &mut self,
-        meter: &mut PhaseMeter<'_>,
+        meter: &mut PhaseMeter<'_, '_>,
         root: Scope,
     ) -> Result<(), PaintError> {
         release(
@@ -75,7 +75,7 @@ impl State {
     }
     pub(crate) fn result_cleanup(
         &mut self,
-        meter: &mut PhaseMeter<'_>,
+        meter: &mut PhaseMeter<'_, '_>,
         root: Scope,
     ) -> Result<(), PaintError> {
         release(
@@ -146,18 +146,21 @@ pub fn plan_stacking(
 
 pub(crate) fn setup_scopes(meter: &mut Meter) -> Result<[Scope; 7], PaintError> {
     let mut scopes = [meter.root(); 7];
-    for (slot, name) in scopes.iter_mut().zip([
-        "validate",
-        "topology",
-        "sibling_order",
-        "membership",
-        "context_order",
-        "publication",
-        "cleanup",
+    for (slot, phase) in scopes.iter_mut().zip([
+        PaintPhase::Validate,
+        PaintPhase::Topology,
+        PaintPhase::SiblingOrder,
+        PaintPhase::Membership,
+        PaintPhase::ContextOrder,
+        PaintPhase::Publication,
+        PaintPhase::Cleanup,
     ]) {
-        *slot = meter
-            .child(meter.root(), name, Limits::unlimited(), Tariffs::identity())
-            .map_err(setup_error)?;
+        *slot = meter.child(
+            meter.root(),
+            phase,
+            Limits::unlimited(),
+            Tariffs::identity(),
+        )?;
     }
     Ok(scopes)
 }
@@ -236,7 +239,7 @@ pub(crate) fn prepare(
 }
 
 fn validate(
-    p: &mut PhaseMeter<'_>,
+    p: &mut PhaseMeter<'_, '_>,
     scope: Scope,
     boxes: &[BoxFacts],
     root: BoxId,
@@ -287,7 +290,7 @@ fn validate(
 }
 
 fn topology(
-    p: &mut PhaseMeter<'_>,
+    p: &mut PhaseMeter<'_, '_>,
     root: Scope,
     scope: Scope,
     s: &mut State,
@@ -364,7 +367,7 @@ fn topology(
 /// Stable bottom-up merge sort with fallible admission before every comparator
 /// and every index move. No comparator substitutes Equal after a refusal.
 pub(crate) fn sort(
-    p: &mut PhaseMeter<'_>,
+    p: &mut PhaseMeter<'_, '_>,
     scope: Scope,
     values: &mut [usize],
     scratch: &mut [usize],
@@ -411,7 +414,7 @@ pub(crate) fn sort(
 }
 
 fn order_siblings(
-    p: &mut PhaseMeter<'_>,
+    p: &mut PhaseMeter<'_, '_>,
     scope: Scope,
     s: &mut State,
     boxes: &[BoxFacts],
@@ -454,7 +457,7 @@ fn order_siblings(
 }
 
 fn membership(
-    p: &mut PhaseMeter<'_>,
+    p: &mut PhaseMeter<'_, '_>,
     root: Scope,
     scope: Scope,
     s: &mut State,
@@ -505,7 +508,7 @@ fn membership(
 }
 
 fn order_contexts(
-    p: &mut PhaseMeter<'_>,
+    p: &mut PhaseMeter<'_, '_>,
     _root: Scope,
     scope: Scope,
     s: &mut State,

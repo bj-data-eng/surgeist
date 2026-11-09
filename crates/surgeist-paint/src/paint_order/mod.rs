@@ -5,7 +5,7 @@ mod validation;
 pub use model::*;
 
 use crate::{
-    PaintError, PaintOptions, PaintReport, ResourceKind, StackingPlan,
+    PaintError, PaintOptions, PaintPhase, PaintReport, ResourceKind, StackingPlan,
     accounting::{OperationKind, apply, finish, setup_error},
     algorithm,
 };
@@ -36,22 +36,18 @@ pub fn plan_paint_order(request: PaintRequest<'_>, options: PaintOptions) -> Pai
     let root = meter.root();
     let scopes = (|| {
         let core = algorithm::setup_scopes(&mut meter)?;
-        let validation = meter
-            .child(
-                root,
-                "paint_validate",
-                Limits::unlimited(),
-                Tariffs::identity(),
-            )
-            .map_err(setup_error)?;
-        let sequence = meter
-            .child(
-                root,
-                "paint_sequence",
-                Limits::unlimited(),
-                Tariffs::identity(),
-            )
-            .map_err(setup_error)?;
+        let validation = meter.child(
+            root,
+            PaintPhase::PaintValidation,
+            Limits::unlimited(),
+            Tariffs::identity(),
+        )?;
+        let sequence = meter.child(
+            root,
+            PaintPhase::PaintSequence,
+            Limits::unlimited(),
+            Tariffs::identity(),
+        )?;
         Ok::<_, PaintError>((core, validation, sequence))
     })();
     let (scopes, validate, sequence) = match scopes {

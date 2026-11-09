@@ -360,7 +360,7 @@ fn actual_failed_reservation_records_no_accepted_resource_peak() {
             resource: ResourceKind::ScratchBytes
         }
     );
-    let report = PaintReport::new(meter.finish().unwrap().unwrap()).unwrap();
+    let report = meter.finish().unwrap().unwrap();
     assert_eq!(report.peak(ResourceKind::ScratchBytes), 0);
     assert_eq!(report.live(ResourceKind::ScratchBytes), 0);
     assert_eq!(report.phases().next().unwrap().accepted_batches(), 0);
@@ -425,8 +425,9 @@ fn paint_order_work_limits_preserve_named_admissions_refusals_and_reports() {
         let root = meter.root();
         assert_eq!(meter.scope_name(root).unwrap(), "paint order");
         let scope = meter
-            .child(root, name, Limits::unlimited(), Tariffs::identity())
+            .child(root, phase, Limits::unlimited(), Tariffs::identity())
             .unwrap();
+        assert_eq!(meter.scope_name(scope).unwrap(), name);
         meter
             .with_phase(scope, |p| charge(p, scope, kind, 2))
             .unwrap()
@@ -442,7 +443,7 @@ fn paint_order_work_limits_preserve_named_admissions_refusals_and_reports() {
         assert_eq!(refusal.limiting_phase, PaintPhase::Operation);
         assert_eq!(refusal.change, PaintChange::Work { kind, amount: 1 });
         assert_eq!(refusal.current, 2);
-        let report = PaintReport::new(meter.finish().unwrap().unwrap()).unwrap();
+        let report = meter.finish().unwrap().unwrap();
         for &dimension in WorkKind::ALL {
             assert_eq!(
                 report.work(dimension),
@@ -474,22 +475,29 @@ fn paint_order_work_limits_preserve_named_admissions_refusals_and_reports() {
 fn paint_order_reserves_scopes_for_stacking_and_both_paint_phases() {
     let mut meter = options().operation(OperationKind::PaintOrder).unwrap();
     setup_scopes(&mut meter).unwrap();
-    for name in ["paint_validate", "paint_sequence"] {
+    for phase in [PaintPhase::PaintValidation, PaintPhase::PaintSequence] {
         let scope = meter
-            .child(meter.root(), name, Limits::unlimited(), Tariffs::identity())
+            .child(
+                meter.root(),
+                phase,
+                Limits::unlimited(),
+                Tariffs::identity(),
+            )
             .unwrap();
         meter.with_phase(scope, |_| ()).unwrap();
     }
     assert!(matches!(
         meter.child(
             meter.root(),
-            "extra",
+            PaintPhase::Publication,
             Limits::unlimited(),
             Tariffs::identity()
         ),
-        Err(surgeist_ledger::Error::ScopeLimit { limit: 10 })
+        Err(PaintError::Accounting(
+            crate::AccountingFailure::ScopeLimit { limit: 10 }
+        ))
     ));
-    let report = PaintReport::new(meter.finish().unwrap().unwrap()).unwrap();
+    let report = meter.finish().unwrap().unwrap();
     for phase in [PaintPhase::PaintValidation, PaintPhase::PaintSequence] {
         assert_eq!(
             report

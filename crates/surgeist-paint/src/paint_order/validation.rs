@@ -64,7 +64,7 @@ pub(super) struct PaintIndex {
 impl PaintIndex {
     pub(super) fn cleanup(
         &mut self,
-        p: &mut PhaseMeter<'_>,
+        p: &mut PhaseMeter<'_, '_>,
         root: Scope,
     ) -> Result<(), PaintError> {
         macro_rules! drop_scratch {
@@ -96,14 +96,14 @@ impl PaintIndex {
     }
 }
 
-fn scratch<T>(p: &mut PhaseMeter<'_>, root: Scope, n: usize) -> Result<Vec<T>, PaintError> {
+fn scratch<T>(p: &mut PhaseMeter<'_, '_>, root: Scope, n: usize) -> Result<Vec<T>, PaintError> {
     allocate(p, root, n, ResourceKind::ScratchBytes)
 }
 
 fn push<T>(
     values: &mut Vec<T>,
     value: T,
-    p: &mut PhaseMeter<'_>,
+    p: &mut PhaseMeter<'_, '_>,
     phase: Scope,
 ) -> Result<(), PaintError> {
     charge(p, phase, WorkKind::OrderMove, 1)?;
@@ -138,7 +138,7 @@ fn fragment_owner(slot: usize, boxes: usize) -> FragmentOwner {
 pub(super) fn prepare(
     request: PaintRequest<'_>,
     core: &State,
-    p: &mut PhaseMeter<'_>,
+    p: &mut PhaseMeter<'_, '_>,
     root: Scope,
     phase: Scope,
 ) -> Result<PaintIndex, PaintError> {
@@ -223,7 +223,7 @@ pub(super) fn prepare(
 fn validate_categories(
     request: PaintRequest<'_>,
     core: &State,
-    p: &mut PhaseMeter<'_>,
+    p: &mut PhaseMeter<'_, '_>,
     phase: Scope,
 ) -> Result<(), PaintError> {
     for (slot, record) in request.box_paint().iter().enumerate() {
@@ -274,7 +274,7 @@ fn validate_categories(
 fn sources(
     request: PaintRequest<'_>,
     index: &mut PaintIndex,
-    p: &mut PhaseMeter<'_>,
+    p: &mut PhaseMeter<'_, '_>,
     root: Scope,
     phase: Scope,
     owners: usize,
@@ -361,7 +361,7 @@ fn sources(
 fn fragments(
     request: PaintRequest<'_>,
     index: &mut PaintIndex,
-    p: &mut PhaseMeter<'_>,
+    p: &mut PhaseMeter<'_, '_>,
     root: Scope,
     phase: Scope,
 ) -> Result<(), PaintError> {
@@ -531,7 +531,7 @@ fn fragments(
 fn lines(
     request: PaintRequest<'_>,
     index: &mut PaintIndex,
-    p: &mut PhaseMeter<'_>,
+    p: &mut PhaseMeter<'_, '_>,
     root: Scope,
     phase: Scope,
 ) -> Result<(), PaintError> {
@@ -611,7 +611,7 @@ fn promotion(
     id: FragmentId,
     fragment: PaintFragment,
     parent: PaintFragment,
-    p: &mut PhaseMeter<'_>,
+    p: &mut PhaseMeter<'_, '_>,
     phase: Scope,
 ) -> Result<(), PaintError> {
     let placement = fragment
@@ -688,7 +688,7 @@ fn promotion(
 fn content(
     request: PaintRequest<'_>,
     index: &mut PaintIndex,
-    p: &mut PhaseMeter<'_>,
+    p: &mut PhaseMeter<'_, '_>,
     root: Scope,
     phase: Scope,
     capacity: usize,
@@ -790,7 +790,7 @@ fn content(
 
 fn incidences(
     request: PaintRequest<'_>,
-    p: &mut PhaseMeter<'_>,
+    p: &mut PhaseMeter<'_, '_>,
     phase: Scope,
 ) -> Result<(), PaintError> {
     for (slot, record) in request.fragments().iter().enumerate() {
@@ -847,7 +847,7 @@ fn primitives(
     request: PaintRequest<'_>,
     core: &State,
     index: &mut PaintIndex,
-    p: &mut PhaseMeter<'_>,
+    p: &mut PhaseMeter<'_, '_>,
     root: Scope,
     phase: Scope,
 ) -> Result<(), PaintError> {
@@ -995,7 +995,7 @@ fn primitives(
 }
 
 fn ranges(
-    p: &mut PhaseMeter<'_>,
+    p: &mut PhaseMeter<'_, '_>,
     root: Scope,
     phase: Scope,
     buckets: usize,

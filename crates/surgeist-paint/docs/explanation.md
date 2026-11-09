@@ -256,8 +256,23 @@ dropped. The successful report retains result Vec capacities and the fixed plan
 owner; dropping the plan later is outside this synchronous operation. Failed
 operations drop/release all admitted backing and retain accepted work.
 
-Caller input and Ledger's separately bounded observer/report storage are outside
-Paint byte caps. Integer counters that encode graph positions/ranges, identities
+Caller input and separately bounded observer/report storage are outside Paint
+byte caps. This includes Ledger's observer and Paint's resolved report adapter.
+The adapter reserves its backing fallibly during operation setup using the same
+scope and detailed-event bounds. Off reserves no report backing; Summary reserves
+no event backing. Conversion after Ledger finish uses only the reserved capacity,
+so changing profiling does not spend forward algorithm quotas or change live/peak
+result custody. Allocator spare capacity does not enlarge the logical bounds.
+
+Paint registers each created scope handle with its explicit `PaintPhase`.
+Report construction resolves summaries, refusals and events through those
+registrations once, checks every referenced scope against the finished report,
+and stores the resolved observations. Display names remain filter labels;
+they do not select phases. Readers perform no scope lookup or defaulting.
+Unknown handles fail construction with Paint's typed accounting invariant;
+upstream Ledger defects retain their named `Defect` payload.
+
+Integer counters that encode graph positions/ranges, identities
 and capacity custody are algorithm state, not a second numeric budget authority.
 Resolved levels outside i64 require an upstream diagnostic; Paint does not
 truncate authored CSS values or resolve calculations.
