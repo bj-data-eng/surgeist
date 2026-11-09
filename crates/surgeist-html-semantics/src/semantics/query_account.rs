@@ -135,6 +135,15 @@ impl QueryAccount {
             .apply(self.caps, Change::Work(HtmlWork::SemanticStep, wide(work)))
     }
 
+    /// The allocated bytes an allocation may still take before a cap of the session's scope or of
+    /// one of its ancestors refuses it.
+    pub(super) fn allocated_headroom(&self) -> Result<usize, LedgerError> {
+        let room = self
+            .operation
+            .headroom(self.caps, HtmlResource::AllocatedBytes)?;
+        Ok(usize::try_from(room).unwrap_or(usize::MAX))
+    }
+
     /// Checks a batch against the capped scope without recording it.
     pub(super) fn check(&mut self, batch: &[HtmlChange]) -> Result<(), LedgerError> {
         self.operation.check_batch(self.caps, batch)

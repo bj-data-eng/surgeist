@@ -93,6 +93,19 @@ impl Ledger {
         }
     }
 
+    /// The most of `resource` an acquisition at `scope` could take before a cap on the chain from
+    /// `scope` to the root of the operation refuses it.
+    pub(crate) fn headroom(
+        &self,
+        scope: Scope,
+        resource: HtmlResource,
+    ) -> Result<u64, LedgerError> {
+        match self {
+            Self::Owned(operation) => operation.headroom(scope, resource),
+            Self::Shared(operation) => operation.headroom(scope, resource),
+        }
+    }
+
     /// Records `value` as the largest reached by a gauge resource of `scope`. A shared operation
     /// does it under one lock.
     pub(crate) fn record_largest(

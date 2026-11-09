@@ -2204,12 +2204,49 @@ impl<'a> HtmlSemanticSession<'a> {
             .and_then(|n| n.checked_add(8))
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
         self.charge(work)?;
-        Ok(self.remaining_allocated_bytes())
+        self.remaining_allocated_bytes()
     }
-    fn remaining_allocated_bytes(&self) -> usize {
-        self.limits
+    /// The allocated bytes a numeric materialization may take: the tighter of what the session's
+    /// own limit leaves and what the caps of its scope and of the scopes above it leave.
+    fn remaining_allocated_bytes(&mut self) -> Result<usize, HtmlSemanticFailure> {
+        let own = self
+            .limits
             .allocated_bytes
-            .saturating_sub(self.snapshot().allocated_bytes)
+            .saturating_sub(self.snapshot().allocated_bytes);
+        let chain = self
+            .account
+            .allocated_headroom()
+            .map_err(|error| self.ledger_stop(error))?;
+        Ok(own.min(chain))
+    }
+    /// The stop of a numeric request for `required` bytes that the numeric owner refused before it
+    /// allocated them, when the request would have brought the session's allocated bytes to
+    /// `total`. A cap of the host's scope or of one above it that is tighter than what the
+    /// session's own limit leaves refuses the request as the ledger reports it, with that cap's
+    /// limit and total; otherwise the session's limit does.
+    fn requested_capacity_stop(
+        &mut self,
+        required: usize,
+        total: usize,
+    ) -> HtmlSemanticFailureKind {
+        let own = self
+            .limits
+            .allocated_bytes
+            .saturating_sub(self.snapshot().allocated_bytes);
+        if let Ok(chain) = self.account.allocated_headroom()
+            && chain < own
+            && let Err(error) = self.account.check(&[Change::Acquire(
+                HtmlResource::AllocatedBytes,
+                query_account::wide(required),
+            )])
+        {
+            return query_account::stop_kind(error);
+        }
+        HtmlSemanticFailureKind::LimitExceeded {
+            resource: HtmlSemanticResource::AllocatedBytes,
+            limit: self.limits.allocated_bytes,
+            required: total,
+        }
     }
     /// Records actual capacity after an admitted allocation, including an
     /// allocator overshoot. Accounting precedes the next cancellation poll.
@@ -2249,11 +2286,8 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                 }
                 HtmlIntegerUnitStepError::RequestedCapacityLimitExceeded { required, .. } => {
-                    HtmlSemanticFailureKind::LimitExceeded {
-                        resource: HtmlSemanticResource::AllocatedBytes,
-                        limit: self.limits.allocated_bytes,
-                        required: self.snapshot().allocated_bytes.saturating_add(required),
-                    }
+                    let total = self.snapshot().allocated_bytes.saturating_add(required);
+                    self.requested_capacity_stop(required, total)
                 }
                 HtmlIntegerUnitStepError::ActualCapacityLimitExceeded { .. } => {
                     HtmlSemanticFailureKind::LimitExceeded {

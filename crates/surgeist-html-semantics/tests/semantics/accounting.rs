@@ -5,7 +5,7 @@ use crate::semantics::support::{builder, context, semantic_limits};
 use surgeist_html::{
     accounting::{
         HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapScope, HtmlHostScope, HtmlLimits,
-        HtmlResource, HtmlWork,
+        HtmlResource, HtmlWork, aggregate_tariffs,
     },
     values::{Attribute, Namespace, OrderedAttributes, QualifiedName},
 };
@@ -725,7 +725,8 @@ fn time_limits(bytes: usize) -> HtmlSemanticLimits {
 
 /// A host cap on the allocated bytes tighter than the session's own limit bounds the numeric
 /// materialization as a session limit of that size does: the same stop, with the same usage,
-/// because the numeric owner refuses before it allocates beyond the cap.
+/// because the numeric owner refuses before it allocates beyond the cap. The cap sits on the
+/// supplied scope, or on its parent so that the supplied scope reaches it through a tariff.
 #[test]
 fn a_host_byte_cap_bounds_a_numeric_materialization_as_a_session_limit_of_that_size_does() {
     let (c, request) = time();
@@ -737,27 +738,44 @@ fn a_host_byte_cap_bounds_a_numeric_materialization_as_a_session_limit_of_that_s
         .usage()
         .allocated_bytes();
     assert!(baseline > 0);
+    let capped = |cap: usize| {
+        HtmlLimits::from_fn(
+            |_| u64::MAX,
+            |resource| {
+                if resource == HtmlResource::AllocatedBytes {
+                    cap as u64
+                } else {
+                    u64::MAX
+                }
+            },
+        )
+    };
     for cap in 0..baseline {
         let expected = private(&c, &cx, time_limits(cap))
             .query(&requests)
             .unwrap_err();
-        let (ledger, root) = host(
-            HtmlLimits::from_fn(
-                |_| u64::MAX,
-                |resource| {
-                    if resource == HtmlResource::AllocatedBytes {
-                        cap as u64
-                    } else {
-                        u64::MAX
-                    }
-                },
-            ),
-            8,
-        );
-        let accounting = HtmlHostScope::new(ledger, root);
-        let mut session = open(&c, &cx, time_limits(10_000_000), &accounting).unwrap();
-        let failure = session.query(&requests).unwrap_err();
-        assert_eq!(failure.kind(), expected.kind(), "host cap {cap}");
-        assert_eq!(failure.usage(), expected.usage(), "host cap {cap}");
+        for below_root in [false, true] {
+            let (ledger, root) = host(capped(cap), 8);
+            let scope = if below_root {
+                ledger
+                    .child(root, "tenant", HtmlLimits::unlimited(), aggregate_tariffs())
+                    .unwrap()
+            } else {
+                root
+            };
+            let accounting = HtmlHostScope::new(ledger, scope);
+            let mut session = open(&c, &cx, time_limits(10_000_000), &accounting).unwrap();
+            let failure = session.query(&requests).unwrap_err();
+            assert_eq!(
+                failure.kind(),
+                expected.kind(),
+                "host cap {cap} below root {below_root}"
+            );
+            assert_eq!(
+                failure.usage(),
+                expected.usage(),
+                "host cap {cap} below root {below_root}"
+            );
+        }
     }
 }

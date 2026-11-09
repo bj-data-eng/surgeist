@@ -678,7 +678,7 @@ impl<'a> HtmlSemanticSession<'a> {
         let work = HtmlNonNegativeInteger::from_borrowed_digits_work_bound(units.len())
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
         self.charge(work)?;
-        let remaining = self.remaining_allocated_bytes();
+        let remaining = self.remaining_allocated_bytes()?;
         let materialized = HtmlNonNegativeInteger::try_from_borrowed_digits(
             units,
             self.limits.integer_digits,
@@ -699,7 +699,7 @@ impl<'a> HtmlSemanticSession<'a> {
         }
         let value = materialized
             .map_err(|failure| {
-                self.stop(match failure.kind() {
+                let kind = match failure.kind() {
                     E::Digits(_) => HtmlSemanticFailureKind::IntrinsicUnavailable,
                     E::Boundary(B::RepresentationExhausted) => {
                         HtmlSemanticFailureKind::RepresentationExhausted
@@ -716,11 +716,7 @@ impl<'a> HtmlSemanticSession<'a> {
                     }
                     E::Boundary(B::RequestedCapacityLimitExceeded { required, .. }) => {
                         match baseline.checked_add(required) {
-                            Some(required) => HtmlSemanticFailureKind::LimitExceeded {
-                                resource: HtmlSemanticResource::AllocatedBytes,
-                                limit: self.limits.allocated_bytes,
-                                required,
-                            },
+                            Some(total) => self.requested_capacity_stop(required, total),
                             None => HtmlSemanticFailureKind::RepresentationExhausted,
                         }
                     }
@@ -731,7 +727,8 @@ impl<'a> HtmlSemanticSession<'a> {
                             required: self.snapshot().allocated_bytes,
                         }
                     }
-                })
+                };
+                self.stop(kind)
             })?
             .into_parts()
             .0;
