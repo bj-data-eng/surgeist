@@ -486,10 +486,13 @@ impl<W: Dimension, R: Dimension> Operation<W, R> {
     /// holds, which includes its descendants. The contribution of an ancestor is expressed in the
     /// units of `scope` by dividing by the product of the tariff scales between them, rounding
     /// down, so `Acquire(resource, n)` at `scope` is admitted exactly when `n` is no more than
-    /// the result. A tariff of scale zero ends the walk, because nothing above it sees the
-    /// change; a resource that no cap on the chain bounds reports `u64::MAX`. A scope that
-    /// already holds more than its cap, which [`Operation::set_limits`] can produce, reports
-    /// zero, though even a zero acquisition is refused there.
+    /// the result. A tariff of scale zero stops the ancestors above it from bounding the
+    /// change, because they receive an amount of zero, but admission still checks them with that
+    /// amount: an ancestor above it that holds more than its cap, which
+    /// [`Operation::set_limits`] can produce, refuses every acquisition, and the headroom is
+    /// zero. A resource that no cap on the chain bounds reports `u64::MAX`. A scope that already
+    /// holds more than its own cap reports zero as well, though even a zero acquisition is
+    /// refused there.
     ///
     /// The value is a read: it reserves nothing, and a later admission checks again.
     pub fn headroom(&self, scope: Scope, resource: R) -> Result<u64, Error<W, R>> {
@@ -499,23 +502,33 @@ impl<W: Dimension, R: Dimension> Operation<W, R> {
         // product beyond `u64::MAX` divides every cap down to zero, as the product itself would.
         let mut scale = 1_u128;
         let mut headroom = u64::MAX;
+        // Past a tariff of scale zero the amount is zero, so an ancestor bounds nothing, but it
+        // still refuses when it holds more than its cap.
+        let mut zeroed = false;
         // A chain is shorter than the number of scopes, so this bound is never reached.
         for _ in 0..self.scopes.len() {
             let entry = self.entry(index)?;
-            let room = entry
-                .limits
-                .live(dimension)
-                .saturating_sub(entry.usage.live(dimension));
-            let share = u128::from(room).checked_div(scale).unwrap_or(0);
-            headroom = headroom.min(u64::try_from(share).unwrap_or(u64::MAX));
+            let cap = entry.limits.live(dimension);
+            let live = entry.usage.live(dimension);
+            if zeroed {
+                if live > cap {
+                    return Ok(0);
+                }
+            } else {
+                let share = u128::from(cap.saturating_sub(live))
+                    .checked_div(scale)
+                    .unwrap_or(0);
+                headroom = headroom.min(u64::try_from(share).unwrap_or(u64::MAX));
+            }
             let Some(parent) = &entry.parent else {
                 break;
             };
             let tariff = R::get(&parent.tariffs.resources, dimension);
             if tariff.scale == 0 {
-                break;
+                zeroed = true;
+            } else {
+                scale = scale.saturating_mul(u128::from(tariff.scale));
             }
-            scale = scale.saturating_mul(u128::from(tariff.scale));
             dimension = tariff.target;
             index = parent.index;
         }
