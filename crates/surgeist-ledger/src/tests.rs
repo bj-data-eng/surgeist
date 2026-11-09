@@ -196,7 +196,7 @@ fn snapshot_finding_mismatched_report_records_latches_the_defect() {
 mod staging_stores {
     use super::*;
     use crate::{
-        Operation, Scope, Tariff,
+        Operation, ProfileMode, Scope, Tariff,
         in_place::{FORCE, Force},
     };
 
@@ -253,10 +253,26 @@ mod staging_stores {
     }
 
     /// Builds the same random scope tree from `seed` every time.
-    fn operation(seed: u64) -> (Operation<Wk, Rs>, Vec<Scope>) {
+    ///
+    /// `variant` 0 is a plain operation, 1 profiles it, and 2 profiles it and
+    /// opens an interval, which records the batch peak of every resource.
+    fn operation(seed: u64, variant: u64) -> (Operation<Wk, Rs>, Vec<Scope>) {
         let random = Random(std::cell::Cell::new(seed));
         let limit_set = |random: &Random| Limits::from_fn(|_| cap(random), |_| cap(random));
-        let mut operation = Operation::new("root", limit_set(&random), 6).unwrap();
+        let mut operation = if variant == 0 {
+            Operation::new("root", limit_set(&random), 6).unwrap()
+        } else {
+            Operation::with_profile(
+                "root",
+                limit_set(&random),
+                6,
+                ProfileMode::Summary { timing: false },
+            )
+            .unwrap()
+        };
+        if variant == 2 {
+            operation = operation.with_checkpoint_limit(1).unwrap();
+        }
         let mut scopes = vec![operation.root()];
         for _ in 0..random.below(5) {
             let parent = scopes[random.below(scopes.len() as u64) as usize];
@@ -311,9 +327,17 @@ mod staging_stores {
     fn the_in_place_and_dense_stores_agree_on_random_batches() {
         let mut accepted = 0;
         let mut refused = 0;
-        for seed in 1..=400_u64 {
-            let (mut fast, scopes) = operation(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15));
-            let (mut slow, slow_scopes) = operation(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+        for seed in 1..=600_u64 {
+            let variant = seed % 3;
+            let (mut fast, scopes) = operation(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15), variant);
+            let (mut slow, slow_scopes) =
+                operation(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15), variant);
+            let intervals = (variant == 2).then(|| {
+                (
+                    fast.begin_checkpoint().unwrap(),
+                    slow.begin_checkpoint().unwrap(),
+                )
+            });
             let random = Random(std::cell::Cell::new(
                 seed.wrapping_mul(0xD1B5_4A32_D192_ED03) | 1,
             ));
@@ -342,7 +366,111 @@ mod staging_stores {
                     assert_eq!(fast.direct, slow.direct, "seed {seed}: direct");
                 }
             }
+            if let Some((fast_token, slow_token)) = intervals {
+                let fast_report = fast.end_checkpoint(&fast_token).unwrap();
+                let slow_report = slow.end_checkpoint(&slow_token).unwrap();
+                let usage = |report: &crate::IntervalReport<Wk, Rs>| {
+                    report
+                        .scopes
+                        .iter()
+                        .map(|scope| scope.usage)
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(
+                    usage(&fast_report),
+                    usage(&slow_report),
+                    "seed {seed}: interval"
+                );
+            }
+            if variant != 0 {
+                let observed = |operation: &Operation<Wk, Rs>| {
+                    operation
+                        .snapshot()
+                        .unwrap()
+                        .unwrap()
+                        .scopes
+                        .into_iter()
+                        .map(|scope| {
+                            (
+                                scope.usage,
+                                scope.accepted_batches,
+                                scope.accepted_items,
+                                scope.refused_batches,
+                                scope.first_refusal.map(|first| {
+                                    (first.item, first.change, first.current, first.reason)
+                                }),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                };
+                assert_eq!(observed(&fast), observed(&slow), "seed {seed}: profile");
+            }
         }
         assert!(accepted > 1_000 && refused > 1_000, "{accepted} {refused}");
+    }
+
+    /// An open interval records the batch peak of every resource, including a
+    /// resource acquired and released within one batch. The in-place store
+    /// tracks no batch peak, so a wide pair with an open interval must use the
+    /// dense store whatever the selection rule prefers.
+    #[test]
+    fn an_open_interval_records_the_peak_of_an_acquire_and_release_in_one_batch() {
+        let build = || {
+            let mut operation = Operation::<Wk, Rs>::new("root", Limits::unlimited(), 2)
+                .unwrap()
+                .with_checkpoint_limit(1)
+                .unwrap();
+            let root = operation.root();
+            let child = operation
+                .child(root, "child", Limits::unlimited(), Tariffs::identity())
+                .unwrap();
+            let token = operation.begin_checkpoint().unwrap();
+            (operation, child, token)
+        };
+        let batch = [
+            Change::Acquire(Rs::X, 7),
+            Change::Work(Wk::A, 1),
+            Change::Release(Rs::X, 7),
+        ];
+        let (mut preferred, child, token) = build();
+        with(Force::InPlace, || preferred.apply_batch(child, &batch)).unwrap();
+        let preferred = preferred.end_checkpoint(&token).unwrap();
+        let (mut dense, child, token) = build();
+        with(Force::Dense, || dense.apply_batch(child, &batch)).unwrap();
+        let dense = dense.end_checkpoint(&token).unwrap();
+        for report in [&preferred, &dense] {
+            for scope in &report.scopes {
+                assert_eq!(scope.usage.peak(Rs::X), 7);
+                assert_eq!(scope.usage.live(Rs::X), 0);
+            }
+        }
+        let usage = |report: &crate::IntervalReport<Wk, Rs>| {
+            report
+                .scopes
+                .iter()
+                .map(|scope| scope.usage)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(usage(&preferred), usage(&dense));
+    }
+
+    /// The selection rule: a pair of fewer than eight usage words never uses
+    /// the in-place store, a wide pair uses it for a batch of up to words/8
+    /// changes, and the compile-time width test agrees.
+    #[test]
+    fn the_in_place_store_is_selected_by_width_and_batch_size() {
+        use crate::in_place::{preferred, wide};
+        crate::dimensions! {
+            enum OneWork => OneWorkTable { Only }
+        }
+        crate::dimensions! {
+            enum OneResource => OneResourceTable { Only }
+        }
+        assert!(!wide::<OneWork, OneResource>());
+        assert!(!preferred::<OneWork, OneResource>(1));
+        // Four work words and three resources of two words each: ten words.
+        assert!(wide::<Wk, Rs>());
+        assert!(preferred::<Wk, Rs>(1));
+        assert!(!preferred::<Wk, Rs>(2));
     }
 }
