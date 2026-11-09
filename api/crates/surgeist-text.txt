@@ -888,6 +888,9 @@ pub surgeist_text::ProtocolError::InvalidPlacedPosition::position: usize
 pub surgeist_text::ProtocolError::InvalidReplacement
 pub surgeist_text::ProtocolError::InvalidReplacement::alternative: usize
 pub surgeist_text::ProtocolError::InvalidReplacement::source: surgeist_text::Range
+pub surgeist_text::ProtocolError::InvalidSemanticAtomic
+pub surgeist_text::ProtocolError::InvalidSemanticAtomic::occurrence: usize
+pub surgeist_text::ProtocolError::InvalidSemanticWindow
 pub surgeist_text::ProtocolError::InvalidSourceSegment
 pub surgeist_text::ProtocolError::InvalidSourceSegment::segment: usize
 pub surgeist_text::ProtocolError::InvalidWordPortion
@@ -974,6 +977,9 @@ pub surgeist_text::ScopeAlignmentCensusInput::Product(surgeist_text::ScopeAlignm
 pub surgeist_text::ScopeAlignmentCensusInput::Selection
 pub surgeist_text::ScopeAlignmentCensusInput::Selection::prepared: &'a surgeist_text::PreparedText
 pub surgeist_text::ScopeAlignmentCensusInput::Selection::request: &'a surgeist_text::LineSelectionRequest
+pub surgeist_text::ScopeAlignmentCensusInput::SemanticWindow
+pub surgeist_text::ScopeAlignmentCensusInput::SemanticWindow::prepared: &'a surgeist_text::PreparedText
+pub surgeist_text::ScopeAlignmentCensusInput::SemanticWindow::request: &'a surgeist_text::SemanticWindowRequest
 pub enum surgeist_text::ScopeAlignmentError
 pub surgeist_text::ScopeAlignmentError::Allocation
 pub surgeist_text::ScopeAlignmentError::Allocation::kind: surgeist_text::ScopeAlignmentLimitKind
@@ -1021,6 +1027,7 @@ pub surgeist_text::ScopeAlignmentProduct::Finalized(&'a surgeist_text::Finalized
 pub surgeist_text::ScopeAlignmentProduct::InlineBoxFamily(&'a surgeist_text::PreparedInlineBoxFamily)
 pub surgeist_text::ScopeAlignmentProduct::Prepared(&'a surgeist_text::PreparedText)
 pub surgeist_text::ScopeAlignmentProduct::Selected(&'a surgeist_text::SelectedLine)
+pub surgeist_text::ScopeAlignmentProduct::SemanticWindow(&'a surgeist_text::SemanticWindowEvidence)
 pub enum surgeist_text::ScopeAlignmentProducts<'a>
 pub surgeist_text::ScopeAlignmentProducts::FinalizedAndInlineBoxFamilies
 pub surgeist_text::ScopeAlignmentProducts::FinalizedAndInlineBoxFamilies::families: &'a [core::option::Option<surgeist_text::PreparedInlineBoxFamily>]
@@ -3204,6 +3211,9 @@ pub fn surgeist_text::PreparedText::scope_alignment_retention(&self) -> core::op
 pub fn surgeist_text::PreparedText::scope_alignment_usage(&self) -> core::option::Option<surgeist_text::ScopeAlignmentUsage>
 pub fn surgeist_text::PreparedText::scope_metrics(&self, scope: &surgeist_text::CapturedScope) -> surgeist_text::Result<surgeist_text::PreparedScopeMetrics<'_>>
 impl surgeist_text::PreparedText
+pub fn surgeist_text::PreparedText::semantic_window(&self, request: &surgeist_text::SemanticWindowRequest) -> core::result::Result<surgeist_text::SemanticWindowEvidence, surgeist_text::SemanticWindowFailure>
+pub fn surgeist_text::PreparedText::semantic_window_with_scope_allowance(&self, request: &surgeist_text::SemanticWindowRequest, allowance: surgeist_text::ScopeAlignmentAllowance) -> core::result::Result<surgeist_text::SemanticWindowEvidence, surgeist_text::SemanticWindowFailure>
+impl surgeist_text::PreparedText
 pub fn surgeist_text::PreparedText::source_segments(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = surgeist_text::PreparedSourceSegment> + '_
 impl core::cmp::Eq for surgeist_text::PreparedText
 impl core::cmp::PartialEq for surgeist_text::PreparedText
@@ -3561,6 +3571,55 @@ impl surgeist_text::SelectionRect
 pub const fn surgeist_text::SelectionRect::line(self) -> usize
 pub const fn surgeist_text::SelectionRect::new(rect: surgeist_text::Rect, line: usize) -> Self
 pub const fn surgeist_text::SelectionRect::rect(self) -> surgeist_text::Rect
+pub struct surgeist_text::SemanticAtomicAllocation
+pub surgeist_text::SemanticAtomicAllocation::kind: surgeist_text::InlineBoxKind
+pub surgeist_text::SemanticAtomicAllocation::occurrence: surgeist_text::PreparedAtomic
+pub struct surgeist_text::SemanticConditionalEvidence
+impl surgeist_text::SemanticConditionalEvidence
+pub const fn surgeist_text::SemanticConditionalEvidence::after_has_in_flow_content(&self) -> core::option::Option<bool>
+pub fn surgeist_text::SemanticConditionalEvidence::alternative(&self) -> surgeist_text::PreparedAlternative
+pub const fn surgeist_text::SemanticConditionalEvidence::before_has_in_flow_content(&self) -> bool
+pub const fn surgeist_text::SemanticConditionalEvidence::partition(&self) -> usize
+pub struct surgeist_text::SemanticControlAllocation
+pub surgeist_text::SemanticControlAllocation::boundary: core::option::Option<surgeist_text::InlineBoundaryAllocation>
+pub surgeist_text::SemanticControlAllocation::occurrence: surgeist_text::PreparedControl
+pub struct surgeist_text::SemanticPartitionEvidence
+impl surgeist_text::SemanticPartitionEvidence
+pub const fn surgeist_text::SemanticPartitionEvidence::has_in_flow_content(&self) -> bool
+pub fn surgeist_text::SemanticPartitionEvidence::start(&self) -> surgeist_text::PreparedBoundary
+pub fn surgeist_text::SemanticPartitionEvidence::terminal(&self) -> surgeist_text::PreparedOpportunity
+pub struct surgeist_text::SemanticWindowEvidence
+impl surgeist_text::SemanticWindowEvidence
+pub fn surgeist_text::SemanticWindowEvidence::conditionals(&self) -> &[surgeist_text::SemanticConditionalEvidence]
+pub fn surgeist_text::SemanticWindowEvidence::input_retention(&self) -> surgeist_text::ScopeAlignmentRetention
+pub fn surgeist_text::SemanticWindowEvidence::matches(&self, request: &surgeist_text::SemanticWindowRequest) -> bool
+pub fn surgeist_text::SemanticWindowEvidence::participants(&self) -> impl core::iter::traits::iterator::Iterator<Item = surgeist_text::PreparedParticipant> + '_
+pub fn surgeist_text::SemanticWindowEvidence::partitions(&self) -> &[surgeist_text::SemanticPartitionEvidence]
+pub fn surgeist_text::SemanticWindowEvidence::request(&self) -> &surgeist_text::SemanticWindowRequest
+pub fn surgeist_text::SemanticWindowEvidence::scope_alignment_retention(&self) -> surgeist_text::ScopeAlignmentRetention
+pub fn surgeist_text::SemanticWindowEvidence::scope_alignment_usage(&self) -> core::option::Option<surgeist_text::ScopeAlignmentUsage>
+pub struct surgeist_text::SemanticWindowFailure
+impl surgeist_text::SemanticWindowFailure
+pub fn surgeist_text::SemanticWindowFailure::error(&self) -> &surgeist_text::Error
+pub const fn surgeist_text::SemanticWindowFailure::input_retention(&self) -> surgeist_text::ScopeAlignmentRetention
+pub fn surgeist_text::SemanticWindowFailure::into_parts(self) -> (surgeist_text::Error, core::option::Option<surgeist_text::ScopeAlignmentUsage>, surgeist_text::ScopeAlignmentRetention)
+pub const fn surgeist_text::SemanticWindowFailure::scope_alignment_usage(&self) -> core::option::Option<surgeist_text::ScopeAlignmentUsage>
+impl core::error::Error for surgeist_text::SemanticWindowFailure
+pub fn surgeist_text::SemanticWindowFailure::source(&self) -> core::option::Option<&(dyn core::error::Error + 'static)>
+impl core::fmt::Display for surgeist_text::SemanticWindowFailure
+pub fn surgeist_text::SemanticWindowFailure::fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+pub struct surgeist_text::SemanticWindowRequest
+pub surgeist_text::SemanticWindowRequest::atomics: alloc::vec::Vec<surgeist_text::SemanticAtomicAllocation>
+pub surgeist_text::SemanticWindowRequest::boundary_context: alloc::vec::Vec<surgeist_text::InlineBoundaryContextAllocation>
+pub surgeist_text::SemanticWindowRequest::completion: surgeist_text::PreparedOpportunity
+pub surgeist_text::SemanticWindowRequest::controls: alloc::vec::Vec<surgeist_text::SemanticControlAllocation>
+pub surgeist_text::SemanticWindowRequest::formatted_line: surgeist_text::FormattedLineContext
+pub surgeist_text::SemanticWindowRequest::incoming: core::option::Option<surgeist_text::HyphenationContinuation>
+pub surgeist_text::SemanticWindowRequest::inline_boxes: core::option::Option<surgeist_text::PreparedInlineBoxFamily>
+pub surgeist_text::SemanticWindowRequest::segment: surgeist_text::PreparedSourceSegment
+pub surgeist_text::SemanticWindowRequest::start: surgeist_text::PreparedBoundary
+impl surgeist_text::SemanticWindowRequest
+pub fn surgeist_text::SemanticWindowRequest::new(segment: surgeist_text::PreparedSourceSegment) -> Self
 pub struct surgeist_text::Size
 pub surgeist_text::Size::height: f64
 pub surgeist_text::Size::width: f64
