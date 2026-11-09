@@ -2214,6 +2214,67 @@ mod controlled_tests {
         assert_eq!(storage.usage.peak_scratch_records, 5);
     }
 
+    /// Growth the allocator made past the scratch allowance is recorded by the observed scope and
+    /// refused by the capped scope, so only the observed scope holds it. Releasing the scratch
+    /// afterwards must still leave both scopes and the live scratch at zero.
+    #[test]
+    fn releasing_scratch_after_a_refused_overshoot_leaves_both_scopes_at_zero() {
+        let mut storage = Materialization::new(Some(HtmlAutocompleteMaterializationLimits {
+            scratch_records: 4,
+            ..limits()
+        }))
+        .unwrap();
+        assert_eq!(
+            storage.observe_growth(5, 8, StoragePurpose::Scratch),
+            Err(HtmlAutocompleteMaterializationError::ScratchLimit {
+                limit: 4,
+                required: 5
+            })
+        );
+        assert_eq!(storage.scratch, 5);
+        assert_eq!(storage.release_scratch(), Ok(()));
+        assert_eq!(storage.scratch, 0);
+        for scope in [storage.observed, storage.caps] {
+            let live = storage
+                .operation
+                .usage(scope)
+                .unwrap()
+                .live(HtmlResource::ScratchRecords);
+            assert_eq!(live, 0);
+        }
+        // The largest scratch reached stays reported.
+        assert_eq!(storage.usage.peak_scratch_records, 5);
+    }
+
+    /// A processing step that stops on a refused overshoot still ends with no live scratch, so the
+    /// front door's closing check holds.
+    #[test]
+    fn processing_after_a_refused_overshoot_ends_with_no_live_scratch() {
+        let mut storage = Materialization::new(Some(HtmlAutocompleteMaterializationLimits {
+            scratch_records: 4,
+            ..limits()
+        }))
+        .unwrap();
+        let tokens = storage
+            .tokens(&DocumentString::from("unknown name"))
+            .unwrap();
+        assert!(
+            storage
+                .observe_growth(5, 8, StoragePurpose::Scratch)
+                .is_err()
+        );
+        let outcome = process(
+            Some(&tokens),
+            HtmlAutocompleteMantle::Expectation,
+            &mut storage,
+        );
+        assert!(matches!(
+            outcome,
+            Err(HtmlAutocompleteMaterializationError::ScratchLimit { .. })
+        ));
+        assert_eq!(storage.scratch, 0);
+    }
+
     #[test]
     fn admission_precedes_irrelevant_context_and_zero_storage_is_valid_when_unused() {
         let zero = HtmlAutocompleteMaterializationLimits {
