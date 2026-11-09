@@ -1333,10 +1333,21 @@ fn stroke_shape_bounds(
         RenderStrokeShape::RoundedRect(rect) => (rect.bounding_box(), half_width),
         RenderStrokeShape::Circle(circle) => (circle.bounding_box(), half_width),
         RenderStrokeShape::Ellipse(ellipse) => (ellipse.bounding_box(), half_width),
-        RenderStrokeShape::Path(path) => (
-            path.bounding_box(),
-            half_width * stroke.miter_limit.max(1.0),
-        ),
+        RenderStrokeShape::Path(path) => {
+            let mut inflate = match stroke.join {
+                LineJoin::Miter => half_width * stroke.miter_limit.max(1.0),
+                LineJoin::Round | LineJoin::Bevel => half_width,
+            };
+            if stroke.start_cap == LineCap::Square || stroke.end_cap == LineCap::Square {
+                // A square corner combines orthogonal half-width vectors.
+                // Multiply width directly to avoid halving underflow; round
+                // outward because even this upper approximation of 1/sqrt(2)
+                // can produce an inward-rounded product.
+                let cap_support = (stroke.width * std::f64::consts::FRAC_1_SQRT_2).next_up();
+                inflate = inflate.max(cap_support);
+            }
+            (path.bounding_box(), inflate)
+        }
     };
     kurbo_bounds(bounds.inflate(inflate, inflate))
 }
@@ -1434,6 +1445,116 @@ pub(crate) fn kurbo_rounded_rect(rect: Rect, radii: Radii) -> kurbo::RoundedRect
             radii.bottom_left(),
         ),
     )
+}
+
+#[cfg(test)]
+mod stroke_bounds_tests {
+    use super::*;
+
+    fn vertical_path_bounds(stroke: Stroke) -> Result<Rect> {
+        let mut path = Path::new();
+        path.move_to(Point::try_new(0.0, 0.0).unwrap())
+            .line_to(Point::try_new(0.0, 1.0).unwrap());
+        let account = Account::for_test();
+        let shape = RenderStrokeShape::from_authored_in(
+            &Shape::path(path),
+            stroke,
+            Capabilities::CURRENT,
+            &account,
+        )
+        .unwrap();
+        stroke_shape_bounds(&shape, &RenderStroke::try_from(stroke).unwrap())
+            .map(OffscreenBounds::rect)
+    }
+
+    #[test]
+    fn square_cap_support_contains_the_exact_diagonal_radius_after_rounding() {
+        // These dyadic widths include products that round below width/sqrt(2)
+        // if ordinary nearest multiplication is used without outward rounding.
+        for width in [
+            1.0,
+            f64::from_bits(0x3ff0_0000_0000_0006),
+            f64::from_bits(0x3ff0_0000_0000_0012),
+            f64::from_bits(0x3ff0_0000_0000_0023),
+            1.5,
+            2.0_f64.next_down(),
+        ] {
+            for caps in [
+                (LineCap::Square, LineCap::Butt),
+                (LineCap::Butt, LineCap::Square),
+            ] {
+                let bounds = vertical_path_bounds(
+                    Stroke::try_new(width)
+                        .unwrap()
+                        .join(LineJoin::Bevel)
+                        .caps(caps.0, caps.1)
+                        .try_miter_limit(f64::MAX)
+                        .unwrap(),
+                )
+                .unwrap();
+                let radius = -bounds.x();
+                // Width and radius are in [0.5,2), so exact integers in units
+                // of 2^-53 fit in u128 even after squaring. The independent
+                // geometric condition is 2*radius^2 >= width^2.
+                let exact_units = |value: f64| {
+                    let bits = value.to_bits();
+                    let exponent = bits >> 52;
+                    assert!((1022..=1023).contains(&exponent));
+                    let significand = u128::from((bits & ((1 << 52) - 1)) | (1 << 52));
+                    significand << (exponent - 1022)
+                };
+                let width_units = exact_units(width);
+                let radius_units = exact_units(radius);
+                assert!(
+                    2 * radius_units * radius_units >= width_units * width_units,
+                    "inward square support for width {width:?}: {radius:?}"
+                );
+                assert!(radius < width);
+            }
+        }
+    }
+
+    #[test]
+    fn square_cap_support_survives_subnormal_width_without_halving_it_first() {
+        let width = f64::from_bits(1);
+        let bounds = vertical_path_bounds(
+            Stroke::try_new(width)
+                .unwrap()
+                .join(LineJoin::Round)
+                .caps(LineCap::Square, LineCap::Butt),
+        )
+        .unwrap();
+        // A positive radius below the least subnormal still requires at least
+        // one representable outward step. This bounds test makes no claim of
+        // native GPU representability for the tiny width.
+        assert!(-bounds.x() >= width);
+    }
+
+    #[test]
+    fn extreme_square_support_keeps_finite_coordinates_and_typed_extent_guard() {
+        let stroke = |width| {
+            Stroke::try_new(width)
+                .unwrap()
+                .join(LineJoin::Bevel)
+                .caps(LineCap::Square, LineCap::Butt)
+        };
+        let width = f64::MAX * 0.5;
+        let bounds = vertical_path_bounds(stroke(width)).unwrap();
+        let radius = -bounds.x();
+        // The 3-4-5 direction needs 0.7*width along an axis; square support
+        // remains less than width. Neither comparison squares huge values.
+        assert!(radius >= width * 0.7);
+        assert!(radius < width);
+        let error = vertical_path_bounds(stroke(f64::MAX)).unwrap_err();
+        assert_eq!(error.code(), ErrorCode::InvalidInput);
+        // The selected-style envelope's coordinates remain finite, but its
+        // full rectangular extent cannot fit. This is conservative support,
+        // not proof that this particular vertical stroke has infinite ink.
+        assert_eq!(
+            error.invalid_value_diagnostic().unwrap().field(),
+            "rectangle width"
+        );
+    }
 }
 
 #[cfg(test)]
