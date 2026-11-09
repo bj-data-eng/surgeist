@@ -1004,6 +1004,28 @@ impl HtmlValueInterpreter {
             Some(context),
         )
     }
+    /// Admits, in their order in `attributes`, the values of the attributes named in `read`.
+    fn admit_read_attributes(
+        &self,
+        read: &[&str],
+        attributes: &(impl crate::internal::values::semantic_input::HtmlAttributesInput + ?Sized),
+    ) -> Result<(), HtmlValueAdmissionError> {
+        for attribute in attributes_iter(attributes) {
+            let name = attribute.name();
+            if name.namespace_uri().is_none()
+                && read.iter().any(|read| {
+                    name.local_name()
+                        .code_units()
+                        .iter()
+                        .copied()
+                        .eq(read.encode_utf16())
+                })
+            {
+                self.admit_attribute_raw(Some(attribute.value()))?;
+            }
+        }
+        Ok(())
+    }
     fn srcset(
         &self,
         role: Role,
@@ -1013,23 +1035,16 @@ impl HtmlValueInterpreter {
     ) -> Result<HtmlSrcsetReport, HtmlSrcsetInterpretationError> {
         self.admit_attribute_raw(raw.map(HtmlAttributeInput::value))?;
         // The surrounding raw values that the rules read use the same per-value standalone
-        // admission. Other attributes of the context are never read, so they are not admitted.
+        // admission, in the order of the attributes of the context and then of the following
+        // image. Other attributes are never read, so they are skipped.
         if let Some(context) = context {
-            for name in role.context_attributes() {
-                self.admit_attribute_raw(
-                    attribute(context.attributes(), name).map(HtmlAttributeInput::value),
-                )?;
-            }
+            self.admit_read_attributes(role.context_attributes(), context.attributes())?;
             if let HtmlSrcsetContext::Source {
                 following_image: HtmlSrcsetFollowingImageObservation::Element { attributes, .. },
                 ..
             } = context
             {
-                for name in FOLLOWING_IMAGE_ATTRIBUTES {
-                    self.admit_attribute_raw(
-                        attribute(attributes, name).map(HtmlAttributeInput::value),
-                    )?;
-                }
+                self.admit_read_attributes(&FOLLOWING_IMAGE_ATTRIBUTES, attributes)?;
             }
         }
         let mut input = report(role.rule(), element, raw);
