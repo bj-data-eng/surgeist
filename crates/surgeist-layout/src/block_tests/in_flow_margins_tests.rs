@@ -5888,3 +5888,340 @@ fn nonformatted_capture_retains_float_adjoining_entry_f32() {
 fn nonformatted_capture_retains_float_adjoining_entry_f64() {
     assert_nonformatted_capture_retains_float_entry::<f64>();
 }
+
+fn adjoining_float_style<S: LayoutScalar>(
+    axes: FlowAxes,
+    inline: f64,
+    block: Option<f64>,
+    start: f64,
+    end: f64,
+) -> NodeInputOf<S> {
+    use crate::geometry::{LogicalEdgesOf, LogicalSizeOf};
+    let px = S::from_f64;
+    NodeInputOf {
+        display: Display::Block,
+        writing_mode: axes.writing_mode(),
+        direction: axes.direction(),
+        size: axes.physical_size(LogicalSizeOf::new(
+            PreferredSizeOf::px(px(inline)),
+            block.map_or(PreferredSizeOf::AUTO, |value| {
+                PreferredSizeOf::px(px(value))
+            }),
+        )),
+        min_size: Size::new(MinSizeOf::px(S::ZERO), MinSizeOf::px(S::ZERO)),
+        margin: axes
+            .physical_edges(LogicalEdgesOf::new(S::ZERO, S::ZERO, px(start), px(end)))
+            .map(LengthAutoOf::px),
+        ..Default::default()
+    }
+}
+
+fn adjoining_float_request<S: LayoutScalar>(axes: FlowAxes, inline: f64) -> LayoutRootRequestOf<S> {
+    use crate::geometry::LogicalSizeOf;
+    let inline = NonNegativeFiniteOf::new(S::from_f64(inline)).unwrap();
+    crate::test_support::requests::NativeRootFrameOf::new(
+        axes,
+        axes.physical_size(LogicalSizeOf::new(Some(inline), None)),
+        OrthogonalFallbackOf::new(
+            Size::NONE,
+            NearestScrollportOf::Absent,
+            Size::splat(OrthogonalFallbackLimitOf::Unbounded),
+        ),
+    )
+    .request(axes.physical_size(LogicalSizeOf::new(
+        AxisSizingRequestOf::new(AvailableSpaceOf::Definite(inline), SizingOperation::Normal),
+        AxisSizingRequestOf::new(AvailableSpaceOf::Indefinite, SizingOperation::Normal),
+    )))
+}
+
+fn assert_ordinary_float_internal_margin<S: LayoutScalar>() {
+    let px = S::from_f64;
+    // The zero-margin control runs in every flow before any missing-margin case.
+    for (margin, following, float_top, body_top, extent) in [
+        (0.0, 0.0, 10.0, 10.0, 30.0),
+        (12.0, 0.0, 22.0, 22.0, 42.0),
+        (12.0, 20.0, 22.0, 30.0, 42.0),
+    ] {
+        for (writing_mode, direction) in all_writing_mode_directions() {
+            let axes = FlowAxes::new(writing_mode, direction);
+            let tree = PublicBlockTree::default()
+                .with_children(0, [1, 2, 3])
+                .with_children(1, [])
+                .with_children(2, [])
+                .with_children(3, [])
+                .with_style(0, adjoining_float_style(axes, 100.0, None, 0.0, 0.0))
+                .with_style(
+                    1,
+                    adjoining_float_style(axes, 100.0, Some(10.0), 0.0, margin),
+                )
+                .with_style(
+                    2,
+                    NodeInputOf {
+                        float: Float::Left,
+                        ..adjoining_float_style(axes, 25.0, Some(20.0), 0.0, 0.0)
+                    },
+                )
+                .with_style(
+                    3,
+                    adjoining_float_style(axes, 100.0, Some(10.0), following, 0.0),
+                );
+            let batch = compute_layout(&tree, 0, adjoining_float_request(axes, 100.0)).unwrap();
+            let root = public_final_output(&batch, 0);
+            let before = public_final_output(&batch, 1);
+            let float = public_final_output(&batch, 2);
+            let body = public_final_output(&batch, 3);
+            assert_eq!(axes.logical_size(before.size).block, px(10.0));
+            assert_eq!(axes.logical_size(float.size).block, px(20.0));
+            assert_eq!(axes.logical_size(body.size).block, px(10.0));
+            assert_eq!(float.source_index, SourceIndex::new(1));
+            assert_eq!(body.source_index, SourceIndex::new(2));
+            // Internal anonymous-parent border uses preceding margin12 and its
+            // own zero top, not the future sibling's larger20px margin.
+            assert_eq!(
+                (
+                    axes.logical_point(float.location, float.size, root.size)
+                        .block,
+                    axes.logical_point(body.location, body.size, root.size)
+                        .block,
+                    axes.logical_size(root.size).block
+                ),
+                (px(float_top), px(body_top), px(extent)),
+                "{writing_mode:?}/{direction:?}, margins {margin}/{following}",
+            );
+        }
+    }
+}
+
+#[test]
+fn ordinary_float_adjoining_internal_margin_f32() {
+    assert_ordinary_float_internal_margin::<f32>();
+}
+#[test]
+fn ordinary_float_adjoining_internal_margin_f64() {
+    assert_ordinary_float_internal_margin::<f64>();
+}
+
+fn assert_ordinary_float_leading_boundaries<S: LayoutScalar>() {
+    use crate::geometry::LogicalEdgesOf;
+    let px = S::from_f64;
+    // Exported start is a control: the anonymous parent shares P's border.
+    for (boundary, parent_top, parent_height, empty_top, float_top, body_top, extent) in [
+        (0, 20.0, 10.0, 0.0, 0.0, 0.0, 40.0),
+        (1, 0.0, 31.0, 9.0, 13.0, 21.0, 33.0),
+        (2, 0.0, 31.0, 9.0, 13.0, 21.0, 33.0),
+        (3, 0.0, 32.0, 8.0, 12.0, 20.0, 32.0),
+    ] {
+        for (writing_mode, direction) in all_writing_mode_directions() {
+            let axes = FlowAxes::new(writing_mode, direction);
+            let mut parent = adjoining_float_style(axes, 100.0, None, 0.0, 0.0);
+            let edge = axes
+                .physical_edges(LogicalEdgesOf::new(S::ZERO, S::ZERO, px(1.0), S::ZERO))
+                .map(LengthOf::px);
+            match boundary {
+                1 => parent.border = edge,
+                2 => parent.padding = edge,
+                3 => parent.block_flow_context = BlockFlowContext::Independent,
+                _ => {}
+            }
+            let tree = PublicBlockTree::default()
+                .with_children(0, [1])
+                .with_children(1, [2, 3, 4])
+                .with_children(2, [])
+                .with_children(3, [])
+                .with_children(4, [])
+                .with_style(0, adjoining_float_style(axes, 100.0, None, 0.0, 0.0))
+                .with_style(1, parent)
+                .with_style(2, adjoining_float_style(axes, 100.0, None, 8.0, 12.0))
+                .with_style(
+                    3,
+                    NodeInputOf {
+                        float: Float::Left,
+                        ..adjoining_float_style(axes, 25.0, Some(20.0), 0.0, 0.0)
+                    },
+                )
+                .with_style(4, adjoining_float_style(axes, 100.0, Some(10.0), 20.0, 0.0));
+            let batch = compute_layout(&tree, 0, adjoining_float_request(axes, 100.0)).unwrap();
+            let root = public_final_output(&batch, 0);
+            let parent = public_final_output(&batch, 1);
+            let empty = public_final_output(&batch, 2);
+            let float = public_final_output(&batch, 3);
+            let body = public_final_output(&batch, 4);
+            assert_eq!(axes.logical_size(empty.size).block, S::ZERO);
+            assert_eq!(axes.logical_size(float.size).block, px(20.0));
+            assert_eq!(
+                (
+                    axes.logical_point(parent.location, parent.size, root.size)
+                        .block,
+                    axes.logical_size(parent.size).block,
+                    axes.logical_point(empty.location, empty.size, parent.size)
+                        .block,
+                    axes.logical_point(float.location, float.size, parent.size)
+                        .block,
+                    axes.logical_point(body.location, body.size, parent.size)
+                        .block,
+                    axes.logical_size(root.size).block
+                ),
+                (
+                    px(parent_top),
+                    px(parent_height),
+                    px(empty_top),
+                    px(float_top),
+                    px(body_top),
+                    px(extent)
+                ),
+                "{writing_mode:?}/{direction:?}, boundary {boundary}",
+            );
+        }
+    }
+}
+
+#[test]
+fn ordinary_float_adjoining_leading_boundaries_f32() {
+    assert_ordinary_float_leading_boundaries::<f32>();
+}
+#[test]
+fn ordinary_float_adjoining_leading_boundaries_f64() {
+    assert_ordinary_float_leading_boundaries::<f64>();
+}
+
+fn assert_ordinary_float_constrained_signed_group<S: LayoutScalar>() {
+    let px = S::from_f64;
+    for bottom in [0.0, -4.0] {
+        for (writing_mode, direction) in all_writing_mode_directions() {
+            let axes = FlowAxes::new(writing_mode, direction);
+            let tree = PublicBlockTree::default()
+                .with_children(0, [1, 2, 3, 4, 5])
+                .with_children(1, [])
+                .with_children(2, [])
+                .with_children(3, [])
+                .with_children(4, [])
+                .with_children(5, [])
+                .with_style(0, adjoining_float_style(axes, 100.0, None, 0.0, 0.0))
+                .with_style(1, adjoining_float_style(axes, 100.0, Some(30.0), 0.0, 0.0))
+                .with_style(
+                    2,
+                    NodeInputOf {
+                        float: Float::Left,
+                        ..adjoining_float_style(axes, 100.0, Some(20.0), 0.0, 0.0)
+                    },
+                )
+                .with_style(3, adjoining_float_style(axes, 100.0, None, 12.0, bottom))
+                .with_style(
+                    4,
+                    NodeInputOf {
+                        float: Float::Left,
+                        ..adjoining_float_style(axes, 25.0, Some(20.0), 0.0, 0.0)
+                    },
+                )
+                .with_style(5, adjoining_float_style(axes, 100.0, Some(10.0), 0.0, 0.0));
+            let batch = compute_layout(&tree, 0, adjoining_float_request(axes, 100.0)).unwrap();
+            let root = public_final_output(&batch, 0);
+            let first = public_final_output(&batch, 2);
+            let second = public_final_output(&batch, 4);
+            let body = public_final_output(&batch, 5);
+            // Full-width F1 occupies30..50 in both the signed and all-negative-
+            // margins-zero cases. F2 stays50: this does not assert an undefined
+            // negative-margin-raised float position. B reveals max12 + min-4.
+            assert_eq!(
+                (
+                    axes.logical_point(first.location, first.size, root.size)
+                        .block,
+                    axes.logical_point(second.location, second.size, root.size)
+                        .block,
+                    axes.logical_point(body.location, body.size, root.size)
+                        .block,
+                    axes.logical_size(root.size).block
+                ),
+                (px(30.0), px(50.0), px(42.0 + bottom), px(70.0)),
+                "{writing_mode:?}/{direction:?}, empty bottom {bottom}",
+            );
+        }
+    }
+}
+
+#[test]
+fn ordinary_float_adjoining_constrained_signed_extrema_f32() {
+    assert_ordinary_float_constrained_signed_group::<f32>();
+}
+#[test]
+fn ordinary_float_adjoining_constrained_signed_extrema_f64() {
+    assert_ordinary_float_constrained_signed_group::<f64>();
+}
+
+fn assert_ordinary_float_outside_processed_window<S: LayoutScalar>() {
+    let px = S::from_f64;
+    let axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+    for margin in [0.0, 12.0] {
+        let fixture = crate::test_support::inline_endpoint::Fixture::new(
+            "A B C D",
+            (0, 7),
+            surgeist_text::WhiteSpace::Collapse,
+            false,
+            false,
+        );
+        // F is outside the actual admitted Text window; no source role is
+        // deleted or invented to select ordinary Block ownership.
+        let tree = fixture
+            .tree::<S>(
+                InlineBoundaryEdgeOf::ZERO,
+                InlineBoundaryEdgeOf::ZERO,
+                false,
+                Some(30.0),
+                true,
+            )
+            .children(0, [52, 2, 20, 10, 21])
+            .style(0, adjoining_float_style(axes, 30.0, None, 0.0, 0.0))
+            .children(52, [])
+            .style(
+                52,
+                adjoining_float_style(axes, 30.0, Some(10.0), 0.0, margin),
+            );
+        let capture = LayoutFlowInput::try_new(
+            &tree,
+            0,
+            vec![fixture.binding.clone()],
+            WrappingInput::default(),
+            Vec::new(),
+        )
+        .unwrap();
+        let batch =
+            compute_layout_with_flow(&capture, 0, adjoining_float_request(axes, 30.0)).unwrap();
+        let [placed] = batch.placed_text() else {
+            panic!("one actual processed paragraph");
+        };
+        assert_eq!(
+            placed.layout().source().text(),
+            &surgeist_text::Text::from("A B C D")
+        );
+        assert_eq!(placed.layout().lines().len(), 2);
+        let float = public_final_output(&batch, 2);
+        assert_eq!(float.size, Size::new(px(25.0), px(20.0)));
+        assert_eq!(
+            (
+                float.location.y,
+                placed
+                    .layout()
+                    .lines()
+                    .iter()
+                    .map(|line| line.bounds().origin.y)
+                    .collect::<Vec<_>>(),
+                public_final_output(&batch, 0).size.height
+            ),
+            (
+                px(10.0 + margin),
+                vec![30.0 + margin, 40.0 + margin],
+                px(50.0 + margin)
+            ),
+            "preceding bottom margin {margin}",
+        );
+    }
+}
+
+#[test]
+fn ordinary_float_adjoining_outside_processed_window_f32() {
+    assert_ordinary_float_outside_processed_window::<f32>();
+}
+#[test]
+fn ordinary_float_adjoining_outside_processed_window_f64() {
+    assert_ordinary_float_outside_processed_window::<f64>();
+}

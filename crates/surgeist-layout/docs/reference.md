@@ -779,6 +779,11 @@ and negative extrema until that group is consumed or exported. An exported
 group stays outside the parent's content and adds no local offset. Borders,
 padding, sizing, line participation and context boundaries determine adjacency.
 
+An ordinary float between adjoining margins starts from the border position of
+an [otherwise empty anonymous block parent](../../../references/css2--visuren.html--3f334c530cf4.md#float-rules).
+Placement applies float constraints and retains the normal-flow cursor and
+adjoining group.
+
 An `item_is_table` node represents the normalized outer table wrapper. Its
 contents establish an independent block flow with `BlockFlowContext::Normal`;
 its outer border participates in the parent's float avoidance. Supplied

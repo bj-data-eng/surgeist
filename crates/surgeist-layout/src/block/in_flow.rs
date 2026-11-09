@@ -862,13 +862,24 @@ where
                 index += 1;
                 continue;
             }
+            // Project the otherwise-empty anonymous parent's border without
+            // consuming the component. Exported start groups stay outside;
+            // internal groups precede its own zero top margin, not a later
+            // in-flow sibling's margin.
+            let anonymous_start = entry::reduce_start(
+                start_component_open,
+                constants.collapse_top_margin,
+                true,
+                active_margin,
+                CollapsibleMarginOf::ZERO,
+            );
             let mut pending_float = PendingFloat {
                 placement: super::floats::PendingPlacement::Unresolved,
                 node: child,
                 source_index,
                 side: child_style.float,
                 clear: child_style.clear,
-                block_start: cursor_block,
+                block_start: cursor_block + anonymous_start.offset,
                 size: output.size,
                 named_baselines: output.named_baselines,
                 content_size: output.content_size,
