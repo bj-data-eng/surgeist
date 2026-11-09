@@ -2817,7 +2817,18 @@ impl Promise {
                     }
                 })
                 .map_err(|error| {
-                    JsError::from(JsNativeError::typ().with_message(error.to_string()))
+                    use surgeist_js_gc::heap::AccessError;
+                    match error {
+                        // Opaque host callback data is first admitted here.
+                        AccessError::ForeignHeap
+                        | AccessError::StaleHandle
+                        | AccessError::WrongType => {
+                            JsNativeError::typ().with_message(error.to_string()).into()
+                        }
+                        AccessError::HeapBorrowed | AccessError::PayloadBorrowed => {
+                            reaction_access_error(error)
+                        }
+                    }
                 })??;
             let registration = if registration.is_committed() {
                 let handled = promise
