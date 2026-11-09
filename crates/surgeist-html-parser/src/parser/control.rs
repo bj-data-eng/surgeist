@@ -1229,6 +1229,35 @@ impl ParseControl {
         }
         full
     }
+    /// Acquires the slot of one retained diagnostic. `Ok(false)` is a refusal
+    /// by a `Diagnostics` cap of the parse or of a scope above it: retention
+    /// bounds what is kept and never ends a parse, so the diagnostic is dropped
+    /// and nothing latches. The cap can fill between [`Self::diagnostics_retention_full`]
+    /// and this call when a parse shares a host scope.
+    pub(crate) fn try_retain_diagnostic(&mut self) -> Result<bool, HtmlParseStop> {
+        self.checkpoint()?;
+        let one = [Change::Acquire(HtmlResource::Diagnostics, 1)];
+        let Err(error) = self.accounts_mut()?.charge(&one) else {
+            return Ok(true);
+        };
+        match classify(error) {
+            Classified::Refusal(refusal)
+                if matches!(refusal.reason, RefusalReason::Limit { .. }) =>
+            {
+                Ok(false)
+            }
+            Classified::Refusal(_) | Classified::Fault(_) => {
+                Err(self.ledger_stop(error, Site::RELEASE, &one))
+            }
+        }
+    }
+    /// Gives back the slot of a diagnostic [`Self::try_retain_diagnostic`]
+    /// acquired and a later failure kept from being retained.
+    pub(crate) fn release_unretained_diagnostic(&mut self) {
+        // A slot just acquired is held, so the release is not refused; a
+        // ledger fault is latched as the stop.
+        let _ = self.release_storage(HtmlParseResource::Diagnostics, 1);
+    }
     fn retention_check(&mut self) -> Result<bool, HtmlParseStop> {
         let one = [Change::Acquire(HtmlResource::Diagnostics, 1)];
         let Err(error) = self.accounts_mut()?.check(&one) else {
@@ -2714,7 +2743,7 @@ impl<T> OwnedVec<T> {
             Ok(plan) => plan,
             Err(reason) => return control.fail(reason),
         };
-        self.prepare_plan(control, additional, copy_bytes, writes, plan)
+        self.prepare_plan(control, additional, copy_bytes, writes, plan, true)
     }
     fn prepare_plan(
         &mut self,
@@ -2723,6 +2752,7 @@ impl<T> OwnedVec<T> {
         copy_bytes: u64,
         writes: u64,
         plan: Option<ReservationPlan>,
+        check_units: bool,
     ) -> Result<(), HtmlParseStop> {
         let Ok(units) = u64::try_from(additional) else {
             return control.representation(self.resource);
@@ -2743,7 +2773,10 @@ impl<T> OwnedVec<T> {
                 u64::from(plan.is_some()),
             ),
         ])?;
-        control.check_acquire_many(&[(self.resource, units)])?;
+        // A vector whose unit the caller already holds is not checked again.
+        if check_units {
+            control.check_acquire_many(&[(self.resource, units)])?;
+        }
         if let Some(plan) = plan {
             control.reserve(&mut self.vector, plan, &mut self.admitted)?;
         }
@@ -2752,14 +2785,18 @@ impl<T> OwnedVec<T> {
     /// One side of a consumed pair: the same geometric reservation as a lone
     /// push, so a pair's capacity does not depend on any limit either. The
     /// caller has already admitted the original combined atomic layout.
-    fn prepare_pair_slot(&mut self, control: &mut ParseControl) -> Result<(), HtmlParseStop> {
+    fn prepare_pair_slot(
+        &mut self,
+        control: &mut ParseControl,
+        check_unit: bool,
+    ) -> Result<(), HtmlParseStop> {
         self.require_owner(control)?;
         control.charge(HtmlParseWorkCategory::RecordVisit, 2)?;
         let plan = match control.geometric_plan_toward(&self.vector, 1, usize::MAX) {
             Ok(plan) => plan,
             Err(stop) => return control.fail(stop),
         };
-        self.prepare_plan(control, 1, size_of::<T>() as u64, 1, plan)
+        self.prepare_plan(control, 1, size_of::<T>() as u64, 1, plan, check_unit)
     }
     /// Reserves only real physical append storage; initialized entries and
     /// their payload copies/writes remain the actual push caller's duty.
@@ -2839,13 +2876,38 @@ impl<T> OwnedVec<T> {
         value: T,
         other_value: U,
     ) -> Result<(), HtmlParseStop> {
+        self.push_pair(other, control, value, other_value, false)
+    }
+    /// As [`Self::try_push_pair`] for a pair whose first slot the caller has
+    /// already acquired, as retention custody is: only the second is admitted.
+    pub(crate) fn try_push_pair_held<U>(
+        &mut self,
+        other: &mut OwnedVec<U>,
+        control: &mut ParseControl,
+        value: T,
+        other_value: U,
+    ) -> Result<(), HtmlParseStop> {
+        self.push_pair(other, control, value, other_value, true)
+    }
+    fn push_pair<U>(
+        &mut self,
+        other: &mut OwnedVec<U>,
+        control: &mut ParseControl,
+        value: T,
+        other_value: U,
+        first_held: bool,
+    ) -> Result<(), HtmlParseStop> {
         let bytes = size_of::<T>()
             .checked_add(size_of::<U>())
             .ok_or_else(|| control.fail_invariant(HtmlParseInvariant::CapacityMismatch))?;
         control.admit_atomic_layout(bytes)?;
-        self.prepare_pair_slot(control)?;
-        other.prepare_pair_slot(control)?;
-        control.acquire_many(&[(self.resource, 1), (other.resource, 1)])?;
+        self.prepare_pair_slot(control, !first_held)?;
+        other.prepare_pair_slot(control, true)?;
+        if first_held {
+            control.acquire(other.resource, 1)?;
+        } else {
+            control.acquire_many(&[(self.resource, 1), (other.resource, 1)])?;
+        }
         // No fallible operation follows admission. Record is published last.
         other.vector.push(other_value);
         self.vector.push(value);

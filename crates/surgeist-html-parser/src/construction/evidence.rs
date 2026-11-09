@@ -341,7 +341,14 @@ impl ParseEvidence {
             role: input.role,
             token: input.token,
         };
-        self.records.try_push_pair(
+        // The slot is taken first: a cap that fills after the check above, in a
+        // scope the parse shares, drops the diagnostic as the check does.
+        if !c.try_retain_diagnostic()? {
+            c.charge_dropped_diagnostic()?;
+            self.dropped = self.dropped.saturating_add(1);
+            return Ok(DiagnosticAdmission::Dropped);
+        }
+        let pushed = self.records.try_push_pair_held(
             &mut self.locations,
             c,
             HtmlParseDiagnostic {
@@ -352,7 +359,11 @@ impl ParseEvidence {
                 location,
             },
             source,
-        )?;
+        );
+        if let Err(stop) = pushed {
+            c.release_unretained_diagnostic();
+            return Err(stop);
+        }
         Ok(DiagnosticAdmission::Retained(DiagnosticId {
             index,
             owner,
