@@ -114,19 +114,180 @@ pub(crate) enum GradientSampling<'a> {
 /// A native brush coupled to its one selected sampling interpretation.
 #[derive(Clone, Copy)]
 pub(crate) struct SceneBrush<'a> {
-    pub(crate) brush: BrushRef<'a>,
-    pub(crate) sampling: Option<GradientSampling<'a>>,
+    field: SceneField<'a>,
+    sampling: Option<GradientSampling<'a>>,
 }
 
-impl<'a> SceneBrush<'a> {
-    pub(crate) const fn new(brush: BrushRef<'a>, sampling: Option<GradientSampling<'a>>) -> Self {
-        Self { brush, sampling }
+#[derive(Clone, Copy)]
+enum SceneField<'a> {
+    Native(BrushRef<'a>),
+    Sweep {
+        gradient: &'a peniko::Gradient,
+        sweep: peniko::SweepGradientPosition,
+        target_extent: crate::PhysicalSize,
+    },
+}
+
+/// Only this receiving transition exposes the brush to native encoding.
+pub(crate) struct QualifiedSceneBrush<'a> {
+    brush: BrushRef<'a>,
+    sampling: Option<GradientSampling<'a>>,
+}
+
+impl<'a> QualifiedSceneBrush<'a> {
+    pub(crate) fn into_parts(self) -> (BrushRef<'a>, Option<GradientSampling<'a>>) {
+        (self.brush, self.sampling)
     }
 }
 
-impl<'a, T: Into<BrushRef<'a>>> From<T> for SceneBrush<'a> {
-    fn from(brush: T) -> Self {
-        Self::new(brush.into(), None)
+impl<'a> SceneBrush<'a> {
+    pub(crate) fn new(
+        brush: BrushRef<'a>,
+        sampling: Option<GradientSampling<'a>>,
+        target_extent: crate::PhysicalSize,
+    ) -> Self {
+        let field = match brush {
+            BrushRef::Gradient(gradient) => match gradient.kind {
+                peniko::GradientKind::Sweep(sweep) => SceneField::Sweep {
+                    gradient,
+                    sweep,
+                    target_extent,
+                },
+                peniko::GradientKind::Linear(_) | peniko::GradientKind::Radial(_) => {
+                    SceneField::Native(brush)
+                }
+            },
+            BrushRef::Solid(_) | BrushRef::Image(_) => SceneField::Native(brush),
+        };
+        Self { field, sampling }
+    }
+
+    pub(crate) fn qualify(
+        self,
+        effective_transform: &super::geometry::QualifiedTransform,
+        account: &Account,
+    ) -> Result<QualifiedSceneBrush<'a>> {
+        let brush = match self.field {
+            SceneField::Native(brush) => brush,
+            SceneField::Sweep {
+                gradient,
+                sweep,
+                target_extent,
+            } => {
+                crate::encode::qualify_native_sweep(
+                    effective_transform.native(),
+                    sweep,
+                    target_extent,
+                    account,
+                )?;
+                BrushRef::Gradient(gradient)
+            }
+        };
+        Ok(QualifiedSceneBrush {
+            brush,
+            sampling: self.sampling,
+        })
+    }
+}
+
+impl From<peniko::Color> for SceneBrush<'_> {
+    fn from(color: peniko::Color) -> Self {
+        Self {
+            field: SceneField::Native(BrushRef::Solid(color)),
+            sampling: None,
+        }
+    }
+}
+
+impl<'a> From<peniko::ImageBrushRef<'a>> for SceneBrush<'a> {
+    fn from(image: peniko::ImageBrushRef<'a>) -> Self {
+        Self {
+            field: SceneField::Native(BrushRef::Image(image)),
+            sampling: None,
+        }
+    }
+}
+
+impl<'a> From<&'a peniko::ImageBrush> for SceneBrush<'a> {
+    fn from(image: &'a peniko::ImageBrush) -> Self {
+        image.as_ref().into()
+    }
+}
+
+#[cfg(test)]
+mod sweep_receiving_tests {
+    use super::*;
+    use crate::{GradientRealizationError, PhysicalSize};
+    use vello_encoding::Transform;
+
+    fn gradient() -> peniko::Gradient {
+        peniko::Gradient::new_sweep((0.0, 0.0), 0.0, std::f32::consts::TAU)
+            .with_stops([peniko::Color::BLACK, peniko::Color::WHITE])
+    }
+
+    #[test]
+    fn sweep_qualification_consumes_actual_native_factors_instead_of_source_inverse() {
+        let account = Account::for_test();
+        let gradient = gradient();
+        for (native, accepted) in [
+            (Transform::IDENTITY, true),
+            (
+                Transform {
+                    matrix: [2.0_f32.powi(-80), 0.0, 0.0, 2.0_f32.powi(-80)],
+                    translation: [0.0; 2],
+                },
+                false,
+            ),
+            (
+                Transform {
+                    matrix: [2.0_f32.powi(127), 0.0, 0.0, 2.0_f32.powi(-124)],
+                    translation: [0.0; 2],
+                },
+                false,
+            ),
+        ] {
+            // The geometry receiver has accepted both native axes. Its source
+            // inverse is identity in every case; only the actual factors vary.
+            let transform = super::super::geometry::qualify_native_transform(
+                kurbo::Affine::IDENTITY,
+                native,
+                &account,
+            )
+            .unwrap();
+            let result = SceneBrush::new((&gradient).into(), None, PhysicalSize::new(32, 16))
+                .qualify(&transform, &account);
+            if accepted {
+                assert!(result.is_ok());
+            } else {
+                let error = result.err().unwrap();
+                assert_eq!(
+                    error.gradient_realization_diagnostic(),
+                    Some(&GradientRealizationError::InsufficientNativeCapacity)
+                );
+                assert!(error.geometry_realization_diagnostic().is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn earlier_geometry_failure_keeps_its_owner_before_invalid_sweep_center() {
+        let account = Account::for_test();
+        let gradient =
+            peniko::Gradient::new_sweep((f64::MAX, f64::MAX), 0.0, std::f32::consts::TAU)
+                .with_stops([peniko::Color::BLACK, peniko::Color::WHITE]);
+        let mut scene = super::super::scene::VelloScene::default();
+        let error = scene
+            .fill(
+                peniko::Fill::NonZero,
+                kurbo::Affine::scale(2.0_f64.powi(-127)),
+                SceneBrush::new((&gradient).into(), None, PhysicalSize::new(32, 16)),
+                None,
+                &kurbo::Rect::new(0.0, 0.0, 32.0, 16.0),
+                &account,
+            )
+            .unwrap_err();
+        assert!(error.geometry_realization_diagnostic().is_some());
+        assert!(error.gradient_realization_diagnostic().is_none());
     }
 }
 

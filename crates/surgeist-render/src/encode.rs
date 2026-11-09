@@ -259,7 +259,7 @@ fn encode_vello_commands(
                             } else {
                                 scene.fill_elements(
                                     transform,
-                                    brush.scene_brush(),
+                                    brush.scene_brush(target_extent),
                                     brush.transform(),
                                     elements,
                                     account,
@@ -362,14 +362,7 @@ fn encode_fill(
             image,
             transform,
             |scene, brush, brush_transform| {
-                encode_solid_fill(
-                    scene,
-                    transform,
-                    shape,
-                    &peniko::Brush::Image(brush.clone()),
-                    brush_transform,
-                    account,
-                )?;
+                encode_solid_fill(scene, transform, shape, brush, brush_transform, account)?;
                 Ok(())
             },
             account,
@@ -380,7 +373,7 @@ fn encode_fill(
         scene,
         transform,
         shape,
-        brush.scene_brush(),
+        brush.scene_brush(target_extent),
         brush.transform(),
         account,
     )?;
@@ -461,7 +454,7 @@ fn encode_stroke(
                     transform,
                     shape,
                     stroke,
-                    &peniko::Brush::Image(brush.clone()),
+                    brush,
                     brush_transform,
                     account,
                 )?;
@@ -476,7 +469,7 @@ fn encode_stroke(
         transform,
         shape,
         stroke,
-        brush.scene_brush(),
+        brush.scene_brush(target_extent),
         brush.transform(),
         account,
     )?;
@@ -613,12 +606,11 @@ fn encode_non_uniform_rounded_shadow(
     account: &Account,
 ) -> Result<()> {
     if blur == 0.0 {
-        let brush = peniko::Brush::Solid(color.into());
         encode_solid_fill(
             scene,
             transform,
             &RenderShape::RoundedRect { rect, radii },
-            &brush,
+            peniko::Color::from(color),
             None,
             account,
         )?;
@@ -1007,7 +999,7 @@ impl FrameBrush {
     pub(crate) fn as_ref(&self) -> peniko::BrushRef<'_> {
         (&self.brush).into()
     }
-    pub(crate) fn scene_brush(&self) -> SceneBrush<'_> {
+    pub(crate) fn scene_brush(&self, target_extent: PhysicalSize) -> SceneBrush<'_> {
         let sampling = self.sampling.as_ref().map(|sampling| match sampling {
             PreparedSampling::PadRamp(endpoints) => GradientSampling::PadRamp(*endpoints),
             PreparedSampling::HorizontalDistanceStep(endpoints) => {
@@ -1019,7 +1011,7 @@ impl FrameBrush {
                 coordinates: program.coordinates,
             }),
         });
-        SceneBrush::new(self.as_ref(), sampling)
+        SceneBrush::new(self.as_ref(), sampling, target_extent)
     }
 }
 impl std::ops::Deref for FrameBrush {
@@ -1073,15 +1065,18 @@ fn gradient_brush(
 ) -> Result<FrameBrush> {
     let account = account.at(RenderPhase::GradientPrepare);
     account.phase(RenderPhase::GradientPrepare, || {
-        if matches!(gradient.kind(), crate::paint::GradientKind::Sweep { .. }) {
-            prepare_sweep_gradient(gradient, &account)
+        if let Some(sweep) = gradient.sweep() {
+            prepare_sweep_gradient(sweep, &account)
         } else {
             ordinary_gradient::prepare(gradient, transform, target_extent, &account)
         }
     })
 }
 
-fn prepare_sweep_gradient(gradient: &Gradient, account: &Account) -> Result<FrameBrush> {
+fn prepare_sweep_gradient(
+    gradient: crate::paint::SweepGradient<'_>,
+    account: &Account,
+) -> Result<FrameBrush> {
     let supplied = gradient.stops();
     if supplied.len() == 1 {
         account.work(RenderWork::GradientStopVisits, 1)?;
@@ -1180,22 +1175,34 @@ fn prepare_sweep_gradient(gradient: &Gradient, account: &Account) -> Result<Fram
         )));
     }
     account.work(RenderWork::CoordinateVisits, 2)?;
-    let output = match gradient.kind() {
-        crate::paint::GradientKind::Linear { .. }
-        | crate::paint::GradientKind::Radial { .. }
-        | crate::paint::GradientKind::HorizontalDistance { .. } => {
-            unreachable!("ordinary fields use per-use preparation")
-        }
-        crate::paint::GradientKind::Sweep { center, .. } => {
-            let (x, y) = (center.x(), center.y());
-            let x = gradient_field::scalar(account, || x as f32)?;
-            let y = gradient_field::scalar(account, || y as f32)?;
-            peniko::Gradient::new_sweep((x, y), 0.0, std::f32::consts::TAU)
-        }
-    };
+    let center = gradient.center();
+    let (x, y) = (center.x(), center.y());
+    let x = gradient_field::scalar(account, || x as f32)?;
+    let y = gradient_field::scalar(account, || y as f32)?;
+    let output = peniko::Gradient::new_sweep((x, y), 0.0, std::f32::consts::TAU);
     let mut brush = gradient_with_stops(output, stops, None)?;
     brush.sampling = endpoints.filter(|_| ordered).map(PreparedSampling::PadRamp);
     Ok(brush)
+}
+
+pub(crate) fn qualify_native_sweep(
+    native: vello_encoding::Transform,
+    sweep: peniko::SweepGradientPosition,
+    target_extent: PhysicalSize,
+    account: &Account,
+) -> Result<()> {
+    let account = account.at(RenderPhase::GradientPrepare);
+    account.phase(RenderPhase::GradientPrepare, || {
+        // This boundary contains only the field's scalar proof. Other receiving
+        // geometry, resources, font admission and device work stay outside it.
+        gradient_field::qualify_sweep(native, sweep, target_extent, &account).map_err(|error| {
+            if error.code() == ErrorCode::InvalidInput {
+                GradientRealizationError::InsufficientNativeCapacity.into()
+            } else {
+                error
+            }
+        })
+    })
 }
 
 fn gradient_with_stops(

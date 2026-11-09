@@ -206,6 +206,16 @@ applies to ordinary fields. Finite source endpoints do not require a finite
 subtracted span: scaled whole-range arithmetic can represent an overflowing
 source interval when its mapped geometry is finite.
 
+Sweep realization qualifies the actual native paint transform after path
+representation selection or deferred glyph composition. Its narrowed center is
+included in the shader's transform composition before determinant, reciprocal,
+inverse matrix and translation qualification. Sampling bounds include the final
+target's padded raster lanes and permitted subnormal flushing. An inverse that
+can lose a required direction is refused before native brush encoding. This
+preserves the existing angle approximation and center handling; it adds no exact
+source-angle or raster-boundary guarantee. A single-stop solid or unused draw
+does not require a sweep inverse.
+
 `ErrorCode::GradientRealization` and `Error::gradient_realization_diagnostic`
 distinguish degenerate required linear fields, unrepresentable geometry, a stop
 whose required native interval collapses, and insufficient native arithmetic
@@ -272,7 +282,8 @@ coordinates. Graph captures use the output grid for this source, so a mask or
 nested capture preserves a pattern resolved by final magnification.
 
 `RenderPhase::GradientPrepare` is a Ledger child of Encode for ordinary and
-repeating brush preparation and native glyph representation checks. Actual stop
+repeating brush preparation, sweep receiving qualification and native glyph
+representation checks. Actual stop
 walks, coordinate work, backing, serialization and ramp resources retain their
 existing named work and lifetime owners; optional elapsed time uses Ledger.
 Ordinary multistop preparation charges actual endpoint inspection, range and
