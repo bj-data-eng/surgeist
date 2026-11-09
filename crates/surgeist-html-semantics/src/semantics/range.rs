@@ -101,7 +101,7 @@ impl<'a> HtmlSemanticSession<'a> {
                 HtmlFloatingPointAllocationError::RequestedCapacityLimitExceeded {
                     required,
                     ..
-                } => match self.usage.allocated_bytes.checked_add(required) {
+                } => match self.snapshot().allocated_bytes.checked_add(required) {
                     Some(required) => HtmlSemanticFailureKind::LimitExceeded {
                         resource: HtmlSemanticResource::AllocatedBytes,
                         limit: self.limits.allocated_bytes,
@@ -113,7 +113,7 @@ impl<'a> HtmlSemanticSession<'a> {
                     HtmlSemanticFailureKind::LimitExceeded {
                         resource: HtmlSemanticResource::AllocatedBytes,
                         limit: self.limits.allocated_bytes,
-                        required: self.usage.allocated_bytes,
+                        required: self.snapshot().allocated_bytes,
                     }
                 }
             };

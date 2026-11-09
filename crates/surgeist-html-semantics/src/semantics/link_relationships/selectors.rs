@@ -1023,10 +1023,11 @@ impl<'a> HtmlSemanticSession<'a> {
     ) -> Result<T, HtmlSemanticFailure> {
         self.release_scratch(&frames);
         drop(frames);
+        let scratch = self.snapshot().scratch_records;
         if outcome.is_err()
             && let Some(first) = self.failure.as_mut()
         {
-            first.usage.scratch_records = self.usage.scratch_records;
+            first.usage.scratch_records = scratch;
             return Err(first.clone());
         }
         outcome

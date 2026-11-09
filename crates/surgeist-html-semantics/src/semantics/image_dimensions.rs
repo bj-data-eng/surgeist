@@ -1105,7 +1105,7 @@ impl<'a> HtmlSemanticSession<'a> {
     fn image_remaining_bytes(&self) -> usize {
         self.limits
             .allocated_bytes
-            .saturating_sub(self.usage.allocated_bytes)
+            .saturating_sub(self.snapshot().allocated_bytes)
     }
     fn image_work(&mut self, work: Option<usize>) -> Result<(), HtmlSemanticFailure> {
         let work =
@@ -1116,7 +1116,7 @@ impl<'a> HtmlSemanticSession<'a> {
         &mut self,
         result: Result<HtmlNumericMaterialized<T>, HtmlNumericMaterializationFailure>,
     ) -> Result<T, HtmlSemanticFailure> {
-        let baseline = self.usage.allocated_bytes;
+        let baseline = self.snapshot().allocated_bytes;
         let observed = match &result {
             Ok(v) => v.capacity_bytes(),
             Err(e) => e.capacity_bytes(),
@@ -1157,7 +1157,7 @@ impl<'a> HtmlSemanticSession<'a> {
                             HtmlSemanticFailureKind::LimitExceeded {
                                 resource: HtmlSemanticResource::AllocatedBytes,
                                 limit: self.limits.allocated_bytes,
-                                required: self.usage.allocated_bytes,
+                                required: self.snapshot().allocated_bytes,
                             }
                         }
                     },

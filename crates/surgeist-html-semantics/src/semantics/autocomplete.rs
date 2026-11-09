@@ -115,7 +115,7 @@ impl HtmlSemanticSession<'_> {
         let work = autocomplete_materialization_work_bound(raw.map_or(0, |raw| raw.value().len()))
             .ok_or_else(|| self.stop(HtmlSemanticFailureKind::RepresentationExhausted))?;
         self.charge(work)?;
-        let baseline = self.usage;
+        let baseline = self.snapshot();
         let materialized = self.interpreter.control_autocomplete_controlled(
             element.name(),
             raw,
@@ -134,7 +134,8 @@ impl HtmlSemanticSession<'_> {
             Ok(value) => value.usage(),
             Err(failure) => failure.usage(),
         };
-        self.record_autocomplete_usage(observed)?;
+        self.record_autocomplete_usage(observed, materialized.is_ok())
+            .map_err(|error| self.ledger_stop(error))?;
         let intrinsic = materialized
             .map_err(|failure| {
                 let kind = match failure.kind() {
@@ -259,27 +260,31 @@ impl HtmlSemanticSession<'_> {
     fn record_autocomplete_usage(
         &mut self,
         observed: HtmlAutocompleteMaterializationUsage,
-    ) -> Result<(), HtmlSemanticFailure> {
-        let bytes = self
-            .usage
-            .allocated_bytes
-            .checked_add(observed.allocated_bytes());
-        let output = self
-            .usage
-            .nested_output_records
-            .checked_add(observed.nested_output_records());
-        let scratch = self
-            .usage
-            .scratch_records
-            .checked_add(observed.peak_scratch_records());
-        let (Some(bytes), Some(output), Some(scratch)) = (bytes, output, scratch) else {
-            return Err(self.stop(HtmlSemanticFailureKind::RepresentationExhausted));
-        };
-        self.usage.allocated_bytes = bytes;
-        self.usage.nested_output_records = output;
-        self.usage.peak_scratch_records = self.usage.peak_scratch_records.max(scratch);
-        // Temporary materialization vectors have been dropped before the owner
-        // returns; current scratch remains unchanged on success and failure.
-        Ok(())
+        admitted: bool,
+    ) -> Result<(), super::query_account::LedgerError> {
+        use super::query_account::wide;
+        use surgeist_html::accounting::HtmlResource;
+        use surgeist_ledger::Change;
+        // The peak of the materialization's scratch rides on the live scratch records and is
+        // returned at once: temporary vectors have been dropped before the owner returns.
+        let scratch = wide(observed.peak_scratch_records());
+        let batch = [
+            Change::Acquire(
+                HtmlResource::AllocatedBytes,
+                wide(observed.allocated_bytes()),
+            ),
+            Change::Acquire(
+                HtmlResource::NestedOutputRecords,
+                wide(observed.nested_output_records()),
+            ),
+            Change::Acquire(HtmlResource::ScratchRecords, scratch),
+            Change::Release(HtmlResource::ScratchRecords, scratch),
+        ];
+        if admitted {
+            self.account.observe(&batch[..2])?;
+            self.account.observe_only(&batch[2..])?;
+            return Ok(());
+        }
+        self.account.observe_only(&batch)
     }
 }

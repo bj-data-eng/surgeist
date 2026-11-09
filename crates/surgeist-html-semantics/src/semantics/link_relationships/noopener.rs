@@ -272,8 +272,9 @@ impl<'a> HtmlSemanticSession<'a> {
                 // The inner scratch owner has now retired all actual temporary
                 // backing. Preserve the first kind, work and qualification while
                 // reporting the final owned scratch count at this child boundary.
+                let scratch = self.snapshot().scratch_records;
                 if let Some(first) = self.failure.as_mut() {
-                    first.usage.scratch_records = self.usage.scratch_records;
+                    first.usage.scratch_records = scratch;
                     Err(first.clone())
                 } else {
                     Err(error)

@@ -140,12 +140,12 @@ impl HtmlSemanticSession<'_> {
             .map_err(|error| self.stop(HtmlSemanticFailureKind::Attribute(error)))?;
         loop {
             let action = owner.next_action().map_err(|error| {
-                self.time_interpretation_error(error, self.usage.allocated_bytes)
+                self.time_interpretation_error(error, self.snapshot().allocated_bytes)
             })?;
             let Some(action) = action else {
                 break;
             };
-            let baseline = self.usage.allocated_bytes;
+            let baseline = self.snapshot().allocated_bytes;
             let (digits, remaining) =
                 (self.limits.integer_digits, self.remaining_allocated_bytes());
             // The action charges its own semantic work before it runs. Fixed continuations after a
@@ -161,7 +161,7 @@ impl HtmlSemanticSession<'_> {
             }
         }
         owner.finish().map_err(|failure| {
-            self.time_interpretation_error(*failure.cause(), self.usage.allocated_bytes)
+            self.time_interpretation_error(*failure.cause(), self.snapshot().allocated_bytes)
         })
     }
 
@@ -205,7 +205,7 @@ impl HtmlSemanticSession<'_> {
                         HtmlSemanticFailureKind::LimitExceeded {
                             resource: HtmlSemanticResource::AllocatedBytes,
                             limit: self.limits.allocated_bytes,
-                            required: self.usage.allocated_bytes,
+                            required: self.snapshot().allocated_bytes,
                         }
                     }
                 },

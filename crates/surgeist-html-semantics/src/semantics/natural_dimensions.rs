@@ -654,7 +654,7 @@ impl<'a> HtmlSemanticSession<'a> {
             self.limits.integer_digits,
             remaining,
         );
-        let baseline = self.usage.allocated_bytes;
+        let baseline = self.snapshot().allocated_bytes;
         let observed = match &materialized {
             Ok(v) => v.capacity_bytes(),
             Err(e) => e.capacity_bytes(),
@@ -698,7 +698,7 @@ impl<'a> HtmlSemanticSession<'a> {
                         HtmlSemanticFailureKind::LimitExceeded {
                             resource: HtmlSemanticResource::AllocatedBytes,
                             limit: self.limits.allocated_bytes,
-                            required: self.usage.allocated_bytes,
+                            required: self.snapshot().allocated_bytes,
                         }
                     }
                 })
