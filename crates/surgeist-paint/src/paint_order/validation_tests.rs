@@ -37,40 +37,43 @@ fn exercise(
             Tariffs::identity(),
         )
         .unwrap();
-    let mut core = State::default();
-    let result = crate::algorithm::prepare(
-        &mut meter,
-        root,
-        &scopes,
-        &mut core,
-        request.boxes(),
-        request.root(),
-    )
-    .and_then(|()| {
-        meter
-            .with_phase(validation, |p| {
-                let mut index = prepare(request, &core, p, root, validation)?;
-                let snapshot = Snapshot {
-                    fragments: index.fragments.clone(),
-                    lines: index.lines.clone(),
-                    primitives: index.primitives.clone(),
-                    sources: index.sources.clone(),
-                    content: index.content.clone(),
-                    fragment_ranges: index.fragment_ranges.clone(),
-                    line_ranges: index.line_ranges.clone(),
-                    primitive_ranges: index.primitive_ranges.clone(),
-                    source_ranges: index.source_ranges.clone(),
-                    content_ranges: index.content_ranges.clone(),
-                };
-                index.cleanup(p, root).unwrap();
-                Ok(snapshot)
-            })
-            .unwrap()
-    });
+    let input = match PreparedPaint::new(request, &mut meter, root, &scopes) {
+        Continue(input) => input,
+        Break(failure) => {
+            let error = meter
+                .with_phase(scopes[6], |p| failure.cleanup(p))
+                .unwrap()
+                .unwrap_err();
+            let report = meter.finish().unwrap().unwrap();
+            assert_eq!(report.live(ResourceKind::ScratchBytes), 0);
+            assert_eq!(report.live(ResourceKind::RetainedResultBytes), 0);
+            return (Err(error), report);
+        }
+    };
+    let result = meter
+        .with_phase(validation, |p| {
+            let index = build(&input, p, root, validation)?;
+            let snapshot = Snapshot {
+                fragments: index.fragments.clone(),
+                lines: index.lines.clone(),
+                primitives: index.primitives.clone(),
+                sources: index.sources.clone(),
+                content: index.content.clone(),
+                fragment_ranges: index.fragment_ranges.clone(),
+                line_ranges: index.line_ranges.clone(),
+                primitive_ranges: index.primitive_ranges.clone(),
+                source_ranges: index.source_ranges.clone(),
+                content_ranges: index.content_ranges.clone(),
+            };
+            index.cleanup(p, root).unwrap();
+            Ok(snapshot)
+        })
+        .unwrap();
+    let mut cleanup = input.core.into_cleanup();
     meter
         .with_phase(scopes[6], |p| {
-            core.scratch_cleanup(p, root).unwrap();
-            core.result_cleanup(p, root).unwrap();
+            cleanup.scratch_cleanup(p).unwrap();
+            cleanup.result_cleanup(p).unwrap();
         })
         .unwrap();
     let report = meter.finish().unwrap().unwrap();

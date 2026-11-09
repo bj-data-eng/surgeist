@@ -1,5 +1,8 @@
 use super::*;
-use crate::{ChildOrder, ContextEffect, Participation, Position, ZIndex, model::ContextRecord};
+use crate::{
+    ChildOrder, ContextEffect, PaintLimits, PaintOptions, Participation, Position, ProfileMode,
+    ZIndex,
+};
 
 fn facts(parent: Option<BoxId>, source: usize) -> BoxFacts {
     BoxFacts::new(
@@ -52,31 +55,12 @@ fn draw_views_retain_exact_records_and_original_text_owner_across_lines() {
         &primitives,
         root,
     );
-    // Exercise the observation boundary directly. This is not an ordering oracle
-    // and does not claim to validate a request or replace the real algorithm.
-    let plan = PaintOrder {
+    let plan = crate::plan_paint_order(
         request,
-        stacking: StackingPlan {
-            facts: &boxes,
-            membership: vec![0, 0],
-            contexts: vec![ContextRecord {
-                box_id: root,
-                parent: None,
-                level: 0,
-                start: 0,
-                end: 0,
-            }],
-            children: vec![],
-        },
-        events: vec![
-            OrderEvent::BeginContext(root),
-            OrderEvent::Draw(PrimitiveId::new(0)),
-            OrderEvent::Draw(PrimitiveId::new(1)),
-            OrderEvent::Draw(PrimitiveId::new(2)),
-            OrderEvent::Draw(PrimitiveId::new(3)),
-            OrderEvent::EndContext(root),
-        ],
-    };
+        PaintOptions::new(PaintLimits::unlimited(), ProfileMode::Off),
+    )
+    .result
+    .unwrap();
 
     assert!(std::ptr::eq(plan.request().boxes(), boxes.as_slice()));
     assert!(std::ptr::eq(

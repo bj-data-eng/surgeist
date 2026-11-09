@@ -1,10 +1,16 @@
-use super::{model::*, validation::PaintIndex};
+use super::{IndexedPaint, PaintCleanup, SequencedPaint, model::*, validation::PaintIndex};
 use crate::{
     AccountingFailure, BoxId, PaintError, Participation, Position, ResourceKind, WorkKind,
-    accounting::{PhaseMeter, allocate, charge, release},
+    accounting::{Meter, PhaseMeter, allocate, charge, release, setup_error},
     algorithm,
 };
-use std::{mem::take, ops::Range};
+use std::{
+    mem::take,
+    ops::{
+        ControlFlow::{self, Break, Continue},
+        Range,
+    },
+};
 use surgeist_ledger::Scope;
 
 fn invariant() -> PaintError {
@@ -13,10 +19,11 @@ fn invariant() -> PaintError {
 
 #[cfg(test)]
 mod pending_tests {
+    use super::super::{PreparedPaint, validation};
     use super::*;
     use crate::{
         BoxFacts, ChildOrder, ContextEffect, PaintChange, PaintLimits, PaintOptions, PaintPhase,
-        ProfileMode, ZIndex, accounting::OperationKind, paint_order::validation,
+        ProfileMode, ZIndex, accounting::OperationKind,
     };
     use surgeist_layout::SourceIndex;
     use surgeist_ledger::{Limits, Tariffs};
@@ -59,21 +66,21 @@ mod pending_tests {
                 Tariffs::identity(),
             )
             .unwrap();
-        let mut core = algorithm::State::default();
-        algorithm::prepare(&mut meter, root, &scopes, &mut core, &boxes, request.root()).unwrap();
-        let mut index = meter
-            .with_phase(validate, |p| {
-                validation::prepare(request, &core, p, root, validate)
-            })
-            .unwrap()
-            .unwrap();
-        let mut state = SequenceState::default();
-        let error = meter
-            .with_phase(sequence, |p| {
-                run(request, &core, &index, &mut state, p, root, sequence)
-            })
-            .unwrap()
-            .unwrap_err();
+        let input = match PreparedPaint::new(request, &mut meter, root, &scopes) {
+            Continue(input) => input,
+            Break(_) => panic!("core prepares"),
+        };
+        let input = match validation::prepare(input, &mut meter, root, validate) {
+            Continue(input) => input,
+            Break(_) => panic!("request validates"),
+        };
+        let failure = match run(input, &mut meter, root, sequence) {
+            Break(failure) => failure,
+            Continue(_) => panic!("expected task admission refusal"),
+        };
+        let super::super::Publication::Failed(ref error) = failure.publication else {
+            panic!("sequence failure retains its original error");
+        };
         let PaintError::Budget(refusal) = error else {
             panic!("expected task admission refusal");
         };
@@ -86,6 +93,10 @@ mod pending_tests {
                 amount: 1
             }
         );
+        let state = failure
+            .output
+            .as_ref()
+            .expect("failed sequence retains its backing");
         assert!(
             matches!(state.tasks.as_slice(), [Task::Scope(Invocation { box_id, limit: None })] if *box_id == request.root())
         );
@@ -93,15 +104,11 @@ mod pending_tests {
         assert!(state.events.is_empty());
         assert!(state.events.capacity() >= 2);
         assert_eq!(state.context_state, [0]);
-        meter
-            .with_phase(scopes[6], |p| {
-                core.scratch_cleanup(p, root).unwrap();
-                index.cleanup(p, root).unwrap();
-                state.scratch_cleanup(p, root).unwrap();
-                core.result_cleanup(p, root).unwrap();
-                state.result_cleanup(p, root).unwrap();
-            })
-            .unwrap();
+        let error = meter
+            .with_phase(scopes[6], |p| failure.cleanup(p))
+            .unwrap()
+            .unwrap_err();
+        assert!(matches!(error, PaintError::Budget(_)));
         let report = meter.finish().unwrap().unwrap();
         assert_eq!(report.work(WorkKind::PaintScopeVisit), 5);
         for &resource in ResourceKind::ALL {
@@ -288,16 +295,11 @@ impl SequenceState {
     }
 
     pub(super) fn result_cleanup(
-        &mut self,
+        self,
         p: &mut PhaseMeter<'_, '_>,
         root: Scope,
     ) -> Result<(), PaintError> {
-        release(
-            p,
-            root,
-            take(&mut self.events),
-            ResourceKind::RetainedResultBytes,
-        )?;
+        release(p, root, self.events, ResourceKind::RetainedResultBytes)?;
         Ok(())
     }
 }
@@ -327,7 +329,7 @@ fn capacity<T: Copy>(
 
 struct Sequencer<'a, 'p, 'm, 'operation> {
     request: PaintRequest<'a>,
-    core: &'p algorithm::State,
+    core: &'p algorithm::PreparedCore<'a>,
     index: &'p PaintIndex,
     state: &'p mut SequenceState,
     p: &'p mut PhaseMeter<'m, 'operation>,
@@ -335,15 +337,36 @@ struct Sequencer<'a, 'p, 'm, 'operation> {
     phase: Scope,
 }
 
-pub(super) fn run(
-    request: PaintRequest<'_>,
-    core: &algorithm::State,
-    index: &PaintIndex,
+pub(super) fn run<'a>(
+    input: IndexedPaint<'a>,
+    meter: &mut Meter,
+    root: Scope,
+    phase: Scope,
+) -> ControlFlow<PaintCleanup<'a>, SequencedPaint<'a>> {
+    let mut state = SequenceState::default();
+    let result = meter
+        .with_phase(phase, |p| sequence(&input, &mut state, p, root, phase))
+        .map_err(setup_error)
+        .and_then(|done| done);
+    match result {
+        Ok(()) => Continue(SequencedPaint {
+            input,
+            output: state,
+        }),
+        Err(error) => Break(PaintCleanup::sequencing_failure(input, state, error)),
+    }
+}
+
+fn sequence(
+    input: &IndexedPaint<'_>,
     state: &mut SequenceState,
     p: &mut PhaseMeter<'_, '_>,
     root: Scope,
     phase: Scope,
 ) -> Result<(), PaintError> {
+    let request = input.input.request;
+    let core = &input.input.core;
+    let index = &input.index;
     let mut runner = Sequencer {
         request,
         core,
@@ -355,7 +378,7 @@ pub(super) fn run(
     };
     runner.prepare()?;
     runner.push(Task::Scope(Invocation {
-        box_id: request.root(),
+        box_id: core.root(),
         limit: None,
     }))?;
     while let [remaining @ .., pending] = runner.state.tasks.as_mut_slice() {
@@ -399,8 +422,8 @@ impl Sequencer<'_, '_, '_, '_> {
     }
 
     fn prepare(&mut self) -> Result<(), PaintError> {
-        let n = self.request.boxes().len();
-        let contexts = self.core.contexts.len();
+        let n = self.core.facts().len();
+        let contexts = self.core.contexts().len();
         let events = contexts
             .checked_mul(2)
             .and_then(|count| count.checked_add(self.request.primitives().len()))
@@ -415,20 +438,20 @@ impl Sequencer<'_, '_, '_, '_> {
             n,
             ScopeInfo {
                 kind: ScopeKind::Ordinary,
-                owner: self.request.root(),
+                owner: self.core.root(),
                 parent: None,
             },
         );
         for i in 0..n {
             self.work(WorkKind::PaintScopeVisit, 1)?;
             self.work(WorkKind::OrderMove, 1)?;
-            self.state.order[self.core.nodes[i].rank] = i;
+            self.state.order[self.core.nodes()[i].rank] = i;
         }
         for ordinal in 0..n {
             self.work(WorkKind::PaintScopeVisit, 1)?;
             let i = self.state.order[ordinal];
-            let facts = self.request.boxes()[i];
-            let context = self.core.contexts[self.core.membership[i]];
+            let facts = self.core.facts()[i];
+            let context = self.core.contexts()[self.core.membership()[i]];
             let actual = context.box_id.get() == i;
             let paint = self.request.box_paint()[i];
             let kind = if actual {
@@ -448,7 +471,7 @@ impl Sequencer<'_, '_, '_, '_> {
                 .parent()
                 .map(|parent| self.state.scopes[parent.get()].owner);
             let parent = match kind {
-                ScopeKind::Actual => context.parent.map(|id| self.core.contexts[id].box_id),
+                ScopeKind::Actual => context.parent.map(|id| self.core.contexts()[id].box_id),
                 ScopeKind::Positioned => Some(context.box_id),
                 _ => inherited,
             };
@@ -480,7 +503,7 @@ impl Sequencer<'_, '_, '_, '_> {
         self.work(WorkKind::OrderMove, n)?;
         self.state.merge.resize(n, 0);
         let scopes = &self.state.scopes;
-        let nodes = &self.core.nodes;
+        let nodes = self.core.nodes();
         algorithm::SortBuffers::new(&mut self.state.members, &mut self.state.merge)?.sort(
             self.p,
             self.phase,
@@ -552,7 +575,7 @@ impl Sequencer<'_, '_, '_, '_> {
     }
 
     fn context_event(&mut self, box_id: BoxId, end: bool) -> Result<(), PaintError> {
-        let context = self.core.membership[box_id.get()];
+        let context = self.core.membership()[box_id.get()];
         self.work(WorkKind::PaintValidation, 1)?;
         if self.state.context_state[context] != u8::from(end) {
             return Err(invariant());
@@ -700,7 +723,7 @@ impl Sequencer<'_, '_, '_, '_> {
 impl Sequencer<'_, '_, '_, '_> {
     fn own_decoration(&mut self, invocation: Invocation) -> Result<(), PaintError> {
         let owner = invocation.box_id;
-        let root = owner == self.request.root();
+        let root = owner == self.core.root();
         if root {
             self.group(
                 None,
@@ -736,7 +759,7 @@ impl Sequencer<'_, '_, '_, '_> {
                 let i = self.state.children[cursor];
                 let kind = self.state.scopes[i].kind;
                 let zero_context = kind == ScopeKind::Actual
-                    && self.core.contexts[self.core.membership[i]].level == 0;
+                    && self.core.contexts()[self.core.membership()[i]].level == 0;
                 if zero_context || kind == ScopeKind::Positioned {
                     self.push(Task::Scope(Invocation {
                         box_id: BoxId::new(i),
@@ -745,10 +768,10 @@ impl Sequencer<'_, '_, '_, '_> {
                 }
             }
         } else {
-            let context = self.core.contexts[self.core.membership[owner.get()]];
+            let context = self.core.contexts()[self.core.membership()[owner.get()]];
             for cursor in (context.start..context.end).rev() {
                 self.work(WorkKind::PaintScopeVisit, 1)?;
-                let child = self.core.contexts[self.core.children[cursor]];
+                let child = self.core.contexts()[self.core.children()[cursor]];
                 if (band < 0 && child.level < 0) || (band > 0 && child.level > 0) {
                     self.push(Task::Scope(Invocation {
                         box_id: child.box_id,
@@ -839,8 +862,8 @@ impl Sequencer<'_, '_, '_, '_> {
                 false
             } else {
                 self.work(WorkKind::PaintOrderComparison, 1)?;
-                self.core.nodes[self.state.children[child - 1]].rank
-                    > self.core.nodes[self.state.members[member - 1]].rank
+                self.core.nodes()[self.state.children[child - 1]].rank
+                    > self.core.nodes()[self.state.members[member - 1]].rank
             };
             self.work(WorkKind::PaintScopeVisit, 1)?;
             let i = if from_child {
@@ -852,7 +875,7 @@ impl Sequencer<'_, '_, '_, '_> {
             };
             let item = from_child
                 && self.state.scopes[i].kind == ScopeKind::AtomicInline
-                && self.request.boxes()[i].participation() != Participation::Ordinary;
+                && self.core.facts()[i].participation() != Participation::Ordinary;
             let ordinary = !from_child
                 && (i == invocation.box_id.get()
                     || self.state.scopes[i].kind == ScopeKind::Ordinary)
@@ -1007,7 +1030,7 @@ impl Sequencer<'_, '_, '_, '_> {
             return Err(invariant());
         };
         let key = (
-            self.core.nodes[owner.get()].rank,
+            self.core.nodes()[owner.get()].rank,
             record.logical_order(),
             order,
         );
@@ -1100,7 +1123,7 @@ impl Sequencer<'_, '_, '_, '_> {
         for cursor in self.index.source_ranges[owner.get()].clone().rev() {
             self.work(WorkKind::InlineMemberVisit, 1)?;
             let source = self.index.sources[cursor];
-            if source < self.request.boxes().len() {
+            if source < self.core.facts().len() {
                 let info = self.state.scopes[source];
                 let visible = info.kind == ScopeKind::Ordinary && info.owner == invocation.box_id
                     || info.kind == ScopeKind::AtomicInline

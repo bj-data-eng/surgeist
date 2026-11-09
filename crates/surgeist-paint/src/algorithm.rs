@@ -1,16 +1,18 @@
-use crate::{
-    BoxFacts, BoxId, ChildOrder, PaintError, PaintOptions, PaintPhase, PaintReport, Participation,
-    ResourceKind, StackingPlan, WorkKind,
+#[path = "paint_order/prepared.rs"]
+mod paint;
+pub(crate) use paint::{model as paint_model, plan as plan_order};
+
+use crate::accounting::{
+    Meter, OperationKind, PhaseMeter, allocate, apply, charge, finish, release, setup_error,
 };
 use crate::{
-    accounting::{
-        Meter, OperationKind, PhaseMeter, allocate, apply, charge, finish, release, setup_error,
-    },
-    model::ContextRecord,
+    BoxFacts, BoxId, ChildOrder, PaintError, PaintOptions, PaintPhase, PaintReport, Participation,
+    ResourceKind, WorkKind,
 };
 use std::{
     cmp::Ordering,
     mem::{size_of, take},
+    ops::ControlFlow::{self, Break, Continue},
 };
 use surgeist_ledger::{Change, Limits, Scope, Tariffs};
 
@@ -23,26 +25,26 @@ pub struct PaintOutcome<'a> {
 }
 
 #[derive(Clone, Copy, Default)]
-pub(crate) struct NodeScratch {
+struct NodeScratch {
     count: usize,
-    pub(crate) start: usize,
-    pub(crate) end: usize,
+    start: usize,
+    end: usize,
     cursor: usize,
-    pub(crate) rank: usize,
+    rank: usize,
     color: u8,
 }
 #[derive(Default)]
-pub(crate) struct State {
-    pub(crate) nodes: Vec<NodeScratch>,
-    pub(crate) edges: Vec<usize>,
-    pub(crate) merge: Vec<usize>,
-    pub(crate) stack: Vec<usize>,
-    pub(crate) membership: Vec<usize>,
-    pub(crate) contexts: Vec<ContextRecord>,
-    pub(crate) children: Vec<usize>,
+struct State {
+    nodes: Vec<NodeScratch>,
+    edges: Vec<usize>,
+    merge: Vec<usize>,
+    stack: Vec<usize>,
+    membership: Vec<usize>,
+    contexts: Vec<ContextRecord>,
+    children: Vec<usize>,
 }
 impl State {
-    pub(crate) fn scratch_cleanup(
+    fn scratch_cleanup(
         &mut self,
         meter: &mut PhaseMeter<'_, '_>,
         root: Scope,
@@ -73,7 +75,7 @@ impl State {
         )?;
         Ok(())
     }
-    pub(crate) fn result_cleanup(
+    fn result_cleanup(
         &mut self,
         meter: &mut PhaseMeter<'_, '_>,
         root: Scope,
@@ -126,20 +128,15 @@ pub fn plan_stacking(
             return PaintOutcome { result, report };
         }
     };
-    let mut state = State::default();
-    let result = run(&mut meter, root, &scopes, &mut state, boxes, root_box);
+    let completion = match prepare(&mut meter, root, &scopes, boxes, root_box) {
+        Continue(core) => core.publish_stacking(&mut meter, scopes[5]),
+        Break(failure) => StackingCompletion::Failed(failure),
+    };
     // Cleanup also runs after every semantic/admission refusal. It never undoes work.
-    let cleanup = meter
-        .with_phase(scopes[6], |phase| {
-            state.scratch_cleanup(phase, root)?;
-            if result.is_err() {
-                state.result_cleanup(phase, root)?;
-            }
-            Ok(())
-        })
+    let result = meter
+        .with_phase(scopes[6], |p| completion.cleanup(p))
         .map_err(setup_error)
         .and_then(|done| done);
-    let result = result.and_then(|value| cleanup.map(|()| value));
     let (result, report) = finish(meter, result);
     PaintOutcome { result, report }
 }
@@ -165,77 +162,212 @@ pub(crate) fn setup_scopes(meter: &mut Meter) -> Result<[Scope; 7], PaintError> 
     Ok(scopes)
 }
 
-fn run<'a>(
-    meter: &mut Meter,
-    root: Scope,
-    scopes: &[Scope; 7],
-    state: &mut State,
-    boxes: &'a [BoxFacts],
+/// Complete immutable topology and order, coupled to the source captured by
+/// the sole validating issuer. Backing cannot be supplied or prepared again.
+struct PreparedCore<'a> {
+    facts: &'a [BoxFacts],
     root_box: BoxId,
-) -> Result<StackingPlan<'a>, PaintError> {
-    prepare(meter, root, scopes, state, boxes, root_box)?;
-    meter
-        .with_phase(scopes[5], |p| {
-            // Construct the actual fixed owner before acquiring its custody. No
-            // allocation can fail here; output backing was admitted when allocated.
-            let plan = StackingPlan {
-                facts: boxes,
-                membership: take(&mut state.membership),
-                contexts: take(&mut state.contexts),
-                children: take(&mut state.children),
-            };
-            let admitted = apply(
-                p,
-                root,
-                Change::Acquire(
-                    ResourceKind::RetainedResultBytes,
-                    u64::try_from(size_of::<StackingPlan<'_>>())
-                        .map_err(|_| PaintError::CapacityOverflow)?,
-                ),
-            );
-            match admitted {
-                Ok(()) => Ok(plan),
-                Err(error) => {
-                    // Return backing to the operation cleanup owner before dropping
-                    // this unpublished fixed value; no accepted fixed-owner charge.
-                    state.membership = plan.membership;
-                    state.contexts = plan.contexts;
-                    state.children = plan.children;
-                    Err(error)
-                }
-            }
-        })
-        .map_err(setup_error)?
+    ledger_root: Scope,
+    state: State,
 }
 
-/// The shared semantic core leaves its admitted state with the calling operation.
-/// Both public planners own publication and cleanup in their one Ledger domain.
-pub(crate) fn prepare(
+impl<'a> PreparedCore<'a> {
+    fn facts(&self) -> &'a [BoxFacts] {
+        self.facts
+    }
+    fn root(&self) -> BoxId {
+        self.root_box
+    }
+    fn nodes(&self) -> &[NodeScratch] {
+        &self.state.nodes
+    }
+    fn membership(&self) -> &[usize] {
+        &self.state.membership
+    }
+    fn contexts(&self) -> &[ContextRecord] {
+        &self.state.contexts
+    }
+    fn children(&self) -> &[usize] {
+        &self.state.children
+    }
+
+    /// Consumes the complete core into publication-only custody. The actual
+    /// fixed result is constructed after entering its publication phase.
+    fn into_publication(self) -> StackingPublication<'a> {
+        StackingPublication {
+            facts: self.facts,
+            cleanup: CoreCleanup {
+                state: self.state,
+                root: self.ledger_root,
+            },
+        }
+    }
+
+    fn into_cleanup(self) -> CoreCleanup {
+        CoreCleanup {
+            state: self.state,
+            root: self.ledger_root,
+        }
+    }
+
+    fn publish_stacking(self, meter: &mut Meter, phase: Scope) -> StackingCompletion<'a> {
+        let mut publication = self.into_publication();
+        let root = publication.cleanup.root;
+        // Phase entry can fail before the callback. Borrowing this transaction
+        // leaves all backing in its custodian on that path; an entered callback
+        // returns the actual result even when its fixed-owner admission fails.
+        let construction = meter.with_phase(phase, |p| {
+            let plan = StackingPlan {
+                facts: publication.facts,
+                membership: take(&mut publication.cleanup.state.membership),
+                contexts: take(&mut publication.cleanup.state.contexts),
+                children: take(&mut publication.cleanup.state.children),
+            };
+            let admission = (|| {
+                let amount = u64::try_from(size_of::<StackingPlan<'_>>())
+                    .map_err(|_| PaintError::CapacityOverflow)?;
+                apply(
+                    p,
+                    root,
+                    Change::Acquire(ResourceKind::RetainedResultBytes, amount),
+                )
+            })();
+            (plan, admission)
+        });
+        let cleanup = publication.cleanup;
+        match construction {
+            Ok((plan, Ok(()))) => StackingCompletion::Admitted(CoreOutput { plan, cleanup }),
+            Ok((plan, Err(error))) => StackingCompletion::Rejected {
+                error,
+                output: CoreOutput { plan, cleanup },
+            },
+            Err(error) => StackingCompletion::Failed(PreparationFailure {
+                error: setup_error(error),
+                cleanup,
+            }),
+        }
+    }
+}
+
+/// A terminal custodian has no preparation or observation operations.
+struct CoreCleanup {
+    state: State,
+    root: Scope,
+}
+impl CoreCleanup {
+    fn scratch_cleanup(&mut self, p: &mut PhaseMeter<'_, '_>) -> Result<(), PaintError> {
+        self.state.scratch_cleanup(p, self.root)
+    }
+    fn result_cleanup(mut self, p: &mut PhaseMeter<'_, '_>) -> Result<(), PaintError> {
+        self.state.result_cleanup(p, self.root)
+    }
+}
+
+/// Publication-only custody retains the exact source and all admitted backing.
+/// Its transaction is borrowed solely by the final construction callback.
+struct StackingPublication<'a> {
+    facts: &'a [BoxFacts],
+    cleanup: CoreCleanup,
+}
+
+struct CoreOutput<'a> {
+    plan: StackingPlan<'a>,
+    cleanup: CoreCleanup,
+}
+
+struct PreparationFailure {
+    error: PaintError,
+    cleanup: CoreCleanup,
+}
+
+enum StackingCompletion<'a> {
+    Admitted(CoreOutput<'a>),
+    Rejected {
+        error: PaintError,
+        output: CoreOutput<'a>,
+    },
+    Failed(PreparationFailure),
+}
+impl<'a> StackingCompletion<'a> {
+    fn cleanup(self, p: &mut PhaseMeter<'_, '_>) -> Result<StackingPlan<'a>, PaintError> {
+        match self {
+            Self::Admitted(CoreOutput { plan, mut cleanup }) => {
+                cleanup.scratch_cleanup(p)?;
+                Ok(plan)
+            }
+            Self::Rejected {
+                error,
+                output: CoreOutput { plan, mut cleanup },
+            } => {
+                let root = cleanup.root;
+                let released = (|| {
+                    cleanup.scratch_cleanup(p)?;
+                    cleanup.result_cleanup(p)?;
+                    release(p, root, plan.membership, ResourceKind::RetainedResultBytes)?;
+                    release(p, root, plan.contexts, ResourceKind::RetainedResultBytes)?;
+                    release(p, root, plan.children, ResourceKind::RetainedResultBytes)
+                })();
+                Err(error).and_then(|value| released.map(|()| value))
+            }
+            Self::Failed(PreparationFailure { error, mut cleanup }) => {
+                let released = (|| {
+                    cleanup.scratch_cleanup(p)?;
+                    cleanup.result_cleanup(p)
+                })();
+                Err(error).and_then(|value| released.map(|()| value))
+            }
+        }
+    }
+}
+
+/// Captures the actual source/root and creates its own backing once. Failed
+/// transitions retain every admitted vector in a cleanup-only owner.
+fn prepare<'a>(
     meter: &mut Meter,
     root: Scope,
     scopes: &[Scope; 7],
-    state: &mut State,
-    boxes: &[BoxFacts],
+    boxes: &'a [BoxFacts],
     root_box: BoxId,
-) -> Result<(), PaintError> {
-    meter
-        .with_phase(scopes[0], |p| validate(p, scopes[0], boxes, root_box))
-        .map_err(setup_error)??;
-    meter
-        .with_phase(scopes[1], |p| topology(p, root, scopes[1], state, boxes))
-        .map_err(setup_error)??;
-    meter
-        .with_phase(scopes[2], |p| order_siblings(p, scopes[2], state, boxes))
-        .map_err(setup_error)??;
-    meter
-        .with_phase(scopes[3], |p| {
-            membership(p, root, scopes[3], state, boxes, root_box)
-        })
-        .map_err(setup_error)??;
-    meter
-        .with_phase(scopes[4], |p| order_contexts(p, root, scopes[4], state))
-        .map_err(setup_error)??;
-    Ok(())
+) -> ControlFlow<PreparationFailure, PreparedCore<'a>> {
+    let mut state = State::default();
+    let result = (|| {
+        meter
+            .with_phase(scopes[0], |p| validate(p, scopes[0], boxes, root_box))
+            .map_err(setup_error)??;
+        meter
+            .with_phase(scopes[1], |p| {
+                topology(p, root, scopes[1], &mut state, boxes)
+            })
+            .map_err(setup_error)??;
+        meter
+            .with_phase(scopes[2], |p| {
+                order_siblings(p, scopes[2], &mut state, boxes)
+            })
+            .map_err(setup_error)??;
+        meter
+            .with_phase(scopes[3], |p| {
+                membership(p, root, scopes[3], &mut state, boxes, root_box)
+            })
+            .map_err(setup_error)??;
+        meter
+            .with_phase(scopes[4], |p| {
+                order_contexts(p, root, scopes[4], &mut state)
+            })
+            .map_err(setup_error)??;
+        Ok(())
+    })();
+    match result {
+        Ok(()) => Continue(PreparedCore {
+            facts: boxes,
+            root_box,
+            ledger_root: root,
+            state,
+        }),
+        Err(error) => Break(PreparationFailure {
+            error,
+            cleanup: CoreCleanup { state, root },
+        }),
+    }
 }
 
 fn validate(
@@ -366,7 +498,7 @@ fn topology(
     Ok(())
 }
 
-pub(crate) use sort_buffers::SortBuffers;
+use sort_buffers::SortBuffers;
 
 // Keep the fields behind a child-module boundary so callers in this module
 // cannot construct unqualified pairs or extract mutable slices.
@@ -375,13 +507,13 @@ mod sort_buffers {
 
     /// Exclusive, equal-length sorting borrows. This proves arity only; callers
     /// retain value-ID/key-table associations and all storage custody.
-    pub(crate) struct SortBuffers<'a> {
+    pub(super) struct SortBuffers<'a> {
         values: &'a mut [usize],
         scratch: &'a mut [usize],
     }
 
     impl<'a> SortBuffers<'a> {
-        pub(crate) fn new(
+        pub(super) fn new(
             values: &'a mut [usize],
             scratch: &'a mut [usize],
         ) -> Result<Self, PaintError> {
@@ -393,7 +525,7 @@ mod sort_buffers {
 
         /// Stable bottom-up merge sort, admitting comparisons before source
         /// reads and each move before scalar copies or destination mutation.
-        pub(crate) fn sort(
+        pub(super) fn sort(
             self,
             p: &mut PhaseMeter<'_, '_>,
             scope: Scope,
@@ -579,3 +711,76 @@ fn order_contexts(
 
 #[cfg(test)]
 mod tests;
+
+#[derive(Clone, Copy, Debug)]
+struct ContextRecord {
+    box_id: BoxId,
+    parent: Option<usize>,
+    level: i64,
+    start: usize,
+    end: usize,
+}
+
+/// Complete context plan borrowing its exact source facts. It is not an
+/// Appendix E primitive sequence and cannot by itself order non-context paint.
+#[derive(Debug)]
+pub struct StackingPlan<'a> {
+    facts: &'a [BoxFacts],
+    membership: Vec<usize>,
+    contexts: Vec<ContextRecord>,
+    children: Vec<usize>,
+}
+impl StackingPlan<'_> {
+    pub fn facts(&self) -> &[BoxFacts] {
+        self.facts
+    }
+    pub fn context_count(&self) -> usize {
+        self.contexts.len()
+    }
+    pub fn root_context(&self) -> ContextView<'_> {
+        ContextView {
+            plan: self,
+            index: 0,
+        }
+    }
+    /// Includes the box itself when it establishes a context; None for an invalid slot.
+    pub fn context_for_box(&self, box_id: BoxId) -> Option<ContextView<'_>> {
+        self.membership
+            .get(box_id.get())
+            .map(|&index| ContextView { plan: self, index })
+    }
+}
+
+/// Borrowed context traversal. No public context handle can be passed to a
+/// different plan; box IDs remain explicitly local to the source fact slice.
+#[derive(Clone, Copy, Debug)]
+pub struct ContextView<'a> {
+    plan: &'a StackingPlan<'a>,
+    index: usize,
+}
+impl<'a> ContextView<'a> {
+    pub fn box_id(self) -> BoxId {
+        self.record().box_id
+    }
+    pub fn stack_level(self) -> i64 {
+        self.record().level
+    }
+    pub fn parent(self) -> Option<Self> {
+        self.record().parent.map(|index| Self {
+            plan: self.plan,
+            index,
+        })
+    }
+    /// Immediate actual child contexts in signed-level then order-modified tree order.
+    pub fn children(self) -> impl ExactSizeIterator<Item = Self> + 'a {
+        self.plan.children[self.record().start..self.record().end]
+            .iter()
+            .map(move |&index| Self {
+                plan: self.plan,
+                index,
+            })
+    }
+    fn record(self) -> &'a ContextRecord {
+        &self.plan.contexts[self.index]
+    }
+}

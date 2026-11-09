@@ -1,4 +1,5 @@
 use super::*;
+use crate::ResourceKind;
 use crate::{
     BoxFacts, BoxId, ChildOrder, ContextEffect, PaintChange, PaintLimits, PaintPhase,
     Participation, Position, ProfileMode, WorkKind, ZIndex,
