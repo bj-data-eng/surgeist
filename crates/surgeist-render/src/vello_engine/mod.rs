@@ -1,4 +1,5 @@
 mod bounded;
+mod dash;
 pub(crate) mod geometry;
 pub(crate) mod glyph;
 pub(crate) mod gradient_endpoints;

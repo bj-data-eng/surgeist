@@ -111,6 +111,38 @@ previous pixels and successful statistics; a fresh valid attempt can retry.
 The [geometry contribution](https://github.com/bj-data-eng/surgeist/issues/2111)
 records the receiving scope and precision boundaries.
 
+## Native stroke dash cycles
+
+`Dash` retains a finite authored offset and finite nonnegative interval values.
+Its constructor owns that intrinsic validity; stroke construction and scene
+normalization do not repeat the immutable interval validation.
+
+After source-path elimination, the native receiver qualifies the actual copied
+pattern before entering the locked dash initializer. It checks the sequential
+period sum, odd-pattern doubling, canonical remainder and phase-search arithmetic, and
+certifies completion within two finite traversals. A required cycle that cannot
+qualify returns `GeometryRealizationError::InsufficientNativeCapacity` before
+submission. The original lengths and offset reach the dependency unchanged;
+closed stroked paths do not receive fitted border spacing.
+In particular, a negative small offset whose remainder rounds to the complete
+finite period refuses rather than silently losing its required initial gap.
+
+Empty and all-zero patterns retain solid-stroke behavior. A positive subnormal
+cycle is not reclassified as solid. The existing path materialization tolerance
+is retained: `0.1` for empty patterns and `0.01` for nonempty patterns, including
+all-zero patterns. Source and post-dash segment elimination both use the shared
+geometry cursor. This initialization certificate does not assert a bound on
+every later dependency-internal curve operation; emitted output remains subject
+to the ordinary admitted path-materialization limits.
+
+Owned scalar proof, interval conversion, source/output visits and actual backing
+are accounted separately. `DashInitializations` counts one qualified opaque
+initializer actually entered, admitted immediately before entry. Its dependency
+arithmetic is an indivisible operation, rather than fabricated interruptible
+scalar prefixes. Solid or eliminated sources enter no initializer. The work
+limit applies to frames; standalone preparation and readback do not produce it.
+Adding this unit also adds a required field to the public `RenderWorkTable`.
+
 ## Gradient paints
 
 `Gradient` supplies ordinary linear, positive elliptical radial, horizontal-distance
