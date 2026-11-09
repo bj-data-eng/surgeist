@@ -7,7 +7,7 @@ use surgeist_html::{
         HtmlAccountingFault, HtmlAuxiliaryScope, HtmlCapScope, HtmlHostScope, HtmlLimits,
         HtmlResource, HtmlWork,
     },
-    values::{Namespace, OrderedAttributes, QualifiedName},
+    values::{Attribute, Namespace, OrderedAttributes, QualifiedName},
 };
 use surgeist_html_semantics::{
     HtmlCapture, HtmlCaptureBuilder, HtmlCaptureBuilderSubject, HtmlCaptureRegistryInput,
@@ -690,4 +690,74 @@ fn a_hosted_builder_names_its_scope_by_the_schema() {
     .unwrap();
     let names: Vec<_> = report(&ledger).scopes.iter().map(|s| s.name).collect();
     assert_eq!(names, ["host", HtmlCapScope::Capture.name()]);
+}
+
+/// A `time` element whose `datetime` attribute is parsed by the numeric owner, and the request
+/// that reads it.
+fn time() -> (HtmlCapture, HtmlSemanticRequest) {
+    let (mut b, d) = builder();
+    let time = b
+        .add_element(
+            &d,
+            QualifiedName::new(Namespace::html(), None, "time"),
+            OrderedAttributes::new([Attribute::new(
+                QualifiedName::new(Namespace::none(), None, "datetime"),
+                "2011-11-18",
+            )])
+            .unwrap(),
+            HtmlCapturedIsValue::Unavailable,
+            HtmlCaptureRegistryInput::Null,
+        )
+        .unwrap();
+    b.establish_children(&time, &[]).unwrap();
+    b.establish_root(&time).unwrap();
+    let capture = b.finish().unwrap();
+    let request = HtmlSemanticRequest::new(
+        capture.subject_id(&time).unwrap(),
+        HtmlSemanticQuery::TimeElement,
+    );
+    (capture, request)
+}
+
+fn time_limits(bytes: usize) -> HtmlSemanticLimits {
+    HtmlSemanticLimits::new(100_000_000, 100, 1_000, 10_000, bytes, 1_000_000)
+}
+
+/// A host cap on the allocated bytes tighter than the session's own limit bounds the numeric
+/// materialization as a session limit of that size does: the same stop, with the same usage,
+/// because the numeric owner refuses before it allocates beyond the cap.
+#[test]
+fn a_host_byte_cap_bounds_a_numeric_materialization_as_a_session_limit_of_that_size_does() {
+    let (c, request) = time();
+    let cx = context(&c);
+    let requests = [request];
+    let baseline = private(&c, &cx, time_limits(10_000_000))
+        .query(&requests)
+        .unwrap()
+        .usage()
+        .allocated_bytes();
+    assert!(baseline > 0);
+    for cap in 0..baseline {
+        let expected = private(&c, &cx, time_limits(cap))
+            .query(&requests)
+            .unwrap_err();
+        let (ledger, root) = host(
+            HtmlLimits::from_fn(
+                |_| u64::MAX,
+                |resource| {
+                    if resource == HtmlResource::AllocatedBytes {
+                        cap as u64
+                    } else {
+                        u64::MAX
+                    }
+                },
+            ),
+            8,
+        );
+        let accounting = HtmlHostScope::new(ledger, root);
+        let mut session = open(&c, &cx, time_limits(10_000_000), &accounting).unwrap();
+        let failure = session.query(&requests).unwrap_err();
+        assert_eq!(failure.kind(), expected.kind(), "host cap {cap}");
+        assert_eq!(failure.usage(), expected.usage(), "host cap {cap}");
+    }
 }
