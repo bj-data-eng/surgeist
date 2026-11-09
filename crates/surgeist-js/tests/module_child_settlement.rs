@@ -223,7 +223,6 @@ fn child_settlement(rejected: bool) {
     parent.link(context.access()).unwrap();
     let child_result = evaluate(&child, &mut context);
     let child_identity = child_result.identity();
-    let mut child_wait = native(&child_result, &mut context);
     let parent_result = evaluate(&parent, &mut context);
     let parent_identity = parent_result.identity();
     let mut parent_wait = native(&parent_result, &mut context);
@@ -253,6 +252,8 @@ fn child_settlement(rejected: bool) {
             .then(Some(observer_fn), None, context.access())
             .unwrap()
     };
+    // Register the authored observer first: the hook retains the first child reaction.
+    let mut child_wait = native(&child_result, &mut context);
     let mut observation_wait = native(&observation, &mut context);
     let hook_leaf: JsValue = JsObject::with_null_proto(context.runtime()).into();
     let original: JsError = PanicError::new("authored child settlement publication failure")
