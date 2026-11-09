@@ -883,7 +883,7 @@ fn dynamic_import_committed_successor_survives_a_later_stop_in_its_loader() {
         outcome.result.unwrap_err().as_engine(),
         Some(&expected_stop)
     );
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
     assert_eq!(executor.actual_stops.borrow().len(), 1);
     assert_eq!(
         executor.actual_stops.borrow()[0].as_engine(),

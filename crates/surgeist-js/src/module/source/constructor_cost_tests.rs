@@ -193,8 +193,8 @@ fn exact_constructor_and_final_publication_refusal(fixture: Fixture) {
         ))
     );
     assert_eq!(outcome.result.unwrap_err(), error);
-    assert_eq!(outcome.report.module_metadata_work(), total - 1);
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.module_metadata_work().unwrap(), total - 1);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
     assert_eq!(next_scope_identity(&context), next_scope);
     assert!(!outcome.report.effects_started());
     assert!(executor.0.borrow().is_empty());
@@ -217,8 +217,8 @@ fn exact_constructor_and_final_publication_refusal(fixture: Fixture) {
         )
         .unwrap();
     fixture.assert_module(&accepted.result.unwrap());
-    assert_eq!(accepted.report.module_metadata_work(), total);
-    assert_eq!(accepted.report.instructions(), 0);
+    assert_eq!(accepted.report.module_metadata_work().unwrap(), total);
+    assert_eq!(accepted.report.instructions().unwrap(), 0);
     assert_eq!(next_scope_identity(&context), next_scope);
     assert!(!accepted.report.effects_started());
     assert!(executor.0.borrow().is_empty());

@@ -1,7 +1,7 @@
 use crate::{
     GradientPosition, GradientPositionComponent, PaintError, PaintOptions, PaintReport,
     ResourceKind, WorkKind,
-    accounting::{Meter, OperationKind, PhaseMeter, apply, bytes, charge, setup_error},
+    accounting::{Meter, OperationKind, PhaseMeter, apply, bytes, charge, finish, setup_error},
 };
 use surgeist_layout::{PhysicalAxis, Point, Size};
 use surgeist_ledger::{Change, Limits, Scope, Tariffs};
@@ -119,10 +119,8 @@ pub fn resolve_radial_gradient(
     let scopes = match setup_scopes(&mut meter) {
         Ok(scopes) => scopes,
         Err(error) => {
-            return RadialGradientOutcome {
-                result: Err(error),
-                report: meter.finish().map(PaintReport),
-            };
+            let (result, report) = finish(meter, Err(error));
+            return RadialGradientOutcome { result, report };
         }
     };
     let mut retained = false;
@@ -153,7 +151,7 @@ pub fn resolve_radial_gradient(
                     p,
                     root,
                     Change::Acquire(
-                        ResourceKind::RetainedResultBytes.dimension(),
+                        ResourceKind::RetainedResultBytes,
                         bytes::<RadialGradientGeometry>(1)?,
                     ),
                 )?;
@@ -163,25 +161,25 @@ pub fn resolve_radial_gradient(
             })
             .map_err(setup_error)?
     })();
-    meter
+    let cleanup = meter
         .with_phase(scopes[3], |p| {
             if result.is_err() && retained {
                 apply(
                     p,
                     root,
                     Change::Release(
-                        ResourceKind::RetainedResultBytes.dimension(),
-                        bytes::<RadialGradientGeometry>(1).expect("admitted fixed result size"),
+                        ResourceKind::RetainedResultBytes,
+                        bytes::<RadialGradientGeometry>(1)?,
                     ),
-                )
-                .expect("release exact admitted result custody");
+                )?;
             }
+            Ok(())
         })
-        .expect("owned fixed cleanup scope");
-    RadialGradientOutcome {
-        result,
-        report: meter.finish().map(PaintReport),
-    }
+        .map_err(setup_error)
+        .and_then(|done| done);
+    let result = result.and_then(|value| cleanup.map(|()| value));
+    let (result, report) = finish(meter, result);
+    RadialGradientOutcome { result, report }
 }
 
 fn setup_scopes(meter: &mut Meter) -> Result<[Scope; 4], PaintError> {
@@ -586,7 +584,10 @@ mod tests {
                 exact_affine_zero(&mut RadialWork::new(p, scopes[1]), a, b, c)
             })
             .unwrap();
-        (result, PaintReport(meter.finish().unwrap()))
+        (
+            result,
+            PaintReport::new(meter.finish().unwrap().unwrap()).unwrap(),
+        )
     }
 
     #[test]
@@ -642,7 +643,7 @@ mod tests {
             }
         );
         assert_eq!(report.work(WorkKind::GradientCoordinate), 47);
-        for kind in ResourceKind::ALL {
+        for &kind in ResourceKind::ALL {
             assert_eq!(report.live(kind), 0);
         }
         let (result, report) = proof(PaintLimits::unlimited(), 0.0, 2.0, -0.0);
@@ -693,7 +694,7 @@ mod tests {
         let report = outcome.report.unwrap();
         assert_eq!(report.work(WorkKind::OutputRecord), 0);
         assert_eq!(report.peak(ResourceKind::RetainedResultBytes), 0);
-        for kind in ResourceKind::ALL {
+        for &kind in ResourceKind::ALL {
             assert_eq!(report.live(kind), 0);
         }
 
@@ -707,7 +708,7 @@ mod tests {
         assert_eq!(report.peak(ResourceKind::RetainedResultBytes), fixed);
         assert_eq!(report.work(WorkKind::GradientValidation), 7);
         assert_eq!(report.work(WorkKind::GradientCoordinate), 1);
-        for kind in ResourceKind::ALL {
+        for &kind in ResourceKind::ALL {
             assert_eq!(report.live(kind), 0);
         }
 

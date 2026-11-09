@@ -1,6 +1,6 @@
 use crate::{
-    Change, Checkpoint, Error, IntervalReport, Limits, Operation, PhaseObservation, Report, Scope,
-    Tariffs, Usage, profile::Profile,
+    Change, Checkpoint, Dimension, Error, IntervalReport, Limits, Operation, PhaseObservation,
+    Report, Scope, Tariffs, Usage, profile::Profile,
 };
 use std::{
     ops::AsyncFnOnce,
@@ -14,11 +14,11 @@ use std::{
 /// and end checkpoints after cancellation and cleanup. Consumers own terminal
 /// status and checkpoint completion. Clones keep the operation alive.
 #[derive(Clone)]
-pub struct SharedOperation<const W: usize, const R: usize> {
+pub struct SharedOperation<W: Dimension, R: Dimension> {
     operation: Arc<Mutex<Operation<W, R>>>,
 }
 
-impl<const W: usize, const R: usize> Operation<W, R> {
+impl<W: Dimension, R: Dimension> Operation<W, R> {
     /// Moves this operation into optional shared synchronization. No raw lock or
     /// replaceable mutable operation is exposed. Plain operations remain unshared.
     pub fn share(self) -> SharedOperation<W, R> {
@@ -28,7 +28,7 @@ impl<const W: usize, const R: usize> Operation<W, R> {
     }
 }
 
-impl<const W: usize, const R: usize> SharedOperation<W, R> {
+impl<W: Dimension, R: Dimension> SharedOperation<W, R> {
     fn lock(&self) -> MutexGuard<'_, Operation<W, R>> {
         self.operation
             .lock()
@@ -125,13 +125,13 @@ impl<const W: usize, const R: usize> SharedOperation<W, R> {
     }
 }
 
-struct SharedPhase<const W: usize, const R: usize> {
+struct SharedPhase<W: Dimension, R: Dimension> {
     operation: SharedOperation<W, R>,
     scope: Scope,
     start: Option<Duration>,
 }
 
-impl<const W: usize, const R: usize> Drop for SharedPhase<W, R> {
+impl<W: Dimension, R: Dimension> Drop for SharedPhase<W, R> {
     fn drop(&mut self) {
         self.operation.lock().record_phase(self.scope, self.start);
     }

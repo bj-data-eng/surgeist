@@ -22,7 +22,7 @@ fn policy(work: [u64; 8], resources: [u64; 2], profile: ProfileMode) -> PaintOpt
     for (kind, limit) in STACKING_WORK_KINDS.into_iter().zip(work) {
         limits = limits.with_work_limit(kind, limit);
     }
-    for (kind, limit) in ResourceKind::ALL.into_iter().zip(resources) {
+    for (kind, limit) in ResourceKind::ALL.iter().copied().zip(resources) {
         limits = limits.with_resource_limit(kind, limit);
     }
     PaintOptions::new(limits, profile)
@@ -290,7 +290,7 @@ fn exact_work_and_storage_caps_succeed_and_every_one_under_cap_refuses_cleanly()
     for (kind, expected) in STACKING_WORK_KINDS.into_iter().zip(THREE_BOX_WORK) {
         assert_eq!(report.work(kind), expected, "{kind:?}");
     }
-    for kind in WorkKind::ALL {
+    for &kind in WorkKind::ALL {
         if !STACKING_WORK_KINDS.contains(&kind) {
             assert_eq!(report.work(kind), 0, "{kind:?}");
         }
@@ -321,12 +321,12 @@ fn exact_work_and_storage_caps_succeed_and_every_one_under_cap_refuses_cleanly()
         assert_eq!(refusal.origin, expected_origin);
         let report = outcome.report.unwrap();
         assert!(report.work(WorkKind::BoxValidation) > 0);
-        for resource in ResourceKind::ALL {
+        for &resource in ResourceKind::ALL {
             assert_eq!(report.live(resource), 0);
         }
         assert!(report.refusals().next().is_some());
     }
-    for kind in ResourceKind::ALL {
+    for &kind in ResourceKind::ALL {
         let outcome = plan_stacking(
             &boxes,
             BoxId::new(0),
@@ -338,7 +338,7 @@ fn exact_work_and_storage_caps_succeed_and_every_one_under_cap_refuses_cleanly()
         );
         assert!(matches!(outcome.result, Err(PaintError::Budget(_))));
         let report = outcome.report.unwrap();
-        for resource in ResourceKind::ALL {
+        for &resource in ResourceKind::ALL {
             assert_eq!(report.live(resource), 0);
         }
         assert!(report.peak(kind) < caps[kind as usize]);
@@ -360,7 +360,7 @@ fn actual_failed_reservation_records_no_accepted_resource_peak() {
             resource: ResourceKind::ScratchBytes
         }
     );
-    let report = PaintReport(meter.finish().unwrap());
+    let report = PaintReport::new(meter.finish().unwrap().unwrap()).unwrap();
     assert_eq!(report.peak(ResourceKind::ScratchBytes), 0);
     assert_eq!(report.live(ResourceKind::ScratchBytes), 0);
     assert_eq!(report.phases().next().unwrap().accepted_batches(), 0);
@@ -442,8 +442,8 @@ fn paint_order_work_limits_preserve_named_admissions_refusals_and_reports() {
         assert_eq!(refusal.limiting_phase, PaintPhase::Operation);
         assert_eq!(refusal.change, PaintChange::Work { kind, amount: 1 });
         assert_eq!(refusal.current, 2);
-        let report = PaintReport(meter.finish().unwrap());
-        for dimension in WorkKind::ALL {
+        let report = PaintReport::new(meter.finish().unwrap().unwrap()).unwrap();
+        for &dimension in WorkKind::ALL {
             assert_eq!(
                 report.work(dimension),
                 if dimension == kind { 2 } else { 0 }
@@ -489,7 +489,7 @@ fn paint_order_reserves_scopes_for_stacking_and_both_paint_phases() {
         ),
         Err(surgeist_ledger::Error::ScopeLimit { limit: 10 })
     ));
-    let report = PaintReport(meter.finish().unwrap());
+    let report = PaintReport::new(meter.finish().unwrap().unwrap()).unwrap();
     for phase in [PaintPhase::PaintValidation, PaintPhase::PaintSequence] {
         assert_eq!(
             report

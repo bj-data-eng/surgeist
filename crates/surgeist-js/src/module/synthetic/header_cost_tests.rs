@@ -65,7 +65,7 @@ fn empty_synthetic_headers_store_and_publication_follow_independently_summed_pre
             ))
         );
         assert_eq!(outcome.result.unwrap_err(), error);
-        assert_eq!(outcome.report.module_metadata_work(), accepted);
+        assert_eq!(outcome.report.module_metadata_work().unwrap(), accepted);
         assert_eq!(observed.get(), stores);
         assert!(!outcome.report.effects_started());
     }
@@ -79,7 +79,7 @@ fn empty_synthetic_headers_store_and_publication_follow_independently_summed_pre
         )
         .unwrap();
     outcome.result.unwrap();
-    assert_eq!(outcome.report.module_metadata_work(), total);
+    assert_eq!(outcome.report.module_metadata_work().unwrap(), total);
     assert_eq!(stores.get(), 1);
     assert!(!outcome.report.effects_started());
 }
@@ -103,6 +103,6 @@ fn moving_an_owned_synthetic_path_adds_no_fictitious_payload_copy() {
         )
         .unwrap();
     assert_eq!(outcome.result.unwrap().path(), Some(expected.as_path()));
-    assert_eq!(outcome.report.module_metadata_work(), total);
+    assert_eq!(outcome.report.module_metadata_work().unwrap(), total);
     assert!(!outcome.report.effects_started());
 }

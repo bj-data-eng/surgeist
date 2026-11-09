@@ -75,7 +75,7 @@ fn profiled_evaluation_observes_vm_active_time_across_a_native_callback() {
         .unwrap();
     assert_eq!(control.result.unwrap(), JsValue::new(42));
     assert_eq!(CALLBACKS.get(), 1);
-    let instructions = control.report.instructions();
+    let instructions = control.report.instructions().unwrap();
     assert!(instructions > 0 && instructions <= 64);
 
     TIME.set(Duration::ZERO);
@@ -90,9 +90,9 @@ fn profiled_evaluation_observes_vm_active_time_across_a_native_callback() {
         .unwrap();
     assert_eq!(outcome.result.unwrap(), JsValue::new(42));
     assert_eq!(CALLBACKS.get(), 1);
-    assert_eq!(outcome.report.instructions(), instructions);
+    assert_eq!(outcome.report.instructions().unwrap(), instructions);
     assert!(outcome.report.effects_started());
-    let profile = outcome.report.profile().unwrap();
+    let profile = outcome.report.profile().unwrap().unwrap();
     assert_eq!(profile.elapsed, Some(Duration::from_millis(7)));
     // Only executing the registered callback advances time. Parsing and
     // compilation finish at zero, before this single synchronous VM slice.
@@ -112,7 +112,7 @@ fn task_profiles_separate_vm_active_slices_scheduling_wait_and_inclusive_lifetim
         .eval_with_budget(Source::from_bytes(SOURCE), ExecutionOptions::new(64))
         .unwrap();
     assert_eq!(control.result.unwrap(), JsValue::new(42));
-    let instructions = control.report.instructions();
+    let instructions = control.report.instructions().unwrap();
     for mode in modes() {
         TIME.set(Duration::ZERO);
         CALLBACKS.set(0);
@@ -150,9 +150,9 @@ fn task_profiles_separate_vm_active_slices_scheduling_wait_and_inclusive_lifetim
         assert!(pending_polls > 1);
         assert_eq!(outcome.result.unwrap(), JsValue::new(42));
         assert_eq!(CALLBACKS.get(), 1);
-        assert_eq!(outcome.report.instructions(), instructions);
+        assert_eq!(outcome.report.instructions().unwrap(), instructions);
         if let ProfileMode::Off = mode {
-            assert!(outcome.report.profile().is_none());
+            assert!(outcome.report.profile().unwrap().is_none());
             assert_eq!(CLOCK_READS.get(), 0);
             continue;
         }
@@ -161,7 +161,7 @@ fn task_profiles_separate_vm_active_slices_scheduling_wait_and_inclusive_lifetim
             ProfileMode::Summary { timing: true } | ProfileMode::Detailed { timing: true, .. }
         );
         let wait = Duration::from_millis(100 * pending_polls as u64);
-        let profile = outcome.report.profile().unwrap();
+        let profile = outcome.report.profile().unwrap().unwrap();
         assert_eq!(
             profile.elapsed,
             timed.then_some(Duration::from_millis(17) + wait)
@@ -212,7 +212,7 @@ fn every_profile_mode_preserves_async_first_refusal_and_clock_silence_when_untim
         .eval_with_budget(Source::from_bytes(SOURCE), ExecutionOptions::new(64))
         .unwrap();
     assert_eq!(control.result.unwrap(), JsValue::new(42));
-    let limit = control.report.instructions() - 1;
+    let limit = control.report.instructions().unwrap() - 1;
     for mode in modes() {
         TIME.set(Duration::ZERO);
         CALLBACKS.set(0);
@@ -249,7 +249,7 @@ fn every_profile_mode_preserves_async_first_refusal_and_clock_silence_when_untim
                 limit
             }))
         );
-        assert_eq!(outcome.report.instructions(), limit);
+        assert_eq!(outcome.report.instructions().unwrap(), limit);
         assert_eq!(CALLBACKS.get(), 1);
         if !matches!(
             mode,

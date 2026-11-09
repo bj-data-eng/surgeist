@@ -1,7 +1,8 @@
 use crate::{
     PaintError, PaintOptions, PaintReport, ResourceKind, WorkKind,
     accounting::{
-        Meter, OperationKind, PhaseMeter, allocate, apply, bytes, charge, release, setup_error,
+        Meter, OperationKind, PhaseMeter, allocate, apply, bytes, charge, finish, release,
+        setup_error,
     },
 };
 use std::mem::take;
@@ -173,10 +174,8 @@ pub fn resolve_gradient_stops<'a, C>(
     let scopes = match setup_scopes(&mut meter) {
         Ok(scopes) => scopes,
         Err(error) => {
-            return GradientStopsOutcome {
-                result: Err(error),
-                report: meter.finish().map(PaintReport),
-            };
+            let (result, report) = finish(meter, Err(error));
+            return GradientStopsOutcome { result, report };
         }
     };
     let mut records = Vec::new();
@@ -221,7 +220,7 @@ pub fn resolve_gradient_stops<'a, C>(
                     p,
                     root,
                     Change::Acquire(
-                        ResourceKind::RetainedResultBytes.dimension(),
+                        ResourceKind::RetainedResultBytes,
                         bytes::<GradientStops<'_, C>>(1)?,
                     ),
                 )?;
@@ -235,7 +234,7 @@ pub fn resolve_gradient_stops<'a, C>(
             })
             .map_err(setup_error)?
     })();
-    meter
+    let cleanup = meter
         .with_phase(scopes[5], |p| {
             if result.is_err() {
                 release(
@@ -243,25 +242,25 @@ pub fn resolve_gradient_stops<'a, C>(
                     root,
                     take(&mut records),
                     ResourceKind::RetainedResultBytes,
-                );
+                )?;
                 if fixed_owner {
                     apply(
                         p,
                         root,
                         Change::Release(
-                            ResourceKind::RetainedResultBytes.dimension(),
-                            bytes::<GradientStops<'_, C>>(1).expect("admitted fixed owner size"),
+                            ResourceKind::RetainedResultBytes,
+                            bytes::<GradientStops<'_, C>>(1)?,
                         ),
-                    )
-                    .expect("release exact admitted fixed owner");
+                    )?;
                 }
             }
+            Ok(())
         })
-        .expect("owned fixed cleanup scope");
-    GradientStopsOutcome {
-        result,
-        report: meter.finish().map(PaintReport),
-    }
+        .map_err(setup_error)
+        .and_then(|done| done);
+    let result = result.and_then(|value| cleanup.map(|()| value));
+    let (result, report) = finish(meter, result);
+    GradientStopsOutcome { result, report }
 }
 
 fn setup_scopes(meter: &mut Meter) -> Result<[Scope; 6], PaintError> {
@@ -884,7 +883,7 @@ mod tests {
         );
         let report = outcome.report.unwrap();
         assert_eq!(report.work(WorkKind::OutputRecord), 4);
-        for kind in ResourceKind::ALL {
+        for &kind in ResourceKind::ALL {
             assert_eq!(report.live(kind), 0);
         }
 
@@ -911,7 +910,7 @@ mod tests {
             report.peak(ResourceKind::RetainedResultBytes),
             backing + fixed
         );
-        for kind in ResourceKind::ALL {
+        for &kind in ResourceKind::ALL {
             assert_eq!(report.live(kind), 0);
         }
     }
@@ -947,7 +946,7 @@ mod tests {
         assert_eq!(report.work(WorkKind::GradientStopVisit), 1);
         assert_eq!(report.work(WorkKind::GradientCoordinate), 0);
         assert_eq!(report.work(WorkKind::OutputRecord), 0);
-        for kind in ResourceKind::ALL {
+        for &kind in ResourceKind::ALL {
             assert_eq!(report.live(kind), 0);
         }
 
@@ -964,7 +963,7 @@ mod tests {
         assert_eq!(report.work(WorkKind::GradientStopVisit), 8);
         assert_eq!(report.work(WorkKind::GradientCoordinate), 0);
         assert_eq!(report.work(WorkKind::OutputRecord), 1);
-        for kind in ResourceKind::ALL {
+        for &kind in ResourceKind::ALL {
             assert_eq!(report.live(kind), 0);
         }
     }

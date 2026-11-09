@@ -67,7 +67,7 @@ fn synchronous_scope_returns_generic_values_and_reentry_uses_the_same_owner() {
         .unwrap();
     assert_eq!(outcome.result.unwrap(), 42);
     assert!(!denied_callback.get());
-    assert!(outcome.report.instructions() > 0);
+    assert!(outcome.report.instructions().unwrap() > 0);
     assert!(matches!(
         outcome.report.termination(),
         ExecutionTermination::Completed
@@ -76,7 +76,7 @@ fn synchronous_scope_returns_generic_values_and_reentry_uses_the_same_owner() {
         .with_execution(ExecutionOptions::new(0), |_| Ok(()))
         .unwrap();
     unit.result.unwrap();
-    assert_eq!(unit.report.instructions(), 0);
+    assert_eq!(unit.report.instructions().unwrap(), 0);
     assert!(!unit.report.effects_started());
 }
 
@@ -126,7 +126,7 @@ fn ordinary_guest_error_is_a_completed_result_without_an_abandoned_stop() {
         outcome.report.termination(),
         ExecutionTermination::Completed
     ));
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
 }
 
 #[test]
@@ -152,7 +152,7 @@ fn synchronous_scope_keeps_the_first_stop_over_swallowed_success_or_later_error(
             outcome.result.unwrap_err().as_engine(),
             Some(&instruction_error(32))
         );
-        assert_eq!(outcome.report.instructions(), 32);
+        assert_eq!(outcome.report.instructions().unwrap(), 32);
         // Completed includes an ordinary delivered Err; the stop is not also
         // copied into an abandoned report.
         assert!(matches!(
@@ -192,8 +192,8 @@ fn independently_prepared_scripts_compose_across_awaits_on_one_reserved_context(
     let (outcome, pending_polls) = complete(&mut task);
     assert_eq!(outcome.result.unwrap(), JsValue::new(42));
     assert!(pending_polls > 2);
-    assert!(outcome.report.instructions() > 0);
-    assert_eq!(outcome.report.source_reads(), 0);
+    assert!(outcome.report.instructions().unwrap() > 0);
+    assert_eq!(outcome.report.source_reads().unwrap(), 0);
     drop(task);
     assert_eq!(
         context.eval(Source::from_bytes("partial")).unwrap(),
@@ -209,7 +209,7 @@ fn script_quantum_polls_share_exact_and_one_short_instruction_limits() {
         .eval_with_budget(Source::from_bytes(SOURCE), ExecutionOptions::new(4096))
         .unwrap();
     assert_eq!(control.result.unwrap(), JsValue::new(15));
-    let exact = control.report.instructions();
+    let exact = control.report.instructions().unwrap();
     assert!(exact > 2);
     for limit in [exact, exact - 1] {
         let mut context = Context::default();
@@ -228,7 +228,7 @@ fn script_quantum_polls_share_exact_and_one_short_instruction_limits() {
             pending_polls > 2,
             "the script did not cross multiple VM suspensions"
         );
-        assert_eq!(outcome.report.instructions(), limit);
+        assert_eq!(outcome.report.instructions().unwrap(), limit);
         if limit == exact {
             assert_eq!(outcome.result.unwrap(), JsValue::new(15));
         } else {
@@ -242,7 +242,7 @@ fn script_quantum_polls_share_exact_and_one_short_instruction_limits() {
             ExecutionTermination::Completed
         ));
         let published = receipt.report().unwrap();
-        assert_eq!(published.instructions(), limit);
+        assert_eq!(published.instructions().unwrap(), limit);
         assert!(matches!(
             published.termination(),
             ExecutionTermination::Completed
@@ -309,11 +309,12 @@ fn unpolled_task_disposes_callback_captures_before_publishing_zero_work_abandonm
         report.termination(),
         ExecutionTermination::Abandoned { first_stop: None }
     ));
-    assert_eq!(report.instructions(), 0);
+    assert_eq!(report.instructions().unwrap(), 0);
     assert!(!report.effects_started());
     assert!(
         report
             .profile()
+            .unwrap()
             .unwrap()
             .scopes
             .iter()
@@ -362,10 +363,10 @@ fn cancel_drops_polled_inner_work_before_publishing_and_keeps_committed_effects(
         report.termination(),
         ExecutionTermination::Abandoned { first_stop: None }
     ));
-    assert!(report.instructions() > 0);
+    assert!(report.instructions().unwrap() > 0);
     assert!(std::ptr::eq(
-        report.profile().unwrap(),
-        receipt.report().unwrap().profile().unwrap()
+        report.profile().unwrap().unwrap(),
+        receipt.report().unwrap().profile().unwrap().unwrap()
     ));
     assert_eq!(
         context.eval(Source::from_bytes("innerEffect")).unwrap(),
@@ -459,8 +460,8 @@ fn completion_and_receipt_share_one_immutable_profile_body() {
     assert!(unpublished_at_drop.get());
     let report = receipt.report().unwrap();
     assert!(std::ptr::eq(
-        outcome.report.profile().unwrap(),
-        report.profile().unwrap()
+        outcome.report.profile().unwrap().unwrap(),
+        report.profile().unwrap().unwrap()
     ));
     let canceled_after_ready = task.cancel();
     assert!(matches!(
@@ -468,14 +469,14 @@ fn completion_and_receipt_share_one_immutable_profile_body() {
         ExecutionTermination::Completed
     ));
     assert!(std::ptr::eq(
-        report.profile().unwrap(),
-        canceled_after_ready.profile().unwrap()
+        report.profile().unwrap().unwrap(),
+        canceled_after_ready.profile().unwrap().unwrap()
     ));
     drop(outcome.report);
     let later = retained.report().unwrap();
     assert!(std::ptr::eq(
-        report.profile().unwrap(),
-        later.profile().unwrap()
+        report.profile().unwrap().unwrap(),
+        later.profile().unwrap().unwrap()
     ));
     assert!(matches!(
         later.termination(),
@@ -509,7 +510,7 @@ fn canceling_after_a_swallowed_stop_moves_it_into_abandoned_report() {
         panic!("cancel must retain the undelivered first stop");
     };
     assert_eq!(first_stop.as_engine(), Some(&instruction_error(32)));
-    assert_eq!(report.instructions(), 32);
+    assert_eq!(report.instructions().unwrap(), 32);
     let published = receipt.report().unwrap();
     assert!(std::ptr::eq(report.termination(), published.termination()));
     assert_eq!(context.stack_trace().count(), 0);
@@ -647,7 +648,7 @@ fn panicking_discard_of_generic_success_still_publishes_the_first_stop_as_abando
         panic!("unreturned first stop must move into abandonment");
     };
     assert_eq!(first_stop.as_engine(), Some(&instruction_error(32)));
-    assert_eq!(report.instructions(), 32);
+    assert_eq!(report.instructions().unwrap(), 32);
     drop(task);
     assert_eq!(
         context.eval(Source::from_bytes("42")).unwrap(),

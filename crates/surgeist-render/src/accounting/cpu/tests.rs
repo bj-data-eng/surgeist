@@ -85,7 +85,7 @@ fn final_readback_transfer_overflow_keeps_custody_until_mandatory_disposal() {
         .ledger
         .apply(
             cpu.0.core.scopes[RenderCpuScope::ReadbackOutput.index()],
-            Change::Work(RenderWork::ReadbackTransferredBytes.dimension(), u64::MAX),
+            Change::Work(RenderWork::ReadbackTransferredBytes, u64::MAX),
         )
         .unwrap();
     let error = hold.transfer_readback().unwrap_err();
@@ -573,7 +573,7 @@ fn imports_keep_lifetime_custody_without_owner_cycles_or_caller_tokens() {
         ledger
             .usage(root)
             .unwrap()
-            .live(RenderResource::RetainedCpuBytes.dimension()),
+            .live(RenderResource::RetainedCpuBytes),
         baseline() + 2 * entry_bytes() + 4 + size_of::<Arc<[u8]>>() as u64
     );
     drop(import);
@@ -581,7 +581,7 @@ fn imports_keep_lifetime_custody_without_owner_cycles_or_caller_tokens() {
         ledger
             .usage(root)
             .unwrap()
-            .live(RenderResource::RetainedCpuBytes.dimension()),
+            .live(RenderResource::RetainedCpuBytes),
         0
     );
     // Ordinary caller values remain valid after Render attribution ends.
@@ -818,7 +818,7 @@ fn failed_checkpoint_extraction_is_a_fault_and_never_a_zero_interval() {
     assert_eq!(
         actual.scopes[0]
             .usage
-            .live(RenderResource::RetainedCpuBytes.dimension()),
+            .live(RenderResource::RetainedCpuBytes),
         baseline()
     );
     assert!(checkpoint.finish().is_err());

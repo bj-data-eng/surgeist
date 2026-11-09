@@ -90,10 +90,10 @@ fn idle_owner_move_and_swap_preserve_state_reports_and_selected_operation_limits
             .unwrap()
     };
     assert_eq!(completed.result.unwrap(), JsValue::new(42));
-    let instructions = completed.report.instructions();
+    let instructions = completed.report.instructions().unwrap();
     assert!(instructions > 0);
     let retained_report = completed.report.clone();
-    let retained_batches = retained_report.profile().unwrap().scopes[0].accepted_batches;
+    let retained_batches = retained_report.profile().unwrap().unwrap().scopes[0].accepted_batches;
     assert!(retained_batches > 0);
 
     let mut second = Context::default();
@@ -133,7 +133,7 @@ fn idle_owner_move_and_swap_preserve_state_reports_and_selected_operation_limits
             limit: 0
         }))
     );
-    assert_eq!(denied.report.instructions(), 0);
+    assert_eq!(denied.report.instructions().unwrap(), 0);
     let accepted = moved
         .access()
         .eval_with_budget(
@@ -142,7 +142,7 @@ fn idle_owner_move_and_swap_preserve_state_reports_and_selected_operation_limits
         )
         .unwrap();
     assert_eq!(accepted.result.unwrap(), JsValue::new(42));
-    assert!(accepted.report.instructions() > 0);
+    assert!(accepted.report.instructions().unwrap() > 0);
     assert_eq!(
         second
             .access()
@@ -162,9 +162,9 @@ fn idle_owner_move_and_swap_preserve_state_reports_and_selected_operation_limits
         JsValue::new(true)
     );
 
-    assert_eq!(retained_report.instructions(), instructions);
+    assert_eq!(retained_report.instructions().unwrap(), instructions);
     assert_eq!(
-        retained_report.profile().unwrap().scopes[0].accepted_batches,
+        retained_report.profile().unwrap().unwrap().scopes[0].accepted_batches,
         retained_batches
     );
     assert!(matches!(
@@ -172,8 +172,8 @@ fn idle_owner_move_and_swap_preserve_state_reports_and_selected_operation_limits
         ExecutionTermination::Completed
     ));
     assert!(std::ptr::eq(
-        completed.report.profile().unwrap(),
-        retained_report.profile().unwrap()
+        completed.report.profile().unwrap().unwrap(),
+        retained_report.profile().unwrap().unwrap()
     ));
 }
 
@@ -384,7 +384,7 @@ fn descriptor_getter_work_keeps_first_stop_and_skips_later_getters_and_guest_cle
             limit: 64
         }))
     );
-    assert_eq!(outcome.report.instructions(), 64);
+    assert_eq!(outcome.report.instructions().unwrap(), 64);
     assert!(outcome.report.effects_started());
     assert_eq!(owner.access().eval(Source::from_bytes("descriptorStarted === 7 && typeof descriptorLater === 'undefined' && typeof descriptorFinally === 'undefined'" )).unwrap(), JsValue::new(true));
     assert_eq!(
@@ -559,7 +559,7 @@ fn object_call_and_construct_preserve_receiver_results_and_instruction_admission
             .unwrap(),
         receiver
     );
-    let exact = control.report.instructions();
+    let exact = control.report.instructions().unwrap();
     assert!(exact > 1);
     for limit in [exact, exact - 1] {
         let outcome = owner
@@ -567,7 +567,7 @@ fn object_call_and_construct_preserve_receiver_results_and_instruction_admission
                 function.call(&receiver, &[JsValue::new(2)], access.reborrow())
             })
             .unwrap();
-        assert_eq!(outcome.report.instructions(), limit);
+        assert_eq!(outcome.report.instructions().unwrap(), limit);
         if limit == exact {
             assert_eq!(outcome.result.unwrap(), JsValue::new(42));
         } else {
@@ -588,7 +588,7 @@ fn object_call_and_construct_preserve_receiver_results_and_instruction_admission
             constructor.construct(&[JsValue::new(42)], None, access.reborrow())
         })
         .unwrap();
-    assert!(constructed.report.instructions() > 0);
+    assert!(constructed.report.instructions().unwrap() > 0);
     let instance = constructed.result.unwrap();
     let mut access = owner.access();
     assert_eq!(
@@ -623,7 +623,7 @@ fn direct_native_function_call_accepts_access_and_keeps_reentrant_guest_work_in_
         })
         .unwrap();
     assert_eq!(outcome.result.unwrap(), JsValue::new(42));
-    assert!(outcome.report.instructions() > 0);
+    assert!(outcome.report.instructions().unwrap() > 0);
     assert_eq!(
         owner
             .access()
@@ -667,7 +667,7 @@ fn same_runtime_peer_context_keeps_its_selected_budget_separate_from_a_retained_
                 })
                 .unwrap();
             assert_eq!(selected_peer.result.unwrap(), JsValue::new(42));
-            assert!(selected_peer.report.instructions() > 0);
+            assert!(selected_peer.report.instructions().unwrap() > 0);
             assert!(matches!(
                 selected_peer.report.termination(),
                 ExecutionTermination::Completed
@@ -681,7 +681,7 @@ fn same_runtime_peer_context_keeps_its_selected_budget_separate_from_a_retained_
             limit: 0
         }))
     );
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
     assert!(!outcome.report.effects_started());
     assert_eq!(original.access().eval(Source::from_bytes(
         "ownerValue === 7 && typeof originalEffect === 'undefined' && typeof peerValue === 'undefined'",
@@ -698,7 +698,7 @@ fn same_runtime_peer_context_keeps_its_selected_budget_separate_from_a_retained_
         })
         .unwrap();
     assert_eq!(fresh.result.unwrap(), JsValue::new(42));
-    assert!(fresh.report.instructions() > 0);
+    assert!(fresh.report.instructions().unwrap() > 0);
 }
 
 #[test]
@@ -913,7 +913,9 @@ fn parsed_module_lifecycle_and_exports_compose_through_one_scoped_access() {
         Ok(exported)
     }).unwrap();
     assert_eq!(outcome.result.unwrap(), JsValue::new(42));
-    assert!(outcome.report.instructions() > 0 && outcome.report.instructions() <= 256);
+    assert!(
+        outcome.report.instructions().unwrap() > 0 && outcome.report.instructions().unwrap() <= 256
+    );
     assert!(outcome.report.effects_started());
     assert_eq!(
         owner
@@ -987,8 +989,8 @@ fn module_parse_uses_the_selected_source_budget_before_guest_effects() {
             limit: 0
         }))
     );
-    assert_eq!(outcome.report.source_reads(), 0);
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.source_reads().unwrap(), 0);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
     assert!(!outcome.report.effects_started());
     assert_eq!(
         owner

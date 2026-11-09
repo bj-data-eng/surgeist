@@ -1,9 +1,9 @@
 //! Renderer-lifetime explicit CPU backing. Ledger is the only byte/work authority.
 use super::{
-    Account, AccountedVec, RESOURCE_COUNT, RenderAccountingError, RenderAccountingOptions,
-    RenderClock, RenderCpuIdentity, RenderCpuInterval, RenderCpuScope, RenderCpuSnapshot,
-    RenderLedger, RenderLifetimeUsage, RenderQuantity, RenderRefusalReason, RenderResource,
-    RenderWork, StorageAccount, WORK_COUNT, map_ledger_failure,
+    Account, AccountedVec, RenderAccountingError, RenderAccountingOptions, RenderClock,
+    RenderCpuIdentity, RenderCpuInterval, RenderCpuScope, RenderCpuSnapshot, RenderLedger,
+    RenderLifetimeUsage, RenderQuantity, RenderRefusalReason, RenderResource, RenderResourceTable,
+    RenderWork, RenderWorkTable, StorageAccount, map_ledger_failure,
 };
 use crate::{Error, Image, PreparedGlyphRun, Result, image::ImageContentIdentity};
 use std::{
@@ -32,29 +32,15 @@ impl Core {
         let surgeist_ledger::Error::Refused(refusal) = error else {
             return map_ledger_failure(error);
         };
-        let scope = RenderCpuScope::ALL
+        let Some(scope) = RenderCpuScope::ALL
             .into_iter()
             .find(|s| self.scopes[s.index()] == refusal.scope)
-            .expect("owned CPU refusal scope");
+        else {
+            return RenderAccountingError::Invariant;
+        };
         let (quantity, amount) = match refusal.change {
-            Change::Work(d, n) => (
-                RenderQuantity::Work(
-                    RenderWork::ALL
-                        .into_iter()
-                        .find(|w| w.dimension() == d)
-                        .expect("CPU work schema"),
-                ),
-                n,
-            ),
-            Change::Acquire(d, n) | Change::Release(d, n) => (
-                RenderQuantity::Resource(
-                    RenderResource::ALL
-                        .into_iter()
-                        .find(|r| r.dimension() == d)
-                        .expect("CPU resource schema"),
-                ),
-                n,
-            ),
+            Change::Work(d, n) => (RenderQuantity::Work(d), n),
+            Change::Acquire(d, n) | Change::Release(d, n) => (RenderQuantity::Resource(d), n),
         };
         let reason = match refusal.reason {
             surgeist_ledger::RefusalReason::Limit { limit } => RenderRefusalReason::Limit { limit },
@@ -76,7 +62,7 @@ impl Core {
         let mut fault = self.lock();
         *fault.get_or_insert(error)
     }
-    fn mandatory_apply(&self, scope: RenderCpuScope, change: Change<WORK_COUNT, RESOURCE_COUNT>) {
+    fn mandatory_apply(&self, scope: RenderCpuScope, change: Change<RenderWork, RenderResource>) {
         let mut fault = self.lock();
         if let Err(error) = self.ledger.apply(self.scopes[scope.index()], change) {
             fault.get_or_insert(self.diagnostic(error));
@@ -91,7 +77,7 @@ impl Core {
     fn apply(
         &self,
         scope: RenderCpuScope,
-        change: Change<WORK_COUNT, RESOURCE_COUNT>,
+        change: Change<RenderWork, RenderResource>,
     ) -> Result<()> {
         let mut fault = self.lock();
         if let Some(error) = *fault {
@@ -161,14 +147,18 @@ impl RendererCpu {
     pub(crate) fn seed_readback_transfer_for_test(&self, amount: u64) -> Result<()> {
         self.0.core.apply(
             RenderCpuScope::ReadbackOutput,
-            Change::Work(RenderWork::ReadbackTransferredBytes.dimension(), amount),
+            Change::Work(RenderWork::ReadbackTransferredBytes, amount),
         )
     }
     pub(crate) fn new(options: RenderAccountingOptions) -> Result<Self> {
-        let mut resources = [u64::MAX; RESOURCE_COUNT];
-        resources[RenderResource::RetainedCpuBytes.index()] = options.limits.retained_bytes();
-        resources[RenderResource::ScratchCpuBytes.index()] = options.limits.scratch_bytes();
-        let limits = Limits::new([u64::MAX; WORK_COUNT], resources);
+        let limits = Limits::new(
+            RenderWorkTable::splat(u64::MAX),
+            RenderResourceTable {
+                RetainedCpuBytes: options.limits.retained_bytes(),
+                ScratchCpuBytes: options.limits.scratch_bytes(),
+                ..RenderResourceTable::splat(u64::MAX)
+            },
+        );
         let profile = options.profile.ledger_cpu();
         let setup = |error| Error::from(map_ledger_failure(error));
         let mut operation = match options.clock {
@@ -255,7 +245,11 @@ impl RendererCpu {
             .snapshot()
             .map_err(|e| Error::from(map_ledger_failure(e)))?;
         let usage = match &profile {
-            Some(profile) => profile.scopes[RenderCpuScope::Root.index()].usage,
+            Some(profile) => profile
+                .scopes
+                .get(RenderCpuScope::Root.index())
+                .map(|root| root.usage)
+                .ok_or(RenderAccountingError::Invariant)?,
             None => self
                 .0
                 .core
@@ -263,12 +257,12 @@ impl RendererCpu {
                 .usage(self.0.core.scopes[RenderCpuScope::Root.index()])
                 .map_err(|e| Error::from(map_ledger_failure(e)))?,
         };
-        Ok(RenderCpuSnapshot {
-            identity: RenderCpuIdentity(self.0.core.scopes[RenderCpuScope::Root.index()]),
-            usage: RenderLifetimeUsage::new(usage),
+        Ok(RenderCpuSnapshot::new(
+            RenderCpuIdentity(self.0.core.scopes[RenderCpuScope::Root.index()]),
+            RenderLifetimeUsage::new(usage),
             profile,
-            fault: *fault,
-        })
+            *fault,
+        )?)
     }
 }
 
@@ -324,17 +318,14 @@ impl CpuAccount {
             .ledger
             .check_batch(
                 self.core.scopes[self.scope.index()],
-                &[Change::Acquire(
-                    resource.dimension(),
-                    self.amount(resource, amount)?,
-                )],
+                &[Change::Acquire(resource, self.amount(resource, amount)?)],
             )
             .map_err(|e| Error::from(self.core.diagnostic(e)))
     }
     pub(crate) fn acquire(&self, resource: RenderResource, amount: usize) -> Result<CpuHold> {
         let amount = self.amount(resource, amount)?;
         self.core
-            .apply(self.scope, Change::Acquire(resource.dimension(), amount))?;
+            .apply(self.scope, Change::Acquire(resource, amount))?;
         Ok(CpuHold {
             core: self.core.clone(),
             scope: self.scope,
@@ -384,10 +375,8 @@ impl CpuAccount {
     /// Mandatory actual cleanup is checked-unlimited. Its failure preserves the
     /// first health fault and cannot prevent other provable releases/rollback.
     pub(crate) fn maintenance(&self, work: RenderWork, amount: u64) {
-        self.core.mandatory_apply(
-            RenderCpuScope::Cleanup,
-            Change::Work(work.dimension(), amount),
-        );
+        self.core
+            .mandatory_apply(RenderCpuScope::Cleanup, Change::Work(work, amount));
     }
     fn probe(&self, forward: Option<&Account>) -> Result<()> {
         self.visit(RenderWork::ResourceProbes, forward)
@@ -395,9 +384,7 @@ impl CpuAccount {
     fn visit(&self, work: RenderWork, forward: Option<&Account>) -> Result<()> {
         match forward {
             Some(account) => account.work(work, 1),
-            None => self
-                .core
-                .apply(self.scope, Change::Work(work.dimension(), 1)),
+            None => self.core.apply(self.scope, Change::Work(work, 1)),
         }
     }
     fn owner(&self) -> Result<&Arc<State>> {
@@ -615,8 +602,8 @@ impl CpuHold {
             .apply_batch(
                 self.core.scopes[self.scope.index()],
                 &[
-                    Change::Work(RenderWork::ReadbackTransferredBytes.dimension(), amount),
-                    Change::Release(self.resource.dimension(), amount),
+                    Change::Work(RenderWork::ReadbackTransferredBytes, amount),
+                    Change::Release(self.resource, amount),
                 ],
             )
             .map_err(|error| {
@@ -630,10 +617,8 @@ impl CpuHold {
 impl Drop for CpuHold {
     fn drop(&mut self) {
         if let Some(amount) = self.amount.take() {
-            self.core.mandatory_apply(
-                self.scope,
-                Change::Release(self.resource.dimension(), amount),
-            );
+            self.core
+                .mandatory_apply(self.scope, Change::Release(self.resource, amount));
         }
     }
 }
@@ -669,7 +654,7 @@ impl CpuImport {
                 None => {
                     self.owner.core.mandatory_apply(
                         RenderCpuScope::Cleanup,
-                        Change::Work(RenderWork::ResourceProbes.dimension(), 1),
+                        Change::Work(RenderWork::ResourceProbes, 1),
                     );
                 }
             }
@@ -906,7 +891,7 @@ impl Registry {
         for (index, entry) in self.entries.iter().enumerate() {
             core.mandatory_apply(
                 RenderCpuScope::Cleanup,
-                Change::Work(RenderWork::ResourceProbes.dimension(), 1),
+                Change::Work(RenderWork::ResourceProbes, 1),
             );
             if entry.key == key {
                 found = Some(index);
@@ -967,10 +952,10 @@ impl CpuCheckpoint {
             .ledger
             .end_checkpoint(&checkpoint)
             .map_err(|e| core.record(core.diagnostic(e)))?;
-        Ok(RenderCpuInterval {
-            identity: RenderCpuIdentity(core.scopes[RenderCpuScope::Root.index()]),
+        Ok(RenderCpuInterval::new(
+            RenderCpuIdentity(core.scopes[RenderCpuScope::Root.index()]),
             interval,
-        })
+        )?)
     }
 }
 impl Drop for CpuCheckpoint {

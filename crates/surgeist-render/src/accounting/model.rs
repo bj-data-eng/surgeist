@@ -1,258 +1,178 @@
 use crate::ErrorCode;
 use std::time::Duration;
-use surgeist_ledger::{IntervalReport, IntervalUsage};
+use surgeist_ledger::{Dimension, Event, IntervalReport, IntervalUsage, Report, Scope, dimensions};
 
-/// Named work units for preparation, frame execution and generation custody.
-/// Limits apply only to dimensions produced by the selected operation. Generation
-/// lifecycle maintenance and result transfer remain checked-unlimited.
-/// Values of different dimensions are not additive.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum RenderWork {
-    /// Authored or normalized command records actually inspected, including repeated traversals.
-    CommandVisits,
-    /// Contour endpoints or path elements inspected, including provider callbacks
-    /// and repeated validation, materialization and encoding walks.
-    PathElementVisits,
-    /// Glyph facts inspected by Render, including repeated validation and dispatch.
-    GlyphVisits,
-    /// Paint records or nodes inspected during COLR qualification, retained-paint
-    /// consumption, normalization and encoding.
-    PaintVisits,
-    /// Gradient stops inspected during validation, materialization or encoding.
-    GradientStopVisits,
-    /// Directory/instance records, bitmap strikes and bitmap index records inspected.
-    FontRecordVisits,
-    /// Axis records or scalar coordinates inspected or converted by Render.
-    CoordinateVisits,
-    /// Qualifier point-flag records, points, decoded deltas or provider points inspected.
-    OutlinePointVisits,
-    /// Variation tuples inspected by the qualifier.
-    VariationTupleVisits,
-    /// Composite child edges inspected by the closure qualifier.
-    GlyphComponentVisits,
-    /// Filter operations inspected during normalization, planning or encoding,
-    /// including paired fixed-size serialized operation records in exact proofs.
-    FilterOperationVisits,
-    /// Gaussian sample records calculated or inspected by Render, including
-    /// paired fixed-size serialized samples in exact proofs.
-    KernelSampleVisits,
-    /// Frame, pass or runtime graph nodes actually inspected, including repeated proof passes.
-    GraphNodeVisits,
-    /// Frame, pass or runtime graph relationships actually inspected.
-    GraphEdgeVisits,
-    /// Explicit resource/key/cache lookups or candidate comparisons, including
-    /// repeated registry/index/proof searches; excludes opaque bucket probes.
-    ResourceProbes,
-    /// Original glyph facts accepted once at the public preparation boundary.
-    GlyphInputs,
-    /// Original normalized coordinate values accepted once per input instance.
-    CoordinateInputs,
-    /// Nonempty placed Text runs accepted once in whole-layout preflight.
-    TextRuns,
-    /// Placed Text decoration records accepted once in preflight.
-    TextDecorations,
-    /// Retained glyph path elements appended, including synthesis and clip expansion.
-    PathElementsEmitted,
-    /// Normalized command records appended, including nested records and style expansion.
-    CommandsEmitted,
-    /// Normalized fill commands appended.
-    FillsEmitted,
-    /// Normalized stroke commands appended.
-    StrokesEmitted,
-    /// Normalized shadow instances appended.
-    ShadowsEmitted,
-    /// Normalized image draw occurrences appended.
-    ImagesEmitted,
-    /// Normalized glyph instances retained in emitted commands.
-    GlyphsEmitted,
-    /// Normalized layer commands appended.
-    LayersEmitted,
-    /// Repeat tile records emitted by the image-repeat producer.
-    RepeatTiles,
-    /// Image source payload bytes admitted to an actual atlas build, once per selected source.
-    ImageSourceBytes,
-    /// Selected expanded image-region texels admitted to an atlas build; excludes unused packing space.
-    AtlasTexels,
-    /// Actual source bytes passed to queue buffer or texture write calls.
-    UploadBytes,
-    /// Bytes serialized into PNG compressed storage, shader sources, native parameters,
-    /// kernels or packed raster streams.
-    SerializedBytes,
-    /// Output-scissor area scheduled for actual color, blur, colorize or shadow-merge passes.
-    ScheduledFilterTexels,
-    /// Nonempty native compute dispatch calls issued by the internal raster engine.
-    RasterDispatches,
-    /// Logical internal Vello raster passes actually encoded.
-    VelloPasses,
-    /// Native attachment-clear passes and image-processing shader draws, including backdrop-copy draws.
-    ImagePasses,
-    /// Native composition draws encoded by the closed GPU graph.
-    CompositePasses,
-    /// Actual native texture-to-texture copy commands encoded.
-    CopyOperations,
-    /// Custom graph-to-surface presentation draws encoded.
-    CustomPresentPasses,
-    /// Actual queue submission calls issued.
-    Submissions,
-    /// Actual host surface presentation calls issued.
-    Presentations,
-    /// Actual texture-to-buffer copy commands encoded for explicit readback.
-    ReadbackCopies,
-    /// Actual native mapping requests registered for explicit readback.
-    ReadbackMapRequests,
-    /// Readback source rows inspected, including an incomplete row that fails validation.
-    ReadbackRows,
-    /// Logical unpadded RGBA8 bytes actually copied from mapped readback rows.
-    ReadbackBytes,
-    /// Actual admitted output capacity transferred at successful caller handoff.
-    /// This is Renderer CPU lifetime work after the readback interval closes.
-    ReadbackTransferredBytes,
-    /// Explicit prepared-output backing units transferred to caller custody.
-    PreparedTransferredBytes,
-    /// Native descriptor/opaque constructor calls about to be invoked; failed previews do not count.
-    ResourceAllocationRequests,
-    /// Returned descriptor-bearing managed or external handles, including provisional handles.
-    ResourceAllocations,
-    /// Compatible idle managed cache entries selected for reuse.
-    ResourceReuses,
-    /// Managed leases returned to idle custody after exact identity validation.
-    ResourceLeaseReturns,
-    /// Managed entries removed by discard, idle retention or atlas replacement cleanup.
-    ResourceEvictions,
-    /// Device generations retired once, after mandatory live-custody release.
-    ResourceRetirements,
-    /// Returned opaque native handles or explicit dependency utility aggregates.
-    GpuObjectsCreated,
-    /// Image occurrences whose exact content was already observed in the current history draft.
-    ImageContentHits,
-    /// Image occurrences that introduce distinct exact content into the current history draft.
-    ImageContentMisses,
-    /// Source payload bytes of first-observed exact image content; independent of GPU uploads.
-    ImageFirstObservedBytes,
-    /// PNG chunk type/payload bytes CRC-processed, plus scanline bytes unfiltered.
-    PngByteVisits,
-    /// Decoded RGBA pixels inspected for the transparent-image early exit.
-    ImageTexelVisits,
-    /// Authored command records inspected, including nested records.
-    AuthoredCommands,
-    /// Authored fill commands inspected.
-    AuthoredFills,
-    /// Authored stroke commands inspected.
-    AuthoredStrokes,
-    /// Authored shadow instances inspected.
-    AuthoredShadows,
-    /// Authored image occurrences inspected, including image paints and intrinsic bitmaps.
-    AuthoredImages,
-    /// Authored glyph instances inspected.
-    AuthoredGlyphs,
-    /// Authored nested layer commands inspected.
-    AuthoredLayers,
-    /// Exact image identity records actually copied or shifted.
-    ImageIdentityCopies,
-    /// Pairs of bytes actually compared for exact image content, including first difference.
-    ImageIdentityByteComparisons,
-    /// Owned retained identity/history records disposed by uncapped maintenance;
-    /// excludes borrowed observation references and ordinary Image clones.
-    ImageIdentityDrops,
-    /// Actual host surface texture acquisition calls.
-    SurfaceAcquisitions,
-    /// Shader binding records actually inspected or converted.
-    ShaderBindingVisits,
-    /// Shader key elements actually copied into distinct owned backing.
-    ShaderKeyCopies,
-    /// Typed elements actually copied between owned Vello encoding streams.
-    EncodingStreamCopies,
-    /// Private raster recording commands actually appended.
-    RasterCommandsEmitted,
-    /// Private raster recording command records actually inspected.
-    RasterCommandVisits,
-    /// Render-owned raster source/index records copied or moved, including
-    /// replacement growth and insertion shifts; excludes the eleven streams.
-    RasterResourceCopies,
+dimensions! {
+    /// Named work units for preparation, frame execution and generation custody.
+    /// Limits apply only to dimensions produced by the selected operation. Generation
+    /// lifecycle maintenance and result transfer remain checked-unlimited.
+    /// Values of different dimensions are not additive.
+    #[non_exhaustive]
+    pub enum RenderWork => RenderWorkTable {
+        /// Authored or normalized command records actually inspected, including repeated traversals.
+        CommandVisits,
+        /// Contour endpoints or path elements inspected, including provider callbacks
+        /// and repeated validation, materialization and encoding walks.
+        PathElementVisits,
+        /// Glyph facts inspected by Render, including repeated validation and dispatch.
+        GlyphVisits,
+        /// Paint records or nodes inspected during COLR qualification, retained-paint
+        /// consumption, normalization and encoding.
+        PaintVisits,
+        /// Gradient stops inspected during validation, materialization or encoding.
+        GradientStopVisits,
+        /// Directory/instance records, bitmap strikes and bitmap index records inspected.
+        FontRecordVisits,
+        /// Axis records or scalar coordinates inspected or converted by Render.
+        CoordinateVisits,
+        /// Qualifier point-flag records, points, decoded deltas or provider points inspected.
+        OutlinePointVisits,
+        /// Variation tuples inspected by the qualifier.
+        VariationTupleVisits,
+        /// Composite child edges inspected by the closure qualifier.
+        GlyphComponentVisits,
+        /// Filter operations inspected during normalization, planning or encoding,
+        /// including paired fixed-size serialized operation records in exact proofs.
+        FilterOperationVisits,
+        /// Gaussian sample records calculated or inspected by Render, including
+        /// paired fixed-size serialized samples in exact proofs.
+        KernelSampleVisits,
+        /// Frame, pass or runtime graph nodes actually inspected, including repeated proof passes.
+        GraphNodeVisits,
+        /// Frame, pass or runtime graph relationships actually inspected.
+        GraphEdgeVisits,
+        /// Explicit resource/key/cache lookups or candidate comparisons, including
+        /// repeated registry/index/proof searches; excludes opaque bucket probes.
+        ResourceProbes,
+        /// Original glyph facts accepted once at the public preparation boundary.
+        GlyphInputs,
+        /// Original normalized coordinate values accepted once per input instance.
+        CoordinateInputs,
+        /// Nonempty placed Text runs accepted once in whole-layout preflight.
+        TextRuns,
+        /// Placed Text decoration records accepted once in preflight.
+        TextDecorations,
+        /// Retained glyph path elements appended, including synthesis and clip expansion.
+        PathElementsEmitted,
+        /// Normalized command records appended, including nested records and style expansion.
+        CommandsEmitted,
+        /// Normalized fill commands appended.
+        FillsEmitted,
+        /// Normalized stroke commands appended.
+        StrokesEmitted,
+        /// Normalized shadow instances appended.
+        ShadowsEmitted,
+        /// Normalized image draw occurrences appended.
+        ImagesEmitted,
+        /// Normalized glyph instances retained in emitted commands.
+        GlyphsEmitted,
+        /// Normalized layer commands appended.
+        LayersEmitted,
+        /// Repeat tile records emitted by the image-repeat producer.
+        RepeatTiles,
+        /// Image source payload bytes admitted to an actual atlas build, once per selected source.
+        ImageSourceBytes,
+        /// Selected expanded image-region texels admitted to an atlas build; excludes unused packing space.
+        AtlasTexels,
+        /// Actual source bytes passed to queue buffer or texture write calls.
+        UploadBytes,
+        /// Bytes serialized into PNG compressed storage, shader sources, native parameters,
+        /// kernels or packed raster streams.
+        SerializedBytes,
+        /// Output-scissor area scheduled for actual color, blur, colorize or shadow-merge passes.
+        ScheduledFilterTexels,
+        /// Nonempty native compute dispatch calls issued by the internal raster engine.
+        RasterDispatches,
+        /// Logical internal Vello raster passes actually encoded.
+        VelloPasses,
+        /// Native attachment-clear passes and image-processing shader draws, including backdrop-copy draws.
+        ImagePasses,
+        /// Native composition draws encoded by the closed GPU graph.
+        CompositePasses,
+        /// Actual native texture-to-texture copy commands encoded.
+        CopyOperations,
+        /// Custom graph-to-surface presentation draws encoded.
+        CustomPresentPasses,
+        /// Actual queue submission calls issued.
+        Submissions,
+        /// Actual host surface presentation calls issued.
+        Presentations,
+        /// Actual texture-to-buffer copy commands encoded for explicit readback.
+        ReadbackCopies,
+        /// Actual native mapping requests registered for explicit readback.
+        ReadbackMapRequests,
+        /// Readback source rows inspected, including an incomplete row that fails validation.
+        ReadbackRows,
+        /// Logical unpadded RGBA8 bytes actually copied from mapped readback rows.
+        ReadbackBytes,
+        /// Actual admitted output capacity transferred at successful caller handoff.
+        /// This is Renderer CPU lifetime work after the readback interval closes.
+        ReadbackTransferredBytes,
+        /// Explicit prepared-output backing units transferred to caller custody.
+        PreparedTransferredBytes,
+        /// Native descriptor/opaque constructor calls about to be invoked; failed previews do not count.
+        ResourceAllocationRequests,
+        /// Returned descriptor-bearing managed or external handles, including provisional handles.
+        ResourceAllocations,
+        /// Compatible idle managed cache entries selected for reuse.
+        ResourceReuses,
+        /// Managed leases returned to idle custody after exact identity validation.
+        ResourceLeaseReturns,
+        /// Managed entries removed by discard, idle retention or atlas replacement cleanup.
+        ResourceEvictions,
+        /// Device generations retired once, after mandatory live-custody release.
+        ResourceRetirements,
+        /// Returned opaque native handles or explicit dependency utility aggregates.
+        GpuObjectsCreated,
+        /// Image occurrences whose exact content was already observed in the current history draft.
+        ImageContentHits,
+        /// Image occurrences that introduce distinct exact content into the current history draft.
+        ImageContentMisses,
+        /// Source payload bytes of first-observed exact image content; independent of GPU uploads.
+        ImageFirstObservedBytes,
+        /// PNG chunk type/payload bytes CRC-processed, plus scanline bytes unfiltered.
+        PngByteVisits,
+        /// Decoded RGBA pixels inspected for the transparent-image early exit.
+        ImageTexelVisits,
+        /// Authored command records inspected, including nested records.
+        AuthoredCommands,
+        /// Authored fill commands inspected.
+        AuthoredFills,
+        /// Authored stroke commands inspected.
+        AuthoredStrokes,
+        /// Authored shadow instances inspected.
+        AuthoredShadows,
+        /// Authored image occurrences inspected, including image paints and intrinsic bitmaps.
+        AuthoredImages,
+        /// Authored glyph instances inspected.
+        AuthoredGlyphs,
+        /// Authored nested layer commands inspected.
+        AuthoredLayers,
+        /// Exact image identity records actually copied or shifted.
+        ImageIdentityCopies,
+        /// Pairs of bytes actually compared for exact image content, including first difference.
+        ImageIdentityByteComparisons,
+        /// Owned retained identity/history records disposed by uncapped maintenance;
+        /// excludes borrowed observation references and ordinary Image clones.
+        ImageIdentityDrops,
+        /// Actual host surface texture acquisition calls.
+        SurfaceAcquisitions,
+        /// Shader binding records actually inspected or converted.
+        ShaderBindingVisits,
+        /// Shader key elements actually copied into distinct owned backing.
+        ShaderKeyCopies,
+        /// Typed elements actually copied between owned Vello encoding streams.
+        EncodingStreamCopies,
+        /// Private raster recording commands actually appended.
+        RasterCommandsEmitted,
+        /// Private raster recording command records actually inspected.
+        RasterCommandVisits,
+        /// Render-owned raster source/index records copied or moved, including
+        /// replacement growth and insertion shifts; excludes the eleven streams.
+        RasterResourceCopies,
+    }
 }
 impl RenderWork {
-    pub(crate) const ALL: [Self; 76] = [
-        Self::CommandVisits,
-        Self::PathElementVisits,
-        Self::GlyphVisits,
-        Self::PaintVisits,
-        Self::GradientStopVisits,
-        Self::FontRecordVisits,
-        Self::CoordinateVisits,
-        Self::OutlinePointVisits,
-        Self::VariationTupleVisits,
-        Self::GlyphComponentVisits,
-        Self::FilterOperationVisits,
-        Self::KernelSampleVisits,
-        Self::GraphNodeVisits,
-        Self::GraphEdgeVisits,
-        Self::ResourceProbes,
-        Self::GlyphInputs,
-        Self::CoordinateInputs,
-        Self::TextRuns,
-        Self::TextDecorations,
-        Self::PathElementsEmitted,
-        Self::CommandsEmitted,
-        Self::FillsEmitted,
-        Self::StrokesEmitted,
-        Self::ShadowsEmitted,
-        Self::ImagesEmitted,
-        Self::GlyphsEmitted,
-        Self::LayersEmitted,
-        Self::RepeatTiles,
-        Self::ImageSourceBytes,
-        Self::AtlasTexels,
-        Self::UploadBytes,
-        Self::SerializedBytes,
-        Self::ScheduledFilterTexels,
-        Self::RasterDispatches,
-        Self::VelloPasses,
-        Self::ImagePasses,
-        Self::CompositePasses,
-        Self::CopyOperations,
-        Self::CustomPresentPasses,
-        Self::Submissions,
-        Self::Presentations,
-        Self::ReadbackCopies,
-        Self::ReadbackMapRequests,
-        Self::ReadbackRows,
-        Self::ReadbackBytes,
-        Self::ReadbackTransferredBytes,
-        Self::PreparedTransferredBytes,
-        Self::ResourceAllocationRequests,
-        Self::ResourceAllocations,
-        Self::ResourceReuses,
-        Self::ResourceLeaseReturns,
-        Self::ResourceEvictions,
-        Self::ResourceRetirements,
-        Self::GpuObjectsCreated,
-        Self::ImageContentHits,
-        Self::ImageContentMisses,
-        Self::ImageFirstObservedBytes,
-        Self::PngByteVisits,
-        Self::ImageTexelVisits,
-        Self::AuthoredCommands,
-        Self::AuthoredFills,
-        Self::AuthoredStrokes,
-        Self::AuthoredShadows,
-        Self::AuthoredImages,
-        Self::AuthoredGlyphs,
-        Self::AuthoredLayers,
-        Self::ImageIdentityCopies,
-        Self::ImageIdentityByteComparisons,
-        Self::ImageIdentityDrops,
-        Self::SurfaceAcquisitions,
-        Self::ShaderBindingVisits,
-        Self::ShaderKeyCopies,
-        Self::EncodingStreamCopies,
-        Self::RasterCommandsEmitted,
-        Self::RasterCommandVisits,
-        Self::RasterResourceCopies,
-    ];
-    pub(crate) const fn index(self) -> usize {
-        self as usize
-    }
     pub(crate) const fn limit_supported(self) -> bool {
         self.supported_for(RenderAttemptKind::Frame)
             || self.supported_for(RenderAttemptKind::Readback)
@@ -407,56 +327,29 @@ impl RenderWork {
             ),
         }
     }
-    pub(crate) const fn dimension(self) -> surgeist_ledger::Work<WORK_COUNT> {
-        match surgeist_ledger::Work::new(self.index()) {
-            Some(d) => d,
-            None => unreachable!(),
-        }
-    }
 }
-/// Named resource units. See the crate accounting reference for units.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[non_exhaustive]
-pub enum RenderResource {
-    /// Live explicit result backing: actual Vec capacity bytes, font/image payloads and documented fixed result units.
-    RetainedCpuBytes,
-    /// Live actual temporary Vec capacity bytes and declared fixed decoder workspace.
-    ScratchCpuBytes,
-    /// Live descriptor-defined native buffer/texture payload bytes held by Render; not driver allocation or RSS.
-    GpuBytes,
-    /// Live observed opaque native handles and explicitly documented dependency utility aggregates.
-    OpaqueGpuObjects,
-    /// Tile records retained by one actual repeat call; nested calls renew this local quota.
-    LocalRepeatTileQuota,
-    /// Selected image source payload bytes for one actual atlas build.
-    LocalAtlasSourceByteQuota,
-    /// Selected expanded image-region texels for one actual atlas build.
-    LocalAtlasTexelQuota,
-    /// Classification of managed allocation bytes registered in cache entries; not additional physical storage.
-    RegisteredCacheGpuBytes,
-    /// Classification of managed allocation bytes eligible for idle retention; not additional physical storage.
-    IdleCacheGpuBytes,
-}
-impl RenderResource {
-    pub(crate) const ALL: [Self; 9] = [
-        Self::RetainedCpuBytes,
-        Self::ScratchCpuBytes,
-        Self::GpuBytes,
-        Self::OpaqueGpuObjects,
-        Self::LocalRepeatTileQuota,
-        Self::LocalAtlasSourceByteQuota,
-        Self::LocalAtlasTexelQuota,
-        Self::RegisteredCacheGpuBytes,
-        Self::IdleCacheGpuBytes,
-    ];
-    pub(crate) const fn index(self) -> usize {
-        self as usize
-    }
-    pub(crate) const fn dimension(self) -> surgeist_ledger::Resource<RESOURCE_COUNT> {
-        match surgeist_ledger::Resource::new(self.index()) {
-            Some(d) => d,
-            None => unreachable!(),
-        }
+dimensions! {
+    /// Named resource units. See the crate accounting reference for units.
+    #[non_exhaustive]
+    pub enum RenderResource => RenderResourceTable {
+        /// Live explicit result backing: actual Vec capacity bytes, font/image payloads and documented fixed result units.
+        RetainedCpuBytes,
+        /// Live actual temporary Vec capacity bytes and declared fixed decoder workspace.
+        ScratchCpuBytes,
+        /// Live descriptor-defined native buffer/texture payload bytes held by Render; not driver allocation or RSS.
+        GpuBytes,
+        /// Live observed opaque native handles and explicitly documented dependency utility aggregates.
+        OpaqueGpuObjects,
+        /// Tile records retained by one actual repeat call; nested calls renew this local quota.
+        LocalRepeatTileQuota,
+        /// Selected image source payload bytes for one actual atlas build.
+        LocalAtlasSourceByteQuota,
+        /// Selected expanded image-region texels for one actual atlas build.
+        LocalAtlasTexelQuota,
+        /// Classification of managed allocation bytes registered in cache entries; not additional physical storage.
+        RegisteredCacheGpuBytes,
+        /// Classification of managed allocation bytes eligible for idle retention; not additional physical storage.
+        IdleCacheGpuBytes,
     }
 }
 /// Named fixed preparation phase. See the crate accounting reference for units.
@@ -701,8 +594,6 @@ impl RenderPhase {
         }
     }
 }
-pub(crate) const WORK_COUNT: usize = RenderWork::ALL.len();
-pub(crate) const RESOURCE_COUNT: usize = 9;
 pub(crate) const PHASE_COUNT: usize = RenderPhase::ALL.len();
 
 /// General attempt limits in named units. Defaults are checked-unlimited.
@@ -712,7 +603,7 @@ pub(crate) const PHASE_COUNT: usize = RenderPhase::ALL.len();
 /// Generation custody and mandatory cleanup remain checked-unlimited.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct RenderLimits {
-    work: [u64; WORK_COUNT],
+    work: RenderWorkTable<u64>,
     retained: u64,
     scratch: u64,
 }
@@ -720,7 +611,7 @@ impl RenderLimits {
     /// Checked-unlimited general limits; zero is a meaningful configured cap.
     pub const fn new() -> Self {
         Self {
-            work: [u64::MAX; WORK_COUNT],
+            work: RenderWorkTable::splat(u64::MAX),
             retained: u64::MAX,
             scratch: u64::MAX,
         }
@@ -736,7 +627,7 @@ impl RenderLimits {
         if !work.limit_supported() {
             return Err(RenderAccountingError::InvalidLimit(work));
         }
-        self.work[work.index()] = limit;
+        *RenderWork::get_mut(&mut self.work, work) = limit;
         Ok(self)
     }
     /// Sets the total simultaneously admitted retained CPU backing byte cap.
@@ -750,8 +641,8 @@ impl RenderLimits {
         self
     }
     /// Returns the configured work limit in that dimension's units.
-    pub const fn work_limit(self, work: RenderWork) -> u64 {
-        self.work[work.index()]
+    pub fn work_limit(self, work: RenderWork) -> u64 {
+        *RenderWork::get(&self.work, work)
     }
     /// Returns the general retained-backing cap in bytes.
     pub const fn retained_bytes(self) -> u64 {
@@ -762,7 +653,7 @@ impl RenderLimits {
         self.scratch
     }
     pub(crate) fn validate(self, kind: RenderAttemptKind) -> Result<(), RenderAccountingError> {
-        for work in RenderWork::ALL {
+        for &work in RenderWork::ALL {
             let supported =
                 if matches!(kind, RenderAttemptKind::Frame | RenderAttemptKind::Readback) {
                     work.supported_for(RenderAttemptKind::Frame)
@@ -776,11 +667,15 @@ impl RenderLimits {
         }
         Ok(())
     }
-    pub(crate) fn ledger(self) -> surgeist_ledger::Limits<WORK_COUNT, RESOURCE_COUNT> {
-        let mut r = [u64::MAX; RESOURCE_COUNT];
-        r[RenderResource::RetainedCpuBytes.index()] = self.retained;
-        r[RenderResource::ScratchCpuBytes.index()] = self.scratch;
-        surgeist_ledger::Limits::new(self.work, r)
+    pub(crate) const fn ledger(self) -> surgeist_ledger::Limits<RenderWork, RenderResource> {
+        surgeist_ledger::Limits::new(
+            self.work,
+            RenderResourceTable {
+                RetainedCpuBytes: self.retained,
+                ScratchCpuBytes: self.scratch,
+                ..RenderResourceTable::splat(u64::MAX)
+            },
+        )
     }
 }
 impl Default for RenderLimits {
@@ -1095,22 +990,22 @@ impl std::fmt::Display for RenderAccountingError {
 impl std::error::Error for RenderAccountingError {}
 /// Exact inclusive accepted usage. Parent and child values are attribution, not sums.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct RenderUsage(IntervalUsage<WORK_COUNT, RESOURCE_COUNT>);
+pub struct RenderUsage(IntervalUsage<RenderWork, RenderResource>);
 impl RenderUsage {
-    pub(crate) const fn new(usage: IntervalUsage<WORK_COUNT, RESOURCE_COUNT>) -> Self {
+    pub(crate) const fn new(usage: IntervalUsage<RenderWork, RenderResource>) -> Self {
         Self(usage)
     }
     /// Accepted work in the named dimension's units.
-    pub const fn work(self, work: RenderWork) -> u64 {
-        self.0.work(work.dimension())
+    pub fn work(self, work: RenderWork) -> u64 {
+        self.0.work(work)
     }
     /// Closing admitted custody in the named resource's units.
-    pub const fn live(self, resource: RenderResource) -> u64 {
-        self.0.live(resource.dimension())
+    pub fn live(self, resource: RenderResource) -> u64 {
+        self.0.live(resource)
     }
     /// Exact interval maximum of admitted custody, including growth overlap.
-    pub const fn peak(self, resource: RenderResource) -> u64 {
-        self.0.peak(resource.dimension())
+    pub fn peak(self, resource: RenderResource) -> u64 {
+        self.0.peak(resource)
     }
 }
 /// Bounded selected observation of an admitted change or ended inclusive phase.
@@ -1156,6 +1051,35 @@ pub enum RenderChangeKind {
     /// Custody released or transferred.
     Release,
 }
+/// Scope the event is attributed to. A refusal is attributed to its origin.
+fn event_scope(event: &Event<RenderWork, RenderResource>) -> Scope {
+    match *event {
+        Event::Accepted { scope, .. } | Event::Phase { scope, .. } => scope,
+        Event::Refused { origin, .. } => origin,
+    }
+}
+/// Whether a profile holds one entry per fixed scope and its events name only
+/// scopes listed by `known`. Reports are built only from profiles that pass,
+/// so reading a fixed scope's entry or an event's scope cannot fail.
+pub(crate) fn profile_resolves(
+    profile: &Report<RenderWork, RenderResource>,
+    count: usize,
+    known: impl Fn(Scope) -> bool,
+) -> bool {
+    profile.scopes.len() == count && profile.events.iter().all(|e| known(event_scope(e)))
+}
+/// Whether an interval holds one entry per fixed scope and so does its profile.
+pub(crate) fn interval_resolves(
+    interval: &IntervalReport<RenderWork, RenderResource>,
+    count: usize,
+) -> bool {
+    let known = |scope| interval.scopes.iter().any(|entry| entry.scope == scope);
+    interval.scopes.len() == count
+        && interval
+            .profile
+            .as_ref()
+            .is_none_or(|profile| profile_resolves(profile, count, known))
+}
 /// Closed forward-work report, available with profiling off and after failures.
 /// Standalone contexts retain one latest started attempt; a frame composes this
 /// interval with its CPU and generation observations. Event detail is bounded.
@@ -1163,10 +1087,29 @@ pub enum RenderChangeKind {
 pub struct RenderAttemptReport {
     pub(crate) kind: RenderAttemptKind,
     pub(crate) status: RenderAttemptStatus,
-    pub(crate) interval: IntervalReport<WORK_COUNT, RESOURCE_COUNT>,
+    pub(crate) interval: IntervalReport<RenderWork, RenderResource>,
     pub(crate) refusal: Option<RenderRefusal>,
 }
 impl RenderAttemptReport {
+    /// Builds a report from a ledger interval, or refuses one that does not hold
+    /// the attempt's fixed scopes.
+    pub(crate) fn new(
+        kind: RenderAttemptKind,
+        status: RenderAttemptStatus,
+        interval: IntervalReport<RenderWork, RenderResource>,
+        refusal: Option<RenderRefusal>,
+    ) -> Result<Self, RenderAccountingError> {
+        if interval_resolves(&interval, PHASE_COUNT) {
+            Ok(Self {
+                kind,
+                status,
+                interval,
+                refusal,
+            })
+        } else {
+            Err(RenderAccountingError::Invariant)
+        }
+    }
     /// Operation represented by this report.
     pub const fn kind(&self) -> RenderAttemptKind {
         self.kind
@@ -1222,27 +1165,29 @@ impl RenderAttemptReport {
             .profile
             .iter()
             .flat_map(|p| p.events.iter())
-            .map(|e| {
+            .filter_map(|e| {
                 let phase = |scope| {
-                    RenderPhase::ALL
-                        .into_iter()
-                        .find(|p| self.interval.scopes[p.index()].scope == scope)
-                        .expect("owned report scope")
+                    RenderPhase::ALL.into_iter().find(|p| {
+                        self.interval
+                            .scopes
+                            .get(p.index())
+                            .is_some_and(|entry| entry.scope == scope)
+                    })
                 };
-                match *e {
+                Some(match *e {
                     surgeist_ledger::Event::Phase {
                         scope,
                         duration,
                         elapsed,
                     } => RenderEvent::Phase {
-                        phase: phase(scope),
+                        phase: phase(scope)?,
                         duration,
                         elapsed,
                     },
                     surgeist_ledger::Event::Refused {
                         origin, elapsed, ..
                     } => RenderEvent::Refused {
-                        phase: phase(origin),
+                        phase: phase(origin)?,
                         elapsed,
                     },
                     surgeist_ledger::Event::Accepted {
@@ -1251,46 +1196,25 @@ impl RenderAttemptReport {
                         elapsed,
                     } => {
                         let (quantity, amount, kind) = match change {
-                            surgeist_ledger::Change::Work(d, n) => (
-                                RenderQuantity::Work(
-                                    RenderWork::ALL
-                                        .into_iter()
-                                        .find(|w| w.dimension() == d)
-                                        .expect("owned dimension"),
-                                ),
-                                n,
-                                RenderChangeKind::Work,
-                            ),
-                            surgeist_ledger::Change::Acquire(d, n) => (
-                                RenderQuantity::Resource(
-                                    RenderResource::ALL
-                                        .into_iter()
-                                        .find(|w| w.dimension() == d)
-                                        .expect("owned dimension"),
-                                ),
-                                n,
-                                RenderChangeKind::Acquire,
-                            ),
-                            surgeist_ledger::Change::Release(d, n) => (
-                                RenderQuantity::Resource(
-                                    RenderResource::ALL
-                                        .into_iter()
-                                        .find(|w| w.dimension() == d)
-                                        .expect("owned dimension"),
-                                ),
-                                n,
-                                RenderChangeKind::Release,
-                            ),
+                            surgeist_ledger::Change::Work(d, n) => {
+                                (RenderQuantity::Work(d), n, RenderChangeKind::Work)
+                            }
+                            surgeist_ledger::Change::Acquire(d, n) => {
+                                (RenderQuantity::Resource(d), n, RenderChangeKind::Acquire)
+                            }
+                            surgeist_ledger::Change::Release(d, n) => {
+                                (RenderQuantity::Resource(d), n, RenderChangeKind::Release)
+                            }
                         };
                         RenderEvent::Change {
-                            phase: phase(scope),
+                            phase: phase(scope)?,
                             quantity,
                             amount,
                             kind,
                             elapsed,
                         }
                     }
-                }
+                })
             })
     }
 }

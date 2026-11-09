@@ -90,7 +90,7 @@ fn interrupt(
             module.evaluate(access)
         })
         .unwrap();
-    assert_eq!(terminal.report.instructions(), 0);
+    assert_eq!(terminal.report.instructions().unwrap(), 0);
     let terminal = terminal.result.unwrap_err();
     assert_eq!(
         context

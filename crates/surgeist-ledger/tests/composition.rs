@@ -1,17 +1,36 @@
-use surgeist_ledger::{
-    Change, Error, Limits, Operation, RefusalReason, Resource, Tariff, Tariffs, Work,
-};
+use surgeist_ledger::{Change, Error, Limits, Operation, RefusalReason, Tariff, Tariffs};
 
-type Ledger = Operation<2, 1>;
+surgeist_ledger::dimensions! {
+    enum Work => WorkTable { Actions, Credits }
+}
 
-const ACTIONS: Work<2> = Work::new(0).unwrap();
-const CREDITS: Work<2> = Work::new(1).unwrap();
-const BYTES: Resource<1> = Resource::new(0).unwrap();
+surgeist_ledger::dimensions! {
+    enum Resource => ResourceTable { Bytes }
+}
+
+type Ledger = Operation<Work, Resource>;
+
+const ACTIONS: Work = Work::Actions;
+const CREDITS: Work = Work::Credits;
+const BYTES: Resource = Resource::Bytes;
+
+fn limits(actions: u64, credits: u64, bytes: u64) -> Limits<Work, Resource> {
+    Limits::new(
+        WorkTable {
+            Actions: actions,
+            Credits: credits,
+        },
+        ResourceTable { Bytes: bytes },
+    )
+}
 
 mod html_fixture {
     use super::*;
 
-    pub fn visit(ledger: &mut Ledger, scope: surgeist_ledger::Scope) -> Result<(), Error<2, 1>> {
+    pub fn visit(
+        ledger: &mut Ledger,
+        scope: surgeist_ledger::Scope,
+    ) -> Result<(), Error<Work, Resource>> {
         ledger.apply(scope, Change::Work(CREDITS, 3))
     }
 }
@@ -19,7 +38,10 @@ mod html_fixture {
 mod css_fixture {
     use super::*;
 
-    pub fn parse(ledger: &mut Ledger, scope: surgeist_ledger::Scope) -> Result<(), Error<2, 1>> {
+    pub fn parse(
+        ledger: &mut Ledger,
+        scope: surgeist_ledger::Scope,
+    ) -> Result<(), Error<Work, Resource>> {
         ledger.apply_batch(
             scope,
             &[Change::Work(ACTIONS, 2), Change::Acquire(BYTES, 5)],
@@ -27,22 +49,27 @@ mod css_fixture {
     }
 }
 
-fn css_tariffs(rate: u64) -> Tariffs<2, 1> {
+fn css_tariffs(rate: u64) -> Tariffs<Work, Resource> {
     Tariffs::new(
-        [Tariff::new(CREDITS, rate), Tariff::new(CREDITS, 1)],
-        [Tariff::new(BYTES, 1)],
+        WorkTable {
+            Actions: Tariff::new(CREDITS, rate),
+            Credits: Tariff::new(CREDITS, 1),
+        },
+        ResourceTable {
+            Bytes: Tariff::new(BYTES, 1),
+        },
     )
 }
 
 #[test]
 fn delegated_native_units_are_converted_once_through_nested_scopes() {
-    let mut ledger = Ledger::new("document", Limits::new([0, 11], [20]), 3).unwrap();
+    let mut ledger = Ledger::new("document", limits(0, 11, 20), 3).unwrap();
     let root = ledger.root();
     let css = ledger
-        .child(root, "css", Limits::new([4, 0], [10]), css_tariffs(2))
+        .child(root, "css", limits(4, 0, 10), css_tariffs(2))
         .unwrap();
     let syntax = ledger
-        .child(css, "syntax", Limits::new([2, 0], [5]), Tariffs::identity())
+        .child(css, "syntax", limits(2, 0, 5), Tariffs::identity())
         .unwrap();
 
     assert_eq!(ledger.scope_name(syntax).unwrap(), "syntax");
@@ -69,10 +96,10 @@ fn delegated_native_units_are_converted_once_through_nested_scopes() {
 
 #[test]
 fn root_refusal_rolls_back_child_work_storage_and_peak() {
-    let mut ledger = Ledger::new("document", Limits::new([0, 3], [20]), 2).unwrap();
+    let mut ledger = Ledger::new("document", limits(0, 3, 20), 2).unwrap();
     let root = ledger.root();
     let css = ledger
-        .child(root, "css", Limits::new([4, 0], [10]), css_tariffs(2))
+        .child(root, "css", limits(4, 0, 10), css_tariffs(2))
         .unwrap();
     ledger.apply(css, Change::Work(ACTIONS, 1)).unwrap();
 
@@ -99,12 +126,7 @@ fn ordered_checks_preserve_earlier_refusals_and_check_local_before_conversion() 
     let mut ledger = Ledger::new("operation", Limits::unlimited(), 2).unwrap();
     let root = ledger.root();
     let child = ledger
-        .child(
-            root,
-            "child",
-            Limits::new([3, 0], [4]),
-            css_tariffs(u64::MAX),
-        )
+        .child(root, "child", limits(3, 0, 4), css_tariffs(u64::MAX))
         .unwrap();
 
     let Error::Refused(refusal) = ledger
@@ -134,7 +156,7 @@ fn ordered_checks_preserve_earlier_refusals_and_check_local_before_conversion() 
 
 #[test]
 fn cleanup_releases_only_originating_custody_and_keeps_transient_peak() {
-    let mut ledger = Ledger::new("operation", Limits::new([0, 0], [10]), 3).unwrap();
+    let mut ledger = Ledger::new("operation", limits(0, 0, 10), 3).unwrap();
     let root = ledger.root();
     let a = ledger
         .child(root, "a", Limits::unlimited(), Tariffs::identity())
@@ -190,19 +212,24 @@ fn foreign_scope_and_capacity_refusals_leave_state_intact() {
 
 #[test]
 fn partial_releases_use_the_original_resource_tariff() {
-    let mut ledger = Ledger::new("operation", Limits::new([0, 0], [24]), 3).unwrap();
+    let mut ledger = Ledger::new("operation", limits(0, 0, 24), 3).unwrap();
     let root = ledger.root();
     let tariffs = |scale| {
         Tariffs::new(
-            [Tariff::new(ACTIONS, 1), Tariff::new(CREDITS, 1)],
-            [Tariff::new(BYTES, scale)],
+            WorkTable {
+                Actions: Tariff::new(ACTIONS, 1),
+                Credits: Tariff::new(CREDITS, 1),
+            },
+            ResourceTable {
+                Bytes: Tariff::new(BYTES, scale),
+            },
         )
     };
     let child = ledger
-        .child(root, "child", Limits::new([0, 0], [8]), tariffs(3))
+        .child(root, "child", limits(0, 0, 8), tariffs(3))
         .unwrap();
     let nested = ledger
-        .child(child, "nested", Limits::new([0, 0], [4]), tariffs(2))
+        .child(child, "nested", limits(0, 0, 4), tariffs(2))
         .unwrap();
 
     ledger.apply(nested, Change::Acquire(BYTES, 4)).unwrap();

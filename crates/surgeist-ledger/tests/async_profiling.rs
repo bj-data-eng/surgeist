@@ -6,12 +6,23 @@ use std::{
     time::Duration,
 };
 
-use surgeist_ledger::{
-    Change, Error, Event, EventFilter, Limits, Operation, ProfileMode, Resource, Tariffs, Work,
-};
+use surgeist_ledger::{Change, Error, Event, EventFilter, Limits, Operation, ProfileMode, Tariffs};
 
-const WORK: Work<1> = Work::new(0).unwrap();
-const BYTES: Resource<1> = Resource::new(0).unwrap();
+surgeist_ledger::dimensions! {
+    enum Work => WorkTable { Visit }
+}
+
+surgeist_ledger::dimensions! {
+    enum Resource => ResourceTable { Bytes }
+}
+
+const WORK: Work = Work::Visit;
+const BYTES: Resource = Resource::Bytes;
+
+fn limits(work: u64, bytes: u64) -> Limits<Work, Resource> {
+    Limits::new(WorkTable { Visit: work }, ResourceTable { Bytes: bytes })
+}
+
 thread_local! {
     static TIME: Cell<u64> = const { Cell::new(0) };
     static CLOCK_READS: Cell<usize> = const { Cell::new(0) };
@@ -26,8 +37,8 @@ fn poll<F: Future>(future: Pin<&mut F>) -> Poll<F::Output> {
     future.poll(&mut Context::from_waker(Waker::noop()))
 }
 
-fn operation(mode: ProfileMode) -> Operation<1, 1> {
-    Operation::with_profile_clock("operation", Limits::new([10], [10]), 2, mode, clock).unwrap()
+fn operation(mode: ProfileMode) -> Operation<Work, Resource> {
+    Operation::with_profile_clock("operation", limits(10, 10), 2, mode, clock).unwrap()
 }
 
 #[test]
@@ -107,7 +118,7 @@ fn canceling_pending_phase_retains_admitted_usage_and_allows_cleanup() {
     assert_eq!(partial.scopes[0].usage.work(WORK), 1);
     assert_eq!(partial.scopes[0].usage.live(BYTES), 4);
     operation.apply(root, Change::Release(BYTES, 4)).unwrap();
-    let complete = operation.finish().unwrap();
+    let complete = operation.finish().unwrap().unwrap();
     assert_eq!(complete.scopes[0].usage.live(BYTES), 0);
     assert_eq!(complete.scopes[0].usage.peak(BYTES), 4);
 }
@@ -145,7 +156,7 @@ fn nested_async_phases_attribute_real_inclusive_intervals() {
     ready.set(true);
     assert!(poll(future.as_mut()).is_ready());
     drop(future);
-    let report = operation.finish().unwrap();
+    let report = operation.finish().unwrap().unwrap();
     assert_eq!(
         report.scopes[0].phase_elapsed,
         Some(Duration::from_millis(35))
@@ -193,7 +204,7 @@ fn snapshots_leave_persistent_balances_peaks_and_detail_loss_unchanged() {
     assert_eq!(second.dropped_events, 4);
     assert_eq!(first.scopes[0].usage.live(BYTES), 3);
     assert_eq!(first.dropped_events, 1);
-    assert_eq!(second, operation.finish().unwrap());
+    assert_eq!(second, operation.finish().unwrap().unwrap());
 }
 
 #[test]
@@ -221,7 +232,7 @@ fn profiling_off_performs_admissions_without_clock_reads_or_reports() {
     drop(future);
     assert_eq!(operation.usage(root).unwrap().work(WORK), 1);
     assert!(operation.snapshot().unwrap().is_none());
-    assert!(operation.finish().is_none());
+    assert!(operation.finish().unwrap().is_none());
     assert_eq!(CLOCK_READS.get(), 0);
 }
 

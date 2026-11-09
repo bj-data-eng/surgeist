@@ -1,9 +1,9 @@
 use std::{cell::OnceCell, rc::Rc};
 
-use surgeist_ledger::Report;
+use surgeist_ledger::{NoDimension, Report, Usage};
 
 use super::Execution;
-use crate::{JsError, JsResult};
+use crate::{JsError, JsResult, error::EngineResourceError};
 
 /// A returned callback result and its admitted work, even after a host refusal.
 #[derive(Debug)]
@@ -28,6 +28,9 @@ pub enum ExecutionTermination {
 }
 
 /// Immutable admitted work and optional profiling for one terminated operation.
+/// Readers of ledger usage return the ledger fault, as an [`EngineResourceError`], when
+/// the execution ledger found a broken internal invariant. A completed outcome
+/// then carries the same fault as its result.
 /// Cloning shares its published body; it does not copy retained profile vectors.
 #[derive(Clone, Debug)]
 pub struct ExecutionReport {
@@ -76,44 +79,19 @@ impl PreparedReport {
     }
 }
 
+/// The counts and profile the ledger reported, or the failure that kept them out.
+#[derive(Debug)]
+struct LedgerReport {
+    usage: Usage<super::ExecutionWork, NoDimension>,
+    profile: Option<Report<super::ExecutionWork, NoDimension>>,
+}
+
 #[derive(Debug)]
 struct ReportData {
     termination: ExecutionTermination,
     effects_started: bool,
-    instructions: u64,
-    job_preparations: u64,
-    job_invocations: u64,
-    job_polls: u64,
-    generator_requests: u64,
-    module_metadata_work: u64,
-    source_reads: u64,
-    source_code_points: u64,
-    retained_source_units: u64,
-    lexer_lookahead_probes: u64,
-    lexer_dispatches: u64,
-    token_probes: u64,
-    token_advances: u64,
-    grammar_dispatches: u64,
-    early_error_visits: u64,
-    label_lookups: u64,
-    name_visits: u64,
-    name_records: u64,
-    name_comparisons: u64,
-    direct_eval_visits: u64,
-    interner_bytes: u64,
-    interner_utf16_units: u64,
-    interner_index_work: u64,
-    interner_capacity: u64,
-    interner_relocation: u64,
-    diagnostic_input: u64,
-    diagnostic_output: u64,
-    template_input: u64,
-    template_output: u64,
-    scope_work: u64,
-    optimizer_work: u64,
-    compiler_work: u64,
     compiler_depth_peak: usize,
-    profile: Option<Report<32, 0>>,
+    ledger: Result<LedgerReport, EngineResourceError>,
 }
 
 impl ExecutionReport {
@@ -127,6 +105,10 @@ impl ExecutionReport {
         &self.data().termination
     }
 
+    fn ledger(&self) -> Result<&LedgerReport, EngineResourceError> {
+        self.data().ledger.as_ref().map_err(|error| *error)
+    }
+
     /// Whether this operation began a guest instruction, invoked a program callback,
     /// entered a generator request, or committed a declaration effect.
     ///
@@ -137,26 +119,32 @@ impl ExecutionReport {
     }
 
     /// Returns the number of admitted instructions.
-    pub fn instructions(&self) -> u64 {
-        self.data().instructions
+    pub fn instructions(&self) -> Result<u64, EngineResourceError> {
+        Ok(self.ledger()?.usage.work(super::ExecutionWork::Instruction))
     }
 
     /// Returns the number of admitted native task preparation factory invocations.
     ///
     /// This includes factories that return an error or unwind. Factory dispatch
     /// marks possible effects and does not itself count as a task poll.
-    pub fn job_preparations(&self) -> u64 {
-        self.data().job_preparations
+    pub fn job_preparations(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::JobPreparation))
     }
 
     /// Returns the number of admitted synchronous native job callback invocations.
-    pub fn job_invocations(&self) -> u64 {
-        self.data().job_invocations
+    pub fn job_invocations(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::JobInvocation))
     }
 
     /// Returns the number of admitted native async job future polls.
-    pub fn job_polls(&self) -> u64 {
-        self.data().job_polls
+    pub fn job_polls(&self) -> Result<u64, EngineResourceError> {
+        Ok(self.ledger()?.usage.work(super::ExecutionWork::JobPoll))
     }
 
     /// Returns the number of admitted generator request attempts.
@@ -164,148 +152,214 @@ impl ExecutionReport {
     /// Each `next`, `return` or `throw` request counts once before validation
     /// or promise preparation, including requests against completed generators
     /// and attempts that subsequently fail validation.
-    pub fn generator_requests(&self) -> u64 {
-        self.data().generator_requests
+    pub fn generator_requests(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::GeneratorRequest))
     }
 
     /// Returns module-owned metadata construction credits.
     /// Delegated AST name work is reported by the separate name counters.
-    pub fn module_metadata_work(&self) -> u64 {
-        self.data().module_metadata_work
+    pub fn module_metadata_work(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::ModuleMetadataWork))
     }
 
     /// Returns the number of admitted source read attempts.
-    pub fn source_reads(&self) -> u64 {
-        self.data().source_reads
+    pub fn source_reads(&self) -> Result<u64, EngineResourceError> {
+        Ok(self.ledger()?.usage.work(super::ExecutionWork::SourceRead))
     }
 
     /// Returns the number of decoded points consumed by the frontend.
-    pub fn source_code_points(&self) -> u64 {
-        self.data().source_code_points
+    pub fn source_code_points(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::SourceConsumption))
     }
 
     /// Returns the cumulative number of UTF-16 units retained in source text.
-    pub fn retained_source_units(&self) -> u64 {
-        self.data().retained_source_units
+    pub fn retained_source_units(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::SourceRetention))
     }
 
     /// Returns the number of admitted lexer lookahead probes.
-    pub fn lexer_lookahead_probes(&self) -> u64 {
-        self.data().lexer_lookahead_probes
+    pub fn lexer_lookahead_probes(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::LexerLookahead))
     }
 
     /// Returns the number of admitted lexical production dispatches.
-    pub fn lexer_dispatches(&self) -> u64 {
-        self.data().lexer_dispatches
+    pub fn lexer_dispatches(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::LexerDispatch))
     }
 
     /// Returns the number of admitted buffered token probes.
-    pub fn token_probes(&self) -> u64 {
-        self.data().token_probes
+    pub fn token_probes(&self) -> Result<u64, EngineResourceError> {
+        Ok(self.ledger()?.usage.work(super::ExecutionWork::TokenProbe))
     }
 
     /// Returns the number of admitted buffered token advance requests.
-    pub fn token_advances(&self) -> u64 {
-        self.data().token_advances
+    pub fn token_advances(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::TokenAdvance))
     }
 
     /// Returns the number of admitted grammar production attempts.
-    pub fn grammar_dispatches(&self) -> u64 {
-        self.data().grammar_dispatches
+    pub fn grammar_dispatches(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::GrammarDispatch))
     }
 
     /// Returns the number of admitted early-error AST visits.
-    pub fn early_error_visits(&self) -> u64 {
-        self.data().early_error_visits
+    pub fn early_error_visits(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::EarlyErrorVisit))
     }
 
     /// Returns the number of admitted logical label-table lookups.
-    pub fn label_lookups(&self) -> u64 {
-        self.data().label_lookups
+    pub fn label_lookups(&self) -> Result<u64, EngineResourceError> {
+        Ok(self.ledger()?.usage.work(super::ExecutionWork::LabelLookup))
     }
 
     /// Returns the number of admitted direct-eval metadata visits.
-    pub fn direct_eval_visits(&self) -> u64 {
-        self.data().direct_eval_visits
+    pub fn direct_eval_visits(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::DirectEvalVisit))
     }
 
     /// Returns admitted name, validation and delegated AST semantic-query visits.
     /// This includes compiler completion-value and source-start queries.
-    pub fn name_visits(&self) -> u64 {
-        self.data().name_visits
+    pub fn name_visits(&self) -> Result<u64, EngineResourceError> {
+        Ok(self.ledger()?.usage.work(super::ExecutionWork::NameVisit))
     }
 
     /// Returns the number of admitted name record attempts.
-    pub fn name_records(&self) -> u64 {
-        self.data().name_records
+    pub fn name_records(&self) -> Result<u64, EngineResourceError> {
+        Ok(self.ledger()?.usage.work(super::ExecutionWork::NameRecord))
     }
 
     /// Returns the number of admitted symbol comparisons or logical name-table operations.
-    pub fn name_comparisons(&self) -> u64 {
-        self.data().name_comparisons
+    pub fn name_comparisons(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::NameComparison))
     }
 
     /// Returns the admitted UTF-8 and Latin1 byte work in frontend interning.
-    pub fn interner_bytes(&self) -> u64 {
-        self.data().interner_bytes
+    pub fn interner_bytes(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::InternerBytes))
     }
 
     /// Returns the admitted UTF-16 unit work in frontend interning and name preparation.
-    pub fn interner_utf16_units(&self) -> u64 {
-        self.data().interner_utf16_units
+    pub fn interner_utf16_units(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::InternerUtf16))
     }
 
     /// Returns the admitted frontend interner slot initialization, probes, reinsertion and publication.
-    pub fn interner_index_work(&self) -> u64 {
-        self.data().interner_index_work
+    pub fn interner_index_work(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::InternerIndex))
     }
 
     /// Returns the admitted additional capacity requests in the affected buffers' units.
-    pub fn interner_capacity(&self) -> u64 {
-        self.data().interner_capacity
+    pub fn interner_capacity(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::InternerCapacity))
     }
 
     /// Returns the admitted potentially relocated initialized units in the affected buffers' units.
-    pub fn interner_relocation(&self) -> u64 {
-        self.data().interner_relocation
+    pub fn interner_relocation(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::InternerRelocation))
     }
 
     /// Returns the admitted diagnostic spelling input in UTF-16 units.
-    pub fn diagnostic_input(&self) -> u64 {
-        self.data().diagnostic_input
+    pub fn diagnostic_input(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::DiagnosticInput))
     }
 
     /// Returns the admitted source-spelling diagnostic output in UTF-8 bytes.
-    pub fn diagnostic_output(&self) -> u64 {
-        self.data().diagnostic_output
+    pub fn diagnostic_output(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::DiagnosticOutput))
     }
 
     /// Returns admitted template preparation input in UTF-16 units.
-    pub fn template_input(&self) -> u64 {
-        self.data().template_input
+    pub fn template_input(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::TemplateInput))
     }
 
     /// Returns admitted template preparation output in UTF-16 units.
-    pub fn template_output(&self) -> u64 {
-        self.data().template_output
+    pub fn template_output(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::TemplateOutput))
     }
 
     /// Returns admitted script scope analysis work units.
-    pub fn scope_work(&self) -> u64 {
-        self.data().scope_work
+    pub fn scope_work(&self) -> Result<u64, EngineResourceError> {
+        Ok(self.ledger()?.usage.work(super::ExecutionWork::ScopeWork))
     }
 
     /// Returns admitted optimizer work, including producer request reservations.
     ///
     /// This combines the units described by the optimizer profile origins; it is
     /// neither elapsed time nor a measurement of physical memory consumption.
-    pub fn optimizer_work(&self) -> u64 {
-        self.data().optimizer_work
+    pub fn optimizer_work(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::OptimizerWork))
     }
 
     /// Returns admitted compiler work, including delegated payload requests.
-    pub fn compiler_work(&self) -> u64 {
-        self.data().compiler_work
+    pub fn compiler_work(&self) -> Result<u64, EngineResourceError> {
+        Ok(self
+            .ledger()?
+            .usage
+            .work(super::ExecutionWork::CompilerWork))
     }
 
     /// Returns the greatest admitted structural compiler depth in any phase.
@@ -316,41 +370,48 @@ impl ExecutionReport {
         self.data().compiler_depth_peak
     }
 
-    /// Returns the optional profile. Work dimensions are instructions, source
-    /// reads, consumed code points, retained UTF-16 source units, and lexer
-    /// lookahead probes, lexical production dispatches, buffered token probes,
-    /// buffered token advance requests, grammar production attempts, and
-    /// early-error AST visits, label-table lookups, direct-eval metadata visits,
-    /// name visits, name records, name comparisons, interner bytes, interner
-    /// UTF-16 units, interner index work, interner capacity and interner
-    /// relocation, diagnostic spelling units and diagnostic payload bytes, then
-    /// template input and output units, then scope analysis work. Scope work
-    /// origins have separate profile entries under scope analysis, bytecode
-    /// compilation and script installation. Timed frontend phases include
-    /// interning, diagnostic rendering and template preparation. Dimension 25 is
-    /// optimizer work, with separate producer origins and an optimizer phase.
+    /// Returns the optional profile. Its work dimensions are the
+    /// [`ExecutionWork`](super::ExecutionWork) variants, in declaration order.
+    /// Scope work origins have separate profile entries under scope analysis,
+    /// bytecode compilation and script installation. Timed frontend phases include
+    /// interning, diagnostic rendering and template preparation.
+    /// `OptimizerWork` has separate producer origins and an optimizer phase.
     /// Retirement and opaque kernel units are prepaid native request prices.
-    /// Dimension 26 is compiler work, attributed under bytecode compilation;
-    /// delegated scope and name work retain dimensions 24 and 12–14.
-    /// Dimensions 27–29 count native task preparation factory invocations,
-    /// synchronous native job invocations and inner task polls.
-    /// Their action-local phases include owned cleanup and exclude time between polls.
-    /// Dimension 30 counts generator request attempts; `generator-request` observes
-    /// each admitted synchronous request algorithm, without spanning suspension.
-    /// Dimension 31 counts module-owned metadata credits, with delegated name
-    /// dimensions 12–14 attributed under the same detached metadata phase.
-    pub fn profile(&self) -> Option<&Report<32, 0>> {
-        self.data().profile.as_ref()
+    /// `CompilerWork` is attributed under bytecode compilation; delegated scope
+    /// and name work retain `ScopeWork`, `NameVisit`, `NameRecord` and
+    /// `NameComparison`.
+    /// `JobPreparation`, `JobInvocation` and `JobPoll` count native task
+    /// preparation factory invocations, synchronous native job invocations and
+    /// inner task polls. Their action-local phases include owned cleanup and
+    /// exclude time between polls.
+    /// `GeneratorRequest` counts generator request attempts; `generator-request`
+    /// observes each admitted synchronous request algorithm, without spanning
+    /// suspension.
+    /// `ModuleMetadataWork` counts module-owned metadata credits, with delegated
+    /// name dimensions attributed under the same detached metadata phase.
+    ///
+    /// # Errors
+    ///
+    /// Returns the ledger fault when the execution ledger found a broken
+    /// internal invariant, because its usage can no longer be trusted. Every
+    /// reader backed by ledger usage returns the same fault.
+    pub fn profile(
+        &self,
+    ) -> Result<Option<&Report<super::ExecutionWork, NoDimension>>, EngineResourceError> {
+        Ok(self.ledger()?.profile.as_ref())
     }
 }
 
 impl Execution {
     pub(crate) fn finish<T>(mut self, result: JsResult<T>) -> ExecutionOutcome<T> {
         let result = self.stop.take().map_or(result, Err);
-        ExecutionOutcome {
-            result,
-            report: self.publish_report(ExecutionTermination::Completed),
-        }
+        let report = self.publish_report(ExecutionTermination::Completed);
+        // A ledger fault leaves the counts untrustworthy, so it replaces the result.
+        let result = match report.ledger() {
+            Ok(_) => result,
+            Err(fault) => Err(fault.into()),
+        };
+        ExecutionOutcome { result, report }
     }
 
     pub(super) fn abandon(mut self) -> ExecutionReport {
@@ -361,47 +422,51 @@ impl Execution {
     }
 
     fn publish_report(self, termination: ExecutionTermination) -> ExecutionReport {
-        let usage = self
-            .ledger
-            .usage(self.ledger.root())
-            .expect("the ledger owns its root");
+        let root = self.ledger.root();
+        let ledger = match self.ledger.usage(root).copied() {
+            Ok(usage) => self
+                .ledger
+                .finish()
+                .map(|profile| LedgerReport { usage, profile })
+                .map_err(super::ledger_fault),
+            Err(error) => Err(super::ledger_fault(error)),
+        };
         self.prepared_report.publish(ReportData {
             termination,
             effects_started: self.effects_started,
-            instructions: usage.work(super::INSTRUCTION),
-            job_preparations: usage.work(super::JOB_PREPARATION),
-            job_invocations: usage.work(super::JOB_INVOCATION),
-            job_polls: usage.work(super::JOB_POLL),
-            generator_requests: usage.work(super::GENERATOR_REQUEST),
-            module_metadata_work: usage.work(super::MODULE_METADATA_WORK),
-            source_reads: usage.work(super::SOURCE_READ),
-            source_code_points: usage.work(super::SOURCE_CONSUMPTION),
-            retained_source_units: usage.work(super::SOURCE_RETENTION),
-            lexer_lookahead_probes: usage.work(super::LEXER_LOOKAHEAD),
-            lexer_dispatches: usage.work(super::LEXER_DISPATCH),
-            token_probes: usage.work(super::TOKEN_PROBE),
-            token_advances: usage.work(super::TOKEN_ADVANCE),
-            grammar_dispatches: usage.work(super::GRAMMAR_DISPATCH),
-            early_error_visits: usage.work(super::EARLY_ERROR_VISIT),
-            label_lookups: usage.work(super::LABEL_LOOKUP),
-            name_visits: usage.work(super::NAME_VISIT),
-            name_records: usage.work(super::NAME_RECORD),
-            name_comparisons: usage.work(super::NAME_COMPARISON),
-            direct_eval_visits: usage.work(super::DIRECT_EVAL_VISIT),
-            interner_bytes: usage.work(super::INTERNER_BYTES),
-            interner_utf16_units: usage.work(super::INTERNER_UTF16),
-            interner_index_work: usage.work(super::INTERNER_INDEX),
-            interner_capacity: usage.work(super::INTERNER_CAPACITY),
-            interner_relocation: usage.work(super::INTERNER_RELOCATION),
-            diagnostic_input: usage.work(super::DIAGNOSTIC_INPUT),
-            diagnostic_output: usage.work(super::DIAGNOSTIC_OUTPUT),
-            template_input: usage.work(super::TEMPLATE_INPUT),
-            template_output: usage.work(super::TEMPLATE_OUTPUT),
-            scope_work: usage.work(super::SCOPE_WORK),
-            optimizer_work: usage.work(super::OPTIMIZER_WORK),
-            compiler_work: usage.work(super::COMPILER_WORK),
             compiler_depth_peak: self.compiler_depth_peak,
-            profile: self.ledger.finish(),
+            ledger,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn faulted(fault: EngineResourceError) -> ExecutionReport {
+        PreparedReport::new().publish(ReportData {
+            termination: ExecutionTermination::Completed,
+            effects_started: true,
+            compiler_depth_peak: 3,
+            ledger: Err(fault),
+        })
+    }
+
+    #[test]
+    fn ledger_backed_readers_return_the_fault_and_the_rest_stay_available() {
+        let fault = EngineResourceError::LedgerDefect(surgeist_ledger::Defect::EventLimit);
+        let report = faulted(fault);
+        assert_eq!(report.instructions(), Err(fault));
+        assert_eq!(report.job_polls(), Err(fault));
+        assert_eq!(report.module_metadata_work(), Err(fault));
+        assert_eq!(report.compiler_work(), Err(fault));
+        assert!(matches!(report.profile(), Err(error) if error == fault));
+        assert!(matches!(
+            report.termination(),
+            ExecutionTermination::Completed
+        ));
+        assert!(report.effects_started());
+        assert_eq!(report.compiler_depth_peak(), 3);
     }
 }

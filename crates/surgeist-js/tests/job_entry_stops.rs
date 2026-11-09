@@ -47,7 +47,7 @@ fn queued_async_job_refuses_callback_entry_after_a_retained_instruction_stop() {
         outcome.result.unwrap_err().as_engine(),
         Some(&instruction_stop())
     );
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
     let drained = actual_drain
         .into_inner()
         .expect("the host must actually invoke the queued driver after retaining the stop");
@@ -116,7 +116,7 @@ fn pending_async_job_refuses_its_next_poll_after_an_external_retained_stop() {
         outcome.result.unwrap_err().as_engine(),
         Some(&instruction_stop())
     );
-    assert_eq!(outcome.report.instructions(), 0);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
     let polled = actual_poll
         .into_inner()
         .expect("the host must actually request the next engine-owned job poll");

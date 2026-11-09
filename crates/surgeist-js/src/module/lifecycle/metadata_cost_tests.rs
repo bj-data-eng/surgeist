@@ -71,7 +71,7 @@ fn lifecycle_slots_and_headers_have_exact_logical_byte_totals_and_atomic_refusal
             );
             assert_eq!(refused.result.err().unwrap(), direct);
             assert_eq!(
-                refused.report.module_metadata_work(),
+                refused.report.module_metadata_work().unwrap(),
                 prefix,
                 "a refused byte batch does not partially spend its limit"
             );
@@ -90,7 +90,7 @@ fn lifecycle_slots_and_headers_have_exact_logical_byte_totals_and_atomic_refusal
             )
             .unwrap();
         let prepared = accepted.result.unwrap();
-        assert_eq!(accepted.report.module_metadata_work(), total);
+        assert_eq!(accepted.report.module_metadata_work().unwrap(), total);
         assert!(!accepted.report.effects_started());
         assert!(prepared.evaluation.cause().is_none());
         drop(prepared);

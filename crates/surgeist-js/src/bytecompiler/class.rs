@@ -932,7 +932,7 @@ mod tests {
             .eval_with_budget(Source::from_bytes(SOURCE), ExecutionOptions::new(4096))
             .unwrap();
         assert_eq!(complete.result.unwrap(), expected.clone().into());
-        let work = complete.report.compiler_work();
+        let work = complete.report.compiler_work().unwrap();
         let peak = complete.report.compiler_depth_peak();
         assert!(work > 0);
         assert!(peak > 1);
@@ -948,7 +948,7 @@ mod tests {
                 )
                 .unwrap();
             assert_eq!(exact.result.unwrap(), expected.clone().into());
-            assert_eq!(exact.report.compiler_work(), work);
+            assert_eq!(exact.report.compiler_work().unwrap(), work);
             assert_eq!(exact.report.compiler_depth_peak(), peak);
 
             let limit = work - 1;

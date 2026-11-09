@@ -37,8 +37,8 @@ use std::{
 };
 use surgeist_ledger::{Change, Checkpoint, Limits, Operation, Scope, SharedOperation, Tariffs};
 
-pub(crate) type RenderLedger = SharedOperation<WORK_COUNT, RESOURCE_COUNT>;
-type LedgerError = surgeist_ledger::Error<WORK_COUNT, RESOURCE_COUNT>;
+pub(crate) type RenderLedger = SharedOperation<RenderWork, RenderResource>;
+type LedgerError = surgeist_ledger::Error<RenderWork, RenderResource>;
 
 /// Configuration and one latest-attempt slot for standalone allocating operations.
 /// Glyph preparation, scene inspection, repeat and style normalization borrow the
@@ -49,6 +49,9 @@ type LedgerError = surgeist_ledger::Error<WORK_COUNT, RESOURCE_COUNT>;
 pub struct RenderAccountingContext {
     options: RenderAccountingOptions,
     report: Option<RenderAttemptReport>,
+    /// A ledger failure found while an attempt closed with nowhere to return it.
+    /// The next attempt reports it once.
+    fault: Option<RenderAccountingError>,
 }
 impl RenderAccountingContext {
     /// Configures future attempts. Actual report storage is reserved before work.
@@ -57,6 +60,7 @@ impl RenderAccountingContext {
         Self {
             options,
             report: None,
+            fault: None,
         }
     }
     /// Returns the current configuration.
@@ -91,8 +95,7 @@ impl RenderAccountingContext {
         )?;
         let account = guard.account.at(phase);
         let result = run(&account);
-        guard.complete(&result);
-        result
+        guard.complete(result)
     }
 
     pub(crate) fn prepare<T>(
@@ -111,8 +114,7 @@ impl RenderAccountingContext {
         )?;
         let account = guard.account.clone();
         let result = account.phase(RenderPhase::Preparation, || run(&account));
-        guard.complete(&result);
-        result
+        guard.complete(result)
     }
 }
 
@@ -129,6 +131,9 @@ impl<'a> Attempt<'a> {
         legacy: GlyphRunLimits,
         #[cfg(feature = "render-text")] text_caps: Option<[usize; 3]>,
     ) -> Result<Self> {
+        if let Some(fault) = context.fault.take() {
+            return Err(fault.into());
+        }
         let (account, checkpoint) = build_account(
             context.options,
             kind,
@@ -144,77 +149,85 @@ impl<'a> Attempt<'a> {
             kind,
         })
     }
-    fn complete<T>(&mut self, result: &Result<T>) {
+    /// Closes the attempt around the operation's result. A ledger failure found
+    /// while closing, or latched by a hold dropped during the operation, replaces
+    /// the result.
+    fn complete<T>(&mut self, result: Result<T>) -> Result<T> {
         let refusal = *self
             .account
             .first_refusal
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let status = match result {
+        let status = match &result {
             Ok(_) => RenderAttemptStatus::Succeeded,
             Err(_) if refusal.is_some() => RenderAttemptStatus::Refused,
             Err(error) => RenderAttemptStatus::Failed(error.code()),
         };
-        self.close(status, result.is_ok());
+        match self.close(status, result.is_ok()) {
+            Ok(()) => result,
+            Err(fault) => Err(fault.into()),
+        }
     }
-    fn close(&mut self, status: RenderAttemptStatus, transfer: bool) {
+    fn close(
+        &mut self,
+        status: RenderAttemptStatus,
+        transfer: bool,
+    ) -> std::result::Result<(), RenderAccountingError> {
         let Some(checkpoint) = self.checkpoint.take() else {
-            return;
+            return Ok(());
         };
         let account = &self.account;
         // Every backing acquisition originates at Preparation. Resource scopes
         // remain fixed; child phase attribution is work/timing, not duplicate custody.
-        let cleanup = || {
+        let cleanup = || -> std::result::Result<(), LedgerError> {
             account.custody_open.store(false, Ordering::Release);
             let scope = account.scopes[RenderPhase::Preparation.index()];
-            let usage = account
-                .ledger
-                .usage(scope)
-                .expect("owned preparation scope");
-            let retained = usage.live(RenderResource::RetainedCpuBytes.dimension());
+            let usage = account.ledger.usage(scope)?;
+            let retained = usage.live(RenderResource::RetainedCpuBytes);
             if transfer {
-                account
-                    .ledger
-                    .apply(
-                        scope,
-                        Change::Work(RenderWork::PreparedTransferredBytes.dimension(), retained),
-                    )
-                    .expect("unlimited transfer accounting");
+                account.ledger.apply(
+                    scope,
+                    Change::Work(RenderWork::PreparedTransferredBytes, retained),
+                )?;
             }
             for resource in [
                 RenderResource::RetainedCpuBytes,
                 RenderResource::ScratchCpuBytes,
             ] {
-                let live = usage.live(resource.dimension());
+                let live = usage.live(resource);
                 account
                     .ledger
-                    .apply(scope, Change::Release(resource.dimension(), live))
-                    .expect("owned preparation custody");
+                    .apply(scope, Change::Release(resource, live))?;
             }
+            Ok(())
         };
         account
             .ledger
             .with_phase(account.scopes[RenderPhase::Cleanup.index()], cleanup)
-            .expect("owned cleanup phase");
+            .and_then(|cleaned| cleaned)
+            .map_err(map_ledger_failure)?;
         let interval = account
             .ledger
             .end_checkpoint(&checkpoint)
-            .expect("owned active attempt checkpoint");
+            .map_err(map_ledger_failure)?;
         let refusal = *account
             .first_refusal
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        self.context.report = Some(RenderAttemptReport {
-            kind: self.kind,
-            status,
-            interval,
-            refusal,
-        });
+        if let Some(fault) = account.latched_fault() {
+            return Err(fault);
+        }
+        self.context.report = Some(RenderAttemptReport::new(
+            self.kind, status, interval, refusal,
+        )?);
+        Ok(())
     }
 }
 impl Drop for Attempt<'_> {
     fn drop(&mut self) {
-        self.close(RenderAttemptStatus::Canceled, false);
+        if let Err(fault) = self.close(RenderAttemptStatus::Canceled, false) {
+            self.context.fault.get_or_insert(fault);
+        }
     }
 }
 fn build_account(
@@ -247,19 +260,23 @@ fn build_account(
     let root = operation.root();
     let mut scopes = [root; PHASE_COUNT];
     let [glyphs, paths, scratch, retained] = legacy.capacities();
-    let mut work = [u64::MAX; WORK_COUNT];
-    work[RenderWork::GlyphInputs.index()] = as_u64(glyphs)?;
-    work[RenderWork::PathElementsEmitted.index()] = as_u64(paths)?;
+    let mut work = RenderWorkTable::splat(u64::MAX);
+    work.GlyphInputs = as_u64(glyphs)?;
+    work.PathElementsEmitted = as_u64(paths)?;
     #[cfg(feature = "render-text")]
     if let Some([runs, coords, decorations]) = text_caps {
-        work[RenderWork::TextRuns.index()] = as_u64(runs)?;
-        work[RenderWork::CoordinateInputs.index()] = as_u64(coords)?;
-        work[RenderWork::TextDecorations.index()] = as_u64(decorations)?;
+        work.TextRuns = as_u64(runs)?;
+        work.CoordinateInputs = as_u64(coords)?;
+        work.TextDecorations = as_u64(decorations)?;
     }
-    let mut resources = [u64::MAX; RESOURCE_COUNT];
-    resources[RenderResource::ScratchCpuBytes.index()] = as_u64(scratch)?;
-    resources[RenderResource::RetainedCpuBytes.index()] = as_u64(retained)?;
-    let caps = Limits::new(work, resources);
+    let caps = Limits::new(
+        work,
+        RenderResourceTable {
+            ScratchCpuBytes: as_u64(scratch)?,
+            RetainedCpuBytes: as_u64(retained)?,
+            ..RenderResourceTable::splat(u64::MAX)
+        },
+    );
     for phase in RenderPhase::ALL.into_iter().skip(1) {
         let parent = phase.parent().expect("nonroot phase has parent");
         scopes[phase.index()] = operation
@@ -269,15 +286,23 @@ fn build_account(
                 if phase == RenderPhase::Preparation {
                     caps
                 } else if phase == RenderPhase::RepeatQuota {
-                    let mut resources = [u64::MAX; RESOURCE_COUNT];
-                    resources[RenderResource::LocalRepeatTileQuota.index()] = 1_000_000;
-                    Limits::new([u64::MAX; WORK_COUNT], resources)
+                    Limits::new(
+                        RenderWorkTable::splat(u64::MAX),
+                        RenderResourceTable {
+                            LocalRepeatTileQuota: 1_000_000,
+                            ..RenderResourceTable::splat(u64::MAX)
+                        },
+                    )
                 } else if phase == RenderPhase::AtlasQuota {
-                    let mut resources = [u64::MAX; RESOURCE_COUNT];
                     let texels = u64::from(u16::MAX) * u64::from(u16::MAX);
-                    resources[RenderResource::LocalAtlasSourceByteQuota.index()] = texels * 4;
-                    resources[RenderResource::LocalAtlasTexelQuota.index()] = texels;
-                    Limits::new([u64::MAX; WORK_COUNT], resources)
+                    Limits::new(
+                        RenderWorkTable::splat(u64::MAX),
+                        RenderResourceTable {
+                            LocalAtlasSourceByteQuota: texels * 4,
+                            LocalAtlasTexelQuota: texels,
+                            ..RenderResourceTable::splat(u64::MAX)
+                        },
+                    )
                 } else {
                     Limits::unlimited()
                 },
@@ -298,6 +323,7 @@ fn build_account(
         history: None,
         custody_open: Arc::new(AtomicBool::new(true)),
         first_refusal: Arc::new(Mutex::new(None)),
+        fault: Arc::new(Mutex::new(None)),
         kind,
     };
     Ok((account, checkpoint))
@@ -322,7 +348,8 @@ fn map_ledger_failure(error: LedgerError) -> RenderAccountingError {
         | LedgerError::CheckpointLimit { .. }
         | LedgerError::CheckpointsConfigured
         | LedgerError::ScopeLimit { .. }
-        | LedgerError::Refused(_) => RenderAccountingError::Invariant,
+        | LedgerError::Refused(_)
+        | LedgerError::Defect(_) => RenderAccountingError::Invariant,
     }
 }
 pub(crate) fn as_u64(n: usize) -> Result<u64> {
@@ -338,6 +365,8 @@ pub(crate) struct Account {
     history: Option<HistoryObserver>,
     custody_open: Arc<AtomicBool>,
     first_refusal: Arc<Mutex<Option<RenderRefusal>>>,
+    /// First ledger failure met where no error can be returned, such as a drop.
+    fault: Arc<Mutex<Option<RenderAccountingError>>>,
     kind: RenderAttemptKind,
 }
 
@@ -391,7 +420,7 @@ impl Account {
         self.ledger
             .apply(
                 self.scopes[self.phase.index()],
-                Change::Work(work.dimension(), as_u64(n)?),
+                Change::Work(work, as_u64(n)?),
             )
             .map_err(|e| self.error(e))
     }
@@ -403,16 +432,13 @@ impl Account {
     }
     pub(crate) fn work_u64(&self, work: RenderWork, amount: u64) -> Result<()> {
         self.ledger
-            .apply(
-                self.scopes[self.phase.index()],
-                Change::Work(work.dimension(), amount),
-            )
+            .apply(self.scopes[self.phase.index()], Change::Work(work, amount))
             .map_err(|e| self.error(e))
     }
     pub(crate) fn work_count(&self, work: RenderWork) -> Result<u64> {
         self.ledger
             .usage(self.scopes[RenderPhase::Attempt.index()])
-            .map(|usage| usage.work(work.dimension()))
+            .map(|usage| usage.work(work))
             .map_err(|e| self.error(e))
     }
     pub(crate) async fn async_phase<T>(
@@ -495,7 +521,7 @@ impl Account {
         self.ledger
             .apply_batch(
                 self.scopes[self.phase.index()],
-                &changes.map(|(work, n)| Change::Work(work.dimension(), n)),
+                &changes.map(|(work, n)| Change::Work(work, n)),
             )
             .map_err(|error| self.error(error))
     }
@@ -506,7 +532,7 @@ impl Account {
         self.ledger
             .check_batch(
                 self.scopes[self.phase.index()],
-                &changes.map(|(work, n)| Change::Work(work.dimension(), n)),
+                &changes.map(|(work, n)| Change::Work(work, n)),
             )
             .map_err(|error| self.error(error))
     }
@@ -573,7 +599,7 @@ impl Account {
         self.ledger
             .check_batch(
                 self.scopes[RenderPhase::Preparation.index()],
-                &[Change::Acquire(resource.dimension(), as_u64(bytes)?)],
+                &[Change::Acquire(resource, as_u64(bytes)?)],
             )
             .map_err(|e| self.error(e))
     }
@@ -591,7 +617,7 @@ impl Account {
         self.ledger
             .apply(
                 self.scopes[RenderPhase::Preparation.index()],
-                Change::Acquire(resource.dimension(), amount),
+                Change::Acquire(resource, amount),
             )
             .map_err(|e| self.error(e))?;
         Ok(Hold::Preparation(PreparationHold {
@@ -647,33 +673,26 @@ impl Account {
     pub(crate) fn is_paint_gradient(&self) -> bool {
         cfg!(feature = "render-paint") && self.kind == RenderAttemptKind::PaintGradient
     }
+    /// The first ledger failure met where no error could be returned.
+    pub(crate) fn latched_fault(&self) -> Option<RenderAccountingError> {
+        *self
+            .fault
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
     fn error(&self, error: LedgerError) -> Error {
         let LedgerError::Refused(r) = error else {
             return map_ledger_failure(error).into();
         };
-        let phase = RenderPhase::ALL
+        let Some(phase) = RenderPhase::ALL
             .into_iter()
             .find(|p| self.scopes[p.index()] == r.scope)
-            .expect("owned refusal scope");
+        else {
+            return RenderAccountingError::Invariant.into();
+        };
         let (quantity, amount) = match r.change {
-            Change::Work(w, n) => (
-                RenderQuantity::Work(
-                    RenderWork::ALL
-                        .into_iter()
-                        .find(|k| k.dimension() == w)
-                        .expect("owned work dimension"),
-                ),
-                n,
-            ),
-            Change::Acquire(d, n) | Change::Release(d, n) => (
-                RenderQuantity::Resource(
-                    RenderResource::ALL
-                        .into_iter()
-                        .find(|k| k.dimension() == d)
-                        .expect("owned resource dimension"),
-                ),
-                n,
-            ),
+            Change::Work(w, n) => (RenderQuantity::Work(w), n),
+            Change::Acquire(d, n) | Change::Release(d, n) => (RenderQuantity::Resource(d), n),
         };
         let reason = match r.reason {
             surgeist_ledger::RefusalReason::Limit { limit } => RenderRefusalReason::Limit { limit },
@@ -766,13 +785,18 @@ impl Drop for PreparationHold {
         if !self.account.custody_open.load(Ordering::Acquire) {
             return;
         }
-        self.account
-            .ledger
-            .apply(
-                self.account.scopes[RenderPhase::Preparation.index()],
-                Change::Release(self.resource.dimension(), self.amount),
-            )
-            .expect("owned backing custody");
+        if let Err(error) = self.account.ledger.apply(
+            self.account.scopes[RenderPhase::Preparation.index()],
+            Change::Release(self.resource, self.amount),
+        ) {
+            // No error can be returned from a drop. The attempt reports the
+            // fault when it closes.
+            self.account
+                .fault
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .get_or_insert(map_ledger_failure(error));
+        }
     }
 }
 pub(crate) fn bytes<T>(n: usize) -> Result<usize> {
@@ -789,7 +813,7 @@ impl LocalQuota {
             .ledger
             .apply(
                 self.account.scopes[self.account.phase.index()],
-                Change::Acquire(resource.dimension(), amount),
+                Change::Acquire(resource, amount),
             )
             .map_err(|error| self.account.error(error))
     }
@@ -797,7 +821,7 @@ impl LocalQuota {
         self.account
             .ledger
             .usage(self.account.scopes[self.account.phase.index()])
-            .map(|usage| usage.live(resource.dimension()))
+            .map(|usage| usage.live(resource))
             .map_err(|error| self.account.error(error))
     }
 }
@@ -810,10 +834,10 @@ impl Drop for LocalQuota {
                 RenderResource::LocalAtlasSourceByteQuota,
                 RenderResource::LocalAtlasTexelQuota,
             ] {
-                let _ = self.account.ledger.apply(
-                    scope,
-                    Change::Release(resource.dimension(), usage.live(resource.dimension())),
-                );
+                let _ = self
+                    .account
+                    .ledger
+                    .apply(scope, Change::Release(resource, usage.live(resource)));
             }
         }
     }

@@ -150,7 +150,7 @@ fn zero_metadata_cap_refuses_source_synthetic_and_native_construction_without_ho
         })
         .unwrap();
     refusal(&source.result.unwrap_err(), 0);
-    assert_eq!(source.report.module_metadata_work(), 0);
+    assert_eq!(source.report.module_metadata_work().unwrap(), 0);
     assert!(!source.report.effects_started());
     let observation = Rc::new(Observation::default());
     let steps = initializer(observation.clone(), false);
@@ -160,7 +160,7 @@ fn zero_metadata_cap_refuses_source_synthetic_and_native_construction_without_ho
         })
         .unwrap();
     refusal(&synthetic.result.unwrap_err(), 0);
-    assert_eq!(synthetic.report.module_metadata_work(), 0);
+    assert_eq!(synthetic.report.module_metadata_work().unwrap(), 0);
     assert!(!synthetic.report.effects_started());
     assert_eq!(observation.stores.get(), 0);
     let observed = Rc::new(InputObservation::default());
@@ -169,7 +169,7 @@ fn zero_metadata_cap_refuses_source_synthetic_and_native_construction_without_ho
         .with_execution(options(0), |access| exports.into_js_module(access))
         .unwrap();
     refusal(&native.result.unwrap_err(), 0);
-    assert_eq!(native.report.module_metadata_work(), 0);
+    assert_eq!(native.report.module_metadata_work().unwrap(), 0);
     assert!(!native.report.effects_started());
     assert_eq!(observed.conversions.get(), 0);
     assert_eq!(observed.pulls.get(), 0);
@@ -187,7 +187,7 @@ fn native_iterator_prefix_is_one_state_record_then_one_visit_before_each_pull() 
                 .with_execution(options(cap), |access| exports.into_js_module(access))
                 .unwrap();
             refusal(&outcome.result.unwrap_err(), cap);
-            assert_eq!(outcome.report.module_metadata_work(), cap);
+            assert_eq!(outcome.report.module_metadata_work().unwrap(), cap);
             assert!(!outcome.report.effects_started());
             assert_eq!(observed.conversions.get(), usize::from(cap >= 1));
             assert_eq!(observed.pulls.get(), usize::from(cap >= 2));
@@ -228,7 +228,7 @@ fn metadata_refusal_is_sticky_for_direct_constructors_and_a_fresh_attempt_remain
         })
         .unwrap();
     assert_eq!(outcome.result.unwrap_err(), direct.unwrap());
-    assert_eq!(outcome.report.module_metadata_work(), 0);
+    assert_eq!(outcome.report.module_metadata_work().unwrap(), 0);
     assert_eq!(observation.stores.get(), 0);
     assert_eq!(observed.conversions.get(), 0);
     assert_eq!(observed.pulls.get(), 0);
@@ -248,7 +248,7 @@ fn metadata_refusal_is_sticky_for_direct_constructors_and_a_fresh_attempt_remain
         })
         .unwrap();
     retry.result.unwrap();
-    assert!(retry.report.module_metadata_work() > 0);
+    assert!(retry.report.module_metadata_work().unwrap() > 0);
     assert!(!retry.report.effects_started());
     assert!(observation.stores.get() > 0);
 }
@@ -283,7 +283,7 @@ fn a_current_instruction_stop_precedes_metadata_refusal_without_capture_or_itera
         )
         .unwrap();
     assert_eq!(outcome.result.unwrap_err(), first.unwrap());
-    assert_eq!(outcome.report.module_metadata_work(), 0);
+    assert_eq!(outcome.report.module_metadata_work().unwrap(), 0);
     assert_eq!(observation.stores.get(), 0);
     assert_eq!(observed.conversions.get(), 0);
     assert_eq!(observed.pulls.get(), 0);
@@ -302,7 +302,7 @@ fn pure_metadata_refusal_preserves_an_effect_already_started_by_the_outer_operat
         .unwrap();
     refusal(&outcome.result.unwrap_err(), 0);
     assert!(outcome.report.effects_started());
-    assert_eq!(outcome.report.module_metadata_work(), 0);
+    assert_eq!(outcome.report.module_metadata_work().unwrap(), 0);
     assert_eq!(observation.stores.get(), 0);
     assert_eq!(
         context
@@ -377,7 +377,7 @@ fn source_path_metadata_gate_refuses_before_the_reader_is_consumed() {
         .with_execution(options(0), |access| Module::parse(source, None, access))
         .unwrap();
     refusal(&outcome.result.unwrap_err(), 0);
-    assert_eq!(outcome.report.module_metadata_work(), 0);
+    assert_eq!(outcome.report.module_metadata_work().unwrap(), 0);
     assert_eq!(reads.get(), 0);
     assert!(!outcome.report.effects_started());
 }
@@ -409,12 +409,12 @@ fn source_metadata_segments_exclude_reader_time_and_untimed_modes_read_no_clock(
         let module = outcome.result.unwrap();
         assert_eq!(module.path(), Some(path));
         assert!(reads.get() > 0);
-        assert!(outcome.report.module_metadata_work() > 0);
+        assert!(outcome.report.module_metadata_work().unwrap() > 0);
         assert!(!outcome.report.effects_started());
         if mode == ProfileMode::Off {
-            assert!(outcome.report.profile().is_none());
+            assert!(outcome.report.profile().unwrap().is_none());
         } else {
-            let profile = outcome.report.profile().unwrap();
+            let profile = outcome.report.profile().unwrap().unwrap();
             assert_eq!(
                 profile.elapsed,
                 timed(mode).then_some(Duration::from_millis(100))
@@ -472,9 +472,9 @@ fn lawful_capture_storage_is_inside_the_metadata_phase_but_the_later_host_gap_is
         assert!(observation.stores.get() > 0);
         assert!(!outcome.report.effects_started());
         if mode == ProfileMode::Off {
-            assert!(outcome.report.profile().is_none());
+            assert!(outcome.report.profile().unwrap().is_none());
         } else {
-            let profile = outcome.report.profile().unwrap();
+            let profile = outcome.report.profile().unwrap().unwrap();
             assert_eq!(
                 profile.elapsed,
                 timed(mode).then_some(Duration::from_millis(107))
@@ -532,10 +532,10 @@ fn capture_unwind_closes_metadata_timing_and_preserves_pure_construction_effects
     TIME.set(TIME.get() + Duration::from_millis(100));
     drop(task);
     let report = receipt.report().unwrap();
-    assert!(report.module_metadata_work() > 0);
+    assert!(report.module_metadata_work().unwrap() > 0);
     assert!(!report.effects_started());
     assert!(observation.stores.get() > 0);
-    let profile = report.profile().unwrap();
+    let profile = report.profile().unwrap().unwrap();
     assert_eq!(
         profile
             .scopes
@@ -574,10 +574,10 @@ fn synthetic_spelling_work_does_not_consume_ast_name_credits() {
         )
         .unwrap();
     outcome.result.unwrap();
-    assert!(outcome.report.module_metadata_work() > 0);
-    assert_eq!(outcome.report.name_visits(), 0);
-    assert_eq!(outcome.report.name_records(), 0);
-    assert_eq!(outcome.report.name_comparisons(), 0);
+    assert!(outcome.report.module_metadata_work().unwrap() > 0);
+    assert_eq!(outcome.report.name_visits().unwrap(), 0);
+    assert_eq!(outcome.report.name_records().unwrap(), 0);
+    assert_eq!(outcome.report.name_comparisons().unwrap(), 0);
     assert!(!outcome.report.effects_started());
 }
 
@@ -596,7 +596,7 @@ fn source_name_refusal_remains_separate_and_before_parser_path_work_wins_when_bo
             limit: 0
         }))
     );
-    assert_eq!(names.report.name_records(), 0);
+    assert_eq!(names.report.name_records().unwrap(), 0);
     assert!(!names.report.effects_started());
     let both = context
         .with_execution(options(0).with_name_record_limit(0), |access| {
@@ -608,7 +608,7 @@ fn source_name_refusal_remains_separate_and_before_parser_path_work_wins_when_bo
         })
         .unwrap();
     refusal(&both.result.unwrap_err(), 0);
-    assert_eq!(both.report.module_metadata_work(), 0);
-    assert_eq!(both.report.name_records(), 0);
+    assert_eq!(both.report.module_metadata_work().unwrap(), 0);
+    assert_eq!(both.report.name_records().unwrap(), 0);
     assert!(!both.report.effects_started());
 }

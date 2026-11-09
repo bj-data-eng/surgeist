@@ -6,7 +6,7 @@ pub use model::*;
 
 use crate::{
     PaintError, PaintOptions, PaintReport, ResourceKind, StackingPlan,
-    accounting::{OperationKind, apply, setup_error},
+    accounting::{OperationKind, apply, finish, setup_error},
     algorithm,
 };
 use std::mem::{size_of, take};
@@ -57,10 +57,8 @@ pub fn plan_paint_order(request: PaintRequest<'_>, options: PaintOptions) -> Pai
     let (scopes, validate, sequence) = match scopes {
         Ok(scopes) => scopes,
         Err(error) => {
-            return PaintOrderOutcome {
-                result: Err(error),
-                report: meter.finish().map(PaintReport),
-            };
+            let (result, report) = finish(meter, Err(error));
+            return PaintOrderOutcome { result, report };
         }
     };
     let mut core = algorithm::State::default();
@@ -102,7 +100,7 @@ pub fn plan_paint_order(request: PaintRequest<'_>, options: PaintOptions) -> Pai
                 match apply(
                     p,
                     root,
-                    Change::Acquire(ResourceKind::RetainedResultBytes.dimension(), amount),
+                    Change::Acquire(ResourceKind::RetainedResultBytes, amount),
                 ) {
                     Ok(()) => Ok(plan),
                     Err(error) => {
@@ -116,21 +114,22 @@ pub fn plan_paint_order(request: PaintRequest<'_>, options: PaintOptions) -> Pai
             })
             .map_err(setup_error)?
     })();
-    meter
+    let cleanup = meter
         .with_phase(scopes[6], |p| {
-            core.scratch_cleanup(p, root);
-            index.cleanup(p, root);
-            output.scratch_cleanup(p, root);
+            core.scratch_cleanup(p, root)?;
+            index.cleanup(p, root)?;
+            output.scratch_cleanup(p, root)?;
             if result.is_err() {
-                core.result_cleanup(p, root);
-                output.result_cleanup(p, root);
+                core.result_cleanup(p, root)?;
+                output.result_cleanup(p, root)?;
             }
+            Ok(())
         })
-        .expect("owned fixed cleanup scope");
-    PaintOrderOutcome {
-        result,
-        report: meter.finish().map(PaintReport),
-    }
+        .map_err(setup_error)
+        .and_then(|done| done);
+    let result = result.and_then(|value| cleanup.map(|()| value));
+    let (result, report) = finish(meter, result);
+    PaintOrderOutcome { result, report }
 }
 
 impl From<PaintInputError> for crate::PaintError {

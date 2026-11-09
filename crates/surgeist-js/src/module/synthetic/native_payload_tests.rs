@@ -72,7 +72,7 @@ fn stored_native_exports_preserve_duplicate_request_order_and_final_function_ide
         .unwrap();
     let module = constructed.result.unwrap();
     assert!(!constructed.report.effects_started());
-    assert_eq!(constructed.report.instructions(), 0);
+    assert_eq!(constructed.report.instructions().unwrap(), 0);
     assert!(
         restored.borrow().is_empty(),
         "construction stores the payload without restoring its functions"

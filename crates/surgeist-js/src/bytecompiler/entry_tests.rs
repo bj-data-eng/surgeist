@@ -3,13 +3,12 @@
 use std::{collections::HashSet, convert::Infallible, rc::Rc};
 
 use surgeist_js_ast::scope::{BindingLocator, PreparedScopes, ScopeAnalysisError};
-use surgeist_ledger::Work;
 
 use crate::{
     Context, JsResult, JsValue, Module, NativeFunction, Script, Source,
     builtins::promise::PromiseState,
     error::{EngineError, RuntimeLimitError},
-    execution::{ExecutionOptions, ExecutionOutcome, ExecutionReport, ProfileMode},
+    execution::{ExecutionOptions, ExecutionOutcome, ExecutionReport, ExecutionWork, ProfileMode},
     js_string,
     module::{MapModuleLoader, SyntheticModuleInitializer},
     native_function::NativeCapture,
@@ -170,14 +169,14 @@ fn assert_stop(outcome: &ExecutionOutcome<JsValue>, limit: u64) {
             RuntimeLimitError::CompilerWork { limit },
         ))
     );
-    assert!(outcome.report.compiler_work() <= limit);
+    assert!(outcome.report.compiler_work().unwrap() <= limit);
     // The accepted native entry is a real host effect; private compilation
     // still must not publish the inner script/module's scopes or declarations.
     assert!(outcome.report.effects_started());
 }
 
 fn origin(report: &ExecutionReport, name: &str) -> u64 {
-    let profile = report.profile().unwrap();
+    let profile = report.profile().unwrap().unwrap();
     let phase = profile
         .scopes
         .iter()
@@ -189,24 +188,29 @@ fn origin(report: &ExecutionReport, name: &str) -> u64 {
         .find(|scope| scope.parent == Some(phase.scope) && scope.name == name)
         .unwrap()
         .usage
-        .work(Work::<32>::new(26).unwrap())
+        .work(ExecutionWork::CompilerWork)
 }
 
 fn assert_compilation_attribution(report: &ExecutionReport) {
-    let profile = report.profile().unwrap();
+    let profile = report.profile().unwrap().unwrap();
     let phase = profile
         .scopes
         .iter()
         .find(|scope| scope.name == "bytecode-compilation")
         .unwrap();
-    let compiler = Work::<32>::new(26).unwrap();
-    assert_eq!(phase.usage.work(compiler), report.compiler_work());
+    let compiler = ExecutionWork::CompilerWork;
+    assert_eq!(phase.usage.work(compiler), report.compiler_work().unwrap());
     assert_eq!(
         profile.scopes[0].usage.work(compiler),
-        report.compiler_work()
+        report.compiler_work().unwrap()
     );
-    for index in [12, 13, 14, 24, 26] {
-        let dimension = Work::<32>::new(index).unwrap();
+    for dimension in [
+        ExecutionWork::NameVisit,
+        ExecutionWork::NameRecord,
+        ExecutionWork::NameComparison,
+        ExecutionWork::ScopeWork,
+        ExecutionWork::CompilerWork,
+    ] {
         let attributed: u64 = profile
             .scopes
             .iter()
@@ -333,7 +337,7 @@ fn pending_script_one_short_preserves_slots_and_identities_for_retained_and_fres
     let (mut baseline, _, _) = script_context(PENDING, CODE_ONCE);
     let complete = run(&mut baseline, None);
     assert_eq!(complete.result.unwrap(), 42.into());
-    let work = complete.report.compiler_work();
+    let work = complete.report.compiler_work().unwrap();
     let (mut exact, _, snapshot) = script_context(PENDING, CODE_ONCE);
     assert_eq!(run(&mut exact, Some(work)).result.unwrap(), 42.into());
     snapshot.assert_private(&exact, 0);
@@ -360,7 +364,7 @@ fn a_later_compiler_stop_preserves_callback_committed_bindings_and_stale_retry()
     let (mut baseline, _, _) = script_context(AFTER_CALLBACK, CODE_AROUND_EFFECT);
     let complete = run(&mut baseline, None);
     assert_eq!(complete.result.unwrap(), 42.into());
-    let work = complete.report.compiler_work();
+    let work = complete.report.compiler_work().unwrap();
     let (mut exact, _, snapshot) = script_context(AFTER_CALLBACK, CODE_AROUND_EFFECT);
     assert_eq!(run(&mut exact, Some(work)).result.unwrap(), 42.into());
     snapshot.assert_private(&exact, 1);
@@ -546,7 +550,7 @@ fn source_and_synthetic_exact_one_short_and_retry_publish_only_the_admitted_grou
         let complete = run(&mut baseline.context, None);
         assert_eq!(complete.result.unwrap(), 42.into());
         assert_compilation_attribution(&complete.report);
-        let work = complete.report.compiler_work();
+        let work = complete.report.compiler_work().unwrap();
         let mut exact = module_harness(case);
         let exact_result = run(&mut exact.context, Some(work));
         assert_eq!(exact_result.result.unwrap(), 42.into());
@@ -704,7 +708,7 @@ fn all_dynamic_constructor_families_share_compiler_admission_and_fresh_retry() {
         let (mut baseline, _, _) = constructor_context(expression);
         let complete = run(&mut baseline, None);
         assert_compilation_attribution(&complete.report);
-        let work = complete.report.compiler_work();
+        let work = complete.report.compiler_work().unwrap();
         verify_function(complete.result.unwrap(), family, &mut baseline);
         let (mut exact, _, snapshot) = constructor_context(expression);
         let exact_result = run(&mut exact, Some(work));
@@ -761,7 +765,7 @@ fn late_source_start_visit_refusal_keeps_preparation_private_and_allows_retry() 
     let (mut baseline, _, _) = script_context(SOURCE, CODE_ONCE);
     let complete = run(&mut baseline, None);
     assert_eq!(complete.result.unwrap(), 42.into());
-    let visits = complete.report.name_visits();
+    let visits = complete.report.name_visits().unwrap();
     assert!(visits > 0);
     for retained in [true, false] {
         let (mut context, script, snapshot) = script_context(SOURCE, CODE_ONCE);
@@ -778,7 +782,7 @@ fn late_source_start_visit_refusal_keeps_preparation_private_and_allows_retry() 
                 limit
             },))
         );
-        assert_eq!(stopped.report.name_visits(), limit);
+        assert_eq!(stopped.report.name_visits().unwrap(), limit);
         assert!(stopped.report.effects_started());
         snapshot.assert_private(&context, 0);
         let retry = if retained {

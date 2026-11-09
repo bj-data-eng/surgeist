@@ -292,7 +292,7 @@ fn equal_whole_spans_count_actual_colors_and_last_ignores_unused_arithmetic() {
 }
 
 fn no_custody(report: &PaintReport) {
-    for resource in ResourceKind::ALL {
+    for &resource in ResourceKind::ALL {
         assert_eq!(report.live(resource), 0, "{resource:?}");
     }
 }
@@ -429,20 +429,20 @@ fn forbidden_clock() -> Duration {
 }
 
 fn usage_equal(actual: &PaintReport, expected: &PaintReport) {
-    for work in WorkKind::ALL {
+    for &work in WorkKind::ALL {
         assert_eq!(actual.work(work), expected.work(work), "{work:?}");
     }
-    for resource in ResourceKind::ALL {
+    for &resource in ResourceKind::ALL {
         assert_eq!(actual.live(resource), expected.live(resource));
         assert_eq!(actual.peak(resource), expected.peak(resource));
     }
     assert_eq!(actual.phases().len(), expected.phases().len());
     for (actual, expected) in actual.phases().zip(expected.phases()) {
         assert_eq!(actual.phase(), expected.phase());
-        for work in WorkKind::ALL {
+        for &work in WorkKind::ALL {
             assert_eq!(actual.work(work), expected.work(work));
         }
-        for resource in ResourceKind::ALL {
+        for &resource in ResourceKind::ALL {
             assert_eq!(actual.live(resource), expected.live(resource));
             assert_eq!(actual.peak(resource), expected.peak(resource));
         }
@@ -513,7 +513,7 @@ fn actual_work_and_capacity_caps_clean_partial_measures_and_profiles_preserve_ad
             );
             assert_eq!(observed(&retry.result.unwrap()), expected);
         }
-        for resource in ResourceKind::ALL {
+        for &resource in ResourceKind::ALL {
             let peak = report.peak(resource);
             assert!(peak > 0);
             let failed = resolve_zero_height_gradient_colors(

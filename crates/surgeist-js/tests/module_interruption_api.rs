@@ -57,7 +57,7 @@ fn observe(module: &Module, context: &mut Context) -> JsError {
         .result
         .expect_err("terminal evaluation refuses native reentry");
     assert_eq!(
-        outcome.report.instructions(),
+        outcome.report.instructions().unwrap(),
         0,
         "observation must not replay or inherit old counters"
     );
@@ -97,7 +97,7 @@ fn interrupt(original: JsError, context: &mut Context) -> (Module, JsError) {
         })
         .unwrap();
     assert_eq!(first.result.unwrap_err(), original);
-    assert!(first.report.instructions() > 0);
+    assert!(first.report.instructions().unwrap() > 0);
     assert_eq!(effects(context), 1.into());
     let terminal = observe(&module, context);
     assert_eq!(effects(context), 1.into());
@@ -309,7 +309,7 @@ fn a_current_operations_first_stop_precedes_a_historical_module_cause() {
             limit: 0
         }))
     );
-    assert_eq!(current.report.instructions(), 0);
+    assert_eq!(current.report.instructions().unwrap(), 0);
     let fresh = observe(&module, &mut context);
     assert_same_identity(&terminal, &fresh);
     assert_engine_cause(cause(&fresh), &original);
@@ -793,8 +793,8 @@ fn newly_runnable_tla_ancestor_preserves_its_original_host_panic_in_the_initiati
         .unwrap();
     assert_eq!(direct.unwrap().unwrap_err(), original);
     assert_eq!(outcome.result.unwrap_err(), original);
-    assert!(outcome.report.instructions() > 0);
-    assert!(outcome.report.instructions() < 100_000);
+    assert!(outcome.report.instructions().unwrap() > 0);
+    assert!(outcome.report.instructions().unwrap() < 100_000);
     assert_eq!(effects(&mut context), 1.into());
     assert_eq!(evaluation.state(), PromiseState::Pending);
     assert_eq!(
@@ -942,7 +942,7 @@ mod final_settlement {
                 module.evaluate(access)
             })
             .unwrap();
-        assert_eq!(observed.report.instructions(), 0);
+        assert_eq!(observed.report.instructions().unwrap(), 0);
         let error = observed
             .result
             .expect_err("failed final publication makes this instance terminal");
@@ -1062,8 +1062,8 @@ mod final_settlement {
                 .expect_err("final intrinsic publication must refuse the armed recursion limit"),
         );
         assert_recursion_refusal(&outcome.result.unwrap_err());
-        assert!(outcome.report.instructions() > 0);
-        assert!(outcome.report.instructions() < 100_000);
+        assert!(outcome.report.instructions().unwrap() > 0);
+        assert!(outcome.report.instructions().unwrap() < 100_000);
         assert_eq!(
             reason.get(js_string!("tag"), context.access()).unwrap(),
             js_string!("authored guest reason").into()

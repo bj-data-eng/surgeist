@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use crate::{Error, Operation, Scope, profile::Profile};
+use crate::{Dimension, Error, Operation, Scope, profile::Profile};
 
 /// An unfinished phase observation bound to its originating operation.
 ///
@@ -21,7 +21,7 @@ pub struct PhaseObservation {
     start: Option<Duration>,
 }
 
-impl<const W: usize, const R: usize> Operation<W, R> {
+impl<W: Dimension, R: Dimension> Operation<W, R> {
     /// Captures a phase's scope and optional configured-clock start sample.
     ///
     /// No operation borrow is retained, no registry entry is allocated, and no
@@ -51,8 +51,10 @@ impl<const W: usize, const R: usize> Operation<W, R> {
     /// Returns the original unfinished observation if it belongs to another
     /// operation. That rejection reads no clock and changes no accounting or
     /// observations. The caller can retry completion on its original owner.
+    /// A defect found while recording is latched and returned by the
+    /// operation's next fallible call.
     pub fn end_phase(&mut self, observation: PhaseObservation) -> Result<(), PhaseObservation> {
-        if self.index(observation.scope).is_err() {
+        if observation.scope.operation != self.identity {
             return Err(observation);
         }
         self.record_phase(observation.scope, observation.start);

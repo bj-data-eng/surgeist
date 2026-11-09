@@ -57,5 +57,8 @@ fn duplicate_synthetic_name_attempts_have_positive_work_without_additional_uniqu
     assert_eq!(duplicate.export_names.len(), 1);
     assert!(single.export_names.contains(&js_string!("answer")));
     assert!(duplicate.export_names.contains(&js_string!("answer")));
-    assert!(duplicate_report.module_metadata_work() > single_report.module_metadata_work());
+    assert!(
+        duplicate_report.module_metadata_work().unwrap()
+            > single_report.module_metadata_work().unwrap()
+    );
 }

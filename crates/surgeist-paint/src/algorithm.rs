@@ -3,7 +3,9 @@ use crate::{
     ResourceKind, StackingPlan, WorkKind,
 };
 use crate::{
-    accounting::{Meter, OperationKind, PhaseMeter, allocate, apply, charge, release, setup_error},
+    accounting::{
+        Meter, OperationKind, PhaseMeter, allocate, apply, charge, finish, release, setup_error,
+    },
     model::ContextRecord,
 };
 use std::{
@@ -40,51 +42,61 @@ pub(crate) struct State {
     pub(crate) children: Vec<usize>,
 }
 impl State {
-    pub(crate) fn scratch_cleanup(&mut self, meter: &mut PhaseMeter<'_>, root: Scope) {
+    pub(crate) fn scratch_cleanup(
+        &mut self,
+        meter: &mut PhaseMeter<'_>,
+        root: Scope,
+    ) -> Result<(), PaintError> {
         release(
             meter,
             root,
             take(&mut self.nodes),
             ResourceKind::ScratchBytes,
-        );
+        )?;
         release(
             meter,
             root,
             take(&mut self.edges),
             ResourceKind::ScratchBytes,
-        );
+        )?;
         release(
             meter,
             root,
             take(&mut self.merge),
             ResourceKind::ScratchBytes,
-        );
+        )?;
         release(
             meter,
             root,
             take(&mut self.stack),
             ResourceKind::ScratchBytes,
-        );
+        )?;
+        Ok(())
     }
-    pub(crate) fn result_cleanup(&mut self, meter: &mut PhaseMeter<'_>, root: Scope) {
+    pub(crate) fn result_cleanup(
+        &mut self,
+        meter: &mut PhaseMeter<'_>,
+        root: Scope,
+    ) -> Result<(), PaintError> {
         release(
             meter,
             root,
             take(&mut self.membership),
             ResourceKind::RetainedResultBytes,
-        );
+        )?;
         release(
             meter,
             root,
             take(&mut self.contexts),
             ResourceKind::RetainedResultBytes,
-        );
+        )?;
         release(
             meter,
             root,
             take(&mut self.children),
             ResourceKind::RetainedResultBytes,
-        );
+        )?;
+        Ok(())
     }
 }
 
@@ -110,27 +122,26 @@ pub fn plan_stacking(
     let scopes = match scopes {
         Ok(scopes) => scopes,
         Err(error) => {
-            return PaintOutcome {
-                result: Err(error),
-                report: meter.finish().map(PaintReport),
-            };
+            let (result, report) = finish(meter, Err(error));
+            return PaintOutcome { result, report };
         }
     };
     let mut state = State::default();
     let result = run(&mut meter, root, &scopes, &mut state, boxes, root_box);
     // Cleanup also runs after every semantic/admission refusal. It never undoes work.
-    meter
+    let cleanup = meter
         .with_phase(scopes[6], |phase| {
-            state.scratch_cleanup(phase, root);
+            state.scratch_cleanup(phase, root)?;
             if result.is_err() {
-                state.result_cleanup(phase, root);
+                state.result_cleanup(phase, root)?;
             }
+            Ok(())
         })
-        .expect("owned fixed cleanup scope");
-    PaintOutcome {
-        result,
-        report: meter.finish().map(PaintReport),
-    }
+        .map_err(setup_error)
+        .and_then(|done| done);
+    let result = result.and_then(|value| cleanup.map(|()| value));
+    let (result, report) = finish(meter, result);
+    PaintOutcome { result, report }
 }
 
 pub(crate) fn setup_scopes(meter: &mut Meter) -> Result<[Scope; 7], PaintError> {
@@ -174,7 +185,7 @@ fn run<'a>(
                 p,
                 root,
                 Change::Acquire(
-                    ResourceKind::RetainedResultBytes.dimension(),
+                    ResourceKind::RetainedResultBytes,
                     u64::try_from(size_of::<StackingPlan<'_>>())
                         .map_err(|_| PaintError::CapacityOverflow)?,
                 ),

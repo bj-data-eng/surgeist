@@ -80,8 +80,8 @@ fn assert_refused<R: Debug>(
     limit: u64,
     accepted: u64,
 ) {
-    assert_eq!(outcome.report.instructions(), 0);
-    assert_eq!(outcome.report.module_metadata_work(), accepted);
+    assert_eq!(outcome.report.instructions().unwrap(), 0);
+    assert_eq!(outcome.report.module_metadata_work().unwrap(), accepted);
     let error = outcome.result.unwrap_err();
     assert_eq!(
         error.as_engine(),
@@ -159,7 +159,7 @@ fn insertion_record_refusal_precedes_hashing_and_duplicate_probes_preserve_the_f
         if limit == 3 {
             assert!(outcome.result.is_ok());
             assert!(direct.is_none());
-            assert_eq!(outcome.report.module_metadata_work(), 3);
+            assert_eq!(outcome.report.module_metadata_work().unwrap(), 3);
         } else {
             assert_refused(outcome, direct, limit, limit);
         }
@@ -188,7 +188,7 @@ fn first_slot_capacity_vacant_probe_and_entry_write_have_independent_refusal_bou
         if limit == exact {
             assert!(outcome.result.is_ok());
             assert!(direct.is_none());
-            assert_eq!(outcome.report.module_metadata_work(), exact);
+            assert_eq!(outcome.report.module_metadata_work().unwrap(), exact);
             assert_prefix(&index, 1, &mut context);
         } else {
             assert_refused(outcome, direct, limit, accepted);
@@ -224,7 +224,7 @@ fn staged_growth_refusal_preserves_the_accepted_prefix_and_rehashes_only_cached_
         if limit == exact {
             assert!(outcome.result.is_ok());
             assert!(direct.is_none());
-            assert_eq!(outcome.report.module_metadata_work(), exact);
+            assert_eq!(outcome.report.module_metadata_work().unwrap(), exact);
             assert_prefix(&index, 5, &mut context);
         } else {
             assert_refused(outcome, direct, limit, accepted);
@@ -254,7 +254,7 @@ fn five_colliding_insertions_have_a_derived_exact_limit_and_a_last_write_refusal
         if limit == exact {
             assert!(outcome.result.is_ok());
             assert!(direct.is_none());
-            assert_eq!(outcome.report.module_metadata_work(), exact);
+            assert_eq!(outcome.report.module_metadata_work().unwrap(), exact);
             assert_prefix(&index, 5, &mut context);
         } else {
             assert_refused(outcome, direct, limit, exact - 1);
@@ -297,7 +297,7 @@ fn append_reservation_credits_do_not_depend_on_allocator_spare_capacity() {
             if limit == exact {
                 assert!(outcome.result.is_ok());
                 assert!(direct.is_none());
-                assert_eq!(outcome.report.module_metadata_work(), exact);
+                assert_eq!(outcome.report.module_metadata_work().unwrap(), exact);
                 assert_eq!(&*values, &[1, 2, 3, 4, 5]);
             } else {
                 assert_refused(outcome, direct, limit, accepted);
@@ -349,7 +349,7 @@ fn sort_refuses_before_comparison_scans_and_swaps_without_losing_attribute_value
         if limit == 10 {
             assert!(outcome.result.is_ok());
             assert!(direct.is_none());
-            assert_eq!(outcome.report.module_metadata_work(), 10);
+            assert_eq!(outcome.report.module_metadata_work().unwrap(), 10);
         } else {
             assert_refused(outcome, direct, limit, limit);
         }
@@ -363,7 +363,7 @@ fn sort_refuses_before_comparison_scans_and_swaps_without_losing_attribute_value
         });
         if limit == 3 {
             assert!(outcome.result.is_ok());
-            assert_eq!(outcome.report.module_metadata_work(), 3);
+            assert_eq!(outcome.report.module_metadata_work().unwrap(), 3);
             assert_eq!(snapshot(&values), snapshot(&attributes("ab")));
         } else {
             assert_refused(outcome, direct, limit, 2);
@@ -398,7 +398,7 @@ fn sort_prices_utf16_comparison_and_preserves_code_unit_order_including_surrogat
             if limit == 3 {
                 assert!(outcome.result.is_ok());
                 assert!(direct.is_none());
-                assert_eq!(outcome.report.module_metadata_work(), 3);
+                assert_eq!(outcome.report.module_metadata_work().unwrap(), 3);
                 assert_eq!(
                     snapshot(&values),
                     vec![
@@ -455,8 +455,8 @@ fn a_retained_instruction_stop_wins_before_index_hashing_or_sort_mutation() {
         let first = first.unwrap();
         assert_eq!(outcome.result.unwrap_err(), first);
         assert_eq!(direct.as_ref(), Some(&first));
-        assert_eq!(outcome.report.module_metadata_work(), 0);
-        assert_eq!(outcome.report.instructions(), 0);
+        assert_eq!(outcome.report.module_metadata_work().unwrap(), 0);
+        assert_eq!(outcome.report.instructions().unwrap(), 0);
         assert_eq!(hashes.get(), 0);
         assert_prefix(&index, 0, &mut context);
         assert_eq!(snapshot(&values), snapshot(&attributes("ba")));

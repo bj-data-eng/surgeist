@@ -39,11 +39,11 @@ mod growth_tests {
                     assert_eq!(values.capacity(), old_capacity);
                 }
                 let new_bytes = (values.capacity() * size_of::<u64>()) as u64;
-                release(p, root, values, ResourceKind::ScratchBytes);
+                release(p, root, values, ResourceKind::ScratchBytes).unwrap();
                 (accepted, old_bytes, new_bytes)
             })
             .unwrap();
-        let report = PaintReport(meter.finish().unwrap());
+        let report = PaintReport::new(meter.finish().unwrap().unwrap()).unwrap();
         assert_eq!(report.live(ResourceKind::ScratchBytes), 0);
         assert_eq!(report.live(ResourceKind::RetainedResultBytes), 0);
         (accepted, old_bytes, new_bytes, report)
@@ -153,10 +153,14 @@ pub(super) struct SequenceState {
 }
 
 impl SequenceState {
-    pub(super) fn scratch_cleanup(&mut self, p: &mut PhaseMeter<'_>, root: Scope) {
+    pub(super) fn scratch_cleanup(
+        &mut self,
+        p: &mut PhaseMeter<'_>,
+        root: Scope,
+    ) -> Result<(), PaintError> {
         macro_rules! drop_scratch {
             ($($field:ident),* $(,)?) => {$(
-                release(p, root, take(&mut self.$field), ResourceKind::ScratchBytes);
+                release(p, root, take(&mut self.$field), ResourceKind::ScratchBytes)?;
             )*};
         }
         drop_scratch!(
@@ -174,15 +178,21 @@ impl SequenceState {
             flow_order,
             flow_merge
         );
+        Ok(())
     }
 
-    pub(super) fn result_cleanup(&mut self, p: &mut PhaseMeter<'_>, root: Scope) {
+    pub(super) fn result_cleanup(
+        &mut self,
+        p: &mut PhaseMeter<'_>,
+        root: Scope,
+    ) -> Result<(), PaintError> {
         release(
             p,
             root,
             take(&mut self.events),
             ResourceKind::RetainedResultBytes,
-        );
+        )?;
+        Ok(())
     }
 }
 
@@ -200,12 +210,12 @@ fn capacity<T: Copy>(
     let doubled = values.capacity().checked_mul(2).unwrap_or(wanted);
     let mut next = allocate(p, root, wanted.max(doubled), ResourceKind::ScratchBytes)?;
     if let Err(error) = charge(p, phase, WorkKind::OrderMove, values.len()) {
-        release(p, root, next, ResourceKind::ScratchBytes);
+        release(p, root, next, ResourceKind::ScratchBytes)?;
         return Err(error);
     }
     next.extend_from_slice(values);
     let old = std::mem::replace(values, next);
-    release(p, root, old, ResourceKind::ScratchBytes);
+    release(p, root, old, ResourceKind::ScratchBytes)?;
     Ok(())
 }
 
