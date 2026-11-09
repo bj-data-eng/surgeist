@@ -75,6 +75,11 @@ impl SettlementStatus {
     }
 }
 const FAULTED: u8 = 7;
+#[derive(Clone, Copy)]
+enum WakePhase {
+    Direct,
+    Prepared,
+}
 struct Waiter {
     waker: Mutex<Option<Waker>>,
 }
@@ -460,7 +465,7 @@ pub(crate) struct Signal {
 impl std::fmt::Debug for Signal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_tuple("NativeSettlementSignal")
-            .field(&self.status())
+            .field(&self.observation())
             .finish()
     }
 }
@@ -569,18 +574,19 @@ impl Signal {
             }
         }
     }
-    fn fail(&self, error: JobFault) {
+    fn fail(self: &Arc<Self>, error: JobFault) {
         self.mark_fault(error);
-        self.notify_direct();
+        // Queue the source itself before visiting its dependency bank. The
+        // domain finishes the full same-domain notice closure before any wake.
+        self.notify();
     }
-    fn reject_waker(&self, error: JobFault, waker: Waker) {
-        self.mark_fault(error);
+    fn reject_waker(self: &Arc<Self>, error: JobFault, waker: Waker) {
         let mut unwind = UnwindCleanup::default();
+        unwind.run(|| self.fail(error));
         unwind.run(|| drop(waker));
-        unwind.run(|| self.notify_direct());
         unwind.finish();
     }
-    pub(crate) fn status(&self) -> Result<SettlementStatus, JobFault> {
+    pub(crate) fn status(self: &Arc<Self>) -> Result<SettlementStatus, JobFault> {
         let raw = self.status.load(Ordering::Acquire);
         if let Some(status) = SettlementStatus::decode(raw) {
             return Ok(status);
@@ -596,14 +602,14 @@ impl Signal {
         self.fail(error);
         self.observation()
     }
-    fn check(&self) -> Result<(), JobFault> {
+    fn check(self: &Arc<Self>) -> Result<(), JobFault> {
         self.status()?;
         match self.fault.get() {
             Some(error) => Err(*error),
             None => Ok(()),
         }
     }
-    fn state_access(&self) -> Result<MutexGuard<'_, SignalState>, JobFault> {
+    fn state_access(self: &Arc<Self>) -> Result<MutexGuard<'_, SignalState>, JobFault> {
         if let Some(error) = self.fault.get() {
             return Err(*error);
         }
@@ -696,58 +702,95 @@ impl Signal {
         }
         self.wake();
     }
-    fn wake(&self) {
-        if self.fault.get().is_some() {
-            let waiters = {
-                let mut state = match self.state.lock() {
-                    Ok(state) => state,
-                    Err(poison) => poison.into_inner(),
-                };
-                std::mem::take(&mut state.waiters)
+    fn wake(self: &Arc<Self>) {
+        self.wake_waiters(WakePhase::Direct);
+    }
+    fn wake_ready(self: &Arc<Self>) {
+        self.wake_waiters(WakePhase::Prepared);
+    }
+    fn wake_cleanup_ready(&self, phase: WakePhase) -> bool {
+        matches!(phase, WakePhase::Prepared) || self.observation() == Ok(SettlementStatus::Settled)
+    }
+    fn wake_fault_waiters(self: &Arc<Self>) {
+        let waiters = {
+            let mut state = match self.state.lock() {
+                Ok(state) => state,
+                Err(poison) => poison.into_inner(),
             };
-            let mut unwind = UnwindCleanup::default();
-            for waiter in waiters.iter().filter_map(|entry| entry.as_ref()) {
-                unwind.run(|| self.wake_waiter(waiter));
+            std::mem::take(&mut state.waiters)
+        };
+        let mut unwind = UnwindCleanup::default();
+        for waiter in waiters.iter().filter_map(|entry| entry.as_ref()) {
+            unwind.run(|| self.wake_waiter(waiter, WakePhase::Prepared));
+        }
+        drop(waiters);
+        unwind.finish();
+    }
+    fn wake_waiters(self: &Arc<Self>, phase: WakePhase) {
+        if let Some(error) = self.fault.get() {
+            if self.wake_cleanup_ready(phase) {
+                self.wake_fault_waiters();
+            } else {
+                // Another publisher may have initialized the cause immediately
+                // before its terminal CAS. Complete the same checked mark before
+                // selecting a notification route; never recurse over Pending.
+                self.mark_fault(*error);
+                self.notify();
             }
-            drop(waiters);
-            unwind.finish();
             return;
         }
         let count = match self.state_access() {
             Ok(state) => state.waiters.len(),
-            Err(_) => return,
+            Err(_) => {
+                // state_access has published/queued the actual fault. A driver
+                // already in its Wake phase must still dispose its original bank.
+                if self.wake_cleanup_ready(phase) {
+                    self.wake_fault_waiters();
+                }
+                return;
+            }
         };
         let mut unwind = UnwindCleanup::default();
         for index in 0..count {
             let waiter = match self.state_access() {
                 Ok(state) => state.waiters.get(index).and_then(Clone::clone),
-                Err(_) => break,
+                Err(_) => {
+                    if self.wake_cleanup_ready(phase) {
+                        unwind.run(|| self.wake_fault_waiters());
+                    }
+                    break;
+                }
             };
             if let Some(waiter) = waiter {
-                unwind.run(|| self.wake_waiter(&waiter));
+                unwind.run(|| self.wake_waiter(&waiter, phase));
             }
         }
         unwind.finish();
     }
-    fn wake_waiter(&self, waiter: &Waiter) {
-        let (waker, poison) = match waiter.waker.lock() {
-            Ok(mut slot) => (slot.take(), false),
-            Err(poison) => (poison.into_inner().take(), true),
+    fn wake_waiter(self: &Arc<Self>, waiter: &Waiter, phase: WakePhase) {
+        let waker = match waiter.waker.lock() {
+            Ok(mut slot) => slot.take(),
+            Err(poison) => {
+                if !self.wake_cleanup_ready(phase) {
+                    // The existing slot retains its original waker. Let the
+                    // queued source fault mark every active dependent before
+                    // its prepared Wake phase consumes this poisoned slot.
+                    drop(poison.into_inner());
+                    self.fail(signal_fault(JobFaultCause::PoisonedWaker));
+                    return;
+                }
+                self.mark_fault(signal_fault(JobFaultCause::PoisonedWaker));
+                poison.into_inner().take()
+            }
         };
-        if poison {
-            self.mark_fault(signal_fault(JobFaultCause::PoisonedWaker));
-        }
-        let mut unwind = UnwindCleanup::default();
-        if poison {
-            unwind.run(|| self.notify_direct());
-        }
         if let Some(waker) = waker {
-            unwind.run(|| waker.wake());
+            waker.wake();
         }
-        unwind.finish();
     }
-    fn notify_direct(&self) {
-        // A failed signal's physical banks remain the cleanup authority.
+    fn notify_direct(self: &Arc<Self>) {
+        // Only domain quarantine uses this path, after its physical member bank
+        // has marked every matching-affiliation member. Cross-domain relays keep
+        // their own eventual delivery; they do not create a global transaction.
         let state = {
             let mut state = match self.state.lock() {
                 Ok(state) => state,
@@ -769,7 +812,7 @@ impl Signal {
             unwind.run(|| dependent.deliver(observation));
         }
         for waiter in state.waiters.iter().filter_map(|entry| entry.as_ref()) {
-            unwind.run(|| self.wake_waiter(waiter));
+            unwind.run(|| self.wake_waiter(waiter, WakePhase::Prepared));
         }
         unwind.run(|| drop(state));
         unwind.finish();
@@ -778,7 +821,7 @@ impl Signal {
         let raw = self.status.load(Ordering::Acquire);
         match SettlementStatus::decode(raw) {
             Some(status) => Ok(status),
-            None => Err(*self.fault.get_or_init(|| {
+            None => Err(self.fault.get().copied().unwrap_or_else(|| {
                 signal_fault(if raw == FAULTED {
                     JobFaultCause::MissingCause
                 } else {
@@ -824,14 +867,9 @@ impl Signal {
             self.mark_module();
         }
         drop(state);
-        let mut unwind = UnwindCleanup::default();
-        if active {
-            unwind.run(|| self.notify_module());
+        if active || poisoned {
+            self.notify();
         }
-        if poisoned {
-            unwind.run(|| self.notify_direct());
-        }
-        unwind.finish();
     }
     pub(crate) fn notify_module(self: &Arc<Self>) {
         if self.observation() != Ok(SettlementStatus::ModuleInterrupted)
@@ -1102,36 +1140,46 @@ impl Signal {
                         break;
                     }
                 }
-                Work::Wake(wake) => unwind.run(|| wake.wake()),
+                Work::Wake(wake) => unwind.run(|| wake.wake_ready()),
                 Work::Idle => break,
             }
         }
         unwind.finish();
     }
-    fn deliver_dependents(&self) {
-        if self.fault.get().is_some() {
-            let dependents = {
-                let mut state = match self.state.lock() {
-                    Ok(state) => state,
-                    Err(poison) => poison.into_inner(),
-                };
-                std::mem::take(&mut state.dependents)
+    fn deliver_fault_dependents(self: &Arc<Self>) {
+        let dependents = {
+            let mut state = match self.state.lock() {
+                Ok(state) => state,
+                Err(poison) => poison.into_inner(),
             };
-            let mut unwind = UnwindCleanup::default();
-            for dependent in dependents
-                .iter()
-                .filter_map(|entry| entry.as_ref())
-                .filter_map(Weak::upgrade)
-            {
-                unwind.run(|| dependent.deliver(self.observation()));
-            }
-            drop(dependents);
-            unwind.finish();
+            std::mem::take(&mut state.dependents)
+        };
+        let observation = self.observation();
+        let mut unwind = UnwindCleanup::default();
+        for dependent in dependents
+            .iter()
+            .filter_map(|entry| entry.as_ref())
+            .filter_map(Weak::upgrade)
+        {
+            unwind.run(|| dependent.deliver(observation));
+        }
+        drop(dependents);
+        unwind.finish();
+    }
+    fn deliver_dependents(self: &Arc<Self>) {
+        // A malformed atomic seen by an existing driver is repaired by the same
+        // owner as ordinary observation, without bypassing notice priority.
+        let _ = self.status();
+        if self.fault.get().is_some() {
+            self.deliver_fault_dependents();
             return;
         }
         let count = match self.state_access() {
             Ok(state) => state.dependents.len(),
-            Err(_) => return,
+            Err(_) => {
+                self.deliver_fault_dependents();
+                return;
+            }
         };
         let mut unwind = UnwindCleanup::default();
         for index in 0..count {
@@ -1141,7 +1189,12 @@ impl Signal {
                     .get(index)
                     .and_then(Clone::clone)
                     .and_then(|entry| entry.upgrade()),
-                Err(_) => break,
+                Err(_) => {
+                    // A fault found during this notice does not discard the
+                    // unvisited tail. Detach and finish its physical bank now.
+                    unwind.run(|| self.deliver_fault_dependents());
+                    break;
+                }
             };
             if let Some(dependent) = dependent {
                 unwind.run(|| dependent.deliver(self.observation()));
@@ -1381,20 +1434,19 @@ impl RetirementRelay for Relay {
     }
     fn completed(&self) {
         if let Some(target) = self.target.upgrade() {
-            // Completion disables this epoch even if observation already failed.
-            let state = match target.state.lock() {
-                Ok(state) => state,
-                Err(poison) => {
-                    drop(poison.into_inner());
-                    target.fail(signal_fault(JobFaultCause::PoisonedRegistry));
-                    self.epoch.completed.store(true, Ordering::Release);
-                    self.epoch.active.store(false, Ordering::Release);
-                    return;
-                }
+            let (state, poisoned) = match target.state.lock() {
+                Ok(state) => (state, false),
+                Err(poison) => (poison.into_inner(), true),
             };
             self.epoch.completed.store(true, Ordering::Release);
             self.epoch.active.store(false, Ordering::Release);
+            if poisoned {
+                target.mark_fault(signal_fault(JobFaultCause::PoisonedRegistry));
+            }
             drop(state);
+            if poisoned {
+                target.notify();
+            }
         }
     }
 }
@@ -1537,6 +1589,9 @@ impl PreparedHandoff {
             }
         };
         let observation = owner.signal.observation();
+        if let Err(error) = observation {
+            owner.signal.mark_fault(error);
+        }
         if owner.signal.fault.get().is_some()
             || observation == Ok(SettlementStatus::ModuleInterrupted)
         {

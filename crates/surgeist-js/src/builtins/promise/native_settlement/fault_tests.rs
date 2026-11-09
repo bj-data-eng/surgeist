@@ -964,3 +964,144 @@ fn direct_signal_registry_fault_marks_both_active_siblings_before_any_native_wak
     }
     assert!(domain.fault.get().is_none());
 }
+
+#[test]
+fn a_poisoned_source_marks_both_levels_of_its_same_pair_fork_before_each_original_wake() {
+    let domain = isolated();
+    let signals: Vec<_> = (0..7).map(|_| signal(&domain)).collect();
+    let _dependencies: Vec<_> = [(0, 1), (0, 2), (1, 3), (1, 4), (2, 5), (2, 6)]
+        .into_iter()
+        .map(|(source, target)| connect(&signals[source], &signals[target]))
+        .collect();
+    let expected = signal_fault(JobFaultCause::PoisonedRegistry);
+    let probes: Vec<_> = signals
+        .iter()
+        .map(|_| {
+            Arc::new(ChainWake {
+                signals: signals.clone(),
+                expected,
+                all_marked: AtomicBool::new(true),
+                completion: Arc::new(WakeCount::default()),
+            })
+        })
+        .collect();
+    let mut waits: Vec<_> = signals
+        .iter()
+        .zip(&probes)
+        .map(|(signal, probe)| park(signal, probe.clone()))
+        .collect();
+
+    poison(&signals[0].state);
+    assert_eq!(signals[0].state_access().err(), Some(expected));
+
+    for (probe, wait) in probes.iter().zip(&mut waits) {
+        probe.completion.await_count(1);
+        assert!(probe.all_marked.load(Ordering::SeqCst));
+        assert_eq!(poll(wait), Poll::Ready(Err(expected)));
+    }
+    assert!(domain.fault.get().is_none());
+}
+
+#[test]
+fn a_poisoned_source_waiter_marks_its_same_pair_fork_before_any_original_waiter_wakes() {
+    let domain = isolated();
+    let signals: Vec<_> = (0..3).map(|_| signal(&domain)).collect();
+    let _dependencies = [
+        connect(&signals[0], &signals[1]),
+        connect(&signals[0], &signals[2]),
+    ];
+    let expected = signal_fault(JobFaultCause::PoisonedWaker);
+    let probes: Vec<_> = signals
+        .iter()
+        .map(|_| {
+            Arc::new(ChainWake {
+                signals: signals.clone(),
+                expected,
+                all_marked: AtomicBool::new(true),
+                completion: Arc::new(WakeCount::default()),
+            })
+        })
+        .collect();
+    let mut waits: Vec<_> = signals
+        .iter()
+        .zip(&probes)
+        .map(|(signal, probe)| park(signal, probe.clone()))
+        .collect();
+
+    poison(&waits[0].waiter.as_ref().unwrap().waker);
+    let original_source_waker = Waker::from(probes[0].clone());
+    assert_eq!(
+        waits[0].poll(&mut TaskContext::from_waker(&original_source_waker)),
+        Poll::Ready(Err(expected))
+    );
+
+    for (probe, wait) in probes.iter().zip(&mut waits) {
+        probe.completion.await_count(1);
+        assert!(probe.all_marked.load(Ordering::SeqCst));
+        assert_eq!(poll(wait), Poll::Ready(Err(expected)));
+    }
+    assert!(domain.fault.get().is_none());
+}
+
+#[test]
+fn active_cross_pair_dependencies_eventually_relay_faults_without_faulting_unrelated_waiters() {
+    let source_pair = isolated();
+    let left_pair = isolated();
+    let right_pair = isolated();
+    let unrelated_pair = isolated();
+    let source = signal(&source_pair);
+    let left = signal(&left_pair);
+    let right = signal(&right_pair);
+    let neighbor = signal(&left_pair);
+    let unrelated = signal(&unrelated_pair);
+    let _dependencies = [connect(&source, &left), connect(&source, &right)];
+    let affected = [source.clone(), left, right];
+    let counts: Vec<_> = affected
+        .iter()
+        .map(|_| Arc::new(WakeCount::default()))
+        .collect();
+    let mut waits: Vec<_> = affected
+        .iter()
+        .zip(&counts)
+        .map(|(signal, count)| park(signal, count.clone()))
+        .collect();
+    let unaffected = [neighbor, unrelated];
+    let unaffected_counts: Vec<_> = unaffected
+        .iter()
+        .map(|_| Arc::new(WakeCount::default()))
+        .collect();
+    let mut unaffected_waits: Vec<_> = unaffected
+        .iter()
+        .zip(&unaffected_counts)
+        .map(|(signal, count)| park(signal, count.clone()))
+        .collect();
+
+    poison(&source.state);
+    let expected = signal_fault(JobFaultCause::PoisonedRegistry);
+    assert_eq!(source.state_access().err(), Some(expected));
+
+    // Each target's own notification is required. No cross-domain wake ordering
+    // or atomic snapshot of all independent pairs is assumed.
+    for (count, wait) in counts.iter().zip(&mut waits) {
+        count.await_count(1);
+        assert_eq!(poll(wait), Poll::Ready(Err(expected)));
+    }
+    for ((signal, count), wait) in unaffected
+        .iter()
+        .zip(&unaffected_counts)
+        .zip(&mut unaffected_waits)
+    {
+        assert_eq!(signal.status(), Ok(SettlementStatus::Pending));
+        assert_eq!(
+            wait.poll(&mut TaskContext::from_waker(&Waker::from(count.clone()))),
+            Poll::Pending
+        );
+        count.await_count(0);
+        signal.settle();
+        count.await_count(1);
+        assert_eq!(poll(wait), Poll::Ready(Ok(SettlementStatus::Settled)));
+    }
+    for domain in [source_pair, left_pair, right_pair, unrelated_pair] {
+        assert!(domain.fault.get().is_none());
+    }
+}

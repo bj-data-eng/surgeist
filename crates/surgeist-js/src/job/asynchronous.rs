@@ -112,7 +112,9 @@ impl OwnerTask for Control {
             }
         });
         cleanup.run(|| self.wake.retire());
-        cleanup.run(|| drop((state, retained, registration)));
+        cleanup.run(|| drop(state));
+        cleanup.run(|| drop(retained));
+        cleanup.run(|| drop(registration));
         cleanup.finish();
     }
 }
@@ -129,7 +131,9 @@ impl Drop for Control {
             }
         });
         cleanup.run(|| self.wake.retire());
-        cleanup.run(|| drop((state, retained, registration)));
+        cleanup.run(|| drop(state));
+        cleanup.run(|| drop(retained));
+        cleanup.run(|| drop(registration));
         cleanup.finish();
     }
 }
