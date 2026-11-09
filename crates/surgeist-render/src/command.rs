@@ -1820,7 +1820,9 @@ mod paint_visit_tests {
             assert_eq!(usage.work(RenderWork::PaintVisits), 1);
             // Both glyphs were validated and then actually copied before paint.
             assert_eq!(usage.work(RenderWork::GlyphVisits), 4);
-            assert_eq!(usage.work(RenderWork::GradientStopVisits), 1);
+            // The immutable gradient needs no validation walk, and this paint
+            // visit refuses before its stop-copy loop starts.
+            assert_eq!(usage.work(RenderWork::GradientStopVisits), 0);
             let cpu_usage = report.renderer_cpu().unwrap();
             assert_eq!(
                 cpu_usage.usage().live(RenderResource::RetainedCpuBytes),
