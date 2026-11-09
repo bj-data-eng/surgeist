@@ -21,3 +21,7 @@ surgeist-test = { path = "../surgeist-test", version = "=0.1.0" }
 [[bench]]
 name = "parse"
 harness = false
+
+[[bench]]
+name = "semantics"
+harness = false

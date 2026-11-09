@@ -12,6 +12,9 @@
 
 use std::{fmt::Write as _, hint::black_box, time::Instant};
 
+#[path = "support/documents.rs"]
+mod documents;
+
 use surgeist_html_parser::{
     HtmlDocumentParseRequest, HtmlParseAccounting, HtmlParseLimits, HtmlParseResource,
     HtmlParseUsage, HtmlParseWorkCategory, HtmlSource,
@@ -67,109 +70,6 @@ const RESOURCES: [(HtmlParseResource, &str); 20] = [
     (HtmlParseResource::WorkCredits, "WorkCredits"),
 ];
 
-/// A large ordinary document: headings, paragraphs with inline formatting,
-/// links, lists and a few attributes per element.
-fn ordinary() -> String {
-    let mut html = String::from(
-        "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">\
-         <title>Ordinary</title><style>body{margin:0}</style></head><body>",
-    );
-    for section in 0..240_usize {
-        let _ = write!(
-            html,
-            "<section id=\"s{section}\" class=\"part\"><h2>Section {section}</h2>\
-             <p>Paragraph with <b>bold</b>, <i>italic</i> and <a href=\"/p/{section}\">a link</a>. \
-             Entities &amp; &lt;markup&gt; &copy; stay text.</p>\
-             <ul>"
-        );
-        for item in 0..6_usize {
-            let _ = write!(
-                html,
-                "<li class=\"item\"><span>Item {item}</span> of section {section}</li>"
-            );
-        }
-        html.push_str("</ul><p>Closing paragraph of the section.</p></section>");
-    }
-    html.push_str("</body></html>");
-    html
-}
-
-/// Deeply nested elements: runs of nested `div` elements closed in order.
-fn deeply_nested() -> String {
-    const DEPTH: usize = 1_000;
-    const RUNS: usize = 10;
-    let mut html = String::from("<!DOCTYPE html><html><body>");
-    for run in 0..RUNS {
-        for _ in 0..DEPTH {
-            html.push_str("<div>");
-        }
-        let _ = write!(html, "<p>Leaf of run {run}</p>");
-        for _ in 0..DEPTH {
-            html.push_str("</div>");
-        }
-    }
-    html.push_str("</body></html>");
-    html
-}
-
-/// Elements that each carry many attributes.
-fn many_attributes() -> String {
-    let mut html = String::from("<!DOCTYPE html><html><body>");
-    for element in 0..1_000_usize {
-        let _ = write!(html, "<div id=\"e{element}\"");
-        for attribute in 0..24_usize {
-            let _ = write!(html, " data-a{attribute}=\"value {element} {attribute}\"");
-        }
-        html.push_str(">content</div>");
-    }
-    html.push_str("</body></html>");
-    html
-}
-
-/// Tables with many rows and cells, with explicit sections and spans.
-fn table_heavy() -> String {
-    let mut html = String::from("<!DOCTYPE html><html><body>");
-    for table in 0..16_usize {
-        let _ = write!(
-            html,
-            "<table id=\"t{table}\"><caption>Table {table}</caption><thead><tr>"
-        );
-        for column in 0..16_usize {
-            let _ = write!(html, "<th scope=\"col\">C{column}</th>");
-        }
-        html.push_str("</tr></thead><tbody>");
-        for row in 0..60_usize {
-            html.push_str("<tr>");
-            for column in 0..16_usize {
-                if column == 3 && row % 7 == 0 {
-                    let _ = write!(html, "<td colspan=\"2\">{row}:{column}</td>");
-                } else {
-                    let _ = write!(html, "<td>{row}:{column}</td>");
-                }
-            }
-            html.push_str("</tr>");
-        }
-        html.push_str("</tbody></table>");
-    }
-    html.push_str("</body></html>");
-    html
-}
-
-/// Markup that produces parse-error diagnostics: stray end tags, unknown
-/// character references, duplicate attributes and misplaced table content.
-fn many_diagnostics() -> String {
-    let mut html = String::from("<!DOCTYPE html><html><body>");
-    for index in 0..2_400_usize {
-        let _ = write!(
-            html,
-            "</span><p class=\"a\" class=\"b\">text &bogus; &#x110000; {index}</i>\
-             <table>stray {index}<tr><td>cell</table></b>"
-        );
-    }
-    html.push_str("</body></html>");
-    html
-}
-
 fn limits() -> HtmlParseLimits {
     HtmlParseLimits::builder()
         .source_units(1 << 30)
@@ -221,11 +121,11 @@ fn timed(source: &HtmlSource, mode: Option<ProfileMode>) -> f64 {
 
 fn main() {
     let documents: [(&str, String); 5] = [
-        ("ordinary", ordinary()),
-        ("deeply-nested", deeply_nested()),
-        ("many-attributes", many_attributes()),
-        ("table-heavy", table_heavy()),
-        ("many-diagnostics", many_diagnostics()),
+        ("ordinary", documents::ordinary()),
+        ("deeply-nested", documents::deeply_nested()),
+        ("many-attributes", documents::many_attributes()),
+        ("table-heavy", documents::table_heavy()),
+        ("many-diagnostics", documents::many_diagnostics()),
     ];
     println!("rounds per document: {ROUNDS} (after one warm-up parse)");
     println!();
