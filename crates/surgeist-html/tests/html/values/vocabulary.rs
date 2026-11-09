@@ -53,6 +53,52 @@ fn element_recognition_uses_exact_expanded_identity_without_case_folding() {
 }
 
 #[test]
+fn element_recognition_agrees_with_the_inventory_spelling_for_every_name_and_its_neighbours() {
+    let by_scan = |local: &[u16]| {
+        KnownHtmlElement::ALL
+            .iter()
+            .copied()
+            .find(|known| known.local_name().encode_utf16().eq(local.iter().copied()))
+    };
+    let mut probes: Vec<Vec<u16>> = vec![Vec::new(), vec![0xD800], vec![0x61, 0xDFFF]];
+    for known in KnownHtmlElement::ALL {
+        let units: Vec<u16> = known.local_name().encode_utf16().collect();
+        probes.push(units.clone());
+        probes.push(units[..units.len() - 1].to_vec());
+        probes.push([units.as_slice(), &[0x78]].concat());
+        probes.push([units.as_slice(), &[0xD83D, 0xDE00]].concat());
+        probes.push([&[0x78], units.as_slice()].concat());
+        probes.push(
+            units
+                .iter()
+                .map(|unit| match *unit {
+                    0x61..=0x7A => unit - 0x20,
+                    other => other,
+                })
+                .collect(),
+        );
+    }
+    for units in probes {
+        let name = QualifiedName::new(
+            Namespace::html(),
+            None,
+            DocumentString::from_utf16(units.as_slice()),
+        );
+        assert_eq!(
+            KnownHtmlElement::from_name(&name),
+            by_scan(&units),
+            "{units:?}"
+        );
+    }
+    for known in KnownHtmlElement::ALL {
+        assert_eq!(
+            KnownHtmlElement::from_name(&known.qualified_name()),
+            Some(*known)
+        );
+    }
+}
+
+#[test]
 fn attribute_recognition_requires_no_namespace_and_preserves_the_prefix() {
     let prefixed = QualifiedName::new(Namespace::none(), Some("raw".into()), "for");
     assert_eq!(

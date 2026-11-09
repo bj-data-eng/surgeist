@@ -161,6 +161,51 @@ operation. The dimension-list algorithm applies only the
 [documented decimal-cursor correction](../../references/html-dimension-list-cursor--webkit-73aa6c89e2cb-blink-7984f9d11800.md).
 Other dimension-list browser overflow or syntax differences are not adopted.
 
+The range ingress cursor (`HtmlFiniteDecimalIngressCursor`, exact decimal to binary64) and the
+shortest-output cursor (`HtmlBestFiniteNumberCursor`, binary64 to ECMAScript text) cost a caller a
+bounded number of requests per number: each `SourceUnit`, `ReadCells`, `Reserve`, `AppendCell`,
+`WriteCell`, `PopCell`, `ScalarStep`, `ReserveOutput` and `EmitUnit` is one request that the caller
+admits. Source digits cost a few requests each: a decimal of 100,000 zeros costs two requests per
+unit and no scratch cell, and 300 nines cost 3.7 million requests, set by their magnitude. The
+count depends on the binary exponent of the value, roughly with its square. Reads, writes and
+scalar steps are at least 96% of the requests of every row below that has 400,000 requests or
+more.
+
+| operation | requests |
+| --- | --- |
+| ingress `"1"` | 16 |
+| ingress `"12345678901234567890"` | 5,091 |
+| ingress `"1e100"` | 401,509 |
+| ingress `"1.7976931348623157e308"` | 3,396,347 |
+| ingress of 300 nines | 3,699,407 |
+| ingress `"1e-320"` | 8,419,314 |
+| ingress `"4.9406564584124654e-324"` | 7,336,795 |
+| ingress of 100,000 zeros between the point and a final 1 | 200,006 |
+| ingress, largest of 8 decimals of 30 random digits with exponents from -350 to 270 | 8,832,455 |
+| best `1.0` | 11,948 |
+| best `1e-100` | 693,396 |
+| best `1e300` | 1,801,896 |
+| best `5e-324` | 4,855,819 |
+
+The counts come from the
+[range cursor cost test](../../crates/surgeist-html/tests/html/bounded/numeric_cost.rs), which drives
+the cursors through the same scratch service as the conformance tests, checks each result against
+Rust `str::parse::<f64>` (ingress) or the ECMAScript `Number::prototype.toString` text (best), and
+fails when a count passes its ceiling; run it with `--nocapture` to print the counts by kind. The
+largest of 400 random decimals that #1745 reported is 11,083,722 requests; the test ceiling for a
+random decimal is 12,000,000. A cursor register is copied by every reply (736 bytes for ingress, 640
+for best), so a caller also pays that copy per request. The cost is a measured bound, not a proof.
+
+The cost has two sources. The ingress cursor bisects the 63-bit pattern space of finite binary64
+values, about 62 trials, and each trial whose binary exponent differs from the cached one rebuilds
+`2^e` as decimal digits in a scratch buffer: it multiplies the buffer by 2 or by 5, one pass per
+unit of the exponent, and every pass reads, writes and steps over each cell. The buffer holds about
+0.3 digits per pass for `2^e` and 0.7 for `5^e`, so a build costs about `0.45 e^2` to `1.05 e^2`
+requests (an estimate from these counts, not measured per build); the number of rebuilds is the
+number of runs of `PopCell` requests (the clear that starts a rebuild), 62 to 69 for the ingress
+rows of 5,000 requests or more. The best cursor builds four such values, the value, its lower and
+upper midpoints and its double, and then cuts them by powers of ten for each candidate.
+
 Temporal authoring checks positive Gregorian years, dates, times, explicit
 offsets, ISO weeks and durations. Years and whole duration seconds have no
 machine-integer magnitude cap. Time and duration author values use millisecond

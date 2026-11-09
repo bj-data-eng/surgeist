@@ -387,13 +387,22 @@ impl Draft {
                     slottable.commit(cancel)?;
                     R::Applied
                 }
-                A::CompareIncoming {
-                    ordinal,
-                    previous_ordinal,
-                } => R::SameNode(nodes[ordinal] == nodes[previous_ordinal]),
                 A::AppendIncomingToPendingSet { ordinal } => {
-                    self.select_reserve(&mut pending, 1, cancel)?;
-                    pending.push(nodes[ordinal]);
+                    // The ordered set append adds nothing for a node the pending set holds. The
+                    // pending set keeps no identity index, so each comparison is a source step.
+                    let node = nodes[ordinal];
+                    let mut present = false;
+                    for index in 0..pending.len() {
+                        self.source_step(cancel)?;
+                        if pending[index] == node {
+                            present = true;
+                            break;
+                        }
+                    }
+                    if !present {
+                        self.select_reserve(&mut pending, 1, cancel)?;
+                        pending.push(node);
+                    }
                     R::Applied
                 }
                 A::ReplaceTargetManualSet => {
@@ -787,6 +796,164 @@ mod tests {
         );
         assert!(draft.cancelled_signals.is_empty());
         assert_eq!(dom.snapshot().pending_slot_signals(), &[s]);
+    }
+    /// Each incoming node, duplicates included, costs at most four admitted actions, and the
+    /// result is the ordered set of the first occurrences.
+    #[test]
+    fn duplicate_incoming_nodes_cost_a_bounded_number_of_admitted_actions_each() {
+        let (mut dom, s, _) = fixture();
+        let mut b = DomBatch::new();
+        let d = b.create_document();
+        let texts: Vec<_> = (0..8).map(|_| b.create_text(&d, "T")).collect();
+        let c = dom.apply(b, &AtomicBool::new(false)).unwrap();
+        let texts: Vec<NodeId> = texts
+            .iter()
+            .map(|text| c.created(text).unwrap().unwrap())
+            .collect();
+        let cancel = AtomicBool::new(false);
+        let mut draft = Draft::new(&dom, DomBatch::new().owner, &cancel).unwrap();
+        let target = draft.resolve(s.into()).unwrap();
+        let incoming: Vec<NodeOperand> = texts
+            .iter()
+            .chain(texts.iter())
+            .map(|&text| text.into())
+            .collect();
+        let mut actions = 0;
+        draft
+            .assign_manual_admitted(target, &incoming, dom.limits(), &cancel, &mut || {
+                actions += 1;
+                Ok(())
+            })
+            .unwrap();
+        assert!(
+            actions <= 4 * incoming.len() + 6,
+            "{} incoming nodes were admitted as {actions} actions",
+            incoming.len()
+        );
+        let assigned: Vec<_> = draft.node(target).unwrap().manual_nodes().iter().collect();
+        let first_occurrences: Vec<_> = texts
+            .iter()
+            .map(|&text| draft.resolve(text.into()).unwrap())
+            .collect();
+        assert_eq!(assigned, first_occurrences);
+    }
+    /// The outcome of one run of `assign_manual_admitted`.
+    struct Run {
+        result: Result<(), DomError>,
+        /// The number of actions admitted, the last of which is the one in progress.
+        actions: usize,
+        /// The work spent when the run ended.
+        work: u64,
+        /// The source-work limit of the run.
+        limit: u64,
+        draft: Draft,
+        target: Key,
+    }
+    /// Runs `assign_manual_admitted` on `incoming` (indices into `texts`). When admitting the
+    /// action with number `at_action`, the source work spent is set so that `left` steps remain.
+    fn assign_with_work_left(
+        dom: &Dom,
+        slot: NodeId,
+        texts: &[NodeId],
+        incoming: &[usize],
+        at_action: usize,
+        left: u64,
+    ) -> Run {
+        let cancel = AtomicBool::new(false);
+        let batch = DomBatch::new();
+        let (mut draft, _) = Draft::new_source(
+            dom,
+            batch.owner,
+            &batch.commands,
+            crate::DomSourceLimits::new(1_000_000, 100_000, 1_000_000, 32, 128, 128, 1),
+            &cancel,
+        )
+        .unwrap();
+        let target = draft.resolve(slot.into()).unwrap();
+        let limit = draft.source_work.load(Ordering::Relaxed) + 100_000;
+        draft.source_limits.as_mut().unwrap().work = limit;
+        let operands: Vec<NodeOperand> = incoming.iter().map(|&i| texts[i].into()).collect();
+        let mut actions = 0;
+        let counter = draft.source_work.source_arc().clone();
+        let result =
+            draft.assign_manual_admitted(target, &operands, dom.limits(), &cancel, &mut || {
+                actions += 1;
+                if actions == at_action {
+                    counter.store(limit - left, Ordering::Relaxed);
+                }
+                Ok(())
+            });
+        let work = draft.source_work.load(Ordering::Relaxed);
+        Run {
+            result,
+            actions,
+            work,
+            limit,
+            draft,
+            target,
+        }
+    }
+    fn slot_with_texts(count: usize) -> (Dom, NodeId, Vec<NodeId>) {
+        let (mut dom, s, _) = fixture();
+        let mut b = DomBatch::new();
+        let d = b.create_document();
+        let texts: Vec<_> = (0..count).map(|_| b.create_text(&d, "T")).collect();
+        let c = dom.apply(b, &AtomicBool::new(false)).unwrap();
+        let texts = texts
+            .iter()
+            .map(|text| c.created(text).unwrap().unwrap())
+            .collect();
+        (dom, s, texts)
+    }
+    /// The least number of source steps left at the admission of the action with number
+    /// `append_action` for which the run on `incoming` gets past that action. Every run with fewer
+    /// steps left is checked to stop inside the action with the typed limit, having spent exactly
+    /// its limit, released its scratch and assigned nothing to the slot.
+    fn steps_the_append_action_takes(incoming: &[usize], append_action: usize) -> u64 {
+        let (dom, s, texts) = slot_with_texts(4);
+        for left in 0.. {
+            let run = assign_with_work_left(&dom, s, &texts, incoming, append_action, left);
+            if run.actions > append_action {
+                return left;
+            }
+            assert_eq!(
+                run.result,
+                Err(DomError::SourceWorkLimit { limit: run.limit }),
+                "{left} left"
+            );
+            assert_eq!(run.work, run.limit, "{left} left");
+            assert_eq!(run.draft.select_temporary_bytes.load(Ordering::Relaxed), 0);
+            assert!(
+                run.draft
+                    .node(run.target)
+                    .unwrap()
+                    .manual_nodes()
+                    .is_empty(),
+                "{left} left"
+            );
+        }
+        unreachable!("the run gets past the action once enough steps are left")
+    }
+    /// The scan of the pending set in the append action takes one source step per comparison and
+    /// stops at the source-work limit between comparisons. The last incoming node repeats the
+    /// last of `pending` pending nodes, so its scan ends at the comparison with that node and
+    /// reserves nothing: the append takes its own step and `pending` comparison steps.
+    #[test]
+    fn the_pending_set_scan_takes_one_source_step_per_comparison_and_stops_at_the_limit() {
+        for pending in 1..=3_usize {
+            let mut incoming: Vec<usize> = (0..pending).collect();
+            incoming.push(pending - 1);
+            // Begin, then read, set and append for each pending node, then read, remove, set and
+            // append for the repeated node.
+            let append_action = 1 + 3 * pending + 4;
+            assert_eq!(
+                steps_the_append_action_takes(&incoming, append_action),
+                1 + pending as u64,
+                "{pending} pending nodes"
+            );
+        }
+        // A repeat of the first node is found at the first comparison, however many are pending.
+        assert_eq!(steps_the_append_action_takes(&[0, 1, 2, 0], 14), 2);
     }
     #[test]
     fn actual_cursor_cancellation_after_partial_inverse_writes_never_publishes() {

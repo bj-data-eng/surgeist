@@ -44,8 +44,8 @@ enum Effect {
     Read(Node, Option<Slot>),
     Remove(Node, Slot),
     Set(Node),
-    Compare(usize, usize),
     Append(Node),
+    AlreadyPresent(Node),
     Replace,
     AssignTargetRoot,
 }
@@ -145,20 +145,16 @@ impl Records {
                 self.node_mut(node).manual = Some(Slot::Target);
                 self.effects.push(Effect::Set(node));
             }
-            Action::CompareIncoming {
-                ordinal,
-                previous_ordinal,
-            } => {
-                self.effects
-                    .push(Effect::Compare(ordinal, previous_ordinal));
-                return Reply::SameNode(self.incoming[ordinal] == self.incoming[previous_ordinal]);
-            }
             Action::AppendIncomingToPendingSet { ordinal } => {
                 let node = self.incoming[ordinal];
-                // This is a plain write, not a duplicate-filtering fixture.
-                // Only the real cursor decides whether an append is required.
-                self.pending.as_mut().unwrap().push(node);
-                self.effects.push(Effect::Append(node));
+                // The ordered set append: a node the set already holds is not added again.
+                let pending = self.pending.as_mut().unwrap();
+                if pending.contains(&node) {
+                    self.effects.push(Effect::AlreadyPresent(node));
+                } else {
+                    pending.push(node);
+                    self.effects.push(Effect::Append(node));
+                }
             }
             Action::ReplaceTargetManualSet => {
                 *self.slot_mut(Slot::Target) = self.pending.take().unwrap();
@@ -177,9 +173,8 @@ impl Records {
             let action = cursor.action();
             if wrong_replies {
                 let wrong = match action {
-                    Action::ReadIncomingManualAssignment { .. }
-                    | Action::CompareIncoming { .. } => Reply::Applied,
-                    _ => Reply::SameNode(false),
+                    Action::ReadIncomingManualAssignment { .. } => Reply::Applied,
+                    _ => Reply::ManualAssignmentPresent(false),
                 };
                 assert!(matches!(cursor.reply(wrong), Err(ref e) if e.is_reply()));
                 assert_eq!(cursor.action(), action);
@@ -228,18 +223,13 @@ fn transfer_effects() -> Vec<Effect> {
         Read(B, Some(Slot::Target)),
         Remove(B, Slot::Target),
         Set(B),
-        Compare(1, 0),
+        AlreadyPresent(B),
         Read(C, Some(Slot::Other)),
         Remove(C, Slot::Other),
         Set(C),
-        Compare(2, 0),
-        Compare(2, 1),
         Append(C),
         Read(A, None),
         Set(A),
-        Compare(3, 0),
-        Compare(3, 1),
-        Compare(3, 2),
         Append(A),
         Replace,
         AssignTargetRoot,
@@ -378,7 +368,6 @@ fn empty_and_unchanged_intent_still_replace_and_request_only_the_target_root() {
                 Append(A),
                 Read(B, None),
                 Set(B),
-                Compare(1, 0),
                 Append(B),
                 Replace,
                 AssignTargetRoot,
@@ -405,8 +394,6 @@ fn wrong_replies_preserve_the_pending_action_and_all_subsequent_source_effects()
     assert_transfer(&records);
     for reply in [
         Reply::Applied,
-        Reply::SameNode(false),
-        Reply::SameNode(true),
         Reply::ManualAssignmentPresent(false),
         Reply::ManualAssignmentPresent(true),
     ] {
@@ -437,6 +424,61 @@ fn every_effect_boundary_is_visible_before_an_adapter_refuses_it() {
         // No operand read/write or acknowledgment followed refused admission.
         assert_eq!(records.effects, expected[..stop]);
         assert_eq!(cursor.action(), refused.unwrap());
+    }
+}
+
+/// A consumer that keeps incoming nodes by number and answers every identity question from its
+/// own records. Returns the number of replies one `slot.assign()` takes and the resulting set.
+fn identity_map_replies(incoming: &[usize]) -> (usize, Vec<usize>) {
+    use std::collections::HashSet;
+    let mut cursor = HtmlSlotAssignCursor::new(0, incoming.len());
+    let mut assigned_to_target = HashSet::new();
+    let mut pending: Vec<usize> = Vec::new();
+    let mut members = HashSet::new();
+    let mut replies = 0;
+    while cursor.action() != Action::Complete {
+        let reply = match cursor.action() {
+            Action::ReadIncomingManualAssignment { ordinal } => {
+                Reply::ManualAssignmentPresent(assigned_to_target.contains(&incoming[ordinal]))
+            }
+            Action::SetIncomingManualAssignmentToTarget { ordinal } => {
+                assigned_to_target.insert(incoming[ordinal]);
+                Reply::Applied
+            }
+            Action::AppendIncomingToPendingSet { ordinal } => {
+                if members.insert(incoming[ordinal]) {
+                    pending.push(incoming[ordinal]);
+                }
+                Reply::Applied
+            }
+            _ => Reply::Applied,
+        };
+        cursor.reply(reply).unwrap();
+        replies += 1;
+    }
+    (replies, pending)
+}
+
+#[test]
+fn a_consumer_with_an_identity_map_takes_a_bounded_number_of_replies_per_incoming_node() {
+    let mut previous = None;
+    for distinct in [32_usize, 64, 128, 256] {
+        // Every node twice: the first occurrences are distinct, the second ones duplicates.
+        let incoming: Vec<usize> = (0..distinct).chain(0..distinct).collect();
+        let (replies, set) = identity_map_replies(&incoming);
+        assert_eq!(set, (0..distinct).collect::<Vec<_>>());
+        assert!(
+            replies <= 5 * incoming.len() + 4,
+            "{} incoming nodes took {replies} replies",
+            incoming.len()
+        );
+        if let Some(earlier) = previous {
+            assert!(
+                replies * 10 <= earlier * 22,
+                "doubling the incoming nodes took {earlier} then {replies} replies"
+            );
+        }
+        previous = Some(replies);
     }
 }
 

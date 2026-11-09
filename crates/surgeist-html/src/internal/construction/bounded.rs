@@ -644,6 +644,18 @@ impl HtmlConstructionStorage {
         self.arena.attribute_revision = self.arena.attribute_revision.wrapping_add(1);
         self.arena.usage = usage;
     }
+    /// The capacity of the record bank.
+    pub(super) fn records_capacity(&self) -> usize {
+        self.arena.records.capacity()
+    }
+    /// The capacity of the child order of the record at `index`.
+    #[cfg(test)]
+    pub(super) fn children_capacity(&self, index: usize) -> Option<usize> {
+        self.arena
+            .records
+            .get(index)
+            .map(|record| record.children.capacity())
+    }
     fn records_snapshot(
         &self,
     ) -> Result<HtmlConstructionAllocationSnapshot, HtmlConstructionError> {

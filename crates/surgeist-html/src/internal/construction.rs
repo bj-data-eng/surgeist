@@ -1221,13 +1221,50 @@ enum NativeRoot {
     Fragment,
 }
 
+/// The capacity a reservation takes when it may grow with spare room: the amortized capacity of the
+/// bank, never above `ceiling`, the most entries the limits admit, and never below what the action
+/// needs. The target depends on the bank and the limits only, and the reservation takes exactly
+/// it. `None` for an action that reserves no such bank.
+///
+/// Unlike [`crate::internal::amortized::amortized_capacity`], whose result never depends on a
+/// limit, this target is capped at a limit. The native builder admits nothing beyond its node and
+/// edge limits and has no capacity-bytes limit, so a capacity above the entries those limits admit
+/// is spare room that no append can use; capping it there is the admission of the allocation.
+fn amortized_target(
+    action: &bounded::operations::HtmlConstructionAction<'_>,
+    ceiling: usize,
+) -> Option<usize> {
+    let bounded::operations::HtmlConstructionActionDescription::Reserve {
+        allocation,
+        minimum_capacity,
+        growth: bounded::operations::HtmlConstructionGrowth::Geometric,
+        ..
+    } = action.description()
+    else {
+        return None;
+    };
+    Some(
+        crate::internal::amortized::amortized_capacity(
+            allocation.initialized_len(),
+            allocation.capacity(),
+        )
+        .min(ceiling)
+        .max(minimum_capacity),
+    )
+}
+
 /// Prepares `command` on `storage`, drives it to its ready state and commits it. The storage comes
 /// back on every outcome, so a refused step never loses what the builder owns. It is absent only
 /// when the command published, which no native mutation does, or when an abort was refused, which
 /// a mutation's unshared storage cannot be; the first failure is reported either way.
+///
+/// With `spare_room`, a reservation that may take spare room (a child order) grows to the
+/// amortized capacity the limit `spare_room` allows; without it, to the least capacity that
+/// suffices.
 fn drive_native(
     storage: bounded::HtmlConstructionStorage,
     command: bounded::operations::HtmlConstructionCommand,
+    spare_room: Option<usize>,
 ) -> (
     Option<bounded::HtmlConstructionStorage>,
     Result<Option<HtmlBuilderNode>, HtmlConstructionError>,
@@ -1235,8 +1272,18 @@ fn drive_native(
     let mut operation = storage.prepare(command);
     let driven = (|| {
         while let Some(action) = operation.next_action()? {
-            action
-                .perform()
+            let capacity = spare_room.and_then(|ceiling| amortized_target(&action, ceiling));
+            let performed = match capacity {
+                Some(capacity) => {
+                    #[cfg(test)]
+                    if crate::internal::amortized::fault::refuses_next_reservation() {
+                        return Err(HtmlConstructionErrorKind::AllocationFailed.into());
+                    }
+                    action.perform_with_capacity(capacity)
+                }
+                None => action.perform(),
+            };
+            performed
                 .map_err(|failure| failure.into_parts().0)?
                 .accept();
         }
@@ -1314,6 +1361,7 @@ struct Accounting {
     operation: Operation<HtmlWork, HtmlResource>,
     scope: Scope,
     usage: HtmlConstructionUsage,
+    limits: HtmlConstructionLimits,
 }
 impl fmt::Debug for Accounting {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1345,6 +1393,7 @@ impl Accounting {
             operation,
             scope,
             usage: HtmlConstructionUsage::default(),
+            limits,
         })
     }
     /// Charges the amounts of one append as one all-or-nothing batch, in the order of the limits'
@@ -1523,7 +1572,7 @@ impl Builder {
             }
             NativeRoot::Fragment => bounded::operations::HtmlConstructionCommand::CreateFragment,
         };
-        let (storage, outcome) = drive_native(storage, command);
+        let (storage, outcome) = drive_native(storage, command, None);
         let root = outcome?.ok_or(HtmlConstructionErrorKind::OperationNotReady)?;
         Ok(Self {
             storage: BuilderStorage::Held(
@@ -1536,19 +1585,86 @@ impl Builder {
     fn index(&self, node: &HtmlBuilderNode) -> Result<usize, HtmlConstructionError> {
         self.storage()?.position(node)
     }
-    /// Runs `command` on the storage. The storage moves into the operation and comes back on every
-    /// outcome. It stays lost only if the operation could not hand it back, which no native command
-    /// can cause.
+    /// Runs `command` on the storage, growing a child order it fills with the amortized capacity
+    /// that the edge limit allows. See [`Builder::run`].
     fn apply(
         &mut self,
         command: bounded::operations::HtmlConstructionCommand,
     ) -> Result<Option<HtmlBuilderNode>, HtmlConstructionError> {
+        let edges = self.accounting.limits.edges();
+        self.run(command, Some(edges))
+    }
+    /// Runs `command` on the storage. The storage moves into the operation and comes back on every
+    /// outcome. It stays lost only if the operation could not hand it back, which no native command
+    /// can cause. `spare_room` is as for [`drive_native`].
+    fn run(
+        &mut self,
+        command: bounded::operations::HtmlConstructionCommand,
+        spare_room: Option<usize>,
+    ) -> Result<Option<HtmlBuilderNode>, HtmlConstructionError> {
         let storage = self.take_storage()?;
-        let (storage, outcome) = drive_native(storage, command);
+        let (storage, outcome) = drive_native(storage, command, spare_room);
         if let Some(storage) = storage {
             self.storage = BuilderStorage::Held(storage);
         }
         outcome
+    }
+    /// Appends `node` as the last child of `parent`. A refusal of the spare room that the child
+    /// order would take is retried with the least capacity that suffices, so the append fails only
+    /// where growing by one entry fails.
+    fn insert_last(
+        &mut self,
+        node: &HtmlBuilderNode,
+        parent: &HtmlBuilderNode,
+    ) -> Result<(), HtmlConstructionError> {
+        let insert = || bounded::operations::HtmlConstructionCommand::Insert {
+            node: node.clone(),
+            parent: parent.clone(),
+            before: None,
+        };
+        match self.apply(insert()) {
+            Err(error) if error.is_allocation_failed() => self.run(insert(), None),
+            outcome => outcome,
+        }
+        .map(|_| ())
+    }
+    /// Makes room in the record bank for `additional` more records, with the amortized spare room
+    /// that the node limit allows (capped at the limit for the reason given at
+    /// [`amortized_target`]). A refusal of the spare room is retried with the least capacity
+    /// that suffices. A bank that already has the room is left as it is.
+    fn reserve_records(&mut self, additional: usize) -> Result<(), HtmlConstructionError> {
+        let storage = self.storage()?;
+        let (len, capacity) = (storage.len(), storage.records_capacity());
+        let required = len
+            .checked_add(additional)
+            .ok_or(HtmlConstructionErrorKind::RepresentationExhausted)?;
+        if required <= capacity {
+            return Ok(());
+        }
+        let target = crate::internal::amortized::amortized_capacity(len, capacity)
+            .min(self.accounting.limits.nodes())
+            .max(required);
+        let reserve =
+            |capacity: usize| bounded::operations::HtmlConstructionCommand::ReserveRecords {
+                additional: capacity - len,
+            };
+        #[cfg(test)]
+        let refused =
+            target > required && crate::internal::amortized::fault::refuses_next_reservation();
+        #[cfg(not(test))]
+        let refused = false;
+        let outcome = if refused {
+            Err(HtmlConstructionErrorKind::AllocationFailed.into())
+        } else {
+            self.run(reserve(target), None)
+        };
+        match outcome {
+            Err(error) if error.is_allocation_failed() && target > required => {
+                self.run(reserve(required), None)
+            }
+            outcome => outcome,
+        }
+        .map(|_| ())
     }
     /// As `apply`, for a command that creates a record.
     fn apply_creating(
@@ -1592,6 +1708,10 @@ impl Builder {
         )?;
         let previous_usage = self.storage()?.usage();
         let previous_len = self.storage()?.len();
+        if let Err(error) = self.reserve_records(1 + usize::from(template)) {
+            self.accounting.release(charged)?;
+            return Err(error);
+        }
         let created = match self
             .apply_creating(bounded::operations::HtmlConstructionCommand::Create { kind })
         {
@@ -1601,11 +1721,7 @@ impl Builder {
                 return Err(error);
             }
         };
-        if let Err(error) = self.apply(bounded::operations::HtmlConstructionCommand::Insert {
-            node: created.clone(),
-            parent: parent.clone(),
-            before: None,
-        }) {
+        if let Err(error) = self.insert_last(&created, parent) {
             self.roll_back_append(previous_len, previous_usage);
             self.accounting.release(charged)?;
             return Err(error);
@@ -1648,6 +1764,10 @@ impl Builder {
         let charged = self.accounting.admit(1, 1, 0, 0, depth)?;
         let previous_usage = self.storage()?.usage();
         let previous_len = self.storage()?.len();
+        if let Err(error) = self.reserve_records(1) {
+            self.accounting.release(charged)?;
+            return Err(error);
+        }
         let contents = match self.apply_creating(
             bounded::operations::HtmlConstructionCommand::CreateShadowContents { properties },
         ) {
@@ -1835,6 +1955,112 @@ mod tests {
     /// because only a publication shares its arena, so the test produces the state directly.
     fn lose_storage(builder: &mut Builder) {
         drop(builder.take_storage().unwrap());
+    }
+
+    /// How many times the record bank and the root's child order change capacity over `appends`
+    /// native appends, each of which makes room for one more record, and one more child of the
+    /// root.
+    fn capacity_changes(appends: usize, nested: bool) -> (usize, usize) {
+        let mut builder = Builder::new(
+            HtmlConstructionLimits::new(appends + 1, appends, 0, 8 * appends, appends + 1),
+            NativeRoot::Fragment,
+        )
+        .unwrap();
+        let root = builder.root.clone();
+        let mut parent = root.clone();
+        let mut previous = (
+            builder.storage().unwrap().records_capacity(),
+            builder.storage().unwrap().children_capacity(0),
+        );
+        let (mut records, mut children) = (0, 0);
+        for _ in 0..appends {
+            let kind = if nested {
+                HtmlNodeKind::Element(HtmlElement::new(
+                    QualifiedName::new(Namespace::from_uri("urn:x"), None, "e"),
+                    OrderedAttributes::new(Vec::new()).unwrap(),
+                ))
+            } else {
+                HtmlNodeKind::Comment("c".into())
+            };
+            let appended = builder.append(&parent, kind).unwrap();
+            if nested {
+                parent = appended;
+            }
+            let storage = builder.storage().unwrap();
+            let now = (storage.records_capacity(), storage.children_capacity(0));
+            records += usize::from(now.0 != previous.0);
+            children += usize::from(now.1 != previous.1);
+            previous = now;
+        }
+        (records, children)
+    }
+
+    /// Exact growth changes the capacity on every append; amortized growth changes it a number of
+    /// times that grows with the logarithm of the appends.
+    #[test]
+    fn native_appends_change_capacity_a_logarithmic_number_of_times() {
+        for appends in [1_usize << 10, 1 << 12, 1 << 14] {
+            let bound = appends.ilog2() as usize + 1;
+            let (records, children) = capacity_changes(appends, false);
+            assert!(
+                records <= bound && children <= bound,
+                "{appends} appended children changed the record bank {records} times and the \
+                 root's child order {children} times, over the bound {bound}"
+            );
+            let (records, _) = capacity_changes(appends, true);
+            assert!(
+                records <= bound,
+                "{appends} nested elements changed the record bank {records} times, over the \
+                 bound {bound}"
+            );
+        }
+    }
+
+    /// The spare room of a reservation is never above what the limits admit: the record bank holds
+    /// at most the node limit and a child order at most the edge limit.
+    #[test]
+    fn native_spare_room_stays_within_the_limits() {
+        let (nodes, edges) = (6, 5);
+        let mut builder = Builder::new(
+            HtmlConstructionLimits::new(nodes, edges, 0, 8, 2),
+            NativeRoot::Fragment,
+        )
+        .unwrap();
+        let root = builder.root.clone();
+        for _ in 0..edges {
+            builder
+                .append(&root, HtmlNodeKind::Comment("c".into()))
+                .unwrap();
+            let storage = builder.storage().unwrap();
+            assert!(storage.records_capacity() <= nodes);
+            assert!(storage.children_capacity(0).unwrap() <= edges);
+        }
+        assert_eq!(builder.storage().unwrap().records_capacity(), nodes);
+        assert_eq!(builder.storage().unwrap().children_capacity(0), Some(edges));
+    }
+
+    /// An allocator refusal of the spare room never fails an append that growing by one slot
+    /// would have allowed: every reservation falls back to the least capacity that suffices.
+    #[test]
+    fn a_refused_spare_room_falls_back_to_the_capacity_that_suffices() {
+        let appends = 40;
+        let mut builder = Builder::new(
+            HtmlConstructionLimits::new(appends + 1, appends, 0, appends, 1),
+            NativeRoot::Fragment,
+        )
+        .unwrap();
+        let root = builder.root.clone();
+        let _refusing = crate::internal::amortized::fault::arm(1);
+        for count in 1..=appends {
+            builder
+                .append(&root, HtmlNodeKind::Comment("c".into()))
+                .unwrap();
+            let storage = builder.storage().unwrap();
+            assert_eq!(storage.len(), count + 1);
+            assert_eq!(storage.records_capacity(), count + 1);
+            assert_eq!(storage.children_capacity(0), Some(count));
+        }
+        assert!(crate::internal::amortized::fault::requests() >= 2 * appends - 1);
     }
 
     #[test]

@@ -5,6 +5,7 @@ mod local_rules;
 mod media;
 mod microdata;
 mod numeric;
+mod numeric_cost;
 mod rel;
 mod submit_button;
 mod time_element;
