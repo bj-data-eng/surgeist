@@ -658,8 +658,9 @@ fn membership(
         charge(p, scope, WorkKind::OutputRecord, 1)?;
         s.membership[i] = context;
         let node = s.nodes[i];
-        for &child in s.edges[node.start..node.end].iter().rev() {
+        for child in s.edges[node.start..node.end].iter().rev() {
             charge(p, scope, WorkKind::TopologyVisit, 1)?;
+            let child = *child;
             s.stack.push(child);
         }
     }
