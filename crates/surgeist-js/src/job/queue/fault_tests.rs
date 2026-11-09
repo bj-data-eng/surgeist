@@ -961,3 +961,155 @@ fn the_actual_store_release_pin_completes_deferred_registry_fault_and_final_exec
     assert!(right_queue.store.borrow().entries.is_empty());
     assert!(registry_gone.upgrade().is_none());
 }
+
+mod claim_fault_timing {
+    use super::*;
+    use crate::execution::ProfileMode;
+    use std::{sync::atomic::AtomicU64, time::Duration};
+
+    const CALLBACK_NANOS: u64 = 7_000_000;
+    thread_local! {
+        static CLAIM_TIME: RefCell<Option<Arc<AtomicU64>>> = const { RefCell::new(None) };
+    }
+    // An observational profiling clock: no increment, engine access, callback,
+    // reentry or panic. The external waker owns the independent time advance.
+    fn clock() -> Duration {
+        CLAIM_TIME.with(|slot| {
+            Duration::from_nanos(
+                slot.borrow()
+                    .as_ref()
+                    .map_or(0, |time| time.load(Ordering::SeqCst)),
+            )
+        })
+    }
+    struct ClockSlot;
+    impl ClockSlot {
+        fn install(time: Arc<AtomicU64>) -> Self {
+            CLAIM_TIME.with(|slot| assert!(slot.replace(Some(time)).is_none()));
+            Self
+        }
+    }
+    impl Drop for ClockSlot {
+        fn drop(&mut self) {
+            CLAIM_TIME.with(|slot| drop(slot.borrow_mut().take()));
+        }
+    }
+    struct CallbackWake {
+        time: Arc<AtomicU64>,
+        calls: Arc<AtomicUsize>,
+        peers: [JobObserver; 2],
+        snapshots: Arc<Mutex<Vec<ObserverSnapshot>>>,
+    }
+    impl CallbackWake {
+        fn observe(&self) {
+            self.snapshots
+                .lock()
+                .unwrap()
+                .push(self.peers.iter().map(JobObserver::status).collect());
+            self.time.fetch_add(CALLBACK_NANOS, Ordering::SeqCst);
+            self.calls.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+    impl Wake for CallbackWake {
+        fn wake(self: Arc<Self>) {
+            self.observe();
+        }
+        fn wake_by_ref(self: &Arc<Self>) {
+            self.observe();
+        }
+    }
+
+    #[test]
+    fn fault_waker_callback_time_is_outside_the_whole_job_claim_phase() {
+        let executor = Rc::new(SimpleJobExecutor::new());
+        let (mut context, queues) = owner(executor);
+        let first = accept(&mut context, &queues);
+        let second = accept(&mut context, &queues);
+        let time = Arc::new(AtomicU64::new(0));
+        let calls = Arc::new(AtomicUsize::new(0));
+        let snapshots = Arc::new(Mutex::new(Vec::new()));
+        let waker = Waker::from(Arc::new(CallbackWake {
+            time: time.clone(),
+            calls: calls.clone(),
+            peers: [first.observer.clone(), second.observer.clone()],
+            snapshots: snapshots.clone(),
+        }));
+        let mut wait = first.observer.wait().unwrap();
+        pending(&mut wait, &waker);
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+
+        // Existing real reciprocal-link fault family: the head's actual next
+        // no longer points back. Head inspection and its first node inspection
+        // are valid priced work; no candidate copy, growth or claim mark occurs.
+        second.slot.previous.set(None);
+        let expected = defect(JobFaultCause::InvalidQueueLink {
+            index: first.slot.index.0,
+        });
+        let _clock = ClockSlot::install(time.clone());
+        let outcome = context
+            .with_execution(
+                ExecutionOptions::new(0)
+                    .with_job_claim_work_limit(2)
+                    .with_profile(ProfileMode::Summary { timing: true })
+                    .with_profile_clock(clock),
+                |access| {
+                    let host = access.into_host_access();
+                    queues.claim(ClaimSelection::Generic, &host)
+                },
+            )
+            .unwrap();
+        let Err(error) = outcome.result else {
+            panic!("the real corrupt selected node must refuse the actual claim")
+        };
+        assert_eq!(engine_fault(&error), expected);
+        assert_eq!(queues.first_fault.get(), Some(expected));
+        assert_eq!(outcome.report.job_claim_work().unwrap(), 2);
+        assert_eq!(outcome.report.job_invocations().unwrap(), 0);
+        assert_eq!(outcome.report.instructions().unwrap(), 0);
+        assert!(!outcome.report.effects_started());
+        quarantined(&first, expected);
+        quarantined(&second, expected);
+        assert!(first.slot.status.get() == Status::Available);
+        assert!(second.slot.status.get() == Status::Available);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(time.load(Ordering::SeqCst), CALLBACK_NANOS);
+        assert_eq!(
+            *snapshots.lock().unwrap(),
+            vec![vec![Err(expected), Err(expected)]],
+            "every affected observer is fault-marked before the actual user wake"
+        );
+        assert_eq!(
+            Pin::new(&mut wait).poll(&mut TaskContext::from_waker(Waker::noop())),
+            Poll::Ready(Err(expected))
+        );
+        let profile = outcome.report.profile().unwrap().unwrap();
+        let elapsed = profile.elapsed;
+        let claim = profile
+            .scopes
+            .iter()
+            .find(|scope| scope.name == "job-claim")
+            .unwrap();
+        let phases = claim.phases;
+        let claim_elapsed = claim.phase_elapsed;
+
+        // Complete deliberate cleanup before the timing assertion, including
+        // on the expected counterexample. Fault quarantine itself drops nothing.
+        queues.clear().unwrap();
+        for accepted in [&first, &second] {
+            assert_eq!(accepted.calls.get(), 0);
+            assert_eq!(accepted.drops.get(), 1);
+            assert!(accepted.outside_store.get());
+            assert_eq!(accepted.observer.status(), Err(expected));
+            assert_eq!(accepted.observer.fault(), Some(expected));
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(time.load(Ordering::SeqCst), CALLBACK_NANOS);
+        assert_eq!(elapsed, Some(Duration::from_nanos(CALLBACK_NANOS)));
+        assert_eq!(phases, 1);
+        assert_eq!(
+            claim_elapsed,
+            Some(Duration::ZERO),
+            "the whole claim phase must close before its real fault-waker callback"
+        );
+    }
+}
