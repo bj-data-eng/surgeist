@@ -219,6 +219,7 @@ impl VisibleInlineRunTransition {
             hyphenation_state,
             tail_ledger,
             adjoining,
+            fragment_margins,
             intrinsic_inline_demand,
             baselines,
             static_positions,
@@ -313,6 +314,12 @@ impl VisibleInlineRunTransition {
         pending_floats.extend(placement.floats);
         static_positions.extend(placement.static_positions);
         if placement.margin == InlineRunMargin::Separates {
+            // Contributor groups end at the same participating line as the
+            // scalar adjoining component, including a line with zero extent.
+            if let Some(flow) = fragment_margins {
+                flow.started = true;
+                flow.active = None;
+            }
             *resolved_terminal_float_block_end = placement.resolved_float_terminal_block_end;
         }
         Ok(())
@@ -327,6 +334,7 @@ pub(super) struct InlineRunTransitionState<'a, Node, S: LayoutScalar> {
     pub(super) hyphenation_state: &'a mut crate::hyphenation::LineHyphenationState,
     pub(super) tail_ledger: &'a mut crate::hyphenation::BlockTailLedger,
     pub(super) adjoining: &'a mut entry::AdjoiningFlow<S>,
+    pub(super) fragment_margins: &'a mut Option<super::fragment_margins::Flow>,
     pub(super) intrinsic_inline_demand: &'a mut S,
     pub(super) baselines: &'a mut super::baseline_frame::PendingBaselines,
     pub(super) static_positions: &'a mut Vec<(Node, StaticPositionOf<S>)>,

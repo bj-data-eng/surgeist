@@ -525,6 +525,7 @@ where
                         hyphenation_state: &mut hyphenation_state,
                         tail_ledger: &mut tail_ledger,
                         adjoining: &mut adjoining,
+                        fragment_margins: &mut fragment_margins,
                         intrinsic_inline_demand: &mut intrinsic_inline_demand,
                         baselines: &mut baselines,
                         static_positions: &mut static_positions,
