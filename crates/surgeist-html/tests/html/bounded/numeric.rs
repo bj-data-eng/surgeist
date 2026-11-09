@@ -367,7 +367,7 @@ fn rational_allocation_refusal_returns_original_numerator_backing_for_retry() {
     assert!(result.capacity_bytes() >= 1);
 }
 
-fn service(
+pub(super) fn service(
     request: HtmlRangeNumericRequest,
     source: &[u16],
     buffers: &mut [Vec<u8>; 8],
