@@ -240,3 +240,29 @@ fn an_overshoot_the_cap_holds_is_recorded_for_the_caller_to_stop_on() {
     );
     assert_eq!(c.stop(), None);
 }
+
+#[test]
+fn a_refused_record_after_a_reserve_leaves_the_ticket_releasable_for_what_was_admitted() {
+    let mut c = control_with(builder().managed_capacity_bytes(200));
+    let (mut vector, mut ticket) = c.new_vector::<u64>().unwrap();
+    // The allocation is planned at 32 bytes, which fits, and observed far larger.
+    c.overshoot_next_capacity_record(1_000);
+    let stop = c.reserve_vector(&mut vector, &mut ticket, 4).unwrap_err();
+    assert!(matches!(
+        stop,
+        HtmlParseStop::LimitExceeded {
+            resource: HtmlParseResource::ManagedCapacityBytes,
+            ..
+        }
+    ));
+    // The first stop shows the custody the ledger admitted, without the overshoot.
+    assert_eq!(
+        c.first_stop_usage()
+            .unwrap()
+            .resource(HtmlParseResource::ManagedCapacityBytes)
+            .current,
+        0
+    );
+    c.release_vector(vector, ticket).unwrap();
+    crate::parser::tree_builder::tests::assert_released(&c);
+}

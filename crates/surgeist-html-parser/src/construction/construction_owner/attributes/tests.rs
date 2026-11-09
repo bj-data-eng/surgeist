@@ -345,3 +345,24 @@ fn checked_initial_append_inspects_exact_quadratic_current_prefix_pairs() {
         fixture.release(&mut c);
     }
 }
+#[test]
+fn a_refused_record_after_an_attribute_reserve_leaves_the_vector_ticket_releasable() {
+    let mut c = control();
+    let mut fixture = Fixture::new(&mut c, &["a"], 1);
+    let held = c
+        .usage()
+        .resource(HtmlParseResource::ManagedCapacityBytes)
+        .current;
+    // Room for the planned reserve, not for the capacity the provider reports.
+    c.test_limit(HtmlParseResource::ManagedCapacityBytes, held + 16_000);
+    c.overshoot_next_capacity_record(1_000_000);
+    assert!(matches!(
+        fixture.slot(&mut c, 0, &mut None),
+        Err(SessionError::Stop(HtmlParseStop::LimitExceeded {
+            resource: HtmlParseResource::ManagedCapacityBytes,
+            ..
+        }))
+    ));
+    fixture.release(&mut c);
+    crate::parser::tree_builder::tests::assert_released(&c);
+}

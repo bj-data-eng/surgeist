@@ -445,6 +445,10 @@ pub(crate) struct ParseControl {
     /// next checkpoint cancels the parse.
     #[cfg(test)]
     stop_armed: bool,
+    /// Bytes the next recorded capacity exceeds the observed one by, as a
+    /// provider that allocates more than it was asked to would.
+    #[cfg(test)]
+    capacity_overshoot: u64,
 }
 
 /// Which prepared payload slot a test stops the parse after, and how many the
@@ -615,9 +619,17 @@ impl ParseControl {
             space_token_overshoot: 0,
             #[cfg(test)]
             stop_armed: false,
+            #[cfg(test)]
+            capacity_overshoot: 0,
         };
         control.enter_phase(ParsePhase::Admission);
         control
+    }
+    /// Makes the next capacity a provider reports exceed the observed one by
+    /// `extra` bytes.
+    #[cfg(test)]
+    pub(crate) fn overshoot_next_capacity_record(&mut self, extra: u64) {
+        self.capacity_overshoot = extra;
     }
     /// Counts one prepared payload slot, records where it was asked for, and arms
     /// the stop a test asked for.
@@ -1971,6 +1983,8 @@ impl ParseControl {
         actual: u64,
         expected: u64,
     ) -> Result<(), HtmlParseStop> {
+        #[cfg(test)]
+        let actual = actual.saturating_add(std::mem::take(&mut self.capacity_overshoot));
         let recorded = self.accounts_mut()?.charge(&[
             Change::Release(HtmlResource::ManagedCapacityBytes, old),
             Change::Acquire(HtmlResource::ManagedCapacityBytes, actual),
