@@ -33,7 +33,7 @@ fn element(report: &HtmlParseReport, local: &str) -> HtmlNodeId {
             if element.name().namespace() == &surgeist_html::values::Namespace::html()
                 && element.name().local_name() == &DocumentString::from(local))
         {
-            assert!(found.replace(subject.clone()).is_none());
+            assert!(found.replace(subject).is_none());
         }
         pending.extend(node.children());
     }

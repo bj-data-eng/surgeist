@@ -490,7 +490,6 @@ pub struct DomStyleNotificationToken {
 }
 impl Drop for DomStyleNotificationToken {
     fn drop(&mut self) {
-        drop(self.origin.take());
         if let Some(boxed) = self.parsed.take() {
             // End the partially moved Box's scope before dropping its graphs
             // and original controlling Meter, including the box-frame debit.

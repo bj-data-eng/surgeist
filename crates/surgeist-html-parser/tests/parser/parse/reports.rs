@@ -561,7 +561,7 @@ fn canonical_control_metadata_lends_actual_nodes_flags_raw_values_and_form_ident
         let node = document.node(&id).unwrap();
         if matches!(node.kind(),HtmlNodeKind::Element(e) if e.name().local_name()==&DocumentString::from("form"))
         {
-            form = Some(id.clone());
+            form = Some(id);
         }
         stack.extend(node.children());
     }
@@ -657,7 +657,7 @@ fn a_form_inserted_after_its_controls_owns_only_the_control_naming_it_by_id() {
         let node = document.node(&id).unwrap();
         if matches!(node.kind(),HtmlNodeKind::Element(e) if e.name().local_name()==&DocumentString::from("form"))
         {
-            form = Some(id.clone());
+            form = Some(id);
         }
         stack.extend(node.children());
     }

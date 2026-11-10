@@ -4274,7 +4274,6 @@ fn standalone_template_creation_and_eof_preserve_prior_script_metadata() {
             .flags
             .already_started()
     );
-    drop(script);
     let (mut c, mut frozen) = body_document(driver);
     let document = frozen.document().unwrap();
     let html = document.root().children().next().unwrap();
@@ -4310,7 +4309,6 @@ fn standalone_template_creation_and_eof_preserve_prior_script_metadata() {
             .next()
             .is_none()
     );
-    drop((html, head, template, contents));
     frozen.release(&mut c).unwrap();
     assert_released(&c);
 }
@@ -10812,7 +10810,7 @@ fn ordinary_output_descendant_text_and_form_sibling_order_preserve_native_struct
     let following_text = document.node(&form).unwrap().children().nth(1).unwrap();
     let output_children: Vec<_> = document.node(&output).unwrap().children().collect();
     let form_child_count = document.node(&form).unwrap().children().count();
-    let span = output_children[1].clone();
+    let span = output_children[1];
     let nested_text = document.node(&span).unwrap().children().next().unwrap();
     let text_units: Vec<_> = [
         &output_children[0],
@@ -11295,7 +11293,7 @@ fn hidden_input_explicit_form_late_id_uses_first_element_and_keeps_default_value
         let input = document.node(&body).unwrap().children().next().unwrap();
         let form = document.node(&body).unwrap().children().last().unwrap();
         let owner = frozen.form_association_owner(&mut c, &input).unwrap();
-        assert_eq!(owner, associated.then(|| form.clone()));
+        assert_eq!(owner, associated.then_some(form));
         assert_eq!(
             frozen.form_association_state(&mut c, &input).unwrap().kind,
             surgeist_html::elements::form::HtmlNativeFormAssociationKind::Input
@@ -11306,11 +11304,6 @@ fn hidden_input_explicit_form_late_id_uses_first_element_and_keeps_default_value
             .unwrap();
         let actual = value.units().to_vec();
         value.release(&mut c).unwrap();
-        drop(owner);
-        drop(input);
-        drop(form);
-        drop(body);
-        drop(html);
         frozen.release(&mut c).unwrap();
         assert_released(&c);
         assert_eq!(actual, [65, 13, 66]);
@@ -11501,10 +11494,10 @@ fn ordinary_select_option_pop_clones_selected_content_with_distinct_native_child
     );
     assert_ne!(elements[7].0, elements[12].0);
     assert_ne!(texts[0].0, texts[2].0);
-    assert_eq!(elements[6].1, vec![elements[7].0.clone()]);
-    assert_eq!(elements[7].1, vec![texts[0].0.clone()]);
-    assert_eq!(elements[11].1, vec![elements[12].0.clone()]);
-    assert_eq!(elements[12].1, vec![texts[2].0.clone()]);
+    assert_eq!(elements[6].1, vec![elements[7].0]);
+    assert_eq!(elements[7].1, vec![texts[0].0]);
+    assert_eq!(elements[11].1, vec![elements[12].0]);
+    assert_eq!(elements[12].1, vec![texts[2].0]);
 }
 
 #[test]
@@ -11567,12 +11560,12 @@ fn select_family_native_states_follow_size_multiple_disabled_and_last_selected_r
                             .flags
                             .user_validity()
                     );
-                    select = Some(id.clone());
+                    select = Some(id);
                 } else if element.name().local_name() == &DocumentString::from("option") {
                     let state = frozen.option_state(&mut c, &id).unwrap();
                     selected.push(state.flags.selectedness());
                     assert!(!state.flags.dirtiness());
-                    option_ids.push(id.clone());
+                    option_ids.push(id);
                 }
             }
             pending.extend(node.children().collect::<Vec<_>>().into_iter().rev());
@@ -11584,7 +11577,6 @@ fn select_family_native_states_follow_size_multiple_disabled_and_last_selected_r
                 select
             );
         }
-        drop(select);
         frozen.release(&mut c).unwrap();
         assert_released(&c);
     }
@@ -11843,10 +11835,10 @@ fn select_family_selectedcontent_disabled_and_multiple_are_intrinsic_not_empty_c
             let node = doc.node(&id).unwrap();
             if let HtmlNodeKind::Element(e) = node.kind() {
                 if e.name().local_name() == &DocumentString::from("selectedcontent") {
-                    targets.push(id.clone());
+                    targets.push(id);
                 }
                 if e.name().local_name() == &DocumentString::from("i") {
-                    italic.push(id.clone());
+                    italic.push(id);
                 }
             }
             pending.extend(node.children().collect::<Vec<_>>().into_iter().rev());
@@ -12048,18 +12040,12 @@ fn ordinary_svg_adjusted_names_and_foreign_integration_preserve_native_namespace
             .collect::<Vec<_>>(),
         vec![units("x"), units("tail")]
     );
-    assert_eq!(
-        elements[2].1,
-        vec![elements[3].0.clone(), elements[7].0.clone()]
-    );
-    assert_eq!(
-        elements[3].1,
-        vec![elements[4].0.clone(), elements[5].0.clone()]
-    );
+    assert_eq!(elements[2].1, vec![elements[3].0, elements[7].0]);
+    assert_eq!(elements[3].1, vec![elements[4].0, elements[5].0]);
     assert!(elements[4].1.is_empty());
-    assert_eq!(elements[5].1, vec![elements[6].0.clone()]);
-    assert_eq!(elements[6].1, vec![texts[0].0.clone()]);
-    assert_eq!(elements[7].1, vec![texts[1].0.clone()]);
+    assert_eq!(elements[5].1, vec![elements[6].0]);
+    assert_eq!(elements[6].1, vec![texts[0].0]);
+    assert_eq!(elements[7].1, vec![texts[1].0]);
     assert_ne!(elements[6].0, elements[7].0);
     assert_ne!(texts[0].0, texts[1].0);
 }
@@ -12814,21 +12800,15 @@ fn ordinary_selectedcontent_clones_foreign_children_with_distinct_qualified_nati
             .collect::<Vec<_>>(),
         vec![units("M"), units("M"), units("Z")]
     );
-    assert_eq!(
-        elements[5].1,
-        vec![elements[6].0.clone(), elements[8].0.clone()]
-    );
-    assert_eq!(
-        elements[10].1,
-        vec![elements[11].0.clone(), elements[13].0.clone()]
-    );
+    assert_eq!(elements[5].1, vec![elements[6].0, elements[8].0]);
+    assert_eq!(elements[10].1, vec![elements[11].0, elements[13].0]);
     for (cloned, original) in [(6, 11), (7, 12), (8, 13), (9, 14)] {
         assert_ne!(elements[cloned].0, elements[original].0);
     }
     assert!(elements[7].1.is_empty());
     assert!(elements[12].1.is_empty());
-    assert_eq!(elements[9].1, vec![texts[0].0.clone()]);
-    assert_eq!(elements[14].1, vec![texts[1].0.clone()]);
+    assert_eq!(elements[9].1, vec![texts[0].0]);
+    assert_eq!(elements[14].1, vec![texts[1].0]);
     assert_ne!(texts[0].0, texts[1].0);
 }
 
@@ -12866,7 +12846,7 @@ fn ordinary_template_routes_rows_into_separate_hosted_contents_and_keeps_body_si
             HtmlNodeKind::Element(element) => {
                 let name = element.name();
                 elements.push((
-                    id.clone(),
+                    id,
                     node.parent(),
                     children,
                     name.namespace()
@@ -12909,12 +12889,12 @@ fn ordinary_template_routes_rows_into_separate_hosted_contents_and_keeps_body_si
     if let Some((_, Some(fragment_id))) = &template {
         let fragment = document.node(fragment_id).unwrap();
         let host = match fragment.fragment_owner() {
-            Some(surgeist_html::construction::HtmlFragmentOwner::Template(id)) => Some(id.clone()),
+            Some(surgeist_html::construction::HtmlFragmentOwner::Template(id)) => Some(id),
             _ => None,
         };
         let children: Vec<_> = fragment.children().collect();
         contents = Some((
-            fragment_id.clone(),
+            *fragment_id,
             matches!(fragment.kind(), HtmlNodeKind::Fragment),
             fragment.parent(),
             host,
@@ -13002,27 +12982,24 @@ fn ordinary_template_routes_rows_into_separate_hosted_contents_and_keeps_body_si
     );
     let template = template.unwrap();
     let contents = contents.unwrap();
-    assert_eq!(
-        elements[0].2,
-        vec![elements[1].0.clone(), elements[3].0.clone()]
-    );
-    assert_eq!(elements[1].2, vec![template.0.clone()]);
+    assert_eq!(elements[0].2, vec![elements[1].0, elements[3].0]);
+    assert_eq!(elements[1].2, vec![template.0]);
     assert_eq!(elements[2].0, template.0);
     assert!(elements[2].2.is_empty());
-    assert_eq!(elements[2].1, Some(elements[1].0.clone()));
-    assert_eq!(template.1, Some(contents.0.clone()));
+    assert_eq!(elements[2].1, Some(elements[1].0));
+    assert_eq!(template.1, Some(contents.0));
     assert!(contents.1);
     assert!(contents.2.is_none());
-    assert_eq!(contents.3, Some(template.0.clone()));
+    assert_eq!(contents.3, Some(template.0));
     assert_eq!(content_elements.len(), 3);
-    assert_eq!(contents.4, vec![content_elements[0].0.clone()]);
-    assert_eq!(content_elements[0].1, Some(contents.0.clone()));
+    assert_eq!(contents.4, vec![content_elements[0].0]);
+    assert_eq!(content_elements[0].1, Some(contents.0));
     assert_eq!(
         content_elements[0].2,
-        vec![content_elements[1].0.clone(), content_elements[2].0.clone()]
+        vec![content_elements[1].0, content_elements[2].0]
     );
-    assert_eq!(content_elements[1].1, Some(content_elements[0].0.clone()));
-    assert_eq!(content_elements[2].1, Some(content_elements[0].0.clone()));
+    assert_eq!(content_elements[1].1, Some(content_elements[0].0));
+    assert_eq!(content_elements[2].1, Some(content_elements[0].0));
     assert_eq!(
         content_elements
             .iter()
@@ -13039,16 +13016,16 @@ fn ordinary_template_routes_rows_into_separate_hosted_contents_and_keeps_body_si
             .collect::<Vec<_>>()
     );
     assert_eq!(content_texts.len(), 2);
-    assert_eq!(content_elements[1].2, vec![content_texts[0].0.clone()]);
-    assert_eq!(content_elements[2].2, vec![content_texts[1].0.clone()]);
-    assert_eq!(content_texts[0].1, Some(content_elements[1].0.clone()));
-    assert_eq!(content_texts[1].1, Some(content_elements[2].0.clone()));
+    assert_eq!(content_elements[1].2, vec![content_texts[0].0]);
+    assert_eq!(content_elements[2].2, vec![content_texts[1].0]);
+    assert_eq!(content_texts[0].1, Some(content_elements[1].0));
+    assert_eq!(content_texts[1].1, Some(content_elements[2].0));
     assert_eq!(content_texts[0].2, units("A"));
     assert_eq!(content_texts[1].2, units("B"));
     assert_eq!(ordinary_texts.len(), 1);
     assert_eq!(ordinary_texts[0].1, units("Z"));
-    assert_eq!(elements[3].2, vec![elements[4].0.clone()]);
-    assert_eq!(elements[4].2, vec![ordinary_texts[0].0.clone()]);
+    assert_eq!(elements[3].2, vec![elements[4].0]);
+    assert_eq!(elements[4].2, vec![ordinary_texts[0].0]);
     let ids: Vec<_> = elements
         .iter()
         .map(|entry| &entry.0)
@@ -13102,8 +13079,6 @@ fn template_nested_contents_reuse_one_real_inert_document_and_preserve_ordinary_
     assert!(!session.same_node(c, &ordinary, &inert).unwrap());
     let root = session.root(c).unwrap();
     assert!(session.same_node(c, &ordinary, &root).unwrap());
-    drop(root);
-    drop((outer, state, ordinary, inert));
     assert_eq!(
         standalone_boundary(&mut driver),
         super::head::HeadStep::Complete
@@ -13131,8 +13106,8 @@ fn template_nested_contents_reuse_one_real_inert_document_and_preserve_ordinary_
         if let Some(contents) = node.template_contents() {
             assert!(node.children().next().is_none());
             templates.push((
-                id.clone(),
-                contents.clone(),
+                id,
+                contents,
                 frozen.node_document(&mut c, &id).unwrap(),
                 frozen.node_document(&mut c, &contents).unwrap(),
             ));
@@ -13189,7 +13164,6 @@ fn template_pi_lookup_uses_whole_xml_grammar_without_html_character_reference_re
             .processing_instruction_attribute(&mut c, &pi, &DocumentString::from("name"))
             .unwrap()
             .map(|s| s.code_units().to_vec());
-        drop((pi, body, html));
         frozen.release(&mut c).unwrap();
         assert_released(&c);
         assert_eq!(actual, expected, "{data}");
@@ -13312,7 +13286,7 @@ fn template_form_pointer_survives_nested_form_recovery_and_template_parser_assoc
     let inner_img = document.node(&inner).unwrap().children().next().unwrap();
     assert_eq!(
         frozen.form_association_owner(&mut c, &img).unwrap(),
-        Some(form.clone())
+        Some(form)
     );
     assert!(
         frozen
@@ -13322,7 +13296,7 @@ fn template_form_pointer_survives_nested_form_recovery_and_template_parser_assoc
     );
     assert_eq!(
         frozen.form_association_owner(&mut c, &inner_img).unwrap(),
-        Some(inner.clone())
+        Some(inner)
     );
     assert!(
         !frozen
@@ -13330,7 +13304,6 @@ fn template_form_pointer_survives_nested_form_recovery_and_template_parser_assoc
             .unwrap()
             .parser_inserted
     );
-    drop((html, body, form, template, img, contents, inner, inner_img));
     frozen.release(&mut c).unwrap();
     assert_released(&c);
 }
@@ -13375,20 +13348,20 @@ fn template_selectedcontent_deep_clone_keeps_distinct_contents_and_adopts_real_d
         if let HtmlNodeKind::Element(element) = node.kind()
             && element.name().local_name() == &DocumentString::from("i")
         {
-            italic.push(id.clone());
+            italic.push(id);
         }
         if let HtmlNodeKind::Text(value) = node.kind() {
-            text.push((id.clone(), value.code_units().to_vec()));
+            text.push((id, value.code_units().to_vec()));
         }
         if matches!(node.kind(), HtmlNodeKind::ProcessingInstruction(_)) {
-            pi.push(id.clone());
+            pi.push(id);
         }
         let mut children: Vec<_> = node.children().collect();
         if let Some(contents) = node.template_contents() {
             assert!(children.is_empty());
             templates.push((
-                id.clone(),
-                contents.clone(),
+                id,
+                contents,
                 frozen.node_document(&mut c, &id).unwrap(),
                 frozen.node_document(&mut c, &contents).unwrap(),
             ));
@@ -13466,7 +13439,6 @@ fn template_pi_xml_unicode_names_values_and_invalid_whole_maps_preserve_native_u
             document.node(&pi).unwrap().kind(),
             HtmlNodeKind::ProcessingInstruction(_)
         ));
-        drop((pi, body, html));
         frozen.release(&mut c).unwrap();
         assert_released(&c);
         assert_eq!(actual, expected, "{data}");
@@ -13825,25 +13797,21 @@ fn ordinary_svg_script_foreign_text_and_self_closing_preserve_native_siblings() 
         );
         assert_eq!(
             elements[2].1,
-            vec![elements[3].0.clone(), elements[6].0.clone()],
+            vec![elements[3].0, elements[6].0],
             "{source}"
         );
         assert_eq!(
             elements[3].1,
-            vec![elements[4].0.clone(), elements[5].0.clone()],
+            vec![elements[4].0, elements[5].0],
             "{source}"
         );
         if script_text.is_some() {
-            assert_eq!(elements[4].1, vec![texts[0].0.clone()], "{source}");
+            assert_eq!(elements[4].1, vec![texts[0].0], "{source}");
             assert_ne!(texts[0].0, texts[1].0, "{source}");
         } else {
             assert!(elements[4].1.is_empty(), "{source}");
         }
-        assert_eq!(
-            elements[6].1,
-            vec![texts.last().unwrap().0.clone()],
-            "{source}"
-        );
+        assert_eq!(elements[6].1, vec![texts.last().unwrap().0], "{source}");
         for (position, (id, ..)) in elements.iter().enumerate() {
             for (other, ..) in elements.iter().skip(position + 1) {
                 assert_ne!(id, other, "{source}");
@@ -14067,7 +14035,7 @@ fn svg_script_inert_template_and_actual_patch_connection_have_distinct_processed
             if matches!(node.kind(),HtmlNodeKind::Element(e) if e.name().namespace()==&Namespace::svg()
                 && e.name().local_name()==&DocumentString::from("script"))
             {
-                scripts.push(id.clone());
+                scripts.push(id);
             }
             pending.extend(node.children());
             if let Some(contents) = node.template_contents() {
@@ -14143,7 +14111,7 @@ fn svg_script_selectedcontent_deep_clone_preserves_true_bits_and_inert_nested_fa
             let state = frozen.svg_script_state(&mut c, &id).unwrap();
             assert_eq!(state.flags.already_processed(), !inert);
             states.push((state.origin, inert));
-            ids.push(id.clone());
+            ids.push(id);
         }
         pending.extend(node.children().map(|id| (id, inert)));
         if let Some(contents) = node.template_contents() {
@@ -14477,7 +14445,7 @@ fn in_table_form_pointer_copy_fee_covers_the_actual_retained_receiver() {
             &mut common.control,
         )
         .unwrap();
-    let node = state.insert_tag(&mut common.control).unwrap();
+    state.insert_tag(&mut common.control).unwrap();
     state
         .before
         .kernel
@@ -14495,7 +14463,6 @@ fn in_table_form_pointer_copy_fee_covers_the_actual_retained_receiver() {
         .work(HtmlParseWorkCategory::RecordWrite)
         - before.work(HtmlParseWorkCategory::RecordWrite);
     let common_stack = state.before.kernel.stack().unwrap().len();
-    drop(node);
 
     // Release both actual lexical/native/controller owners before the fee
     // assertion. An underadmitted write must not hide a cleanup failure.
@@ -14554,7 +14521,7 @@ fn ordinary_text_input_keeps_exact_default_value_and_form_siblings_through_eof()
     let body = document.node(&html).unwrap().children().nth(1).unwrap();
     let form = document.node(&body).unwrap().children().next().unwrap();
     let children: Vec<_> = document.node(&form).unwrap().children().collect();
-    let input = children[0].clone();
+    let input = children[0];
     let input_children = document.node(&input).unwrap().children().count();
     let HtmlNodeKind::Element(element) = document.node(&input).unwrap().kind() else {
         panic!("the source input is a real native Element");
@@ -14589,12 +14556,7 @@ fn ordinary_text_input_keeps_exact_default_value_and_form_siblings_through_eof()
     let owner = frozen.form_association_owner(&mut control, &input).unwrap();
     let owner_is_form = owner.as_ref() == Some(&form);
     let child_count = children.len();
-    drop(owner);
-    drop(input);
     drop(children);
-    drop(form);
-    drop(body);
-    drop(html);
     frozen.release(&mut control).unwrap();
     assert_released(&control);
     assert_eq!(control.stop(), None);
@@ -14679,7 +14641,7 @@ fn ordinary_text_input_selected_types_foster_in_table_keep_form_and_exact_values
         let input = document.node(&form).unwrap().children().next().unwrap();
         assert_eq!(
             frozen.form_association_owner(&mut c, &input).unwrap(),
-            Some(form.clone())
+            Some(form)
         );
         let state = frozen.input_state(&mut c, &input).unwrap();
         assert_eq!(state.flags.input_type(), expected_type);
@@ -14784,7 +14746,7 @@ fn ordinary_checkbox_keeps_unsanitized_default_and_form_sibling_through_eof() {
     let body = document.node(&html).unwrap().children().nth(1).unwrap();
     let form = document.node(&body).unwrap().children().next().unwrap();
     let children: Vec<_> = document.node(&form).unwrap().children().collect();
-    let input = children[0].clone();
+    let input = children[0];
     let input_children = document.node(&input).unwrap().children().count();
     let HtmlNodeKind::Element(element) = document.node(&input).unwrap().kind() else {
         panic!("the Checkbox token creates a real native Element");
@@ -14814,12 +14776,7 @@ fn ordinary_checkbox_keeps_unsanitized_default_and_form_sibling_through_eof() {
     let owner = frozen.form_association_owner(&mut control, &input).unwrap();
     let owner_is_form = owner.as_ref() == Some(&form);
     let child_count = children.len();
-    drop(owner);
-    drop(input);
     drop(children);
-    drop(form);
-    drop(body);
-    drop(html);
     frozen.release(&mut control).unwrap();
     assert_released(&control);
     assert_eq!(control.stop(), None);
@@ -14898,7 +14855,7 @@ fn ordinary_checkbox_same_name_preserves_both_checked_and_external_explicit_form
     for input in members.iter().chain(std::iter::once(&outside)) {
         assert_eq!(
             frozen.form_association_owner(&mut c, input).unwrap(),
-            Some(form.clone())
+            Some(form)
         );
         let state = frozen.input_state(&mut c, input).unwrap();
         assert_eq!(
@@ -15153,8 +15110,6 @@ fn ordinary_details_name_group_closes_newly_inserted_open_member() {
         })
         .collect();
     drop(members);
-    drop(body);
-    drop(html);
     frozen.release(&mut control).unwrap();
     assert_released(&control);
     assert_eq!(control.stop(), None);
@@ -15543,7 +15498,6 @@ fn ordinary_comment_diagnostics_retain_bounded_event_layouts() {
             }
             assert_eq!(count, n.max(1));
         }
-        drop(comment);
         assert!(completed.at_stop().is_none());
         let before_cleanup = completed.usage().unwrap().clone();
         let mut frozen = completed.freeze_parts().unwrap();
@@ -15679,7 +15633,6 @@ fn ordinary_radio_same_group_keeps_only_later_checked_member_through_eof() {
         );
         let owner = frozen.form_association_owner(&mut control, input).unwrap();
         owned_by_form.push(owner.as_ref() == Some(&form));
-        drop(owner);
         let state = frozen.input_state(&mut control, input).unwrap();
         checkedness.push(state.flags.checkedness());
         dirty_checkedness.push(state.flags.dirty_checkedness());
@@ -15695,9 +15648,6 @@ fn ordinary_radio_same_group_keeps_only_later_checked_member_through_eof() {
     };
     let following_text = text.code_units().to_vec();
     drop(children);
-    drop(form);
-    drop(body);
-    drop(html);
     frozen.release(&mut control).unwrap();
     assert_released(&control);
     assert_eq!(control.usage().actual_capacity_bytes, 0);
@@ -15788,7 +15738,7 @@ fn ordinary_input_sanitizer_observes_completed_value(
     let form = document.node(&body).unwrap().children().next().unwrap();
     let children: Vec<_> = document.node(&form).unwrap().children().collect();
     let child_count = children.len();
-    let input = children[0].clone();
+    let input = children[0];
     let input_children = document.node(&input).unwrap().children().count();
     let HtmlNodeKind::Element(element) = document.node(&input).unwrap().kind() else {
         panic!("the actual input token must create a native Element");
@@ -15822,7 +15772,6 @@ fn ordinary_input_sanitizer_observes_completed_value(
     let following_text = text.code_units().to_vec();
     let owner = frozen.form_association_owner(&mut control, &input).unwrap();
     let owner_is_form = owner.as_ref() == Some(&form);
-    drop(owner);
     let state = frozen.input_state(&mut control, &input).unwrap();
     let actual_type = state.flags.input_type();
     let mode_of_value = state.flags.input_type().value_mode();
@@ -15874,11 +15823,7 @@ fn ordinary_input_sanitizer_observes_completed_value(
             original_source,
         )
     };
-    drop(input);
     drop(children);
-    drop(form);
-    drop(body);
-    drop(html);
     frozen.release(&mut control).unwrap();
     assert_released(&control);
     assert_eq!(control.usage().actual_capacity_bytes, 0);
@@ -17008,7 +16953,6 @@ fn radio_table_delegation_fosters_real_void_inputs_and_preserves_reset_default_o
     assert_eq!(value.units(), [65, 13, 66]);
     value.release(&mut c).unwrap();
     drop(inputs);
-    drop((body, html));
     frozen.release(&mut c).unwrap();
     assert_released(&c);
 }
@@ -17045,7 +16989,6 @@ fn ordinary_multiple_email_retains_produced_counts_distinct_from_joined_current(
         let state = frozen.input_state(&mut control, &input).unwrap();
         let owner = frozen.form_association_owner(&mut control, &input).unwrap();
         let owned = owner.as_ref() == Some(&form);
-        drop(owner);
         let mut buffer = crate::parser::buffer::Utf16Buffer::new(&mut control).unwrap();
         frozen
             .append_input_value(&mut control, &input, &mut buffer)
@@ -17057,10 +17000,6 @@ fn ordinary_multiple_email_retains_produced_counts_distinct_from_joined_current(
             .unwrap();
         let default = buffer.units().to_vec();
         buffer.release(&mut control).unwrap();
-        drop(input);
-        drop(form);
-        drop(body);
-        drop(html);
         frozen.release(&mut control).unwrap();
         assert_released(&control);
         assert_eq!(control.usage().actual_capacity_bytes, 0);
@@ -17157,7 +17096,6 @@ fn ordinary_default_button_input_observes_ordered_values(
         );
         let owner = frozen.form_association_owner(&mut control, input).unwrap();
         owners.push(owner.as_ref() == Some(&form));
-        drop(owner);
         states.push(frozen.input_state(&mut control, input).unwrap());
         let mut value = crate::parser::buffer::Utf16Buffer::new(&mut control).unwrap();
         frozen
@@ -17189,9 +17127,6 @@ fn ordinary_default_button_input_observes_ordered_values(
                 .all(|part| part.source.source() == request.source().identity())
     };
     drop(children);
-    drop(form);
-    drop(body);
-    drop(html);
     frozen.release(&mut control).unwrap();
     assert_released(&control);
     assert_eq!(control.usage().actual_capacity_bytes, 0);
@@ -17334,7 +17269,7 @@ fn ordinary_temporal_input_observes_completed_value(
     let form = document.node(&body).unwrap().children().next().unwrap();
     let children: Vec<_> = document.node(&form).unwrap().children().collect();
     let child_count = children.len();
-    let input = children[0].clone();
+    let input = children[0];
     let input_children = document.node(&input).unwrap().children().count();
     let HtmlNodeKind::Element(element) = document.node(&input).unwrap().kind() else {
         panic!("the actual input token must create a native Element");
@@ -17368,7 +17303,6 @@ fn ordinary_temporal_input_observes_completed_value(
     let following_text = text.code_units().to_vec();
     let owner = frozen.form_association_owner(&mut control, &input).unwrap();
     let owner_is_form = owner.as_ref() == Some(&form);
-    drop(owner);
     let state = frozen.input_state(&mut control, &input).unwrap();
     let actual_type = state.flags.input_type();
     let mode_of_value = state.flags.input_type().value_mode();
@@ -17421,11 +17355,7 @@ fn ordinary_temporal_input_observes_completed_value(
             original_source,
         )
     };
-    drop(input);
     drop(children);
-    drop(form);
-    drop(body);
-    drop(html);
     frozen.release(&mut control).unwrap();
     assert_released(&control);
     assert_eq!(control.usage().actual_capacity_bytes, 0);
@@ -17654,7 +17584,6 @@ fn default_button_input_table_delegation_fosters_void_nodes_with_preserved_value
         let state = frozen.input_state(&mut c, &children[0]).unwrap();
         let owner = frozen.form_association_owner(&mut c, &children[0]).unwrap();
         let owns = owner.as_ref() == Some(&form);
-        drop(owner);
         let mut buffer = crate::parser::buffer::Utf16Buffer::new(&mut c).unwrap();
         frozen
             .append_input_value(&mut c, &children[0], &mut buffer)
@@ -17666,9 +17595,6 @@ fn default_button_input_table_delegation_fosters_void_nodes_with_preserved_value
         };
         let following_text = text.code_units().to_vec();
         drop(children);
-        drop(form);
-        drop(body);
-        drop(html);
         frozen.release(&mut c).unwrap();
         assert_released(&c);
         assert_eq!(c.usage().actual_capacity_bytes, 0);
@@ -17731,7 +17657,7 @@ fn ordinary_number_input_observes_complete(
     let form = document.node(&body).unwrap().children().next().unwrap();
     let children: Vec<_> = document.node(&form).unwrap().children().collect();
     let child_count = children.len();
-    let input = children[0].clone();
+    let input = children[0];
     let input_children = document.node(&input).unwrap().children().count();
     let HtmlNodeKind::Element(element) = document.node(&input).unwrap().kind() else {
         panic!("input must be an actual native element");
@@ -17765,7 +17691,6 @@ fn ordinary_number_input_observes_complete(
     let following_text = text.code_units().to_vec();
     let owner = frozen.form_association_owner(&mut control, &input).unwrap();
     let owner_is_form = owner.as_ref() == Some(&form);
-    drop(owner);
     let state = frozen.input_state(&mut control, &input).unwrap();
     let actual_type = state.flags.input_type();
     let value_mode = state.flags.input_type().value_mode();
@@ -17814,11 +17739,7 @@ fn ordinary_number_input_observes_complete(
             .collect::<Vec<_>>();
         (references, source_qualified)
     };
-    drop(input);
     drop(children);
-    drop(form);
-    drop(body);
-    drop(html);
     frozen.release(&mut control).unwrap();
     assert_released(&control);
     assert_eq!(control.usage().actual_capacity_bytes, 0);
@@ -18073,7 +17994,7 @@ fn ordinary_file_image_input_observes_completed_state(
     let form = document.node(&body).unwrap().children().next().unwrap();
     let children: Vec<_> = document.node(&form).unwrap().children().collect();
     let child_count = children.len();
-    let input = children[0].clone();
+    let input = children[0];
     let node = document.node(&input).unwrap();
     let input_child_count = node.children().count();
     let HtmlNodeKind::Element(element) = node.kind() else {
@@ -18107,7 +18028,6 @@ fn ordinary_file_image_input_observes_completed_state(
     let following_text = text.code_units().to_vec();
     let owner = frozen.form_association_owner(&mut control, &input).unwrap();
     let owner_is_form = owner.as_ref() == Some(&form);
-    drop(owner);
     let association_kind = frozen
         .form_association_state(&mut control, &input)
         .unwrap()
@@ -18144,11 +18064,7 @@ fn ordinary_file_image_input_observes_completed_state(
                 .iter()
                 .all(|part| part.source.source() == request.source().identity())
     };
-    drop(input);
     drop(children);
-    drop(form);
-    drop(body);
-    drop(html);
     frozen.release(&mut control).unwrap();
     assert_released(&control);
     assert_eq!(control.usage().actual_capacity_bytes, 0);
@@ -18461,7 +18377,7 @@ fn ordinary_range_input_observes_complete(
     let form = document.node(&body).unwrap().children().next().unwrap();
     let children: Vec<_> = document.node(&form).unwrap().children().collect();
     let child_count = children.len();
-    let input = children[0].clone();
+    let input = children[0];
     let input_children = document.node(&input).unwrap().children().count();
     let HtmlNodeKind::Element(element) = document.node(&input).unwrap().kind() else {
         panic!("input must be an actual native element");
@@ -18495,7 +18411,6 @@ fn ordinary_range_input_observes_complete(
     let following_text = text.code_units().to_vec();
     let owner = frozen.form_association_owner(&mut control, &input).unwrap();
     let owner_is_form = owner.as_ref() == Some(&form);
-    drop(owner);
     let state = frozen.input_state(&mut control, &input).unwrap();
     let actual_type = state.flags.input_type();
     let value_mode = state.flags.input_type().value_mode();
@@ -18546,11 +18461,7 @@ fn ordinary_range_input_observes_complete(
             .collect::<Vec<_>>();
         (references, source_qualified)
     };
-    drop(input);
     drop(children);
-    drop(form);
-    drop(body);
-    drop(html);
     frozen.release(&mut control).unwrap();
     assert_released(&control);
     assert_eq!(control.usage().actual_capacity_bytes, 0);
@@ -20142,7 +20053,7 @@ mod complete_hostile_scan {
                             assert_eq!(view.attribute_count(&p).unwrap(), 0);
                             assert_eq!(view.child_count(&p).unwrap(), 1);
                             let text = native_node_at(&mut view, &[1, 1, index, 0]);
-                            if let Some(previous) = previous.replace(text.clone()) {
+                            if let Some(previous) = previous.replace(text) {
                                 assert!(!view.same_node(&previous, &text).unwrap());
                             }
                             let NativeKind::Text(value) = view.kind(&text).unwrap() else {

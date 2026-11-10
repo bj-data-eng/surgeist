@@ -166,10 +166,11 @@ parser's session use this same storage implementation; parser-only payloads,
 source evidence, allocation tickets and effects stay in parser. No second final
 arena is built by walking or copying the parser tree.
 
-Storage issues the existing opaque `HtmlBuilderNode` handles qualified by its identity.
-Parser-private `ParserNode` becomes a wrapper around that checked handle rather
-than duplicating the index/identity invariant. The shared handle keeps a weak
-reference to identity; storage and the published result own its lifetime.
+Storage issues the existing opaque `HtmlBuilderNode` handles qualified by its storage
+serial. Parser-private `ParserNode` becomes a wrapper around that checked handle rather
+than duplicating the index/serial invariant. A handle is a `Copy` pair of the
+storage's process-wide serial and a 32-bit record index; it holds no reference to
+the storage, and a handle of another storage is a serial mismatch.
 It provides read-only `node`, `kind`, `parent`, `children`, `template_contents`,
 `shadow_root` and `usage` views. Its operation enum provides exactly these
 generic transitions: append/insert a node, detach/reparent an ordinary node,
@@ -193,8 +194,9 @@ result. This checked read follows existing owning-association IDs without
 exposing their private identity/index or adding another mapping bank. Borrowed
 node views provide kind, position, parent, child iteration, contents kind/target,
 `fragment_owner() -> Option<&HtmlFragmentOwner>`, shadow properties and issued
-handle access. Following one read edge does not
-clone an Arc; parser admission covers its actual described observation.
+handle access. The published result's `HtmlNode::fragment_owner()` returns
+`Option<HtmlFragmentOwner>` by value. Following one read edge copies a 16-byte id
+and clones nothing; parser admission covers its actual described observation.
 
 Each operation consumes one exclusive storage owner. A prepared
 action exposes its actual next inspection, copy, initialized write, reservation
@@ -256,9 +258,14 @@ and recovery lease with no later fallible work. Invalid structure yields
 same owned storage. A stopped operation exposes no successful document or
 fragment.
 
-Result identity is allocated once with storage creation and survives publication,
+Result identity is the storage's process-wide serial, issued once with storage
+creation, and survives publication,
 cloning, associated fragment views and parser report assembly. It is never
 replaced by source identity, capture identity or a canonical live DOM ID.
+`HtmlNodeId` compares and hashes by serial and index and has no order, so no
+charged amount, output or ordering may depend on the value of a serial. Exhausting
+the serial counter, or a record count that a 32-bit index cannot name, is
+`RepresentationExhausted`.
 Published metadata and readback use the same result-qualified `HtmlNodeId`;
 private construction handles cannot be confused with immutable IDs. Parser-private
 metadata may retain dense bank ordinals qualified through the actual shared
@@ -277,8 +284,8 @@ including the locally unowned output for a captured-host attachment. Its
 properties stored once with that fragment role. The host's private shadow link
 retains its existing qualified endpoint IDs, without another properties field.
 `HtmlDeclarativeShadowRoot<'a>` becomes a read-only borrowed view over those IDs
-and the target's properties; `host()` and `contents()` retain borrowed ID
-readback, and `properties()` copies the same value without allocation. This
+and the target's properties; `host()` and `contents()` return the `Copy` IDs by
+value, and `properties()` copies the same value without allocation. This
 pre-v1 shape change has no compatibility wrapper. Captured-host shadow properties
 therefore survive in the same HTML result even when no local host is present.
 
@@ -578,7 +585,9 @@ sequence to create the zero-payload shared identity.
 Result<HtmlConstructionReadyInitialization,
 HtmlConstructionRefusal<HtmlConstructionInitialization>>` consumes
 the initialization owner only after all initialization actions and its
-post-provider observation are complete. The ready owner's infallible
+post-provider observation are complete. It issues the storage's process-wide
+serial; when no serial is left it refuses with `RepresentationExhausted` and
+hands the initialization back unchanged. The ready owner's infallible
 `commit(self) -> HtmlConstructionStorage` returns empty storage. Pending or
 failed initialization cannot call that method. Native document/fragment builders then create their
 explicit root through the commands below. Failed or cancelled initialization

@@ -527,7 +527,7 @@ fn characterization_a_reserve_below_the_initialized_length_is_a_capacity_mismatc
     drop(value);
     let mut operation = Some(Append::begin(
         storage.construction.owner.take().unwrap(),
-        node.handle.clone(),
+        node.handle,
         DocumentString::from("C"),
     ));
     let before = {
@@ -723,7 +723,7 @@ pub(crate) fn observed_capacity()
     let storage = session.active_mut().unwrap();
     let mut operation = Some(Append::begin(
         storage.construction.owner.take().unwrap(),
-        node.handle.clone(),
+        node.handle,
         DocumentString::from("C"),
     ));
     let capacity = {
@@ -788,7 +788,7 @@ fn first_description(
     drop(value);
     let append = Append::begin(
         storage.construction.owner.take().unwrap(),
-        node.handle.clone(),
+        node.handle,
         DocumentString::from("C"),
     );
     (session, append)

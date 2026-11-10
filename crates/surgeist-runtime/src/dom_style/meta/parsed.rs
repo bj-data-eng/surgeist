@@ -465,7 +465,7 @@ impl DomStyleRuntime {
             let occurrence = &preparation.occurrences()[occurrence_index];
             let document = occurrence.document().node();
             let id = occurrence.id().clone();
-            let subject = occurrence.subject().clone();
+            let subject = *occurrence.subject();
             let content = occurrence.content().clone();
             let mut candidate_index = None;
             for (index, candidate) in candidates.iter().enumerate() {

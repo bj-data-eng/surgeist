@@ -2,6 +2,7 @@
 
 use super::*;
 use std::mem::{align_of, size_of};
+use std::sync::Weak;
 
 /// A fault of charging a construction step: the step and what the caller says about it disagree.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -328,10 +329,7 @@ impl HtmlConstructionResult {
     }
     /// Reads a retained ordinal; it never interprets an integer as a result identity.
     pub fn node_at(&self, position: usize) -> Option<HtmlConstructionNode<'_>> {
-        (position < self.arena().records.len()).then_some(HtmlConstructionNode {
-            arena: self.arena(),
-            index: position,
-        })
+        self.arena().record_at(position)
     }
     /// The number of retained records, including roots, template contents and shadow contents
     /// fragments.
@@ -346,13 +344,11 @@ impl HtmlConstructionResult {
     /// ordinal. Returns the foreign-builder error for another owner's handle and the unknown-node
     /// error for an ordinal past the retained records.
     pub fn position(&self, handle: &HtmlBuilderNode) -> Result<usize, HtmlConstructionError> {
-        if handle.identity.as_ptr() != Arc::as_ptr(&self.arena().identity) {
-            return Err(HtmlConstructionCause::ForeignBuilder.into());
-        }
-        if handle.index >= self.arena().records.len() {
-            return Err(HtmlConstructionCause::UnknownNode.into());
-        }
-        Ok(handle.index)
+        Ok(self.index(handle)?.position())
+    }
+    /// The record index of a builder handle, with the errors of `position`.
+    pub(super) fn index(&self, handle: &HtmlBuilderNode) -> Result<NodeIx, HtmlConstructionError> {
+        self.arena().index(handle)
     }
     /// Resolves a result id into a retained-record view. Returns `ForeignHtmlResult` for an id of
     /// another construction result or one past the retained records.
@@ -360,15 +356,7 @@ impl HtmlConstructionResult {
         &self,
         id: &HtmlNodeId,
     ) -> Result<HtmlConstructionNode<'_>, ForeignHtmlResult> {
-        if !Arc::ptr_eq(&self.arena().identity, &id.identity)
-            || id.index >= self.arena().records.len()
-        {
-            return Err(ForeignHtmlResult);
-        }
-        Ok(HtmlConstructionNode {
-            arena: self.arena(),
-            index: id.index,
-        })
+        self.arena().construction_node(id)
     }
     /// The usage that construction admitted for this result.
     pub fn usage(&self) -> HtmlConstructionUsage {
@@ -403,13 +391,13 @@ impl HtmlConstructionResult {
 /// A read-only view qualified by one live storage borrow.
 #[derive(Clone, Copy, Debug)]
 pub struct HtmlConstructionNode<'a> {
-    arena: &'a Arena,
-    index: usize,
+    pub(super) arena: &'a Arena,
+    pub(super) index: NodeIx,
 }
 impl<'a> HtmlConstructionNode<'a> {
     /// The retained record ordinal that this view reads, in creation order.
     pub fn position(self) -> usize {
-        self.index
+        self.index.position()
     }
     /// Converts to the ordinary node view over the same record.
     pub fn as_node(self) -> HtmlNode<'a> {
@@ -420,7 +408,10 @@ impl<'a> HtmlConstructionNode<'a> {
     }
     /// Checks only this retained record's generic container invariant.
     pub fn check_container(self) -> Result<(), HtmlConstructionError> {
-        if self.arena.records[self.index].template_contents.is_some() {
+        if self.arena.records[self.index.position()]
+            .template_contents
+            .is_some()
+        {
             return Err(HtmlConstructionCause::TemplateContentsRequired.into());
         }
         if !matches!(
@@ -449,30 +440,30 @@ impl<'a> HtmlConstructionNode<'a> {
         if !std::ptr::eq(self.arena, parent.arena) {
             return Err(HtmlConstructionCause::ForeignBuilder.into());
         }
-        if self.arena.records[self.index].parent != Some(parent.index) {
+        if self.arena.records[self.index.position()].parent != Some(parent.index) {
             return Err(HtmlConstructionCause::WrongSibling.into());
         }
         Ok(())
     }
-    /// Issues a builder handle for this record from the owner's identity. The handle is weak and
-    /// does not keep the owner alive.
+    /// Issues a builder handle for this record from the owner's serial. The handle holds no
+    /// reference to the owner.
     pub fn handle(self) -> HtmlBuilderNode {
         HtmlBuilderNode {
-            identity: Arc::downgrade(&self.arena.identity),
+            tree: self.arena.serial,
             index: self.index,
         }
     }
     /// The record's node kind.
     pub fn kind(self) -> &'a HtmlNodeKind {
-        &self.arena.records[self.index].kind
+        &self.arena.records[self.index.position()].kind
     }
     /// The number of ordinary children, excluding template contents and shadow contents.
     pub fn child_count(self) -> usize {
-        self.arena.records[self.index].children.len()
+        self.arena.records[self.index.position()].children.len()
     }
     /// The child at `ordinal` in document order; `None` at or past `child_count`.
     pub fn child_at(self, ordinal: usize) -> Option<Self> {
-        self.arena.records[self.index]
+        self.arena.records[self.index.position()]
             .children
             .get(ordinal)
             .copied()
@@ -484,15 +475,17 @@ impl<'a> HtmlConstructionNode<'a> {
     /// The ordinary parent. Records without one, such as roots and association fragments, return
     /// `None`.
     pub fn parent(self) -> Option<Self> {
-        self.arena.records[self.index].parent.map(|index| Self {
-            arena: self.arena,
-            index,
-        })
+        self.arena.records[self.index.position()]
+            .parent
+            .map(|index| Self {
+                arena: self.arena,
+                index,
+            })
     }
     /// The ordinary children in document order. The iterator knows its length and runs from both
     /// ends.
     pub fn children(self) -> impl ExactSizeIterator<Item = Self> + DoubleEndedIterator + 'a {
-        self.arena.records[self.index]
+        self.arena.records[self.index.position()]
             .children
             .iter()
             .map(move |&index| Self {
@@ -503,7 +496,7 @@ impl<'a> HtmlConstructionNode<'a> {
     /// The contents fragment of a `template` element, whether owned or a shadow-contents
     /// reference. `None` for any other record.
     pub fn template_contents(self) -> Option<Self> {
-        self.arena.records[self.index]
+        self.arena.records[self.index.position()]
             .template_contents
             .map(|value| Self {
                 arena: self.arena,
@@ -513,7 +506,7 @@ impl<'a> HtmlConstructionNode<'a> {
     /// Whether the template's contents fragment is owned or a shadow reference; `None` for a
     /// record without template contents.
     pub fn template_contents_kind(self) -> Option<HtmlTemplateContentsKind> {
-        self.arena.records[self.index]
+        self.arena.records[self.index.position()]
             .template_contents
             .map(TemplateContents::kind)
     }
@@ -527,7 +520,7 @@ impl<'a> HtmlConstructionNode<'a> {
     }
     /// The template or shadow host that owns this fragment root. `None` for ordinary records.
     pub fn fragment_owner(self) -> Option<&'a HtmlFragmentOwner> {
-        self.arena.records[self.index].owner.as_ref()
+        self.arena.records[self.index.position()].owner.as_ref()
     }
     /// Whether this fragment was explicitly constructed as shadow contents.
     pub fn is_shadow_contents(self) -> bool {
@@ -535,7 +528,7 @@ impl<'a> HtmlConstructionNode<'a> {
     }
     /// The shadow properties of a shadow contents fragment; `None` otherwise.
     pub fn shadow_properties(self) -> Option<HtmlShadowRootProperties> {
-        self.arena.records[self.index].shadow_properties
+        self.arena.records[self.index.position()].shadow_properties
     }
 }
 
@@ -564,10 +557,7 @@ impl HtmlConstructionStorage {
     }
     /// The record at `position`, or `None` past the last created record.
     pub fn node_at(&self, position: usize) -> Option<HtmlConstructionNode<'_>> {
-        (position < self.arena.records.len()).then_some(HtmlConstructionNode {
-            arena: &self.arena,
-            index: position,
-        })
+        self.arena.record_at(position)
     }
     /// Resolves a builder handle to its record view. Returns the foreign-builder error for another
     /// owner's handle and the unknown-node error for an ordinal past the created records.
@@ -575,7 +565,7 @@ impl HtmlConstructionStorage {
         &self,
         handle: &HtmlBuilderNode,
     ) -> Result<HtmlConstructionNode<'_>, HtmlConstructionError> {
-        let index = self.position(handle)?;
+        let index = self.index(handle)?;
         Ok(HtmlConstructionNode {
             arena: &self.arena,
             index,
@@ -587,29 +577,20 @@ impl HtmlConstructionStorage {
         &self,
         id: &HtmlNodeId,
     ) -> Result<HtmlConstructionNode<'_>, ForeignHtmlResult> {
-        if !Arc::ptr_eq(&self.arena.identity, &id.identity) || id.index >= self.arena.records.len()
-        {
-            return Err(ForeignHtmlResult);
-        }
-        Ok(HtmlConstructionNode {
-            arena: &self.arena,
-            index: id.index,
-        })
+        self.arena.construction_node(id)
     }
     /// Resolves a builder handle to its record ordinal. Errors as `node` does.
     pub fn position(&self, handle: &HtmlBuilderNode) -> Result<usize, HtmlConstructionError> {
-        if handle.identity.as_ptr() != Arc::as_ptr(&self.arena.identity) {
-            return Err(HtmlConstructionCause::ForeignBuilder.into());
-        }
-        if handle.index >= self.arena.records.len() {
-            return Err(HtmlConstructionCause::UnknownNode.into());
-        }
-        Ok(handle.index)
+        Ok(self.index(handle)?.position())
+    }
+    /// Resolves a builder handle to its record index. Errors as `node` does.
+    pub(super) fn index(&self, handle: &HtmlBuilderNode) -> Result<NodeIx, HtmlConstructionError> {
+        self.arena.index(handle)
     }
     /// Resolves a builder handle to the result id that the published result will use for the same
     /// record. Errors as `node` does.
     pub fn result_id(&self, handle: &HtmlBuilderNode) -> Result<HtmlNodeId, HtmlConstructionError> {
-        Ok(self.arena.id(self.position(handle)?))
+        Ok(self.arena.id(self.index(handle)?))
     }
     /// Starts an operation for `command` and takes the owner. Preparation allocates and inspects
     /// nothing, so it cannot fail: operand qualification happens in the operation's own actions,
@@ -711,6 +692,7 @@ pub struct HtmlConstructionInitializationObservation<'a> {
 #[derive(Debug)]
 pub struct HtmlConstructionReadyInitialization {
     identity: Arc<Identity>,
+    serial: u64,
 }
 impl HtmlConstructionInitialization {
     /// The next action to run, `Ok(None)` once initialization is ready, or the not-ready error
@@ -726,16 +708,35 @@ impl HtmlConstructionInitialization {
             }) => Err(HtmlConstructionCause::OperationNotReady.into()),
         }
     }
-    /// Consumes a ready initialization. Returns the not-ready error, with the initialization
-    /// handed back unchanged, when initialization has not completed.
+    /// Consumes a ready initialization and issues the storage's process-wide serial. Returns the
+    /// not-ready error, with the initialization handed back unchanged, when initialization has not
+    /// completed, and `RepresentationExhausted` when no serial is left.
     pub fn try_ready(
         self,
+    ) -> Result<HtmlConstructionReadyInitialization, HtmlConstructionRefusal<Self>> {
+        self.try_ready_from(&NEXT_STORAGE_SERIAL)
+    }
+    /// `try_ready` drawing the serial from `counter`.
+    fn try_ready_from(
+        self,
+        counter: &std::sync::atomic::AtomicU64,
     ) -> Result<HtmlConstructionReadyInitialization, HtmlConstructionRefusal<Self>> {
         match self.created {
             Some(CreatedIdentity {
                 identity,
                 accepted: true,
-            }) => Ok(HtmlConstructionReadyInitialization { identity }),
+            }) => match issue_storage_serial(counter) {
+                Ok(serial) => Ok(HtmlConstructionReadyInitialization { identity, serial }),
+                Err(cause) => Err(HtmlConstructionRefusal::new(
+                    Self {
+                        created: Some(CreatedIdentity {
+                            identity,
+                            accepted: true,
+                        }),
+                    },
+                    cause,
+                )),
+            },
             created => Err(HtmlConstructionRefusal::new(
                 Self { created },
                 HtmlConstructionCause::OperationNotReady,
@@ -799,8 +800,21 @@ impl HtmlConstructionInitializationObservation<'_> {
         *self.accepted = true;
     }
 }
-/// The serials issued to construction storages.
+/// The serials issued to construction storages. A serial names its storage among all storages in
+/// the process: node ids and builder handles carry it, and no two storages share one.
 static NEXT_STORAGE_SERIAL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+/// Takes the next serial from `counter`, or `RepresentationExhausted` when none is left. The
+/// counter keeps its value on refusal, so a serial is never reissued.
+fn issue_storage_serial(
+    counter: &std::sync::atomic::AtomicU64,
+) -> Result<u64, HtmlConstructionCause> {
+    use std::sync::atomic::Ordering;
+    counter
+        .try_update(Ordering::Relaxed, Ordering::Relaxed, |next| {
+            next.checked_add(1)
+        })
+        .map_err(|_| HtmlConstructionCause::RepresentationExhausted)
+}
 impl HtmlConstructionReadyInitialization {
     /// Completes initialization and returns empty construction storage with zero usage.
     pub fn commit(self) -> HtmlConstructionStorage {
@@ -812,7 +826,7 @@ impl HtmlConstructionReadyInitialization {
                 records_generation: 0,
                 wrapper_generation: 0,
                 temporary_generation: 0,
-                serial: NEXT_STORAGE_SERIAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+                serial: self.serial,
                 attribute_revision: 0,
             },
         }
@@ -924,6 +938,84 @@ impl HtmlConstructionLease {
                 (result, lease),
                 HtmlConstructionCause::SharedAllocationAliased,
             )),
+        }
+    }
+}
+
+#[cfg(test)]
+mod serial_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[test]
+    fn storage_serials_are_issued_in_order_and_exhaustion_is_a_typed_refusal() {
+        let counter = AtomicU64::new(u64::MAX - 2);
+        assert_eq!(issue_storage_serial(&counter), Ok(u64::MAX - 2));
+        assert_eq!(issue_storage_serial(&counter), Ok(u64::MAX - 1));
+        // The last value cannot be followed by another, so it is never issued: the counter would
+        // have to wrap onto a serial an earlier storage may still hold.
+        let refusal = issue_storage_serial(&counter);
+        assert_eq!(refusal, Err(HtmlConstructionCause::RepresentationExhausted));
+        assert_eq!(counter.load(Ordering::Relaxed), u64::MAX);
+        // The refusal repeats and the counter keeps its value.
+        assert_eq!(
+            issue_storage_serial(&counter),
+            Err(HtmlConstructionCause::RepresentationExhausted)
+        );
+        assert_eq!(counter.load(Ordering::Relaxed), u64::MAX);
+    }
+
+    /// An initialization that has performed and accepted its identity action.
+    fn performed_initialization() -> HtmlConstructionInitialization {
+        let mut initialization = HtmlConstructionStorage::begin();
+        while let Ok(Some(action)) = initialization.next_action() {
+            action.perform().accept();
+        }
+        initialization
+    }
+
+    #[test]
+    fn a_refused_ready_transition_hands_back_the_initialization_whose_identity_retires() {
+        let counter = AtomicU64::new(u64::MAX);
+        let Err(refusal) = performed_initialization().try_ready_from(&counter) else {
+            panic!("an exhausted counter issues no serial");
+        };
+        assert_eq!(
+            refusal.reason().cause(),
+            HtmlConstructionCause::RepresentationExhausted
+        );
+        let (mut initialization, _) = refusal.into_parts();
+        // The initialization is as it was: complete, holding its identity allocation.
+        assert!(matches!(initialization.next_action(), Ok(None)));
+        let retired = initialization
+            .abort()
+            .expect("the refused initialization still owns its identity allocation");
+        assert_eq!(
+            retired.allocation().role(),
+            HtmlConstructionAllocationRole::Identity
+        );
+        // A counter with a value left readies the same kind of initialization.
+        let counter = AtomicU64::new(7);
+        let ready = performed_initialization()
+            .try_ready_from(&counter)
+            .expect("a counter with a value left issues a serial");
+        assert_eq!(ready.commit().arena.serial, 7);
+    }
+
+    #[test]
+    fn two_storages_never_share_a_serial() {
+        let storages: Vec<_> = (0..4)
+            .map(|_| {
+                performed_initialization()
+                    .try_ready()
+                    .expect("a performed initialization is ready")
+                    .commit()
+            })
+            .collect();
+        for (index, storage) in storages.iter().enumerate() {
+            for other in &storages[index + 1..] {
+                assert_ne!(storage.arena.serial, other.arena.serial);
+            }
         }
     }
 }

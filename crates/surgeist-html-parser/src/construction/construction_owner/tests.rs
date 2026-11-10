@@ -129,8 +129,8 @@ fn insertion_preflight_precedes_scratch_capacity(resource: HtmlParseResource) {
     let result = owner.apply(
         &mut control,
         HtmlConstructionCommand::Insert {
-            node: child.clone(),
-            parent: root.clone(),
+            node: child,
+            parent: root,
             before: None,
         },
         &[(HtmlParseResource::ManagedEdges, 1)],

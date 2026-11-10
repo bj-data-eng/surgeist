@@ -63,7 +63,7 @@ impl SessionStorage {
                     let shadow_contents = self
                         .construction
                         .storage(c)?
-                        .node_by_result_id(shadow.contents())
+                        .node_by_result_id(&shadow.contents())
                         .map_err(|_| SessionError::ForeignNode)?
                         .position();
                     if self.fragment.is_none() {

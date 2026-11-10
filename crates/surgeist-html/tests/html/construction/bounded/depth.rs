@@ -11,8 +11,8 @@ fn append(
     change(
         storage,
         HtmlConstructionCommand::Insert {
-            node: node.clone(),
-            parent: parent.clone(),
+            node: *node,
+            parent: *parent,
             before: None,
         },
     )
@@ -189,7 +189,7 @@ fn usage_depth_follows_an_independent_forest_through_random_moves_and_detaches()
                 owner = change(
                     owner,
                     HtmlConstructionCommand::Detach {
-                        node: handles[node].clone(),
+                        node: handles[node],
                     },
                 )
                 .0;
@@ -209,9 +209,9 @@ fn usage_depth_follows_an_independent_forest_through_random_moves_and_detaches()
                 owner = change(
                     owner,
                     HtmlConstructionCommand::Insert {
-                        node: handles[node].clone(),
-                        parent: handles[parent].clone(),
-                        before: before.map(|before| handles[before].clone()),
+                        node: handles[node],
+                        parent: handles[parent],
+                        before: before.map(|before| handles[before]),
                     },
                 )
                 .0;
@@ -256,8 +256,8 @@ fn depth_stays_exact_after_shadow_and_template_changes_that_move_whole_subtrees(
     let (owner, _) = change(
         owner,
         HtmlConstructionCommand::AttachShadow {
-            host: host.clone(),
-            contents: shadow.clone(),
+            host,
+            contents: shadow,
         },
     );
     assert_eq!(owner.usage().depth(), 5);
@@ -290,12 +290,7 @@ fn depth_stays_exact_after_shadow_and_template_changes_that_move_whole_subtrees(
     let owner = append(owner, &f, &x);
     assert_eq!(owner.usage().depth(), 10);
     // Lifting the template to the root lowers everything it owns.
-    let (owner, _) = change(
-        owner,
-        HtmlConstructionCommand::Detach {
-            node: template.clone(),
-        },
-    );
+    let (owner, _) = change(owner, HtmlConstructionCommand::Detach { node: template });
     assert_eq!(owner.usage().depth(), 6);
     let owner = append(owner, &template, &root);
     assert_eq!(owner.usage().depth(), 6);
@@ -330,7 +325,7 @@ fn lifting_the_deepest_subtree_leaves_the_deepest_record_elsewhere() {
     }
     let (next, top) = create(owner, element("s"));
     owner = append(next, &top, &parent);
-    parent = top.clone();
+    parent = top;
     for _ in 0..2 {
         let (next, node) = create(owner, element("s"));
         owner = append(next, &node, &parent);
@@ -338,7 +333,7 @@ fn lifting_the_deepest_subtree_leaves_the_deepest_record_elsewhere() {
     }
     assert_eq!(owner.usage().depth(), 6);
     // Lifting s1 to a root leaves the other chain's depth 4 as the deepest.
-    let (owner, _) = change(owner, HtmlConstructionCommand::Detach { node: top.clone() });
+    let (owner, _) = change(owner, HtmlConstructionCommand::Detach { node: top });
     assert_eq!(owner.usage().depth(), 4);
     // Moving it below the other chain's end puts s1 at 5 and s3 at 7.
     let owner = append(owner, &top, &chain_end);
@@ -375,9 +370,9 @@ fn depth_stays_exact_after_template_shadow_and_contents_reassignment() {
     let (owner, _) = change(
         owner,
         HtmlConstructionCommand::AttachTemplateShadow {
-            template: template.clone(),
-            host: host.clone(),
-            contents: shadow.clone(),
+            template,
+            host,
+            contents: shadow,
         },
     );
     // The old contents are a root again: p at 1 and q at 2. The shadow
@@ -398,10 +393,7 @@ fn depth_stays_exact_after_template_shadow_and_contents_reassignment() {
     // p at 3, q 4, s 5 and t 6.
     let (owner, _) = change(
         owner,
-        HtmlConstructionCommand::ReassignTemplateContents {
-            template: template.clone(),
-            contents: contents.clone(),
-        },
+        HtmlConstructionCommand::ReassignTemplateContents { template, contents },
     );
     assert_eq!(owner.usage().depth(), 6);
     let (owner, w) = create(owner, element("w"));
@@ -409,12 +401,7 @@ fn depth_stays_exact_after_template_shadow_and_contents_reassignment() {
     assert_eq!(owner.usage().depth(), 7);
     // Lifting the template to a root lowers its records: contents 1, p 2,
     // q 3, s 4, t 5 and w 6, while the shadow chain reaches 5.
-    let (owner, _) = change(
-        owner,
-        HtmlConstructionCommand::Detach {
-            node: template.clone(),
-        },
-    );
+    let (owner, _) = change(owner, HtmlConstructionCommand::Detach { node: template });
     assert_eq!(owner.usage().depth(), 6);
     // Under v at 5 it puts the template at 6, its contents at 7 and w at 12.
     let owner = append(owner, &template, &v);
@@ -428,7 +415,7 @@ fn chain(
 ) -> (HtmlConstructionStorage, HtmlBuilderNode) {
     let (next, top) = create(storage, element("link"));
     storage = next;
-    let mut parent = top.clone();
+    let mut parent = top;
     for _ in 1..len {
         let (next, node) = create(storage, element("link"));
         storage = append(next, &node, &parent);

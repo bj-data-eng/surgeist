@@ -217,7 +217,7 @@ pub(crate) use session_creation::RootKind;
 use session_creation::{
     CreationProfile, ImpliedHtmlName, OrderedCreation, creation_command, validate_parser_attributes,
 };
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct ParserNode {
     handle: HtmlBuilderNode,
     // Immutable dense parser-metadata join; only the checked handle authorizes a node.

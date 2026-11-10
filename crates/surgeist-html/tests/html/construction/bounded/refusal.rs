@@ -121,7 +121,7 @@ fn a_refused_attribute_slot_and_candidate_are_unchanged() {
     let (owner, target) = create(storage(), element("target"));
     let mut edit = HtmlConstructionAttributeEdit::begin(
         owner,
-        target.clone(),
+        target,
         HtmlConstructionAttributeEditMode::Slots,
     );
     while let Some(action) = edit.next_action().unwrap() {

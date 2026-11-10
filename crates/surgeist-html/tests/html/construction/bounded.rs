@@ -16,9 +16,9 @@ use surgeist_html::{
         HtmlConstructionStorage, HtmlConstructionTextAppend,
     },
     construction::{
-        HtmlBuilderNode, HtmlConstructionCause, HtmlDocumentMode, HtmlElement, HtmlFragmentOwner,
-        HtmlNodeKind, HtmlShadowRootMode, HtmlShadowRootProperties, HtmlSlotAssignment,
-        HtmlTemplateContentsKind,
+        ForeignHtmlResult, HtmlBuilderNode, HtmlConstructionCause, HtmlDocumentMode, HtmlElement,
+        HtmlFragmentOwner, HtmlNodeKind, HtmlShadowRootMode, HtmlShadowRootProperties,
+        HtmlSlotAssignment, HtmlTemplateContentsKind,
     },
     values::{DocumentString, Namespace, OrderedAttributes, QualifiedName},
 };
@@ -147,8 +147,8 @@ fn driven_insert(
     driven(
         storage,
         HtmlConstructionCommand::Insert {
-            node: node.clone(),
-            parent: parent.clone(),
+            node: *node,
+            parent: *parent,
             before: before.cloned(),
         },
     )
@@ -231,8 +231,8 @@ fn append_amortized(
     parent: &HtmlBuilderNode,
 ) -> (HtmlConstructionStorage, Vec<usize>) {
     let mut operation = Some(storage.prepare(HtmlConstructionCommand::Insert {
-        node: node.clone(),
-        parent: parent.clone(),
+        node: *node,
+        parent: *parent,
         before: None,
     }));
     let mut requested = Vec::new();
@@ -310,12 +310,12 @@ fn append_with_spare_child_order_capacity_requests_no_growth() {
 
 #[test]
 fn a_child_order_allocation_reports_the_deque_that_holds_the_entries() {
-    // A child-order bank is a deque of one-word entries. Its inline header
-    // holds the head, the length, the buffer pointer and its capacity: four
-    // words, counted here by hand rather than read off `size_of`. An append
+    // A child-order bank is a deque of 32-bit record-index entries. Its inline
+    // header holds the head, the length, the buffer pointer and its capacity:
+    // four words, counted here by hand rather than read off `size_of`. An append
     // reserves exactly the one slot it needs the first time, and the admitted
     // capacity of 8 the second time.
-    let word = size_of::<usize>();
+    let entry = size_of::<u32>();
     let (owner, root) = fragment(storage());
     let (owner, a) = create(owner, element("a"));
     let (owner, b) = create(owner, element("b"));
@@ -343,15 +343,15 @@ fn a_child_order_allocation_reports_the_deque_that_holds_the_entries() {
         assert_eq!(snapshot.child_position(), Some(0));
         assert_eq!(snapshot.initialized_len(), len);
         assert_eq!(snapshot.capacity(), capacity);
-        assert_eq!(snapshot.element_size(), word);
-        assert_eq!(snapshot.payload_bytes(), capacity * word);
+        assert_eq!(snapshot.element_size(), entry);
+        assert_eq!(snapshot.payload_bytes(), capacity * entry);
         // The wrapper is the deque header. Its layout is not a std guarantee, so compare with
         // the deque's own size and require it to differ from a `Vec` header.
         assert_eq!(
             snapshot.wrapper_payload_bytes(),
-            std::mem::size_of::<std::collections::VecDeque<usize>>()
+            std::mem::size_of::<std::collections::VecDeque<u32>>()
         );
-        assert!(snapshot.wrapper_payload_bytes() > std::mem::size_of::<Vec<usize>>());
+        assert!(snapshot.wrapper_payload_bytes() > std::mem::size_of::<Vec<u32>>());
     }
 }
 
@@ -363,15 +363,15 @@ fn interrupted_append_reserve_returns_the_tree_and_keeps_the_grown_order_bank() 
     let (owner, _) = change(
         owner,
         HtmlConstructionCommand::Insert {
-            node: a.clone(),
-            parent: root.clone(),
+            node: a,
+            parent: root,
             before: None,
         },
     );
     let usage = owner.usage();
     let mut operation = Some(owner.prepare(HtmlConstructionCommand::Insert {
-        node: b.clone(),
-        parent: root.clone(),
+        node: b,
+        parent: root,
         before: None,
     }));
     let mut before = None;
@@ -425,8 +425,8 @@ fn interrupted_append_reserve_returns_the_tree_and_keeps_the_grown_order_bank() 
     assert!(owner.node(&b).unwrap().parent().is_none());
     // The retry needs no growth and commits into the retained capacity.
     let mut operation = Some(owner.prepare(HtmlConstructionCommand::Insert {
-        node: b.clone(),
-        parent: root.clone(),
+        node: b,
+        parent: root,
         before: None,
     }));
     while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
@@ -472,15 +472,15 @@ fn refused_append_reserve_reports_the_unchanged_bank_and_latches_the_first_failu
     let (owner, _) = change(
         owner,
         HtmlConstructionCommand::Insert {
-            node: a.clone(),
-            parent: root.clone(),
+            node: a,
+            parent: root,
             before: None,
         },
     );
     let usage = owner.usage();
     let mut operation = Some(owner.prepare(HtmlConstructionCommand::Insert {
-        node: b.clone(),
-        parent: root.clone(),
+        node: b,
+        parent: root,
         before: None,
     }));
     let failure = loop {
@@ -510,8 +510,8 @@ fn refused_append_reserve_reports_the_unchanged_bank_and_latches_the_first_failu
     assert_eq!(owner.usage(), usage);
     // A capacity no provider can supply returns the unchanged bank report.
     let mut operation = Some(owner.prepare(HtmlConstructionCommand::Insert {
-        node: b.clone(),
-        parent: root.clone(),
+        node: b,
+        parent: root,
         before: None,
     }));
     loop {
@@ -524,7 +524,7 @@ fn refused_append_reserve_reports_the_unchanged_bank_and_latches_the_first_failu
             continue;
         }
         let failed = action
-            .perform_with_capacity(isize::MAX as usize / size_of::<usize>())
+            .perform_with_capacity(isize::MAX as usize / size_of::<u32>())
             .err()
             .unwrap();
         assert_eq!(failed.reason(), &cause::ALLOCATION_FAILED);
@@ -571,15 +571,15 @@ fn append_cycle_refuses_before_any_child_order_growth() {
     let (owner, _) = change(
         owner,
         HtmlConstructionCommand::Insert {
-            node: inner.clone(),
-            parent: outer.clone(),
+            node: inner,
+            parent: outer,
             before: None,
         },
     );
     // `inner` has no spare child capacity, yet the cycle is reached first.
     let mut operation = Some(owner.prepare(HtmlConstructionCommand::Insert {
-        node: outer.clone(),
-        parent: inner.clone(),
+        node: outer,
+        parent: inner,
         before: None,
     }));
     let error = loop {
@@ -734,8 +734,8 @@ fn checked_handles_and_ordinals_preserve_identity_across_nonzero_document_public
     let (owner, _) = change(
         owner,
         HtmlConstructionCommand::Insert {
-            node: template.clone(),
-            parent: document.clone(),
+            node: template,
+            parent: document,
             before: None,
         },
     );
@@ -770,11 +770,11 @@ fn checked_handles_and_ordinals_preserve_identity_across_nonzero_document_public
     assert_eq!(document.mode(), HtmlDocumentMode::Quirks);
     assert_eq!(
         document.node(&template_id).unwrap().template_contents(),
-        Some(contents_id.clone())
+        Some(contents_id)
     );
     assert_eq!(
         document.node(&contents_id).unwrap().fragment_owner(),
-        Some(&HtmlFragmentOwner::Template(template_id))
+        Some(HtmlFragmentOwner::Template(template_id))
     );
     assert_eq!(document.usage().nodes(), 4);
     assert_eq!(document.usage().edges(), 2);
@@ -801,8 +801,8 @@ fn template_shadow_reference_is_not_an_owning_depth_or_edge_and_reassignment_pre
     let (owner, _) = change(
         owner,
         HtmlConstructionCommand::Insert {
-            node: host.clone(),
-            parent: root.clone(),
+            node: host,
+            parent: root,
             before: None,
         },
     );
@@ -810,9 +810,9 @@ fn template_shadow_reference_is_not_an_owning_depth_or_edge_and_reassignment_pre
     let (owner, _) = change(
         owner,
         HtmlConstructionCommand::AttachTemplateShadow {
-            template: template.clone(),
-            host: host.clone(),
-            contents: shadow.clone(),
+            template,
+            host,
+            contents: shadow,
         },
     );
     assert_eq!(owner.usage().edges(), edges);
@@ -838,25 +838,25 @@ fn template_shadow_reference_is_not_an_owning_depth_or_edge_and_reassignment_pre
     let owner = refuse(
         owner,
         HtmlConstructionCommand::AttachTemplateShadow {
-            template: template.clone(),
-            host: host.clone(),
-            contents: shadow.clone(),
+            template,
+            host,
+            contents: shadow,
         },
         cause::INVALID_TEMPLATE_ASSOCIATION,
     );
     let owner = refuse(
         owner,
         HtmlConstructionCommand::ReassignTemplateContents {
-            template: template.clone(),
-            contents: shadow.clone(),
+            template,
+            contents: shadow,
         },
         cause::INVALID_TEMPLATE_ASSOCIATION,
     );
     let (owner, _) = change(
         owner,
         HtmlConstructionCommand::ReassignTemplateContents {
-            template: template.clone(),
-            contents: ordinary.clone(),
+            template,
+            contents: ordinary,
         },
     );
     assert_eq!(owner.usage().edges(), edges + 1);
@@ -872,7 +872,7 @@ fn template_shadow_reference_is_not_an_owning_depth_or_edge_and_reassignment_pre
     let host_id = owner.result_id(&host).unwrap();
     assert_eq!(
         owner.node(&shadow).unwrap().fragment_owner(),
-        Some(&HtmlFragmentOwner::ShadowHost(host_id.clone()))
+        Some(&HtmlFragmentOwner::ShadowHost(host_id))
     );
     let before = owner.usage();
     let (owner, _) = change(
@@ -891,7 +891,7 @@ fn template_shadow_reference_is_not_an_owning_depth_or_edge_and_reassignment_pre
             .declarative_shadow_root()
             .unwrap()
             .contents(),
-        &shadow_id
+        shadow_id
     );
 }
 
@@ -909,8 +909,8 @@ fn captured_shadow_role_retains_properties_without_a_local_owner() {
     let (owner, _) = change(
         owner,
         HtmlConstructionCommand::SetTemplateShadowContents {
-            template: template.clone(),
-            contents: shadow.clone(),
+            template,
+            contents: shadow,
         },
     );
     assert_eq!(owner.usage().edges(), old.edges() - 1);
@@ -919,8 +919,8 @@ fn captured_shadow_role_retains_properties_without_a_local_owner() {
     let owner = refuse(
         owner,
         HtmlConstructionCommand::SetTemplateShadowContents {
-            template: template.clone(),
-            contents: shadow.clone(),
+            template,
+            contents: shadow,
         },
         cause::INVALID_TEMPLATE_ASSOCIATION,
     );
@@ -929,7 +929,7 @@ fn captured_shadow_role_retains_properties_without_a_local_owner() {
     let (result, _) = publish(owner, root);
     assert_eq!(
         result.node(&template_id).unwrap().template_contents(),
-        Some(shadow_id.clone())
+        Some(shadow_id)
     );
     let contents = result.node(&shadow_id).unwrap();
     assert!(contents.is_shadow_contents());
@@ -1014,8 +1014,8 @@ fn aborting_a_child_order_change_after_any_action_leaves_the_old_orders_and_pare
             owner = change(
                 owner,
                 HtmlConstructionCommand::Insert {
-                    node: node.clone(),
-                    parent: parent.clone(),
+                    node: *node,
+                    parent: *parent,
                     before: None,
                 },
             )
@@ -1024,9 +1024,9 @@ fn aborting_a_child_order_change_after_any_action_leaves_the_old_orders_and_pare
         let insert =
             |node: &HtmlBuilderNode, parent: &HtmlBuilderNode, before: &HtmlBuilderNode| {
                 HtmlConstructionCommand::Insert {
-                    node: node.clone(),
-                    parent: parent.clone(),
-                    before: Some(before.clone()),
+                    node: *node,
+                    parent: *parent,
+                    before: Some(*before),
                 }
             };
         let commands = vec![
@@ -1034,8 +1034,8 @@ fn aborting_a_child_order_change_after_any_action_leaves_the_old_orders_and_pare
             insert(&b, &root, &a),
             insert(&a, &other, &x),
             insert(&c, &other, &x),
-            HtmlConstructionCommand::Detach { node: a.clone() },
-            HtmlConstructionCommand::Detach { node: b.clone() },
+            HtmlConstructionCommand::Detach { node: a },
+            HtmlConstructionCommand::Detach { node: b },
         ];
         (owner, [root, other, a, b, c, x], commands)
     }
@@ -1050,7 +1050,7 @@ fn aborting_a_child_order_change_after_any_action_leaves_the_old_orders_and_pare
             assert_eq!(owner.usage(), before, "command {index} after {performed}");
             assert_eq!(
                 children_snapshot(&owner, &root),
-                [a.clone(), b.clone()],
+                [a, b],
                 "command {index} after {performed}"
             );
             assert_eq!(
@@ -1107,6 +1107,76 @@ fn record_layout_exhaustion_refuses_before_provider_growth_and_preserves_existin
     assert_eq!(owner.usage(), before);
     assert_eq!(owner.position(&root), Ok(0));
     assert_eq!(owner.len(), 1);
+}
+
+/// Two storages issue handles and ids at the same record index; each storage and result refuses
+/// the other's with the foreign-builder cause or the foreign-result error.
+#[test]
+fn handles_and_ids_of_another_storage_are_refused_at_an_equal_record_index() {
+    let (first, first_root) = fragment(storage());
+    let (second, second_root) = fragment(storage());
+    assert_eq!(first.position(&first_root), second.position(&second_root));
+    assert_ne!(first_root, second_root);
+    let first_id = first.result_id(&first_root).unwrap();
+    let second_id = second.result_id(&second_root).unwrap();
+    assert_ne!(first_id, second_id);
+    assert!(has_cause(
+        second.position(&first_root).err().as_ref(),
+        cause::FOREIGN_BUILDER
+    ));
+    assert!(has_cause(
+        second.result_id(&first_root).err().as_ref(),
+        cause::FOREIGN_BUILDER
+    ));
+    assert!(has_cause(
+        second.node(&first_root).err().as_ref(),
+        cause::FOREIGN_BUILDER
+    ));
+    assert_eq!(
+        second.node_by_result_id(&first_id).unwrap_err(),
+        ForeignHtmlResult
+    );
+    let (second, child) = create(second, element("child"));
+    let usage = second.usage();
+    let second = refuse(
+        second,
+        HtmlConstructionCommand::Insert {
+            node: child,
+            parent: first_root,
+            before: None,
+        },
+        cause::FOREIGN_BUILDER,
+    );
+    assert_eq!(second.usage(), usage);
+    let (published, _) = publish(first, first_root);
+    assert_eq!(published.node(&second_id).unwrap_err(), ForeignHtmlResult);
+    assert_eq!(
+        published.node_by_result_id(&second_id).unwrap_err(),
+        ForeignHtmlResult
+    );
+    assert_eq!(published.node(&first_id).unwrap().id(), first_id);
+}
+
+/// A record count past what a 32-bit node index names is refused before any record storage grows,
+/// and the existing handles and ids stay valid.
+#[cfg(target_pointer_width = "64")]
+#[test]
+fn record_count_beyond_the_node_index_refuses_before_provider_growth() {
+    let (owner, root) = fragment(storage());
+    let root_id = owner.result_id(&root).unwrap();
+    let before = owner.usage();
+    // One retained record plus u32::MAX more is 2^32 records: the last index would be u32::MAX.
+    let owner = refuse(
+        owner,
+        HtmlConstructionCommand::ReserveRecords {
+            additional: u32::MAX as usize,
+        },
+        cause::REPRESENTATION_EXHAUSTED,
+    );
+    assert_eq!(owner.usage(), before);
+    assert_eq!(owner.len(), 1);
+    assert_eq!(owner.position(&root), Ok(0));
+    assert_eq!(owner.result_id(&root).unwrap(), root_id);
 }
 
 #[test]
@@ -1182,8 +1252,8 @@ fn grown_child_order_bank_never_reissues_retired_identity_after_abort() {
     owner = change(
         owner,
         HtmlConstructionCommand::Insert {
-            node: a.clone(),
-            parent: root.clone(),
+            node: a,
+            parent: root,
             before: None,
         },
     )
@@ -1191,9 +1261,9 @@ fn grown_child_order_bank_never_reissues_retired_identity_after_abort() {
     // The order holds one entry in capacity one, so inserting `b` before it
     // grows the parent's actual bank in place, with a new incarnation.
     let mut operation = Some(owner.prepare(HtmlConstructionCommand::Insert {
-        node: b.clone(),
-        parent: root.clone(),
-        before: Some(a.clone()),
+        node: b,
+        parent: root,
+        before: Some(a),
     }));
     let mut previous = None;
     let mut preflight = false;
@@ -1231,9 +1301,9 @@ fn grown_child_order_bank_never_reissues_retired_identity_after_abort() {
     assert!(owner.node(&b).unwrap().parent().is_none());
     // The retry finds the grown bank and requests no growth.
     let mut operation = Some(owner.prepare(HtmlConstructionCommand::Insert {
-        node: b.clone(),
-        parent: root.clone(),
-        before: Some(a.clone()),
+        node: b,
+        parent: root,
+        before: Some(a),
     }));
     while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
         assert!(!matches!(
@@ -1270,28 +1340,24 @@ fn already_correct_insertions_change_no_order_and_allocate_nothing() {
         let (owner, _) = change(
             owner,
             HtmlConstructionCommand::Insert {
-                node: a.clone(),
-                parent: root.clone(),
+                node: a,
+                parent: root,
                 before: None,
             },
         );
         let (owner, _) = change(
             owner,
             HtmlConstructionCommand::Insert {
-                node: b.clone(),
-                parent: root.clone(),
+                node: b,
+                parent: root,
                 before: None,
             },
         );
         let usage = owner.usage();
         let mut operation = Some(owner.prepare(HtmlConstructionCommand::Insert {
-            node: if before_successor {
-                a.clone()
-            } else {
-                b.clone()
-            },
-            parent: root.clone(),
-            before: before_successor.then(|| b.clone()),
+            node: if before_successor { a } else { b },
+            parent: root,
+            before: before_successor.then_some(b),
         }));
         let mut preflight = false;
         while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
@@ -1306,7 +1372,7 @@ fn already_correct_insertions_change_no_order_and_allocate_nothing() {
                         .children()
                         .map(HtmlConstructionNode::handle)
                         .collect::<Vec<_>>(),
-                    [a.clone(), b.clone()]
+                    [a, b]
                 );
                 preflight = true;
             } else {
@@ -1336,7 +1402,7 @@ fn already_correct_insertions_change_no_order_and_allocate_nothing() {
                 .children()
                 .map(HtmlConstructionNode::handle)
                 .collect::<Vec<_>>(),
-            [a.clone(), b.clone()]
+            [a, b]
         );
         assert_eq!(owner.node(&a).unwrap().parent().unwrap().handle(), root);
         assert_eq!(owner.node(&b).unwrap().parent().unwrap().handle(), root);
@@ -1351,8 +1417,8 @@ fn self_reference_validates_parent_before_noop_and_valid_noop_has_no_allocation(
     let (owner, _) = change(
         owner,
         HtmlConstructionCommand::Insert {
-            node: a.clone(),
-            parent: root.clone(),
+            node: a,
+            parent: root,
             before: None,
         },
     );
@@ -1360,18 +1426,18 @@ fn self_reference_validates_parent_before_noop_and_valid_noop_has_no_allocation(
     let owner = refuse(
         owner,
         HtmlConstructionCommand::Insert {
-            node: a.clone(),
-            parent: other.clone(),
-            before: Some(a.clone()),
+            node: a,
+            parent: other,
+            before: Some(a),
         },
         cause::WRONG_SIBLING,
     );
     assert_eq!(owner.node(&a).unwrap().parent().unwrap().handle(), root);
     assert_eq!(owner.node(&other).unwrap().child_count(), 0);
     let mut operation = Some(owner.prepare(HtmlConstructionCommand::Insert {
-        node: a.clone(),
-        parent: root.clone(),
-        before: Some(a.clone()),
+        node: a,
+        parent: root,
+        before: Some(a),
     }));
     while let Some(action) = operation.as_mut().unwrap().next_action().unwrap() {
         assert!(!matches!(

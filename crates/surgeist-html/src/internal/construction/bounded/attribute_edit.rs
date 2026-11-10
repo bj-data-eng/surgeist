@@ -2781,11 +2781,7 @@ mod tests {
                 (0, 0),
                 "single-slot refusals own no merge plan"
             );
-            let recovered = make_edit(
-                storage,
-                target.clone(),
-                HtmlConstructionAttributeEditMode::Slots,
-            );
+            let recovered = make_edit(storage, target, HtmlConstructionAttributeEditMode::Slots);
             self.assert_unchanged(&recovered, &target, expected);
             let backing = Arc::downgrade(recovered.shared_attributes().unwrap());
             let storage = finish(recovered);
@@ -2833,11 +2829,7 @@ mod tests {
             attribute("b", "two"),
             attribute("c", "three"),
         ]);
-        let mut edit = make_edit(
-            storage,
-            target.clone(),
-            HtmlConstructionAttributeEditMode::Slots,
-        );
+        let mut edit = make_edit(storage, target, HtmlConstructionAttributeEditMode::Slots);
         let original = UnchangedAttributes::capture(&edit);
         let mut incoming = Some(attribute("b", "replacement"));
         let name = incoming
@@ -2875,11 +2867,7 @@ mod tests {
         for index in [2, usize::MAX] {
             let (storage, target) =
                 make_storage(vec![attribute("a", "one"), attribute("b", "two")]);
-            let mut edit = make_edit(
-                storage,
-                target.clone(),
-                HtmlConstructionAttributeEditMode::Slots,
-            );
+            let mut edit = make_edit(storage, target, HtmlConstructionAttributeEditMode::Slots);
             let original = UnchangedAttributes::capture(&edit);
             let mut incoming = Some(attribute("new", "candidate"));
             let name = incoming
@@ -2910,11 +2898,7 @@ mod tests {
     #[test]
     fn absent_replacement_input_preserves_existing_slot_and_usage() {
         let (storage, target) = make_storage(vec![attribute("a", "one"), attribute("b", "two")]);
-        let mut edit = make_edit(
-            storage,
-            target.clone(),
-            HtmlConstructionAttributeEditMode::Slots,
-        );
+        let mut edit = make_edit(storage, target, HtmlConstructionAttributeEditMode::Slots);
         let original = UnchangedAttributes::capture(&edit);
         let mut incoming = None;
         assert_slot_refused(
@@ -2932,11 +2916,7 @@ mod tests {
         for index in [1, 2, 7] {
             let (storage, target) =
                 make_storage(vec![attribute("a", "one"), attribute("b", "two")]);
-            let mut edit = make_edit(
-                storage,
-                target.clone(),
-                HtmlConstructionAttributeEditMode::Slots,
-            );
+            let mut edit = make_edit(storage, target, HtmlConstructionAttributeEditMode::Slots);
             let original = UnchangedAttributes::capture(&edit);
             assert_slot_refused(
                 edit.swap_adjacent(index).unwrap(),
@@ -2951,11 +2931,7 @@ mod tests {
     #[test]
     fn pop_on_empty_attributes_preserves_actual_backing_and_usage() {
         let (storage, target) = make_storage(Vec::new());
-        let mut edit = make_edit(
-            storage,
-            target.clone(),
-            HtmlConstructionAttributeEditMode::Slots,
-        );
+        let mut edit = make_edit(storage, target, HtmlConstructionAttributeEditMode::Slots);
         let original = UnchangedAttributes::capture(&edit);
         assert_slot_refused(
             edit.pop().unwrap(),
@@ -3785,7 +3761,7 @@ mod tests {
             let names = ["a", "b", "c"].map(DocumentString::from);
             let mut edit = make_edit(
                 storage,
-                target.clone(),
+                target,
                 HtmlConstructionAttributeEditMode::NamedMerge { candidate_count: 3 },
             );
             let mut reserves = 0;

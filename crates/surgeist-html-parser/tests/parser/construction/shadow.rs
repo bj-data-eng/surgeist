@@ -141,10 +141,10 @@ fn assert_shadow_readback_source_and_native_alias(local_host: bool) {
         let Some(HtmlFragmentOwner::ShadowHost(host)) = shadow.fragment_owner() else {
             panic!("actual local shadow host owner")
         };
-        let host = fragment.node(host).unwrap();
+        let host = fragment.node(&host).unwrap();
         assert_eq!(
             host.declarative_shadow_root().unwrap().contents(),
-            &shadow.id()
+            shadow.id()
         );
     } else {
         assert!(shadow.fragment_owner().is_none());
@@ -177,7 +177,7 @@ fn assert_shadow_readback_source_and_native_alias(local_host: bool) {
                     assert!(local_host);
                     assert_eq!(
                         host.declarative_shadow_root().unwrap().contents(),
-                        &shadow.id()
+                        shadow.id()
                     );
                 }
                 HtmlParseEffectHost::Captured(host) => {
@@ -214,7 +214,7 @@ fn assert_shadow_readback_source_and_native_alias(local_host: bool) {
     drop(report);
     assert_eq!(
         alias.node(&template_id).unwrap().template_contents(),
-        Some(shadow_id.clone())
+        Some(shadow_id)
     );
     assert!(
         matches!(alias.node(&text_id).unwrap().kind(), HtmlNodeKind::Text(t) if t.code_units()==[65])
@@ -240,7 +240,7 @@ fn fallback_template_retains_identical_native_and_parser_contents() {
     assert_eq!(template.template_contents(), Some(target.id()));
     assert!(
         matches!(target.fragment_owner(), Some(HtmlFragmentOwner::Template(owner))
-        if owner == &template.id())
+        if owner == template.id())
     );
     assert_text_a(&report, target);
 }

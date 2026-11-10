@@ -364,9 +364,7 @@ impl<'a> Source<'a> {
     fn key(&self, id: &HtmlNodeId, c: &mut Control<'_>) -> Result<Key, Error> {
         self.index(id, c)?
             .and_then(|i| self.rows[i].key)
-            .ok_or_else(|| Error::MissingMetadata {
-                subject: id.clone(),
-            })
+            .ok_or(Error::MissingMetadata { subject: *id })
     }
     fn document_key(
         &self,
@@ -463,9 +461,7 @@ impl<'a> Source<'a> {
                 && let Some(value) = read(record)
             {
                 if observed.is_some() {
-                    return Err(Error::UnsupportedState {
-                        subject: id.clone(),
-                    });
+                    return Err(Error::UnsupportedState { subject: *id });
                 }
                 observed = Some(value);
             }
@@ -1326,34 +1322,28 @@ impl Dom {
                     .ok_or(Error::RepresentationExhausted)?,
             )?;
         }
-        let root_index =
-            source
-                .index(&root_id, &mut c)?
-                .ok_or_else(|| Error::UnsupportedState {
-                    subject: root_id.clone(),
-                })?;
-        let document =
-            if let Some(capture) = capture {
-                let context = report.context().ok_or(Error::NotCompletedFragmentReport)?;
-                DocumentId(
-                    capture
-                        .node(context.target_document().subject())
-                        .map_err(|_| Error::ForeignContext)?,
-                )
-            } else {
-                DocumentId(mapped.get(root_index).copied().ok_or_else(|| {
-                    Error::UnsupportedState {
-                        subject: root_id.clone(),
-                    }
-                })?)
-            };
-        let root_id_canonical =
-            mapped
-                .get(root_index)
-                .copied()
-                .ok_or_else(|| Error::UnsupportedState {
-                    subject: root_id.clone(),
-                })?;
+        let root_index = source
+            .index(&root_id, &mut c)?
+            .ok_or(Error::UnsupportedState { subject: root_id })?;
+        let document = if let Some(capture) = capture {
+            let context = report.context().ok_or(Error::NotCompletedFragmentReport)?;
+            DocumentId(
+                capture
+                    .node(context.target_document().subject())
+                    .map_err(|_| Error::ForeignContext)?,
+            )
+        } else {
+            DocumentId(
+                mapped
+                    .get(root_index)
+                    .copied()
+                    .ok_or(Error::UnsupportedState { subject: root_id })?,
+            )
+        };
+        let root_id_canonical = mapped
+            .get(root_index)
+            .copied()
+            .ok_or(Error::UnsupportedState { subject: root_id })?;
         let mut association_documents = Vec::new();
         let mut association_cursor = report.pending_associations();
         loop {

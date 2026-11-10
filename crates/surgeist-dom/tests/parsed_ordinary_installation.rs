@@ -4217,13 +4217,12 @@ fn parsed_template_dialog_adoption_keeps_current_value_and_original_inert_histor
         []
     );
     assert_parsed_dialog_closed_services(initial.node(inner).unwrap().as_dialog().unwrap());
-    let source = result
+    let source = *result
         .bindings()
         .iter()
         .find(|b| b.node() == inner)
         .unwrap()
-        .source()
-        .clone();
+        .source();
     let exact = DocumentString::from_utf16(vec![0xd800, 13, 10, 0xdc00]);
     let mut batch = DomBatch::new();
     batch.set_dialog_return_value(inner, exact.clone());
@@ -4466,7 +4465,7 @@ fn actual_selectedcontent_dialog_clone_has_distinct_original_metadata_and_curren
                 .attribute(&"open".into())
                 .is_some()
         );
-        pair.push((local.clone(), binding.source().clone(), node.id()));
+        pair.push((local.clone(), *binding.source(), node.id()));
     }
     assert_eq!(
         pair.len(),
@@ -5220,4 +5219,101 @@ fn native_meta_atomic_capability_preserves_original_parsed_pending_guard() {
         dom.pending_parsed_html_associations().next().unwrap().id(),
         pending
     );
+}
+
+/// The names, data and child counts of the tree below `node`, in tree order.
+fn tree_shape(
+    snapshot: &DomSnapshot,
+    node: NodeId,
+    out: &mut Vec<(String, Option<String>, usize)>,
+) {
+    let view = snapshot.node(node).unwrap();
+    out.push((
+        format!("{:?}", view.node_name()),
+        view.data().map(|data| format!("{data:?}")),
+        view.children().len(),
+    ));
+    for child in view.children() {
+        tree_shape(snapshot, *child, out);
+    }
+}
+
+/// Installs a fresh parse of `input` into a fresh DOM with `limits`.
+fn install_fresh_parse(
+    input: &str,
+    install_limits: DomParsedHtmlInstallLimits,
+) -> Result<(Dom, DomParsedHtmlInstallation), DomParsedHtmlInstallError> {
+    let report = parse(HtmlSource::utf8(input));
+    let (mut dom, environment) = setup();
+    let stamp = dom.snapshot().stamp();
+    let installation = dom.install_parsed_html_document(
+        stamp,
+        report,
+        environment,
+        install_limits,
+        &AtomicBool::new(false),
+    )?;
+    Ok((dom, installation))
+}
+
+/// The smallest value in `0..=ceiling` for which `admits` holds, assuming it holds for every
+/// larger value.
+fn smallest_admitted(ceiling: u64, admits: impl Fn(u64) -> bool) -> u64 {
+    assert!(admits(ceiling), "the ceiling admits the input");
+    let (mut low, mut high) = (0, ceiling);
+    while low < high {
+        let middle = low + (high - low) / 2;
+        if admits(middle) {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    low
+}
+
+#[test]
+fn two_parses_of_one_input_install_the_same_tree_and_charge_the_same_amounts() {
+    // Each parse takes its own storage serial, so its node ids differ from the other parse at
+    // every equal index. Nothing the installation charges or stores may depend on that.
+    let input = "<!doctype html><html><head><title>t</title></head><body>\
+        <section id=a>one<template><p>inside</p></template><!--note--><p>two<b>three</b></p>\
+        </section></body></html>";
+    let first = parse(HtmlSource::utf8(input));
+    let second = parse(HtmlSource::utf8(input));
+    assert_ne!(
+        first.document().unwrap().root().id(),
+        second.document().unwrap().root().id()
+    );
+    let work = |bound: u64| {
+        install_fresh_parse(
+            input,
+            DomParsedHtmlInstallLimits::new(1024, bound, 16_000_000, 100_000_000),
+        )
+        .is_ok()
+    };
+    let work_first = smallest_admitted(10_000_000, work);
+    let work_second = smallest_admitted(10_000_000, work);
+    assert!(work_first > 0);
+    assert_eq!(work_first, work_second);
+    let (dom_a, installation_a) = install_fresh_parse(input, limits()).unwrap();
+    let (dom_b, installation_b) = install_fresh_parse(input, limits()).unwrap();
+    assert_eq!(dom_a.usage(), dom_b.usage());
+    assert_eq!(
+        installation_a.bindings().len(),
+        installation_b.bindings().len()
+    );
+    let (mut shape_a, mut shape_b) = (Vec::new(), Vec::new());
+    tree_shape(
+        installation_a.snapshot(),
+        installation_a.root(),
+        &mut shape_a,
+    );
+    tree_shape(
+        installation_b.snapshot(),
+        installation_b.root(),
+        &mut shape_b,
+    );
+    assert_eq!(shape_a, shape_b);
+    assert!(shape_a.len() > 8);
 }

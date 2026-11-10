@@ -141,15 +141,15 @@ fn closure(result: &HtmlConstructionResult) -> Result<Vec<Info>> {
     let mut index: HashMap<HtmlNodeId, usize> = HashMap::new();
     let mut at = 0;
     while at < order.len() {
-        let id = order[at].clone();
-        index.insert(id.clone(), at);
+        let id = order[at];
+        index.insert(id, at);
         at += 1;
         let node = result
             .node(&id)
             .map_err(|e| harness("capture closure", "foreign source node", e))?;
         let mut next: Vec<HtmlNodeId> = node.children().collect();
         next.extend(node.template_contents());
-        next.extend(node.declarative_shadow_root().map(|s| s.contents().clone()));
+        next.extend(node.declarative_shadow_root().map(|s| s.contents()));
         for id in next {
             if order.len() > 100_000 {
                 return Err(FuzzError::new(
@@ -169,17 +169,17 @@ fn closure(result: &HtmlConstructionResult) -> Result<Vec<Info>> {
                 .node(id)
                 .map_err(|e| harness("capture closure", "foreign source node", e))?;
             Ok(Info {
-                id: id.clone(),
+                id: *id,
                 kind: node.kind().clone(),
                 parent: node.parent().as_ref().and_then(lookup),
                 children: node.children().filter_map(|c| lookup(&c)).collect(),
                 template: node.template_contents().as_ref().and_then(lookup),
                 shadow: node
                     .declarative_shadow_root()
-                    .and_then(|s| lookup(s.contents()).map(|i| (i, s.properties()))),
+                    .and_then(|s| lookup(&s.contents()).map(|i| (i, s.properties()))),
                 owner: match node.fragment_owner() {
-                    Some(HtmlFragmentOwner::ShadowHost(h)) => lookup(h).map(|i| (i, true)),
-                    Some(HtmlFragmentOwner::Template(h)) => lookup(h).map(|i| (i, false)),
+                    Some(HtmlFragmentOwner::ShadowHost(h)) => lookup(&h).map(|i| (i, true)),
+                    Some(HtmlFragmentOwner::Template(h)) => lookup(&h).map(|i| (i, false)),
                     None => None,
                 },
             })
@@ -228,7 +228,7 @@ impl Inputs<'_> {
                     None => HtmlConstructionCaptureDocument::ResultDocument,
                 };
                 HtmlConstructionCaptureNodeFacts::new(
-                    info.id.clone(),
+                    info.id,
                     document,
                     matches!(info.kind, HtmlNodeKind::Document(_)).then(|| {
                         HtmlConstructionCaptureDocumentFacts::new(
@@ -604,7 +604,7 @@ pub(crate) fn check(result: &HtmlConstructionResult, plan: &Plan) -> Result<Verd
             if let Some(k) = target {
                 let old = &rows[k];
                 rows[k] = HtmlConstructionCaptureNodeFacts::new(
-                    old.node().clone(),
+                    *old.node(),
                     old.document().clone(),
                     Some(HtmlConstructionCaptureDocumentFacts::new(
                         scripting(plan.scripting),
@@ -659,7 +659,7 @@ pub(crate) fn check(result: &HtmlConstructionResult, plan: &Plan) -> Result<Verd
                 let k = candidates[pick % candidates.len()];
                 let old = &rows[k];
                 rows[k] = HtmlConstructionCaptureNodeFacts::new(
-                    old.node().clone(),
+                    *old.node(),
                     old.document().clone(),
                     old.document_facts().map(|d| {
                         HtmlConstructionCaptureDocumentFacts::new(d.scripting(), foreign.clone())

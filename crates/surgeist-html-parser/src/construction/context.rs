@@ -1914,7 +1914,7 @@ impl SessionStorage {
         let shadow_contents = self
             .construction
             .storage(c)?
-            .node_by_result_id(shadow.contents())
+            .node_by_result_id(&shadow.contents())
             .map_err(|_| SessionError::ForeignNode)?
             .position();
         c.charge(
@@ -2764,7 +2764,7 @@ mod tests {
         );
         assert!(matches!(fragment.root().kind(), HtmlNodeKind::Fragment));
         assert_eq!(fragment.root().children().count(), 0);
-        let root = fragment.root().id().clone();
+        let root = fragment.root().id();
         let ParserDocumentReference::Captured(actual) =
             frozen.qualified_node_document(&mut c, &root).unwrap()
         else {
@@ -3151,7 +3151,7 @@ mod tests {
                 lexer.release(&mut c).unwrap();
                 if !inert && class != HtmlDocumentClass::Unavailable {
                     let mut frozen = session.freeze(&mut c).unwrap();
-                    let root = frozen.fragment().unwrap().root().id().clone();
+                    let root = frozen.fragment().unwrap().root().id();
                     let element = frozen.fragment().unwrap().root().children().next().unwrap();
                     let cache = frozen.template_cache(&mut c, 0).unwrap().unwrap();
                     assert_eq!(cache.document, target);
@@ -3408,7 +3408,6 @@ mod tests {
             surgeist_html::elements::native::HtmlCustomElementState::Undefined
         );
         assert_eq!(saved.unwrap().code_units(), &[65, 38, 66]);
-        drop(id);
         frozen.release(&mut c).unwrap();
         crate::parser::tree_builder::tests::assert_released(&c);
     }

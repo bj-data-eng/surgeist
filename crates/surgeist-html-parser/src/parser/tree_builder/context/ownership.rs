@@ -2198,7 +2198,7 @@ mod tests {
             assert_ne!(template.id(), first);
             assert_eq!(
                 host.declarative_shadow_root().unwrap().contents(),
-                &contents.id()
+                contents.id()
             );
             let Some(HtmlParseEffect::TemplateCache { document, .. }) = effects.get(0).unwrap()
             else {

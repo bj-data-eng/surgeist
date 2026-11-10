@@ -465,7 +465,7 @@ fn an_id_edit_over_a_row_that_is_not_a_staged_attribute_list_reports_the_registr
 fn a_textarea_without_its_state_row_reports_the_registry_row_when_it_leaves_the_stack() {
     let request = request("<body><textarea>x</textarea>");
     let (mut c, mut session, _proof, nodes) = graph(&request);
-    let textarea = named(&nodes, "textarea", 0).clone();
+    let textarea = named(&nodes, "textarea", 0);
     let storage = session.active_mut().unwrap();
     // Private-state fault injection: the node's join to its state row is lost.
     storage.payloads.node_joins[textarea.index].textarea = None;
@@ -479,7 +479,7 @@ fn a_textarea_without_its_state_row_reports_the_registry_row_when_it_leaves_the_
 fn a_textarea_whose_state_join_names_another_row_kind_reports_the_registry_row() {
     let request = request("<body><textarea>x</textarea><input type=text>");
     let (mut c, mut session, _proof, nodes) = graph(&request);
-    let textarea = named(&nodes, "textarea", 0).clone();
+    let textarea = named(&nodes, "textarea", 0);
     let input = named(&nodes, "input", 0).index;
     let storage = session.active_mut().unwrap();
     // Private-state fault injection: the join names an input's metadata row.
@@ -495,7 +495,7 @@ fn a_textarea_whose_state_join_names_another_row_kind_reports_the_registry_row()
 fn a_textarea_refresh_over_an_aliased_raw_value_reports_the_aliased_allocation() {
     let request = request("<body><textarea>x</textarea>");
     let (mut c, mut session, _proof, nodes) = graph(&request);
-    let textarea = named(&nodes, "textarea", 0).clone();
+    let textarea = named(&nodes, "textarea", 0);
     // A second owner of the raw value makes it impossible to replace in place.
     let held = session
         .textarea_raw_value(&mut c, &textarea)

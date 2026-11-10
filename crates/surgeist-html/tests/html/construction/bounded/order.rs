@@ -15,8 +15,8 @@ fn append(
     change(
         storage,
         HtmlConstructionCommand::Insert {
-            node: node.clone(),
-            parent: parent.clone(),
+            node: *node,
+            parent: *parent,
             before: None,
         },
     )
@@ -72,7 +72,7 @@ fn inserting_before_the_last_child_describes_the_same_work_at_every_fanout() {
         let (owner, work) = driven_insert(owner, &fresh, &root, Some(last));
         let order = children_of(&owner, &root);
         assert_eq!(order.len(), fanout + 1);
-        assert_eq!(order[fanout - 1..], [fresh.clone(), last.clone()]);
+        assert_eq!(order[fanout - 1..], [fresh, *last]);
         assert_eq!(owner.node(&fresh).unwrap().parent().unwrap().handle(), root);
         measured.push((fanout, work));
     }
@@ -89,7 +89,7 @@ fn moving_the_last_child_before_its_predecessor_describes_the_same_work_at_every
         let (owner, work) = driven_insert(owner, last, &root, Some(second));
         let order = children_of(&owner, &root);
         assert_eq!(order.len(), fanout);
-        assert_eq!(order[fanout - 2..], [last.clone(), second.clone()]);
+        assert_eq!(order[fanout - 2..], [*last, *second]);
         measured.push((fanout, work));
     }
     assert_same_work("moving the last child before its predecessor", &measured);
@@ -123,7 +123,7 @@ fn moving_the_last_child_into_another_parent_describes_the_same_work_at_every_fa
         assert_eq!(children_of(&owner, &from), moved[..fanout - 1]);
         let order = children_of(&owner, &to);
         assert_eq!(order.len(), fanout + 1);
-        assert_eq!(order[fanout - 1..], [node.clone(), target.clone()]);
+        assert_eq!(order[fanout - 1..], [*node, *target]);
         assert_eq!(owner.node(node).unwrap().parent().unwrap().handle(), to);
         measured.push((fanout, work));
     }
@@ -137,10 +137,7 @@ fn detaching_the_last_child_describes_the_same_work_at_every_fanout() {
         let (owner, root) = fragment(storage());
         let (owner, children) = fill(owner, &root, fanout);
         let last = children.last().unwrap();
-        let (owner, work) = driven(
-            owner,
-            HtmlConstructionCommand::Detach { node: last.clone() },
-        );
+        let (owner, work) = driven(owner, HtmlConstructionCommand::Detach { node: *last });
         assert_eq!(children_of(&owner, &root), children[..fanout - 1]);
         assert!(owner.node(last).unwrap().parent().is_none());
         measured.push((fanout, work));
@@ -264,9 +261,9 @@ fn changes_in_an_order_describe_the_entries_shifted_towards_the_nearer_end() {
         (
             "insert before the first child",
             |root, children, fresh| HtmlConstructionCommand::Insert {
-                node: fresh.clone(),
-                parent: root.clone(),
-                before: Some(children[0].clone()),
+                node: *fresh,
+                parent: *root,
+                before: Some(children[0]),
             },
             // The parent link (1), the inserted entry (1) and the none of the
             // n entries behind the place that the nearer, front end moves: 2.
@@ -274,9 +271,7 @@ fn changes_in_an_order_describe_the_entries_shifted_towards_the_nearer_end() {
         ),
         (
             "detach the first child",
-            |_, children, _| HtmlConstructionCommand::Detach {
-                node: children[0].clone(),
-            },
+            |_, children, _| HtmlConstructionCommand::Detach { node: children[0] },
             // The parent link (1), the removed entry (1) and the none before
             // it that the nearer, front end moves: 2.
             |_| 2,
@@ -284,8 +279,8 @@ fn changes_in_an_order_describe_the_entries_shifted_towards_the_nearer_end() {
         (
             "move the first child to the end",
             |root, children, _| HtmlConstructionCommand::Insert {
-                node: children[0].clone(),
-                parent: root.clone(),
+                node: children[0],
+                parent: *root,
                 before: None,
             },
             // The parent link (1), the removed entry (1) with nothing before
@@ -296,7 +291,7 @@ fn changes_in_an_order_describe_the_entries_shifted_towards_the_nearer_end() {
         (
             "detach the last child",
             |_, children, _| HtmlConstructionCommand::Detach {
-                node: children[children.len() - 1].clone(),
+                node: children[children.len() - 1],
             },
             // The parent link (1), the removed entry (1) with nothing behind
             // it: 2.
@@ -305,7 +300,7 @@ fn changes_in_an_order_describe_the_entries_shifted_towards_the_nearer_end() {
         (
             "detach the child at the middle",
             |_, children, _| HtmlConstructionCommand::Detach {
-                node: children[children.len() / 2].clone(),
+                node: children[children.len() / 2],
             },
             // For even n the child at n/2 has n/2 entries before it and
             // n/2 - 1 behind it, so the nearer end moves n/2 - 1 entries:
@@ -315,9 +310,9 @@ fn changes_in_an_order_describe_the_entries_shifted_towards_the_nearer_end() {
         (
             "insert before the child at the middle",
             |root, children, fresh| HtmlConstructionCommand::Insert {
-                node: fresh.clone(),
-                parent: root.clone(),
-                before: Some(children[children.len() / 2].clone()),
+                node: *fresh,
+                parent: *root,
+                before: Some(children[children.len() / 2]),
             },
             // The place is n/2 with n/2 entries before it and n/2 behind it,
             // so either end moves n/2 entries: the parent link (1), the
@@ -346,7 +341,7 @@ fn changes_in_an_order_describe_the_entries_shifted_towards_the_nearer_end() {
             );
             assert_eq!(
                 double_bytes - bytes,
-                (double_expected - expected) * size_of::<usize>(),
+                (double_expected - expected) * size_of::<u32>(),
                 "{name}: copied bytes among {n} and {} siblings",
                 2 * n
             );
@@ -424,13 +419,7 @@ fn child_orders_match_the_reference_model_through_a_long_sequence_of_changes() {
         let node = next(NODES);
         let operation = next(5);
         if operation == 0 {
-            owner = change(
-                owner,
-                HtmlConstructionCommand::Detach {
-                    node: nodes[node].clone(),
-                },
-            )
-            .0;
+            owner = change(owner, HtmlConstructionCommand::Detach { node: nodes[node] }).0;
             model.remove(node);
         } else {
             let parent = next(PARENTS);
@@ -445,9 +434,9 @@ fn child_orders_match_the_reference_model_through_a_long_sequence_of_changes() {
                 }
             };
             let command = HtmlConstructionCommand::Insert {
-                node: nodes[node].clone(),
-                parent: parents[parent].clone(),
-                before: before.map(|before| nodes[before].clone()),
+                node: nodes[node],
+                parent: parents[parent],
+                before: before.map(|before| nodes[before]),
             };
             if model.insert(node, parent, before) {
                 owner = change(owner, command).0;
@@ -458,7 +447,7 @@ fn child_orders_match_the_reference_model_through_a_long_sequence_of_changes() {
         for (index, parent) in parents.iter().enumerate() {
             let expected: Vec<_> = model.parents[index]
                 .iter()
-                .map(|&child| nodes[child].clone())
+                .map(|&child| nodes[child])
                 .collect();
             assert_eq!(children_of(&owner, parent), expected, "step {step}");
         }
@@ -545,8 +534,8 @@ fn child_orders_match_the_reference_model_with_template_contents_and_cycles() {
     };
     let containers = [
         root,
-        nodes[0].clone(),
-        nodes[1].clone(),
+        nodes[0],
+        nodes[1],
         contents(&owner, &nodes[2]),
         contents(&owner, &nodes[3]),
     ];
@@ -564,13 +553,7 @@ fn child_orders_match_the_reference_model_with_template_contents_and_cycles() {
     for step in 0..1500 {
         let node = next(nodes.len());
         if next(6) == 0 {
-            owner = change(
-                owner,
-                HtmlConstructionCommand::Detach {
-                    node: nodes[node].clone(),
-                },
-            )
-            .0;
+            owner = change(owner, HtmlConstructionCommand::Detach { node: nodes[node] }).0;
             model.remove(node);
         } else if next(12) == 0 {
             // A template element is not a parent: its contents are.
@@ -578,8 +561,8 @@ fn child_orders_match_the_reference_model_with_template_contents_and_cycles() {
             owner = refuse(
                 owner,
                 HtmlConstructionCommand::Insert {
-                    node: nodes[node].clone(),
-                    parent: nodes[template].clone(),
+                    node: nodes[node],
+                    parent: nodes[template],
                     before: None,
                 },
                 cause::TEMPLATE_CONTENTS_REQUIRED,
@@ -596,9 +579,9 @@ fn child_orders_match_the_reference_model_with_template_contents_and_cycles() {
                 }
             };
             let command = HtmlConstructionCommand::Insert {
-                node: nodes[node].clone(),
-                parent: containers[container].clone(),
-                before: before.map(|before| nodes[before].clone()),
+                node: nodes[node],
+                parent: containers[container],
+                before: before.map(|before| nodes[before]),
             };
             let stranger = before.is_some_and(|b| model.parent_of(b) != Some(container));
             if stranger {
@@ -618,7 +601,7 @@ fn child_orders_match_the_reference_model_with_template_contents_and_cycles() {
         for (index, container) in containers.iter().enumerate() {
             let expected: Vec<_> = model.containers[index]
                 .iter()
-                .map(|&child| nodes[child].clone())
+                .map(|&child| nodes[child])
                 .collect();
             assert_eq!(children_of(&owner, container), expected, "step {step}");
         }

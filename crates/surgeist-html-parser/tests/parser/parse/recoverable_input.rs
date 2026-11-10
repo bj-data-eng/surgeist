@@ -442,7 +442,7 @@ fn adoption_agency_replacements_inserted_into_template_contents_belong_to_its_do
         owners
             .iter()
             .find(|(candidate, _)| candidate == node)
-            .map(|(_, owner)| owner.clone())
+            .map(|(_, owner)| *owner)
             .unwrap()
     };
     assert_ne!(owner_of(&first_a), owner_of(&html.id()));

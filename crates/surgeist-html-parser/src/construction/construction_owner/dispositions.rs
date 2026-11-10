@@ -106,8 +106,8 @@ fn document_shaped_owner_refusals_report_their_session_error_and_latch_nothing()
     let insert =
         |node: &HtmlBuilderNode, parent: &HtmlBuilderNode, before: Option<&HtmlBuilderNode>| {
             HtmlConstructionCommand::Insert {
-                node: node.clone(),
-                parent: parent.clone(),
+                node: *node,
+                parent: *parent,
                 before: before.cloned(),
             }
         };
@@ -124,9 +124,7 @@ fn document_shaped_owner_refusals_report_their_session_error_and_latch_nothing()
         refused(
             &mut owner,
             &mut control,
-            HtmlConstructionCommand::Detach {
-                node: document.clone()
-            }
+            HtmlConstructionCommand::Detach { node: document }
         ),
         (SessionError::RootMove, None),
         "moving a document"

@@ -140,7 +140,7 @@ fn selectedcontent_clones_retain_saved_creation_state_on_distinct_result_subject
     assert_eq!(rows.len(), 2);
     assert_ne!(rows[0].0, rows[1].0);
     let document = report.document().unwrap();
-    let subjects = rows.iter().map(|(id, _, _)| id.clone()).collect::<Vec<_>>();
+    let subjects = rows.iter().map(|(id, _, _)| *id).collect::<Vec<_>>();
     let mut parents = Vec::new();
     for (subject, state, saved) in rows {
         assert_eq!(state, HtmlCustomElementState::Undefined);

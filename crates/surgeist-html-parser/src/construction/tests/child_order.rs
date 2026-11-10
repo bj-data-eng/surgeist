@@ -17,9 +17,9 @@ fn start_test_insert(
         .start(
             c,
             surgeist_html::bounded::construction::HtmlConstructionCommand::Insert {
-                node: node.handle.clone(),
-                parent: parent.handle.clone(),
-                before: before.map(|value| value.handle.clone()),
+                node: node.handle,
+                parent: parent.handle,
+                before: before.map(|value| value.handle),
             },
         )
         .unwrap()
@@ -151,7 +151,7 @@ fn changes_in_an_order_charge_for_the_entries_between_them_and_the_nearer_end() 
     // place and the nearer end, as a deque does. An action costs 3 record
     // visits for the controller's `action` call and 1 for the described
     // `Inspect`, so 4 visits per entry walked, and a shift costs one record
-    // write and one copied word per entry moved:
+    // write and one copied entry, a 32-bit record index, per entry moved:
     // - cases 0 to 2 change the front: the walk examines the last entry and
     //   then the first, which is the target (insert before the first child
     //   walks to the reference sibling; remove and move walk to the node
@@ -160,11 +160,11 @@ fn changes_in_an_order_charge_for_the_entries_between_them_and_the_nearer_end() 
     //   and n / 2 - 1 behind it. The walk examines the entries from the back
     //   first, the target being its (n / 2)th, which is action n - 1, and the
     //   nearer, back end moves n / 2 - 1 entries, so going from n = 20 to
-    //   n = 40 adds 20 actions, 80 visits, and 10 writes and words.
-    let word = mem::size_of::<usize>() as u64;
-    // (visits, writes, words) added going from 20 to 40 children, per case.
+    //   n = 40 adds 20 actions, 80 visits, and 10 writes and entries.
+    let entry = mem::size_of::<u32>() as u64;
+    // (visits, writes, entries) added going from 20 to 40 children, per case.
     let expected: [(u64, u64, u64); 4] = [(0, 0, 0), (0, 0, 0), (0, 0, 0), (80, 10, 10)];
-    for (case, (visits, writes, words)) in expected.into_iter().enumerate() {
+    for (case, (visits, writes, entries)) in expected.into_iter().enumerate() {
         let measure = |fanout: usize| {
             let mut c = ParseControl::new(roomy_limits(), HtmlParseCancellation::new());
             let mut session = ParserArenaSession::new(&mut c, RootKind::Fragment).unwrap();
@@ -216,7 +216,7 @@ fn changes_in_an_order_charge_for_the_entries_between_them_and_the_nearer_end() 
         );
         assert_eq!(
             grown(HtmlParseWorkCategory::CopyByte),
-            words * word,
+            entries * entry,
             "case {case}"
         );
     }

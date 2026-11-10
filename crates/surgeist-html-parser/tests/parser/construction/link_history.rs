@@ -83,7 +83,6 @@ fn template_link_birth_document_differs_from_its_actual_inert_node_document() {
         .iter()
         .find(|(node, _)| Some(node) == link_node.as_ref())
         .unwrap()
-        .1
-        .clone();
+        .1;
     assert_ne!(birth.unwrap(), current);
 }

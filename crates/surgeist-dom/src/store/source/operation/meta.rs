@@ -1245,7 +1245,7 @@ impl Pending {
                     let payload = input.bindings_payload.take();
                     let value = crate::DomNativeHtmlInstallation {
                         destination: input.destination,
-                        source_root: input.source_root.clone(),
+                        source_root: input.source_root,
                         root,
                         snapshot: lease.dom.snapshot(),
                         changes: published.commit.changes.clone(),

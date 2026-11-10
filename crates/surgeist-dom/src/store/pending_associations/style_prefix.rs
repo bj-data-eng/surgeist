@@ -681,7 +681,7 @@ fn select(
     {
         return Err(unsupported());
     }
-    let original_document = crate::DomParsedHtmlHistoricalDocument::Constructed(original.clone());
+    let original_document = crate::DomParsedHtmlHistoricalDocument::Constructed(original);
     let mut mapped = false;
     for row in &entry.documents {
         meter.step(cancel)?;

@@ -138,8 +138,6 @@ fn hidden_input_ordered_initialization_reset_and_frozen_values_are_independent()
             .unwrap();
         assert_eq!(value.units(), expected);
         value.release(&mut c).unwrap();
-        drop(id);
-        drop(html);
         frozen.release(&mut c).unwrap();
         storage_zero(&c);
     }
@@ -1290,8 +1288,6 @@ fn text_input_types_reset_exact_defaults_internal_values_and_selection_in_one_ow
             .unwrap();
         assert_eq!(buffer.units(), [65, 13, 66, 10, 67]);
         buffer.release(&mut c).unwrap();
-        drop(id);
-        drop(html);
         frozen.release(&mut c).unwrap();
         storage_zero(&c);
     }

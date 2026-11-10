@@ -284,7 +284,7 @@ fn check_report(report: &HtmlParseReport, source: &str) -> Vec<HtmlNodeId> {
     while let Some(id) = pending.pop() {
         let node = document.node(&id).unwrap();
         for child in node.children() {
-            assert_eq!(document.node(&child).unwrap().parent(), Some(id.clone()));
+            assert_eq!(document.node(&child).unwrap().parent(), Some(id));
         }
         pending.extend(node.children().rev());
         order.push(id);

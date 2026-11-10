@@ -16,7 +16,7 @@ impl Phase {
     /// The walk over all `length` entries of `parent`'s order, which starts at
     /// the last entry: appending and reordering near the end are the common
     /// cases.
-    pub(super) fn order(parent: usize, length: usize, old: bool) -> Self {
+    pub(super) fn order(parent: NodeIx, length: usize, old: bool) -> Self {
         Self::Order {
             parent,
             front: 0,
@@ -34,7 +34,7 @@ impl HtmlConstructionOperation {
     /// examines the last of them when `from_back` and the first otherwise.
     pub(super) fn locate_order(
         &mut self,
-        parent: usize,
+        parent: NodeIx,
         front: usize,
         back: usize,
         old: bool,
@@ -60,7 +60,7 @@ impl HtmlConstructionOperation {
         let found = self
             .arena()
             .records
-            .get(parent)
+            .get(parent.position())
             .ok_or(HtmlConstructionCause::UnknownNode)?
             .children
             .get(index)
@@ -100,7 +100,7 @@ impl HtmlConstructionOperation {
             let remaining = self
                 .arena()
                 .records
-                .get(parent)
+                .get(parent.position())
                 .ok_or(HtmlConstructionCause::UnknownNode)?
                 .children
                 .len();
@@ -137,7 +137,7 @@ impl HtmlConstructionOperation {
     > {
         let parent = self.plan.positions[1];
         let capacity = self.plan.children_capacity.unwrap_or(self.push_required());
-        checked_layout(capacity, size_of::<usize>()).map_err(|error| (error, None))?;
+        checked_layout(capacity, size_of::<NodeIx>()).map_err(|error| (error, None))?;
         let generation = self
             .arena()
             .temporary_generation
@@ -146,7 +146,7 @@ impl HtmlConstructionOperation {
         let arena = &mut self.owner.mutable().map_err(|error| (error, None))?.arena;
         let record = arena
             .records
-            .get_mut(parent)
+            .get_mut(parent.position())
             .ok_or((HtmlConstructionCause::UnknownNode.error(), None))?;
         let additional = capacity
             .checked_sub(record.children.len())
@@ -158,11 +158,11 @@ impl HtmlConstructionOperation {
         }
         let record = arena
             .records
-            .get(parent)
+            .get(parent.position())
             .ok_or((HtmlConstructionCause::UnknownNode.error(), None))?;
         let snapshot = HtmlConstructionAllocationSnapshot::deque(
             &arena.identity,
-            AllocationRole::Children(parent),
+            AllocationRole::Children(parent.position()),
             record.children_generation,
             &record.children,
         )
@@ -184,10 +184,10 @@ impl Plan {
     /// entries between it and the nearer end of the order (documented for
     /// `VecDeque::remove` and `VecDeque::insert`).
     pub(super) fn order_writes(&self, arena: &Arena) -> Result<usize, HtmlConstructionError> {
-        let length = |parent: usize| {
+        let length = |parent: NodeIx| {
             arena
                 .records
-                .get(parent)
+                .get(parent.position())
                 .map(|record| record.children.len())
                 .ok_or(HtmlConstructionCause::UnknownNode)
         };
@@ -214,14 +214,14 @@ impl Plan {
     /// (`CapacityMismatch` otherwise).
     pub(super) fn check_order_edits(&self, arena: &Arena) -> Result<(), HtmlConstructionError> {
         let [node, parent, before] = self.positions;
-        if arena.records.get(node).is_none() {
+        if arena.records.get(node.position()).is_none() {
             return Err(HtmlConstructionCause::CapacityMismatch.into());
         }
         let mut removed_before = None;
         if let Some(old) = self.old_parent {
             let children = &arena
                 .records
-                .get(old)
+                .get(old.position())
                 .ok_or(HtmlConstructionCause::ParentChildConflict)?
                 .children;
             if children.get(self.old_position) != Some(&node) {
@@ -234,7 +234,7 @@ impl Plan {
         }
         let record = arena
             .records
-            .get(parent)
+            .get(parent.position())
             .ok_or(HtmlConstructionCause::CapacityMismatch)?;
         let length = record
             .children
@@ -263,13 +263,13 @@ impl Plan {
     pub(super) fn apply_order_edits(&self, arena: &mut Arena) {
         let [node, parent, _] = self.positions;
         if let Some(old) = self.old_parent
-            && let Some(record) = arena.records.get_mut(old)
+            && let Some(record) = arena.records.get_mut(old.position())
             && self.old_position < record.children.len()
         {
             record.children.remove(self.old_position);
         }
         if self.inserts
-            && let Some(record) = arena.records.get_mut(parent)
+            && let Some(record) = arena.records.get_mut(parent.position())
             && self.insertion_position <= record.children.len()
             && record.children.len() < record.children.capacity()
         {

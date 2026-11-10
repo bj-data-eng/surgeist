@@ -1020,14 +1020,14 @@ fn project(document: &HtmlDocument) -> Result<Projection, ProjectionError> {
         let view = document
             .node(&id)
             .map_err(|_| ProjectionError::ForeignIdentity)?;
-        if view.parent() != parent.map(|i: usize| ids[i].clone()) {
+        if view.parent() != parent.map(|i: usize| ids[i]) {
             return Err(ProjectionError::Parent);
         }
         match (view.fragment_owner(), owner) {
             (None, None) => {}
             (Some(HtmlFragmentOwner::Template(actual)), Some(Owner::Template(i)))
             | (Some(HtmlFragmentOwner::ShadowHost(actual)), Some(Owner::Shadow(i)))
-                if actual == &ids[i] => {}
+                if actual == ids[i] => {}
             _ => return Err(ProjectionError::Association),
         }
         let index = result.nodes.len();
@@ -1042,7 +1042,7 @@ fn project(document: &HtmlDocument) -> Result<Projection, ProjectionError> {
                     .map_err(|_| ProjectionError::ForeignIdentity)?
                     .declarative_shadow_root()
                     .ok_or(ProjectionError::Association)?;
-                if association.host() != &ids[i] || association.contents() != &id {
+                if association.host() != ids[i] || association.contents() != id {
                     return Err(ProjectionError::Association);
                 }
                 result.nodes[i].shadow = Some((index, association.properties()));
@@ -1059,7 +1059,7 @@ fn project(document: &HtmlDocument) -> Result<Projection, ProjectionError> {
         });
         ids.push(id);
         if let Some(shadow) = view.declarative_shadow_root() {
-            pending.push((shadow.contents().clone(), None, Some(Owner::Shadow(index))));
+            pending.push((shadow.contents(), None, Some(Owner::Shadow(index))));
         }
         if let Some(template) = view.template_contents() {
             pending.push((template, None, Some(Owner::Template(index))));
@@ -4930,8 +4930,6 @@ mod whole_source_comparisons {
             ));
         }
         let first = completed.at_stop().unwrap().clone();
-        drop(body);
-        drop(element);
         completed.cleanup_failure().unwrap();
         zero_storage(completed.after_cleanup().unwrap());
         assert_eq!(completed.at_stop(), Some(&first));
