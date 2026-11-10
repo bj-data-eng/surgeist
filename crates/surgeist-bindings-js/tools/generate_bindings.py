@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the source-qualified core description and emit internal Rust records.
+"""Validate the source-qualified description and emit typed brand-free IDL values.
 
 Run --check or --write explicitly. No downloads, build-time generation, native
 algorithms or runtime handlers are supplied. The authored JSON is the only
@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[3]
 DESCRIPTION = ROOT / "crates/surgeist-bindings-js/bindings/dom-core.json"
-OUTPUT = ROOT / "crates/surgeist-bindings-js/src/description/dom_core.rs"
+OUTPUT = ROOT / "crates/surgeist-bindings-js/src/declarations.rs"
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z_0-9]*\Z")
 PRIMITIVES = {"undefined", "boolean", "byte", "octet", "short", "unsigned short",
               "long", "unsigned long", "long long", "unsigned long long", "float",
@@ -640,206 +640,145 @@ def validate(data, root=ROOT):
     return definitions, names
 
 
-def rs(value):
-    # All authored labels/locators are ASCII. Reject rather than emit invalid Rust escapes.
-    require(isinstance(value, str) and value.isascii(), "Rust metadata labels must be ASCII")
-    return json.dumps(value)
-
-
-def array(items):
-    return "&[" + ", ".join(items) + "]"
-
-
-def option(value, render=rs):
-    return "None" if value is None else "Some(" + render(value) + ")"
-
-
 def variant(name):
     result = "".join(part[:1].upper() + part[1:] for part in re.split(r"[^A-Za-z0-9]+", name))
-    require(IDENTIFIER.fullmatch(result) and result != "Self", "invalid Rust enum variant")
+    if not result:
+        result = "Empty"
+    elif result == "Self":
+        result = "SelfValue"
+    elif result[0].isdigit():
+        result = "Value" + result
+    require(IDENTIFIER.fullmatch(result), "invalid Rust enum variant")
     return result
 
 
-def emit_attributes(items):
-    return array("ExtendedAttribute { kind: AttributeKind::" + variant(x["name"]) +
-                 ", value: " + ("AttributeValue::None" if "value" not in x else
-                  "AttributeValue::Integers(" + array(map(str, x["value"])) + ")" if isinstance(x["value"], list) else
-                  "AttributeValue::Identifier(" + rs(x["value"]) + ")") + " }" for x in items)
+def field_name(name):
+    result = re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+    require(IDENTIFIER.fullmatch(result), "invalid Rust field name")
+    if result in {"self", "super", "crate"}:
+        return result + "_value"
+    keywords = {"as", "async", "await", "break", "const", "continue", "crate", "dyn", "else",
+                "enum", "extern", "false", "fn", "for", "if", "impl", "in", "let", "loop",
+                "match", "mod", "move", "mut", "pub", "ref", "return", "self", "static",
+                "struct", "super", "trait", "true", "type", "unsafe", "use", "where", "while"}
+    return "r#" + result if result in keywords else result
 
 
-def emit_type(value, names):
-    kind = value["kind"]
-    if kind == "named":
-        name = value["name"]
-        category = "primitive" if name in PRIMITIVES else names[name]
-        inner = "IdlType::Named { name: " + rs(name) + ", kind: NamedKind::" + variant(category) + " }"
-        if value.get("attributes"):
-            return "IdlType::Annotated { inner: &" + inner + ", attributes: " + emit_attributes(value["attributes"]) + " }"
-        return inner
-    if kind == "union":
-        return "IdlType::Union(" + array(emit_type(x, names) for x in value["members"]) + ")"
-    return "IdlType::" + variant(kind) + "(&" + emit_type(value["inner"], names) + ")"
+def lower_values(data):
+    """Lower validated declarations, excluding whole dictionaries needing brands.
+
+    This first value-model boundary supports Boolean and enumeration members.
+    Other kinds remain in the authored description, not successful partial DTOs.
+    The normalized member order is also the later conversion read order.
+    """
+    definitions = {d["name"]: d for d in data["declarations"] if not d.get("partial", False)}
+    enumerations = [d for d in definitions.values() if d["kind"] == "enumeration"]
+    for d in enumerations:
+        variants = [variant(value) for value in d["values"]]
+        require(len(set(variants)) == len(variants), "enumeration Rust variant collision")
+    dictionaries = []
+
+    def members(name, seen):
+        require(name not in seen, "dictionary inheritance cycle")
+        d = definitions.get(name)
+        if d is None or d["kind"] != "dictionary":
+            return None
+        inherited = members(d["inherits"], seen | {name}) if "inherits" in d else []
+        if inherited is None:
+            return None
+        result = list(inherited)
+        for m in sorted(d["members"], key=lambda m: m["name"]):
+            ty = m["type"]
+            if ty["kind"] != "named" or ty.get("attributes"):
+                return None
+            target = definitions.get(ty["name"])
+            if ty["name"] != "boolean" and (target is None or target["kind"] != "enumeration"):
+                return None
+            require(all(previous["name"] != m["name"] for previous in result), "duplicate inherited dictionary member")
+            result.append(m)
+        fields = [field_name(m["name"]) for m in result]
+        require(len(set(fields)) == len(fields), "dictionary Rust field collision")
+        return result
+
+    for d in definitions.values():
+        if d["kind"] == "dictionary":
+            flattened = members(d["name"], set())
+            if flattened is not None:
+                dictionaries.append({"name": d["name"], "members": flattened})
+    return {"enumerations": enumerations, "dictionaries": dictionaries}
 
 
-def emit_default(value):
+def code_units(value):
+    encoded = value.encode("utf-16-le", errors="surrogatepass")
+    return [int.from_bytes(encoded[i:i + 2], "little") for i in range(0, len(encoded), 2)]
+
+
+def units_literal(value):
+    return "[" + ", ".join(str(unit) for unit in code_units(value)) + "]"
+
+
+def member_type(member):
+    name = member["type"]["name"]
+    value = "bool" if name == "boolean" else name
+    return value if member["required"] or "default" in member else "Option<" + value + ">"
+
+
+def member_default(member, enumerations):
+    value = member.get("default")
     if value is None:
-        return "DefaultValue::Absent"
-    kind = value["kind"]
-    if kind in {"null", "empty_dictionary"}:
-        return "DefaultValue::" + variant(kind)
-    v = value["value"]
-    return "DefaultValue::" + variant(kind) + "(" + (rs(v) if kind == "string" else str(v).lower()) + ")"
+        require(not member["required"], "required dictionary member has no default")
+        return "None"
+    name = member["type"]["name"]
+    if name == "boolean":
+        require(value["kind"] == "boolean", "Boolean dictionary default has the wrong type")
+        return str(value["value"]).lower()
+    require(value["kind"] == "string" and value["value"] in enumerations[name]["values"],
+            "enumeration dictionary default is not a member")
+    return name + "::" + variant(value["value"])
 
 
-def emit_arguments(items, names):
-    return array("Argument { name: " + rs(x["name"]) + ", ty: " + emit_type(x["type"], names) +
-                 ", presence: Presence::" + variant(x["presence"]) + ", default: " +
-                 emit_default(x.get("default")) + " }" for x in items)
-
-
-def emit_member(member, names):
-    kind = member["kind"]
-    if kind == "constructor":
-        payload = "Constructor { arguments: " + emit_arguments(member["arguments"], names) + " }"
-    elif kind == "operation":
-        payload = "Operation { result: " + emit_type(member["type"], names) + ", arguments: " + emit_arguments(member["arguments"], names) + ", special: Special::" + variant(member.get("special") or "none") + ", is_static: " + str(member.get("static", False)).lower() + " }"
-    elif kind == "attribute":
-        payload = "Attribute { ty: " + emit_type(member["type"], names) + ", readonly: " + str(member["readonly"]).lower() + " }"
-    elif kind == "constant":
-        payload = "Constant { ty: " + emit_type(member["type"], names) + ", value: " + str(member["value"]) + " }"
-    elif kind == "iterable":
-        payload = "Iterable { value: " + emit_type(member["type"], names) + " }"
-    else:
-        payload = "DictionaryMember { ty: " + emit_type(member["type"], names) + ", required: " + str(member.get("required", False)).lower() + ", default: " + emit_default(member.get("default")) + " }"
-    return "Member { id: " + rs(member["id"]) + ", name: " + option(member.get("name")) + ", attributes: " + emit_attributes(member["attributes"]) + ", kind: MemberKind::" + payload + " }"
-
-
-def emit_requirement(req):
-    return "Requirement { owner: " + rs(req["owner"]) + ", contract: " + rs(req["contract"]) + ", source: " + rs(req["source"]) + ", issue: " + option(req.get("issue"), str) + " }"
-
-
-def emit_producers(items):
-    return array("Producer { owner: " + rs(p["owner"]) + ", path: " + rs(p["path"]) + ", symbol: " + rs(p["symbol"]) + " }" for p in items)
-
-
-def emit_access(key, mapping):
-    kind = mapping["kind"]
-    reqs = array(emit_requirement(r) for r in mapping.get("requirements", []))
-    if kind == "native":
-        operation = "Native { adapter: AdapterId::" + variant(mapping["adapter"]) + ", producers: " + emit_producers(mapping["producers"]) + ", requirements: " + reqs + " }"
-    elif kind == "derived":
-        operation = "Derived { algorithm: DerivedId::" + variant(mapping["algorithm"]) + ", owner: " + rs(mapping["owner"]) + ", contract: " + rs(mapping["contract"]) + ", source: " + rs(mapping["source"]) + ", inputs: " + emit_producers(mapping["inputs"]) + ", requirements: " + reqs + " }"
-    elif kind == "callback":
-        operation = "CallbackInvocation { interface: " + rs(mapping["interface"]) + ", operation: " + rs(mapping["operation"]) + ", source: " + rs(mapping["source"]) + ", requirements: " + reqs + " }"
-    elif kind == "forwarding":
-        operation = "PutForwards { getter: " + rs(mapping["getter"]) + ", target: " + rs(mapping["target"]) + ", source: " + rs(mapping["source"]) + " }"
-    else:
-        operation = "ExternalHost { requirement: " + emit_requirement(mapping["requirement"]) + " }"
-    return "    AccessMapping { access: " + rs(key) + ", operation: AccessOperation::" + operation + ", result_view: ResultView::" + variant(mapping.get("result_view", "value")) + " },"
-
-
-def interface_plans(data):
-    """Compose declarations, without installing a function or invoking a producer."""
-    definitions = data["declarations"]
-    primary = {d["name"]: d for d in definitions if d["kind"] == "interface" and not d.get("partial", False)}
-    external = {d["name"] for d in data["externals"] if d["kind"] == "mixin"}
-
-    def own(name):
-        mixes = [x["mixin"] for x in data["includes"] if x["interface"] == name]
-        group = [x for x in definitions if x["name"] == name or x["name"] in mixes]
-        members = [m for d in group for m in d.get("members", [])]
-        attrs = [a["name"] for d in group for a in d["attributes"]]
-        return members, attrs, [n for n in mixes if n in external]
-
-    plans = []
-    for name, d in primary.items():
-        members, attrs, mixes = own(name)
-        effective, effective_attrs = list(members), list(attrs)
-        parent = d.get("inherits")
-        while parent in primary:
-            inherited, annotations, _ = own(parent)
-            effective += inherited
-            effective_attrs += annotations
-            parent = primary[parent].get("inherits")
-        def special_getter(ty):
-            return next((m["id"] for m in effective if m.get("special") == "getter" and
-                         m["arguments"][0]["type"] == {"kind": "named", "name": ty}), None)
-        groups = {}
-        for m in members:
-            if m.get("name") is not None and m["kind"] != "dictionary_member":
-                groups.setdefault(m["name"], []).append(m)
-        props = []
-        for property_name, overloads in groups.items():
-            m = overloads[0]
-            require(all(x["kind"] == m["kind"] for x in overloads), "conflicting property kinds")
-            require(len(overloads) == 1 or m["kind"] == "operation", "duplicate non-operation property")
-            a = {x["name"] for x in m["attributes"]}
-            unforgeable = "LegacyUnforgeable" in a
-            placement = "interface_and_prototype" if m["kind"] == "constant" else "interface" if m.get("static") else "instance" if unforgeable else "prototype"
-            require(all(x.get("static", False) == m.get("static", False) for x in overloads), "mixed static/regular overloads")
-            length = min(sum(arg["presence"] == "required" for arg in x.get("arguments", [])) for x in overloads)
-            props.append({"name": property_name, "declarations": [x["id"] for x in overloads],
-                          "placement": placement, "kind": m["kind"], "length": length,
-                          "setter": m["kind"] == "attribute" and (not m["readonly"] or "PutForwards" in a),
-                          "writable": m["kind"] == "operation" and not unforgeable,
-                          "enumerable": True, "configurable": m["kind"] != "constant" and not unforgeable,
-                          "unscopable": "Unscopable" in a})
-        plans.append({"name": name, "parent": d.get("inherits"),
-                      "exposure": "all" if any(a.get("value") == "*" for a in d["attributes"] if a["name"] == "Exposed") else "window",
-                      "members": [m["id"] for m in members], "external_mixins": mixes,
-                      "constructors": [m["id"] for m in members if m["kind"] == "constructor"],
-                      "constructor_length": min((sum(arg["presence"] == "required" for arg in m["arguments"]) for m in members if m["kind"] == "constructor"), default=0),
-                      "properties": props, "indexed": special_getter("unsigned long"),
-                      "named": special_getter("DOMString"),
-                      "override_builtins": "LegacyOverrideBuiltIns" in effective_attrs,
-                      "unenumerable_names": "LegacyUnenumerableNamedProperties" in effective_attrs,
-                      "value_iterable": any(m["kind"] == "iterable" for m in members)})
-    return plans
+def emit_values(model):
+    result = ["// Generated by tools/generate_bindings.py; do not edit.",
+              "// Source-adapted WHATWG declarations: licenses/whatwg/LICENSE and NOTICE.md.",
+              "//! Typed IDL values from the retained binding description.",
+              "//!", "//! These values do not install interfaces or convert guest inputs.", ""]
+    enumerations = {d["name"]: d for d in model["enumerations"]}
+    for d in model["enumerations"]:
+        result += ["/// Values of the declared `" + d["name"] + "` enumeration.",
+                   "#[derive(Clone, Copy, Debug, PartialEq, Eq)]", "pub enum " + d["name"] + " {"]
+        for value in d["values"]:
+            result += ["    /// The `" + value + "` value.", "    " + variant(value) + ","]
+        result += ["}", "", "impl " + d["name"] + " {",
+                   "    /// Matches exact UTF-16 code units without guest coercion.",
+                   "    pub fn from_code_units(units: &[u16]) -> Option<Self> {", "        match units {"]
+        for value in d["values"]:
+            result.append("            " + units_literal(value) + " => Some(Self::" + variant(value) + "),")
+        result += ["            _ => None,", "        }", "    }", "",
+                   "    /// The exact code units of this enumeration value.",
+                   "    pub fn as_code_units(self) -> &'static [u16] {", "        match self {"]
+        for value in d["values"]:
+            result.append("            Self::" + variant(value) + " => &" + units_literal(value) + ",")
+        result += ["        }", "    }", "}", ""]
+    for d in model["dictionaries"]:
+        defaults = None if any(m["required"] for m in d["members"]) else [member_default(m, enumerations) for m in d["members"]]
+        derive_default = defaults is not None and all(value in {"false", "None"} for value in defaults)
+        derives = "Clone, Copy, Debug, " + ("Default, " if derive_default else "") + "PartialEq, Eq"
+        result += ["/// Complete brand-free `" + d["name"] + "` dictionary value.",
+                   "#[derive(" + derives + ")]", "pub struct " + d["name"] + " {"]
+        for m in d["members"]:
+            result += ["    /// The declared `" + m["name"] + "` member.",
+                       "    pub " + field_name(m["name"]) + ": " + member_type(m) + ","]
+        result += ["}", ""]
+        if defaults is not None and not derive_default:
+            result += ["impl Default for " + d["name"] + " {", "    fn default() -> Self {", "        Self {"]
+            result += ["            " + field_name(m["name"]) + ": " + value + "," for m, value in zip(d["members"], defaults)]
+            result += ["        }", "    }", "}", ""]
+    return "\n".join(result)
 
 
 def generate(data, root=ROOT):
-    definitions, names = validate(data, root)
-    result = ["// Generated by tools/generate_bindings.py; do not edit.",
-              "// Source-adapted WHATWG declarations: licenses/whatwg/LICENSE and NOTICE.md.",
-              "// Description and plans only: no installed bindings or native execution is claimed.",
-              "use super::model::*;", "", "#[rustfmt::skip]", "pub(super) const DECLARATIONS: &[Definition] = &["]
-    for d in data["declarations"]:
-        result.append("    Definition { id: " + rs(d["id"]) + ", name: " + rs(d["name"]) + ", kind: DefinitionKind::" + variant(d["kind"]) + ", parent: " + option(d.get("inherits")) + ", partial: " + str(d.get("partial", False)).lower() + ", attributes: " + emit_attributes(d["attributes"]) + ", members: " + array(emit_member(m, names) for m in d.get("members", [])) + ", values: " + array(map(rs, d.get("values", []))) + ", alias: " + option(d.get("type"), lambda t: emit_type(t, names)) + " },")
-    result += ["];", "", "pub(super) const INCLUDES: &[Includes] = &["]
-    for x in data["includes"]:
-        result.append("    Includes { interface: " + rs(x["interface"]) + ", mixin: " + rs(x["mixin"]) + " },")
-    result += ["];", "", "pub(super) const EXTERNALS: &[External] = &["]
-    for x in data["externals"]:
-        result.append("    External { name: " + rs(x["name"]) + ", kind: NamedKind::External" + variant(x["kind"]) + ", owner: " + rs(x["owner"]) + ", source: " + rs(x["url"]) + ", requirement: " + rs(x["requirement"]) + " },")
-    result += ["];", "", "pub(super) const SOURCES: &[SourceUnit] = &["]
-    for x in data["sources"]:
-        result.append("    SourceUnit { id: " + rs(x["id"]) + ", path: " + rs(x["path"]) + ", anchor: " + rs(x["anchor"]) + ", block: " + str(x["block"]) + ", sha256: " + rs(x["sha256"]) + ", revision: " + rs(x["revision"]) + ", url: " + rs(x["url"]) + ", entries: " + array(map(rs, x["entries"])) + " },")
-    result += ["];", "", "#[derive(Clone, Copy, Debug, Eq, PartialEq)]", "pub(super) enum AdapterId {"]
-    adapters = sorted({x["adapter"] for x in data["access_mappings"].values() if x["kind"] == "native"})
-    require(len({variant(x) for x in adapters}) == len(adapters), "adapter Rust identifier collision")
-    result += ["    " + variant(x) + "," for x in adapters]
-    result += ["}", "", "#[derive(Clone, Copy, Debug, Eq, PartialEq)]", "pub(super) enum DerivedId {"]
-    algorithms = sorted({x["algorithm"] for x in data["access_mappings"].values() if x["kind"] == "derived"})
-    require(len({variant(x) for x in algorithms}) == len(algorithms), "derived Rust identifier collision")
-    result += ["    " + variant(x) + "," for x in algorithms]
-    result += ["}", "", "pub(super) const ACCESS_MAPPINGS: &[AccessMapping<AdapterId, DerivedId>] = &["]
-    result += [emit_access(key, mapping) for key, mapping in data["access_mappings"].items()]
-    result += ["];", "", "pub(super) const INTERFACE_PLANS: &[InterfacePlan] = &["]
-    for plan in interface_plans(data):
-        properties = []
-        for p in plan["properties"]:
-            form = "PropertyForm::Method { length: " + str(p["length"]) + " }" if p["kind"] == "operation" else "PropertyForm::Accessor { setter: " + str(p["setter"]).lower() + " }" if p["kind"] == "attribute" else "PropertyForm::Constant"
-            properties.append("PropertyPlan { name: " + rs(p["name"]) + ", declarations: " + array(map(rs, p["declarations"])) + ", placement: Placement::" + variant(p["placement"]) + ", form: " + form + ", descriptor: Descriptor { writable: " + str(p["writable"]).lower() + ", enumerable: " + str(p["enumerable"]).lower() + ", configurable: " + str(p["configurable"]).lower() + " }, unscopable: " + str(p["unscopable"]).lower() + " }")
-        result.append("    InterfacePlan { name: " + rs(plan["name"]) + ", parent: " + option(plan["parent"]) + ", exposure: Exposure::" + variant(plan["exposure"]) + ", own_members: " + array(map(rs, plan["members"])) + ", external_mixins: " + array(map(rs, plan["external_mixins"])) + ", constructors: " + array(map(rs, plan["constructors"])) + ", constructor_length: " + str(plan["constructor_length"]) + ", properties: " + array(properties) + ", legacy: LegacyProperties { indexed_getter: " + option(plan["indexed"]) + ", named_getter: " + option(plan["named"]) + ", override_builtins: " + str(plan["override_builtins"]).lower() + ", unenumerable_names: " + str(plan["unenumerable_names"]).lower() + " }, value_iterable: " + str(plan["value_iterable"]).lower() + " },")
-    result += ["];", "", "pub(super) const SEMANTICS: &[SemanticSource] = &["]
-    result += ["    SemanticSource { kind: SemanticKind::" + variant(k) + ", source: " + rs(v) + " }," for k, v in data["semantics"].items()]
-    result += ["];", ""]
-    # Preserve standalone generation with no Rust-toolchain dependency. Generated
-    # table layout is owned here, as with the HTML vocabulary generator.
-    for index in range(len(result) - 1, 0, -1):
-        if result[index].startswith("pub(super) const ") and result[index - 1] != "#[rustfmt::skip]":
-            result.insert(index, "#[rustfmt::skip]")
-    return "\n".join(result)
+    validate(data, root)
+    return emit_values(lower_values(data))
 
 
 def load(path=DESCRIPTION):
@@ -863,12 +802,11 @@ def main(argv=None):
     try:
         output = generate(load())
         if args.write:
-            OUTPUT.parent.mkdir(parents=True, exist_ok=True)
             OUTPUT.write_text(output, encoding="utf-8", newline="\n")
             print(f"wrote {OUTPUT.relative_to(ROOT)}")
         else:
-            require(OUTPUT.is_file() and OUTPUT.read_text(encoding="utf-8") == output, "generated binding description is stale; run --write")
-            print("binding description matches retained sources and generated records")
+            require(OUTPUT.is_file() and OUTPUT.read_text(encoding="utf-8") == output, "generated IDL values are stale; run --write")
+            print("binding description matches retained sources and generated IDL values")
         return 0
     except (DescriptionError, KeyError, TypeError, OSError, json.JSONDecodeError) as error:
         print(f"binding description: {error}", file=sys.stderr)

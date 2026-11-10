@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Functional tests for the declared source/artifact contract, not live bindings.
+"""Functional tests for strict declaration validation and typed value lowering.
 
 Run with Python -B. --rustc additionally compiles and executes a temporary,
-standalone consumer of the actual shared model/generated records; it uses no
+standalone consumer of the generated typed values; it uses no
 Cargo, V8, downloads, or repository target directory. Run through pisct run.
 """
 
@@ -36,8 +36,6 @@ class DescriptionTests(unittest.TestCase):
     def definition(self, identifier):
         return next(d for d in self.data["declarations"] if d["id"] == identifier)
 
-    def plans(self):
-        return {p["name"]: p for p in g.interface_plans(self.data)}
 
     def rejected(self, message):
         with self.assertRaisesRegex(g.DescriptionError, message):
@@ -171,13 +169,6 @@ class DescriptionTests(unittest.TestCase):
         self.member("Node.nodeName")["installed"] = True
         self.rejected("unknown fields")
 
-    def test_adapter_names_must_emit_distinct_valid_rust_variants(self):
-        self.data["access_mappings"]["Node.nodeName/get"]["adapter"] = "self"
-        self.rejected("invalid Rust enum variant")
-        self.setUp()
-        self.data["access_mappings"]["Node.nodeName/get"]["adapter"] = "audit.a_b"
-        self.data["access_mappings"]["Node.nodeType/get"]["adapter"] = "audit_a.b"
-        self.rejected("adapter Rust identifier collision")
 
     def test_omission_nullable_default_and_legacy_string_annotation_remain_distinct(self):
         title = self.member("DOMImplementation.createHTMLDocument:0")["arguments"][0]
@@ -191,18 +182,6 @@ class DescriptionTests(unittest.TestCase):
         self.assertEqual(self.member("CharacterData.data")["type"]["attributes"], [{"name": "LegacyNullToEmptyString"}])
         self.assertEqual(self.member("Node.nodeValue")["type"]["kind"], "nullable")
 
-    def test_all_six_dom_mixins_are_composed_without_mixin_globals(self):
-        plans = self.plans()
-        for name in ("NonElementParentNode", "ParentNode", "NonDocumentTypeChildNode", "ChildNode", "Slottable", "DocumentOrShadowRoot"):
-            self.assertNotIn(name, plans)
-        self.assertIn("ParentNode.children", plans["Document"]["members"])
-        self.assertIn("ParentNode.children", plans["DocumentFragment"]["members"])
-        self.assertIn("ParentNode.children", plans["Element"]["members"])
-        self.assertIn("NonElementParentNode.getElementById:0", plans["Document"]["members"])
-        self.assertNotIn("NonElementParentNode.getElementById:0", plans["Element"]["members"])
-        # Inherited members stay on the base prototype, not copied to Text.
-        self.assertNotIn("Node.nodeName", plans["Text"]["members"])
-        self.assertEqual(plans["Text"]["parent"], "CharacterData")
 
     def test_selected_pi_constructor_and_factory_are_both_described(self):
         pi = self.member("ProcessingInstruction.constructor:0")
@@ -213,15 +192,6 @@ class DescriptionTests(unittest.TestCase):
         self.assertTrue(any(r.get("issue") == 2259 and "associated Document" in r["contract"] for r in contracts))
         self.assertTrue(self.data["access_mappings"]["ProcessingInstruction.setAttribute:0/call"]["requirements"])
 
-    def test_overloads_form_one_property_and_preserve_distinct_calls(self):
-        open_property = next(p for p in self.plans()["Document"]["properties"] if p["name"] == "open")
-        self.assertEqual(open_property["declarations"], ["Document.html.open:0", "Document.html.open:1"])
-        self.assertEqual(open_property["length"], 0)
-        self.assertEqual(self.member("Document.html.open:1")["type"]["kind"], "nullable")
-        self.assertIn("Document.html.open:0/call", self.data["access_mappings"])
-        self.assertIn("Document.html.open:1/call", self.data["access_mappings"])
-        self.assertEqual(self.data["access_mappings"]["Document.html.open:0/call"]["kind"], "native")
-        self.assertEqual(self.data["access_mappings"]["Document.html.open:1/call"]["kind"], "host")
 
     def test_forwarding_and_callback_protocols_cannot_be_relabeled_native(self):
         mappings = self.data["access_mappings"]
@@ -240,35 +210,6 @@ class DescriptionTests(unittest.TestCase):
         self.data["access_mappings"]["EventListener.handleEvent:0/call"]["interface"] = "Node"
         self.rejected("wrong callback interface")
 
-    def test_mapping_variants_preserve_actual_operation_roles(self):
-        mappings = self.data["access_mappings"]
-        location = mappings["Document.html.location/set"]
-        self.assertEqual(location["kind"], "forwarding")
-        self.assertEqual(location["getter"], "Document.html.location/get")
-        self.assertEqual(location["target"], "href")
-        self.assertNotIn("adapter", location)
-        listener = mappings["EventListener.handleEvent:0/call"]
-        self.assertEqual((listener["kind"], listener["interface"], listener["operation"]),
-                         ("callback", "EventListener", "handleEvent"))
-        self.assertTrue(listener["source"].endswith("#call-a-user-objects-operation"))
-        self.assertNotIn("adapter", listener)
-        self.assertNotIn("EventListener", self.plans())
-        create_range = mappings["Document.createRange:0/call"]
-        self.assertEqual(create_range["kind"], "native")
-        self.assertEqual(create_range["producers"][0]["symbol"], "create_range")
-        lang = mappings["HTMLElement.lang/set"]
-        self.assertEqual(lang["kind"], "derived")
-        self.assertTrue(any(p["symbol"] == "set_attribute" for p in lang["inputs"]))
-        self.assertEqual(lang["requirements"], [])
-        self.assertEqual(mappings["Document.html.images/get"]["kind"], "derived")
-        self.assertEqual(mappings["Document.html.body/set"]["kind"], "derived")
-        self.assertEqual(mappings["HTMLElement.innerText/get"]["kind"], "host")
-        inner_set = mappings["HTMLElement.innerText/set"]
-        self.assertEqual(inner_set["kind"], "native")
-        self.assertTrue(all(r["owner"] == "surgeist-dom" for r in inner_set["requirements"]))
-        for access in ("Document.html.location/get", "Document.html.cookie/set", "Document.html.open:1/call"):
-            self.assertEqual(mappings[access]["kind"], "host")
-            self.assertNotEqual(mappings[access]["requirement"].get("issue"), 2259)
 
     def test_role_specific_fields_are_strict_and_cannot_hide_native_claims(self):
         for access, field, value in [
@@ -284,52 +225,8 @@ class DescriptionTests(unittest.TestCase):
                 with self.assertRaises(g.DescriptionError):
                     g.generate(self.data)
 
-    def test_descriptors_unforgeables_putforwards_and_nonconstructible_interfaces(self):
-        plans = self.plans()
-        child = next(p for p in plans["Node"]["properties"] if p["name"] == "childNodes")
-        self.assertFalse(child["setter"])
-        self.assertTrue(child["enumerable"])
-        self.assertTrue(child["configurable"])
-        location = next(p for p in plans["Document"]["properties"] if p["name"] == "location")
-        self.assertEqual(location["placement"], "instance")
-        self.assertTrue(location["setter"])
-        self.assertFalse(location["configurable"])
-        self.assertEqual(plans["Node"]["constructors"], [])
-        self.assertEqual(plans["Document"]["constructors"], ["Document.constructor:0"])
-        self.assertEqual(plans["ProcessingInstruction"]["constructor_length"], 1)
-        self.assertEqual(plans["Text"]["constructor_length"], 0)
-        slot = next(p for p in plans["Element"]["properties"] if p["name"] == "slot")
-        self.assertTrue(slot["unscopable"])
 
-    def test_exposure_constants_and_required_nullable_arguments_keep_their_roles(self):
-        plans = self.plans()
-        self.assertEqual(plans["Node"]["exposure"], "window")
-        self.assertEqual(plans["EventTarget"]["exposure"], "all")
-        constant = next(p for p in plans["Node"]["properties"] if p["name"] == "CDATA_SECTION_NODE")
-        self.assertEqual(constant["placement"], "interface_and_prototype")
-        self.assertFalse(constant["writable"])
-        self.assertTrue(constant["enumerable"])
-        self.assertFalse(constant["configurable"])
-        method = next(p for p in plans["Node"]["properties"] if p["name"] == "insertBefore")
-        self.assertEqual(method["length"], 2)
-        child = self.member("Node.insertBefore:0")["arguments"][1]
-        self.assertEqual(child["presence"], "required")
-        self.assertEqual(child["type"]["kind"], "nullable")
 
-    def test_collections_and_inherited_legacy_properties_are_not_plain_prototypes(self):
-        plans = self.plans()
-        self.assertEqual(plans["NodeList"]["indexed"], "NodeList.item:0")
-        self.assertTrue(plans["NodeList"]["value_iterable"])
-        self.assertFalse(plans["HTMLCollection"]["value_iterable"])
-        self.assertEqual(plans["HTMLCollection"]["named"], "HTMLCollection.namedItem:0")
-        self.assertTrue(plans["HTMLCollection"]["unenumerable_names"])
-        self.assertTrue(plans["NamedNodeMap"]["unenumerable_names"])
-        self.assertTrue(plans["XMLDocument"]["override_builtins"])
-        self.assertEqual(plans["XMLDocument"]["named"], "Document.html.operation:0")
-        mappings = self.data["access_mappings"]
-        self.assertEqual(mappings["Node.childNodes/get"]["result_view"], "live")
-        self.assertEqual(mappings["ParentNode.querySelectorAll:0/call"]["result_view"], "static")
-        self.assertEqual(mappings["Element.getAttributeNames:0/call"]["result_view"], "sequence")
 
     def test_duplicate_json_keys_are_rejected_before_validation(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -355,61 +252,103 @@ class DescriptionTests(unittest.TestCase):
         self.assertEqual(g.OUTPUT.read_bytes(), before)
         self.assertEqual(g.generate(self.data), g.generate(copy.deepcopy(self.data)))
 
+
+
+class ValueLoweringTests(unittest.TestCase):
+    def test_current_dictionary_outputs_are_complete_brand_free_declarations(self):
+        model = g.lower_values(g.load())
+        self.assertEqual([d["name"] for d in model["dictionaries"]],
+                         ["GetRootNodeOptions", "EventInit", "EventListenerOptions"])
+        self.assertEqual([d["name"] for d in model["enumerations"]],
+                         ["ShadowRootMode", "SlotAssignmentMode", "DocumentReadyState", "DocumentVisibilityState"])
+        # A dictionary with even one unavailable member is never emitted as a
+        # successful partial value. In particular, signal/registry/source are
+        # not silently discarded to form an apparently brand-free dictionary.
+        for name in ("ShadowRootInit", "AddEventListenerOptions", "ElementCreationOptions",
+                     "ImportNodeOptions", "ShowPopoverOptions", "TogglePopoverOptions"):
+            self.assertNotIn(name, [d["name"] for d in model["dictionaries"]])
+
+    def test_inheritance_precedes_derived_lexicographic_members(self):
+        member = lambda name: {"name": name, "type": {"kind": "named", "name": "boolean"}, "required": False}
+        model = g.lower_values({"declarations": [
+            {"name": "Base", "kind": "dictionary", "members": [member("z"), member("a")]},
+            {"name": "Derived", "kind": "dictionary", "inherits": "Base", "members": [member("y"), member("b")]},
+        ]})
+        self.assertEqual([m["name"] for m in model["dictionaries"][1]["members"]], ["a", "z", "b", "y"])
+
+    def test_unavailable_inherited_member_excludes_whole_derived_dictionary(self):
+        model = g.lower_values({"declarations": [
+            {"name": "Base", "kind": "dictionary", "members": [
+                {"name": "node", "type": {"kind": "named", "name": "Node"}, "required": False}]},
+            {"name": "Derived", "kind": "dictionary", "inherits": "Base", "members": []},
+        ]})
+        self.assertEqual(model["dictionaries"], [])
+
+    def test_inherited_member_and_rust_name_collisions_are_rejected(self):
+        member = lambda name: {"name": name, "type": {"kind": "named", "name": "boolean"}, "required": False}
+        definitions = [
+            {"name": "Base", "kind": "dictionary", "members": [member("flag")]},
+            {"name": "Derived", "kind": "dictionary", "inherits": "Base", "members": [member("flag")]},
+        ]
+        with self.assertRaisesRegex(g.DescriptionError, "duplicate inherited"):
+            g.lower_values({"declarations": definitions})
+        definitions = [{"name": "Flags", "kind": "dictionary", "members": [member("aB"), member("a_b")]}]
+        with self.assertRaisesRegex(g.DescriptionError, "field collision"):
+            g.lower_values({"declarations": definitions})
+        definitions = [{"name": "Choice", "kind": "enumeration", "values": ["a-b", "a_b"]}]
+        with self.assertRaisesRegex(g.DescriptionError, "variant collision"):
+            g.lower_values({"declarations": definitions})
+
     @unittest.skipUnless(RUSTC, "standalone compiler check requires explicit --rustc")
-    def test_generated_records_compile_and_feed_a_standalone_consumer(self):
-        # No dead-code/lint suppression is added to the product or fixture.
-        # Unwired internal records can warn; this verifies their type contract.
-        directory = g.OUTPUT.parent
-        model = json.dumps(str(directory / "model.rs"))
-        generated = json.dumps(str(g.OUTPUT))
-        source = f'''mod description {{
-#[path = {model}] pub(super) mod model;
-#[path = {generated}] pub(super) mod dom_core;
-pub fn verify() {{
-    use dom_core::*;
-    let node = INTERFACE_PLANS.iter().find(|p| p.name == "Node").unwrap();
-    assert_eq!(node.parent, Some("EventTarget"));
-    assert!(node.constructors.is_empty());
-    let doc = INTERFACE_PLANS.iter().find(|p| p.name == "Document").unwrap();
-    assert_eq!(doc.constructors, &["Document.constructor:0"]);
-    let xml = INTERFACE_PLANS.iter().find(|p| p.name == "XMLDocument").unwrap();
-    assert!(xml.legacy.override_builtins);
-    assert_eq!(xml.legacy.named_getter, Some("Document.html.operation:0"));
-    assert!(!model::INTERFACE_OBJECT_PROPERTIES.prototype.writable);
-    assert!(ACCESS_MAPPINGS.iter().any(|m| m.access == "ProcessingInstruction.constructor:0/construct"));
-    let forward = ACCESS_MAPPINGS.iter().find(|m| m.access == "Document.html.location/set").unwrap();
-    assert!(matches!(forward.operation, model::AccessOperation::PutForwards {{ getter: "Document.html.location/get", target: "href", .. }}));
-    let callback = ACCESS_MAPPINGS.iter().find(|m| m.access == "EventListener.handleEvent:0/call").unwrap();
-    assert!(matches!(callback.operation, model::AccessOperation::CallbackInvocation {{ interface: "EventListener", operation: "handleEvent", .. }}));
-    let cookies = ACCESS_MAPPINGS.iter().find(|m| m.access == "Document.html.cookie/set").unwrap();
-    assert!(matches!(cookies.operation, model::AccessOperation::ExternalHost {{ .. }}));
-    assert!(!DECLARATIONS.is_empty() && !SOURCES.is_empty() && !INCLUDES.is_empty() && !EXTERNALS.is_empty() && !SEMANTICS.is_empty());
-}}
-}}
-fn main() {{ description::verify(); }}
+    def test_typed_values_preserve_presence_defaults_and_enum_identity(self):
+        # Test-only IDL-shaped declarations exercise the lowering semantics
+        # absent from the current brand-free production subset. They declare
+        # no platform interfaces and make no native execution claim.
+        model = g.lower_values({"declarations": [
+            {"name": "Mode", "kind": "enumeration", "values": ["on", "off", "", "self", "2d"]},
+            {"name": "Base", "kind": "dictionary", "members": [
+                {"name": "enabled", "type": {"kind": "named", "name": "boolean"}, "required": False,
+                 "default": {"kind": "boolean", "value": True}}]},
+            {"name": "Options", "kind": "dictionary", "inherits": "Base", "members": [
+                {"name": "capture", "type": {"kind": "named", "name": "boolean"}, "required": False},
+                {"name": "self", "type": {"kind": "named", "name": "boolean"}, "required": False},
+                {"name": "mode", "type": {"kind": "named", "name": "Mode"}, "required": False,
+                 "default": {"kind": "string", "value": "off"}}]},
+            {"name": "Required", "kind": "dictionary", "members": [
+                {"name": "flag", "type": {"kind": "named", "name": "boolean"}, "required": True}]},
+        ]})
+        source = '''
+pub mod values;
+fn main() {
+    let mut options = values::Options::default();
+    assert!(options.enabled);
+    assert_eq!(options.capture, None);
+    assert_eq!(options.mode, values::Mode::Off);
+    assert_eq!(options.self_value, None);
+    options.capture = Some(false);
+    assert_eq!(options.capture, Some(false));
+    assert_eq!(values::Mode::from_code_units(&[111, 110]), Some(values::Mode::On));
+    assert_eq!(values::Mode::from_code_units(&[0xd800]), None);
+    assert_eq!(values::Mode::Off.as_code_units(), &[111, 102, 102]);
+    assert_eq!(values::Mode::Empty.as_code_units(), &[]);
+    assert_eq!(values::Mode::from_code_units(&[115, 101, 108, 102]), Some(values::Mode::SelfValue));
+    assert_eq!(values::Mode::Value2d.as_code_units(), &[50, 100]);
+    assert!(values::Required { flag: true }.flag);
+}
 '''
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            (root / "values.rs").write_text(g.emit_values(model))
             path = root / "consumer.rs"
             output = root / "consumer"
             path.write_text(source)
-            command = ["rustc", "--edition=2024", "-F", "unsafe-code", "--error-format=json", str(path), "-o", str(output)]
-            print("\nstandalone compile command: " + " ".join(command), file=sys.stderr)
-            result = subprocess.run(command, capture_output=True, text=True, timeout=60)
-            # Preserve raw subprocess output in the enclosing process log,
-            # including successful diagnostics; a code summary is not raw evidence.
-            print(result.stdout, end="", file=sys.stdout)
-            print(result.stderr, end="", file=sys.stderr)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            diagnostics = [json.loads(line) for line in result.stderr.splitlines()]
-            codes = sorted({d["code"]["code"] for d in diagnostics if d.get("code")})
-            print(f"standalone compile exit: {result.returncode}; diagnostic codes: {codes}", file=sys.stderr)
-            print("standalone consumer command: " + str(output), file=sys.stderr)
-            result = subprocess.run([str(output)], capture_output=True, text=True, timeout=30)
-            print(result.stdout, end="", file=sys.stdout)
-            print(result.stderr, end="", file=sys.stderr)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            print(f"standalone consumer exit: {result.returncode}", file=sys.stderr)
+            for command in (["rustc", "--edition=2024", "-F", "unsafe-code", "-D", "warnings", str(path), "-o", str(output)], [str(output)]):
+                print("\nstandalone command: " + " ".join(command), file=sys.stderr)
+                result = subprocess.run(command, capture_output=True, text=True, timeout=60)
+                print(result.stdout, end="", file=sys.stdout)
+                print(result.stderr, end="", file=sys.stderr)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                print(f"standalone exit: {result.returncode}", file=sys.stderr)
 
 
 if __name__ == "__main__":

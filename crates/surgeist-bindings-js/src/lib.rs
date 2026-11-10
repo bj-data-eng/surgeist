@@ -74,6 +74,7 @@
 )]
 
 mod backend;
+pub mod declarations;
 mod error;
 mod idl;
 
