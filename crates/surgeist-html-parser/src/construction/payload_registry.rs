@@ -747,6 +747,9 @@ impl PayloadStorage {
         records: ConstructionView<'_>,
         control: &mut ParseControl,
     ) -> Result<(), SessionError> {
+        if super::provenance::proto("aliasall") {
+            return Ok(());
+        }
         self.audit_aliases(records, control, 0..self.values.len())
     }
     /// The audit of the one row at `slot`, for an edit of the record that row

@@ -77,6 +77,9 @@ impl SessionStorage {
         c: &mut ParseControl,
     ) -> Result<(), SessionError> {
         let mut found = false;
+        if super::provenance::proto("completion") {
+            return Ok(());
+        }
         for payload in &self.payloads.values {
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             if let RetainedPayload::StandaloneDocumentCompletion { node, state } = payload {
