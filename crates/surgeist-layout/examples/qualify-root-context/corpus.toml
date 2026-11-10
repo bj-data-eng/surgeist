@@ -2885,3 +2885,138 @@ inline_offset = 0
 kind = "fixed"
 width = 30
 height = 50
+
+[[records]]
+source = "html/qualification/grid_lanes_axes_horizontal_parent_orthogonal_child_control.html"
+source_sha256 = "00677b929b70eb0ca04fd0d79e1e619875aa8d1452165c4845f78f51eed2be19"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/qualification/grid_lanes_axes_horizontal_tb_parallel_control.html"
+source_sha256 = "62caa5e627c120831ebefb6e5bcb4696a423e19da52cae3e9fd9f77853228d4b"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/qualification/grid_lanes_axes_sideways_lr_parallel_control.html"
+source_sha256 = "934cdb03d924304b33cc7ae2c4a1a5402111a20d8688560b09ec38f672c7477e"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/qualification/grid_lanes_axes_sideways_opposing_control.html"
+source_sha256 = "69752f08fa9ffb12a97d210b80236f954e724bafa63976186579aaab170b4c9e"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/qualification/grid_lanes_axes_sideways_rl_parallel_control.html"
+source_sha256 = "9a8a1778930061f6ac4be1ec521a0b1b91e71ad49f5239c1b934bee43966d241"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/qualification/grid_lanes_axes_vertical_lr_parallel_control.html"
+source_sha256 = "b0467a7dc24994c226c9fe5a558fa70f1ae219b18c2d7ef3946dd617a00cdd3a"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/qualification/grid_lanes_axes_vertical_opposing_control.html"
+source_sha256 = "1a83f7c30520b61ec9c8ab5d58b0432f9510ceaade7804970d235985a46716c1"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/qualification/grid_lanes_axes_vertical_parent_orthogonal_child_control.html"
+source_sha256 = "d5e806c9a149c43c7aea58fc6f305b63ccfdab6dcdcafe4ce290c0ac5e5e28b6"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/qualification/grid_lanes_axes_vertical_rl_parallel_control.html"
+source_sha256 = "22a6a0615ca11c12815e05ba147183e09ec29f2215e5e5a9af335c8b1a205d49"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0

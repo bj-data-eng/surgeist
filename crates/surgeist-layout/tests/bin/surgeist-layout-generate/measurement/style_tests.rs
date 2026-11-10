@@ -88,6 +88,88 @@ fn structured_dimensions_and_tracks_require_property_valid_units() {
     }
 }
 
+fn assert_empty_explicit_template(
+    empty_field: &str,
+    empty_attribute: &str,
+    sized_field: &str,
+    sized_attribute: &str,
+    flow: &str,
+) {
+    let input = json!({"style": {
+        "display": "grid-lanes",
+        "gridAutoFlow": {"direction": flow, "algorithm": "sparse"},
+        empty_field: [{"kind": "scalar", "unit": "none"}],
+        sized_field: [
+            {"kind": "scalar", "unit": "px", "value": 30},
+            {"kind": "scalar", "unit": "px", "value": 40}
+        ],
+    }});
+    let attributes = measurement::style_attributes(&input.to_string()).unwrap();
+    let attribute = |key| {
+        attributes
+            .iter()
+            .find_map(|(name, value)| (*name == key).then_some(value.as_str()))
+    };
+    assert_eq!(attribute(empty_attribute), None);
+    assert_eq!(attribute(sized_attribute), Some("30px 40px"));
+    assert_eq!(attribute("grid-auto-flow"), Some(flow));
+}
+
+#[test]
+fn explicit_template_none_columns_emits_no_column_tracks() {
+    assert_empty_explicit_template(
+        "gridTemplateColumns",
+        "grid-template-columns",
+        "gridTemplateRows",
+        "grid-template-rows",
+        "column",
+    );
+}
+
+#[test]
+fn explicit_template_none_rows_emits_no_row_tracks() {
+    assert_empty_explicit_template(
+        "gridTemplateRows",
+        "grid-template-rows",
+        "gridTemplateColumns",
+        "grid-template-columns",
+        "row",
+    );
+}
+
+#[test]
+fn explicit_template_none_refuses_mixed_nested_payload_and_auto_tracks() {
+    let none = json!({"kind": "scalar", "unit": "none"});
+    let sized = json!({"kind": "scalar", "unit": "px", "value": 30});
+    for (field, tracks, suffix) in [
+        ("gridTemplateColumns", json!([none, sized]), "[0]"),
+        ("gridTemplateRows", json!([sized, none]), "[1]"),
+        (
+            "gridTemplateRows",
+            json!([{"kind": "function", "name": "minmax", "arguments": [sized, none]}]),
+            "[0].arguments[1]",
+        ),
+        (
+            "gridTemplateColumns",
+            json!([{"kind": "scalar", "unit": "none", "value": 0}]),
+            "[0]",
+        ),
+        (
+            "gridTemplateRows",
+            json!([{"kind": "scalar", "unit": "none", "names": []}]),
+            "[0]",
+        ),
+        ("gridAutoColumns", json!([none]), "[0]"),
+        ("gridAutoRows", json!([none]), "[0]"),
+    ] {
+        for unsupported in [false, true] {
+            let error = decode_style(json!({field: tracks}), unsupported).unwrap_err();
+            assert_eq!(error.kind, MeasurementErrorKind::InvalidValue);
+            assert_eq!(error.field_path, format!("style.{field}{suffix}"));
+        }
+    }
+}
+
 #[test]
 fn nonnegative_style_extents_are_distinct_from_signed_offsets() {
     for (style, field) in [
