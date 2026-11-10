@@ -30,6 +30,7 @@ mod control;
 mod csp;
 pub(crate) mod custody;
 pub(crate) use custody::{MaterializationId, Usage as MaterializationUsage};
+mod compound;
 mod design_mode;
 mod details;
 mod dialog;
@@ -300,6 +301,8 @@ pub enum DomError {
     WrongNodeKind,
     WrongDocument,
     HierarchyRequest,
+    /// insertAdjacentText's position matched none of the four standard names.
+    InvalidAdjacentPosition,
     InvalidCharacter,
     Namespace,
     NotSupported,
@@ -3140,6 +3143,7 @@ impl Draft {
         cancelled: &AtomicBool,
     ) -> Result<(), DomError> {
         match command {
+            Command::Compound(edit) => self.compound_edit(edit, limits, cancelled)?,
             Command::ExitFullscreen { document } => {
                 let document = self.resolve(document.clone())?;
                 self.exit_fullscreen_boundary(document, true, cancelled)?;

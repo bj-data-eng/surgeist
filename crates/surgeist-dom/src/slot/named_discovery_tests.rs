@@ -135,6 +135,9 @@ fn source(dom: &mut Dom, edit: DomSourceEdit) -> DomChanges {
     let policy = DomSourceLimits::new(4_000_000_000, 10_000_000, SOURCE_WORK, 8, 4096, 4096, 1);
     let mut lease = dom.begin_source_edit(edit, policy, &cancelled()).unwrap();
     let changes = match lease.advance(&cancelled()).unwrap() {
+        DomSourceProgress::Failed(failure) => {
+            panic!("Slot assignment cannot produce a compound failure: {failure:?}")
+        }
         DomSourceProgress::Complete(done) => {
             assert!(!done.cancellation_requested());
             done.commit().changes().clone()

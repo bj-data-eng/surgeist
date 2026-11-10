@@ -80,8 +80,10 @@ pub enum DomSourceUnavailable {
 pub enum DomSourceDriveProgress {
     /// The one command or named feature operation completed its mandatory hooks.
     Complete(DomSourceCompletion),
+    /// The compound algorithm published its accepted effects and original error.
+    Failed(surgeist_dom::DomSourceFailure),
     /// Original Source progress returned with its actual inline publication.
-    /// Requests are unserviced; Complete preserves the completed operation.
+    /// Requests are unserviced; terminal outcomes retain their original result.
     InlineSource {
         /// The exact unserviced request or completed original operation.
         source: DomSourceProgress,
@@ -89,7 +91,7 @@ pub enum DomSourceDriveProgress {
         publication: surgeist_dom::DomInlineStyleSourcePublication,
     },
     /// Authentic joined Meta publication; no later service has run.
-    /// Complete retains the original completion; Request remains unserviced.
+    /// Complete/Failed retain the original terminal; Request remains unserviced.
     MetaSource(crate::DomStyleMetaSourceOutcome),
     /// The fullscreen handoff was serviced and its original tail remains live.
     InlineFullscreenHandoff {
@@ -933,6 +935,9 @@ impl DomSourceRuntime {
                 DomSourceProgress::Complete(done) => {
                     return Ok(DomSourceDriveProgress::Complete(done));
                 }
+                DomSourceProgress::Failed(failure) => {
+                    return Ok(DomSourceDriveProgress::Failed(failure));
+                }
                 DomSourceProgress::Request(DomSourceRequest::HostedChild(request)) => {
                     match self
                         .hosted
@@ -1023,15 +1028,19 @@ impl DomSourceRuntime {
         loop {
             match progress {
                 DomSourceDriveProgress::Complete(_)
+                | DomSourceDriveProgress::Failed(_)
                 | DomSourceDriveProgress::InlineSource {
-                    source: DomSourceProgress::Complete(_),
+                    source: DomSourceProgress::Complete(_) | DomSourceProgress::Failed(_),
                     ..
                 } => {
                     drive.guard.finish(&dom.snapshot());
                     return Ok(progress);
                 }
                 DomSourceDriveProgress::MetaSource(ref outcome)
-                    if matches!(outcome.source(), DomSourceProgress::Complete(_)) =>
+                    if matches!(
+                        outcome.source(),
+                        DomSourceProgress::Complete(_) | DomSourceProgress::Failed(_)
+                    ) =>
                 {
                     drive.guard.finish(&dom.snapshot());
                     return Ok(progress);

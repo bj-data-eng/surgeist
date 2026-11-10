@@ -11,6 +11,8 @@ mod focus;
 mod inline;
 pub(crate) mod meta;
 use inline::{AdvanceError, Execution};
+#[cfg(test)]
+mod compound_tests;
 pub(crate) mod fullscreen;
 #[cfg(test)]
 mod fullscreen_tests;
@@ -157,6 +159,7 @@ impl Drop for DomSourceLease<'_> {
             && self.dom.source_operation.as_ref().is_some_and(|o| {
                 !o.published
                     && !o.event_exposed
+                    && o.draft.compound_failure().is_none()
                     && o.observation().is_none()
                     && o.meta_policy.is_none()
             })
@@ -668,7 +671,7 @@ impl Operation {
             work: self.draft.source_work.load(Ordering::Relaxed),
             phases: self.phases,
             parent: None,
-            phase: if self.failure.is_some() {
+            phase: if self.failure.is_some() || self.draft.compound_failure().is_some() {
                 crate::DomSourcePhase::PendingCleanup
             } else if self.draft.fullscreen_exit.is_some() {
                 crate::DomSourcePhase::FullscreenExitHandoff
@@ -860,6 +863,19 @@ impl Operation {
         self.draft.source_step(cancel)?;
         let command = &self.commands[self.index];
         self.draft.apply(command, limits, cancel)
+    }
+    fn settle_completed_receipt(&mut self, execution: &Execution<'_>) {
+        if execution.native.is_some() {
+            self.save_meta_receipt();
+        }
+        if !matches!(
+            self.receipt,
+            Some(Receipt::Watcher { .. } | Receipt::Focus { .. } | Receipt::CloseWatcher { .. })
+        ) {
+            self.receipt = None;
+            self.request = None;
+            self.owner_binding = None;
+        }
     }
     fn frame(&self) -> Result<Frame, DomError> {
         match self.draft.effects.last().map(|f| &f.effect) {
@@ -1866,7 +1882,12 @@ impl DomSourceLease<'_> {
         op.custody_bytes = custody;
         op.custody_units = custody_units;
         let result = self.advance_operation(&mut op, execution, cancel);
-        if self.complete || matches!(&result, Ok(DomSourceProgress::Complete(_))) {
+        if self.complete
+            || matches!(
+                &result,
+                Ok(DomSourceProgress::Complete(_) | DomSourceProgress::Failed(_))
+            )
+        {
             self.complete = true;
             drop(op);
             self.dom.source_operation = self.dom.source_parents.pop();
@@ -1895,7 +1916,11 @@ impl DomSourceLease<'_> {
                 .observe_dialog_task(self.dom, task, cancel)
                 .map_err(Into::into);
         }
-        if op.cancelled && !op.published && !op.event_exposed {
+        if op.cancelled
+            && !op.published
+            && !op.event_exposed
+            && op.draft.compound_failure().is_none()
+        {
             // No canonical phase or external effect occurred. Return the actual
             // current stamp directly; a second Draft/candidate would only copy
             // the unchanged tree while the original admitted operation lives.
@@ -2089,6 +2114,11 @@ impl DomSourceLease<'_> {
                     };
                     op.draft
                         .dialog_method_boundary(subject, input, self.dom.limits, cancel)
+                } else if op.draft.compound_failure().is_some() {
+                    // Final publication can refuse after the compound algorithm
+                    // already selected its first ordinary error. Never reenter
+                    // conversion or replace that outcome with cancellation.
+                    Ok(())
                 } else if op.started {
                     op.draft.run_effects(self.dom.limits, cancel)
                 } else if op.index < op.commands.len() && !op.cancelled {
@@ -2456,6 +2486,18 @@ impl DomSourceLease<'_> {
                     return Err(e.into());
                 }
                 Ok(()) => {
+                    if op.draft.compound_failure().is_some()
+                        && op.draft.effects.len() > op.draft.effect_floor
+                    {
+                        // This algorithm step has selected its first ordinary
+                        // error. Its real cleanup starts from this retained
+                        // cursor, even if work/admission refuses before a phase
+                        // can publish. The original command is never replayed.
+                        op.settle_completed_receipt(execution);
+                        op.started = true;
+                        drop(checkpoint);
+                        continue;
+                    }
                     if op
                         .draft
                         .method
@@ -2485,6 +2527,7 @@ impl DomSourceLease<'_> {
                         Some(
                             crate::store::method::Frame::DesignMode(_)
                                 | crate::store::method::Frame::FullscreenExit(_)
+                                | crate::store::method::Frame::CompoundFailure(_)
                         )
                     );
                     // A local setter has already finished its actual writes.
@@ -2503,21 +2546,7 @@ impl DomSourceLease<'_> {
                         headroom.remaining_phases = headroom::FINAL_PUBLICATION;
                     }
 
-                    if execution.native.is_some() {
-                        op.save_meta_receipt();
-                    }
-                    if !matches!(
-                        op.receipt,
-                        Some(
-                            Receipt::Watcher { .. }
-                                | Receipt::Focus { .. }
-                                | Receipt::CloseWatcher { .. }
-                        )
-                    ) {
-                        op.receipt = None;
-                        op.request = None;
-                        op.owner_binding = None;
-                    }
+                    op.settle_completed_receipt(execution);
                     if op.index < op.commands.len() && (!op.cancelled || op.started) {
                         let next_index = op.index + 1;
                         if next_index < op.commands.len() && completed_method {
@@ -2606,33 +2635,40 @@ impl DomSourceLease<'_> {
                                 .consume();
                             self.dom.active_task = std::sync::Weak::new();
                         }
-                        return Ok(DomSourceProgress::Complete(DomSourceCompletion {
-                            operation: op.id,
-                            cancelled: op.cancelled,
-                            published: std::mem::take(&mut op.historical),
-                            commit,
-                            installation,
-                            fullscreen_exit_return: match op.draft.method.as_ref() {
-                                Some(crate::store::method::Frame::FullscreenExit(result)) => {
-                                    *result
-                                }
-                                _ => None,
+                        return Ok(DomSourceProgress::terminal(
+                            DomSourceCompletion {
+                                operation: op.id,
+                                cancelled: op.cancelled,
+                                published: std::mem::take(&mut op.historical),
+                                commit,
+                                installation,
+                                fullscreen_exit_return: match op.draft.method.as_ref() {
+                                    Some(crate::store::method::Frame::FullscreenExit(result)) => {
+                                        *result
+                                    }
+                                    _ => None,
+                                },
+                                design_mode_range_disposition: match op.draft.method.as_ref() {
+                                    Some(crate::store::method::Frame::DesignMode(frame)) => {
+                                        frame.range
+                                    }
+                                    _ => None,
+                                },
+                                // A task enters this Segment only after its actual
+                                // accepted observation rebases through tracker clear.
+                                // Retired targets and pre-dispatch cancellation finish
+                                // directly from Observed, without reaching this path.
+                                dialog_toggle_disposition: match op.commands {
+                                    OperationRoot::DialogTask(
+                                        crate::DomDialogTaskInfo::Toggle(_),
+                                    ) => {
+                                        Some(crate::DomDialogToggleTaskDisposition::TrackerCleared)
+                                    }
+                                    _ => None,
+                                },
                             },
-                            design_mode_range_disposition: match op.draft.method.as_ref() {
-                                Some(crate::store::method::Frame::DesignMode(frame)) => frame.range,
-                                _ => None,
-                            },
-                            // A task enters this Segment only after its actual
-                            // accepted observation rebases through tracker clear.
-                            // Retired targets and pre-dispatch cancellation finish
-                            // directly from Observed, without reaching this path.
-                            dialog_toggle_disposition: match op.commands {
-                                OperationRoot::DialogTask(crate::DomDialogTaskInfo::Toggle(_)) => {
-                                    Some(crate::DomDialogToggleTaskDisposition::TrackerCleared)
-                                }
-                                _ => None,
-                            },
-                        }));
+                            op.draft.compound_failure().cloned(),
+                        ));
                     }
                 }
             }
@@ -6547,6 +6583,9 @@ pub(in crate::store) mod accounting_tests {
                     }
                 }
                 match lease.advance(&cancel) {
+                    Ok(DomSourceProgress::Failed(failure)) => {
+                        panic!("Slot assignment cannot produce a compound failure: {failure:?}")
+                    }
                     Ok(DomSourceProgress::Complete(done)) => {
                         assert!(!done.cancellation_requested());
                         if matches!(cut, Some(SlotAdmissionCut::UnitsExact)) {

@@ -4024,6 +4024,9 @@ mod tests {
                         panic!("Style fixture cannot request a Dialog service")
                     }
                     DomSourceProgress::Complete(_) => panic!("real pending source was expected"),
+                    DomSourceProgress::Failed(failure) => {
+                        panic!("simple insertion cannot produce a compound failure: {failure:?}")
+                    }
                 }
             }
             drop(lease);

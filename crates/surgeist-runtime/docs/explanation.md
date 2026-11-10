@@ -94,11 +94,18 @@ refusal cannot undo an already published phase. Resuming uses the same operation
 and retained resources. Current CSSOM disabled observations come from the actual
 store and its revision, independently of an older association receipt.
 
+Named DOM compound mutations can return `DomSourceDriveProgress::Failed` after
+their conversion steps already changed the canonical tree. The opaque failure
+retains the original ordinary error, operation and terminal commit. The driver
+finishes its original Style guard once and delivers that failure explicitly;
+existing simple operations retain their error/rollback contract.
+
 For bound inline declarations, `apply_with_inline_styles` takes a
 `DomSourceInlineStyleEdit` and a borrowed admission resolver;
 `resume_with_inline_styles` continues the original operation. Both return each
 actual paired DOM/CSSOM publication before further service. `InlineSource`
-preserves the original request or completion; `InlineFullscreenHandoff` reports
+preserves the original request, completion or failed terminal with its paired
+publication; `InlineFullscreenHandoff` reports
 an already queued fullscreen exit whose Source continuation can resume. The
 fullscreen queue reserves its real slot before publication and releases an
 unissued reservation on refusal or unwind. Context-free entry points retain

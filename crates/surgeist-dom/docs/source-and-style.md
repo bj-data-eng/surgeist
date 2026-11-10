@@ -8,8 +8,9 @@ Native HTML Style retains its creation history and nullable CSSOM association.
 Ordinary atomic edits refuse at an external processing boundary without
 publishing a partial edit. `begin_source_edit` runs one `DomSourceEdit` through
 the same canonical source engine and returns a lease for actual external
-requests. Constructors take existing identities; callers sequence separate
-operations explicitly. Native installation and Select completion retain their
+requests. Constructors take existing identities. Named [compound mutations](compound-mutations.md)
+own their conversion and constituent tree steps within that single invocation;
+there is no arbitrary public command queue. Native installation and Select completion retain their
 own feature roots in that engine. Once a source phase publishes, dropping the
 lease parks its mandatory continuation in the DOM; `resume_source_edit`
 reacquires that exact operation. An acknowledged CSSOM publication survives a
