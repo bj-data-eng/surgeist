@@ -1,37 +1,36 @@
 pub(crate) mod v8;
 
-use crate::{Error, Realm, Root};
+use crate::{Callback, Error, Realm, Root};
 
-/// The intentional engine replacement boundary. Binding algorithms operate on
-/// owned identities and exact UTF-16; concrete handles never cross this module.
-/// Implementations own entry, rooting, exception capture, jobs and teardown.
+/// Heap lifecycle, separate from operations on an already entered realm.
 pub(crate) trait Engine {
     fn create_realm(&mut self) -> Result<Realm, Error>;
-    fn validate_realm(&self, realm: &Realm) -> Result<(), Error>;
-    fn validate_root(&self, root: &Root) -> Result<(), Error>;
-    fn evaluate(&mut self, realm: &Realm, source: &[u16]) -> Result<Root, Error>;
-    fn string(&mut self, realm: &Realm, units: &[u16]) -> Result<Root, Error>;
-    fn global(&mut self, realm: &Realm) -> Result<Root, Error>;
-    fn get(&mut self, realm: &Realm, object: &Root, name: &[u16]) -> Result<Root, Error>;
-    fn set(
+    fn with_realm(
         &mut self,
         realm: &Realm,
-        object: &Root,
-        name: &[u16],
-        value: &Root,
+        action: &mut dyn FnMut(&mut dyn Operations),
     ) -> Result<(), Error>;
-    fn call(
-        &mut self,
-        realm: &Realm,
-        function: &Root,
-        receiver: &Root,
-        arguments: &[Root],
-    ) -> Result<Root, Error>;
-    fn to_utf16(&mut self, realm: &Realm, value: &Root) -> Result<Vec<u16>, Error>;
-    fn to_boolean(&mut self, realm: &Realm, value: &Root) -> Result<bool, Error>;
-    fn to_number(&mut self, realm: &Realm, value: &Root) -> Result<f64, Error>;
-    fn strict_equals(&mut self, left: &Root, right: &Root) -> Result<bool, Error>;
     fn checkpoint(&mut self) -> Result<(), Error>;
     fn memory_pressure(&mut self);
     fn reap(&mut self);
+}
+
+/// Engine-neutral primitives in one selected realm. Both host entries and
+/// native callbacks borrow this same adapter; neither can reenter the owner.
+pub(crate) trait Operations {
+    fn check_active(&self) -> Result<(), Error>;
+    fn validate_root(&self, root: &Root) -> Result<(), Error>;
+    fn evaluate(&mut self, source: &[u16]) -> Result<Root, Error>;
+    fn string(&mut self, units: &[u16]) -> Result<Root, Error>;
+    fn type_error(&mut self, message: &[u16]) -> Result<Root, Error>;
+    fn function(&mut self, callback: &Callback) -> Result<Root, Error>;
+    fn global(&mut self) -> Result<Root, Error>;
+    fn get(&mut self, object: &Root, name: &[u16]) -> Result<Root, Error>;
+    fn set(&mut self, object: &Root, name: &[u16], value: &Root) -> Result<(), Error>;
+    fn call(&mut self, function: &Root, receiver: &Root, arguments: &[Root])
+    -> Result<Root, Error>;
+    fn to_utf16(&mut self, value: &Root) -> Result<Vec<u16>, Error>;
+    fn to_boolean(&mut self, value: &Root) -> Result<bool, Error>;
+    fn to_number(&mut self, value: &Root) -> Result<f64, Error>;
+    fn strict_equals(&mut self, left: &Root, right: &Root) -> Result<bool, Error>;
 }

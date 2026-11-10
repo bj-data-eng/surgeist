@@ -7,8 +7,8 @@ It does not own a JavaScript VM, garbage collector or replacement DOM.
 The current core supplies one thread-affine `Process`, borrowed `Execution`,
 multiple realms, scoped values, explicitly retained roots, exact UTF-16 strings,
 property operations, calls, original exception values, Web IDL primitive
-conversion and explicit shared microtask checkpoints. Installed Web IDL
-interfaces, DOM, CSSOM and Runtime adapters are not
+conversion, scoped Rust callbacks and explicit shared microtask checkpoints.
+Installed Web IDL interfaces, DOM, CSSOM and Runtime adapters are not
 yet implemented. This is not a browser environment or a WPT runner.
 
 ## Ownership
@@ -24,8 +24,11 @@ process. Do not independently initialize or enter the same V8 dependency.
 Scoped values cannot escape an `in_realm` closure. Explicit `Root` tokens contain
 checked owner and allocation identities; the backend keeps the actual handles.
 Foreign tokens fail before SDK conversion. Context and value roots are reaped
-at operation boundaries after their last Rust token is dropped. Guest references
-and pending jobs can retain their objects after Rust roots are released.
+at operation boundaries after their external Rust custody is dropped. Callback
+registrations retain their creation context and pristine intrinsics through
+guest heap edges, allowing unreachable context/function cycles to be collected.
+Guest references and pending jobs can retain their objects after Rust roots
+are released.
 Dropping the process releases its handles and isolate without running jobs.
 
 Callback scopes share the production root registry through short checked
@@ -35,6 +38,14 @@ termination. V8 observes termination at interrupt checks; every native entry
 and continuation after guest coercion must also check the sticky failure before
 accepting native work. Refusal preserves the original host error and still
 permits required resource cleanup.
+
+`Callback` supports recursive Rust callables through `Scope::function`.
+Arguments preserve omission versus explicit undefined; values and completions
+remain confined to their scope unless explicitly retained. A callback returns a value,
+undefined or an exact guest throw. A returned host error permanently refuses
+the owner. The SDK boxes primitive receivers and maps null/undefined to the
+function's creation-realm global; native adapters still validate brands.
+Functions are callable only; interface constructors require their own contract.
 
 Exception capture never invokes a guest `toString` or `stack` getter. Explicit
 `to_utf16` conversion follows JavaScript ToString and can itself throw.

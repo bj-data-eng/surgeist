@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::rc::{Rc, Weak};
 
 use super::Engine;
-use crate::backend::Engine as EngineApi;
+use crate::backend::{Engine as EngineApi, Operations};
 use crate::{Error, ExceptionPhase, Realm};
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -88,24 +88,32 @@ impl Host {
 
     fn install(&mut self, realm: &Realm) -> Result<(), String> {
         self.engine
-            .enter(realm, ExceptionPhase::PropertyWrite, |scope, _roots| {
-                let context = scope.get_current_context();
-                for (name, function) in [
-                    ("getCounter", v8::Function::new(scope, get_counter)),
-                    ("retainCallback", v8::Function::new(scope, retain_callback)),
-                    ("fireCallback", v8::Function::new(scope, fire_callback)),
-                    ("clearCallback", v8::Function::new(scope, clear_callback)),
-                    ("retainRooted", v8::Function::new(scope, retain_rooted)),
-                    ("rootedCall", v8::Function::new(scope, rooted_call)),
-                    ("clearRooted", v8::Function::new(scope, clear_rooted)),
-                ] {
-                    let key = v8::String::new(scope, name).ok_or(Error::BackendUnavailable)?;
-                    let value = function.ok_or(Error::BackendUnavailable)?;
-                    if context.global(scope).set(scope, key.into(), value.into()) != Some(true) {
-                        return Err(Error::PropertyRejected);
-                    }
-                }
-                Ok(())
+            .with_context(realm, |entered| {
+                entered.attempt(
+                    ExceptionPhase::PropertyWrite,
+                    |scope, _roots, _realm, _setter| {
+                        let context = scope.get_current_context();
+                        for (name, function) in [
+                            ("getCounter", v8::Function::new(scope, get_counter)),
+                            ("retainCallback", v8::Function::new(scope, retain_callback)),
+                            ("fireCallback", v8::Function::new(scope, fire_callback)),
+                            ("clearCallback", v8::Function::new(scope, clear_callback)),
+                            ("retainRooted", v8::Function::new(scope, retain_rooted)),
+                            ("rootedCall", v8::Function::new(scope, rooted_call)),
+                            ("clearRooted", v8::Function::new(scope, clear_rooted)),
+                        ] {
+                            let key =
+                                v8::String::new(scope, name).ok_or(Error::BackendUnavailable)?;
+                            let value = function.ok_or(Error::BackendUnavailable)?;
+                            if context.global(scope).set(scope, key.into(), value.into())
+                                != Some(true)
+                            {
+                                return Err(Error::PropertyRejected);
+                            }
+                        }
+                        Ok(())
+                    },
+                )
             })
             .map_err(|error| error.to_string())
     }
@@ -147,10 +155,10 @@ impl Host {
 
     fn eval_in(&mut self, realm: &Realm, source: &str) -> Result<String, String> {
         let source: Vec<_> = source.encode_utf16().collect();
-        let result = self
-            .engine
-            .evaluate(realm, &source)
-            .and_then(|root| self.engine.to_utf16(realm, &root));
+        let result = self.engine.with_context(realm, |entered| {
+            let root = entered.evaluate(&source)?;
+            entered.to_utf16(&root)
+        });
         let result = match result {
             Ok(units) => Ok(String::from_utf16_lossy(&units)),
             Err(Error::Exception(exception)) => {
@@ -158,7 +166,7 @@ impl Host {
                 // exception capture itself never coerces the thrown value.
                 let message = self
                     .engine
-                    .to_utf16(realm, exception.value())
+                    .with_context(realm, |entered| entered.to_utf16(exception.value()))
                     .map_err(|error| error.to_string());
                 Err(message
                     .map(|units| String::from_utf16_lossy(&units))
@@ -459,7 +467,7 @@ fn retain_rooted(
         Ok(value) => value,
         Err(message) => return throw(scope, message),
     };
-    let root = match roots.retain(scope, &state.realm, args.get(0)) {
+    let root = match roots.retain(scope, state.realm.0.key, args.get(0)) {
         Ok(root) => root,
         Err(Error::RegistryConflict) => return,
         Err(_) => return throw(scope, "root retention failed"),
@@ -505,7 +513,7 @@ fn rooted_call(
     };
     // Exercise the SAME production registry for nested read and result rooting.
     // No registry or callback-slot borrow crosses this invocation or collection.
-    let returned = match roots.retain(scope, &root.0.realm, value) {
+    let returned = match roots.retain(scope, root.0.realm, value) {
         Ok(value) => value,
         Err(Error::RegistryConflict) => return,
         Err(_) => return throw(scope, "result root retention failed"),
@@ -604,7 +612,8 @@ fn registry_failure_rejects_native_work(source: &str) -> TestResult {
     let held = roots.entries.try_borrow_mut()?;
     let source: Vec<_> = source.encode_utf16().collect();
     assert!(matches!(
-        host.engine.evaluate(&host.realm, &source),
+        host.engine
+            .with_context(&host.realm, |entered| entered.evaluate(&source)),
         Err(Error::RegistryConflict)
     ));
     assert!(matches!(
@@ -618,8 +627,8 @@ fn registry_failure_rejects_native_work(source: &str) -> TestResult {
     assert_eq!(native.value.get(), 0);
     drop(held);
     assert!(matches!(
-        host.engine
-            .evaluate(&host.realm, &"42".encode_utf16().collect::<Vec<_>>()),
+        host.engine.with_context(&host.realm, |entered| entered
+            .evaluate(&"42".encode_utf16().collect::<Vec<_>>())),
         Err(Error::RegistryConflict)
     ));
     Ok(())
@@ -755,6 +764,7 @@ fn invalid_receivers_and_callback_registration_fail_without_corrupting_state() -
         "true"
     );
     assert_eq!(host.eval("fireCallback(4)")?, "5");
+    assert_eq!(host.eval("[null, undefined, 7, true, 'x'].every(receiver => { try { a.add.call(receiver, 1); return false; } catch (error) { return error instanceof TypeError; } })")?, "true");
     assert_eq!(native.value.get(), 8);
     Ok(())
 }

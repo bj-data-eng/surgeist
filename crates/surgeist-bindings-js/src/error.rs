@@ -74,6 +74,8 @@ pub enum Error {
     /// Internal root-registry access overlapped. The owner fails closed after
     /// this defect rather than entering the SDK with inconsistent storage.
     RegistryConflict,
+    /// A native callback panicked. The owner is terminal and cannot be resumed.
+    CallbackPanicked,
     /// The original guest-thrown value and operation phase.
     Exception(Exception),
 }
@@ -97,6 +99,7 @@ impl fmt::Display for Error {
             Self::PropertyRejected => "the object rejected the property update",
             Self::Terminated => "JavaScript execution was terminated",
             Self::BackendUnavailable => "the JavaScript backend is unavailable",
+            Self::CallbackPanicked => "a native callback panicked",
             Self::RegistryConflict => "binding root-registry access overlapped",
             Self::Exception(_) => "JavaScript threw an exception",
         })
