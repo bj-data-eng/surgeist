@@ -21,6 +21,12 @@ surgeist_ledger::dimensions! {
         Argument,
         /// One dictionary member visited, before reading guest properties.
         DictionaryMember,
+        /// One iterator property read or invocation, before entering guest code.
+        IteratorOperation,
+        /// One yielded sequence item, before reading its value.
+        SequenceItem,
+        /// One previously accepted element moved to a growing Rust buffer.
+        SequenceMove,
     }
 }
 

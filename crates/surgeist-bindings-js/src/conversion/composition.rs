@@ -62,6 +62,11 @@ impl sealed::Convert<crate::IntegerValue> for IntegerType {
 /// let invalid = types::DOM_STRING.nullable().nullable();
 /// ```
 pub struct Nullable<D>(pub(super) D);
+impl<D: Descriptor> Nullable<D> {
+    pub fn sequence(self) -> super::Sequence<Self> {
+        super::Sequence(self)
+    }
+}
 impl<D: Descriptor> Descriptor for Nullable<D> {
     type Output = Option<D::Output>;
 }

@@ -149,7 +149,7 @@ pub fn node_list_item_0_index() -> Argument<IntegerType> {
 }
 
 /// Selected argument `HTMLCollection.item:0/index` (not overload selection).
-pub fn h_t_m_l_collection_item_0_index() -> Argument<IntegerType> {
+pub fn html_collection_item_0_index() -> Argument<IntegerType> {
     Argument::new(
         "HTMLCollection.item:0/index",
         0,
@@ -160,7 +160,7 @@ pub fn h_t_m_l_collection_item_0_index() -> Argument<IntegerType> {
 }
 
 /// Selected argument `HTMLCollection.namedItem:0/name` (not overload selection).
-pub fn h_t_m_l_collection_named_item_0_name() -> Argument<Type<DomString>> {
+pub fn html_collection_named_item_0_name() -> Argument<Type<DomString>> {
     Argument::new(
         "HTMLCollection.namedItem:0/name",
         0,
@@ -216,7 +216,7 @@ pub fn node_lookup_prefix_0_namespace() -> Argument<Nullable<Type<DomString>>> {
 }
 
 /// Selected argument `Node.lookupNamespaceURI:0/prefix` (not overload selection).
-pub fn node_lookup_namespace_u_r_i_0_prefix() -> Argument<Nullable<Type<DomString>>> {
+pub fn node_lookup_namespace_uri_0_prefix() -> Argument<Nullable<Type<DomString>>> {
     Argument::new(
         "Node.lookupNamespaceURI:0/prefix",
         0,
@@ -249,7 +249,7 @@ pub fn document_get_elements_by_tag_name_0_qualified_name() -> Argument<Type<Dom
 }
 
 /// Selected argument `Document.getElementsByTagNameNS:0/namespace` (not overload selection).
-pub fn document_get_elements_by_tag_name_n_s_0_namespace() -> Argument<Nullable<Type<DomString>>> {
+pub fn document_get_elements_by_tag_name_ns_0_namespace() -> Argument<Nullable<Type<DomString>>> {
     Argument::new(
         "Document.getElementsByTagNameNS:0/namespace",
         0,
@@ -260,7 +260,7 @@ pub fn document_get_elements_by_tag_name_n_s_0_namespace() -> Argument<Nullable<
 }
 
 /// Selected argument `Document.getElementsByTagNameNS:0/localName` (not overload selection).
-pub fn document_get_elements_by_tag_name_n_s_0_local_name() -> Argument<Type<DomString>> {
+pub fn document_get_elements_by_tag_name_ns_0_local_name() -> Argument<Type<DomString>> {
     Argument::new(
         "Document.getElementsByTagNameNS:0/localName",
         1,
@@ -293,7 +293,7 @@ pub fn document_create_element_0_local_name() -> Argument<Type<DomString>> {
 }
 
 /// Selected argument `Document.createElementNS:0/namespace` (not overload selection).
-pub fn document_create_element_n_s_0_namespace() -> Argument<Nullable<Type<DomString>>> {
+pub fn document_create_element_ns_0_namespace() -> Argument<Nullable<Type<DomString>>> {
     Argument::new(
         "Document.createElementNS:0/namespace",
         0,
@@ -304,7 +304,7 @@ pub fn document_create_element_n_s_0_namespace() -> Argument<Nullable<Type<DomSt
 }
 
 /// Selected argument `Document.createElementNS:0/qualifiedName` (not overload selection).
-pub fn document_create_element_n_s_0_qualified_name() -> Argument<Type<DomString>> {
+pub fn document_create_element_ns_0_qualified_name() -> Argument<Type<DomString>> {
     Argument::new(
         "Document.createElementNS:0/qualifiedName",
         1,
@@ -326,7 +326,7 @@ pub fn document_create_text_node_0_data() -> Argument<Type<DomString>> {
 }
 
 /// Selected argument `Document.createCDATASection:0/data` (not overload selection).
-pub fn document_create_c_d_a_t_a_section_0_data() -> Argument<Type<DomString>> {
+pub fn document_create_cdata_section_0_data() -> Argument<Type<DomString>> {
     Argument::new(
         "Document.createCDATASection:0/data",
         0,
@@ -381,7 +381,7 @@ pub fn document_create_attribute_0_local_name() -> Argument<Type<DomString>> {
 }
 
 /// Selected argument `Document.createAttributeNS:0/namespace` (not overload selection).
-pub fn document_create_attribute_n_s_0_namespace() -> Argument<Nullable<Type<DomString>>> {
+pub fn document_create_attribute_ns_0_namespace() -> Argument<Nullable<Type<DomString>>> {
     Argument::new(
         "Document.createAttributeNS:0/namespace",
         0,
@@ -392,7 +392,7 @@ pub fn document_create_attribute_n_s_0_namespace() -> Argument<Nullable<Type<Dom
 }
 
 /// Selected argument `Document.createAttributeNS:0/qualifiedName` (not overload selection).
-pub fn document_create_attribute_n_s_0_qualified_name() -> Argument<Type<DomString>> {
+pub fn document_create_attribute_ns_0_qualified_name() -> Argument<Type<DomString>> {
     Argument::new(
         "Document.createAttributeNS:0/qualifiedName",
         1,
@@ -448,7 +448,7 @@ pub fn document_create_tree_walker_0_what_to_show() -> Argument<IntegerType> {
 }
 
 /// Selected argument `DOMImplementation.createDocumentType:0/name` (not overload selection).
-pub fn d_o_m_implementation_create_document_type_0_name() -> Argument<Type<DomString>> {
+pub fn dom_implementation_create_document_type_0_name() -> Argument<Type<DomString>> {
     Argument::new(
         "DOMImplementation.createDocumentType:0/name",
         0,
@@ -459,7 +459,7 @@ pub fn d_o_m_implementation_create_document_type_0_name() -> Argument<Type<DomSt
 }
 
 /// Selected argument `DOMImplementation.createDocumentType:0/publicId` (not overload selection).
-pub fn d_o_m_implementation_create_document_type_0_public_id() -> Argument<Type<DomString>> {
+pub fn dom_implementation_create_document_type_0_public_id() -> Argument<Type<DomString>> {
     Argument::new(
         "DOMImplementation.createDocumentType:0/publicId",
         1,
@@ -470,7 +470,7 @@ pub fn d_o_m_implementation_create_document_type_0_public_id() -> Argument<Type<
 }
 
 /// Selected argument `DOMImplementation.createDocumentType:0/systemId` (not overload selection).
-pub fn d_o_m_implementation_create_document_type_0_system_id() -> Argument<Type<DomString>> {
+pub fn dom_implementation_create_document_type_0_system_id() -> Argument<Type<DomString>> {
     Argument::new(
         "DOMImplementation.createDocumentType:0/systemId",
         2,
@@ -481,7 +481,7 @@ pub fn d_o_m_implementation_create_document_type_0_system_id() -> Argument<Type<
 }
 
 /// Selected argument `DOMImplementation.createDocument:0/namespace` (not overload selection).
-pub fn d_o_m_implementation_create_document_0_namespace() -> Argument<Nullable<Type<DomString>>> {
+pub fn dom_implementation_create_document_0_namespace() -> Argument<Nullable<Type<DomString>>> {
     Argument::new(
         "DOMImplementation.createDocument:0/namespace",
         0,
@@ -492,7 +492,7 @@ pub fn d_o_m_implementation_create_document_0_namespace() -> Argument<Nullable<T
 }
 
 /// Selected argument `DOMImplementation.createHTMLDocument:0/title` (not overload selection).
-pub fn d_o_m_implementation_create_h_t_m_l_document_0_title() -> Argument<Type<DomString>> {
+pub fn dom_implementation_create_html_document_0_title() -> Argument<Type<DomString>> {
     Argument::new(
         "DOMImplementation.createHTMLDocument:0/title",
         0,
@@ -514,7 +514,7 @@ pub fn element_get_attribute_0_qualified_name() -> Argument<Type<DomString>> {
 }
 
 /// Selected argument `Element.getAttributeNS:0/namespace` (not overload selection).
-pub fn element_get_attribute_n_s_0_namespace() -> Argument<Nullable<Type<DomString>>> {
+pub fn element_get_attribute_ns_0_namespace() -> Argument<Nullable<Type<DomString>>> {
     Argument::new(
         "Element.getAttributeNS:0/namespace",
         0,
@@ -525,7 +525,7 @@ pub fn element_get_attribute_n_s_0_namespace() -> Argument<Nullable<Type<DomStri
 }
 
 /// Selected argument `Element.getAttributeNS:0/localName` (not overload selection).
-pub fn element_get_attribute_n_s_0_local_name() -> Argument<Type<DomString>> {
+pub fn element_get_attribute_ns_0_local_name() -> Argument<Type<DomString>> {
     Argument::new(
         "Element.getAttributeNS:0/localName",
         1,
@@ -547,7 +547,7 @@ pub fn element_set_attribute_0_qualified_name() -> Argument<Type<DomString>> {
 }
 
 /// Selected argument `Element.setAttributeNS:0/namespace` (not overload selection).
-pub fn element_set_attribute_n_s_0_namespace() -> Argument<Nullable<Type<DomString>>> {
+pub fn element_set_attribute_ns_0_namespace() -> Argument<Nullable<Type<DomString>>> {
     Argument::new(
         "Element.setAttributeNS:0/namespace",
         0,
@@ -558,7 +558,7 @@ pub fn element_set_attribute_n_s_0_namespace() -> Argument<Nullable<Type<DomStri
 }
 
 /// Selected argument `Element.setAttributeNS:0/qualifiedName` (not overload selection).
-pub fn element_set_attribute_n_s_0_qualified_name() -> Argument<Type<DomString>> {
+pub fn element_set_attribute_ns_0_qualified_name() -> Argument<Type<DomString>> {
     Argument::new(
         "Element.setAttributeNS:0/qualifiedName",
         1,
@@ -580,7 +580,7 @@ pub fn element_remove_attribute_0_qualified_name() -> Argument<Type<DomString>> 
 }
 
 /// Selected argument `Element.removeAttributeNS:0/namespace` (not overload selection).
-pub fn element_remove_attribute_n_s_0_namespace() -> Argument<Nullable<Type<DomString>>> {
+pub fn element_remove_attribute_ns_0_namespace() -> Argument<Nullable<Type<DomString>>> {
     Argument::new(
         "Element.removeAttributeNS:0/namespace",
         0,
@@ -591,7 +591,7 @@ pub fn element_remove_attribute_n_s_0_namespace() -> Argument<Nullable<Type<DomS
 }
 
 /// Selected argument `Element.removeAttributeNS:0/localName` (not overload selection).
-pub fn element_remove_attribute_n_s_0_local_name() -> Argument<Type<DomString>> {
+pub fn element_remove_attribute_ns_0_local_name() -> Argument<Type<DomString>> {
     Argument::new(
         "Element.removeAttributeNS:0/localName",
         1,
@@ -635,7 +635,7 @@ pub fn element_has_attribute_0_qualified_name() -> Argument<Type<DomString>> {
 }
 
 /// Selected argument `Element.hasAttributeNS:0/namespace` (not overload selection).
-pub fn element_has_attribute_n_s_0_namespace() -> Argument<Nullable<Type<DomString>>> {
+pub fn element_has_attribute_ns_0_namespace() -> Argument<Nullable<Type<DomString>>> {
     Argument::new(
         "Element.hasAttributeNS:0/namespace",
         0,
@@ -646,7 +646,7 @@ pub fn element_has_attribute_n_s_0_namespace() -> Argument<Nullable<Type<DomStri
 }
 
 /// Selected argument `Element.hasAttributeNS:0/localName` (not overload selection).
-pub fn element_has_attribute_n_s_0_local_name() -> Argument<Type<DomString>> {
+pub fn element_has_attribute_ns_0_local_name() -> Argument<Type<DomString>> {
     Argument::new(
         "Element.hasAttributeNS:0/localName",
         1,
@@ -668,7 +668,7 @@ pub fn element_get_attribute_node_0_qualified_name() -> Argument<Type<DomString>
 }
 
 /// Selected argument `Element.getAttributeNodeNS:0/namespace` (not overload selection).
-pub fn element_get_attribute_node_n_s_0_namespace() -> Argument<Nullable<Type<DomString>>> {
+pub fn element_get_attribute_node_ns_0_namespace() -> Argument<Nullable<Type<DomString>>> {
     Argument::new(
         "Element.getAttributeNodeNS:0/namespace",
         0,
@@ -679,7 +679,7 @@ pub fn element_get_attribute_node_n_s_0_namespace() -> Argument<Nullable<Type<Do
 }
 
 /// Selected argument `Element.getAttributeNodeNS:0/localName` (not overload selection).
-pub fn element_get_attribute_node_n_s_0_local_name() -> Argument<Type<DomString>> {
+pub fn element_get_attribute_node_ns_0_local_name() -> Argument<Type<DomString>> {
     Argument::new(
         "Element.getAttributeNodeNS:0/localName",
         1,
@@ -734,7 +734,7 @@ pub fn element_get_elements_by_tag_name_0_qualified_name() -> Argument<Type<DomS
 }
 
 /// Selected argument `Element.getElementsByTagNameNS:0/namespace` (not overload selection).
-pub fn element_get_elements_by_tag_name_n_s_0_namespace() -> Argument<Nullable<Type<DomString>>> {
+pub fn element_get_elements_by_tag_name_ns_0_namespace() -> Argument<Nullable<Type<DomString>>> {
     Argument::new(
         "Element.getElementsByTagNameNS:0/namespace",
         0,
@@ -745,7 +745,7 @@ pub fn element_get_elements_by_tag_name_n_s_0_namespace() -> Argument<Nullable<T
 }
 
 /// Selected argument `Element.getElementsByTagNameNS:0/localName` (not overload selection).
-pub fn element_get_elements_by_tag_name_n_s_0_local_name() -> Argument<Type<DomString>> {
+pub fn element_get_elements_by_tag_name_ns_0_local_name() -> Argument<Type<DomString>> {
     Argument::new(
         "Element.getElementsByTagNameNS:0/localName",
         1,
@@ -822,7 +822,7 @@ pub fn named_node_map_get_named_item_0_qualified_name() -> Argument<Type<DomStri
 }
 
 /// Selected argument `NamedNodeMap.getNamedItemNS:0/namespace` (not overload selection).
-pub fn named_node_map_get_named_item_n_s_0_namespace() -> Argument<Nullable<Type<DomString>>> {
+pub fn named_node_map_get_named_item_ns_0_namespace() -> Argument<Nullable<Type<DomString>>> {
     Argument::new(
         "NamedNodeMap.getNamedItemNS:0/namespace",
         0,
@@ -833,7 +833,7 @@ pub fn named_node_map_get_named_item_n_s_0_namespace() -> Argument<Nullable<Type
 }
 
 /// Selected argument `NamedNodeMap.getNamedItemNS:0/localName` (not overload selection).
-pub fn named_node_map_get_named_item_n_s_0_local_name() -> Argument<Type<DomString>> {
+pub fn named_node_map_get_named_item_ns_0_local_name() -> Argument<Type<DomString>> {
     Argument::new(
         "NamedNodeMap.getNamedItemNS:0/localName",
         1,
@@ -855,7 +855,7 @@ pub fn named_node_map_remove_named_item_0_qualified_name() -> Argument<Type<DomS
 }
 
 /// Selected argument `NamedNodeMap.removeNamedItemNS:0/namespace` (not overload selection).
-pub fn named_node_map_remove_named_item_n_s_0_namespace() -> Argument<Nullable<Type<DomString>>> {
+pub fn named_node_map_remove_named_item_ns_0_namespace() -> Argument<Nullable<Type<DomString>>> {
     Argument::new(
         "NamedNodeMap.removeNamedItemNS:0/namespace",
         0,
@@ -866,7 +866,7 @@ pub fn named_node_map_remove_named_item_n_s_0_namespace() -> Argument<Nullable<T
 }
 
 /// Selected argument `NamedNodeMap.removeNamedItemNS:0/localName` (not overload selection).
-pub fn named_node_map_remove_named_item_n_s_0_local_name() -> Argument<Type<DomString>> {
+pub fn named_node_map_remove_named_item_ns_0_local_name() -> Argument<Type<DomString>> {
     Argument::new(
         "NamedNodeMap.removeNamedItemNS:0/localName",
         1,
@@ -1226,7 +1226,7 @@ pub fn event_target_remove_event_listener_0_type() -> Argument<Type<DomString>> 
 }
 
 /// Selected argument `Document.html.parseHTML:0/html` (not overload selection).
-pub fn document_html_parse_h_t_m_l_0_html() -> Argument<Type<DomString>> {
+pub fn document_html_parse_html_0_html() -> Argument<Type<DomString>> {
     Argument::new(
         "Document.html.parseHTML:0/html",
         0,
@@ -1324,20 +1324,20 @@ pub fn document_html_exec_command_0_command_id() -> Argument<Type<DomString>> {
     )
 }
 
-fn default_document_html_exec_command_0_show_u_i(
+fn default_document_html_exec_command_0_show_ui(
     cx: &mut Conversion<'_, '_>,
 ) -> Result<Converted<bool>, Failure> {
     Ok(cx.plain(false))
 }
 
 /// Selected argument `Document.html.execCommand:0/showUI` (not overload selection).
-pub fn document_html_exec_command_0_show_u_i() -> Argument<Type<bool>> {
+pub fn document_html_exec_command_0_show_ui() -> Argument<Type<bool>> {
     Argument::new(
         "Document.html.execCommand:0/showUI",
         1,
         true,
         types::BOOLEAN,
-        Some(default_document_html_exec_command_0_show_u_i),
+        Some(default_document_html_exec_command_0_show_ui),
     )
 }
 

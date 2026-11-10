@@ -136,7 +136,7 @@ fn nullable_and_declared_arguments(process: &mut Process) -> TestResult {
     });
     let converter = account.clone();
     let title_callback = Callback::new(move |scope, arguments| {
-        let ty = declarations::d_o_m_implementation_create_h_t_m_l_document_0_title();
+        let ty = declarations::dom_implementation_create_html_document_0_title();
         let title = converter.run(scope, |cx| cx.argument(&ty, arguments.get(ty.index())))?;
         let result = match title.get() {
             ArgumentValue::Missing => scope.string(&[109, 105, 115, 115, 105, 110, 103])?,
@@ -180,7 +180,7 @@ fn nullable_and_declared_arguments(process: &mut Process) -> TestResult {
         let value = account.run(scope, |cx| cx.value(&IntegerType::new(IntegerKind::Long, IntegerMode::Wrap).nullable(), &null))?;
         assert_eq!(*value.get(), None);
 
-        let title = declarations::d_o_m_implementation_create_h_t_m_l_document_0_title();
+        let title = declarations::dom_implementation_create_html_document_0_title();
         assert_eq!(title.index(), 0);
         assert_eq!(title.declaration(), "DOMImplementation.createHTMLDocument:0/title");
         for input in [None, Some(&undefined)] {
@@ -220,17 +220,20 @@ fn nullable_and_declared_arguments(process: &mut Process) -> TestResult {
     Ok(())
 }
 
-fn dictionary_admission(short: bool) -> TestResult {
+fn dictionary_admission(short: bool, value_cut: bool) -> TestResult {
     let mut process = Process::bootstrap(surgeist_bindings_js::EngineKind::V8)?;
     let realm = process.execution().create_realm()?;
     let ledger = new_ledger(ProfileMode::Off)?;
     let limits = Limits::new(
         WorkTable {
-            Value: 4,
+            Value: if value_cut { 1 } else { 4 },
             CodeUnit: 0,
             EnumerationLookup: 0,
             Argument: 0,
             DictionaryMember: if short { 2 } else { 3 },
+            IteratorOperation: 0,
+            SequenceItem: 0,
+            SequenceMove: 0,
         },
         ResourceTable { BufferBytes: 0 },
     );
@@ -268,14 +271,20 @@ fn dictionary_admission(short: bool) -> TestResult {
         scope.evaluate(&units("try { read({get bubbles() {mark(1);return false}, get cancelable() {mark(2);return false}, get composed() {mark(3);return false}}) } catch (_) {};"))?;
         Ok(())
     });
-    if short {
+    if short || value_cut {
         assert!(matches!(result, Err(Error::ConversionLedger(_))));
         assert_eq!(effects.get(), 0);
-        assert_eq!(
-            *getters.borrow(),
-            [IntegerValue::Long(1), IntegerValue::Long(2)]
-        );
-        assert_eq!(ledger.usage(ledger.root())?.work(Work::DictionaryMember), 2);
+        if value_cut {
+            assert_eq!(*getters.borrow(), [IntegerValue::Long(1)]);
+            assert_eq!(ledger.usage(ledger.root())?.work(Work::Value), 1);
+            assert_eq!(ledger.usage(ledger.root())?.work(Work::DictionaryMember), 1);
+        } else {
+            assert_eq!(
+                *getters.borrow(),
+                [IntegerValue::Long(1), IntegerValue::Long(2)]
+            );
+            assert_eq!(ledger.usage(ledger.root())?.work(Work::DictionaryMember), 2);
+        }
     } else {
         result?;
         assert_eq!(effects.get(), 1);
@@ -317,7 +326,7 @@ fn profiling_preserves_composed_values(process: &mut Process) -> TestResult {
                 let dictionary = cx.value(&declarations::event_init(), &input)?;
                 let nullable = cx.value(&types::DOM_STRING.nullable(), &text)?;
                 let missing = cx.argument(
-                    &declarations::d_o_m_implementation_create_h_t_m_l_document_0_title(),
+                    &declarations::dom_implementation_create_html_document_0_title(),
                     None,
                 )?;
                 Ok((dictionary, nullable, missing))
@@ -360,6 +369,9 @@ fn nullable_admission(short_storage: bool) -> TestResult {
             EnumerationLookup: 0,
             Argument: 0,
             DictionaryMember: 0,
+            IteratorOperation: 0,
+            SequenceItem: 0,
+            SequenceMove: 0,
         },
         ResourceTable {
             BufferBytes: if short_storage { 5 } else { 6 },
@@ -396,8 +408,9 @@ pub(super) fn run(process: &mut Process) -> TestResult {
 }
 
 pub(super) fn independent_owners() -> TestResult {
-    dictionary_admission(false)?;
-    dictionary_admission(true)?;
+    dictionary_admission(false, false)?;
+    dictionary_admission(true, false)?;
+    dictionary_admission(false, true)?;
     nullable_admission(false)?;
     nullable_admission(true)
 }

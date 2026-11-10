@@ -5,6 +5,7 @@ mod account;
 mod composition;
 pub mod declarations;
 mod failure;
+mod sequence;
 #[cfg(test)]
 pub(crate) mod tests;
 
@@ -26,6 +27,7 @@ pub use composition::{Argument, ArgumentValue, Descriptor, Nullable};
 pub use failure::{
     CleanupFailure, CleanupFault, CleanupPrimary, CleanupStage, Failure, FailureKind, Rule,
 };
+pub use sequence::Sequence;
 
 use account::{Account, Storage};
 
@@ -61,6 +63,9 @@ impl<T> Type<T> {
     pub fn nullable(self) -> Nullable<Self> {
         Nullable(self)
     }
+    pub fn sequence(self) -> Sequence<Self> {
+        Sequence(self)
+    }
 }
 
 /// Declared enumeration descriptor, also usable as an ordinary typed value.
@@ -80,6 +85,9 @@ impl<E> Enumeration<E> {
     /// policy remains a separate operation.
     pub fn nullable(self) -> Nullable<Type<E>> {
         self.0.nullable()
+    }
+    pub fn sequence(self) -> Sequence<Type<E>> {
+        self.0.sequence()
     }
 }
 
@@ -103,6 +111,9 @@ impl IntegerType {
     }
     pub fn nullable(self) -> Nullable<Self> {
         Nullable(self)
+    }
+    pub fn sequence(self) -> Sequence<Self> {
+        Sequence(self)
     }
 }
 

@@ -7,7 +7,8 @@ It does not own a JavaScript VM, garbage collector or replacement DOM.
 The current core supplies one thread-affine `Process`, borrowed `Execution`,
 multiple realms, scoped values, explicitly retained roots, exact UTF-16 strings,
 property operations, calls, original exception values, Web IDL primitive
-conversion, metered scalar, enumeration, nullable and dictionary conversion,
+conversion, metered scalar, enumeration, nullable, dictionary and synchronous
+sequence conversion,
 declared argument defaults, scoped Rust callbacks,
 declared constructors and explicit shared microtask checkpoints.
 Installed Web IDL interfaces, DOM, CSSOM and Runtime adapters are not
@@ -100,7 +101,8 @@ Value-kind and callability checks invoke no guest properties or coercion hooks;
 classes and revoked callable proxies remain callable even though calls throw.
 
 [`conversion`](src/conversion/mod.rs) provides closed typed descriptors for
-scalars, enumerations, nullable values and complete brand-free dictionaries.
+scalars, enumerations, nullable values, synchronous sequences and complete
+brand-free dictionaries.
 `Conversion::value` accepts the sealed descriptor family, including
 `IntegerType`; nullable descriptors preserve an inner type that includes
 undefined and cannot be wrapped in a second nullable descriptor. A `ConversionAccount` attaches an authenticated child to a caller-owned
@@ -125,13 +127,25 @@ selected type's ordinary conversion. These descriptors do not perform overload
 selection, authenticate a native receiver or install an interface. Returned
 nullable and argument values retain the original output's storage custody.
 
+`descriptor.sequence()` composes through the same `Conversion::value` front.
+It caches the original iterator method and next function, reads done before
+value, and converts each yielded item before advancing. The pinned algorithm
+performs no IteratorClose on conversion failure. Iterator operations and items
+are admitted before their guest effects. Empty sequences allocate no element
+buffer; requested capacity starts at four slots and doubles with checked bounds.
+Growth charges the complete old and new backing at once, counts every moved
+accepted element, and frees old backing before releasing its charge. The result
+owns a vector of `Converted` children, each retaining its original payload
+custody in addition to the outer buffer. Nested sequences and nullable values
+can outlive their realm or process without retaining engine handles.
+
 Metered validation throws an intrinsic TypeError; guest coercion preserves the
 original exception. Host refusal is terminal. If cleanup also fails at an actual
 host or callback exit, its terminal report preserves the selected primary
 exception and exposes the cleanup fault separately. A prior host refusal remains
 first. Cleanup guards enter no SDK code, and cleanup diagnostics remain readable
 after an account drops. Enumeration attribute assignment ignores a nonmember
-after one coercion. Synchronous sequence conversion remains pending. Generated
+after one coercion. Generated
 values and conversion descriptors derive from the single
 [authored description](bindings/dom-core.json); dictionaries requiring native
 brands, union/overload selection and installed interfaces remain separate work.

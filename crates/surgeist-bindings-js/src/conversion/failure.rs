@@ -10,6 +10,7 @@ pub enum Rule {
     ByteString,
     IntegerRange,
     FloatingRange,
+    Sequence,
     Dictionary(&'static str),
     RequiredMember(&'static str),
     RequiredArgument(&'static str),

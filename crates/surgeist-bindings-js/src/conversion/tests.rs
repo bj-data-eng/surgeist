@@ -211,6 +211,9 @@ fn earlier_host_stays_first() -> TestResult {
                         EnumerationLookup: u64::MAX,
                         Argument: u64::MAX,
                         DictionaryMember: u64::MAX,
+                        IteratorOperation: 0,
+                        SequenceItem: 0,
+                        SequenceMove: 0,
                     },
                     ResourceTable {
                         BufferBytes: u64::MAX,
@@ -570,6 +573,36 @@ fn value_drops_before_its_charge() -> TestResult {
     Ok(())
 }
 
+fn nested_custody_preserves_selected_exception() -> TestResult {
+    let (mut process, realm, ledger, account) = setup()?;
+    let saved = RefCell::new(None);
+    let result = process.execution().in_realm(&realm, |scope| {
+        let good = scope.evaluate(&units("[['prefix']]"))?;
+        let retained = account.run(scope, |cx| {
+            cx.value(&types::DOM_STRING.sequence().sequence(), &good)
+        })?;
+        let bad = scope.evaluate(&units(
+            "globalThis.primary = {}; ({toString(){throw primary}})",
+        ))?;
+        let failure = account
+            .run(scope, |cx| cx.value(&types::DOM_STRING, &bad))
+            .err()
+            .expect("guest throw");
+        save_original(scope, &failure, &saved)?;
+        sabotage_release(&account);
+        drop(retained);
+        Err::<(), _>(Error::from(failure))
+    });
+    assert_original(result.expect_err("selected failure plus cleanup"), &saved);
+    assert_eq!(account.cleanup_status().failures(), Some(3));
+    assert_eq!(ledger.usage(ledger.root())?.live(Resource::BufferBytes), 0);
+    assert!(matches!(
+        process.execution().in_realm(&realm, |_| Ok(())),
+        Err(Error::ConversionCleanup(_))
+    ));
+    Ok(())
+}
+
 pub(crate) fn run() -> TestResult {
     for callback in [false, true] {
         for inside_run in [false, true] {
@@ -580,6 +613,7 @@ pub(crate) fn run() -> TestResult {
         }
         cleanup_never_returns_success(callback)?;
     }
+    nested_custody_preserves_selected_exception()?;
     earlier_host_stays_first()?;
     selected_guest_survives_post_sdk_reaping()?;
     selected_validation_survives_cleanup()?;

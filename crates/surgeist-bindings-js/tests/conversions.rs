@@ -1,5 +1,7 @@
 #[path = "conversions/composition.rs"]
 mod composition;
+#[path = "conversions/sequence.rs"]
+mod sequence;
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -262,6 +264,9 @@ fn admission_is_exact_and_terminal(storage_short: bool) -> TestResult {
             EnumerationLookup: 0,
             Argument: 0,
             DictionaryMember: 0,
+            IteratorOperation: 0,
+            SequenceItem: 0,
+            SequenceMove: 0,
         },
         ResourceTable {
             BufferBytes: if storage_short { 5 } else { 6 },
@@ -310,6 +315,9 @@ fn exact_admission_and_cross_realm_account(process: &mut Process) -> TestResult 
             EnumerationLookup: 0,
             Argument: 0,
             DictionaryMember: 0,
+            IteratorOperation: 0,
+            SequenceItem: 0,
+            SequenceMove: 0,
         },
         ResourceTable { BufferBytes: 6 },
     );
@@ -464,10 +472,12 @@ fn main() -> TestResult {
         timing_is_ledger_owned(&mut process)?;
         exact_admission_and_cross_realm_account(&mut process)?;
         composition::run(&mut process)?;
+        sequence::run(&mut process)?;
     }
     admission_is_exact_and_terminal(false)?;
     admission_is_exact_and_terminal(true)?;
     retained_output_does_not_own_the_heap()?;
     composition::independent_owners()?;
+    sequence::independent_owners()?;
     Ok(())
 }

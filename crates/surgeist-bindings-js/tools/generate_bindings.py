@@ -654,7 +654,10 @@ def variant(name):
 
 
 def field_name(name):
-    result = re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
+    # Keep acronym runs together, splitting before the following word and
+    # between a lowercase/digit and a capital (DOMImplementation -> dom_implementation).
+    result = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
+    result = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", result).lower()
     require(IDENTIFIER.fullmatch(result), "invalid Rust field name")
     if result in {"self", "super", "crate"}:
         return result + "_value"

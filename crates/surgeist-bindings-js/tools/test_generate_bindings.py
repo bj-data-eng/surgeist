@@ -296,6 +296,17 @@ class ValueLoweringTests(unittest.TestCase):
         self.assertEqual(re.findall(r"Some\(value\) => (.*)", derived),
                          ["Some(*cx.value(&types::BOOLEAN, &value)?.get()),"] * 4)
 
+    def test_rust_names_keep_acronyms_as_words(self):
+        expected = {"DOMImplementation": "dom_implementation", "createHTMLDocument": "create_html_document",
+                    "lookupNamespaceURI": "lookup_namespace_uri", "XMLDocument": "xml_document",
+                    "Document_html_open_1_url": "document_html_open_1_url", "type": "r#type"}
+        for source, rust in expected.items():
+            self.assertEqual(g.field_name(source), rust)
+        data = g.load()
+        arguments = g.lower_arguments(data, g.lower_values(data))
+        title = next(a for a in arguments if a["id"] == "DOMImplementation.createHTMLDocument:0/title")
+        self.assertEqual(title["function"], "dom_implementation_create_html_document_0_title")
+
     def test_argument_facts_and_context_restrictions_come_from_declarations(self):
         data = g.load()
         model = g.lower_values(data)
