@@ -405,10 +405,7 @@ fn append_kernel_sample(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::accounting::{
-        FrameAttempt, FrameReportSlot, RenderAccountingOptions, RenderAttemptStatus, RenderLimits,
-        RendererCpu,
-    };
+    use crate::accounting::{FrameFixture, RenderAccountingOptions, RenderLimits, RendererCpu};
 
     // Independent 70-digit decimal exp(-x²/2), normalized by
     // 1 + 2Σ exp(-x²/2), rounded to serialized f32 values.
@@ -472,58 +469,65 @@ mod tests {
                     for limit in [exact - 1, exact] {
                         let options = RenderAccountingOptions::new()
                             .with_limits(RenderLimits::new().with_work_limit(work, limit).unwrap());
-                        let attempt =
-                            FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-                        let result = GaussianKernelPlan::try_new(
-                            sigma,
-                            1.0,
-                            support,
-                            form,
-                            attempt.account(),
-                        );
-                        let (status, diagnostic) = match result {
-                            Ok(plan) => {
-                                assert_eq!(limit, exact);
-                                assert_eq!(plan.upload_bytes(), expected_bytes);
-                                assert_eq!(plan.byte_len(), serialized);
-                                assert_eq!(
-                                    plan.key(),
-                                    GaussianKernelKey::from_exact_plan(
-                                        sigma.to_bits(),
-                                        1.0_f64.to_bits(),
-                                        support.to_bits(),
-                                        radius,
-                                        form
-                                    )
+                        let (_, _, report, fault) = FrameFixture::new(&cpu, options)
+                            .run_sync(|attempt| {
+                                let result = GaussianKernelPlan::try_new(
+                                    sigma,
+                                    1.0,
+                                    support,
+                                    form,
+                                    attempt.account(),
                                 );
-                                let clone = plan.clone();
-                                assert!(plan.upload_bytes.same_allocation(&clone.upload_bytes));
-                                drop(clone);
-                                drop(plan);
-                                (RenderAttemptStatus::Succeeded, None)
-                            }
-                            Err(error) => {
-                                assert_eq!(limit, exact - 1);
-                                let diagnostic = error.accounting_diagnostic();
-                                let Some(crate::RenderAccountingError::Refused(refusal)) =
-                                    diagnostic
-                                else {
-                                    panic!("last sample must refuse");
-                                };
-                                assert_eq!(refusal.quantity(), crate::RenderQuantity::Work(work));
-                                let amount = if work == RenderWork::SerializedBytes {
-                                    8
-                                } else {
-                                    1
-                                };
-                                assert_eq!(
-                                    (refusal.current(), refusal.amount()),
-                                    (exact - amount, amount)
-                                );
-                                (attempt.status_for(&error), diagnostic)
-                            }
-                        };
-                        let (report, fault) = attempt.finish(status, diagnostic);
+                                match result {
+                                    Ok(plan) => {
+                                        assert_eq!(limit, exact);
+                                        assert_eq!(plan.upload_bytes(), expected_bytes);
+                                        assert_eq!(plan.byte_len(), serialized);
+                                        assert_eq!(
+                                            plan.key(),
+                                            GaussianKernelKey::from_exact_plan(
+                                                sigma.to_bits(),
+                                                1.0_f64.to_bits(),
+                                                support.to_bits(),
+                                                radius,
+                                                form
+                                            )
+                                        );
+                                        let clone = plan.clone();
+                                        assert!(
+                                            plan.upload_bytes.same_allocation(&clone.upload_bytes)
+                                        );
+                                        drop(clone);
+                                        drop(plan);
+                                        Ok(())
+                                    }
+                                    Err(error) => {
+                                        assert_eq!(limit, exact - 1);
+                                        let diagnostic = error.accounting_diagnostic();
+                                        let Some(crate::RenderAccountingError::Refused(refusal)) =
+                                            diagnostic
+                                        else {
+                                            panic!("last sample must refuse");
+                                        };
+                                        assert_eq!(
+                                            refusal.quantity(),
+                                            crate::RenderQuantity::Work(work)
+                                        );
+                                        let amount = if work == RenderWork::SerializedBytes {
+                                            8
+                                        } else {
+                                            1
+                                        };
+                                        assert_eq!(
+                                            (refusal.current(), refusal.amount()),
+                                            (exact - amount, amount)
+                                        );
+                                        Err(error)
+                                    }
+                                }
+                            })
+                            .unwrap()
+                            .into_parts();
                         assert_eq!(fault, None);
                         let usage = report.attempt().unwrap().usage();
                         assert_eq!(
@@ -560,20 +564,24 @@ mod tests {
     fn underflowed_pair_refuses_after_normalization_and_center_serialization() {
         let options = RenderAccountingOptions::new();
         let cpu = RendererCpu::new(options).unwrap();
-        let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-        // ceil(0.01 * 300) = 3; exp(-5000) and later weights underflow.
-        let error = GaussianKernelPlan::try_new(
-            0.01,
-            1.0,
-            300.0,
-            GaussianKernelSamplingForm::PairedLinear,
-            attempt.account(),
-        )
-        .unwrap_err();
-        assert_eq!(error.code(), crate::ErrorCode::InvalidInput);
-        assert!(error.to_string().contains("Gaussian paired sample weight"));
-        let status = attempt.status_for(&error);
-        let (report, fault) = attempt.finish(status, error.accounting_diagnostic());
+        let (_, _, report, fault) = FrameFixture::new(&cpu, options)
+            .run_sync(|attempt| {
+                // ceil(0.01 * 300) = 3; exp(-5000) and later weights underflow.
+                let error = GaussianKernelPlan::try_new(
+                    0.01,
+                    1.0,
+                    300.0,
+                    GaussianKernelSamplingForm::PairedLinear,
+                    attempt.account(),
+                )
+                .unwrap_err();
+                assert_eq!(error.code(), crate::ErrorCode::InvalidInput);
+                assert!(error.to_string().contains("Gaussian paired sample weight"));
+
+                Err::<(), _>(error)
+            })
+            .unwrap()
+            .into_parts();
         assert_eq!(fault, None);
         let usage = report.attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::KernelSampleVisits), 12);
@@ -665,35 +673,40 @@ mod tests {
     fn nearest_kernel_serializes_three_literal_samples_and_counts_actual_loops() {
         let options = RenderAccountingOptions::new();
         let cpu = RendererCpu::new(options).unwrap();
-        let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-        let plan = GaussianKernelPlan::try_new(
-            1.0,
-            1.0,
-            1.0,
-            GaussianKernelSamplingForm::FullNearest,
-            attempt.account(),
-        )
-        .unwrap();
-        assert_eq!(plan.byte_len(), 24);
-        let samples = plan.upload_bytes().as_chunks::<8>().0;
-        let expected = [
-            (0.0_f32, 0.45186275_f32),
-            (1.0, 0.27406862),
-            (-1.0, 0.27406862),
-        ];
-        assert_eq!(samples.len(), expected.len());
-        for (sample, (offset, weight)) in samples.iter().zip(expected) {
-            assert_eq!(&sample[..4], &offset.to_le_bytes());
-            assert_eq!(&sample[4..], &weight.to_le_bytes());
-        }
-        let clone = plan.clone();
-        assert!(std::ptr::eq(
-            plan.upload_bytes().as_ptr(),
-            clone.upload_bytes().as_ptr()
-        ));
-        drop(clone);
-        drop(plan);
-        let (report, fault) = attempt.finish(RenderAttemptStatus::Succeeded, None);
+        let (_, _, report, fault) = FrameFixture::new(&cpu, options)
+            .run_sync(|attempt| {
+                let plan = GaussianKernelPlan::try_new(
+                    1.0,
+                    1.0,
+                    1.0,
+                    GaussianKernelSamplingForm::FullNearest,
+                    attempt.account(),
+                )
+                .unwrap();
+                assert_eq!(plan.byte_len(), 24);
+                let samples = plan.upload_bytes().as_chunks::<8>().0;
+                let expected = [
+                    (0.0_f32, 0.45186275_f32),
+                    (1.0, 0.27406862),
+                    (-1.0, 0.27406862),
+                ];
+                assert_eq!(samples.len(), expected.len());
+                for (sample, (offset, weight)) in samples.iter().zip(expected) {
+                    assert_eq!(&sample[..4], &offset.to_le_bytes());
+                    assert_eq!(&sample[4..], &weight.to_le_bytes());
+                }
+                let clone = plan.clone();
+                assert!(std::ptr::eq(
+                    plan.upload_bytes().as_ptr(),
+                    clone.upload_bytes().as_ptr()
+                ));
+                drop(clone);
+                drop(plan);
+
+                Ok(())
+            })
+            .unwrap()
+            .into_parts();
         assert_eq!(fault, None);
         let usage = report.attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::KernelSampleVisits), 8);
@@ -709,18 +722,21 @@ mod tests {
                 .unwrap(),
         );
         let cpu = RendererCpu::new(options).unwrap();
-        let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-        let error = GaussianKernelPlan::try_new(
-            1.0,
-            1.0,
-            3.0,
-            GaussianKernelSamplingForm::PairedLinear,
-            attempt.account(),
-        )
-        .unwrap_err();
-        let status = attempt.status_for(&error);
-        assert_eq!(status, RenderAttemptStatus::Refused);
-        let (report, fault) = attempt.finish(status, error.accounting_diagnostic());
+        let (_, _, report, fault) = FrameFixture::new(&cpu, options)
+            .run_sync(|attempt| {
+                let error = GaussianKernelPlan::try_new(
+                    1.0,
+                    1.0,
+                    3.0,
+                    GaussianKernelSamplingForm::PairedLinear,
+                    attempt.account(),
+                )
+                .unwrap_err();
+
+                Err::<(), _>(error)
+            })
+            .unwrap()
+            .into_parts();
         assert_eq!(fault, None);
         assert_eq!(
             report
@@ -734,18 +750,23 @@ mod tests {
         assert_eq!(refusal.current, 24);
         assert_eq!(refusal.amount, 8);
 
-        let retry = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-        let plan = GaussianKernelPlan::try_new(
-            1.0,
-            1.0,
-            1.0,
-            GaussianKernelSamplingForm::PairedLinear,
-            retry.account(),
-        )
-        .unwrap();
-        assert_eq!(plan.byte_len(), 24);
-        drop(plan);
-        let (report, fault) = retry.finish(RenderAttemptStatus::Succeeded, None);
+        let (_, _, report, fault) = FrameFixture::new(&cpu, options)
+            .run_sync(|retry| {
+                let plan = GaussianKernelPlan::try_new(
+                    1.0,
+                    1.0,
+                    1.0,
+                    GaussianKernelSamplingForm::PairedLinear,
+                    retry.account(),
+                )
+                .unwrap();
+                assert_eq!(plan.byte_len(), 24);
+                drop(plan);
+
+                Ok(())
+            })
+            .unwrap()
+            .into_parts();
         assert_eq!(fault, None);
         assert_eq!(
             report
@@ -786,18 +807,23 @@ mod tests {
                 .with_profile(profile)
                 .with_clock(RenderClock::Host(clock));
             let cpu = RendererCpu::new(options).unwrap();
-            let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-            let plan = GaussianKernelPlan::try_new(
-                1.0,
-                1.0,
-                1.0,
-                GaussianKernelSamplingForm::FullNearest,
-                attempt.account(),
-            )
-            .unwrap();
-            assert_eq!(plan.byte_len(), 24);
-            drop(plan);
-            let (report, fault) = attempt.finish(RenderAttemptStatus::Succeeded, None);
+            let (_, _, report, fault) = FrameFixture::new(&cpu, options)
+                .run_sync(|attempt| {
+                    let plan = GaussianKernelPlan::try_new(
+                        1.0,
+                        1.0,
+                        1.0,
+                        GaussianKernelSamplingForm::FullNearest,
+                        attempt.account(),
+                    )
+                    .unwrap();
+                    assert_eq!(plan.byte_len(), 24);
+                    drop(plan);
+
+                    Ok(())
+                })
+                .unwrap()
+                .into_parts();
             assert_eq!(fault, None);
             let attempt = report.attempt().unwrap();
             let cpu = report.renderer_cpu().unwrap();

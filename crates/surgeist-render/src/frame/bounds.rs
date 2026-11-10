@@ -1626,9 +1626,8 @@ mod command_contribution_tests {
     #[test]
     fn nested_contributions_keep_exact_visit_prefix_order_and_fresh_retry_across_profiles() {
         use crate::accounting::{
-            FrameAttempt, FrameReportSlot, RenderAccountingError, RenderAccountingOptions,
-            RenderAttemptStatus, RenderLimits, RenderPhase, RenderProfile, RenderQuantity,
-            RenderRefusalReason, RendererCpu,
+            FrameFixture, RenderAccountingError, RenderAccountingOptions, RenderLimits,
+            RenderPhase, RenderProfile, RenderQuantity, RenderRefusalReason, RendererCpu,
         };
         let mut scene = Scene::new();
         scene.fill(Rect::new(1.0, 1.0, 2.0, 2.0), Color::BLACK);
@@ -1654,49 +1653,54 @@ mod command_contribution_tests {
                         .with_work_limit(RenderWork::CommandVisits, limit)
                         .unwrap(),
                 );
-                let attempt =
-                    FrameAttempt::begin(FrameReportSlot::default(), &cpu, bounded).unwrap();
-                let result =
-                    contribute(normalized.clone(), &attempt.account().at(RenderPhase::Plan));
-                assert_eq!(
-                    attempt
-                        .account()
-                        .work_count(RenderWork::CommandVisits)
-                        .unwrap(),
-                    limit
-                );
-                let (report, fault) = if limit == 7 {
-                    let error = result.unwrap_err();
-                    let Some(RenderAccountingError::Refused(refusal)) =
-                        error.accounting_diagnostic()
-                    else {
-                        panic!("the last fill bounds visit must refuse");
-                    };
-                    // The configured work limit belongs to the root attempt;
-                    // work is still submitted from the Plan account.
-                    assert_eq!(refusal.phase(), RenderPhase::Attempt);
-                    assert_eq!(
-                        refusal.quantity(),
-                        RenderQuantity::Work(RenderWork::CommandVisits)
-                    );
-                    assert_eq!(refusal.current(), 7);
-                    assert_eq!(refusal.amount(), 1);
-                    assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 7 });
-                    attempt.finish(RenderAttemptStatus::Refused, error.accounting_diagnostic())
-                } else {
-                    let actual = result.unwrap();
-                    assert_eq!(actual.commands, normalized);
-                    assert_eq!(
-                        actual
-                            .source_bounds
-                            .known_non_empty_extent()
-                            .unwrap()
-                            .rect(),
-                        Rect::new(1.0, 1.0, 11.0, 5.0)
-                    );
-                    drop(actual);
-                    attempt.finish(RenderAttemptStatus::Succeeded, None)
-                };
+                let (_, _, report, fault) = FrameFixture::new(&cpu, bounded)
+                    .run_sync(|attempt| {
+                        let result = contribute(
+                            normalized.clone(),
+                            &attempt.account().at(RenderPhase::Plan),
+                        );
+                        assert_eq!(
+                            attempt
+                                .account()
+                                .work_count(RenderWork::CommandVisits)
+                                .unwrap(),
+                            limit
+                        );
+                        if limit == 7 {
+                            let error = result.unwrap_err();
+                            let Some(RenderAccountingError::Refused(refusal)) =
+                                error.accounting_diagnostic()
+                            else {
+                                panic!("the last fill bounds visit must refuse");
+                            };
+                            // The configured work limit belongs to the root attempt;
+                            // work is still submitted from the Plan account.
+                            assert_eq!(refusal.phase(), RenderPhase::Attempt);
+                            assert_eq!(
+                                refusal.quantity(),
+                                RenderQuantity::Work(RenderWork::CommandVisits)
+                            );
+                            assert_eq!(refusal.current(), 7);
+                            assert_eq!(refusal.amount(), 1);
+                            assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 7 });
+                            Err(error)
+                        } else {
+                            let actual = result.unwrap();
+                            assert_eq!(actual.commands, normalized);
+                            assert_eq!(
+                                actual
+                                    .source_bounds
+                                    .known_non_empty_extent()
+                                    .unwrap()
+                                    .rect(),
+                                Rect::new(1.0, 1.0, 11.0, 5.0)
+                            );
+                            drop(actual);
+                            Ok(())
+                        }
+                    })
+                    .unwrap()
+                    .into_parts();
                 assert_eq!(fault, None);
                 assert_eq!(
                     report

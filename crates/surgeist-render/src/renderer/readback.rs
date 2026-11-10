@@ -1,8 +1,17 @@
 use super::*;
 use crate::{
-    accounting::{ReadbackAttempt, RenderAttemptStatus, RenderPhase},
+    accounting::{FinishedReadback, ReadbackWork, RenderPhase, readback_lifecycle},
     readback::{ReadbackOutput, read_texture_rgba},
 };
+
+fn readback_setup(
+    renderer: &Renderer,
+) -> (&crate::accounting::RendererCpu, RenderAccountingOptions) {
+    (&renderer.cpu, renderer.options.accounting())
+}
+fn readback_canceled(renderer: &mut Renderer, report: RenderReadbackReport) {
+    renderer.readback_reports = Some(report);
+}
 
 impl Renderer {
     /// Performs explicit headless readback of the current complete publication.
@@ -16,25 +25,27 @@ impl Renderer {
     /// The attempt starts on first poll. Its separate latest-readback report
     /// closes while complete output remains guarded, before final caller transfer.
     pub async fn read_headless(&mut self, surface: &Surface) -> Result<ImageBuffer> {
-        let mut attempt = ReadbackAttempt::begin(
-            self.readback_reports.clone(),
-            &self.cpu,
-            self.options.accounting(),
-        )?;
-        let account = attempt.account().clone();
-        let result = account
-            .async_phase(
-                RenderPhase::Readback,
-                self.read_headless_inner(surface, &mut attempt),
-            )
-            .await;
-        self.finish_readback(attempt, result)
+        let finished = readback_lifecycle(
+            self,
+            readback_setup,
+            readback_canceled,
+            async |renderer, mut attempt, account| {
+                account
+                    .async_phase(
+                        RenderPhase::Readback,
+                        renderer.read_headless_inner(surface, &mut attempt),
+                    )
+                    .await
+            },
+        )
+        .await?;
+        self.finish_readback(finished)
     }
 
     async fn read_headless_inner(
         &mut self,
         surface: &Surface,
-        attempt: &mut ReadbackAttempt,
+        attempt: &mut ReadbackWork<'_>,
     ) -> Result<ReadbackOutput> {
         let account = attempt.account().clone();
         self.validate_surface_renderer_identity(surface, SurfaceDiagnosticOperation::Readback)?;
@@ -101,15 +112,9 @@ impl Renderer {
 
     pub(super) fn finish_readback(
         &mut self,
-        attempt: ReadbackAttempt,
-        result: Result<ReadbackOutput>,
+        finished: FinishedReadback<ReadbackOutput>,
     ) -> Result<ImageBuffer> {
-        let started = attempt.started();
-        let (status, diagnostic) = match &result {
-            Ok(_) => (RenderAttemptStatus::Succeeded, None),
-            Err(error) => (attempt.status_for(error), error.accounting_diagnostic()),
-        };
-        let (mut report, fault) = attempt.finish(status, diagnostic);
+        let (result, started, mut report, fault) = finished.into_parts();
         let result = match result {
             Err(error) => Err(error),
             Ok(output) => {
@@ -132,7 +137,7 @@ impl Renderer {
         // A successful transfer permits only these infallible moves. In
         // particular, no phase or snapshot reads occur after output handoff.
         if started {
-            self.readback_reports.store(report);
+            self.readback_reports = Some(report);
         }
         result
     }

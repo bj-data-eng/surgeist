@@ -730,10 +730,10 @@ impl FilterAngle {
 #[cfg(test)]
 mod normalization_custody_tests {
     use super::*;
-    use crate::accounting::{FrameAttempt, FrameReportSlot, RendererCpu};
+    use crate::accounting::{FrameFixture, RendererCpu};
     use crate::{
-        FillRule, FilledPath, Path, RenderAccountingOptions, RenderAttemptStatus, RenderCpuScope,
-        RenderProfile, RenderResource,
+        FillRule, FilledPath, Path, RenderAccountingOptions, RenderCpuScope, RenderProfile,
+        RenderResource,
     };
 
     #[test]
@@ -761,11 +761,16 @@ mod normalization_custody_tests {
             .unwrap()
             .usage()
             .live(RenderResource::RetainedCpuBytes);
-        let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-        input
-            .ensure_supported_for_planning_in(Capabilities::CURRENT, attempt.account())
-            .unwrap();
-        let (report, fault) = attempt.finish(RenderAttemptStatus::Succeeded, None);
+        let (_, _, report, fault) = FrameFixture::new(&cpu, options)
+            .run_sync(|attempt| {
+                input
+                    .ensure_supported_for_planning_in(Capabilities::CURRENT, attempt.account())
+                    .unwrap();
+
+                Ok(())
+            })
+            .unwrap()
+            .into_parts();
         assert_eq!(fault, None);
         let usage = report.attempt().unwrap().usage();
         assert_eq!(usage.work(RenderWork::PathElementVisits), 9);

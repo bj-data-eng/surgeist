@@ -1,9 +1,9 @@
 //! Typed readback reports and their renderer-owned destination.
 use super::{
-    renderer_attempt::{RendererAttempt, RendererReport, ReportSlot},
+    renderer_attempt::{RendererAttempt, RendererReport},
     *,
 };
-use std::{ops::Deref, sync::RwLockReadGuard};
+use std::ops::Deref;
 
 /// A completed explicit readback attempt, separate from frame diagnostics.
 /// Each domain retains its actual closing boundary. Successful extraction closes
@@ -61,70 +61,178 @@ impl RenderReadbackReport {
 
 /// Borrowed immutable latest-readback observation. Holding it borrows Renderer and
 /// prevents another mutable operation, just like borrowing ordinary renderer data.
-pub struct RenderReadbackReportRef<'a>(RwLockReadGuard<'a, Option<RenderReadbackReport>>);
+///
+/// Repeated immutable observations can coexist. The returned reference borrows
+/// the stored report directly, including its resolved buffers. Both report
+/// reference types inherit Send and Sync from their immutable report values.
+/// Mutable Renderer operations require a later-used observation to end first.
+///
+/// ```compile_fail,E0502
+/// use surgeist_render::{Renderer, Surface, Scene, Parameters};
+/// fn render_while_observed(renderer: &mut Renderer, surface: &mut Surface, scene: &Scene) {
+///     let report = renderer.last_readback_attempt().unwrap();
+///     let pending = renderer.render(surface, scene, Parameters::default());
+///     let _status = report.status(); // A real final use keeps the borrow live.
+/// }
+/// ```
+///
+/// ```compile_fail,E0502
+/// use surgeist_render::{Renderer, Surface, Scene, Parameters};
+/// fn readback_while_observed(renderer: &mut Renderer, surface: &mut Surface, scene: &Scene) {
+///     let report = renderer.last_readback_attempt().unwrap();
+///     let pending = renderer.read_headless(surface);
+///     let _status = report.status(); // A real final use keeps the borrow live.
+/// }
+/// ```
+///
+/// ```compile_fail,E0502
+/// use surgeist_render::{Renderer, Surface, Scene, Parameters};
+/// fn take_frame_while_observed(renderer: &mut Renderer, surface: &mut Surface, scene: &Scene) {
+///     let report = renderer.last_readback_attempt().unwrap();
+///     let taken = renderer.take_last_attempt();
+///     let _status = report.status(); // A real final use keeps the borrow live.
+/// }
+/// ```
+///
+/// ```compile_fail,E0502
+/// use surgeist_render::{Renderer, Surface, Scene, Parameters};
+/// fn take_readback_while_observed(renderer: &mut Renderer, surface: &mut Surface, scene: &Scene) {
+///     let report = renderer.last_readback_attempt().unwrap();
+///     let taken = renderer.take_last_readback_attempt();
+///     let _status = report.status(); // A real final use keeps the borrow live.
+/// }
+/// ```
+pub struct RenderReadbackReportRef<'a>(&'a RenderReadbackReport);
+impl<'a> RenderReadbackReportRef<'a> {
+    pub(crate) fn new(report: &'a RenderReadbackReport) -> Self {
+        Self(report)
+    }
+}
 impl Deref for RenderReadbackReportRef<'_> {
     type Target = RenderReadbackReport;
     fn deref(&self) -> &Self::Target {
-        self.0.as_ref().expect("occupied borrowed report")
-    }
-}
-#[derive(Clone, Default)]
-pub(crate) struct ReadbackReportSlot(ReportSlot<RenderReadbackReport>);
-impl ReadbackReportSlot {
-    pub(crate) fn read(&self) -> Option<RenderReadbackReportRef<'_>> {
-        self.0.read().map(RenderReadbackReportRef)
-    }
-    pub(crate) fn take(&self) -> Option<RenderReadbackReport> {
-        self.0.take()
-    }
-    pub(crate) fn store(&self, report: RenderReadbackReport) {
-        self.0.store(report);
+        self.0
     }
 }
 
-pub(crate) struct ReadbackAttempt {
+/// Mandatory driver-local checkpoint owner; work never receives this value.
+struct ReadbackAttempt {
     core: RendererAttempt,
-    slot: ReadbackReportSlot,
 }
 impl ReadbackAttempt {
-    pub(crate) fn begin(
-        slot: ReadbackReportSlot,
-        cpu: &RendererCpu,
-        options: RenderAccountingOptions,
-    ) -> Result<Self> {
+    fn begin(cpu: &RendererCpu, options: RenderAccountingOptions) -> Result<Self> {
         Ok(Self {
             core: RendererAttempt::begin(RenderAttemptKind::Readback, cpu, options)?,
-            slot,
         })
     }
-    pub(crate) fn started(&self) -> bool {
-        self.core.started()
+    fn account(&self) -> &Account {
+        self.core.account()
     }
+}
+/// Short work capability borrowing the actual owner's core. Moving this view
+/// cannot replace either driver's mandatory checkpoint owner.
+pub(crate) struct ReadbackWork<'a> {
+    core: &'a mut RendererAttempt,
+}
+impl ReadbackWork<'_> {
     pub(crate) fn account(&self) -> &Account {
         self.core.account()
     }
     pub(crate) fn attach_generation(&mut self, generation: &Generation) -> Result<()> {
         self.core.attach_generation(generation)
     }
-    pub(crate) fn status_for(&self, error: &Error) -> RenderAttemptStatus {
-        self.core.status_for(error)
-    }
-    pub(crate) fn finish(
-        mut self,
-        status: RenderAttemptStatus,
-        diagnostic: Option<RenderAccountingError>,
-    ) -> (RenderReadbackReport, Option<RenderAccountingError>) {
-        let (report, fault) = self.core.finish(status, diagnostic);
-        (RenderReadbackReport(report), fault)
+}
+
+/// Terminal data, without a checkpoint owner or lifecycle destructor.
+pub(crate) struct FinishedReadback<T> {
+    result: Result<T>,
+    started: bool,
+    report: RenderReadbackReport,
+    fault: Option<RenderAccountingError>,
+}
+impl<T> FinishedReadback<T> {
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        Result<T>,
+        bool,
+        RenderReadbackReport,
+        Option<RenderAccountingError>,
+    ) {
+        (self.result, self.started, self.report, self.fault)
     }
 }
-impl Drop for ReadbackAttempt {
-    fn drop(&mut self) {
-        if let Some(report) = self.core.cancel() {
-            self.slot.store(RenderReadbackReport(report));
+struct ReadbackGuard<'g, C> {
+    context: &'g mut C,
+    attempt: &'g mut ReadbackAttempt,
+    publish_canceled: fn(&mut C, RenderReadbackReport),
+}
+impl<C> ReadbackGuard<'_, C> {
+    fn parts(&mut self) -> (&mut C, &mut ReadbackAttempt) {
+        (self.context, self.attempt)
+    }
+    fn finish<T>(self, result: Result<T>) -> FinishedReadback<T> {
+        let started = self.attempt.core.started();
+        let (status, diagnostic) = match &result {
+            Ok(_) => (RenderAttemptStatus::Succeeded, None),
+            Err(error) => (
+                self.attempt.core.status_for(error),
+                error.accounting_diagnostic(),
+            ),
+        };
+        let (data, fault) = self.attempt.core.finish(status, diagnostic);
+        FinishedReadback {
+            result,
+            started,
+            report: RenderReadbackReport(data),
+            fault,
         }
     }
 }
+impl<C> Drop for ReadbackGuard<'_, C> {
+    fn drop(&mut self) {
+        // Explicit finish consumed the checkpoint, making this path inert.
+        if let Some(data) = self.attempt.core.cancel() {
+            (self.publish_canceled)(self.context, RenderReadbackReport(data));
+        }
+    }
+}
+pub(crate) async fn readback_lifecycle<C, T>(
+    context: &mut C,
+    setup: for<'s> fn(&'s C) -> (&'s RendererCpu, RenderAccountingOptions),
+    publish_canceled: fn(&mut C, RenderReadbackReport),
+    work: impl AsyncFnOnce(&mut C, ReadbackWork<'_>, &Account) -> Result<T>,
+) -> Result<FinishedReadback<T>> {
+    let mut attempt = {
+        let (cpu, options) = setup(context);
+        ReadbackAttempt::begin(cpu, options)?
+    };
+    let account = attempt.account().clone();
+    let mut guard = ReadbackGuard {
+        context,
+        attempt: &mut attempt,
+        publish_canceled,
+    };
+    // The child future is destroyed before cancellation closes the checkpoints.
+    let result = {
+        let (context, attempt) = guard.parts();
+        work(
+            context,
+            ReadbackWork {
+                core: &mut attempt.core,
+            },
+            &account,
+        )
+        .await
+    };
+    let finished = guard.finish(result);
+    // Neither mandatory local may reach publication or final output transfer.
+    drop(attempt);
+    drop(account);
+    Ok(finished)
+}
 
+#[cfg(test)]
+pub(crate) mod fixture;
 #[cfg(test)]
 mod tests;

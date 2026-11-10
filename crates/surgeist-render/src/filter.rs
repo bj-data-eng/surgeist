@@ -930,10 +930,7 @@ fn push_algorithm_color_operation(
 mod accounting_tests {
     use super::*;
     use crate::{
-        accounting::{
-            FrameAttempt, FrameReportSlot, RenderAccountingOptions, RenderAttemptStatus,
-            RendererCpu,
-        },
+        accounting::{FrameFixture, RenderAccountingOptions, RendererCpu},
         style::FilterOp,
     };
 
@@ -949,34 +946,40 @@ mod accounting_tests {
         .unwrap();
         let options = RenderAccountingOptions::new();
         let cpu = RendererCpu::new(options).unwrap();
-        let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-        let plan = AlgorithmFilterPlan::from_filter_list(&filters, attempt.account()).unwrap();
-        assert_eq!(plan.authored_operation_count(), 5);
-        let [
-            AlgorithmFilterStep::ColorRun(first),
-            AlgorithmFilterStep::Blur(blur),
-            AlgorithmFilterStep::ColorRun(last),
-        ] = plan.steps()
-        else {
-            panic!("ordered color, blur, color steps");
-        };
-        assert_eq!(first.operations().len(), 2);
-        assert_eq!(
-            first.operations()[0].operation(),
-            ColorFilterOp::Brightness(FilterAmount::try_new(1.25).unwrap())
-        );
-        assert_eq!(
-            first.operations()[1].operation(),
-            ColorFilterOp::Opacity(UnitFilterAmount::try_new(0.5).unwrap())
-        );
-        assert_eq!(last.operations().len(), 1);
-        assert_eq!(blur.radius(), 2.0);
-        for run in [first, last] {
-            assert!(run.operations().iter().all(|op| op.clamp_boundary()
-                == ColorClampBoundary::ClampStraightRgbaToUnitThenPremultiply));
-        }
-        drop(plan);
-        let (report, fault) = attempt.finish(RenderAttemptStatus::Succeeded, None);
+        let (_, _, report, fault) = FrameFixture::new(&cpu, options)
+            .run_sync(|attempt| {
+                let plan =
+                    AlgorithmFilterPlan::from_filter_list(&filters, attempt.account()).unwrap();
+                assert_eq!(plan.authored_operation_count(), 5);
+                let [
+                    AlgorithmFilterStep::ColorRun(first),
+                    AlgorithmFilterStep::Blur(blur),
+                    AlgorithmFilterStep::ColorRun(last),
+                ] = plan.steps()
+                else {
+                    panic!("ordered color, blur, color steps");
+                };
+                assert_eq!(first.operations().len(), 2);
+                assert_eq!(
+                    first.operations()[0].operation(),
+                    ColorFilterOp::Brightness(FilterAmount::try_new(1.25).unwrap())
+                );
+                assert_eq!(
+                    first.operations()[1].operation(),
+                    ColorFilterOp::Opacity(UnitFilterAmount::try_new(0.5).unwrap())
+                );
+                assert_eq!(last.operations().len(), 1);
+                assert_eq!(blur.radius(), 2.0);
+                for run in [first, last] {
+                    assert!(run.operations().iter().all(|op| op.clamp_boundary()
+                        == ColorClampBoundary::ClampStraightRgbaToUnitThenPremultiply));
+                }
+                drop(plan);
+
+                Ok(())
+            })
+            .unwrap()
+            .into_parts();
         assert_eq!(fault, None);
         assert_eq!(
             report

@@ -1901,7 +1901,7 @@ mod paint_visit_tests {
 
     mod text_value_tests {
         use super::*;
-        use crate::accounting::{FrameAttempt, FrameReportSlot, RendererCpu};
+        use crate::accounting::{FrameFixture, RendererCpu};
         #[test]
         fn text_value_paint_copy_refusal_releases_the_previously_copied_font_name() {
             let options = RenderAccountingOptions::new().with_limits(
@@ -1915,37 +1915,45 @@ mod paint_visit_tests {
                 .unwrap()
                 .usage()
                 .live(RenderResource::RetainedCpuBytes);
-            let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-            let account = attempt.account().at(RenderPhase::Encode);
-            let font = FontRef::new(1).named("owned intermediate font name");
-            let paint = TextPaint::try_fill(paints()[1].clone()).unwrap();
-            let mut encoded = VelloScene::default();
-            let error = encode_text_run(
-                &mut encoded,
-                kurbo::Affine::IDENTITY,
-                TextRunSource {
-                    font: &font,
-                    size: 20.0,
-                    transform: Transform::identity(),
-                    paint: &paint,
-                    glyphs: &[],
-                },
-                PhysicalSize::new(2, 2),
-                &account,
-            )
-            .unwrap_err();
-            refusal(&error, 0, 0);
-            let snapshot = cpu.snapshot().unwrap();
-            assert!(
-                snapshot.usage().peak(RenderResource::RetainedCpuBytes)
-                    >= opening + font.name.as_ref().unwrap().len() as u64
-            );
-            assert_eq!(
-                snapshot.usage().live(RenderResource::RetainedCpuBytes),
-                opening
-            );
-            assert_eq!(encoded.observation_for_test().glyph_run_count_for_test(), 0);
-            drop(attempt);
+            let (result, _, report, fault) = FrameFixture::new(&cpu, options)
+                .run_sync(|attempt| {
+                    let account = attempt.account().at(RenderPhase::Encode);
+                    let font = FontRef::new(1).named("owned intermediate font name");
+                    let paint = TextPaint::try_fill(paints()[1].clone()).unwrap();
+                    let mut encoded = VelloScene::default();
+                    let error = encode_text_run(
+                        &mut encoded,
+                        kurbo::Affine::IDENTITY,
+                        TextRunSource {
+                            font: &font,
+                            size: 20.0,
+                            transform: Transform::identity(),
+                            paint: &paint,
+                            glyphs: &[],
+                        },
+                        PhysicalSize::new(2, 2),
+                        &account,
+                    )
+                    .unwrap_err();
+                    refusal(&error, 0, 0);
+                    let snapshot = cpu.snapshot().unwrap();
+                    assert!(
+                        snapshot.usage().peak(RenderResource::RetainedCpuBytes)
+                            >= opening + font.name.as_ref().unwrap().len() as u64
+                    );
+                    assert_eq!(
+                        snapshot.usage().live(RenderResource::RetainedCpuBytes),
+                        opening
+                    );
+                    assert_eq!(encoded.observation_for_test().glyph_run_count_for_test(), 0);
+
+                    Err::<(), _>(error)
+                })
+                .unwrap()
+                .into_parts();
+            assert!(result.is_err());
+            assert_eq!(report.status(), crate::RenderAttemptStatus::Refused);
+            assert_eq!(fault, None);
         }
 
         #[test]
@@ -1958,54 +1966,72 @@ mod paint_visit_tests {
                     .unwrap()
                     .usage()
                     .live(RenderResource::RetainedCpuBytes);
-                let attempt =
-                    FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-                let name = "independently copied display name";
-                let mut font = FontRef::new(1).named(name);
-                if with_data {
-                    font = font.with_data(
-                        crate::FontData::try_from_bytes(
-                            include_bytes!("../tests/fixtures/fonts/ahem/Ahem.ttf").to_vec(),
-                            0,
-                            surgeist_test::fixtures::FONT_LIMITS,
-                        )
-                        .unwrap(),
-                    );
-                }
-                let paint = TextPaint::try_fill(paints()[1].clone()).unwrap();
-                let mut encoded = VelloScene::default();
-                let result = encode_text_run(
-                    &mut encoded,
-                    kurbo::Affine::IDENTITY,
-                    TextRunSource {
-                        font: &font,
-                        size: 20.0,
-                        transform: Transform::identity(),
-                        paint: &paint,
-                        glyphs: &[],
-                    },
-                    PhysicalSize::new(2, 2),
-                    attempt.account(),
-                );
-                if with_data {
-                    result.unwrap();
-                } else {
-                    let error = result.unwrap_err();
-                    assert_eq!(error.code(), crate::ErrorCode::InvalidInput);
-                    assert!(error.message().contains("font data"));
-                }
-                let snapshot = cpu.snapshot().unwrap();
-                assert!(
-                    snapshot.usage().peak(RenderResource::RetainedCpuBytes)
-                        >= opening + name.len() as u64 + std::mem::size_of::<GradientStop>() as u64
-                );
+                let (result, _, report, fault) = FrameFixture::new(&cpu, options)
+                    .run_sync(|attempt| {
+                        let name = "independently copied display name";
+                        let mut font = FontRef::new(1).named(name);
+                        if with_data {
+                            font = font.with_data(
+                                crate::FontData::try_from_bytes(
+                                    include_bytes!("../tests/fixtures/fonts/ahem/Ahem.ttf")
+                                        .to_vec(),
+                                    0,
+                                    surgeist_test::fixtures::FONT_LIMITS,
+                                )
+                                .unwrap(),
+                            );
+                        }
+                        let paint = TextPaint::try_fill(paints()[1].clone()).unwrap();
+                        let mut encoded = VelloScene::default();
+                        let result = encode_text_run(
+                            &mut encoded,
+                            kurbo::Affine::IDENTITY,
+                            TextRunSource {
+                                font: &font,
+                                size: 20.0,
+                                transform: Transform::identity(),
+                                paint: &paint,
+                                glyphs: &[],
+                            },
+                            PhysicalSize::new(2, 2),
+                            attempt.account(),
+                        );
+                        if with_data {
+                            result.as_ref().unwrap();
+                        } else {
+                            let error = result.as_ref().unwrap_err();
+                            assert_eq!(error.code(), crate::ErrorCode::InvalidInput);
+                            assert!(error.message().contains("font data"));
+                        }
+                        let snapshot = cpu.snapshot().unwrap();
+                        assert!(
+                            snapshot.usage().peak(RenderResource::RetainedCpuBytes)
+                                >= opening
+                                    + name.len() as u64
+                                    + std::mem::size_of::<GradientStop>() as u64
+                        );
+                        assert_eq!(
+                            snapshot.usage().live(RenderResource::RetainedCpuBytes),
+                            opening
+                        );
+                        assert_eq!(encoded.observation_for_test().glyph_run_count_for_test(), 0);
+                        assert_eq!(font.name.as_deref(), Some(name));
+                        assert_eq!(paint, TextPaint::try_fill(paints()[1].clone()).unwrap());
+
+                        result
+                    })
+                    .unwrap()
+                    .into_parts();
+                assert_eq!(result.is_ok(), with_data);
                 assert_eq!(
-                    snapshot.usage().live(RenderResource::RetainedCpuBytes),
-                    opening
+                    report.status(),
+                    if with_data {
+                        crate::RenderAttemptStatus::Succeeded
+                    } else {
+                        crate::RenderAttemptStatus::Failed(crate::ErrorCode::InvalidInput)
+                    }
                 );
-                assert_eq!(encoded.observation_for_test().glyph_run_count_for_test(), 0);
-                assert_eq!(font.name.as_deref(), Some(name));
-                assert_eq!(paint, TextPaint::try_fill(paints()[1].clone()).unwrap());
+                assert_eq!(fault, None);
             }
         }
     }

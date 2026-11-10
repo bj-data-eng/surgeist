@@ -600,28 +600,30 @@ mod tests {
             },
         ))
         .unwrap();
-        let mut attempt = FrameAttempt::begin(
-            FrameReportSlot::default(),
-            &cpu,
-            RenderAccountingOptions::default(),
-        )
-        .unwrap();
-        let generation = Generation::new(RenderAccountingOptions::new().with_profile(
-            RenderProfile::Detailed {
-                timing: false,
-                event_limit: 16,
-                filter: RenderPhaseFilter::All,
-            },
-        ))
-        .unwrap();
-        attempt.attach_generation(&generation).unwrap();
-        let native = generation
-            .allocation(GenerationClass::CacheVello, 3, None, || ())
-            .unwrap();
-        cpu.at(RenderCpuScope::FrameBacking)
-            .checked_work(RenderWork::CoordinateVisits, 1)
-            .unwrap();
-        let (report, fault) = attempt.finish(RenderAttemptStatus::Succeeded, None);
+        let (native, _, report, fault) =
+            FrameFixture::new(&cpu, RenderAccountingOptions::default())
+                .run_sync(|mut attempt| {
+                    let generation = Generation::new(RenderAccountingOptions::new().with_profile(
+                        RenderProfile::Detailed {
+                            timing: false,
+                            event_limit: 16,
+                            filter: RenderPhaseFilter::All,
+                        },
+                    ))
+                    .unwrap();
+                    attempt.attach_generation(&generation).unwrap();
+                    let native = generation
+                        .allocation(GenerationClass::CacheVello, 3, None, || ())
+                        .unwrap();
+                    cpu.at(RenderCpuScope::FrameBacking)
+                        .checked_work(RenderWork::CoordinateVisits, 1)
+                        .unwrap();
+
+                    Ok(native)
+                })
+                .unwrap()
+                .into_parts();
+        let native = native.unwrap();
         assert_eq!(fault, None);
         assert_eq!(report.attempt().unwrap().events().count(), 0);
         assert!(report.renderer_cpu().unwrap().events().next().is_some());

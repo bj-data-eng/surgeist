@@ -1,6 +1,5 @@
 //! Shared checkpoint custody and extraction for renderer-owned attempts.
 use super::*;
-use std::sync::{Arc, RwLock, RwLockReadGuard};
 
 #[derive(Debug, Eq, PartialEq)]
 pub(super) struct RendererReport {
@@ -104,40 +103,6 @@ impl RendererReport {
     /// causal backend failure or refusal.
     pub(super) const fn cleanup_fault(&self) -> Option<RenderAccountingError> {
         self.cleanup_fault
-    }
-}
-
-/// A bounded, preallocated report destination. Replacement and take never allocate.
-pub(super) struct ReportSlot<T>(Arc<RwLock<Option<T>>>);
-impl<T> Clone for ReportSlot<T> {
-    fn clone(&self) -> Self {
-        Self(self.0.clone())
-    }
-}
-impl<T> Default for ReportSlot<T> {
-    fn default() -> Self {
-        Self(Arc::new(RwLock::new(None)))
-    }
-}
-impl<T> ReportSlot<T> {
-    pub(super) fn read(&self) -> Option<RwLockReadGuard<'_, Option<T>>> {
-        let guard = self
-            .0
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        guard.is_some().then_some(guard)
-    }
-    pub(super) fn take(&self) -> Option<T> {
-        self.0
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .take()
-    }
-    pub(super) fn store(&self, report: T) {
-        *self
-            .0
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(report);
     }
 }
 

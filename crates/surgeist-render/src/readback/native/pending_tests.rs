@@ -2,10 +2,9 @@ use super::*;
 use crate::{
     PhysicalSize,
     accounting::{
-        Generation, GenerationClass, GpuObjectKind, ReadbackAttempt, ReadbackReportSlot,
-        RenderAccountingError, RenderAccountingOptions, RenderAttemptStatus, RenderClock,
-        RenderGenerationScope, RenderPhaseFilter, RenderProfile, RenderReadbackReport,
-        RenderResource, RendererCpu,
+        Generation, GenerationClass, GpuObjectKind, ReadbackFixture, RenderAccountingError,
+        RenderAccountingOptions, RenderAttemptStatus, RenderClock, RenderGenerationScope,
+        RenderPhaseFilter, RenderProfile, RenderReadbackReport, RenderResource, RendererCpu,
     },
     readback::{layout::ReadbackLayout, lifecycle::ReadbackStagingDisposition},
 };
@@ -83,75 +82,79 @@ impl PreparedMap {
         }))
         .expect("native map tests require a private fixture device");
         let generation = Generation::new(options).unwrap();
-        let mut prefix =
-            ReadbackAttempt::begin(ReadbackReportSlot::default(), cpu, options).unwrap();
-        prefix.attach_generation(&generation).unwrap();
-        let account = prefix.account().at(RenderPhase::ReadbackPrepare);
-        let texture = generation
-            .allocation(GenerationClass::SurfaceTargets, 24, Some(&account), || {
-                device.create_texture(&wgpu::TextureDescriptor {
-                    label: Some("Surgeist native map fixture input"),
-                    size: wgpu::Extent3d {
+        let (parts, _, prefix, fault) = ReadbackFixture::new(cpu, options)
+            .run_sync(|mut prefix| {
+                prefix.attach_generation(&generation).unwrap();
+                let account = prefix.account().at(RenderPhase::ReadbackPrepare);
+                let texture = generation
+                    .allocation(GenerationClass::SurfaceTargets, 24, Some(&account), || {
+                        device.create_texture(&wgpu::TextureDescriptor {
+                            label: Some("Surgeist native map fixture input"),
+                            size: wgpu::Extent3d {
+                                width: 3,
+                                height: 2,
+                                depth_or_array_layers: 1,
+                            },
+                            mip_level_count: 1,
+                            sample_count: 1,
+                            dimension: wgpu::TextureDimension::D2,
+                            format: wgpu::TextureFormat::Rgba8Unorm,
+                            usage: wgpu::TextureUsages::COPY_SRC,
+                            view_formats: &[],
+                        })
+                    })
+                    .unwrap();
+                // 3 RGBA8 pixels are 12 useful bytes per row, aligned to 256: 512 total.
+                let staging = generation
+                    .allocation(
+                        GenerationClass::ReadbackStaging,
+                        512,
+                        Some(&account),
+                        || {
+                            device.create_buffer(&wgpu::BufferDescriptor {
+                                label: Some("Surgeist native map fixture staging"),
+                                size: 512,
+                                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+                                mapped_at_creation: false,
+                            })
+                        },
+                    )
+                    .unwrap();
+                let mut encoder = generation
+                    .opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
+                        device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("Surgeist native map fixture copy"),
+                        })
+                    })
+                    .unwrap();
+                account.work(RenderWork::ReadbackCopies, 1).unwrap();
+                encoder.copy_texture_to_buffer(
+                    texture.as_image_copy(),
+                    wgpu::TexelCopyBufferInfo {
+                        buffer: &staging,
+                        layout: wgpu::TexelCopyBufferLayout {
+                            offset: 0,
+                            bytes_per_row: Some(256),
+                            rows_per_image: None,
+                        },
+                    },
+                    wgpu::Extent3d {
                         width: 3,
                         height: 2,
                         depth_or_array_layers: 1,
                     },
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    usage: wgpu::TextureUsages::COPY_SRC,
-                    view_formats: &[],
-                })
+                );
+                let submission = encoder
+                    .finish(Some(&account))
+                    .unwrap()
+                    .submit(&queue, Some(&account))
+                    .unwrap();
+                drop(texture);
+                Ok((staging, submission))
             })
-            .unwrap();
-        // 3 RGBA8 pixels are 12 useful bytes per row, aligned to 256: 512 total.
-        let staging = generation
-            .allocation(
-                GenerationClass::ReadbackStaging,
-                512,
-                Some(&account),
-                || {
-                    device.create_buffer(&wgpu::BufferDescriptor {
-                        label: Some("Surgeist native map fixture staging"),
-                        size: 512,
-                        usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-                        mapped_at_creation: false,
-                    })
-                },
-            )
-            .unwrap();
-        let mut encoder = generation
-            .opaque(GpuObjectKind::CommandEncoder, Some(&account), || {
-                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                    label: Some("Surgeist native map fixture copy"),
-                })
-            })
-            .unwrap();
-        account.work(RenderWork::ReadbackCopies, 1).unwrap();
-        encoder.copy_texture_to_buffer(
-            texture.as_image_copy(),
-            wgpu::TexelCopyBufferInfo {
-                buffer: &staging,
-                layout: wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(256),
-                    rows_per_image: None,
-                },
-            },
-            wgpu::Extent3d {
-                width: 3,
-                height: 2,
-                depth_or_array_layers: 1,
-            },
-        );
-        let submission = encoder
-            .finish(Some(&account))
             .unwrap()
-            .submit(&queue, Some(&account))
-            .unwrap();
-        drop(texture);
-        let (prefix, fault) = prefix.finish(RenderAttemptStatus::Succeeded, None);
+            .into_parts();
+        let (staging, submission) = parts.unwrap();
         assert_eq!(fault, None);
         let work = prefix.attempt().unwrap().usage();
         assert_eq!(work.work(RenderWork::ResourceAllocationRequests), 4);
@@ -306,23 +309,28 @@ fn pending_cancel_with_late_callback(profile: RenderProfile, retire: bool, timed
         prefix,
     } = PreparedMap::new(&cpu, options);
     let prefix_before = prefix.snapshot_for_test();
-    let slot = ReadbackReportSlot::default();
-    let mut attempt = ReadbackAttempt::begin(slot.clone(), &cpu, options).unwrap();
-    attempt.attach_generation(&generation).unwrap();
-    let account = attempt.account().clone();
-    let mut owner = ReadbackOwner::allocated(
-        staging,
-        ReadbackLayout::try_new(PhysicalSize::new(3, 2)).unwrap(),
-        PhysicalSize::new(3, 2),
-        &account,
-    );
-    owner.copy_submitted(submission.clone());
-    let staging_map = owner.staging_map();
+    let mut fixture = ReadbackFixture::new(&cpu, options);
+    let staging_observation = std::cell::OnceCell::new();
     let latch = Arc::new(PausedWake::default());
     let waker = Waker::from(latch.clone());
-    manual_clock.millis.store(10, Ordering::SeqCst);
-    let future = account.async_phase(RenderPhase::ReadbackMap, async move {
-        ReadbackMapFuture::start_manual(owner)?.await
+    let owner_submission = submission.clone();
+    let future = fixture.run(async |mut attempt| {
+        attempt.attach_generation(&generation)?;
+        let account = attempt.account().clone();
+        let mut owner = ReadbackOwner::allocated(
+            staging,
+            ReadbackLayout::try_new(PhysicalSize::new(3, 2)).unwrap(),
+            PhysicalSize::new(3, 2),
+            &account,
+        );
+        owner.copy_submitted(owner_submission);
+        assert!(staging_observation.set(owner.staging_map()).is_ok());
+        manual_clock.millis.store(10, Ordering::SeqCst);
+        account
+            .async_phase(RenderPhase::ReadbackMap, async move {
+                ReadbackMapFuture::start_manual(owner)?.await
+            })
+            .await
     });
     let mut future = Box::pin(future);
     // This device has no progress helper, and no submit/poll occurs after real
@@ -331,11 +339,12 @@ fn pending_cancel_with_late_callback(profile: RenderProfile, retire: bool, timed
         future.as_mut().poll(&mut Context::from_waker(&waker)),
         Poll::Pending
     ));
+    let staging_map = staging_observation.get().unwrap();
     assert_eq!(
         staging_map.disposition_for_test(),
         ReadbackStagingDisposition::MapPending
     );
-    assert!(slot.read().is_none());
+    // The real driver has not published a terminal report.
     let poll = OwnedPoll::start(device, submission, manual_clock.clone(), latch.clone());
     latch.await_entry();
     // The real callback has published completion and unlocked it, but its native
@@ -350,8 +359,7 @@ fn pending_cancel_with_late_callback(profile: RenderProfile, retire: bool, timed
         staging_map.disposition_for_test(),
         ReadbackStagingDisposition::Released
     );
-    drop(attempt);
-    let canceled = slot.take().unwrap();
+    let canceled = fixture.report.take().unwrap();
     let closed = canceled.snapshot_for_test();
     assert_eq!(canceled.status(), RenderAttemptStatus::Canceled);
     let attempt = canceled.attempt().unwrap();
@@ -513,23 +521,29 @@ fn native_synchronous_completion_without_queue_decodes_real_rows() {
     // Locked WGPU also supports mapping without a live Queue: this runs the
     // real callback synchronously. It explains the fixture's retained Queue.
     drop(_queue);
-    let mut attempt = ReadbackAttempt::begin(ReadbackReportSlot::default(), &cpu, options).unwrap();
-    attempt.attach_generation(&generation).unwrap();
-    let account = attempt.account().clone();
-    let mut owner = ReadbackOwner::allocated(
-        staging,
-        ReadbackLayout::try_new(PhysicalSize::new(3, 2)).unwrap(),
-        PhysicalSize::new(3, 2),
-        &account,
-    );
-    owner.copy_submitted(submission);
-    let mut map = Box::pin(ReadbackMapFuture::start_manual(owner).unwrap());
-    let output = match map.as_mut().poll(&mut Context::from_waker(Waker::noop())) {
-        Poll::Ready(Ok(output)) => output,
-        Poll::Ready(Err(error)) => panic!("synchronous native map failed: {error:?}"),
-        Poll::Pending => panic!("mapping without a live queue must complete synchronously"),
-    };
-    let (report, fault) = attempt.finish(RenderAttemptStatus::Succeeded, None);
+    let (output, _, report, fault) = ReadbackFixture::new(&cpu, options)
+        .run_sync(|mut attempt| {
+            attempt.attach_generation(&generation).unwrap();
+            let account = attempt.account().clone();
+            let mut owner = ReadbackOwner::allocated(
+                staging,
+                ReadbackLayout::try_new(PhysicalSize::new(3, 2)).unwrap(),
+                PhysicalSize::new(3, 2),
+                &account,
+            );
+            owner.copy_submitted(submission);
+            let mut map = Box::pin(ReadbackMapFuture::start_manual(owner).unwrap());
+            let output = match map.as_mut().poll(&mut Context::from_waker(Waker::noop())) {
+                Poll::Ready(Ok(output)) => output,
+                Poll::Ready(Err(error)) => panic!("synchronous native map failed: {error:?}"),
+                Poll::Pending => panic!("mapping without a live queue must complete synchronously"),
+            };
+
+            Ok(output)
+        })
+        .unwrap()
+        .into_parts();
+    let output = output.unwrap();
     assert_eq!(fault, None);
     assert_eq!(
         report
@@ -563,27 +577,33 @@ fn native_progress_helper_completes_the_same_registration_path_and_decodes_real_
         submission,
         ..
     } = PreparedMap::new(&cpu, options);
-    let mut attempt = ReadbackAttempt::begin(ReadbackReportSlot::default(), &cpu, options).unwrap();
-    attempt.attach_generation(&generation).unwrap();
-    let account = attempt.account().clone();
-    let mut owner = ReadbackOwner::allocated(
-        staging,
-        ReadbackLayout::try_new(PhysicalSize::new(3, 2)).unwrap(),
-        PhysicalSize::new(3, 2),
-        &account,
-    );
-    owner.copy_submitted(submission.clone());
-    let mut map = ReadbackMapFuture::start(owner, device, submission).unwrap();
-    let mut helper = HelperJoin(map._poll_helper.take());
-    let output = pollster::block_on(account.async_phase(RenderPhase::ReadbackMap, map));
-    helper
-        .0
-        .take()
+    let (output, _, report, fault) = ReadbackFixture::new(&cpu, options)
+        .run_sync(|mut attempt| {
+            attempt.attach_generation(&generation).unwrap();
+            let account = attempt.account().clone();
+            let mut owner = ReadbackOwner::allocated(
+                staging,
+                ReadbackLayout::try_new(PhysicalSize::new(3, 2)).unwrap(),
+                PhysicalSize::new(3, 2),
+                &account,
+            );
+            owner.copy_submitted(submission.clone());
+            let mut map = ReadbackMapFuture::start(owner, device, submission).unwrap();
+            let mut helper = HelperJoin(map._poll_helper.take());
+            let output = pollster::block_on(account.async_phase(RenderPhase::ReadbackMap, map));
+            helper
+                .0
+                .take()
+                .unwrap()
+                .join()
+                .expect("native production progress helper must finish");
+            let output = output.unwrap();
+
+            Ok(output)
+        })
         .unwrap()
-        .join()
-        .expect("native production progress helper must finish");
+        .into_parts();
     let output = output.unwrap();
-    let (report, fault) = attempt.finish(RenderAttemptStatus::Succeeded, None);
     assert_eq!(fault, None);
     let usage = report.attempt().unwrap().usage();
     assert_eq!(usage.work(RenderWork::ReadbackMapRequests), 1);

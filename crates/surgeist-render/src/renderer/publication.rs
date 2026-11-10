@@ -46,11 +46,31 @@ impl RenderPublication {
         self.frame.commit(surface);
         renderer.stats = stats;
         surface.last_parameters = Some(self.parameters);
-        renderer.frame_reports.store(report);
+        renderer.frame_reports = Some(report);
         stats
     }
 }
 
+struct FrameContext<'r, 's> {
+    renderer: &'r mut Renderer,
+    surface: &'s mut Surface,
+}
+fn frame_setup<'a>(
+    context: &'a FrameContext<'_, '_>,
+) -> (
+    &'a crate::accounting::RendererCpu,
+    crate::RenderAccountingOptions,
+) {
+    (&context.renderer.cpu, context.renderer.options.accounting())
+}
+fn frame_canceled(context: &mut FrameContext<'_, '_>, report: RenderFrameReport) {
+    context.renderer.frame_reports = Some(report);
+}
+struct ReadyFrame {
+    publication: RenderPublication,
+    history: HistoryCommit,
+    _account: crate::accounting::Account,
+}
 impl Renderer {
     /// One shared owning gate for real frame execution, including forced-route
     /// fixtures. The callback cannot publish; all terminal paths retain reports.
@@ -63,79 +83,77 @@ impl Renderer {
             &crate::accounting::Account,
         ) -> crate::Result<RenderPublication>,
     ) -> crate::Result<Stats> {
-        use crate::accounting::{FrameAttempt, RenderPhase};
-        let mut attempt = FrameAttempt::begin(
-            self.frame_reports.clone(),
-            &self.cpu,
-            self.options.accounting(),
-        )?;
-        let account = attempt.account().clone();
-        let result = account
-            .async_phase(RenderPhase::Frame, async {
-                let identity = self.render_device_identity(surface)?;
-                let generation = self
-                    .backend
-                    .as_ref()
-                    .ok_or(crate::RenderAccountingError::Invariant)?
-                    .generation(identity)?
-                    .clone();
-                attempt.attach_generation(&generation)?;
-                let draft = self.image_history.begin(&account)?;
-                let account = account.with_history(draft.observer());
-                let publication = run(self, surface, &account).await?;
-                Ok((publication, draft, account))
-            })
-            .await;
-        match result {
-            Ok((publication, draft, account)) => {
-                self.publish_clean_render_frame(surface, publication, draft, attempt, &account)
-            }
-            Err(error) => {
-                let started = attempt.started();
-                let status = attempt.status_for(&error);
-                let (report, _) = attempt.finish(status, error.accounting_diagnostic());
-                if started {
-                    self.frame_reports.store(report);
+        use crate::accounting::{RenderPhase, frame_lifecycle};
+        let mut context = FrameContext {
+            renderer: self,
+            surface,
+        };
+        let finished = frame_lifecycle(
+            &mut context,
+            frame_setup,
+            frame_canceled,
+            async move |context, mut attempt, account| {
+                let renderer = &mut *context.renderer;
+                let surface = &mut *context.surface;
+                let (mut publication, draft, account) = account
+                    .async_phase(RenderPhase::Frame, async {
+                        let identity = renderer.render_device_identity(surface)?;
+                        let generation = renderer
+                            .backend
+                            .as_ref()
+                            .ok_or(crate::RenderAccountingError::Invariant)?
+                            .generation(identity)?
+                            .clone();
+                        attempt.attach_generation(&generation)?;
+                        let draft = renderer.image_history.begin(attempt.account())?;
+                        let account = account.with_history(draft.observer());
+                        let publication = run(renderer, surface, &account).await?;
+                        Ok((publication, draft, account))
+                    })
+                    .await?;
+                // Preparation remains outside Frame and before report extraction.
+                let preparation = account.phase(RenderPhase::Publish, || {
+                    account.phase(RenderPhase::Cleanup, || {
+                        publication.frame.finish_cpu_cleanup();
+                        Ok(())
+                    })?;
+                    let ready = draft.into_publication()?.retire_old()?;
+                    renderer.cpu.ensure_healthy()?;
+                    Ok(ready)
+                });
+                match preparation {
+                    Ok(history) => Ok(ReadyFrame {
+                        publication,
+                        history,
+                        _account: account,
+                    }),
+                    Err(error) => {
+                        drop(publication);
+                        Err(error)
+                    }
                 }
-                Err(error)
-            }
-        }
-    }
-
-    pub(super) fn publish_clean_render_frame(
-        &mut self,
-        surface: &mut Surface,
-        mut publication: RenderPublication,
-        draft: crate::accounting::HistoryDraft,
-        attempt: crate::accounting::FrameAttempt,
-        account: &crate::accounting::Account,
-    ) -> crate::Result<Stats> {
-        use crate::accounting::{RenderAttemptStatus, RenderPhase};
-        let preparation = account.phase(RenderPhase::Publish, || {
-            account.phase(RenderPhase::Cleanup, || {
-                publication.frame.finish_cpu_cleanup();
-                Ok(())
-            })?;
-            let ready = draft.into_publication()?.retire_old()?;
-            self.cpu.ensure_healthy()?;
-            Ok(ready)
-        });
-        let history = match preparation {
-            Ok(history) => history,
+            },
+        )
+        .await?;
+        let (result, started, mut report, fault) = finished.into_parts();
+        let ReadyFrame {
+            publication,
+            history,
+            _account,
+        } = match result {
+            Ok(ready) => ready,
             Err(error) => {
-                drop(publication);
-                let status = attempt.status_for(&error);
-                let (report, _) = attempt.finish(status, error.accounting_diagnostic());
-                self.frame_reports.store(report);
+                if started {
+                    self.frame_reports = Some(report);
+                }
                 return Err(error);
             }
         };
-        let (mut report, fault) = attempt.finish(RenderAttemptStatus::Succeeded, None);
         if let Some(fault) = fault {
-            drop(history); // restores canonical baseline using already owned backing
+            drop(history);
             drop(publication);
             report.note_cleanup_fault(self.cpu.fault());
-            self.frame_reports.store(report);
+            self.frame_reports = Some(report);
             return Err(fault.into());
         }
         let stats =
@@ -145,7 +163,7 @@ impl Renderer {
                     drop(history);
                     drop(publication);
                     report.note_cleanup_fault(error.accounting_diagnostic().or(self.cpu.fault()));
-                    self.frame_reports.store(report);
+                    self.frame_reports = Some(report);
                     return Err(error);
                 }
             };

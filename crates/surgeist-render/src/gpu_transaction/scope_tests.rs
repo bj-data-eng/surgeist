@@ -6,8 +6,8 @@ use super::*;
 use crate::{
     Options, Renderer, ResourceCacheBudget,
     accounting::{
-        FrameAttempt, FrameReportSlot, RenderAccountingOptions, RenderAttemptStatus, RenderProfile,
-        RenderResource, RenderWork, RendererCpu,
+        FrameFixture, RenderAccountingOptions, RenderProfile, RenderResource, RenderWork,
+        RendererCpu,
     },
     resource::{ResourceCacheKey, ResourceManager},
 };
@@ -108,16 +108,16 @@ fn characterize_cancellation(
     let options =
         RenderAccountingOptions::new().with_profile(RenderProfile::Summary { timing: true });
     let cpu = RendererCpu::new(options).unwrap();
-    let mut attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-    attempt.attach_generation(&custody).unwrap();
-    let account = attempt.account().clone();
+    let mut fixture = FrameFixture::new(&cpu, options);
     let resources = ResourceManager::new(ResourceCacheBudget::DISABLED);
     let sentinel = device.push_error_scope(wgpu::ErrorFilter::Validation);
     let generation = signal.next_test_generation().unwrap();
     let gate = ScopePopGate::new(position);
     let mut publication = Some(1);
     {
-        let future = async {
+        let future = fixture.run(async |mut attempt| {
+            attempt.attach_generation(&custody)?;
+            let account = attempt.account().clone();
             let mut transaction =
                 GpuOperationTransaction::begin(&device, Arc::clone(&signal), generation, stage);
             transaction.scopes.scope_gate = Some(Rc::clone(&gate));
@@ -157,7 +157,7 @@ fn characterize_cancellation(
                         .unwrap(),
                 );
                 draft.commit();
-                return;
+                return Ok(());
             }
             #[cfg(not(feature = "render-window"))]
             assert!(!submission);
@@ -166,7 +166,8 @@ fn characterize_cancellation(
                 .await
                 .unwrap();
             draft.commit();
-        };
+            Ok(())
+        });
         let mut future = std::pin::pin!(future);
         reach_gate(future.as_mut(), &gate, &device);
         assert!(gate.reached());
@@ -180,7 +181,8 @@ fn characterize_cancellation(
     assert_eq!(resources.active_frame_count, 0);
     assert_eq!(resources.leased_count, 0);
     assert_eq!(resources.entry_count, 0);
-    let (report, fault) = attempt.finish(RenderAttemptStatus::Canceled, None);
+    let report = fixture.report.take().unwrap();
+    let fault = report.cleanup_fault();
     assert_eq!(fault, None);
     let phase = if stage == GpuOperationStage::Readback {
         RenderPhase::ReadbackResolve
@@ -339,12 +341,12 @@ fn canceled_submission_resolve_includes_actual_lease_cleanup_in_phase_elapsed() 
         .with_clock(crate::RenderClock::Host(lease_cleanup_clock))
         .with_profile(RenderProfile::Summary { timing: true });
     let cpu = RendererCpu::new(options).unwrap();
-    let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-    let account = attempt.account().clone();
+    let mut fixture = FrameFixture::new(&cpu, options);
     let generation = signal.next_test_generation().unwrap();
     let gate = ScopePopGate::new(ScopePopPosition::Validation);
     {
-        let future = async {
+        let future = fixture.run(async |attempt| {
+            let account = attempt.account().clone();
             let mut transaction = GpuOperationTransaction::begin(
                 &device,
                 Arc::clone(&signal),
@@ -357,7 +359,8 @@ fn canceled_submission_resolve_includes_actual_lease_cleanup_in_phase_elapsed() 
             transaction
                 .resolve_submission_phase(RuntimeOperation::SurfaceRendering, &account)
                 .await
-        };
+                .map(drop)
+        });
         let mut future = std::pin::pin!(future);
         reach_gate(future.as_mut(), &gate, &device);
         time.set(5);
@@ -368,7 +371,8 @@ fn canceled_submission_resolve_includes_actual_lease_cleanup_in_phase_elapsed() 
         12,
         "the actual lease cleanup must have executed"
     );
-    let (report, fault) = attempt.finish(RenderAttemptStatus::Canceled, None);
+    let report = fixture.report.take().unwrap();
+    let fault = report.cleanup_fault();
     assert_eq!(fault, None);
     let observation = report.attempt().unwrap();
     assert_eq!(observation.elapsed(), Some(Duration::from_millis(12)));
@@ -574,7 +578,7 @@ fn terminal_after_actual_graph_authorization_retains_prior_output_and_suppresses
     let report = renderer.last_attempt().unwrap();
     assert_eq!(
         report.status(),
-        RenderAttemptStatus::Failed(crate::ErrorCode::RenderFailed)
+        crate::RenderAttemptStatus::Failed(crate::ErrorCode::RenderFailed)
     );
     assert_eq!(
         report

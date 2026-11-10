@@ -1,9 +1,9 @@
 //! Typed frame reports and their renderer-owned destination.
 use super::{
-    renderer_attempt::{RendererAttempt, RendererReport, ReportSlot},
+    renderer_attempt::{RendererAttempt, RendererReport},
     *,
 };
-use std::{ops::Deref, sync::RwLockReadGuard};
+use std::ops::Deref;
 
 /// A completed frame attempt, distinct from last-successful frame statistics.
 /// Each domain keeps its actual closing boundary. Failed extraction is typed
@@ -59,70 +59,196 @@ impl RenderFrameReport {
 
 /// Borrowed immutable latest-frame observation. Holding it borrows Renderer and
 /// prevents another mutable operation, just like borrowing ordinary renderer data.
-pub struct RenderFrameReportRef<'a>(RwLockReadGuard<'a, Option<RenderFrameReport>>);
+///
+/// Multiple observations, including the other report domain, can coexist.
+/// The report is borrowed directly; reading it does not clone its buffers.
+/// Mutable Renderer operations require those borrows to end.
+///
+/// ```no_run
+/// use surgeist_render::Renderer;
+/// fn observe(renderer: &Renderer) {
+///     let frame = renderer.last_attempt().unwrap();
+///     let frame_again = renderer.last_attempt().unwrap();
+///     let readback = renderer.last_readback_attempt().unwrap();
+///     let readback_again = renderer.last_readback_attempt().unwrap();
+///     assert!(std::ptr::eq(&*frame, &*frame_again));
+///     assert!(std::ptr::eq(&*readback, &*readback_again));
+/// }
+/// fn take(mut renderer: Renderer) {
+///     let frame = renderer.take_last_attempt().unwrap();
+///     let readback = renderer.take_last_readback_attempt().unwrap();
+///     drop(renderer);
+///     assert!(frame.attempt().is_ok());
+///     assert!(readback.attempt().is_ok());
+/// }
+/// ```
+///
+/// ```compile_fail,E0502
+/// use surgeist_render::{Renderer, Surface, Scene, Parameters};
+/// fn render_while_observed(renderer: &mut Renderer, surface: &mut Surface, scene: &Scene) {
+///     let report = renderer.last_attempt().unwrap();
+///     let pending = renderer.render(surface, scene, Parameters::default());
+///     let _status = report.status(); // A real final use keeps the borrow live.
+/// }
+/// ```
+///
+/// ```compile_fail,E0502
+/// use surgeist_render::{Renderer, Surface, Scene, Parameters};
+/// fn readback_while_observed(renderer: &mut Renderer, surface: &mut Surface, scene: &Scene) {
+///     let report = renderer.last_attempt().unwrap();
+///     let pending = renderer.read_headless(surface);
+///     let _status = report.status(); // A real final use keeps the borrow live.
+/// }
+/// ```
+///
+/// ```compile_fail,E0502
+/// use surgeist_render::{Renderer, Surface, Scene, Parameters};
+/// fn take_frame_while_observed(renderer: &mut Renderer, surface: &mut Surface, scene: &Scene) {
+///     let report = renderer.last_attempt().unwrap();
+///     let taken = renderer.take_last_attempt();
+///     let _status = report.status(); // A real final use keeps the borrow live.
+/// }
+/// ```
+///
+/// ```compile_fail,E0502
+/// use surgeist_render::{Renderer, Surface, Scene, Parameters};
+/// fn take_readback_while_observed(renderer: &mut Renderer, surface: &mut Surface, scene: &Scene) {
+///     let report = renderer.last_attempt().unwrap();
+///     let taken = renderer.take_last_readback_attempt();
+///     let _status = report.status(); // A real final use keeps the borrow live.
+/// }
+/// ```
+pub struct RenderFrameReportRef<'a>(&'a RenderFrameReport);
+impl<'a> RenderFrameReportRef<'a> {
+    pub(crate) fn new(report: &'a RenderFrameReport) -> Self {
+        Self(report)
+    }
+}
 impl Deref for RenderFrameReportRef<'_> {
     type Target = RenderFrameReport;
     fn deref(&self) -> &Self::Target {
-        self.0.as_ref().expect("occupied borrowed report")
-    }
-}
-#[derive(Clone, Default)]
-pub(crate) struct FrameReportSlot(ReportSlot<RenderFrameReport>);
-impl FrameReportSlot {
-    pub(crate) fn read(&self) -> Option<RenderFrameReportRef<'_>> {
-        self.0.read().map(RenderFrameReportRef)
-    }
-    pub(crate) fn take(&self) -> Option<RenderFrameReport> {
-        self.0.take()
-    }
-    pub(crate) fn store(&self, report: RenderFrameReport) {
-        self.0.store(report);
+        self.0
     }
 }
 
-pub(crate) struct FrameAttempt {
+/// Mandatory driver-local checkpoint owner; work never receives this value.
+struct FrameAttempt {
     core: RendererAttempt,
-    slot: FrameReportSlot,
 }
 impl FrameAttempt {
-    pub(crate) fn begin(
-        slot: FrameReportSlot,
-        cpu: &RendererCpu,
-        options: RenderAccountingOptions,
-    ) -> Result<Self> {
+    fn begin(cpu: &RendererCpu, options: RenderAccountingOptions) -> Result<Self> {
         Ok(Self {
             core: RendererAttempt::begin(RenderAttemptKind::Frame, cpu, options)?,
-            slot,
         })
     }
-    pub(crate) fn started(&self) -> bool {
-        self.core.started()
+    fn account(&self) -> &Account {
+        self.core.account()
     }
+}
+/// Short work capability borrowing the actual owner's core. Moving this view
+/// cannot replace either driver's mandatory checkpoint owner.
+pub(crate) struct FrameWork<'a> {
+    core: &'a mut RendererAttempt,
+}
+impl FrameWork<'_> {
     pub(crate) fn account(&self) -> &Account {
         self.core.account()
     }
     pub(crate) fn attach_generation(&mut self, generation: &Generation) -> Result<()> {
         self.core.attach_generation(generation)
     }
-    pub(crate) fn status_for(&self, error: &Error) -> RenderAttemptStatus {
-        self.core.status_for(error)
-    }
-    pub(crate) fn finish(
-        mut self,
-        status: RenderAttemptStatus,
-        diagnostic: Option<RenderAccountingError>,
-    ) -> (RenderFrameReport, Option<RenderAccountingError>) {
-        let (report, fault) = self.core.finish(status, diagnostic);
-        (RenderFrameReport { data: report }, fault)
+}
+
+/// Terminal data, without a checkpoint owner or lifecycle destructor.
+pub(crate) struct FinishedFrame<T> {
+    result: Result<T>,
+    started: bool,
+    report: RenderFrameReport,
+    fault: Option<RenderAccountingError>,
+}
+impl<T> FinishedFrame<T> {
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        Result<T>,
+        bool,
+        RenderFrameReport,
+        Option<RenderAccountingError>,
+    ) {
+        (self.result, self.started, self.report, self.fault)
     }
 }
-impl Drop for FrameAttempt {
-    fn drop(&mut self) {
-        if let Some(report) = self.core.cancel() {
-            self.slot.store(RenderFrameReport { data: report });
+struct FrameGuard<'g, C> {
+    context: &'g mut C,
+    attempt: &'g mut FrameAttempt,
+    publish_canceled: fn(&mut C, RenderFrameReport),
+}
+impl<C> FrameGuard<'_, C> {
+    fn parts(&mut self) -> (&mut C, &mut FrameAttempt) {
+        (self.context, self.attempt)
+    }
+    fn finish<T>(self, result: Result<T>) -> FinishedFrame<T> {
+        let started = self.attempt.core.started();
+        let (status, diagnostic) = match &result {
+            Ok(_) => (RenderAttemptStatus::Succeeded, None),
+            Err(error) => (
+                self.attempt.core.status_for(error),
+                error.accounting_diagnostic(),
+            ),
+        };
+        let (data, fault) = self.attempt.core.finish(status, diagnostic);
+        FinishedFrame {
+            result,
+            started,
+            report: RenderFrameReport { data },
+            fault,
         }
     }
 }
+impl<C> Drop for FrameGuard<'_, C> {
+    fn drop(&mut self) {
+        // Explicit finish consumed the checkpoint, making this path inert.
+        if let Some(data) = self.attempt.core.cancel() {
+            (self.publish_canceled)(self.context, RenderFrameReport { data });
+        }
+    }
+}
+pub(crate) async fn frame_lifecycle<C, T>(
+    context: &mut C,
+    setup: for<'s> fn(&'s C) -> (&'s RendererCpu, RenderAccountingOptions),
+    publish_canceled: fn(&mut C, RenderFrameReport),
+    work: impl AsyncFnOnce(&mut C, FrameWork<'_>, &Account) -> Result<T>,
+) -> Result<FinishedFrame<T>> {
+    let mut attempt = {
+        let (cpu, options) = setup(context);
+        FrameAttempt::begin(cpu, options)?
+    };
+    let account = attempt.account().clone();
+    let mut guard = FrameGuard {
+        context,
+        attempt: &mut attempt,
+        publish_canceled,
+    };
+    // The child future is destroyed before cancellation closes the checkpoints.
+    let result = {
+        let (context, attempt) = guard.parts();
+        work(
+            context,
+            FrameWork {
+                core: &mut attempt.core,
+            },
+            &account,
+        )
+        .await
+    };
+    let finished = guard.finish(result);
+    // Neither mandatory local may reach publication or final output transfer.
+    drop(attempt);
+    drop(account);
+    Ok(finished)
+}
 
+#[cfg(test)]
+pub(crate) mod fixture;
 #[cfg(test)]
 mod tests;

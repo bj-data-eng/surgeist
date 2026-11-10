@@ -451,33 +451,39 @@ impl Renderer {
                 "required render-texture readback needs an available wgpu device",
             )
         })?;
-        let backend = self.backend.as_mut().ok_or_else(|| {
+        self.backend.as_ref().ok_or_else(|| {
             Error::runtime_unavailable(
                 RuntimeCapabilityUnavailable::rendering_adapter_unavailable(),
                 "required render-texture readback needs an available wgpu backend",
             )
         })?;
-        let mut attempt = crate::accounting::ReadbackAttempt::begin(
-            self.readback_reports.clone(),
-            &self.cpu,
-            self.options.accounting(),
-        )?;
-        attempt.attach_generation(backend.generation(device_identity)?)?;
-        let account = attempt.account().clone();
-        let result = account
-            .async_phase(
-                crate::RenderPhase::Readback,
-                crate::readback::read_texture_rgba(
-                    backend,
-                    device_identity,
-                    texture,
-                    physical_size,
-                    RuntimeOperation::SurfaceRendering,
-                    &account,
-                ),
-            )
-            .await;
-        self.finish_readback(attempt, result)
+        let finished = crate::accounting::readback_lifecycle(
+            self,
+            |renderer| (&renderer.cpu, renderer.options.accounting()),
+            |renderer, report| renderer.readback_reports = Some(report),
+            async |renderer, mut attempt, account| {
+                let backend = renderer
+                    .backend
+                    .as_mut()
+                    .ok_or(crate::RenderAccountingError::Invariant)?;
+                attempt.attach_generation(backend.generation(device_identity)?)?;
+                account
+                    .async_phase(
+                        crate::RenderPhase::Readback,
+                        crate::readback::read_texture_rgba(
+                            backend,
+                            device_identity,
+                            texture,
+                            physical_size,
+                            RuntimeOperation::SurfaceRendering,
+                            account,
+                        ),
+                    )
+                    .await
+            },
+        )
+        .await?;
+        self.finish_readback(finished)
     }
 
     pub(crate) fn signal_default_device_loss_for_test(&mut self, reason: DeviceLossReason) {
@@ -666,27 +672,8 @@ impl Renderer {
         };
         backend.observe_device_terminal(device_identity);
         result?;
-        let mut attempt = crate::accounting::ReadbackAttempt::begin(
-            self.readback_reports.clone(),
-            &self.cpu,
-            self.options.accounting(),
-        )?;
-        attempt.attach_generation(backend.generation(device_identity)?)?;
-        let readback_account = attempt.account().clone();
-        let result = readback_account
-            .async_phase(
-                crate::RenderPhase::Readback,
-                crate::readback::read_texture_rgba(
-                    backend,
-                    device_identity,
-                    &destination_texture,
-                    PhysicalSize::new(2, 2),
-                    RuntimeOperation::SurfaceRendering,
-                    &readback_account,
-                ),
-            )
-            .await;
-        self.finish_readback(attempt, result)
+        self.read_render_texture_for_test(&destination_texture, PhysicalSize::new(2, 2))
+            .await
     }
 }
 

@@ -69,15 +69,17 @@ fn selected_clock_covers_initialization_and_frame_but_off_and_untimed_never_read
             assert!(stats.preparation_time.unwrap() > Duration::ZERO);
             assert!(stats.execution_time.unwrap() > Duration::ZERO);
         }
-        let report = renderer.last_attempt().unwrap();
-        assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
-        assert_eq!(report.attempt().unwrap().elapsed(), stats.frame_time);
-        assert_eq!(report.renderer_cpu().unwrap().elapsed().is_some(), timed);
-        assert_eq!(
-            report.generation().unwrap().unwrap().elapsed().is_some(),
-            timed
-        );
-        drop(report);
+        {
+            let report = renderer.last_attempt().unwrap();
+            assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
+            assert_eq!(report.attempt().unwrap().elapsed(), stats.frame_time);
+            assert_eq!(report.renderer_cpu().unwrap().elapsed().is_some(), timed);
+            assert_eq!(
+                report.generation().unwrap().unwrap().elapsed().is_some(),
+                timed
+            );
+        }
+
         assert_eq!(
             renderer
                 .cpu_accounting_snapshot()
