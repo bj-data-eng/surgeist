@@ -354,7 +354,7 @@ impl Renderer {
         };
         let device_identity = self.default_device.ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::EffectRendering,
+                RuntimeOperation::AdapterSelection,
                 RuntimeCapabilityUnavailableReason::AdapterUnavailable,
                 "resource preparation coverage requires a ready default device",
             )
@@ -362,7 +362,7 @@ impl Renderer {
         let policy = self.options.effect_quality_policy();
         let backend = self.backend.as_mut().ok_or_else(|| {
             Error::runtime_unavailable(
-                RuntimeOperation::EffectRendering,
+                RuntimeOperation::AdapterSelection,
                 RuntimeCapabilityUnavailableReason::AdapterUnavailable,
                 "resource preparation coverage requires a renderer backend",
             )
