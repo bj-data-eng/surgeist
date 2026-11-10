@@ -71,6 +71,9 @@ DOMString code units, USVString surrogate replacement and checked ByteString
 bytes. Restricted and unrestricted floating conversions preserve the selected
 standard's rounding, signed zero, overflow and canonical NaN rules. Conversions
 that invoke guest coercion do so once and preserve the original thrown value.
+`Primitive` constructs undefined, null, Boolean and Number values directly.
+Value-kind and callability checks invoke no guest properties or coercion hooks;
+classes and revoked callable proxies remain callable even though calls throw.
 
 ## Verification
 

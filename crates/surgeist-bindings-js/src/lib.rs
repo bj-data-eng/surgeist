@@ -91,6 +91,42 @@ pub enum EngineKind {
     V8,
 }
 
+/// Host scalar values that can be constructed without evaluating guest source.
+/// Strings are constructed separately through [`Scope::string`].
+#[derive(Clone, Copy, Debug)]
+pub enum Primitive {
+    /// The unique JavaScript undefined value.
+    Undefined,
+    /// The unique JavaScript null value.
+    Null,
+    /// A JavaScript Boolean with the supplied truth value.
+    Boolean(bool),
+    /// A JavaScript Number, preserving finite values, infinities and signed zero.
+    /// NaN represents JavaScript NaN without a distinct payload guarantee.
+    Number(f64),
+}
+
+/// ECMAScript language type of a value, determined without guest coercion.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ValueKind {
+    /// The unique undefined value.
+    Undefined,
+    /// The unique null value, distinct from Object.
+    Null,
+    /// A Boolean primitive.
+    Boolean,
+    /// A Number primitive, including NaN and infinities.
+    Number,
+    /// A BigInt primitive.
+    BigInt,
+    /// A String primitive.
+    String,
+    /// A Symbol primitive.
+    Symbol,
+    /// An object, including functions, callable proxies and boxed primitives.
+    Object,
+}
+
 /// One process-lived platform and one exclusively owned, thread-affine heap.
 ///
 /// Bootstrap on the worker's entry thread. Later bootstrap is allowed only on
@@ -373,6 +409,26 @@ impl<'scope> Scope<'scope> {
     pub fn string(&mut self, units: &[u16]) -> Result<Value<'scope>, Error> {
         let root = self.operations.string(units)?;
         Ok(self.value(root))
+    }
+
+    /// Constructs a scoped scalar directly, without guest evaluation or coercion.
+    pub fn primitive(&mut self, primitive: Primitive) -> Result<Value<'scope>, Error> {
+        let root = self.operations.primitive(primitive)?;
+        Ok(self.value(root))
+    }
+
+    /// Returns the ECMAScript language type without reading guest properties or
+    /// invoking coercion hooks. Functions remain [`ValueKind::Object`].
+    pub fn kind(&mut self, value: &Value<'scope>) -> Result<ValueKind, Error> {
+        self.operations.kind(&value.root)
+    }
+
+    /// Tests ECMAScript IsCallable without invoking guest hooks. A true result
+    /// means a `[[Call]]` internal method exists, not that calling will succeed:
+    /// class constructors and revoked callable proxies are callable and throw
+    /// when called. Callability is separate from [`ValueKind::Object`].
+    pub fn is_callable(&mut self, value: &Value<'scope>) -> Result<bool, Error> {
+        self.operations.is_callable(&value.root)
     }
 
     /// Gets this realm's global object.

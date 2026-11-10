@@ -7,8 +7,8 @@ use std::thread::ThreadId;
 
 use super::Operations;
 use crate::{
-    Arguments, Callback, Completion, Error, Exception, ExceptionPhase, Realm, RealmIdentity,
-    RealmKey, Root, RootIdentity, Scope, Value,
+    Arguments, Callback, Completion, Error, Exception, ExceptionPhase, Primitive, Realm,
+    RealmIdentity, RealmKey, Root, RootIdentity, Scope, Value, ValueKind,
 };
 
 #[cfg(test)]
@@ -517,6 +517,55 @@ impl Operations for Entered<'_, '_, '_> {
         self.attempt(ExceptionPhase::Coerce, |scope, roots, realm, _setter| {
             let value = string(scope, units)?;
             roots.retain(scope, realm, value.into())
+        })
+    }
+
+    fn primitive(&mut self, primitive: Primitive) -> Result<Root, Error> {
+        self.attempt(ExceptionPhase::Coerce, |scope, roots, realm, _setter| {
+            let value = match primitive {
+                Primitive::Undefined => v8::undefined(scope).into(),
+                Primitive::Null => v8::null(scope).into(),
+                Primitive::Boolean(value) => v8::Boolean::new(scope, value).into(),
+                Primitive::Number(value) => v8::Number::new(scope, value).into(),
+            };
+            roots.retain(scope, realm, value)
+        })
+    }
+
+    fn kind(&mut self, value: &Root) -> Result<ValueKind, Error> {
+        self.validate_root(value)?;
+        self.attempt(ExceptionPhase::Coerce, |scope, roots, _realm, _setter| {
+            let value = roots.local(scope, value)?;
+            let kind = if value.is_undefined() {
+                ValueKind::Undefined
+            } else if value.is_null() {
+                ValueKind::Null
+            } else if value.is_boolean() {
+                ValueKind::Boolean
+            } else if value.is_number() {
+                ValueKind::Number
+            } else if value.is_big_int() {
+                ValueKind::BigInt
+            } else if value.is_string() {
+                ValueKind::String
+            } else if value.is_symbol() {
+                ValueKind::Symbol
+            } else if value.is_object() {
+                ValueKind::Object
+            } else {
+                return Err(Error::BackendUnavailable);
+            };
+            Ok(kind)
+        })
+    }
+
+    fn is_callable(&mut self, value: &Root) -> Result<bool, Error> {
+        self.validate_root(value)?;
+        self.attempt(ExceptionPhase::Coerce, |scope, roots, _realm, _setter| {
+            // In the pinned SDK, Value::is_function delegates Value::IsFunction
+            // to V8's internal IsCallable (v8/src/api/api.cc), not a JSFunction
+            // shape check. It includes classes and revoked callable proxies.
+            Ok(roots.local(scope, value)?.is_function())
         })
     }
 

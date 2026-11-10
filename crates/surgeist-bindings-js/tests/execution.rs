@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use surgeist_bindings_js::{
     Callback, Completion, EngineKind, Error, ExceptionPhase, Execution, IntegerKind, IntegerMode,
-    IntegerValue, Process, Realm, Scope, Value,
+    IntegerValue, Primitive, Process, Realm, Scope, Value, ValueKind,
 };
 
 fn units(source: &str) -> Vec<u16> {
@@ -985,6 +985,263 @@ fn host_refusals_are_sticky_and_prevent_native_effects() -> Result<(), Error> {
     Ok(())
 }
 
+fn scalar_construction_preserves_javascript_values(process: &mut Process) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    execution.in_realm(&realm, |scope| {
+        let undefined = scope.primitive(Primitive::Undefined)?;
+        let null = scope.primitive(Primitive::Null)?;
+        assert_eq!(scope.kind(&undefined)?, ValueKind::Undefined);
+        assert_eq!(scope.kind(&null)?, ValueKind::Null);
+        assert!(!scope.strict_equals(&undefined, &null)?);
+        assert!(!scope.is_callable(&undefined)?);
+        assert!(!scope.is_callable(&null)?);
+        assert!(scope.unrestricted_double(&undefined)?.is_nan());
+        assert_eq!(scope.double(&null)?, 0.0);
+        for truth in [false, true] {
+            let value = scope.primitive(Primitive::Boolean(truth))?;
+            assert_eq!(scope.kind(&value)?, ValueKind::Boolean);
+            assert_eq!(scope.boolean(&value)?, truth);
+            assert_eq!(scope.double(&value)?, if truth { 1.0 } else { 0.0 });
+            assert!(!scope.is_callable(&value)?);
+        }
+        for number in [
+            0.0,
+            -0.0,
+            1.25,
+            -42.5,
+            f64::MAX,
+            -f64::MAX,
+            f64::MIN_POSITIVE,
+            f64::from_bits(1),
+            f64::INFINITY,
+            f64::NEG_INFINITY,
+        ] {
+            let value = scope.primitive(Primitive::Number(number))?;
+            assert_eq!(scope.kind(&value)?, ValueKind::Number);
+            assert_eq!(
+                scope.unrestricted_double(&value)?.to_bits(),
+                number.to_bits()
+            );
+            assert_eq!(scope.boolean(&value)?, number != 0.0);
+            assert!(!scope.is_callable(&value)?);
+        }
+        // ECMAScript exposes one NaN value, not host NaN payload identities.
+        for number in [
+            f64::NAN,
+            f64::from_bits(0x7ff0_0000_0000_0001),
+            f64::from_bits(0xffff_ffff_ffff_ffff),
+        ] {
+            let value = scope.primitive(Primitive::Number(number))?;
+            assert_eq!(scope.kind(&value)?, ValueKind::Number);
+            assert!(scope.unrestricted_double(&value)?.is_nan());
+            assert!(!scope.boolean(&value)?);
+        }
+        Ok::<_, Error>(())
+    })??;
+    Ok(())
+}
+
+fn value_classification_uses_language_types_without_guest_hooks(
+    process: &mut Process,
+) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    execution.in_realm(&realm, |scope| {
+        for (source, kind) in [
+            ("undefined", ValueKind::Undefined),
+            ("null", ValueKind::Null),
+            ("false", ValueKind::Boolean),
+            ("NaN", ValueKind::Number),
+            ("123456789012345678901234567890n", ValueKind::BigInt),
+            ("'text'", ValueKind::String),
+            ("Symbol('tag')", ValueKind::Symbol),
+            ("({})", ValueKind::Object),
+            ("[]", ValueKind::Object),
+            ("new Number(7)", ValueKind::Object),
+            ("new Boolean(false)", ValueKind::Object),
+            ("new String('text')", ValueKind::Object),
+        ] {
+            let value = scope.evaluate(&units(source))?;
+            assert_eq!(scope.kind(&value)?, kind, "{source}");
+            assert!(!scope.is_callable(&value)?, "{source}");
+        }
+        let string = scope.string(&[0xd800, 0])?;
+        assert_eq!(scope.kind(&string)?, ValueKind::String);
+        assert!(!scope.is_callable(&string)?);
+        scope.evaluate(&units("globalThis.classificationHooks = 0"))?;
+        for (source, callable) in [
+            ("({ [Symbol.toPrimitive]() { classificationHooks++; throw 1 }, valueOf() { classificationHooks++; throw 2 }, toString() { classificationHooks++; throw 3 } })", false),
+            ("new Proxy({}, { get() { classificationHooks++; throw 4 }, getPrototypeOf() { classificationHooks++; throw 5 } })", false),
+            ("new Proxy(function(){}, { get() { classificationHooks++; throw 6 }, getPrototypeOf() { classificationHooks++; throw 7 } })", true),
+        ] {
+            let value = scope.evaluate(&units(source))?;
+            assert_eq!(scope.kind(&value)?, ValueKind::Object);
+            assert_eq!(scope.is_callable(&value)?, callable);
+        }
+        let count = scope.evaluate(&units("classificationHooks"))?;
+        assert_eq!(scope.double(&count)?, 0.0);
+        Ok::<_, Error>(())
+    })??;
+    Ok(())
+}
+
+fn callable_classification_includes_classes_and_revoked_callable_proxies(
+    process: &mut Process,
+) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    execution.in_realm(&realm, |scope| {
+        let receiver = scope.primitive(Primitive::Undefined)?;
+        for source in ["(function ordinary() { return 42 })", "(() => 42)", "(function() { return 42 }).bind(null)", "new Proxy(() => 42, {})"] {
+            let function = scope.evaluate(&units(source))?;
+            assert_eq!(scope.kind(&function)?, ValueKind::Object, "{source}");
+            assert!(scope.is_callable(&function)?, "{source}");
+            let result = scope.call(&function, &receiver, &[])?;
+            assert_eq!(scope.double(&result)?, 42.0);
+        }
+        for source in ["(class Constructor {})", "(() => { const pair = Proxy.revocable(() => 42, {}); pair.revoke(); return pair.proxy })()"] {
+            let function = scope.evaluate(&units(source))?;
+            assert_eq!(scope.kind(&function)?, ValueKind::Object);
+            assert!(scope.is_callable(&function)?);
+            let exception = match scope.call(&function, &receiver, &[]) {
+                Err(Error::Exception(exception)) => exception,
+                _ => return Err(Error::BackendUnavailable),
+            };
+            assert_eq!(exception.phase(), ExceptionPhase::Invoke);
+            let thrown = scope.import(exception.value())?;
+            let name = scope.get(&thrown, &units("name"))?;
+            assert_eq!(scope.to_utf16(&name)?, units("TypeError"));
+            // Revocation and an unsuccessful call do not remove [[Call]].
+            assert!(scope.is_callable(&function)?);
+        }
+        for source in ["new Proxy({}, {})", "(() => { const pair = Proxy.revocable({}, {}); pair.revoke(); return pair.proxy })()"] {
+            let object = scope.evaluate(&units(source))?;
+            assert_eq!(scope.kind(&object)?, ValueKind::Object);
+            assert!(!scope.is_callable(&object)?);
+            assert!(matches!(scope.call(&object, &receiver, &[]), Err(Error::ExpectedFunction)));
+        }
+        Ok::<_, Error>(())
+    })??;
+    Ok(())
+}
+
+fn scalar_and_classification_operations_work_in_native_callbacks(
+    process: &mut Process,
+) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    let omitted = Callback::new(|scope, arguments| {
+        let omitted = match arguments.get(0) {
+            None => true,
+            Some(value) => {
+                assert_eq!(scope.kind(value)?, ValueKind::Undefined);
+                false
+            }
+        };
+        Ok(Completion::Return(
+            scope.primitive(Primitive::Boolean(omitted))?,
+        ))
+    });
+    let classify = Callback::new(|scope, arguments| {
+        let expected = [
+            ValueKind::Undefined,
+            ValueKind::Null,
+            ValueKind::Boolean,
+            ValueKind::Number,
+            ValueKind::BigInt,
+            ValueKind::String,
+            ValueKind::Symbol,
+            ValueKind::Object,
+            ValueKind::Object,
+        ];
+        assert_eq!(arguments.len(), expected.len());
+        for (index, expected) in expected.into_iter().enumerate() {
+            let value = arguments.get(index).ok_or(Error::BackendUnavailable)?;
+            assert_eq!(scope.kind(value)?, expected);
+            assert_eq!(scope.is_callable(value)?, index == 8);
+        }
+        Ok(Completion::Return(
+            scope.primitive(Primitive::Number(42.5))?,
+        ))
+    });
+    execution.in_realm(&realm, |scope| {
+        let receiver = scope.primitive(Primitive::Undefined)?;
+        let omitted = scope.function(&omitted)?;
+        assert_eq!(scope.kind(&omitted)?, ValueKind::Object);
+        assert!(scope.is_callable(&omitted)?);
+        let result = scope.call(&omitted, &receiver, &[])?;
+        assert_eq!(scope.kind(&result)?, ValueKind::Boolean);
+        assert!(scope.boolean(&result)?);
+        let undefined = scope.primitive(Primitive::Undefined)?;
+        let result = scope.call(&omitted, &receiver, &[undefined])?;
+        assert!(!scope.boolean(&result)?);
+
+        let classify = scope.function(&classify)?;
+        let arguments = [
+            scope.primitive(Primitive::Undefined)?,
+            scope.primitive(Primitive::Null)?,
+            scope.primitive(Primitive::Boolean(true))?,
+            scope.primitive(Primitive::Number(-0.0))?,
+            scope.evaluate(&units("1n"))?,
+            scope.string(&[0xd800, 0])?,
+            scope.evaluate(&units("Symbol()"))?,
+            scope.global()?,
+            scope.function(&Callback::new(|_, _| Ok(Completion::Undefined)))?,
+        ];
+        let result = scope.call(&classify, &receiver, &arguments)?;
+        assert_eq!(scope.kind(&result)?, ValueKind::Number);
+        assert_eq!(scope.double(&result)?, 42.5);
+        Ok::<_, Error>(())
+    })??;
+    Ok(())
+}
+
+fn scalar_operations_preserve_the_first_host_failure() -> Result<(), Error> {
+    let mut process = Process::bootstrap(EngineKind::V8)?;
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    install(
+        &mut execution,
+        &realm,
+        "failScalar",
+        &Callback::new(|_, _| Err(Error::Allocation)),
+    )?;
+    let checked = Rc::new(Cell::new(false));
+    let recorded = checked.clone();
+    install(
+        &mut execution,
+        &realm,
+        "probeScalar",
+        &Callback::new(move |scope, arguments| {
+            let value = arguments.get(0).ok_or(Error::BackendUnavailable)?;
+            let global = scope.global()?;
+            let fail = scope.get(&global, &units("failScalar"))?;
+            let receiver = scope.primitive(Primitive::Undefined)?;
+            assert!(matches!(
+                scope.call(&fail, &receiver, &[]),
+                Err(Error::Allocation)
+            ));
+            assert!(matches!(
+                scope.primitive(Primitive::Number(1.0)),
+                Err(Error::Allocation)
+            ));
+            assert!(matches!(scope.kind(value), Err(Error::Allocation)));
+            assert!(matches!(scope.is_callable(value), Err(Error::Allocation)));
+            // Test-only receipt proves every refusal was observed inside the
+            // callback; its proposed completion must still lose to the first error.
+            recorded.set(true);
+            Ok(Completion::Undefined)
+        }),
+    )?;
+    assert!(matches!(
+        evaluate(&mut execution, &realm, "probeScalar(7)"),
+        Err(Error::Allocation)
+    ));
+    assert!(checked.get());
+    Ok(())
+}
+
 fn main() -> Result<(), Error> {
     v8::V8::set_flags_from_string("--expose-gc");
     let mut process = Process::bootstrap(EngineKind::V8)?;
@@ -1012,6 +1269,10 @@ fn main() -> Result<(), Error> {
     native_callbacks_recurse_and_release_self_cleared_roots(&mut process)?;
     native_callback_guest_throws_remain_exact(&mut process)?;
     native_callback_capture_collection_and_owner_teardown(&mut process)?;
+    scalar_construction_preserves_javascript_values(&mut process)?;
+    value_classification_uses_language_types_without_guest_hooks(&mut process)?;
+    callable_classification_includes_classes_and_revoked_callable_proxies(&mut process)?;
+    scalar_and_classification_operations_work_in_native_callbacks(&mut process)?;
 
     let (old_realm, old_value) = {
         let mut execution = process.execution();
@@ -1040,6 +1301,7 @@ fn main() -> Result<(), Error> {
     drop(execution);
     drop(next);
     host_refusals_are_sticky_and_prevent_native_effects()?;
+    scalar_operations_preserve_the_first_host_failure()?;
     println!(
         "execution ownership, realms, roots, UTF-16, exceptions, properties, calls, jobs and native callbacks passed"
     );

@@ -1,6 +1,6 @@
 pub(crate) mod v8;
 
-use crate::{Callback, Error, Realm, Root};
+use crate::{Callback, Error, Primitive, Realm, Root, ValueKind};
 
 /// Heap lifecycle, separate from operations on an already entered realm.
 pub(crate) trait Engine {
@@ -22,6 +22,9 @@ pub(crate) trait Operations {
     fn validate_root(&self, root: &Root) -> Result<(), Error>;
     fn evaluate(&mut self, source: &[u16]) -> Result<Root, Error>;
     fn string(&mut self, units: &[u16]) -> Result<Root, Error>;
+    fn primitive(&mut self, primitive: Primitive) -> Result<Root, Error>;
+    fn kind(&mut self, value: &Root) -> Result<ValueKind, Error>;
+    fn is_callable(&mut self, value: &Root) -> Result<bool, Error>;
     fn type_error(&mut self, message: &[u16]) -> Result<Root, Error>;
     fn function(&mut self, callback: &Callback) -> Result<Root, Error>;
     fn global(&mut self) -> Result<Root, Error>;

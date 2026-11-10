@@ -45,7 +45,7 @@ the exact canonical NaN bit patterns required by the selected Web IDL edition.
 Use the existing [dated ECMAScript 2026 source selection](ecmascript-number-serialization--2026--cd65f2eaa201.md#source-identity-and-bounds),
 whose publisher front matter retains its original draft status. The complete
 [abstract-operations page](https://tc39.es/ecma262/2026/multipage/abstract-operations.html)
-supplies ToPrimitive, ToBoolean, ToNumber, ToString and related property/call
+supplies ToPrimitive, ToBoolean, ToNumber, ToString, IsCallable and related property/call
 operations; the complete [data-types page](https://tc39.es/ecma262/2026/multipage/ecmascript-data-types-and-values.html)
 and [algorithm conventions](https://tc39.es/ecma262/2026/multipage/notational-conventions.html#sec-algorithm-conventions)
 supply their numeric and mathematical definitions. Delegation to the external
