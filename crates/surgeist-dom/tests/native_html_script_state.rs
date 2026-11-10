@@ -226,8 +226,8 @@ fn redundant_src_runs_preparation_after_type_repair_and_async_only_changes_on_ad
 }
 
 #[test]
-fn equal_character_data_and_empty_fragment_still_invoke_parent_children_changed() {
-    for trigger in ["text", "comment", "pi", "empty-fragment", "remove"] {
+fn equal_character_data_and_removal_still_invoke_parent_children_changed() {
+    for trigger in ["text", "comment", "pi", "remove"] {
         let mut dom = dom();
         let (d, root) = setup(&mut dom);
         let node = invalid_connected(&mut dom, d, root);
@@ -247,11 +247,7 @@ fn equal_character_data_and_empty_fragment_still_invoke_parent_children_changed(
             "text" => b.replace_data(c.created(&text).unwrap().unwrap(), 0, 0, ""),
             "comment" => b.replace_data(c.created(&comment).unwrap().unwrap(), 0, 0, ""),
             "pi" => b.replace_data(c.created(&pi).unwrap().unwrap(), 0, 0, ""),
-            "remove" => b.detach(c.created(&comment).unwrap().unwrap()),
-            _ => {
-                let empty = b.create_fragment(d);
-                b.insert_before(&empty, node, None);
-            }
+            _ => b.detach(c.created(&comment).unwrap().unwrap()),
         }
         let c = apply(&mut dom, b);
         assert!(
@@ -276,6 +272,45 @@ fn equal_character_data_and_empty_fragment_still_invoke_parent_children_changed(
         );
         fresh(&before, node);
     }
+}
+
+#[test]
+fn empty_fragment_insertion_does_not_prepare_connected_script() {
+    let mut dom = dom();
+    let (d, root) = setup(&mut dom);
+    let node = invalid_connected(&mut dom, d, root);
+    let mut b = DomBatch::new();
+    let text = b.create_text(d, "body");
+    let comment = b.create_comment(d, "comment");
+    let pi = b.create_processing_instruction(d, "target", "pi");
+    for child in [&text, &comment, &pi] {
+        b.insert_before(child, node, None);
+    }
+    b.set_attribute(node, "type", "");
+    apply(&mut dom, b);
+    let before = dom.snapshot();
+    let nodes = dom.usage().managed_nodes();
+    fresh(&before, node);
+    let mut b = DomBatch::new();
+    let fragment = b.create_fragment(d);
+    b.insert_before(&fragment, node, None);
+    let commit = apply(&mut dom, b);
+    let fragment = commit.created(&fragment).unwrap().unwrap();
+    let after = dom.snapshot();
+    // DOM3071 insert step 3 returns before children-changed. The requested
+    // fragment creation still publishes its own identity and storage.
+    assert_eq!(dom.usage().managed_nodes(), nodes + 1);
+    assert_ne!(after.stamp(), before.stamp());
+    assert_eq!(commit.changes().changes(), [DomChange::Created(fragment)]);
+    assert!(after.node(fragment).unwrap().children().is_empty());
+    assert_eq!(after.node(fragment).unwrap().owner_document(), Some(d));
+    assert_eq!(after.node(fragment).unwrap().parent(), None);
+    assert_eq!(
+        after.node(node).unwrap().children(),
+        before.node(node).unwrap().children()
+    );
+    fresh(&after, node);
+    fresh(&before, node);
 }
 
 #[test]

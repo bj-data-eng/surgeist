@@ -972,6 +972,11 @@ impl Draft {
             }
             Frame::Insert(mut frame) => {
                 if frame.stage == 0 {
+                    // DOM3071 insert step 3 precedes fragment removal, Range
+                    // maintenance and children-changed hooks.
+                    if frame.moving.is_empty() {
+                        return Ok(());
+                    }
                     if frame.fragment
                         && let Some(&child) = frame.moving.get(frame.index)
                     {
