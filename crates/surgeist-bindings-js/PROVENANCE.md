@@ -63,6 +63,12 @@ The ARM64 results do not qualify a future worker-transfer or shared-isolate API.
 The process-lived platform is initialized once and deliberately never disposed
 or dynamically unloaded. Per-owner roots, contexts and isolate use safe RAII.
 
+The original SDK Weak handle only signals callback retirement from its native
+finalizer. The Rust registry keeps lease custody until host-boundary reaping,
+then releases the Weak handle before arbitrary captures, outside registry borrows
+and SDK frames. GC and explicit teardown therefore retain ordinary user Drop
+unwind behavior without sending that unwind through an extern-C finalizer.
+
 The [crate notice](NOTICE.md) distinguishes SDK, native V8 and bundled-library
 terms. A source-qualified dependency notice is not certification of every
 possible downstream executable or static-link composition.

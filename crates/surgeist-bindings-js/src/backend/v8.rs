@@ -51,9 +51,13 @@ enum CallbackRole {
 }
 
 struct CallbackEntry {
-    lease: Weak<CallbackLease>,
-    // Keep the ORIGINAL weak handle. Cloning an SDK Weak loses its finalizer.
+    // Release the ORIGINAL weak handle before dropping arbitrary captures.
+    // Cloning an SDK Weak would lose its finalizer.
     _function: v8::Weak<v8::Function>,
+    retired: Rc<Cell<bool>>,
+    // The SDK finalizer previously held this same strong lease. Registry
+    // custody adds no guest root: the function handle above remains weak.
+    lease: Rc<CallbackLease>,
 }
 
 struct Roots {
@@ -177,7 +181,7 @@ impl Roots {
             Ok(mut entries) => {
                 let dead: Vec<_> = entries
                     .iter()
-                    .filter_map(|(id, entry)| (entry.lease.strong_count() == 0).then_some(*id))
+                    .filter_map(|(id, entry)| entry.retired.get().then_some(*id))
                     .collect();
                 dead.into_iter()
                     .filter_map(|id| entries.remove(&id))
@@ -188,6 +192,11 @@ impl Roots {
                 return;
             }
         };
+        // Engine lifecycle entry points call reap only after SDK/native frames
+        // have returned. Extraction also ended the table borrow above. Capture
+        // Drop therefore follows ordinary Rust unwind behavior here, without
+        // converting destructor panics into CallbackPanicked or changing the
+        // owner's preexisting first refusal.
         drop(retired);
     }
 }
@@ -561,11 +570,15 @@ impl Entered<'_, '_, '_> {
             } else {
                 (function.into(), function)
             };
-            let weak_lease = Rc::downgrade(&lease);
+            let retired = Rc::new(Cell::new(false));
+            let retirement_signal = retired.clone();
             let weak = v8::Weak::with_guaranteed_finalizer(
                 scope,
                 lifetime_function,
-                Box::new(move || drop(lease)),
+                // SDK second-pass callbacks cross an extern-C boundary. This
+                // callback only marks retirement: no allocation, registry
+                // access, fallible work or arbitrary capture destructor.
+                Box::new(move || retirement_signal.set(true)),
             );
             roots
                 .callbacks
@@ -574,8 +587,9 @@ impl Entered<'_, '_, '_> {
                 .insert(
                     id,
                     CallbackEntry {
-                        lease: weak_lease,
                         _function: weak,
+                        retired,
+                        lease,
                     },
                 );
             roots.retain(scope, realm, value)
@@ -1153,16 +1167,17 @@ fn invoke_callback<'s>(
     let role = v8::Local::<v8::Uint32>::try_from(role)
         .map_err(|_| Error::BackendUnavailable)?
         .value();
-    // Only a Rust Weak clone leaves the borrow. Upgrading, user invocation,
-    // SDK calls and finalizer-driven capture drops happen after it ends.
+    // Only a strong Rust lease clone leaves the borrow. User invocation and
+    // SDK calls happen after it ends; retirement is drained at owned host
+    // boundaries after all SDK frames and registry borrows have ended.
     let lease = roots
         .callbacks
         .try_borrow()
         .map_err(|_| roots.conflict())?
         .get(&id)
+        .filter(|entry| !entry.retired.get())
         .map(|entry| entry.lease.clone())
         .ok_or(Error::ExpiredIdentity)?;
-    let lease = lease.upgrade().ok_or(Error::ExpiredIdentity)?;
     if lease.realm.owner != roots.owner {
         return Err(Error::ForeignOwner);
     }

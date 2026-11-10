@@ -32,6 +32,11 @@ Guest references and pending jobs can retain their objects after Rust roots
 are released.
 Dropping the process releases its handles and isolate without running jobs.
 
+GC finalizers only mark callback registrations for retirement. The owner releases
+their Rust captures at a host boundary after SDK calls and registry borrows end.
+Capture destructors retain ordinary Rust unwind behavior there; callback-body
+panic refusal is a separate contract.
+
 Callback scopes share the production root registry through short checked
 borrows. No registry borrow crosses SDK allocation, coercion or a guest call.
 An internal registry conflict permanently refuses the owner and requests V8
@@ -98,6 +103,8 @@ Use the exact native artifact and offline environment described in
 dependency's build script from fetching a native library. The execution test is
 a dedicated worker-process executable, so it exercises bootstrap and all realms
 on one entry thread rather than unrelated test-pool threads.
+Capture-disposal tests use isolated workers to check GC and owner teardown,
+including destructor unwinds and preservation of prior host refusal.
 
 ```sh
 cargo test --offline --locked -j 1 -p surgeist-bindings-js
