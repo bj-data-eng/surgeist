@@ -28,8 +28,9 @@ pub use model::*;
 #[cfg(test)]
 pub(crate) use storage::packed_size;
 pub(crate) use storage::{
-    AccountedVec, BackedValue, Hold, OwnedBox, PackedProducer, SharedValue, StorageAccount,
-    StorageContractError, StorageSizing, reserve_backing_with,
+    AccountedVec, DisposalCompletion, Hold, OwnedBox, PackedProducer, PreparationValue,
+    SharedValue, StorageAccount, StorageContractError, StorageSizing, preparation_backing,
+    reserve_backing_with,
 };
 
 use crate::{Error, GlyphPreparationError, GlyphResource, GlyphRunLimits, Result};
@@ -468,7 +469,37 @@ impl<F> Drop for PhaseFuture<'_, F> {
     }
 }
 
+/// A checked forward observation borrowing the live attempt, never its payload.
+pub(crate) struct ForwardPhase<'a> {
+    account: &'a Account,
+    observation: Option<surgeist_ledger::PhaseObservation>,
+}
+impl Drop for ForwardPhase<'_> {
+    fn drop(&mut self) {
+        if let Some(observation) = self.observation.take()
+            && self.account.ledger.end_phase(observation).is_err()
+        {
+            let mut fault = self
+                .account
+                .fault
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            fault.get_or_insert(RenderAccountingError::Invariant);
+        }
+    }
+}
+
 impl Account {
+    pub(crate) fn begin_phase(&self, phase: RenderPhase) -> Result<ForwardPhase<'_>> {
+        let observation = self
+            .ledger
+            .begin_phase(self.scopes[phase.index()])
+            .map_err(|error| self.error(error))?;
+        Ok(ForwardPhase {
+            account: self,
+            observation: Some(observation),
+        })
+    }
     pub(crate) fn at(&self, phase: RenderPhase) -> Self {
         Self {
             phase,

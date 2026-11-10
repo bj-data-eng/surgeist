@@ -83,98 +83,84 @@ impl From<StorageContractError> for crate::Error {
     }
 }
 
-/// Stack custody for an owned value and the backing/import leases it consumes.
-/// Text needs at most two independent allocations. No forward participant or
-/// additional heap allocation is introduced by this owner.
-pub(crate) struct BackedValue<T> {
-    value: Option<T>,
-    backing: [Option<Hold>; 2],
-    import: Option<CpuImport>,
-}
+/// Ends lexical disposal after the actual payload and both backing locals.
+#[derive(Default)]
+pub(crate) struct DisposalCompletion(Option<super::cpu::MaintenancePhase>);
 
-impl<T> BackedValue<T> {
-    pub(crate) fn new(value: T, backing: [Option<Hold>; 2]) -> Self {
-        Self::with_import(value, backing, None)
-    }
-
-    fn with_import(value: T, backing: [Option<Hold>; 2], import: Option<CpuImport>) -> Self {
-        Self {
-            value: Some(value),
-            backing,
-            import,
+impl DisposalCompletion {
+    /// Select the first actual backing, then the second, then import-only cleanup.
+    /// The returned guard borrows only this completion slot, never the payload.
+    pub(crate) fn start(
+        &mut self,
+        backing: [Option<&Hold>; 2],
+        import: Option<&CpuImport>,
+    ) -> DisposalStart<'_> {
+        let account = match backing.into_iter().flatten().next() {
+            Some(Hold::Renderer(hold)) => Some(hold.account()),
+            Some(Hold::Preparation(_)) => None,
+            None => import.map(CpuImport::disposal_account),
+        };
+        DisposalStart {
+            completion: self,
+            account,
         }
-    }
-
-    /// Qualify lifetime while the complete generic payload owner remains armed.
-    /// No mutable backing/import access escapes before immediate consumption.
-    pub(crate) fn require_preparation(&self) -> Result<()> {
-        if self.import.is_some() {
-            return Err(StorageContractError::WrongRetentionLifetime.into());
-        }
-        for hold in self.backing.iter().flatten() {
-            hold.require_preparation()?;
-        }
-        Ok(())
-    }
-
-    fn take_parts(&mut self) -> (T, [Option<Hold>; 2], Option<CpuImport>) {
-        (
-            self.value.take().expect("owned backed value"),
-            std::mem::take(&mut self.backing),
-            self.import.take(),
-        )
-    }
-
-    pub(crate) fn into_parts(mut self) -> (T, [Option<Hold>; 2], Option<CpuImport>) {
-        self.take_parts()
-    }
-
-    /// The readback owner has already validated this complete result and closed
-    /// its intervals. Failure leaves this guard armed for ordinary disposal.
-    pub(crate) fn transfer_readback(mut self) -> Result<T> {
-        if self.backing[1].is_some() || self.import.is_some() {
-            return Err(RenderAccountingError::Invariant.into());
-        }
-        self.backing[0]
-            .as_mut()
-            .ok_or(RenderAccountingError::Invariant)?
-            .transfer_readback()?;
-        let (value, backing, import) = self.take_parts();
-        // The only backing is now consumed; neither drop observes Ledger.
-        drop(backing);
-        drop(import);
-        Ok(value)
     }
 }
 
-impl<T> Deref for BackedValue<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.value.as_ref().expect("owned backed value")
+/// Declared after a mandatory lexical payload; starts observation before its drop.
+pub(crate) struct DisposalStart<'a> {
+    completion: &'a mut DisposalCompletion,
+    account: Option<CpuAccount>,
+}
+impl DisposalStart<'_> {
+    /// Only infallible moves into the receiving armed owner may follow.
+    pub(crate) fn disarm(mut self) {
+        self.account = None;
     }
 }
-
-impl<T> Drop for BackedValue<T> {
+impl Drop for DisposalStart<'_> {
     fn drop(&mut self) {
-        let value = self.value.take();
-        let [first, second] = std::mem::take(&mut self.backing);
-        let import = self.import.take();
-        if let Some(first) = first {
-            first.dispose(|| {
-                drop(value);
-                drop(second);
-            });
-        } else if let Some(second) = second {
-            second.dispose(|| drop(value));
-        } else if let Some(import) = &import {
-            import.dispose_value(|| drop(value));
-        } else {
-            drop(value);
+        if let Some(account) = self.account.take() {
+            self.completion.0 = Some(account.begin_maintenance_phase());
         }
-        // Payload destruction and the import's physical registry release are
-        // separate callbacks. Never time that same release in an outer phase.
-        drop(import);
+    }
+}
+
+/// A complete standalone result with preparation-only custody.
+/// Automatic field order destroys the mandatory value before both actual leases.
+pub(crate) struct PreparationValue<T> {
+    value: T,
+    backing: [Option<PreparationHold>; 2],
+}
+impl<T> PreparationValue<T> {
+    pub(crate) fn new(value: T, backing: [Option<PreparationHold>; 2]) -> Self {
+        Self { value, backing }
+    }
+    pub(crate) fn into_retained(self) -> T {
+        let Self { value, backing } = self;
+        for hold in backing.into_iter().flatten() {
+            hold.retain();
+        }
+        value
+    }
+}
+impl<T> Deref for PreparationValue<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
+        &self.value
+    }
+}
+
+/// Narrow optional allocation custody without releasing a rejected renderer lease.
+/// The caller keeps its complete lexical payload armed throughout this check.
+pub(crate) fn preparation_backing(backing: &mut Option<Hold>) -> Result<Option<PreparationHold>> {
+    match backing.take() {
+        Some(Hold::Preparation(hold)) => Ok(Some(hold)),
+        Some(hold @ Hold::Renderer(_)) => {
+            *backing = Some(hold);
+            Err(StorageContractError::WrongRetentionLifetime.into())
+        }
+        None => Ok(None),
     }
 }
 
@@ -266,28 +252,29 @@ impl<T> SharedValue<T> {
         import: Option<CpuImport>,
         account: &StorageAccount,
     ) -> Result<Self> {
-        // Keep ownership outside the fallible phase callback: a CPU health
-        // refusal can prevent that callback from starting at all.
-        let mut guarded = BackedValue::with_import(value, [backing, None], import);
-        account.phase(|| {
-            let allocation = account.acquire(
-                RenderResource::RetainedCpuBytes,
-                std::mem::size_of::<SharedValueData<T>>(),
-            )?;
-            let (value, [backing, _], import) = guarded.take_parts();
-            // Stable safe Arc allocation follows the existing immutable-value
-            // allocator boundary. Its explicit typed payload is admitted first;
-            // no opaque Arc/allocator header is estimated.
-            Ok(Self(std::sync::Arc::new(SharedValueData {
-                value,
-                _backing: backing,
-                _allocation: AllocationCleanup {
-                    hold: allocation,
-                    completion: None,
-                },
-                _import: import,
-            })))
-        })
+        // Bind incoming arguments in disposal order before any rejectable entry.
+        let import = import;
+        let mut completion = DisposalCompletion::default();
+        let backing = backing;
+        let value = value;
+        let start = completion.start([backing.as_ref(), None], import.as_ref());
+        // This later local closes forward observation before failure disposal.
+        let _phase = account.begin_phase()?;
+        let allocation = account.acquire(
+            RenderResource::RetainedCpuBytes,
+            std::mem::size_of::<SharedValueData<T>>(),
+        )?;
+        start.disarm();
+        // Stable safe allocation follows the existing admitted payload boundary.
+        Ok(Self(std::sync::Arc::new(SharedValueData {
+            value,
+            _backing: backing,
+            _allocation: AllocationCleanup {
+                hold: allocation,
+                completion: None,
+            },
+            _import: import,
+        })))
     }
 
     /// Identifies the same immutable allocation without inspecting its content.
@@ -454,6 +441,12 @@ impl StorageAccount {
             Self::Renderer(account) => account.sized::<T>(count, resource),
         }
     }
+    fn begin_phase(&self) -> Result<Option<super::cpu::MaintenancePhase>> {
+        match self {
+            Self::Preparation(_) => Ok(None),
+            Self::Renderer(account) => account.begin_checked_phase().map(Some),
+        }
+    }
     pub(crate) fn phase<T>(&self, run: impl FnOnce() -> Result<T>) -> Result<T> {
         match self {
             Self::Preparation(_) => run(),
@@ -542,13 +535,6 @@ impl Hold {
                     value
                 })
             }
-        }
-    }
-    pub(crate) fn require_preparation(&self) -> Result<()> {
-        if matches!(self, Self::Renderer(_)) {
-            Err(StorageContractError::WrongRetentionLifetime.into())
-        } else {
-            Ok(())
         }
     }
     /// Narrows a real standalone preparation lease before plain-result transfer.
@@ -689,8 +675,11 @@ pub(crate) struct PreparationVec<T> {
     hold: PreparationHold,
 }
 impl<T> PreparationVec<T> {
+    pub(crate) fn into_parts(self) -> (Vec<T>, PreparationHold) {
+        (self.values, self.hold)
+    }
     pub(crate) fn into_retained(self) -> Vec<T> {
-        let Self { values, hold } = self;
+        let (values, hold) = self.into_parts();
         hold.retain();
         values
     }
@@ -901,6 +890,10 @@ impl<T> AccountedVec<T> {
     pub(crate) fn truncate(&mut self, len: usize) {
         self.values.truncate(len);
     }
+    /// Qualifies actual storage before an owning consumer enters its CPU gate.
+    pub(crate) fn qualified_storage(&self) -> Result<StorageAccount> {
+        Ok(self.backing()?.storage())
+    }
     /// Lending transfers the backing and its exact admission together.
     pub(crate) fn into_parts(mut self) -> Result<(Vec<T>, Hold)> {
         self.backing()?;
@@ -954,6 +947,19 @@ impl<T> AccountedVec<T> {
             }
             None => Err(StorageContractError::MissingBacking.into()),
         }
+    }
+}
+impl AccountedVec<u8> {
+    /// Final checked handoff; failure keeps the complete vector armed.
+    pub(crate) fn transfer_readback(mut self) -> Result<Vec<u8>> {
+        self.backing()?;
+        self.hold
+            .as_mut()
+            .ok_or(StorageContractError::MissingBacking)?
+            .transfer_readback()?;
+        // Remove inactive custody before the empty residual owner is destroyed.
+        drop(self.hold.take());
+        Ok(std::mem::take(&mut self.values))
     }
 }
 impl<T> Drop for AccountedVec<T> {
@@ -1522,6 +1528,19 @@ mod tests {
         let capacity = bytes.capacity();
         let exact = baseline + capacity as u64 + allocation;
         eprintln!(
+            "inline bytes: completion={}, start={}, forward={}, preparation_gradient={}, accounted_image={}, readback_output={}, accounted_vec={}, image_buffer={}; charged shared_vec_payload={}, shared_scalar_payload={}",
+            std::mem::size_of::<DisposalCompletion>(),
+            std::mem::size_of::<DisposalStart<'_>>(),
+            std::mem::size_of::<crate::accounting::ForwardPhase<'_>>(),
+            std::mem::size_of::<PreparationValue<crate::Gradient>>(),
+            std::mem::size_of::<crate::image::AccountedImageBuffer>(),
+            std::mem::size_of::<crate::readback::ReadbackOutput>(),
+            std::mem::size_of::<AccountedVec<u8>>(),
+            std::mem::size_of::<crate::ImageBuffer>(),
+            std::mem::size_of::<SharedValueData<Vec<u8>>>(),
+            std::mem::size_of::<SharedValueData<u32>>()
+        );
+        eprintln!(
             "actual shared payload bytes: Vec<u8>={}, u32={}, Image={}; backing capacity={capacity}, baseline={baseline}, exact={exact}",
             allocation,
             std::mem::size_of::<SharedValueData<u32>>(),
@@ -1843,336 +1862,10 @@ mod tests {
             }
         }
     }
-
-    mod backed_value_tests {
-        use super::*;
-        use crate::accounting::{RenderClock, RenderProfile};
-        use crate::{Error, ErrorCode};
-        use std::{
-            sync::{
-                Arc,
-                atomic::{AtomicU64, AtomicUsize, Ordering},
-            },
-            time::Duration,
-        };
-
-        static DISPOSAL_TIME: AtomicU64 = AtomicU64::new(0);
-        static CLOCK_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-        fn clock() -> Duration {
-            Duration::from_millis(DISPOSAL_TIME.load(Ordering::SeqCst))
-        }
-
-        fn forbidden_clock() -> Duration {
-            panic!("untimed text-value disposal read the clock");
-        }
-
-        struct DropProbe {
-            buffers: [Vec<u8>; 2],
-            cpu: RendererCpu,
-            drops: Arc<AtomicUsize>,
-            admitted: u64,
-        }
-
-        impl Drop for DropProbe {
-            fn drop(&mut self) {
-                assert_eq!(
-                    self.cpu
-                        .snapshot()
-                        .unwrap()
-                        .usage()
-                        .live(RenderResource::RetainedCpuBytes),
-                    self.admitted,
-                );
-                drop(std::mem::take(&mut self.buffers));
-                // Both real allocations have been destroyed, but their paired
-                // admissions must still cover the complete value destructor.
-                assert_eq!(
-                    self.cpu
-                        .snapshot()
-                        .unwrap()
-                        .usage()
-                        .live(RenderResource::RetainedCpuBytes),
-                    self.admitted,
-                );
-                DISPOSAL_TIME.fetch_add(7, Ordering::SeqCst);
-                self.drops.fetch_add(1, Ordering::SeqCst);
-            }
-        }
-
-        fn probe(
-            cpu: &RendererCpu,
-            drops: &Arc<AtomicUsize>,
-            count: usize,
-        ) -> BackedValue<DropProbe> {
-            let opening = cpu
-                .snapshot()
-                .unwrap()
-                .usage()
-                .live(RenderResource::RetainedCpuBytes);
-            let buffers = [
-                if count > 0 { vec![1; 3] } else { Vec::new() },
-                if count > 1 { vec![2; 5] } else { Vec::new() },
-            ];
-            let account = cpu.at(RenderCpuScope::FrameBacking);
-            let backing = std::array::from_fn(|index| {
-                (index < count).then(|| {
-                    Hold::Renderer(
-                        account
-                            .acquire(RenderResource::RetainedCpuBytes, buffers[index].capacity())
-                            .unwrap(),
-                    )
-                })
-            });
-            let admitted = opening + buffers.iter().map(Vec::capacity).sum::<usize>() as u64;
-            BackedValue::new(
-                DropProbe {
-                    buffers,
-                    cpu: cpu.clone(),
-                    drops: drops.clone(),
-                    admitted,
-                },
-                backing,
-            )
-        }
-
-        #[derive(Clone, Copy, Debug)]
-        enum Exit {
-            Drop,
-            Error,
-            Unwind,
-            Transfer,
-        }
-
-        #[test]
-        fn text_value_disposal_keeps_all_backing_live_through_one_actual_destructor() {
-            let _clock = CLOCK_LOCK.lock().unwrap();
-            for profile in [
-                RenderProfile::Off,
-                RenderProfile::Summary { timing: false },
-                RenderProfile::Summary { timing: true },
-            ] {
-                for (count, exit) in [
-                    (0, Exit::Drop),
-                    (1, Exit::Drop),
-                    (1, Exit::Error),
-                    (2, Exit::Drop),
-                    (2, Exit::Unwind),
-                    (2, Exit::Transfer),
-                ] {
-                    DISPOSAL_TIME.store(0, Ordering::SeqCst);
-                    let timed = matches!(profile, RenderProfile::Summary { timing: true });
-                    let options = RenderAccountingOptions::new()
-                        .with_profile(profile)
-                        .with_clock(RenderClock::Host(if timed {
-                            clock
-                        } else {
-                            forbidden_clock
-                        }));
-                    let cpu = RendererCpu::new(options).unwrap();
-                    let checkpoint = cpu.begin_interval().unwrap();
-                    let drops = Arc::new(AtomicUsize::new(0));
-                    match exit {
-                        Exit::Drop => drop(probe(&cpu, &drops, count)),
-                        Exit::Error => {
-                            let result: Result<()> = {
-                                let _value = probe(&cpu, &drops, count);
-                                Err(Error::invalid_value(
-                                    "text-value fixture",
-                                    "refused",
-                                    "must return the original error",
-                                ))
-                            };
-                            assert_eq!(result.unwrap_err().code(), ErrorCode::InvalidInput);
-                        }
-                        Exit::Unwind => {
-                            assert!(
-                                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                                    let _value = probe(&cpu, &drops, count);
-                                    panic!("text-value fixture unwind");
-                                }))
-                                .is_err()
-                            );
-                        }
-                        Exit::Transfer => {
-                            let (value, backing, import) = probe(&cpu, &drops, count).into_parts();
-                            assert_eq!(drops.load(Ordering::SeqCst), 0);
-                            drop(BackedValue::with_import((value,), backing, import));
-                        }
-                    }
-                    assert_eq!(
-                        drops.load(Ordering::SeqCst),
-                        1,
-                        "{count} backings, {exit:?}"
-                    );
-                    let interval = checkpoint.finish().unwrap();
-                    assert_eq!(
-                        interval.usage().live(RenderResource::RetainedCpuBytes),
-                        interval
-                            .usage()
-                            .opening_live(RenderResource::RetainedCpuBytes),
-                    );
-                    if timed {
-                        // The destructor advances the clock by seven milliseconds.
-                        // Two nested disposal phases around it would report fourteen.
-                        assert_eq!(
-                            interval
-                                .scope_elapsed(RenderCpuScope::FrameBacking)
-                                .unwrap_or_default(),
-                            Duration::from_millis(if count == 0 { 0 } else { 7 }),
-                            "{count} backings, {exit:?}",
-                        );
-                    } else {
-                        assert_eq!(interval.scope_elapsed(RenderCpuScope::FrameBacking), None);
-                    }
-                }
-            }
-        }
-
-        #[test]
-        fn shared_factory_allocation_refusal_disposes_after_its_forward_phase() {
-            let _clock = CLOCK_LOCK.lock().unwrap();
-            let baseline = RendererCpu::new(RenderAccountingOptions::default())
-                .unwrap()
-                .snapshot()
-                .unwrap()
-                .usage()
-                .live(RenderResource::RetainedCpuBytes);
-            let bytes = vec![1u8, 2, 3];
-            let byte_capacity = bytes.capacity();
-            let limit = baseline + byte_capacity as u64;
-            DISPOSAL_TIME.store(0, Ordering::SeqCst);
-            let cpu = RendererCpu::new(
-                RenderAccountingOptions::new()
-                    .with_profile(RenderProfile::Summary { timing: true })
-                    .with_clock(RenderClock::Host(clock))
-                    .with_limits(crate::RenderLimits::new().with_retained_bytes(limit)),
-            )
-            .unwrap();
-            let account = cpu.at(RenderCpuScope::FrameBacking);
-            let storage = StorageAccount::Renderer(account.clone());
-            let hold = Hold::Renderer(
-                account
-                    .acquire(RenderResource::RetainedCpuBytes, byte_capacity)
-                    .unwrap(),
-            );
-            let drops = Arc::new(AtomicUsize::new(0));
-            let value = DropProbe {
-                buffers: [bytes, Vec::new()],
-                cpu: cpu.clone(),
-                drops: Arc::clone(&drops),
-                admitted: limit,
-            };
-            let error = match SharedValue::with_parts(value, Some(hold), None, &storage) {
-                Err(error) => error,
-                Ok(_) => panic!("the fixed shared payload must exceed the retained cap"),
-            };
-            assert_eq!(
-                error.accounting_diagnostic(),
-                Some(RenderAccountingError::CpuRefused {
-                    scope: RenderCpuScope::Root,
-                    quantity: crate::RenderQuantity::Resource(RenderResource::RetainedCpuBytes),
-                    current: limit,
-                    amount: std::mem::size_of::<SharedValueData<DropProbe>>() as u64,
-                    reason: crate::RenderRefusalReason::Limit { limit },
-                })
-            );
-            assert_eq!(drops.load(Ordering::SeqCst), 1);
-            let snapshot = cpu.snapshot().unwrap();
-            assert_eq!(snapshot.fault(), None);
-            assert_eq!(
-                snapshot.usage().live(RenderResource::RetainedCpuBytes),
-                baseline
-            );
-            // Disposal occurs after the refused forward callback has ended,
-            // rather than measuring the same destructor in two nested phases.
-            assert_eq!(
-                snapshot.scope_elapsed(RenderCpuScope::FrameBacking),
-                Some(Duration::from_millis(7))
-            );
-        }
-
-        #[test]
-        fn shared_factory_health_refusal_keeps_import_only_custody_through_value_disposal() {
-            let _clock = CLOCK_LOCK.lock().unwrap();
-            struct ImportedProbe {
-                image: Option<crate::Image>,
-                cpu: RendererCpu,
-                drops: Arc<AtomicUsize>,
-                observed_live: Arc<AtomicU64>,
-            }
-            impl Drop for ImportedProbe {
-                fn drop(&mut self) {
-                    drop(self.image.take());
-                    self.observed_live.store(
-                        self.cpu
-                            .snapshot()
-                            .unwrap()
-                            .usage()
-                            .live(RenderResource::RetainedCpuBytes),
-                        Ordering::SeqCst,
-                    );
-                    DISPOSAL_TIME.store(7, Ordering::SeqCst);
-                    self.drops.fetch_add(1, Ordering::SeqCst);
-                }
-            }
-            DISPOSAL_TIME.store(0, Ordering::SeqCst);
-            let cpu = RendererCpu::new(
-                RenderAccountingOptions::new()
-                    .with_profile(RenderProfile::Summary { timing: true })
-                    .with_clock(RenderClock::Host(clock)),
-            )
-            .unwrap();
-            let image =
-                crate::Image::from_rgba(crate::Size::new(1.0, 1.0), vec![0, 0, 0, 255]).unwrap();
-            let account = cpu.at(RenderCpuScope::FrameBacking);
-            let import = account.import_image(&image, None).unwrap();
-            let imported_live = cpu
-                .snapshot()
-                .unwrap()
-                .usage()
-                .live(RenderResource::RetainedCpuBytes);
-            let drops = Arc::new(AtomicUsize::new(0));
-            let observed_live = Arc::new(AtomicU64::new(u64::MAX));
-            let value = ImportedProbe {
-                image: Some(image.clone()),
-                cpu: cpu.clone(),
-                drops: Arc::clone(&drops),
-                observed_live: Arc::clone(&observed_live),
-            };
-            account.note_fault(RenderAccountingError::Invariant);
-            let error = match SharedValue::with_parts(
-                value,
-                None,
-                Some(import),
-                &StorageAccount::Renderer(account),
-            ) {
-                Err(error) => error,
-                Ok(_) => panic!("the existing CPU health fault must be preserved"),
-            };
-            assert_eq!(
-                error.accounting_diagnostic(),
-                Some(RenderAccountingError::Invariant)
-            );
-            assert_eq!(drops.load(Ordering::SeqCst), 1);
-            assert_eq!(observed_live.load(Ordering::SeqCst), imported_live);
-            let snapshot = cpu.snapshot().unwrap();
-            assert_eq!(snapshot.fault(), Some(RenderAccountingError::Invariant));
-            assert_eq!(
-                snapshot.scope_elapsed(RenderCpuScope::Cleanup),
-                Some(Duration::from_millis(7))
-            );
-            // The registry keeps its real capacity, but releases its pixel and
-            // typed adapter custody despite the caller's Image still existing.
-            assert_eq!(
-                snapshot.usage().live(RenderResource::RetainedCpuBytes)
-                    + image.bytes.len() as u64
-                    + std::mem::size_of::<Arc<[u8]>>() as u64,
-                imported_live,
-            );
-        }
-    }
 }
 
 #[cfg(test)]
 mod vector_capability_tests;
+
+#[cfg(test)]
+mod lexical_disposal_tests;

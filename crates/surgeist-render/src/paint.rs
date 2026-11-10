@@ -534,13 +534,14 @@ impl Gradient {
         stops: crate::accounting::AccountedVec<GradientStop>,
         fixed_owner: crate::accounting::Hold,
         account: &crate::accounting::Account,
-    ) -> Result<crate::accounting::BackedValue<Self>> {
+    ) -> Result<crate::accounting::PreparationValue<Self>> {
         // Authentic Paint geometry proves finite fields and positive ellipse
         // axes. Used records preserve their proof through either qualified
         // quotients or physical identity into this exact backing, without a
         // duplicate canonical validation walk.
         account.work(crate::accounting::RenderWork::PaintVisits, 1)?;
-        let (stops, backing) = stops.into_parts()?;
+        let fixed_owner = fixed_owner.into_preparation()?;
+        let (stops, backing) = stops.into_preparation()?.into_parts();
         let kind = match geometry {
             GradientGeometry::Linear { start, end } => GradientKind::Linear { start, end, stops },
             GradientGeometry::HorizontalDistance { origin_x } => {
@@ -557,8 +558,10 @@ impl Gradient {
                 stops,
             },
         };
-        let gradient =
-            crate::accounting::BackedValue::new(Self { kind }, [Some(backing), Some(fixed_owner)]);
+        let gradient = crate::accounting::PreparationValue::new(
+            Self { kind },
+            [Some(backing), Some(fixed_owner)],
+        );
         Ok(gradient)
     }
 }

@@ -1,6 +1,6 @@
 use super::{BackendErrorCode, Error, PhysicalSize, Result, Size};
 use crate::accounting::{
-    Account, CpuAccount, RenderCpuScope, RenderWork, SharedValue, StorageAccount,
+    Account, AccountedVec, CpuAccount, RenderCpuScope, RenderWork, SharedValue, StorageAccount,
 };
 use std::{
     fmt,
@@ -556,29 +556,7 @@ impl ImageBuffer {
     /// Returns [`crate::ErrorCode::InvalidInput`] when `width * height * 4`
     /// overflows addressable memory or differs from `rgba.len()`.
     pub fn try_new(size: PhysicalSize, rgba: Vec<u8>) -> Result<Self> {
-        let expected_len = usize::try_from(size.width())
-            .ok()
-            .and_then(|width| {
-                usize::try_from(size.height())
-                    .ok()
-                    .and_then(|height| width.checked_mul(height))
-            })
-            .and_then(|pixel_count| pixel_count.checked_mul(4))
-            .ok_or_else(|| {
-                Error::invalid_value(
-                    "image buffer byte length",
-                    format!("{}x{} RGBA8", size.width(), size.height()),
-                    "must fit addressable memory",
-                )
-            })?;
-
-        if rgba.len() != expected_len {
-            return Err(Error::invalid_value(
-                "image buffer RGBA data length",
-                rgba.len(),
-                "must equal width multiplied by height multiplied by 4",
-            ));
-        }
+        validate_rgba_length(size, rgba.len())?;
 
         Ok(Self { size, rgba })
     }
@@ -600,6 +578,60 @@ impl ImageBuffer {
     pub fn into_rgba(self) -> Vec<u8> {
         self.rgba
     }
+}
+
+/// Immutable qualified bytes stay with their actual vector custody until handoff.
+pub(crate) struct AccountedImageBuffer {
+    size: PhysicalSize,
+    rgba: AccountedVec<u8>,
+}
+impl AccountedImageBuffer {
+    pub(crate) fn try_new(size: PhysicalSize, rgba: AccountedVec<u8>) -> Result<Self> {
+        let storage = rgba.qualified_storage()?;
+        storage.phase(|| {
+            validate_rgba_length(size, rgba.as_slice().len()).map_err(|source| {
+                Error::new(
+                    BackendErrorCode::ReadbackFailed,
+                    "decoded readback bytes did not form a valid RGBA8 image",
+                )
+                .with_source(source)
+            })
+        })?;
+        Ok(Self { size, rgba })
+    }
+    pub(crate) fn transfer(self) -> Result<ImageBuffer> {
+        let Self { size, rgba } = self;
+        let rgba = rgba.transfer_readback()?;
+        Ok(ImageBuffer { size, rgba })
+    }
+}
+
+fn validate_rgba_length(size: PhysicalSize, length: usize) -> Result<()> {
+    let expected_len = usize::try_from(size.width())
+        .ok()
+        .and_then(|width| {
+            usize::try_from(size.height())
+                .ok()
+                .and_then(|height| width.checked_mul(height))
+        })
+        .and_then(|pixel_count| pixel_count.checked_mul(4))
+        .ok_or_else(|| {
+            Error::invalid_value(
+                "image buffer byte length",
+                format!("{}x{} RGBA8", size.width(), size.height()),
+                "must fit addressable memory",
+            )
+        })?;
+
+    if length != expected_len {
+        return Err(Error::invalid_value(
+            "image buffer RGBA data length",
+            length,
+            "must equal width multiplied by height multiplied by 4",
+        ));
+    }
+
+    Ok(())
 }
 
 /// Backend-phase upload facts for one normalized resolved alpha-mask image.

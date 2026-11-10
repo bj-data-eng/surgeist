@@ -4,7 +4,7 @@ use crate::{
     Color, Gradient, GradientHint, GradientStop, Point, RenderAccountingContext, RenderResource,
     RepeatingGradient, Result,
     accounting::{
-        Account, AccountedVec, BackedValue, Hold, RenderAttemptKind, RenderPhase, RenderWork,
+        Account, AccountedVec, Hold, PreparationValue, RenderAttemptKind, RenderPhase, RenderWork,
     },
     color_reduction::{PremultipliedSum, premultiplied},
     paint::GradientGeometry,
@@ -250,7 +250,12 @@ fn prepare<T>(
     stops: &GradientStops<'_, Color>,
     context: &mut RenderAccountingContext,
     geometry: impl FnOnce(&Account) -> Result<AdapterGeometry>,
-    construct: impl FnOnce(GradientGeometry, ConvertedStops, Hold, &Account) -> Result<BackedValue<T>>,
+    construct: impl FnOnce(
+        GradientGeometry,
+        ConvertedStops,
+        Hold,
+        &Account,
+    ) -> Result<PreparationValue<T>>,
 ) -> Result<T> {
     context.run(
         RenderAttemptKind::PaintGradient,
@@ -279,13 +284,7 @@ fn prepare<T>(
                     let guarded = construct(geometry.into_geometry(), converted, fixed, &output)?;
                     // Both actual allocation guards transfer through the enclosing
                     // standalone attempt only after all qualification succeeds.
-                    guarded.require_preparation()?;
-                    let (gradient, backing, import) = guarded.into_parts();
-                    for hold in backing.into_iter().flatten() {
-                        hold.into_preparation()?.retain();
-                    }
-                    drop(import);
-                    Ok(gradient)
+                    Ok(guarded.into_retained())
                 })
             })
         },
@@ -1127,12 +1126,7 @@ mod tests {
                         positions,
                         account,
                     )?;
-                    guarded.require_preparation()?;
-                    let (gradient, backing, import) = guarded.into_parts();
-                    for hold in backing.into_iter().flatten() {
-                        hold.into_preparation()?.retain();
-                    }
-                    drop(import);
+                    let gradient = guarded.into_retained();
                     Ok((gradient, actual_bytes as u64))
                 },
             )

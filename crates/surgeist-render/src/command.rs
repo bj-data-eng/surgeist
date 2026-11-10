@@ -12,7 +12,8 @@ use super::{
     *,
 };
 use crate::accounting::{
-    Account, AccountedVec, BackedValue, CpuImport, Hold, RenderPhase, RenderWork, SharedValue,
+    Account, AccountedVec, CpuImport, DisposalCompletion, Hold, RenderPhase, RenderWork,
+    SharedValue,
 };
 use kurbo::Shape as KurboShape;
 
@@ -637,15 +638,18 @@ fn normalize_commands_in_context(
             } => {
                 validate_text_run_in(*size, *transform, glyphs, account)?;
                 validate_paint_in(paint.fill(), account)?;
-                let (owned_font, hold) = font.try_to_owned_in(account)?;
-                let owned_font = BackedValue::new(owned_font, [hold, None]);
+                let mut completion = DisposalCompletion::default();
+                let (copied_font, hold) = font.try_to_owned_in(account)?;
+                let hold = hold;
+                let owned_font = copied_font;
+                let start = completion.start([hold.as_ref(), None], None);
                 let import = font
                     .data
                     .as_ref()
                     .map(|data| account.import_font(data.admitted_face().resource()))
                     .transpose()?
                     .flatten();
-                let (owned_font, [hold, _], _) = owned_font.into_parts();
+                start.disarm();
                 let font = shared(owned_font, hold, import, account)?;
                 let mut copied = account.retained(glyphs.len())?;
                 for glyph in glyphs {
@@ -928,10 +932,9 @@ impl RenderClip {
         capabilities: Capabilities,
         account: &Account,
     ) -> Result<Self> {
-        let normalized = input.normalize_in(capabilities, account)?;
-        let (normalized, [hold, _], import) = normalized.into_parts();
+        let (geometry, hold) = input.normalize_geometry_in(capabilities, account)?;
         // Move the normalized path and its original backing hold, avoiding another copy.
-        let (geometry, coordinate_space) = normalized.into_parts();
+        let coordinate_space = input.coordinate_space();
         let geometry = match geometry.into_kind() {
             ClipGeometryKind::Rect(rect) => RenderClipGeometry::Rect(rect),
             ClipGeometryKind::RoundedRect { rect, radii } => {
@@ -946,7 +949,7 @@ impl RenderClip {
             ClipGeometryKind::Path(path) => {
                 let (path, fill_rule) = path.into_parts();
                 RenderClipGeometry::Path {
-                    path: shared(path, hold, import, account)?,
+                    path: shared(path, hold, None, account)?,
                     fill_rule,
                 }
             }

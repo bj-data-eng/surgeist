@@ -476,19 +476,19 @@ fn wrong_renderer_lifetime_keeps_paired_payload_credit_and_real_disposal_timing(
                 bytes.copy_slot(&[1, 2, 3]).unwrap().write();
                 let admitted = baseline + bytes.capacity() as u64;
                 let (bytes, hold) = bytes.into_parts().unwrap();
-                let guarded = BackedValue::new(
-                    PayloadProbe {
-                        bytes,
-                        cpu: cpu.clone(),
-                        admitted,
-                        observed: observed.clone(),
-                        drops: drops.clone(),
-                    },
-                    [Some(hold), None],
-                );
+                let mut completion = DisposalCompletion::default();
+                let mut backing = Some(hold);
+                let value = PayloadProbe {
+                    bytes,
+                    cpu: cpu.clone(),
+                    admitted,
+                    observed: observed.clone(),
+                    drops: drops.clone(),
+                };
+                let _start = completion.start([backing.as_ref(), None], None);
                 DISPOSAL_TIME.store(5, Ordering::SeqCst);
-                let error = failure(guarded.require_preparation());
-                drop(guarded);
+                let error = failure(preparation_backing(&mut backing));
+                let _ = &value;
                 error
             };
             assert_eq!(
@@ -512,22 +512,6 @@ fn wrong_renderer_lifetime_keeps_paired_payload_credit_and_real_disposal_timing(
             );
         }
     }
-}
-
-#[test]
-fn import_only_generic_owner_is_not_a_preparation_result() {
-    let cpu = RendererCpu::new(RenderAccountingOptions::default()).unwrap();
-    let image = crate::Image::from_rgba(crate::Size::new(1.0, 1.0), vec![255, 0, 0, 255]).unwrap();
-    let import = cpu
-        .at(RenderCpuScope::ImagePayloads)
-        .import_image(&image, None)
-        .unwrap();
-    let guarded = BackedValue::with_import(17_u8, [None, None], Some(import));
-    assert_eq!(
-        contract(&failure(guarded.require_preparation())),
-        StorageContractError::WrongRetentionLifetime
-    );
-    drop(guarded);
 }
 
 #[test]

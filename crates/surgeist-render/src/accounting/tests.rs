@@ -2,6 +2,50 @@ use super::*;
 
 mod resolved_reports;
 
+#[test]
+fn checked_forward_observations_preserve_entry_and_completion_faults() {
+    let foreign = Account::for_test();
+    let mut account = Account::for_test();
+    let mut scopes = *account.scopes;
+    scopes[RenderPhase::Clip.index()] = foreign.scopes[RenderPhase::Clip.index()];
+    account.scopes = Arc::new(scopes);
+    let error = match account.begin_phase(RenderPhase::Clip) {
+        Err(error) => error,
+        Ok(_) => panic!("foreign forward scope must refuse entry"),
+    };
+    assert_eq!(
+        error.accounting_diagnostic(),
+        Some(RenderAccountingError::Invariant)
+    );
+
+    for prior in [
+        None,
+        Some(RenderAccountingError::CpuAllocation {
+            scope: RenderCpuScope::FrameBacking,
+            resource: RenderResource::RetainedCpuBytes,
+        }),
+    ] {
+        let account = Account::for_test();
+        *account.fault.lock().unwrap() = prior;
+        let mut phase = account.begin_phase(RenderPhase::Clip).unwrap();
+        let original = phase.observation.take().unwrap();
+        account.ledger.end_phase(original).unwrap();
+        // Private association injection: real constructors always pair markers
+        // with their own attempt. A mismatch must record the owning first fault.
+        phase.observation = Some(
+            foreign
+                .ledger
+                .begin_phase(foreign.scopes[RenderPhase::Clip.index()])
+                .unwrap(),
+        );
+        drop(phase);
+        assert_eq!(
+            *account.fault.lock().unwrap(),
+            prior.or(Some(RenderAccountingError::Invariant))
+        );
+    }
+}
+
 fn terminal_summary(context: &RenderAccountingContext) -> RenderStandaloneReport {
     context.last_attempt().unwrap().snapshot_for_test()
 }
