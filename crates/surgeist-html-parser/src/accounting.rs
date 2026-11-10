@@ -1,8 +1,9 @@
 //! Where a parse charges its work and resources.
 //!
-//! A parse charges every work category and resource through a `surgeist-ledger`
-//! operation of the HTML schema pair, [`HtmlWork`] and [`HtmlResource`]. Without
-//! a request setting the parse builds its own operation. A host that attributes
+//! A parse charges every work category and resource by the rules of a
+//! `surgeist-ledger` operation of the HTML schema pair, [`HtmlWork`] and
+//! [`HtmlResource`]. Without a request setting the parse keeps those figures in
+//! plain counters that no one else reads. A host that attributes
 //! HTML work to its own operation supplies a [`HtmlParseAccounting`], which takes
 //! the [`HtmlHostScope`] naming a shared operation and a scope of it.
 //!
@@ -235,13 +236,14 @@ fn child(
         .map_err(fault_of)
 }
 
-/// The private operation of a parse that selected no profiling: the cap scope is
-/// the root, and the charging scope its only child.
+/// The private operation of a parse that selected no profiling, under the caps
+/// `limits`: the cap scope is the root, and the charging scope its only child. A
+/// parse charges its scopes through a `Meter`, which takes their identities from
+/// here.
 pub(crate) fn private(
-    limits: &HtmlParseLimits,
+    limits: HtmlLimits,
 ) -> Result<(Operation<HtmlWork, HtmlResource>, Scope, Scope), HtmlAccountingFault> {
-    let mut operation =
-        Operation::new(HtmlCapScope::Parse.name(), limits.ledger_limits(), 2).map_err(fault_of)?;
+    let mut operation = Operation::new(HtmlCapScope::Parse.name(), limits, 2).map_err(fault_of)?;
     let cap = operation.root();
     let charging = operation
         .child(
@@ -292,8 +294,9 @@ impl Drop for Lease {
 
 /// Where a parse charges its work and resources.
 ///
-/// A request takes one through `with_accounting`; without one the parse charges
-/// an operation of its own that nothing observes. There are two kinds:
+/// A request takes one through `with_accounting`; without one the parse keeps
+/// its figures in counters of its own that no one else reads, under the same
+/// admission rules. There are two kinds:
 ///
 /// - [`Self::host`] charges a scope of an operation the host owns, so the host
 ///   sees the parse once in its own totals.

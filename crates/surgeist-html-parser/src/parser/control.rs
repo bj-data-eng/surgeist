@@ -20,7 +20,7 @@ use surgeist_html::accounting::{
 use surgeist_ledger::Change;
 
 mod accounts;
-use accounts::{Accounts, LedgerUsage};
+use accounts::{Accounts, Readings};
 mod admission;
 use admission::Site;
 mod attributes;
@@ -334,7 +334,7 @@ impl HtmlParseUsage {
     }
     /// Reads the usage of a charging scope and the credit total of its cap
     /// scope.
-    fn from_ledger(usage: &LedgerUsage, credits: u64) -> Self {
+    fn from_ledger(usage: &Readings, credits: u64) -> Self {
         let mut view = Self::empty();
         for resource in RESOURCES {
             let reading = match resource.dimension() {
@@ -555,12 +555,12 @@ const UNIT_LITERAL_PAIR_BYTES: u64 = 3;
 const BYTE_PAIR_BYTES: u64 = 2;
 
 impl ParseControl {
-    /// A control with its own ledger operation.
+    /// A control that keeps its figures in counters of its own.
     #[cfg(test)]
     pub(crate) fn new(limits: HtmlParseLimits, cancellation: HtmlParseCancellation) -> Self {
         Self::with_accounting(limits, cancellation, None)
     }
-    /// A control that charges the operation of `lease`, or its own operation
+    /// A control that charges the operation of `lease`, or its own counters
     /// when there is none. A setup fault latches as the first stop.
     pub(crate) fn with_accounting(
         limits: HtmlParseLimits,
@@ -3043,6 +3043,8 @@ impl HtmlParseUsage {
 
 #[cfg(test)]
 mod admission_tests;
+#[cfg(test)]
+mod growth_tests;
 #[cfg(test)]
 mod html_value_tests;
 #[cfg(test)]

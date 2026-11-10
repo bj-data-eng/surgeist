@@ -406,10 +406,10 @@ impl ParseControl {
             .charge(&[change])
             .expect("a staged live value inside the caps");
     }
-    /// Lowers one cap of a control that runs in its own operation. The ledger
-    /// fixes caps when a scope is created, so the control's operation is
+    /// Lowers one cap of a control that keeps its figures in counters of its
+    /// own. The counters fix their caps when they are created, so they are
     /// rebuilt with the new cap and the work, live values and peaks so far are
-    /// replayed into it. A cap below a live value cannot be replayed, except for
+    /// replayed into them. A cap below a live value cannot be replayed, except for
     /// the last value of a gauge, which replays as nothing held; a peak above
     /// the lowered cap is not replayed.
     pub(crate) fn test_limit(&mut self, resource: HtmlParseResource, limit: u64) {
