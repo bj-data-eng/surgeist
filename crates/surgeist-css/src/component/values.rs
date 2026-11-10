@@ -16,7 +16,8 @@ use std::ops::Range;
 
 use surgeist_css_parser::Token;
 
-use crate::source::CssParsedOrigin;
+use crate::serialization::exact_decimal::LexicalDecimal;
+use crate::source::{CssParsedOrigin, Provenance};
 
 use crate::STRUCTURAL_NESTING_LIMIT as MAX_COMPONENT_DEPTH;
 
@@ -271,7 +272,7 @@ pub(crate) enum CssComponentValueErrorKind {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssComponentValueError {
     pub(crate) kind: CssComponentValueErrorKind,
-    origin: CssValueOrigin,
+    origin: Provenance<CssValueOrigin>,
 }
 
 impl CssComponentValueError {
@@ -284,7 +285,7 @@ impl CssComponentValueError {
     /// Returns the responsible origin; programmatic errors have no parsed span.
     #[must_use]
     pub const fn origin(&self) -> &CssValueOrigin {
-        &self.origin
+        self.origin.inner()
     }
 
     crate::diagnostic::error::kind_predicates! { kind;
@@ -333,7 +334,10 @@ impl CssComponentValueError {
     }
 
     pub(crate) fn new(kind: CssComponentValueErrorKind, origin: CssValueOrigin) -> Self {
-        Self { kind, origin }
+        Self {
+            kind,
+            origin: origin.into(),
+        }
     }
 
     fn programmatic(kind: CssComponentValueErrorKind) -> Self {
@@ -373,7 +377,7 @@ impl fmt::Display for CssComponentValueError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("invalid CSS component value: ")?;
         self.describe(formatter)?;
-        if let CssValueOrigin::Parsed(origin) = &self.origin {
+        if let CssValueOrigin::Parsed(origin) = &*self.origin {
             write!(formatter, " at {}", origin.span().start())?;
         }
         Ok(())
@@ -392,12 +396,26 @@ pub enum CssNumericTokenKind {
     Number,
 }
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone)]
 struct NumericToken {
     representation: Box<str>,
     kind: CssNumericTokenKind,
     has_sign: bool,
 }
+
+// A number token's value, type flag and sign flag are token data (Syntax 3 section 4);
+// its representation is spelling, so `1.0` equals `1.00` and differs from `1` and `+1`.
+impl PartialEq for NumericToken {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+            && self.has_sign == other.has_sign
+            && LexicalDecimal::new(&self.representation)
+                .value_eq(&LexicalDecimal::new(&other.representation))
+            && Provenance::new(&self.representation) == Provenance::new(&other.representation)
+    }
+}
+
+impl Eq for NumericToken {}
 
 impl fmt::Debug for NumericToken {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -495,15 +513,15 @@ pub enum CssValueTokenRef<'a> {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct Lexeme {
-    text: Box<str>,
-    origin: CssValueOrigin,
+    text: Provenance<Box<str>>,
+    origin: Provenance<CssValueOrigin>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct ValueToken {
     data: TokenData,
     spelling: Lexeme,
-    implicit_end: Option<Lexeme>,
+    implicit_end: Provenance<Option<Lexeme>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -532,13 +550,6 @@ enum TokenData {
 }
 
 impl ValueToken {
-    fn structural_eq_ignoring_origin(&self, other: &Self) -> bool {
-        self.data == other.data
-            && self.spelling.text == other.spelling.text
-            && self.implicit_end.as_ref().map(|end| &end.text)
-                == other.implicit_end.as_ref().map(|end| &end.text)
-    }
-
     fn view(&self) -> CssValueTokenRef<'_> {
         match &self.data {
             TokenData::Ident(value) => CssValueTokenRef::Ident(value),
@@ -631,7 +642,7 @@ impl CssFunctionValue {
     /// Returns the closing delimiter's authored, implicit, or programmatic origin.
     #[must_use]
     pub const fn closing_origin(&self) -> &CssValueOrigin {
-        &self.closing.origin
+        self.closing.origin.inner()
     }
 }
 
@@ -660,7 +671,7 @@ impl CssSimpleBlock {
     /// Returns the closing delimiter's origin.
     #[must_use]
     pub const fn closing_origin(&self) -> &CssValueOrigin {
-        &self.closing.origin
+        self.closing.origin.inner()
     }
 }
 
@@ -672,19 +683,21 @@ enum ComponentData {
     Comment {
         content: Box<str>,
         spelling: Lexeme,
-        implicit_end: Option<Lexeme>,
+        implicit_end: Provenance<Option<Lexeme>>,
     },
 }
 
 /// One checked, owned component value. Private fields protect token identity.
 ///
-/// Equality includes exact token spelling, child order, delimiter origins and
-/// the complete parsed span. Source text and span equality does not require
-/// snapshot identity; parsed and programmatic components remain distinct.
+/// Equality compares the decoded tokens and the child order: identifier, string, hash and
+/// URL values, delimiters, units, and a number's value, type flag and sign flag. It ignores
+/// the spelling of each lexeme and the origins and spans, so `1.0px` equals `1.00px`, `a\62`
+/// equals `ab`, `"x"` equals `'x'`, and a parsed component equals the programmatic one;
+/// [`crate::source::same_provenance`] also compares them.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssComponentValue {
     data: ComponentData,
-    parsed: Option<CssParsedOrigin>,
+    parsed: Provenance<Option<CssParsedOrigin>>,
 }
 
 /// A borrowed view of one immutable component value.
@@ -710,17 +723,6 @@ impl CssComponentValue {
         }
     }
 
-    /// Borrows the exact primitive-token relation without component graph work.
-    /// Checked numeric syntax and literal leaves are token-only consumers.
-    pub(crate) fn token_structural_eq_ignoring_origin(&self, other: &Self) -> Option<bool> {
-        match (&self.data, &other.data) {
-            (ComponentData::Token(left), ComponentData::Token(right)) => {
-                Some(left.structural_eq_ignoring_origin(right))
-            }
-            _ => None,
-        }
-    }
-
     // Raw supplied or generated lexeme; decoded token identity is distinct.
     pub(crate) fn token_representation(&self) -> Option<&str> {
         match &self.data {
@@ -734,10 +736,10 @@ impl CssComponentValue {
     pub(crate) fn structural_lexeme(&self, closing: bool) -> Option<(&str, &CssValueOrigin)> {
         match &self.data {
             ComponentData::Token(token) => {
-                (!closing).then_some((&*token.spelling.text, &token.spelling.origin))
+                (!closing).then_some((&*token.spelling.text, token.spelling.origin.inner()))
             }
             ComponentData::Comment { spelling, .. } => {
-                (!closing).then_some((&*spelling.text, &spelling.origin))
+                (!closing).then_some((&*spelling.text, spelling.origin.inner()))
             }
             ComponentData::Function(function) => {
                 let lexeme = if closing {
@@ -745,7 +747,7 @@ impl CssComponentValue {
                 } else {
                     &function.opening
                 };
-                Some((&lexeme.text, &lexeme.origin))
+                Some((&lexeme.text, lexeme.origin.inner()))
             }
             ComponentData::Block(block) => {
                 let lexeme = if closing {
@@ -753,77 +755,50 @@ impl CssComponentValue {
                 } else {
                     &block.opening
                 };
-                Some((&lexeme.text, &lexeme.origin))
+                Some((&lexeme.text, lexeme.origin.inner()))
             }
         }
     }
 
-    /// Compares retained component structure and exact token spelling without
-    /// comparing where either component was obtained. Raw `PartialEq` retains
-    /// its provenance-sensitive contract.
-    pub(crate) fn structural_eq_ignoring_origin(&self, other: &Self) -> bool {
+    /// Compares the values as `==` does, and the spelling `==` ignores (every lexeme's
+    /// text, including an EOF-implied ending), without comparing where either was read
+    /// from. Specified serialization shortens only values that agree in this sense.
+    pub(crate) fn same_spelling(&self, other: &Self) -> bool {
+        if self != other {
+            return false;
+        }
         let mut pending = vec![(self, other)];
         while let Some((left, right)) = pending.pop() {
-            let children = match (&left.data, &right.data) {
-                (ComponentData::Token(a), ComponentData::Token(b)) => {
-                    if !a.structural_eq_ignoring_origin(b) {
-                        return false;
-                    }
-                    None
-                }
-                (ComponentData::Function(a), ComponentData::Function(b)) => {
-                    if a.name != b.name
-                        || a.opening.text != b.opening.text
-                        || a.closing.text != b.closing.text
-                    {
-                        return false;
-                    }
-                    Some((a.values.items(), b.values.items()))
-                }
-                (ComponentData::Block(a), ComponentData::Block(b)) => {
-                    if a.kind != b.kind
-                        || a.opening.text != b.opening.text
-                        || a.closing.text != b.closing.text
-                    {
-                        return false;
-                    }
-                    Some((a.values.items(), b.values.items()))
-                }
-                (
-                    ComponentData::Comment {
-                        content: a,
-                        spelling: a_spelling,
-                        implicit_end: a_end,
-                    },
-                    ComponentData::Comment {
-                        content: b,
-                        spelling: b_spelling,
-                        implicit_end: b_end,
-                    },
-                ) => {
-                    if a != b
-                        || a_spelling.text != b_spelling.text
-                        || a_end.as_ref().map(|end| &end.text)
-                            != b_end.as_ref().map(|end| &end.text)
-                    {
-                        return false;
-                    }
-                    None
-                }
-                _ => return false,
-            };
-            if let Some((left, right)) = children {
-                if left.len() != right.len() {
+            for closing in [false, true] {
+                if left.lexeme_text(closing) != right.lexeme_text(closing) {
                     return false;
                 }
-                pending.extend(left.iter().zip(right).rev());
+            }
+            if left.implicit_end_text() != right.implicit_end_text() {
+                return false;
+            }
+            if let (Some(left), Some(right)) = (left.child_values(), right.child_values()) {
+                pending.extend(left.items.iter().zip(right.items.iter()).rev());
             }
         }
         true
     }
 
+    fn lexeme_text(&self, closing: bool) -> Option<&str> {
+        self.structural_lexeme(closing).map(|(text, _)| text)
+    }
+
+    fn implicit_end_text(&self) -> Option<&str> {
+        match &self.data {
+            ComponentData::Token(token) => token.implicit_end.inner().as_ref(),
+            ComponentData::Comment { implicit_end, .. } => implicit_end.inner().as_ref(),
+            ComponentData::Function(_) | ComponentData::Block(_) => None,
+        }
+        .map(|lexeme| &**lexeme.text.inner())
+    }
+
     pub(crate) const fn parsed_origin(&self) -> Option<&CssParsedOrigin> {
-        self.parsed.as_ref()
+        self.parsed.inner().as_ref()
     }
 
     /// Inspects the semantic token or component without permitting mutation.
@@ -841,22 +816,24 @@ impl CssComponentValue {
     #[must_use]
     pub const fn origin(&self) -> &CssValueOrigin {
         match &self.data {
-            ComponentData::Token(token) => &token.spelling.origin,
-            ComponentData::Function(function) => &function.opening.origin,
-            ComponentData::Block(block) => &block.opening.origin,
-            ComponentData::Comment { spelling, .. } => &spelling.origin,
+            ComponentData::Token(token) => token.spelling.origin.inner(),
+            ComponentData::Function(function) => function.opening.origin.inner(),
+            ComponentData::Block(block) => block.opening.origin.inner(),
+            ComponentData::Comment { spelling, .. } => spelling.origin.inner(),
         }
     }
 
     // Token recovery is deliberately owned here rather than inferred from its view.
     pub(crate) fn implicit_termination_origin(&self) -> Option<&CssValueOrigin> {
         let origin = match &self.data {
-            ComponentData::Token(token) => token.implicit_end.as_ref().map(|end| &end.origin),
-            ComponentData::Comment { implicit_end, .. } => {
-                implicit_end.as_ref().map(|end| &end.origin)
+            ComponentData::Token(token) => {
+                token.implicit_end.as_ref().map(|end| end.origin.inner())
             }
-            ComponentData::Function(function) => Some(&function.closing.origin),
-            ComponentData::Block(block) => Some(&block.closing.origin),
+            ComponentData::Comment { implicit_end, .. } => {
+                implicit_end.as_ref().map(|end| end.origin.inner())
+            }
+            ComponentData::Function(function) => Some(function.closing.origin.inner()),
+            ComponentData::Block(block) => Some(block.closing.origin.inner()),
         };
         origin.filter(|origin| matches!(origin, CssValueOrigin::ImplicitClosure { .. }))
     }
@@ -1007,7 +984,7 @@ impl CssComponentValue {
         }
         let opening = programmatic_lexeme(Token::Function(name.as_str()).to_string());
         Ok(Self {
-            parsed: None,
+            parsed: Provenance::new(None),
             data: ComponentData::Function(CssFunctionValue {
                 opening,
                 name: name.into_boxed_str(),
@@ -1025,7 +1002,7 @@ impl CssComponentValue {
         check_child_depth(&values)?;
         let (opening, closing) = kind.delimiters();
         Ok(Self {
-            parsed: None,
+            parsed: Provenance::new(None),
             data: ComponentData::Block(CssSimpleBlock {
                 kind,
                 opening: programmatic_lexeme(opening),
@@ -1035,12 +1012,130 @@ impl CssComponentValue {
         })
     }
 
+    /// Compares the values as `==` does while ignoring the layout a raw operand list's grammar
+    /// gives no meaning: comments, leading and trailing whitespace at every nesting level, and
+    /// whitespace next to a comma, colon or semicolon. Whitespace that separates other tokens
+    /// stays data, so `a b` differs from `ab`.
+    fn layout_eq_one(&self, other: &Self) -> bool {
+        match (&self.data, &other.data) {
+            (ComponentData::Function(a), ComponentData::Function(b)) => {
+                a.name == b.name && layout_items_eq(a.values.items(), b.values.items())
+            }
+            (ComponentData::Block(a), ComponentData::Block(b)) => {
+                a.kind == b.kind && layout_items_eq(a.values.items(), b.values.items())
+            }
+            _ => self == other,
+        }
+    }
+
     pub(crate) fn child_values(&self) -> Option<&CssComponentValues> {
         match &self.data {
             ComponentData::Function(function) => Some(&function.values),
             ComponentData::Block(block) => Some(&block.values),
             ComponentData::Token(_) | ComponentData::Comment { .. } => None,
         }
+    }
+}
+
+fn is_whitespace(component: &CssComponentValue) -> bool {
+    matches!(
+        component.view(),
+        CssComponentValueRef::Token(CssValueTokenRef::Whitespace(_))
+    )
+}
+
+fn is_list_delimiter(component: &CssComponentValue) -> bool {
+    matches!(
+        component.view(),
+        CssComponentValueRef::Token(
+            CssValueTokenRef::Comma | CssValueTokenRef::Colon | CssValueTokenRef::Semicolon
+        )
+    )
+}
+
+/// The components that carry meaning in a raw operand list, in order.
+fn layout_items(items: &[CssComponentValue]) -> Vec<&CssComponentValue> {
+    let mut significant: Vec<&CssComponentValue> = Vec::new();
+    for item in items {
+        if matches!(item.view(), CssComponentValueRef::Comment(_)) {
+            continue;
+        }
+        if is_whitespace(item) {
+            if significant
+                .last()
+                .is_none_or(|last| is_whitespace(last) || is_list_delimiter(last))
+            {
+                continue;
+            }
+        } else if is_list_delimiter(item)
+            && significant.last().is_some_and(|last| is_whitespace(last))
+        {
+            significant.pop();
+        }
+        significant.push(item);
+    }
+    if significant.last().is_some_and(|last| is_whitespace(last)) {
+        significant.pop();
+    }
+    significant
+}
+
+pub(crate) fn layout_items_eq(left: &[CssComponentValue], right: &[CssComponentValue]) -> bool {
+    let (left, right) = (layout_items(left), layout_items(right));
+    left.len() == right.len()
+        && left
+            .iter()
+            .zip(&right)
+            .all(|(left, right)| left.layout_eq_one(right))
+}
+
+/// Compares the authored text between the first and last significant component of each
+/// list, as the declaration path compares a custom property's value: edge whitespace and
+/// comments are trimmed, and everything between, spelling included, must agree.
+pub(crate) fn verbatim_items_eq(left: &[CssComponentValue], right: &[CssComponentValue]) -> bool {
+    fn significant(items: &[CssComponentValue]) -> &[CssComponentValue] {
+        let trivia = |item: &CssComponentValue| {
+            is_whitespace(item) || matches!(item.view(), CssComponentValueRef::Comment(_))
+        };
+        let start = items
+            .iter()
+            .position(|item| !trivia(item))
+            .unwrap_or(items.len());
+        let end = items
+            .iter()
+            .rposition(|item| !trivia(item))
+            .map_or(start, |last| last + 1);
+        &items[start..end]
+    }
+    let (left, right) = (significant(left), significant(right));
+    left.len() == right.len()
+        && left
+            .iter()
+            .zip(right)
+            .all(|(left, right)| left.same_spelling(right))
+}
+
+impl crate::source::VerbatimEq for CssComponentValues {
+    fn verbatim_eq(&self, other: &Self) -> bool {
+        verbatim_items_eq(self.items(), other.items())
+    }
+}
+
+impl crate::source::LayoutEq for CssComponentValues {
+    fn layout_eq(&self, other: &Self) -> bool {
+        layout_items_eq(self.items(), other.items())
+    }
+}
+
+impl<T: crate::source::LayoutEq> crate::source::LayoutEq for Box<T> {
+    fn layout_eq(&self, other: &Self) -> bool {
+        (**self).layout_eq(&**other)
+    }
+}
+
+impl crate::source::LayoutEq for CssComponentValue {
+    fn layout_eq(&self, other: &Self) -> bool {
+        self.layout_eq_one(other)
     }
 }
 
@@ -1056,8 +1151,8 @@ fn check_child_depth(values: &CssComponentValues) -> Result<(), CssComponentValu
 
 fn programmatic_lexeme(text: impl Into<Box<str>>) -> Lexeme {
     Lexeme {
-        text: text.into(),
-        origin: CssValueOrigin::Programmatic,
+        text: text.into().into(),
+        origin: CssValueOrigin::Programmatic.into(),
     }
 }
 
@@ -1178,7 +1273,7 @@ impl CssComponentValues {
                 return Err(error(Kind::UnserializableBoundary));
             }
             reverse_solidus = is_reverse;
-            match &spelling.origin {
+            match spelling.origin.inner() {
                 CssValueOrigin::Parsed(parsed) => {
                     let end = parsed.span().end().byte_offset().value();
                     writer.append(
@@ -1362,14 +1457,15 @@ impl CssComponentValues {
         let mut pending: Vec<_> = self.items.iter().rev().collect();
         while let Some(component) = pending.pop() {
             let closure = match &component.data {
-                ComponentData::Token(token) => {
-                    token.implicit_end.as_ref().map(|lexeme| &lexeme.origin)
-                }
+                ComponentData::Token(token) => token
+                    .implicit_end
+                    .as_ref()
+                    .map(|lexeme| lexeme.origin.inner()),
                 ComponentData::Comment { implicit_end, .. } => {
-                    implicit_end.as_ref().map(|lexeme| &lexeme.origin)
+                    implicit_end.as_ref().map(|lexeme| lexeme.origin.inner())
                 }
-                ComponentData::Function(function) => Some(&function.closing.origin),
-                ComponentData::Block(block) => Some(&block.closing.origin),
+                ComponentData::Function(function) => Some(function.closing.origin.inner()),
+                ComponentData::Block(block) => Some(block.closing.origin.inner()),
             };
             if let Some(CssValueOrigin::ImplicitClosure { opening, .. }) = closure {
                 openings.push(opening.span().start().byte_offset().value());
@@ -1962,24 +2058,34 @@ mod tests {
     }
 
     #[test]
-    fn private_structural_comparison_retains_exact_numeric_spelling_without_origins() {
-        for (spelling, different) in [
+    fn equality_ignores_numeric_spelling_and_origins_but_keeps_token_data() {
+        for (spelling, same_value) in [
             ("2px", "02px"),
-            ("+01", "01"),
             ("1e50", "1E50"),
-            ("-0.0%", "0.0%"),
-            ("1e-50PX", "1e-50px"),
+            ("0.5%", ".50%"),
+            ("1e-50px", "10e-51px"),
         ] {
             let parsed = parse_component_values(spelling).unwrap();
             let parsed = &parsed.items()[0];
             let programmatic = CssComponentValue::try_token(spelling).unwrap();
-            assert_ne!(parsed, &programmatic);
-            assert!(parsed.structural_eq_ignoring_origin(&programmatic));
-            assert!(
-                !parsed.structural_eq_ignoring_origin(
-                    &CssComponentValue::try_token(different).unwrap()
-                )
-            );
+            let respelled = CssComponentValue::try_token(same_value).unwrap();
+            assert_eq!(parsed, &programmatic);
+            assert_eq!(parsed, &respelled);
+            assert!(!crate::source::same_provenance(parsed, &programmatic));
+            assert!(!crate::source::same_provenance(parsed, &respelled));
+            assert!(parsed.same_spelling(&programmatic));
+            assert!(!parsed.same_spelling(&respelled));
+        }
+        for (spelling, different) in [
+            ("+01", "01"),
+            ("-0.0%", "0.0%"),
+            ("1px", "1.0px"),
+            ("1e-50PX", "1e-50px"),
+            ("2px", "3px"),
+        ] {
+            let parsed = parse_component_values(spelling).unwrap();
+            let parsed = &parsed.items()[0];
+            assert_ne!(parsed, &CssComponentValue::try_token(different).unwrap());
         }
     }
 }

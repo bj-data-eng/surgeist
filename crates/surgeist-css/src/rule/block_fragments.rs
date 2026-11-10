@@ -3,6 +3,7 @@
 use crate::rule::font_feature_values::CssFontFeatureValueKind;
 use crate::selector::CssNamespaceContext;
 use crate::source::CssParsedOrigin;
+use crate::source::Provenance;
 use crate::{CssParseReport, CssParser};
 
 /// An admitted grammar-specific body and the origin of its curly block.
@@ -14,16 +15,19 @@ use crate::{CssParseReport, CssParser};
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssBlockFragment<T> {
     body: T,
-    origin: CssParsedOrigin,
+    origin: Provenance<CssParsedOrigin>,
 }
 
 impl<T> CssBlockFragment<T> {
     pub(crate) fn from_parsed(body: T, origin: CssParsedOrigin) -> Self {
-        Self { body, origin }
+        Self {
+            body,
+            origin: origin.into(),
+        }
     }
 
     pub(crate) fn into_parts(self) -> (T, CssParsedOrigin) {
-        (self.body, self.origin)
+        (self.body, self.origin.into_inner())
     }
 
     /// Borrows the body retained by its grammar and recovery owner.
@@ -35,7 +39,7 @@ impl<T> CssBlockFragment<T> {
     /// Borrows the original-source range of the consumed curly block.
     #[must_use]
     pub const fn origin(&self) -> &CssParsedOrigin {
-        &self.origin
+        self.origin.inner()
     }
 }
 

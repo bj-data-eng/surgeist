@@ -3733,10 +3733,9 @@ mod coordinate_free_inverse_comparison_tests {
                 &format!("linear-gradient({right}, blue)"),
                 true,
             );
-            assert_ne!(
-                stop(&left),
-                stop(&right),
-                "ordinary stop retains authored Color"
+            assert!(
+                !crate::source::same_provenance(stop(&left), stop(&right)),
+                "ordinary stop retains authored Color and its coordinates"
             );
             bounded_work(stop(&left), stop(&right), expected, projections);
         }
@@ -3891,8 +3890,8 @@ mod coordinate_free_inverse_comparison_tests {
             let left = terminal(property, "url(a) 1dB", false);
             let right = terminal(property, "url(a) 1dB", true);
             assert!(
-                !raw_equal(&left, &right),
-                "ordinary decibel keeps coordinates"
+                raw_equal(&left, &right),
+                "ordinary decibel equality ignores coordinates"
             );
             assert!(compare(&left, &right, 0).unwrap());
             assert!(

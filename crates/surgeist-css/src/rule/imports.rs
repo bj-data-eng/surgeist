@@ -11,6 +11,7 @@ use crate::selector::CssNamespaceContext;
 use crate::serialization::{
     CssRuleSerializationError, CssSerializationError, CssSerializationLimits,
 };
+use crate::source::Provenance;
 use std::fmt;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -18,7 +19,7 @@ pub(crate) struct ImportPreludeSyntax {
     pub(crate) target: CssComponentValue,
     pub(crate) layer: Option<CssComponentValue>,
     pub(crate) supports: Option<CssComponentValue>,
-    pub(crate) semicolon: CssValueOrigin,
+    pub(crate) semicolon: Provenance<CssValueOrigin>,
 }
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ImportSyntax {
@@ -98,7 +99,7 @@ impl<'a> CssImportRuleView<'a> {
 pub(crate) enum ImportSerializationFailure {
     Component(CssComponentValueError),
     Media(crate::query::media::construction::MediaSerializationFailure),
-    InterpretationChanged { origin: CssValueOrigin },
+    InterpretationChanged { origin: Provenance<CssValueOrigin> },
 }
 impl From<CssComponentValueError> for ImportSerializationFailure {
     fn from(value: CssComponentValueError) -> Self {
@@ -133,13 +134,13 @@ pub(crate) fn import_error(error: ImportSerializationFailure) -> CssSerializatio
 /// through [`CssRuleConstructionError`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum ImportConstructionKind {
-    InvalidRuleGrammar { origin: CssValueOrigin },
-    RecoveredInput { origin: CssValueOrigin },
+    InvalidRuleGrammar { origin: Provenance<CssValueOrigin> },
+    RecoveredInput { origin: Provenance<CssValueOrigin> },
     Component(CssComponentValueError),
     Supports(CssSupportsConstructionError),
     Media(CssMediaConstructionError),
     Serialization(CssSerializationError),
-    WorkerUnavailable { origin: CssValueOrigin },
+    WorkerUnavailable { origin: Provenance<CssValueOrigin> },
 }
 impl ImportConstructionKind {
     pub(crate) fn origin(&self) -> &CssValueOrigin {
@@ -224,7 +225,7 @@ impl CssImportRule {
                 })
                 .map_err(|_| {
                     CssRuleConstructionError::from(ImportConstructionKind::WorkerUnavailable {
-                        origin: CssValueOrigin::Programmatic,
+                        origin: CssValueOrigin::Programmatic.into(),
                     })
                 })?;
             match worker.join() {
@@ -434,7 +435,7 @@ impl CssImportRule {
         {
             return Err(
                 crate::query::media::construction::MediaSerializationFailure::RecoveredNever {
-                    origin: value.origin().clone(),
+                    origin: value.origin().clone().into(),
                 }
                 .into(),
             );
@@ -474,13 +475,13 @@ impl CssImportRule {
                 Some(CssMediaQuery::Condition(_))
             ) {
                 return Err(ImportSerializationFailure::InterpretationChanged {
-                    origin: origin.clone(),
+                    origin: origin.clone().into(),
                 });
             }
             let (protected, boundaries) = self.import_tail(media, true, max_bytes, emit_query)?;
             if !crate::parser::import::import_boundaries_match(&protected, boundaries, origin)? {
                 return Err(ImportSerializationFailure::InterpretationChanged {
-                    origin: origin.clone(),
+                    origin: origin.clone().into(),
                 });
             }
             true

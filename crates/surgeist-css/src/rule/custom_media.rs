@@ -8,6 +8,7 @@ use crate::query::media::custom_media::ident;
 use crate::query::media::{CssCustomMediaBody, CssCustomMediaName};
 use crate::query::media::{CssMediaConstructionError, CssMediaQuery, CssMediaQueryList};
 use crate::serialization::CssSerializationError;
+use crate::source::Provenance;
 use crate::source::{
     CssRetainedSources, CssSourcePosition, CssSourceRetention, CssSourceRetentionError,
 };
@@ -18,9 +19,9 @@ impl CssRetainedSources for CssCustomMediaRule {
         sources: &mut CssSourceRetention,
     ) -> Result<(), CssSourceRetentionError> {
         sources.visit(self.data.name.component())?;
-        sources.visit(&self.data.origin)?;
-        sources.visit(&self.data.body_origin)?;
-        sources.visit(&self.data.semicolon)?;
+        sources.visit(self.data.origin.inner())?;
+        sources.visit(self.data.body_origin.inner())?;
+        sources.visit(self.data.semicolon.inner())?;
         if let CssCustomMediaBody::Media(value) = &self.data.body {
             sources.visit(value)?;
         }
@@ -37,9 +38,9 @@ pub struct CssCustomMediaRule {
 struct CustomMediaRuleData {
     name: CssCustomMediaName,
     body: CssCustomMediaBody,
-    origin: CssValueOrigin,
-    body_origin: CssValueOrigin,
-    semicolon: CssValueOrigin,
+    origin: Provenance<CssValueOrigin>,
+    body_origin: Provenance<CssValueOrigin>,
+    semicolon: Provenance<CssValueOrigin>,
 }
 /// A lexical custom-media emission failure, before its public classification.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -160,14 +161,14 @@ impl CssCustomMediaRule {
                 if let Some(origin) = values.first_implicit_origin() {
                     return Err(CssMediaConstructionError::from(
                         crate::query::media::construction::MediaConstructionKind::RecoveredInput {
-                            origin: origin.clone(),
+                            origin: origin.clone().into(),
                         },
                     ));
                 }
                 let Some(index) = values.items().iter().position(|v| !trivia(v)) else {
                     return Err(CssMediaConstructionError::from(
                         crate::query::media::construction::MediaConstructionKind::InvalidPrelude {
-                            origin: CssValueOrigin::Programmatic,
+                            origin: CssValueOrigin::Programmatic.into(),
                         },
                     ));
                 };
@@ -251,9 +252,9 @@ impl CssCustomMediaRule {
             data: Box::new(CustomMediaRuleData {
                 name,
                 body,
-                origin,
-                body_origin,
-                semicolon,
+                origin: origin.into(),
+                body_origin: body_origin.into(),
+                semicolon: semicolon.into(),
             }),
         }
     }
@@ -267,11 +268,11 @@ impl CssCustomMediaRule {
     }
     /// Returns the origin of the whole rule.
     pub const fn origin(&self) -> &CssValueOrigin {
-        &self.data.origin
+        self.data.origin.inner()
     }
     /// Returns the source position of the rule, or `None` when its origin was not parsed from source.
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        crate::query::media::construction::parsed_position(&self.data.origin)
+        crate::query::media::construction::parsed_position(self.data.origin.inner())
     }
     /// The deep media query responsible for a refused deep serialization.
     fn media_origin(&self) -> CssValueOrigin {
@@ -279,7 +280,7 @@ impl CssCustomMediaRule {
             CssCustomMediaBody::Media(list) => {
                 crate::query::media::construction::deep_list_origin(list)
             }
-            _ => self.data.origin.clone(),
+            _ => self.data.origin.inner().clone(),
         }
     }
     /// Emits canonical authored syntax with original token origins. Any recovered
@@ -406,7 +407,7 @@ impl CssCustomMediaRule {
             {
                 return Err(CssMediaConstructionError::from(
                     crate::query::media::construction::MediaConstructionKind::AmbiguousMediaBody {
-                        origin: query.syntax.media_type.origin().clone(),
+                        origin: query.syntax.media_type.origin().clone().into(),
                     },
                 ));
             }
@@ -417,7 +418,7 @@ impl CssCustomMediaRule {
             {
                 return Err(CssMediaConstructionError::from(
                     crate::query::media::construction::MediaConstructionKind::RecoveredInput {
-                        origin: value.origin().clone(),
+                        origin: value.origin().clone().into(),
                     },
                 ));
             }
@@ -446,7 +447,7 @@ impl CssCustomMediaRule {
             {
                 return Err(CssMediaConstructionError::from(
                     crate::query::media::construction::MediaConstructionKind::RecoveredInput {
-                        origin: origin.clone(),
+                        origin: origin.clone().into(),
                     },
                 ));
             }
@@ -463,7 +464,7 @@ impl CssCustomMediaRule {
                             output
                                 .value_origin_at(offset)
                                 .cloned()
-                                .unwrap_or_else(|| self.data.origin.clone()),
+                                .unwrap_or_else(|| self.data.origin.inner().clone()),
                         ),
                     ),
                 )

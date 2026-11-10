@@ -2,6 +2,7 @@
 use crate::component::{CssComponentValue, CssComponentValueRef, CssValueOrigin, CssValueTokenRef};
 use crate::query::media::{CssMediaConstructionError, CssMediaQueryList};
 use crate::source::CssSourcePosition;
+use crate::source::Provenance;
 
 /// A decoded extension name and its original identifier component.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -25,7 +26,7 @@ impl CssCustomMediaName {
         let Some(name) = extension_name(&component) else {
             return Err(CssMediaConstructionError::from(
                 crate::query::media::construction::MediaConstructionKind::InvalidName {
-                    origin: component.origin().clone(),
+                    origin: component.origin().clone().into(),
                 },
             ));
         };
@@ -68,12 +69,15 @@ pub struct CssCustomMediaReference {
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct CustomMediaReferenceSyntax {
     name: CssCustomMediaName,
-    component: CssComponentValue,
+    component: Provenance<CssComponentValue>,
 }
 impl CssCustomMediaReference {
     pub(crate) fn new(name: CssCustomMediaName, component: CssComponentValue) -> Self {
         Self {
-            syntax: Box::new(CustomMediaReferenceSyntax { name, component }),
+            syntax: Box::new(CustomMediaReferenceSyntax {
+                name,
+                component: component.into(),
+            }),
         }
     }
     /// Returns the referenced custom media name.
@@ -82,11 +86,11 @@ impl CssCustomMediaReference {
     }
     /// Returns the original parenthesized component of the reference.
     pub const fn component(&self) -> &CssComponentValue {
-        &self.syntax.component
+        self.syntax.component.inner()
     }
     /// Returns the origin of the parenthesized component.
     pub const fn origin(&self) -> &CssValueOrigin {
-        self.syntax.component.origin()
+        self.syntax.component.inner().origin()
     }
     /// Returns the source position of the reference, or `None` when its origin was not parsed from source.
     pub const fn position(&self) -> Option<CssSourcePosition> {

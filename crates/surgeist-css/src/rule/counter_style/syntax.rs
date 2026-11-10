@@ -1,6 +1,7 @@
 //! Authored Counter Styles models and descriptor identity.
 use crate::numeric::{CssInteger, CssNumeric, CssNumericLiteral};
 use crate::rule::CssDescriptorOccurrence;
+use crate::source::Provenance;
 use crate::source::{CssParsedOrigin, CssSourcePosition};
 use crate::values::common::CssIdent;
 use crate::values::content::CssContentString;
@@ -22,8 +23,8 @@ use crate::values::image::CssImage;
 pub struct CssCounterStyleRule {
     name: CssCounterStyleName,
     descriptors: Box<CssCounterStyleDescriptors>,
-    position: CssSourcePosition,
-    parsed_name: Option<CssParsedOrigin>,
+    position: Provenance<CssSourcePosition>,
+    parsed_name: Provenance<Option<CssParsedOrigin>>,
 }
 
 impl CssCounterStyleRule {
@@ -36,8 +37,8 @@ impl CssCounterStyleRule {
         Self {
             name,
             descriptors: Box::new(descriptors),
-            position,
-            parsed_name: None,
+            position: position.into(),
+            parsed_name: Provenance::new(None),
         }
     }
 
@@ -48,7 +49,7 @@ impl CssCounterStyleRule {
         parsed_name: CssParsedOrigin,
     ) -> Self {
         Self {
-            parsed_name: Some(parsed_name),
+            parsed_name: Some(parsed_name).into(),
             ..Self::new(name, descriptors, position)
         }
     }
@@ -57,7 +58,7 @@ impl CssCounterStyleRule {
     /// Semantic construction does not invent a parsed source origin.
     #[must_use]
     pub const fn parsed_name(&self) -> Option<&CssParsedOrigin> {
-        self.parsed_name.as_ref()
+        self.parsed_name.inner().as_ref()
     }
 
     /// Returns the checked, case-sensitive authored counter-style name.
@@ -75,7 +76,7 @@ impl CssCounterStyleRule {
     /// Returns the semantic source position of the rule's at-keyword.
     #[must_use]
     pub const fn position(&self) -> CssSourcePosition {
-        self.position
+        *self.position.inner()
     }
 }
 

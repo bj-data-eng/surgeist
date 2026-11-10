@@ -400,6 +400,9 @@ pub struct surgeist_css::color::CssAuthoredColorStandardFailure
 pub surgeist_css::color::CssAuthoredColorStandardFailure::kind: surgeist_css::color::CssColorStandardFailureKind
 pub surgeist_css::color::CssAuthoredColorStandardFailure::origin: core::option::Option<surgeist_css::component::CssValueOrigin>
 pub surgeist_css::color::CssAuthoredColorStandardFailure::path: surgeist_css::color::CssColorComponentPath
+impl core::cmp::Eq for surgeist_css::color::CssAuthoredColorStandardFailure
+impl core::cmp::PartialEq for surgeist_css::color::CssAuthoredColorStandardFailure
+pub fn surgeist_css::color::CssAuthoredColorStandardFailure::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::color::CssColor
 impl surgeist_css::color::CssColor
 pub fn surgeist_css::color::CssColor::absolute_eligibility(&self) -> surgeist_css::color::CssAbsoluteColorEligibility
@@ -633,6 +636,9 @@ pub struct surgeist_css::color::CssHexColor
 impl surgeist_css::color::CssHexColor
 pub fn surgeist_css::color::CssHexColor::digits(&self) -> &str
 pub fn surgeist_css::color::CssHexColor::try_new(digits: impl core::convert::Into<alloc::string::String>) -> core::option::Option<Self>
+impl core::cmp::Eq for surgeist_css::color::CssHexColor
+impl core::cmp::PartialEq for surgeist_css::color::CssHexColor
+pub fn surgeist_css::color::CssHexColor::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::color::CssHslColor
 impl surgeist_css::color::CssHslColor
 pub const fn surgeist_css::color::CssHslColor::alpha(&self) -> core::option::Option<&surgeist_css::color::CssColorComponent>
@@ -1250,9 +1256,6 @@ pub const fn surgeist_css::diagnostic::CssRecoveryDiagnostic::error(&self) -> &s
 pub fn surgeist_css::diagnostic::CssRecoveryDiagnostic::retained_backing_bytes_with<E>(&self, admit: impl core::ops::function::FnMut() -> core::result::Result<(), E>) -> core::result::Result<usize, surgeist_css::source::CssRetainedPayloadError<E>>
 pub const fn surgeist_css::diagnostic::CssRecoveryDiagnostic::source(&self) -> core::option::Option<&surgeist_css::source::CssSourceSnapshot>
 pub const fn surgeist_css::diagnostic::CssRecoveryDiagnostic::span(&self) -> surgeist_css::source::CssSourceSpan
-impl core::cmp::Eq for surgeist_css::diagnostic::CssRecoveryDiagnostic
-impl core::cmp::PartialEq for surgeist_css::diagnostic::CssRecoveryDiagnostic
-pub fn surgeist_css::diagnostic::CssRecoveryDiagnostic::eq(&self, other: &Self) -> bool
 impl surgeist_css::source::CssRetainedSources for surgeist_css::diagnostic::CssRecoveryDiagnostic
 pub fn surgeist_css::diagnostic::CssRecoveryDiagnostic::visit_retained_sources(&self, sources: &mut surgeist_css::source::CssSourceRetention<'_>) -> core::result::Result<(), surgeist_css::source::CssSourceRetentionError>
 pub struct surgeist_css::diagnostic::CssTokenSummary
@@ -1781,7 +1784,7 @@ pub const fn surgeist_css::numeric::CssZeroLiteral::origin(&self) -> &surgeist_c
 pub fn surgeist_css::numeric::CssZeroLiteral::try_from_component(component: surgeist_css::component::CssComponentValue) -> core::result::Result<Self, surgeist_css::component::CssComponentValueError>
 impl core::cmp::Eq for surgeist_css::numeric::CssZeroLiteral
 impl core::cmp::PartialEq for surgeist_css::numeric::CssZeroLiteral
-pub fn surgeist_css::numeric::CssZeroLiteral::eq(&self, _other: &Self) -> bool
+pub fn surgeist_css::numeric::CssZeroLiteral::eq(&self, other: &Self) -> bool
 pub trait surgeist_css::numeric::CssDimensionRoot: surgeist_css::numeric::CssNumericRoot
 pub type surgeist_css::numeric::CssDimensionRoot::Unit: core::marker::Copy + core::cmp::Eq + core::fmt::Debug + surgeist_css::sealed::DimensionUnit
 impl surgeist_css::numeric::CssDimensionRoot for surgeist_css::numeric::CssAngle
@@ -3912,8 +3915,6 @@ impl surgeist_css::query::media::CssMediaQueryList
 pub fn surgeist_css::query::media::CssMediaQueryList::serialize_cssom(&self, limits: surgeist_css::serialization::CssSerializationLimits) -> core::result::Result<surgeist_css::component::CssSerializedValue, surgeist_css::serialization::CssSerializationError>
 pub fn surgeist_css::query::media::CssMediaQueryList::serialize_cssom_members(&self, limits: surgeist_css::serialization::CssSerializationLimits) -> core::result::Result<alloc::vec::Vec<surgeist_css::component::CssSerializedValue>, surgeist_css::serialization::CssSerializationError>
 pub fn surgeist_css::query::media::CssMediaQueryList::serialize_tokens(&self, limits: surgeist_css::component::CssComponentValueLimits) -> core::result::Result<surgeist_css::component::CssSerializedValue, surgeist_css::serialization::CssSerializationError>
-impl core::cmp::PartialEq for surgeist_css::query::media::CssMediaQueryList
-pub fn surgeist_css::query::media::CssMediaQueryList::eq(&self, other: &Self) -> bool
 impl surgeist_css::source::CssRetainedSources for surgeist_css::query::media::CssMediaQueryList
 pub fn surgeist_css::query::media::CssMediaQueryList::visit_retained_sources(&self, sources: &mut surgeist_css::source::CssSourceRetention<'_>) -> core::result::Result<(), surgeist_css::source::CssSourceRetentionError>
 pub struct surgeist_css::query::media::CssMediaRange<T>
@@ -4046,6 +4047,8 @@ pub fn surgeist_css::query::supports::CssSupportsDeclaration::parse(parser: &sur
 impl surgeist_css::query::supports::CssSupportsDeclaration
 pub fn surgeist_css::query::supports::CssSupportsDeclaration::serialize_tokens(&self, limits: surgeist_css::component::CssComponentValueLimits) -> core::result::Result<surgeist_css::component::CssSerializedValue, surgeist_css::component::CssComponentValueError>
 pub fn surgeist_css::query::supports::CssSupportsDeclaration::try_from_components(values: surgeist_css::component::CssComponentValues, limits: surgeist_css::component::CssComponentValueLimits) -> core::result::Result<Self, surgeist_css::query::supports::CssSupportsConstructionError>
+impl core::cmp::PartialEq for surgeist_css::query::supports::CssSupportsDeclaration
+pub fn surgeist_css::query::supports::CssSupportsDeclaration::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::query::supports::CssSupportsQualifiedRuleTest
 impl surgeist_css::query::supports::CssSupportsQualifiedRuleTest
 pub fn surgeist_css::query::supports::CssSupportsQualifiedRuleTest::body(&self) -> &surgeist_css::query::supports::CssSupportsTestBody
@@ -5550,8 +5553,6 @@ impl surgeist_css::rule::CssSheet
 pub fn surgeist_css::rule::CssSheet::serialize_specified(&self, limits: surgeist_css::serialization::CssSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::serialization::CssSerializationError>
 impl surgeist_css::rule::CssSheet
 pub fn surgeist_css::rule::CssSheet::try_from_rules(rules: alloc::vec::Vec<surgeist_css::rule::CssRule>) -> core::result::Result<Self, surgeist_css::rule::CssRuleConstructionError>
-impl core::cmp::PartialEq for surgeist_css::rule::CssSheet
-pub fn surgeist_css::rule::CssSheet::eq(&self, other: &Self) -> bool
 impl surgeist_css::source::CssRetainedSources for surgeist_css::rule::CssSheet
 pub fn surgeist_css::rule::CssSheet::visit_retained_sources(&self, sources: &mut surgeist_css::source::CssSourceRetention<'_>) -> core::result::Result<(), surgeist_css::source::CssSourceRetentionError>
 pub struct surgeist_css::rule::CssStyleBlock
@@ -5824,8 +5825,6 @@ impl surgeist_css::selector::CssInvalidNestingSelectorItem
 pub fn surgeist_css::selector::CssInvalidNestingSelectorItem::authored(&self) -> &str
 pub const fn surgeist_css::selector::CssInvalidNestingSelectorItem::components(&self) -> &surgeist_css::component::CssComponentValues
 pub const fn surgeist_css::selector::CssInvalidNestingSelectorItem::origin(&self) -> &surgeist_css::source::CssParsedOrigin
-impl core::cmp::PartialEq for surgeist_css::selector::CssInvalidNestingSelectorItem
-pub fn surgeist_css::selector::CssInvalidNestingSelectorItem::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::selector::CssLanguageRange
 impl surgeist_css::selector::CssLanguageRange
 pub fn surgeist_css::selector::CssLanguageRange::as_str(&self) -> &str
@@ -6460,6 +6459,7 @@ impl<T: surgeist_css::source::CssRetainedSources> surgeist_css::source::CssRetai
 pub fn core::option::Option<T>::visit_retained_sources(&self, sources: &mut surgeist_css::source::CssSourceRetention<'_>) -> core::result::Result<(), surgeist_css::source::CssSourceRetentionError>
 impl<T: surgeist_css::source::CssRetainedSources> surgeist_css::source::CssRetainedSources for surgeist_css::rule::CssDescriptorOccurrence<T>
 pub fn surgeist_css::rule::CssDescriptorOccurrence<T>::visit_retained_sources(&self, sources: &mut surgeist_css::source::CssSourceRetention<'_>) -> core::result::Result<(), surgeist_css::source::CssSourceRetentionError>
+pub fn surgeist_css::source::same_provenance<T: core::cmp::PartialEq + ?core::marker::Sized>(left: &T, right: &T) -> bool
 pub mod surgeist_css::values
 pub mod surgeist_css::values::animation
 #[non_exhaustive] pub enum surgeist_css::values::animation::CssAnimationDirection
@@ -8559,8 +8559,6 @@ pub const fn surgeist_css::values::image::CssStripe::color_component(&self) -> &
 pub const fn surgeist_css::values::image::CssStripe::color_origin(&self) -> &surgeist_css::component::CssValueOrigin
 pub const fn surgeist_css::values::image::CssStripe::thickness(&self) -> core::option::Option<&surgeist_css::values::image::CssStripeThickness>
 pub fn surgeist_css::values::image::CssStripe::try_new(color: surgeist_css::component::CssComponentValue, thickness: core::option::Option<surgeist_css::values::image::CssStripeThickness>) -> core::result::Result<Self, surgeist_css::values::image::CssImageConstructionError>
-impl core::cmp::PartialEq for surgeist_css::values::image::CssStripe
-pub fn surgeist_css::values::image::CssStripe::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::values::image::CssStripeLengthPercentage
 impl surgeist_css::values::image::CssStripeLengthPercentage
 pub fn surgeist_css::values::image::CssStripeLengthPercentage::origin(&self) -> &surgeist_css::component::CssValueOrigin
@@ -8577,8 +8575,6 @@ pub fn surgeist_css::values::image::CssStripes::stripes(&self) -> &[surgeist_css
 pub fn surgeist_css::values::image::CssStripes::try_new(stripes: alloc::vec::Vec<surgeist_css::values::image::CssStripe>) -> core::result::Result<Self, surgeist_css::values::image::CssImageConstructionError>
 impl surgeist_css::values::image::CssStripes
 pub fn surgeist_css::values::image::CssStripes::serialize_specified(&self, limits: surgeist_css::serialization::CssSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::serialization::CssSerializationError>
-impl core::cmp::PartialEq for surgeist_css::values::image::CssStripes
-pub fn surgeist_css::values::image::CssStripes::eq(&self, other: &Self) -> bool
 pub mod surgeist_css::values::layout
 #[non_exhaustive] pub enum surgeist_css::values::layout::CssAlignmentPosition
 pub surgeist_css::values::layout::CssAlignmentPosition::Center
@@ -9328,9 +9324,6 @@ pub fn surgeist_css::values::shape::CssPathData::as_str(&self) -> &str
 pub const fn surgeist_css::values::shape::CssPathData::origin(&self) -> &surgeist_css::component::CssValueOrigin
 pub fn surgeist_css::values::shape::CssPathData::try_from_component(component: surgeist_css::component::CssComponentValue) -> core::result::Result<Self, surgeist_css::values::shape::CssShapeConstructionError>
 pub fn surgeist_css::values::shape::CssPathData::try_new(decoded: impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, surgeist_css::values::shape::CssShapeConstructionError>
-impl core::cmp::Eq for surgeist_css::values::shape::CssPathData
-impl core::cmp::PartialEq for surgeist_css::values::shape::CssPathData
-pub fn surgeist_css::values::shape::CssPathData::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::values::shape::CssPathShape
 impl surgeist_css::values::shape::CssPathShape
 pub const fn surgeist_css::values::shape::CssPathShape::data(&self) -> &surgeist_css::values::shape::CssPathData
@@ -10210,9 +10203,6 @@ pub const fn surgeist_css::values::text::CssTextEmphasisMark::shape_origin(&self
 pub fn surgeist_css::values::text::CssTextEmphasisMark::try_new(fill: core::option::Option<surgeist_css::values::text::CssTextEmphasisFill>, shape: core::option::Option<surgeist_css::values::text::CssTextEmphasisShape>) -> core::option::Option<Self>
 impl surgeist_css::values::text::CssTextEmphasisMark
 pub fn surgeist_css::values::text::CssTextEmphasisMark::serialize_specified(&self, limits: surgeist_css::serialization::CssSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::serialization::CssSerializationError>
-impl core::cmp::Eq for surgeist_css::values::text::CssTextEmphasisMark
-impl core::cmp::PartialEq for surgeist_css::values::text::CssTextEmphasisMark
-pub fn surgeist_css::values::text::CssTextEmphasisMark::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::values::text::CssTextEmphasisPosition
 impl surgeist_css::values::text::CssTextEmphasisPosition
 pub const fn surgeist_css::values::text::CssTextEmphasisPosition::effective_side(&self) -> surgeist_css::values::text::CssTextSide
@@ -10223,9 +10213,6 @@ pub const fn surgeist_css::values::text::CssTextEmphasisPosition::vertical(&self
 pub const fn surgeist_css::values::text::CssTextEmphasisPosition::vertical_origin(&self) -> &surgeist_css::component::CssValueOrigin
 impl surgeist_css::values::text::CssTextEmphasisPosition
 pub fn surgeist_css::values::text::CssTextEmphasisPosition::serialize_specified(&self, limits: surgeist_css::serialization::CssSerializationLimits) -> core::result::Result<alloc::string::String, surgeist_css::serialization::CssSerializationError>
-impl core::cmp::Eq for surgeist_css::values::text::CssTextEmphasisPosition
-impl core::cmp::PartialEq for surgeist_css::values::text::CssTextEmphasisPosition
-pub fn surgeist_css::values::text::CssTextEmphasisPosition::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::values::text::CssTextEmphasisSkip
 impl surgeist_css::values::text::CssTextEmphasisSkip
 pub const fn surgeist_css::values::text::CssTextEmphasisSkip::initial() -> Self
@@ -10544,8 +10531,6 @@ pub const fn surgeist_css::values::transform::CssRotateValues::angle(&self) -> &
 pub const fn surgeist_css::values::transform::CssRotateValues::axis(&self) -> core::option::Option<&surgeist_css::values::transform::CssRotateAxis>
 pub const fn surgeist_css::values::transform::CssRotateValues::keyword_axis_origin(&self) -> core::option::Option<&surgeist_css::component::CssValueOrigin>
 pub fn surgeist_css::values::transform::CssRotateValues::new(angle: surgeist_css::numeric::CssNumeric<surgeist_css::numeric::CssAngle>, axis: core::option::Option<surgeist_css::values::transform::CssRotateAxis>) -> Self
-impl core::cmp::PartialEq for surgeist_css::values::transform::CssRotateValues
-pub fn surgeist_css::values::transform::CssRotateValues::eq(&self, other: &Self) -> bool
 pub struct surgeist_css::values::transform::CssScaleValues
 impl surgeist_css::values::transform::CssScaleValues
 pub fn surgeist_css::values::transform::CssScaleValues::try_new(values: alloc::vec::Vec<surgeist_css::values::transform::CssTransformScaleComponent>) -> core::option::Option<Self>

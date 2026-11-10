@@ -209,8 +209,9 @@ outside-Page hierarchy and live insertion guards after actual classification.
 owning original input, even for an empty body after the caller drops its string.
 Programmatic construction and existing Page-body children keep their explicit
 absence of this detached occurrence; declaration origins remain independently
-retained. Authored equality includes this optional origin. Live CSSOM identity
-and publication checks remain separate consumer decisions.
+retained. Authored equality ignores this optional origin, which
+`source::same_provenance` compares. Live CSSOM identity and publication checks
+remain separate consumer decisions.
 
 ## Authored CSSOM declaration blocks
 
@@ -361,8 +362,8 @@ parsed member forgiveness or erase recovery diagnostics.
 and parser-owned `InvalidNesting` items. Public factories still take typed
 `Vec<CssSelector>` and cannot manufacture invalid raw state. An invalid item exposes
 its exact member spelling, original source origin and immutable components,
-including trivia at both edges. Its equality uses spelling and intrinsic grammar
-proof rather than source coordinates. It represents match-nothing syntax with
+including trivia at both edges. Its equality uses its components and intrinsic grammar
+proof rather than spelling and source coordinates. It represents match-nothing syntax with
 zero specificity; this crate does not perform matching or specificity evaluation.
 
 Only Is/Where can receive that state. Clone/composition must preserve or tighten
@@ -560,6 +561,46 @@ and `border-*-width` share the one `<line-width>` grammar, so
 `outline-width: auto 1px` reports `auto`, the unknown keyword, rather than the
 length after it.
 
+### Equality and provenance
+
+`==` on authored syntax, component values, specified numerics and diagnostics is
+structural: it compares what a value says and ignores where it was read from, so a
+parsed value equals the same value built in code, and equal values at different spans
+are equal. A component value compares its decoded tokens: spelling is not compared, so
+`1.0px` equals `1.00px`, `a\62` equals `ab`, `"x"` equals `'x'` and whitespace runs
+of different text are equal. A number's value, type flag and sign flag are token data,
+so `1px` differs from `1.0px` and `+1` from `1`. A specified numeric compares exact value
+and unit, so `1px` equals `1.0px`.
+Fields that record provenance (origins, spans, positions, lexeme text, the authored text
+retained beside a checked value, and a declaration's retained name and value regions) do
+not take part in `==`; a parse source retained beside a value takes part in no comparison.
+Whitespace and comments that a grammar gives no meaning are spelling too. A typed value
+retains the raw component tree beside its typed fields as provenance, so `(min-width:1px)`
+equals `( min-width: 1px )` and `color:red` equals `color: red`. Where a raw operand list is
+the only data (a general-enclosed operand, an unknown media feature's operands), `==` ignores
+comments, edge whitespace and whitespace next to a comma, colon or semicolon, and keeps the
+whitespace that separates other tokens, so `(a b)` differs from `(ab)`. Custom-property text
+and text that awaits substitution (`(--x: a b)` in `@supports`, `style(--x: a b)`, a pending
+container or descriptor operand) compares as a declaration does: edge whitespace and
+comments are trimmed and the text between, interior whitespace included, must agree. An
+unknown media feature name compares ASCII case-insensitively, except an extension name
+(`--x`). The descendant combinator is whitespace the grammar distinguishes. A
+closing delimiter the source omitted (`rgb(1 2 3` against `rgb(1 2 3)`) is recovery
+provenance.
+Hex color digits compare ASCII case-insensitively (`#ABC` equals `#abc`), with the digit
+count part of the value (`#abc` differs from `#aabbcc`).
+A text that is the only representation of a value (a custom property or
+substitution-dependent value, a diagnostic's token summary, an unknown media type) is
+compared as text.
+
+`source::same_provenance(a, b)` is the named comparison that also compares them: it
+is true when the values are equal and every origin, span and position, and the
+spelling a value retains, are equal too. It serves a consumer that detects
+whether a sheet, a media list or a diagnostic list was replaced by structurally equal
+syntax parsed from other text. `CssDeclaration::same_occurrence` and
+`CssDescriptorOccurrence::same_occurrence` instead report identity of one retained
+parsed occurrence, including across clones.
+
 ## Owned component values
 
 `CssComponentValues` retains an immutable sequence of tokens, functions, blocks,
@@ -669,8 +710,8 @@ symbolic; no selector or parent list is fabricated.
 returns children plus later `CssRule::NestedDeclarations` runs. `origin()` includes
 the opening brace through the explicit closing brace or actual EOF. It excludes
 surrounding trivia while sharing the complete original source snapshot with
-parsed declarations and components. Equality compares contents and source text/span;
-it does not compare snapshot identity.
+parsed declarations and components. Equality compares contents; the origin and the
+source it addresses are compared by `source::same_provenance`.
 
 Empty and recovered-empty blocks remain `Some`. Inner errors preserve the owning
 recovery actions, and implicit EOF closures are reported on retained blocks.
@@ -777,9 +818,11 @@ uses temporary masked input. Empty custom values retain a zero-width value span.
 
 Cloning a declaration preserves its immutable occurrence identity;
 `same_occurrence()` distinguishes it from a separately parsed or constructed
-declaration. Declaration equality continues comparing body, importance and
-optional position, while authored-value equality continues comparing its exact
-retained CSS text. Neither equality operation compares occurrence identity.
+declaration. Declaration equality compares body and importance and ignores the
+position, the retained name and value origins and the authored text retained beside
+a checked value, which `source::same_provenance` compares; a custom or
+substitution-dependent value has only its authored text, which equality compares.
+Neither equality operation compares occurrence identity.
 
 `CssDeclaration::position()` returns `Option<CssSourcePosition>`: a parsed
 declaration yields `Some`, and constructed declarations have no invented
@@ -833,8 +876,9 @@ declarations remain pending upstream; exact constructors reject residual `var()`
 Construction errors distinguish component, grammar, arity, type, domain, and
 resource failures and retain responsible origins. Explicit byte, component, and
 depth limits apply before admission. `serialize_tokens(limits)` emits canonical authored
-syntax with a map to original token and delimiter origins. Equality compares the
-authored graph and provenance, not evaluated numeric equivalence.
+syntax with a map to original token and delimiter origins. Equality compares
+operations and operand values in order, ignoring provenance and spelling, and does
+not evaluate numeric equivalence.
 
 Pure lengths use `CssCalculation<CssLength>`; mixed length-percentages use
 `CssCalculation<CssLengthPercentage>`. Both retain the exact checked component and
@@ -1794,8 +1838,9 @@ notation, dimensions and other token kinds are rejected by literal construction.
 machine integers. `is_zero` and `is_negative` classify the exact integer,
 including signed zero, without a machine-range bound. `compare_value` returns
 mathematical `Ordering` across signs and arbitrary magnitudes, ignoring explicit
-plus signs, leading zeros and provenance and equating signed zeros. It does not
-change lexical/provenance-sensitive equality or supply an incompatible `Ord`.
+plus signs, leading zeros and provenance and equating signed zeros. `==` compares the
+same exact value and ignores spelling and origin; `source::same_provenance` compares
+them. No incompatible `Ord` is supplied.
 `serialize_specified(limits)`
 removes redundant signs and leading zeros without rounding the magnitude or
 changing the retained token. It charges one input and
@@ -2277,8 +2322,8 @@ as a whole declaration while preserving the following declaration and original
 responsible token position. See the
 [identifier admission tests](../tests/css/values/identifiers/custom_ident_domain_admission.rs).
 
-Raw time literals, values and calculation trees compare original token spelling
-and provenance. Duration wrappers, timing lists and transition/animation
+Raw time literals, values and calculation trees compare by exact value and unit,
+ignoring token spelling and provenance. Duration wrappers, timing lists and transition/animation
 aggregates compare their time children without source coordinates while keeping
 lexical coefficients, units, branches, order and omissions distinct. Constructors
 and parsers retain absent shorthand fields; they do not insert initial values.

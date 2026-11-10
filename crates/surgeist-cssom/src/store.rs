@@ -17,6 +17,7 @@ use surgeist_css::query::media::CssMediaQueryList;
 use surgeist_css::rule::CssRule;
 use surgeist_css::rule::CssSheet;
 use surgeist_css::selector::CssNamespaceContext;
+use surgeist_css::source::same_provenance;
 use surgeist_css::{CssParseReport, CssParserContext};
 
 mod prepared_commit;
@@ -1023,11 +1024,19 @@ impl CssomBatch {
             return true;
         }
         self.affected.iter().any(|id| match id {
+            // Equality of CSS values ignores where they were parsed from, so a
+            // sheet, its inputs and its diagnostics also compare their provenance.
             CssomObjectId::Sheet(id) => {
-                self.staged.sheets[id].inputs != self.base.sheets[id].inputs
+                !same_provenance(&self.staged.sheets[id].inputs, &self.base.sheets[id].inputs)
                     || self.staged.sheets[id].owner_rule != self.base.sheets[id].owner_rule
-                    || self.staged.sheets[id].authored != self.base.sheets[id].authored
-                    || self.staged.sheets[id].diagnostics != self.base.sheets[id].diagnostics
+                    || !same_provenance(
+                        &self.staged.sheets[id].authored,
+                        &self.base.sheets[id].authored,
+                    )
+                    || !same_provenance(
+                        &self.staged.sheets[id].diagnostics,
+                        &self.base.sheets[id].diagnostics,
+                    )
             }
             CssomObjectId::RuleList(id) => self.staged.lists.get(id) != self.base.lists.get(id),
             CssomObjectId::Rule(id) => {
@@ -1051,7 +1060,7 @@ impl CssomBatch {
                                 family_input: bi,
                                 ..
                             },
-                        ) => a != b || ai != bi,
+                        ) => a != b || !same_provenance(ai, bi),
                         (
                             CssomRuleData::Keyframes { name: a, .. },
                             CssomRuleData::Keyframes { name: b, .. },
@@ -1100,9 +1109,11 @@ impl CssomBatch {
                     }
             }
             CssomObjectId::FeatureMap(id) => {
-                self.staged.maps[id].entries != self.base.maps[id].entries
+                !same_provenance(&self.staged.maps[id].entries, &self.base.maps[id].entries)
             }
-            CssomObjectId::MediaList(id) => self.staged.media.get(id) != self.base.media.get(id),
+            CssomObjectId::MediaList(id) => {
+                !same_provenance(&self.staged.media.get(id), &self.base.media.get(id))
+            }
             CssomObjectId::SheetList(_) => self.staged.sheet_order != self.base.sheet_order,
         })
     }

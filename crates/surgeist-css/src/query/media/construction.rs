@@ -14,6 +14,7 @@ use crate::serialization::specified_serialization::CssSpecifiedValueSerializatio
 use crate::serialization::specified_serialization::SpecifiedSerializationContext;
 use crate::serialization::{CssSerializationError, CssSerializationLimits};
 use crate::source::CssSourcePosition;
+use crate::source::Provenance;
 use std::fmt;
 
 /// A media query, condition or custom-media definition that failed checked
@@ -27,12 +28,12 @@ pub struct CssMediaConstructionError {
 }
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum MediaConstructionKind {
-    InvalidQueryGrammar { origin: CssValueOrigin },
-    InvalidConditionGrammar { origin: CssValueOrigin },
-    InvalidName { origin: CssValueOrigin },
-    InvalidPrelude { origin: CssValueOrigin },
-    AmbiguousMediaBody { origin: CssValueOrigin },
-    RecoveredInput { origin: CssValueOrigin },
+    InvalidQueryGrammar { origin: Provenance<CssValueOrigin> },
+    InvalidConditionGrammar { origin: Provenance<CssValueOrigin> },
+    InvalidName { origin: Provenance<CssValueOrigin> },
+    InvalidPrelude { origin: Provenance<CssValueOrigin> },
+    AmbiguousMediaBody { origin: Provenance<CssValueOrigin> },
+    RecoveredInput { origin: Provenance<CssValueOrigin> },
     Component(CssComponentValueError),
 }
 impl CssMediaConstructionError {
@@ -68,7 +69,7 @@ impl CssMediaConstructionError {
             | MediaConstructionKind::InvalidName { origin }
             | MediaConstructionKind::InvalidPrelude { origin }
             | MediaConstructionKind::AmbiguousMediaBody { origin }
-            | MediaConstructionKind::RecoveredInput { origin } => origin,
+            | MediaConstructionKind::RecoveredInput { origin } => origin.inner(),
             MediaConstructionKind::Component(error) => error.origin(),
         }
     }
@@ -120,7 +121,7 @@ impl From<CssComponentValueError> for CssMediaConstructionError {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum MediaSerializationFailure {
     Component(CssComponentValueError),
-    RecoveredNever { origin: CssValueOrigin },
+    RecoveredNever { origin: Provenance<CssValueOrigin> },
 }
 impl From<CssComponentValueError> for MediaSerializationFailure {
     fn from(error: CssComponentValueError) -> Self {
@@ -153,14 +154,40 @@ pub(crate) enum MediaFeatureShape {
     Boolean,
     Range(CssMediaRange<CssComponentValues>),
 }
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub(crate) struct MediaFeatureSyntax {
-    pub(crate) component: CssComponentValue,
-    pub(crate) name: CssComponentValue,
+    pub(crate) component: Provenance<CssComponentValue>,
+    pub(crate) name: Provenance<CssComponentValue>,
     pub(crate) name_text: String,
     pub(crate) canonical_name: Option<String>,
     pub(crate) shape: MediaFeatureShape,
-    pub(crate) separators: Vec<Vec<CssValueOrigin>>,
+    pub(crate) separators: Provenance<Vec<Vec<CssValueOrigin>>>,
+}
+// Media Queries 4 makes feature names ASCII case-insensitive, so the name's case is spelling:
+// `==` folds it and `same_provenance` compares it. An extension name (`--x`) is a custom
+// identifier, so its case is data.
+impl PartialEq for MediaFeatureSyntax {
+    fn eq(&self, other: &Self) -> bool {
+        let same_name = if self.name_text.starts_with("--") {
+            self.name_text == other.name_text
+        } else {
+            self.name_text.eq_ignore_ascii_case(&other.name_text)
+        };
+        same_name
+            && self.canonical_name == other.canonical_name
+            && self.shape == other.shape
+            && Provenance::new((
+                &self.component,
+                &self.name,
+                &self.name_text,
+                &self.separators,
+            )) == Provenance::new((
+                &other.component,
+                &other.name,
+                &other.name_text,
+                &other.separators,
+            ))
+    }
 }
 /// A structurally valid feature whose name, value, or operation has unknown truth.
 #[derive(Clone, Debug, PartialEq)]
@@ -235,15 +262,15 @@ impl CssUnknownMediaFeature {
 pub(crate) enum MediaConditionSyntax {
     Feature(Box<MediaFeatureSyntax>),
     Enclosed,
-    Group { closing: CssValueOrigin },
+    Group { closing: Provenance<CssValueOrigin> },
     Not,
-    Junction(Vec<CssValueOrigin>),
+    Junction(Provenance<Vec<CssValueOrigin>>),
 }
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct MediaTypedSyntax {
     pub(crate) modifier: Option<CssComponentValue>,
     pub(crate) media_type: CssComponentValue,
-    pub(crate) conjunction: Option<CssValueOrigin>,
+    pub(crate) conjunction: Provenance<Option<CssValueOrigin>>,
 }
 pub(crate) const fn parsed_position(origin: &CssValueOrigin) -> Option<CssSourcePosition> {
     match origin {
@@ -400,7 +427,7 @@ impl CssMediaQueryList {
                 .find(|q| matches!(q, CssMediaQuery::Never(_)))
             {
                 return Err(MediaSerializationFailure::RecoveredNever {
-                    origin: value.origin().clone(),
+                    origin: value.origin().clone().into(),
                 });
             }
             let mut out = CssCanonicalBuilder::new(limits.max_css_bytes());
@@ -568,7 +595,7 @@ fn emit_query_with_mode(
         CssMediaQuery::Never(value) => {
             if matches!(mode, MediaOutput::Authored) {
                 return Err(MediaSerializationFailure::RecoveredNever {
-                    origin: value.origin().clone(),
+                    origin: value.origin().clone().into(),
                 });
             }
             out.push_grammar(CssCanonicalToken::Ident("not"), value.origin())?;
@@ -1096,7 +1123,9 @@ pub(crate) fn empty_media_member_error(
         .or_else(|| start.checked_sub(1).and_then(|index| items.get(index)))
         .map_or(CssValueOrigin::Programmatic, |value| value.origin().clone());
     Some(CssMediaConstructionError::from(
-        crate::query::media::construction::MediaConstructionKind::InvalidQueryGrammar { origin },
+        crate::query::media::construction::MediaConstructionKind::InvalidQueryGrammar {
+            origin: origin.into(),
+        },
     ))
 }
 

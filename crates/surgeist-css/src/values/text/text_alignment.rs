@@ -54,7 +54,7 @@ pub struct CssTextConstructionError {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum TextConstructionKind {
-    InvalidCharacter(CssValueOrigin),
+    InvalidCharacter(crate::source::Provenance<CssValueOrigin>),
     Component(CssComponentValueError),
 }
 
@@ -78,7 +78,7 @@ impl CssTextConstructionError {
     #[must_use]
     pub const fn origin(&self) -> &CssValueOrigin {
         match &self.kind {
-            TextConstructionKind::InvalidCharacter(origin) => origin,
+            TextConstructionKind::InvalidCharacter(origin) => origin.inner(),
             TextConstructionKind::Component(error) => error.origin(),
         }
     }
@@ -155,7 +155,7 @@ impl CssCharacterAlignment {
         };
         if UnicodeSegmentation::graphemes(decoded, true).count() != 1 {
             return Err(CssTextConstructionError {
-                kind: TextConstructionKind::InvalidCharacter(component.origin().clone()),
+                kind: TextConstructionKind::InvalidCharacter(component.origin().clone().into()),
             });
         }
         Ok(Self {

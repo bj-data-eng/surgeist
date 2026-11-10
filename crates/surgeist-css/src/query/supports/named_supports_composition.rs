@@ -31,7 +31,7 @@ pub(crate) fn admit(children: &[Child<'_>], limits: CssComponentValueLimits) -> 
                 if depth >= limits.max_nesting_depth() as usize {
                     return Err(CssComponentValueError::new(
                         CssComponentValueErrorKind::NestingLimit,
-                        v.data.opening.clone(),
+                        v.data.opening.inner().clone(),
                     ));
                 }
                 pending.extend(v.body().children().map(|child| (child, depth + 1)));

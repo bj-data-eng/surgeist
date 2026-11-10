@@ -5,6 +5,7 @@ use crate::parser::keyframe_fragments::{
 };
 use crate::rule::keyframes::{CssKeyframeBlock, CssKeyframeSelectorList};
 use crate::source::CssParsedOrigin;
+use crate::source::Provenance;
 
 /// A complete raw selector list with its unmodified source observation.
 ///
@@ -13,7 +14,7 @@ use crate::source::CssParsedOrigin;
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssParsedKeyframeSelectors {
     pub(crate) selectors: CssKeyframeSelectorList,
-    pub(crate) origin: CssParsedOrigin,
+    pub(crate) origin: Provenance<CssParsedOrigin>,
 }
 
 impl CssParsedKeyframeSelectors {
@@ -26,7 +27,7 @@ impl CssParsedKeyframeSelectors {
     /// Borrows the complete original input, including trivia.
     #[must_use]
     pub const fn origin(&self) -> &CssParsedOrigin {
-        &self.origin
+        self.origin.inner()
     }
 }
 
@@ -38,7 +39,7 @@ impl CssParsedKeyframeSelectors {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssParsedKeyframeRule {
     pub(crate) block: CssKeyframeBlock,
-    pub(crate) origin: CssParsedOrigin,
+    pub(crate) origin: Provenance<CssParsedOrigin>,
 }
 
 impl CssParsedKeyframeRule {
@@ -51,7 +52,7 @@ impl CssParsedKeyframeRule {
     /// Borrows the source range of the complete detached rule.
     #[must_use]
     pub const fn origin(&self) -> &CssParsedOrigin {
-        &self.origin
+        self.origin.inner()
     }
 }
 impl CssParsedKeyframeSelectors {

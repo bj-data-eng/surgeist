@@ -7,6 +7,7 @@ use crate::component::{
     CssComponentValues, CssFunctionValue, CssHashFlag, CssNumericTokenKind, CssSimpleBlock,
     CssValueOrigin,
 };
+use crate::source::Provenance;
 use crate::source::{CssParsedOrigin, CssSourceSnapshot};
 
 #[cfg(test)]
@@ -159,8 +160,8 @@ pub(crate) fn promote_nodes(
                     ));
                 };
                 let spelling = Lexeme {
-                    text: document.spelling(id).expect("source lexeme").into(),
-                    origin: origin.clone(),
+                    text: Provenance::new(document.spelling(id).expect("source lexeme").into()),
+                    origin: origin.clone().into(),
                 };
                 let value = syntax_leaf(
                     parsed.source(),
@@ -217,8 +218,10 @@ pub(crate) fn promote_nodes(
                     kind,
                     name,
                     opening: Lexeme {
-                        text: document.spelling(id).expect("source opening").into(),
-                        origin: origin.clone(),
+                        text: Provenance::new(
+                            document.spelling(id).expect("source opening").into(),
+                        ),
+                        origin: origin.clone().into(),
                     },
                     origin: parsed.clone(),
                     children: frames.pop().expect("child promotion frame"),
@@ -250,14 +253,18 @@ fn syntax_leaf(
         _ => None,
     };
     if let Some(kind) = invalid {
-        return Err(CssComponentValueError::new(kind, spelling.origin.clone()));
+        return Err(CssComponentValueError::new(
+            kind,
+            spelling.origin.inner().clone(),
+        ));
     }
     let implicit_end = syntax_termination(&token, &spelling.text).map(|text| Lexeme {
-        text: text.into_boxed_str(),
+        text: text.into_boxed_str().into(),
         origin: CssValueOrigin::ImplicitClosure {
             opening: origin.clone(),
             at: range_origin(source, end..end),
-        },
+        }
+        .into(),
     });
     let data = if token == Syntax::Comment {
         let text = &*spelling.text;
@@ -271,24 +278,24 @@ fn syntax_leaf(
         ComponentData::Comment {
             content: content.into(),
             spelling,
-            implicit_end,
+            implicit_end: implicit_end.into(),
         }
     } else {
         let data = syntax_token_data(&token).ok_or_else(|| {
             CssComponentValueError::new(
                 CssComponentValueErrorKind::InvalidToken,
-                spelling.origin.clone(),
+                spelling.origin.inner().clone(),
             )
         })?;
         ComponentData::Token(ValueToken {
             data,
             spelling,
-            implicit_end,
+            implicit_end: implicit_end.into(),
         })
     };
     Ok(CssComponentValue {
         data,
-        parsed: Some(origin),
+        parsed: Some(origin).into(),
     })
 }
 
@@ -411,11 +418,12 @@ impl OpenFrame {
         let start = self.origin.span().start().byte_offset().value();
         let closing = if closing_range.is_empty() {
             Lexeme {
-                text: copied(self.kind.delimiters().1, control, &self.origin)?,
+                text: copied(self.kind.delimiters().1, control, &self.origin)?.into(),
                 origin: CssValueOrigin::ImplicitClosure {
                     opening: self.origin,
                     at: range_origin(source, closing_range),
-                },
+                }
+                .into(),
             }
         } else {
             Lexeme {
@@ -423,8 +431,9 @@ impl OpenFrame {
                     &source.as_str()[closing_range.clone()],
                     control,
                     &self.origin,
-                )?,
-                origin: CssValueOrigin::Parsed(range_origin(source, closing_range)),
+                )?
+                .into(),
+                origin: CssValueOrigin::Parsed(range_origin(source, closing_range)).into(),
             }
         };
         let values = CssComponentValues::from_items_controlled(self.children, limits, control)?;
@@ -445,7 +454,7 @@ impl OpenFrame {
         };
         Ok(CssComponentValue {
             data,
-            parsed: Some(range_origin(source, start..end)),
+            parsed: Some(range_origin(source, start..end)).into(),
         })
     }
 }
@@ -523,8 +532,8 @@ impl<'a, 'c> ComponentStack<'a, 'c> {
             ));
         }
         let opening = Lexeme {
-            text: copied(&self.source.as_str()[range], self.control, &origin)?,
-            origin: CssValueOrigin::Parsed(origin.clone()),
+            text: copied(&self.source.as_str()[range], self.control, &origin)?.into(),
+            origin: CssValueOrigin::Parsed(origin.clone()).into(),
         };
         if let Some(control) = self.control {
             control
@@ -619,8 +628,8 @@ pub(super) fn programmatic_token(
     if token.implicit_end.is_some() {
         return Err(CssComponentValueError::programmatic(invalid_kind));
     }
-    token.spelling.origin = CssValueOrigin::Programmatic;
-    values.items[0].parsed = None;
+    token.spelling.origin = CssValueOrigin::Programmatic.into();
+    values.items[0].parsed = Provenance::new(None);
     let [value] =
         <[_; 1]>::try_from(values.items.into_vec()).expect("exactly one token was checked");
     Ok(value)

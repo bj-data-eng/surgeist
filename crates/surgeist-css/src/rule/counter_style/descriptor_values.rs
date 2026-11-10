@@ -13,6 +13,7 @@ use crate::rule::counter_style::{
 };
 use crate::rule::descriptor_values::DescriptorValueFailure;
 use crate::source::CssParsedOrigin;
+use crate::source::Provenance;
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum CounterStyleValueData {
@@ -65,8 +66,8 @@ pub enum CssCounterStyleDescriptorValueRef<'a> {
 pub struct CssCounterStyleDescriptorValue {
     kind: CssCounterStyleDescriptorKind,
     data: CounterStyleValueData,
-    components: CssComponentValues,
-    origin: Option<CssParsedOrigin>,
+    components: Provenance<CssComponentValues>,
+    origin: Provenance<Option<CssParsedOrigin>>,
 }
 
 impl CssCounterStyleDescriptorValue {
@@ -79,8 +80,8 @@ impl CssCounterStyleDescriptorValue {
         Self {
             kind,
             data,
-            components,
-            origin: Some(origin),
+            components: components.into(),
+            origin: Some(origin).into(),
         }
     }
 
@@ -93,13 +94,13 @@ impl CssCounterStyleDescriptorValue {
     /// Returns every component of the complete value input, including trivia.
     #[must_use]
     pub const fn components(&self) -> &CssComponentValues {
-        &self.components
+        self.components.inner()
     }
 
     /// The complete raw-source value window, absent for checked components and reentry.
     #[must_use]
     pub const fn origin(&self) -> Option<&CssParsedOrigin> {
-        self.origin.as_ref()
+        self.origin.inner().as_ref()
     }
 
     /// Borrows the admitted semantic value without exposing an occurrence.
@@ -277,8 +278,8 @@ impl CssCounterStyleDescriptorValue {
         Ok(Self {
             kind,
             data,
-            components,
-            origin: None,
+            components: components.into(),
+            origin: Provenance::new(None),
         })
     }
     /// Rechecks a replacement without performing host lookup or substitution.

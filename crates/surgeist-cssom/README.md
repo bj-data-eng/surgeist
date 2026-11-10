@@ -166,7 +166,9 @@ CSS media report. The report preserves complete input/context and diagnostics;
 context mismatch, full-input overflow and parser resource recovery refuse the
 ordinary batch. Owner version/title changes retain the actual parsed media root
 even when its query list is semantically unchanged or empty. A true unchanged
-version/title/media operation preserves the previous root, revision and effects.
+version/title/media operation preserves the previous root, revision and effects;
+the media lists count as unchanged only when `source::same_provenance` holds, so a
+structurally equal list parsed from other text is a change.
 CSS owns UTF16 preprocessing and media grammar; owner adapters do not normalize
 title units or fabricate stylesheet wrappers around media attributes.
 

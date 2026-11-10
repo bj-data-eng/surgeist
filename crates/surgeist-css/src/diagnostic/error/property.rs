@@ -145,7 +145,13 @@ impl<'i> SyntaxErrorExt<'i> for SyntaxError<'i, Error> {
     fn into_grammar_failure_at(self, source: &str, offset: usize) -> GrammarFailure {
         let (kind, _) = self.into_parts();
         let position = CssSourcePosition::from_byte_offset_in(source, offset);
-        GrammarFailure::new(crate::diagnostic::CssError { position, kind }, position)
+        GrammarFailure::new(
+            crate::diagnostic::CssError {
+                position: position.into(),
+                kind,
+            },
+            position,
+        )
     }
 
     fn into_grammar_failure_source(self) -> GrammarFailure {
@@ -167,7 +173,10 @@ impl<'i> SyntaxErrorExt<'i> for SyntaxError<'i, Error> {
             ) => at.span().start(),
             _ => site.source_position().expect("source property input"),
         };
-        crate::diagnostic::CssError { position, kind }
+        crate::diagnostic::CssError {
+            position: position.into(),
+            kind,
+        }
     }
 }
 

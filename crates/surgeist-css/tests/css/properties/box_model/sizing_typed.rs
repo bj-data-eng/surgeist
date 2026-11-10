@@ -325,7 +325,9 @@ fn coupled_declaration_equality_keeps_identity_importance_and_position_distinct(
     )
     .unwrap();
     assert_eq!(parsed.body(), checked.body());
-    assert_ne!(parsed, &checked); // Only the parsed declaration has a name position.
+    // Equality ignores the name position that only the parsed declaration has.
+    assert_eq!(parsed, &checked);
+    assert!(!surgeist_css::source::same_provenance(parsed, &checked));
     assert!(!parsed.same_occurrence(&checked));
     let important = CssDeclaration::try_from_components(
         &CssParser::default(),
@@ -358,7 +360,11 @@ fn coupled_declaration_equality_keeps_identity_importance_and_position_distinct(
         panic!("checked calc-size wrappers")
     };
     assert_eq!(lower_value.value(), upper_value.value());
-    assert_ne!(lower.syntax()[0].body(), upper.syntax()[0].body());
+    assert_eq!(lower.syntax()[0].body(), upper.syntax()[0].body());
+    assert!(!surgeist_css::source::same_provenance(
+        lower.syntax()[0].body(),
+        upper.syntax()[0].body()
+    ));
     assert_ne!(
         CssKnownProperty::Width.stable_id(),
         CssKnownProperty::Height.stable_id()

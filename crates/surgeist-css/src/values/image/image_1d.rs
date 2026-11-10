@@ -7,6 +7,7 @@ use crate::numeric::{
     CssNumericConstructionError,
 };
 use crate::serialization::specified_rule_serialization::SpecifiedRuleWriter;
+use crate::source::Provenance;
 use crate::values::image::CssImageConstructionError;
 use crate::values::image::images::ImageConstructionKind;
 
@@ -141,16 +142,11 @@ impl CssStripeThickness {
     }
 }
 /// A required color and optional thickness, retaining complete original color syntax.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssStripe {
     color: CssColor,
-    color_component: CssComponentValue,
+    color_component: Provenance<CssComponentValue>,
     thickness: Option<CssStripeThickness>,
-}
-impl PartialEq for CssStripe {
-    fn eq(&self, other: &Self) -> bool {
-        self.color == other.color && self.thickness == other.thickness
-    }
 }
 impl CssStripe {
     /// Checks one complete color component and every retained child's closure.
@@ -163,7 +159,7 @@ impl CssStripe {
                 .map_err(CssImageConstructionError::from)?;
         if let Some(origin) = values.first_implicit_origin() {
             return Err(CssImageConstructionError::new(
-                ImageConstructionKind::RecoveredComponent(origin.clone()),
+                ImageConstructionKind::RecoveredComponent(origin.clone().into()),
             ));
         }
         if let Some(origin) = thickness
@@ -171,14 +167,14 @@ impl CssStripe {
             .and_then(CssStripeThickness::first_implicit_origin)
         {
             return Err(CssImageConstructionError::new(
-                ImageConstructionKind::RecoveredComponent(origin.clone()),
+                ImageConstructionKind::RecoveredComponent(origin.clone().into()),
             ));
         }
         Self::check_component_depth(&values, thickness.as_ref())?;
         let color_value = crate::parser::image_1d::checked_color(&values)?;
         Ok(Self {
             color: color_value,
-            color_component: color,
+            color_component: color.into(),
             thickness,
         })
     }
@@ -189,13 +185,13 @@ impl CssStripe {
     ) -> Self {
         Self {
             color,
-            color_component,
+            color_component: color_component.into(),
             thickness,
         }
     }
     fn check_depth(&self) -> Result<(), CssImageConstructionError> {
         let color = crate::component::CssComponentValues::try_new(
-            vec![self.color_component.clone()],
+            vec![self.color_component.inner().clone()],
             Default::default(),
         )
         .map_err(CssImageConstructionError::from)?;
@@ -221,11 +217,11 @@ impl CssStripe {
     }
     /// Returns the original color component, preserving its authored syntax.
     pub const fn color_component(&self) -> &CssComponentValue {
-        &self.color_component
+        self.color_component.inner()
     }
     /// Returns the source origin of the color component.
     pub const fn color_origin(&self) -> &CssValueOrigin {
-        self.color_component.origin()
+        self.color_component.inner().origin()
     }
     /// Returns the authored thickness, or `None` when it was omitted.
     pub const fn thickness(&self) -> Option<&CssStripeThickness> {
@@ -233,15 +229,10 @@ impl CssStripe {
     }
 }
 /// Nonempty ordered stripes; omitted thickness remains absent and means 1fr downstream.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssStripes {
     stripes: Vec<CssStripe>,
-    original: Option<CssComponentValue>,
-}
-impl PartialEq for CssStripes {
-    fn eq(&self, other: &Self) -> bool {
-        self.stripes == other.stripes
-    }
+    original: Provenance<Option<CssComponentValue>>,
 }
 impl CssStripes {
     /// Checks a non-empty list of stripes.
@@ -258,13 +249,13 @@ impl CssStripes {
         for stripe in &stripes {
             stripe.check_depth()?;
             let values = crate::component::CssComponentValues::try_new(
-                vec![stripe.color_component.clone()],
+                vec![stripe.color_component.inner().clone()],
                 Default::default(),
             )
             .map_err(CssImageConstructionError::from)?;
             if let Some(origin) = values.first_implicit_origin() {
                 return Err(CssImageConstructionError::new(
-                    ImageConstructionKind::RecoveredComponent(origin.clone()),
+                    ImageConstructionKind::RecoveredComponent(origin.clone().into()),
                 ));
             }
             if let Some(origin) = stripe
@@ -273,19 +264,19 @@ impl CssStripes {
                 .and_then(CssStripeThickness::first_implicit_origin)
             {
                 return Err(CssImageConstructionError::new(
-                    ImageConstructionKind::RecoveredComponent(origin.clone()),
+                    ImageConstructionKind::RecoveredComponent(origin.clone().into()),
                 ));
             }
         }
         Ok(Self {
             stripes,
-            original: None,
+            original: None.into(),
         })
     }
     pub(crate) fn from_parser(stripes: Vec<CssStripe>, original: CssComponentValue) -> Self {
         Self {
             stripes,
-            original: Some(original),
+            original: Some(original).into(),
         }
     }
     /// Returns the stripes in authored order.
@@ -294,7 +285,7 @@ impl CssStripes {
     }
     /// Borrows the parsed complete stripes function, including recovered closing provenance.
     pub const fn original_component(&self) -> Option<&CssComponentValue> {
-        self.original.as_ref()
+        self.original.inner().as_ref()
     }
     /// Returns the source origin of the parsed `stripes()` function, or the programmatic origin when the value was constructed directly.
     pub fn origin(&self) -> &CssValueOrigin {
@@ -317,7 +308,7 @@ impl CssImage1D {
     ) -> Result<Self, CssImageConstructionError> {
         if let Some(origin) = values.first_implicit_origin() {
             return Err(CssImageConstructionError::new(
-                ImageConstructionKind::RecoveredComponent(origin.clone()),
+                ImageConstructionKind::RecoveredComponent(origin.clone().into()),
             ));
         }
         crate::parser::image_1d::checked_image(&values)

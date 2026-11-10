@@ -1,5 +1,6 @@
 //! Checked authored `@font-palette-values` syntax without palette lookup or substitution.
 
+use crate::source::Provenance;
 use std::fmt;
 
 use crate::color::{CssAbsoluteColorEligibility, CssAbsoluteColorExclusion, CssColor};
@@ -277,7 +278,7 @@ pub(crate) enum CssFontPaletteDescriptorData {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontPaletteDescriptorValue {
     kind: CssFontPaletteDescriptorKind,
-    components: CssComponentValues,
+    components: Provenance<CssComponentValues>,
     data: CssFontPaletteDescriptorData,
 }
 
@@ -304,7 +305,7 @@ impl CssFontPaletteDescriptorValue {
         .map_err(|error| CssFontPaletteValuesError::from_grammar(error, &serialized))?;
         Ok(Self {
             kind,
-            components,
+            components: components.into(),
             data,
         })
     }
@@ -348,7 +349,7 @@ impl CssFontPaletteDescriptorValue {
         debug_assert!(matching_kind);
         Self {
             kind,
-            components,
+            components: components.into(),
             data,
         }
     }
@@ -362,7 +363,7 @@ impl CssFontPaletteDescriptorValue {
     /// Returns the component values the descriptor was checked from, with their original provenance.
     #[must_use]
     pub const fn components(&self) -> &CssComponentValues {
-        &self.components
+        self.components.inner()
     }
 
     /// Returns the checked semantics as a borrowed view.
@@ -389,7 +390,7 @@ impl CssFontPaletteDescriptorValue {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontPaletteDescriptor {
     value: CssFontPaletteDescriptorValue,
-    position: Option<CssSourcePosition>,
+    position: Provenance<Option<CssSourcePosition>>,
 }
 
 impl CssFontPaletteDescriptor {
@@ -398,12 +399,12 @@ impl CssFontPaletteDescriptor {
     pub const fn new(value: CssFontPaletteDescriptorValue) -> Self {
         Self {
             value,
-            position: None,
+            position: Provenance::new(None),
         }
     }
 
     pub(crate) fn with_position(mut self, position: CssSourcePosition) -> Self {
-        self.position = Some(position);
+        self.position = Some(position).into();
         self
     }
 
@@ -416,7 +417,7 @@ impl CssFontPaletteDescriptor {
     /// Returns the source position of the descriptor, or `None` when it was constructed programmatically.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
+        *self.position.inner()
     }
 }
 
@@ -429,7 +430,7 @@ impl CssFontPaletteDescriptor {
 pub struct CssFontPaletteValuesRule {
     name: CssFontPaletteName,
     descriptors: Vec<CssFontPaletteDescriptor>,
-    position: Option<CssSourcePosition>,
+    position: Provenance<Option<CssSourcePosition>>,
 }
 
 impl CssFontPaletteValuesRule {
@@ -446,12 +447,12 @@ impl CssFontPaletteValuesRule {
         Ok(Self {
             name,
             descriptors,
-            position: None,
+            position: Provenance::new(None),
         })
     }
 
     pub(crate) fn with_position(mut self, position: CssSourcePosition) -> Self {
-        self.position = Some(position);
+        self.position = Some(position).into();
         self
     }
 
@@ -470,7 +471,7 @@ impl CssFontPaletteValuesRule {
     /// Returns the source position of the rule, or `None` when it was constructed programmatically.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
+        *self.position.inner()
     }
 }
 

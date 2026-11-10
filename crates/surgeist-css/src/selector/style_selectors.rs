@@ -2,6 +2,7 @@
 use crate::parser::style_selector_fragments::parse_style_selector_list_with_limits;
 use crate::selector::{CssNamespaceContext, CssStyleSelectorList};
 use crate::source::CssParsedOrigin;
+use crate::source::Provenance;
 
 /// The actual selector grammar at an authored style rule's destination.
 ///
@@ -28,7 +29,7 @@ pub enum CssStyleSelectorContext {
 pub struct CssParsedStyleSelectors {
     pub(crate) selectors: CssStyleSelectorList,
     pub(crate) context: CssStyleSelectorContext,
-    pub(crate) origin: CssParsedOrigin,
+    pub(crate) origin: Provenance<CssParsedOrigin>,
 }
 
 impl CssParsedStyleSelectors {
@@ -48,7 +49,7 @@ impl CssParsedStyleSelectors {
     /// Borrows the complete original input occurrence, including trivia.
     #[must_use]
     pub const fn origin(&self) -> &CssParsedOrigin {
-        &self.origin
+        self.origin.inner()
     }
 }
 impl CssParsedStyleSelectors {

@@ -3,6 +3,7 @@ use crate::component::values::serialize::CssCanonicalBuilder;
 use crate::component::{CssComponentValueError, CssComponentValues, CssSerializedValue};
 use crate::numeric::{CssCalculation, CssLength};
 use crate::query::media::{CssMediaRatio, CssOrientation};
+use crate::source::Verbatim;
 
 /// The six size features defined by the selected Conditional Rules grammar.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -58,11 +59,14 @@ pub enum CssContainerValueDomain {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssContainerPendingValue {
     domain: CssContainerValueDomain,
-    components: CssComponentValues,
+    components: Verbatim<CssComponentValues>,
 }
 impl CssContainerPendingValue {
     pub(crate) fn new(domain: CssContainerValueDomain, components: CssComponentValues) -> Self {
-        Self { domain, components }
+        Self {
+            domain,
+            components: components.into(),
+        }
     }
     /// Returns the grammar the substituted value must match.
     pub const fn domain(&self) -> CssContainerValueDomain {
@@ -70,7 +74,7 @@ impl CssContainerPendingValue {
     }
     /// Returns the authored component values of the whole operand, including its `var()` references.
     pub fn components(&self) -> &CssComponentValues {
-        &self.components
+        self.components.inner()
     }
     /// `limits.max_css_bytes()` caps the output, including inserted syntax; the other component
     /// limits do not apply.

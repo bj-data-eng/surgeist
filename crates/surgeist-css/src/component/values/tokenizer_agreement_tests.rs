@@ -199,8 +199,14 @@ fn assert_same_tokenization(raw: &Outcome, preprocessed: &Outcome, case: &str) {
                         (ComponentData::Function(a), ComponentData::Function(b)) => {
                             assert_eq!(a.name, b.name, "function name: {case:?}");
                             assert_eq!(
-                                matches!(a.closing.origin, CssValueOrigin::ImplicitClosure { .. }),
-                                matches!(b.closing.origin, CssValueOrigin::ImplicitClosure { .. }),
+                                matches!(
+                                    a.closing.origin.inner(),
+                                    CssValueOrigin::ImplicitClosure { .. }
+                                ),
+                                matches!(
+                                    b.closing.origin.inner(),
+                                    CssValueOrigin::ImplicitClosure { .. }
+                                ),
                                 "implicit function closure: {case:?}"
                             );
                             pending.push((a.values.items(), b.values.items()));
@@ -208,8 +214,14 @@ fn assert_same_tokenization(raw: &Outcome, preprocessed: &Outcome, case: &str) {
                         (ComponentData::Block(a), ComponentData::Block(b)) => {
                             assert_eq!(a.kind, b.kind, "block kind: {case:?}");
                             assert_eq!(
-                                matches!(a.closing.origin, CssValueOrigin::ImplicitClosure { .. }),
-                                matches!(b.closing.origin, CssValueOrigin::ImplicitClosure { .. }),
+                                matches!(
+                                    a.closing.origin.inner(),
+                                    CssValueOrigin::ImplicitClosure { .. }
+                                ),
+                                matches!(
+                                    b.closing.origin.inner(),
+                                    CssValueOrigin::ImplicitClosure { .. }
+                                ),
                                 "implicit block closure: {case:?}"
                             );
                             pending.push((a.values.items(), b.values.items()));

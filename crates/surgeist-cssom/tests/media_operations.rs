@@ -433,3 +433,29 @@ fn snapshot_output_errors_are_typed_and_do_not_change_the_owner() {
     assert_eq!(text(&store, &snapshot, &id), "screen");
     assert_eq!(store.snapshot().revision(), snapshot.revision());
 }
+
+#[test]
+fn replacing_a_list_with_an_equal_list_of_other_provenance_is_a_change() {
+    let mut store = new_store();
+    let sheet = create(&mut store, "", input());
+    let id = store.snapshot().sheet(&sheet).unwrap().media().clone();
+    let parsed = CssMediaQueryList::parse(&CssParser::default(), "screen, print")
+        .into_parts()
+        .0;
+    let mut edit = batch(&store);
+    assert!(edit.set_media(&id, parsed.clone()).unwrap());
+    store.commit(edit).unwrap();
+    // The members rebuilt without their commas and parse source equal the parsed list,
+    // yet the stored list came from other syntax, so storing it is a change.
+    let rebuilt = CssMediaQueryList::new(parsed.queries().to_vec());
+    assert_eq!(parsed, rebuilt);
+    let mut edit = batch(&store);
+    assert!(edit.set_media(&id, rebuilt.clone()).unwrap());
+    assert!(matches!(
+        store.commit(edit).unwrap().publication(),
+        CssomPublication::Changed(_)
+    ));
+    let mut edit = batch(&store);
+    assert!(!edit.set_media(&id, rebuilt).unwrap());
+    unchanged(&store.commit(edit).unwrap());
+}

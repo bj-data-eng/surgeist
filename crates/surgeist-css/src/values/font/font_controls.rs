@@ -8,6 +8,7 @@ use crate::component::{
 use crate::numeric::{CssNonNegative, CssNumber, CssNumeric};
 use crate::serialization::CssSerializationError;
 use crate::serialization::specified_rule_serialization::SpecifiedRuleWriter;
+use crate::source::Provenance;
 
 type SerializationResult<T> = Result<T, CssSerializationError>;
 
@@ -108,6 +109,7 @@ impl CssFontLanguageString {
 impl PartialEq for CssFontLanguageString {
     fn eq(&self, other: &Self) -> bool {
         self.as_str() == other.as_str()
+            && Provenance::new(&self.component) == Provenance::new(&other.component)
     }
 }
 impl Eq for CssFontLanguageString {}

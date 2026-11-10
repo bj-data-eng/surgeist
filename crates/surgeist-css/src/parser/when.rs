@@ -100,7 +100,9 @@ fn invalid(lexical: &SupportsLexical, index: usize) -> CssConditionConstructionE
         })
         .map_or(CssValueOrigin::Programmatic, |value| value.origin().clone());
     CssConditionConstructionError::from(
-        crate::query::when::ConditionConstructionKind::InvalidConditionGrammar { origin },
+        crate::query::when::ConditionConstructionKind::InvalidConditionGrammar {
+            origin: origin.into(),
+        },
     )
 }
 fn condition(
@@ -270,7 +272,7 @@ fn term(
                             Some(component) => component.clone().into(),
                             None => CssConditionConstructionError::from(
                                 crate::query::when::ConditionConstructionKind::RecoveredInput {
-                                    origin: error.origin().clone(),
+                                    origin: error.origin().clone().into(),
                                 },
                             ),
                         }));

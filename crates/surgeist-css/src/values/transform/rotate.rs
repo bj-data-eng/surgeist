@@ -2,6 +2,7 @@
 
 use crate::component::CssValueOrigin;
 use crate::numeric::{CssAngle, CssNumber, CssNumeric};
+use crate::source::Provenance;
 
 /// The authored individual rotation; `none` is distinct from an identity rotation.
 ///
@@ -53,17 +54,11 @@ impl PartialEq for CssRotateAxis {
 
 /// One checked angle and optional axis for the individual `rotate` property.
 /// Unlike transform-function angles, this property's angle does not admit bare zero.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CssRotateValues {
     angle: CssNumeric<CssAngle>,
     axis: Option<CssRotateAxis>,
-    keyword_axis_origin: Option<CssValueOrigin>,
-}
-
-impl PartialEq for CssRotateValues {
-    fn eq(&self, other: &Self) -> bool {
-        self.angle == other.angle && self.axis == other.axis
-    }
+    keyword_axis_origin: Provenance<Option<CssValueOrigin>>,
 }
 
 impl CssRotateValues {
@@ -79,7 +74,7 @@ impl CssRotateValues {
         Self {
             angle,
             axis,
-            keyword_axis_origin,
+            keyword_axis_origin: keyword_axis_origin.into(),
         }
     }
 
@@ -95,7 +90,7 @@ impl CssRotateValues {
         Self {
             angle,
             axis: Some(axis),
-            keyword_axis_origin: Some(origin),
+            keyword_axis_origin: Some(origin).into(),
         }
     }
 
@@ -115,7 +110,7 @@ impl CssRotateValues {
     /// Vector origins remain available on each exact numeric operand.
     #[must_use]
     pub const fn keyword_axis_origin(&self) -> Option<&CssValueOrigin> {
-        self.keyword_axis_origin.as_ref()
+        self.keyword_axis_origin.inner().as_ref()
     }
 }
 

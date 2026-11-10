@@ -3,6 +3,7 @@
 use super::CssIdent;
 use crate::component::CssValueOrigin;
 use crate::declaration::CssAuthoredFunctionArguments;
+use crate::source::Provenance;
 
 /// The two authored function identities in the selected Values 4 `<url>` grammar.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -94,8 +95,8 @@ pub enum CssUrlModifier {
 }
 
 /// One checked functional URL modifier with retained authored argument tokens.
-/// Equality remains based on its decoded name and authored argument text,
-/// independent of the retained component origins.
+/// Equality compares its decoded name and argument components, and ignores the authored
+/// argument text and the component origins that `source::same_provenance` compares.
 #[derive(Clone)]
 pub struct CssUrlModifierFunction {
     name: CssIdent,
@@ -329,7 +330,9 @@ fn validate_request_url_modifier(
 
 impl PartialEq for CssUrlModifierFunction {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.arguments == other.arguments
+        self.name == other.name
+            && self.argument_components == other.argument_components
+            && Provenance::new(&self.arguments) == Provenance::new(&other.arguments)
     }
 }
 

@@ -6,6 +6,7 @@ use crate::component::{
 };
 use crate::declaration::CssImportance;
 use crate::query::supports::CssSupportsConstructionError;
+use crate::source::Provenance;
 use crate::source::{
     CssRetainedSources, CssSourcePosition, CssSourceRetention, CssSourceRetentionError,
 };
@@ -16,7 +17,7 @@ impl CssRetainedSources for CssSupportsTestBody {
         sources: &mut CssSourceRetention,
     ) -> Result<(), CssSourceRetentionError> {
         sources.visit(self.local_recovery.as_slice())?;
-        sources.visit(&self.recovery_origin)?;
+        sources.visit(self.recovery_origin.inner())?;
         for value in &self.items {
             match value {
                 CssSupportsTestItem::Declarations(value) => {
@@ -37,7 +38,7 @@ impl CssRetainedSources for CssSupportsTestDeclaration {
         sources: &mut CssSourceRetention,
     ) -> Result<(), CssSourceRetentionError> {
         sources.visit(self.components())?;
-        sources.visit(&self.terminator)?;
+        sources.visit(self.terminator.inner())?;
         sources.visit(self.recovery.as_slice())
     }
 }
@@ -47,8 +48,8 @@ impl CssRetainedSources for CssSupportsQualifiedRuleTest {
         sources: &mut CssSourceRetention,
     ) -> Result<(), CssSourceRetentionError> {
         sources.visit(&self.data.prelude)?;
-        sources.visit(&self.data.opening)?;
-        sources.visit(&self.data.closing)?;
+        sources.visit(self.data.opening.inner())?;
+        sources.visit(self.data.closing.inner())?;
         sources.visit(self.data.recovery.as_slice())?;
         sources.visit(self.data.body.as_ref())
     }
@@ -60,8 +61,8 @@ impl CssRetainedSources for CssSupportsAtRuleTest {
     ) -> Result<(), CssSourceRetentionError> {
         sources.visit(&self.data.at_keyword)?;
         sources.visit(&self.data.prelude)?;
-        sources.visit(&self.data.opening)?;
-        sources.visit(&self.data.closing)?;
+        sources.visit(self.data.opening.inner())?;
+        sources.visit(self.data.closing.inner())?;
         sources.visit(self.data.recovery.as_slice())?;
         if let Some(value) = &self.data.body {
             sources.visit(value.as_ref())?;
@@ -110,7 +111,7 @@ impl CssSupportsConditionName {
         let Some(name) = crate::query::media::custom_media::extension_name(&component) else {
             return Err(CssSupportsConstructionError::from(
                 crate::query::supports::construction::SupportsConstructionKind::InvalidName {
-                    origin: component.origin().clone(),
+                    origin: component.origin().clone().into(),
                 },
             ));
         };
@@ -149,8 +150,8 @@ pub struct CssSupportsTestDeclaration {
     pub(crate) value_range: Range<usize>,
     pub(crate) importance_range: Option<Range<usize>>,
     pub(crate) name: String,
-    pub(crate) terminator: CssValueOrigin,
-    pub(crate) recovery: Vec<CssValueOrigin>,
+    pub(crate) terminator: Provenance<CssValueOrigin>,
+    pub(crate) recovery: Provenance<Vec<CssValueOrigin>>,
 }
 
 impl CssSupportsTestDeclaration {
@@ -223,9 +224,9 @@ pub struct CssSupportsQualifiedRuleTest {
 pub(crate) struct SupportsQualifiedRuleTestData {
     pub(crate) prelude: CssComponentValues,
     pub(crate) body: Box<CssSupportsTestBody>,
-    pub(crate) opening: CssValueOrigin,
-    pub(crate) closing: CssValueOrigin,
-    pub(crate) recovery: Vec<CssValueOrigin>,
+    pub(crate) opening: Provenance<CssValueOrigin>,
+    pub(crate) closing: Provenance<CssValueOrigin>,
+    pub(crate) recovery: Provenance<Vec<CssValueOrigin>>,
 }
 
 impl CssSupportsQualifiedRuleTest {
@@ -240,9 +241,9 @@ impl CssSupportsQualifiedRuleTest {
             data: Box::new(SupportsQualifiedRuleTestData {
                 prelude,
                 body,
-                opening,
-                closing,
-                recovery,
+                opening: opening.into(),
+                closing: closing.into(),
+                recovery: recovery.into(),
             }),
         }
     }
@@ -280,9 +281,9 @@ pub(crate) struct SupportsAtRuleTestData {
     at_keyword: CssComponentValue,
     prelude: CssComponentValues,
     body: Option<Box<CssSupportsTestBody>>,
-    pub(crate) opening: Option<CssValueOrigin>,
-    pub(crate) closing: CssValueOrigin,
-    recovery: Vec<CssValueOrigin>,
+    pub(crate) opening: Provenance<Option<CssValueOrigin>>,
+    pub(crate) closing: Provenance<CssValueOrigin>,
+    recovery: Provenance<Vec<CssValueOrigin>>,
 }
 
 impl CssSupportsAtRuleTest {
@@ -301,9 +302,9 @@ impl CssSupportsAtRuleTest {
                 at_keyword,
                 prelude,
                 body,
-                opening,
-                closing,
-                recovery,
+                opening: opening.into(),
+                closing: closing.into(),
+                recovery: recovery.into(),
             }),
         }
     }
@@ -356,8 +357,8 @@ pub enum CssSupportsTestItem {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssSupportsTestBody {
     pub(crate) items: Vec<CssSupportsTestItem>,
-    pub(crate) local_recovery: Vec<CssValueOrigin>,
-    pub(crate) recovery_origin: Option<CssValueOrigin>,
+    pub(crate) local_recovery: Provenance<Vec<CssValueOrigin>>,
+    pub(crate) recovery_origin: Provenance<Option<CssValueOrigin>>,
 }
 
 impl CssSupportsTestBody {
@@ -374,7 +375,7 @@ impl CssSupportsTestBody {
         if let Some(origin) = values.first_implicit_origin() {
             return Err(CssSupportsConstructionError::from(
                 crate::query::supports::construction::SupportsConstructionKind::RecoveredInput {
-                    origin: origin.clone(),
+                    origin: origin.clone().into(),
                 },
             ));
         }
@@ -415,8 +416,8 @@ impl CssSupportsTestBody {
         });
         Self {
             items,
-            local_recovery,
-            recovery_origin,
+            local_recovery: local_recovery.into(),
+            recovery_origin: recovery_origin.into(),
         }
     }
 
@@ -475,7 +476,7 @@ impl CssSupportsTestBody {
                 CssSupportsTestDeclarations { declarations: run },
             ));
         }
-        Ok(Self::from_parts(items, self.local_recovery.clone()))
+        Ok(Self::from_parts(items, self.local_recovery.inner().clone()))
     }
 
     /// `limits.max_css_bytes()` caps the output, including inserted syntax; the other component

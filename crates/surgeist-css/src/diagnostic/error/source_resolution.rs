@@ -38,12 +38,12 @@ impl CssError {
             ErrorKind::InvalidAtRulePrelude(_) | ErrorKind::InvalidSelector(_)
         );
         if !end_of_input
-            && let Some((start, summary)) = next_authored_token_at(source, self.position)
+            && let Some((start, summary)) = next_authored_token_at(source, *self.position.inner())
         {
             if let Some(token) = encountered_mut(&mut self.kind) {
                 if token.kind == summary.kind {
                     token.authored = summary.authored;
-                    self.position = self.position.resolved_near(source, start);
+                    self.position = self.position.resolved_near(source, start).into();
                 }
             } else if let Some(slot) = optional_encountered_mut(&mut self.kind) {
                 let ending = ends_input(summary.kind)
@@ -54,7 +54,7 @@ impl CssError {
                 // An ending token is no violating token, but it locates an
                 // input that holds no authored token of its own.
                 if !ending || slot.is_none() {
-                    self.position = self.position.resolved_near(source, start);
+                    self.position = self.position.resolved_near(source, start).into();
                 }
             }
         }
@@ -68,7 +68,7 @@ impl CssError {
             && !(prelude && summary.kind == CssTokenKind::AtKeyword)
         {
             *slot = Some(summary);
-            self.position = self.position.resolved_near(source, start);
+            self.position = self.position.resolved_near(source, start).into();
         }
 
         if let Some(name) = at_rule_name(&self.kind)
@@ -78,7 +78,7 @@ impl CssError {
                     found.eq_ignore_ascii_case(name.as_str()).then_some(start)
                 })
         {
-            self.position = self.position.resolved_near(source, start);
+            self.position = self.position.resolved_near(source, start).into();
         }
 
         if let ErrorKind::InvalidAtRuleBody(detail) = &mut self.kind

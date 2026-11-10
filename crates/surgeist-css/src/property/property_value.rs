@@ -1,5 +1,6 @@
 //! Checked property-value construction and diagnostics mapped to input components.
 
+use crate::source::Provenance;
 use std::fmt;
 
 use crate::color::CssColorComponentName;
@@ -21,7 +22,7 @@ enum PropertyValueFailure {
     /// The declaration-value boundary or selected property grammar rejected the input.
     Grammar {
         kind: ErrorKind,
-        origin: CssSerializedOrigin,
+        origin: Provenance<CssSerializedOrigin>,
     },
 }
 
@@ -128,7 +129,7 @@ impl CssPropertyValueError {
                 PropertyValueFailure::Component(error) => {
                     CssSerializedOrigin::Token(error.origin().clone())
                 }
-                PropertyValueFailure::Grammar { origin, .. } => origin.clone(),
+                PropertyValueFailure::Grammar { origin, .. } => origin.inner().clone(),
             },
         }
     }
@@ -229,7 +230,7 @@ impl CssPropertyValueError {
         Self {
             kind: PropertyValueErrorKind::Value(Box::new(PropertyValueFailure::Grammar {
                 kind,
-                origin,
+                origin: origin.into(),
             })),
         }
     }

@@ -24,7 +24,7 @@ pub(crate) enum ImageConstructionKind {
     Component(crate::component::CssComponentValueError),
     // Boxed so that every image construction failure stays small.
     Grammar(Box<crate::property::CssPropertyValueError>),
-    RecoveredComponent(crate::component::CssValueOrigin),
+    RecoveredComponent(crate::source::Provenance<crate::component::CssValueOrigin>),
 }
 impl CssImageConstructionError {
     pub(crate) const fn new(kind: ImageConstructionKind) -> Self {
@@ -63,7 +63,7 @@ impl CssImageConstructionError {
     #[must_use]
     pub const fn recovered_origin(&self) -> Option<&crate::component::CssValueOrigin> {
         match &self.kind {
-            ImageConstructionKind::RecoveredComponent(origin) => Some(origin),
+            ImageConstructionKind::RecoveredComponent(origin) => Some(origin.inner()),
             _ => None,
         }
     }

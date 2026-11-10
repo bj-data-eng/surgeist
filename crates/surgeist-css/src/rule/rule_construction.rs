@@ -12,6 +12,7 @@ use crate::selector::{
 };
 use crate::serialization::CssSerializationError;
 use crate::source::CssSourcePosition;
+use crate::source::Provenance;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum CssRuleConstructionErrorKind {
@@ -57,7 +58,7 @@ enum RuleConstructionKind {
     Assembly {
         kind: CssRuleConstructionErrorKind,
         path: Vec<usize>,
-        position: Option<CssSourcePosition>,
+        position: Provenance<Option<CssSourcePosition>>,
     },
     Import(crate::rule::imports::ImportConstructionKind),
 }
@@ -160,7 +161,7 @@ impl CssRuleConstructionError {
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
         match &self.kind {
-            RuleConstructionKind::Assembly { position, .. } => *position,
+            RuleConstructionKind::Assembly { position, .. } => *position.inner(),
             RuleConstructionKind::Import(_) => None,
         }
     }
@@ -235,7 +236,7 @@ impl CssRuleConstructionError {
             kind: RuleConstructionKind::Assembly {
                 kind,
                 path,
-                position,
+                position: position.into(),
             },
         }
     }

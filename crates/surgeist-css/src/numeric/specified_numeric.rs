@@ -219,7 +219,7 @@ mod ordinary_literal_comparison_tests {
             let left = component(left);
             let right = component(right);
             let before = (left.clone(), right.clone());
-            assert_ne!(left, right);
+            assert!(!crate::source::same_provenance(&left, &right));
             assert!(ordinary_literal_equal(&left, &right));
             assert!(ordinary_literal_equal(&right, &left));
             assert_eq!((left, right), before);

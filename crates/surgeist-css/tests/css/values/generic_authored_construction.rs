@@ -198,6 +198,10 @@ fn exact_numeric_tokens_preserve_kind_sign_spelling_and_programmatic_origin() {
                 .as_css(),
             text
         );
-        assert_ne!(parsed.items()[0], programmatic);
+        assert_eq!(parsed.items()[0], programmatic);
+        assert!(!surgeist_css::source::same_provenance(
+            &parsed.items()[0],
+            &programmatic
+        ));
     }
 }

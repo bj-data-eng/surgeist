@@ -5,6 +5,7 @@ use crate::rule::font_face::CssFontDisplay;
 use crate::rule::font_feature_values::CssFontFeatureValuesError;
 use crate::rule::font_feature_values::{CssFontFeatureValueIndex, CssFontFeatureValueKind};
 use crate::source::CssParsedOrigin;
+use crate::source::Provenance;
 
 /// A borrowed outer font-display phase.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -30,8 +31,8 @@ pub(crate) enum FontFeatureDisplayData {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssFontFeatureDisplayValue {
     data: FontFeatureDisplayData,
-    components: CssComponentValues,
-    origin: Option<CssParsedOrigin>,
+    components: Provenance<CssComponentValues>,
+    origin: Provenance<Option<CssParsedOrigin>>,
 }
 impl CssFontFeatureDisplayValue {
     pub(crate) fn from_parsed(
@@ -41,8 +42,8 @@ impl CssFontFeatureDisplayValue {
     ) -> Self {
         Self {
             data,
-            components,
-            origin: Some(origin),
+            components: components.into(),
+            origin: Some(origin).into(),
         }
     }
     /// Returns the checked value as a borrowed view.
@@ -58,12 +59,12 @@ impl CssFontFeatureDisplayValue {
     /// Returns the component values the descriptor was admitted from, with their original provenance.
     #[must_use]
     pub const fn components(&self) -> &CssComponentValues {
-        &self.components
+        self.components.inner()
     }
     /// The complete original raw-source window, absent for checked components/reentry.
     #[must_use]
     pub const fn origin(&self) -> Option<&CssParsedOrigin> {
-        self.origin.as_ref()
+        self.origin.inner().as_ref()
     }
 }
 
@@ -93,8 +94,8 @@ pub(crate) enum FontFeatureValueData {
 pub struct CssFontFeatureValue {
     kind: CssFontFeatureValueKind,
     data: FontFeatureValueData,
-    components: CssComponentValues,
-    origin: Option<CssParsedOrigin>,
+    components: Provenance<CssComponentValues>,
+    origin: Provenance<Option<CssParsedOrigin>>,
 }
 impl CssFontFeatureValue {
     pub(crate) fn from_parsed(
@@ -106,8 +107,8 @@ impl CssFontFeatureValue {
         Self {
             kind,
             data,
-            components,
-            origin: Some(origin),
+            components: components.into(),
+            origin: Some(origin).into(),
         }
     }
     /// Returns which feature-value block grammar this value was checked against.
@@ -126,12 +127,12 @@ impl CssFontFeatureValue {
     /// Returns the component values the value was admitted from, with their original provenance.
     #[must_use]
     pub const fn components(&self) -> &CssComponentValues {
-        &self.components
+        self.components.inner()
     }
     /// The complete original raw-source window, absent for checked components/reentry.
     #[must_use]
     pub const fn origin(&self) -> Option<&CssParsedOrigin> {
-        self.origin.as_ref()
+        self.origin.inner().as_ref()
     }
 }
 
@@ -170,8 +171,8 @@ impl CssFontFeatureDisplayValue {
                 .map_err(|error| CssFontFeatureValuesError::from_grammar(error, &serialized))?;
         Ok(Self {
             data,
-            components,
-            origin: None,
+            components: components.into(),
+            origin: Provenance::new(None),
         })
     }
     /// Rechecks a replacement without performing host lookup or substitution.
@@ -228,8 +229,8 @@ impl CssFontFeatureValue {
         Ok(Self {
             kind,
             data,
-            components,
-            origin: None,
+            components: components.into(),
+            origin: Provenance::new(None),
         })
     }
     /// Rechecks a replacement without performing host lookup or substitution.

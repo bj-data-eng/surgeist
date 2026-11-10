@@ -3,6 +3,7 @@ use crate::component::CssComponentValues;
 use crate::declaration::{CssDeclaration, CssDeclarationList, CssGlobalKeyword, CssImportance};
 use crate::numeric::{CssLength, CssNonNegative, CssNumeric};
 use crate::rule::CssDescriptorOccurrence;
+use crate::source::Provenance;
 use crate::source::{CssParsedOrigin, CssSourcePosition};
 use crate::values::common::CssAutoOr;
 
@@ -83,7 +84,7 @@ impl CssPageSpecificity {
 pub struct CssPageSelector {
     name: Option<crate::values::common::CssIdent>,
     pseudos: Vec<CssPagePseudo>,
-    origin: Option<CssParsedOrigin>,
+    origin: Provenance<Option<CssParsedOrigin>>,
 }
 impl CssPageSelector {
     /// Creates a selector from an optional page name and its pseudo-classes in order.
@@ -97,7 +98,7 @@ impl CssPageSelector {
         (name.is_some() || !pseudos.is_empty()).then_some(Self {
             name,
             pseudos,
-            origin: None,
+            origin: Provenance::new(None),
         })
     }
     pub(crate) fn from_parsed(
@@ -108,7 +109,7 @@ impl CssPageSelector {
         Self {
             name,
             pseudos,
-            origin: Some(origin),
+            origin: Some(origin).into(),
         }
     }
     /// Returns the page name, or `None` when the selector has only pseudo-classes.
@@ -124,7 +125,7 @@ impl CssPageSelector {
     /// Returns the original raw-source window of the selector, or `None` when it was constructed programmatically.
     #[must_use]
     pub const fn origin(&self) -> Option<&CssParsedOrigin> {
-        self.origin.as_ref()
+        self.origin.inner().as_ref()
     }
     /// Returns the page specificity: one `named` for a name, and the counts of `:first`/`:blank` and of side pseudo-classes.
     #[must_use]
@@ -148,7 +149,7 @@ impl CssPageSelector {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct CssPageSelectorList {
     selectors: Vec<CssPageSelector>,
-    origin: Option<CssParsedOrigin>,
+    origin: Provenance<Option<CssParsedOrigin>>,
 }
 impl CssPageSelectorList {
     /// Creates a selector list from the given selectors, which may be empty, with no parsed origin.
@@ -156,13 +157,13 @@ impl CssPageSelectorList {
     pub fn new(selectors: Vec<CssPageSelector>) -> Self {
         Self {
             selectors,
-            origin: None,
+            origin: Provenance::new(None),
         }
     }
     pub(crate) fn from_parsed(selectors: Vec<CssPageSelector>, origin: CssParsedOrigin) -> Self {
         Self {
             selectors,
-            origin: Some(origin),
+            origin: Some(origin).into(),
         }
     }
     /// Returns the selectors in authored order; the slice is empty for an empty prelude.
@@ -178,7 +179,7 @@ impl CssPageSelectorList {
     /// Returns the original raw-source window of the complete prelude, or `None` when it was constructed programmatically.
     #[must_use]
     pub const fn origin(&self) -> Option<&CssParsedOrigin> {
-        self.origin.as_ref()
+        self.origin.inner().as_ref()
     }
 }
 /// The descriptors that `@page` admits besides ordinary properties.
@@ -371,8 +372,8 @@ pub enum CssPageDescriptorValueRef<'a> {
 pub struct CssPageDescriptorValue {
     kind: CssPageDescriptorKind,
     pub(crate) data: PageValueData,
-    components: CssComponentValues,
-    origin: CssParsedOrigin,
+    components: Provenance<CssComponentValues>,
+    origin: Provenance<CssParsedOrigin>,
 }
 impl CssPageDescriptorValue {
     pub(crate) fn from_parsed(
@@ -384,8 +385,8 @@ impl CssPageDescriptorValue {
         Self {
             kind,
             data,
-            components,
-            origin,
+            components: components.into(),
+            origin: origin.into(),
         }
     }
     /// Returns which descriptor this value was checked as.
@@ -396,12 +397,12 @@ impl CssPageDescriptorValue {
     /// Returns the component values the descriptor was checked from, with their original provenance.
     #[must_use]
     pub const fn components(&self) -> &CssComponentValues {
-        &self.components
+        self.components.inner()
     }
     /// Returns the original raw-source window of the value.
     #[must_use]
     pub const fn origin(&self) -> &CssParsedOrigin {
-        &self.origin
+        self.origin.inner()
     }
     /// Returns the checked semantics as a borrowed view.
     #[must_use]
@@ -449,8 +450,8 @@ impl CssPageDescriptor {
         let occurrence = CssDescriptorOccurrence::from_parsed(
             value.clone(),
             name,
-            value.origin.clone(),
-            value.components.clone(),
+            value.origin.inner().clone(),
+            value.components.inner().clone(),
         );
         Self {
             inner: std::sync::Arc::new(PageDescriptorData {
@@ -665,8 +666,8 @@ impl CssMarginDeclarationBlock {
 pub struct CssMarginRule {
     name: CssMarginBox,
     declarations: CssMarginDeclarationBlock,
-    position: Option<CssSourcePosition>,
-    detached_origin: Option<CssParsedOrigin>,
+    position: Provenance<Option<CssSourcePosition>>,
+    detached_origin: Provenance<Option<CssParsedOrigin>>,
 }
 impl CssMarginRule {
     /// Creates a margin rule from a box name and its declarations, with no source position or detached origin.
@@ -675,8 +676,8 @@ impl CssMarginRule {
         Self {
             name,
             declarations,
-            position: None,
-            detached_origin: None,
+            position: Provenance::new(None),
+            detached_origin: Provenance::new(None),
         }
     }
     pub(crate) const fn from_parsed(
@@ -687,8 +688,8 @@ impl CssMarginRule {
         Self {
             name,
             declarations,
-            position: Some(position),
-            detached_origin: None,
+            position: Provenance::new(Some(position)),
+            detached_origin: Provenance::new(None),
         }
     }
     /// Returns which margin box the rule styles.
@@ -704,7 +705,7 @@ impl CssMarginRule {
     /// Returns the source position of the rule, or `None` when it was constructed programmatically.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
+        *self.position.inner()
     }
     /// The complete detached raw occurrence when admitted through the Page
     /// margin-rule boundary, excluding surrounding trivia but owning the full
@@ -712,11 +713,11 @@ impl CssMarginRule {
     /// retain their existing positions/value origins and have no detached origin.
     #[must_use]
     pub const fn detached_origin(&self) -> Option<&CssParsedOrigin> {
-        self.detached_origin.as_ref()
+        self.detached_origin.inner().as_ref()
     }
     pub(crate) fn with_detached_origin(mut self, origin: CssParsedOrigin) -> Self {
-        debug_assert_eq!(self.position, Some(origin.span().start()));
-        self.detached_origin = Some(origin);
+        debug_assert_eq!(*self.position.inner(), Some(origin.span().start()));
+        self.detached_origin = Some(origin).into();
         self
     }
 }
@@ -754,7 +755,7 @@ impl CssPageBody {
 pub struct CssPageRule {
     selectors: CssPageSelectorList,
     body: CssPageBody,
-    position: CssSourcePosition,
+    position: Provenance<CssSourcePosition>,
 }
 impl CssPageRule {
     pub(crate) const fn new(
@@ -765,7 +766,7 @@ impl CssPageRule {
         Self {
             selectors,
             body,
-            position,
+            position: Provenance::new(position),
         }
     }
     /// Returns the selector prelude, which is empty for a rule without selectors.
@@ -786,7 +787,7 @@ impl CssPageRule {
     /// Returns the source position of the rule's `@page` at-keyword.
     #[must_use]
     pub const fn position(&self) -> CssSourcePosition {
-        self.position
+        *self.position.inner()
     }
     /// Returns a copy of the rule with its body replaced, keeping the selectors and position.
     #[must_use]

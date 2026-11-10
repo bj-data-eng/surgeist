@@ -410,11 +410,11 @@ mod tests {
     #[test]
     fn backing_includes_implicit_termination_and_decoded_token_payloads() {
         let value = CssComponentValue {
-            parsed: None,
+            parsed: None.into(),
             data: ComponentData::Token(ValueToken {
                 data: TokenData::String("x".into()),
                 spelling: programmatic_lexeme("\"x"),
-                implicit_end: Some(programmatic_lexeme("\"")),
+                implicit_end: crate::source::Provenance::new(Some(programmatic_lexeme("\""))),
             }),
         };
         let values = CssComponentValues::try_new(vec![value], Default::default()).unwrap();

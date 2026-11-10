@@ -9,6 +9,7 @@ mod conformance;
 mod container;
 mod corpora;
 mod cssom;
+mod equality;
 mod media;
 mod numeric;
 mod properties;

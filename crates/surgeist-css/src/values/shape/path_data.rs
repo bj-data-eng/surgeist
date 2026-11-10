@@ -2,6 +2,7 @@
 
 use super::CssShapeConstructionError;
 use crate::component::{CssComponentValue, CssComponentValueRef, CssValueOrigin, CssValueTokenRef};
+use crate::source::Provenance;
 
 /// Intrinsic failure to construct checked decoded SVG path data.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -20,17 +21,11 @@ pub(crate) enum PathDataFailure {
 ///
 /// Equality compares decoded bytes independently of CSS token origin. Command case,
 /// separators and numeric spellings remain significant; no geometry is computed.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssPathData {
     decoded: String,
-    origin: CssValueOrigin,
+    origin: Provenance<CssValueOrigin>,
 }
-impl PartialEq for CssPathData {
-    fn eq(&self, other: &Self) -> bool {
-        self.decoded == other.decoded
-    }
-}
-impl Eq for CssPathData {}
 
 #[derive(Clone, Copy)]
 enum Admission {
@@ -57,7 +52,7 @@ impl CssPathData {
     /// Returns the original quoted-string token or programmatic origin.
     #[must_use]
     pub const fn origin(&self) -> &CssValueOrigin {
-        &self.origin
+        self.origin.inner()
     }
 
     pub(crate) fn from_parser_component(
@@ -104,7 +99,10 @@ impl CssPathData {
         origin: CssValueOrigin,
     ) -> Result<Self, CssShapeConstructionError> {
         match Scanner::new(&decoded).validate() {
-            Ok(()) => Ok(Self { decoded, origin }),
+            Ok(()) => Ok(Self {
+                decoded,
+                origin: origin.into(),
+            }),
             Err(offset) => Err(CssShapeConstructionError::path_data(
                 if offset.is_none() {
                     PathDataFailure::EmptyPath

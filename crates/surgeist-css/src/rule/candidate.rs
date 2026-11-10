@@ -188,7 +188,7 @@ impl CssRuleSyntax {
                 .partition_point(|item| item.error().position().byte_offset() < position);
             let needed = self.diagnostics[start..=index]
                 .iter()
-                .filter(|item| *item == diagnostic)
+                .filter(|item| crate::source::same_provenance(*item, diagnostic))
                 .count();
             let first = diagnostics
                 .partition_point(|item| item.error().position().byte_offset() < position);
@@ -196,7 +196,7 @@ impl CssRuleSyntax {
                 .partition_point(|item| item.error().position().byte_offset() <= position);
             if diagnostics[first..end]
                 .iter()
-                .filter(|item| *item == diagnostic)
+                .filter(|item| crate::source::same_provenance(*item, diagnostic))
                 .count()
                 < needed
             {

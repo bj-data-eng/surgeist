@@ -4,6 +4,7 @@ use crate::property::CssKnownDeclaration;
 use crate::query::CssGeneralEnclosed;
 use crate::rule::font_face::{CssFontFormat, CssFontTechHint};
 use crate::source::CssSourcePosition;
+use crate::source::Provenance;
 
 /// A leaf of a supports condition: one test of the `<supports-condition>` grammar.
 ///
@@ -33,15 +34,34 @@ pub enum CssSupportsLeaf {
 /// Unknown properties and values outside the current property grammar remain
 /// valid authored tests. `known()` is populated only when the existing schema
 /// parser can provide its property-coupled typed declaration view.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct CssSupportsDeclaration {
-    authored: Option<String>,
+    authored: Provenance<Option<String>>,
     property: String,
     importance: CssImportance,
     admitted: Option<SupportsAdmitted>,
     lexical: crate::query::supports::construction::SupportsLexical,
     property_index: usize,
     value_range: std::ops::Range<usize>,
+}
+// The property, importance and admitted typed declaration are the value. The lexical region
+// retains the authored tokens and their indices; it is the value only when no typed
+// declaration was admitted, and then its text is the value, compared as the declaration path
+// compares a custom property's value.
+impl PartialEq for CssSupportsDeclaration {
+    fn eq(&self, other: &Self) -> bool {
+        self.property == other.property
+            && self.importance == other.importance
+            && self.admitted == other.admitted
+            && (self.admitted.is_some()
+                || crate::component::values::verbatim_items_eq(
+                    self.value_components(),
+                    other.value_components(),
+                ))
+            && self.authored == other.authored
+            && Provenance::new((&self.lexical, self.property_index, &self.value_range))
+                == Provenance::new((&other.lexical, other.property_index, &other.value_range))
+    }
 }
 #[derive(Clone, Debug, PartialEq)]
 #[expect(
@@ -63,7 +83,7 @@ impl CssSupportsDeclaration {
         value_range: std::ops::Range<usize>,
     ) -> Self {
         Self {
-            authored,
+            authored: authored.into(),
             property,
             importance,
             admitted: admitted.and_then(|body| match body {
@@ -81,7 +101,7 @@ impl CssSupportsDeclaration {
     /// Returns the original source text of the declaration test, or `None` when it was not parsed from source.
     #[must_use]
     pub fn authored(&self) -> Option<&str> {
-        self.authored.as_deref()
+        self.authored.inner().as_deref()
     }
     /// Returns the property name text as authored.
     #[must_use]

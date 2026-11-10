@@ -1,5 +1,6 @@
 use crate::diagnostic::CssError;
 use crate::source::CssSourceSpan;
+use crate::source::{Provenance, Uncompared};
 
 /// A diagnostic-phase description of one CSS-owned recovery decision.
 ///
@@ -71,21 +72,14 @@ pub enum CssRecoveryAction {
 ///     }
 /// }
 /// ```
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssRecoveryDiagnostic {
     pub(crate) error: CssError,
-    span: CssSourceSpan,
+    span: Provenance<CssSourceSpan>,
     action: CssRecoveryAction,
-    opening_owner: Option<usize>,
-    source: Option<crate::source::CssSourceSnapshot>,
+    opening_owner: Uncompared<Option<usize>>,
+    source: Uncompared<Option<crate::source::CssSourceSnapshot>>,
 }
-
-impl PartialEq for CssRecoveryDiagnostic {
-    fn eq(&self, other: &Self) -> bool {
-        self.error == other.error && self.span == other.span && self.action == other.action
-    }
-}
-impl Eq for CssRecoveryDiagnostic {}
 impl CssRecoveryDiagnostic {
     /// Actual diagnostic-owned out-of-line backing, excluding this diagnostic's
     /// inline layout and its separately shared source graph. String/Vec spare
@@ -101,11 +95,11 @@ impl CssRecoveryDiagnostic {
     /// Actual immutable parser input, when established by the owning parser.
     #[must_use]
     pub const fn source(&self) -> Option<&crate::source::CssSourceSnapshot> {
-        self.source.as_ref()
+        self.source.inner().as_ref()
     }
 
     pub(crate) fn bind_source(&mut self, source: &crate::source::CssSourceSnapshot) {
-        self.source = Some(source.clone());
+        self.source = Uncompared::new(Some(source.clone()));
     }
     pub(crate) fn resolve_original_coordinates(
         &mut self,
@@ -116,18 +110,19 @@ impl CssRecoveryDiagnostic {
             source.position_or_walk(self.span.start().byte_offset().value()),
             source.position_or_walk(self.span.end().byte_offset().value()),
         )
-        .expect("same-length replay preserves ordered original byte boundaries");
+        .expect("same-length replay preserves ordered original byte boundaries")
+        .into();
     }
 
     pub(crate) fn with_opening_owner(mut self, owner: usize) -> Self {
-        self.opening_owner = Some(owner);
+        self.opening_owner = Uncompared::new(Some(owner));
         self
     }
     pub(crate) fn opening_owner(&self) -> Option<usize> {
-        self.opening_owner
+        *self.opening_owner.inner()
     }
     pub(crate) fn clear_opening_owner(&mut self) {
-        self.opening_owner = None;
+        self.opening_owner = Uncompared::new(None);
     }
 
     #[must_use]
@@ -143,10 +138,10 @@ impl CssRecoveryDiagnostic {
 
         Some(Self {
             error,
-            span,
+            span: span.into(),
             action,
-            opening_owner: None,
-            source: None,
+            opening_owner: Uncompared::new(None),
+            source: Uncompared::new(None),
         })
     }
 
@@ -169,7 +164,7 @@ impl CssRecoveryDiagnostic {
     /// perform source loading or syntax resolution.
     #[must_use]
     pub const fn span(&self) -> CssSourceSpan {
-        self.span
+        *self.span.inner()
     }
 
     /// Returns the CSS-owned action associated with this diagnostic.

@@ -47,7 +47,7 @@ pub(crate) fn construct_import(
     if let Some(origin) = values.first_implicit_origin() {
         return Err(
             crate::rule::imports::ImportConstructionKind::RecoveredInput {
-                origin: origin.clone(),
+                origin: origin.clone().into(),
             }
             .into(),
         );
@@ -136,7 +136,7 @@ pub(crate) fn construct_import(
                 target: target_component.clone(),
                 layer: layer_component,
                 supports: supports_component,
-                semicolon: items[semicolon].origin().clone(),
+                semicolon: items[semicolon].origin().clone().into(),
             },
         },
     );
@@ -147,7 +147,7 @@ fn import_construction_grammar(
     origin: &crate::component::CssValueOrigin,
 ) -> crate::rule::CssRuleConstructionError {
     crate::rule::imports::ImportConstructionKind::InvalidRuleGrammar {
-        origin: origin.clone(),
+        origin: origin.clone().into(),
     }
     .into()
 }
@@ -392,7 +392,7 @@ fn import_prelude<'i>(
             target: target_component,
             layer: selected.layer_component,
             supports: selected.supports_component,
-            semicolon,
+            semicolon: semicolon.into(),
         },
     })
 }
@@ -568,9 +568,9 @@ pub(crate) fn import_boundaries_match(
             Some(kind) => crate::rule::imports::ImportSerializationFailure::Component(
                 crate::component::CssComponentValueError::new(kind, origin),
             ),
-            None => {
-                crate::rule::imports::ImportSerializationFailure::InterpretationChanged { origin }
-            }
+            None => crate::rule::imports::ImportSerializationFailure::InterpretationChanged {
+                origin: origin.into(),
+            },
         }
     })
 }

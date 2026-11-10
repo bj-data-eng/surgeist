@@ -14,6 +14,7 @@ use crate::numeric::{
 };
 use crate::property::CssAllDeclaredValue;
 use crate::query::container::{CssContainer, CssContainerNames, CssContainerType};
+use crate::source::Provenance;
 use crate::values::animation::{
     CssAnimationDirectionList, CssAnimationFillModeList, CssAnimationIterationCountList,
     CssAnimationList, CssAnimationNameList, CssAnimationPlayStateList, CssDelayList,
@@ -643,14 +644,17 @@ pub(crate) use property_schema;
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssPropertyValue<T> {
-    authored: CssAuthoredDeclarationValue,
+    authored: Provenance<CssAuthoredDeclarationValue>,
     value: T,
 }
 
 impl<T> CssPropertyValue<T> {
     #[must_use]
     pub(crate) const fn new(authored: CssAuthoredDeclarationValue, value: T) -> Self {
-        Self { authored, value }
+        Self {
+            authored: Provenance::new(authored),
+            value,
+        }
     }
 
     /// Returns the exact authored ordinary value slice.

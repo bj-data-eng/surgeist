@@ -8,6 +8,7 @@ use crate::declaration::CssSubstitutionDependentValue;
 use crate::diagnostic::CssError;
 use crate::rule::descriptor_values::DescriptorValueFailure;
 use crate::source::CssSourcePosition;
+use crate::source::Provenance;
 use crate::values::common::CssUrl;
 
 /// The custom case-sensitive name or reserved device profile identity.
@@ -183,7 +184,7 @@ pub(crate) enum CssColorProfileDescriptorData {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssColorProfileDescriptorValue {
     kind: CssColorProfileDescriptorKind,
-    components: CssComponentValues,
+    components: Provenance<CssComponentValues>,
     data: CssColorProfileDescriptorData,
 }
 
@@ -211,7 +212,7 @@ impl CssColorProfileDescriptorValue {
         .map_err(|error| CssColorProfileValueError::from_grammar(error, &serialized))?;
         Ok(Self {
             kind,
-            components,
+            components: components.into(),
             data,
         })
     }
@@ -257,7 +258,7 @@ impl CssColorProfileDescriptorValue {
         debug_assert!(matching_kind);
         Self {
             kind,
-            components,
+            components: components.into(),
             data,
         }
     }
@@ -271,7 +272,7 @@ impl CssColorProfileDescriptorValue {
     /// Returns the component values the descriptor was checked from, with their original provenance.
     #[must_use]
     pub const fn components(&self) -> &CssComponentValues {
-        &self.components
+        self.components.inner()
     }
 
     /// Returns the checked semantics as a borrowed view.
@@ -302,7 +303,7 @@ impl CssColorProfileDescriptorValue {
 #[derive(Clone, Debug, PartialEq)]
 pub struct CssColorProfileDescriptor {
     value: CssColorProfileDescriptorValue,
-    position: Option<CssSourcePosition>,
+    position: Provenance<Option<CssSourcePosition>>,
 }
 
 impl CssColorProfileDescriptor {
@@ -311,12 +312,12 @@ impl CssColorProfileDescriptor {
     pub const fn new(value: CssColorProfileDescriptorValue) -> Self {
         Self {
             value,
-            position: None,
+            position: Provenance::new(None),
         }
     }
 
     pub(crate) fn with_position(mut self, position: CssSourcePosition) -> Self {
-        self.position = Some(position);
+        self.position = Some(position).into();
         self
     }
 
@@ -329,7 +330,7 @@ impl CssColorProfileDescriptor {
     /// Returns the source position of the descriptor, or `None` when it was constructed programmatically.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
+        *self.position.inner()
     }
 }
 
@@ -342,7 +343,7 @@ impl CssColorProfileDescriptor {
 pub struct CssColorProfileRule {
     name: CssColorProfileRuleName,
     descriptors: Vec<CssColorProfileDescriptor>,
-    position: Option<CssSourcePosition>,
+    position: Provenance<Option<CssSourcePosition>>,
 }
 impl CssColorProfileRule {
     /// Creates a rule from its name and descriptor occurrences, with no source position.
@@ -356,11 +357,11 @@ impl CssColorProfileRule {
         Self {
             name,
             descriptors,
-            position: None,
+            position: Provenance::new(None),
         }
     }
     pub(crate) fn with_position(mut self, position: CssSourcePosition) -> Self {
-        self.position = Some(position);
+        self.position = Some(position).into();
         self
     }
     /// Returns the profile name.
@@ -376,7 +377,7 @@ impl CssColorProfileRule {
     /// Returns the source position of the rule, or `None` when it was constructed programmatically.
     #[must_use]
     pub const fn position(&self) -> Option<CssSourcePosition> {
-        self.position
+        *self.position.inner()
     }
     /// Last retained valid occurrence; no initial value or profile selection is fabricated.
     #[must_use]

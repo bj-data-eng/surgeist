@@ -1,6 +1,7 @@
 use crate::component::CssComponentValues;
 use crate::numeric::{CssFiniteNumber, CssLengthUnit};
 use crate::source::CssSourcePosition;
+use crate::source::Layout;
 
 /// One checked function or parenthesis component, including EOF-implied closure.
 ///
@@ -25,7 +26,7 @@ use crate::source::CssSourcePosition;
 /// ```
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CssGeneralEnclosed {
-    component: Box<crate::component::CssComponentValue>,
+    component: Layout<Box<crate::component::CssComponentValue>>,
 }
 
 impl CssGeneralEnclosed {
@@ -43,13 +44,13 @@ impl CssGeneralEnclosed {
         if !valid {
             return Err(
                 crate::query::when::ConditionConstructionKind::WrongOuterComponent {
-                    origin: component.origin().clone(),
+                    origin: component.origin().clone().into(),
                 }
                 .into(),
             );
         }
         Ok(Self {
-            component: Box::new(component),
+            component: Box::new(component).into(),
         })
     }
 
@@ -80,13 +81,13 @@ impl CssGeneralEnclosed {
     /// Returns the immutable underlying component.
     #[must_use]
     pub const fn component(&self) -> &crate::component::CssComponentValue {
-        &self.component
+        self.component.inner()
     }
 
     /// Returns the opener's real origin.
     #[must_use]
     pub const fn origin(&self) -> &crate::component::CssValueOrigin {
-        self.component.origin()
+        self.component.inner().origin()
     }
 
     /// Returns coordinates only when the opener was parsed from source.

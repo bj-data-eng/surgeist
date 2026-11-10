@@ -957,3 +957,23 @@ fn legitimate_contextual_unit_leaves_preserve_source_authored_reachability_and_o
         matches!(result.outcome(),CssAuthoredColorOutcome::Used(value) if value.channels()==[Some(1.0),Some(0.0),Some(0.0)])
     );
 }
+
+#[test]
+fn standard_failures_equal_across_origins_and_differ_in_provenance() {
+    let facts = facts();
+    let source = "color-mix(in srgb,red calc(-1%),blue)";
+    let (first, second) = (color(source), color(&format!("  {source}")));
+    let first = first.resolve(&facts, facts.identity(), limits()).unwrap();
+    let second = second.resolve(&facts, facts.identity(), limits()).unwrap();
+    let (
+        CssAuthoredColorOutcome::StandardFailure(first),
+        CssAuthoredColorOutcome::StandardFailure(second),
+    ) = (first.outcome(), second.outcome())
+    else {
+        panic!("standard failures")
+    };
+    assert_ne!(first.origin, second.origin);
+    assert_eq!(first, second);
+    assert!(!crate::source::same_provenance(first, second));
+    assert!(crate::source::same_provenance(first, first));
+}

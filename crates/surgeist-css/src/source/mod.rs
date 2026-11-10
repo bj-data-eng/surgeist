@@ -7,8 +7,12 @@
 //! Encoding Standard before parsing, and UTF-16 input is prepared under [`CssUtf16InputLimits`].
 //! [`CssRetainedSources`] and [`CssSourceRetention`] let a consumer that stores CSS payloads
 //! account the source backing they retain under finite limits.
+//!
+//! `==` on authored syntax ignores the origins, spans and positions it records, and
+//! [`same_provenance`] is the comparison that includes them.
 
 pub(crate) mod position;
+pub(crate) mod provenance;
 pub(crate) mod source_retention;
 pub(crate) mod stylesheet_input;
 pub(crate) mod utf16_declaration_block;
@@ -20,6 +24,9 @@ pub use position::{
     CssByteOffset, CssLineIndex, CssParsedOrigin, CssSourcePosition, CssSourceSnapshot,
     CssSourceSpan, CssSourceStorageUsage, CssUtf16ColumnIndex,
 };
+#[doc(inline)]
+pub use provenance::same_provenance;
+pub(crate) use provenance::{Layout, LayoutEq, Provenance, Uncompared, Verbatim, VerbatimEq};
 #[doc(inline)]
 pub use source_retention::{
     CssRetainedPayloadError, CssRetainedSources, CssSourceRetention, CssSourceRetentionAction,

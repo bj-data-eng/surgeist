@@ -54,7 +54,8 @@ pub(crate) fn construct_container_condition(
                         .items()
                         .get(index)
                         .or_else(|| values.items().last())
-                        .map_or(CssValueOrigin::Programmatic, |value| value.origin().clone()),
+                        .map_or(CssValueOrigin::Programmatic, |value| value.origin().clone())
+                        .into(),
                 },
             ));
         }
@@ -510,7 +511,7 @@ pub(crate) fn construct_container_prelude(
         ContainerPreludeAdmissionError::Grammar { origin, .. } => {
             CssContainerConstructionError::from(
                 crate::query::container::syntax::ContainerConstructionKind::InvalidPreludeGrammar {
-                    origin,
+                    origin: origin.into(),
                 },
             )
         }

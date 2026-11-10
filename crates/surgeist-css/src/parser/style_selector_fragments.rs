@@ -57,7 +57,8 @@ pub(crate) fn parse_style_selector_list_with_limits(
             selectors,
             context,
             origin: CssParsedOrigin::from_range(&snapshot, 0..source.len())
-                .expect("complete original selector input"),
+                .expect("complete original selector input")
+                .into(),
         });
         crate::CssParseReport::new(syntax, diagnostics)
     })
