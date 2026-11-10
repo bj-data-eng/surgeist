@@ -51,6 +51,9 @@ impl Ledger {
 }
 
 pub(crate) struct Accounts {
+    /// Prototype: 1 = skip work charges, 2 = also keep resources in a plain table.
+    proto: u8,
+    shadow: [u64; 64],
     ledger: Ledger,
     /// Carries the caps and the credit total.
     cap: Scope,
@@ -76,6 +79,8 @@ impl Accounts {
         let Some(lease) = lease else {
             let (operation, cap, charging) = private(limits).map_err(SetupFault::from)?;
             return Ok(Self {
+                proto: proto_mode(),
+                shadow: [0; 64],
                 ledger: Ledger::Owned(operation),
                 cap,
                 charging,
@@ -87,6 +92,8 @@ impl Accounts {
         };
         let bound = lease.bind(limits)?;
         Ok(Self {
+            proto: 0,
+            shadow: [0; 64],
             ledger: Ledger::Shared(bound.ledger),
             cap: bound.cap,
             charging: bound.charging,
@@ -98,15 +105,40 @@ impl Accounts {
     }
 
     pub(crate) fn work(&mut self, changes: &[HtmlChange]) -> Result<(), LedgerError> {
+        if self.proto != 0 {
+            return Ok(());
+        }
         self.ledger.apply(self.work, changes)
     }
     pub(crate) fn charge(&mut self, changes: &[HtmlChange]) -> Result<(), LedgerError> {
+        if self.proto >= 2 {
+            for change in changes {
+                match *change {
+                    Change::Acquire(r, n) => {
+                        let i = r as usize;
+                        self.shadow[i] += n;
+                    }
+                    Change::Release(r, n) => {
+                        let i = r as usize;
+                        self.shadow[i] = self.shadow[i].saturating_sub(n);
+                    }
+                    Change::Work(..) => {}
+                }
+            }
+            return Ok(());
+        }
         self.ledger.apply(self.charging, changes)
     }
     pub(crate) fn check(&mut self, changes: &[HtmlChange]) -> Result<(), LedgerError> {
+        if self.proto >= 2 {
+            return Ok(());
+        }
         self.ledger.check(self.charging, changes)
     }
     pub(crate) fn live(&self, resource: HtmlResource) -> Result<u64, LedgerError> {
+        if self.proto >= 2 {
+            return Ok(self.shadow[resource as usize]);
+        }
         self.ledger
             .read(self.charging, |usage| usage.live(resource))
     }
@@ -172,5 +204,20 @@ impl Drop for Accounts {
         {
             let _ = ledger.end_phase(observation);
         }
+    }
+}
+
+pub(crate) fn proto_mode() -> u8 {
+    use std::sync::OnceLock;
+    static MODE: OnceLock<u8> = OnceLock::new();
+    *MODE.get_or_init(proto_mode_uncached)
+}
+
+fn proto_mode_uncached() -> u8 {
+    match std::env::var("PROTO_LEDGER").as_deref() {
+        Ok("nowork") => 1,
+        Ok("light") => 2,
+        Ok("bare") => 3,
+        _ => 0,
     }
 }

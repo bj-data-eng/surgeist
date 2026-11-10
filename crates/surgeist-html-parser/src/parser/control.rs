@@ -804,6 +804,9 @@ impl ParseControl {
         Err(self.latch_stop(reason))
     }
     pub(crate) fn checkpoint(&mut self) -> Result<(), HtmlParseStop> {
+        if accounts::proto_mode() == 3 {
+            return Ok(());
+        }
         if let Some(first) = &self.stopped {
             return Err(first.reason);
         }
@@ -1101,6 +1104,9 @@ impl ParseControl {
     }
     /// Charges work changes, which name schema work dimensions, as one batch.
     pub(crate) fn charge_changes(&mut self, changes: &[HtmlChange]) -> Result<(), HtmlParseStop> {
+        if accounts::proto_mode() == 3 {
+            return Ok(());
+        }
         self.checkpoint()?;
         self.admit_work(changes)
     }
@@ -1169,6 +1175,20 @@ impl ParseControl {
         &mut self,
         requests: &[(HtmlParseResource, u64)],
     ) -> Result<(), HtmlParseStop> {
+        if accounts::proto_mode() == 3 {
+            let mut batch = [Change::Acquire(HtmlResource::SourceUnits, 0); 8];
+            let mut n = 0;
+            for &(resource, delta) in requests {
+                if let (Some(d), Some(slot)) = (resource.dimension(), batch.get_mut(n)) {
+                    *slot = Change::Acquire(d, delta);
+                    n += 1;
+                }
+            }
+            return self
+                .accounts_mut()?
+                .charge(&batch[..n])
+                .map_err(|_| HtmlParseStop::Cancelled);
+        }
         let (changes, count) = self.storage_batch(requests)?;
         let Some(batch) = changes.get(..count) else {
             return Err(self.unexpected_change());
@@ -1343,6 +1363,9 @@ impl ParseControl {
         &mut self,
         requests: &[(HtmlParseResource, u64)],
     ) -> Result<(), HtmlParseStop> {
+        if accounts::proto_mode() == 3 {
+            return Ok(());
+        }
         let (changes, count) = self.storage_batch(requests)?;
         let Some(batch) = changes.get(..count) else {
             return Err(self.unexpected_change());

@@ -2969,10 +2969,12 @@ impl ParserArenaSession {
         let storage = self.active_mut()?;
         storage.require(c)?;
         c.require_source(source)?;
-        storage.payloads.check_aliases(
-            ConstructionView::Active(storage.construction.storage(c)?),
-            c,
-        )?;
+        if !proto("aliases") {
+            storage.payloads.check_aliases(
+                ConstructionView::Active(storage.construction.storage(c)?),
+                c,
+            )?;
+        }
         let evidence = storage.evidence.as_mut().ok_or(SessionError::WrongToken)?;
         if evidence
             .native
@@ -2987,7 +2989,11 @@ impl ParserArenaSession {
         }
         // Successful completed projection certifies every real history leaf,
         // including retired versions that are no longer a native destination.
+        let groups_skip = proto("groups");
         for group in evidence.native.groups.as_slice() {
+            if groups_skip {
+                break;
+            }
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             c.charge(
                 HtmlParseWorkCategory::InspectByte,
@@ -3025,7 +3031,11 @@ impl ParserArenaSession {
         rows.require_owner(c)?;
         payload_write::<Option<OwnedVec<NativeAssociation>>>(c, 1)?;
         evidence.native.projection = Some(rows);
+        let payloads_skip = proto("payloads");
         for (payload_slot, payload) in storage.payloads.values.iter().enumerate() {
+            if payloads_skip {
+                break;
+            }
             c.charge(HtmlParseWorkCategory::RecordVisit, 1)?;
             let raw = match payload {
                 RetainedPayload::Nonce {
@@ -3174,9 +3184,15 @@ impl ParserArenaSession {
             .as_ref()
             .ok_or(SessionError::WrongToken)?
             .len();
-        evidence.project_lineage(c)?;
-        evidence.project_causes(c)?;
-        evidence.project_lexical(c)?;
+        if !proto("lineage") {
+            evidence.project_lineage(c)?;
+        }
+        if !proto("causes") {
+            evidence.project_causes(c)?;
+        }
+        if !proto("lexical") {
+            evidence.project_lexical(c)?;
+        }
         c.checkpoint()?;
         payload_write::<bool>(c, 1)?;
         evidence.native.projection_complete = true;
@@ -3996,4 +4012,12 @@ mod character_reference_origin_tests {
             Err(SessionError::WrongToken)
         ));
     }
+}
+
+pub(crate) fn proto(name: &str) -> bool {
+    use std::sync::OnceLock;
+    static SKIP: OnceLock<String> = OnceLock::new();
+    SKIP.get_or_init(|| std::env::var("PROTO_SKIP").unwrap_or_default())
+        .split(',')
+        .any(|part| part == name)
 }
