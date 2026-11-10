@@ -29,6 +29,9 @@ use std::{collections::VecDeque, slice};
 
 use super::{BuiltInBuilder, IntrinsicObject};
 
+#[cfg(test)]
+mod capability_construction_tests;
+
 /// Indicates the state of an async generator.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum AsyncGeneratorState {
