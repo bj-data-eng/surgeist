@@ -183,6 +183,20 @@ fn source_cancellation_after_force_publication_still_finishes_authentic_cancel_a
         &mut session,
         DomSourceEdit::set_attribute(subject, "open", ""),
     ));
+    let mut registry = dispatcher::<usize>();
+    registry
+        .add_listener(
+            &mut session.dom(),
+            subject,
+            DomEventType::Cancel,
+            DomEventCallback::new(|_, _, calls: &mut usize, event| {
+                *calls += 1;
+                event.prevent_default();
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
     let request = start_request(&mut session, subject, Some("published request".into()));
     assert!(
         session
@@ -201,20 +215,6 @@ fn source_cancellation_after_force_publication_still_finishes_authentic_cancel_a
             .unwrap();
         lease.request_cancel();
     }
-    let mut registry = dispatcher::<usize>();
-    registry
-        .add_listener(
-            &mut session.dom(),
-            subject,
-            DomEventType::Cancel,
-            DomEventCallback::new(|_, _, calls: &mut usize, event| {
-                *calls += 1;
-                event.prevent_default();
-                Ok(())
-            }),
-            DomEventListenerOptions::default(),
-        )
-        .unwrap();
     let mut calls = 0;
     let receipt = service(&mut session, &request, &mut registry, &mut calls);
     assert_eq!(receipt.callbacks(), 1);
@@ -915,7 +915,7 @@ fn retired_nested_close_cleanup_parks_at_settle_and_source_tail_without_replay()
 fn first_native_request() -> (
     DomSession,
     HostedRuntime,
-    NodeId,
+    crate::DomEventDispatcher<()>,
     DomSourceCloseWatcherRequest,
 ) {
     let (mut session, _, _, subject) = fixture();
@@ -923,6 +923,19 @@ fn first_native_request() -> (
         &mut session,
         DomSourceEdit::set_attribute(subject, "open", ""),
     ));
+    let mut registry = dispatcher::<()>();
+    registry
+        .add_listener(
+            &mut session.dom(),
+            subject,
+            DomEventType::Cancel,
+            DomEventCallback::new(|_, _, _, event| {
+                event.prevent_default();
+                Ok(())
+            }),
+            DomEventListenerOptions::default(),
+        )
+        .unwrap();
     let request = {
         let mut dom = session.dom();
         let mut lease = dom
@@ -945,11 +958,11 @@ fn first_native_request() -> (
         request
     };
     let hosted = session.hosted_execution();
-    (session, hosted, subject, request)
+    (session, hosted, registry, request)
 }
 fn finish_canceled_native_request(
     session: &mut DomSession,
-    subject: NodeId,
+    registry: &mut crate::DomEventDispatcher<()>,
     operation: DomSourceOperationId,
 ) {
     let progress = resume(session, operation).unwrap();
@@ -960,20 +973,7 @@ fn finish_canceled_native_request(
     else {
         panic!("real watcher must dispatch actual Cancel: {progress:?}");
     };
-    let mut registry = dispatcher::<()>();
-    registry
-        .add_listener(
-            &mut session.dom(),
-            subject,
-            DomEventType::Cancel,
-            DomEventCallback::new(|_, _, _, event| {
-                event.prevent_default();
-                Ok(())
-            }),
-            DomEventListenerOptions::default(),
-        )
-        .unwrap();
-    let receipt = service(session, &request, &mut registry, &mut ());
+    let receipt = service(session, &request, registry, &mut ());
     assert!(receipt.default_prevented());
     assert!(receipt.failures().is_empty());
     drop(receipt);
@@ -983,7 +983,7 @@ fn finish_canceled_native_request(
 #[test]
 fn invocation_box_body_storage_and_scratch_one_short_preserve_request_until_real_admission() {
     for scratch_short in [false, true] {
-        let (mut session, hosted, subject, request) = first_native_request();
+        let (mut session, hosted, mut registry, request) = first_native_request();
         let owner = hosted.state().unwrap();
         let baseline = owner.borrow_mut().retained_bytes(&cancel()).unwrap();
         let bank = size_of::<WatcherCustody>();
@@ -1068,7 +1068,7 @@ fn invocation_box_body_storage_and_scratch_one_short_preserve_request_until_real
         // Subsequent actual history capture has its own Source retention. Restore
         // this fixture's real policy before driving that independent native tail.
         owner.borrow_mut().limits = session_limits().hosted;
-        finish_canceled_native_request(&mut session, subject, request.operation());
+        finish_canceled_native_request(&mut session, &mut registry, request.operation());
         assert_eq!(
             owner.borrow_mut().retained_bytes(&cancel()).unwrap(),
             baseline + bank,
@@ -1091,7 +1091,7 @@ fn invocation_box_body_storage_and_scratch_one_short_preserve_request_until_real
 #[test]
 fn invocation_box_body_formation_work_is_admitted_before_allocation_and_link() {
     for short in [true, false] {
-        let (mut session, hosted, subject, request) = first_native_request();
+        let (mut session, hosted, mut registry, request) = first_native_request();
         let owner = hosted.state().unwrap();
         // Before the first body exists: Window lookup4 + retained scans8
         // (Host/composition/cluster/Window/group/memberbody/twoSettings) +
@@ -1170,7 +1170,7 @@ fn invocation_box_body_formation_work_is_admitted_before_allocation_and_link() {
                 1
             );
         }
-        finish_canceled_native_request(&mut session, subject, request.operation());
+        finish_canceled_native_request(&mut session, &mut registry, request.operation());
         assert!(
             owner.borrow().hosts[0].top_levels[0]
                 .group

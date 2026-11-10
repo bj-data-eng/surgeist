@@ -47,6 +47,7 @@ fn stable_query(
     let mut calls = Vec::new();
     let original = pending(drive(
         session,
+        subject,
         DomSourceEdit::show_modal_dialog(subject),
         true,
         &mut calls,
@@ -334,29 +335,6 @@ fn before_with_policy(
     subject: NodeId,
     limits: DomSourceLimits,
 ) -> (DomSourceEventRequest, usize) {
-    let before = match session
-        .source_execution()
-        .apply(
-            &mut session.dom(),
-            DomSourceEdit::show_modal_dialog(subject),
-            limits,
-            &mut DomSourceServices {
-                meta: None,
-                execution_scope: None,
-                style_policy: &mut |_| None,
-                url: None,
-            },
-            &cancel(),
-        )
-        .unwrap()
-    {
-        DomSourceDriveProgress::Pending {
-            request: DomSourceRequest::Event(event),
-            reason: DomSourceUnavailable::Event,
-        } => event,
-        other => panic!("real beforetoggle precedes queue preadmission: {other:?}"),
-    };
-    assert!(before.cancelable());
     let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
         registrations: 1,
         pending_events: 1,
@@ -380,6 +358,29 @@ fn before_with_policy(
             },
         )
         .unwrap();
+    let before = match session
+        .source_execution()
+        .apply(
+            &mut session.dom(),
+            DomSourceEdit::show_modal_dialog(subject),
+            limits,
+            &mut DomSourceServices {
+                meta: None,
+                execution_scope: None,
+                style_policy: &mut |_| None,
+                url: None,
+            },
+            &cancel(),
+        )
+        .unwrap()
+    {
+        DomSourceDriveProgress::Pending {
+            request: DomSourceRequest::Event(event),
+            reason: DomSourceUnavailable::Event,
+        } => event,
+        other => panic!("real beforetoggle precedes queue preadmission: {other:?}"),
+    };
+    assert!(before.cancelable());
     let mut calls = 0;
     let result = session
         .source_execution()
@@ -421,6 +422,7 @@ fn empty_delegate_tail_preadmits_only_actual_changed_same_origin_autofocus_outpu
                 let mut calls = Vec::new();
                 let result = drive(
                     &mut session,
+                    seed,
                     DomSourceEdit::show_modal_dialog(seed),
                     true,
                     &mut calls,

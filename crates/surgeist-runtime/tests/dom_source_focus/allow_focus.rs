@@ -125,7 +125,6 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
 
     // Dispatch starts in live A. Only the single target callback moves
     // the closed receiver into B; no fresh dispatch is started in retired B.
-    let event = start(&mut session, subject, None);
     let mut registry = DomEventDispatcher::new(DomEventRegistryLimits {
         registrations: 4,
         pending_events: 4,
@@ -151,6 +150,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
             },
         )
         .unwrap();
+    let event = start(&mut session, subject, None);
     let mut context = Context {
         calls: 0,
         path: Vec::new(),
@@ -478,6 +478,7 @@ fn callback_adoption_into_retired_document_completes_show_after_negative_allow_f
     );
     assert!(session.dom().pending_source_edit().is_none());
 
+    drop(registry);
     struct Delivery {
         owner: DomElementTaskRuntime,
         calls: usize,

@@ -1152,20 +1152,6 @@ fn nested_exit_handoff_restores_the_enclosing_real_dispatch_source_guard() {
         .created(&dialog)
         .unwrap()
         .unwrap();
-    let progress = source_result(
-        &mut session,
-        DomSourceEdit::show_dialog(dialog),
-        source_limits(),
-        &cancel,
-    )
-    .unwrap();
-    let DomSourceDriveProgress::Pending {
-        request: DomSourceRequest::Event(request),
-        reason: DomSourceUnavailable::Event,
-    } = progress
-    else {
-        panic!("ordinary Show must reach its authentic beforetoggle dispatch");
-    };
     let mut listeners = DomEventDispatcher::<Context>::new(DomEventRegistryLimits {
         registrations: 8,
         pending_events: 4,
@@ -1215,6 +1201,20 @@ fn nested_exit_handoff_restores_the_enclosing_real_dispatch_source_guard() {
             DomEventListenerOptions::default(),
         )
         .unwrap();
+    let progress = source_result(
+        &mut session,
+        DomSourceEdit::show_dialog(dialog),
+        source_limits(),
+        &cancel,
+    )
+    .unwrap();
+    let DomSourceDriveProgress::Pending {
+        request: DomSourceRequest::Event(request),
+        reason: DomSourceUnavailable::Event,
+    } = progress
+    else {
+        panic!("ordinary Show must reach its authentic beforetoggle dispatch");
+    };
     let mut context = Context {
         source: session.source_execution(),
         document: top.document(),

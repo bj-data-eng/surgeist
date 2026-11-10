@@ -511,7 +511,13 @@ fn second_idle_root(fixture: &mut IdleDocument) -> NodeId {
         .unwrap();
     let style = append_native_style(&mut fixture.session, document, shadow, "s{color:blue}");
     detach_native_style(&mut fixture.session, style);
-    deliver_load(&mut fixture.session, style);
+    deliver_load(
+        &mut fixture.session,
+        style,
+        &mut fixture.dispatcher,
+        &mut fixture.notifications,
+    );
+    assert_eq!(fixture.notifications.delivered, [fixture.style, style]);
     assert!(
         fixture
             .styles

@@ -529,6 +529,7 @@ fn dialog_same_origin_tail_clears_actual_top_history_and_processed_blocks_later_
     let mut calls = Vec::new();
     completed(drive(
         &mut session,
+        subject,
         DomSourceEdit::show_modal_dialog(subject),
         true,
         &mut calls,
@@ -591,6 +592,7 @@ fn cross_origin_dialog_return_preserves_actual_nonempty_top_candidate_history() 
     let mut calls = Vec::new();
     completed(drive(
         &mut session,
+        subject,
         DomSourceEdit::show_modal_dialog(subject),
         true,
         &mut calls,

@@ -959,7 +959,6 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
             ordinary.published_native_identities(),
             ordinary.nested_operations(),
         );
-        let request = show_event(&mut session, subject, bounded);
         let mut listeners = dispatcher();
         let mut calls = 0usize;
         listeners
@@ -974,6 +973,7 @@ fn active_show_reserves_four_phases_and_known_outputs_before_real_queue_effect()
                 crate::DomEventListenerOptions::default(),
             )
             .unwrap();
+        let request = show_event(&mut session, subject, bounded);
         let serviced = session
             .source_execution()
             .service_event(
@@ -1137,7 +1137,6 @@ fn real_child_complete_keeps_registered_window_payload_under_the_original_parent
         .created(&child)
         .unwrap()
         .unwrap();
-    let request = show_event(&mut session, parent, source_limits());
     let mut context = Context {
         source: session.source_execution(),
         child: None,
@@ -1179,6 +1178,7 @@ fn real_child_complete_keeps_registered_window_payload_under_the_original_parent
             crate::DomEventListenerOptions::default(),
         )
         .unwrap();
+    let request = show_event(&mut session, parent, source_limits());
     let serviced = session
         .source_execution()
         .service_event(
