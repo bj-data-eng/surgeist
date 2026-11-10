@@ -1327,6 +1327,9 @@ impl From<Format> for wgpu::TextureFormat {
     }
 }
 
+#[cfg(all(test, feature = "render-window", not(target_arch = "wasm32")))]
+mod acquired_texture_tests;
+
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod custody_tests {
     use super::*;
