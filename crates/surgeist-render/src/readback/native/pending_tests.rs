@@ -614,3 +614,153 @@ fn native_progress_helper_completes_the_same_registration_path_and_decodes_real_
     assert_eq!(output.transfer().unwrap().rgba().len(), 24);
     generation.ensure_healthy().unwrap();
 }
+
+#[test]
+fn completed_native_map_repoll_is_pending_without_clock_work_cleanup_or_wake() {
+    use crate::accounting::RenderCpuScope;
+
+    #[derive(Default)]
+    struct CountWake(AtomicU64);
+    impl Wake for CountWake {
+        fn wake(self: Arc<Self>) {
+            self.0.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    let manual_clock = Arc::new(ManualClock::default());
+    let _binding = ClockBinding::new(&manual_clock);
+    let options = RenderAccountingOptions::new()
+        .with_clock(RenderClock::Host(clock))
+        .with_profile(RenderProfile::Summary { timing: true });
+    let cpu = RendererCpu::new(options).unwrap();
+    let PreparedMap {
+        device: _device,
+        _queue,
+        generation,
+        staging,
+        submission,
+        prefix,
+    } = PreparedMap::new(&cpu, options);
+    let prefix_before = prefix.snapshot_for_test();
+    assert_eq!(
+        generation
+            .class_usage(GenerationClass::ReadbackStaging)
+            .unwrap()
+            .live(RenderResource::GpuBytes),
+        512
+    );
+    // The real provider invokes this registration's callback synchronously when
+    // no Queue remains. No helper, synthesized completion or timing wait is used.
+    drop(_queue);
+    let wake = Arc::new(CountWake::default());
+    let waker = Waker::from(wake.clone());
+    let (output, started, report, fault) = ReadbackFixture::new(&cpu, options)
+        .run_sync(|mut attempt| {
+            attempt.attach_generation(&generation).unwrap();
+            let account = attempt.account().clone();
+            manual_clock.millis.store(10, Ordering::SeqCst);
+            account.phase(RenderPhase::ReadbackMap, || {
+                let mut owner = ReadbackOwner::allocated(
+                    staging,
+                    ReadbackLayout::try_new(PhysicalSize::new(3, 2)).unwrap(),
+                    PhysicalSize::new(3, 2),
+                    &account,
+                );
+                owner.copy_submitted(submission);
+                assert_eq!(owner.mapped_range(), 0..512);
+                let staging_map = owner.staging_map();
+                let mut map = Box::pin(ReadbackMapFuture::start_manual(owner).unwrap());
+                manual_clock.millis.store(40, Ordering::SeqCst);
+                let output = match map.as_mut().poll(&mut Context::from_waker(&waker)) {
+                    Poll::Ready(Ok(output)) => output,
+                    Poll::Ready(Err(error)) => panic!("synchronous native map failed: {error:?}"),
+                    Poll::Pending => {
+                        panic!("mapping without a live queue must complete synchronously")
+                    }
+                };
+                assert_eq!(
+                    staging_map.disposition_for_test(),
+                    ReadbackStagingDisposition::Released
+                );
+                assert_eq!(
+                    generation
+                        .class_usage(GenerationClass::ReadbackStaging)
+                        .unwrap()
+                        .live(RenderResource::GpuBytes),
+                    0
+                );
+                let work_before: Vec<_> = <RenderWork as surgeist_ledger::Dimension>::ALL
+                    .iter()
+                    .map(|&work| account.work_count(work).unwrap())
+                    .collect();
+                let reads_before = manual_clock.reads.load(Ordering::SeqCst);
+                let wakes_before = wake.0.load(Ordering::SeqCst);
+
+                // Poll the very same completed future through its actual Future
+                // implementation. Terminal policy returns no second output.
+                for _ in 0..3 {
+                    assert!(matches!(
+                        map.as_mut().poll(&mut Context::from_waker(&waker)),
+                        Poll::Pending
+                    ));
+                }
+                drop(map);
+                assert_eq!(manual_clock.reads.load(Ordering::SeqCst), reads_before);
+                assert_eq!(wake.0.load(Ordering::SeqCst), wakes_before);
+                let work_after: Vec<_> = <RenderWork as surgeist_ledger::Dimension>::ALL
+                    .iter()
+                    .map(|&work| account.work_count(work).unwrap())
+                    .collect();
+                assert_eq!(work_after, work_before);
+                assert_eq!(
+                    staging_map.disposition_for_test(),
+                    ReadbackStagingDisposition::Released
+                );
+                // Keep the actual guarded output until the driver has closed.
+                Ok(output)
+            })
+        })
+        .unwrap()
+        .into_parts();
+    let output = output.unwrap();
+    assert!(started);
+    assert_eq!(fault, None);
+    assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
+    assert_eq!(report.accounting_diagnostic(), None);
+    assert_eq!(report.cleanup_fault(), None);
+    let attempt = report.attempt().unwrap();
+    for phase in [
+        RenderPhase::ReadbackMap,
+        RenderPhase::ReadbackDecode,
+        RenderPhase::ReadbackCleanup,
+    ] {
+        assert_eq!(attempt.phase_count(phase), 1, "{phase:?} must run once");
+    }
+    let work = attempt.usage();
+    assert_eq!(work.work(RenderWork::ReadbackMapRequests), 1);
+    assert_eq!(work.work(RenderWork::ReadbackRows), 2);
+    assert_eq!(work.work(RenderWork::ReadbackBytes), 24);
+    for unit in [
+        RenderWork::ReadbackCopies,
+        RenderWork::Submissions,
+        RenderWork::ResourceAllocationRequests,
+        RenderWork::ReadbackTransferredBytes,
+    ] {
+        assert_eq!(work.work(unit), 0, "map-only interval must not add {unit:?}");
+    }
+    let capacity = report
+        .renderer_cpu()
+        .unwrap()
+        .scope_usage(RenderCpuScope::ReadbackOutput)
+        .live(RenderResource::RetainedCpuBytes);
+    assert!(capacity >= 24);
+    let closed = report.snapshot_for_test();
+    let image = output.transfer().unwrap();
+    assert_eq!(image.size(), PhysicalSize::new(3, 2));
+    assert_eq!(image.rgba(), &[0; 24]);
+    assert_eq!(image.into_rgba().capacity() as u64, capacity);
+    assert_eq!(report, closed);
+    assert_eq!(prefix, prefix_before);
+    assert_eq!(wake.0.load(Ordering::SeqCst), 0);
+    generation.ensure_healthy().unwrap();
+}
