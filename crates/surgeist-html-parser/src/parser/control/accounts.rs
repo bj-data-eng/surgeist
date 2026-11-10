@@ -9,7 +9,7 @@ use crate::accounting::{Lease, LedgerError, ParsePhase, PhaseScopes, SetupFault,
 use crate::{HtmlParseLimits, HtmlParseResource};
 use std::sync::Arc;
 use surgeist_html::accounting::{HtmlChange, HtmlLimits, HtmlResource, HtmlWork};
-use surgeist_ledger::{Change, Operation, PhaseObservation, Scope, SharedOperation, Usage};
+use surgeist_ledger::{Change, Dimension, Operation, PhaseObservation, Scope, SharedOperation, Usage};
 
 pub(crate) type LedgerUsage = Usage<HtmlWork, HtmlResource>;
 
@@ -51,6 +51,11 @@ impl Ledger {
 }
 
 pub(crate) struct Accounts {
+    /// Prototype: work accumulated locally and not yet in the ledger.
+    pending: [u64; 8],
+    pending_sum: u64,
+    credit_base: u64,
+    credit_limit: u64,
     ledger: Ledger,
     /// Carries the caps and the credit total.
     cap: Scope,
@@ -75,7 +80,14 @@ impl Accounts {
     ) -> Result<Self, SetupFault> {
         let Some(lease) = lease else {
             let (operation, cap, charging) = private(limits).map_err(SetupFault::from)?;
+            let credit_limit = operation
+                .limits(cap)
+                .map_or(0, |limits| limits.work(HtmlWork::Credits));
             return Ok(Self {
+                pending: [0; 8],
+                pending_sum: 0,
+                credit_base: 0,
+                credit_limit,
                 ledger: Ledger::Owned(operation),
                 cap,
                 charging,
@@ -87,6 +99,10 @@ impl Accounts {
         };
         let bound = lease.bind(limits)?;
         Ok(Self {
+            pending: [0; 8],
+            pending_sum: 0,
+            credit_base: 0,
+            credit_limit: 0,
             ledger: Ledger::Shared(bound.ledger),
             cap: bound.cap,
             charging: bound.charging,
@@ -98,7 +114,63 @@ impl Accounts {
     }
 
     pub(crate) fn work(&mut self, changes: &[HtmlChange]) -> Result<(), LedgerError> {
+        const BLOCK: u64 = 1 << 16;
+        const FLUSH: u64 = 1 << 20;
+        if matches!(self.ledger, Ledger::Owned(_)) {
+            let mut sum = 0_u64;
+            let mut local = true;
+            for change in changes {
+                match *change {
+                    Change::Work(dimension, amount) if (dimension as usize) < 8 => {
+                        match sum.checked_add(amount) {
+                            Some(next) => sum = next,
+                            None => local = false,
+                        }
+                    }
+                    _ => local = false,
+                }
+            }
+            if local
+                && self
+                    .credit_base
+                    .saturating_add(self.pending_sum)
+                    .saturating_add(sum)
+                    .saturating_add(BLOCK)
+                    <= self.credit_limit
+            {
+                for change in changes {
+                    if let Change::Work(dimension, amount) = *change {
+                        self.pending[dimension as usize] += amount;
+                    }
+                }
+                self.pending_sum += sum;
+                if self.pending_sum >= FLUSH {
+                    self.flush_work()?;
+                }
+                return Ok(());
+            }
+            self.flush_work()?;
+        }
         self.ledger.apply(self.work, changes)
+    }
+    /// Moves locally accumulated work into the ledger.
+    pub(crate) fn flush_work(&mut self) -> Result<(), LedgerError> {
+        if self.pending_sum == 0 {
+            return Ok(());
+        }
+        let mut batch = [Change::Work(HtmlWork::InputUnitRead, 0); 8];
+        let mut count = 0;
+        for &dimension in &HtmlWork::ALL[..8] {
+            let amount = self.pending[dimension as usize];
+            if amount != 0 {
+                batch[count] = Change::Work(dimension, amount);
+                count += 1;
+            }
+        }
+        self.pending = [0; 8];
+        self.credit_base = self.credit_base.saturating_add(self.pending_sum);
+        self.pending_sum = 0;
+        self.ledger.apply(self.work, &batch[..count])
     }
     pub(crate) fn charge(&mut self, changes: &[HtmlChange]) -> Result<(), LedgerError> {
         self.ledger.apply(self.charging, changes)
