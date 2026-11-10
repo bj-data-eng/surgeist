@@ -3,6 +3,7 @@ mod core;
 mod document_string;
 mod interpretation;
 mod name_index;
+mod name_lookup;
 mod newlines;
 mod numeric_retained_capacity;
 mod tokens;
