@@ -224,7 +224,7 @@ fn event(
     packet: &Arc<crate::engine::FloatChildPacket<u32, f64>>,
     request: ComputeInputOf<f64>,
     funding: &EntryFunding<f64>,
-) -> FloatEvent<u32, f64> {
+) -> Result<FloatEvent<u32, f64>, FitError> {
     let [row] = capture.associations.runs() else {
         panic!("one actual admitted run")
     };
@@ -254,7 +254,6 @@ fn event(
         request,
         Some(funding.as_ref()),
     )
-    .unwrap_or_else(|_| panic!("the funded real float source has an exact seam"))
 }
 
 fn bind(
@@ -347,7 +346,8 @@ fn draft_and_bound_closing_plans_release_live_backing_without_refunding_usage() 
         let mut draft = FloatEvents::new();
         draft
             .push(
-                event(capture, packet, request, &funding),
+                event(capture, packet, request, &funding)
+                    .unwrap_or_else(|_| panic!("the funded real float source has an exact seam")),
                 Some(funding.as_ref()),
             )
             .unwrap_or_else(|_| panic!("funded draft admission"));
@@ -387,11 +387,13 @@ fn exhausted_closing_plan_construction_refuses_and_releases_draft_custody() {
         let mut draft = FloatEvents::new();
         draft
             .push(
-                event(capture, packet, request, &funding),
+                event(capture, packet, request, &funding)
+                    .unwrap_or_else(|_| panic!("the funded real float source has an exact seam")),
                 Some(funding.as_ref()),
             )
             .unwrap_or_else(|_| panic!("funded draft admission"));
-        let unbound = event(capture, packet, request, &funding);
+        let unbound = event(capture, packet, request, &funding)
+            .unwrap_or_else(|_| panic!("the funded real float source has an exact seam"));
         remaining_work(&funding);
         let Err(error) = bind(draft, capture, controls, &funding) else {
             panic!("spent work must refuse bound-plan construction");
@@ -414,5 +416,55 @@ fn exhausted_closing_plan_construction_refuses_and_releases_draft_custody() {
             calls,
             "refusal does not repeat prior producer effects"
         );
+    });
+}
+
+#[test]
+fn exhausted_float_source_construction_refuses_before_scan_without_provider_replay() {
+    with_scene(|capture, packet, request, _, line| {
+        let fresh = owner(&capture.paragraphs[0]);
+        let spent = owner(&capture.paragraphs[0]);
+        let fresh_funding =
+            EntryFunding::new(fresh.clone(), capture.paragraphs[0].prepared.clone())
+                .unwrap()
+                .unwrap();
+        let spent_funding =
+            EntryFunding::new(spent.clone(), capture.paragraphs[0].prepared.clone())
+                .unwrap()
+                .unwrap();
+        let calls = MEASUREMENTS.with(Cell::get);
+        let fresh_live = fresh.retention();
+        let source = event(capture, packet, request, &fresh_funding)
+            .unwrap_or_else(|_| panic!("fresh work admits the real float source"));
+        let actual = AcceptedFloatPrefix::Seam(source.seam.clone())
+            .observe(line)
+            .map_err(|error| super::super::inline_run::text_run_error::<u32, f64, ()>(0, error))
+            .unwrap();
+        assert_eq!(
+            actual,
+            (10.0, true),
+            "the real X prefix owns its Ahem10 source extent and content"
+        );
+        drop(source);
+        assert_eq!(fresh.retention(), fresh_live);
+        let spent_live = spent.retention();
+        remaining_work(&spent_funding);
+        let result = event(capture, packet, request, &spent_funding);
+        assert_eq!(
+            spent.retention(),
+            spent_live,
+            "source construction retains no scratch after return"
+        );
+        assert_eq!(
+            MEASUREMENTS.with(Cell::get),
+            calls,
+            "source construction never repeats prior float production"
+        );
+        let Err(error) = result else {
+            panic!(
+                "exhausted structural work must refuse float source construction before scanning"
+            );
+        };
+        structural_limit(error);
     });
 }
