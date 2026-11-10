@@ -182,6 +182,53 @@ fn assert_measured_leaf_block_margin_collapse_uses_own_logical_block_extent<S: L
 }
 
 #[test]
+fn parent_context_gates_measured_leaf_boundary_collapse_in_both_scalar_lanes() {
+    fn assert_lane<S: LayoutScalar>() {
+        let flow_axes = FlowAxes::new(WritingMode::HorizontalTb, Direction::Ltr);
+        let style = NodeInputOf::<S> {
+            display: Display::Block,
+            ..NodeInputOf::default()
+        };
+
+        for (parent_context, expected_collapse) in [
+            (ParentFormattingContext::BlockFlow, true),
+            (ParentFormattingContext::Flex, false),
+            (ParentFormattingContext::Grid, false),
+            (ParentFormattingContext::NoParent, false),
+        ] {
+            let input = ComputeInputOf::<S>::leaf_layout(
+                Size::NONE,
+                Size::NONE,
+                ContainingLayoutContext::new(flow_axes, parent_context),
+                crate::SizingRequestOf::new(
+                    Size::splat(crate::AxisSizingRequestOf::new(
+                        crate::AvailableSpaceOf::Indefinite,
+                        crate::SizingOperation::Normal,
+                    )),
+                    crate::OrthogonalFallbackOf::new(
+                        crate::Size::NONE,
+                        crate::NearestScrollportOf::Unknown,
+                        crate::Size::splat(crate::OrthogonalFallbackLimitOf::Unknown),
+                    ),
+                ),
+            )
+            .expect("valid direct leaf input");
+            let output = compute_leaf(input, &style, |_measurement| Ok::<_, ()>(Size::ZERO))
+                .expect("leaf measurement succeeds");
+
+            assert_eq!(
+                output.block_margin_collapse.can_collapse_through(flow_axes),
+                expected_collapse,
+                "unexpected measured-leaf boundary collapse for {parent_context:?}"
+            );
+        }
+    }
+
+    assert_lane::<f32>();
+    assert_lane::<f64>();
+}
+
+#[test]
 fn measured_leaf_block_margin_collapse_uses_own_logical_block_extent_in_f32() {
     assert_measured_leaf_block_margin_collapse_uses_own_logical_block_extent::<f32>();
 }
