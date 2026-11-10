@@ -208,7 +208,7 @@ impl SessionStorage {
                             node: Some(0),
                             state: template::DocumentState::Ordinary { inert: None },
                             class: crate::HtmlDocumentClass::Html,
-                            meta: meta::MetaHistory::offline(),
+                            meta: Box::new(meta::MetaHistory::offline()),
                             interaction: dialog::InteractionHistory::new(),
                         },
                     )

@@ -725,7 +725,7 @@ impl SessionStorage {
             .payloads
             .push_row(
                 prepared,
-                RetainedPayload::AssociationCapturedContext(CapturedContext { value, usage }),
+                RetainedPayload::AssociationCapturedContext(Box::new(CapturedContext { value, usage })),
             )
             .map_err(|_| latch_registry_row(c))?;
         Ok(Some(index))

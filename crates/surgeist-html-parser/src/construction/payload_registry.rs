@@ -59,7 +59,7 @@ pub(super) enum RetainedPayload {
     CspTransition(Box<csp::Transition>),
     AssociationDocument(pending_association::DocumentCapture),
     AssociationOccurrence(OwnedVec<pending_association::Occurrence>),
-    AssociationCapturedContext(pending_association::CapturedContext),
+    AssociationCapturedContext(Box<pending_association::CapturedContext>),
     AssociatedInputs {
         inputs: Arc<associated::Inputs>,
         usage: associated::AssociatedStorageUsage,
@@ -74,7 +74,7 @@ pub(super) enum RetainedPayload {
     },
     Hyperlink {
         node: usize,
-        state: associated::HyperlinkMetadata,
+        state: Box<associated::HyperlinkMetadata>,
     },
     Image {
         node: usize,
@@ -124,7 +124,7 @@ pub(super) enum RetainedPayload {
         node: Option<usize>,
         state: template::DocumentState,
         class: crate::HtmlDocumentClass,
-        meta: meta::MetaHistory,
+        meta: Box<meta::MetaHistory>,
         interaction: dialog::InteractionHistory,
     },
     MetaMissing {

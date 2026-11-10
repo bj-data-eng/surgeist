@@ -348,13 +348,13 @@ impl SessionStorage {
                     prepared,
                     RetainedPayload::Hyperlink {
                         node,
-                        state: HyperlinkMetadata {
+                        state: Box::new(HyperlinkMetadata {
                             document,
                             raw: None,
                             value: HyperlinkValue::Absent,
                             cause,
                             usage: AssociatedStorageUsage::default(),
-                        },
+                        }),
                     },
                 )
                 .map_err(|_| latch_registry_row(c))?;
@@ -750,7 +750,7 @@ impl SessionStorage {
             return Err(latch_registry_row(c));
         };
         let old = mem::replace(
-            state,
+            &mut **state,
             HyperlinkMetadata {
                 document,
                 raw,
