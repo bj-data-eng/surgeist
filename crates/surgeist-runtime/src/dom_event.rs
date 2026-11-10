@@ -4,7 +4,8 @@
 //! ordinary nonbubbling, noncomposed Style load/error, Details toggle and Dialog
 //! beforetoggle events. Details preserves its queued state; Dialog supplies its
 //! source-selected cancelability. Both admitted ToggleEvent sources are null.
-//! Registration supports capture and once; JS, AbortSignal, passive listeners,
+//! Registration supports capture and once, borrowed Rust callbacks and owned
+//! host invocations at the Source event front. JS, AbortSignal, passive listeners,
 //! arbitrary event construction and activation are not offered. A hosted
 //! Document's non-load parent is its actual native Global; this is no JS Window
 //! or ECMAScript realm implementation. Family owners validate their actual
@@ -261,6 +262,8 @@ pub enum DomEventDispatchError {
     Abandoned,
     /// Resume requires an event retained by this exact registry.
     WrongContinuation,
+    /// The selected host refused execution; this event cannot produce a receipt.
+    HostRefused(DomEventHostError),
     /// Registry/generation/order identity exhausted rather than wrapping.
     IdentityExhausted,
     /// A canonical event-parent chain repeated a node.
@@ -285,6 +288,7 @@ impl std::fmt::Display for DomEventDispatchError {
             Self::WrongContinuation => {
                 f.write_str("native DOM event continuation is not retained by this dispatcher")
             }
+            Self::HostRefused(error) => write!(f, "native DOM event host refused: {}", error.code),
             Self::IdentityExhausted => {
                 f.write_str("native DOM event registration identity is exhausted")
             }
@@ -355,6 +359,12 @@ impl DomEventDispatchReceipt {
 /// Result of executing as far as current admission permits.
 #[derive(Debug)]
 pub enum DomEventDispatchOutcome {
+    /// An admitted host listener is active. Release all caller loans before
+    /// executing it, report its result once, then service the original event.
+    HostInvocation(DomEventHostInvocation),
+    /// This producer does not offer the owned host invocation capability. The
+    /// next host registration remains untouched, including its once option.
+    RetainedHostUnavailable,
     /// All source invoke steps and event cleanup completed.
     Complete(DomEventDispatchReceipt),
     /// The event retains its exact next step; resume it without replay.
@@ -395,10 +405,17 @@ type Listener<C> = dyn Fn(
     &NativeDomEvent,
 ) -> Result<(), DomEventCallbackError>;
 /// Shared callback identity. Cloning preserves duplicate-registration identity.
-pub struct DomEventCallback<C>(Rc<Listener<C>>);
+pub struct DomEventCallback<C>(CallbackKind<C>);
+enum CallbackKind<C> {
+    Native(Rc<Listener<C>>),
+    Host(Rc<u64>),
+}
 impl<C> Clone for DomEventCallback<C> {
     fn clone(&self) -> Self {
-        Self(self.0.clone())
+        Self(match &self.0 {
+            CallbackKind::Native(callback) => CallbackKind::Native(callback.clone()),
+            CallbackKind::Host(key) => CallbackKind::Host(key.clone()),
+        })
     }
 }
 impl<C> DomEventCallback<C> {
@@ -413,8 +430,193 @@ impl<C> DomEventCallback<C> {
         ) -> Result<(), DomEventCallbackError>
         + 'static,
     ) -> Self {
-        Self(Rc::new(callback))
+        Self(CallbackKind::Native(Rc::new(callback)))
     }
+}
+impl<C> DomEventCallback<C> {
+    /// An external synchronous host listener. The key is caller routing data,
+    /// never identity or execution authority. Clones share callback identity;
+    /// independently constructed callbacks remain distinct even with equal keys.
+    /// Source event servicing offers this execution capability. Other native
+    /// producers retain at a host listener without consuming it.
+    pub fn host(key: u64) -> Self {
+        Self(CallbackKind::Host(Rc::new(key)))
+    }
+    fn same_identity(&self, other: &Self) -> bool {
+        match (&self.0, &other.0) {
+            (CallbackKind::Native(a), CallbackKind::Native(b)) => Rc::ptr_eq(a, b),
+            (CallbackKind::Host(a), CallbackKind::Host(b)) => Rc::ptr_eq(a, b),
+            _ => false,
+        }
+    }
+}
+/// Host execution refusal, distinct from an ordinary guest callback error.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct DomEventHostError {
+    /// Caller-owned host diagnostic code.
+    pub code: u64,
+}
+/// Affine permission to execute one already-selected external listener. It owns
+/// no session, dispatcher or composition borrow. The original event owner keeps
+/// its dispatch and Source scope alive; this token cannot outlive that authority.
+/// Dropping an unreported token abandons delivery without a completion receipt.
+pub struct DomEventHostInvocation {
+    event: NativeDomEvent,
+    custody: std::rc::Weak<EventContinuation>,
+    sequence: usize,
+    registration: DomEventRegistrationId,
+    key: u64,
+    reported: bool,
+}
+impl std::fmt::Debug for DomEventHostInvocation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DomEventHostInvocation")
+            .field("event", &self.event)
+            .field("registration", &self.registration)
+            .field("key", &self.key)
+            .field("reported", &self.reported)
+            .finish()
+    }
+}
+impl DomEventHostInvocation {
+    /// Caller routing data of this exact callback identity.
+    pub const fn key(&self) -> u64 {
+        self.key
+    }
+    /// The registration selected before once removal or any host execution.
+    pub const fn registration(&self) -> DomEventRegistrationId {
+        self.registration
+    }
+    /// Authentic live event observation and propagation/default controls.
+    pub fn event(&self) -> &NativeDomEvent {
+        &self.event
+    }
+    /// Record ordinary guest completion once. A guest error joins normal
+    /// callback failure reporting; later listeners remain eligible. This closes
+    /// the active callback scope but runs neither another listener nor a Source
+    /// tail. Service the original event again to continue its exact cursor.
+    /// A foreign dispatcher leaves this token and the original scope untouched.
+    pub fn complete<C>(
+        &mut self,
+        dispatcher: &DomEventDispatcher<C>,
+        result: Result<(), DomEventCallbackError>,
+    ) -> Result<(), DomEventDispatchError> {
+        self.report(dispatcher, HostResult::Returned(result))
+    }
+    /// Record a host refusal once. It closes reentry and terminally
+    /// prevents a successful event receipt. Subsequent servicing returns this
+    /// same first refusal; it does not reinterpret it as a guest exception.
+    pub fn refuse<C>(
+        &mut self,
+        dispatcher: &DomEventDispatcher<C>,
+        error: DomEventHostError,
+    ) -> Result<(), DomEventDispatchError> {
+        self.report(dispatcher, HostResult::Refused(error))
+    }
+    fn report<C>(
+        &mut self,
+        dispatcher: &DomEventDispatcher<C>,
+        result: HostResult,
+    ) -> Result<(), DomEventDispatchError> {
+        if self.reported {
+            return Err(DomEventDispatchError::AlreadyCompleted);
+        }
+        let custody = self
+            .custody
+            .upgrade()
+            .ok_or(DomEventDispatchError::Abandoned)?;
+        if self.event.0.status.get() == Status::Abandoned {
+            return Err(DomEventDispatchError::Abandoned);
+        }
+        {
+            let dispatch = custody
+                .dispatch
+                .try_borrow()
+                .map_err(|_| DomEventDispatchError::AlreadyDispatching)?;
+            let dispatch = dispatch
+                .as_ref()
+                .ok_or(DomEventDispatchError::WrongContinuation)?;
+            if !Rc::ptr_eq(&dispatch._reservation.0, &dispatcher.owner) {
+                return Err(DomEventDispatchError::WrongContinuation);
+            }
+        }
+        let mut frame = custody
+            .host
+            .take()
+            .ok_or(DomEventDispatchError::WrongContinuation)?;
+        if frame.sequence != self.sequence || frame.registration != self.registration {
+            custody.host.set(Some(frame));
+            return Err(DomEventDispatchError::WrongContinuation);
+        }
+        if frame.result.is_some() {
+            custody.host.set(Some(frame));
+            return Err(DomEventDispatchError::AlreadyCompleted);
+        }
+        frame.result = Some(result);
+        frame.scope.take();
+        frame.running.take();
+        custody.host.set(Some(frame));
+        self.event.clear_invocation();
+        self.event.0.status.set(Status::Retained);
+        self.reported = true;
+        Ok(())
+    }
+    pub(crate) fn retain_source_scope(
+        &self,
+        scope: surgeist_dom::DomSourceEventDispatchGuard,
+    ) -> Result<(), DomEventDispatchError> {
+        let custody = self
+            .custody
+            .upgrade()
+            .ok_or(DomEventDispatchError::Abandoned)?;
+        let mut frame = custody
+            .host
+            .take()
+            .ok_or(DomEventDispatchError::WrongContinuation)?;
+        if frame.sequence != self.sequence || frame.scope.is_some() || frame.result.is_some() {
+            custody.host.set(Some(frame));
+            return Err(DomEventDispatchError::WrongContinuation);
+        }
+        frame.scope = Some(scope);
+        custody.host.set(Some(frame));
+        Ok(())
+    }
+}
+impl Drop for DomEventHostInvocation {
+    fn drop(&mut self) {
+        if !self.reported
+            && let Some(custody) = self.custody.upgrade()
+        {
+            let frame = custody.host.take();
+            if frame
+                .as_ref()
+                .is_some_and(|frame| frame.sequence == self.sequence)
+            {
+                self.event.abandon();
+                // No continuation loan crosses a host boundary. If the
+                // source owner is already disposing it, its own drop owns
+                // the same dispatch cleanup.
+                if let Ok(mut dispatch) = custody.dispatch.try_borrow_mut() {
+                    dispatch.take();
+                }
+            } else {
+                custody.host.set(frame);
+            }
+        }
+    }
+}
+#[derive(Clone, Copy)]
+enum HostResult {
+    Returned(Result<(), DomEventCallbackError>),
+    Refused(DomEventHostError),
+}
+struct HostFrame {
+    sequence: usize,
+    registration: DomEventRegistrationId,
+    current_target: DomEventTarget,
+    result: Option<HostResult>,
+    running: Option<RunningReservation>,
+    scope: Option<surgeist_dom::DomSourceEventDispatchGuard>,
 }
 struct Registration<C> {
     target: DomEventTarget,
@@ -504,7 +706,7 @@ impl<C> DomEventDispatcher<C> {
                 && r.target == target
                 && r.event_type == event_type
                 && r.options.capture == options.capture
-                && Rc::ptr_eq(&r.callback.0, &callback.0)
+                && r.callback.same_identity(&callback)
             {
                 return Ok(DomEventRegistrationId {
                     registry: self.owner.id,
@@ -603,6 +805,17 @@ impl<C> DomEventDispatcher<C> {
         event: &NativeDomEvent,
         limits: DomEventDispatchLimits,
         cancel: &AtomicBool,
+    ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
+        self.dispatch_with_host(dom, context, event, limits, cancel, false)
+    }
+    pub(crate) fn dispatch_with_host(
+        &mut self,
+        dom: &mut Dom,
+        context: &mut C,
+        event: &NativeDomEvent,
+        limits: DomEventDispatchLimits,
+        cancel: &AtomicBool,
+        host: bool,
     ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
         match event.0.status.get() {
             Status::Ready => (),
@@ -716,7 +929,7 @@ impl<C> DomEventDispatcher<C> {
         dispatch
             .prepare_failure_bank(&mut budget)
             .map_err(DomEventDispatchError::Admission)?;
-        self.execute(dom, context, event, dispatch, budget)
+        self.execute(dom, context, event, dispatch, budget, host)
     }
     /// Continue exactly where admission stopped. No already-delivered listener
     /// is called again, even after detach, adoption, retirement or callback failure.
@@ -728,8 +941,21 @@ impl<C> DomEventDispatcher<C> {
         limits: DomEventDispatchLimits,
         cancel: &AtomicBool,
     ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
+        self.resume_with_host(dom, context, event, limits, cancel, false)
+    }
+    pub(crate) fn resume_with_host(
+        &mut self,
+        dom: &mut Dom,
+        context: &mut C,
+        event: &NativeDomEvent,
+        limits: DomEventDispatchLimits,
+        cancel: &AtomicBool,
+        host: bool,
+    ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
         match event.0.status.get() {
-            Status::Running => return Err(DomEventDispatchError::AlreadyDispatching),
+            Status::Running | Status::HostPending => {
+                return Err(DomEventDispatchError::AlreadyDispatching);
+            }
             Status::Complete => return Err(DomEventDispatchError::AlreadyCompleted),
             Status::Abandoned => return Err(DomEventDispatchError::Abandoned),
             Status::Ready => return Err(DomEventDispatchError::WrongContinuation),
@@ -773,9 +999,29 @@ impl<C> DomEventDispatcher<C> {
         dispatch
             .prepare_failure_bank(&mut budget)
             .map_err(DomEventDispatchError::Admission)?;
+        if let Some(frame) = custody.host.take() {
+            match frame.result {
+                Some(HostResult::Returned(Err(error))) => {
+                    dispatch.failures.push(DomEventListenerFailure {
+                        registration: frame.registration,
+                        current_target: frame.current_target,
+                        kind: DomEventListenerFailureKind::Reported(error),
+                    });
+                }
+                Some(HostResult::Returned(Ok(()))) => (),
+                Some(HostResult::Refused(error)) => {
+                    custody.host.set(Some(frame));
+                    return Err(DomEventDispatchError::HostRefused(error));
+                }
+                None => {
+                    custody.host.set(Some(frame));
+                    return Err(DomEventDispatchError::AlreadyDispatching);
+                }
+            }
+        }
         let dispatch = state.take().expect("checked continuation");
         drop(state);
-        self.execute(dom, context, event, dispatch, budget)
+        self.execute(dom, context, event, dispatch, budget, host)
     }
     fn admit_running(&self) -> Result<(), DomEventDispatchError> {
         if self.owner.running.get() >= self.limits.nested_dispatches {
@@ -792,6 +1038,7 @@ impl<C> DomEventDispatcher<C> {
         event: &NativeDomEvent,
         mut dispatch: Dispatch,
         mut budget: Budget<'_>,
+        host: bool,
     ) -> Result<DomEventDispatchOutcome, DomEventDispatchError> {
         let custody = event
             .0
@@ -799,15 +1046,43 @@ impl<C> DomEventDispatcher<C> {
             .upgrade()
             .ok_or(DomEventDispatchError::Abandoned)?;
         self.owner.running.set(self.owner.running.get() + 1);
-        let _running = RunningReservation(self.owner.clone());
+        let running = RunningReservation(self.owner.clone());
         event.0.status.set(Status::Running);
-        *event.0.path.borrow_mut() = Some(dispatch.path.clone());
+        event.0.path.set(Some(dispatch.path.clone()));
         let result = catch_unwind(AssertUnwindSafe(|| {
-            self.run(dom, context, event, &mut dispatch, &mut budget)
+            self.run(dom, context, event, &mut dispatch, &mut budget, host)
         }));
-        event.0.current.set(None);
-        event.0.phase.set(DomEventPhase::None);
-        event.0.path.borrow_mut().take();
+        if let Ok(Err(RunStop::HostInvocation {
+            registration,
+            current_target,
+            key,
+        })) = result
+        {
+            let sequence = dispatch.callbacks;
+            *custody.borrow_mut() = Some(dispatch);
+            custody.host.set(Some(HostFrame {
+                sequence,
+                registration,
+                current_target,
+                result: None,
+                running: Some(running),
+                scope: None,
+            }));
+            custody.settle_element_task();
+            event.0.status.set(Status::HostPending);
+            return Ok(DomEventDispatchOutcome::HostInvocation(
+                DomEventHostInvocation {
+                    event: event.clone(),
+                    custody: Rc::downgrade(&custody),
+                    sequence,
+                    registration,
+                    key,
+                    reported: false,
+                },
+            ));
+        }
+        drop(running);
+        event.clear_invocation();
         if event.0.status.get() == Status::Abandoned {
             return Err(DomEventDispatchError::Abandoned);
         }
@@ -866,6 +1141,12 @@ impl<C> DomEventDispatcher<C> {
                     Ok(Err(RunStop::HostedAuthority(error))) => {
                         DomEventDispatchOutcome::RetainedHostedAuthority(error)
                     }
+                    Ok(Err(RunStop::HostUnavailable)) => {
+                        DomEventDispatchOutcome::RetainedHostUnavailable
+                    }
+                    Ok(Err(RunStop::HostInvocation { .. })) => {
+                        return Err(DomEventDispatchError::WrongContinuation);
+                    }
                     Ok(Err(RunStop::ForeignOwner)) => DomEventDispatchOutcome::RetainedForeignOwner,
                     Ok(Err(RunStop::ForeignRegistry)) => {
                         DomEventDispatchOutcome::RetainedForeignRegistry
@@ -884,6 +1165,7 @@ impl<C> DomEventDispatcher<C> {
         event: &NativeDomEvent,
         dispatch: &mut Dispatch,
         budget: &mut Budget<'_>,
+        host: bool,
     ) -> Result<(), RunStop> {
         let count = dispatch.path.len();
         while dispatch.invoke < count * 2 {
@@ -989,6 +1271,9 @@ impl<C> DomEventDispatcher<C> {
                 if dispatch.failures.len() >= budget.limits.failure_records {
                     return Err(DomEventResource::FailureRecords.into());
                 }
+                if matches!(&r.callback.0, CallbackKind::Host(_)) && !host {
+                    return Err(RunStop::HostUnavailable);
+                }
                 let once = r.options.once;
                 let callback = r.callback.clone();
                 // Advance and remove once *before* calling user code; both survive
@@ -1003,9 +1288,19 @@ impl<C> DomEventDispatcher<C> {
                 if once {
                     self.remove_listener(id);
                 }
+                let callback = match &callback.0 {
+                    CallbackKind::Native(callback) => callback,
+                    CallbackKind::Host(key) => {
+                        return Err(RunStop::HostInvocation {
+                            registration: id,
+                            current_target: item.invocation,
+                            key: **key,
+                        });
+                    }
+                };
                 let result = catch_unwind(AssertUnwindSafe(|| {
                     let mut access = DomEventDom::borrow(dom);
-                    (callback.0)(&mut access, self, context, event)
+                    callback(&mut access, self, context, event)
                 }));
                 let failure = match &result {
                     Ok(Ok(())) => None,
@@ -1035,6 +1330,7 @@ enum Status {
     Abandoned,
     Ready,
     Running,
+    HostPending,
     Retained,
     Complete,
 }
@@ -1084,7 +1380,7 @@ struct Event {
     stop: Cell<bool>,
     immediate: Cell<bool>,
     canceled: Cell<bool>,
-    path: RefCell<Option<Rc<EventPath>>>,
+    path: Cell<Option<Rc<EventPath>>>,
     continuation: std::rc::Weak<EventContinuation>,
     element_task_payload: RefCell<Option<crate::element_tasks::TaskPayload>>,
 }
@@ -1119,6 +1415,7 @@ impl NativeDomEventOwner {
     fn new(original: NodeId, data: EventData) -> Self {
         let custody = Rc::new(EventContinuation {
             dispatch: RefCell::new(None),
+            host: Cell::new(None),
             element_task_payload: RefCell::new(None),
         });
         let event = NativeDomEvent(Rc::new(Event {
@@ -1131,7 +1428,7 @@ impl NativeDomEventOwner {
             stop: Cell::new(false),
             immediate: Cell::new(false),
             canceled: Cell::new(false),
-            path: RefCell::new(None),
+            path: Cell::new(None),
             continuation: Rc::downgrade(&custody),
             element_task_payload: RefCell::new(None),
         }));
@@ -1338,7 +1635,8 @@ impl std::ops::Deref for NativeDomEventOwner {
 impl Drop for NativeDomEventOwner {
     fn drop(&mut self) {
         if self.event.0.status.get() != Status::Complete {
-            self.event.0.status.set(Status::Abandoned);
+            self.event.abandon();
+            self._custody.host.take();
         }
         // Ordinary field drop releases the actual continuation directly; it
         // never borrows a RefCell, calls user code, or manufactures completion.
@@ -1354,6 +1652,15 @@ impl std::fmt::Debug for NativeDomEvent {
     }
 }
 impl NativeDomEvent {
+    fn clear_invocation(&self) {
+        self.0.current.set(None);
+        self.0.phase.set(DomEventPhase::None);
+        self.0.path.take();
+    }
+    fn abandon(&self) {
+        self.clear_invocation();
+        self.0.status.set(Status::Abandoned);
+    }
     pub(crate) fn has_started(&self) -> bool {
         self.0.status.get() != Status::Ready
     }
@@ -1445,7 +1752,8 @@ impl NativeDomEvent {
     pub fn target(&self) -> Option<NodeId> {
         self.0.target.get()
     }
-    /// Current invocation target, cleared between dispatch calls and at completion.
+    /// Current invocation target, retained across an owned host call and cleared
+    /// when that callback reports completion or ordinary dispatch returns.
     pub fn current_target(&self) -> Option<DomEventTarget> {
         self.0.current.get()
     }
@@ -1493,9 +1801,10 @@ impl NativeDomEvent {
     }
     /// Allocation-free closed-tree-filtered path in target-to-root order. The
     /// iterator retains only the already-admitted frozen path, never a DOM borrow.
-    /// Outside a callback it is empty.
+    /// Outside a borrowed or pending host callback it is empty.
     pub fn composed_path(&self) -> DomEventComposedPath {
-        let path = self.0.path.borrow().clone();
+        let path = self.0.path.take();
+        self.0.path.set(path.clone());
         let current = self.0.current.get();
         let current_index = path
             .as_ref()
@@ -1599,6 +1908,7 @@ impl std::ops::Deref for EventPath {
 }
 struct EventContinuation {
     dispatch: RefCell<Option<Dispatch>>,
+    host: Cell<Option<HostFrame>>,
     // Declared after the actual dispatch so its allocations drop first.
     element_task_payload: RefCell<Option<crate::element_tasks::TaskPayload>>,
 }
@@ -1671,6 +1981,12 @@ impl Dispatch {
 }
 enum RunStop {
     Abandoned,
+    HostUnavailable,
+    HostInvocation {
+        registration: DomEventRegistrationId,
+        current_target: DomEventTarget,
+        key: u64,
+    },
     Resource(DomEventResource),
     ParsedSynchronous(DomParsedHtmlStyleNotificationRequirement),
     ParsedAdmission(DomError),

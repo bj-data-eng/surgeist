@@ -611,15 +611,33 @@ impl SourceEventRuntime {
                 let scope = state.executor.enter_dispatch(dom.raw(), permit, cancel)?;
                 (std::ops::Deref::deref(&row.event).clone(), scope)
             };
-            let outcome = {
-                let _scope = scope;
-                if event.has_started() {
-                    dispatcher.resume(dom.raw_mut(), context, &event, limits.dispatch, cancel)
-                } else {
-                    dispatcher.dispatch(dom.raw_mut(), context, &event, limits.dispatch, cancel)
-                }
+            let outcome = if event.has_started() {
+                dispatcher.resume_with_host(
+                    dom.raw_mut(),
+                    context,
+                    &event,
+                    limits.dispatch,
+                    cancel,
+                    true,
+                )
+            } else {
+                dispatcher.dispatch_with_host(
+                    dom.raw_mut(),
+                    context,
+                    &event,
+                    limits.dispatch,
+                    cancel,
+                    true,
+                )
             }
             .map_err(DomSourceEventRuntimeError::Dispatch)?;
+            if let DomEventDispatchOutcome::HostInvocation(invocation) = &outcome {
+                invocation
+                    .retain_source_scope(scope)
+                    .map_err(DomSourceEventRuntimeError::Dispatch)?;
+            } else {
+                drop(scope);
+            }
             match outcome {
                 DomEventDispatchOutcome::Complete(receipt) => {
                     // No fallible lookup, context access or admission separates
@@ -966,3 +984,6 @@ mod payload_tests {
         assert_eq!(calls.len(), LISTENERS);
     }
 }
+
+#[cfg(test)]
+mod host_tests;

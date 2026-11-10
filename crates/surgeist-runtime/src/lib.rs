@@ -215,9 +215,10 @@ pub use dom_dialog::{
 pub use dom_event::{
     DomEventCallback, DomEventCallbackError, DomEventComposedPath, DomEventDispatchError,
     DomEventDispatchLimits, DomEventDispatchOutcome, DomEventDispatchReceipt, DomEventDispatcher,
-    DomEventDom, DomEventListenerFailure, DomEventListenerFailureKind, DomEventListenerOptions,
-    DomEventPhase, DomEventRegistrationId, DomEventRegistryLimits, DomEventResource,
-    DomEventTarget, DomEventType, DomToggleEvent, NativeDomEvent,
+    DomEventDom, DomEventHostError, DomEventHostInvocation, DomEventListenerFailure,
+    DomEventListenerFailureKind, DomEventListenerOptions, DomEventPhase, DomEventRegistrationId,
+    DomEventRegistryLimits, DomEventResource, DomEventTarget, DomEventType, DomToggleEvent,
+    NativeDomEvent,
 };
 pub use dom_host::{
     RuntimeDomHost, RuntimeDomHostError, RuntimeDomHostPublication, SurfaceDomBindingLimits,
