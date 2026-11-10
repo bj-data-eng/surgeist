@@ -1470,8 +1470,14 @@ impl<C> Drop for DomEventDispatcher<C> {
                 // No host call retains a mutable continuation loan. Withdraw
                 // its real Source reentry guard before releasing dispatch state.
                 custody.host.take();
-                if let Ok(mut dispatch) = custody.dispatch.try_borrow_mut() {
-                    dispatch.take();
+                if let Ok(mut slot) = custody.dispatch.try_borrow_mut()
+                    && let Ok(mut retained) = custody.element_task_payload.try_borrow_mut()
+                    && let Some(dispatch) = slot.take()
+                {
+                    // The parked dispatch owns these banks. A dispatch running
+                    // on the stack settles its own funding after it returns.
+                    drop(dispatch);
+                    drop(retained.take());
                 }
             }
         }
