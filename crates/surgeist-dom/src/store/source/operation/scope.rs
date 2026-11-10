@@ -101,6 +101,7 @@ impl OperationRoot {
             }
             Command::ConstructDocument(context) => Some(context.document.node()),
             Command::CloneNode { source, .. } => existing(source),
+            Command::SplitText { node, .. } => existing(node),
             Command::Import { document, .. } | Command::Adopt { document, .. } => {
                 existing(document)
             }

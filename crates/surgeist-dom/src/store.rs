@@ -47,6 +47,7 @@ mod history;
 pub(crate) mod hosted;
 mod html_credits;
 mod hyperlink;
+mod text;
 use history::HistoryEntry;
 mod image;
 mod import;
@@ -3144,6 +3145,10 @@ impl Draft {
     ) -> Result<(), DomError> {
         match command {
             Command::Compound(edit) => self.compound_edit(edit, limits, cancelled)?,
+            Command::SplitText { node, offset } => {
+                let node = self.resolve(node.clone())?;
+                self.split_text(node, *offset, limits, cancelled)?;
+            }
             Command::ExitFullscreen { document } => {
                 let document = self.resolve(document.clone())?;
                 self.exit_fullscreen_boundary(document, true, cancelled)?;
@@ -3631,110 +3636,7 @@ impl Draft {
                 data,
             } => {
                 let node = self.resolve(node.clone())?;
-                let (offset, count) = (*offset, *count);
-                let previous_units = self.node(node)?.logical_units()?;
-                let fixed_units = match self.node(node)?.kind() {
-                    transaction::KindRead::ProcessingInstruction(value) => value.target().len(),
-                    _ => 0,
-                };
-                let previous = match self.node(node)?.kind() {
-                    transaction::KindRead::Text(data) | transaction::KindRead::Comment(data) => {
-                        data
-                    }
-                    transaction::KindRead::ProcessingInstruction(value) => value.data(),
-                    _ => return Err(DomError::WrongNodeKind),
-                };
-                if offset > previous.len() {
-                    return Err(DomError::IndexSize);
-                }
-                let removed = count.min(previous.len() - offset);
-                let length = (previous.len() - removed)
-                    .checked_add(data.len())
-                    .ok_or(DomError::RepresentationExhausted)?;
-                let raw_units = (self.units - previous_units)
-                    .checked_add(fixed_units)
-                    .and_then(|units| units.checked_add(length))
-                    .ok_or(DomError::RepresentationExhausted)?;
-                admit(raw_units, limits.units, DomResource::StringCodeUnits)?;
-                #[cfg(test)]
-                let growth = source::formation::mutation_observation::before(
-                    self,
-                    source::formation::mutation_observation::Site::ReplaceData,
-                    cancelled,
-                )?;
-                let formation = source::formation::Formation::new(self, cancelled)?;
-                let mut value = match &formation {
-                    Some(formation) => source::formation::utf16_buffer(
-                        length,
-                        limits.units,
-                        Some(formation),
-                        cancelled,
-                    )?,
-                    None => {
-                        let mut output = Vec::new();
-                        reserve(&mut output, length)?;
-                        output
-                    }
-                };
-                #[cfg(test)]
-                let mut copied = transaction::CopyObservation::default();
-                for unit in previous.code_units()[..offset]
-                    .iter()
-                    .chain(data.code_units())
-                    .chain(&previous.code_units()[offset + removed..])
-                {
-                    self.source_step(cancelled)?;
-                    value.push(*unit);
-                    #[cfg(test)]
-                    copied.pushed::<u16>();
-                }
-                let value = DocumentString::from_utf16(value);
-                #[cfg(test)]
-                source::formation::mutation_observation::grew(
-                    growth,
-                    size_of::<Vec<u16>>() + value.retained_units() * size_of::<u16>(),
-                );
-                let kind = match self.node(node)?.kind() {
-                    transaction::KindRead::Text(_) => NewNode::Text(value),
-                    transaction::KindRead::Comment(_) => NewNode::Comment(value),
-                    transaction::KindRead::ProcessingInstruction(instruction) => {
-                        let instruction =
-                            instruction.with_data(&value, formation.as_ref(), cancelled)?;
-                        let mut temporary = source::storage::Payload::default();
-                        temporary.string(&value)?;
-                        drop(value);
-                        if let Some(budget) = &formation {
-                            budget.release_payload(temporary);
-                        }
-                        NewNode::ProcessingInstruction(instruction)
-                    }
-                    _ => unreachable!("checked CharacterData kind"),
-                };
-                let retained_occurrence = formation.is_some();
-                let credit = match formation.and_then(source::formation::Formation::into_debit) {
-                    Some(credit) => credit,
-                    None => self
-                        .custody_ledger()
-                        .retain(custody::Usage::ZERO, |usage| {
-                            self.admit_custody_usage(usage, cancelled)
-                        })?,
-                };
-                let held = self.admit_held_text(
-                    custody::Held::new(kind, credit),
-                    retained_occurrence,
-                    cancelled,
-                )?;
-
-                let units = (self.units - previous_units)
-                    .checked_add(new_kind_units(held.value())?)
-                    .ok_or(DomError::RepresentationExhausted)?;
-                admit(units, limits.units, DomResource::StringCodeUnits)?;
-                self.replace_character_data_retained(node, held, retained_occurrence, cancelled)?;
-                self.units = units;
-                self.range_replace_data(node, offset, removed, data.len(), cancelled)?;
-                if let Some(parent) = self.node(node)?.parent() {
-                    self.children_changed(parent, limits, cancelled)?;
-                }
+                self.replace_data(node, *offset, *count, data.code_units(), limits, cancelled)?;
             }
             Command::Insert {
                 node,

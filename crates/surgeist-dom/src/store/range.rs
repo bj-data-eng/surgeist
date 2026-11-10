@@ -517,6 +517,47 @@ impl Draft {
         }
         Ok(())
     }
+    /// DOM3071 split step 7, after insertion and before ordinary replace-data.
+    pub(super) fn range_split_text(
+        &mut self,
+        node: Key,
+        new_node: Key,
+        parent: Key,
+        offset: usize,
+        cancel: &AtomicBool,
+    ) -> Result<(), DomError> {
+        let node = self.live_key(node);
+        let new_node = self.live_key(new_node);
+        let parent = self.live_key(parent);
+        let index = match self.node(node)?.parent() {
+            Some(current) => self.range_child_index(current, node, cancel)?,
+            None => 0,
+        }
+        .checked_add(1)
+        .ok_or(DomError::RepresentationExhausted)?;
+        let mut participants = self.range_participants(node, cancel)?;
+        self.add_range_participants(parent, &mut participants, cancel)?;
+        for id in participants.iter() {
+            self.source_step(cancel)?;
+            let mut record = self.range_record(id)?;
+            let old = record;
+            for point in [&mut record.start, &mut record.end] {
+                if point.container == node && point.offset > offset {
+                    point.container = new_node;
+                    point.offset -= offset;
+                } else if point.container == parent && point.offset == index {
+                    point.offset = point
+                        .offset
+                        .checked_add(1)
+                        .ok_or(DomError::RepresentationExhausted)?;
+                }
+            }
+            if record != old {
+                self.replace_range_record(id, record, cancel)?;
+            }
+        }
+        Ok(())
+    }
     pub(super) fn range_replace_data(
         &mut self,
         node: Key,

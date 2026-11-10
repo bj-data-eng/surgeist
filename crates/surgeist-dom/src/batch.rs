@@ -179,6 +179,10 @@ pub(crate) enum Command {
         document: Option<NodeOperand>,
     },
     ConstructDocument(crate::hosted::DocumentConstructorContext),
+    SplitText {
+        node: NodeOperand,
+        offset: usize,
+    },
     CloneNode {
         source: NodeOperand,
         subtree: bool,
@@ -591,6 +595,16 @@ impl DomBatch {
         self.commands.push(Command::CloneNode {
             source: source.into(),
             subtree,
+        });
+        ticket
+    }
+    /// Split one Text at an exact UTF-16 offset, returning the new Text's ticket.
+    /// Insertion, special Range transfers and data deletion remain one atomic edit.
+    pub fn split_text(&mut self, node: impl Into<NodeOperand>, offset: usize) -> CreatedNode {
+        let ticket = self.ticket();
+        self.commands.push(Command::SplitText {
+            node: node.into(),
+            offset,
         });
         ticket
     }

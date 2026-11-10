@@ -631,6 +631,16 @@ impl DomSourceEdit {
             },
         }
     }
+    /// Split Text at an exact UTF-16 offset under one original Source invocation.
+    /// Completion returns the actual new Text through `DomSourceOutput::Node`.
+    pub fn split_text(node: NodeId, offset: usize) -> Self {
+        Self {
+            command: Command::SplitText {
+                node: node.into(),
+                offset,
+            },
+        }
+    }
     /// Request one `create_document` operation on the canonical owner.
     pub fn create_document() -> Self {
         Self::create(Creation::Document, None)

@@ -40,6 +40,23 @@ Safe intermediate publications retain their actual Source-completeness qualifica
 This bounded native association is distinct from complete browser Selection
 bindings, selection events, editing and focus execution.
 
+## Text splitting
+
+`DomBatch::split_text` returns a real `CreatedNode` ticket; completion of
+`DomSourceEdit::split_text` returns its new Text through `DomSourceOutput::Node`.
+Both follow DOM3071's split algorithm at exact UTF-16 offsets, including isolated
+surrogates and zero/end offsets. The new Text uses the actual current owner
+Document's creation Global. Its insertion and hooks precede the special live
+Range transfers and deletion from the original Text. Parent boundaries exactly
+after the original Text move past the inserted Text; detached splits instead
+retain their Range containers and apply ordinary deletion clamping.
+
+Source retains one original split through service refusal, lease drop and
+cancellation after publication. Ordinary batches retain their atomic external
+service refusal. The represented family is Text: CDATASection is not currently
+represented or emulated. Node.normalize is not yet provided by this native
+surface.
+
 ## designMode state and setter
 
 `DomDocumentMetadata::design_mode_enabled` reads canonical Document state.

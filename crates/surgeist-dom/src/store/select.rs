@@ -891,6 +891,7 @@ pub(super) enum Effect {
     },
     Tree(tree::Frame),
     Compound(super::compound::Frame),
+    SplitText(super::text::SplitFrame),
     CompoundTextCleanup(Key),
     Clone(import::Frame),
     Post {
@@ -1025,6 +1026,7 @@ impl EffectFrame {
             Effect::Clear { target } => Effect::Clear { target: *target },
             Effect::Tree(frame) => Effect::Tree(frame.checkpoint(a, cancel)?),
             Effect::Compound(frame) => Effect::Compound(frame.checkpoint(a, cancel)?),
+            Effect::SplitText(frame) => Effect::SplitText(*frame),
             Effect::CompoundTextCleanup(key) => Effect::CompoundTextCleanup(*key),
             Effect::Clone(frame) => Effect::Clone(frame.checkpoint()),
             Effect::Post { list, index, stage } => Effect::Post {
@@ -1303,6 +1305,7 @@ impl Draft {
                     }
                     Effect::Tree(frame) => self.tree_effect(frame, limits, cancel)?,
                     Effect::Compound(frame) => self.compound_effect(frame, limits, cancel)?,
+                    Effect::SplitText(frame) => self.split_text_effect(frame, limits, cancel)?,
                     Effect::CompoundTextCleanup(key) => {
                         self.compound_discard_unpublished(key, cancel)?
                     }
