@@ -902,3 +902,6 @@ mod closing_funding_tests;
 
 #[cfg(test)]
 mod source_incidence_tests;
+
+#[cfg(test)]
+mod shared_sizing_tests;

@@ -3,6 +3,9 @@
 //! Raw paragraph markers author storage, not native run seams. The original
 //! capture/tree below owns every source and block boundary. New domain/segment
 //! APIs are functionally qualified; no historical compiler RED is claimed.
+#[path = "domain_output_segments/shared_float_sizing.rs"]
+mod shared_float_sizing;
+
 use super::*;
 use crate::test_support::readback::{self, Phase};
 use std::sync::Arc;
