@@ -6902,20 +6902,14 @@ pub(super) fn measure_proof_work<T>(
     limit: u64,
     run: impl FnOnce(&Account) -> Result<T>,
 ) -> (Result<T>, crate::RenderFrameReport) {
-    use crate::accounting::{
-        FrameAttempt, FrameReportSlot, RenderAccountingOptions, RenderAttemptStatus, RenderLimits,
-        RendererCpu,
-    };
+    use crate::accounting::{FrameFixture, RenderAccountingOptions, RenderLimits, RendererCpu};
     let options = RenderAccountingOptions::new()
         .with_limits(RenderLimits::new().with_work_limit(work, limit).unwrap());
     let cpu = RendererCpu::new(options).unwrap();
-    let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-    let result = run(attempt.account());
-    let (status, diagnostic) = match &result {
-        Ok(_) => (RenderAttemptStatus::Succeeded, None),
-        Err(error) => (attempt.status_for(error), error.accounting_diagnostic()),
-    };
-    let (report, fault) = attempt.finish(status, diagnostic);
+    let (result, _, report, fault) = FrameFixture::new(&cpu, options)
+        .run_sync(|attempt| run(attempt.account()))
+        .unwrap()
+        .into_parts();
     assert_eq!(fault, None, "fixture accounting finalization");
     (result, report)
 }

@@ -504,7 +504,7 @@ fn import_only_lexical_disposal_keeps_original_custody_then_releases_separately(
 
 #[test]
 fn clip_forward_completion_keeps_custody_and_preserves_failure_partition() {
-    use crate::accounting::{FrameAttempt, FrameReportSlot, RenderPhase};
+    use crate::accounting::{FrameFixture, RenderPhase};
     let _clock = CLOCK_LOCK.lock().unwrap();
     for success in [false, true] {
         DISPOSAL_TIME.store(0, Ordering::SeqCst);
@@ -512,39 +512,42 @@ fn clip_forward_completion_keeps_custody_and_preserves_failure_partition() {
             .with_profile(RenderProfile::Summary { timing: true })
             .with_clock(RenderClock::Host(clock));
         let cpu = RendererCpu::new(options).unwrap();
-        let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-        let drops = Arc::new(AtomicUsize::new(0));
-        let result = (|| -> Result<()> {
-            let entered = attempt.account().begin_phase(RenderPhase::Clip)?;
-            let mut completion = DisposalCompletion::default();
-            let (incoming, [first, second]) = probe(&cpu, &drops, 2);
-            let first = first;
-            let second = second;
-            let value = incoming;
-            let start = completion.start([first.as_ref(), second.as_ref()], None);
-            if success {
-                // Observation completion occurs with the mandatory payload armed.
-                drop(entered);
-                start.disarm();
-                dispose_transferred_probe((value,), [first, second]);
-                Ok(())
-            } else {
-                Err(Error::invalid_value(
-                    "clip fixture",
-                    "refused",
-                    "original validation error",
-                ))
-            }
-        })();
-        let status = if success {
-            result.unwrap();
-            crate::RenderAttemptStatus::Succeeded
-        } else {
-            assert_eq!(result.unwrap_err().code(), ErrorCode::InvalidInput);
-            crate::RenderAttemptStatus::Failed(ErrorCode::InvalidInput)
-        };
-        assert_eq!(drops.load(Ordering::SeqCst), 1);
-        let (report, fault) = attempt.finish(status, None);
+        let (_, _, report, fault) = FrameFixture::new(&cpu, options)
+            .run_sync(|attempt| {
+                let drops = Arc::new(AtomicUsize::new(0));
+                let result = (|| -> Result<()> {
+                    let entered = attempt.account().begin_phase(RenderPhase::Clip)?;
+                    let mut completion = DisposalCompletion::default();
+                    let (incoming, [first, second]) = probe(&cpu, &drops, 2);
+                    let first = first;
+                    let second = second;
+                    let value = incoming;
+                    let start = completion.start([first.as_ref(), second.as_ref()], None);
+                    if success {
+                        // Observation completion occurs with the mandatory payload armed.
+                        drop(entered);
+                        start.disarm();
+                        dispose_transferred_probe((value,), [first, second]);
+                        Ok(())
+                    } else {
+                        Err(Error::invalid_value(
+                            "clip fixture",
+                            "refused",
+                            "original validation error",
+                        ))
+                    }
+                })();
+                if success {
+                    assert!(result.is_ok());
+                } else {
+                    assert_eq!(result.as_ref().unwrap_err().code(), ErrorCode::InvalidInput);
+                }
+                assert_eq!(drops.load(Ordering::SeqCst), 1);
+
+                result
+            })
+            .unwrap()
+            .into_parts();
         assert_eq!(fault, None);
         assert_eq!(
             report.attempt().unwrap().phase_elapsed(RenderPhase::Clip),

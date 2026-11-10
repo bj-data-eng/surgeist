@@ -1,9 +1,9 @@
 use super::*;
 use crate::{
     accounting::{
-        ReadbackAttempt, ReadbackReportSlot, RenderAccountingOptions, RenderAttemptStatus,
-        RenderCpuScope, RenderLimits, RenderPhase, RenderQuantity, RenderReadbackReport,
-        RenderResource, RenderWork, RendererCpu,
+        ReadbackFixture, RenderAccountingOptions, RenderAttemptStatus, RenderCpuScope,
+        RenderLimits, RenderPhase, RenderQuantity, RenderReadbackReport, RenderResource,
+        RenderWork, RendererCpu,
     },
     readback::output::ReadbackOutput,
 };
@@ -25,21 +25,20 @@ fn decode(
 ) {
     let options = RenderAccountingOptions::new().with_limits(limits);
     let cpu = RendererCpu::new(options).unwrap();
-    let attempt = ReadbackAttempt::begin(ReadbackReportSlot::default(), &cpu, options).unwrap();
-    let account = attempt.account().at(RenderPhase::ReadbackDecode);
-    let size = PhysicalSize::new(3, 2);
-    let layout = ReadbackLayout::try_new(size).unwrap();
-    assert_eq!(layout.buffer_size(), 512);
-    let result = account.phase(RenderPhase::ReadbackDecode, || {
-        let rows = decode_padded_rows(&layout, mapped, &account)?;
-        let actual = rows.capacity() as u64;
-        Ok((ReadbackOutput::try_new(size, rows)?, actual))
-    });
-    let (status, diagnostic) = match &result {
-        Ok(_) => (RenderAttemptStatus::Succeeded, None),
-        Err(error) => (attempt.status_for(error), error.accounting_diagnostic()),
-    };
-    let (report, fault) = attempt.finish(status, diagnostic);
+    let (result, _, report, fault) = ReadbackFixture::new(&cpu, options)
+        .run_sync(|attempt| {
+            let account = attempt.account().at(RenderPhase::ReadbackDecode);
+            let size = PhysicalSize::new(3, 2);
+            let layout = ReadbackLayout::try_new(size).unwrap();
+            assert_eq!(layout.buffer_size(), 512);
+            account.phase(RenderPhase::ReadbackDecode, || {
+                let rows = decode_padded_rows(&layout, mapped, &account)?;
+                let actual = rows.capacity() as u64;
+                Ok((ReadbackOutput::try_new(size, rows)?, actual))
+            })
+        })
+        .unwrap()
+        .into_parts();
     assert_eq!(fault, None);
     (result, report, cpu)
 }

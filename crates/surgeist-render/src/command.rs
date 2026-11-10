@@ -1439,7 +1439,7 @@ pub(crate) fn kurbo_rounded_rect(rect: Rect, radii: Radii) -> kurbo::RoundedRect
 #[cfg(test)]
 mod unsupported_input_tests {
     use super::*;
-    use crate::accounting::{FrameAttempt, FrameReportSlot, RendererCpu};
+    use crate::accounting::{FrameFixture, RendererCpu};
 
     fn path() -> Shape {
         let mut path = Path::new();
@@ -1689,16 +1689,17 @@ mod unsupported_input_tests {
             scene.commands.push(command);
             let authored = scene.commands.clone();
             for _ in 0..2 {
-                let attempt =
-                    FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-                let error = scene
-                    .normalize(Capabilities::CURRENT, attempt.account())
-                    .unwrap_err();
-                assert_unsupported(&error, family, operation, message);
-                let (report, fault) = attempt.finish(
-                    RenderAttemptStatus::Failed(error.code()),
-                    error.accounting_diagnostic(),
-                );
+                let (_, _, report, fault) = FrameFixture::new(&cpu, options)
+                    .run_sync(|attempt| {
+                        let error = scene
+                            .normalize(Capabilities::CURRENT, attempt.account())
+                            .unwrap_err();
+                        assert_unsupported(&error, family, operation, message);
+
+                        Err::<(), _>(error)
+                    })
+                    .unwrap()
+                    .into_parts();
                 assert_eq!(fault, None);
                 assert_eq!(
                     report
@@ -2013,7 +2014,7 @@ mod paint_visit_tests {
 
     mod normalization_custody_tests {
         use super::*;
-        use crate::accounting::{FrameAttempt, FrameReportSlot, RendererCpu};
+        use crate::accounting::{FrameFixture, RendererCpu};
 
         fn options(work: RenderWork, limit: u64) -> RenderAccountingOptions {
             RenderAccountingOptions::new()
@@ -2088,13 +2089,18 @@ mod paint_visit_tests {
                     .named("normalization font name")
                     .with_data(font.clone()),
             );
-            let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-            let error = scene
-                .normalize(Capabilities::CURRENT, attempt.account())
-                .unwrap_err();
-            refusal(&error, RenderWork::ResourceProbes, 0);
-            let (report, fault) =
-                attempt.finish(attempt_status(&error), error.accounting_diagnostic());
+            let (_, _, report, fault) = FrameFixture::new(&cpu, options)
+                .run_sync(|attempt| {
+                    let error = scene
+                        .normalize(Capabilities::CURRENT, attempt.account())
+                        .unwrap_err();
+                    refusal(&error, RenderWork::ResourceProbes, 0);
+
+                    assert_eq!(attempt_status(&error), RenderAttemptStatus::Refused);
+                    Err::<(), _>(error)
+                })
+                .unwrap()
+                .into_parts();
             assert_eq!(fault, None);
             let usage = report.attempt().unwrap().usage();
             assert_eq!(usage.work(RenderWork::ResourceProbes), 0);
@@ -2146,13 +2152,18 @@ mod paint_visit_tests {
                 .usage()
                 .live(RenderResource::RetainedCpuBytes);
             let scene = text_scene(FontRef::new(1).named("copied glyphs"));
-            let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-            let error = scene
-                .normalize(Capabilities::CURRENT, attempt.account())
-                .unwrap_err();
-            refusal(&error, RenderWork::PaintVisits, 1);
-            let (report, fault) =
-                attempt.finish(attempt_status(&error), error.accounting_diagnostic());
+            let (_, _, report, fault) = FrameFixture::new(&cpu, options)
+                .run_sync(|attempt| {
+                    let error = scene
+                        .normalize(Capabilities::CURRENT, attempt.account())
+                        .unwrap_err();
+                    refusal(&error, RenderWork::PaintVisits, 1);
+
+                    assert_eq!(attempt_status(&error), RenderAttemptStatus::Refused);
+                    Err::<(), _>(error)
+                })
+                .unwrap()
+                .into_parts();
             assert_eq!(fault, None);
             let usage = report.attempt().unwrap().usage();
             assert_eq!(usage.work(RenderWork::PaintVisits), 1);

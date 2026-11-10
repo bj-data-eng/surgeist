@@ -1,7 +1,7 @@
 use super::*;
 use crate::accounting::{
-    ReadbackAttempt, ReadbackReportSlot, RenderAccountingError, RenderAccountingOptions,
-    RenderCpuScope, RenderResource, RenderWork, RendererCpu,
+    ReadbackFixture, RenderAccountingError, RenderAccountingOptions, RenderCpuScope,
+    RenderResource, RenderWork, RendererCpu,
 };
 
 #[test]
@@ -9,30 +9,35 @@ fn rejected_image_validation_and_prior_health_fault_dispose_the_admitted_output(
     for unhealthy in [false, true] {
         let options = RenderAccountingOptions::new();
         let cpu = RendererCpu::new(options).unwrap();
-        let attempt = ReadbackAttempt::begin(ReadbackReportSlot::default(), &cpu, options).unwrap();
-        let mut rows = attempt.account().retained::<u8>(24).unwrap();
-        // An incomplete ImageBuffer is rejected independently of mapped-row
-        // validation. The other case reaches the CPU phase's earlier health gate.
-        rows.extend_from_slice(&[9; 23]).unwrap();
-        let actual = rows.capacity() as u64;
-        if unhealthy {
-            cpu.at(RenderCpuScope::ReadbackOutput)
-                .note_fault(RenderAccountingError::Invariant);
-        }
-        let result = ReadbackOutput::try_new(PhysicalSize::new(3, 2), rows);
-        let Err(error) = result else {
-            panic!("invalid or unhealthy output cannot escape its guard")
-        };
-        assert_eq!(
-            error.code(),
-            if unhealthy {
-                crate::ErrorCode::Accounting
-            } else {
-                crate::ErrorCode::ReadbackFailed
-            }
-        );
-        let status = attempt.status_for(&error);
-        let (report, fault) = attempt.finish(status, error.accounting_diagnostic());
+        let mut actual = 0;
+        let (_, _, report, fault) = ReadbackFixture::new(&cpu, options)
+            .run_sync(|attempt| {
+                let mut rows = attempt.account().retained::<u8>(24).unwrap();
+                // An incomplete ImageBuffer is rejected independently of mapped-row
+                // validation. The other case reaches the CPU phase's earlier health gate.
+                rows.extend_from_slice(&[9; 23]).unwrap();
+                actual = rows.capacity() as u64;
+                if unhealthy {
+                    cpu.at(RenderCpuScope::ReadbackOutput)
+                        .note_fault(RenderAccountingError::Invariant);
+                }
+                let result = ReadbackOutput::try_new(PhysicalSize::new(3, 2), rows);
+                let Err(error) = result else {
+                    panic!("invalid or unhealthy output cannot escape its guard")
+                };
+                assert_eq!(
+                    error.code(),
+                    if unhealthy {
+                        crate::ErrorCode::Accounting
+                    } else {
+                        crate::ErrorCode::ReadbackFailed
+                    }
+                );
+
+                Err::<(), _>(error)
+            })
+            .unwrap()
+            .into_parts();
         assert_eq!(fault, unhealthy.then_some(RenderAccountingError::Invariant));
         let usage = report
             .renderer_cpu()
@@ -76,14 +81,19 @@ fn qualified_output_transfers_original_spare_capacity_without_post_handoff_obser
                 .with_profile(profile)
                 .with_clock(RenderClock::Host(counted_clock));
             let cpu = RendererCpu::new(options).unwrap();
-            let attempt =
-                ReadbackAttempt::begin(ReadbackReportSlot::default(), &cpu, options).unwrap();
-            let mut rows = attempt.account().retained::<u8>(requested).unwrap();
-            rows.extend_from_slice(&vec![7; bytes]).unwrap();
-            let pointer = rows.as_slice().as_ptr();
-            let capacity = rows.capacity();
-            let output = ReadbackOutput::try_new(size, rows).unwrap();
-            let (_, fault) = attempt.finish(crate::RenderAttemptStatus::Succeeded, None);
+            let (output, _, _, fault) = ReadbackFixture::new(&cpu, options)
+                .run_sync(|attempt| {
+                    let mut rows = attempt.account().retained::<u8>(requested).unwrap();
+                    rows.extend_from_slice(&vec![7; bytes]).unwrap();
+                    let pointer = rows.as_slice().as_ptr();
+                    let capacity = rows.capacity();
+                    let output = ReadbackOutput::try_new(size, rows).unwrap();
+
+                    Ok((output, pointer, capacity))
+                })
+                .unwrap()
+                .into_parts();
+            let (output, pointer, capacity) = output.unwrap();
             assert_eq!(fault, None);
             let image = output.transfer().unwrap();
             let after_transfer = CLOCK_READS.with(std::cell::Cell::get);
@@ -120,28 +130,33 @@ fn malformed_and_overflowing_output_preserve_the_numeric_source_and_release_capa
         let options = RenderAccountingOptions::new()
             .with_profile(crate::RenderProfile::Summary { timing: false });
         let cpu = RendererCpu::new(options).unwrap();
-        let attempt = ReadbackAttempt::begin(ReadbackReportSlot::default(), &cpu, options).unwrap();
-        let mut rows = attempt.account().retained::<u8>(length).unwrap();
-        rows.extend_from_slice(&vec![0; length]).unwrap();
-        let error = match ReadbackOutput::try_new(size, rows) {
-            Ok(_) => panic!("invalid bytes cannot form a complete readback"),
-            Err(error) => error,
-        };
-        assert_eq!(error.code(), crate::ErrorCode::ReadbackFailed);
-        let source = std::error::Error::source(&error)
+        let (_, _, _report, fault) = ReadbackFixture::new(&cpu, options)
+            .run_sync(|attempt| {
+                let mut rows = attempt.account().retained::<u8>(length).unwrap();
+                rows.extend_from_slice(&vec![0; length]).unwrap();
+                let error = match ReadbackOutput::try_new(size, rows) {
+                    Ok(_) => panic!("invalid bytes cannot form a complete readback"),
+                    Err(error) => error,
+                };
+                assert_eq!(error.code(), crate::ErrorCode::ReadbackFailed);
+                let source = std::error::Error::source(&error)
+                    .unwrap()
+                    .downcast_ref::<crate::Error>()
+                    .unwrap();
+                assert_eq!(source.code(), crate::ErrorCode::InvalidInput);
+                assert_eq!(
+                    cpu.snapshot()
+                        .unwrap()
+                        .scope_usage(RenderCpuScope::ReadbackOutput)
+                        .unwrap()
+                        .live(RenderResource::RetainedCpuBytes),
+                    0
+                );
+
+                Err::<(), _>(error)
+            })
             .unwrap()
-            .downcast_ref::<crate::Error>()
-            .unwrap();
-        assert_eq!(source.code(), crate::ErrorCode::InvalidInput);
-        assert_eq!(
-            cpu.snapshot()
-                .unwrap()
-                .scope_usage(RenderCpuScope::ReadbackOutput)
-                .unwrap()
-                .live(RenderResource::RetainedCpuBytes),
-            0
-        );
-        let (_, fault) = attempt.finish(crate::RenderAttemptStatus::Failed(error.code()), None);
+            .into_parts();
         assert_eq!(fault, None);
     }
 }
@@ -155,7 +170,7 @@ fn rejected_length_ends_validation_before_separate_real_vector_disposal() {
         filter: RenderPhaseFilter::All,
     });
     let cpu = RendererCpu::new(options).unwrap();
-    let attempt = ReadbackAttempt::begin(ReadbackReportSlot::default(), &cpu, options).unwrap();
+    let (_, _, _report, fault) = ReadbackFixture::new(&cpu, options).run_sync(|attempt| {
     let mut rows = attempt.account().retained::<u8>(24).unwrap();
     rows.extend_from_slice(&[9; 23]).unwrap();
     let actual = rows.capacity() as u64;
@@ -179,7 +194,9 @@ fn rejected_length_ends_validation_before_separate_real_vector_disposal() {
             kind: RenderChangeKind::Release, quantity: crate::RenderQuantity::Resource(RenderResource::RetainedCpuBytes), amount, .. },
         RenderCpuEvent::Phase { scope: RenderCpuScope::ReadbackOutput, duration: None, .. },
     ] if *amount == actual));
-    let (_, fault) = attempt.finish(crate::RenderAttemptStatus::Failed(error.code()), None);
+
+Err::<(), _>(error)
+}).unwrap().into_parts();
     assert_eq!(fault, None);
 }
 
@@ -199,23 +216,29 @@ fn releasing_a_real_blocker_allows_the_same_readback_owner_to_retry_unchanged_pi
         .with_profile(RenderProfile::Summary { timing: false })
         .with_limits(RenderLimits::new().with_retained_bytes(baseline + capacity as u64));
     let cpu = RendererCpu::new(options).unwrap();
-    let attempt = ReadbackAttempt::begin(ReadbackReportSlot::default(), &cpu, options).unwrap();
-    let account = attempt.account();
-    let mut blocker = account.retained::<u8>(1).unwrap();
-    blocker.extend_from_slice(&[99]).unwrap();
-    let error = account.retained::<u8>(24).unwrap_err();
-    assert!(matches!(
-        error.accounting_diagnostic(),
-        Some(RenderAccountingError::CpuRefused { .. })
-    ));
-    assert_eq!(blocker.as_slice(), &[99]);
-    assert_eq!(cpu.snapshot().unwrap().fault(), None);
-    drop(blocker);
-    let mut rows = account.retained::<u8>(24).unwrap();
-    rows.extend_from_slice(&[7; 24]).unwrap();
-    let pointer = rows.as_slice().as_ptr();
-    let output = ReadbackOutput::try_new(PhysicalSize::new(3, 2), rows).unwrap();
-    let (_, fault) = attempt.finish(crate::RenderAttemptStatus::Succeeded, None);
+    let (output, _, _, fault) = ReadbackFixture::new(&cpu, options)
+        .run_sync(|attempt| {
+            let account = attempt.account();
+            let mut blocker = account.retained::<u8>(1).unwrap();
+            blocker.extend_from_slice(&[99]).unwrap();
+            let error = account.retained::<u8>(24).unwrap_err();
+            assert!(matches!(
+                error.accounting_diagnostic(),
+                Some(RenderAccountingError::CpuRefused { .. })
+            ));
+            assert_eq!(blocker.as_slice(), &[99]);
+            assert_eq!(cpu.snapshot().unwrap().fault(), None);
+            drop(blocker);
+            let mut rows = account.retained::<u8>(24).unwrap();
+            rows.extend_from_slice(&[7; 24]).unwrap();
+            let pointer = rows.as_slice().as_ptr();
+            let output = ReadbackOutput::try_new(PhysicalSize::new(3, 2), rows).unwrap();
+
+            Ok((output, pointer))
+        })
+        .unwrap()
+        .into_parts();
+    let (output, pointer) = output.unwrap();
     assert_eq!(fault, None);
     let image = output.transfer().unwrap();
     assert_eq!(image.rgba(), &[7; 24]);

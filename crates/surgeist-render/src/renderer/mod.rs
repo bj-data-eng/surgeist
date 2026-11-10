@@ -28,9 +28,8 @@ use super::{
     *,
 };
 use crate::accounting::{
-    FrameReportSlot, ImageHistory, ReadbackReportSlot, RenderAttemptKind, RenderCpuSnapshot,
-    RenderDeviceSnapshot, RenderFrameReport, RenderFrameReportRef, RenderReadbackReport,
-    RenderReadbackReportRef, RendererCpu,
+    ImageHistory, RenderAttemptKind, RenderCpuSnapshot, RenderDeviceSnapshot, RenderFrameReport,
+    RenderFrameReportRef, RenderReadbackReport, RenderReadbackReportRef, RendererCpu,
 };
 
 /// GPU-only renderer and owner of device-scoped resources and frame transactions.
@@ -46,8 +45,8 @@ pub struct Renderer {
     stats: Stats,
     cpu: RendererCpu,
     image_history: ImageHistory,
-    frame_reports: FrameReportSlot,
-    readback_reports: ReadbackReportSlot,
+    frame_reports: Option<RenderFrameReport>,
+    readback_reports: Option<RenderReadbackReport>,
     backend: Option<Backend>,
     default_device: Option<DeviceSlotIdentity>,
 }
@@ -108,7 +107,6 @@ impl Renderer {
             .validate(RenderAttemptKind::Frame)?;
         let cpu = RendererCpu::new(options.accounting())?;
         let image_history = ImageHistory::new(&cpu)?;
-        let frame_reports = FrameReportSlot::default();
         let mut backend = Backend::new(
             options.resource_cache_budget(),
             cpu.clone(),
@@ -123,8 +121,8 @@ impl Renderer {
             stats: Stats::default(),
             cpu,
             image_history,
-            frame_reports,
-            readback_reports: ReadbackReportSlot::default(),
+            frame_reports: None,
+            readback_reports: None,
             backend,
             default_device,
         })
@@ -640,7 +638,7 @@ impl Renderer {
 
     /// Borrows the latest started frame after cleanup; setup failure preserves it.
     pub fn last_attempt(&self) -> Option<RenderFrameReportRef<'_>> {
-        self.frame_reports.read()
+        self.frame_reports.as_ref().map(RenderFrameReportRef::new)
     }
     /// Moves the latest frame report into caller custody without allocating.
     pub fn take_last_attempt(&mut self) -> Option<RenderFrameReport> {
@@ -649,7 +647,9 @@ impl Renderer {
     /// Borrows the latest started explicit-readback report, without changing
     /// frame observations or observing device lifecycle signals.
     pub fn last_readback_attempt(&self) -> Option<RenderReadbackReportRef<'_>> {
-        self.readback_reports.read()
+        self.readback_reports
+            .as_ref()
+            .map(RenderReadbackReportRef::new)
     }
     /// Moves the latest explicit-readback report into caller custody.
     pub fn take_last_readback_attempt(&mut self) -> Option<RenderReadbackReport> {

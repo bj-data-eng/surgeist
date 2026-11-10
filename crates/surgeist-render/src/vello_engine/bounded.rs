@@ -509,8 +509,7 @@ mod tests {
     #[test]
     fn refused_indivisible_encoding_copy_commits_no_stream_element_work() {
         use crate::accounting::{
-            FrameAttempt, FrameReportSlot, RenderAccountingOptions, RenderAttemptStatus,
-            RenderCpuScope, RenderLimits, RendererCpu,
+            FrameFixture, RenderAccountingOptions, RenderCpuScope, RenderLimits, RendererCpu,
         };
         let image = crate::Image::from_rgba(crate::Size::new(0.0, 3.0), Vec::<u8>::new()).unwrap();
         let mut encoding = Encoding::new();
@@ -530,20 +529,19 @@ mod tests {
                     .unwrap(),
             );
             let cpu = RendererCpu::new(options).unwrap();
-            let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-            let result = EncodingBacking::copy(&encoding, attempt.account());
-            let (status, diagnostic) = match &result {
-                Ok(copy) => {
-                    assert_eq!(copy.draw_data, encoding.draw_data);
-                    assert!(copy.draw_tags == encoding.draw_tags);
-                    assert_eq!(copy.resources.patches.len(), 1);
-                    (RenderAttemptStatus::Succeeded, None)
-                }
-                Err(error) => (attempt.status_for(error), error.accounting_diagnostic()),
-            };
-            assert_eq!(result.is_ok(), limit == 5);
-            drop(result);
-            let (report, fault) = attempt.finish(status, diagnostic);
+            let (_, _, report, fault) = FrameFixture::new(&cpu, options)
+                .run_sync(|attempt| {
+                    let result = EncodingBacking::copy(&encoding, attempt.account());
+                    if let Ok(copy) = &result {
+                        assert_eq!(copy.draw_data, encoding.draw_data);
+                        assert!(copy.draw_tags == encoding.draw_tags);
+                        assert_eq!(copy.resources.patches.len(), 1);
+                    }
+                    assert_eq!(result.is_ok(), limit == 5);
+                    result.map(drop)
+                })
+                .unwrap()
+                .into_parts();
             assert_eq!(fault, None);
             let observed = report.attempt().unwrap();
             assert_eq!(
@@ -859,8 +857,7 @@ mod tests {
     #[test]
     fn native_serialization_one_short_refusal_drops_intact_owner_and_retries() {
         use crate::accounting::{
-            FrameAttempt, FrameReportSlot, RenderAccountingOptions, RenderAttemptStatus,
-            RenderCpuScope, RenderLimits, RendererCpu,
+            FrameFixture, RenderAccountingOptions, RenderCpuScope, RenderLimits, RendererCpu,
         };
         let options = RenderAccountingOptions::new().with_limits(
             RenderLimits::new()
@@ -868,17 +865,22 @@ mod tests {
                 .unwrap(),
         );
         let cpu = RendererCpu::new(options).unwrap();
-        let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-        let account = attempt.account();
-        let owned = solid_serialization_fixture(account).unwrap();
-        let producer =
-            PackedProducer::new(&owned.encoding, &StreamOffsets::default(), account).unwrap();
-        let mut resolver = vello_encoding::Resolver::default();
-        let error = producer.resolve(&mut resolver).err().unwrap();
-        assert!(error.accounting_diagnostic().is_some());
-        drop(owned);
-        let (report, fault) =
-            attempt.finish(RenderAttemptStatus::Refused, error.accounting_diagnostic());
+        let (_, _, report, fault) = FrameFixture::new(&cpu, options)
+            .run_sync(|attempt| {
+                let account = attempt.account();
+                let owned = solid_serialization_fixture(account).unwrap();
+                let producer =
+                    PackedProducer::new(&owned.encoding, &StreamOffsets::default(), account)
+                        .unwrap();
+                let mut resolver = vello_encoding::Resolver::default();
+                let error = producer.resolve(&mut resolver).err().unwrap();
+                assert!(error.accounting_diagnostic().is_some());
+                drop(owned);
+
+                Err::<(), _>(error)
+            })
+            .unwrap()
+            .into_parts();
         assert_eq!(fault, None);
         assert_eq!(
             report

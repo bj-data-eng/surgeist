@@ -1055,7 +1055,7 @@ mod image_accounting_tests {
     use super::super::scene::VelloScene;
     use super::*;
     use crate::accounting::{
-        FrameAttempt, FrameReportSlot, RenderAccountingError, RenderAccountingOptions,
+        FrameFixture, RenderAccountingError, RenderAccountingOptions,
         RenderAttemptStatus, RenderFrameReport, RenderLimits, RenderQuantity, RenderRefusalReason,
         RendererCpu,
     };
@@ -1099,17 +1099,7 @@ mod image_accounting_tests {
     ) -> (Result<()>, RenderFrameReport) {
         let options = RenderAccountingOptions::new().with_limits(limits);
         let cpu = RendererCpu::new(options).unwrap();
-        let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-        let result = run(attempt.account());
-        let status = match &result {
-            Ok(()) => RenderAttemptStatus::Succeeded,
-            Err(error) => attempt.status_for(error),
-        };
-        let diagnostic = result
-            .as_ref()
-            .err()
-            .and_then(|error| error.accounting_diagnostic());
-        let (report, fault) = attempt.finish(status, diagnostic);
+        let (result, _, report, fault) = FrameFixture::new(&cpu, options).run_sync(|attempt| run(attempt.account())).unwrap().into_parts();
         assert_eq!(fault, None);
         (result, report)
     }

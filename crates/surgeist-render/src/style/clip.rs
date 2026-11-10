@@ -570,7 +570,7 @@ mod accounting_tests {
 
     #[test]
     fn filter_planning_discard_preserves_the_literal_path_work_and_releases_both_vectors() {
-        use crate::accounting::{FrameAttempt, FrameReportSlot, RendererCpu};
+        use crate::accounting::{FrameFixture, RendererCpu};
         use crate::{BackdropCaptureBounds, BackdropFilterInput, FilterBlur, FilterList, FilterOp};
         let mut path = Path::new();
         path.move_to(Point::new(1.0, 2.0))
@@ -598,52 +598,68 @@ mod accounting_tests {
                 .unwrap()
                 .usage()
                 .live(crate::RenderResource::RetainedCpuBytes);
-            let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-            let result =
-                filter.ensure_supported_for_planning_in(Capabilities::CURRENT, attempt.account());
-            if limit == 9 {
-                result.unwrap();
-            } else {
-                let error = result.unwrap_err();
-                let Some(crate::RenderAccountingError::Refused(refusal)) =
-                    error.accounting_diagnostic()
-                else {
-                    panic!("expected the ninth path visit to refuse")
-                };
-                assert_eq!(refusal.current(), 8);
-                assert_eq!(refusal.amount(), 1);
-            }
+            let (result, _, report, fault) = FrameFixture::new(&cpu, options)
+                .run_sync(|attempt| {
+                    let result = filter
+                        .ensure_supported_for_planning_in(Capabilities::CURRENT, attempt.account());
+                    if limit == 9 {
+                        result.as_ref().unwrap();
+                    } else {
+                        let error = result.as_ref().unwrap_err();
+                        let Some(crate::RenderAccountingError::Refused(refusal)) =
+                            error.accounting_diagnostic()
+                        else {
+                            panic!("expected the ninth path visit to refuse")
+                        };
+                        assert_eq!(refusal.current(), 8);
+                        assert_eq!(refusal.amount(), 1);
+                    }
+                    assert_eq!(
+                        attempt
+                            .account()
+                            .work_count(RenderWork::PathElementVisits)
+                            .unwrap(),
+                        limit
+                    );
+                    assert_eq!(
+                        cpu.snapshot()
+                            .unwrap()
+                            .usage()
+                            .live(crate::RenderResource::RetainedCpuBytes),
+                        opening
+                    );
+                    assert_eq!(
+                        cpu.snapshot()
+                            .unwrap()
+                            .usage()
+                            .live(crate::RenderResource::ScratchCpuBytes),
+                        0
+                    );
+                    assert_eq!(filter.clip().unwrap().filled_path().unwrap().path(), &path);
+
+                    result
+                })
+                .unwrap()
+                .into_parts();
+            assert_eq!(result.is_ok(), limit == 9);
             assert_eq!(
-                attempt
-                    .account()
-                    .work_count(RenderWork::PathElementVisits)
-                    .unwrap(),
-                limit
+                report.status(),
+                if limit == 9 {
+                    crate::RenderAttemptStatus::Succeeded
+                } else {
+                    crate::RenderAttemptStatus::Refused
+                }
             );
-            assert_eq!(
-                cpu.snapshot()
-                    .unwrap()
-                    .usage()
-                    .live(crate::RenderResource::RetainedCpuBytes),
-                opening
-            );
-            assert_eq!(
-                cpu.snapshot()
-                    .unwrap()
-                    .usage()
-                    .live(crate::RenderResource::ScratchCpuBytes),
-                0
-            );
-            assert_eq!(filter.clip().unwrap().filled_path().unwrap().path(), &path);
+            assert_eq!(fault, None);
         }
     }
 
     mod normalization_custody_tests {
         use super::*;
-        use crate::accounting::{FrameAttempt, FrameReportSlot, RendererCpu};
+        use crate::accounting::{FrameFixture, RendererCpu};
         use crate::{
-            ErrorCode, RenderAccountingError, RenderAttemptStatus, RenderCpuScope, RenderProfile,
-            RenderQuantity, RenderRefusalReason, RenderResource,
+            ErrorCode, RenderAccountingError, RenderCpuScope, RenderProfile, RenderQuantity,
+            RenderRefusalReason, RenderResource,
         };
 
         #[test]
@@ -672,7 +688,7 @@ mod accounting_tests {
                 .unwrap()
                 .usage()
                 .live(RenderResource::RetainedCpuBytes);
-            let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
+            let (_, _, report, fault) = FrameFixture::new(&cpu, options).run_sync(|attempt| {
             let error = input
                 .normalize_and_discard_in(Capabilities::CURRENT, attempt.account())
                 .map(drop)
@@ -690,8 +706,9 @@ mod accounting_tests {
             assert_eq!(refusal.current(), 6);
             assert_eq!(refusal.amount(), 1);
             assert_eq!(refusal.reason(), RenderRefusalReason::Limit { limit: 6 });
-            let (report, fault) =
-                attempt.finish(RenderAttemptStatus::Refused, error.accounting_diagnostic());
+
+Err::<(), _>(error)
+}).unwrap().into_parts();
             assert_eq!(fault, None);
             let usage = report.attempt().unwrap().usage();
             // Three validation visits and three copied elements precede the

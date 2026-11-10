@@ -23,17 +23,15 @@ use std::{
 // Legacy lifecycle/native fixtures still use the real readback owner role.
 // Their closed setup interval makes no claim about public operation reports.
 fn readback_account_for_test() -> crate::accounting::Account {
-    use crate::accounting::{
-        ReadbackAttempt, ReadbackReportSlot, RenderAccountingOptions, RenderAttemptStatus,
-        RendererCpu,
-    };
+    use crate::accounting::{ReadbackFixture, RenderAccountingOptions, RendererCpu};
     let options = RenderAccountingOptions::new();
     let cpu = RendererCpu::new(options).unwrap();
-    let attempt = ReadbackAttempt::begin(ReadbackReportSlot::default(), &cpu, options).unwrap();
-    let account = attempt.account().clone();
-    let (_, fault) = attempt.finish(RenderAttemptStatus::Succeeded, None);
+    let (account, _, _, fault) = ReadbackFixture::new(&cpu, options)
+        .run_sync(|attempt| Ok(attempt.account().clone()))
+        .unwrap()
+        .into_parts();
     assert_eq!(fault, None);
-    account
+    account.unwrap()
 }
 
 #[cfg(not(target_arch = "wasm32"))]

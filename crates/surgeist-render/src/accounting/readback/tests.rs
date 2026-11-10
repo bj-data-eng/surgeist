@@ -9,16 +9,22 @@ fn completed_readback_retains_pretransfer_output_and_uses_its_own_destination() 
         .unwrap()
         .usage()
         .live(RenderResource::RetainedCpuBytes);
-    let frames = FrameReportSlot::default();
-    let frame = FrameAttempt::begin(frames.clone(), &cpu, options).unwrap();
-    let (frame, _) = frame.finish(RenderAttemptStatus::Succeeded, None);
-    frames.store(frame.snapshot_for_test());
-    let readbacks = ReadbackReportSlot::default();
-    let attempt = ReadbackAttempt::begin(readbacks.clone(), &cpu, options).unwrap();
-    assert!(attempt.started());
-    let output = attempt.account().retained::<u8>(7).unwrap();
-    attempt.account().work(RenderWork::ReadbackRows, 2).unwrap();
-    let (report, fault) = attempt.finish(RenderAttemptStatus::Succeeded, None);
+    let (_, _, frame, _) = FrameFixture::new(&cpu, options)
+        .run_sync(|_| Ok(()))
+        .unwrap()
+        .into_parts();
+    let frames = Some(frame.snapshot_for_test());
+    let mut readbacks = ReadbackFixture::new(&cpu, options);
+    let (output, started, report, fault) = readbacks
+        .run_sync(|attempt| {
+            let output = attempt.account().retained::<u8>(7)?;
+            attempt.account().work(RenderWork::ReadbackRows, 2)?;
+            Ok(output)
+        })
+        .unwrap()
+        .into_parts();
+    let output = output.unwrap();
+    assert!(started);
     assert_eq!(fault, None);
     assert_eq!(report.status(), RenderAttemptStatus::Succeeded);
     assert_eq!(
@@ -68,20 +74,20 @@ fn completed_readback_retains_pretransfer_output_and_uses_its_own_destination() 
         opening
     );
     assert!(
-        readbacks.read().is_none(),
+        readbacks.report.is_none(),
         "finish returns the report for final handoff"
     );
-    readbacks.store(report.snapshot_for_test());
+    readbacks.report = Some(report.snapshot_for_test());
     {
-        let first = readbacks.read().unwrap();
-        let second = readbacks.read().unwrap();
-        assert_eq!(&*first, &report);
-        assert_eq!(&*second, &report);
-        assert_eq!(&*frames.read().unwrap(), &frame);
+        let first = readbacks.report.as_ref().unwrap();
+        let second = readbacks.report.as_ref().unwrap();
+        assert_eq!(first, &report);
+        assert_eq!(second, &report);
+        assert_eq!(frames.as_ref().unwrap(), &frame);
     }
-    assert_eq!(readbacks.take(), Some(report));
-    assert!(readbacks.take().is_none());
-    assert_eq!(frames.take(), Some(frame));
+    assert_eq!(readbacks.report.take(), Some(report));
+    assert!(readbacks.report.take().is_none());
+    assert_eq!(frames, Some(frame));
 }
 
 #[test]
@@ -98,10 +104,9 @@ fn cancellation_closes_after_inner_output_and_generation_cleanup_and_allows_retr
         .usage()
         .live(RenderResource::RetainedCpuBytes);
     let generation = Generation::new(options).unwrap();
-    let slot = ReadbackReportSlot::default();
+    let mut fixture = ReadbackFixture::new(&cpu, options);
     {
-        let future = async {
-            let mut attempt = ReadbackAttempt::begin(slot.clone(), &cpu, options).unwrap();
+        let future = fixture.run(async |mut attempt| {
             attempt.attach_generation(&generation).unwrap();
             let account = attempt.account().clone();
             account
@@ -115,8 +120,8 @@ fn cancellation_closes_after_inner_output_and_generation_cleanup_and_allows_retr
                 })
                 .await
                 .unwrap();
-            attempt.finish(RenderAttemptStatus::Succeeded, None)
-        };
+            Ok(())
+        });
         let mut future = std::pin::pin!(future);
         assert!(matches!(
             future
@@ -124,7 +129,7 @@ fn cancellation_closes_after_inner_output_and_generation_cleanup_and_allows_retr
                 .poll(&mut Context::from_waker(Waker::noop())),
             Poll::Pending
         ));
-        assert!(slot.read().is_none());
+        // Report publication remains exclusively terminal.
         assert_eq!(
             cpu.snapshot()
                 .unwrap()
@@ -133,7 +138,7 @@ fn cancellation_closes_after_inner_output_and_generation_cleanup_and_allows_retr
             opening + 5
         );
     }
-    let canceled = slot.take().unwrap();
+    let canceled = fixture.report.take().unwrap();
     assert_eq!(canceled.status(), RenderAttemptStatus::Canceled);
     assert_eq!(
         canceled.attempt().unwrap().kind(),
@@ -153,9 +158,13 @@ fn cancellation_closes_after_inner_output_and_generation_cleanup_and_allows_retr
     let native = canceled.generation().unwrap().unwrap().usage();
     assert_eq!(native.peak(RenderResource::OpaqueGpuObjects), 1);
     assert_eq!(native.live(RenderResource::OpaqueGpuObjects), 0);
-    let mut retry = ReadbackAttempt::begin(slot, &cpu, options).unwrap();
-    retry.attach_generation(&generation).unwrap();
-    let (retry, fault) = retry.finish(RenderAttemptStatus::Succeeded, None);
+    let (_, _, retry, fault) = fixture
+        .run_sync(|mut attempt| {
+            attempt.attach_generation(&generation)?;
+            Ok(())
+        })
+        .unwrap()
+        .into_parts();
     assert_eq!(fault, None);
     assert_eq!(retry.status(), RenderAttemptStatus::Succeeded);
     assert_eq!(
@@ -172,10 +181,9 @@ fn cancellation_closes_after_inner_output_and_generation_cleanup_and_allows_retr
 fn rejected_setup_preserves_the_previous_readback_and_cpu_lifetime() {
     let options = RenderAccountingOptions::new();
     let cpu = RendererCpu::new(options).unwrap();
-    let slot = ReadbackReportSlot::default();
-    let prior = ReadbackAttempt::begin(slot.clone(), &cpu, options).unwrap();
-    let (prior, _) = prior.finish(RenderAttemptStatus::Succeeded, None);
-    slot.store(prior.snapshot_for_test());
+    let mut fixture = ReadbackFixture::new(&cpu, options);
+    let (_, _, prior, _) = fixture.run_sync(|_| Ok(())).unwrap().into_parts();
+    fixture.report = Some(prior.snapshot_for_test());
     let before = cpu.snapshot().unwrap().usage();
     let invalid = RenderAccountingOptions::new().with_limits(
         RenderLimits::new()
@@ -197,22 +205,23 @@ fn rejected_setup_preserves_the_previous_readback_and_cpu_lifetime() {
             RenderAccountingError::Setup(RenderAccountingSetupError::Allocation),
         ),
     ] {
-        let error = match ReadbackAttempt::begin(slot.clone(), &cpu, configuration) {
+        fixture.options = configuration;
+        let error = match fixture.run_sync(|_| Ok(())) {
             Err(error) => error,
             Ok(_) => panic!("rejected setup unexpectedly started"),
         };
         assert_eq!(error.accounting_diagnostic(), Some(expected));
-        assert_eq!(&*slot.read().unwrap(), &prior);
+        assert_eq!(fixture.report.as_ref().unwrap(), &prior);
         assert_eq!(cpu.snapshot().unwrap().usage(), before);
     }
     // Failure to open the renderer CPU checkpoint also closes the fresh attempt
     // checkpoint without replacing the previous completed report.
     let busy = cpu.begin_interval().unwrap();
-    assert!(ReadbackAttempt::begin(slot.clone(), &cpu, options).is_err());
-    assert_eq!(&*slot.read().unwrap(), &prior);
+    fixture.options = options;
+    assert!(fixture.run_sync(|_| Ok(())).is_err());
+    assert_eq!(fixture.report.as_ref().unwrap(), &prior);
     drop(busy);
-    let retry = ReadbackAttempt::begin(slot, &cpu, options).unwrap();
-    let (_, fault) = retry.finish(RenderAttemptStatus::Succeeded, None);
+    let (_, _, _, fault) = fixture.run_sync(|_| Ok(())).unwrap().into_parts();
     assert_eq!(fault, None);
 }
 
@@ -221,14 +230,19 @@ fn unavailable_cpu_interval_preserves_exact_readback_and_generation_domains() {
     let options = RenderAccountingOptions::new();
     let cpu = RendererCpu::new(options).unwrap();
     let generation = Generation::new(options).unwrap();
-    let mut attempt = ReadbackAttempt::begin(ReadbackReportSlot::default(), &cpu, options).unwrap();
-    attempt.attach_generation(&generation).unwrap();
-    attempt
-        .account()
-        .work(RenderWork::ReadbackCopies, 1)
-        .unwrap();
-    drop(attempt.core.cpu_checkpoint.take());
-    let (report, fault) = attempt.finish(RenderAttemptStatus::Succeeded, None);
+    let (_, _, report, fault) = ReadbackFixture::new(&cpu, options)
+        .run_sync(|mut attempt| {
+            attempt.attach_generation(&generation).unwrap();
+            attempt
+                .account()
+                .work(RenderWork::ReadbackCopies, 1)
+                .unwrap();
+            drop(attempt.core.cpu_checkpoint.take());
+
+            Ok(())
+        })
+        .unwrap()
+        .into_parts();
     assert_eq!(fault, Some(RenderAccountingError::Invariant));
     assert_eq!(
         report.status(),
@@ -252,38 +266,55 @@ fn ordinary_cpu_refusal_is_recoverable_and_persistent_fault_keeps_the_first_caus
     let options =
         RenderAccountingOptions::new().with_limits(RenderLimits::new().with_scratch_bytes(0));
     let cpu = RendererCpu::new(options).unwrap();
-    let attempt = ReadbackAttempt::begin(ReadbackReportSlot::default(), &cpu, options).unwrap();
-    let error = match attempt.account().temporary::<u8>(1) {
-        Err(error) => error,
-        Ok(_) => panic!("CPU output limit must reject backing"),
-    };
-    let first = error.accounting_diagnostic().unwrap();
-    assert_eq!(attempt.status_for(&error), RenderAttemptStatus::Refused);
-    assert_eq!(cpu.fault(), None);
-    let later = RenderAccountingError::Invariant;
-    cpu.at(RenderCpuScope::ReadbackOutput).note_fault(later);
-    assert_eq!(
-        attempt.status_for(&error),
-        RenderAttemptStatus::Failed(crate::ErrorCode::Accounting)
-    );
-    let (report, fault) = attempt.finish(RenderAttemptStatus::Refused, Some(first));
-    assert_eq!(fault, Some(later));
-    assert_eq!(report.status(), RenderAttemptStatus::Refused);
-    assert_eq!(report.accounting_diagnostic(), Some(first));
-    assert_eq!(report.cleanup_fault(), Some(later));
+    for unhealthy in [false, true] {
+        let (result, _, report, fault) = ReadbackFixture::new(&cpu, options)
+            .run_sync(|attempt| {
+                let error = attempt.account().temporary::<u8>(1).unwrap_err();
+                assert!(matches!(
+                    error.accounting_diagnostic(),
+                    Some(RenderAccountingError::CpuRefused { .. })
+                ));
+                assert_eq!(cpu.fault(), None);
+                if unhealthy {
+                    cpu.at(RenderCpuScope::ReadbackOutput)
+                        .note_fault(RenderAccountingError::Invariant);
+                }
+                Err::<(), _>(error)
+            })
+            .unwrap()
+            .into_parts();
+        let first = result.unwrap_err().accounting_diagnostic().unwrap();
+        assert_eq!(
+            report.status(),
+            if unhealthy {
+                RenderAttemptStatus::Failed(crate::ErrorCode::Accounting)
+            } else {
+                RenderAttemptStatus::Refused
+            }
+        );
+        assert_eq!(report.accounting_diagnostic(), Some(first));
+        assert_eq!(fault, unhealthy.then_some(RenderAccountingError::Invariant));
+        assert_eq!(report.cleanup_fault(), fault);
+    }
 }
 
 #[test]
 fn failed_final_transfer_changes_both_statuses_without_rewriting_closed_observations() {
     let options = RenderAccountingOptions::new();
     let cpu = RendererCpu::new(options).unwrap();
-    let attempt = ReadbackAttempt::begin(ReadbackReportSlot::default(), &cpu, options).unwrap();
-    let output = attempt.account().retained::<u8>(4).unwrap();
-    attempt
-        .account()
-        .work(RenderWork::ReadbackBytes, 4)
-        .unwrap();
-    let (mut report, fault) = attempt.finish(RenderAttemptStatus::Succeeded, None);
+    let (output, _, mut report, fault) = ReadbackFixture::new(&cpu, options)
+        .run_sync(|attempt| {
+            let output = attempt.account().retained::<u8>(4).unwrap();
+            attempt
+                .account()
+                .work(RenderWork::ReadbackBytes, 4)
+                .unwrap();
+
+            Ok(output)
+        })
+        .unwrap()
+        .into_parts();
+    let output = output.unwrap();
     assert_eq!(fault, None);
     let before = report.snapshot_for_test();
     let first = RenderAccountingError::CpuRefused {

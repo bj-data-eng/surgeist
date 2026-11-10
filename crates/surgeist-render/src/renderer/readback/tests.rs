@@ -34,69 +34,72 @@ fn failed_finalization_disposes_real_decoded_output_without_caller_transfer() {
                     .seed_readback_transfer_for_test(u64::MAX)
                     .unwrap();
             }
-            let mut attempt = ReadbackAttempt::begin(
-                renderer.readback_reports.clone(),
-                &renderer.cpu,
-                renderer.options.accounting(),
+            let finished = readback_lifecycle(
+                &mut renderer,
+                readback_setup,
+                readback_canceled,
+                async |renderer, mut attempt, account| {
+                    let output = account
+                        .async_phase(
+                            RenderPhase::Readback,
+                            renderer.read_headless_inner(&surface, &mut attempt),
+                        )
+                        .await?;
+                    if !overflow {
+                        // Inject after actual decode, while the output is guarded.
+                        renderer
+                            .cpu
+                            .at(RenderCpuScope::ReadbackOutput)
+                            .note_fault(RenderAccountingError::Invariant);
+                    }
+                    Ok(output)
+                },
             )
+            .await
             .unwrap();
-            let account = attempt.account().clone();
-            let output = account
-                .async_phase(
-                    RenderPhase::Readback,
-                    renderer.read_headless_inner(&surface, &mut attempt),
-                )
-                .await
-                .unwrap();
-            if !overflow {
-                // Inject a lifetime health fault after real decoding and final
-                // device validation, while output remains guarded.
-                renderer
-                    .cpu
-                    .at(RenderCpuScope::ReadbackOutput)
-                    .note_fault(RenderAccountingError::Invariant);
-            }
-            let error = renderer.finish_readback(attempt, Ok(output)).unwrap_err();
+            let error = renderer.finish_readback(finished).unwrap_err();
             assert_eq!(error.code(), crate::ErrorCode::Accounting);
-            let report = renderer.last_readback_attempt().unwrap();
-            assert_eq!(
-                report.status(),
-                RenderAttemptStatus::Failed(crate::ErrorCode::Accounting)
-            );
-            assert_eq!(report.attempt().unwrap().status(), report.status());
-            assert_eq!(
-                report
-                    .attempt()
+            {
+                let report = renderer.last_readback_attempt().unwrap();
+                assert_eq!(
+                    report.status(),
+                    RenderAttemptStatus::Failed(crate::ErrorCode::Accounting)
+                );
+                assert_eq!(report.attempt().unwrap().status(), report.status());
+                assert_eq!(
+                    report
+                        .attempt()
+                        .unwrap()
+                        .usage()
+                        .work(RenderWork::ReadbackBytes),
+                    24
+                );
+                let closed = report
+                    .renderer_cpu()
                     .unwrap()
-                    .usage()
-                    .work(RenderWork::ReadbackBytes),
-                24
-            );
-            let closed = report
-                .renderer_cpu()
-                .unwrap()
-                .scope_usage(RenderCpuScope::ReadbackOutput);
-            let held = closed.live(RenderResource::RetainedCpuBytes);
-            assert!(
-                held >= 24,
-                "report must retain its actual pretransfer boundary"
-            );
-            assert_eq!(closed.work(RenderWork::ReadbackTransferredBytes), 0);
-            if overflow {
+                    .scope_usage(RenderCpuScope::ReadbackOutput);
+                let held = closed.live(RenderResource::RetainedCpuBytes);
                 assert!(
-                    matches!(error.accounting_diagnostic(), Some(RenderAccountingError::CpuRefused {
+                    held >= 24,
+                    "report must retain its actual pretransfer boundary"
+                );
+                assert_eq!(closed.work(RenderWork::ReadbackTransferredBytes), 0);
+                if overflow {
+                    assert!(
+                        matches!(error.accounting_diagnostic(), Some(RenderAccountingError::CpuRefused {
                     scope: RenderCpuScope::ReadbackOutput,
                     quantity: RenderQuantity::Work(RenderWork::ReadbackTransferredBytes),
                     current: u64::MAX, amount, reason: RenderRefusalReason::Overflow,
                 }) if amount == held)
-                );
-            } else {
-                assert_eq!(
-                    error.accounting_diagnostic(),
-                    Some(RenderAccountingError::Invariant)
-                );
+                    );
+                } else {
+                    assert_eq!(
+                        error.accounting_diagnostic(),
+                        Some(RenderAccountingError::Invariant)
+                    );
+                }
             }
-            drop(report);
+
             let current = renderer.cpu_accounting_snapshot().unwrap();
             assert_eq!(
                 current

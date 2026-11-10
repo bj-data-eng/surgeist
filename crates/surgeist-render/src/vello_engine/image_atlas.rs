@@ -344,8 +344,8 @@ fn failed(message: impl Into<String>) -> Error {
 mod tests {
     use super::*;
     use crate::accounting::{
-        FrameAttempt, FrameReportSlot, RenderAccountingOptions, RenderAttemptStatus,
-        RenderCpuScope, RenderFrameReport, RenderLimits, RendererCpu,
+        FrameFixture, RenderAccountingOptions, RenderAttemptStatus, RenderCpuScope,
+        RenderFrameReport, RenderLimits, RendererCpu,
     };
 
     fn measure_atlas(
@@ -355,13 +355,10 @@ mod tests {
     ) -> (Result<ImageAtlasPlan>, RenderFrameReport) {
         let options = RenderAccountingOptions::new().with_limits(limits);
         let cpu = RendererCpu::new(options).unwrap();
-        let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-        let result = ImageAtlasPlan::prepare(encoding, expansions, attempt.account());
-        let (status, diagnostic) = match &result {
-            Ok(_) => (RenderAttemptStatus::Succeeded, None),
-            Err(error) => (attempt.status_for(error), error.accounting_diagnostic()),
-        };
-        let (report, fault) = attempt.finish(status, diagnostic);
+        let (result, _, report, fault) = FrameFixture::new(&cpu, options)
+            .run_sync(|attempt| ImageAtlasPlan::prepare(encoding, expansions, attempt.account()))
+            .unwrap()
+            .into_parts();
         assert_eq!(fault, None);
         (result, report)
     }

@@ -2,8 +2,8 @@
 
 use super::*;
 use crate::accounting::{
-    ReadbackAttempt, ReadbackReportSlot, RenderAccountingOptions, RenderAttemptStatus,
-    RenderLimits, RenderQuantity, RendererCpu,
+    ReadbackFixture, RenderAccountingOptions, RenderAttemptStatus, RenderLimits, RenderQuantity,
+    RendererCpu,
 };
 
 #[test]
@@ -46,29 +46,28 @@ fn shared_constructor_and_submission_limits_refuse_before_the_actual_native_call
             };
             drop(view);
             for _ in 0..2 {
-                let mut attempt =
-                    ReadbackAttempt::begin(ReadbackReportSlot::default(), &cpu, options).unwrap();
-                attempt.attach_generation(&generation).unwrap();
-                let account = attempt.account().clone();
-                let result = account
-                    .async_phase(
-                        RenderPhase::Readback,
-                        read_texture_rgba(
-                            &mut backend,
-                            identity,
-                            &texture,
-                            size,
-                            RuntimeOperation::SurfaceReadback,
-                            &account,
-                        ),
-                    )
-                    .await;
+                let (result, _, report, fault) = ReadbackFixture::new(&cpu, options)
+                    .run(async |mut attempt| {
+                        attempt.attach_generation(&generation).unwrap();
+                        let account = attempt.account().clone();
+                        account
+                            .async_phase(
+                                RenderPhase::Readback,
+                                read_texture_rgba(
+                                    &mut backend,
+                                    identity,
+                                    &texture,
+                                    size,
+                                    RuntimeOperation::SurfaceReadback,
+                                    &account,
+                                ),
+                            )
+                            .await
+                    })
+                    .await
+                    .unwrap()
+                    .into_parts();
                 assert_eq!(result.is_ok(), succeeds);
-                let (status, diagnostic) = match &result {
-                    Ok(_) => (RenderAttemptStatus::Succeeded, None),
-                    Err(error) => (attempt.status_for(error), error.accounting_diagnostic()),
-                };
-                let (report, fault) = attempt.finish(status, diagnostic);
                 assert_eq!(fault, None);
                 let forward = report.attempt().unwrap();
                 let usage = forward.usage();

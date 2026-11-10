@@ -1,7 +1,7 @@
 use super::*;
 use crate::accounting::{
-    FrameAttempt, FrameReportSlot, OwnedBox, RenderAccountingOptions, RenderCpuScope, RenderLimits,
-    RenderResource, RendererCpu,
+    FrameFixture, OwnedBox, RenderAccountingOptions, RenderCpuScope, RenderLimits, RenderResource,
+    RendererCpu,
 };
 use crate::backend::{Backend, RendererExactSurfaceGraph as ExactGraph};
 use crate::{
@@ -276,55 +276,58 @@ fn exact_execution_disposes_source_before_downstream_wait_and_cancellation() {
             .unwrap()
             .usage()
             .live(RenderResource::RetainedCpuBytes);
-        let attempt = FrameAttempt::begin(
-            FrameReportSlot::default(),
-            &cpu,
-            RenderAccountingOptions::new(),
-        )
-        .unwrap();
-        let account = attempt.account();
-        let source = source(kind, &caps, account);
-        let (lowered, ..) = view(&source).parts();
-        let resources_live = lowered.resources.allocation_liveness_for_test();
-        let passes_live = lowered.passes.allocation_liveness_for_test();
-        let surface = surface(identity);
-        let wait = crate::backend::hold_exact_preparation_for_test();
-        {
-            let future = crate::backend::render_renderer_exact_headless_graph_surface(
-                &mut backend,
-                &surface,
-                source,
-                account,
-            );
-            let mut future = std::pin::pin!(future);
-            assert!(
-                resources_live() && passes_live(),
-                "unpolled future retains its actual input"
-            );
-            let poll = future
-                .as_mut()
-                .poll(&mut Context::from_waker(Waker::noop()));
-            assert!(
-                !resources_live() && !passes_live(),
-                "synchronous preparation releases source before its first wait"
-            );
-            match poll {
-                Poll::Pending => {
-                    pending_count += 1;
+        FrameFixture::new(&cpu, RenderAccountingOptions::new())
+            .run_sync(|attempt| {
+                let account = attempt.account();
+                let source = source(kind, &caps, account);
+                let (lowered, ..) = view(&source).parts();
+                let resources_live = lowered.resources.allocation_liveness_for_test();
+                let passes_live = lowered.passes.allocation_liveness_for_test();
+                let surface = surface(identity);
+                let wait = crate::backend::hold_exact_preparation_for_test();
+                {
+                    let future = crate::backend::render_renderer_exact_headless_graph_surface(
+                        &mut backend,
+                        &surface,
+                        source,
+                        account,
+                    );
+                    let mut future = std::pin::pin!(future);
+                    assert!(
+                        resources_live() && passes_live(),
+                        "unpolled future retains its actual input"
+                    );
+                    let poll = future
+                        .as_mut()
+                        .poll(&mut Context::from_waker(Waker::noop()));
+                    assert!(
+                        !resources_live() && !passes_live(),
+                        "synchronous preparation releases source before its first wait"
+                    );
+                    match poll {
+                        Poll::Pending => {
+                            pending_count += 1;
+                        }
+                        Poll::Ready(result) => {
+                            drop(result.unwrap());
+                        }
+                    }
                 }
-                Poll::Ready(result) => {
-                    drop(result.unwrap());
-                }
-            }
-        }
-        drop(wait);
-        assert_eq!(surface.headless_publication_count_for_test(), 0);
-        let ready = backend
-            .ready_device_state_borrow_for_test(identity)
+                drop(wait);
+                assert_eq!(surface.headless_publication_count_for_test(), 0);
+                let ready = backend
+                    .ready_device_state_borrow_for_test(identity)
+                    .unwrap();
+                let after = ready.internal_resource_manager_observation_for_test();
+                assert_eq!((after.active_frame_count, after.leased_count), (0, 0));
+
+                Ok(())
+            })
+            .unwrap()
+            .into_parts()
+            .0
             .unwrap();
-        let after = ready.internal_resource_manager_observation_for_test();
-        assert_eq!((after.active_frame_count, after.leased_count), (0, 0));
-        drop(attempt);
+
         completed.push((cpu, baseline));
     }
     drop(backend);
@@ -376,55 +379,57 @@ fn source_disposal_fault_precedes_submission_and_preserves_prior_semantic_error(
             .with_profile(RenderProfile::Summary { timing: true })
             .with_clock(RenderClock::Host(clock));
         let cpu = RendererCpu::new(options).unwrap();
-        let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-        let account = attempt.account();
-        let source = source(0, &caps, account);
-        let (lowered, ..) = view(&source).parts();
-        let resources_live = lowered.resources.allocation_liveness_for_test();
-        let passes_live = lowered.passes.allocation_liveness_for_test();
-        let cleanup_cpu = cpu.at(RenderCpuScope::FrameBacking);
-        DISPOSED.with(|probe| {
-            *probe.borrow_mut() = Some(Box::new(move || {
-                if !resources_live() && !passes_live() {
-                    cleanup_cpu.note_fault(crate::RenderAccountingError::Invariant);
-                    true
-                } else {
-                    false
+        let (_, _, report, cleanup) = FrameFixture::new(&cpu, options)
+            .run_sync(|attempt| {
+                let account = attempt.account();
+                let source = source(0, &caps, account);
+                let (lowered, ..) = view(&source).parts();
+                let resources_live = lowered.resources.allocation_liveness_for_test();
+                let passes_live = lowered.passes.allocation_liveness_for_test();
+                let cleanup_cpu = cpu.at(RenderCpuScope::FrameBacking);
+                DISPOSED.with(|probe| {
+                    *probe.borrow_mut() = Some(Box::new(move || {
+                        if !resources_live() && !passes_live() {
+                            cleanup_cpu.note_fault(crate::RenderAccountingError::Invariant);
+                            true
+                        } else {
+                            false
+                        }
+                    }))
+                });
+                let mut surface = surface(identity);
+                if early_error {
+                    surface.options.format = Format::Bgra8;
                 }
-            }))
-        });
-        let mut surface = surface(identity);
-        if early_error {
-            surface.options.format = Format::Bgra8;
-        }
-        let error = pollster::block_on(
-            crate::backend::render_renderer_exact_headless_graph_surface(
-                &mut backend,
-                &surface,
-                source,
-                account,
-            ),
-        )
-        .err()
-        .expect("source disposal injects its CPU fault before execution continues");
-        let fault = cpu
-            .snapshot()
+                let error = pollster::block_on(
+                    crate::backend::render_renderer_exact_headless_graph_surface(
+                        &mut backend,
+                        &surface,
+                        source,
+                        account,
+                    ),
+                )
+                .err()
+                .expect("source disposal injects its CPU fault before execution continues");
+                let fault = cpu
+                    .snapshot()
+                    .unwrap()
+                    .fault()
+                    .expect("actual disposal callback fault is retained");
+                if early_error {
+                    assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
+                    assert_eq!(error.accounting_diagnostic(), None);
+                } else {
+                    assert_eq!(error.accounting_diagnostic(), Some(fault));
+                }
+                assert_eq!(account.work_count(RenderWork::Submissions).unwrap(), 0);
+                assert_eq!(surface.headless_publication_count_for_test(), 0);
+                DISPOSED.with(|probe| *probe.borrow_mut() = None);
+                Err::<(), _>(error)
+            })
             .unwrap()
-            .fault()
-            .expect("actual disposal callback fault is retained");
-        if early_error {
-            assert_eq!(error.code(), crate::ErrorCode::RenderFailed);
-            assert_eq!(error.accounting_diagnostic(), None);
-        } else {
-            assert_eq!(error.accounting_diagnostic(), Some(fault));
-        }
-        assert_eq!(account.work_count(RenderWork::Submissions).unwrap(), 0);
-        assert_eq!(surface.headless_publication_count_for_test(), 0);
-        DISPOSED.with(|probe| *probe.borrow_mut() = None);
-        let (report, cleanup) = attempt.finish(
-            crate::RenderAttemptStatus::Failed(error.code()),
-            error.accounting_diagnostic(),
-        );
+            .into_parts();
+        let fault = cpu.snapshot().unwrap().fault().unwrap();
         assert_eq!(cleanup, Some(fault));
         assert_eq!(report.cleanup_fault(), Some(fault));
         let after = backend
@@ -463,12 +468,7 @@ fn borrowed_exact_sources_retain_fact_identity_and_release_lists_before_prepared
             .unwrap()
             .usage()
             .live(RenderResource::RetainedCpuBytes);
-        let attempt = FrameAttempt::begin(
-            FrameReportSlot::default(),
-            &cpu,
-            RenderAccountingOptions::new(),
-        )
-        .unwrap();
+        FrameFixture::new(&cpu, RenderAccountingOptions::new()).run_sync(|attempt| {
         let account = attempt.account();
         let source = source(kind, &caps, account);
         let (lowered, base, composition, _, _, backdrop) = view(&source).parts();
@@ -561,7 +561,10 @@ fn borrowed_exact_sources_retain_fact_identity_and_release_lists_before_prepared
         );
         drop(prepared);
         drop((first_pass, first_resource));
-        drop(attempt);
+
+Ok(())
+}).unwrap().into_parts().0.unwrap();
+
         assert_eq!(
             cpu.snapshot()
                 .unwrap()
@@ -599,69 +602,81 @@ fn borrowed_source_request_overlap_refuses_one_byte_blocker_and_retries_same_sou
                 .unwrap()
                 .usage()
                 .live(RenderResource::RetainedCpuBytes);
-            let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-            let account = attempt.account();
-            let source = source(kind, &caps, account);
-            let resources = ResourceManager::new(crate::ResourceCacheBudget::DISABLED);
-            let cache = DevicePassCache::new(
-                resources.generation().clone(),
-                device_cpu.at(RenderCpuScope::DeviceBacking),
-            );
-            let before = cpu
-                .snapshot()
-                .unwrap()
-                .usage()
-                .live(RenderResource::RetainedCpuBytes);
-            let blocker = block.then(|| {
-                AccountedVec::<u8>::new_in(&account.storage(), 1, RenderResource::RetainedCpuBytes)
-                    .unwrap()
-            });
-            let prepare = || {
-                PreparedGraph::try_prepare_inner(
-                    view(&source),
-                    source.working_format(),
-                    &caps,
-                    (ready.device_for_test(), ready.queue_for_test()),
-                    &resources,
-                    (&cache, false),
-                    account,
-                )
-            };
-            let result = prepare();
-            if block {
-                let error = result
-                    .err()
-                    .expect("one real retained byte must prevent exact peak admission");
-                assert!(matches!(
-                    error.accounting_diagnostic(),
-                    Some(crate::RenderAccountingError::CpuRefused { .. })
-                ));
-                assert_eq!(
-                    cpu.snapshot()
+            let peak = FrameFixture::new(&cpu, options)
+                .run_sync(|attempt| {
+                    let account = attempt.account();
+                    let source = source(kind, &caps, account);
+                    let resources = ResourceManager::new(crate::ResourceCacheBudget::DISABLED);
+                    let cache = DevicePassCache::new(
+                        resources.generation().clone(),
+                        device_cpu.at(RenderCpuScope::DeviceBacking),
+                    );
+                    let before = cpu
+                        .snapshot()
                         .unwrap()
                         .usage()
-                        .live(RenderResource::RetainedCpuBytes),
-                    before + 1
-                );
-                assert_eq!(resources.observation_for_test().leased_count, 0);
-                drop(blocker);
-                let retry =
-                    prepare().expect("unchanged borrowed input retries after blocker disposal");
-                assert_eq!(
-                    retry.output_extent(account).unwrap(),
-                    PhysicalSize::new(2, 2)
-                );
-                drop(retry);
-            } else {
-                drop(result.unwrap());
-            }
-            let peak = cpu
-                .snapshot()
+                        .live(RenderResource::RetainedCpuBytes);
+                    let blocker = block.then(|| {
+                        AccountedVec::<u8>::new_in(
+                            &account.storage(),
+                            1,
+                            RenderResource::RetainedCpuBytes,
+                        )
+                        .unwrap()
+                    });
+                    let prepare = || {
+                        PreparedGraph::try_prepare_inner(
+                            view(&source),
+                            source.working_format(),
+                            &caps,
+                            (ready.device_for_test(), ready.queue_for_test()),
+                            &resources,
+                            (&cache, false),
+                            account,
+                        )
+                    };
+                    let result = prepare();
+                    if block {
+                        let error = result
+                            .err()
+                            .expect("one real retained byte must prevent exact peak admission");
+                        assert!(matches!(
+                            error.accounting_diagnostic(),
+                            Some(crate::RenderAccountingError::CpuRefused { .. })
+                        ));
+                        assert_eq!(
+                            cpu.snapshot()
+                                .unwrap()
+                                .usage()
+                                .live(RenderResource::RetainedCpuBytes),
+                            before + 1
+                        );
+                        assert_eq!(resources.observation_for_test().leased_count, 0);
+                        drop(blocker);
+                        let retry = prepare()
+                            .expect("unchanged borrowed input retries after blocker disposal");
+                        assert_eq!(
+                            retry.output_extent(account).unwrap(),
+                            PhysicalSize::new(2, 2)
+                        );
+                        drop(retry);
+                    } else {
+                        drop(result.unwrap());
+                    }
+                    let peak = cpu
+                        .snapshot()
+                        .unwrap()
+                        .usage()
+                        .peak(RenderResource::RetainedCpuBytes);
+                    drop(source);
+
+                    Ok(peak)
+                })
                 .unwrap()
-                .usage()
-                .peak(RenderResource::RetainedCpuBytes);
-            drop(source);
-            drop(attempt);
+                .into_parts()
+                .0
+                .unwrap();
+
             assert_eq!(
                 cpu.snapshot()
                     .unwrap()

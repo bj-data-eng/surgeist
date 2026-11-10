@@ -2,9 +2,13 @@
 mod frame;
 mod readback;
 mod renderer_attempt;
-pub(crate) use frame::{FrameAttempt, FrameReportSlot};
+#[cfg(test)]
+pub(crate) use frame::fixture::FrameFixture;
+pub(crate) use frame::frame_lifecycle;
 pub use frame::{RenderFrameReport, RenderFrameReportRef};
-pub(crate) use readback::{ReadbackAttempt, ReadbackReportSlot};
+#[cfg(test)]
+pub(crate) use readback::fixture::ReadbackFixture;
+pub(crate) use readback::{FinishedReadback, ReadbackWork, readback_lifecycle};
 pub use readback::{RenderReadbackReport, RenderReadbackReportRef};
 mod cpu;
 mod cpu_model;
@@ -14,7 +18,7 @@ mod history;
 pub(crate) use cpu::{CpuAccount, CpuCheckpoint, CpuHold, CpuImport, RendererCpu};
 pub use cpu_model::*;
 pub use generation_model::*;
-pub(crate) use history::{HistoryCommit, HistoryDraft, HistoryObserver, ImageHistory};
+pub(crate) use history::{HistoryCommit, HistoryObserver, ImageHistory};
 mod model;
 mod report;
 use report::{IntervalNumbers, ObserverBudget, ReportBacking};

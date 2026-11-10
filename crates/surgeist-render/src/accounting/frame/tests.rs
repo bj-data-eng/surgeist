@@ -240,10 +240,9 @@ fn polled_cancellation_closes_all_domains_and_reopens_the_same_lifetime_owners()
     );
     let cpu = RendererCpu::new(options).unwrap();
     let generation = Generation::new(options).unwrap();
-    let slot = FrameReportSlot::default();
+    let mut fixture = FrameFixture::new(&cpu, options);
     {
-        let future = async {
-            let mut attempt = FrameAttempt::begin(slot.clone(), &cpu, options).unwrap();
+        let future = fixture.run(async |mut attempt| {
             attempt.attach_generation(&generation).unwrap();
             let account = attempt.account().clone();
             let scratch = account.temporary::<u8>(3).unwrap();
@@ -254,8 +253,8 @@ fn polled_cancellation_closes_all_domains_and_reopens_the_same_lifetime_owners()
             std::future::pending::<()>().await;
             drop(object);
             drop(scratch);
-            attempt.finish(RenderAttemptStatus::Succeeded, None)
-        };
+            Ok(())
+        });
         let mut future = std::pin::pin!(future);
         assert!(matches!(
             future
@@ -263,7 +262,7 @@ fn polled_cancellation_closes_all_domains_and_reopens_the_same_lifetime_owners()
                 .poll(&mut Context::from_waker(Waker::noop())),
             Poll::Pending
         ));
-        assert!(slot.read().is_none());
+        // The lifecycle has not reached its terminal publication.
         assert_eq!(
             cpu.snapshot()
                 .unwrap()
@@ -280,7 +279,7 @@ fn polled_cancellation_closes_all_domains_and_reopens_the_same_lifetime_owners()
             1
         );
     }
-    let canceled = slot.take().unwrap();
+    let canceled = fixture.report.take().unwrap();
     assert_eq!(canceled.status(), RenderAttemptStatus::Canceled);
     assert_eq!(
         canceled
@@ -308,13 +307,15 @@ fn polled_cancellation_closes_all_domains_and_reopens_the_same_lifetime_owners()
             .work(RenderWork::ResourceAllocationRequests),
         1
     );
-    let mut retry = FrameAttempt::begin(slot.clone(), &cpu, options).unwrap();
-    retry.attach_generation(&generation).unwrap();
-    retry
-        .account()
-        .work(RenderWork::CommandsEmitted, 2)
-        .unwrap();
-    let (retry, fault) = retry.finish(RenderAttemptStatus::Succeeded, None);
+    let (result, _, retry, fault) = fixture
+        .run_sync(|mut retry| {
+            retry.attach_generation(&generation)?;
+            retry.account().work(RenderWork::CommandsEmitted, 2)?;
+            Ok(())
+        })
+        .unwrap()
+        .into_parts();
+    result.unwrap();
     assert_eq!(fault, None);
     assert_eq!(retry.status(), RenderAttemptStatus::Succeeded);
     assert_eq!(
@@ -349,17 +350,21 @@ fn missing_interval_is_typed_unavailability_and_preserves_other_actual_boundarie
     let options = RenderAccountingOptions::new();
     let cpu = RendererCpu::new(options).unwrap();
     let generation = Generation::new(options).unwrap();
-    let slot = FrameReportSlot::default();
-    let mut attempt = FrameAttempt::begin(slot, &cpu, options).unwrap();
-    attempt.attach_generation(&generation).unwrap();
-    attempt
-        .account()
-        .work(RenderWork::CommandsEmitted, 1)
-        .unwrap();
-    // Faithful private-owner invariant injection: close the real CPU interval,
-    // then remove its token. Extraction must not fabricate a zero interval.
-    drop(attempt.core.cpu_checkpoint.take());
-    let (report, fault) = attempt.finish(RenderAttemptStatus::Succeeded, None);
+    let mut fixture = FrameFixture::new(&cpu, options);
+    let (_, _, report, fault) = fixture
+        .run_sync(|mut attempt| {
+            attempt.attach_generation(&generation).unwrap();
+            attempt
+                .account()
+                .work(RenderWork::CommandsEmitted, 1)
+                .unwrap();
+            // Faithful private-owner invariant injection: close the real CPU interval,
+            // then remove its token. Extraction must not fabricate a zero interval.
+            drop(attempt.core.cpu_checkpoint.take());
+            Ok(())
+        })
+        .unwrap()
+        .into_parts();
     assert_eq!(fault, Some(RenderAccountingError::Invariant));
     assert_eq!(
         report.status(),
@@ -381,7 +386,6 @@ fn missing_interval_is_typed_unavailability_and_preserves_other_actual_boundarie
 fn mandatory_finalization_fault_does_not_replace_an_earlier_backend_cause() {
     let options = RenderAccountingOptions::new();
     let cpu = RendererCpu::new(options).unwrap();
-    let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
     let first = RenderAccountingError::CpuRefused {
         scope: RenderCpuScope::FrameBacking,
         quantity: RenderQuantity::Resource(RenderResource::ScratchCpuBytes),
@@ -391,9 +395,17 @@ fn mandatory_finalization_fault_does_not_replace_an_earlier_backend_cause() {
     };
     // Inject the same fixed diagnostic retained by a committed CPU transition
     // fault, independently of the prior causal backend failure.
-    cpu.at(RenderCpuScope::FrameBacking).note_fault(first);
     let status = RenderAttemptStatus::Failed(crate::ErrorCode::RenderFailed);
-    let (mut report, fault) = attempt.finish(status, None);
+    let (_, _, mut report, fault) = FrameFixture::new(&cpu, options)
+        .run_sync(|_| {
+            cpu.at(RenderCpuScope::FrameBacking).note_fault(first);
+            Err::<(), _>(Error::new(
+                crate::BackendErrorCode::RenderFailed,
+                "original backend failure",
+            ))
+        })
+        .unwrap()
+        .into_parts();
     assert_eq!(fault, Some(first));
     report.note_cleanup_fault(Some(RenderAccountingError::Invariant));
     assert_eq!(report.status(), status);
@@ -406,15 +418,16 @@ fn mandatory_finalization_fault_does_not_replace_an_earlier_backend_cause() {
 fn rejected_frame_setup_preserves_previous_report_and_cpu_lifetime_usage() {
     let options = RenderAccountingOptions::new();
     let cpu = RendererCpu::new(options).unwrap();
-    let slot = FrameReportSlot::default();
-    let prior = FrameAttempt::begin(slot.clone(), &cpu, options).unwrap();
-    prior
-        .account()
-        .work(RenderWork::CommandsEmitted, 1)
-        .unwrap();
-    let (prior, fault) = prior.finish(RenderAttemptStatus::Succeeded, None);
+    let mut fixture = FrameFixture::new(&cpu, options);
+    let (_, _, prior, fault) = fixture
+        .run_sync(|attempt| {
+            attempt.account().work(RenderWork::CommandsEmitted, 1)?;
+            Ok(())
+        })
+        .unwrap()
+        .into_parts();
     assert_eq!(fault, None);
-    slot.store(prior.snapshot_for_test());
+    fixture.report = Some(prior.snapshot_for_test());
     let before = cpu.snapshot().unwrap().usage();
     let invalid = RenderAccountingOptions::new().with_limits(
         RenderLimits::new()
@@ -438,12 +451,13 @@ fn rejected_frame_setup_preserves_previous_report_and_cpu_lifetime_usage() {
             RenderAccountingError::Setup(RenderAccountingSetupError::Allocation),
         ),
     ] {
-        let error = match FrameAttempt::begin(slot.clone(), &cpu, configuration) {
+        fixture.options = configuration;
+        let error = match fixture.run_sync(|_| Ok(())) {
             Err(error) => error,
             Ok(_) => panic!("invalid frame setup unexpectedly started"),
         };
         assert_eq!(error.accounting_diagnostic(), Some(diagnostic));
-        assert_eq!(&*slot.read().unwrap(), &prior);
+        assert_eq!(fixture.report.as_ref().unwrap(), &prior);
         assert_eq!(cpu.snapshot().unwrap().usage(), before);
         assert_eq!(cpu.fault(), None);
     }
@@ -475,19 +489,24 @@ fn pending_phase_cancellation_includes_its_owned_future_cleanup_before_attempt_c
             .with_clock(RenderClock::Host(phase_cleanup_clock))
             .with_profile(RenderProfile::Summary { timing: true });
         let cpu = RendererCpu::new(options).unwrap();
-        let attempt = FrameAttempt::begin(FrameReportSlot::default(), &cpu, options).unwrap();
-        let account = attempt.account().clone();
+        let mut fixture = FrameFixture::new(&cpu, options);
+        let mut completed = None;
         {
-            let inner_account = account.clone();
-            let future = account.async_phase(RenderPhase::FramePrepare, async move {
-                let mut values = inner_account.temporary::<CleanupValue>(1)?;
-                values.push(CleanupValue { _data: 0 })?;
-                PHASE_CLEANUP_TIME.store(5, std::sync::atomic::Ordering::SeqCst);
-                if canceled {
-                    std::future::pending::<()>().await;
-                }
-                drop(values);
-                Ok(())
+            let future = fixture.run(async |attempt| {
+                let account = attempt.account().clone();
+                let inner_account = account.clone();
+                account
+                    .async_phase(RenderPhase::FramePrepare, async move {
+                        let mut values = inner_account.temporary::<CleanupValue>(1)?;
+                        values.push(CleanupValue { _data: 0 })?;
+                        PHASE_CLEANUP_TIME.store(5, std::sync::atomic::Ordering::SeqCst);
+                        if canceled {
+                            std::future::pending::<()>().await;
+                        }
+                        drop(values);
+                        Ok(())
+                    })
+                    .await
             });
             let mut future = std::pin::pin!(future);
             match future
@@ -497,18 +516,17 @@ fn pending_phase_cancellation_includes_its_owned_future_cleanup_before_attempt_c
                 Poll::Pending => assert!(canceled),
                 Poll::Ready(result) => {
                     assert!(!canceled);
-                    result.unwrap();
+                    completed = Some(result.unwrap());
                 }
             }
         }
-        let (report, fault) = attempt.finish(
-            if canceled {
-                RenderAttemptStatus::Canceled
-            } else {
-                RenderAttemptStatus::Succeeded
-            },
-            None,
-        );
+        let (report, fault) = if let Some(finished) = completed {
+            let (result, _, report, fault) = finished.into_parts();
+            result.unwrap();
+            (report, fault)
+        } else {
+            (fixture.report.take().unwrap(), None)
+        };
         assert_eq!(fault, None);
         assert_eq!(
             report.attempt().unwrap().elapsed(),
