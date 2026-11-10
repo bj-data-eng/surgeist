@@ -75,11 +75,13 @@
 
 mod backend;
 mod error;
+mod idl;
 
 use std::marker::PhantomData;
 use std::rc::Rc;
 
 pub use error::{Error, Exception, ExceptionPhase};
+pub use idl::{IntegerKind, IntegerMode, IntegerValue};
 
 /// Engine selected before creating any realm or heap values.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -285,6 +287,20 @@ impl<'scope> Scope<'scope> {
     /// exception capture, this explicit conversion may run guest code.
     pub fn to_utf16(&mut self, value: &Value<'scope>) -> Result<Vec<u16>, Error> {
         self.engine.to_utf16(&self.realm, &value.root)
+    }
+
+    /// Converts through ECMAScript ToNumber and the selected Web IDL integer
+    /// algorithm. Guest coercion runs once and may throw. EnforceRange failure
+    /// is [`Error::IntegerOutOfRange`], corresponding to a JavaScript TypeError
+    /// when used by an installed interface. The result retains its declared type.
+    pub fn integer(
+        &mut self,
+        value: &Value<'scope>,
+        kind: IntegerKind,
+        mode: IntegerMode,
+    ) -> Result<IntegerValue, Error> {
+        let number = self.engine.to_number(&self.realm, &value.root)?;
+        idl::convert(number, kind, mode).map_err(|_| Error::IntegerOutOfRange)
     }
 
     /// JavaScript strict equality, without coercion.

@@ -1,4 +1,7 @@
-use surgeist_bindings_js::{EngineKind, Error, ExceptionPhase, Execution, Process, Realm};
+use surgeist_bindings_js::{
+    EngineKind, Error, ExceptionPhase, Execution, IntegerKind, IntegerMode, IntegerValue, Process,
+    Realm,
+};
 
 fn units(source: &str) -> Vec<u16> {
     source.encode_utf16().collect()
@@ -213,6 +216,71 @@ fn checkpoints_are_explicit_and_shared(process: &mut Process) -> Result<(), Erro
     Ok(())
 }
 
+fn web_idl_integer_conversion_preserves_coercion_and_exact_modulo(
+    process: &mut Process,
+) -> Result<(), Error> {
+    let mut execution = process.execution();
+    let realm = execution.create_realm()?;
+    execution.in_realm(&realm, |scope| {
+        for (source, kind, expected) in [
+            ("128", IntegerKind::Byte, IntegerValue::Byte(-128)),
+            ("-1", IntegerKind::Octet, IntegerValue::Octet(255)),
+            ("32768", IntegerKind::Short, IntegerValue::Short(i16::MIN)),
+            ("65536", IntegerKind::UnsignedShort, IntegerValue::UnsignedShort(0)),
+            ("2147483648", IntegerKind::Long, IntegerValue::Long(i32::MIN)),
+            ("-1", IntegerKind::UnsignedLong, IntegerValue::UnsignedLong(u32::MAX)),
+            ("2 ** 63", IntegerKind::LongLong, IntegerValue::LongLong(i64::MIN)),
+            ("-2", IntegerKind::UnsignedLongLong, IntegerValue::UnsignedLongLong(u64::MAX - 1)),
+            ("undefined", IntegerKind::Long, IntegerValue::Long(0)),
+            ("null", IntegerKind::Long, IntegerValue::Long(0)),
+            ("true", IntegerKind::Long, IntegerValue::Long(1)),
+        ] {
+            let value = scope.evaluate(&units(source))?;
+            assert_eq!(scope.integer(&value, kind, IntegerMode::Wrap)?, expected);
+        }
+        let value = scope.evaluate(&units("globalThis.conversions = 0; ({valueOf() { conversions++; return -2.9 }, toString() { throw 'must not run' }})"))?;
+        assert_eq!(scope.integer(&value, IntegerKind::UnsignedLongLong, IntegerMode::Wrap)?, IntegerValue::UnsignedLongLong(u64::MAX - 1));
+        let count = scope.evaluate(&units("conversions"))?;
+        assert_eq!(scope.to_utf16(&count)?, units("1"));
+
+        for source in ["2 ** 53", "Infinity", "NaN"] {
+            let value = scope.evaluate(&units(source))?;
+            assert!(matches!(scope.integer(&value, IntegerKind::UnsignedLongLong, IntegerMode::EnforceRange), Err(Error::IntegerOutOfRange)));
+        }
+        for (source, expected) in [("2.5", 2), ("3.5", 4), ("-0.5", 0)] {
+            let value = scope.evaluate(&units(source))?;
+            assert_eq!(scope.integer(&value, IntegerKind::Byte, IntegerMode::Clamp)?, IntegerValue::Byte(expected));
+        }
+        let maximum = scope.evaluate(&units("Infinity"))?;
+        assert_eq!(scope.integer(&maximum, IntegerKind::UnsignedLongLong, IntegerMode::Clamp)?, IntegerValue::UnsignedLongLong(9_007_199_254_740_991));
+
+        // ECMAScript ToNumber rejects these; Number(BigInt) is a distinct
+        // explicit conversion and must not be substituted by the adapter.
+        for source in ["1n", "Symbol('number')"] {
+            let value = scope.evaluate(&units(source))?;
+            match scope.integer(&value, IntegerKind::Long, IntegerMode::Wrap) {
+                Err(Error::Exception(exception)) => {
+                    assert_eq!(exception.phase(), ExceptionPhase::Coerce);
+                    let thrown = scope.import(exception.value())?;
+                    let name = scope.get(&thrown, &units("name"))?;
+                    assert_eq!(scope.to_utf16(&name)?, units("TypeError"));
+                }
+                _ => return Err(Error::BackendUnavailable),
+            }
+        }
+        let value = scope.evaluate(&units("globalThis.coercionFailure = {}; ({valueOf() {throw coercionFailure}})"))?;
+        let exception = match scope.integer(&value, IntegerKind::Long, IntegerMode::Wrap) {
+            Err(Error::Exception(exception)) => exception,
+            _ => return Err(Error::BackendUnavailable),
+        };
+        let thrown = scope.import(exception.value())?;
+        let original = scope.evaluate(&units("coercionFailure"))?;
+        assert!(scope.strict_equals(&thrown, &original)?);
+        Ok::<_, Error>(())
+    })??;
+    Ok(())
+}
+
 fn main() -> Result<(), Error> {
     let mut process = Process::bootstrap(EngineKind::V8)?;
     assert!(matches!(
@@ -230,6 +298,7 @@ fn main() -> Result<(), Error> {
     exceptions_preserve_values_without_diagnostics(&mut process)?;
     properties_and_calls_refuse_invalid_values(&mut process)?;
     checkpoints_are_explicit_and_shared(&mut process)?;
+    web_idl_integer_conversion_preserves_coercion_and_exact_modulo(&mut process)?;
 
     let (old_realm, old_value) = {
         let mut execution = process.execution();

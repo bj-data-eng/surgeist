@@ -128,3 +128,13 @@ not enumerate every transitive Cargo dependency, build tool, compiler runtime or
 object retained by a final linker. No downstream release binary is distributed
 by this source change; a binary distribution must carry its applicable complete
 notices and verify its actual target, features and bundled material.
+
+## Web IDL algorithm basis
+
+The integer conversion implementation adapts the pinned Web IDL algorithms,
+Copyright © WHATWG (Apple, Google, Mozilla, Microsoft), under the existing
+[complete license](../../licenses/whatwg/LICENSE) and
+[adaptation notice](../../licenses/whatwg/NOTICE.md#javascript-binding-algorithms).
+The [binding source index](../../references/js-bindings-standards.md) records
+the complete applicable source clauses. These standards terms are separate from
+the external engine dependency above.

@@ -369,6 +369,16 @@ impl super::Engine for Engine {
         })
     }
 
+    fn to_number(&mut self, realm: &Realm, value: &Root) -> Result<f64, Error> {
+        self.validate_root(value)?;
+        self.enter(realm, ExceptionPhase::Coerce, |scope, roots| {
+            roots
+                .local(scope, value)?
+                .number_value(scope)
+                .ok_or(Error::BackendUnavailable)
+        })
+    }
+
     fn strict_equals(&mut self, left: &Root, right: &Root) -> Result<bool, Error> {
         self.validate_root(left)?;
         self.validate_root(right)?;

@@ -56,6 +56,9 @@ pub enum Error {
     /// This operation requires an object or function, respectively.
     ExpectedObject,
     ExpectedFunction,
+    /// Web IDL EnforceRange rejected a nonfinite or out-of-range Number.
+    /// Installed JavaScript interfaces map this category to TypeError.
+    IntegerOutOfRange,
     /// Guest Set rejected the property update.
     PropertyRejected,
     /// Execution was terminated by the backend.
@@ -79,6 +82,7 @@ impl fmt::Display for Error {
             Self::TooManyArguments => "the argument list exceeds the backend limit",
             Self::ExpectedObject => "an object is required",
             Self::ExpectedFunction => "a callable function is required",
+            Self::IntegerOutOfRange => "the Number is outside the Web IDL integer range",
             Self::PropertyRejected => "the object rejected the property update",
             Self::Terminated => "JavaScript execution was terminated",
             Self::BackendUnavailable => "the JavaScript backend is unavailable",

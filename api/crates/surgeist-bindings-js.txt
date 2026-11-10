@@ -13,6 +13,7 @@ pub surgeist_bindings_js::Error::ExpectedObject
 pub surgeist_bindings_js::Error::ExpiredIdentity
 pub surgeist_bindings_js::Error::ForeignOwner
 pub surgeist_bindings_js::Error::IdentityExhausted
+pub surgeist_bindings_js::Error::IntegerOutOfRange
 pub surgeist_bindings_js::Error::OwnerAlreadyActive
 pub surgeist_bindings_js::Error::PropertyRejected
 pub surgeist_bindings_js::Error::StringTooLong
@@ -29,6 +30,28 @@ pub surgeist_bindings_js::ExceptionPhase::Evaluate
 pub surgeist_bindings_js::ExceptionPhase::Invoke
 pub surgeist_bindings_js::ExceptionPhase::PropertyRead
 pub surgeist_bindings_js::ExceptionPhase::PropertyWrite
+pub enum surgeist_bindings_js::IntegerKind
+pub surgeist_bindings_js::IntegerKind::Byte
+pub surgeist_bindings_js::IntegerKind::Long
+pub surgeist_bindings_js::IntegerKind::LongLong
+pub surgeist_bindings_js::IntegerKind::Octet
+pub surgeist_bindings_js::IntegerKind::Short
+pub surgeist_bindings_js::IntegerKind::UnsignedLong
+pub surgeist_bindings_js::IntegerKind::UnsignedLongLong
+pub surgeist_bindings_js::IntegerKind::UnsignedShort
+#[non_exhaustive] pub enum surgeist_bindings_js::IntegerMode
+pub surgeist_bindings_js::IntegerMode::Clamp
+pub surgeist_bindings_js::IntegerMode::EnforceRange
+pub surgeist_bindings_js::IntegerMode::Wrap
+pub enum surgeist_bindings_js::IntegerValue
+pub surgeist_bindings_js::IntegerValue::Byte(i8)
+pub surgeist_bindings_js::IntegerValue::Long(i32)
+pub surgeist_bindings_js::IntegerValue::LongLong(i64)
+pub surgeist_bindings_js::IntegerValue::Octet(u8)
+pub surgeist_bindings_js::IntegerValue::Short(i16)
+pub surgeist_bindings_js::IntegerValue::UnsignedLong(u32)
+pub surgeist_bindings_js::IntegerValue::UnsignedLongLong(u64)
+pub surgeist_bindings_js::IntegerValue::UnsignedShort(u16)
 pub struct surgeist_bindings_js::Exception
 impl surgeist_bindings_js::Exception
 pub fn surgeist_bindings_js::Exception::phase(&self) -> surgeist_bindings_js::ExceptionPhase
@@ -54,6 +77,7 @@ pub fn surgeist_bindings_js::Scope<'scope>::evaluate(&mut self, source: &[u16]) 
 pub fn surgeist_bindings_js::Scope<'scope>::get(&mut self, object: &surgeist_bindings_js::Value<'scope>, name: &[u16]) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::global(&mut self) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::import(&mut self, root: &surgeist_bindings_js::Root) -> core::result::Result<surgeist_bindings_js::Value<'scope>, surgeist_bindings_js::Error>
+pub fn surgeist_bindings_js::Scope<'scope>::integer(&mut self, value: &surgeist_bindings_js::Value<'scope>, kind: surgeist_bindings_js::IntegerKind, mode: surgeist_bindings_js::IntegerMode) -> core::result::Result<surgeist_bindings_js::IntegerValue, surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::retain(&self, value: &surgeist_bindings_js::Value<'scope>) -> surgeist_bindings_js::Root
 pub fn surgeist_bindings_js::Scope<'scope>::set(&mut self, object: &surgeist_bindings_js::Value<'scope>, name: &[u16], value: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<(), surgeist_bindings_js::Error>
 pub fn surgeist_bindings_js::Scope<'scope>::strict_equals(&mut self, left: &surgeist_bindings_js::Value<'scope>, right: &surgeist_bindings_js::Value<'scope>) -> core::result::Result<bool, surgeist_bindings_js::Error>

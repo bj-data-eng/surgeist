@@ -6,8 +6,9 @@ It does not own a JavaScript VM, garbage collector or replacement DOM.
 
 The current core supplies one thread-affine `Process`, borrowed `Execution`,
 multiple realms, scoped values, explicitly retained roots, exact UTF-16 strings,
-property operations, calls, original exception values and explicit shared
-microtask checkpoints. Native Web IDL, DOM, CSSOM and Runtime adapters are not
+property operations, calls, original exception values, Web IDL integer
+conversion and explicit shared microtask checkpoints. Installed Web IDL
+interfaces, DOM, CSSOM and Runtime adapters are not
 yet implemented. This is not a browser environment or a WPT runner.
 
 ## Ownership
@@ -38,6 +39,13 @@ The private [`backend::Engine`](src/backend/mod.rs) trait isolates rooted values
 conversions, invocation, exception capture, job entry and destruction from binding
 algorithms. It is an intentional engine replacement boundary, not a claim that a
 second backend or live heap migration is supported.
+
+Integer conversion follows the complete pinned
+[Web IDL/ECMAScript clauses](../../references/js-bindings-standards.md).
+It preserves one guest ToNumber coercion, exact modulo, ties-even clamping and
+the selected standard's safe-integer bounds for 64-bit range/clamp conversions.
+`IntegerKind` selects a standard IDL type and `IntegerValue` retains that type
+with its corresponding fixed-width Rust payload.
 
 ## Verification
 
