@@ -91,12 +91,19 @@ impl CopiedBundle {
         self.write(path, &serde_json::to_vec_pretty(value).unwrap())
     }
 
-    fn rewrite_receipt(&self, value: Value) -> String {
+    fn browser_settings(&self) -> authority::BrowserSettingsWitness {
         let current =
             fs::read_to_string(self.root.join(authority::ORIGINAL_DIAGNOSTIC_RECEIPT)).unwrap();
-        let witness = authority::OriginalDiagnosticReceipt::parse(&current)
+        authority::OriginalDiagnosticReceipt::parse(&current)
             .unwrap()
-            .browser_settings;
+            .browser_settings
+    }
+
+    fn rewrite_receipt(&self, value: Value) -> String {
+        self.write_receipt(value, self.browser_settings())
+    }
+
+    fn write_receipt(&self, value: Value, witness: authority::BrowserSettingsWitness) -> String {
         let mut receipt: authority::OriginalDiagnosticReceipt =
             serde_json::from_value(value).unwrap();
         receipt.browser_settings = witness;
@@ -104,6 +111,52 @@ impl CopiedBundle {
             authority::ORIGINAL_DIAGNOSTIC_RECEIPT,
             &receipt.to_bytes().unwrap(),
         )
+    }
+
+    fn repin_report(
+        &self,
+        mut receipt: Value,
+        mut report: Value,
+        settings: authority::BrowserSettingsWitness,
+    ) -> String {
+        report["metadata"]["inputs"] = receipt["retained_inputs"].clone();
+        let metadata = serde_json::from_value(report["metadata"].clone()).unwrap();
+        let inputs = serde_json::from_value(receipt["retained_inputs"].clone()).unwrap();
+        for row in receipt["cases"].as_array_mut().unwrap() {
+            let case: authority::CaseDescriptor =
+                serde_json::from_value(row["case"].clone()).unwrap();
+            let artifact = report["generated"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|artifact| artifact["name"] == case.name)
+                .unwrap();
+            let artifact = serde_json::from_value(artifact.clone()).unwrap();
+            let xml = fs::read(self.root.join(&case.output.path)).unwrap();
+            let identity =
+                authority::capture_binding_from_verified_inputs(authority::CaptureBindingInputs {
+                    metadata: &metadata,
+                    artifact: &artifact,
+                    case: &case,
+                    full_inputs: &inputs,
+                    excluded_specs: &BTreeSet::new(),
+                    actual_xml_sha256: &sha256(&xml),
+                    historical_sha256: row["historical"]["sha256"].as_str(),
+                    browser_settings: &settings,
+                    observation_request: "geometry",
+                    observation_input_sha256: None,
+                })
+                .unwrap();
+            row["identity"] = serde_json::to_value(identity).unwrap();
+        }
+        let report_path = receipt["report"]["path"].as_str().unwrap().to_owned();
+        let report_hash = self.write_json(&report_path, &report);
+        receipt["report"]["sha256"] = Value::from(report_hash.as_str());
+        let ownership_path = receipt["ownership"]["path"].as_str().unwrap().to_owned();
+        let mut ownership = self.read(&ownership_path);
+        ownership["artifacts"][&report_path] = Value::from(report_hash);
+        receipt["ownership"]["sha256"] = Value::from(self.write_json(&ownership_path, &ownership));
+        self.write_receipt(receipt, settings)
     }
 
     fn expect_refusal(&self, pin: &str, reason: &str) {
@@ -188,4 +241,92 @@ fn original_diagnostics_refuse_a_false_original_ownership_label() {
     receipt["retained_inputs"][path] = Value::from(bundle.write_json(path, &selected));
     let pin = bundle.rewrite_receipt(receipt);
     bundle.expect_refusal(&pin, "selected original diagnostic import partition");
+}
+
+#[test]
+fn original_diagnostics_refuse_repinned_browser_provenance() {
+    let bundle = CopiedBundle::new();
+    let receipt = bundle.receipt();
+    let mut report = bundle.read(receipt["report"]["path"].as_str().unwrap());
+    report["metadata"]["browser_provenance"] = Value::from("unrelated-browser/149");
+    let pin = bundle.repin_report(receipt, report, bundle.browser_settings());
+    bundle.expect_refusal(&pin, "Grid Lanes browser executable or provenance");
+}
+
+#[test]
+fn original_diagnostics_refuse_repinned_browser_outside_owner_cache() {
+    let bundle = CopiedBundle::new();
+    let receipt = bundle.receipt();
+    let mut report = bundle.read(receipt["report"]["path"].as_str().unwrap());
+    let executable = "tmp/unrelated-browser/chrome";
+    let settings = &receipt["browser_settings"];
+    let provenance = settings["provenance_format"]
+        .as_str()
+        .unwrap()
+        .replace("{version}", settings["version"].as_str().unwrap())
+        .replace("{repository_relative_executable}", executable);
+    report["metadata"]["browser_executable"] = Value::from(executable);
+    report["metadata"]["browser_provenance"] = Value::from(provenance);
+    let pin = bundle.repin_report(receipt, report, bundle.browser_settings());
+    bundle.expect_refusal(&pin, "Grid Lanes browser executable or provenance");
+}
+
+#[test]
+fn original_diagnostics_refuse_repinned_browser_launch_settings() {
+    let bundle = CopiedBundle::new();
+    let receipt = bundle.receipt();
+    let report = bundle.read(receipt["report"]["path"].as_str().unwrap());
+    let mut settings = receipt["browser_settings"].clone();
+    assert_ne!(settings["launch"]["batch_size"], 1);
+    settings["launch"]["batch_size"] = Value::from(1);
+    let settings = authority::BrowserSettingsWitness::from_official_json(
+        &serde_json::to_vec(&settings).unwrap(),
+    )
+    .unwrap();
+    let pin = bundle.repin_report(receipt, report, settings);
+    bundle.expect_refusal(
+        &pin,
+        "Grid Lanes browser settings differ from the owner manifest",
+    );
+}
+
+#[test]
+fn original_diagnostics_refuse_repinned_missing_global_input() {
+    let bundle = CopiedBundle::new();
+    let mut receipt = bundle.receipt();
+    let report = bundle.read(receipt["report"]["path"].as_str().unwrap());
+    let path = "fonts/PROVENANCE.md";
+    assert!(
+        receipt["retained_inputs"]
+            .as_object_mut()
+            .unwrap()
+            .remove(path)
+            .is_some()
+    );
+    assert!(
+        receipt["current_owner_inputs"]
+            .as_object_mut()
+            .unwrap()
+            .remove(&format!("tests/layout/browser_parity/{path}"))
+            .is_some()
+    );
+    fs::remove_file(bundle.root.join(path)).unwrap();
+    let pin = bundle.repin_report(receipt, report, bundle.browser_settings());
+    bundle.expect_refusal(&pin, "complete Grid Lanes capture input census");
+}
+
+#[test]
+fn original_diagnostics_refuse_repinned_invented_linked_resource() {
+    let bundle = CopiedBundle::new();
+    let receipt = bundle.receipt();
+    let mut report = bundle.read(receipt["report"]["path"].as_str().unwrap());
+    let resource = "fonts/Ahem.ttf";
+    assert_eq!(
+        report["generated"][0]["linked_resources"],
+        serde_json::json!({})
+    );
+    report["generated"][0]["linked_resources"][resource] =
+        receipt["retained_inputs"][resource].clone();
+    let pin = bundle.repin_report(receipt, report, bundle.browser_settings());
+    bundle.expect_refusal(&pin, "Grid Lanes plain-box capture has linked resources");
 }
