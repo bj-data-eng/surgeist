@@ -43,6 +43,7 @@ use surgeist_css::selector::{CssNamespaceContext, CssScopeSelectorList, CssStyle
 use surgeist_css::serialization::{
     CssRuleSerializationError, CssSerializationError, CssSerializationLimits,
 };
+use surgeist_css::source::same_provenance;
 use surgeist_css::source::{CssParseSource, CssParsedOrigin};
 
 /// Real product quotas, including retained detached objects. These bound admitted
@@ -618,7 +619,7 @@ impl CssomDeclarationInput {
 }
 impl PartialEq for CssomDeclarationInput {
     fn eq(&self, other: &Self) -> bool {
-        self.diagnostics == other.diagnostics
+        same_provenance(&self.diagnostics, &other.diagnostics)
             && match (&self.source, &other.source) {
                 (DeclarationInputSource::Utf8(a, ac), DeclarationInputSource::Utf8(b, bc)) => {
                     a == b && ac == bc

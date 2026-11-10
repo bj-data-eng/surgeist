@@ -4,6 +4,7 @@ use crate::*;
 use surgeist_css::diagnostic::CssRecoveryDiagnostic;
 use surgeist_css::query::media::{CssMediaQuery, CssMediaQueryList};
 use surgeist_css::serialization::CssSerializationLimits;
+use surgeist_css::source::same_provenance;
 use surgeist_css::{CssParseReport, CssParser};
 
 /// A source mutation's disposition and original recovered parser diagnostics.
@@ -208,7 +209,7 @@ impl CssomBatch {
     ) -> Result<bool, CssomError> {
         self.apply(|this| {
             this.staged.media(id)?;
-            let changed = this.staged.media[id] != value;
+            let changed = !same_provenance(&this.staged.media[id], &value);
             if !changed && !retain_input {
                 return Ok(false);
             }
