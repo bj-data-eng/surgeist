@@ -791,6 +791,84 @@ sources = [
         }
     }
 
+    const AUTHORED_MATCHING_SOURCE: &str = "html/qualification/physical-border-descendant.html";
+    const ORIGINAL_MATCHING_SOURCE: &str = "html/grid/grid_fit_content_points_argument.html";
+
+    fn matching_source_declaration(source: &str) -> String {
+        let record = include_str!("../../../examples/qualify-root-context/corpus.toml")
+            .split("\n[[")
+            .filter_map(|section| section.strip_prefix("records]]\n"))
+            .find(|record| record.starts_with(&format!("source = {source:?}\n")))
+            .expect("the source has a real catalogue record");
+        format!(
+            "schema_version = 3\n\n[[records]]\n{record}\n\n[[matching_publications]]\nedition = \"source-controls\"\nsources = [{source:?}]\n"
+        )
+    }
+
+    #[test]
+    fn matching_source_declaration_accepts_authored_source_without_history() {
+        let input = matching_source_declaration(AUTHORED_MATCHING_SOURCE);
+        let parsed = Declaration::parse(input.as_bytes())
+            .expect("a Generated authored matching source needs no historical predecessor");
+        let [record] = parsed.records.as_slice() else {
+            panic!("the matching declaration must bind exactly one source");
+        };
+        assert_eq!(record.source.as_str(), AUTHORED_MATCHING_SOURCE);
+        assert!(matches!(record.source_kind, SourceKind::Authored));
+        assert!(record.historical_sha256.is_empty());
+        assert_eq!(
+            record.matching_publication.as_deref(),
+            Some("source-controls")
+        );
+        assert!(matches!(
+            record.expected,
+            ExpectedDisposition::Generated { .. }
+        ));
+    }
+
+    #[test]
+    fn matching_source_declaration_rejects_authored_history() {
+        let original = matching_source_declaration(ORIGINAL_MATCHING_SOURCE);
+        let historical = original
+            .lines()
+            .find(|line| line.starts_with("border_box_ltr = "))
+            .expect("the original has a pinned historical variant");
+        let input = matching_source_declaration(AUTHORED_MATCHING_SOURCE).replacen(
+            "[records.expected]",
+            &format!("[records.historical_sha256]\n{historical}\n[records.expected]"),
+            1,
+        );
+        let error = Declaration::parse(input.as_bytes())
+            .err()
+            .expect("authored sources must refuse historical pins");
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "authored source cannot declare historical variants: {AUTHORED_MATCHING_SOURCE}"
+            )
+        );
+    }
+
+    #[test]
+    fn matching_source_declaration_rejects_missing_original_history() {
+        let original = matching_source_declaration(ORIGINAL_MATCHING_SOURCE);
+        Declaration::parse(original.as_bytes()).expect("the original with all variants is valid");
+        let input = original
+            .lines()
+            .filter(|line| !line.starts_with("border_box_ltr = "))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let error = Declaration::parse(input.as_bytes())
+            .err()
+            .expect("original sources must declare every historical variant");
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "original source requires a Generated disposition and every historical variant: {ORIGINAL_MATCHING_SOURCE}"
+            )
+        );
+    }
+
     #[test]
     fn matching_publications_reject_ambiguous_membership_and_other_capture_authority() {
         let prior = Declaration::parse(unannotated_catalogue()).unwrap();
