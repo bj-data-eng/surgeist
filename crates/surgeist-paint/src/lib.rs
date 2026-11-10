@@ -20,9 +20,9 @@ pub use gradient::{
     resolve_linear_gradient,
 };
 pub use gradient_stops::{
-    GradientPosition, GradientPositionComponent, GradientStopItem, GradientStopPositions,
-    GradientStops, GradientStopsError, GradientStopsOutcome, UsedGradientItem,
-    resolve_gradient_stops,
+    GradientPosition, GradientPositionComponent, GradientRecord, GradientStopItem,
+    GradientStopPositions, GradientStops, GradientStopsError, GradientStopsOutcome,
+    UsedGradientItem, UsedGradientStop, resolve_gradient_stops,
 };
 pub use model::{
     BoxFacts, BoxId, ChildOrder, ContextEffect, ContextView, PaintError, Participation, Position,
@@ -42,6 +42,6 @@ pub use radial_gradient::{
 pub use surgeist_ledger::{EventFilter, ProfileMode};
 
 pub use zero_height_gradient::{
-    GradientRepeat, WeightedGradientColor, ZeroHeightGradientColors,
+    GradientRepeat, WeightedGradientColor, WeightedGradientRecord, ZeroHeightGradientColors,
     ZeroHeightGradientColorsOutcome, ZeroHeightGradientError, resolve_zero_height_gradient_colors,
 };

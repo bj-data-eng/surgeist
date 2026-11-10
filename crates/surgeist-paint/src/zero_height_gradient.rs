@@ -55,6 +55,31 @@ struct WeightedColor<'s, C> {
     weight: f64,
 }
 
+/// Borrows one actual weighted occurrence without projecting its fields.
+/// A consumer can admit its visit before calling [`Self::color`].
+///
+/// ```compile_fail
+/// use surgeist_paint::WeightedGradientRecord;
+/// fn fabricate(authentic: WeightedGradientRecord<'_, ()>) {
+///     let _ = WeightedGradientRecord { ..authentic };
+/// }
+/// ```
+#[derive(Debug)]
+pub struct WeightedGradientRecord<'a, C> {
+    record: &'a WeightedColor<'a, C>,
+}
+impl<'a, C> WeightedGradientRecord<'a, C> {
+    /// Projects this qualified occurrence without source lookup or color math.
+    pub fn color(&self) -> WeightedGradientColor<'a, C> {
+        WeightedGradientColor {
+            source_index: self.record.occurrence.source_index(),
+            position_index: self.record.occurrence.position_index(),
+            payload: self.record.occurrence.payload(),
+            weight: self.record.weight,
+        }
+    }
+}
+
 #[derive(Debug)]
 enum Measure<'s, C> {
     Last(WeightedColor<'s, C>),
@@ -106,6 +131,20 @@ impl<'a, C> ZeroHeightGradientColors<'a, C> {
     }
 
     pub fn colors(&self) -> impl ExactSizeIterator<Item = WeightedGradientColor<'_, C>> {
+        self.records().map(|record| record.color())
+    }
+
+    /// Borrows the selected Last occurrence. `None` means the stored measure is
+    /// Average, including its own first and last weighted endpoints.
+    pub fn selected_last_color(&self) -> Option<WeightedGradientRecord<'_, C>> {
+        match &self.measure {
+            Measure::Last(record) => Some(WeightedGradientRecord { record }),
+            Measure::Average { .. } => None,
+        }
+    }
+
+    /// Borrows all real weighted occurrences in order, including zero weights.
+    pub fn records(&self) -> impl ExactSizeIterator<Item = WeightedGradientRecord<'_, C>> {
         let (first, middle, last) = match &self.measure {
             Measure::Last(record) => (Some(record), [].iter(), None),
             Measure::Average {
@@ -118,12 +157,7 @@ impl<'a, C> ZeroHeightGradientColors<'a, C> {
             middle,
             last,
         }
-        .map(|record| WeightedGradientColor {
-            source_index: record.occurrence.source_index(),
-            position_index: record.occurrence.position_index(),
-            payload: record.occurrence.payload(),
-            weight: record.weight,
-        })
+        .map(|record| WeightedGradientRecord { record })
     }
 }
 struct PreparedColors<'r, 's, C> {

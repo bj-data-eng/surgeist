@@ -92,6 +92,26 @@ fn substituted_width_limit_discards_lower_order_lengths_and_ignores_original_rad
     let source = [at(0.0, 0.0), at(10.0, 0.0), at(0.0, 1.0)];
     for radius in [1.0, 20.0, 100.0] {
         let repeat = resolved(radius, &source, GradientRepeat::Repeat);
+        assert!(repeat.selected_last_color().is_none());
+        let mut records = repeat.records();
+        assert_eq!(records.len(), 3);
+        for (source_index, weight) in [(0, 0.0), (1, 0.5), (2, 0.5)] {
+            let view = records.next().unwrap();
+            let color = view.color();
+            assert_eq!(
+                (color.source_index, color.position_index, color.weight),
+                (source_index, 0, weight)
+            );
+            let GradientStopItem::Stop { payload, .. } = &source[source_index] else {
+                unreachable!()
+            };
+            assert!(ptr::eq(color.payload, payload));
+            assert!(ptr::eq(view.color().payload, payload));
+        }
+        assert_eq!(records.len(), 0);
+        assert!(records.next().is_none());
+        assert!(records.next().is_none());
+        assert_eq!(repeat.records().len(), 3);
         weights(&repeat, &[0.0, 0.5, 0.5]);
         assert_eq!(
             observed(&repeat)
@@ -101,6 +121,12 @@ fn substituted_width_limit_discards_lower_order_lengths_and_ignores_original_rad
             [(0, 0), (1, 0), (2, 0)]
         );
         let ordinary = resolved(radius, &source, GradientRepeat::None);
+        let last = ordinary.selected_last_color().unwrap().color();
+        assert_eq!(
+            (last.source_index, last.position_index, last.weight),
+            (2, 0, 1.0)
+        );
+        assert_eq!(ordinary.records().len(), 1);
         assert_eq!(observed(&ordinary), [(2, 0, 1.0)]);
     }
     // A finite basis20 would instead place these at0,.5,1 and yield
@@ -229,6 +255,30 @@ fn single_authored_two_and_hinted_pairs_keep_arity_during_partial_iteration() {
         drop(colors);
         assert_eq!(observed(&average), [(0, 0, 0.5), (0, 1, 0.5)]);
         let last = resolved(20.0, &source, GradientRepeat::None);
+        let selected = last.selected_last_color().unwrap();
+        let selected = selected.color();
+        assert_eq!(
+            (
+                selected.source_index,
+                selected.position_index,
+                selected.weight
+            ),
+            (0, 1, 1.0)
+        );
+        assert!(ptr::eq(selected.payload, payload));
+        assert!(average.selected_last_color().is_none());
+        for (ordinal, record) in average.records().enumerate() {
+            let projected = record.color();
+            assert_eq!(
+                (
+                    projected.source_index,
+                    projected.position_index,
+                    projected.weight
+                ),
+                (0, ordinal, 0.5)
+            );
+            assert!(ptr::eq(projected.payload, payload));
+        }
         let mut colors = last.colors();
         assert_eq!(colors.len(), 1);
         let color = colors.next().unwrap();

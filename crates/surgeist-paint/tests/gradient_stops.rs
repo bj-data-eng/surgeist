@@ -51,6 +51,99 @@ fn resolved<C>(length: f64, source: &[GradientStopItem<C>]) -> GradientStops<'_,
 }
 
 #[test]
+fn first_two_hint_later_two_preserve_literal_occurrences_on_zero_and_positive_lines() {
+    struct Payload(u8);
+    let source = [
+        GradientStopItem::Stop {
+            payload: Payload(17),
+            positions: GradientStopPositions::Two(position(-4.0, 0.0), position(0.0, 0.0)),
+        },
+        GradientStopItem::Hint {
+            position: position(2.0, 0.0),
+        },
+        GradientStopItem::Stop {
+            payload: Payload(29),
+            positions: GradientStopPositions::Two(position(4.0, 0.0), position(12.0, 0.0)),
+        },
+    ];
+    for length in [0.0, 1.0, 100.0] {
+        let stops = resolved(length, &source);
+        let head = stops.first_stop();
+        assert_eq!(
+            (
+                head.source_index(),
+                head.position_index(),
+                head.position(),
+                head.payload().0
+            ),
+            (0, 0, -4.0, 17)
+        );
+        let GradientStopItem::Stop { payload: first, .. } = &source[0] else {
+            unreachable!()
+        };
+        assert!(ptr::eq(head.payload(), first));
+        let mut tail = stops.tail();
+        assert_eq!(tail.len(), 4);
+        let first_tail = tail.next().unwrap();
+        assert!(matches!(first_tail.item(), UsedGradientItem::Stop {
+            source_index: 0, position_index: 1, position: 0.0, payload
+        } if ptr::eq(payload, first)));
+        assert_eq!(tail.len(), 3);
+        assert_eq!(tail.by_ref().count(), 3);
+        assert!(tail.next().is_none());
+        assert!(tail.next().is_none());
+        assert_eq!(stops.tail().len(), 4);
+        let mut records = stops.records();
+        assert_eq!(records.len(), 5);
+        for expected in [-4.0, 0.0, 2.0, 4.0, 12.0] {
+            let record = records.next().unwrap();
+            let position = match record.item() {
+                UsedGradientItem::Stop { position, .. }
+                | UsedGradientItem::Hint { position, .. } => position,
+            };
+            assert_eq!(position, expected);
+        }
+        assert_eq!(records.len(), 0);
+        assert!(records.next().is_none());
+        assert!(records.next().is_none());
+        let actual: Vec<_> = stops
+            .items()
+            .map(|item| match item {
+                UsedGradientItem::Stop {
+                    source_index,
+                    position_index,
+                    payload,
+                    position,
+                } => {
+                    let GradientStopItem::Stop {
+                        payload: original, ..
+                    } = &source[source_index]
+                    else {
+                        panic!("color occurrence must refer to a source color")
+                    };
+                    assert!(ptr::eq(payload, original));
+                    (source_index, position_index, Some(payload.0), position)
+                }
+                UsedGradientItem::Hint {
+                    source_index,
+                    position,
+                } => (source_index, 0, None, position),
+            })
+            .collect();
+        assert_eq!(
+            actual,
+            [
+                (0, 0, Some(17), -4.0),
+                (0, 1, Some(17), 0.0),
+                (1, 0, None, 2.0),
+                (2, 0, Some(29), 4.0),
+                (2, 1, Some(29), 12.0)
+            ]
+        );
+    }
+}
+
+#[test]
 fn opaque_two_and_hint_keep_identity_across_partial_and_repeated_iteration() {
     struct Payload(u8);
     let source = [
@@ -244,6 +337,11 @@ fn a_single_omitted_stop_uses_the_first_default_and_long_runs_remain_evenly_spac
         let result = resolved(length, &single);
         assert_eq!(positions(&result), [0.0]);
         assert_eq!(result.line_length(), length);
+        assert_eq!(result.first_stop().position(), 0.0);
+        assert_eq!(result.first_stop().source_index(), 0);
+        assert_eq!(result.first_stop().position_index(), 0);
+        assert_eq!(result.tail().len(), 0);
+        assert_eq!(result.records().len(), 1);
         assert_eq!(
             observed(&result),
             [Observation::Stop {
@@ -266,6 +364,62 @@ fn a_single_omitted_stop_uses_the_first_default_and_long_runs_remain_evenly_spac
         positions(&resolved(100.0, &run)),
         [0.0, 16.0, 32.0, 48.0, 64.0, 80.0, 96.0]
     );
+}
+
+#[test]
+fn borrowed_record_views_preserve_equal_negative_and_outside_positions_with_later_two() {
+    for (length, source, expected) in [
+        (0.0, vec![omitted()], vec![(0, 0, 0.0)]),
+        (
+            100.0,
+            vec![
+                at(-20.0, 0.0),
+                two(position(-20.0, 0.0), position(120.0, 0.0)),
+            ],
+            vec![(0, 0, -20.0), (1, 0, -20.0), (1, 1, 120.0)],
+        ),
+        (
+            0.0,
+            vec![two(position(-4.0, 0.0), position(0.0, 0.0))],
+            vec![(0, 0, -4.0), (0, 1, 0.0)],
+        ),
+    ] {
+        let result = resolved(length, &source);
+        let read = |item| {
+            let UsedGradientItem::Stop {
+                source_index,
+                position_index,
+                payload,
+                position,
+            } = item
+            else {
+                panic!("the literal fixture has only colors")
+            };
+            let GradientStopItem::Stop {
+                payload: original, ..
+            } = &source[source_index]
+            else {
+                unreachable!()
+            };
+            assert!(ptr::eq(payload, original));
+            (source_index, position_index, position)
+        };
+        assert_eq!(
+            result
+                .records()
+                .map(|record| read(record.item()))
+                .collect::<Vec<_>>(),
+            expected
+        );
+        assert_eq!(
+            result
+                .tail()
+                .map(|record| read(record.item()))
+                .collect::<Vec<_>>(),
+            expected[1..]
+        );
+        assert_eq!(result.first_stop().position(), expected[0].2);
+    }
 }
 
 #[test]
