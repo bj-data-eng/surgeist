@@ -2549,3 +2549,224 @@ sources = [
   "html/flex/fri04_flex_basis_content.html",
   "html/grid/fri04_track_math_functions.html",
 ]
+
+[[records]]
+source = "html/grid-lanes/grid_lanes_axes_horizontal_parent_orthogonal_child.html"
+source_sha256 = "ea94356e256eb7cba93d02c1e0076b75b1f85ace1d086e7791e9cfefb3c477d4"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "6beb09a829b191b5ff09fada6e2b94d18c4d4274589cf846a2b00d9a687f4b51"
+content_box_ltr = "5344f6515a3ffa806b9ae7cf7ee97d30e9de9076a2107a5a5923b5eb7fa5c281"
+border_box_rtl = "1eb5480ed423a8e6c85a97b700017e7c25a14af00f57c165e44462d8472fbd60"
+content_box_rtl = "7fcb707991ffd73338ef7e31cb269b7a07686c5297223453a2719aaef77b9f46"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid-lanes/grid_lanes_axes_horizontal_tb_parallel.html"
+source_sha256 = "54d76f3fab5a7d3990c452cbe0683c6f12ed6adacc7c18f412664671fc0d5833"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "ac754eba5e56f8c1344c91f87edaeec3507ed111374d7f7e2108abce8b8af2c8"
+content_box_ltr = "74b957ae47975801662cd0d80aca9c51bf049794b8f56169ba4dd78e66416ca1"
+border_box_rtl = "09ea86dd0d154fac50d2af85a2ca521d08d6c25f730c83bc11f77340c7a49241"
+content_box_rtl = "64c9620a67249c9b92acae47f64ce49a0ba22ba25a54c7b1cf6c0f5815037edb"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid-lanes/grid_lanes_axes_sideways_lr_parallel.html"
+source_sha256 = "90953f4fa78b0f3886f69e340cb8a36437cd3e853c1bd54e4f7020b11836a1e8"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "935f7e3a473f0e664df297070ac528d1d2e074e4cb7492bbc9ae0de2c0b022ae"
+content_box_ltr = "f8dca3cdb33574441fa5bd0b6cc567438e12cb60431a4bc76e1f5b03767b0298"
+border_box_rtl = "d2e46fc93756ace3d56194094b93ffa05b8afc4b5dc3d48e4c26f54f9bc93e06"
+content_box_rtl = "b886824e2a7cfcb7e601634d64438d7f1e93f8ecbca7422f6c20713c8b7d1216"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid-lanes/grid_lanes_axes_sideways_opposing.html"
+source_sha256 = "b1fe0441698b0e77e3926942d72850037af18160f3062df99e532d174893ed45"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "30512e180ea1b6269f49200b137111bcdb8a094a45d407f54b0b940c7ac2f716"
+content_box_ltr = "4a12e3d7b542e9649220026a970cc1255149277f75f665059a8500c7ac6955c8"
+border_box_rtl = "189d3f020622d02064725c1e35825071ce13008ebe07d8549893ffd0e618724d"
+content_box_rtl = "fd4b93cf8f49c293ff40e24d20c568039e555a60d55e7db35b1113d98df0835e"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid-lanes/grid_lanes_axes_sideways_rl_parallel.html"
+source_sha256 = "74a4e15627f187d9df14dfbd89eca63da8e5f7b7e4fcc05b15d1c61b30ea52f7"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "c260df8bb57de7b783c1c7ed4214160ddbc6ef8dfeb99f0ca680918c5c513656"
+content_box_ltr = "ff23c9e40fb4afafc1a1a5513a101800c0e4ef7bc020c625cb5e2cf7bf17512d"
+border_box_rtl = "4f06a1c5ff31351eda233a938b9d8437507498db2214de9470285f5525c1cb2a"
+content_box_rtl = "deeac2ce3baa4adc8ffa0943066cfb5ec45c11f27d543c3cce821446a58617ee"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid-lanes/grid_lanes_axes_vertical_lr_parallel.html"
+source_sha256 = "f0d8a7b1989bb805be3fc2e9d27890dd700d03e81d1c040b52a11c79f1ac5e40"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "6d299c964ecab5f70f9aa363735110cf017bd56afb5ada77de10183812bb7512"
+content_box_ltr = "f5a95a033c1c90be82cb1c32e42ee5427a2f55a8db1ddc3e049dc07a9e080d59"
+border_box_rtl = "fc5a9772382fbf5bbad5c0453677965f45a7195817142b4ac0c0a6dcffc43480"
+content_box_rtl = "e1a7b1670d0ef79f0784d00b953300badd86a24170c10ea61fc6ed4d47b96c7e"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid-lanes/grid_lanes_axes_vertical_opposing.html"
+source_sha256 = "49206d01052e5428ae7f78c40827348d2b8601b7e41efe285c738e329f72553c"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "2f63a0ff3d7d036209dbdc9c5f3844ef29dd96af35d6fdc3fb7c4e9dcc8829b3"
+content_box_ltr = "b268cd2049aae08ecb1cdff35ce3486b2630077854c18b12594547d2c898aa53"
+border_box_rtl = "6f710d60f255a25cd66ab628d95fe95c2294052550fe92f49b2c80862799160c"
+content_box_rtl = "9885ba9bc7d77b1080eafb792681a0dca98cd3c55147c42500c3a218fc11c90f"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid-lanes/grid_lanes_axes_vertical_parent_orthogonal_child.html"
+source_sha256 = "e0fd8fb65b9fae73e2eb089c10be727cccd8794ab7da443811e4267308f230e4"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "4a863a0c6a2d4381541047b23481d6029236e21c2bdec0fa934168dfabd4c731"
+content_box_ltr = "f3e09b8e9de53973d68b85c39b71de7e5ace0f355b986bfd2309942f9a4a492a"
+border_box_rtl = "1ae35b28792ba3e547a00a09df34b7d6ab4ab0df162996cce17d269341bd5e34"
+content_box_rtl = "1a9e8ac40b8b96b5607ade826f8bacc8870beaa0b8caaa7dafc6d4a1f09605b9"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/grid-lanes/grid_lanes_axes_vertical_rl_parallel.html"
+source_sha256 = "d6c1512446b793f41dacbfd94e9c804eaec0be790704f44e716bd55cbffe08ff"
+source_kind = "original"
+[records.historical_sha256]
+border_box_ltr = "5fe1afaeaabba61cf5436c6ae6a7213d8e2a3b8b64ddf07995ea4dd6ad52ead1"
+content_box_ltr = "d3e3649743eb801d38d8422d2169303b6ab53e59fb17aa6caf260a2ebd00a47a"
+border_box_rtl = "ec35564a639f216979ad33175b84eab2f6cfb56ca82a00b25deb87c1141d23b5"
+content_box_rtl = "d577325830fc80d3d7b7f549953c80180447b97694c661e052f9e283382692d7"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+
+[[records]]
+source = "html/qualification/fixed-orthogonal-translation-0-25.html"
+source_sha256 = "8fcca4b51760b7f4d176a1302ae0e95ce9c52ea7563d2a3975730b170d3abd7a"
+source_kind = "authored"
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 10.5
+height = 10.5
+
+[[records]]
+source = "html/qualification/fixed-orthogonal-translation-0-75.html"
+source_sha256 = "ceb8ccf7243b8441a4be3e5d73dedc94a9f5c04a9354e922da5ea06f86fc83f3"
+source_kind = "authored"
+[records.relation]
+peer = "fixed-orthogonal-translation-0-25"
+world_phase_change = true
+[records.expected]
+kind = "generated"
+[records.expected.metadata]
+context = "absolute-local"
+root_writing_mode = "horizontal-tb"
+hypothetical_display = "block"
+containing_direction = "ltr"
+hypothetical_direction = "ltr"
+root_direction = "variant"
+inline_offset = 0
+[records.expected.metadata.root_size]
+kind = "fixed"
+width = 10.5
+height = 10.5

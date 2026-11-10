@@ -1,5 +1,8 @@
 //! Execute the bundled producer while isolating DOM geometry measurement.
 
+#[path = "fixed_orthogonal_tests.rs"]
+mod fixed_orthogonal_tests;
+
 use crate::adapter::TEST_HELPER_SOURCE;
 use serde_json::{Value, json};
 use std::io::Write;
