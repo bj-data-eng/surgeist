@@ -2609,7 +2609,7 @@ impl<'input> Compute<'input> for CalcLeafTreeCompute<'input> {
                 error.operation(),
                 match error.kind() {
                     LayoutErrorKindOf::InvalidInput(value) => {
-                        LayoutErrorKindOf::InvalidInput(*value)
+                        LayoutErrorKindOf::InvalidInput(value.clone())
                     }
                     other => panic!("numeric leaf fixture returned an unexpected cause: {other:?}"),
                 },

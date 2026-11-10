@@ -131,7 +131,7 @@ pub enum LayoutTextNumericError {
     NonZeroLost,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 #[non_exhaustive]
 pub enum LayoutInvalidInputOf<S: LayoutScalar = DefaultScalar> {
     BlockFragmentationRequest,
@@ -177,6 +177,9 @@ pub enum LayoutInvalidInputOf<S: LayoutScalar = DefaultScalar> {
     /// The direct child is also reachable along another path from its container.
     InlineAtomicAmbiguousOccurrence,
     TreeTopologyCycle,
+    /// The grid container's named lines or template areas violate the Grid
+    /// specification. The error site is the grid container.
+    GridNames(crate::NamedGridErrorReport),
     TextBinding(crate::text_layout::TextBindingError),
     WrappingScope(crate::inline_wrapping::WrappingScopeError),
 }

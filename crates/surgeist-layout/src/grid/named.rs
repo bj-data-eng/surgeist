@@ -1040,40 +1040,18 @@ pub(super) struct GridNamedContext {
     pub(super) area_facts: Option<GridAreaNameFacts>,
 }
 
-#[cfg_attr(
-    not(test),
-    expect(
-        dead_code,
-        reason = "retained unit-test entry point for named-grid report parity scaffolding"
-    )
-)]
 pub(super) fn build_grid_named_context<S: LayoutScalar>(
     style: &GridContainerProjection<'_, S>,
     explicit_columns: usize,
     explicit_rows: usize,
     parent_context: &GridParentContext<S>,
 ) -> Result<GridNamedContext, NamedGridError> {
-    build_grid_named_context_with_report(style, explicit_columns, explicit_rows, parent_context)
-        .map(|(context, _report)| context)
-}
-
-pub(super) fn build_grid_named_context_with_report<S: LayoutScalar>(
-    style: &GridContainerProjection<'_, S>,
-    explicit_columns: usize,
-    explicit_rows: usize,
-    parent_context: &GridParentContext<S>,
-) -> Result<(GridNamedContext, NamedGridReport), NamedGridError> {
-    let mut report = NamedGridReport::default();
     let style_area_facts = if style.grid_template_areas.rows.is_empty() {
         None
     } else {
-        match GridAreaNameFacts::from_specified_areas(style.grid_template_areas) {
-            Ok(facts) => Some(facts),
-            Err(error) => {
-                report.push_error(error);
-                None
-            }
-        }
+        Some(GridAreaNameFacts::from_specified_areas(
+            style.grid_template_areas,
+        )?)
     };
 
     let inherited_area_facts = inherited_subgrid_area_facts(parent_context);
@@ -1131,25 +1109,11 @@ pub(super) fn build_grid_named_context_with_report<S: LayoutScalar>(
         rows
     };
 
-    Ok((
-        GridNamedContext {
-            columns,
-            rows,
-            area_facts: merged_area_facts,
-        },
-        report,
-    ))
-}
-
-pub(super) fn empty_grid_named_context(
-    explicit_columns: usize,
-    explicit_rows: usize,
-) -> GridNamedContext {
-    GridNamedContext {
-        columns: NamedGridLines::new(GridAxisKind::Column, explicit_columns),
-        rows: NamedGridLines::new(GridAxisKind::Row, explicit_rows),
-        area_facts: None,
-    }
+    Ok(GridNamedContext {
+        columns,
+        rows,
+        area_facts: merged_area_facts,
+    })
 }
 
 fn inherited_subgrid_axis_named_lines<S: LayoutScalar>(
