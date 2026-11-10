@@ -275,10 +275,12 @@ impl ClosingEnds {
                 // Native out-of-flow occurrences are not Text participants.
                 continue;
             };
-            if !run
-                .binding
-                .prepared
-                .boundary_consumes_control(&run.segment.end(), &row.occurrence)?
+            // Absorbed controls keep their native source role without an outer row.
+            if row.occurrence.view().participant().is_some()
+                && !run
+                    .binding
+                    .prepared
+                    .boundary_consumes_control(&run.segment.end(), &row.occurrence)?
             {
                 return Ok(result);
             }
