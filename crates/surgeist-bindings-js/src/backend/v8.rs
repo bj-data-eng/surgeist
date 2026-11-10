@@ -5,7 +5,8 @@ use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::ThreadId;
 
-use super::{ObjectPrototype, Operations, PropertyDescriptor, PropertyKey};
+use super::{CoercedString, ObjectPrototype, Operations, PropertyDescriptor, PropertyKey};
+use crate::owner::OwnerState;
 use crate::{
     Arguments, Callback, Completion, ConstructorArguments, ConstructorCallback,
     ConstructorCompletion, Error, Exception, ExceptionPhase, FunctionMetadata, Intrinsic,
@@ -61,11 +62,9 @@ struct CallbackEntry {
 }
 
 struct Roots {
-    owner: u64,
+    owner: Rc<OwnerState>,
     next: Cell<u64>,
     entries: RefCell<BTreeMap<u64, Rc<RootEntry>>>,
-    closed: Cell<bool>,
-    failure: Cell<Option<Error>>,
     next_callback: Cell<u32>,
     callbacks: RefCell<BTreeMap<u32, CallbackEntry>>,
     interrupt: v8::IsolateHandle,
@@ -82,7 +81,7 @@ impl Roots {
         value: v8::Local<v8::Value>,
     ) -> Result<Root, Error> {
         self.available()?;
-        if realm.owner != self.owner {
+        if realm.owner != self.owner.id() {
             return Err(Error::ForeignOwner);
         }
         let index = self
@@ -116,7 +115,7 @@ impl Roots {
 
     fn entry(&self, root: &Root) -> Result<Rc<RootEntry>, Error> {
         self.available()?;
-        if root.0.realm.owner != self.owner {
+        if root.0.realm.owner != self.owner.id() {
             return Err(Error::ForeignOwner);
         }
         let entry = self
@@ -135,21 +134,18 @@ impl Roots {
     }
 
     fn available(&self) -> Result<(), Error> {
-        let failure = self.failure.take();
-        let result = failure.clone();
-        self.failure.set(failure);
-        if let Some(error) = result {
-            Err(error)
-        } else if self.closed.get() {
-            Err(Error::BackendUnavailable)
-        } else {
-            Ok(())
+        let result = self.owner.available();
+        if result.is_err() {
+            // Cleanup can latch the shared failure without using this SDK
+            // adapter. Interrupt before returning through a native callback
+            // or accepting another engine operation, even in that case.
+            self.interrupt.terminate_execution();
         }
+        result
     }
 
     fn fail(&self, error: Error) -> Error {
-        let first = self.failure.take().unwrap_or(error);
-        self.failure.set(Some(first.clone()));
+        let first = self.owner.fail(error);
         // V8 terminates at interrupt checks. Native continuations also inspect
         // this sticky first failure before doing work after guest reentry.
         self.interrupt.terminate_execution();
@@ -208,7 +204,6 @@ struct ContextEntry {
 }
 
 pub(crate) struct Engine {
-    owner: u64,
     next_realm: u64,
     roots: Rc<Roots>,
     contexts: BTreeMap<u64, ContextEntry>,
@@ -240,11 +235,9 @@ impl Engine {
         let mut isolate = v8::Isolate::new(Default::default());
         isolate.set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
         let roots = Rc::new(Roots {
-            owner,
+            owner: Rc::new(OwnerState::new(owner)),
             next: Cell::new(0),
             entries: RefCell::new(BTreeMap::new()),
-            closed: Cell::new(false),
-            failure: Cell::new(None),
             next_callback: Cell::new(0),
             callbacks: RefCell::new(BTreeMap::new()),
             interrupt: isolate.thread_safe_handle(),
@@ -252,7 +245,6 @@ impl Engine {
         });
         isolate.set_slot(Rc::downgrade(&roots));
         Ok(Self {
-            owner,
             next_realm: 0,
             roots,
             contexts: BTreeMap::new(),
@@ -283,13 +275,18 @@ impl Engine {
             intrinsics,
         };
         let result = operation(&mut entered);
-        entered.check_active()?;
-        result
+        // Preserve the chosen Rust result until the actual host boundary has
+        // also reaped abandoned captures and observed their cleanup.
+        match entered.check_active() {
+            Err(Error::ConversionCleanup(_)) => self.roots.owner.operation_result(result),
+            Err(error) => Err(error),
+            Ok(()) => self.roots.owner.operation_result(result),
+        }
     }
 
     fn validate_realm(&self, realm: &Realm) -> Result<(), Error> {
         self.roots.available()?;
-        if realm.0.key.owner != self.owner {
+        if realm.0.key.owner != self.roots.owner.id() {
             return Err(Error::ForeignOwner);
         }
         if self.isolate.is_execution_terminating() {
@@ -308,6 +305,9 @@ impl Engine {
 }
 
 impl super::Engine for Engine {
+    fn owner_state(&self) -> Rc<OwnerState> {
+        self.roots.owner.clone()
+    }
     fn create_realm(&mut self) -> Result<Realm, Error> {
         self.roots.available()?;
         if self.isolate.is_execution_terminating() {
@@ -321,7 +321,7 @@ impl super::Engine for Engine {
             .ok_or(Error::IdentityExhausted)?;
         let realm = Realm(Rc::new(RealmIdentity {
             key: RealmKey {
-                owner: self.owner,
+                owner: self.roots.owner.id(),
                 index,
             },
         }));
@@ -400,12 +400,9 @@ impl super::Engine for Engine {
     fn with_realm(
         &mut self,
         realm: &Realm,
-        action: &mut dyn FnMut(&mut dyn Operations),
+        action: &mut dyn FnMut(&mut dyn Operations) -> Result<(), Error>,
     ) -> Result<(), Error> {
-        self.with_context(realm, |entered| {
-            action(entered);
-            Ok(())
-        })
+        self.with_context(realm, |entered| action(entered))
     }
 
     fn checkpoint(&mut self) -> Result<(), Error> {
@@ -440,7 +437,7 @@ impl super::Engine for Engine {
 impl Drop for Engine {
     fn drop(&mut self) {
         // No checkpoint during teardown: abandoned guest jobs must not run.
-        self.roots.closed.set(true);
+        self.roots.owner.close();
         self.isolate.remove_slot::<Weak<Roots>>();
         // The registry is the first owned resource field to drop. Callback
         // scopes keep only temporary Rc clones; slots keep Weak references.
@@ -473,13 +470,25 @@ impl Entered<'_, '_, '_> {
         let caught = &mut caught.init();
         let intrinsics = v8::Local::new(caught, self.intrinsics);
         let result = operation(caught, &self.roots, self.realm, intrinsics);
-        self.roots.available()?;
+        if let Err(error) = self.roots.available() {
+            return match error {
+                // A Rust scoped handler can already own its exact exception
+                // when a later local Drop records cleanup. Refuse continuation
+                // without replacing that selected operation result.
+                Error::ConversionCleanup(_) => self.roots.owner.operation_result(result),
+                other => Err(other),
+            };
+        }
         if caught.has_terminated() || !caught.can_continue() {
             return Err(Error::Terminated);
         }
         if let Some(thrown) = caught.exception() {
             let value = self.roots.retain(caught, self.realm, thrown)?;
-            return Err(Error::Exception(Exception { phase, value }));
+            return Err(Error::Exception(Exception {
+                phase,
+                value,
+                rule: None,
+            }));
         }
         result
     }
@@ -598,6 +607,13 @@ impl Entered<'_, '_, '_> {
 }
 
 impl Operations for Entered<'_, '_, '_> {
+    fn owner_state(&self) -> Rc<OwnerState> {
+        self.roots.owner.clone()
+    }
+
+    fn refuse(&self, error: Error) -> Error {
+        self.roots.fail(error)
+    }
     fn check_active(&self) -> Result<(), Error> {
         self.roots.available()?;
         if self.scope.is_execution_terminating() {
@@ -663,7 +679,7 @@ impl Operations for Entered<'_, '_, '_> {
                 let context = constructor_realm(scope, roots, intrinsics, target)?;
                 roots.available()?;
                 let key = context.get_slot::<RealmKey>().ok_or(Error::ForeignOwner)?;
-                if key.owner != roots.owner {
+                if key.owner != roots.owner.id() {
                     return Err(Error::ForeignOwner);
                 }
                 // The private typed key proves this is a context initialized by this
@@ -685,7 +701,12 @@ impl Operations for Entered<'_, '_, '_> {
                     invariant: std::marker::PhantomData,
                 })
                 .map(|value| value.root);
-                entered.check_active()?;
+                let result = match entered.check_active() {
+                    Err(Error::ConversionCleanup(_)) | Ok(()) => {
+                        roots.owner.operation_result(result)
+                    }
+                    Err(error) => Err(error),
+                };
                 let root = result?;
                 let prototype = roots.local(entered.scope, &root)?;
                 if !prototype.is_object() {
@@ -1026,21 +1047,35 @@ impl Operations for Entered<'_, '_, '_> {
         )
     }
 
-    fn to_utf16(&mut self, value: &Root) -> Result<Vec<u16>, Error> {
+    fn coerce_string(&mut self, value: &Root) -> Result<CoercedString, Error> {
         self.validate_root(value)?;
         self.attempt(
             ExceptionPhase::Coerce,
-            |scope, roots, _realm, _intrinsics| {
+            |scope, roots, realm, _intrinsics| {
                 let value = roots.local(scope, value)?;
                 let string = value.to_string(scope).ok_or(Error::BackendUnavailable)?;
                 roots.available()?;
-                let mut units = Vec::new();
-                units
-                    .try_reserve_exact(string.length())
-                    .map_err(|_| Error::Allocation)?;
-                units.resize(string.length(), 0);
-                string.write_v2(scope, 0, &mut units, v8::WriteFlags::empty());
-                Ok(units)
+                Ok(CoercedString {
+                    length: string.length(),
+                    value: roots.retain(scope, realm, string.into())?,
+                })
+            },
+        )
+    }
+
+    fn copy_string(&mut self, string: &CoercedString, units: &mut [u16]) -> Result<(), Error> {
+        self.validate_root(&string.value)?;
+        if units.len() != string.len() {
+            return Err(Error::BackendUnavailable);
+        }
+        self.attempt(
+            ExceptionPhase::Coerce,
+            |scope, roots, _realm, _intrinsics| {
+                let string = roots.local(scope, &string.value)?;
+                let string = v8::Local::<v8::String>::try_from(string)
+                    .map_err(|_| Error::BackendUnavailable)?;
+                string.write_v2(scope, 0, units, v8::WriteFlags::empty());
+                Ok(())
             },
         )
     }
@@ -1107,7 +1142,10 @@ fn callback_trampoline<'s>(
     let outcome = match outcome {
         Ok(outcome) => outcome,
         Err(payload) => {
-            roots.fail(Error::CallbackPanicked);
+            let selected = roots.owner.finalize::<()>(Err(Error::CallbackPanicked));
+            if let Err(error) = selected {
+                roots.fail(error);
+            }
             // Disposal happens when this owner drops, after all callback frames
             // have returned. Nested callback panics can contribute several
             // payloads while the first typed host failure stays unchanged.
@@ -1139,6 +1177,7 @@ fn invoke_callback<'s>(
     roots: &Rc<Roots>,
 ) -> Result<CallbackOutcome<'s>, Error> {
     roots.available()?;
+    let boundary = crate::owner::Boundary::enter(roots.owner.clone())?;
     let data = v8::Local::<v8::Object>::try_from(arguments.data())
         .map_err(|_| Error::BackendUnavailable)?;
     let id = data
@@ -1178,7 +1217,7 @@ fn invoke_callback<'s>(
         .filter(|entry| !entry.retired.get())
         .map(|entry| entry.lease.clone())
         .ok_or(Error::ExpiredIdentity)?;
-    if lease.realm.owner != roots.owner {
+    if lease.realm.owner != roots.owner.id() {
         return Err(Error::ForeignOwner);
     }
     let scope = &mut v8::ContextScope::new(scope, context);
@@ -1281,8 +1320,19 @@ fn invoke_callback<'s>(
         }
         _ => Err(Error::BackendUnavailable),
     };
-    entered.check_active()?;
-    match outcome {
+    let outcome = match outcome {
+        Ok(OwnedCompletion::Throw(value)) => Err(Error::Exception(Exception {
+            phase: ExceptionPhase::Invoke,
+            value,
+            rule: None,
+        })),
+        other => other,
+    };
+    let outcome = match entered.check_active() {
+        Err(Error::ConversionCleanup(_)) | Ok(()) => outcome,
+        Err(error) => Err(error),
+    };
+    match boundary.finish(outcome) {
         Ok(OwnedCompletion::Undefined) => Ok(CallbackOutcome::Undefined),
         Ok(OwnedCompletion::Return(root)) => {
             Ok(CallbackOutcome::Return(roots.local(entered.scope, &root)?))
@@ -1295,9 +1345,7 @@ fn invoke_callback<'s>(
                 Err(Error::ExpectedObject)
             }
         }
-        Ok(OwnedCompletion::Throw(root)) => {
-            Ok(CallbackOutcome::Throw(roots.local(entered.scope, &root)?))
-        }
+        Ok(OwnedCompletion::Throw(_)) => Err(Error::BackendUnavailable),
         Err(Error::Exception(exception)) => Ok(CallbackOutcome::Throw(
             roots.local(entered.scope, exception.value())?,
         )),

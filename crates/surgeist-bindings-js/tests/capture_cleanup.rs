@@ -133,7 +133,7 @@ fn register_capture(
                     PropertyKey::String(&"heldCapture".encode_utf16().collect::<Vec<_>>()),
                     &function,
                 )
-            })??;
+            })?;
         }
         Registration::Constructor => {
             let callback = ConstructorCallback::new(
@@ -159,7 +159,7 @@ fn register_capture(
                     PropertyKey::String(&"heldCapture".encode_utf16().collect::<Vec<_>>()),
                     &function,
                 )
-            })??;
+            })?;
         }
     }
     capture.armed.set(true);
@@ -200,7 +200,7 @@ fn verify_usable_owner(process: &mut Process, realm: &Realm) -> Result<(), Error
             "42".encode_utf16().collect::<Vec<_>>()
         );
         Ok::<_, Error>(())
-    })?
+    })
 }
 
 fn worker(case: Case) -> TestResult {
@@ -228,8 +228,7 @@ fn worker(case: Case) -> TestResult {
                             &undefined,
                         )
                     })
-                    .expect("live realm")
-                    .expect("global capture release");
+                    .expect("live realm capture release");
                 execution.memory_pressure();
             }));
             assert_expected_panic(result);
@@ -256,7 +255,7 @@ fn worker(case: Case) -> TestResult {
                     PropertyKey::String(&"failHost".encode_utf16().collect::<Vec<_>>()),
                     &function,
                 )
-            })??;
+            })?;
             drop(fail);
             let result = catch_unwind(AssertUnwindSafe(|| {
                 let result = execution.in_realm(&realm, |scope| {

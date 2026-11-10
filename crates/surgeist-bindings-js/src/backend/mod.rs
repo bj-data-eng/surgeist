@@ -32,6 +32,19 @@ pub(crate) enum ObjectPrototype<'a> {
     Object(&'a Root),
 }
 
+/// One completed ToString, retained while its exact UTF-16 extent is admitted
+/// and copied. The immutable string cannot reenter guest coercion during copy.
+pub(crate) struct CoercedString {
+    value: Root,
+    length: usize,
+}
+
+impl CoercedString {
+    pub(crate) fn len(&self) -> usize {
+        self.length
+    }
+}
+
 // Embedding policy for the pinned backend, not the ECMAScript array limit.
 // fixed-array-base.h permits 16 Mi elements in its lower-limits SDK build and
 // 128 Mi otherwise. The minimum is safe for every supported pinned build mode.
@@ -47,11 +60,12 @@ pub(crate) fn validate_array_length(length: usize) -> Result<(), Error> {
 
 /// Heap lifecycle, separate from operations on an already entered realm.
 pub(crate) trait Engine {
+    fn owner_state(&self) -> std::rc::Rc<crate::owner::OwnerState>;
     fn create_realm(&mut self) -> Result<Realm, Error>;
     fn with_realm(
         &mut self,
         realm: &Realm,
-        action: &mut dyn FnMut(&mut dyn Operations),
+        action: &mut dyn FnMut(&mut dyn Operations) -> Result<(), Error>,
     ) -> Result<(), Error>;
     fn checkpoint(&mut self) -> Result<(), Error>;
     fn memory_pressure(&mut self);
@@ -61,6 +75,8 @@ pub(crate) trait Engine {
 /// Engine-neutral primitives in one selected realm. Both host entries and
 /// native callbacks borrow this same adapter; neither can reenter the owner.
 pub(crate) trait Operations {
+    fn owner_state(&self) -> std::rc::Rc<crate::owner::OwnerState>;
+    fn refuse(&self, error: Error) -> Error;
     fn check_active(&self) -> Result<(), Error>;
     fn validate_root(&self, root: &Root) -> Result<(), Error>;
     fn evaluate(&mut self, source: &[u16]) -> Result<Root, Error>;
@@ -97,7 +113,19 @@ pub(crate) trait Operations {
     fn intrinsic(&mut self, intrinsic: Intrinsic) -> Result<Root, Error>;
     fn call(&mut self, function: &Root, receiver: &Root, arguments: &[Root])
     -> Result<Root, Error>;
-    fn to_utf16(&mut self, value: &Root) -> Result<Vec<u16>, Error>;
+    fn coerce_string(&mut self, value: &Root) -> Result<CoercedString, Error>;
+    /// Copies the entire string into an exactly sized, caller-owned buffer.
+    fn copy_string(&mut self, string: &CoercedString, units: &mut [u16]) -> Result<(), Error>;
+    fn to_utf16(&mut self, value: &Root) -> Result<Vec<u16>, Error> {
+        let string = self.coerce_string(value)?;
+        let mut units = Vec::new();
+        units
+            .try_reserve_exact(string.len())
+            .map_err(|_| Error::Allocation)?;
+        units.resize(string.len(), 0);
+        self.copy_string(&string, &mut units)?;
+        Ok(units)
+    }
     fn to_boolean(&mut self, value: &Root) -> Result<bool, Error>;
     fn to_number(&mut self, value: &Root) -> Result<f64, Error>;
     fn strict_equals(&mut self, left: &Root, right: &Root) -> Result<bool, Error>;

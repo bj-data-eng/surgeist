@@ -71,15 +71,33 @@ impl UsvString {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ByteString(Vec<u8>);
 
+pub(crate) enum ByteStringStep {
+    Inspect,
+    Allocate(usize),
+    Copy(usize),
+}
+
 impl ByteString {
     pub(crate) fn convert(units: Vec<u16>) -> Result<Self, Error> {
-        if units.iter().any(|&unit| unit > 255) {
-            return Err(Error::ByteStringOutOfRange);
+        Self::convert_with(units, |_| Ok(()))
+    }
+
+    pub(crate) fn convert_with(
+        units: Vec<u16>,
+        mut before: impl FnMut(ByteStringStep) -> Result<(), Error>,
+    ) -> Result<Self, Error> {
+        for &unit in &units {
+            before(ByteStringStep::Inspect)?;
+            if unit > 255 {
+                return Err(Error::ByteStringOutOfRange);
+            }
         }
+        before(ByteStringStep::Allocate(units.len()))?;
         let mut bytes = Vec::new();
         bytes
             .try_reserve_exact(units.len())
             .map_err(|_| Error::Allocation)?;
+        before(ByteStringStep::Copy(units.len()))?;
         // Validation above establishes that every conversion is lossless.
         bytes.extend(units.into_iter().map(|unit| unit as u8));
         Ok(Self(bytes))

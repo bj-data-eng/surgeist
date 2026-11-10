@@ -1,6 +1,7 @@
 use std::fmt;
 
 use crate::Root;
+use crate::conversion::{CleanupFailure, LedgerError, Rule};
 
 /// Operation that produced a guest exception.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -21,6 +22,7 @@ pub enum ExceptionPhase {
 pub struct Exception {
     pub(crate) phase: ExceptionPhase,
     pub(crate) value: Root,
+    pub(crate) rule: Option<Rule>,
 }
 
 impl Exception {
@@ -33,12 +35,23 @@ impl Exception {
     pub fn value(&self) -> &Root {
         &self.value
     }
+
+    /// Specified binding validation that created this intrinsic TypeError.
+    /// This annotates the direct conversion failure. Values captured again
+    /// across guest execution, including guest rethrows, have no host rule.
+    pub fn conversion_rule(&self) -> Option<Rule> {
+        self.rule
+    }
 }
 
 /// Typed refusal before invalid engine access, or a captured guest failure.
 #[derive(Clone, Debug)]
 #[non_exhaustive]
 pub enum Error {
+    /// Binding-owned conversion work or storage was refused by Ledger.
+    ConversionLedger(LedgerError),
+    /// Fatal cleanup failed; its selected primary, if any, is retained exactly.
+    ConversionCleanup(CleanupFailure),
     /// Bootstrap is already held by another live process token.
     OwnerAlreadyActive,
     /// Only the thread that initialized the platform may acquire this backend.
@@ -91,6 +104,8 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
+            Self::ConversionLedger(_) => "binding conversion admission failed",
+            Self::ConversionCleanup(_) => "binding conversion cleanup failed",
             Self::OwnerAlreadyActive => "an execution owner is already active",
             Self::WrongThread => "the backend belongs to a different thread",
             Self::ForeignOwner => "the capability belongs to a different heap",

@@ -555,6 +555,7 @@ fn native_sdk_lifetimes_callbacks_and_teardown() -> TestResult {
         Err(Error::ArrayTooLong)
     ));
 
+    coerced_string_copy_is_exact_noncoercive_and_owner_checked()?;
     repeated_native_access_preserves_javascript_identity_and_native_mutation()?;
     live_javascript_wrapper_keeps_native_alive_and_garbage_collection_releases_it()?;
     collected_wrapper_can_be_recreated_for_a_still_owned_native()?;
@@ -573,6 +574,157 @@ fn native_sdk_lifetimes_callbacks_and_teardown() -> TestResult {
     invalid_native_identity_types_are_rejected()?;
     nested_callback_scopes_share_production_roots_and_release_self_cleared_custody()?;
     registry_failure_stays_terminal_across_guest_catches_and_native_coercion()?;
+    cleanup_failure_uses_the_same_owner_and_preserves_the_first_refusal()?;
+    crate::conversion::tests::run()?;
+    Ok(())
+}
+
+fn cleanup_failure_uses_the_same_owner_and_preserves_the_first_refusal() -> TestResult {
+    struct FailureOnDrop(Rc<crate::owner::OwnerState>);
+    impl Drop for FailureOnDrop {
+        fn drop(&mut self) {
+            // The destructor owns no SDK handle or root registry. This is the
+            // pure host transition. Pending conversion cleanup is qualified
+            // separately against its actual selected entry outcome.
+            self.0.fail(Error::RegistryConflict);
+        }
+    }
+
+    for source in [
+        "try { cleanup() } catch (_) {} a.add(99)",
+        "a.add({valueOf() { try { cleanup() } catch (_) {} return 99 }})",
+    ] {
+        let mut host = Host::new(Observations::default())?;
+        let native = host.counter(0)?;
+        host.eval(&format!(
+            "globalThis.a = getCounter({}); a.add(1)",
+            native.id
+        ))?;
+        let owner = host.engine.roots.owner.clone();
+        let callback = crate::Callback::new(move |_, _| {
+            drop(FailureOnDrop(owner.clone()));
+            Ok(crate::Completion::Undefined)
+        });
+        host.engine.with_context(&host.realm, |entered| {
+            let function = entered.function(&callback)?;
+            let global = entered.global()?;
+            entered.set(
+                &global,
+                crate::backend::PropertyKey::String(&"cleanup".encode_utf16().collect::<Vec<_>>()),
+                &function,
+            )
+        })?;
+        assert!(matches!(
+            host.engine.with_context(&host.realm, |entered| entered
+                .evaluate(&source.encode_utf16().collect::<Vec<_>>())),
+            Err(Error::RegistryConflict)
+        ));
+        assert!(matches!(
+            host.engine.create_realm(),
+            Err(Error::RegistryConflict)
+        ));
+        assert!(matches!(
+            host.engine.checkpoint(),
+            Err(Error::RegistryConflict)
+        ));
+        host.engine.memory_pressure();
+        assert_eq!(native.value.get(), 1);
+    }
+
+    {
+        let mut host = Host::new(Observations::default())?;
+        let native = host.counter(0)?;
+        host.eval(&format!(
+            "globalThis.a = getCounter({}); a.add(1)",
+            native.id
+        ))?;
+        // A returned value can be destroyed after its entered scope ends.
+        // The next host entry still observes its SDK-free cleanup failure.
+        drop(FailureOnDrop(host.engine.roots.owner.clone()));
+        assert!(matches!(
+            host.engine.with_context(&host.realm, |entered| entered
+                .evaluate(&"a.add(99)".encode_utf16().collect::<Vec<_>>())),
+            Err(Error::RegistryConflict)
+        ));
+        assert_eq!(native.value.get(), 1);
+    }
+
+    let owner = {
+        let mut host = Host::new(Observations::default())?;
+        let owner = host.engine.roots.owner.clone();
+        host.engine.roots.fail(Error::ExpectedObject);
+        drop(FailureOnDrop(owner.clone()));
+        assert!(matches!(
+            host.engine.create_realm(),
+            Err(Error::ExpectedObject)
+        ));
+        assert!(matches!(
+            host.engine.checkpoint(),
+            Err(Error::ExpectedObject)
+        ));
+        owner
+    };
+    // Closing the process preserves its original error even if an observer
+    // temporarily retains the SDK-free state itself.
+    assert!(matches!(owner.available(), Err(Error::ExpectedObject)));
+    drop(owner);
+
+    let owner = {
+        let host = Host::new(Observations::default())?;
+        host.engine.roots.owner.clone()
+    };
+    assert!(matches!(owner.available(), Err(Error::BackendUnavailable)));
+    let weak = Rc::downgrade(&owner);
+    drop(owner);
+    assert!(weak.upgrade().is_none());
+    Ok(())
+}
+
+fn coerced_string_copy_is_exact_noncoercive_and_owner_checked() -> TestResult {
+    let original = [0, 0xd800, 0x78, 0xdc00, 0xd83d, 0xde00];
+    let retained = {
+        let mut host = Host::new(Observations::default())?;
+        host.engine.with_context(&host.realm, |entered| {
+            let input = entered.evaluate(
+                &"globalThis.stringCoercions = 0; globalThis.stringInput = { [Symbol.toPrimitive](hint) { stringCoercions++; if (hint !== 'string') throw 1; return '\\0\\uD800x\\uDC00\\uD83D\\uDE00'; } }; stringInput"
+                    .encode_utf16()
+                    .collect::<Vec<_>>(),
+            )?;
+            let string = entered.coerce_string(&input)?;
+            assert_eq!(string.len(), original.len());
+            drop(input);
+            entered.evaluate(
+                &"stringInput[Symbol.toPrimitive] = () => { throw 2; }; stringInput = null; gc()"
+                    .encode_utf16()
+                    .collect::<Vec<_>>(),
+            )?;
+            // Caller-owned storage can be admitted after coercion and reused.
+            // Neither copy consults the original object or performs ToString.
+            for _ in 0..2 {
+                let mut output = vec![0xffff; string.len()];
+                entered.copy_string(&string, &mut output)?;
+                assert_eq!(output, original);
+            }
+            let calls = entered.evaluate(&"stringCoercions".encode_utf16().collect::<Vec<_>>())?;
+            assert_eq!(entered.to_utf16(&calls)?, [0x31]);
+            let empty = entered.evaluate(&"''".encode_utf16().collect::<Vec<_>>())?;
+            let empty = entered.coerce_string(&empty)?;
+            assert_eq!(empty.len(), 0);
+            entered.copy_string(&empty, &mut [])?;
+            Ok(string)
+        })?
+    };
+
+    let mut host = Host::new(Observations::default())?;
+    host.engine.with_context(&host.realm, |entered| {
+        let mut output = [0xffff; 6];
+        assert!(matches!(
+            entered.copy_string(&retained, &mut output),
+            Err(Error::ForeignOwner)
+        ));
+        assert_eq!(output, [0xffff; 6]);
+        Ok(())
+    })?;
     Ok(())
 }
 

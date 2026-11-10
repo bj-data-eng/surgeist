@@ -9,6 +9,7 @@ repository.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+surgeist-ledger = { path = "../surgeist-ledger", version = "=0.1.0" }
 v8 = "=152.2.0"
 
 [lints]
@@ -20,4 +21,8 @@ harness = false
 
 [[test]]
 name = "capture_cleanup"
+harness = false
+
+[[test]]
+name = "conversions"
 harness = false

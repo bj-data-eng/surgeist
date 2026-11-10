@@ -7,8 +7,10 @@ It does not own a JavaScript VM, garbage collector or replacement DOM.
 The current core supplies one thread-affine `Process`, borrowed `Execution`,
 multiple realms, scoped values, explicitly retained roots, exact UTF-16 strings,
 property operations, calls, original exception values, Web IDL primitive
-conversion, scoped Rust callbacks, declared constructors and explicit shared
-microtask checkpoints.
+conversion, metered scalar, enumeration, nullable, dictionary and synchronous
+sequence conversion,
+declared argument defaults, scoped Rust callbacks,
+declared constructors and explicit shared microtask checkpoints.
 Installed Web IDL interfaces, DOM, CSSOM and Runtime adapters are not
 yet implemented. This is not a browser environment or a WPT runner.
 
@@ -22,7 +24,9 @@ forgets a guard. Multiple realms share the isolate and explicit job queue.
 The platform remains initialized for the lifetime of the operating-system
 process. Do not independently initialize or enter the same V8 dependency.
 
-Scoped values cannot escape an `in_realm` closure. Explicit `Root` tokens contain
+`in_realm` accepts a fallible closure and returns its flattened `Result`, including
+cleanup at the host exit. Scoped values cannot escape that closure. Explicit
+`Root` tokens contain
 checked owner and allocation identities; the backend keeps the actual handles.
 Foreign tokens fail before SDK conversion. Context and value roots are reaped
 at operation boundaries after their external Rust custody is dropped. Callback
@@ -96,6 +100,56 @@ that invoke guest coercion do so once and preserve the original thrown value.
 Value-kind and callability checks invoke no guest properties or coercion hooks;
 classes and revoked callable proxies remain callable even though calls throw.
 
+[`conversion`](src/conversion/mod.rs) provides closed typed descriptors for
+scalars, enumerations, nullable values, synchronous sequences and complete
+brand-free dictionaries.
+`Conversion::value` accepts the sealed descriptor family, including
+`IntegerType`; nullable descriptors preserve an inner type that includes
+undefined and cannot be wrapped in a second nullable descriptor. A `ConversionAccount` attaches an authenticated child to a caller-owned
+Ledger operation. Its `run` method borrows the entered scope; `Converted` outputs
+retain their requested Rust buffer charges until their payloads are destroyed.
+Charges cover binding work and storage, excluding engine instructions and heap
+allocation. Timing follows the Ledger operation's profiling configuration.
+The existing primitive methods remain available without this account.
+
+The [generated descriptors](src/conversion/declarations.rs) derive dictionary
+member order, argument indices, optionality and defaults from the same authored
+JSON as the typed values. Dictionary conversion visits inherited members before
+derived members, sorts each declaration lexicographically, and converts each
+member immediately after reading it. Undefined and null dictionaries use the
+declared member defaults. A dictionary with any unavailable native brand is
+excluded as a whole.
+
+`Conversion::argument` converts one already-selected declaration argument from
+`arguments.get(descriptor.index())`. Optional omission and explicit undefined
+select the declared default or `ArgumentValue::Missing`; null follows the
+selected type's ordinary conversion. These descriptors do not perform overload
+selection, authenticate a native receiver or install an interface. Returned
+nullable and argument values retain the original output's storage custody.
+
+`descriptor.sequence()` composes through the same `Conversion::value` front.
+It caches the original iterator method and next function, reads done before
+value, and converts each yielded item before advancing. The pinned algorithm
+performs no IteratorClose on conversion failure. Iterator operations and items
+are admitted before their guest effects. Empty sequences allocate no element
+buffer; requested capacity starts at four slots and doubles with checked bounds.
+Growth charges the complete old and new backing at once, counts every moved
+accepted element, and frees old backing before releasing its charge. The result
+owns a vector of `Converted` children, each retaining its original payload
+custody in addition to the outer buffer. Nested sequences and nullable values
+can outlive their realm or process without retaining engine handles.
+
+Metered validation throws an intrinsic TypeError; guest coercion preserves the
+original exception. Host refusal is terminal. If cleanup also fails at an actual
+host or callback exit, its terminal report preserves the selected primary
+exception and exposes the cleanup fault separately. A prior host refusal remains
+first. Cleanup guards enter no SDK code, and cleanup diagnostics remain readable
+after an account drops. Enumeration attribute assignment ignores a nonmember
+after one coercion. Generated
+values and conversion descriptors derive from the single
+[authored description](bindings/dom-core.json); dictionaries requiring native
+brands, union/overload selection and installed interfaces remain separate work.
+
 ## Verification
 
 Use the exact native artifact and offline environment described in
@@ -105,9 +159,13 @@ a dedicated worker-process executable, so it exercises bootstrap and all realms
 on one entry thread rather than unrelated test-pool threads.
 Capture-disposal tests use isolated workers to check GC and owner teardown,
 including destructor unwinds and preservation of prior host refusal.
+The conversion executable exercises real callbacks, admission, retained storage,
+reentry and profiling equivalence; private fault tests exercise cleanup failures.
 
 ```sh
 cargo test --offline --locked -j 1 -p surgeist-bindings-js
 cargo clippy --offline --locked -j 1 -p surgeist-bindings-js --all-targets --no-deps -- -F unsafe-code -D warnings
 cargo fmt --all -- --check
+python3 -B crates/surgeist-bindings-js/tools/generate_bindings.py --check
+python3 -B crates/surgeist-bindings-js/tools/test_generate_bindings.py --rustc
 ```
